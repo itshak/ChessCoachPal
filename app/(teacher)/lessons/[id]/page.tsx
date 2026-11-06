@@ -1,0 +1,329 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { Card } from "@/components/ui/card";
+import { AssignPlanButton } from "@/components/teacher/AssignPlanButton";
+import { DeletePlanButton } from "@/components/teacher/DeletePlanButton";
+import { LaunchPlanButton } from "@/components/teacher/LaunchPlanButton";
+import { UnassignLessonButton } from "@/components/teacher/UnassignLessonButton";
+import { PlanEditWrapper } from "@/components/teacher/PlanEditWrapper";
+import { oneToOne } from "@/lib/schedule";
+import { getPolicy } from "@/lib/server/scheduling";
+import { isActiveStudentPlan } from "@/lib/student-plans";
+import { symbolTerm, type MusicalSymbol } from "@/lib/symbols";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const supabase = await createClient();
+  const { data: plan } = await supabase
+    .from("plans")
+    .select("name")
+    .eq("id", id)
+    .single();
+  return { title: plan?.name ?? "Lesson" };
+}
+
+export default async function PlanDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const policy = await getPolicy(supabase, user.id);
+
+  const { data: plan } = await supabase
+    .from("plans")
+    .select("*")
+    .eq("id", id)
+    .eq("teacher_id", user.id)
+    .single();
+
+  if (!plan) notFound();
+
+  const { data: studentPlans } = await supabase
+    .from("student_plans")
+    .select("id, token, assigned_at, unassigned_at, students ( id, name ), practice_sessions ( id )")
+    .eq("plan_id", id);
+
+  const activeStudentPlans = (studentPlans ?? []).filter(isActiveStudentPlan);
+  const pastStudentPlans = (studentPlans ?? []).filter(
+    (sp) => !isActiveStudentPlan(sp)
+  );
+  const activeStudentIds = new Set(
+    activeStudentPlans
+      .map((sp) =>
+        oneToOne(
+          sp.students as
+            | { id: string; name: string }[]
+            | { id: string; name: string }
+            | null
+        )?.id
+      )
+      .filter((studentId): studentId is string => Boolean(studentId))
+  );
+
+  const { data: students } = await supabase
+    .from("students")
+    .select("id, name")
+    .eq("teacher_id", user.id)
+    .order("name");
+
+  const notes = (plan.notes as string[]) ?? [];
+  const symbols = (plan.symbols as MusicalSymbol[]) ?? [];
+  const keySignatures = (plan.key_signatures as string[]) ?? [];
+  const labels = (plan.labels as string[] | null) ?? [];
+  const isSymbolPlan = plan.plan_type === "symbol_concepts";
+  const isKeySigPlan = plan.plan_type === "key_signature_identification";
+
+  return (
+    <PlanEditWrapper
+      planId={id}
+      noteNamingSystem={policy.note_naming_system}
+      initialData={{
+        name: plan.name,
+        is_template: plan.is_template,
+        plan_type: plan.plan_type ?? "note_identification",
+        clef: plan.clef,
+        key_signature: plan.key_signature,
+        include_sharps: plan.include_sharps,
+        include_flats: plan.include_flats,
+        measures_shown: plan.measures_shown,
+        questions_per_lesson: plan.questions_per_lesson,
+        answer_choices: plan.answer_choices,
+        notes,
+        symbols,
+        labels,
+        teacher_notes: plan.teacher_notes ?? "",
+        show_hints: plan.show_hints ?? true,
+        key_sig_scale_mode: plan.key_sig_scale_mode ?? "major",
+        key_signatures: keySignatures,
+        time_limit_seconds: plan.time_limit_seconds ?? 0,
+      }}
+      actionSlot={
+        <>
+          <LaunchPlanButton planId={plan.id} planName={plan.name} students={students ?? []} />
+          <AssignPlanButton
+            planId={plan.id}
+            students={(students ?? []).map((student) => ({
+              ...student,
+              assigned: activeStudentIds.has(student.id),
+            }))}
+          />
+          <DeletePlanButton planId={plan.id} planName={plan.name} />
+        </>
+      }
+    >
+      <div className="max-w-2xl mx-auto">
+        <div className="flex items-center gap-3 mb-6">
+          <Link href="/lessons" className="text-muted hover:text-foreground">
+            ← Lessons
+          </Link>
+        </div>
+
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold">{plan.name}</h1>
+          <div className="flex flex-wrap items-center gap-2 mt-1">
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+              isSymbolPlan ? "bg-accent/20 text-accent" : isKeySigPlan ? "bg-primary/10 text-primary" : "bg-primary/10 text-primary"
+            }`}>
+              {isSymbolPlan ? "Symbols & Concepts" : isKeySigPlan ? "Key Signature Identification" : "Note Identification"}
+            </span>
+            {labels.map((label) => (
+              <span
+                key={label}
+                className="text-xs px-2 py-0.5 rounded-full bg-surface-dim text-muted font-medium"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {plan.teacher_notes && (
+          <Card padding="sm" className="mb-4 bg-surface-dim/50">
+            <div className="text-xs text-muted mb-1">Teacher Notes</div>
+            <p className="text-sm whitespace-pre-wrap">{plan.teacher_notes}</p>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          {!isSymbolPlan && !isKeySigPlan && (
+            <>
+              <Card padding="sm">
+                <div className="text-xs text-muted">Clef</div>
+                <div className="font-semibold capitalize">{plan.clef}</div>
+              </Card>
+              {/* Key signature not shown for note-ID (staff doesn't display it) */}
+            </>
+          )}
+          {isKeySigPlan && (
+            <>
+              <Card padding="sm">
+                <div className="text-xs text-muted">Scale</div>
+                <div className="font-semibold capitalize">{plan.key_sig_scale_mode ?? "major"}</div>
+              </Card>
+              <Card padding="sm">
+                <div className="text-xs text-muted">Clef</div>
+                <div className="font-semibold capitalize">{plan.clef}</div>
+              </Card>
+            </>
+          )}
+          <Card padding="sm">
+            <div className="text-xs text-muted">Questions per Lesson</div>
+            <div className="font-semibold">{plan.questions_per_lesson}</div>
+          </Card>
+          <Card padding="sm">
+            <div className="text-xs text-muted">Answer Choices</div>
+            <div className="font-semibold">{plan.answer_choices}</div>
+          </Card>
+          <Card padding="sm">
+            <div className="text-xs text-muted">Time Limit per Question</div>
+            <div className="font-semibold">
+              {plan.time_limit_seconds ? `${plan.time_limit_seconds} seconds` : "Untimed"}
+            </div>
+          </Card>
+        </div>
+
+        {isKeySigPlan ? (
+          <Card className="mb-6">
+            <h2 className="font-semibold mb-3">Key Signatures ({keySignatures.length})</h2>
+            <div className="flex flex-wrap gap-1.5">
+              {keySignatures.map((k: string) => (
+                <span
+                  key={k}
+                  className="px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-sm font-medium"
+                >
+                  {k}
+                </span>
+              ))}
+            </div>
+          </Card>
+        ) : isSymbolPlan ? (
+          <Card className="mb-6">
+            <h2 className="font-semibold mb-3">Symbols &amp; Concepts ({symbols.length})</h2>
+            {(() => {
+              const grouped: Record<string, MusicalSymbol[]> = {};
+              for (const sym of symbols) {
+                const cat = sym.category ?? "Other";
+                if (!grouped[cat]) grouped[cat] = [];
+                grouped[cat].push(sym);
+              }
+              return Object.entries(grouped).map(([category, items]) => (
+                <div key={category} className="mb-4 last:mb-0">
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+                    {category}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {items.map((sym) => (
+                      <span
+                        key={sym.id}
+                        className="px-2.5 py-1 bg-accent/10 text-accent rounded-lg text-sm font-medium"
+                        title={sym.definition}
+                      >
+                        {symbolTerm(sym, policy.note_naming_system)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ));
+            })()}
+          </Card>
+        ) : (
+          <Card className="mb-6">
+            <h2 className="font-semibold mb-2">Notes ({notes.length})</h2>
+            <div className="flex flex-wrap gap-1.5">
+              {notes.map((note: string) => (
+                <span
+                  key={note}
+                  className="px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-sm font-mono font-semibold"
+                >
+                  {note}
+                </span>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        <Card>
+          <h2 className="font-semibold mb-3">Assigned Students</h2>
+          {!activeStudentPlans.length ? (
+            <p className="text-muted text-sm">No students assigned yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {activeStudentPlans.map((sp) => {
+                const sessionCount = (sp.practice_sessions as { id: string }[] | null)?.length ?? 0;
+                const student = oneToOne(
+                  sp.students as { id: string; name: string }[] | { id: string; name: string } | null
+                );
+                return (
+                  <div key={sp.id} className="flex justify-between items-center gap-2 py-1.5">
+                    <div>
+                      <Link
+                        href={`/students/${student?.id}`}
+                        className="text-sm font-medium hover:text-primary"
+                      >
+                        {student?.name}
+                      </Link>
+                      <div className="text-xs text-muted">
+                        Assigned {new Date(sp.assigned_at).toLocaleDateString()}
+                        {sessionCount > 0 && ` · ${sessionCount} session${sessionCount !== 1 ? "s" : ""}`}
+                      </div>
+                    </div>
+                    <UnassignLessonButton
+                      studentPlanId={sp.id}
+                      lessonName={plan.name}
+                      sessionCount={sessionCount}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
+        {pastStudentPlans.length > 0 && (
+          <Card className="mt-4">
+            <h2 className="font-semibold mb-3">Past Students</h2>
+            <div className="space-y-2">
+              {pastStudentPlans.map((sp) => {
+                const sessionCount = (sp.practice_sessions as { id: string }[] | null)?.length ?? 0;
+                const student = oneToOne(
+                  sp.students as { id: string; name: string }[] | { id: string; name: string } | null
+                );
+                return (
+                  <div key={sp.id} className="flex justify-between items-center py-1.5 opacity-80">
+                    <div>
+                      <Link
+                        href={`/students/${student?.id}`}
+                        className="text-sm font-medium hover:text-primary"
+                      >
+                        {student?.name}
+                      </Link>
+                      <div className="text-xs text-muted">
+                        {sessionCount} session{sessionCount !== 1 ? "s" : ""}
+                        {sp.unassigned_at &&
+                          ` · unassigned ${new Date(sp.unassigned_at).toLocaleDateString()}`}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+      </div>
+    </PlanEditWrapper>
+  );
+}

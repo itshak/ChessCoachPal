@@ -1,0 +1,225 @@
+/**
+ * Email provider interface (mirrors the payments provider pattern).
+ *
+ * Provider is selected by EMAIL_PROVIDER:
+ *   - "resend" — production, via the Resend HTTP API
+ *   - "smtp"   — local dev, delivers to Mailpit (bundled with `supabase start`)
+ *   - "none" or unset — log-only no-op; the app works with zero email config
+ *
+ * The from ADDRESS is platform config (EMAIL_FROM_ADDRESS — the seam where
+ * per-tenant custom sending domains plug in later). The from NAME and
+ * reply-to are per-teacher: parents see "{Studio Name} (via ChessCoachPal)" and
+ * replies go to the teacher, never to the platform.
+ */
+
+import { Resend } from "resend";
+import { sendViaSmtp } from "@/lib/server/smtp";
+
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer | Uint8Array;
+  contentType?: string;
+}
+
+export interface SendEmailArgs {
+  /** One or more recipients (e.g. both guardians of a family). */
+  to: string | string[];
+  subject: string;
+  text: string;
+  html?: string;
+  /**
+   * Optional BCC recipients, e.g. the teacher keeping a copy of family email.
+   * Addresses already in `to` are dropped so nobody is copied twice.
+   */
+  bcc?: string | string[];
+  /** Per-teacher: the teacher's contact email. Parent replies go here. */
+  replyTo?: string;
+  /** Per-teacher: display name, e.g. `"Morales Piano Studio (via ChessCoachPal)"`. */
+  fromName?: string;
+  /**
+   * The recipient family's portal link. When set, a footer with the
+   * hyperlinked portal is appended (and an HTML body is generated if none
+   * was provided). Pass it on every parent/student-facing email.
+   */
+  portalUrl?: string;
+  /** Optional file attachments (e.g. invoice PDF). */
+  attachments?: EmailAttachment[];
+}
+
+export interface SendEmailResult {
+  sent: boolean;
+  error?: string;
+}
+
+/** Exported for tests. */
+export function fromHeader(fromName?: string): string {
+  const address =
+    process.env.EMAIL_FROM_ADDRESS ?? "notifications@cognote.studio";
+  const name = fromName?.trim() || "ChessCoachPal Studio";
+  // Quote the display name; strip quotes/newlines it can't contain.
+  return `"${name.replace(/["\r\n]/g, "")}" <${address}>`;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function toAddressList(value: string | string[] | undefined): string[] {
+  const raw = Array.isArray(value) ? value : value ? [value] : [];
+  return raw.map((a) => a.trim()).filter(Boolean);
+}
+
+/**
+ * BCC list for a send: trimmed, de-duplicated (case-insensitively), and with
+ * any address already in `to` removed so a recipient never gets two copies.
+ */
+function normalizeBcc(
+  bcc: string | string[] | undefined,
+  recipients: string[]
+): string[] {
+  const seen = new Set(recipients.map((r) => r.trim().toLowerCase()));
+  const out: string[] = [];
+  for (const addr of toAddressList(bcc)) {
+    const key = addr.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(addr);
+  }
+  return out;
+}
+
+/** Append the family-portal footer to both bodies: every parent/student
+ * email links back to the family's personal portal. Exported for tests. */
+export function withPortalFooter(args: SendEmailArgs): SendEmailArgs {
+  if (!args.portalUrl) return args;
+
+  const text = `${args.text}\n\nYour family portal: schedule, practice links, and lesson notes:\n${args.portalUrl}`;
+
+  // Emails so far are plain text; if an HTML body ever exists, append to it,
+  // otherwise generate one from the text so the footer link is clickable.
+  const baseHtml =
+    args.html ??
+    `<div style="font-family:sans-serif;white-space:pre-wrap;">${escapeHtml(args.text)}</div>`;
+  const html = `${baseHtml}
+<hr style="margin:24px 0 12px;border:none;border-top:1px solid #ddd;">
+<p style="font-family:sans-serif;font-size:13px;color:#555;">
+  <a href="${escapeHtml(args.portalUrl)}">Your family portal</a>: schedule, practice links, and lesson notes.
+</p>`;
+
+  return { ...args, text, html };
+}
+
+export async function sendEmail(rawArgs: SendEmailArgs): Promise<SendEmailResult> {
+  const args = withPortalFooter(rawArgs);
+  const provider = process.env.EMAIL_PROVIDER ?? "none";
+
+  const recipients = (Array.isArray(args.to) ? args.to : [args.to]).filter(Boolean);
+  if (recipients.length === 0) {
+    return { sent: false, error: "No recipient email address" };
+  }
+  args.to = recipients;
+
+  const bcc = normalizeBcc(args.bcc, recipients);
+  args.bcc = bcc.length > 0 ? bcc : undefined;
+
+  switch (provider) {
+    case "resend":
+      return sendWithResend(args);
+    case "smtp":
+      return sendWithSmtp(args);
+    default:
+      console.log(
+        `[email no-op — EMAIL_PROVIDER=${provider}] to=${recipients.join(", ")}` +
+          (args.bcc?.length ? ` bcc=${args.bcc.length}` : "") +
+          ` subject="${args.subject}"` +
+          (args.attachments?.length
+            ? ` attachments=${args.attachments.map((a) => a.filename).join(",")}`
+            : "")
+      );
+      return { sent: false, error: "Email is not configured" };
+  }
+}
+
+async function sendWithResend({
+  to,
+  subject,
+  text,
+  html,
+  bcc,
+  replyTo,
+  fromName,
+  attachments,
+}: SendEmailArgs): Promise<SendEmailResult> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.error("EMAIL_PROVIDER=resend but RESEND_API_KEY is missing");
+    return { sent: false, error: "Email is not configured (RESEND_API_KEY missing)" };
+  }
+
+  const resend = new Resend(apiKey);
+  const { error } = await resend.emails.send({
+    from: fromHeader(fromName),
+    to,
+    ...(bcc?.length ? { bcc } : {}),
+    subject,
+    text,
+    ...(html ? { html } : {}),
+    ...(replyTo ? { replyTo } : {}),
+    ...(attachments?.length
+      ? {
+          attachments: attachments.map((a) => ({
+            filename: a.filename,
+            content: Buffer.from(a.content),
+            contentType: a.contentType,
+          })),
+        }
+      : {}),
+  });
+
+  if (error) {
+    console.error(`Resend send failed: ${error.name}: ${error.message}`);
+    return { sent: false, error: `Email provider error (${error.name})` };
+  }
+  return { sent: true };
+}
+
+async function sendWithSmtp({
+  to,
+  subject,
+  text,
+  html,
+  bcc,
+  replyTo,
+  fromName,
+  attachments,
+}: SendEmailArgs): Promise<SendEmailResult> {
+  const host = process.env.SMTP_HOST ?? "127.0.0.1";
+  const port = Number(process.env.SMTP_PORT ?? 54325);
+  const fromAddress =
+    process.env.EMAIL_FROM_ADDRESS ?? "notifications@cognote.studio";
+
+  try {
+    await sendViaSmtp({
+      host,
+      port,
+      from: fromAddress,
+      fromHeader: fromHeader(fromName),
+      to,
+      bcc,
+      subject,
+      text,
+      html,
+      replyTo,
+      attachments,
+    });
+    return { sent: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`SMTP send failed (${host}:${port}): ${message}`);
+    return { sent: false, error: `Email provider error (SMTP: ${message})` };
+  }
+}

@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+/*
+ * Hover only when html.can-hover is set (default) and the device supports
+ * hover. TouchHoverGuard removes can-hover on finger tap so sticky :hover
+ * on hybrid touchscreen laptops does not leave a grey highlight behind.
+ */
+@custom-variant hover {
+  @media (hover: hover) {
+    html.can-hover &:hover {
+      @slot;
+    }
+  }
+}
+
+/*
+ * Use @theme (not inline) so utilities reference CSS variables.
+ * Teacher dark mode redefines those variables under [data-teacher-theme='dark'].
+ */
+@theme {
+  --color-background: #faf9f7;
+  --color-foreground: #1a1a2e;
+
+  --color-primary: #2a9d8f;
+  --color-primary-light: #5bc4b8;
+  --color-primary-dark: #1f7a6f;
+
+  --color-success: #6bcb77;
+  --color-success-light: #a8e6a3;
+  --color-error: #e07a6a;
+  --color-error-light: #f0aca1;
+  --color-warning: #f0c762;
+  --color-accent: #d4a843;
+
+  --color-surface: #ffffff;
+  --color-surface-dim: #f0eeeb;
+  --color-skeleton: #e6e3de;
+  --color-border: #e0ddd8;
+  --color-muted: #7a7872;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Nunito", ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body {
+  background-color: var(--color-background);
+  min-height: 100%;
+}
+
+/*
+ * Teacher Studio dark theme. Applied on the layout wrapper and mirrored onto
+ * <html> while the teacher shell is mounted so overscroll matches dark mode.
+ * Practice / portal / landing do not mount TeacherThemeProvider, so they keep
+ * light :root tokens.
+ */
+[data-teacher-theme="dark"] {
+  color-scheme: dark;
+  --color-background: #12141a;
+  --color-foreground: #eceae4;
+
+  --color-primary: #3db5a6;
+  --color-primary-light: #5bc4b8;
+  --color-primary-dark: #2a9d8f;
+
+  --color-success: #6bcb77;
+  --color-success-light: #3d7a45;
+  --color-error: #e07a6a;
+  --color-error-light: #8a4540;
+  --color-warning: #f0c762;
+  --color-accent: #d4a843;
+
+  --color-surface: #1c1f28;
+  --color-surface-dim: #262a35;
+  --color-skeleton: #262a35;
+  --color-border: #343845;
+  --color-muted: #9a978f;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before,
+.ProseMirror p.is-empty:first-child::before {
+  color: var(--color-muted);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.ProseMirror p {
+  margin: 0.35em 0;
+}
+
+/* Tailwind preflight clears list-style; TipTap lists need markers restored.
+   Outside + padding keeps bullet and text on one line (TipTap wraps li content in <p>). */
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 1.5rem;
+  margin: 0.35em 0;
+  list-style-position: outside;
+}
+
+.ProseMirror ul {
+  list-style-type: disc;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+}
+
+.ProseMirror li p {
+  margin: 0.15em 0;
+}
+
+.ProseMirror h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.5em 0 0.25em;
+}
+
+.rich-text-html p {
+  margin: 0.35em 0;
+}
+
+.rich-text-html ul,
+.rich-text-html ol {
+  padding-left: 1.5rem;
+  margin: 0.35em 0;
+  list-style-position: outside;
+}
+
+.rich-text-html ul {
+  list-style-type: disc;
+}
+
+.rich-text-html ol {
+  list-style-type: decimal;
+}
+
+.rich-text-html li p {
+  margin: 0.15em 0;
+}
+
+.rich-text-html h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.5em 0 0.25em;
+}
