@@ -1,0 +1,17 @@
+schema: spec-driven
+context: |
+  ChessCoachPal is an MIT-licensed, self-hostable, agent-first chess
+  teaching management application based on CogNote by Andres Jaime Morales.
+  ChatGPT and Claude tool calls are the primary data input interface.
+  The web application uses the same services for viewing and editing.
+  Initial persistence uses PostgreSQL, Supabase Auth and RLS.
+  A teacher has configurable Workplaces, groups, students, lesson
+  sessions, per-student attendance and compensation. No board in v1.
+rules:
+  proposal:
+    - Separate implemented behavior from proposed functionality.
+  specs:
+    - Use SHALL and WHEN/THEN acceptance scenarios.
+    - Cover retries, permissions, ambiguity and AI outages.
+  tasks:
+    - Require observable verification before checking tasks complete.

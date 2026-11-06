@@ -1,0 +1,52 @@
+name: Bootstrap ChessCoachPal from pinned CogNote
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  import:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[adopt-cognote]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Import and rebrand pinned source
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/andresjmorales/cognote.git /tmp/cognote-source
+          git -C /tmp/cognote-source checkout --quiet --detach fff723ea0374df8f07a20e90e44c725499ec680a
+          test "$(git -C /tmp/cognote-source rev-parse HEAD)" = "fff723ea0374df8f07a20e90e44c725499ec680a"
+          rsync -a /tmp/cognote-source/ ./ --exclude='.git/' --exclude='README.md' --exclude='LICENSE' --exclude='AGENTS.md' --exclude='ARCHITECTURE.md' --exclude='docs/' --exclude='openspec/'
+          cp bootstrap/landing.tsx app/page.tsx
+          cp bootstrap/manifest.ts app/manifest.ts
+          cp public/icon/chesscoachpal.svg app/icon.svg
+          rm -f app/icon.png
+          rm -rf public/screenshots public/icons
+          sed -i 's#/icon/cognote.svg#/icon/chesscoachpal.svg#g' app/layout.tsx lib/ui-constants.ts Dockerfile
+          sed -i 's#/icons/apple-touch-icon.png#/icon/chesscoachpal.svg#g' app/layout.tsx
+          sed -i '/{ href: "\/music", label: "Music", tour: "music" },/d' components/teacher/TeacherNav.tsx
+          find app components lib public -type f \( -name '*.tsx' -o -name '*.ts' -o -name '*.js' \) -print0 | xargs -0 sed -i 's/CogNote/ChessCoachPal/g'
+          sed -i 's/shortName: "ChessCoachPal"/shortName: "CoachPal"/g' lib/pwa.ts
+          sed -i 's/private music teachers/chess coaches/g' app/layout.tsx lib/pwa.ts
+          sed -i 's#/icons/icon-192.png#/icon/chesscoachpal.svg#g; s#/icons/badge-72.png#/icon/chesscoachpal.svg#g; s/cognote-shell-v2/chesscoachpal-shell-v1/g' public/sw.js
+          sed -i 's/CogNote/ChessCoachPal/g' .env.example CONTRIBUTING.md SECURITY.md
+          node -e 'const fs=require("fs"); for(const p of ["package.json","package-lock.json"]){const o=JSON.parse(fs.readFileSync(p,"utf8"));o.name="chesscoachpal";if(o.packages&&o.packages[""])o.packages[""].name="chesscoachpal";fs.writeFileSync(p,JSON.stringify(o,null,2)+"\n")}'
+          cp bootstrap/landing.tsx app/page.tsx
+          rm -f .github/workflows/deploy-migrations.yml .github/FUNDING.yml
+          rm -f .github/workflows/00-import-cognote.yml
+          rm -rf bootstrap
+      - name: Commit clean upstream snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "[adopt-cognote] Import pinned CogNote snapshot and ChessCoachPal branding"
+          git push origin HEAD:main
+      - name: Baseline checks
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
