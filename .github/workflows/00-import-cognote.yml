@@ -19,7 +19,7 @@ jobs:
           git clone --quiet https://github.com/andresjmorales/cognote.git /tmp/cognote-source
           git -C /tmp/cognote-source checkout --quiet --detach fff723ea0374df8f07a20e90e44c725499ec680a
           test "$(git -C /tmp/cognote-source rev-parse HEAD)" = "fff723ea0374df8f07a20e90e44c725499ec680a"
-          rsync -a /tmp/cognote-source/ ./ --exclude='.git/' --exclude='README.md' --exclude='LICENSE' --exclude='AGENTS.md' --exclude='ARCHITECTURE.md' --exclude='docs/' --exclude='openspec/'
+          rsync -a /tmp/cognote-source/ ./ --exclude='.git/' --exclude='README.md' --exclude='LICENSE' --exclude='AGENTS.md' --exclude='ARCHITECTURE.md' --exclude='docs/' --exclude='openspec/' --exclude='.github/workflows/'
           cp bootstrap/landing.tsx app/page.tsx
           cp bootstrap/manifest.ts app/manifest.ts
           cp public/icon/chesscoachpal.svg app/icon.svg
@@ -36,7 +36,6 @@ jobs:
           node -e 'const fs=require("fs"); for(const p of ["package.json","package-lock.json"]){const o=JSON.parse(fs.readFileSync(p,"utf8"));o.name="chesscoachpal";if(o.packages&&o.packages[""])o.packages[""].name="chesscoachpal";fs.writeFileSync(p,JSON.stringify(o,null,2)+"\n")}'
           cp bootstrap/landing.tsx app/page.tsx
           rm -f .github/workflows/deploy-migrations.yml .github/FUNDING.yml
-          rm -f .github/workflows/00-import-cognote.yml
           rm -rf bootstrap
       - name: Commit clean upstream snapshot
         run: |
