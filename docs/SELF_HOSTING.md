@@ -22,7 +22,7 @@ The coaching activity report uses authorized workplace-local calendar dates, exc
 
 ## Backup and off-machine retention
 
-The opt-in backup profile saves a complete PostgreSQL SQL dump for privileged disaster recovery, a separate data-only dump of public/auth/Storage schemas for safe current-schema recovery, the physical uploaded Storage volume, a private local env/secrets copy, and a SHA-256 integrity manifest. Backups contain sensitive student records; keep them on encrypted, access-controlled media off the host and test restoration. For a consistent point-in-time snapshot, pause writes before running a manual backup.
+The opt-in backup profile saves a complete PostgreSQL SQL dump for privileged disaster recovery, a separate data-only dump of public/auth/Storage schemas for safe current-schema recovery, the physical uploaded Storage volume, a private local env/secrets copy, and a SHA-256 integrity manifest and a manifest-listed record of any excluded owner-restricted Supabase migration ledgers. Backups contain sensitive student records; keep them on encrypted, access-controlled media off the host and test restoration. For a consistent point-in-time snapshot, pause writes before running a manual backup.
 
     mkdir -p backups
     docker compose --env-file .env.local --profile backup up -d backup

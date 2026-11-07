@@ -56,7 +56,9 @@ BEGIN
   SELECT string_agg(format('%I.%I', schemaname, tablename), ', ')
     INTO names
     FROM pg_tables
-    WHERE schemaname IN ('public', 'auth', 'storage');
+    WHERE schemaname IN ('public', 'auth', 'storage')
+      AND has_table_privilege(format('%I.%I', schemaname, tablename), 'TRUNCATE')
+      AND has_table_privilege(format('%I.%I', schemaname, tablename), 'INSERT');
   IF names IS NOT NULL THEN
     EXECUTE 'TRUNCATE TABLE ' || names || ' RESTART IDENTITY CASCADE';
   END IF;

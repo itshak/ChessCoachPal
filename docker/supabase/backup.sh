@@ -28,16 +28,37 @@ mv -f "$db.part.$$" "$db"
 # a dump of Supabase-owned internal DDL/event triggers. Back up all teacher,
 # auth and Storage table data separately for a safe same-schema restore.
 data="$BACKUP_DIR/data-$STAMP.sql.gz"
+excluded="$BACKUP_DIR/restore-excluded-$STAMP.txt"
+PGPASSWORD="${POSTGRES_PASSWORD:?}" psql -v ON_ERROR_STOP=1 -qAt \
+  -h "${DB_HOST:-db}" -U postgres -d postgres \
+  -c "SELECT format('%I.%I', schemaname, tablename)
+      FROM pg_tables WHERE schemaname IN ('public','auth','storage')
+        AND NOT (
+          has_table_privilege(format('%I.%I', schemaname, tablename), 'TRUNCATE')
+          AND has_table_privilege(format('%I.%I', schemaname, tablename), 'INSERT')
+        ) ORDER BY 1" > "$excluded.part.$$"
+mv -f "$excluded.part.$$" "$excluded"
+# Do not silently exclude user-owned data. These are Supabase's internal
+# migration ledgers, already provisioned by the current target image.
+exclude_args=()
+while IFS= read -r table; do
+  [[ -z "$table" ]] && continue
+  case "$table" in
+    auth.schema_migrations|storage.migrations) ;;
+    *) echo "Unapproved Supabase table exclusion: $table" >&2; exit 1 ;;
+  esac
+  exclude_args+=("--exclude-table-data=$table")
+done < "$excluded"
 PGPASSWORD="${POSTGRES_PASSWORD:?}" pg_dump --no-owner --data-only \
-  --schema=public --schema=auth --schema=storage \
+  --schema=public --schema=auth --schema=storage "${exclude_args[@]}" \
   -h "${DB_HOST:-db}" -U postgres -d postgres | gzip > "$data.part.$$"
 mv -f "$data.part.$$" "$data"
 
 # ponytail: tar of a live dir - a file uploaded mid-tar can be half-written. Fine at one-teacher scale.
 echo "==> storage"
 st="$BACKUP_DIR/storage-$STAMP.tar.gz"
-tar czf "$st.part.$" -C /var/lib/storage .
-mv -f "$st.part.$" "$st"
+tar czf "$st.part.$$" -C /var/lib/storage .
+mv -f "$st.part.$$" "$st"
 
 echo "==> secrets"
 if [[ -f /secrets/.env.local ]]; then
@@ -49,13 +70,14 @@ fi
 echo "==> checksums"
 (
   cd "$BACKUP_DIR"
-  names=("db-$STAMP.sql.gz" "data-$STAMP.sql.gz" "storage-$STAMP.tar.gz")
+  names=("db-$STAMP.sql.gz" "data-$STAMP.sql.gz" "storage-$STAMP.tar.gz" "restore-excluded-$STAMP.txt")
   if [[ -f "secrets-$STAMP.tar.gz" ]]; then names+=("secrets-$STAMP.tar.gz"); fi
-  sha256sum "${names[@]}" > "manifest-$STAMP.sha256.part.$"
-  mv -f "manifest-$STAMP.sha256.part.$" "manifest-$STAMP.sha256"
+  sha256sum "${names[@]}" > "manifest-$STAMP.sha256.part.$$"
+  mv -f "manifest-$STAMP.sha256.part.$$" "manifest-$STAMP.sha256"
 )
 
 echo "==> retention"
+find "$BACKUP_DIR" -name 'restore-excluded-*.txt' -mtime +"$KEEP_DAYS" -delete
 find "$BACKUP_DIR" -name 'data-*.gz'    -mtime +"$KEEP_DAYS"         -delete
 find "$BACKUP_DIR" -name 'db-*.gz'      -mtime +"$KEEP_DAYS"         -delete
 find "$BACKUP_DIR" -name 'storage-*.gz' -mtime +"$KEEP_DAYS"         -delete
