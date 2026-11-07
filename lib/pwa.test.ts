@@ -31,8 +31,8 @@ describe("PWA constants", () => {
 });
 
 describe("theme cookie", () => {
-  it("marks the theme cookie name as stable", () => {
-    expect(THEME_COOKIE).toBe("cognote-theme");
+  it("uses the ChessCoachPal theme cookie", () => {
+    expect(THEME_COOKIE).toBe("chesscoachpal-theme");
   });
 
   it("maps a cookie value to a theme mode, defaulting to light", () => {

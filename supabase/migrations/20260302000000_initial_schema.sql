@@ -16,7 +16,8 @@ CREATE TABLE students (
   teacher_id     uuid NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
   name           text NOT NULL,
   parent_contact text,
-  created_at     timestamptz NOT NULL DEFAULT now()
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (id, teacher_id)
 );
 CREATE INDEX idx_students_teacher ON students(teacher_id);
 
@@ -106,3 +107,138 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER plans_updated_at
   BEFORE UPDATE ON plans
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ChessCoachPal authoritative pre-1.0 teaching schema. Fresh installations only.
+-- ADR-0001: amend the baseline; do not ship compatibility migrations.
+CREATE TABLE public.workplaces (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 0 AND 120 AND char_length(btrim(name)) > 0),
+  timezone text NOT NULL DEFAULT 'UTC' CHECK (char_length(timezone) BETWEEN 1 AND 80),
+  currency text NOT NULL DEFAULT 'USD' CHECK (currency ~ '^[A-Z]{3}$'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (id, teacher_id),
+  UNIQUE (teacher_id, name)
+);
+CREATE INDEX workplaces_teacher_idx ON public.workplaces(teacher_id);
+
+CREATE TABLE public.class_groups (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  workplace_id uuid NOT NULL,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 120),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (id, teacher_id),
+  UNIQUE (id, teacher_id, workplace_id),
+  UNIQUE (teacher_id, workplace_id, name),
+  FOREIGN KEY (workplace_id, teacher_id)
+    REFERENCES public.workplaces(id, teacher_id) ON DELETE CASCADE
+);
+CREATE INDEX class_groups_workplace_idx ON public.class_groups(teacher_id, workplace_id);
+
+CREATE TABLE public.group_enrollments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  group_id uuid NOT NULL,
+  student_id uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (group_id, student_id),
+  FOREIGN KEY (group_id, teacher_id)
+    REFERENCES public.class_groups(id, teacher_id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id, teacher_id)
+    REFERENCES public.students(id, teacher_id) ON DELETE CASCADE
+);
+CREATE INDEX group_enrollments_teacher_student_idx ON public.group_enrollments(teacher_id, student_id);
+
+CREATE TABLE public.teaching_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  workplace_id uuid NOT NULL,
+  group_id uuid,
+  student_id uuid,
+  title text NOT NULL CHECK (char_length(btrim(title)) BETWEEN 1 AND 160),
+  starts_at timestamptz NOT NULL,
+  duration_minutes integer NOT NULL CHECK (duration_minutes BETWEEN 15 AND 480),
+  lesson_note text NOT NULL DEFAULT '' CHECK (char_length(lesson_note) <= 10000),
+  request_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (id, teacher_id),
+  UNIQUE (teacher_id, request_id),
+  CHECK ((group_id IS NULL) <> (student_id IS NULL)),
+  FOREIGN KEY (workplace_id, teacher_id)
+    REFERENCES public.workplaces(id, teacher_id),
+  FOREIGN KEY (group_id, teacher_id, workplace_id)
+    REFERENCES public.class_groups(id, teacher_id, workplace_id),
+  FOREIGN KEY (student_id, teacher_id)
+    REFERENCES public.students(id, teacher_id)
+);
+CREATE INDEX teaching_sessions_teacher_start_idx
+  ON public.teaching_sessions(teacher_id, starts_at DESC);
+
+-- Freeze the group roster when the class session is created, so a later
+-- enrollment change cannot silently change the historical register.
+CREATE TABLE public.session_participants (
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  session_id uuid NOT NULL,
+  student_id uuid NOT NULL,
+  PRIMARY KEY (session_id, student_id),
+  FOREIGN KEY (session_id, teacher_id)
+    REFERENCES public.teaching_sessions(id, teacher_id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id, teacher_id)
+    REFERENCES public.students(id, teacher_id)
+);
+CREATE INDEX session_participants_teacher_idx ON public.session_participants(teacher_id, session_id);
+
+CREATE TABLE public.session_attendance (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  session_id uuid NOT NULL,
+  student_id uuid NOT NULL,
+  status text NOT NULL CHECK (status IN ('present', 'absent', 'late', 'excused')),
+  note text NOT NULL DEFAULT '' CHECK (char_length(note) <= 5000),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (session_id, student_id),
+  FOREIGN KEY (session_id, teacher_id)
+    REFERENCES public.teaching_sessions(id, teacher_id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id, teacher_id)
+    REFERENCES public.students(id, teacher_id),
+  FOREIGN KEY (session_id, student_id)
+    REFERENCES public.session_participants(session_id, student_id)
+);
+CREATE INDEX session_attendance_teacher_idx ON public.session_attendance(teacher_id, session_id);
+
+
+-- The default workplace is created when a teacher is created, rather than
+-- backfilling prior versions. Changing schema requires intentional reset.
+CREATE OR REPLACE FUNCTION public.chesscoachpal_seed_workplace()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  INSERT INTO public.workplaces(teacher_id, name, timezone, currency)
+  VALUES (NEW.id, 'Private coaching', 'UTC', 'USD');
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER chesscoachpal_seed_workplace
+AFTER INSERT ON public.teachers
+FOR EACH ROW EXECUTE FUNCTION public.chesscoachpal_seed_workplace();
+
+-- Snapshot attendees at creation. Attendance can be marked only for this
+-- snapshot, not for current enrollment state.
+CREATE OR REPLACE FUNCTION public.chesscoachpal_snapshot_participants()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.student_id IS NOT NULL THEN
+    INSERT INTO public.session_participants(teacher_id, session_id, student_id)
+    VALUES (NEW.teacher_id, NEW.id, NEW.student_id);
+  ELSE
+    INSERT INTO public.session_participants(teacher_id, session_id, student_id)
+    SELECT NEW.teacher_id, NEW.id, e.student_id
+    FROM public.group_enrollments e
+    WHERE e.teacher_id = NEW.teacher_id AND e.group_id = NEW.group_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER chesscoachpal_snapshot_participants
+AFTER INSERT ON public.teaching_sessions
+FOR EACH ROW EXECUTE FUNCTION public.chesscoachpal_snapshot_participants();

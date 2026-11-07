@@ -43,10 +43,10 @@ export function isIosBrowser({
  *  theme-color meta follows the in-app teacher theme (a localStorage preference
  *  that deliberately does not follow the OS). */
 export const PWA = {
-  name: "ChessCoachPal Studio",
+  name: "ChessCoachPal",
   shortName: "CoachPal",
   description:
-    "Studio management for chess coaches: scheduling, attendance, family portals, and progress tracking.",
+    "AI-agent-first chess teaching assistant for workplaces, class groups, lessons and student attendance.",
   themeColor: "#ffffff", // --color-surface (light)
   themeColorDark: "#1c1f28", // --color-surface (dark)
   backgroundColor: "#faf9f7", // --color-background (light) — matches <body>, avoids a white flash
@@ -61,7 +61,7 @@ export function themeColorFor(mode: "light" | "dark"): string {
 /** Cookie mirroring the teacher theme so the server can render a matching
  *  theme-color. Written by TeacherThemeProvider; localStorage stays the client
  *  source of truth. */
-export const THEME_COOKIE = "cognote-theme";
+export const THEME_COOKIE = "chesscoachpal-theme";
 
 export type ThemeModeName = "light" | "dark";
 

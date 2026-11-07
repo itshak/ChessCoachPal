@@ -74,3 +74,38 @@ CREATE POLICY flashcard_teacher ON flashcard_progress
 -- Flashcard progress: anonymous can read/write (student practice)
 CREATE POLICY flashcard_anon ON flashcard_progress
   FOR ALL USING (true);
+
+-- ChessCoachPal teaching ownership and least-privilege access.
+ALTER TABLE public.workplaces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.class_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.group_enrollments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teaching_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.session_participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.session_attendance ENABLE ROW LEVEL SECURITY;
+CREATE POLICY workplaces_teacher ON public.workplaces
+  FOR ALL TO authenticated
+  USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
+CREATE POLICY class_groups_teacher ON public.class_groups
+  FOR ALL TO authenticated
+  USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
+CREATE POLICY group_enrollments_teacher ON public.group_enrollments
+  FOR ALL TO authenticated
+  USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
+CREATE POLICY teaching_sessions_teacher ON public.teaching_sessions
+  FOR ALL TO authenticated
+  USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
+CREATE POLICY session_participants_teacher ON public.session_participants
+  FOR SELECT TO authenticated
+  USING (teacher_id = auth.uid());
+CREATE POLICY session_attendance_teacher ON public.session_attendance
+  FOR ALL TO authenticated
+  USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+  public.workplaces, public.class_groups, public.group_enrollments,
+  public.teaching_sessions, public.session_attendance
+TO authenticated, service_role;
+GRANT SELECT ON public.session_participants TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.session_participants TO service_role;
+REVOKE ALL ON TABLE
+  public.workplaces, public.class_groups, public.group_enrollments,
+  public.teaching_sessions, public.session_participants, public.session_attendance FROM anon;
