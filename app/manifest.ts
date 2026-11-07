@@ -13,6 +13,7 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: PWA.themeColor,
     icons: [
       { src: "/icon/chesscoachpal.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+      { src: "/icon/chesscoachpal-maskable.svg", sizes: "any", type: "image/svg+xml", purpose: "maskable" },
     ],
   };
 }
