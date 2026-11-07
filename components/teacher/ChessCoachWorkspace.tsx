@@ -415,7 +415,7 @@ export function ChessCoachWorkspace() {
             </div>
             {activeStudentSearch && <p className="text-xs text-muted">Filtering student selectors by: {activeStudentSearch}</p>}
           </form>
-          <form onSubmit={addStudent className="space-y-2">
+          <form onSubmit={addStudent} className="space-y-2">
             <label className="block text-sm">New student name
               <input className={field} value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required maxLength={120} />
             </label>
