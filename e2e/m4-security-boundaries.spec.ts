@@ -118,5 +118,10 @@ test("M4 real database: foreign coaching IDs, writes, anonymous access and guest
   const privilegedProbe = await action(serviceKey, { action: "sessions.list" });
   expect(privilegedProbe.status).toBeGreaterThanOrEqual(400);
   const unknownPortal = await request.get(`/portal/${randomUUID()}`);
-  expect(unknownPortal.status()).toBe(404);
+  // Next.js may stream the 404 UI after sending a 200 response header.
+  // Verify the missing-link page, not just transport status, and no private data.
+  expect([200, 404]).toContain(unknownPortal.status());
+  const missingBody = await unknownPortal.text();
+  expect(missingBody).toMatch(/not found|could not be found|404/i);
+  expect(missingBody).not.toContain(`M4 confidential club ${suffix}`);
 });
