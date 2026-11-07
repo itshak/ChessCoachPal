@@ -15,8 +15,7 @@
     "typecheck": "tsc --noEmit",
     "release:prepare": "node scripts/release.mjs prepare",
     "release:validate": "node scripts/release.mjs validate",
-    "release:check": "node --test scripts/release-check.mjs",
-    "build:music-indexes": "node scripts/build-music-indexes.mjs"
+    "release:check": "node --test scripts/release-check.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
@@ -27,7 +26,6 @@
     "@tiptap/starter-kit": "^3.31.3",
     "ics": "^3.12.0",
     "next": "16.4.1",
-    "opensheetmusicdisplay": "^2.0.0",
     "papaparse": "^5.5.4",
     "pdf-lib": "^1.17.1",
     "react": "19.2.3",
@@ -35,7 +33,6 @@
     "recharts": "^3.9.2",
     "resend": "^6.17.1",
     "stripe": "^22.3.1",
-    "vexflow": "^5.0.0",
     "web-push": "^3.6.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.6.7"
