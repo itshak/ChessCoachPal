@@ -1,5 +1,7 @@
 # AI-agent integration architecture
 
+**Implementation roadmap:** [connect-chatgpt-and-claude OpenSpec](../openspec/changes/connect-chatgpt-and-claude/proposal.md). Current /api/agent/v1 work is experimental and no working authenticated ChatGPT/Claude client connection has been verified.
+
 **Primary interaction model:** Teachers naturally tell ChatGPT or Claude what happened in their teaching practice. A secure, installed ChessCoachPal tool connector translates those intentions into typed operations. Website pages show the saved state and provide full manual editing. We do **not** require a built-in chatbot inside the website.
 
 ## End-to-end flow
