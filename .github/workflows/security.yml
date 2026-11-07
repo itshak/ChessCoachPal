@@ -30,3 +30,24 @@ jobs:
           path: m4-security-audit.json
           retention-days: 7
           if-no-files-found: warn
+
+  actions-history:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.head_ref == 'docs/archive-m4-security'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Scan currently retrievable GitHub Actions logs and artifact ZIPs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/audit-m4-actions-history.mjs
+      - name: Preserve redacted historical Actions audit coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m4-redacted-actions-audit
+          path: m4-actions-audit.json
+          retention-days: 7
+          if-no-files-found: warn
