@@ -24,7 +24,7 @@ No new milestone tasks are checked until **main-merged code, passing tests and e
 
 ## In draft PR, not accepted
 
-[PR #1 — first coaching workflow](https://github.com/itshak/ChessCoachPal/pull/1), head 528d2165227c194e49410d30a5c8afceb9fdef2a, proposes teacher-owned workplaces, groups, per-student attendance, session roster snapshots, shared service, experimental /api/agent/v1 and /coaching page. **It has not been merged.** Its old omnibus OpenSpec edits must be dropped/reconciled before merge so archived requirements do not reappear.
+[PR #1 — first coaching workflow](https://github.com/itshak/ChessCoachPal/pull/1), proposes teacher-owned workplaces, groups, per-student attendance, session roster snapshots, shared service, experimental /api/agent/v1 and /coaching page. **It has not been merged.** Its obsolete omnibus OpenSpec edits were removed from the draft branch in a documentation-only commit; the functional code still requires review and passing E2E before merge.
 
 PR #1 CI [42392868345](https://github.com/itshak/ChessCoachPal/actions/runs/42392868345) succeeded for typecheck/unit/Docker/Compose; E2E [42392868328](https://github.com/itshak/ChessCoachPal/actions/runs/42392868328) **failed**: 23 passed, 5 skipped, 1 failed because the coaching scenario timed out locating the Workplace selection control. Database initialization and production build succeeded in that E2E run, but the full teacher workflow is not verified.
 
