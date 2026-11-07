@@ -8,7 +8,16 @@ umask 077
 
 root="$(pwd)"
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+cleanup() {
+  # The second Supabase project is disposable. Stop its containers before
+  # deleting the temp checkout, so a candidate release can safely run the
+  # separate self-hosted Compose smoke on the same GitHub runner.
+  if [[ -d "$tmp/restore/supabase" ]]; then
+    (cd "$tmp/restore" && supabase stop --no-backup >/dev/null 2>&1) || true
+  fi
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
 mkdir -p "$tmp/backups" "$tmp/source-files" "$tmp/target-files" "$tmp/restore"
 export RESTORE_DATE="$(date -u +%F)"
 echo "==> start primary disposable Supabase"
