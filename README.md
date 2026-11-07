@@ -19,6 +19,14 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 
 **Migration in progress.** CogNote is the pinned foundation; ChessCoachPal agent tools, multiple workplaces and group lessons must be implemented and verified. Imported upstream features are not automatically ChessCoachPal features. See [status](docs/STATUS.md).
 
+## Versions and releases
+
+The source tree is currently an **unreleased `0.0.0` development snapshot**, not an installed `v0.1.0` release. Once the first functional application passes the [v0.1.0 checklist](docs/RELEASING.md#v010-first-functional-release-gate), it will become **`v0.1.0`**.
+
+Every subsequent version is published automatically from `main` as a [GitHub Release](https://github.com/itshak/ChessCoachPal/releases), with notes from [CHANGELOG.md](CHANGELOG.md), an immutable `vX.Y.Z` source tag, and the corresponding ZIP and tar.gz source archives. [Release procedure](docs/RELEASING.md).
+
+**No backward compatibility with CogNote or between ChessCoachPal versions before 1.0.0** is promised; the [accepted ADR](docs/adr/0001-pre1-breaking-changes.md) takes precedence.
+
 ## Documentation
 
 - [Detailed OpenSpec change](openspec/changes/adopt-cognote-chesscoachpal/proposal.md)
