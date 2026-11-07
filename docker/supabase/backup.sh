@@ -3,6 +3,7 @@
 # this from a crontab (see docker-compose.example.yml); run it ad hoc with:
 #   docker compose exec backup /bin/bash /backup.sh
 set -euo pipefail
+umask 077
 
 STAMP="$(date +%F)"
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
@@ -19,7 +20,7 @@ echo "==> pg_dump"
 # `docker stop` can kill this mid-dump, and a truncated file under the real name
 # would look complete and be kept by retention.
 db="$BACKUP_DIR/db-$STAMP.sql.gz"
-PGPASSWORD="${POSTGRES_PASSWORD:?}" pg_dump --no-owner -h "${DB_HOST:-db}" -U postgres -d postgres \
+PGPASSWORD="${POSTGRES_PASSWORD:?}" pg_dump --no-owner --clean --if-exists -h "${DB_HOST:-db}" -U postgres -d postgres \
   | gzip > "$db.part.$$" && mv -f "$db.part.$$" "$db"
 
 # ponytail: tar of a live dir - a file uploaded mid-tar can be half-written. Fine at one-teacher scale.
@@ -34,9 +35,19 @@ if [[ -f /secrets/.env.local ]]; then
   chmod 600 "$sec"
 fi
 
+echo "==> checksums"
+(
+  cd "$BACKUP_DIR"
+  names=("db-$STAMP.sql.gz" "storage-$STAMP.tar.gz")
+  if [[ -f "secrets-$STAMP.tar.gz" ]]; then names+=("secrets-$STAMP.tar.gz"); fi
+  sha256sum "${names[@]}" > "manifest-$STAMP.sha256.part.$"
+  mv -f "manifest-$STAMP.sha256.part.$" "manifest-$STAMP.sha256"
+)
+
 echo "==> retention"
 find "$BACKUP_DIR" -name 'db-*.gz'      -mtime +"$KEEP_DAYS"         -delete
 find "$BACKUP_DIR" -name 'storage-*.gz' -mtime +"$KEEP_DAYS"         -delete
 find "$BACKUP_DIR" -name 'secrets-*.gz' -mtime +"$SECRETS_KEEP_DAYS" -delete
+find "$BACKUP_DIR" -name 'manifest-*.sha256' -mtime +"$KEEP_DAYS" -delete
 
 echo "==> done: $db"
