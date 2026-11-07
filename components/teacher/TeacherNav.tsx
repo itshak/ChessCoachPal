@@ -15,6 +15,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", tour: "dashboard" },
   { href: "/students", label: "Students", tour: "students" },
   { href: "/coaching", label: "Coaching", tour: "coaching" },
+  { href: "/learning", label: "Chess learning", tour: "learning" },
   { href: "/families", label: "Families", tour: "families" },
   { href: "/schedule", label: "Schedule", tour: "schedule" },
   { href: "/events", label: "Events", tour: "events" },

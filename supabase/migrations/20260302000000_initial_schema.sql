@@ -422,3 +422,90 @@ REVOKE ALL ON FUNCTION public.agent_record_attendance(uuid,uuid,text,text,timest
 REVOKE ALL ON FUNCTION public.agent_update_session_note(uuid,text,timestamptz,uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.agent_record_attendance(uuid,uuid,text,text,timestamptz,uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.agent_update_session_note(uuid,text,timestamptz,uuid) TO authenticated;
+
+
+-- Milestone 3: chess-specific learning records, fresh-install-only (ADR-0001).
+-- Composite ownership FKs and frozen-session-roster FKs prevent foreign or
+-- unrelated students from being attached to a lesson's observation or link.
+CREATE TABLE public.chess_skill_categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 80),
+  description text NOT NULL DEFAULT '' CHECK (char_length(description) <= 500),
+  sort_order integer NOT NULL DEFAULT 100 CHECK (sort_order BETWEEN 0 AND 10000),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (id, teacher_id),
+  UNIQUE (teacher_id, name)
+);
+CREATE INDEX chess_skill_categories_teacher_idx ON public.chess_skill_categories(teacher_id, sort_order);
+
+CREATE TABLE public.chess_observations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  student_id uuid NOT NULL,
+  session_id uuid,
+  category_id uuid NOT NULL,
+  observation text NOT NULL CHECK (char_length(btrim(observation)) BETWEEN 1 AND 5000),
+  observed_at timestamptz NOT NULL DEFAULT now(),
+  source text NOT NULL CHECK (source IN ('teacher', 'agent')),
+  verified_at timestamptz,
+  verified_by uuid,
+  request_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (teacher_id, request_id),
+  CHECK (verified_by IS NULL OR verified_by = teacher_id),
+  CHECK ((verified_at IS NULL) = (verified_by IS NULL)),
+  CHECK (source <> 'teacher' OR verified_at IS NOT NULL),
+  FOREIGN KEY (student_id, teacher_id) REFERENCES public.students(id, teacher_id) ON DELETE CASCADE,
+  FOREIGN KEY (session_id, teacher_id) REFERENCES public.teaching_sessions(id, teacher_id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id, teacher_id) REFERENCES public.chess_skill_categories(id, teacher_id),
+  FOREIGN KEY (session_id, student_id) REFERENCES public.session_participants(session_id, student_id)
+);
+CREATE INDEX chess_observations_history_idx ON public.chess_observations(teacher_id, student_id, observed_at DESC);
+CREATE INDEX chess_observations_session_idx ON public.chess_observations(teacher_id, session_id);
+
+CREATE TABLE public.chess_learning_resources (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  student_id uuid,
+  session_id uuid,
+  label text NOT NULL CHECK (char_length(btrim(label)) BETWEEN 1 AND 160),
+  url text NOT NULL CHECK (char_length(url) BETWEEN 9 AND 2048 AND url ~ '^https://'),
+  resource_type text NOT NULL CHECK (resource_type IN ('lichess_study', 'external')),
+  provider_study_id text,
+  provider_chapter_id text,
+  request_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (teacher_id, request_id),
+  CHECK (student_id IS NOT NULL OR session_id IS NOT NULL),
+  CHECK (
+    (resource_type = 'lichess_study' AND provider_study_id IS NOT NULL AND provider_study_id ~ '^[a-zA-Z0-9]{8}$'
+      AND (provider_chapter_id IS NULL OR provider_chapter_id ~ '^[a-zA-Z0-9]{8}$'))
+    OR (resource_type = 'external' AND provider_study_id IS NULL AND provider_chapter_id IS NULL)
+  ),
+  FOREIGN KEY (student_id, teacher_id) REFERENCES public.students(id, teacher_id) ON DELETE CASCADE,
+  FOREIGN KEY (session_id, teacher_id) REFERENCES public.teaching_sessions(id, teacher_id) ON DELETE CASCADE,
+  FOREIGN KEY (session_id, student_id) REFERENCES public.session_participants(session_id, student_id)
+);
+CREATE INDEX chess_resources_student_idx ON public.chess_learning_resources(teacher_id, student_id, created_at DESC);
+CREATE INDEX chess_resources_session_idx ON public.chess_learning_resources(teacher_id, session_id);
+
+-- Defaults are created only for new teachers. No historical migration/backfill.
+CREATE OR REPLACE FUNCTION public.chesscoachpal_seed_chess_skills()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  INSERT INTO public.chess_skill_categories(teacher_id, name, sort_order) VALUES
+    (NEW.id, 'Tactics', 10),
+    (NEW.id, 'Calculation', 20),
+    (NEW.id, 'Endgames', 30),
+    (NEW.id, 'Strategy', 40),
+    (NEW.id, 'Opening principles', 50),
+    (NEW.id, 'Time management', 60);
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER chesscoachpal_seed_chess_skills
+AFTER INSERT ON public.teachers FOR EACH ROW EXECUTE FUNCTION public.chesscoachpal_seed_chess_skills();

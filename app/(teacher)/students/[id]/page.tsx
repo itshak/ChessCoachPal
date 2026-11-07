@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ChessLearningPanel } from "@/components/teacher/ChessLearningPanel";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -712,6 +713,7 @@ export default async function StudentDetailPage({
           <RecentSessionsList sessions={allSessions} />
         </div>
       </div>
+      <div className="mt-8"><ChessLearningPanel fixedStudentId={id} /></div>
     </div>
   );
 }

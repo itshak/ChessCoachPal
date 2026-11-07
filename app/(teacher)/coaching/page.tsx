@@ -1,4 +1,5 @@
 import { ChessCoachWorkspace } from "@/components/teacher/ChessCoachWorkspace";
+import { ChessLearningPanel } from "@/components/teacher/ChessLearningPanel";
 
 export const metadata = {
   title: "Chess coaching",
@@ -6,5 +7,5 @@ export const metadata = {
 };
 
 export default function CoachingPage() {
-  return <ChessCoachWorkspace />;
+  return <><ChessCoachWorkspace /><div className="max-w-6xl mx-auto px-4 py-8"><ChessLearningPanel /></div></>;
 }
