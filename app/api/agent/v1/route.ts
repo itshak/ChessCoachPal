@@ -84,7 +84,7 @@ const calls = z.discriminatedUnion("action", [
   z.object({ action:z.literal("chess.observations.approve"), observationId:chessUuid }),
   z.object({ action:z.literal("chess.resources.list"),
     studentId:chessUuid.optional(), sessionId:chessUuid.optional() }),
-  resourceInput.extend({ action:z.literal("chess.resources.link") }),
+  resourceInput.safeExtend({ action:z.literal("chess.resources.link") }),
   z.object({ action:z.literal("chess.resources.update"), resourceId:chessUuid,
     label:resourceLabel.optional(), url:resourceUrl.optional(),resourceType:resourceType.optional() }),
   z.object({ action: z.literal("attendance.record"),
