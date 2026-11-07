@@ -1,6 +1,6 @@
 # Implementation tasks: adopt-cognote-chesscoachpal
 
-**Binding policy:** [ADR-0001](../../../../docs/adr/0001-pre1-breaking-changes.md): zero compatibility with CogNote and zero backward compatibility between ChessCoachPal pre-1.0 releases. A task can be marked complete only with commit evidence and observed verification in docs/STATUS.md. The pre-1.0 schema is a fresh-install snapshot, not a migration chain.
+**Binding policy:** [ADR-0001](../../../docs/adr/0001-pre1-breaking-changes.md): zero compatibility with CogNote and zero backward compatibility between ChessCoachPal pre-1.0 releases. A task can be marked complete only with commit evidence and observed verification in docs/STATUS.md. The pre-1.0 schema is a fresh-install snapshot, not a migration chain.
 
 ## P0 — source, provenance, publication
 
