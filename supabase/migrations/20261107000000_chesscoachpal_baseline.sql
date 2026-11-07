@@ -1,3 +1,8 @@
+-- CHESSCOACHPAL v0.x CANONICAL FRESH-ONLY SCHEMA
+-- Generated from the disposable Supabase stack at Milestone 4.
+-- No upgrade/compatibility promises before v1.0.0.
+-- Never apply this by resetting a database containing real data.
+-- Historical music/practice tables, enums and data are intentionally absent.
 
 
 
@@ -2809,4 +2814,51 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 
 
 
+
+
+-- Supabase storage is outside public and is not emitted by the public schema dump.
+-- Avatars are the only application-managed bucket in v0.1.0.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'avatars',
+  'avatars',
+  true,
+  2097152,
+  array['image/webp', 'image/jpeg', 'image/png']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+-- Object keys: <teacher-id>/avatar.webp (upserted on replace)
+
+create policy avatars_storage_select on storage.objects
+  for select
+  using (bucket_id = 'avatars');
+
+create policy avatars_storage_insert on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy avatars_storage_update on storage.objects
+  for update to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  )
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy avatars_storage_delete on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
 
