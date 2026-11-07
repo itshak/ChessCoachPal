@@ -22,6 +22,24 @@ jobs:
         run: |
           supabase start
           supabase db reset --yes
+      - name: Remove obsolete music/practice schema from disposable database
+        run: |
+          container=$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)
+          test -n "$container"
+          docker exec "$container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          DROP TABLE IF EXISTS
+            public.sheet_music_assignments, public.music_library_items,
+            public.note_attempts, public.flashcard_progress,
+            public.practice_sessions, public.student_plans, public.plans
+          CASCADE;
+          DROP TYPE IF EXISTS public.clef_type, public.practice_mode CASCADE;
+          ALTER TABLE public.studio_policies
+            DROP COLUMN IF EXISTS note_naming_system,
+            DROP COLUMN IF EXISTS streaks_enabled,
+            DROP COLUMN IF EXISTS streak_count_quiz,
+            DROP COLUMN IF EXISTS streak_count_free_practice,
+            DROP COLUMN IF EXISTS streak_count_flashcards;
+          SQL
       - name: Generate schema source and commit for review
         run: |
           supabase db dump --schema public --file supabase/m4-generated-public-schema.sql
