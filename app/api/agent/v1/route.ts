@@ -6,7 +6,7 @@ import {
   CoachError,
   attendanceList, attendanceRecord,
   groupsCreate, groupsEnroll, groupsList, groupsMembers,
-  sessionsCreate, sessionsList, studentsSearch,
+  sessionsCreate, sessionsList, sessionsParticipants, studentsSearch,
   workplacesCreate, workplacesList,
 } from "@/lib/server/coach-service";
 
@@ -35,6 +35,7 @@ const calls = z.discriminatedUnion("action", [
   }).refine(v => Boolean(v.groupId) !== Boolean(v.studentId), {
     message: "Provide exactly one of groupId or studentId",
   }),
+  z.object({ action: z.literal("sessions.participants"), sessionId: uuid }),
   z.object({ action: z.literal("attendance.list"), sessionId: uuid }),
   z.object({ action: z.literal("attendance.record"),
     sessionId: uuid, studentId: uuid,
@@ -46,7 +47,7 @@ const calls = z.discriminatedUnion("action", [
 const toolNames = [
   "workplaces.list", "workplaces.create", "students.search",
   "groups.list", "groups.create", "groups.enroll", "groups.members",
-  "sessions.list", "sessions.create", "attendance.list", "attendance.record",
+  "sessions.list", "sessions.create", "sessions.participants", "attendance.list", "attendance.record",
 ] as const;
 
 function json(body: unknown, status = 200) {
@@ -121,6 +122,8 @@ export async function POST(req: NextRequest) {
         result = await sessionsList(db, teacherId); break;
       case "sessions.create":
         result = await sessionsCreate(db, teacherId, call); break;
+      case "sessions.participants":
+        result = await sessionsParticipants(db, teacherId, call.sessionId); break;
       case "attendance.list":
         result = await attendanceList(db, teacherId, call.sessionId); break;
       case "attendance.record":
