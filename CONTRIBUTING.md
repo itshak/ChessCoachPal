@@ -91,3 +91,7 @@ Edit the `GLYPHS` map in `scripts/extract-bravura-glyphs.js` for SMuFL code poin
 ## Preparing a GitHub release
 
 Keep [CHANGELOG.md](CHANGELOG.md) updated as you contribute. The project currently uses unreleased version `0.0.0`. When a functional, tested release is approved, run `npm run release:prepare -- 0.1.0` (or the next version), review and commit the manifest/lock/changelog changes, and merge into `main`. GitHub Actions will run a fresh-install release gate and publish `vX.Y.Z` with changelog and source archives. See [docs/RELEASING.md](docs/RELEASING.md). Do not publish v0.1.0 until the first-functional-release checklist passes.
+
+## OpenSpec development workflow
+
+The current first-release work is organized in [five active v0.1.0 OpenSpec changes](openspec/ROADMAP-v0.1.0.md). Read the proposal, design, specifications and scoped tasks for the area you are changing. The original omnibus change was [archived as incomplete](openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md), and its old unchecked requirements are not an active parallel backlog. Close checkboxes only after main-merged work and passing evidence recorded in [docs/STATUS.md](docs/STATUS.md). Before 1.0.0, no backward compatibility with CogNote or prior ChessCoachPal versions is required.

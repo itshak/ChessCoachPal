@@ -2,6 +2,12 @@
 
 **Policy:** There is no compatibility guarantee with CogNote or between any two ChessCoachPal versions prior to `1.0.0`. See [ADR-0001](adr/0001-pre1-breaking-changes.md). Release notes must call out destructive reset requirements and significant breaking changes.
 
+## OpenSpec release plan
+
+The six readiness checkboxes below are the **final gate**, not the entire implementation plan. The [v0.1.0 OpenSpec roadmap](../openspec/ROADMAP-v0.1.0.md) defines five active changes: coaching workflows, real ChatGPT/Claude integration, chess learning basics, legacy/privacy/security cleanup, and self-hosting/release verification. **All five must be accepted with evidence** before preparing the first version.
+
+The original [adopt-cognote-chesscoachpal archive](../openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md) is superseded and was never fully implemented.
+
 ## Current status
 
 The development snapshot is `0.0.0`. CogNote's inherited `0.1.0` in the package metadata was **not** a published ChessCoachPal release and has been reset. **Do not publish `v0.1.0` until the functional first-release criteria below are met.**

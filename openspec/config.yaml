@@ -6,12 +6,18 @@ context: |
   The web application uses the same services for viewing and editing.
   Initial persistence uses PostgreSQL, Supabase Auth and RLS.
   A teacher has configurable Workplaces, groups, students, lesson
-  sessions, per-student attendance and compensation. No board in v1.
+  sessions and per-student attendance. No board in v0.1.0.
+  Current phase is 0.0.0 development. Use ROADMAP-v0.1.0.md for five
+  scoped, testable active changes. ADR-0001 overrides inherited compatibility
+  directions: no CogNote compatibility or pre-1.0 data/API upgrade support.
 rules:
   proposal:
     - Separate implemented behavior from proposed functionality.
+    - Keep each change narrowly scoped with dependencies, acceptance gates and explicit deferrals.
   specs:
     - Use SHALL and WHEN/THEN acceptance scenarios.
     - Cover retries, permissions, ambiguity and AI outages.
   tasks:
     - Require observable verification before checking tasks complete.
+    - Cite merged commit and passing test/client evidence in docs/STATUS.md.
+    - Never mark an active change complete based only on an unmerged draft PR.
