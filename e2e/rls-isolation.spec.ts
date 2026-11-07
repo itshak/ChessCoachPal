@@ -68,7 +68,9 @@ test.describe("RLS tenant isolation", () => {
     for (const table of [
       "students",
       "guardians",
-      "plans",
+      "workplaces",
+      "class_groups",
+      "teaching_sessions",
       "lessons",
       "invoices",
       "studio_policies",
@@ -115,7 +117,7 @@ test.describe("RLS tenant isolation", () => {
 
   test("anonymous role has no access to app tables", async () => {
     const anon = anonClient();
-    for (const table of ["students", "student_plans", "practice_sessions"]) {
+    for (const table of ["students", "workplaces", "teaching_sessions"]) {
       const { data, error } = await anon.from(table).select("*").limit(1);
       // Either a permission error or zero rows is acceptable; data must not leak.
       if (error) continue;

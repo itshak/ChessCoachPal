@@ -154,16 +154,16 @@ test.describe("mobile layout", () => {
     expect(below.y - (above.y + above.height)).toBeLessThanOrEqual(12);
   });
 
-  test("create new lesson page has no horizontal overflow on mobile", async ({
+  test("chess learning page has no horizontal overflow on mobile", async ({
     page,
   }) => {
     await signInAsTeacher(page);
 
     for (const width of MOBILE_WIDTHS) {
       await page.setViewportSize({ width, height: 812 });
-      await page.goto("/lessons/new");
+      await page.goto("/learning");
       await expect(
-        page.getByRole("heading", { name: "Create New Lesson" })
+        page.getByRole("heading", { name: "Chess learning" })
       ).toBeVisible();
 
       const overflow = await overflowOf(page);
