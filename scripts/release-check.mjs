@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  validVersion, compareVersions, section, hasChanges, prepareChangelog,
+  validVersion, compareVersions, section, hasChanges, prepareChangelog, firstReleaseReady,
 } from "./release.mjs";
 
 const sample = "# Changelog\n\n## [Unreleased]\n\n### Added\n- A workflow\n- Chess sessions\n\n## [0.0.9] - 2026-11-01\n\n- Earlier work\n";
@@ -41,4 +41,13 @@ test("rejects empty unreleased sections", () => {
   assert.equal(hasChanges("### Fixed\n- Issue"), true);
   assert.throws(() => prepareChangelog("# Changelog\n\n## [Unreleased]\n\nNo entries\n",
     "0.1.0", "2026-11-07"), /change-list/);
+});
+
+test("v0.1.0 requires every first-functional-release checklist item", () => {
+  const prefix = "## v0.1.0: first functional release gate\n\n";
+  const six = Array.from({ length: 6 }, (_, i) => "- [x] criterion " + i).join("\n");
+  assert.equal(firstReleaseReady(prefix + six), true);
+  assert.equal(firstReleaseReady(prefix + six.replace("- [x] criterion 5", "- [ ] criterion 5")), false);
+  assert.equal(firstReleaseReady(prefix + "- [x] only one"), false);
+  assert.equal(firstReleaseReady("## Other heading\n- [x] criterion"), false);
 });
