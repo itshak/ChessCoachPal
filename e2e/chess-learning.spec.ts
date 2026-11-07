@@ -14,7 +14,7 @@ test("teacher website: verified chess observation, editable history, curated stu
   const suggested="Agent suggestion "+suffix;
   const linkName="Study opposition "+suffix;
   const person=page.getByLabel("Chess learner");
-  await expect.poll(async()=>await person.locator("option").count()).toBeGreaterThan(0);
+  await expect.poll(async()=>await person.inputValue()).not.toBe("");
   const studentId=await person.inputValue();
   const categories=await page.request.post("/api/agent/v1",{data:{action:"chess.categories.list"}});
   expect(categories.status()).toBe(200);
