@@ -30,13 +30,8 @@ export function HostingSettingsForm({
   stripeCancelAt: string | null;
   usage: {
     students: number;
-    plans: number;
-    sheetMusic: number;
     limits: {
       maxStudents: number;
-      maxPlans: number;
-      maxSheetItems: number;
-      maxSheetItemsPro?: number;
     };
   };
 }) {
@@ -129,13 +124,6 @@ export function HostingSettingsForm({
           >
             {busy === "checkout" ? "…" : "Upgrade to Pro"}
           </Button>
-        )}
-        {canUpgrade && !checkoutConfigured && (
-          <a href="mailto:support@cognote.studio?subject=ChessCoachPal%20Pro">
-            <Button type="button" size="sm" variant="secondary">
-              Email support to upgrade
-            </Button>
-          </a>
         )}
         {canManageBilling && (
           <Button

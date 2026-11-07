@@ -20,8 +20,6 @@ import {
 } from "@/lib/entitlements";
 import {
   countActiveStudents,
-  countPlans,
-  countSheetItems,
   loadTeacherEntitlements,
   persistDemotionIfNeeded,
 } from "@/lib/server/entitlements";
@@ -72,29 +70,14 @@ export default async function AccountPage({
       stored,
       entitlement.demotedFrom
     );
-    const [students, plans, sheetMusic] = await Promise.all([
-      countActiveStudents(supabase, user.id),
-      countPlans(supabase, user.id),
-      countSheetItems(supabase, user.id),
-    ]);
+    const students = await countActiveStudents(supabase, user.id);
 
     // Only warn when a free-tier cap is actually hit (not merely "on free").
     if (entitlement.softLimitsApply) {
       const hit: LimitResource | null =
-        students >= entitlement.limits.maxStudents
-          ? "students"
-          : plans >= entitlement.limits.maxPlans
-            ? "plans"
-            : sheetMusic >= entitlement.limits.maxSheetItems
-              ? "sheet_music"
-              : null;
+        students >= entitlement.limits.maxStudents ? "students" : null;
       if (hit) {
-        const limit =
-          hit === "students"
-            ? entitlement.limits.maxStudents
-            : hit === "plans"
-              ? entitlement.limits.maxPlans
-              : entitlement.limits.maxSheetItems;
+        const limit = entitlement.limits.maxStudents;
         limitBanner = (
           <HostedLimitBanner
             monthlyPriceCents={entitlement.monthlyPriceCents}
@@ -121,8 +104,6 @@ export default async function AccountPage({
         stripeCancelAt={teacher?.stripe_cancel_at ?? null}
         usage={{
           students,
-          plans,
-          sheetMusic,
           limits: entitlement.limits,
         }}
       />
