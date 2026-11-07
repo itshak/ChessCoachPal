@@ -84,6 +84,7 @@ docker run --rm --network "container:$source_db" \
   -v "$tmp/backups:/backups" --entrypoint /bin/bash \
   supabase/postgres:17.6.1.136 /backup.sh
 [[ -s "$tmp/backups/db-$RESTORE_DATE.sql.gz" ]]
+[[ -s "$tmp/backups/data-$RESTORE_DATE.sql.gz" ]]
 [[ -s "$tmp/backups/storage-$RESTORE_DATE.tar.gz" ]]
 
 echo "==> create second independent Supabase project with distinct ports"

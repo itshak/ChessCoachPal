@@ -15,9 +15,10 @@ fi
 
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
 db="$BACKUP_DIR/db-$RESTORE_DATE.sql.gz"
+data="$BACKUP_DIR/data-$RESTORE_DATE.sql.gz"
 storage="$BACKUP_DIR/storage-$RESTORE_DATE.tar.gz"
 manifest="$BACKUP_DIR/manifest-$RESTORE_DATE.sha256"
-for file in "$db" "$storage" "$manifest"; do
+for file in "$db" "$data" "$storage" "$manifest"; do
   [[ -f "$file" && ! -L "$file" ]] || { echo "Missing or unsafe archive." >&2; exit 2; }
 done
 
@@ -40,8 +41,32 @@ if find /var/lib/storage -type f -print -quit | grep -q .; then
   exit 2
 fi
 
-echo "==> restoring full current-schema Postgres snapshot"
-gzip -cd -- "$db" | psql --single-transaction -v ON_ERROR_STOP=1 -h "$host" -U postgres -d postgres >/dev/null
+echo "==> restoring current-schema app, authentication and Storage metadata"
+# The target has already applied the exact source version's baseline SQL.
+# Replaying full Supabase internal DDL as postgres would try to DROP event
+# triggers owned by supabase_admin. Preserve the complete full-db dump for
+# privileged disaster recovery, but use the separately captured data-only
+# snapshot for this same-schema operator restore. No older-version upgrades.
+{
+  cat <<'SQL'
+BEGIN;
+DO $restore$
+DECLARE names text;
+BEGIN
+  SELECT string_agg(format('%I.%I', schemaname, tablename), ', ')
+    INTO names
+    FROM pg_tables
+    WHERE schemaname IN ('public', 'auth', 'storage');
+  IF names IS NOT NULL THEN
+    EXECUTE 'TRUNCATE TABLE ' || names || ' RESTART IDENTITY CASCADE';
+  END IF;
+END
+$restore$;
+SET session_replication_role = replica;
+SQL
+  gzip -cd -- "$data"
+  printf '\nRESET session_replication_role;\nCOMMIT;\n'
+} | psql -v ON_ERROR_STOP=1 -h "$host" -U postgres -d postgres >/dev/null
 
 echo "==> restoring private storage bytes"
 tar -xzf "$storage" -C /var/lib/storage

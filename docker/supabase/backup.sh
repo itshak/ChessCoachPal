@@ -21,7 +21,17 @@ echo "==> pg_dump"
 # would look complete and be kept by retention.
 db="$BACKUP_DIR/db-$STAMP.sql.gz"
 PGPASSWORD="${POSTGRES_PASSWORD:?}" pg_dump --no-owner --clean --if-exists -h "${DB_HOST:-db}" -U postgres -d postgres \
-  | gzip > "$db.part.$$" && mv -f "$db.part.$$" "$db"
+  | gzip > "$db.part.$$"
+mv -f "$db.part.$$" "$db"
+
+# The production restore path starts with the checked-in CURRENT schema, not
+# a dump of Supabase-owned internal DDL/event triggers. Back up all teacher,
+# auth and Storage table data separately for a safe same-schema restore.
+data="$BACKUP_DIR/data-$STAMP.sql.gz"
+PGPASSWORD="${POSTGRES_PASSWORD:?}" pg_dump --no-owner --data-only \
+  --schema=public --schema=auth --schema=storage \
+  -h "${DB_HOST:-db}" -U postgres -d postgres | gzip > "$data.part.$$"
+mv -f "$data.part.$$" "$data"
 
 # ponytail: tar of a live dir - a file uploaded mid-tar can be half-written. Fine at one-teacher scale.
 echo "==> storage"
@@ -39,13 +49,14 @@ fi
 echo "==> checksums"
 (
   cd "$BACKUP_DIR"
-  names=("db-$STAMP.sql.gz" "storage-$STAMP.tar.gz")
+  names=("db-$STAMP.sql.gz" "data-$STAMP.sql.gz" "storage-$STAMP.tar.gz")
   if [[ -f "secrets-$STAMP.tar.gz" ]]; then names+=("secrets-$STAMP.tar.gz"); fi
   sha256sum "${names[@]}" > "manifest-$STAMP.sha256.part.$"
   mv -f "manifest-$STAMP.sha256.part.$" "manifest-$STAMP.sha256"
 )
 
 echo "==> retention"
+find "$BACKUP_DIR" -name 'data-*.gz'    -mtime +"$KEEP_DAYS"         -delete
 find "$BACKUP_DIR" -name 'db-*.gz'      -mtime +"$KEEP_DAYS"         -delete
 find "$BACKUP_DIR" -name 'storage-*.gz' -mtime +"$KEEP_DAYS"         -delete
 find "$BACKUP_DIR" -name 'secrets-*.gz' -mtime +"$SECRETS_KEEP_DAYS" -delete

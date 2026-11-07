@@ -22,7 +22,7 @@ The coaching activity report uses authorized workplace-local calendar dates, exc
 
 ## Backup and off-machine retention
 
-The opt-in backup profile saves a compressed full current-schema PostgreSQL dump (including auth and Storage metadata), uploaded Storage volume, separate private local env/secrets copy, and SHA-256 integrity manifest. Backups contain sensitive student records; keep them on encrypted, access-controlled media off the host and test restoration. For a consistent point-in-time snapshot, pause writes before running a manual backup.
+The opt-in backup profile saves a complete PostgreSQL SQL dump for privileged disaster recovery, a separate data-only dump of public/auth/Storage schemas for safe current-schema recovery, the physical uploaded Storage volume, a private local env/secrets copy, and a SHA-256 integrity manifest. Backups contain sensitive student records; keep them on encrypted, access-controlled media off the host and test restoration. For a consistent point-in-time snapshot, pause writes before running a manual backup.
 
     mkdir -p backups
     docker compose --env-file .env.local --profile backup up -d backup
@@ -32,7 +32,7 @@ Verify the manifest for the selected YYYY-MM-DD and keep database, storage, mani
 
 ## Restore only into a SECOND, new and empty installation
 
-1. Use another server/checkout with independent volumes and domains, same current schema and Supabase Postgres major version. Never restore over a live/student-containing installation. Copy the selected db-YYYY-MM-DD.sql.gz, storage-YYYY-MM-DD.tar.gz, manifest-YYYY-MM-DD.sha256 and any secrets archive into the second checkout's private backups directory.
+1. Use another server/checkout with independent volumes and domains, same current schema and Supabase Postgres major version. Never restore over a live/student-containing installation. Copy the selected db-YYYY-MM-DD.sql.gz, data-YYYY-MM-DD.sql.gz, storage-YYYY-MM-DD.tar.gz, manifest-YYYY-MM-DD.sha256 and any secrets archive into the second checkout's private backups directory.
 2. Prepare private configuration in the new checkout. Start it once to provision required Supabase roles/extensions and migrations, WITHOUT signing up, importing, seeding or uploading. Stop target app, auth, rest, gateway and storage, leaving its database online:
 
     docker compose --env-file .env.local stop app auth rest gateway storage
@@ -41,7 +41,7 @@ Verify the manifest for the selected YYYY-MM-DD and keep database, storage, mani
 
     RESTORE_DATE=2026-11-08 RESTORE_CONFIRM=RESTORE_TO_NEW_EMPTY_INSTALLATION docker compose --env-file .env.local --profile restore run --rm restore
 
-The script validates SHA-256 checksums, archive paths, and the absence of target users, teacher rows, Storage metadata and files. It refuses a populated database. It restores the full SQL snapshot and physical uploaded files, but deliberately does not auto-overwrite private environment configuration. Do not bypass this guard.
+The script validates SHA-256 checksums, archive paths, and the absence of target users, teacher rows, Storage metadata and files. It refuses a populated database. It imports all current-schema public/auth/Storage table data from the data-only backup and the physical uploaded files; the complete SQL dump remains available for expert-operated privileged recovery. Supabase-owned internal event triggers are intentionally not overwritten, and private environment configuration is never auto-overwritten. Do not bypass this guard.
 
 4. Review private secrets separately, restart target services, sign in, and compare teachers, workplaces, students, group membership, sessions, notes and individual attendance with the source. Compare storage.object metadata, actual file bytes/sha256 and report totals; test upload/download and login before any DNS switch. If a restore fails, discard only the confirmed disposable target and start again. Never automate a reset of real data.
 
