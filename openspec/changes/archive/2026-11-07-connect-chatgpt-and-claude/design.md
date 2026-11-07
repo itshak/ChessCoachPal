@@ -1,4 +1,6 @@
-# Design — authenticated external AI tools
+# Design — authenticated external AI tools (archived initial gateway)
+
+**Archival disposition (2026-11-07):** The *verified initial MCP/OAuth gateway* is accepted as a GitHub-CI-tested development foundation, **not** a claim that every item in the original proposal has shipped. Main merge [PR #5](https://github.com/itshak/ChessCoachPal/pull/5), commit [77b307f](https://github.com/itshak/ChessCoachPal/commit/77b307fb6055fd55fd0d74519ff6e04ccea61ffe), post-merge [CI 42412035420](https://github.com/itshak/ChessCoachPal/actions/runs/42412035420) and [E2E 42412035415](https://github.com/itshak/ChessCoachPal/actions/runs/42412035415) (26 passed, 5 skipped) provide automated evidence. **Unimplemented CRUD/scheduling/learning-resource tools and additional automated hardening are transferred to [expand-agent-coaching-tools](../../expand-agent-coaching-tools/proposal.md); all actual ChatGPT and Claude client checks are moved to the *final local prepublication sign-off* in [Milestone 5](../../verify-self-hosting-and-release-v0-1-0/proposal.md).** Real client interoperability remains unverified. No local/manual tests are required to close development milestones; only the final v0.1.0 publication has that manual gate.
 
 ## Architecture
 
@@ -21,15 +23,15 @@ Keep the experimental /api/agent/v1 route only if useful as an internal implemen
 - Results include minimal safe receipt (operation, affected IDs, revision, timestamp) and typed error codes. Audit actor, action, auth client, IDs and safe metadata, **not** student text/LLM prompts, tokens or private links.
 - Keep teacher-facing website correction as a full fallback during any client or provider outage.
 
-## Implementation checkpoint (does not close acceptance)
+## Implemented and verified initial foundation (broader scope transferred)
 
 PR #5 uses a Zod contract for MCP tools and a generated OpenAPI view. Its safe subset reads the existing teacher-scoped coaching data via the shared service and performs revision-checked individual attendance and lesson topic writes with transaction-scoped Postgres RPCs. OAuth tokens are hashed at rest; encrypted delegated teacher sessions are server-only; refresh and revocation are scoped to individual client grants.
 
-Still missing are broader student/workplace/group/scheduling/resource mutations, a dedicated MCP two-teacher test, provider integration evidence, per-client write auditing and a completed public-endpoint abuse-controls review. Unconfirmed bulk and destructive operations remain unavailable rather than being silently invoked.
+Remaining student/workplace/group/scheduling/resource mutations, per-client write auditing and public-endpoint abuse-controls review are in the active tool-completion/security changes; synthetic two-teacher isolation is now automated and passing. Real-provider evidence is reserved for the local prepublication release gate. Unconfirmed bulk and destructive operations remain unavailable rather than being silently invoked.
 
 ## Verification
 
-Test web and MCP requests against a fresh local stack, and test **actual** ChatGPT and Claude client sessions (not only mock HTTP). Include token expiry/revocation, two teachers, duplicate/reordered calls, ambiguity, stale update, partial provider outage and website edit parity. Log sanitized command/results and tested platform/version in docs/STATUS.md.
+In development, test web and MCP requests against fresh synthetic CI stacks exclusively in GitHub Actions. Test **actual** ChatGPT and Claude client sessions only at the manual local prepublication gate. Include token expiry/revocation, two teachers, duplicate/reordered calls, ambiguity, stale update, partial provider outage and website edit parity. Log sanitized command/results and tested platform/version in docs/STATUS.md.
 
 ## Binding policy
 

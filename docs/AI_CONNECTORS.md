@@ -1,6 +1,6 @@
-# Remote ChatGPT and Claude MCP connector — Milestone 2 (in verification)
+# Remote ChatGPT and Claude MCP connector — automated foundation verified; real clients release-only
 
-**Important:** This server implementation is not yet an accepted interoperability claim. Automated HTTP and browser tests are separate from the **required real ChatGPT and real Claude client demonstrations**. No production approval or voice-initiated tool support is implied.
+**Important:** The initial server-side MCP/OAuth foundation passed GitHub automated CI/E2E and is archived as development work. This **does not** establish real ChatGPT/Claude interoperability. Do **not** test real provider clients during development milestones; both live client tests are required **only once, immediately before publishing v0.1.0, on the maintainer's machine**, using a synthetic locally controlled HTTPS-reachable instance. Record sanitized evidence via [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md). No production approval or voice-tool support is implied.
 
 ## Host configuration
 

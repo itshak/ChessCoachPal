@@ -2,7 +2,7 @@
 
 **Your friendly chess-coaching assistant.**
 
-ChessCoachPal is an **MIT-licensed, self-hostable, AI-agent-first workspace for chess teachers**. The intended primary input is authenticated ChatGPT/Claude tools, with a website for browsing, correcting, editing, scheduling and reporting. **Remote MCP/OAuth integration is under pre-release verification**; real ChatGPT/Claude client interoperability has not yet been demonstrated. All core website features work without an AI subscription.
+ChessCoachPal is an **MIT-licensed, self-hostable, AI-agent-first workspace for chess teachers**. The intended primary input is authenticated ChatGPT/Claude tools, with a website for browsing, correcting, editing, scheduling and reporting. **The initial MCP/OAuth gateway is implemented and automatically verified**; real ChatGPT/Claude client interoperability is reserved for the final local prepublication v0.1.0 smoke test and has not yet been demonstrated. All core website features work without an AI subscription.
 
 The project is built from [CogNote](https://github.com/andresjmorales/cognote), the MIT-licensed teacher-management application created by Andres Jaime Morales. See [source attribution](docs/UPSTREAM.md).
 
@@ -17,7 +17,7 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 
 ## Status
 
-**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, Milestone 1 coaching workflows have merged. Milestone 2 MCP/OAuth tooling is under implementation and client validation; real ChatGPT/Claude demos, full security review and v0.1.0 release acceptance remain incomplete. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
+**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, Milestone 1 coaching workflows have merged. Milestone 2's initial MCP/OAuth gateway is merged and archived after GitHub CI/E2E verification. Remaining coaching-tool actions (change 2b), security and chess-learning milestones will be implemented and tested on GitHub. Only the *final live ChatGPT/Claude client demonstrations* take place manually on the maintainer's machine immediately before actual v0.1.0 publication; no development change depends on live providers. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
 
 ## Versions and releases
 
@@ -29,15 +29,17 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 
 ## Documentation
 
-- **[v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md)** — five evidence-based milestones (Milestone 1 accepted)
+- **[v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md)** — five milestone outcomes with an active 2b follow-on; completed development changes close on GitHub evidence
 - [Complete coaching workflows](openspec/changes/archive/2026-11-07-complete-coaching-workflows/proposal.md)
-- [Connect ChatGPT and Claude](openspec/changes/connect-chatgpt-and-claude/proposal.md)
+- [Archived MCP/OAuth foundation for ChatGPT and Claude](openspec/changes/archive/2026-11-07-connect-chatgpt-and-claude/proposal.md)
+- [Remaining v0.1.0 agent tools (active GitHub-only work)](openspec/changes/expand-agent-coaching-tools/proposal.md)
 - [Add chess learning basics](openspec/changes/add-chess-learning-basics/proposal.md)
 - [Remove CogNote legacy and secure data](openspec/changes/remove-cognote-legacy-and-secure-data/proposal.md)
 - [Verify self-hosting and release v0.1.0](openspec/changes/verify-self-hosting-and-release-v0-1-0/proposal.md)
 - [Archived, incomplete original plan](openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md)
 - [Agent interface](docs/AI_AGENTS.md)
-- [Remote ChatGPT / Claude connection guide (unverified)](docs/AI_CONNECTORS.md)
+- [Remote ChatGPT / Claude connection guide (not yet live-verified)](docs/AI_CONNECTORS.md)
+- [Final local client smoke test before publishing v0.1.0](docs/LOCAL_CLIENT_ACCEPTANCE.md)
 - [Public market landscape](docs/MARKET_RESEARCH.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Branding](docs/BRANDING.md)

@@ -23,3 +23,5 @@ No automatic Lichess/Chess.com ratings synchronization, chessboard, engine, PGN 
 
 A teacher records a verified endgame observation and links a selected Lichess Study to a student or lesson; the data survives reload, and a separate AI suggestion remains unverified until explicitly accepted. Another teacher cannot view it, and Lichess unavailability does not block internal records. All relevant unit, RLS and browser tests pass.
 
+## Development verification boundary
+All implementation and acceptance evidence for this development change SHALL come from merged GitHub commits and passing GitHub Actions tests/automated scans with synthetic data. No manual local deployment, live Lichess/ChatGPT/Claude login or actual vendor-client session is required to check tasks or archive this change. Record test URLs/findings in docs/STATUS.md (and docs/SECURITY.md for audits). The only real ChatGPT/Claude client exercise takes place at the **final local v0.1.0 prepublication release gate**; it does not waive security/privacy review requirements that can be completed in GitHub.

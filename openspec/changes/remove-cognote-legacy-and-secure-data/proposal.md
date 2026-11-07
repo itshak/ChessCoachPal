@@ -23,3 +23,5 @@ No CogNote data conversion, no backward-compatible aliases/flags, no database mi
 
 Fresh database initializes with only current chess-coaching schema. Music-only endpoints/assets are gone, new RLS tests prove teachers are isolated, current branding/PWA checks pass, and a documented privacy/history/third-party licensing review is approved. The first release remains blocked while any unresolved finding could expose real student data or credentials.
 
+## Development verification boundary
+All implementation and acceptance evidence for this development change SHALL come from merged GitHub commits and passing GitHub Actions tests/automated scans with synthetic data. No manual local deployment, live Lichess/ChatGPT/Claude login or actual vendor-client session is required to check tasks or archive this change. Record test URLs/findings in docs/STATUS.md (and docs/SECURITY.md for audits). The only real ChatGPT/Claude client exercise takes place at the **final local v0.1.0 prepublication release gate**; it does not waive security/privacy review requirements that can be completed in GitHub.

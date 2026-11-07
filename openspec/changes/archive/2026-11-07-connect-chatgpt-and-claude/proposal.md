@@ -1,9 +1,11 @@
 # Change: connect-chatgpt-and-claude
 
-- **Status:** IN PROGRESS / NOT ACCEPTED OR ARCHIVED — release milestone 2 of 5
+- **Status:** ARCHIVED — automated MCP/OAuth foundation verified; original broader scope explicitly transferred (not falsely marked complete)
 - **Target:** ChessCoachPal v0.1.0
-- **Depends on:** Shared coaching domain/service in [complete-coaching-workflows](../archive/2026-11-07-complete-coaching-workflows/proposal.md); security/authorization testing in [remove-cognote-legacy-and-secure-data](../remove-cognote-legacy-and-secure-data/proposal.md)
-- **Release roadmap:** [OpenSpec v0.1.0](../../ROADMAP-v0.1.0.md)
+- **Depends on:** Shared coaching domain/service in [complete-coaching-workflows](../2026-11-07-complete-coaching-workflows/proposal.md); security/authorization testing in [remove-cognote-legacy-and-secure-data](../../remove-cognote-legacy-and-secure-data/proposal.md)
+- **Release roadmap:** [OpenSpec v0.1.0](../../../ROADMAP-v0.1.0.md)
+
+**Archival disposition (2026-11-07):** The *verified initial MCP/OAuth gateway* is accepted as a GitHub-CI-tested development foundation, **not** a claim that every item in the original proposal has shipped. Main merge [PR #5](https://github.com/itshak/ChessCoachPal/pull/5), commit [77b307f](https://github.com/itshak/ChessCoachPal/commit/77b307fb6055fd55fd0d74519ff6e04ccea61ffe), post-merge [CI 42412035420](https://github.com/itshak/ChessCoachPal/actions/runs/42412035420) and [E2E 42412035415](https://github.com/itshak/ChessCoachPal/actions/runs/42412035415) (26 passed, 5 skipped) provide automated evidence. **Unimplemented CRUD/scheduling/learning-resource tools and additional automated hardening are transferred to [expand-agent-coaching-tools](../../expand-agent-coaching-tools/proposal.md); all actual ChatGPT and Claude client checks are moved to the *final local prepublication sign-off* in [Milestone 5](../../verify-self-hosting-and-release-v0-1-0/proposal.md).** Real client interoperability remains unverified. No local/manual tests are required to close development milestones; only the final v0.1.0 publication has that manual gate.
 
 ## Why
 
@@ -17,7 +19,7 @@ Deliver a real self-hosted **MCP-compatible tool server** and, where useful, Ope
 
 The first gateway is implemented and verified by [CI 42410931916](https://github.com/itshak/ChessCoachPal/actions/runs/42410931916) and [synthetic E2E 42410931858](https://github.com/itshak/ChessCoachPal/actions/runs/42410931858). It provides remote MCP HTTP transport, discoverable typed tools/OpenAPI, delegated OAuth PKCE, teacher-bound scopes, grant revocation, privacy-minimized transactional receipts, student/workplace/group/session reads, single-student attendance writes and shared lesson-note updates.
 
-**This is not the complete milestone.** Full create/edit and scheduling operations, resource linking, comprehensive security/client interoperability review and actual supported ChatGPT and Claude client demonstrations remain outstanding. Additional [CI 42411589348](https://github.com/itshak/ChessCoachPal/actions/runs/42411589348) and [E2E 42411589288](https://github.com/itshak/ChessCoachPal/actions/runs/42411589288) passed synthetic two-teacher isolation, ambiguity and token lifecycle coverage. Bulk attendance commits are intentionally not exposed. Keep this change open, preserving the original acceptance conditions; never archive it as accepted based only on a synthetic HTTP client.
+**Historical original ambitions extend beyond the accepted archived foundation.** Full create/edit and scheduling operations, resource linking, comprehensive security/client interoperability review and actual supported ChatGPT and Claude client demonstrations remain outstanding. Additional [CI 42411589348](https://github.com/itshak/ChessCoachPal/actions/runs/42411589348) and [E2E 42411589288](https://github.com/itshak/ChessCoachPal/actions/runs/42411589288) passed synthetic two-teacher isolation, ambiguity and token lifecycle coverage. Bulk attendance commits are intentionally not exposed. The unimplemented requirements are preserved in the active follow-on change; live-client acceptance belongs exclusively to the final release gate.
 
 ## Initial tool scope
 
@@ -27,7 +29,7 @@ List/create/edit workplaces and students; list/create/enroll class groups; find 
 
 No in-site proprietary chatbot, unrestricted SQL, service-role credential exposure, provider voice-mode promises, payment mutations, or mass family notifications. External AI accounts are not needed to use the website.
 
-## Acceptance
+## Historical original acceptance (now split between verified development and release-only manual sign-off)
 
 From **one real authenticated ChatGPT-compatible client and one real authenticated Claude-compatible client**, the teacher can find a lesson, record a group's attendance and topic, see a receipt, and correct the same records in the website. Another teacher's data is inaccessible. Duplicate retries do not duplicate writes. Ambiguous names produce a question, not a guess. Authorization revocation immediately blocks subsequent tool calls. Provide precise client setup documentation and captured sanitized test evidence.
 
