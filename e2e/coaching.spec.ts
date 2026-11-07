@@ -86,10 +86,15 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await page.getByLabel("Active workplace").selectOption({ label: workplaceA });
   await expect(page.getByLabel("Workplace policy (JSON)")).toHaveValue(/cancellationHours/);
   const lesson = page.getByRole("combobox", { name: "Lesson", exact: true });
-  const option = lesson.locator("option").filter({ hasText: topic });
-  const sessionId = await option.getAttribute("value");
-  expect(sessionId).toBeTruthy();
-  await lesson.selectOption(sessionId!);
+  // Native <option> text filters can be unreliable in headless Chromium.
+  // Read the labels and choose by index so persistence is still asserted.
+  await expect.poll(async () =>
+    (await lesson.locator("option").allTextContents()).some(text => text.includes(topic))
+  ).toBe(true);
+  const labels = await lesson.locator("option").allTextContents();
+  const matchingIndex = labels.findIndex(text => text.includes(topic));
+  expect(matchingIndex).toBeGreaterThan(0);
+  await lesson.selectOption({ index: matchingIndex });
   await expect(page.getByLabel("Shared session note")).toHaveValue("Improved opposition and calculation");
   await expect(page.getByLabel("Attendance")).toHaveValue("absent");
   await expect(page.getByLabel("Student note")).toHaveValue("Absent with notice");
