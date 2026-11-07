@@ -66,13 +66,23 @@ curl --fail-with-body --silent --show-error -X POST \
 docker exec "$source_db" psql -U postgres -d postgres -tAc \
   "SELECT count(*) FROM storage.objects WHERE bucket_id='avatars' AND name='restore-smoke.png'" | grep -qx 1
 
+echo "==> obtain real Storage API bytes for the bundled Compose filesystem adapter"
+# The Supabase CLI uses a different storage backend path from the Compose
+# distribution. Stage the downloaded, hash-checked uploaded object in the
+# exact /var/lib/storage layout that the bundled backup service mounts.
+mkdir -p "$tmp/source-files/avatars"
+curl --fail-with-body --silent --show-error \
+  -H "Authorization: Bearer $key" -H "apikey: $key" \
+  "$API_URL/storage/v1/object/avatars/restore-smoke.png" \
+  -o "$tmp/source-files/avatars/restore-smoke.png"
+cmp "$tmp/restore-smoke.png" "$tmp/source-files/avatars/restore-smoke.png"
 echo "==> run official backup against only synthetic source volumes"
-docker run --rm --network "container:$source_db" --volumes-from "$source_storage" \
+docker run --rm --network "container:$source_db" \
+  -v "$tmp/source-files:/var/lib/storage:ro" \
   -e DB_HOST=127.0.0.1 -e POSTGRES_PASSWORD=postgres -e BACKUP_DIR=/backups \
   -v "$root/docker/supabase/backup.sh:/backup.sh:ro" \
   -v "$tmp/backups:/backups" --entrypoint /bin/bash \
   supabase/postgres:17.6.1.136 /backup.sh
-docker cp "$source_storage:/var/lib/storage/." "$tmp/source-files/"
 [[ -s "$tmp/backups/db-$RESTORE_DATE.sql.gz" ]]
 [[ -s "$tmp/backups/storage-$RESTORE_DATE.tar.gz" ]]
 
@@ -91,7 +101,8 @@ for name in auth rest storage; do
   docker stop "supabase_${name}_chesscoachpal_restore" >/dev/null || true
 done
 echo "==> restore into empty target using the guarded operator script"
-docker run --rm --network "container:$target_db" --volumes-from "$target_storage" \
+docker run --rm --network "container:$target_db" \
+  -v "$tmp/target-files:/var/lib/storage" \
   -e DB_HOST=127.0.0.1 -e POSTGRES_PASSWORD=postgres \
   -e RESTORE_DATE="$RESTORE_DATE" \
   -e RESTORE_CONFIRM=RESTORE_TO_NEW_EMPTY_INSTALLATION \
@@ -109,6 +120,5 @@ for table in auth.users public.teachers public.workplaces public.students public
 done
 docker exec "$target_db" psql -U postgres -d postgres -tAc \
   "SELECT count(*) FROM public.session_attendance a JOIN public.teaching_sessions s ON s.id=a.session_id WHERE s.title='Restore smoke lesson' AND a.status='present'" | grep -qx 1
-docker cp "$target_storage:/var/lib/storage/." "$tmp/target-files/"
 diff -qr "$tmp/source-files" "$tmp/target-files"
-echo "Synthetic second-installation backup/restore and file byte parity passed."
+echo "Synthetic second-DB restore, Storage API input, and mounted-file byte parity passed."

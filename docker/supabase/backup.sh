@@ -26,7 +26,8 @@ PGPASSWORD="${POSTGRES_PASSWORD:?}" pg_dump --no-owner --clean --if-exists -h "$
 # ponytail: tar of a live dir - a file uploaded mid-tar can be half-written. Fine at one-teacher scale.
 echo "==> storage"
 st="$BACKUP_DIR/storage-$STAMP.tar.gz"
-tar czf "$st.part.$$" -C /var/lib/storage . && mv -f "$st.part.$$" "$st"
+tar czf "$st.part.$" -C /var/lib/storage .
+mv -f "$st.part.$" "$st"
 
 echo "==> secrets"
 if [[ -f /secrets/.env.local ]]; then
