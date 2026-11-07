@@ -12,12 +12,12 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 - **Teacher-controlled website:** full non-AI editing/review, accessible on desktop and mobile.
 - **Workplaces:** schools, clubs, online classes and private practice with independent policies.
 - **Group and private lessons:** per-student attendance, shared teaching notes, instructor time counted once per class.
-- **Chess learning history:** ratings, teacher assessments, selected Lichess study links and resources.
+- **Chess learning history:** verified teacher observations, reviewable AI suggestions, selected Lichess Study and HTTPS learning links (rating synchronization is deferred).
 - **Private and portable:** Docker self-hosting, PostgreSQL, backups, exports, strong permission boundaries.
 
 ## Status
 
-**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, Milestone 1 coaching workflows have merged. Milestone 2's initial MCP/OAuth gateway is merged and archived after GitHub CI/E2E verification. Remaining coaching-tool actions (change 2b), security and chess-learning milestones will be implemented and tested on GitHub. Only the *final live ChatGPT/Claude client demonstrations* take place manually on the maintainer's machine immediately before actual v0.1.0 publication; no development change depends on live providers. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
+**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, Milestone 1 coaching workflows have merged. Milestone 2's initial MCP/OAuth gateway is merged and archived after GitHub CI/E2E verification. Milestone 3 chess-learning basics are also merged and archived with passing GitHub CI/E2E. Remaining coaching-tool actions (change 2b), security and release milestones will be implemented and tested on GitHub. Only the *final live ChatGPT/Claude client demonstrations* take place manually on the maintainer's machine immediately before actual v0.1.0 publication; no development change depends on live providers. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
 
 ## Versions and releases
 
@@ -33,7 +33,7 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 - [Complete coaching workflows](openspec/changes/archive/2026-11-07-complete-coaching-workflows/proposal.md)
 - [Archived MCP/OAuth foundation for ChatGPT and Claude](openspec/changes/archive/2026-11-07-connect-chatgpt-and-claude/proposal.md)
 - [Remaining v0.1.0 agent tools (active GitHub-only work)](openspec/changes/expand-agent-coaching-tools/proposal.md)
-- [Add chess learning basics](openspec/changes/add-chess-learning-basics/proposal.md)
+- [Archived chess learning basics](openspec/changes/archive/2026-11-07-add-chess-learning-basics/proposal.md)
 - [Remove CogNote legacy and secure data](openspec/changes/remove-cognote-legacy-and-secure-data/proposal.md)
 - [Verify self-hosting and release v0.1.0](openspec/changes/verify-self-hosting-and-release-v0-1-0/proposal.md)
 - [Archived, incomplete original plan](openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md)
