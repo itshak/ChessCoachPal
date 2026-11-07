@@ -38,14 +38,40 @@ PGPASSWORD="${POSTGRES_PASSWORD:?}" psql -v ON_ERROR_STOP=1 -qAt \
           AND has_table_privilege(format('%I.%I', schemaname, tablename), 'INSERT')
         ) ORDER BY 1" > "$excluded.part.$$"
 mv -f "$excluded.part.$$" "$excluded"
-# Do not silently exclude user-owned data. These are Supabase's internal
-# migration ledgers, already provisioned by the current target image.
+# Exclusions are limited to provider-owned migration ledgers (recreated by the
+# exact current Supabase image) and *provably empty* optional auth/Storage
+# internal tables. A nonempty protected table must never be silently dropped.
+# In particular, tables with teacher, OAuth, uploaded-object or auth data are
+# required to be present in the data-only snapshot.
 exclude_args=()
 while IFS= read -r table; do
   [[ -z "$table" ]] && continue
   case "$table" in
-    auth.schema_migrations|storage.migrations) ;;
-    *) echo "Unapproved Supabase table exclusion: $table" >&2; exit 1 ;;
+    auth.schema_migrations|storage.migrations)
+      # Recreated by provisioning the target image; no user records.
+      ;;
+    auth.*|storage.*)
+      # Catalog names are quoted by PostgreSQL; reject unexpected identifiers
+      # before ever embedding a name in a SQL command.
+      if [[ ! "$table" =~ ^(auth|storage)\.[a-z_][a-z_0-9]*$ ]]; then
+        echo "Unexpected table identifier in excluded list" >&2
+        exit 1
+      fi
+      rows="$(PGPASSWORD="${POSTGRES_PASSWORD:?}" psql -v ON_ERROR_STOP=1 -qAt \
+        -h "${DB_HOST:-db}" -U postgres -d postgres \
+        -c "SELECT count(*) FROM $table")" || {
+        echo "Cannot certify that protected table $table is empty; refusing backup" >&2
+        exit 1
+      }
+      if [[ "$rows" != "0" ]]; then
+        echo "Refusing to omit nonempty provider-owned table: $table" >&2
+        exit 1
+      fi
+      ;;
+    *)
+      echo "Refusing to omit application data: $table" >&2
+      exit 1
+      ;;
   esac
   exclude_args+=("--exclude-table-data=$table")
 done < "$excluded"
