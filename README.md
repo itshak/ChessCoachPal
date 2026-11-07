@@ -37,6 +37,7 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 - [Remove CogNote legacy and secure data](openspec/changes/remove-cognote-legacy-and-secure-data/proposal.md)
 - [Verify self-hosting and release v0.1.0](openspec/changes/verify-self-hosting-and-release-v0-1-0/proposal.md)
 - [Archived, incomplete original plan](openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md)
+- [Chess learning (observations, approval, Lichess study links)](docs/CHESS_LEARNING.md)
 - [Agent interface](docs/AI_AGENTS.md)
 - [Remote ChatGPT / Claude connection guide (not yet live-verified)](docs/AI_CONNECTORS.md)
 - [Final local client smoke test before publishing v0.1.0](docs/LOCAL_CLIENT_ACCEPTANCE.md)
