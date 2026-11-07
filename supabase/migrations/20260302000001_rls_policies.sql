@@ -117,3 +117,20 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.session_participants TO service_r
 REVOKE ALL ON TABLE
   public.workplaces, public.workplace_enrollments, public.class_groups, public.group_enrollments,
   public.teaching_sessions, public.session_participants, public.session_attendance FROM anon;
+
+
+-- Milestone 3: private teacher-only learning records. No anon or student token
+-- exposure. Composite foreign keys in the baseline enforce parent ownership.
+ALTER TABLE public.chess_skill_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chess_observations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chess_learning_resources ENABLE ROW LEVEL SECURITY;
+CREATE POLICY chess_skill_categories_teacher ON public.chess_skill_categories
+  FOR ALL TO authenticated USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
+CREATE POLICY chess_observations_teacher ON public.chess_observations
+  FOR ALL TO authenticated USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
+CREATE POLICY chess_learning_resources_teacher ON public.chess_learning_resources
+  FOR ALL TO authenticated USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
+REVOKE ALL ON TABLE public.chess_skill_categories, public.chess_observations,
+  public.chess_learning_resources FROM anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.chess_skill_categories,
+  public.chess_observations, public.chess_learning_resources TO authenticated, service_role;
