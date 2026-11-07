@@ -21,7 +21,7 @@ describe("toPdfSafeText", () => {
 describe("buildInvoicePdf", () => {
   it("builds a PDF when a line item includes emoji in the student name", async () => {
     const bytes = await buildInvoicePdf({
-      studioName: "Morales Piano Studio",
+      studioName: "Chess Teacher Example",
       familyName: "Morales family",
       periodStart: "2026-08-01",
       periodEnd: "2026-08-10",

@@ -32,12 +32,12 @@ describe("requestOrigin", () => {
   });
 
   it("prefers the configured site URL over the request", () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://cognote.example.com";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://chesscoachpal.example.com";
     expect(
       requestOrigin(
         stubRequest({ host: "localhost:3000", forwardedHost: "edge.internal" })
       )
-    ).toBe("https://cognote.example.com");
+    ).toBe("https://chesscoachpal.example.com");
   });
 
   it("normalises the configured value (trailing slash, path, query)", () => {
@@ -58,11 +58,11 @@ describe("requestOrigin", () => {
     expect(
       requestOrigin(
         stubRequest({
-          forwardedHost: "cognote.limspot.org",
+          forwardedHost: "chesscoachpal.example.org",
           forwardedProto: "https",
         })
       )
-    ).toBe("https://cognote.limspot.org");
+    ).toBe("https://chesscoachpal.example.org");
   });
 
   it("honours x-forwarded-host and x-forwarded-proto when unset", () => {
@@ -71,11 +71,11 @@ describe("requestOrigin", () => {
       requestOrigin(
         stubRequest({
           host: "10.0.0.5:3000",
-          forwardedHost: "cognote.limspot.org",
+          forwardedHost: "chesscoachpal.example.org",
           forwardedProto: "https",
         })
       )
-    ).toBe("https://cognote.limspot.org");
+    ).toBe("https://chesscoachpal.example.org");
   });
 
   it("assumes https for a bare Host header — why the Docker stack sets the URL", () => {

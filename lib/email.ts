@@ -34,7 +34,7 @@ export interface SendEmailArgs {
   bcc?: string | string[];
   /** Per-teacher: the teacher's contact email. Parent replies go here. */
   replyTo?: string;
-  /** Per-teacher: display name, e.g. `"Morales Piano Studio (via ChessCoachPal)"`. */
+  /** Per-teacher: display name, e.g. `"Example Chess Coach (via ChessCoachPal)"`. */
   fromName?: string;
   /**
    * The recipient family's portal link. When set, a footer with the
@@ -54,7 +54,7 @@ export interface SendEmailResult {
 /** Exported for tests. */
 export function fromHeader(fromName?: string): string {
   const address =
-    process.env.EMAIL_FROM_ADDRESS ?? "notifications@cognote.studio";
+    process.env.EMAIL_FROM_ADDRESS ?? "notifications@chesscoachpal.invalid";
   const name = fromName?.trim() || "ChessCoachPal Studio";
   // Quote the display name; strip quotes/newlines it can't contain.
   return `"${name.replace(/["\r\n]/g, "")}" <${address}>`;
@@ -133,11 +133,11 @@ export async function sendEmail(rawArgs: SendEmailArgs): Promise<SendEmailResult
       return sendWithSmtp(args);
     default:
       console.log(
-        `[email no-op — EMAIL_PROVIDER=${provider}] to=${recipients.join(", ")}` +
+        `[email no-op — EMAIL_PROVIDER=${provider}] recipientCount=${recipients.length}` +
           (args.bcc?.length ? ` bcc=${args.bcc.length}` : "") +
-          ` subject="${args.subject}"` +
+          " subject=[redacted]" +
           (args.attachments?.length
-            ? ` attachments=${args.attachments.map((a) => a.filename).join(",")}`
+            ? ` attachmentCount=${args.attachments.length}`
             : "")
       );
       return { sent: false, error: "Email is not configured" };
@@ -200,7 +200,7 @@ async function sendWithSmtp({
   const host = process.env.SMTP_HOST ?? "127.0.0.1";
   const port = Number(process.env.SMTP_PORT ?? 54325);
   const fromAddress =
-    process.env.EMAIL_FROM_ADDRESS ?? "notifications@cognote.studio";
+    process.env.EMAIL_FROM_ADDRESS ?? "notifications@chesscoachpal.invalid";
 
   try {
     await sendViaSmtp({

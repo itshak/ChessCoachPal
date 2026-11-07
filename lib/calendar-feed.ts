@@ -36,9 +36,9 @@ function utcParts(iso: string): [number, number, number, number, number] {
 
 /**
  * One lesson -> one event. UID is stable per lesson id so clients update.
- * `lessonLabel` is the studio's subject ("Piano", "Violin"); an empty label
+ * `lessonLabel` is the class subject ("Chess", "Chess club"); an empty label
  * keeps the neutral "Lesson" wording, since no studio is assumed to teach
- * piano.
+ * any subject.
  */
 export function lessonEvent(
   l: FeedLesson,
@@ -47,7 +47,7 @@ export function lessonEvent(
 ): EventAttributes {
   const label = lessonLabel.trim();
   return {
-    uid: `${l.id}@cognote.studio`,
+    uid: `${l.id}@chesscoachpal.invalid`,
     start: utcParts(l.starts_at),
     startInputType: "utc",
     startOutputType: "utc",
@@ -57,14 +57,14 @@ export function lessonEvent(
   };
 }
 
-/** One studio event (recital). UID is stable per event id. */
+/** One coaching event (e.g. tournament). UID is stable per event id. */
 export function studioEvent(e: FeedEvent, calName: string): EventAttributes {
   const start = new Date(e.starts_at);
   const end = e.ends_at ? new Date(e.ends_at) : null;
   const minutes =
     end && end > start ? Math.round((end.getTime() - start.getTime()) / 60000) : 60;
   return {
-    uid: `${e.id}@cognote.studio`,
+    uid: `${e.id}@chesscoachpal.invalid`,
     start: utcParts(e.starts_at),
     startInputType: "utc",
     startOutputType: "utc",

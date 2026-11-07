@@ -33,7 +33,7 @@ describe("isLocalHostname", () => {
     expect(isLocalHostname("localhost")).toBe(true);
     expect(isLocalHostname("127.0.0.1")).toBe(true);
     expect(isLocalHostname("::1")).toBe(true);
-    expect(isLocalHostname("cognote.studio")).toBe(false);
+    expect(isLocalHostname("example.org")).toBe(false);
   });
 });
 
@@ -41,7 +41,7 @@ describe("shouldShowLocalDevAuthHints", () => {
   it("never shows developer copy on hosted, including localhost hosted testing", () => {
     expect(
       shouldShowLocalDevAuthHints({
-        hostname: "cognote.studio",
+        hostname: "example.org",
         isHosted: true,
       })
     ).toBe(false);
@@ -76,7 +76,7 @@ describe("authFormErrorFromUnknown", () => {
   it("keeps local Docker instructions out of hosted and production detail", () => {
     const hosted = authFormErrorFromUnknown(new Error("Failed to fetch"), {
       isLocal: shouldShowLocalDevAuthHints({
-        hostname: "cognote.studio",
+        hostname: "example.org",
         isHosted: true,
       }),
     });
