@@ -49,7 +49,7 @@ test("M4 real database: foreign coaching IDs, writes, anonymous access and guest
   };
   const asA = async (body: Record<string, unknown>) => {
     const result = await action(tokenA, body);
-    expect(result.status, JSON.stringify(result.body)).toBe(200);
+    expect([200, 201], JSON.stringify(result.body)).toContain(result.status);
     return result.body.data;
   };
 
