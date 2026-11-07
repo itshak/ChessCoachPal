@@ -113,7 +113,7 @@ export async function sessionsList(db: Db, teacherId: string) {
 /** Reject malformed instants and invalid durations before database writes. */
 export function assertSessionSchedule(startsAt: string, durationMinutes: number) {
   if (typeof startsAt !== "string" ||
-      !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(startsAt) ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(startsAt) ||
       !Number.isFinite(Date.parse(startsAt))) {
     throw new CoachError("VALIDATION_ERROR", 400, "Start time must be a valid ISO 8601 instant with an explicit UTC offset");
   }
@@ -321,7 +321,7 @@ export async function sessionsUpdate(
   }
 ) {
   if (updates.startsAt !== undefined || updates.durationMinutes !== undefined) {
-    if (updates.startsAt !== undefined && (typeof updates.startsAt !== "string" || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(updates.startsAt) || !Number.isFinite(Date.parse(updates.startsAt)))) {
+    if (updates.startsAt !== undefined && (typeof updates.startsAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(updates.startsAt) || !Number.isFinite(Date.parse(updates.startsAt)))) {
       throw new CoachError("VALIDATION_ERROR", 400, "Start time must be a valid ISO 8601 instant with an explicit UTC offset");
     }
     if (updates.durationMinutes !== undefined && (!Number.isInteger(updates.durationMinutes) || updates.durationMinutes < 1 || updates.durationMinutes > 1440)) {
