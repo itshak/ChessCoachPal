@@ -1,5 +1,9 @@
 # ChatGPT and Claude agent integration
 
+## Implementation checkpoint — NOT requirement acceptance
+
+PR #5 partially implements the MCP transport, delegated scopes, private tokens, discovery, teacher-scoped queries, singular attendance preview/record, shared lesson note updates and idempotent revision checks. The automated synthetic client passed CI and fresh-stack E2E, but neither real ChatGPT nor Claude has been connected. Unsupported generalized CRUD, rescheduling, bulk and resource writes remain omitted. All original requirements below remain binding until independently evidenced; this note does not narrow their scope.
+
 ## ADDED Requirements
 
 ### Requirement: Usable authenticated tools in both AI ecosystems

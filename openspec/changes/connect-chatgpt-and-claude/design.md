@@ -21,6 +21,12 @@ Keep the experimental /api/agent/v1 route only if useful as an internal implemen
 - Results include minimal safe receipt (operation, affected IDs, revision, timestamp) and typed error codes. Audit actor, action, auth client, IDs and safe metadata, **not** student text/LLM prompts, tokens or private links.
 - Keep teacher-facing website correction as a full fallback during any client or provider outage.
 
+## Implementation checkpoint (does not close acceptance)
+
+PR #5 uses a Zod contract for MCP tools and a generated OpenAPI view. Its safe subset reads the existing teacher-scoped coaching data via the shared service and performs revision-checked individual attendance and lesson topic writes with transaction-scoped Postgres RPCs. OAuth tokens are hashed at rest; encrypted delegated teacher sessions are server-only; refresh and revocation are scoped to individual client grants.
+
+Still missing are broader student/workplace/group/scheduling/resource mutations, a dedicated MCP two-teacher test, provider integration evidence, per-client write auditing and a completed public-endpoint abuse-controls review. Unconfirmed bulk and destructive operations remain unavailable rather than being silently invoked.
+
 ## Verification
 
 Test web and MCP requests against a fresh local stack, and test **actual** ChatGPT and Claude client sessions (not only mock HTTP). Include token expiry/revocation, two teachers, duplicate/reordered calls, ambiguity, stale update, partial provider outage and website edit parity. Log sanitized command/results and tested platform/version in docs/STATUS.md.

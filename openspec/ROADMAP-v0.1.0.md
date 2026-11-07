@@ -1,13 +1,13 @@
 # ChessCoachPal — OpenSpec roadmap to v0.1.0
 
-**Status:** Milestone 1 accepted, milestones 2–5 proposed · **updated:** 2026-11-07 · **version today:** 0.0.0 (unreleased)
+**Status:** Milestone 1 accepted, Milestone 2 initial gateway verified but NOT accepted, milestones 3–5 proposed · **updated:** 2026-11-07 · **version today:** 0.0.0 (unreleased)
 
 ## One release, five actionable milestones
 
 | Order | OpenSpec change | Outcome | Prerequisites |
 | --- | --- | --- | --- |
 | 1 | [complete-coaching-workflows](changes/archive/2026-11-07-complete-coaching-workflows/proposal.md) — **ACCEPTED** | Teacher-owned workplaces, students, group/private sessions, attendance, policy, notes and website workflow; [PR #4](https://github.com/itshak/ChessCoachPal/pull/4) merged | [CI 42407121579](https://github.com/itshak/ChessCoachPal/actions/runs/42407121579), [E2E 42407121512](https://github.com/itshak/ChessCoachPal/actions/runs/42407121512) |
-| 2 | [connect-chatgpt-and-claude](changes/connect-chatgpt-and-claude/proposal.md) | Real authenticated ChatGPT/Claude tool clients operate on the same records, with safe writes and reconciliation | Coaching domain/service contracts from #1; security review concurrent |
+| 2 | [connect-chatgpt-and-claude](changes/connect-chatgpt-and-claude/proposal.md) — **IN PROGRESS / NOT ACCEPTED** | Real authenticated ChatGPT/Claude tool clients operate on the same records, with safe writes and reconciliation | Coaching domain/service contracts from #1; security review concurrent |
 | 3 | [add-chess-learning-basics](changes/add-chess-learning-basics/proposal.md) | Chess skill observations and selected study/resource links replace music-specific teaching semantics | Core student/session records from #1 |
 | 4 | [remove-cognote-legacy-and-secure-data](changes/remove-cognote-legacy-and-secure-data/proposal.md) | Clean chess-only baseline, tested teacher isolation, privacy/licensing audits and reliable branding | Coordinate schema changes with #1; security findings gate #2 and #5 |
 | 5 | [verify-self-hosting-and-release-v0-1-0](changes/verify-self-hosting-and-release-v0-1-0/proposal.md) | Verified fresh self-host, backup/restore, complete release gates and actual GitHub v0.1.0 release with sources and changelog | #1–#4 accepted and all release readiness checks passed |
@@ -37,7 +37,8 @@ The change numbers indicate **release outcomes**, not mandatory serial execution
 - **Merged main:** CogNote-derived baseline, initial ChessCoachPal brand, ADR-0001, GitHub Actions CI/release workflow, 0.0.0 development version. CI typecheck/unit/Docker/Compose pass in main run [42394424081](https://github.com/itshak/ChessCoachPal/actions/runs/42394424081).
 - **Milestone 1 accepted:** [PR #4](https://github.com/itshak/ChessCoachPal/pull/4) merged as main commit [a87fb63](https://github.com/itshak/ChessCoachPal/commit/a87fb63a8440a358d039187be48fce5a14609e36); [CI 42407121579](https://github.com/itshak/ChessCoachPal/actions/runs/42407121579) passed typecheck/unit/Docker/Compose, [E2E 42407121512](https://github.com/itshak/ChessCoachPal/actions/runs/42407121512) passed 25 browser tests, 5 skipped, fresh synthetic Supabase database. The PWA and coaching selectors have been fixed.
 - **Superseded:** coaching [PR #1](https://github.com/itshak/ChessCoachPal/pull/1) closed unmerged and replaced by accepted PR #4.
-- **Unverified/not implemented:** native MCP/OAuth, tested ChatGPT/Claude integration, full security/privacy audit, backup/restore, complete chess learning features. The repository is public; an audit must not be assumed completed.
+- **Milestone 2 partial verification:** [PR #5](https://github.com/itshak/ChessCoachPal/pull/5) implements a limited MCP/OAuth gateway and safe read/write tools. Synthetic [CI 42410931916](https://github.com/itshak/ChessCoachPal/actions/runs/42410931916) and fresh-stack [E2E 42410931858](https://github.com/itshak/ChessCoachPal/actions/runs/42410931858) passed (26 browser tests, 5 skipped). The [enhanced E2E 42411589288](https://github.com/itshak/ChessCoachPal/actions/runs/42411589288) also passes synthetic MCP two-teacher isolation, ambiguity, expiry, refresh and revocation tests (26 passed, 5 skipped). Actual ChatGPT/Claude demos, the full domain tool scope and comprehensive security review are still required; the change stays active.
+- **Unverified/not complete:** real ChatGPT/Claude interoperability, full Milestone 2 tool scope, security/privacy audit, backup/restore, and complete chess learning features. The repository is public; an audit must not be assumed completed.
 
 ## Historical record
 

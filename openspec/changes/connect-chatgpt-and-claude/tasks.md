@@ -1,6 +1,8 @@
 # Tasks — connect-chatgpt-and-claude
 
-All tasks start unchecked. Close only with code merged to main, observed automated checks and sanitized actual-client demonstrations documented in docs/STATUS.md.
+Check individual tasks only with main-merged code and observed verification; real-client tasks additionally require sanitized actual-client demonstrations in docs/STATUS.md.
+
+**Milestone 2 checkpoint (not accepted):** PR #5 has passing synthetic [CI 42410931916](https://github.com/itshak/ChessCoachPal/actions/runs/42410931916) and [E2E 42410931858](https://github.com/itshak/ChessCoachPal/actions/runs/42410931858). Implemented subset: MCP/OAuth discovery, client revocation, teacher-scoped read tools, singular attendance and session-note writes with idempotency and optimistic revisions. Real ChatGPT/Claude demonstrations, broader CRUD/scheduling/resources and comprehensive security acceptance remain open. Supplemental [CI 42411589348](https://github.com/itshak/ChessCoachPal/actions/runs/42411589348) and [E2E 42411589288](https://github.com/itshak/ChessCoachPal/actions/runs/42411589288) pass independent **synthetic** MCP cross-teacher isolation, ambiguous-name denial and access-expiry/refresh/revocation checks. Keep this change active; do not archive prematurely.
 
 - [ ] 2.1 Finalize a typed command/query catalogue shared by web UI and tool transports; define schemas for initial operations.
 - [ ] 2.2 Publish machine-readable MCP tool discovery and suitable OpenAPI schema, checking both from one source contract.

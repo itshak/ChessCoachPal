@@ -2,7 +2,7 @@
 
 **Your friendly chess-coaching assistant.**
 
-ChessCoachPal is an **MIT-licensed, self-hostable, AI-agent-first workspace for chess teachers**. The intended primary input is authenticated ChatGPT/Claude tools, with a website for browsing, correcting, editing, scheduling and reporting. **AI-client integration is not implemented yet**; all core website features are designed to work without an AI subscription.
+ChessCoachPal is an **MIT-licensed, self-hostable, AI-agent-first workspace for chess teachers**. The intended primary input is authenticated ChatGPT/Claude tools, with a website for browsing, correcting, editing, scheduling and reporting. **Remote MCP/OAuth integration is under pre-release verification**; real ChatGPT/Claude client interoperability has not yet been demonstrated. All core website features work without an AI subscription.
 
 The project is built from [CogNote](https://github.com/andresjmorales/cognote), the MIT-licensed teacher-management application created by Andres Jaime Morales. See [source attribution](docs/UPSTREAM.md).
 
@@ -17,7 +17,7 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 
 ## Status
 
-**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, while the first chess-coaching service/UI is in an unmerged draft PR and real ChatGPT/Claude connectors are not yet implemented. Core functionality, security review and E2E acceptance remain incomplete. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
+**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, Milestone 1 coaching workflows have merged. Milestone 2 MCP/OAuth tooling is under implementation and client validation; real ChatGPT/Claude demos, full security review and v0.1.0 release acceptance remain incomplete. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
 
 ## Versions and releases
 
@@ -37,6 +37,7 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 - [Verify self-hosting and release v0.1.0](openspec/changes/verify-self-hosting-and-release-v0-1-0/proposal.md)
 - [Archived, incomplete original plan](openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md)
 - [Agent interface](docs/AI_AGENTS.md)
+- [Remote ChatGPT / Claude connection guide (unverified)](docs/AI_CONNECTORS.md)
 - [Public market landscape](docs/MARKET_RESEARCH.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Branding](docs/BRANDING.md)
