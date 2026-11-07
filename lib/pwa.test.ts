@@ -63,7 +63,7 @@ describe("service worker cache policy", () => {
       "/",
       "/lessons",
       "/offline",
-      "/icons/icon-192.png",
+      "/icon/chesscoachpal.svg",
       "/students/portal-notes",
       "/help/offline-tips",
       "/api-key-settings",
