@@ -24,7 +24,7 @@ const secretMatchers=[
   ["openai_secret",/\bsk-(?:proj-)?[A-Za-z0-9_-]{35,}\b/g],
   ["slack_token",/\bxox[baprs]-[A-Za-z0-9-]{25,}\b/g],
   ["supabase_jwt",/\b(?:SUPABASE_SERVICE_ROLE_KEY|SERVICE_ROLE_KEY)\s*[:=]\s*["']?eyJ[A-Za-z0-9_-]{70,}/g],
-  ["embedded_db_password",/\bpostgres(?:ql)?:\/\/[^:@/\s]+:[^@/\s]{12,}@[^\s"'<>]+/g],
+  ["embedded_db_password",/\bpostgres(?:ql)?:\/\/[^:@/\s]+:(?!\$\{[^}\n]+\}@)[^@/\s]{12,}@[^\s"'<>]+/g],
 ];
 let scanned=0,skipped=0;const findings=[];const noteworthy=[];
 for(let i=0;i<blobShas.length;i+=70){
