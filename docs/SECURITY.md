@@ -1,10 +1,10 @@
 # Privacy, secrets and publication safety
 
-**Status: private; publication approval NOT granted.**
+**Status: repository is public, but historical publication/privacy audit is NOT completed.**
 
 ChessCoachPal serves chess coaches and may eventually hold minors' records. The repository SHALL contain only public source, safe defaults and synthetic examples. Real names, workplace identities, report URLs, cloud service IDs, secrets and personal records belong outside Git.
 
-## Before publishing
+## Public repository: outstanding audit and remediation
 
 1. Audit all files in the replacement root for secrets, real personal data, private asset URLs and unnecessary third-party datasets.
 2. Audit the ORIGINAL repository history, branches, tags, GitHub Actions logs/artifacts, cached commit URLs and any pull-request refs.
