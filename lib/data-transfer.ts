@@ -1,343 +1,162 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const DATA_EXPORT_VERSION = 2 as const;
-/** v1 files (pre music/events/profile) import fine; missing tables are empty. */
-const SUPPORTED_IMPORT_VERSIONS: readonly number[] = [1, 2];
-
+/**
+ * ChessCoachPal pre-1.0 backup format. No CogNote/music import compatibility.
+ * OAuth grants, access tokens, provider secrets, Stripe identifiers and
+ * uploaded binary objects are deliberately excluded from portable exports.
+ */
+export const DATA_EXPORT_VERSION = 1 as const;
 export type StudioDataExport = {
   version: number;
   exportedAt: string;
   teacherId: string;
-  /** Non-entitlement profile subset (v2+). Never includes hosted/Stripe fields. */
   teacher_profile?: { display_name?: string } | null;
-  tables: {
-    studio_policies: Record<string, unknown> | null;
-    guardians: Record<string, unknown>[];
-    students: Record<string, unknown>[];
-    plans: Record<string, unknown>[];
-    lesson_slots: Record<string, unknown>[];
-    lessons: Record<string, unknown>[];
-    attendance: Record<string, unknown>[];
-    lesson_notes: Record<string, unknown>[];
-    student_plans: Record<string, unknown>[];
-    practice_sessions: Record<string, unknown>[];
-    note_attempts: Record<string, unknown>[];
-    flashcard_progress: Record<string, unknown>[];
-    skill_dimensions: Record<string, unknown>[];
-    skill_assessments: Record<string, unknown>[];
-    invoices: Record<string, unknown>[];
-    invoice_items: Record<string, unknown>[];
-    payments: Record<string, unknown>[];
-    // v2 additions (absent in v1 files)
-    music_library_items?: Record<string, unknown>[];
-    sheet_music_assignments?: Record<string, unknown>[];
-    events?: Record<string, unknown>[];
-    event_students?: Record<string, unknown>[];
-    event_rsvps?: Record<string, unknown>[];
-    credit_packages?: Record<string, unknown>[];
-    credit_redemptions?: Record<string, unknown>[];
-  };
+  tables: Record<string, Record<string, unknown>[] | Record<string, unknown> | null>;
 };
+
+const POLICY_SECRET_FIELDS = [
+  "stripe_secret_key", "stripe_publishable_key", "stripe_webhook_secret", "ai_api_key",
+] as const;
+
+/** Order respects FK dependencies when imported into a different teacher. */
+const IMPORT_ORDER = [
+  "studio_policies", "guardians", "students", "workplaces", "class_groups",
+  "workplace_enrollments", "group_enrollments", "teaching_sessions",
+  "session_participants", "session_attendance", "chess_skill_categories",
+  "chess_observations", "chess_learning_resources", "lesson_slots", "lessons",
+  "attendance", "lesson_notes", "skill_dimensions", "skill_assessments",
+  "invoices", "invoice_items", "payments", "events", "event_students",
+  "event_rsvps", "credit_packages", "credit_redemptions",
+] as const;
+
+const TEACHER_SCOPED = [
+  "guardians", "students", "workplaces", "class_groups",
+  "workplace_enrollments", "group_enrollments", "teaching_sessions",
+  "session_participants", "session_attendance", "chess_skill_categories",
+  "chess_observations", "chess_learning_resources", "lesson_slots", "lessons",
+  "skill_dimensions", "invoices", "events", "credit_packages", "credit_redemptions",
+] as const;
+const TEACHER_SCOPED_SET = new Set<string>(TEACHER_SCOPED);
 
 function asRows(data: unknown): Record<string, unknown>[] {
   return (data as Record<string, unknown>[] | null) ?? [];
 }
-
-/**
- * BYO payment/AI credentials never leave the account in an export file.
- * (Old export files that still contain them import fine; the keys are just
- * re-saved as configured.)
- */
-const POLICY_SECRET_FIELDS = [
-  "stripe_secret_key",
-  "stripe_publishable_key",
-  "stripe_webhook_secret",
-  "ai_api_key",
-] as const;
-
-function stripPolicySecrets(
+function ids(rows: Record<string, unknown>[]): string[] {
+  return rows.map(row => row.id).filter((id): id is string => typeof id === "string");
+}
+function policyWithoutSecrets(
   policy: Record<string, unknown> | null
 ): Record<string, unknown> | null {
-  if (!policy) return policy;
-  const cleaned = { ...policy };
-  for (const field of POLICY_SECRET_FIELDS) {
-    cleaned[field] = null;
-  }
-  return cleaned;
+  if (!policy) return null;
+  const sanitized = { ...policy };
+  for (const field of POLICY_SECRET_FIELDS) sanitized[field] = null;
+  return sanitized;
 }
 
-/** Fetch every teacher-owned row for backup / migration. */
 export async function buildStudioExport(
   supabase: SupabaseClient,
   teacherId: string
 ): Promise<StudioDataExport> {
-  const [
-    policyRes,
-    guardiansRes,
-    studentsRes,
-    plansRes,
-    slotsRes,
-    lessonsRes,
-    dimensionsRes,
-    invoicesRes,
-    musicRes,
-    eventsRes,
-    profileRes,
-    creditPackagesRes,
-    creditRedemptionsRes,
-  ] = await Promise.all([
-    supabase.from("studio_policies").select("*").eq("teacher_id", teacherId).maybeSingle(),
-    supabase.from("guardians").select("*").eq("teacher_id", teacherId),
-    supabase.from("students").select("*").eq("teacher_id", teacherId),
-    supabase.from("plans").select("*").eq("teacher_id", teacherId),
-    supabase.from("lesson_slots").select("*").eq("teacher_id", teacherId),
-    supabase.from("lessons").select("*").eq("teacher_id", teacherId),
-    supabase.from("skill_dimensions").select("*").eq("teacher_id", teacherId),
-    supabase.from("invoices").select("*").eq("teacher_id", teacherId),
-    supabase.from("music_library_items").select("*").eq("teacher_id", teacherId),
-    supabase.from("events").select("*").eq("teacher_id", teacherId),
-    supabase.from("teachers").select("display_name").eq("id", teacherId).maybeSingle(),
-    supabase.from("credit_packages").select("*").eq("teacher_id", teacherId),
-    supabase.from("credit_redemptions").select("*").eq("teacher_id", teacherId),
-  ]);
+  const tables: StudioDataExport["tables"] = {};
+  const policy = await supabase.from("studio_policies").select("*").eq("teacher_id", teacherId).maybeSingle();
+  if (policy.error) throw new Error(`Export studio_policies: ${policy.error.message}`);
+  tables.studio_policies = policyWithoutSecrets(policy.data as Record<string, unknown> | null);
 
-  const students = asRows(studentsRes.data);
-  const studentIds = students.map((s) => s.id as string);
-  const lessonIds = asRows(lessonsRes.data).map((l) => l.id as string);
-  const planIds = asRows(plansRes.data).map((p) => p.id as string);
-  const dimensionIds = asRows(dimensionsRes.data).map((d) => d.id as string);
-  const invoiceIds = asRows(invoicesRes.data).map((i) => i.id as string);
-  const musicItemIds = asRows(musicRes.data).map((m) => m.id as string);
-  const eventIds = asRows(eventsRes.data).map((e) => e.id as string);
+  for (const table of TEACHER_SCOPED) {
+    const { data, error } = await supabase.from(table).select("*").eq("teacher_id", teacherId);
+    if (error) throw new Error(`Export ${table}: ${error.message}`);
+    tables[table] = asRows(data);
+  }
 
-  const [
-    attendanceRes,
-    notesRes,
-    studentPlansRes,
-    assessmentsRes,
-    itemsRes,
-    paymentsRes,
-  ] = await Promise.all([
-    lessonIds.length
-      ? supabase.from("attendance").select("*").in("lesson_id", lessonIds)
-      : Promise.resolve({ data: [] }),
-    lessonIds.length
-      ? supabase.from("lesson_notes").select("*").in("lesson_id", lessonIds)
-      : Promise.resolve({ data: [] }),
-    studentIds.length
-      ? supabase.from("student_plans").select("*").in("student_id", studentIds)
-      : Promise.resolve({ data: [] }),
-    studentIds.length && dimensionIds.length
-      ? supabase.from("skill_assessments").select("*").in("student_id", studentIds)
-      : Promise.resolve({ data: [] }),
-    invoiceIds.length
-      ? supabase.from("invoice_items").select("*").in("invoice_id", invoiceIds)
-      : Promise.resolve({ data: [] }),
-    invoiceIds.length
-      ? supabase.from("payments").select("*").in("invoice_id", invoiceIds)
-      : Promise.resolve({ data: [] }),
-  ]);
+  async function children(table: string, fk: string, parents: string[]) {
+    if (!parents.length) { tables[table] = []; return; }
+    const rows: Record<string, unknown>[] = [];
+    for (let start = 0; start < parents.length; start += 200) {
+      const { data, error } = await supabase.from(table).select("*").in(fk, parents.slice(start, start + 200));
+      if (error) throw new Error(`Export ${table}: ${error.message}`);
+      rows.push(...asRows(data));
+    }
+    tables[table] = rows;
+  }
 
-  const [musicAssignmentsRes, eventStudentsRes, eventRsvpsRes] = await Promise.all([
-    musicItemIds.length
-      ? supabase
-          .from("sheet_music_assignments")
-          .select("*")
-          .in("music_item_id", musicItemIds)
-      : Promise.resolve({ data: [] }),
-    eventIds.length
-      ? supabase.from("event_students").select("*").in("event_id", eventIds)
-      : Promise.resolve({ data: [] }),
-    eventIds.length
-      ? supabase.from("event_rsvps").select("*").in("event_id", eventIds)
-      : Promise.resolve({ data: [] }),
-  ]);
+  await children("attendance", "lesson_id", ids(asRows(tables.lessons)));
+  await children("lesson_notes", "lesson_id", ids(asRows(tables.lessons)));
+  await children("skill_assessments", "student_id", ids(asRows(tables.students)));
+  await children("invoice_items", "invoice_id", ids(asRows(tables.invoices)));
+  await children("payments", "invoice_id", ids(asRows(tables.invoices)));
+  await children("event_students", "event_id", ids(asRows(tables.events)));
+  await children("event_rsvps", "event_id", ids(asRows(tables.events)));
 
-  const studentPlans = asRows(studentPlansRes.data);
-  const studentPlanIds = studentPlans.map((sp) => sp.id as string);
-
-  const [sessionsRes, flashRes] = await Promise.all([
-    studentPlanIds.length
-      ? supabase.from("practice_sessions").select("*").in("student_plan_id", studentPlanIds)
-      : Promise.resolve({ data: [] }),
-    studentPlanIds.length
-      ? supabase.from("flashcard_progress").select("*").in("student_plan_id", studentPlanIds)
-      : Promise.resolve({ data: [] }),
-  ]);
-
-  const sessions = asRows(sessionsRes.data);
-  const sessionIds = sessions.map((s) => s.id as string);
-
-  const attemptsRes = sessionIds.length
-    ? await supabase.from("note_attempts").select("*").in("session_id", sessionIds)
-    : { data: [] };
-
-  // Drop unused planIds to satisfy lint if needed — keep for clarity of scope
-  void planIds;
+  const { data: profile, error: profileError } = await supabase
+    .from("teachers").select("display_name").eq("id", teacherId).maybeSingle();
+  if (profileError) throw new Error(`Export profile: ${profileError.message}`);
 
   return {
     version: DATA_EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     teacherId,
-    teacher_profile: profileRes.data
-      ? { display_name: (profileRes.data as { display_name?: string }).display_name ?? "" }
-      : null,
-    tables: {
-      studio_policies: stripPolicySecrets(
-        (policyRes.data as Record<string, unknown> | null) ?? null
-      ),
-      guardians: asRows(guardiansRes.data),
-      students,
-      plans: asRows(plansRes.data),
-      lesson_slots: asRows(slotsRes.data),
-      lessons: asRows(lessonsRes.data),
-      attendance: asRows(attendanceRes.data),
-      lesson_notes: asRows(notesRes.data),
-      student_plans: studentPlans,
-      practice_sessions: sessions,
-      note_attempts: asRows(attemptsRes.data),
-      flashcard_progress: asRows(flashRes.data),
-      skill_dimensions: asRows(dimensionsRes.data),
-      skill_assessments: asRows(assessmentsRes.data),
-      invoices: asRows(invoicesRes.data),
-      invoice_items: asRows(itemsRes.data),
-      payments: asRows(paymentsRes.data),
-      // v2: music metadata only; the underlying files stay in Storage and are
-      // not part of the export file.
-      music_library_items: asRows(musicRes.data),
-      sheet_music_assignments: asRows(musicAssignmentsRes.data),
-      events: asRows(eventsRes.data),
-      event_students: asRows(eventStudentsRes.data),
-      event_rsvps: asRows(eventRsvpsRes.data),
-      credit_packages: asRows(creditPackagesRes.data),
-      credit_redemptions: asRows(creditRedemptionsRes.data),
-    },
+    teacher_profile: profile ? { display_name: profile.display_name ?? "" } : null,
+    tables,
   };
 }
 
-function withTeacherId(
-  rows: Record<string, unknown>[],
-  teacherId: string
-): Record<string, unknown>[] {
-  return rows.map((row) => ({ ...row, teacher_id: teacherId }));
+function withTeacherId(rows: Record<string, unknown>[], teacherId: string) {
+  return rows.map(row => ({ ...row, teacher_id: teacherId }));
 }
 
 async function upsertAll(
-  supabase: SupabaseClient,
-  table: string,
-  rows: Record<string, unknown>[]
+  supabase: SupabaseClient, table: string, rows: Record<string, unknown>[]
 ): Promise<string | null> {
-  if (rows.length === 0) return null;
-  // Chunk to avoid payload limits
-  const chunkSize = 200;
-  for (let i = 0; i < rows.length; i += chunkSize) {
-    const chunk = rows.slice(i, i + chunkSize);
-    const { error } = await supabase.from(table).upsert(chunk);
+  for (let i = 0; i < rows.length; i += 200) {
+    const { error } = await supabase.from(table).upsert(rows.slice(i, i + 200));
     if (error) return `${table}: ${error.message}`;
   }
   return null;
 }
 
 /**
- * Restore a studio export into the current teacher's account.
- * Rows keep their original IDs; teacher_id is rewritten to the importer.
- * Existing rows with the same IDs are updated (upsert).
+ * Only restores the explicitly allowed chess/teacher tables; unknown tables
+ * cannot be injected by a malicious export. Cross-owner IDs remain subject
+ * to RLS and tenant-ownership foreign-key constraints.
  */
 export async function importStudioExport(
-  supabase: SupabaseClient,
-  teacherId: string,
-  payload: StudioDataExport
+  supabase: SupabaseClient, teacherId: string, payload: StudioDataExport
 ): Promise<{ ok: true; counts: Record<string, number> } | { ok: false; error: string }> {
-  if (!payload || !SUPPORTED_IMPORT_VERSIONS.includes(payload.version)) {
-    return {
-      ok: false,
-      error: `Unsupported export version (expected one of ${SUPPORTED_IMPORT_VERSIONS.join(", ")})`,
-    };
+  if (!payload || payload.version !== DATA_EXPORT_VERSION || !payload.tables || typeof payload.tables !== "object") {
+    return { ok: false, error: "Unsupported ChessCoachPal export format" };
   }
-  if (!payload.tables || typeof payload.tables !== "object") {
-    return { ok: false, error: "Invalid export: missing tables" };
-  }
-
-  const t = payload.tables;
   const counts: Record<string, number> = {};
-
-  const steps: { name: string; rows: Record<string, unknown>[] }[] = [
-    {
-      name: "studio_policies",
-      rows: t.studio_policies
-        ? [{ ...t.studio_policies, teacher_id: teacherId }]
-        : [],
-    },
-    { name: "guardians", rows: withTeacherId(t.guardians ?? [], teacherId) },
-    { name: "students", rows: withTeacherId(t.students ?? [], teacherId) },
-    { name: "plans", rows: withTeacherId(t.plans ?? [], teacherId) },
-    { name: "lesson_slots", rows: withTeacherId(t.lesson_slots ?? [], teacherId) },
-    { name: "lessons", rows: withTeacherId(t.lessons ?? [], teacherId) },
-    { name: "attendance", rows: t.attendance ?? [] },
-    { name: "lesson_notes", rows: t.lesson_notes ?? [] },
-    { name: "student_plans", rows: t.student_plans ?? [] },
-    { name: "practice_sessions", rows: t.practice_sessions ?? [] },
-    { name: "note_attempts", rows: t.note_attempts ?? [] },
-    { name: "flashcard_progress", rows: t.flashcard_progress ?? [] },
-    {
-      name: "skill_dimensions",
-      rows: withTeacherId(t.skill_dimensions ?? [], teacherId),
-    },
-    { name: "skill_assessments", rows: t.skill_assessments ?? [] },
-    { name: "invoices", rows: withTeacherId(t.invoices ?? [], teacherId) },
-    { name: "invoice_items", rows: t.invoice_items ?? [] },
-    { name: "payments", rows: t.payments ?? [] },
-    // v2 tables; absent (empty) in v1 files
-    {
-      name: "music_library_items",
-      rows: withTeacherId(t.music_library_items ?? [], teacherId),
-    },
-    { name: "sheet_music_assignments", rows: t.sheet_music_assignments ?? [] },
-    { name: "events", rows: withTeacherId(t.events ?? [], teacherId) },
-    { name: "event_students", rows: t.event_students ?? [] },
-    { name: "event_rsvps", rows: t.event_rsvps ?? [] },
-    // Prepaid credits; after invoices and lessons, which they reference.
-    {
-      name: "credit_packages",
-      rows: withTeacherId(t.credit_packages ?? [], teacherId),
-    },
-    {
-      name: "credit_redemptions",
-      rows: withTeacherId(t.credit_redemptions ?? [], teacherId),
-    },
-  ];
-
-  for (const step of steps) {
-    const err = await upsertAll(supabase, step.name, step.rows);
-    if (err) return { ok: false, error: err };
-    counts[step.name] = step.rows.length;
+  for (const table of IMPORT_ORDER) {
+    const source = payload.tables[table];
+    const rows = table === "studio_policies"
+      ? source && !Array.isArray(source) ? [source as Record<string, unknown>] : []
+      : asRows(source);
+    const safe = TEACHER_SCOPED_SET.has(table) || table === "studio_policies"
+      ? withTeacherId(rows, teacherId)
+      : rows;
+    if (table === "studio_policies") {
+      for (const row of safe) for (const field of POLICY_SECRET_FIELDS) delete row[field];
+    }
+    const error = await upsertAll(supabase, table, safe);
+    if (error) return { ok: false, error };
+    counts[table] = rows.length;
   }
 
-  // Teacher profile subset (v2): only fill in a display name if the account
-  // doesn't have one yet. Never touches entitlement or Stripe columns.
   const importedName = payload.teacher_profile?.display_name?.trim();
   if (importedName) {
-    const { data: teacherRow } = await supabase
-      .from("teachers")
-      .select("display_name")
-      .eq("id", teacherId)
-      .maybeSingle();
-    if (teacherRow && !(teacherRow.display_name as string | null)?.trim()) {
-      await supabase
-        .from("teachers")
-        .update({ display_name: importedName })
-        .eq("id", teacherId);
+    const { data: profile } = await supabase.from("teachers").select("display_name").eq("id", teacherId).maybeSingle();
+    if (profile && !profile.display_name?.trim()) {
+      const { error } = await supabase.from("teachers").update({ display_name: importedName }).eq("id", teacherId);
+      if (error) return { ok: false, error: `teacher_profile: ${error.message}` };
       counts.teacher_profile = 1;
     }
   }
-
   return { ok: true, counts };
 }
 
 export function parseExportPayload(raw: unknown): StudioDataExport | null {
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as StudioDataExport;
-  if (!SUPPORTED_IMPORT_VERSIONS.includes(obj.version)) return null;
-  if (!obj.tables || typeof obj.tables !== "object") return null;
+  if (obj.version !== DATA_EXPORT_VERSION || !obj.tables || typeof obj.tables !== "object" || Array.isArray(obj.tables)) return null;
   return obj;
 }
