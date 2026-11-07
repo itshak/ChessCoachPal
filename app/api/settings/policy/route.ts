@@ -10,7 +10,6 @@ import {
   type RateBasis,
 } from "@/lib/schedule";
 import type { AiProviderId } from "@/lib/ai/provider";
-import { isNamingSystem } from "@/lib/symbols";
 import { isValidPaymentQrDataUrl } from "@/lib/payment-qr";
 
 /**
@@ -191,16 +190,6 @@ export async function PUT(req: NextRequest) {
     bccEmail = trimmed || null;
   }
 
-  if (
-    body.noteNamingSystem !== undefined &&
-    !isNamingSystem(body.noteNamingSystem)
-  ) {
-    return NextResponse.json(
-      { error: "Note naming system must be US or UK" },
-      { status: 400 }
-    );
-  }
-
   const upsert: Record<string, unknown> = {
     teacher_id: user.id,
     ...(body.studioName !== undefined && {
@@ -217,9 +206,6 @@ export async function PUT(req: NextRequest) {
     }),
     ...(body.lessonLabel !== undefined && {
       lesson_label: String(body.lessonLabel).trim().slice(0, 60),
-    }),
-    ...(body.noteNamingSystem !== undefined && {
-      note_naming_system: body.noteNamingSystem,
     }),
     ...(durationOptions !== undefined && {
       lesson_duration_options: durationOptions,
@@ -307,18 +293,6 @@ export async function PUT(req: NextRequest) {
     }),
     ...(bccEmail !== undefined && { bcc_email: bccEmail }),
     ...(aiProvider !== undefined && { ai_provider: aiProvider }),
-    ...(body.streaksEnabled !== undefined && {
-      streaks_enabled: Boolean(body.streaksEnabled),
-    }),
-    ...(body.streakCountQuiz !== undefined && {
-      streak_count_quiz: Boolean(body.streakCountQuiz),
-    }),
-    ...(body.streakCountFreePractice !== undefined && {
-      streak_count_free_practice: Boolean(body.streakCountFreePractice),
-    }),
-    ...(body.streakCountFlashcards !== undefined && {
-      streak_count_flashcards: Boolean(body.streakCountFlashcards),
-    }),
   };
 
   // Stripe keys: only overwrite when a new value is pasted, or explicitly

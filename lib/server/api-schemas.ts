@@ -95,56 +95,6 @@ export const guardianCreateSchema = z.object({
 
 export const guardianUpdateSchema = guardianCreateSchema.partial();
 
-// ── Practice plans ──────────────────────────────────────────────────────────
-
-const planFields = z.object({
-  name: trimmedName,
-  isTemplate: z.boolean().optional(),
-  planType: z
-    .enum(["note_identification", "key_signature_identification", "symbol_concepts"])
-    .optional(),
-  clef: z.enum(["treble", "bass", "both"]).optional(),
-  keySignature: z.string().max(40).optional(),
-  includeSharps: z.boolean().optional(),
-  includeFlats: z.boolean().optional(),
-  includeChords: z.boolean().optional(),
-  measuresShown: z.number().int().min(1).max(2).optional(),
-  questionsPerLesson: z.number().int().min(5).max(30).optional(),
-  answerChoices: z.number().int().min(2).max(7).optional(),
-  notes: z.array(z.string().max(10)).max(300).optional(),
-  symbols: z.array(z.record(z.string(), z.unknown())).max(300).optional(),
-  keySigScaleMode: z.enum(["major", "minor", "both"]).optional(),
-  keySignatures: z.array(z.string().max(40)).max(60).optional(),
-  labels: z.array(z.string().max(60)).max(30).optional(),
-  teacherNotes: z.string().max(20_000).optional(),
-  showHints: z.boolean().optional(),
-  timeLimitSeconds: z.number().int().min(0).max(600).optional(),
-});
-
-export const planCreateSchema = planFields;
-export const planUpdateSchema = planFields.partial();
-
-// ── Flashcard reviews (public token route) ──────────────────────────────────
-
-export const flashcardReviewSchema = z
-  .object({
-    itemType: z.enum(["note", "symbol", "key_signature"]).catch("note").optional(),
-    itemId: z.string().max(120).optional(),
-    /** Legacy payload field. */
-    note: z.string().max(120).optional(),
-    clef: z.string().max(20).nullable().optional(),
-    easeFactor: z.number().min(1).max(10),
-    intervalDays: z.number().int().min(0).max(36_500),
-    repetitions: z.number().int().min(0).max(1_000_000),
-    nextReview: z
-      .string()
-      .max(64)
-      .refine((v) => !Number.isNaN(Date.parse(v)), "Expected a valid timestamp"),
-  })
-  .refine((v) => Boolean(v.itemId ?? v.note), {
-    message: "itemId is required",
-  });
-
 // ── Prepaid credits ─────────────────────────────────────────────────────────
 // Value rules (ranges, expiry after start) live in lib/credits.ts.
 

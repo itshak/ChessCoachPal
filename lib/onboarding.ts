@@ -44,8 +44,8 @@ export const WELCOME_NOTIFICATION = {
 
 export const TOUR_QUERY_PARAM = "tour";
 export const TOUR_QUERY_VALUE = "1";
-export const TOUR_STORAGE_KEY = "cognote-onboarding-tour";
-export const TOUR_START_EVENT = "cognote-tour-start";
+export const TOUR_STORAGE_KEY = "chesscoachpal-onboarding-tour";
+export const TOUR_START_EVENT = "chesscoachpal-tour-start";
 
 export type TourStep = {
   id: string;
@@ -80,23 +80,23 @@ export const ONBOARDING_TOUR_STEPS: TourStep[] = [
   {
     id: "families",
     title: "Families and portals",
-    body: "Siblings share one family and one private portal link. Parents open that link with no login to see the schedule, practice links, notes, invoices, and a calendar feed. Reset the link from Families if it was shared too widely.",
+    body: "Siblings share one family and one private portal link. Parents open that link with no login to see the schedule, shared notes, invoices, and a calendar feed. Reset the link from Families if it was shared too widely.",
     target: "families",
     href: "/families",
   },
   {
     id: "schedule",
     title: "Schedule",
-    body: "Add weekly lesson times here. Tap a lesson to mark attendance or write a note. Make-ups use credits from cancellations, based on your studio policy. One-off lessons and recitals (Events tab) show on the week view too.",
+    body: "Add weekly lesson times here. Tap a lesson to mark attendance or write a note. Make-ups use credits from cancellations, based on your studio policy. One-off lessons and tournaments (Events tab) show on the week view too.",
     target: "schedule",
     href: "/schedule",
   },
   {
-    id: "lessons",
-    title: "Lessons and music",
-    body: "Create practice assignments for note reading, key signatures, and symbols, then assign them so the family gets a practice link. The Music tab is for PDF or MusicXML scores; assign pieces and families can view them in the portal.",
-    target: "lessons",
-    href: "/lessons",
+    id: "coaching",
+    title: "Chess lessons and class groups",
+    body: "Manage private or group chess sessions for each workplace, take attendance, and keep lesson notes. Use Chess learning for student observations and study links.",
+    target: "coaching",
+    href: "/coaching",
   },
   {
     id: "billing",

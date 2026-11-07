@@ -129,7 +129,7 @@ export async function createStudentWithOptionalFamily(
       return {
         ok: false,
         error:
-          "Add an email or phone for the parent, or check Adult student, or clear the parent name for practice-only",
+          "Add an email or phone for the parent, or check Adult student, or clear the parent name for a student without family contact",
         status: 400,
       };
     }

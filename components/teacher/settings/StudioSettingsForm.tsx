@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { StudioPolicy } from "@/lib/schedule";
-import type { NamingSystem } from "@/lib/symbols";
 
 const inputClass =
   "px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm";
@@ -19,9 +18,6 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
 
   const [studioName, setStudioName] = useState(policy.studio_name);
   const [lessonLabel, setLessonLabel] = useState(policy.lesson_label);
-  const [noteNaming, setNoteNaming] = useState<NamingSystem>(
-    policy.note_naming_system
-  );
   const [studioWebsite, setStudioWebsite] = useState(policy.studio_website);
   const [studioContact, setStudioContact] = useState(policy.studio_contact);
   const [studioInfo, setStudioInfo] = useState(policy.studio_info);
@@ -67,11 +63,6 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
       body: JSON.stringify({
         studioName,
         lessonLabel,
-        // Only when it changed: an unmigrated database would reject the
-        // whole policy upsert over an untouched new column.
-        ...(noteNaming !== policy.note_naming_system && {
-          noteNamingSystem: noteNaming,
-        }),
         studioWebsite,
         studioContact,
         studioInfo,
@@ -101,7 +92,7 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
             type="text"
             value={studioName}
             onChange={(e) => setStudioName(e.target.value)}
-            placeholder="e.g. Morales Piano Studio"
+            placeholder="e.g. Downtown Chess Club"
             maxLength={120}
             className={`${inputClass} w-full`}
           />
@@ -118,61 +109,15 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
             type="text"
             value={lessonLabel}
             onChange={(e) => setLessonLabel(e.target.value)}
-            placeholder="e.g. Piano"
+            placeholder="e.g. Chess"
             maxLength={60}
             className={`${inputClass} w-full`}
           />
           <span className="block text-xs text-muted mt-1">
-            Names your lessons in the calendar feeds — &quot;Piano&quot; shows
-            &quot;Piano lesson&quot;. Leave blank for a neutral &quot;Lesson&quot;.
+            Names your lessons in the calendar feeds — &quot;Chess&quot; shows
+            &quot;Chess lesson&quot;. Leave blank for a neutral &quot;Lesson&quot;.
           </span>
         </label>
-
-        <fieldset className="text-sm">
-          <legend className="block text-xs font-semibold text-muted mb-1.5">
-            Note names
-          </legend>
-          <div className="flex flex-col gap-2">
-            {(
-              [
-                {
-                  value: "us",
-                  label: "American",
-                  hint: "Whole note, half note, quarter note",
-                },
-                {
-                  value: "uk",
-                  label: "British",
-                  hint: "Semibreve, minim, crotchet",
-                },
-              ] as const
-            ).map((option) => (
-              <label
-                key={option.value}
-                className="flex items-start gap-2 cursor-pointer"
-              >
-                <input
-                  type="radio"
-                  name="noteNamingSystem"
-                  className="mt-0.5"
-                  value={option.value}
-                  checked={noteNaming === option.value}
-                  onChange={() => setNoteNaming(option.value)}
-                />
-                <span className="min-w-0">
-                  <span className="font-medium">{option.label}</span>
-                  <span className="block text-xs text-muted">
-                    {option.hint}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </div>
-          <span className="block text-xs text-muted mt-1.5">
-            Used wherever note values are named — lesson plans, quizzes, and
-            flashcards, including the links your students practise from.
-          </span>
-        </fieldset>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-sm">
@@ -211,7 +156,7 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
             value={studioInfo}
             onChange={(e) => setStudioInfo(e.target.value)}
             placeholder={
-              "Anything families should know: cancellation policy, make-up rules, tuition, recital dates..."
+              "Anything families should know: cancellation policy, make-up rules, tuition, tournament dates..."
             }
             rows={4}
             maxLength={5000}
