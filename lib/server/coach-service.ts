@@ -160,6 +160,17 @@ export async function sessionsCreate(
   return data;
 }
 
+export async function sessionsParticipants(db: Db, teacherId: string, sessionId: string) {
+  const { data: session } = await db.from("teaching_sessions")
+    .select("id").eq("teacher_id", teacherId).eq("id", sessionId).maybeSingle();
+  if (!session) throw notFound();
+  const { data, error } = await db.from("session_participants")
+    .select("student_id,students!inner(name)")
+    .eq("teacher_id", teacherId).eq("session_id", sessionId).limit(100);
+  if (error) throw problem();
+  return data;
+}
+
 export async function attendanceList(db: Db, teacherId: string, sessionId: string) {
   const { data: session } = await db.from("teaching_sessions")
     .select("id").eq("teacher_id", teacherId).eq("id", sessionId).maybeSingle();
@@ -175,18 +186,11 @@ export async function attendanceRecord(
   db: Db, teacherId: string,
   payload: { sessionId: string; studentId: string; status: string; note?: string }
 ) {
-  const { data: session } = await db.from("teaching_sessions")
-    .select("id,group_id,student_id").eq("teacher_id", teacherId)
-    .eq("id", payload.sessionId).maybeSingle();
-  if (!session) throw notFound();
-  if (session.group_id) {
-    const { data: enrollment } = await db.from("group_enrollments")
-      .select("id").eq("teacher_id", teacherId).eq("group_id", session.group_id)
-      .eq("student_id", payload.studentId).maybeSingle();
-    if (!enrollment) throw notFound();
-  } else if (session.student_id !== payload.studentId) {
-    throw notFound();
-  }
+  const { data: participant } = await db.from("session_participants")
+    .select("student_id").eq("teacher_id", teacherId)
+    .eq("session_id", payload.sessionId).eq("student_id", payload.studentId)
+    .maybeSingle();
+  if (!participant) throw notFound();
   const { data, error } = await db.from("session_attendance")
     .upsert({
       teacher_id: teacherId,
