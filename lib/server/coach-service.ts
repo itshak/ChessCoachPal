@@ -117,8 +117,8 @@ export function assertSessionSchedule(startsAt: string, durationMinutes: number)
       !Number.isFinite(Date.parse(startsAt))) {
     throw new CoachError("VALIDATION_ERROR", 400, "Start time must be a valid ISO 8601 instant with an explicit UTC offset");
   }
-  if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) {
-    throw new CoachError("VALIDATION_ERROR", 400, "Duration must be an integer between 1 and 1440 minutes");
+  if (!Number.isInteger(durationMinutes) || durationMinutes < 15 || durationMinutes > 480) {
+    throw new CoachError("VALIDATION_ERROR", 400, "Duration must be an integer between 15 and 480 minutes");
   }
 }
 
@@ -325,7 +325,7 @@ export async function sessionsUpdate(
       throw new CoachError("VALIDATION_ERROR", 400, "Start time must be a valid ISO 8601 instant with an explicit UTC offset");
     }
     if (updates.durationMinutes !== undefined && (!Number.isInteger(updates.durationMinutes) || updates.durationMinutes < 1 || updates.durationMinutes > 1440)) {
-      throw new CoachError("VALIDATION_ERROR", 400, "Duration must be an integer between 1 and 1440 minutes");
+      throw new CoachError("VALIDATION_ERROR", 400, "Duration must be an integer between 15 and 480 minutes");
     }
   }
   const changes: Record<string, unknown> = { updated_at: new Date().toISOString() };
