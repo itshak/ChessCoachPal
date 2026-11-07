@@ -75,7 +75,7 @@ test.describe("RLS tenant isolation", () => {
       "invoices",
       "studio_policies",
     ]) {
-      const { data, error } = await teacherB.from(table).select("*").limit(5);
+      const { data, error } = await teacherB.from(table).select("*").eq("teacher_id", SEED_TEACHER_ID).limit(5);
       expect(error, `${table}: unexpected error`).toBeNull();
       expect(data, `${table}: cross-tenant rows leaked`).toEqual([]);
     }

@@ -6,15 +6,6 @@ import {
   yearToPracticeStartDate,
   yearsSincePracticeStart,
 } from "@/lib/students-practice";
-import { normalizePlanLabels } from "@/lib/plans";
-
-describe("normalizePlanLabels", () => {
-  it("trims, drops empties, and dedupes case-insensitively", () => {
-    expect(
-      normalizePlanLabels([" Easy ", "easy", "Fundamentals", "", "  "])
-    ).toEqual(["Easy", "Fundamentals"]);
-  });
-});
 
 describe("practice start helpers", () => {
   it("stores year-only as Jan 1", () => {

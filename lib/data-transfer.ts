@@ -135,7 +135,7 @@ export async function importStudioExport(
       ? withTeacherId(rows, teacherId)
       : rows;
     if (table === "studio_policies") {
-      for (const row of safe) for (const field of POLICY_SECRET_FIELDS) delete row[field];
+      for (const row of safe) for (const field of POLICY_SECRET_FIELDS) delete (row as Record<string, unknown>)[field];
     }
     const error = await upsertAll(supabase, table, safe);
     if (error) return { ok: false, error };
