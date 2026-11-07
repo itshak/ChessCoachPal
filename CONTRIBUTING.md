@@ -53,13 +53,15 @@ To keep dev running, start the production build elsewhere (`PORT=3001 npm run st
 
 Playwright uses its own browser context — it does not reuse your logged-in Chrome session. Sign-in / create-student can pass against an existing local DB if the seed teacher still exists. Flows that hit fixed seed tokens or named seed students need a successful `db reset` (or equivalent seed data).
 
-## Adding a migration
+## Changing the pre-1.0 schema
+
+Before version `1.0.0`, **never** add incremental upgrade migrations for compatibility. Edit the current canonical fresh-install SQL and RLS policies in place, then initialize a new disposable database. If an existing local development database must be reset, choose that destructive operation intentionally and back it up if any data matters.
 
 ```bash
-npx supabase migration new <description>
-# Edit the generated SQL in supabase/migrations/
-npx supabase db reset --yes
+npx supabase db reset --yes   # only after explicitly deciding the data can be discarded
 ```
+
+See [ADR-0001](docs/adr/0001-pre1-breaking-changes.md). No old CogNote version or earlier ChessCoachPal 0.x installation must be supported.
 
 **Important:** Since May 2026, Supabase does not auto-expose new `public` tables to the Data API ([changelog](https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically)). New tables need an explicit grant with RLS, or the app gets `permission denied` (42501):
 
@@ -85,3 +87,7 @@ Edit the `GLYPHS` map in `scripts/extract-bravura-glyphs.js` for SMuFL code poin
 - [README.md](README.md) — product overview, local setup, production deploy
 - [ARCHITECTURE.md](ARCHITECTURE.md) — structure, schema, APIs
 - [SECURITY.md](SECURITY.md) — secrets and vulnerability reporting
+
+## Preparing a GitHub release
+
+Keep [CHANGELOG.md](CHANGELOG.md) updated as you contribute. The project currently uses unreleased version `0.0.0`. When a functional, tested release is approved, run `npm run release:prepare -- 0.1.0` (or the next version), review and commit the manifest/lock/changelog changes, and merge into `main`. GitHub Actions will run a fresh-install release gate and publish `vX.Y.Z` with changelog and source archives. See [docs/RELEASING.md](docs/RELEASING.md). Do not publish v0.1.0 until the first-functional-release checklist passes.

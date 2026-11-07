@@ -1,0 +1,130 @@
+name: Publish GitHub Release
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - package-lock.json
+      - CHANGELOG.md
+      - scripts/release.mjs
+      - scripts/release-check.mjs
+      - .github/workflows/release.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: chesscoachpal-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Check pending release
+        id: candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p 'require("./package.json").version')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" == "0.0.0" ]]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node scripts/release.mjs validate "$VERSION"
+          git fetch origin main --tags
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || { echo "::error::Release must be current main"; exit 1; }
+          TAG="v${VERSION}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git show-ref --verify --quiet "refs/tags/${TAG}"; then
+            test "$(git rev-parse "refs/tags/${TAG}^{commit}")" = "$(git rev-parse HEAD)" || { echo "::error::Never reuse an existing unpublished tag"; exit 1; }
+          fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+      - name: Install
+        if: steps.candidate.outputs.publish == 'true'
+        run: npm ci
+      - name: Version-tool tests
+        if: steps.candidate.outputs.publish == 'true'
+        run: npm run release:check
+      - name: Typecheck
+        if: steps.candidate.outputs.publish == 'true'
+        run: npm run typecheck
+      - name: Unit tests
+        if: steps.candidate.outputs.publish == 'true'
+        run: npm test
+      - uses: supabase/setup-cli@v1
+        if: steps.candidate.outputs.publish == 'true'
+        with:
+          version: latest
+      - name: Fresh database bootstrap
+        if: steps.candidate.outputs.publish == 'true'
+        run: |
+          supabase start
+          supabase db reset --yes
+      - name: Configure isolated test environment
+        if: steps.candidate.outputs.publish == 'true'
+        run: |
+          eval "$(supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL:-http://127.0.0.1:54321}"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY:-$PUBLISHABLE_KEY}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY:-$SECRET_KEY}"
+            echo "TOKEN_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+          } >> "$GITHUB_ENV"
+      - name: Production build
+        if: steps.candidate.outputs.publish == 'true'
+        run: npm run build
+      - name: Start app
+        if: steps.candidate.outputs.publish == 'true'
+        run: |
+          npm run start &
+          npx --yes wait-on --timeout 60000 http://localhost:3000
+      - name: Playwright Chromium
+        if: steps.candidate.outputs.publish == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Browser E2E
+        if: steps.candidate.outputs.publish == 'true'
+        env:
+          PWA_E2E: "1"
+        run: npm run test:e2e
+      - name: E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-playwright-results
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Publish tag and release
+        if: steps.candidate.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.candidate.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || { echo "::error::main changed while release was tested; retry on latest commit"; exit 1; }
+          TAG="v${VERSION}"
+          node scripts/release.mjs notes "$VERSION" > "$RUNNER_TEMP/release-notes.md"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git show-ref --verify --quiet "refs/tags/${TAG}"; then
+            git tag -a "$TAG" -m "ChessCoachPal ${TAG}"
+            git push origin "refs/tags/${TAG}"
+          fi
+          args=(release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "ChessCoachPal ${TAG}" --notes-file "$RUNNER_TEMP/release-notes.md")
+          if [[ "$VERSION" == *-* ]]; then args+=(--prerelease); fi
+          gh "${args[@]}"
+          # GitHub provides source-code ZIP and tar.gz for every tagged release.
