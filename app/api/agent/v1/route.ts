@@ -11,6 +11,14 @@ import {
   studentsCreate, studentsUpdate, groupsUpdate, sessionsUpdate, assertTimezone,
 } from "@/lib/server/coach-service";
 
+import {
+  chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
+  chessObservationsList, chessObservationsCreate, chessObservationsUpdate, chessObservationsApprove,
+  chessResourcesList, chessResourcesCreate, chessResourcesUpdate,
+} from "@/lib/server/chess-learning";
+import { chessUuid, categoryName, observationText, resourceInput, observationInput,
+  resourceLabel, resourceUrl, resourceType, observedAt } from "@/lib/chess-learning";
+
 export const dynamic = "force-dynamic";
 
 const uuid = z.string().uuid();
@@ -60,6 +68,25 @@ const calls = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("sessions.participants"), sessionId: uuid }),
   z.object({ action: z.literal("attendance.list"), sessionId: uuid }),
+  z.object({ action: z.literal("chess.categories.list") }),
+  z.object({ action: z.literal("chess.categories.create"), name:categoryName,
+    description:z.string().max(500).optional(), sortOrder:z.number().int().min(0).max(10000).optional() }),
+  z.object({ action: z.literal("chess.categories.update"), categoryId:chessUuid,
+    name:categoryName.optional(), description:z.string().max(500).optional(),
+    sortOrder:z.number().int().min(0).max(10000).optional() }),
+  z.object({ action: z.literal("chess.observations.list"), studentId:chessUuid,
+    sessionId:chessUuid.optional() }),
+  observationInput.extend({ action:z.literal("chess.observations.create") }),
+  observationInput.extend({ action:z.literal("chess.observations.propose") }),
+  z.object({ action:z.literal("chess.observations.update"), observationId:chessUuid,
+    observation:observationText.optional(), categoryId:chessUuid.optional(),
+    observedAt:observedAt.optional() }),
+  z.object({ action:z.literal("chess.observations.approve"), observationId:chessUuid }),
+  z.object({ action:z.literal("chess.resources.list"),
+    studentId:chessUuid.optional(), sessionId:chessUuid.optional() }),
+  resourceInput.extend({ action:z.literal("chess.resources.link") }),
+  z.object({ action:z.literal("chess.resources.update"), resourceId:chessUuid,
+    label:resourceLabel.optional(), url:resourceUrl.optional(),resourceType:resourceType.optional() }),
   z.object({ action: z.literal("attendance.record"),
     sessionId: uuid, studentId: uuid,
     status: z.enum(["present", "absent", "late", "excused"]),
@@ -73,6 +100,10 @@ const toolNames = [
   "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
   "sessions.list", "sessions.create", "sessions.update", "sessions.participants",
   "attendance.list", "attendance.record",
+  "chess.categories.list","chess.categories.create","chess.categories.update",
+  "chess.observations.list","chess.observations.create","chess.observations.propose",
+  "chess.observations.update","chess.observations.approve",
+  "chess.resources.list","chess.resources.link","chess.resources.update",
 ] as const;
 
 function json(body: unknown, status = 200) {
@@ -104,7 +135,7 @@ export async function GET(req: NextRequest) {
   if (!auth) return json({ error: { code: "UNAUTHENTICATED" } }, 401);
   return json({ name: "ChessCoachPal", version: "0.1",
     status: "experimental", tools: toolNames,
-    warning: "Supabase-session authentication only; OAuth/MCP connectors not implemented." });
+    warning: "This is the website Supabase-session API; external agents use delegated OAuth/MCP tools." });
 }
 
 export async function POST(req: NextRequest) {
@@ -176,6 +207,28 @@ export async function POST(req: NextRequest) {
         result = await attendanceList(db, teacherId, call.sessionId); break;
       case "attendance.record":
         result = await attendanceRecord(db, teacherId, call); break;
+      case "chess.categories.list":
+        result = await chessCategoriesList(db,teacherId); break;
+      case "chess.categories.create":
+        result = await chessCategoriesCreate(db,teacherId,call); break;
+      case "chess.categories.update":
+        result = await chessCategoriesUpdate(db,teacherId,call.categoryId,call); break;
+      case "chess.observations.list":
+        result = await chessObservationsList(db,teacherId,call.studentId,call.sessionId); break;
+      case "chess.observations.create":
+        result = await chessObservationsCreate(db,teacherId,call,"teacher"); break;
+      case "chess.observations.propose":
+        result = await chessObservationsCreate(db,teacherId,call,"agent"); break;
+      case "chess.observations.update":
+        result = await chessObservationsUpdate(db,teacherId,call.observationId,call); break;
+      case "chess.observations.approve":
+        result = await chessObservationsApprove(db,teacherId,call.observationId); break;
+      case "chess.resources.list":
+        result = await chessResourcesList(db,teacherId,call); break;
+      case "chess.resources.link":
+        result = await chessResourcesCreate(db,teacherId,call); break;
+      case "chess.resources.update":
+        result = await chessResourcesUpdate(db,teacherId,call.resourceId,call); break;
     }
     return json({ ok: true, data: result }, call.action.endsWith(".create") ? 201 : 200);
   } catch (error) {
