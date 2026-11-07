@@ -2,7 +2,7 @@
 
 **Your friendly chess-coaching assistant.**
 
-ChessCoachPal is an **MIT-licensed, self-hostable, AI-agent-first workspace for chess teachers**. Use ChatGPT or Claude to record and update teaching data through authenticated tools. Use the website to browse, verify, correct, edit, schedule and report on lessons. All core features must also work without an AI subscription.
+ChessCoachPal is an **MIT-licensed, self-hostable, AI-agent-first workspace for chess teachers**. The intended primary input is authenticated ChatGPT/Claude tools, with a website for browsing, correcting, editing, scheduling and reporting. **AI-client integration is not implemented yet**; all core website features are designed to work without an AI subscription.
 
 The project is built from [CogNote](https://github.com/andresjmorales/cognote), the MIT-licensed teacher-management application created by Andres Jaime Morales. See [source attribution](docs/UPSTREAM.md).
 
@@ -17,17 +17,25 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 
 ## Status
 
-**Pre-1.0 work in progress.** A prototype coaching workflow now exists on `feat/first-coaching-workflow`: workplaces, groups, sessions, roster snapshots, per-student attendance, web editing and a narrow authenticated API. Fresh-install and agent-client tests remain outstanding; imported upstream features are not automatically accepted ChessCoachPal features. See [status](docs/STATUS.md).
+**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, while the first chess-coaching service/UI is in an unmerged draft PR and real ChatGPT/Claude connectors are not yet implemented. Core functionality, security review and E2E acceptance remain incomplete. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
 
-## Breaking-change policy
+## Versions and releases
 
-**No compatibility with CogNote or across ChessCoachPal versions before 1.0.0.** Database schemas, APIs, routes and configuration may be replaced without upgrade migrations. Development databases must be reinitialized when contracts change; do not reset instances containing real data without an explicit operator decision and backup. See [ADR-0001](docs/adr/0001-pre1-breaking-changes.md).
+The source tree is currently an **unreleased `0.0.0` development snapshot**, not an installed `v0.1.0` release. Once the first functional application passes the [v0.1.0 checklist](docs/RELEASING.md#v010-first-functional-release-gate) **and all five active OpenSpec change gates**, it will become **`v0.1.0`**.
+
+Every subsequent version is published automatically from `main` as a [GitHub Release](https://github.com/itshak/ChessCoachPal/releases), with notes from [CHANGELOG.md](CHANGELOG.md), an immutable `vX.Y.Z` source tag, and the corresponding ZIP and tar.gz source archives. [Release procedure](docs/RELEASING.md).
+
+**No backward compatibility with CogNote or between ChessCoachPal versions before 1.0.0** is promised; the [accepted ADR](docs/adr/0001-pre1-breaking-changes.md) takes precedence.
 
 ## Documentation
 
-- [Detailed OpenSpec change](openspec/changes/adopt-cognote-chesscoachpal/proposal.md)
-- [Design](openspec/changes/adopt-cognote-chesscoachpal/design.md)
-- [Tasks](openspec/changes/adopt-cognote-chesscoachpal/tasks.md)
+- **[v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md)** — five scoped, evidence-based implementation changes
+- [Complete coaching workflows](openspec/changes/complete-coaching-workflows/proposal.md)
+- [Connect ChatGPT and Claude](openspec/changes/connect-chatgpt-and-claude/proposal.md)
+- [Add chess learning basics](openspec/changes/add-chess-learning-basics/proposal.md)
+- [Remove CogNote legacy and secure data](openspec/changes/remove-cognote-legacy-and-secure-data/proposal.md)
+- [Verify self-hosting and release v0.1.0](openspec/changes/verify-self-hosting-and-release-v0-1-0/proposal.md)
+- [Archived, incomplete original plan](openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md)
 - [Agent interface](docs/AI_AGENTS.md)
 - [Public market landscape](docs/MARKET_RESEARCH.md)
 - [Architecture](docs/ARCHITECTURE.md)
