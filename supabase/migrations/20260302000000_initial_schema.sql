@@ -201,7 +201,9 @@ CREATE TABLE public.session_attendance (
   FOREIGN KEY (session_id, teacher_id)
     REFERENCES public.teaching_sessions(id, teacher_id) ON DELETE CASCADE,
   FOREIGN KEY (student_id, teacher_id)
-    REFERENCES public.students(id, teacher_id)
+    REFERENCES public.students(id, teacher_id),
+  FOREIGN KEY (session_id, student_id)
+    REFERENCES public.session_participants(session_id, student_id)
 );
 CREATE INDEX session_attendance_teacher_idx ON public.session_attendance(teacher_id, session_id);
 
@@ -223,7 +225,7 @@ FOR EACH ROW EXECUTE FUNCTION public.chesscoachpal_seed_workplace();
 -- Snapshot attendees at creation. Attendance can be marked only for this
 -- snapshot, not for current enrollment state.
 CREATE OR REPLACE FUNCTION public.chesscoachpal_snapshot_participants()
-RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $
 BEGIN
   IF NEW.student_id IS NOT NULL THEN
     INSERT INTO public.session_participants(teacher_id, session_id, student_id)
