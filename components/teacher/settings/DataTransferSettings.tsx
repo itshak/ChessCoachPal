@@ -28,7 +28,7 @@ export function DataTransferSettings() {
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") ?? "";
       const match = disposition.match(/filename="([^"]+)"/);
-      const filename = match?.[1] ?? "cognote-export.json";
+      const filename = match?.[1] ?? "chesscoachpal-export.json";
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -78,11 +78,10 @@ export function DataTransferSettings() {
       <h2 className="font-semibold text-lg mb-1">Export &amp; Import all ChessCoachPal data</h2>
       <p className="text-sm text-muted mb-4">
         Download a full JSON backup of your studio data: students, families,
-        schedule, lesson notes, practice history, skills, invoices, events and
-        RSVPs, sheet music details, and settings. Payment and AI keys are never
-        included, and sheet music files (PDFs) stay in storage, so re-upload
-        them after moving to a new account. Import restores into this account
-        by upserting matching IDs.
+        schedules, coaching sessions, attendance, chess learning observations,
+        study links, skills, invoices, events, RSVPs, and settings. Payment and
+        AI keys, OAuth credentials, and uploaded binary objects are excluded.
+        Import restores data into this account by upserting matching IDs.
       </p>
 
       <div className="flex flex-wrap gap-2">
