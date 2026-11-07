@@ -6,7 +6,7 @@
 - [ ] 2b.2 Add teacher-scoped workplace create/update and student create/update/enrollment tools with validation, idempotency and website parity.
 - [ ] 2b.3 Add group create/update and member enroll/remove tools with foreign-ID and cross-workplace protection.
 - [ ] 2b.4 Add lesson search/details, create/reschedule/cancel and notes tools, preserving UTC/DST, frozen rosters and conflict checks.
-- [ ] 2b.5 After chess-learning basics ship, expose teacher-scoped learning observation and resource read/propose/link tools with safe URL validation and provenance.
+- [x] 2b.5 After chess-learning basics ship, expose teacher-scoped learning observation and resource read/propose/link tools with safe URL validation and provenance. **Delivered by merged Milestone 3 [PR #7](https://github.com/itshak/ChessCoachPal/pull/7); [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42415536708), [E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42415536816).** Remaining 2b writes, audit/idempotency and broader contracts are still open.
 - [ ] 2b.6 Require stable-ID disambiguation and typed NEEDS_RESOLUTION/CONFLICT/UNAUTHENTICATED responses for every relevant action.
 - [ ] 2b.7 Add atomic idempotency receipts, optimistic revisions and actor/client IDs to privacy-minimized audit metadata for each write; prove retries cannot duplicate changes.
 - [ ] 2b.8 Implement payload-bound expiring confirmation for any intentionally exposed bulk/destructive action, or **explicitly omit** it from discovery; no unsafe default.
