@@ -85,6 +85,50 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const sessionRecord=await postDomain({action:"sessions.create",requestId:randomUUID(),
     workplaceId:workplace.id,groupId:group.id,title:"Agent lesson "+suffix,
     startsAt:"2027-04-12T14:00:00.000Z",durationMinutes:60,lessonNote:"Original"});
+  // Chess learning tool contract: agents can propose and link, but cannot approve.
+  for (const name of ["ccp_v1_chess_categories_list","ccp_v1_chess_observations_propose",
+    "ccp_v1_chess_resources_link","ccp_v1_chess_observations_list","ccp_v1_chess_resources_list"]) {
+    expect(names).toContain(name);
+  }
+  expect(names).not.toContain("ccp_v1_chess_observations_approve");
+  const catResult=(await mcp("tools/call",{
+    name:"ccp_v1_chess_categories_list",arguments:{},
+  })).structuredContent;
+  const endgames=catResult.data.find((c:{name:string})=>c.name==="Endgames");
+  expect(endgames).toBeTruthy();
+  const proposed=(await mcp("tools/call",{
+    name:"ccp_v1_chess_observations_propose",arguments:{
+      studentId:student.id,sessionId:sessionRecord.id,categoryId:endgames.id,
+      observation:"Needs pawn-endgame opposition practice",requestId:randomUUID(),
+    },
+  })).structuredContent;
+  expect(proposed.data.source).toBe("agent");
+  expect(proposed.data.verified_at).toBeNull();
+  const linked=(await mcp("tools/call",{
+    name:"ccp_v1_chess_resources_link",arguments:{
+      studentId:student.id,sessionId:sessionRecord.id,
+      label:"Synthetic Lichess opposition study",
+      url:"https://lichess.org/study/Ab12Cd34",resourceType:"lichess_study",
+      requestId:randomUUID(),
+    },
+  })).structuredContent;
+  expect(linked.data.provider_study_id).toBe("Ab12Cd34");
+  const observations=(await mcp("tools/call",{
+    name:"ccp_v1_chess_observations_list",arguments:{studentId:student.id},
+  })).structuredContent.data;
+  expect(observations.some((v:{id:string})=>v.id===proposed.data.id)).toBe(true);
+  const resources=(await mcp("tools/call",{
+    name:"ccp_v1_chess_resources_list",arguments:{studentId:student.id},
+  })).structuredContent.data;
+  expect(resources.some((v:{id:string})=>v.id===linked.data.id)).toBe(true);
+  const missingApproval=(await mcp("tools/call",{
+    name:"ccp_v1_chess_observations_approve",arguments:{observationId:proposed.data.id},
+  })).structuredContent;
+  expect(missingApproval.error.code).toBe("NOT_FOUND");
+  const websiteObservation=(await postDomain({action:"chess.observations.list",studentId:student.id}))
+    .find((v:{id:string})=>v.id===proposed.data.id);
+  expect(websiteObservation.verified_at).toBeNull();
+
   // The delegated MCP bearer MUST NOT expose a second teacher's records.
   const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!, {auth:{persistSession:false,autoRefreshToken:false}});
