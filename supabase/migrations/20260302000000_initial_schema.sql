@@ -327,21 +327,18 @@ ALTER TABLE public.agent_oauth_grants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.agent_tool_receipts ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.agent_oauth_clients, public.agent_oauth_codes, public.agent_oauth_grants FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.agent_oauth_clients, public.agent_oauth_codes, public.agent_oauth_grants TO service_role;
-REVOKE ALL ON public.agent_tool_receipts FROM PUBLIC, anon;
-GRANT SELECT, INSERT ON public.agent_tool_receipts TO authenticated;
+REVOKE ALL ON public.agent_tool_receipts FROM PUBLIC, anon, authenticated;
 GRANT ALL ON public.agent_tool_receipts TO service_role;
-CREATE POLICY agent_receipts_own ON public.agent_tool_receipts
-  FOR SELECT TO authenticated USING (teacher_id = auth.uid());
-CREATE POLICY agent_receipts_write_own ON public.agent_tool_receipts
-  FOR INSERT TO authenticated WITH CHECK (teacher_id = auth.uid());
+-- Receipts are immutable to teachers/clients; only the teacher-checked RPC may write.
 
--- Both functions run as INVOKER (never SECURITY DEFINER). RLS and teacher ownership
--- are enforced by Postgres even if the adapter passes a different teacher's UUID.
--- A unique idempotency claim and the mutation share ONE transaction.
+-- Privileged functions protect append-only receipts. Each checks auth.uid() and
+-- applies explicit teacher_id predicates on every domain mutation, so callers
+-- cannot set or impersonate the teacher; raw business tools remain RLS scoped.
+-- One unique idempotency claim and the mutation share ONE transaction.
 CREATE OR REPLACE FUNCTION public.agent_record_attendance(
   p_session_id uuid, p_student_id uuid, p_status text, p_note text,
   p_expected_updated_at timestamptz, p_idempotency_key uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $
 DECLARE
   v_teacher uuid := auth.uid();
   v_hash text;
@@ -384,7 +381,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.agent_update_session_note(
   p_session_id uuid, p_lesson_note text, p_expected_updated_at timestamptz,
   p_idempotency_key uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $
 DECLARE
   v_teacher uuid := auth.uid();
   v_hash text;

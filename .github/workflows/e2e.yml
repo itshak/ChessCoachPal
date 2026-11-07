@@ -50,6 +50,7 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY:-$PUBLISHABLE_KEY}"
             echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY:-$SECRET_KEY}"
             echo "TOKEN_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+            echo "MCP_PUBLIC_ORIGIN=http://localhost:3000"
           } >> "$GITHUB_ENV"
 
       - name: Build app

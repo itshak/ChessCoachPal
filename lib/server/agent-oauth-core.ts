@@ -1,4 +1,3 @@
-import "server-only";
 import { createHash, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from "node:crypto";
 
 export const SCOPES = ["coach:read", "coach:write"] as const;

@@ -14,9 +14,8 @@ function scopedDb(token: string) {
 }
 export async function cookieTeacher() {
   const db = await createCookieClient();
-  const [{ data: { user }, error }, { data: { session } }] = await Promise.all([
-    db.auth.getUser(), db.auth.getSession(),
-  ]);
+  const { data: { user }, error } = await db.auth.getUser();
+  const { data: { session } } = await db.auth.getSession();
   if (error || !user || !session?.access_token || !session.refresh_token) return null;
   return {
     teacherId: user.id,
