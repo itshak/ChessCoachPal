@@ -47,6 +47,8 @@ export function ChessCoachWorkspace() {
   const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [studentSearch, setStudentSearch] = useState("");
+  const [activeStudentSearch, setActiveStudentSearch] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [workplaceName, setWorkplaceName] = useState("");
   const [groupName, setGroupName] = useState("");
@@ -66,6 +68,8 @@ export function ChessCoachWorkspace() {
   const [enrolledIds, setEnrolledIds] = useState<string[]>([]);
   const [editGroupName, setEditGroupName] = useState("");
   const [groupMembers, setGroupMembers] = useState<Roster[]>([]);
+  const [groupMembersId, setGroupMembersId] = useState("");
+  const groupLoadRef = useRef(0);
   const [workplaceId, setWorkplaceId] = useState("");
   const [groupId, setGroupId] = useState("");
   const [studentId, setStudentId] = useState("");
@@ -82,6 +86,7 @@ export function ChessCoachWorkspace() {
   const [editStatus, setEditStatus] = useState<Session["status"]>("scheduled");
   const requestRef = useRef<{ signature: string; id: string } | null>(null);
   const [roster, setRoster] = useState<Roster[]>([]);
+  const [rosterSessionId, setRosterSessionId] = useState("");
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -91,28 +96,35 @@ export function ChessCoachWorkspace() {
     const [w, g, s, l] = await Promise.all([
       operation<Workplace[]>("workplaces.list"),
       operation<Group[]>("groups.list"),
-      operation<Student[]>("students.search"),
+      operation<Student[]>("students.search", { query: activeStudentSearch }),
       operation<Session[]>("sessions.list"),
     ]);
     setWorkplaces(w); setGroups(g); setStudents(s); setSessions(l);
     setWorkplaceId(old => old && w.some(item => item.id === old) ? old : w[0]?.id ?? "");
-  }, []);
+  }, [activeStudentSearch]);
 
   useEffect(() => {
     void refresh().catch(e => setError(String(e)));
   }, [refresh]);
 
   useEffect(() => {
-    if (!selectedSessionId) {
-      setRoster([]); setAttendance([]);
-      return;
+    let active = true;
+    setRoster([]);
+    setAttendance([]);
+    setRosterSessionId("");
+    if (selectedSessionId) {
+      void Promise.all([
+        operation<Roster[]>("sessions.participants", { sessionId: selectedSessionId }),
+        operation<Attendance[]>("attendance.list", { sessionId: selectedSessionId }),
+      ]).then(([people, marks]) => {
+        if (active) {
+          setRoster(people);
+          setAttendance(marks);
+          setRosterSessionId(selectedSessionId);
+        }
+      }).catch(e => { if (active) setError(String(e)); });
     }
-    void Promise.all([
-      operation<Roster[]>("sessions.participants", { sessionId: selectedSessionId }),
-      operation<Attendance[]>("attendance.list", { sessionId: selectedSessionId }),
-    ]).then(([people, marks]) => {
-      setRoster(people); setAttendance(marks);
-    }).catch(e => setError(String(e)));
+    return () => { active = false; };
   }, [selectedSessionId]);
 
   async function perform(work: () => Promise<unknown>, success: string) {
@@ -181,8 +193,15 @@ export function ChessCoachWorkspace() {
   }
 
   async function reloadGroupMembers(id: string) {
-    if (!id) { setGroupMembers([]); return; }
-    setGroupMembers(await operation<Roster[]>("groups.members", { groupId: id }));
+    const request = ++groupLoadRef.current;
+    setGroupMembers([]);
+    setGroupMembersId("");
+    if (!id) return;
+    const people = await operation<Roster[]>("groups.members", { groupId: id });
+    if (request === groupLoadRef.current) {
+      setGroupMembers(people);
+      setGroupMembersId(id);
+    }
   }
 
   async function updateGroup(e: FormEvent<HTMLFormElement>) {
@@ -320,6 +339,24 @@ export function ChessCoachWorkspace() {
       <p className="text-sm text-muted">Instructor time in this workplace (listed sessions):
         <strong> {teacherMinutes} minutes</strong>. Group attendees do not multiply teacher minutes.
       </p>
+      <section className={panel} aria-labelledby="coaching-session-timeline">
+        <h2 id="coaching-session-timeline" className="text-lg font-semibold">Session timeline</h2>
+        {localSessions.length ? (
+          <ol className="space-y-2">
+            {localSessions.map(item => (
+              <li key={item.id}>
+                <button type="button" className="w-full rounded-lg border border-border p-2 text-left text-sm"
+                  aria-current={selectedSessionId === item.id ? "true" : undefined}
+                  onClick={() => setSelectedSessionId(item.id)}>
+                  <time dateTime={item.starts_at}>{new Date(item.starts_at).toLocaleString("en-US", {
+                    timeZone: activeWorkplace?.timezone ?? "UTC",
+                  })}</time> · {item.title} · {item.status} · {item.duration_minutes} minutes
+                </button>
+              </li>
+            ))}
+          </ol>
+        ) : <p className="text-sm text-muted">No sessions in this workplace yet.</p>}
+      </section>
       <div className="grid gap-5 md:grid-cols-2">
         <section className={panel}>
           <h2 className="text-lg font-semibold">Workplaces</h2>
@@ -363,7 +400,22 @@ export function ChessCoachWorkspace() {
         </section>
         <section className={panel}>
           <h2 className="text-lg font-semibold">Students</h2>
-          <form onSubmit={addStudent} className="space-y-2">
+          <form className="space-y-2" onSubmit={e => {
+            e.preventDefault();
+            setActiveStudentSearch(studentSearch.trim());
+          }}>
+            <label className="block text-sm">Find student by name
+              <input className={field} value={studentSearch}
+                onChange={e => setStudentSearch(e.target.value)} maxLength={80} />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button className={button} type="submit">Search students</button>
+              <button className="rounded-lg border border-border px-4 py-2" type="button"
+                onClick={() => { setStudentSearch(""); setActiveStudentSearch(""); }}>Clear search</button>
+            </div>
+            {activeStudentSearch && <p className="text-xs text-muted">Filtering student selectors by: {activeStudentSearch}</p>}
+          </form>
+          <form onSubmit={addStudent className="space-y-2">
             <label className="block text-sm">New student name
               <input className={field} value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required maxLength={120} />
             </label>
@@ -441,8 +493,9 @@ export function ChessCoachWorkspace() {
           </form>
           {groupId && <div className="border-t border-border pt-3 text-sm">
             <h3 className="font-semibold">Current group register</h3>
-            <ul className="space-y-2">{groupMembers.map(m => <li key={m.student_id} className="flex flex-wrap items-center justify-between gap-2"><span>{rosterName(m)}</span><button type="button" className="rounded border border-border px-2 py-1 text-sm" disabled={busy} onClick={() => void removeFromGroup(m.student_id)} aria-label={`Remove ${rosterName(m)} from group`}>Remove</button></li>)}</ul>
-            {!groupMembers.length && <p>No students yet.</p>}
+            {groupMembersId !== groupId && <p>Loading group register...</p>}
+            <ul className="space-y-2">{(groupMembersId === groupId ? groupMembers : []).map(m => <li key={m.student_id} className="flex flex-wrap items-center justify-between gap-2"><span>{rosterName(m)}</span><button type="button" className="rounded border border-border px-2 py-1 text-sm" disabled={busy} onClick={() => void removeFromGroup(m.student_id)} aria-label={`Remove ${rosterName(m)} from group`}>Remove</button></li>)}</ul>
+            {groupMembersId === groupId && !groupMembers.length && <p>No students yet.</p>}
           </div>}
         </section>
         <section className={panel}>
@@ -526,7 +579,7 @@ export function ChessCoachWorkspace() {
           </form>}
           {session && roster.length === 0 &&
             <p className="text-sm text-muted">No participants were enrolled when this session was created.</p>}
-          {roster.map(person => {
+          {session && rosterSessionId === selectedSessionId && roster.map(person => {
             const marked = attendance.find(a => a.student_id === person.student_id);
             return <AttendanceRow key={person.student_id}
               name={rosterName(person)} existing={marked} busy={busy}

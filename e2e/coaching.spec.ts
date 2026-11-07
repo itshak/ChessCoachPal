@@ -5,6 +5,7 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await signInAsTeacher(page);
   await page.goto("/coaching");
   await expect(page.getByRole("heading", { name: "Chess coaching" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Session timeline" })).toBeVisible();
   const suffix = Date.now().toString(36);
   const workplaceA = `E2E Chess North ${suffix}`;
   const workplaceB = `E2E Chess South ${suffix}`;
@@ -28,6 +29,9 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await page.getByLabel("Edit student skill level").fill("Rook endings");
   await page.getByRole("button", { name: "Save student" }).click();
   await expect(page.getByRole("status")).toContainText("Student saved.");
+  await page.getByLabel("Find student by name").fill(student);
+  await page.getByRole("button", { name: "Search students" }).click();
+  await expect(page.getByLabel("Student to edit")).toContainText(student);
 
   await page.getByLabel("Student for workplace").selectOption({ label: student });
   await page.getByRole("button", { name: "Enroll in workplace" }).click();
