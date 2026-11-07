@@ -6,6 +6,10 @@ import {
   sessionsList, sessionsParticipants, studentsSearch, workplacesList,
 } from "@/lib/server/coach-service";
 
+import { chessCategoriesList, chessObservationsList, chessObservationsCreate,
+  chessResourcesList, chessResourcesCreate } from "@/lib/server/chess-learning";
+import { chessUuid, observationInput, resourceInput } from "@/lib/chess-learning";
+
 const uuid = z.string().uuid();
 const searchText = z.string().trim().min(1).max(80);
 const sessionId = z.object({ sessionId: uuid }).strict();
@@ -68,6 +72,34 @@ const catalogue = [
       idempotencyKey: uuid,
     }).strict(), scope: "coach:write", readOnly: false,
   },
+  {
+    name: "ccp_v1_chess_categories_list",
+    description: "Read configurable teacher-owned chess skills. Select stable category IDs before proposing an observation.",
+    schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
+  },
+  {
+    name: "ccp_v1_chess_observations_list",
+    description: "Read student chess observation history including source and verification. Never treat agent suggestions as approved.",
+    schema: z.object({studentId:chessUuid,sessionId:chessUuid.optional()}).strict(),
+    scope: "coach:read", readOnly: true,
+  },
+  {
+    name: "ccp_v1_chess_observations_propose",
+    description: "PROPOSE an unverified AI-authored observation for one identified student. This never approves or overrides teacher assessments.",
+    schema: observationInput, scope: "coach:write", readOnly: false,
+  },
+  {
+    name: "ccp_v1_chess_resources_list",
+    description: "Read saved Lichess Study and HTTPS resource references, not provider contents.",
+    schema: z.object({studentId:chessUuid.optional(),sessionId:chessUuid.optional()}).strict()
+      .refine(v => Boolean(v.studentId || v.sessionId), "Choose a student or session"),
+    scope: "coach:read", readOnly: true,
+  },
+  {
+    name: "ccp_v1_chess_resources_link",
+    description: "Save a specific HTTPS learning resource or Lichess Study link for a student/session. Does not fetch provider contents; confirm the teacher's choice.",
+    schema: resourceInput, scope: "coach:write", readOnly: false,
+  },
 ] as const;
 
 export const exposedTools = catalogue.map(t => ({
@@ -96,6 +128,24 @@ export async function runTool(db: SupabaseClient, teacherId: string,
   if (!scopes.includes(tool!.scope)) return { error: { code: "FORBIDDEN", message: "Insufficient OAuth scope" } };
   try {
     switch (name) {
+      case "ccp_v1_chess_categories_list":
+        return { data: await chessCategoriesList(db,teacherId) };
+      case "ccp_v1_chess_observations_list": {
+        const a=args as {studentId:string;sessionId?:string};
+        return { data: await chessObservationsList(db,teacherId,a.studentId,a.sessionId) };
+      }
+      case "ccp_v1_chess_observations_propose": {
+        const a=args as Parameters<typeof chessObservationsCreate>[2];
+        return { data: await chessObservationsCreate(db,teacherId,a,"agent") };
+      }
+      case "ccp_v1_chess_resources_list": {
+        const a=args as {studentId?:string;sessionId?:string};
+        return { data: await chessResourcesList(db,teacherId,a) };
+      }
+      case "ccp_v1_chess_resources_link": {
+        const a=args as Parameters<typeof chessResourcesCreate>[2];
+        return { data: await chessResourcesCreate(db,teacherId,a) };
+      }
       case "ccp_v1_workplaces_list":
         return { data: await workplacesList(db, teacherId) };
       case "ccp_v1_students_search": {
