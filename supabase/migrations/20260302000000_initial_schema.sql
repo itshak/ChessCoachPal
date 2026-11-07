@@ -338,7 +338,7 @@ GRANT ALL ON public.agent_tool_receipts TO service_role;
 CREATE OR REPLACE FUNCTION public.agent_record_attendance(
   p_session_id uuid, p_student_id uuid, p_status text, p_note text,
   p_expected_updated_at timestamptz, p_idempotency_key uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_teacher uuid := auth.uid();
   v_hash text;
@@ -381,7 +381,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.agent_update_session_note(
   p_session_id uuid, p_lesson_note text, p_expected_updated_at timestamptz,
   p_idempotency_key uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_teacher uuid := auth.uid();
   v_hash text;
