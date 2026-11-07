@@ -85,7 +85,7 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await expect(page.getByRole("heading", { name: "Chess coaching" })).toBeVisible();
   await page.getByLabel("Active workplace").selectOption({ label: workplaceA });
   await expect(page.getByLabel("Workplace policy (JSON)")).toHaveValue(/cancellationHours/);
-  const lesson = page.getByLabel("Lesson", { exact: true });
+  const lesson = page.getByRole("combobox", { name: "Lesson", exact: true });
   const option = lesson.locator("option").filter({ hasText: topic });
   const sessionId = await option.getAttribute("value");
   expect(sessionId).toBeTruthy();
