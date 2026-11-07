@@ -1,6 +1,6 @@
 # ChessCoachPal development and release status
 
-**Updated:** 2026-11-07 · **Branch of record:** main · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
+**Updated:** 2026-11-08 · **Branch of record:** main · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
 ## OpenSpec acceptance and roadmap
 
@@ -10,7 +10,7 @@ The obsolete CogNote-adoption omnibus change was archived **as incomplete**, not
 2. [connect-chatgpt-and-claude](../openspec/changes/archive/2026-11-07-connect-chatgpt-and-claude/proposal.md) — **ARCHIVED: CI-VERIFIED FOUNDATION**. [PR #5](https://github.com/itshak/ChessCoachPal/pull/5) was merged; the delivered subset is accepted on synthetic GitHub verification, **not** asserted as live ChatGPT/Claude compatibility. Remaining tool coverage is [active change 2b](../openspec/changes/expand-agent-coaching-tools/proposal.md).
 2b. [expand-agent-coaching-tools](../openspec/changes/expand-agent-coaching-tools/proposal.md) — **Proposed**; complete remaining student/group/scheduling/resource MCP actions and GitHub-only security/contract tests, no actual AI account required.
 3. [add-chess-learning-basics](../openspec/changes/archive/2026-11-07-add-chess-learning-basics/proposal.md) — **ACCEPTED / archived**. [PR #7](https://github.com/itshak/ChessCoachPal/pull/7) merged at main commit [822a33f](https://github.com/itshak/ChessCoachPal/commit/822a33f0881821c1de479629bf15d39264d2dcc1), [CI 42415536708](https://github.com/itshak/ChessCoachPal/actions/runs/42415536708) and [E2E 42415536816](https://github.com/itshak/ChessCoachPal/actions/runs/42415536816) passed; no live providers required.
-4. [remove-cognote-legacy-and-secure-data](../openspec/changes/remove-cognote-legacy-and-secure-data/proposal.md) — **Proposed**; inherited music paths, privacy/history and broader security audits remain outstanding.
+4. [remove-cognote-legacy-and-secure-data](../openspec/changes/archive/2026-11-08-remove-cognote-legacy-and-secure-data/proposal.md) — **IMPLEMENTATION MERGED / archived (publication blocked)**. Legacy music code removed, one canonical fresh-install schema, RLS/security/PWA tests and reachable-Git scan passed. Full Actions/logs/PII/publication review is transferred to Milestone 5 task 5.9.
 5. [verify-self-hosting-and-release-v0-1-0](../openspec/changes/verify-self-hosting-and-release-v0-1-0/proposal.md) — **Proposed**; no v0.1.0 release until other milestones and release checks pass.
 
 ## Milestone 1 — passing verification evidence
@@ -63,8 +63,18 @@ Full configuration guidance and unsupported features: [AI_CONNECTORS.md](AI_CONN
 
 ## Remaining release and safety blockers
 
-The GitHub repository is **already public**. Historical secrets/privacy scanning, inherited Git refs/artifacts review, upstream/third-party asset licensing and music-only code removal remain **unverified**. Do not assert public history was purged, that production student data was safe, or that the full inherited application has passed a security audit.
+The GitHub repository is **already public**. Music-only code removal, the consolidated schema, current dependency license metadata review and accessible Git ref secret scanning have GitHub evidence. **Historical Actions logs/artifacts, recoverable unreferenced SHAs and private-data/manual asset redistribution approval remain release-gate work**; no production release is authorized. Do not assert public history was purged, that production student data was safe, or that the full inherited application has passed a security audit.
 
 Milestone 1's **coaching-domain** cross-teacher RLS isolation was positively tested with synthetic identities; this does **not** certify all inherited API routes. No real external students were imported in the recorded work. Neither real ChatGPT/Claude client interoperability, production deployment, full backup/restore nor a complete privacy audit has been verified. The inherited CogNote migration chain still requires clean pre-1.0 consolidation in Milestone 4.
 
 Keep real data isolated from test resets. Never automatically reset real databases. Active proposals are 2b (tool expansion), 3 (chess learning), 4 (legacy/security) and 5 (release). Archive each development change based on GitHub Actions automated evidence only; the *only* required manual live client test belongs to the final v0.1.0 local prepublication release sign-off. Keep version **0.0.0** until all development gates and final local sign-off pass.
+
+## Milestone 4 — archived implementation, release approval withheld
+
+[PR #9](https://github.com/itshak/ChessCoachPal/pull/9) was squash-merged as [af9f4c6](https://github.com/itshak/ChessCoachPal/commit/af9f4c64de70e6b96674c5eb46fcaad35381548a). [Feature CI 42421265827](https://github.com/itshak/ChessCoachPal/actions/runs/42421265827), [E2E 42421265817](https://github.com/itshak/ChessCoachPal/actions/runs/42421265817) (25 passed, 5 skipped), and [reachable-history audit 42421265798](https://github.com/itshak/ChessCoachPal/actions/runs/42421265798) passed. On merged main, [CI 42421647203](https://github.com/itshak/ChessCoachPal/actions/runs/42421647203), [E2E 42421647198](https://github.com/itshak/ChessCoachPal/actions/runs/42421647198) (25 passed, 5 skipped) and [history audit 42421647204](https://github.com/itshak/ChessCoachPal/actions/runs/42421647204) also passed.
+
+- The final code removes inherited music-only routes, assets, fixtures and database upgrade paths. The only supported schema is a **fresh install**; do not reset an existing database without explicit operator backup/approval. Chess learning, coaching and AI-agent interfaces remain operational.
+- The redacted scanner on [main 42421647204](https://github.com/itshak/ChessCoachPal/actions/runs/42421647204) reviewed 20 accessible branch/PR refs and 787 text blobs. The initially flagged Docker database URL was **an environment variable placeholder**, not a plaintext production password; its detection rule now excludes this safe template while checking actual embedded passwords.
+- Current lockfile license metadata: 634 package entries with declared SPDX-style licenses; runtime libraries include MIT/ISC/MPL-2.0/Apache-2.0, and transitive image dependencies include LGPL. The original upstream CogNote MIT credit is retained; old music-only assets and sample records are removed. Distribution-time third-party and historic assets need final review.
+- Real-Supabase Playwright tests exercised authenticated teacher A versus B, RLS on coaching and attendance, unauthorized writes, invalid portal URLs and service-role denial. CI now masks synthetic encryption keys. This does **not** demonstrate live ChatGPT/Claude vendor clients; those are deliberately deferred until the sole local prepublication sign-off.
+- **v0.1.0 is BLOCKED** pending remaining 2b, Milestone 5, full retrievable Actions logs/artifacts + personal data/private URL review, any necessary rotation/GitHub remediation, backup/restore/release checks and final local ChatGPT/Claude sign-off.
