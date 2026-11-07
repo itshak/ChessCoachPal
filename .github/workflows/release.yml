@@ -44,12 +44,12 @@ jobs:
           git fetch origin main --tags
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || { echo "::error::Release must be current main"; exit 1; }
           TAG="v${VERSION}"
-          if git show-ref --verify --quiet "refs/tags/${TAG}"; then
-            test "$(git rev-parse "refs/tags/${TAG}^{commit}")" = "$(git rev-parse HEAD)" || { echo "::error::Never reuse an existing tag"; exit 1; }
-          fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+          if git show-ref --verify --quiet "refs/tags/${TAG}"; then
+            test "$(git rev-parse "refs/tags/${TAG}^{commit}")" = "$(git rev-parse HEAD)" || { echo "::error::Never reuse an existing unpublished tag"; exit 1; }
           fi
           echo "publish=true" >> "$GITHUB_OUTPUT"
       - name: Install
@@ -113,6 +113,8 @@ jobs:
           VERSION: ${{ steps.candidate.outputs.version }}
         run: |
           set -euo pipefail
+          git fetch origin main --tags
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || { echo "::error::main changed while release was tested; retry on latest commit"; exit 1; }
           TAG="v${VERSION}"
           node scripts/release.mjs notes "$VERSION" > "$RUNNER_TEMP/release-notes.md"
           git config user.name "github-actions[bot]"
