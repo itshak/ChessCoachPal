@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { randomToken, validateRedirectUri } from "@/lib/server/agent-oauth-core";
+import { oauthOrigin, randomToken, validateRedirectUri } from "@/lib/server/agent-oauth-core";
 
 export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
+  // Connector registration must not be exposed on default self-hosts until
+  // the operator deliberately configures a public MCP origin.
+  try { oauthOrigin(); } catch {
+    return NextResponse.json({error:"not_configured"},{status:503});
+  }
   if (!req.headers.get("content-type")?.startsWith("application/json") ||
       Number(req.headers.get("content-length") ?? 0) > 8192)
     return NextResponse.json({ error: "invalid_client_metadata" }, {status:400});
