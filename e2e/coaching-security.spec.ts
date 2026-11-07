@@ -59,6 +59,8 @@ test("teacher isolation, scoped IDs, roster snapshots and idempotent session ret
     durationMinutes: 60, lessonNote: `Private teaching detail ${suffix}`,
     requestId: crypto.randomUUID(),
   };
+  expect((await post(a, { ...payload, startsAt: "2027-04-01T14:00:00", requestId: crypto.randomUUID() })).status).toBe(400);
+  expect((await post(a, { ...payload, durationMinutes: 481, requestId: crypto.randomUUID() })).status).toBe(400);
   const first = await asA(payload);
   const replay = await asA(payload);
   expect(first.id).toBe(replay.id);
@@ -73,6 +75,9 @@ test("teacher isolation, scoped IDs, roster snapshots and idempotent session ret
   await asA({ action: "groups.enroll", groupId: grp.id, studentId: stu2.id });
   const historicalRoster = await asA({ action: "sessions.participants", sessionId: first.id });
   expect(historicalRoster).toHaveLength(3);
+  await asA({ action: "groups.unenroll", groupId: grp.id, studentId: stu3.id });
+  expect(await asA({ action: "groups.members", groupId: grp.id })).toHaveLength(3);
+  expect(await asA({ action: "sessions.participants", sessionId: first.id })).toHaveLength(3);
   expect((await post(a, { action: "attendance.record", sessionId: first.id, studentId: stu2.id, status: "present" })).status).toBe(404);
   await asA({ action: "attendance.record", sessionId: first.id, studentId: stu1.id, status: "absent", note: "One absence" });
   const register = await asA({ action: "attendance.list", sessionId: first.id });

@@ -173,6 +173,13 @@ export function ChessCoachWorkspace() {
     }, "Student enrolled in workplace.");
   }
 
+  async function removeFromGroup(student: string) {
+    await perform(async () => {
+      await operation("groups.unenroll", { groupId, studentId: student });
+      await reloadGroupMembers(groupId);
+    }, "Student removed from group. Existing lesson rosters remain unchanged.");
+  }
+
   async function reloadGroupMembers(id: string) {
     if (!id) { setGroupMembers([]); return; }
     setGroupMembers(await operation<Roster[]>("groups.members", { groupId: id }));
@@ -434,7 +441,7 @@ export function ChessCoachWorkspace() {
           </form>
           {groupId && <div className="border-t border-border pt-3 text-sm">
             <h3 className="font-semibold">Current group register</h3>
-            <ul>{groupMembers.map(m => <li key={m.student_id}>{rosterName(m)}</li>)}</ul>
+            <ul className="space-y-2">{groupMembers.map(m => <li key={m.student_id} className="flex flex-wrap items-center justify-between gap-2"><span>{rosterName(m)}</span><button type="button" className="rounded border border-border px-2 py-1 text-sm" disabled={busy} onClick={() => void removeFromGroup(m.student_id)} aria-label={`Remove ${rosterName(m)} from group`}>Remove</button></li>)}</ul>
             {!groupMembers.length && <p>No students yet.</p>}
           </div>}
         </section>

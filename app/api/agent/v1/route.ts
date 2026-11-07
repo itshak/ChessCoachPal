@@ -5,7 +5,7 @@ import { createClient as createCookieClient } from "@/lib/supabase/server";
 import {
   CoachError,
   attendanceList, attendanceRecord,
-  groupsCreate, groupsEnroll, groupsList, groupsMembers,
+  groupsCreate, groupsEnroll, groupsUnenroll, groupsList, groupsMembers,
   sessionsCreate, sessionsList, sessionsParticipants, studentsSearch,
   workplacesCreate, workplacesList, workplacesUpdate, workplacesEnroll, workplacesEnrollments,
   studentsCreate, studentsUpdate, groupsUpdate, sessionsUpdate, assertTimezone,
@@ -39,6 +39,7 @@ const calls = z.discriminatedUnion("action", [
   z.object({ action: z.literal("groups.create"), workplaceId: uuid, name: shortName }),
   z.object({ action: z.literal("groups.update"), groupId: uuid, workplaceId: uuid, name: shortName }),
   z.object({ action: z.literal("groups.enroll"), groupId: uuid, studentId: uuid }),
+  z.object({ action: z.literal("groups.unenroll"), groupId: uuid, studentId: uuid }),
   z.object({ action: z.literal("groups.members"), groupId: uuid }),
   z.object({ action: z.literal("sessions.list") }),
   z.object({ action: z.literal("sessions.create"),
@@ -69,7 +70,7 @@ const calls = z.discriminatedUnion("action", [
 const toolNames = [
   "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll", "workplaces.enrollments",
   "students.search", "students.create", "students.update",
-  "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.members",
+  "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
   "sessions.list", "sessions.create", "sessions.update", "sessions.participants",
   "attendance.list", "attendance.record",
 ] as const;
@@ -159,6 +160,8 @@ export async function POST(req: NextRequest) {
         result = await groupsUpdate(db, teacherId, call.groupId, call.workplaceId, call.name); break;
       case "groups.enroll":
         result = await groupsEnroll(db, teacherId, call.groupId, call.studentId); break;
+      case "groups.unenroll":
+        result = await groupsUnenroll(db, teacherId, call.groupId, call.studentId); break;
       case "groups.members":
         result = await groupsMembers(db, teacherId, call.groupId); break;
       case "sessions.list":

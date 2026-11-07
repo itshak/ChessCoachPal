@@ -91,6 +91,20 @@ export async function groupsEnroll(db: Db, teacherId: string, groupId: string, s
   return data ?? { group_id: groupId, student_id: studentId };
 }
 
+/** Remove a current group enrollment without rewriting historical session snapshots. */
+export async function groupsUnenroll(db: Db, teacherId: string, groupId: string, studentId: string) {
+  const { data: group, error: groupError } = await db.from("class_groups")
+    .select("id").eq("teacher_id", teacherId).eq("id", groupId).maybeSingle();
+  if (groupError) throw problem();
+  if (!group) throw notFound();
+  const { data, error } = await db.from("group_enrollments").delete()
+    .eq("teacher_id", teacherId).eq("group_id", groupId).eq("student_id", studentId)
+    .select("group_id,student_id").maybeSingle();
+  if (error) throw problem();
+  if (!data) throw notFound();
+  return data;
+}
+
 export async function groupsMembers(db: Db, teacherId: string, groupId: string) {
   const { data: group } = await db.from("class_groups")
     .select("id").eq("id", groupId).eq("teacher_id", teacherId).maybeSingle();
@@ -324,7 +338,7 @@ export async function sessionsUpdate(
     if (updates.startsAt !== undefined && (typeof updates.startsAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(updates.startsAt) || !Number.isFinite(Date.parse(updates.startsAt)))) {
       throw new CoachError("VALIDATION_ERROR", 400, "Start time must be a valid ISO 8601 instant with an explicit UTC offset");
     }
-    if (updates.durationMinutes !== undefined && (!Number.isInteger(updates.durationMinutes) || updates.durationMinutes < 1 || updates.durationMinutes > 1440)) {
+    if (updates.durationMinutes !== undefined && (!Number.isInteger(updates.durationMinutes) || updates.durationMinutes < 15 || updates.durationMinutes > 480)) {
       throw new CoachError("VALIDATION_ERROR", 400, "Duration must be an integer between 15 and 480 minutes");
     }
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { workplaceLocalToUtc, utcToWorkplaceLocal } from "./coaching-time";
-import { instructorMinutes } from "./server/coach-service";
+import { assertSessionSchedule, instructorMinutes } from "./server/coach-service";
 
 describe("workplace wall-clock times", () => {
   it("resolves an Israeli summer session without using browser or server timezone", () => {
@@ -23,5 +23,20 @@ describe("instructor time", () => {
     expect(instructorMinutes(oneGroup)).toBe(60);
     expect(instructorMinutes([...oneGroup, { duration_minutes: 30, status: "cancelled" }])).toBe(60);
     expect(instructorMinutes([...oneGroup, { duration_minutes: 45, status: "scheduled" }])).toBe(105);
+  });
+});
+
+
+describe("session scheduling inputs", () => {
+  it("accepts an explicit UTC/offset instant within the schema duration bounds", () => {
+    expect(() => assertSessionSchedule("2027-04-01T14:00:00.000Z", 60)).not.toThrow();
+    expect(() => assertSessionSchedule("2027-04-01T17:00:00+03:00", 480)).not.toThrow();
+  });
+  it("rejects implicit local time, out-of-range duration and non-integer minutes", () => {
+    expect(() => assertSessionSchedule("2027-04-01T17:00:00", 60)).toThrow(/explicit UTC offset/);
+    expect(() => assertSessionSchedule("not a time", 60)).toThrow(/explicit UTC offset/);
+    expect(() => assertSessionSchedule("2027-04-01T14:00:00.000Z", 14)).toThrow(/15 and 480/);
+    expect(() => assertSessionSchedule("2027-04-01T14:00:00.000Z", 481)).toThrow(/15 and 480/);
+    expect(() => assertSessionSchedule("2027-04-01T14:00:00.000Z", 60.5)).toThrow(/15 and 480/);
   });
 });
