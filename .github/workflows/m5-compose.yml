@@ -1,0 +1,26 @@
+name: M5 self-host Compose smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m5-compose-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fresh-compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      M5_SYNTHETIC_COMPOSE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Provision and smoke-test actual self-host Docker Compose stack
+        run: bash scripts/verify-m5-compose.sh

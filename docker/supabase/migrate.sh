@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Apply CogNote's supabase/migrations/*.sql to the self-hosted database.
+# Apply ChessCoachPal's single current fresh-install schema to the self-hosted database.
 #
 # Runs as a one-shot service after the database is healthy. Each migration is
 # applied at most once and recorded in supabase_migrations.schema_migrations,
@@ -40,25 +40,6 @@ psql_run -c '
     name       text
   );
 '
-
-# Stacks set up before this ledger recorded filenames in
-# public.cognote_migrations, which the Data API exposed to the anon key.
-# Carry those rows over (so nothing re-applies), then drop the old table.
-psql_run -c "
-  do \$\$
-  begin
-    if to_regclass('public.cognote_migrations') is not null then
-      insert into supabase_migrations.schema_migrations (version, name)
-      select split_part(name, '_', 1),
-             regexp_replace(regexp_replace(name, '^[^_]*_', ''), '[.]sql\$', '')
-      from public.cognote_migrations
-      on conflict (version) do nothing;
-      drop table public.cognote_migrations;
-      raise notice 'migrate: moved the ledger to supabase_migrations.schema_migrations';
-    end if;
-  end
-  \$\$;
-"
 
 shopt -s nullglob
 migrations=("$MIGRATIONS_DIR"/*.sql)

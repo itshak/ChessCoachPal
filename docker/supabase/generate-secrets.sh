@@ -5,7 +5,7 @@
 #
 #   sh docker/supabase/generate-secrets.sh
 #
-# Everything here is self-signed (HS256), matching the legacy anon/service_role
+# Everything here is self-signed (HS256), matching the Supabase anon/service_role
 # keys that supabase-js expects. No cloud account required.
 set -eu
 
@@ -27,7 +27,7 @@ jwt() {
   iat="$(date +%s)"
   exp="$((iat + 60 * 60 * 24 * 365 * 10))"
   header="$(printf '%s' '{"alg":"HS256","typ":"JWT"}' | b64url)"
-  payload="$(printf '{"role":"%s","iss":"cognote","iat":%s,"exp":%s}' "$role" "$iat" "$exp" | b64url)"
+  payload="$(printf '{"role":"%s","iss":"chesscoachpal","iat":%s,"exp":%s}' "$role" "$iat" "$exp" | b64url)"
   signature="$(printf '%s.%s' "$header" "$payload" \
     | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)"
   printf '%s.%s.%s' "$header" "$payload" "$signature"

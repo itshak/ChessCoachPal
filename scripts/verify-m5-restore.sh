@@ -124,4 +124,16 @@ done
 docker exec "$target_db" psql -U postgres -d postgres -tAc \
   "SELECT count(*) FROM public.session_attendance a JOIN public.teaching_sessions s ON s.id=a.session_id WHERE s.title='Restore smoke lesson' AND a.status='present'" | grep -qx 1
 diff -qr "$tmp/source-files" "$tmp/target-files"
-echo "Synthetic second-DB restore, Storage API input, and mounted-file byte parity passed."
+echo "==> assert the destructive restore guard rejects a second run on populated target"
+if docker run --rm --network "container:$target_db" \
+  -v "$tmp/target-files:/var/lib/storage" \
+  -e DB_HOST=127.0.0.1 -e POSTGRES_PASSWORD=postgres \
+  -e RESTORE_DATE="$RESTORE_DATE" \
+  -e RESTORE_CONFIRM=RESTORE_TO_NEW_EMPTY_INSTALLATION \
+  -v "$root/docker/supabase/restore.sh:/restore.sh:ro" \
+  -v "$tmp/backups:/backups:ro" --entrypoint /bin/bash \
+  supabase/postgres:17.6.1.136 /restore.sh; then
+  echo "Restore must never overwrite a populated installation" >&2
+  exit 1
+fi
+echo "Synthetic second-DB restore, protected repeat refusal, Storage API input, and mounted-file byte parity passed."
