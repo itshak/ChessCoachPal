@@ -8,8 +8,7 @@ import {
 } from "@/lib/rateLimit";
 
 /**
- * Brute-force guard for the public token routes (practice links, portal
- * calendar). Call `rejectIfTokenLookupsBlocked` before resolving a token and
+ * Brute-force guard for public family-portal and calendar-token routes. Call `rejectIfTokenLookupsBlocked` before resolving a token and
  * `recordTokenLookupFailure` whenever a lookup misses. Successful lookups
  * never count toward the limit, so real students and families are unaffected.
  */

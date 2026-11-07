@@ -15,7 +15,6 @@ import type { AttendanceStatus, RsvpStatus } from "@/lib/supabase/types";
 import { Card } from "@/components/ui/card";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { familyDisplayName } from "@/lib/guardians";
-import { isActiveStudentPlan } from "@/lib/student-plans";
 import {
   formatCalendarDate,
   formatMoney,
@@ -32,7 +31,6 @@ import { PortalCancelButton } from "@/components/portal/PortalCancelButton";
 import { PortalEventRsvp } from "@/components/portal/PortalEventRsvp";
 import { PortalPolicyBanner } from "@/components/portal/PortalPolicyBanner";
 import { StudioPoliciesSection } from "@/components/portal/StudioPoliciesSection";
-import { loadStudentStreakSummary } from "@/lib/server/streaks";
 
 export const metadata: Metadata = { title: "Family Portal" };
 
@@ -127,24 +125,6 @@ export default async function PortalPage({
   const today = toLocalDateString(new Date(), policy.timezone);
 
   let lessons: PortalLesson[] = [];
-  let practiceLinks: {
-    id: string;
-    token: string;
-    student_id: string;
-    unassigned_at: string | null;
-    plans: { name: string } | null;
-  }[] = [];
-  let sheetMusic: {
-    id: string;
-    student_id: string;
-    assignment_note: string;
-    due_date: string | null;
-    music_library_items: {
-      title: string;
-      composer: string;
-      format: string;
-    } | null;
-  }[] = [];
   let sharedNotes: {
     id: string;
     body: string;
@@ -175,7 +155,6 @@ export default async function PortalPage({
       note: string;
     } | null;
   }[] = [];
-  const streakByStudent = new Map<string, number>();
   let creditPackages: CreditPackageWithBalance[] = [];
 
   const invoicesRes = await supabase
@@ -200,7 +179,7 @@ export default async function PortalPage({
   if (studentIds.length > 0) {
     await materializeLessons(supabase, guardian.teacher_id, today, addDays(today, 28));
 
-    const [lessonsRes, linksRes, notesRes, musicRes, eventsRes] = await Promise.all([
+    const [lessonsRes, notesRes, eventsRes] = await Promise.all([
       supabase
         .from("lessons")
         .select(
@@ -211,28 +190,12 @@ export default async function PortalPage({
         .lte("lesson_date", addDays(today, 28))
         .order("starts_at"),
       supabase
-        .from("student_plans")
-        .select("id, token, student_id, unassigned_at, plans ( name )")
-        .in("student_id", studentIds)
-        .order("assigned_at", { ascending: false }),
-      supabase
         .from("lesson_notes")
         .select("id, body, lessons!inner ( lesson_date, student_id )")
         .eq("shared_with_parent", true)
         .in("lessons.student_id", studentIds)
         .order("updated_at", { ascending: false })
         .limit(6),
-      supabase
-        .from("sheet_music_assignments")
-        .select(
-          `
-          id, student_id, assignment_note, due_date, unassigned_at,
-          music_library_items ( title, composer, format )
-        `
-        )
-        .in("student_id", studentIds)
-        .is("unassigned_at", null)
-        .order("assigned_at", { ascending: false }),
       supabase
         .from("events")
         .select(
@@ -253,9 +216,7 @@ export default async function PortalPage({
         .order("starts_at"),
     ]);
     lessons = (lessonsRes.data ?? []) as unknown as PortalLesson[];
-    practiceLinks = (linksRes.data ?? []).filter(isActiveStudentPlan) as unknown as typeof practiceLinks;
     sharedNotes = (notesRes.data ?? []) as unknown as typeof sharedNotes;
-    sheetMusic = (musicRes.data ?? []) as unknown as typeof sheetMusic;
 
     const studentIdSet = new Set(studentIds);
     portalEvents = ((eventsRes.data ?? []) as {
@@ -328,20 +289,7 @@ export default async function PortalPage({
       )
     ).filter((pkg) => pkg.balance.state === "active");
 
-    if (policy.streaks_enabled) {
-      await Promise.all(
-        students.map(async (student) => {
-          const summary = await loadStudentStreakSummary(
-            supabase,
-            student.id,
-            policy
-          );
-          if (summary && summary.currentStreak > 0) {
-            streakByStudent.set(student.id, summary.currentStreak);
-          }
-        })
-      );
-    }
+
   }
 
   const nameById = new Map(students.map((s) => [s.id, s.name]));
@@ -371,189 +319,10 @@ export default async function PortalPage({
             Welcome, {familyDisplayName(guardian)}
           </h1>
           <p className="text-muted text-sm mt-1">
-            Practice links, lesson schedule, and notes for your family. No
+            Lesson schedule and teaching notes for your family. No
             login needed; keep this link private.
           </p>
         </div>
-
-        {/* Practice links */}
-        <section>
-          <h2 className="text-lg font-semibold mb-3">Practice</h2>
-          {practiceLinks.length === 0 ? (
-            <Card className="text-center text-muted">No practice assignments yet.</Card>
-          ) : students.length > 1 ? (
-            <div className="space-y-5">
-              {students.map((student) => {
-                const studentLinks = practiceLinks.filter(
-                  (link) => link.student_id === student.id
-                );
-                if (studentLinks.length === 0) return null;
-                const streak = streakByStudent.get(student.id);
-                return (
-                  <div key={student.id}>
-                    <h3 className="text-sm font-semibold text-muted uppercase tracking-wide mb-2">
-                      {student.name}
-                    </h3>
-                    {streak != null && streak > 0 && (
-                      <p className="text-xs text-muted mb-2">
-                        Practice streak: {streak} day{streak === 1 ? "" : "s"}
-                      </p>
-                    )}
-                    <div className="space-y-2">
-                      {studentLinks.map((link) => (
-                        <Card key={link.id} padding="sm">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="font-medium">
-                              {link.plans?.name ?? "Lesson"}
-                            </div>
-                            <a
-                              href={`/practice/${link.token}`}
-                              className="inline-flex items-center justify-center font-semibold bg-primary text-white hover:bg-primary-dark px-4 py-2 text-sm rounded-lg transition-colors"
-                            >
-                              Practice
-                            </a>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {(() => {
-                const streak =
-                  students[0] != null
-                    ? streakByStudent.get(students[0].id)
-                    : undefined;
-                return streak != null && streak > 0 ? (
-                  <p className="text-xs text-muted">
-                    Practice streak: {streak} day{streak === 1 ? "" : "s"}
-                  </p>
-                ) : null;
-              })()}
-              {practiceLinks.map((link) => (
-                <Card key={link.id} padding="sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-medium">{link.plans?.name ?? "Lesson"}</div>
-                    <a
-                      href={`/practice/${link.token}`}
-                      className="inline-flex items-center justify-center font-semibold bg-primary text-white hover:bg-primary-dark px-4 py-2 text-sm rounded-lg transition-colors"
-                    >
-                      Practice
-                    </a>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Sheet music assignments */}
-        <section>
-          <h2 className="text-lg font-semibold mb-3">Sheet Music</h2>
-          {sheetMusic.length === 0 ? (
-            <Card className="text-center text-muted">No sheet music assigned yet.</Card>
-          ) : students.length > 1 ? (
-            <div className="space-y-5">
-              {students.map((student) => {
-                const studentScores = sheetMusic.filter(
-                  (row) => row.student_id === student.id
-                );
-                if (studentScores.length === 0) return null;
-                return (
-                  <div key={student.id}>
-                    <h3 className="text-sm font-semibold text-muted uppercase tracking-wide mb-2">
-                      {student.name}
-                    </h3>
-                    <div className="space-y-2">
-                      {studentScores.map((row) => (
-                        <Card key={row.id} padding="sm">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-medium">
-                                {row.music_library_items?.title ?? "Score"}
-                              </div>
-                              <div className="text-xs text-muted mt-0.5">
-                                {[
-                                  row.music_library_items?.composer || null,
-                                  row.due_date ? `Due ${row.due_date}` : null,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </div>
-                              {row.assignment_note && (
-                                <p className="text-xs text-muted mt-1 line-clamp-2">
-                                  {row.assignment_note}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex flex-col gap-1.5 shrink-0">
-                              <a
-                                href={`/portal/${token}/music/${row.id}`}
-                                className="inline-flex items-center justify-center font-semibold bg-primary text-white hover:bg-primary-dark px-4 py-2 text-sm rounded-lg transition-colors"
-                              >
-                                View
-                              </a>
-                              <a
-                                href={`/api/portal/${token}/music/${row.id}/file?download=1`}
-                                className="inline-flex items-center justify-center font-semibold bg-surface border border-border text-foreground hover:border-primary/50 px-4 py-2 text-xs rounded-lg transition-colors"
-                              >
-                                Download
-                              </a>
-                            </div>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {sheetMusic.map((row) => (
-                <Card key={row.id} padding="sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-medium">
-                        {row.music_library_items?.title ?? "Score"}
-                      </div>
-                      <div className="text-xs text-muted mt-0.5">
-                        {[
-                          row.music_library_items?.composer || null,
-                          row.due_date ? `Due ${row.due_date}` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </div>
-                      {row.assignment_note && (
-                        <p className="text-xs text-muted mt-1 line-clamp-2">
-                          {row.assignment_note}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-1.5 shrink-0">
-                      <a
-                        href={`/portal/${token}/music/${row.id}`}
-                        className="inline-flex items-center justify-center font-semibold bg-primary text-white hover:bg-primary-dark px-4 py-2 text-sm rounded-lg transition-colors"
-                      >
-                        View
-                      </a>
-                      <a
-                        href={`/api/portal/${token}/music/${row.id}/file?download=1`}
-                        className="inline-flex items-center justify-center font-semibold bg-surface border border-border text-foreground hover:border-primary/50 px-4 py-2 text-xs rounded-lg transition-colors"
-                      >
-                        Download
-                      </a>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
-        </section>
 
         {/* Events */}
         {portalEvents.length > 0 && (

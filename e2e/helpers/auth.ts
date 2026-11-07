@@ -7,24 +7,9 @@ export const SEED_TEACHER = {
 } as const;
 
 export const SEED = {
-  practiceTokenEmma: "dev-token-emma-week1",
-  practiceTokenNoahSymbols: "dev-token-noah-symbols",
-  practiceTokenMayaKeys: "dev-token-maya-keys",
   portalTokenJordan: "dev-portal-jordan",
   portalTokenNoah: "dev-portal-noah",
-  students: {
-    emma: "Emma",
-    liam: "Liam",
-    sophia: "Sophia",
-    noah: "Noah",
-    maya: "Maya",
-  },
-  plans: {
-    week1: "Week 1 — Middle C Position",
-    bassIntro: "Bass Clef Intro",
-    symbols: "Dynamics & Tempo Terms",
-    keySignatures: "Major Key Signatures",
-  },
+  students: { emma:"Emma", liam:"Liam", sophia:"Sophia", noah:"Noah", maya:"Maya" },
 } as const;
 
 export async function signInAsTeacher(page: Page) {

@@ -3,7 +3,6 @@ import { getPolicy } from "@/lib/server/scheduling";
 import { StudioSettingsForm } from "@/components/teacher/settings/StudioSettingsForm";
 import { PolicySettings } from "@/components/teacher/schedule/PolicySettings";
 import { BillingSettingsForm } from "@/components/teacher/settings/BillingSettingsForm";
-import { StreakSettingsForm } from "@/components/teacher/settings/StreakSettingsForm";
 
 export const metadata = { title: "Studio" };
 
@@ -31,7 +30,7 @@ export default async function StudioPage() {
         <h1 className="text-2xl font-bold">Studio</h1>
         <p className="text-muted text-sm mt-1">
           Your studio name, lesson lengths, cancellation and make-up policy,
-          rates, and practice streaks. These drive scheduling, invoices, and
+          rates and teaching policies. These drive scheduling, invoices, and
           what families see on their portal.
         </p>
       </div>
@@ -40,7 +39,6 @@ export default async function StudioPage() {
         <StudioSettingsForm policy={clientPolicy} />
         <PolicySettings policy={clientPolicy} defaultOpen />
         <BillingSettingsForm policy={clientPolicy} />
-        <StreakSettingsForm policy={clientPolicy} />
       </div>
     </div>
   );

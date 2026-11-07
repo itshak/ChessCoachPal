@@ -30,9 +30,16 @@ test("serves an installable manifest", async ({ page, request }) => {
   const res = await request.get("/manifest.webmanifest");
   expect(res.ok()).toBeTruthy();
   const manifest = await res.json();
+  expect(manifest.name).toBe("ChessCoachPal");
   expect(manifest.display).toBe("standalone");
   expect(manifest.start_url).toBe("/");
   expect(manifest.icons.length).toBeGreaterThanOrEqual(2);
+  for (const icon of manifest.icons as {src:string;type:string}[]) {
+    expect(icon.src).toMatch(/^\/icon\/chesscoachpal(?:-maskable)?\.svg$/);
+    const asset = await request.get(icon.src, { maxRedirects: 0 });
+    expect(asset.status(), icon.src).toBe(200);
+    expect(asset.headers()["content-type"], icon.src).toContain("image/svg+xml");
+  }
   expect(
     manifest.icons.some((icon: { purpose?: string }) => icon.purpose === "maskable"),
     "manifest must ship a maskable icon or Android clips the artwork"
@@ -67,9 +74,9 @@ test("serves the offline page when offline", async ({ page, context }) => {
   await gotoControlled(page);
   await context.setOffline(true);
   // The SW serves the cached /offline body for the requested URL without a
-  // redirect, so the document URL stays /lessons — assert the rendered content,
+  // redirect, so the document URL stays /learning — assert the rendered content,
   // not the URL (an /offline URL assertion would fail on correct behaviour).
-  await page.goto("/lessons").catch(() => {});
+  await page.goto("/learning").catch(() => {});
   await expect(page.getByRole("heading", { name: /offline/i })).toBeVisible();
 });
 
@@ -92,7 +99,7 @@ test("never caches API, auth, or portal responses", async ({ page }) => {
   });
   // Positive control: the precached icon proves the worker installed and this
   // enumeration is reading real entries, so an empty cache can't read as a pass.
-  expect(cachedPaths).toContain("/icons/icon-192.png");
+  expect(cachedPaths).toContain("/icon/chesscoachpal.svg");
   expect(cachedPaths.filter((p) => /^\/(api|auth|portal)(?:\/|$)/.test(p))).toEqual([]);
 });
 
@@ -113,7 +120,7 @@ test("does not serve the offline shell for /api, /auth or /portal", async ({
   }
 
   // A non-excluded route does get the shell, which also proves we were offline.
-  await page.goto("/lessons").catch(() => {});
+  await page.goto("/learning").catch(() => {});
   await expect(page.getByRole("heading", { name: /offline/i })).toBeVisible();
 });
 

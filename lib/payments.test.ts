@@ -8,7 +8,7 @@ const baseArgs = {
   amountCents: 500,
   currency: "USD",
   familyName: "Morales family",
-  studioName: "Morales Piano Studio",
+  studioName: "Chess Teacher Example",
   periodLabel: "2026-08-01 – 2026-08-10",
   successUrl: "https://example.com/portal/abc?paid=1",
   cancelUrl: "https://example.com/portal/abc",

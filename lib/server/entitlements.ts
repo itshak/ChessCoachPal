@@ -66,51 +66,11 @@ export async function countActiveStudents(
   return count ?? 0;
 }
 
-export async function countPlans(
-  supabase: SupabaseClient,
-  teacherId: string
-): Promise<number> {
-  const { count, error } = await supabase
-    .from("plans")
-    .select("id", { count: "exact", head: true })
-    .eq("teacher_id", teacherId);
-
-  if (error) {
-    console.error("countPlans:", error);
-    return 0;
-  }
-  return count ?? 0;
-}
-
-export async function countSheetItems(
-  supabase: SupabaseClient,
-  teacherId: string
-): Promise<number> {
-  const { count, error } = await supabase
-    .from("music_library_items")
-    .select("id", { count: "exact", head: true })
-    .eq("teacher_id", teacherId);
-
-  if (error) {
-    console.error("countSheetItems:", error);
-    return 0;
-  }
-  return count ?? 0;
-}
-
 async function countForResource(
-  supabase: SupabaseClient,
-  teacherId: string,
-  resource: LimitResource
+  supabase: SupabaseClient, teacherId: string, resource: LimitResource
 ): Promise<number> {
-  switch (resource) {
-    case "students":
-      return countActiveStudents(supabase, teacherId);
-    case "plans":
-      return countPlans(supabase, teacherId);
-    case "sheet_music":
-      return countSheetItems(supabase, teacherId);
-  }
+  void resource;
+  return countActiveStudents(supabase, teacherId);
 }
 
 /**
@@ -132,8 +92,7 @@ export async function assertWithinHostedLimit(
     entitlement.demotedFrom
   );
 
-  // Students/plans: unlimited on paid plans. Sheet music: always capped on hosted.
-  if (!entitlement.softLimitsApply && resource !== "sheet_music") {
+  if (!entitlement.softLimitsApply) {
     return evaluateLimit(entitlement, resource, 0, adding);
   }
 

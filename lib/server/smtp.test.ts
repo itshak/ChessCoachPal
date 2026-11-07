@@ -9,8 +9,8 @@ import {
 const base = {
   host: "127.0.0.1",
   port: 54325,
-  from: "notifications@cognote.studio",
-  fromHeader: '"Studio (via ChessCoachPal)" <notifications@cognote.studio>',
+  from: "notifications@chesscoachpal.invalid",
+  fromHeader: '"Studio (via ChessCoachPal)" <notifications@chesscoachpal.invalid>',
   to: "parent@example.com",
   subject: "Hi",
   text: "Body",

@@ -1,0 +1,32 @@
+name: Security history audit
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+jobs:
+  reachable-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Include all accessible branch and pull-request refs
+        run: |
+          git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*' '+refs/pull/*/head:refs/remotes/pr/*'
+      - name: Scan every reachable Git blob for high-confidence secret patterns
+        run: node scripts/audit-m4-history.mjs
+      - name: Preserve redacted audit scope and finding paths
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m4-redacted-git-history-audit
+          path: m4-security-audit.json
+          retention-days: 7
+          if-no-files-found: warn

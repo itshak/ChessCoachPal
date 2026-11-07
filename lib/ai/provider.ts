@@ -145,7 +145,7 @@ ${JSON.stringify(
       args.provider === "openai"
         ? await callOpenAiText(args.apiKey, {
             system:
-              "You draft concise private piano-teacher progress notes as markdown. Obey age and title instructions exactly. Never invent milestones from age.",
+              "You draft concise private chess-coach progress notes as markdown. Obey age and title instructions exactly. Never invent milestones from age.",
             prompt,
             jsonObject: false,
           })

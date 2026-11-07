@@ -17,14 +17,14 @@ const ANN = {
 
 describe("lessonEvent", () => {
   it("uses a stable per-lesson UID and a student-labelled summary", () => {
-    const e = lessonEvent(ANN, "Piano Lessons");
-    expect(e.uid).toBe("abc@cognote.studio");
+    const e = lessonEvent(ANN, "Chess Lessons");
+    expect(e.uid).toBe("abc@chesscoachpal.invalid");
     expect(durationMinutes(e)).toBe(30);
     expect(e.start).toEqual([2026, 7, 14, 6, 0]);
   });
 
   it("names the studio's subject when it sets a lesson label", () => {
-    expect(lessonEvent(ANN, "Lessons", "Piano").title).toBe("Piano lesson — Ann");
+    expect(lessonEvent(ANN, "Lessons", "Chess").title).toBe("Chess lesson — Ann");
     expect(lessonEvent(ANN, "Lessons", "  Violin  ").title).toBe(
       "Violin lesson — Ann"
     );
@@ -48,7 +48,7 @@ describe("studioEvent", () => {
       },
       "ChessCoachPal"
     );
-    expect(e.uid).toBe("ev1@cognote.studio");
+    expect(e.uid).toBe("ev1@chesscoachpal.invalid");
     expect(durationMinutes(e)).toBe(90);
     expect(e.location).toBe("Hall");
   });
@@ -76,9 +76,9 @@ describe("buildIcs", () => {
   });
 
   it("emits UID and SUMMARY lines for an event", () => {
-    const ics = buildIcs([lessonEvent(ANN, "Lessons", "Piano")])!;
-    expect(ics).toContain("UID:abc@cognote.studio");
-    expect(ics).toContain("SUMMARY:Piano lesson — Ann");
+    const ics = buildIcs([lessonEvent(ANN, "Lessons", "Chess")])!;
+    expect(ics).toContain("UID:abc@chesscoachpal.invalid");
+    expect(ics).toContain("SUMMARY:Chess lesson — Ann");
     expect(ics).toContain("DURATION:PT30M");
   });
 });

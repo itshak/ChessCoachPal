@@ -15,7 +15,7 @@ import { isIosBrowser } from "@/lib/pwa";
  * PortalPolicyBanner.
  */
 
-const DISMISSED_KEY = "cognote-ios-install-hint-dismissed";
+const DISMISSED_KEY = "chesscoachpal-ios-install-hint-dismissed";
 
 const listeners = new Set<() => void>();
 

@@ -179,7 +179,7 @@ export function isAllowedPushEndpoint(
 }
 
 /** localStorage key recording which teacher enabled push on this browser. */
-export const PUSH_OWNER_STORAGE_KEY = "cognote-push-owner";
+export const PUSH_OWNER_STORAGE_KEY = "chesscoachpal-push-owner";
 
 /**
  * Whether a subscription that is already on this browser must be released

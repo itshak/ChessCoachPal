@@ -20,7 +20,7 @@ export async function createTeacherNotification(
     body?: string;
     /** App-relative path, e.g. `/schedule` or `/billing/...` */
     href?: string | null;
-    /** Absolute origin for email links (e.g. https://cognote.studio) */
+    /** Absolute origin for email links (e.g. https://chesscoachpal.example) */
     origin?: string | null;
     policy?: StudioPolicy;
   }

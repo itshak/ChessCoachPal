@@ -12,7 +12,7 @@ import { THEME_COOKIE, themeColorFor } from "@/lib/pwa";
 
 export type ThemeMode = "light" | "dark";
 
-const STORAGE_KEY = "cognote-teacher-theme";
+const STORAGE_KEY = "chesscoachpal-teacher-theme";
 
 type ThemeContextValue = {
   theme: ThemeMode;

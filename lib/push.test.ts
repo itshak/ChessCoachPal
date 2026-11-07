@@ -336,6 +336,6 @@ describe("shouldReleasePushForOwner", () => {
   it("pins the storage key so a rename cannot silently strand ownership", () => {
     // Mirrors the THEME_COOKIE guard: written under one key and read under
     // another, ownership would never be released again.
-    expect(PUSH_OWNER_STORAGE_KEY).toBe("cognote-push-owner");
+    expect(PUSH_OWNER_STORAGE_KEY).toBe("chesscoachpal-push-owner");
   });
 });

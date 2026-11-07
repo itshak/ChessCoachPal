@@ -48,13 +48,8 @@ export function HostedPlanSummary({
   monthlyPriceCents: number;
   usage: {
     students: number;
-    plans: number;
-    sheetMusic: number;
     limits: {
       maxStudents: number;
-      maxPlans: number;
-      maxSheetItems: number;
-      maxSheetItemsPro?: number;
     };
   };
 }) {
@@ -84,12 +79,6 @@ export function HostedPlanSummary({
         <ul className="text-xs text-muted space-y-0.5">
           <li>
             Active students: {usage.students} / {usage.limits.maxStudents}
-          </li>
-          <li>
-            Practice lessons: {usage.plans} / {usage.limits.maxPlans}
-          </li>
-          <li>
-            Sheet music: {usage.sheetMusic} / {usage.limits.maxSheetItems}
           </li>
         </ul>
       )}

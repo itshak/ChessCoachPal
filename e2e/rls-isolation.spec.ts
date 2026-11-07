@@ -68,12 +68,14 @@ test.describe("RLS tenant isolation", () => {
     for (const table of [
       "students",
       "guardians",
-      "plans",
+      "workplaces",
+      "class_groups",
+      "teaching_sessions",
       "lessons",
       "invoices",
       "studio_policies",
     ]) {
-      const { data, error } = await teacherB.from(table).select("*").limit(5);
+      const { data, error } = await teacherB.from(table).select("*").eq("teacher_id", SEED_TEACHER_ID).limit(5);
       expect(error, `${table}: unexpected error`).toBeNull();
       expect(data, `${table}: cross-tenant rows leaked`).toEqual([]);
     }
@@ -115,7 +117,7 @@ test.describe("RLS tenant isolation", () => {
 
   test("anonymous role has no access to app tables", async () => {
     const anon = anonClient();
-    for (const table of ["students", "student_plans", "practice_sessions"]) {
+    for (const table of ["students", "workplaces", "teaching_sessions"]) {
       const { data, error } = await anon.from(table).select("*").limit(1);
       // Either a permission error or zero rows is acceptable; data must not leak.
       if (error) continue;

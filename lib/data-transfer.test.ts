@@ -1,44 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  DATA_EXPORT_VERSION,
-  parseExportPayload,
-  importStudioExport,
+  DATA_EXPORT_VERSION, parseExportPayload, importStudioExport,
   type StudioDataExport,
 } from "@/lib/data-transfer";
-
-function emptyTables(): StudioDataExport["tables"] {
-  return {
-    studio_policies: null,
-    guardians: [],
-    students: [],
-    plans: [],
-    lesson_slots: [],
-    lessons: [],
-    attendance: [],
-    lesson_notes: [],
-    student_plans: [],
-    practice_sessions: [],
-    note_attempts: [],
-    flashcard_progress: [],
-    skill_dimensions: [],
-    skill_assessments: [],
-    invoices: [],
-    invoice_items: [],
-    payments: [],
-  };
-}
 
 function payloadWithVersion(version: number): StudioDataExport {
   return {
     version,
     exportedAt: new Date().toISOString(),
     teacherId: "00000000-0000-0000-0000-000000000001",
-    tables: emptyTables(),
+    tables: { studio_policies: null, guardians: [], students: [] },
   };
 }
 
-/** Minimal stub: records upserts per table, returns no errors. */
 function stubSupabase(upserts: Record<string, unknown[]>): SupabaseClient {
   return {
     from(table: string) {
@@ -51,8 +26,7 @@ function stubSupabase(upserts: Record<string, unknown[]>): SupabaseClient {
           return {
             eq() {
               return {
-                maybeSingle: () =>
-                  Promise.resolve({ data: { display_name: "Existing Name" } }),
+                maybeSingle: () => Promise.resolve({ data: { display_name: "Existing name" } }),
               };
             },
           };
@@ -62,72 +36,54 @@ function stubSupabase(upserts: Record<string, unknown[]>): SupabaseClient {
   } as unknown as SupabaseClient;
 }
 
-describe("parseExportPayload", () => {
-  it("accepts current-version (v2) files", () => {
+describe("ChessCoachPal portable backup", () => {
+  it("accepts only the current pre-1.0 chess-only format", () => {
+    expect(DATA_EXPORT_VERSION).toBe(1);
     expect(parseExportPayload(payloadWithVersion(DATA_EXPORT_VERSION))).not.toBeNull();
+    expect(parseExportPayload(payloadWithVersion(2))).toBeNull();
+    expect(parseExportPayload({ version: DATA_EXPORT_VERSION })).toBeNull();
   });
 
-  it("accepts legacy v1 files", () => {
-    expect(parseExportPayload(payloadWithVersion(1))).not.toBeNull();
-  });
-
-  it("rejects unknown future versions", () => {
-    expect(parseExportPayload(payloadWithVersion(3))).toBeNull();
-  });
-
-  it("rejects payloads without tables", () => {
-    const bad = { version: DATA_EXPORT_VERSION, exportedAt: "", teacherId: "" };
-    expect(parseExportPayload(bad)).toBeNull();
-  });
-});
-
-describe("importStudioExport", () => {
-  const teacherId = "00000000-0000-0000-0000-000000000002";
-
-  it("imports a v1 file (no v2 tables) without errors", async () => {
-    const upserts: Record<string, unknown[]> = {};
-    const payload = payloadWithVersion(1);
-    payload.tables.students = [{ id: "s1", name: "Ada" }];
-
-    const result = await importStudioExport(stubSupabase(upserts), teacherId, payload);
-
-    expect(result.ok).toBe(true);
-    expect(upserts.students).toEqual([{ id: "s1", name: "Ada", teacher_id: teacherId }]);
-    // v2-only tables have no rows to upsert in a v1 file
-    expect(upserts.music_library_items).toBeUndefined();
-    expect(upserts.events).toBeUndefined();
-  });
-
-  it("imports v2 music/event tables and rewrites teacher_id", async () => {
+  it("imports coaching records and rewrites teacher ownership", async () => {
+    const teacherId = "00000000-0000-0000-0000-000000000002";
     const upserts: Record<string, unknown[]> = {};
     const payload = payloadWithVersion(DATA_EXPORT_VERSION);
-    payload.tables.music_library_items = [
-      { id: "m1", title: "Sonatina", teacher_id: "someone-else" },
-    ];
-    payload.tables.sheet_music_assignments = [{ id: "a1", music_item_id: "m1" }];
-    payload.tables.events = [{ id: "e1", title: "Recital", teacher_id: "someone-else" }];
+    payload.tables.students = [{ id: "s1", name: "Ada", teacher_id: "old" }];
+    payload.tables.workplaces = [{ id: "w1", name: "Chess club", teacher_id: "old" }];
+    payload.tables.teaching_sessions = [{ id: "t1", title: "Endgames", teacher_id: "old" }];
+    payload.tables.chess_observations = [{ id: "c1", observation: "Knows the opposition", teacher_id: "old" }];
+    payload.tables.events = [{ id: "e1", title: "Chess tournament", teacher_id: "old" }];
     payload.tables.event_students = [{ id: "es1", event_id: "e1" }];
-    payload.tables.event_rsvps = [{ id: "r1", event_id: "e1" }];
 
     const result = await importStudioExport(stubSupabase(upserts), teacherId, payload);
-
     expect(result.ok).toBe(true);
-    expect(upserts.music_library_items?.[0]).toMatchObject({
-      id: "m1",
-      teacher_id: teacherId,
-    });
-    expect(upserts.events?.[0]).toMatchObject({ id: "e1", teacher_id: teacherId });
-    expect(upserts.sheet_music_assignments).toHaveLength(1);
+    for (const table of ["students", "workplaces", "teaching_sessions", "chess_observations", "events"]) {
+      expect(upserts[table]?.[0]).toHaveProperty("teacher_id", teacherId);
+    }
     expect(upserts.event_students).toHaveLength(1);
-    expect(upserts.event_rsvps).toHaveLength(1);
   });
 
-  it("rejects unsupported versions", async () => {
-    const result = await importStudioExport(
-      stubSupabase({}),
-      teacherId,
-      payloadWithVersion(99)
-    );
+  it("never writes removed music tables or provider secrets", async () => {
+    const teacherId = "00000000-0000-0000-0000-000000000002";
+    const upserts: Record<string, unknown[]> = {};
+    const payload = payloadWithVersion(DATA_EXPORT_VERSION);
+    payload.tables.plans = [{ id: "malicious" }];
+    payload.tables.sheet_music_assignments = [{ id: "malicious" }];
+    payload.tables.studio_policies = {
+      id: "p1", ai_api_key: "secret", stripe_secret_key: "secret",
+    };
+    const result = await importStudioExport(stubSupabase(upserts), teacherId, payload);
+    expect(result.ok).toBe(true);
+    expect(upserts.plans).toBeUndefined();
+    expect(upserts.sheet_music_assignments).toBeUndefined();
+    expect(upserts.studio_policies?.[0]).not.toHaveProperty("ai_api_key");
+    expect(upserts.studio_policies?.[0]).not.toHaveProperty("stripe_secret_key");
+  });
+
+  it("rejects unsupported versions before writing any data", async () => {
+    const upserts: Record<string, unknown[]> = {};
+    const result = await importStudioExport(stubSupabase(upserts), "teacher", payloadWithVersion(99));
     expect(result.ok).toBe(false);
+    expect(upserts).toEqual({});
   });
 });

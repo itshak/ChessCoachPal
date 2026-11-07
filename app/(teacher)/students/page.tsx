@@ -14,32 +14,15 @@ import {
 
 export const metadata = { title: "Students" };
 
-interface StudentSessionRow {
-  id: string;
-  total_correct: number;
-  total_questions: number;
-  started_at: string;
-  completed_at: string | null;
-}
-
 interface StudentListRow {
   id: string;
   name: string;
+  level: string | null;
   birthdate: string | null;
   parent_contact: string | null;
   archived_at: string | null;
   created_at: string;
-  guardians:
-    | { name: string; family_name: string | null }[]
-    | { name: string; family_name: string | null }
-    | null;
-  student_plans:
-    | {
-        id: string;
-        plans: { name: string } | null;
-        practice_sessions: StudentSessionRow[] | null;
-      }[]
-    | null;
+  guardians: { name: string; family_name: string | null } | { name: string; family_name: string | null }[] | null;
 }
 
 export default async function StudentsPage({
@@ -59,17 +42,7 @@ export default async function StudentsPage({
 
   let studentsQuery = supabase
     .from("students")
-    .select(
-      `
-        id, name, birthdate, parent_contact, archived_at, created_at,
-        guardians ( name, family_name ),
-        student_plans (
-          id,
-          plans ( name ),
-          practice_sessions ( id, total_correct, total_questions, started_at, completed_at )
-        )
-      `
-    )
+    .select("id, name, level, birthdate, parent_contact, archived_at, created_at, guardians ( name, family_name )")
     .eq("teacher_id", user.id)
     .order("name");
 
@@ -123,8 +96,8 @@ export default async function StudentsPage({
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Students</h1>
         <p className="text-muted text-sm mt-1">
-          Click a student to see their progress: practice accuracy, skill
-          ratings, attendance, and assigned lessons.
+          Select a student to review chess skills, learning observations,
+          attendance, lesson notes and family information.
         </p>
         <p className="text-xs text-muted mt-2">
           {showArchived ? (
@@ -159,28 +132,6 @@ export default async function StudentsPage({
           ) : (
             <div className="flex flex-col gap-3">
               {students.map((student) => {
-                const allSessions = (student.student_plans ?? []).flatMap(
-                  (sp) => sp.practice_sessions ?? []
-                );
-                const totalSessions = allSessions.length;
-                const lastSession = allSessions
-                  .sort(
-                    (a, b) =>
-                      new Date(b.started_at).getTime() -
-                      new Date(a.started_at).getTime()
-                  )[0];
-                const overallCorrect = allSessions.reduce(
-                  (sum, s) => sum + (s.total_correct ?? 0),
-                  0
-                );
-                const overallTotal = allSessions.reduce(
-                  (sum, s) => sum + (s.total_questions ?? 0),
-                  0
-                );
-                const accuracy =
-                  overallTotal > 0
-                    ? Math.round((overallCorrect / overallTotal) * 100)
-                    : null;
                 const age =
                   student.birthdate != null
                     ? ageFromBirthdate(student.birthdate)
@@ -219,34 +170,9 @@ export default async function StudentsPage({
                             <div className="text-sm text-muted">{subtitle}</div>
                           )}
                         </div>
-                        <div className="text-right text-sm">
-                          <div className="text-muted">
-                            {totalSessions} session
-                            {totalSessions !== 1 && "s"}
-                          </div>
-                          {accuracy !== null && (
-                            <div
-                              className={
-                                accuracy >= 80
-                                  ? "text-success font-medium"
-                                  : accuracy >= 50
-                                    ? "text-warning font-medium"
-                                    : "text-error font-medium"
-                              }
-                            >
-                              {accuracy}% accuracy
-                            </div>
-                          )}
-                          {lastSession && (
-                            <div className="text-muted text-xs">
-                              Last:{" "}
-                              {new Date(
-                                lastSession.started_at
-                              ).toLocaleDateString()}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                        <div className="text-right text-sm text-muted">
+                          {student.level ? student.level : "Chess learner"}
+                        </div>                      </div>
                     </Card>
                   </Link>
                 );

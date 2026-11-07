@@ -45,11 +45,14 @@ jobs:
       - name: Export Supabase keys to environment
         run: |
           eval "$(supabase status -o env)"
+          token_key="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')"
+          echo "::add-mask::$token_key"
+          echo "::add-mask::${SERVICE_ROLE_KEY:-$SECRET_KEY}"
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL:-http://127.0.0.1:54321}"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY:-$PUBLISHABLE_KEY}"
             echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY:-$SECRET_KEY}"
-            echo "TOKEN_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+            echo "TOKEN_ENCRYPTION_KEY=$token_key"
             echo "MCP_PUBLIC_ORIGIN=http://localhost:3000"
           } >> "$GITHUB_ENV"
 

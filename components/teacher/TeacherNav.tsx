@@ -19,7 +19,6 @@ const navItems = [
   { href: "/families", label: "Families", tour: "families" },
   { href: "/schedule", label: "Schedule", tour: "schedule" },
   { href: "/events", label: "Events", tour: "events" },
-  { href: "/lessons", label: "Lessons", tour: "lessons" },
   { href: "/billing", label: "Billing", tour: "billing" },
   { href: "/studio", label: "Studio", tour: "studio" },
 ];

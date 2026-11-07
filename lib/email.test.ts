@@ -15,7 +15,7 @@ beforeEach(() => {
 describe("fromHeader", () => {
   it("uses the default platform address and name", () => {
     vi.stubEnv("EMAIL_FROM_ADDRESS", undefined);
-    expect(fromHeader()).toBe('"ChessCoachPal Studio" <notifications@cognote.studio>');
+    expect(fromHeader()).toBe('"ChessCoachPal Studio" <notifications@chesscoachpal.invalid>');
   });
 
   it("uses EMAIL_FROM_ADDRESS when configured", () => {
@@ -24,15 +24,15 @@ describe("fromHeader", () => {
   });
 
   it("renders the per-teacher display name", () => {
-    expect(fromHeader("Morales Piano Studio (via ChessCoachPal)")).toContain(
-      '"Morales Piano Studio (via ChessCoachPal)"'
+    expect(fromHeader("Example Chess Coach (via ChessCoachPal)")).toContain(
+      '"Example Chess Coach (via ChessCoachPal)"'
     );
   });
 
   it("strips characters that would break or spoof the header", () => {
     vi.stubEnv("EMAIL_FROM_ADDRESS", undefined);
     expect(fromHeader('Evil" <fake@spoof.com>\r\nBcc: x')).toBe(
-      '"Evil <fake@spoof.com>Bcc: x" <notifications@cognote.studio>'
+      '"Evil <fake@spoof.com>Bcc: x" <notifications@chesscoachpal.invalid>'
     );
   });
 

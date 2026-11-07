@@ -1,5 +1,4 @@
 import type { AttendanceStatus } from "@/lib/supabase/types";
-import type { NamingSystem } from "@/lib/symbols";
 
 /**
  * Scheduling helpers.
@@ -20,8 +19,6 @@ export interface StudioPolicy {
   studio_info: string;
   /** Subject/instrument for calendar feed titles; empty = neutral "Lesson". */
   lesson_label: string;
-  /** Note-value vocabulary used in symbols, quizzes, and flashcards. */
-  note_naming_system: NamingSystem;
   timezone: string;
   lesson_duration_options: number[];
   cancellation_window_hours: number;
@@ -67,11 +64,6 @@ export interface StudioPolicy {
   /** Optional BYO LLM for assist features (import mapping, future drafts). */
   ai_provider: "none" | "openai" | "anthropic";
   ai_api_key: string | null;
-  // Practice streaks (opt-in)
-  streaks_enabled: boolean;
-  streak_count_quiz: boolean;
-  streak_count_free_practice: boolean;
-  streak_count_flashcards: boolean;
   /** Last time a family-relevant policy field changed (drives the portal banner). */
   policies_updated_at: string | null;
 }
@@ -82,7 +74,6 @@ export const DEFAULT_POLICY: StudioPolicy = {
   studio_contact: "",
   studio_info: "",
   lesson_label: "",
-  note_naming_system: "us",
   timezone: "America/Chicago",
   lesson_duration_options: [30, 45, 60],
   cancellation_window_hours: 24,
@@ -116,10 +107,6 @@ export const DEFAULT_POLICY: StudioPolicy = {
   bcc_email: null,
   ai_provider: "none",
   ai_api_key: null,
-  streaks_enabled: false,
-  streak_count_quiz: true,
-  streak_count_free_practice: false,
-  streak_count_flashcards: false,
   policies_updated_at: null,
 };
 

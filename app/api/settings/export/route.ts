@@ -14,7 +14,7 @@ export async function GET() {
 
   try {
     const payload = await buildStudioExport(supabase, user.id);
-    const filename = `cognote-export-${new Date().toISOString().slice(0, 10)}.json`;
+    const filename = `chesscoachpal-export-${new Date().toISOString().slice(0, 10)}.json`;
     return new NextResponse(JSON.stringify(payload, null, 2), {
       status: 200,
       headers: {
