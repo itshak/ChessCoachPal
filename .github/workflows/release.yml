@@ -19,8 +19,6 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,6 +30,8 @@ jobs:
       - name: Check pending release
         id: candidate
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           VERSION="$(node -p 'require("./package.json").version')"
@@ -110,6 +110,7 @@ jobs:
       - name: Publish tag and release
         if: steps.candidate.outputs.publish == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.candidate.outputs.version }}
         run: |
           set -euo pipefail
