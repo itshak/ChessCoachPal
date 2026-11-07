@@ -52,7 +52,7 @@ Full configuration guidance and unsupported features: [AI_CONNECTORS.md](AI_CONN
 - Canonical fresh-install schema includes composite teacher/student/session-roster foreign keys, RLS and no anonymous privileges. Synthetic RLS tests deny foreign teacher reads and writes.
 - **Deferred:** Lichess/Chess.com ratings, chess engine/board/PGN, mirrored study content, and additional MCP write/idempotency contracts (change 2b). This acceptance is **not** a comprehensive historical secret/privacy/licensing audit (Milestone 4), nor a live ChatGPT/Claude client verification (final local Milestone 5 gate only).
 
-**Post-merge main verification:** [CI 42415922445](https://github.com/itshak/ChessCoachPal/actions/runs/42415922445) and [E2E 42415922428](https://github.com/itshak/ChessCoachPal/actions/runs/42415922428) triggered on the merged implementation; check their conclusions before claiming them passed.
+**Post-merge main verification:** [CI 42415922445](https://github.com/itshak/ChessCoachPal/actions/runs/42415922445) **passed all three jobs** (typecheck, 441 unit tests, Docker, Compose); [E2E 42415922428](https://github.com/itshak/ChessCoachPal/actions/runs/42415922428) **passed** fresh synthetic Supabase startup/reset and production browser/MCP suite (**28 passed, 5 skipped, 0 failed**). This is independent confirmation on main commit [822a33f](https://github.com/itshak/ChessCoachPal/commit/822a33f0881821c1de479629bf15d39264d2dcc1).
 
 ## Other accepted foundation
 
