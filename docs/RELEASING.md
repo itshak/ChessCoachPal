@@ -18,7 +18,7 @@ Each published version is a *reviewed commit on the current `main` branch* with:
 
 1. Collect user-visible changes under `## [Unreleased]` in `CHANGELOG.md` as development proceeds. Never include private student information, credentials or personal URLs.
 2. Decide that a version is ready and that the release checklist below is satisfied. For the first functional application, use **`0.1.0`**, not `1.0.0`. Reserve other versions for subsequent releases.
-3. Run `npm run release:prepare -- 0.1.0` (substitute the version). This atomically prepares the manifest, lockfile and dated changelog section locally; it does **not** publish anything. Inspect all changes and commit them in a PR.
+3. Run `npm run release:prepare -- 0.1.0` (substitute the version). This prepares the manifest, lockfile and dated changelog section locally; it does **not** publish anything. Inspect all changes and commit them in a PR.
 4. Run `npm run release:validate -- 0.1.0` and `npm run release:check` locally. Merge the reviewed PR into `main`.
 5. [Publish GitHub Release workflow](../.github/workflows/release.yml) detects that `main` now names an unpublished version, checks the changelog/version consistency, verifies fresh Supabase initialization, runs typecheck, unit and release-script tests, builds the production app, and runs browser E2E tests. **Any failure blocks publication.**
 6. On success, automation creates `vX.Y.Z` pointing at that **same commit**, generates release notes from its changelog section and publishes the GitHub Release. GitHub supplies both source archives automatically. No one needs to upload the source ZIP manually.
@@ -28,7 +28,7 @@ The workflow is deliberately scoped to `main`; PRs cannot publish releases. Vers
 
 ## v0.1.0: first functional release gate
 
-All of these must be checked and documented before choosing version `0.1.0`:
+All of these must be checked and documented before publishing version `0.1.0`. The automated release validator **rejects v0.1.0 unless every checkbox below is marked `[x]`** in the reviewed `main` commit. A checkbox must only be marked after its evidence is recorded:
 
 - [ ] A new user can follow documented self-hosted setup from an empty database and log in without requiring an OpenAI, Anthropic, Notion or Google subscription.
 - [ ] Teacher website supports creating and editing students/workplaces/groups, enrollment, scheduling individual and group lessons, editing notes, and per-student attendance; reload accurately reflects changes.
