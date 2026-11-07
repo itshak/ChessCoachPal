@@ -2,7 +2,7 @@
 
 - **Status:** Proposed — milestone 4 of 5
 - **Target:** ChessCoachPal v0.1.0
-- **Dependencies:** Coordinate the canonical schema with [complete-coaching-workflows](../complete-coaching-workflows/proposal.md); security acceptance also gates the agent interface.
+- **Dependencies:** Coordinate the canonical schema with [complete-coaching-workflows](../archive/2026-11-07-complete-coaching-workflows/proposal.md); security acceptance also gates the agent interface.
 - **Roadmap:** [v0.1.0](../../ROADMAP-v0.1.0.md)
 
 ## Why

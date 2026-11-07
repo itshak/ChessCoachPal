@@ -31,5 +31,5 @@ Dates are stored as UTC instants, displayed with the workplace IANA timezone; se
 
 ## Compatibility
 
-[ADR-0001](../../../docs/adr/0001-pre1-breaking-changes.md) is binding: no CogNote compatibility or ChessCoachPal pre-1.0 migration. Any destructive local reset must be expressly requested by its operator, never performed against real student data automatically.
+[ADR-0001](../../../../docs/adr/0001-pre1-breaking-changes.md) is binding: no CogNote compatibility or ChessCoachPal pre-1.0 migration. Any destructive local reset must be expressly requested by its operator, never performed against real student data automatically.
 

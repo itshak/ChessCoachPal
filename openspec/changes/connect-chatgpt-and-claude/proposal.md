@@ -2,7 +2,7 @@
 
 - **Status:** Proposed — release milestone 2 of 5 (highest priority after core records)
 - **Target:** ChessCoachPal v0.1.0
-- **Depends on:** Shared coaching domain/service in [complete-coaching-workflows](../complete-coaching-workflows/proposal.md); security/authorization testing in [remove-cognote-legacy-and-secure-data](../remove-cognote-legacy-and-secure-data/proposal.md)
+- **Depends on:** Shared coaching domain/service in [complete-coaching-workflows](../archive/2026-11-07-complete-coaching-workflows/proposal.md); security/authorization testing in [remove-cognote-legacy-and-secure-data](../remove-cognote-legacy-and-secure-data/proposal.md)
 - **Release roadmap:** [OpenSpec v0.1.0](../../ROADMAP-v0.1.0.md)
 
 ## Why

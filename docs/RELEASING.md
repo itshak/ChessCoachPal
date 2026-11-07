@@ -4,7 +4,7 @@
 
 ## OpenSpec release plan
 
-The six readiness checkboxes below are the **final gate**, not the entire implementation plan. The [v0.1.0 OpenSpec roadmap](../openspec/ROADMAP-v0.1.0.md) defines five active changes: coaching workflows, real ChatGPT/Claude integration, chess learning basics, legacy/privacy/security cleanup, and self-hosting/release verification. **All five must be accepted with evidence** before preparing the first version.
+The six readiness checkboxes below are the **final gate**, not the entire implementation plan. The [v0.1.0 OpenSpec roadmap](../openspec/ROADMAP-v0.1.0.md) defines five milestone changes (Milestone 1 accepted and archived; four remain active): coaching workflows, real ChatGPT/Claude integration, chess learning basics, legacy/privacy/security cleanup, and self-hosting/release verification. **All five must be accepted with evidence** before preparing the first version.
 
 The original [adopt-cognote-chesscoachpal archive](../openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md) is superseded and was never fully implemented.
 

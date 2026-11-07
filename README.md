@@ -21,7 +21,7 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 
 ## Versions and releases
 
-The source tree is currently an **unreleased `0.0.0` development snapshot**, not an installed `v0.1.0` release. Once the first functional application passes the [v0.1.0 checklist](docs/RELEASING.md#v010-first-functional-release-gate) **and all five active OpenSpec change gates**, it will become **`v0.1.0`**.
+The source tree is currently an **unreleased `0.0.0` development snapshot**, not an installed `v0.1.0` release. Once the first functional application passes the [v0.1.0 checklist](docs/RELEASING.md#v010-first-functional-release-gate) **and all five OpenSpec milestone gates**, it will become **`v0.1.0`**.
 
 Every subsequent version is published automatically from `main` as a [GitHub Release](https://github.com/itshak/ChessCoachPal/releases), with notes from [CHANGELOG.md](CHANGELOG.md), an immutable `vX.Y.Z` source tag, and the corresponding ZIP and tar.gz source archives. [Release procedure](docs/RELEASING.md).
 
@@ -29,8 +29,8 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 
 ## Documentation
 
-- **[v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md)** — five scoped, evidence-based implementation changes
-- [Complete coaching workflows](openspec/changes/complete-coaching-workflows/proposal.md)
+- **[v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md)** — five evidence-based milestones (Milestone 1 accepted)
+- [Complete coaching workflows](openspec/changes/archive/2026-11-07-complete-coaching-workflows/proposal.md)
 - [Connect ChatGPT and Claude](openspec/changes/connect-chatgpt-and-claude/proposal.md)
 - [Add chess learning basics](openspec/changes/add-chess-learning-basics/proposal.md)
 - [Remove CogNote legacy and secure data](openspec/changes/remove-cognote-legacy-and-secure-data/proposal.md)

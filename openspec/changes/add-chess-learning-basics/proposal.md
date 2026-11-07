@@ -2,7 +2,7 @@
 
 - **Status:** Proposed — milestone 3 of 5
 - **Target:** ChessCoachPal v0.1.0
-- **Depends on:** [complete-coaching-workflows](../complete-coaching-workflows/proposal.md) student and lesson records.
+- **Depends on:** [complete-coaching-workflows](../archive/2026-11-07-complete-coaching-workflows/proposal.md) student and lesson records.
 - **Roadmap:** [v0.1.0](../../ROADMAP-v0.1.0.md)
 
 ## Why

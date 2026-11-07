@@ -2,7 +2,7 @@
 
 - **Status:** Proposed — milestone 5 of 5 (final release gate)
 - **Target:** The first public functional ChessCoachPal release, **v0.1.0**
-- **Dependencies:** Accepted and verified [coaching workflow](../complete-coaching-workflows/proposal.md), [AI clients](../connect-chatgpt-and-claude/proposal.md), [chess learning](../add-chess-learning-basics/proposal.md) and [legacy/security cleanup](../remove-cognote-legacy-and-secure-data/proposal.md).
+- **Dependencies:** Accepted and verified [coaching workflow](../archive/2026-11-07-complete-coaching-workflows/proposal.md), [AI clients](../connect-chatgpt-and-claude/proposal.md), [chess learning](../add-chess-learning-basics/proposal.md) and [legacy/security cleanup](../remove-cognote-legacy-and-secure-data/proposal.md).
 - **Roadmap:** [v0.1.0](../../ROADMAP-v0.1.0.md)
 
 ## Why

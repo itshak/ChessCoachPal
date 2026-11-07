@@ -1,46 +1,43 @@
 # ChessCoachPal development and release status
 
-**Updated:** 2026-11-07 · **Branch of record:** main · **Version:** 0.0.0 (unreleased) · **Target:** first functional v0.1.0
+**Updated:** 2026-11-07 · **Branch of record:** main · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
-## OpenSpec source of truth
+## OpenSpec acceptance and roadmap
 
-The original omnibus change was **superseded, not completed**: only verifiable implementation history remains in [its archive](../openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md). The old unchecked requirements and compatibility-era design were removed. The five **active** changes and their dependencies are in the [v0.1.0 roadmap](../openspec/ROADMAP-v0.1.0.md):
+The obsolete CogNote-adoption omnibus change was archived **as incomplete**, not incorrectly accepted: [historical record](../openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md). See [the v0.1.0 roadmap](../openspec/ROADMAP-v0.1.0.md) and [ADR-0001](adr/0001-pre1-breaking-changes.md).
 
-1. [complete-coaching-workflows](../openspec/changes/complete-coaching-workflows/proposal.md) — **Proposed / PR #1 draft, not merged**.
-2. [connect-chatgpt-and-claude](../openspec/changes/connect-chatgpt-and-claude/proposal.md) — **Proposed / real MCP and delegated OAuth not implemented**.
-3. [add-chess-learning-basics](../openspec/changes/add-chess-learning-basics/proposal.md) — **Proposed / not accepted**.
-4. [remove-cognote-legacy-and-secure-data](../openspec/changes/remove-cognote-legacy-and-secure-data/proposal.md) — **Proposed / unresolved security and legacy cleanup**.
-5. [verify-self-hosting-and-release-v0-1-0](../openspec/changes/verify-self-hosting-and-release-v0-1-0/proposal.md) — **Proposed / release blocked by upstream milestones**.
+1. [complete-coaching-workflows](../openspec/changes/archive/2026-11-07-complete-coaching-workflows/proposal.md) — **ACCEPTED / archived**. Merged [PR #4](https://github.com/itshak/ChessCoachPal/pull/4) at main commit [a87fb63](https://github.com/itshak/ChessCoachPal/commit/a87fb63a8440a358d039187be48fce5a14609e36).
+2. [connect-chatgpt-and-claude](../openspec/changes/connect-chatgpt-and-claude/proposal.md) — **Proposed**; real MCP and delegated OAuth not yet implemented.
+3. [add-chess-learning-basics](../openspec/changes/add-chess-learning-basics/proposal.md) — **Proposed**; chess observation and learning-resource functionality not yet accepted.
+4. [remove-cognote-legacy-and-secure-data](../openspec/changes/remove-cognote-legacy-and-secure-data/proposal.md) — **Proposed**; inherited music paths, privacy/history and broader security audits remain outstanding.
+5. [verify-self-hosting-and-release-v0-1-0](../openspec/changes/verify-self-hosting-and-release-v0-1-0/proposal.md) — **Proposed**; no v0.1.0 release until other milestones and release checks pass.
 
-No new milestone tasks are checked until **main-merged code, passing tests and evidence** justify them. This file is the central evidence ledger; a proposed change or an open draft PR is not "done".
+## Milestone 1 — passing verification evidence
 
-## Accepted on main
+[PR #4](https://github.com/itshak/ChessCoachPal/pull/4) merged as [a87fb63](https://github.com/itshak/ChessCoachPal/commit/a87fb63a8440a358d039187be48fce5a14609e36), implementing a teacher-scoped shared service and the /coaching website:
 
-- CogNote-derived source foundation imported and MIT attribution retained (upstream author Andres Jaime Morales, pinned SHA fff723ea0374df8f07a20e90e44c725499ec680a). This **does not** prove file-by-file manifest verification or full removal of CogNote baggage.
-- Initial ChessCoachPal identity and documentation (partial rebrand).
-- [ADR-0001](adr/0001-pre1-breaking-changes.md), main commit d325ae330acfac9172b1d76540c17839362738ac: **zero compatibility** with CogNote or earlier ChessCoachPal versions until 1.0.0. All current schemas are fresh-install snapshots, not upgrade chains.
-- GitHub release/version automation, CHANGELOG.md and release instructions, main commit 8638077ea58fee5638779f0dbf3c9d95673fb9d5. GitHub Actions run [42394424109](https://github.com/itshak/ChessCoachPal/actions/runs/42394424109) succeeded and correctly **did not** publish a release for the development version 0.0.0.
-- **Main CI passed** on commit 8638077: [run 42394424081](https://github.com/itshak/ChessCoachPal/actions/runs/42394424081) (typecheck, unit tests, Docker build and Compose).
+- Configurable name, locale, timezone, currency and editable policy JSON for teacher-owned workplaces; reusable canonical students, search/edit, workplace enrollments and group enrollment/removal.
+- Private and group one-off lessons with UTC instants, local-time DST gap/fold rejection, edit/reschedule/cancel, shared notes, per-student attendance and a chronological workplace-filtered session timeline.
+- Database-triggered frozen session rosters and one attendance record per initial participant; removing a current group member does not rewrite existing lessons. Session idempotency, validation, cross-workplace checks and cross-teacher RLS are exercised.
+- Instructor minutes count a 60-minute group session once, regardless of attendees; an absent participant does not cancel the lesson.
 
-## In draft PR, not accepted
+**CI:** [run 42407121579](https://github.com/itshak/ChessCoachPal/actions/runs/42407121579) — all three jobs passed (typecheck/unit/release checks, Docker, Compose).
 
-[PR #1 — first coaching workflow](https://github.com/itshak/ChessCoachPal/pull/1), proposes teacher-owned workplaces, groups, per-student attendance, session roster snapshots, shared service, experimental /api/agent/v1 and /coaching page. **It has not been merged.** Its obsolete omnibus OpenSpec edits were removed from the draft branch in a documentation-only commit; the functional code still requires review and passing E2E before merge.
+**Real fresh-database E2E:** [run 42407121512](https://github.com/itshak/ChessCoachPal/actions/runs/42407121512) — `supabase start`, destructive reset of a **synthetic CI database**, production Next build, Playwright Chromium: **25 passed, 5 skipped, 0 failed**. Includes the two-workplace create/edit/reload path, private/group lessons, per-student notes and attendance, idempotent retries, historical roster and two-teacher isolation.
 
-PR #1 CI [42392868345](https://github.com/itshak/ChessCoachPal/actions/runs/42392868345) succeeded for typecheck/unit/Docker/Compose; E2E [42392868328](https://github.com/itshak/ChessCoachPal/actions/runs/42392868328) **failed**: 23 passed, 5 skipped, 1 failed because the coaching scenario timed out locating the Workplace selection control. Database initialization and production build succeeded in that E2E run, but the full teacher workflow is not verified.
+**Superseded PR:** [PR #1](https://github.com/itshak/ChessCoachPal/pull/1) was closed unmerged; its first E2E run [42392868328](https://github.com/itshak/ChessCoachPal/actions/runs/42392868328) had a workplace selector failure, now corrected and verified in PR #4. The older main PWA browser regression ([42394424153](https://github.com/itshak/ChessCoachPal/actions/runs/42394424153)) was also fixed by PR #4 and covered by its passing browser run. These earlier failures are historical evidence, not current acceptance failures.
 
-## Existing main regression
+## Other accepted foundation
 
-[Main E2E run 42394424153](https://github.com/itshak/ChessCoachPal/actions/runs/42394424153) **failed**: 22 passed, 5 skipped, 1 failed. The PWA manifest includes one icon but the installability test expects at least two. This is assigned to the legacy/branding/security change. Successful main CI does **not** imply passing browser acceptance.
+- CogNote-derived upstream source foundation, MIT attribution retained (upstream author Andres Jaime Morales; pinned SHA fff723ea0374df8f07a20e90e44c725499ec680a). Full file/asset license audit is **not** signed off.
+- Initial ChessCoachPal identity and partial brand adaptation.
+- ADR-0001, main commit d325ae330acfac9172b1d76540c17839362738ac: **no CogNote compatibility** and no backward compatibility across pre-1.0 ChessCoachPal versions. Only fresh-install schema modifications are supported.
+- Version/release automation, CHANGELOG.md and documentation at main commit 8638077ea58fee5638779f0dbf3c9d95673fb9d5; unreleased version 0.0.0, no version tag published. First main CI evidence: [42394424081](https://github.com/itshak/ChessCoachPal/actions/runs/42394424081).
 
-## Security/publication and self-hosting
+## Remaining release and safety blockers
 
-The GitHub repository is **already public**. The historical privacy/secret scan, upstream/third-party asset license review and old GitHub refs/artifacts investigation are **not signed off**. This is an urgent release blocker: do not assert repo history was fully purged or that real-world student data is safe without evidence.
+The GitHub repository is **already public**. Historical secrets/privacy scanning, inherited Git refs/artifacts review, upstream/third-party asset licensing and music-only code removal remain **unverified**. Do not assert public history was purged, that production student data was safe, or that the full inherited application has passed a security audit.
 
-No real external student data has been imported in the recorded work. No real ChatGPT or Claude client, production installation, complete backup/restore or cross-teacher RLS integration acceptance has been verified. The inherited Supabase migration chain still includes CogNote artifacts and requires consolidation.
+Milestone 1's **coaching-domain** cross-teacher RLS isolation was positively tested with synthetic identities; this does **not** certify all inherited API routes. No real external students were imported in the recorded work. Neither real ChatGPT/Claude client interoperability, production deployment, full backup/restore nor a complete privacy audit has been verified. The inherited CogNote migration chain still requires clean pre-1.0 consolidation in Milestone 4.
 
-## Developer and release rules
-
-- A development database may need an **explicit** destructive reset onto the current fresh-install schema; always back up any actual records first. Never silently delete user data.
-- Keep changes in the five new OpenSpec folders; require code+test evidence to close tasks.
-- Update this document after each milestone; only mark release checkboxes in [RELEASING.md](RELEASING.md) with observed verification.
-- Do not bump package version to 0.1.0 or publish a release until all milestone acceptance gates and six release checkboxes pass.
+Keep real data isolated from test resets. Never automatically reset real databases. Maintain the four remaining active OpenSpec proposals, only check tasks with main-merged code and concrete passing evidence, and keep version **0.0.0** until all v0.1.0 gates pass.

@@ -1,12 +1,12 @@
 # ChessCoachPal — OpenSpec roadmap to v0.1.0
 
-**Status:** Proposed implementation roadmap · **updated:** 2026-11-07 · **version today:** 0.0.0 (unreleased)
+**Status:** Milestone 1 accepted, milestones 2–5 proposed · **updated:** 2026-11-07 · **version today:** 0.0.0 (unreleased)
 
-## One release, five actionable changes
+## One release, five actionable milestones
 
 | Order | OpenSpec change | Outcome | Prerequisites |
 | --- | --- | --- | --- |
-| 1 | [complete-coaching-workflows](changes/complete-coaching-workflows/proposal.md) | Teacher can manage students, workplaces, groups, private and group sessions, notes and attendance end-to-end, entirely in the website | None; builds on draft [PR #1](https://github.com/itshak/ChessCoachPal/pull/1) |
+| 1 | [complete-coaching-workflows](changes/archive/2026-11-07-complete-coaching-workflows/proposal.md) — **ACCEPTED** | Teacher-owned workplaces, students, group/private sessions, attendance, policy, notes and website workflow; [PR #4](https://github.com/itshak/ChessCoachPal/pull/4) merged | [CI 42407121579](https://github.com/itshak/ChessCoachPal/actions/runs/42407121579), [E2E 42407121512](https://github.com/itshak/ChessCoachPal/actions/runs/42407121512) |
 | 2 | [connect-chatgpt-and-claude](changes/connect-chatgpt-and-claude/proposal.md) | Real authenticated ChatGPT/Claude tool clients operate on the same records, with safe writes and reconciliation | Coaching domain/service contracts from #1; security review concurrent |
 | 3 | [add-chess-learning-basics](changes/add-chess-learning-basics/proposal.md) | Chess skill observations and selected study/resource links replace music-specific teaching semantics | Core student/session records from #1 |
 | 4 | [remove-cognote-legacy-and-secure-data](changes/remove-cognote-legacy-and-secure-data/proposal.md) | Clean chess-only baseline, tested teacher isolation, privacy/licensing audits and reliable branding | Coordinate schema changes with #1; security findings gate #2 and #5 |
@@ -21,7 +21,7 @@ The change numbers indicate **release outcomes**, not mandatory serial execution
 - Pre-1.0 code and schemas are **not compatible with CogNote or any previous ChessCoachPal version**, per [ADR-0001](../docs/adr/0001-pre1-breaking-changes.md). Edit the current fresh-install schema and remove inherited code outright. Do not implement old-schema migrations, legacy API aliases, dual reads, or backfills. Never silently reset real data.
 - Shared Postgres/Supabase/RLS data model. AI clients never receive a service-role key; authorization and per-teacher ownership are mandatory.
 - **Deferred beyond 0.1.0 unless separately approved:** full pay-contract and billing reconciliation engine, Lichess/Chess.com ratings synchronization, chessboard/engine, full Google/Notion integration adapters, multi-teacher organization SaaS, and advanced reporting. These are not hidden acceptance requirements of this release.
-- Each active proposal has its own design, specification and tasks. Check a task only after code is merged to main **and** verification evidence (commit, CI run/test, manual client transcript where appropriate) is recorded in docs/STATUS.md. A draft PR is progress, not accepted completion.
+- Each remaining active proposal has its own design, specification and tasks. Check a task only after code is merged to main **and** verification evidence (commit, CI run/test, manual client transcript where appropriate) is recorded in docs/STATUS.md. A draft PR is progress, not accepted completion.
 - Do not archive a change merely because files exist; archive it only after all its scoped acceptance criteria have passed or explicitly supersede it without claiming implementation.
 
 ## Acceptance gates for first functional v0.1.0
@@ -35,8 +35,8 @@ The change numbers indicate **release outcomes**, not mandatory serial execution
 ## Evidence as of 2026-11-07
 
 - **Merged main:** CogNote-derived baseline, initial ChessCoachPal brand, ADR-0001, GitHub Actions CI/release workflow, 0.0.0 development version. CI typecheck/unit/Docker/Compose pass in main run [42394424081](https://github.com/itshak/ChessCoachPal/actions/runs/42394424081).
-- **Not passing:** main Playwright run [42394424153](https://github.com/itshak/ChessCoachPal/actions/runs/42394424153) had 22 passed, 5 skipped, 1 failed (PWA manifest requires two icons).
-- **Draft only:** coaching [PR #1](https://github.com/itshak/ChessCoachPal/pull/1) adds preliminary schema/service/UI; its E2E run [42392868328](https://github.com/itshak/ChessCoachPal/actions/runs/42392868328) had 23 passed, 5 skipped, 1 failed (Workplace selector).
+- **Milestone 1 accepted:** [PR #4](https://github.com/itshak/ChessCoachPal/pull/4) merged as main commit [a87fb63](https://github.com/itshak/ChessCoachPal/commit/a87fb63a8440a358d039187be48fce5a14609e36); [CI 42407121579](https://github.com/itshak/ChessCoachPal/actions/runs/42407121579) passed typecheck/unit/Docker/Compose, [E2E 42407121512](https://github.com/itshak/ChessCoachPal/actions/runs/42407121512) passed 25 browser tests, 5 skipped, fresh synthetic Supabase database. The PWA and coaching selectors have been fixed.
+- **Superseded:** coaching [PR #1](https://github.com/itshak/ChessCoachPal/pull/1) closed unmerged and replaced by accepted PR #4.
 - **Unverified/not implemented:** native MCP/OAuth, tested ChatGPT/Claude integration, full security/privacy audit, backup/restore, complete chess learning features. The repository is public; an audit must not be assumed completed.
 
 ## Historical record
