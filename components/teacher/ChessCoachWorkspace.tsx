@@ -298,11 +298,21 @@ export function ChessCoachWorkspace() {
           authenticated commands as the experimental agent API.
         </p>
         <p className="text-sm mt-2">
-          <Link href="/students" className="text-primary underline">Add or edit students</Link>
+          <Link href="/students" className="text-primary underline">Full student records</Link>
         </p>
       </div>
       {error && <div role="alert" className="rounded-lg border border-red-500 p-3 text-sm">{error}</div>}
       {notice && <div role="status" className="rounded-lg border border-border p-3 text-sm">{notice}</div>}
+      <label className="block text-sm max-w-lg">Active workplace
+        <select className={field} value={workplaceId} onChange={e => {
+          setWorkplaceId(e.target.value); setGroupId(""); setSelectedSessionId("");
+        }}>
+          {workplaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+        </select>
+      </label>
+      <p className="text-sm text-muted">Instructor time in this workplace (listed sessions):
+        <strong> {teacherMinutes} minutes</strong>. Group attendees do not multiply teacher minutes.
+      </p>
       <div className="grid gap-5 md:grid-cols-2">
         <section className={panel}>
           <h2 className="text-lg font-semibold">Workplaces</h2>
@@ -322,19 +332,69 @@ export function ChessCoachWorkspace() {
               <input className={field} value={currency} maxLength={3}
                 onChange={e => setCurrency(e.target.value.toUpperCase())} required pattern="[A-Z]{3}" />
             </label>
+            <label className="block text-sm">Locale
+              <input className={field} value={locale} onChange={e => setLocale(e.target.value)} required />
+            </label>
             <button className={button} disabled={busy}>Create workplace</button>
           </form>
+          {activeWorkplace && <form onSubmit={updateWorkplace} className="space-y-2 border-t border-border pt-3">
+            <h3 className="font-semibold">Edit selected workplace</h3>
+            <label className="block text-sm">Edit workplace name
+              <input className={field} value={editWorkplaceName} onChange={e => setEditWorkplaceName(e.target.value)} required maxLength={120} />
+            </label>
+            <label className="block text-sm">Edit workplace timezone
+              <input className={field} value={editTimezone} onChange={e => setEditTimezone(e.target.value)} required />
+            </label>
+            <label className="block text-sm">Edit workplace currency
+              <input className={field} value={editCurrency} onChange={e => setEditCurrency(e.target.value.toUpperCase())} maxLength={3} required pattern="[A-Z]{3}" />
+            </label>
+            <label className="block text-sm">Edit workplace locale
+              <input className={field} value={editLocale} onChange={e => setEditLocale(e.target.value)} required />
+            </label>
+            <button className={button} disabled={busy}>Save workplace</button>
+          </form>}
+        </section>
+        <section className={panel}>
+          <h2 className="text-lg font-semibold">Students</h2>
+          <form onSubmit={addStudent} className="space-y-2">
+            <label className="block text-sm">New student name
+              <input className={field} value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required maxLength={120} />
+            </label>
+            <label className="block text-sm">New student skill level
+              <input className={field} value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} maxLength={120} placeholder="Beginner" />
+            </label>
+            <button className={button} disabled={busy}>Create student</button>
+          </form>
+          <form onSubmit={updateStudent} className="space-y-2 border-t border-border pt-3">
+            <label className="block text-sm">Student to edit
+              <select className={field} value={editStudentId} onChange={e => setEditStudentId(e.target.value)} required>
+                <option value="">Choose student</option>
+                {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+            <label className="block text-sm">Edit student name
+              <input className={field} value={editStudentName} onChange={e => setEditStudentName(e.target.value)} required />
+            </label>
+            <label className="block text-sm">Edit student skill level
+              <input className={field} value={editStudentLevel} onChange={e => setEditStudentLevel(e.target.value)} maxLength={120} />
+            </label>
+            <button className={button} disabled={busy || !editStudentId}>Save student</button>
+          </form>
+          <form onSubmit={enrollWorkplace} className="space-y-2 border-t border-border pt-3">
+            <h3 className="font-semibold">Enroll student in selected workplace</h3>
+            <label className="block text-sm">Student for workplace
+              <select className={field} value={workplaceStudentId} onChange={e => setWorkplaceStudentId(e.target.value)} required>
+                <option value="">Choose student</option>
+                {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+            <button className={button} disabled={busy || !workplaceId}>Enroll in workplace</button>
+          </form>
+          <p className="text-sm text-muted">{enrolledIds.length} enrolled in selected workplace.</p>
         </section>
         <section className={panel}>
           <h2 className="text-lg font-semibold">Class groups</h2>
-          <label className="block text-sm">Workplace
-            <select className={field} value={workplaceId} onChange={e => {
-              setWorkplaceId(e.target.value); setGroupId("");
-            }}>
-              {workplaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          </label>
-          <ul className="text-sm space-y-1">
+           <ul className="text-sm space-y-1">
             {localGroups.map(g => <li key={g.id}>{g.name}</li>)}
           </ul>
           <form onSubmit={addGroup} className="space-y-2">
@@ -344,15 +404,27 @@ export function ChessCoachWorkspace() {
             </label>
             <button className={button} disabled={busy || !workplaceId}>Create class group</button>
           </form>
+          <form onSubmit={updateGroup} className="space-y-2 border-t border-border pt-3">
+            <label className="block text-sm">Group to edit
+              <select className={field} value={groupId} onChange={e => setGroupId(e.target.value)} required>
+                <option value="">Choose group</option>
+                {localGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </label>
+            <label className="block text-sm">Edit group name
+              <input className={field} value={editGroupName} onChange={e => setEditGroupName(e.target.value)} required />
+            </label>
+            <button className={button} disabled={busy || !groupId}>Save group</button>
+          </form>
           <form onSubmit={enroll} className="space-y-2 pt-3 border-t border-border">
             <h3 className="font-semibold">Enroll a student</h3>
-            <label className="block text-sm">Group
+            <label className="block text-sm">Group to enroll
               <select className={field} value={groupId} onChange={e => setGroupId(e.target.value)} required>
                 <option value="">Select a group</option>
                 {localGroups.map(g => <option value={g.id} key={g.id}>{g.name}</option>)}
               </select>
             </label>
-            <label className="block text-sm">Student
+            <label className="block text-sm">Student to enroll
               <select className={field} value={studentId} onChange={e => setStudentId(e.target.value)} required>
                 <option value="">Select a student</option>
                 {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -360,6 +432,11 @@ export function ChessCoachWorkspace() {
             </label>
             <button className={button} disabled={busy || !localGroups.length}>Enroll student</button>
           </form>
+          {groupId && <div className="border-t border-border pt-3 text-sm">
+            <h3 className="font-semibold">Current group register</h3>
+            <ul>{groupMembers.map(m => <li key={m.student_id}>{rosterName(m)}</li>)}</ul>
+            {!groupMembers.length && <p>No students yet.</p>}
+          </div>}
         </section>
         <section className={panel}>
           <h2 className="text-lg font-semibold">Schedule a lesson</h2>
@@ -369,21 +446,14 @@ export function ChessCoachWorkspace() {
                 <option value="group">Group</option><option value="private">Private student</option>
               </select>
             </label>
-            <label className="block text-sm">Workplace
-              <select className={field} value={workplaceId} onChange={e => {
-                setWorkplaceId(e.target.value); setGroupId("");
-              }} required>
-                {workplaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
-            </label>
             {mode === "group" ?
-              <label className="block text-sm">Class group
+              <label className="block text-sm">Session group
                 <select className={field} value={groupId} onChange={e => setGroupId(e.target.value)} required>
                   <option value="">Select group</option>
                   {localGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
               </label> :
-              <label className="block text-sm">Student
+              <label className="block text-sm">Private student
                 <select className={field} value={studentId} onChange={e => setStudentId(e.target.value)} required>
                   <option value="">Select student</option>
                   {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -393,7 +463,7 @@ export function ChessCoachWorkspace() {
               <input className={field} maxLength={160} value={title}
                 onChange={e => setTitle(e.target.value)} required placeholder="King and pawn endgames" />
             </label>
-            <label className="block text-sm">Local date and time (your browser timezone)
+            <label className="block text-sm">Local date and time (selected workplace timezone)
               <input className={field} type="datetime-local" value={start} onChange={e => setStart(e.target.value)} required />
             </label>
             <label className="block text-sm">Duration (minutes)
@@ -406,6 +476,7 @@ export function ChessCoachWorkspace() {
                 placeholder="Practiced pawn opposition and triangulation" />
             </label>
             <button className={button} disabled={busy || !workplaceId}>Create lesson</button>
+            <p className="text-xs text-muted">Local time in {activeWorkplace?.timezone ?? "UTC"}; invalid or ambiguous DST times are rejected.</p>
           </form>
         </section>
         <section className={panel}>
@@ -414,8 +485,8 @@ export function ChessCoachWorkspace() {
             <select className={field} value={selectedSessionId}
               onChange={e => setSelectedSessionId(e.target.value)}>
               <option value="">Choose lesson</option>
-              {sessions.map(s => <option key={s.id} value={s.id}>
-                {new Date(s.starts_at).toLocaleString()} — {s.title}
+              {localSessions.map(s => <option key={s.id} value={s.id}>
+                {new Date(s.starts_at).toLocaleString("en-US", { timeZone: activeWorkplace?.timezone ?? "UTC" })} — {s.title} ({s.status})
               </option>)}
             </select>
           </label>
@@ -424,6 +495,28 @@ export function ChessCoachWorkspace() {
             {session.lesson_note && <> · {session.lesson_note}</>}
           </p>}
           {!session && <p className="text-sm text-muted">Choose a session to mark each learner independently.</p>}
+          {session && <form onSubmit={updateSession} className="space-y-2 border-y border-border py-3">
+            <h3 className="font-semibold">Edit session or cancel</h3>
+            <label className="block text-sm">Edit session title
+              <input className={field} value={editSessionTitle} onChange={e => setEditSessionTitle(e.target.value)} required maxLength={160} />
+            </label>
+            <label className="block text-sm">Reschedule local time
+              <input className={field} type="datetime-local" value={editStart} onChange={e => setEditStart(e.target.value)} required />
+            </label>
+            <label className="block text-sm">Edit session duration
+              <input className={field} type="number" min={15} max={480} value={editDuration} onChange={e => setEditDuration(Number(e.target.value))} required />
+            </label>
+            <label className="block text-sm">Shared session note
+              <textarea className={field} value={editSessionNote} onChange={e => setEditSessionNote(e.target.value)} maxLength={10000} rows={3} />
+            </label>
+            <label className="block text-sm">Session status
+              <select className={field} value={editStatus} onChange={e => setEditStatus(e.target.value as Session["status"])}>
+                <option value="scheduled">Scheduled</option><option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </label>
+            <button className={button} disabled={busy}>Save session changes</button>
+          </form>
           {session && roster.length === 0 &&
             <p className="text-sm text-muted">No participants were enrolled when this session was created.</p>}
           {roster.map(person => {
