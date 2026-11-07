@@ -39,7 +39,7 @@ export function PortalPolicyBanner({
   token: string;
   policiesUpdatedAt: string;
 }) {
-  const storageKey = `cognote-policies-seen-${token}`;
+  const storageKey = `chesscoachpal-policies-seen-${token}`;
   const visible = useSyncExternalStore(
     subscribe,
     () => readVisible(storageKey, policiesUpdatedAt),

@@ -23,7 +23,7 @@ export async function POST() {
     return NextResponse.json(
       {
         error:
-          "Online checkout isn't set up yet. Email support@cognote.studio to upgrade.",
+          "Online checkout isn't set up yet. Contact the operator of this ChessCoachPal installation about hosting options.",
       },
       { status: 503 }
     );

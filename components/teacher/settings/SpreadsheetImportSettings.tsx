@@ -183,7 +183,7 @@ export function SpreadsheetImportSettings({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "cognote-students-template.csv";
+    a.download = "chesscoachpal-students-template.csv";
     a.click();
     URL.revokeObjectURL(url);
   }

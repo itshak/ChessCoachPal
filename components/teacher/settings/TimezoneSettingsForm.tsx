@@ -63,7 +63,7 @@ export function TimezoneSettingsForm({
       </label>
       {embedded && (
         <p className="text-xs text-muted -mt-1">
-          Schedule times, make-up windows, and streaks use this zone.
+          Schedule times, make-up windows, and lesson reminders use this zone.
         </p>
       )}
       <div className="flex items-center gap-3">
@@ -81,7 +81,7 @@ export function TimezoneSettingsForm({
     <Card padding="sm">
       <h2 className="font-semibold mb-1">Timezone</h2>
       <p className="text-sm text-muted mb-3">
-        Studio schedule times, make-up windows, and streaks use this zone.
+        Studio schedule times, make-up windows, and lesson reminders use this zone.
       </p>
       {form}
     </Card>

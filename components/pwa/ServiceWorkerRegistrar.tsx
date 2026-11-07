@@ -11,7 +11,7 @@ async function clearPwaState() {
   const keys = await caches.keys();
   await Promise.all(
     keys
-      .filter((key) => key.startsWith("cognote-shell"))
+      .filter((key) => key.startsWith("chesscoachpal-shell") || key.startsWith("cognote-shell"))
       .map((key) => caches.delete(key))
   );
 }
