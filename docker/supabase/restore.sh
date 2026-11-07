@@ -60,7 +60,9 @@ BEGIN
       AND has_table_privilege(format('%I.%I', schemaname, tablename), 'TRUNCATE')
       AND has_table_privilege(format('%I.%I', schemaname, tablename), 'INSERT');
   IF names IS NOT NULL THEN
-    EXECUTE 'TRUNCATE TABLE ' || names || ' RESTART IDENTITY CASCADE';
+    -- Do not reset Supabase-owned auth sequences (for example
+    -- auth.refresh_tokens_id_seq); the data-only dump restores setval().
+    EXECUTE 'TRUNCATE TABLE ' || names || ' CONTINUE IDENTITY CASCADE';
   END IF;
 END
 $restore$;
