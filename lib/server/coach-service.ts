@@ -110,6 +110,18 @@ export async function sessionsList(db: Db, teacherId: string) {
   return data;
 }
 
+/** Reject malformed instants and invalid durations before database writes. */
+export function assertSessionSchedule(startsAt: string, durationMinutes: number) {
+  if (typeof startsAt !== "string" ||
+      !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(startsAt) ||
+      !Number.isFinite(Date.parse(startsAt))) {
+    throw new CoachError("VALIDATION_ERROR", 400, "Start time must be a valid ISO 8601 instant with an explicit UTC offset");
+  }
+  if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) {
+    throw new CoachError("VALIDATION_ERROR", 400, "Duration must be an integer between 1 and 1440 minutes");
+  }
+}
+
 export async function sessionsCreate(
   db: Db,
   teacherId: string,
@@ -119,6 +131,10 @@ export async function sessionsCreate(
     lessonNote?: string; requestId: string;
   }
 ) {
+  assertSessionSchedule(payload.startsAt, payload.durationMinutes);
+  if (Boolean(payload.groupId) === Boolean(payload.studentId)) {
+    throw new CoachError("VALIDATION_ERROR", 400, "Specify exactly one group or student");
+  }
   const { data: workplace } = await db.from("workplaces")
     .select("id").eq("id", payload.workplaceId).eq("teacher_id", teacherId).maybeSingle();
   if (!workplace) throw notFound();
@@ -304,6 +320,14 @@ export async function sessionsUpdate(
     lessonNote?: string; status?: "scheduled" | "completed" | "cancelled";
   }
 ) {
+  if (updates.startsAt !== undefined || updates.durationMinutes !== undefined) {
+    if (updates.startsAt !== undefined && (typeof updates.startsAt !== "string" || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(updates.startsAt) || !Number.isFinite(Date.parse(updates.startsAt)))) {
+      throw new CoachError("VALIDATION_ERROR", 400, "Start time must be a valid ISO 8601 instant with an explicit UTC offset");
+    }
+    if (updates.durationMinutes !== undefined && (!Number.isInteger(updates.durationMinutes) || updates.durationMinutes < 1 || updates.durationMinutes > 1440)) {
+      throw new CoachError("VALIDATION_ERROR", 400, "Duration must be an integer between 1 and 1440 minutes");
+    }
+  }
   const changes: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (updates.title !== undefined) changes.title = updates.title;
   if (updates.startsAt !== undefined) changes.starts_at = updates.startsAt;
