@@ -7,7 +7,8 @@ import {
   attendanceList, attendanceRecord,
   groupsCreate, groupsEnroll, groupsList, groupsMembers,
   sessionsCreate, sessionsList, sessionsParticipants, studentsSearch,
-  workplacesCreate, workplacesList,
+  workplacesCreate, workplacesList, workplacesUpdate, workplacesEnroll, workplacesEnrollments,
+  studentsCreate, studentsUpdate, groupsUpdate, sessionsUpdate, assertTimezone,
 } from "@/lib/server/coach-service";
 
 export const dynamic = "force-dynamic";
@@ -18,11 +19,25 @@ const calls = z.discriminatedUnion("action", [
   z.object({ action: z.literal("workplaces.list") }),
   z.object({ action: z.literal("workplaces.create"), name: shortName,
     timezone: z.string().trim().min(1).max(80).default("UTC"),
-    currency: z.string().regex(/^[A-Z]{3}$/).default("USD") }),
+    currency: z.string().regex(/^[A-Z]{3}$/).default("USD"),
+    locale: z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).default("en"),
+    policy: z.record(z.string(), z.unknown()).default({}) }),
+  z.object({ action: z.literal("workplaces.update"), workplaceId: uuid,
+    name: shortName.optional(), timezone: z.string().trim().min(1).max(80).optional(),
+    currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+    locale: z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).optional(),
+    policy: z.record(z.string(), z.unknown()).optional() }),
+  z.object({ action: z.literal("workplaces.enroll"), workplaceId: uuid, studentId: uuid }),
+  z.object({ action: z.literal("workplaces.enrollments"), workplaceId: uuid }),
+  z.object({ action: z.literal("students.create"), name: shortName,
+    level: z.string().trim().max(120).nullable().optional() }),
+  z.object({ action: z.literal("students.update"), studentId: uuid,
+    name: shortName.optional(), level: z.string().trim().max(120).nullable().optional() }),
   z.object({ action: z.literal("students.search"),
     query: z.string().trim().max(80).default("") }),
   z.object({ action: z.literal("groups.list") }),
   z.object({ action: z.literal("groups.create"), workplaceId: uuid, name: shortName }),
+  z.object({ action: z.literal("groups.update"), groupId: uuid, workplaceId: uuid, name: shortName }),
   z.object({ action: z.literal("groups.enroll"), groupId: uuid, studentId: uuid }),
   z.object({ action: z.literal("groups.members"), groupId: uuid }),
   z.object({ action: z.literal("sessions.list") }),
@@ -35,6 +50,13 @@ const calls = z.discriminatedUnion("action", [
   }).refine(v => Boolean(v.groupId) !== Boolean(v.studentId), {
     message: "Provide exactly one of groupId or studentId",
   }),
+  z.object({ action: z.literal("sessions.update"), sessionId: uuid,
+    title: z.string().trim().min(1).max(160).optional(),
+    startsAt: z.string().datetime({ offset: true }).optional(),
+    durationMinutes: z.number().int().min(15).max(480).optional(),
+    lessonNote: z.string().max(10000).optional(),
+    status: z.enum(["scheduled", "completed", "cancelled"]).optional(),
+  }),
   z.object({ action: z.literal("sessions.participants"), sessionId: uuid }),
   z.object({ action: z.literal("attendance.list"), sessionId: uuid }),
   z.object({ action: z.literal("attendance.record"),
@@ -45,9 +67,11 @@ const calls = z.discriminatedUnion("action", [
 ]);
 
 const toolNames = [
-  "workplaces.list", "workplaces.create", "students.search",
-  "groups.list", "groups.create", "groups.enroll", "groups.members",
-  "sessions.list", "sessions.create", "sessions.participants", "attendance.list", "attendance.record",
+  "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll", "workplaces.enrollments",
+  "students.search", "students.create", "students.update",
+  "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.members",
+  "sessions.list", "sessions.create", "sessions.update", "sessions.participants",
+  "attendance.list", "attendance.record",
 ] as const;
 
 function json(body: unknown, status = 200) {
@@ -107,13 +131,32 @@ export async function POST(req: NextRequest) {
       case "workplaces.list":
         result = await workplacesList(db, teacherId); break;
       case "workplaces.create":
-        result = await workplacesCreate(db, teacherId, call.name, call.timezone, call.currency); break;
+        assertTimezone(call.timezone);
+        result = await workplacesCreate(db, teacherId, call.name, call.timezone,
+          call.currency, call.locale, call.policy); break;
+      case "workplaces.update":
+        result = await workplacesUpdate(db, teacherId, call.workplaceId, {
+          name: call.name, timezone: call.timezone, currency: call.currency,
+          locale: call.locale, policy: call.policy,
+        }); break;
+      case "workplaces.enroll":
+        result = await workplacesEnroll(db, teacherId, call.workplaceId, call.studentId); break;
+      case "workplaces.enrollments":
+        result = await workplacesEnrollments(db, teacherId, call.workplaceId); break;
       case "students.search":
         result = await studentsSearch(db, teacherId, call.query); break;
+      case "students.create":
+        result = await studentsCreate(db, teacherId, call.name, call.level); break;
+      case "students.update":
+        result = await studentsUpdate(db, teacherId, call.studentId, {
+          name: call.name, level: call.level,
+        }); break;
       case "groups.list":
         result = await groupsList(db, teacherId); break;
       case "groups.create":
         result = await groupsCreate(db, teacherId, call.workplaceId, call.name); break;
+      case "groups.update":
+        result = await groupsUpdate(db, teacherId, call.groupId, call.workplaceId, call.name); break;
       case "groups.enroll":
         result = await groupsEnroll(db, teacherId, call.groupId, call.studentId); break;
       case "groups.members":
@@ -122,6 +165,8 @@ export async function POST(req: NextRequest) {
         result = await sessionsList(db, teacherId); break;
       case "sessions.create":
         result = await sessionsCreate(db, teacherId, call); break;
+      case "sessions.update":
+        result = await sessionsUpdate(db, teacherId, call.sessionId, call); break;
       case "sessions.participants":
         result = await sessionsParticipants(db, teacherId, call.sessionId); break;
       case "attendance.list":

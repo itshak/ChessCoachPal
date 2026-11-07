@@ -23,17 +23,18 @@ const conflict = () => new CoachError("CONFLICT", 409, "Request conflicts with a
 
 export async function workplacesList(db: Db, teacherId: string) {
   const { data, error } = await db.from("workplaces")
-    .select("id,name,timezone,currency").eq("teacher_id", teacherId).order("name").limit(100);
+    .select("id,name,timezone,currency,locale,policy").eq("teacher_id", teacherId).order("name").limit(100);
   if (error) throw problem();
   return data;
 }
 
 export async function workplacesCreate(
-  db: Db, teacherId: string, name: string, timezone: string, currency: string
+  db: Db, teacherId: string, name: string, timezone: string, currency: string,
+  locale = 'en', policy: Record<string, unknown> = {}
 ) {
   const { data, error } = await db.from("workplaces")
-    .insert({ teacher_id: teacherId, name, timezone, currency })
-    .select("id,name,timezone,currency").single();
+    .insert({ teacher_id: teacherId, name, timezone, currency, locale, policy })
+    .select("id,name,timezone,currency,locale,policy").single();
   if (error?.code === "23505") throw conflict();
   if (error) throw problem();
   return data;
@@ -74,13 +75,14 @@ export async function groupsCreate(db: Db, teacherId: string, workplaceId: strin
 
 export async function groupsEnroll(db: Db, teacherId: string, groupId: string, studentId: string) {
   const [{ data: group }, { data: student }] = await Promise.all([
-    db.from("class_groups").select("id").eq("id", groupId).eq("teacher_id", teacherId).maybeSingle(),
+    db.from("class_groups").select("id,workplace_id").eq("id", groupId).eq("teacher_id", teacherId).maybeSingle(),
     db.from("students").select("id").eq("id", studentId).eq("teacher_id", teacherId)
       .is("archived_at", null).maybeSingle(),
   ]);
   if (!group || !student) throw notFound();
+  await workplacesEnroll(db, teacherId, group.workplace_id, studentId);
   const { data, error } = await db.from("group_enrollments")
-    .upsert({ teacher_id: teacherId, group_id: groupId, student_id: studentId }, {
+    .upsert({ teacher_id: teacherId, group_id: groupId, workplace_id: group.workplace_id, student_id: studentId }, {
       onConflict: "group_id,student_id",
       ignoreDuplicates: true,
     })
@@ -102,7 +104,7 @@ export async function groupsMembers(db: Db, teacherId: string, groupId: string) 
 
 export async function sessionsList(db: Db, teacherId: string) {
   const { data, error } = await db.from("teaching_sessions")
-    .select("id,title,starts_at,duration_minutes,lesson_note,workplace_id,group_id,student_id")
+    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
     .eq("teacher_id", teacherId).order("starts_at", { ascending: false }).limit(100);
   if (error) throw problem();
   return data;
@@ -130,6 +132,11 @@ export async function sessionsCreate(
       .eq("id", payload.studentId!).eq("teacher_id", teacherId)
       .is("archived_at", null).maybeSingle();
     if (!student) throw notFound();
+    const { data: enrolled } = await db.from("workplace_enrollments")
+      .select("id").eq("teacher_id", teacherId)
+      .eq("workplace_id", payload.workplaceId).eq("student_id", payload.studentId!)
+      .maybeSingle();
+    if (!enrolled) throw notFound();
   }
   const values = {
     teacher_id: teacherId, workplace_id: payload.workplaceId,
@@ -140,10 +147,10 @@ export async function sessionsCreate(
   };
   const { data, error } = await db.from("teaching_sessions")
     .insert(values)
-    .select("id,title,starts_at,duration_minutes,lesson_note,workplace_id,group_id,student_id").single();
+    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id").single();
   if (error?.code === "23505") {
     const { data: previous } = await db.from("teaching_sessions")
-      .select("id,title,starts_at,duration_minutes,lesson_note,workplace_id,group_id,student_id")
+      .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
       .eq("teacher_id", teacherId).eq("request_id", payload.requestId).maybeSingle();
     if (!previous) throw conflict();
     const same = previous.workplace_id === values.workplace_id &&
@@ -199,5 +206,115 @@ export async function attendanceRecord(
     }, { onConflict: "session_id,student_id" })
     .select("student_id,status,note,updated_at").single();
   if (error) throw problem();
+  return data;
+}
+
+/** Strict IANA validation. The database retains the requested zone, not the server's zone. */
+export function assertTimezone(value: string) {
+  try { new Intl.DateTimeFormat("en-US", { timeZone: value }); }
+  catch { throw new CoachError("VALIDATION_ERROR", 400, "Invalid IANA timezone"); }
+}
+
+/** One session is one block of teacher time, regardless of roster size. */
+export function instructorMinutes(
+  sessions: Array<{ duration_minutes: number; status?: string }>
+): number {
+  return sessions.reduce((total, item) =>
+    total + (item.status === "cancelled" ? 0 : item.duration_minutes), 0);
+}
+
+export async function workplacesUpdate(
+  db: Db, teacherId: string, workplaceId: string,
+  updates: { name?: string; timezone?: string; currency?: string; locale?: string; policy?: Record<string, unknown> }
+) {
+  if (updates.timezone) assertTimezone(updates.timezone);
+  const { data, error } = await db.from("workplaces").update(updates)
+    .eq("teacher_id", teacherId).eq("id", workplaceId)
+    .select("id,name,timezone,currency,locale,policy").maybeSingle();
+  if (error?.code === "23505") throw conflict();
+  if (error) throw problem();
+  if (!data) throw notFound();
+  return data;
+}
+
+export async function studentsCreate(db: Db, teacherId: string, name: string, level?: string | null) {
+  const { data, error } = await db.from("students")
+    .insert({ teacher_id: teacherId, name, level: level ?? null })
+    .select("id,name,level").single();
+  if (error) throw problem();
+  return data;
+}
+
+export async function studentsUpdate(
+  db: Db, teacherId: string, studentId: string,
+  updates: { name?: string; level?: string | null }
+) {
+  const { data, error } = await db.from("students").update(updates)
+    .eq("teacher_id", teacherId).eq("id", studentId).is("archived_at", null)
+    .select("id,name,level").maybeSingle();
+  if (error) throw problem();
+  if (!data) throw notFound();
+  return data;
+}
+
+export async function workplacesEnroll(
+  db: Db, teacherId: string, workplaceId: string, studentId: string
+) {
+  const [{ data: workplace }, { data: student }] = await Promise.all([
+    db.from("workplaces").select("id").eq("id", workplaceId)
+      .eq("teacher_id", teacherId).maybeSingle(),
+    db.from("students").select("id").eq("id", studentId)
+      .eq("teacher_id", teacherId).is("archived_at", null).maybeSingle(),
+  ]);
+  if (!workplace || !student) throw notFound();
+  const { data, error } = await db.from("workplace_enrollments")
+    .upsert({ teacher_id: teacherId, workplace_id: workplaceId, student_id: studentId }, {
+      onConflict: "teacher_id,workplace_id,student_id", ignoreDuplicates: true,
+    }).select("workplace_id,student_id").maybeSingle();
+  if (error) throw problem();
+  return data ?? { workplace_id: workplaceId, student_id: studentId };
+}
+
+export async function workplacesEnrollments(db: Db, teacherId: string, workplaceId: string) {
+  const { data: workplace } = await db.from("workplaces")
+    .select("id").eq("id", workplaceId).eq("teacher_id", teacherId).maybeSingle();
+  if (!workplace) throw notFound();
+  const { data, error } = await db.from("workplace_enrollments")
+    .select("student_id").eq("teacher_id", teacherId).eq("workplace_id", workplaceId);
+  if (error) throw problem();
+  return data;
+}
+
+export async function groupsUpdate(
+  db: Db, teacherId: string, groupId: string, workplaceId: string, name: string
+) {
+  const { data, error } = await db.from("class_groups").update({ name })
+    .eq("id", groupId).eq("teacher_id", teacherId).eq("workplace_id", workplaceId)
+    .select("id,name,workplace_id").maybeSingle();
+  if (error?.code === "23505") throw conflict();
+  if (error) throw problem();
+  if (!data) throw notFound();
+  return data;
+}
+
+export async function sessionsUpdate(
+  db: Db, teacherId: string, sessionId: string,
+  updates: {
+    title?: string; startsAt?: string; durationMinutes?: number;
+    lessonNote?: string; status?: "scheduled" | "completed" | "cancelled";
+  }
+) {
+  const changes: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (updates.title !== undefined) changes.title = updates.title;
+  if (updates.startsAt !== undefined) changes.starts_at = updates.startsAt;
+  if (updates.durationMinutes !== undefined) changes.duration_minutes = updates.durationMinutes;
+  if (updates.lessonNote !== undefined) changes.lesson_note = updates.lessonNote;
+  if (updates.status !== undefined) changes.status = updates.status;
+  const { data, error } = await db.from("teaching_sessions").update(changes)
+    .eq("teacher_id", teacherId).eq("id", sessionId)
+    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
+    .maybeSingle();
+  if (error) throw problem();
+  if (!data) throw notFound();
   return data;
 }
