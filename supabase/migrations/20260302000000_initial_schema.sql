@@ -271,3 +271,157 @@ $$;
 CREATE TRIGGER chesscoachpal_snapshot_participants
 AFTER INSERT ON public.teaching_sessions
 FOR EACH ROW EXECUTE FUNCTION public.chesscoachpal_snapshot_participants();
+
+
+-- Milestone 2: OAuth delegated grants and atomic agent writes.
+-- Fresh pre-1.0 schema only: no CogNote or historical ChessCoachPal migrations.
+-- These credential tables are server-only. Never expose them to authenticated or anon.
+CREATE TABLE public.agent_oauth_clients (
+  id text PRIMARY KEY,
+  name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 100),
+  redirect_uris jsonb NOT NULL CHECK (jsonb_typeof(redirect_uris) = 'array'),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.agent_oauth_codes (
+  code_hash text PRIMARY KEY,
+  client_id text NOT NULL REFERENCES public.agent_oauth_clients(id) ON DELETE CASCADE,
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  redirect_uri text NOT NULL,
+  resource text NOT NULL,
+  scopes text NOT NULL,
+  challenge text NOT NULL,
+  encrypted_session text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz
+);
+CREATE INDEX agent_codes_expiry_idx ON public.agent_oauth_codes(expires_at);
+CREATE TABLE public.agent_oauth_grants (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id text NOT NULL REFERENCES public.agent_oauth_clients(id) ON DELETE CASCADE,
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  resource text NOT NULL,
+  scopes text NOT NULL,
+  access_hash text NOT NULL UNIQUE,
+  refresh_hash text NOT NULL UNIQUE,
+  access_expires_at timestamptz NOT NULL,
+  refresh_expires_at timestamptz NOT NULL,
+  encrypted_session text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  revoked_at timestamptz
+);
+CREATE INDEX agent_grants_teacher_idx ON public.agent_oauth_grants(teacher_id, revoked_at);
+CREATE TABLE public.agent_tool_receipts (
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  idempotency_key uuid NOT NULL,
+  operation text NOT NULL,
+  request_hash text NOT NULL,
+  receipt jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (teacher_id, idempotency_key)
+);
+CREATE INDEX agent_receipts_created_idx ON public.agent_tool_receipts(created_at);
+
+ALTER TABLE public.agent_oauth_clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agent_oauth_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agent_oauth_grants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agent_tool_receipts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.agent_oauth_clients, public.agent_oauth_codes, public.agent_oauth_grants FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.agent_oauth_clients, public.agent_oauth_codes, public.agent_oauth_grants TO service_role;
+REVOKE ALL ON public.agent_tool_receipts FROM PUBLIC, anon;
+GRANT SELECT, INSERT ON public.agent_tool_receipts TO authenticated;
+GRANT ALL ON public.agent_tool_receipts TO service_role;
+CREATE POLICY agent_receipts_own ON public.agent_tool_receipts
+  FOR SELECT TO authenticated USING (teacher_id = auth.uid());
+CREATE POLICY agent_receipts_write_own ON public.agent_tool_receipts
+  FOR INSERT TO authenticated WITH CHECK (teacher_id = auth.uid());
+
+-- Both functions run as INVOKER (never SECURITY DEFINER). RLS and teacher ownership
+-- are enforced by Postgres even if the adapter passes a different teacher's UUID.
+-- A unique idempotency claim and the mutation share ONE transaction.
+CREATE OR REPLACE FUNCTION public.agent_record_attendance(
+  p_session_id uuid, p_student_id uuid, p_status text, p_note text,
+  p_expected_updated_at timestamptz, p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+DECLARE
+  v_teacher uuid := auth.uid();
+  v_hash text;
+  v_saved public.agent_tool_receipts%ROWTYPE;
+  v_updated public.session_attendance%ROWTYPE;
+  v_receipt jsonb;
+BEGIN
+  IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED'; END IF;
+  IF p_status NOT IN ('present','absent','late','excused') OR
+      char_length(coalesce(p_note,'')) > 5000 OR p_expected_updated_at IS NULL THEN
+    RAISE EXCEPTION 'VALIDATION_ERROR';
+  END IF;
+  v_hash := md5(jsonb_build_array(p_session_id,p_student_id,p_status,p_note,p_expected_updated_at)::text);
+  INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+  VALUES(v_teacher,p_idempotency_key,'attendance.record',v_hash,'{}'::jsonb)
+  ON CONFLICT DO NOTHING;
+  IF NOT FOUND THEN
+    SELECT * INTO v_saved FROM public.agent_tool_receipts
+    WHERE teacher_id = v_teacher AND idempotency_key = p_idempotency_key;
+    IF v_saved.operation <> 'attendance.record' OR v_saved.request_hash <> v_hash THEN
+      RAISE EXCEPTION 'CONFLICT';
+    END IF;
+    RETURN v_saved.receipt;
+  END IF;
+  UPDATE public.session_attendance SET status = p_status, note = coalesce(p_note,''),
+    updated_at = clock_timestamp()
+  WHERE teacher_id = v_teacher AND session_id = p_session_id AND student_id = p_student_id
+    AND updated_at = p_expected_updated_at
+  RETURNING * INTO v_updated;
+  IF NOT FOUND THEN RAISE EXCEPTION 'CONFLICT_OR_NOT_FOUND'; END IF;
+  v_receipt := jsonb_build_object('operation','attendance.record',
+    'sessionId',p_session_id,'studentId',p_student_id,'status',p_status,
+    'revision',v_updated.updated_at,'timestamp',now(),'idempotencyKey',p_idempotency_key);
+  UPDATE public.agent_tool_receipts SET receipt = v_receipt
+  WHERE teacher_id = v_teacher AND idempotency_key = p_idempotency_key;
+  RETURN v_receipt;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.agent_update_session_note(
+  p_session_id uuid, p_lesson_note text, p_expected_updated_at timestamptz,
+  p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+DECLARE
+  v_teacher uuid := auth.uid();
+  v_hash text;
+  v_saved public.agent_tool_receipts%ROWTYPE;
+  v_updated public.teaching_sessions%ROWTYPE;
+  v_receipt jsonb;
+BEGIN
+  IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED'; END IF;
+  IF p_lesson_note IS NULL OR char_length(p_lesson_note) > 10000
+      OR p_expected_updated_at IS NULL THEN RAISE EXCEPTION 'VALIDATION_ERROR'; END IF;
+  v_hash := md5(jsonb_build_array(p_session_id,p_lesson_note,p_expected_updated_at)::text);
+  INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+  VALUES(v_teacher,p_idempotency_key,'sessions.note.update',v_hash,'{}'::jsonb)
+  ON CONFLICT DO NOTHING;
+  IF NOT FOUND THEN
+    SELECT * INTO v_saved FROM public.agent_tool_receipts
+    WHERE teacher_id = v_teacher AND idempotency_key = p_idempotency_key;
+    IF v_saved.operation <> 'sessions.note.update' OR v_saved.request_hash <> v_hash THEN
+      RAISE EXCEPTION 'CONFLICT';
+    END IF;
+    RETURN v_saved.receipt;
+  END IF;
+  UPDATE public.teaching_sessions SET lesson_note = p_lesson_note,
+    updated_at = clock_timestamp()
+  WHERE teacher_id = v_teacher AND id = p_session_id
+    AND updated_at = p_expected_updated_at
+  RETURNING * INTO v_updated;
+  IF NOT FOUND THEN RAISE EXCEPTION 'CONFLICT_OR_NOT_FOUND'; END IF;
+  v_receipt := jsonb_build_object('operation','sessions.note.update',
+    'sessionId',p_session_id,'revision',v_updated.updated_at,
+    'timestamp',now(),'idempotencyKey',p_idempotency_key);
+  UPDATE public.agent_tool_receipts SET receipt = v_receipt
+  WHERE teacher_id = v_teacher AND idempotency_key = p_idempotency_key;
+  RETURN v_receipt;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.agent_record_attendance(uuid,uuid,text,text,timestamptz,uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.agent_update_session_note(uuid,text,timestamptz,uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.agent_record_attendance(uuid,uuid,text,text,timestamptz,uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.agent_update_session_note(uuid,text,timestamptz,uuid) TO authenticated;
