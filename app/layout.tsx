@@ -29,11 +29,11 @@ export const metadata: Metadata = {
     template: "ChessCoachPal - %s",
   },
   description:
-    "Open-source studio management for chess coaches: scheduling, attendance, family portals, and progress tracking, with quizzes, flashcards, and spaced repetition built in",
+    "Open-source, self-hostable AI-agent-first chess teaching assistant: students, workplaces, groups, lessons and attendance.",
   appleWebApp: { capable: true, statusBarStyle: "default", title: PWA.shortName },
   icons: {
     icon: "/icon/chesscoachpal.svg",
-    apple: "/icon/chesscoachpal.svg", // PNG — iOS ignores SVG here
+    apple: "/icon/chesscoachpal.svg", // TODO: generate dedicated raster icon for iOS
   },
 };
 
