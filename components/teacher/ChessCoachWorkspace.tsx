@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { workplaceLocalToUtc, utcToWorkplaceLocal } from "@/lib/coaching-time";
 
-type Workplace = { id: string; name: string; timezone: string; currency: string };
+type Workplace = { id: string; name: string; timezone: string; currency: string; locale: string; policy: Record<string, unknown> };
 type Student = { id: string; name: string; level: string | null };
 type Group = { id: string; name: string; workplace_id: string };
 type Session = {
   id: string; title: string; starts_at: string; duration_minutes: number;
   workplace_id: string; group_id: string | null; student_id: string | null;
-  lesson_note: string;
+  lesson_note: string; status: "scheduled" | "completed" | "cancelled";
 };
 type Roster = { student_id: string; students: { name: string } | { name: string }[] };
 type Attendance = {
@@ -51,6 +52,20 @@ export function ChessCoachWorkspace() {
   const [groupName, setGroupName] = useState("");
   const [timezone, setTimezone] = useState("Asia/Jerusalem");
   const [currency, setCurrency] = useState("ILS");
+  const [locale, setLocale] = useState("en");
+  const [editWorkplaceName, setEditWorkplaceName] = useState("");
+  const [editTimezone, setEditTimezone] = useState("UTC");
+  const [editCurrency, setEditCurrency] = useState("USD");
+  const [editLocale, setEditLocale] = useState("en");
+  const [newStudentName, setNewStudentName] = useState("");
+  const [newStudentLevel, setNewStudentLevel] = useState("");
+  const [editStudentId, setEditStudentId] = useState("");
+  const [editStudentName, setEditStudentName] = useState("");
+  const [editStudentLevel, setEditStudentLevel] = useState("");
+  const [workplaceStudentId, setWorkplaceStudentId] = useState("");
+  const [enrolledIds, setEnrolledIds] = useState<string[]>([]);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [groupMembers, setGroupMembers] = useState<Roster[]>([]);
   const [workplaceId, setWorkplaceId] = useState("");
   const [groupId, setGroupId] = useState("");
   const [studentId, setStudentId] = useState("");
@@ -60,6 +75,12 @@ export function ChessCoachWorkspace() {
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [lessonNote, setLessonNote] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [editSessionTitle, setEditSessionTitle] = useState("");
+  const [editStart, setEditStart] = useState("");
+  const [editDuration, setEditDuration] = useState(60);
+  const [editSessionNote, setEditSessionNote] = useState("");
+  const [editStatus, setEditStatus] = useState<Session["status"]>("scheduled");
+  const requestRef = useRef<{ signature: string; id: string } | null>(null);
   const [roster, setRoster] = useState<Roster[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [busy, setBusy] = useState(false);
@@ -110,9 +131,58 @@ export function ChessCoachWorkspace() {
   async function addWorkplace(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     await perform(async () => {
-      await operation("workplaces.create", { name: workplaceName.trim(), timezone, currency });
+      await operation("workplaces.create", { name: workplaceName.trim(), timezone, currency, locale });
       setWorkplaceName("");
     }, "Workplace created.");
+  }
+
+  async function updateWorkplace(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await perform(() => operation("workplaces.update", {
+      workplaceId, name: editWorkplaceName.trim(), timezone: editTimezone,
+      currency: editCurrency, locale: editLocale,
+    }), "Workplace saved.");
+  }
+
+  async function addStudent(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await perform(async () => {
+      await operation("students.create", { name: newStudentName.trim(), level: newStudentLevel.trim() || null });
+      setNewStudentName(""); setNewStudentLevel("");
+    }, "Student created.");
+  }
+
+  async function updateStudent(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await perform(() => operation("students.update", {
+      studentId: editStudentId, name: editStudentName.trim(), level: editStudentLevel.trim() || null,
+    }), "Student saved.");
+  }
+
+  async function reloadEnrollments(id: string) {
+    if (!id) { setEnrolledIds([]); return; }
+    const rows = await operation<{ student_id: string }[]>("workplaces.enrollments", { workplaceId: id });
+    setEnrolledIds(rows.map(r => r.student_id));
+  }
+
+  async function enrollWorkplace(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await perform(async () => {
+      await operation("workplaces.enroll", { workplaceId, studentId: workplaceStudentId });
+      await reloadEnrollments(workplaceId);
+    }, "Student enrolled in workplace.");
+  }
+
+  async function reloadGroupMembers(id: string) {
+    if (!id) { setGroupMembers([]); return; }
+    setGroupMembers(await operation<Roster[]>("groups.members", { groupId: id }));
+  }
+
+  async function updateGroup(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await perform(() => operation("groups.update", {
+      groupId, workplaceId, name: editGroupName.trim(),
+    }), "Class group saved.");
   }
 
   async function addGroup(e: FormEvent<HTMLFormElement>) {
@@ -125,7 +195,11 @@ export function ChessCoachWorkspace() {
 
   async function enroll(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    await perform(() => operation("groups.enroll", { groupId, studentId }), "Student enrolled.");
+    await perform(async () => {
+      await operation("groups.enroll", { groupId, studentId });
+      await reloadEnrollments(workplaceId);
+      await reloadGroupMembers(groupId);
+    }, "Student enrolled.");
   }
 
   async function schedule(e: FormEvent<HTMLFormElement>) {
@@ -133,18 +207,38 @@ export function ChessCoachWorkspace() {
     if (!start || (mode === "group" ? !groupId : !studentId)) {
       setError("Choose a time and a class group or student."); return;
     }
-    // Local datetime input is converted to an explicit UTC instant.
-    const startsAt = new Date(start).toISOString();
+    const zone = workplaces.find(w => w.id === workplaceId)?.timezone ?? "UTC";
+    let startsAt: string;
+    try { startsAt = workplaceLocalToUtc(start, zone); }
+    catch (e) { setError(e instanceof Error ? e.message : "Invalid lesson time"); return; }
+    const payload = {
+      workplaceId, groupId: mode === "group" ? groupId : undefined,
+      studentId: mode === "private" ? studentId : undefined,
+      title: title.trim(), startsAt, durationMinutes, lessonNote,
+    };
+    const signature = JSON.stringify(payload);
+    if (requestRef.current?.signature !== signature) {
+      requestRef.current = { signature, id: crypto.randomUUID() };
+    }
     await perform(async () => {
-      const created = await operation<Session>("sessions.create", {
-        workplaceId, groupId: mode === "group" ? groupId : undefined,
-        studentId: mode === "private" ? studentId : undefined,
-        title: title.trim(), startsAt, durationMinutes,
-        lessonNote, requestId: crypto.randomUUID(),
-      });
+      const created = await operation<Session>("sessions.create", { ...payload, requestId: requestRef.current!.id });
+      requestRef.current = null;
       setSelectedSessionId(created.id);
       setTitle(""); setLessonNote(""); setStart("");
     }, "Lesson session created with a frozen attendance roster.");
+  }
+
+  async function updateSession(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const current = sessions.find(s => s.id === selectedSessionId);
+    const zone = workplaces.find(w => w.id === current?.workplace_id)?.timezone ?? "UTC";
+    let startsAt: string;
+    try { startsAt = workplaceLocalToUtc(editStart, zone); }
+    catch (e) { setError(e instanceof Error ? e.message : "Invalid lesson time"); return; }
+    await perform(() => operation("sessions.update", {
+      sessionId: selectedSessionId, title: editSessionTitle.trim(), startsAt,
+      durationMinutes: editDuration, lessonNote: editSessionNote, status: editStatus,
+    }), "Session changes saved.");
   }
 
   async function record(student: string, status: AttendanceStatus, note: string) {
@@ -157,8 +251,43 @@ export function ChessCoachWorkspace() {
   }
 
   const localGroups = groups.filter(g => g.workplace_id === workplaceId);
-  const session = sessions.find(s => s.id === selectedSessionId);
+  const localSessions = sessions.filter(s => s.workplace_id === workplaceId);
+  const session = localSessions.find(s => s.id === selectedSessionId);
+  const activeWorkplace = workplaces.find(w => w.id === workplaceId);
   const sessionWorkplace = workplaces.find(w => w.id === session?.workplace_id);
+  const teacherMinutes = localSessions.reduce((sum, item) =>
+    sum + (item.status === "cancelled" ? 0 : item.duration_minutes), 0);
+
+  useEffect(() => {
+    const w = workplaces.find(item => item.id === workplaceId);
+    if (w) {
+      setEditWorkplaceName(w.name); setEditTimezone(w.timezone);
+      setEditCurrency(w.currency); setEditLocale(w.locale);
+    }
+    void reloadEnrollments(workplaceId).catch(e => setError(String(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workplaceId, workplaces]);
+
+  useEffect(() => {
+    const s = students.find(item => item.id === editStudentId);
+    setEditStudentName(s?.name ?? "");
+    setEditStudentLevel(s?.level ?? "");
+  }, [editStudentId, students]);
+
+  useEffect(() => {
+    const g = groups.find(item => item.id === groupId && item.workplace_id === workplaceId);
+    setEditGroupName(g?.name ?? "");
+    void reloadGroupMembers(g?.id ?? "").catch(e => setError(String(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId, groups, workplaceId]);
+
+  useEffect(() => {
+    if (!session) return;
+    setEditSessionTitle(session.title); setEditSessionNote(session.lesson_note);
+    setEditDuration(session.duration_minutes); setEditStatus(session.status);
+    const zone = workplaces.find(w => w.id === session.workplace_id)?.timezone ?? "UTC";
+    setEditStart(utcToWorkplaceLocal(session.starts_at, zone));
+  }, [session, workplaces]);
 
   return (
     <div className="space-y-6">
