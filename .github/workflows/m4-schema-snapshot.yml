@@ -1,0 +1,28 @@
+name: M4 baseline research (temporary)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/m4-schema-snapshot.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start a fresh synthetic Supabase only
+        run: |
+          supabase start
+          supabase db reset --yes
+      - name: Emit public schema-only bootstrap for review
+        run: |
+          supabase db dump --local --schema public --file "$RUNNER_TEMP/m4-public-schema.sql"
+          echo '===M4_PUBLIC_SCHEMA_START==='
+          cat "$RUNNER_TEMP/m4-public-schema.sql"
+          echo '===M4_PUBLIC_SCHEMA_END==='
