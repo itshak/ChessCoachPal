@@ -95,15 +95,17 @@ CREATE POLICY teaching_sessions_teacher ON public.teaching_sessions
   FOR ALL TO authenticated
   USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
 CREATE POLICY session_participants_teacher ON public.session_participants
-  FOR ALL TO authenticated
-  USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
+  FOR SELECT TO authenticated
+  USING (teacher_id = auth.uid());
 CREATE POLICY session_attendance_teacher ON public.session_attendance
   FOR ALL TO authenticated
   USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   public.workplaces, public.class_groups, public.group_enrollments,
-  public.teaching_sessions, public.session_participants, public.session_attendance
+  public.teaching_sessions, public.session_attendance
 TO authenticated, service_role;
+GRANT SELECT ON public.session_participants TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.session_participants TO service_role;
 REVOKE ALL ON TABLE
   public.workplaces, public.class_groups, public.group_enrollments,
   public.teaching_sessions, public.session_participants, public.session_attendance FROM anon;
