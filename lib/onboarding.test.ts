@@ -13,11 +13,11 @@ import {
 
 describe("signupEmailRedirectTo", () => {
   it("lands confirmation links on /auth/confirm", () => {
-    expect(signupEmailRedirectTo("https://cognote.studio")).toBe(
-      "https://cognote.studio/auth/confirm?next=/dashboard"
+    expect(signupEmailRedirectTo("https://chesscoachpal.example")).toBe(
+      "https://chesscoachpal.example/auth/confirm?next=/dashboard"
     );
-    expect(signupEmailRedirectTo("https://cognote.studio/")).toBe(
-      "https://cognote.studio/auth/confirm?next=/dashboard"
+    expect(signupEmailRedirectTo("https://chesscoachpal.example/")).toBe(
+      "https://chesscoachpal.example/auth/confirm?next=/dashboard"
     );
   });
 });
@@ -78,7 +78,7 @@ describe("onboarding tour steps", () => {
       "students",
       "families",
       "schedule",
-      "lessons",
+      "coaching",
       "billing",
       "account",
     ]);
