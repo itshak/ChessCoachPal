@@ -49,6 +49,13 @@ export async function GET(req: NextRequest) {
       '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
       '<button type="submit" name="decision" value="approve" '+(!teacher?'disabled':'')+'>Authorize</button> '+
       '<button type="submit" name="decision" value="deny">Deny</button></form></main></html>');
+    // OAuth consent must be allowed to redirect to the client's exact registered
+    // origin. A strict self-only form-action CSP blocks cross-origin OAuth redirects
+    // in Chromium even though the form initially posts to this server.
+    // p.redirect has passed the exact client redirect allowlist and URL validation.
+    page.headers.set("Content-Security-Policy",
+      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' " +
+      new URL(p.redirect).origin + "; base-uri 'none'; frame-ancestors 'none'");
     page.cookies.set("agent_oauth_consent_csrf", csrf, {httpOnly:true,sameSite:"lax",secure:oauthOrigin().startsWith("https:"),path:"/oauth/authorize",maxAge:600});
     return page;
   } catch {
