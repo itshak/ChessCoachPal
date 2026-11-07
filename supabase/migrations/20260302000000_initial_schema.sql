@@ -165,7 +165,10 @@ CREATE TABLE public.group_enrollments (
   FOREIGN KEY (group_id, teacher_id, workplace_id)
     REFERENCES public.class_groups(id, teacher_id, workplace_id) ON DELETE CASCADE,
   FOREIGN KEY (teacher_id, workplace_id, student_id)
-    REFERENCES public.workplace_enrollments(teacher_id, workplace_id, student_id) ON DELETE CASCADE
+    REFERENCES public.workplace_enrollments(teacher_id, workplace_id, student_id) ON DELETE CASCADE,
+  -- Keep a direct student relationship for PostgREST's embedded roster query.
+  FOREIGN KEY (student_id, teacher_id)
+    REFERENCES public.students(id, teacher_id) ON DELETE CASCADE
 );
 CREATE INDEX group_enrollments_teacher_student_idx ON public.group_enrollments(teacher_id, student_id);
 

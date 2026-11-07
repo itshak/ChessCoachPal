@@ -98,6 +98,9 @@ test("teacher isolation, scoped IDs, roster snapshots and idempotent session ret
   });
   expect(foreignWrite).toBeTruthy();
   const dbAnon = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: anonymous } = await dbAnon.from("teaching_sessions").select("id").eq("id", first.id);
-  expect(anonymous).toEqual([]);
+  const { data: anonymous, error: anonymousError } = await dbAnon
+    .from("teaching_sessions").select("id").eq("id", first.id);
+  // The anon role has zero table privileges: PostgREST may return a denial
+  // rather than an empty RLS-filtered result. Both are secure outcomes.
+  expect(anonymousError || (anonymous?.length === 0)).toBeTruthy();
 });
