@@ -19,13 +19,18 @@ while IFS='=' read -r name value; do
 done < "$scratch/secrets"
 sed -i "s|^TOKEN_ENCRYPTION_KEY=.*|TOKEN_ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.local
 sed -i "s|^MCP_SESSION_ENCRYPTION_KEY=.*|MCP_SESSION_ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.local
+# The candidate-release job may still have its browser-test Next server on port
+# 3000. Use 3100 for this independent Compose installation; production
+# operators retain the documented default APP_PORT=3000.
+sed -i -e 's|^APP_PORT=3000$|APP_PORT=3100|' \
+       -e 's|^APP_URL=http://localhost:3000$|APP_URL=http://localhost:3100|' .env.local
 docker compose -f docker-compose.example.yml --env-file .env.local config --quiet
 echo "==> start isolated current-schema Docker Compose website/Supabase stack"
 docker compose -f docker-compose.example.yml --env-file .env.local up -d --build app
 echo "==> verify actual server and gateway"
 ok=0
 for i in $(seq 1 60); do
-  if curl -fsS --max-time 3 http://127.0.0.1:3000/icon/chesscoachpal.svg >/dev/null 2>&1 &&
+  if curl -fsS --max-time 3 http://127.0.0.1:3100/icon/chesscoachpal.svg >/dev/null 2>&1 &&
      curl -fsS --max-time 3 http://127.0.0.1:8000/auth/v1/health >/dev/null 2>&1; then
     ok=1; break
   fi
