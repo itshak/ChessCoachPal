@@ -23,26 +23,6 @@ COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 
 
-CREATE TYPE "public"."clef_type" AS ENUM (
-    'treble',
-    'bass',
-    'both'
-);
-
-
-ALTER TYPE "public"."clef_type" OWNER TO "postgres";
-
-
-CREATE TYPE "public"."practice_mode" AS ENUM (
-    'lesson',
-    'free_practice',
-    'flashcard'
-);
-
-
-ALTER TYPE "public"."practice_mode" OWNER TO "postgres";
-
-
 CREATE TYPE "public"."rsvp_status" AS ENUM (
     'pending',
     'yes',
@@ -791,24 +771,6 @@ COMMENT ON COLUMN "public"."events"."reminder_sent_at" IS 'Set when the day-befo
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."flashcard_progress" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "student_plan_id" "uuid" NOT NULL,
-    "note" "text" NOT NULL,
-    "clef" "text" NOT NULL,
-    "ease_factor" double precision DEFAULT 2.5 NOT NULL,
-    "interval_days" integer DEFAULT 0 NOT NULL,
-    "repetitions" integer DEFAULT 0 NOT NULL,
-    "next_review" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "last_reviewed" timestamp with time zone,
-    "item_type" "text" DEFAULT 'note'::"text" NOT NULL,
-    CONSTRAINT "flashcard_progress_clef_check" CHECK (("clef" = ANY (ARRAY['treble'::"text", 'bass'::"text", 'none'::"text"])))
-);
-
-
-ALTER TABLE "public"."flashcard_progress" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."group_enrollments" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "teacher_id" "uuid" NOT NULL,
@@ -977,52 +939,6 @@ COMMENT ON COLUMN "public"."lessons"."rescheduled_from_date" IS 'Original slot o
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."music_library_items" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "teacher_id" "uuid" NOT NULL,
-    "title" "text" NOT NULL,
-    "composer" "text" DEFAULT ''::"text" NOT NULL,
-    "arranger" "text" DEFAULT ''::"text" NOT NULL,
-    "format" "text" NOT NULL,
-    "original_filename" "text" NOT NULL,
-    "storage_path" "text" NOT NULL,
-    "mime_type" "text" NOT NULL,
-    "byte_size" integer NOT NULL,
-    "sha256" "text" NOT NULL,
-    "tags" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    "source" "text" DEFAULT 'teacher_upload'::"text" NOT NULL,
-    "source_url" "text",
-    "license_code" "text" DEFAULT 'teacher_owned'::"text" NOT NULL,
-    "license_url" "text",
-    "attribution" "text" DEFAULT ''::"text" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "music_library_items_byte_size_check" CHECK (("byte_size" > 0)),
-    CONSTRAINT "music_library_items_format_check" CHECK (("format" = ANY (ARRAY['pdf'::"text", 'musicxml'::"text", 'mxl'::"text"]))),
-    CONSTRAINT "music_library_items_license_code_check" CHECK (("license_code" = ANY (ARRAY['public_domain'::"text", 'cc0'::"text", 'cc_by'::"text", 'cc_by_sa'::"text", 'teacher_owned'::"text", 'unknown'::"text", 'restricted'::"text"])))
-);
-
-
-ALTER TABLE "public"."music_library_items" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."note_attempts" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "session_id" "uuid" NOT NULL,
-    "note_displayed" "text" NOT NULL,
-    "clef" "text" NOT NULL,
-    "correct_answer" "text" NOT NULL,
-    "student_answer" "text" NOT NULL,
-    "is_correct" boolean NOT NULL,
-    "response_time_ms" integer,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "note_attempts_clef_check" CHECK (("clef" = ANY (ARRAY['treble'::"text", 'bass'::"text"])))
-);
-
-
-ALTER TABLE "public"."note_attempts" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."notifications" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "teacher_id" "uuid" NOT NULL,
@@ -1053,57 +969,6 @@ CREATE TABLE IF NOT EXISTS "public"."payments" (
 
 
 ALTER TABLE "public"."payments" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."plans" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "teacher_id" "uuid" NOT NULL,
-    "name" "text" NOT NULL,
-    "is_template" boolean DEFAULT false NOT NULL,
-    "clef" "public"."clef_type" DEFAULT 'treble'::"public"."clef_type" NOT NULL,
-    "key_signature" "text" DEFAULT 'C major'::"text" NOT NULL,
-    "include_sharps" boolean DEFAULT false NOT NULL,
-    "include_flats" boolean DEFAULT false NOT NULL,
-    "include_chords" boolean DEFAULT false NOT NULL,
-    "measures_shown" integer DEFAULT 1 NOT NULL,
-    "questions_per_lesson" integer DEFAULT 10 NOT NULL,
-    "answer_choices" integer DEFAULT 4 NOT NULL,
-    "notes" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "teacher_notes" "text" DEFAULT ''::"text" NOT NULL,
-    "plan_type" "text" DEFAULT 'note_identification'::"text" NOT NULL,
-    "symbols" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
-    "show_hints" boolean DEFAULT true NOT NULL,
-    "key_sig_scale_mode" "text" DEFAULT 'major'::"text" NOT NULL,
-    "key_signatures" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
-    "time_limit_seconds" integer DEFAULT 0 NOT NULL,
-    "labels" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
-    CONSTRAINT "plans_answer_choices_check" CHECK (("answer_choices" = ANY (ARRAY[2, 4, 6]))),
-    CONSTRAINT "plans_key_sig_scale_mode_check" CHECK (("key_sig_scale_mode" = ANY (ARRAY['major'::"text", 'minor'::"text", 'both'::"text"]))),
-    CONSTRAINT "plans_measures_shown_check" CHECK (("measures_shown" = ANY (ARRAY[1, 2]))),
-    CONSTRAINT "plans_plan_type_check" CHECK (("plan_type" = ANY (ARRAY['note_identification'::"text", 'symbol_concepts'::"text", 'key_signature_identification'::"text"]))),
-    CONSTRAINT "plans_questions_per_lesson_check" CHECK ((("questions_per_lesson" >= 5) AND ("questions_per_lesson" <= 30))),
-    CONSTRAINT "plans_time_limit_seconds_check" CHECK ((("time_limit_seconds" >= 0) AND ("time_limit_seconds" <= 60)))
-);
-
-
-ALTER TABLE "public"."plans" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."practice_sessions" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "student_plan_id" "uuid" NOT NULL,
-    "mode" "public"."practice_mode" NOT NULL,
-    "started_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "completed_at" timestamp with time zone,
-    "total_correct" integer DEFAULT 0 NOT NULL,
-    "total_incorrect" integer DEFAULT 0 NOT NULL,
-    "total_questions" integer DEFAULT 0 NOT NULL
-);
-
-
-ALTER TABLE "public"."practice_sessions" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."push_subscriptions" (
@@ -1151,21 +1016,6 @@ CREATE TABLE IF NOT EXISTS "public"."session_participants" (
 ALTER TABLE "public"."session_participants" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."sheet_music_assignments" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "music_item_id" "uuid" NOT NULL,
-    "student_id" "uuid" NOT NULL,
-    "assignment_note" "text" DEFAULT ''::"text" NOT NULL,
-    "due_date" "date",
-    "assigned_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "unassigned_at" timestamp with time zone,
-    "emailed_at" timestamp with time zone
-);
-
-
-ALTER TABLE "public"."sheet_music_assignments" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."skill_assessments" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "dimension_id" "uuid" NOT NULL,
@@ -1191,24 +1041,6 @@ CREATE TABLE IF NOT EXISTS "public"."skill_dimensions" (
 
 
 ALTER TABLE "public"."skill_dimensions" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."student_plans" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "student_id" "uuid" NOT NULL,
-    "plan_id" "uuid" NOT NULL,
-    "token" "text" NOT NULL,
-    "assigned_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "due_date" "date",
-    "unassigned_at" timestamp with time zone
-);
-
-
-ALTER TABLE "public"."student_plans" OWNER TO "postgres";
-
-
-COMMENT ON COLUMN "public"."student_plans"."unassigned_at" IS 'When set, the assignment is inactive — hidden from portal and active lists, but practice sessions remain.';
-
 
 
 CREATE TABLE IF NOT EXISTS "public"."students" (
@@ -1300,10 +1132,6 @@ CREATE TABLE IF NOT EXISTS "public"."studio_policies" (
     "notify_email_invoice_paid" boolean DEFAULT true NOT NULL,
     "ai_provider" "text" DEFAULT 'none'::"text" NOT NULL,
     "ai_api_key" "text",
-    "streaks_enabled" boolean DEFAULT false NOT NULL,
-    "streak_count_quiz" boolean DEFAULT true NOT NULL,
-    "streak_count_free_practice" boolean DEFAULT false NOT NULL,
-    "streak_count_flashcards" boolean DEFAULT false NOT NULL,
     "policies_updated_at" timestamp with time zone,
     "duration_rate_cents" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
     "travel_fee_cents" integer,
@@ -1311,14 +1139,12 @@ CREATE TABLE IF NOT EXISTS "public"."studio_policies" (
     "bcc_family_emails" boolean DEFAULT false NOT NULL,
     "bcc_email" "text",
     "lesson_label" "text" DEFAULT ''::"text" NOT NULL,
-    "note_naming_system" "text" DEFAULT 'us'::"text" NOT NULL,
     CONSTRAINT "studio_policies_ai_provider_check" CHECK (("ai_provider" = ANY (ARRAY['none'::"text", 'openai'::"text", 'anthropic'::"text"]))),
     CONSTRAINT "studio_policies_bcc_email_check" CHECK ((("bcc_email" IS NULL) OR (("length"("bcc_email") <= 320) AND ("bcc_email" ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}$'::"text")))),
     CONSTRAINT "studio_policies_cancellation_window_hours_check" CHECK (("cancellation_window_hours" >= 0)),
     CONSTRAINT "studio_policies_default_rate_cents_check" CHECK ((("default_rate_cents" IS NULL) OR ("default_rate_cents" >= 0))),
     CONSTRAINT "studio_policies_invoice_cadence_check" CHECK (("invoice_cadence" = ANY (ARRAY['monthly'::"text", 'manual'::"text"]))),
     CONSTRAINT "studio_policies_makeup_credit_expiry_days_check" CHECK (("makeup_credit_expiry_days" > 0)),
-    CONSTRAINT "studio_policies_note_naming_system_check" CHECK (("note_naming_system" = ANY (ARRAY['us'::"text", 'uk'::"text"]))),
     CONSTRAINT "studio_policies_payment_provider_check" CHECK (("payment_provider" = ANY (ARRAY['manual'::"text", 'stripe'::"text"]))),
     CONSTRAINT "studio_policies_payment_qr_code_check" CHECK ((("payment_qr_code" IS NULL) OR (("length"("payment_qr_code") <= 400000) AND ("payment_qr_code" ~ '^data:image/(png|jpeg);base64,[A-Za-z0-9+/]+=*$'::"text")))),
     CONSTRAINT "studio_policies_rate_basis_check" CHECK (("rate_basis" = ANY (ARRAY['per_lesson'::"text", 'per_hour'::"text"]))),
@@ -1373,22 +1199,6 @@ COMMENT ON COLUMN "public"."studio_policies"."ai_api_key" IS 'Teacher-provided A
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."streaks_enabled" IS 'When false, streak/badge UI is hidden everywhere.';
-
-
-
-COMMENT ON COLUMN "public"."studio_policies"."streak_count_quiz" IS 'Completed quiz (lesson mode) sessions count as a practice day.';
-
-
-
-COMMENT ON COLUMN "public"."studio_policies"."streak_count_free_practice" IS 'Completed free_practice sessions count as a practice day.';
-
-
-
-COMMENT ON COLUMN "public"."studio_policies"."streak_count_flashcards" IS 'Flashcard activity on a local day counts as a practice day.';
-
-
-
 COMMENT ON COLUMN "public"."studio_policies"."duration_rate_cents" IS 'Optional map of duration minutes (as text keys) to flat lesson charge in cents.';
 
 
@@ -1410,10 +1220,6 @@ COMMENT ON COLUMN "public"."studio_policies"."bcc_email" IS 'Address to BCC on f
 
 
 COMMENT ON COLUMN "public"."studio_policies"."lesson_label" IS 'Subject/instrument used in calendar feed titles (e.g. "Piano" -> "Piano lesson — Ann"). Empty = neutral "Lesson".';
-
-
-
-COMMENT ON COLUMN "public"."studio_policies"."note_naming_system" IS 'Note-value vocabulary for symbols, quizzes, and flashcards: "us" (whole/half/quarter note) or "uk" (semibreve/minim/crotchet).';
 
 
 
@@ -1674,16 +1480,6 @@ ALTER TABLE ONLY "public"."events"
 
 
 
-ALTER TABLE ONLY "public"."flashcard_progress"
-    ADD CONSTRAINT "flashcard_progress_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."flashcard_progress"
-    ADD CONSTRAINT "flashcard_progress_unique_item" UNIQUE ("student_plan_id", "item_type", "note", "clef");
-
-
-
 ALTER TABLE ONLY "public"."group_enrollments"
     ADD CONSTRAINT "group_enrollments_group_id_student_id_key" UNIQUE ("group_id", "student_id");
 
@@ -1744,26 +1540,6 @@ ALTER TABLE ONLY "public"."lessons"
 
 
 
-ALTER TABLE ONLY "public"."music_library_items"
-    ADD CONSTRAINT "music_library_items_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."music_library_items"
-    ADD CONSTRAINT "music_library_items_teacher_id_sha256_key" UNIQUE ("teacher_id", "sha256");
-
-
-
-ALTER TABLE ONLY "public"."music_library_items"
-    ADD CONSTRAINT "music_library_items_teacher_id_storage_path_key" UNIQUE ("teacher_id", "storage_path");
-
-
-
-ALTER TABLE ONLY "public"."note_attempts"
-    ADD CONSTRAINT "note_attempts_pkey" PRIMARY KEY ("id");
-
-
-
 ALTER TABLE ONLY "public"."notifications"
     ADD CONSTRAINT "notifications_pkey" PRIMARY KEY ("id");
 
@@ -1771,16 +1547,6 @@ ALTER TABLE ONLY "public"."notifications"
 
 ALTER TABLE ONLY "public"."payments"
     ADD CONSTRAINT "payments_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."plans"
-    ADD CONSTRAINT "plans_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."practice_sessions"
-    ADD CONSTRAINT "practice_sessions_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1809,11 +1575,6 @@ ALTER TABLE ONLY "public"."session_participants"
 
 
 
-ALTER TABLE ONLY "public"."sheet_music_assignments"
-    ADD CONSTRAINT "sheet_music_assignments_pkey" PRIMARY KEY ("id");
-
-
-
 ALTER TABLE ONLY "public"."skill_assessments"
     ADD CONSTRAINT "skill_assessments_pkey" PRIMARY KEY ("id");
 
@@ -1826,16 +1587,6 @@ ALTER TABLE ONLY "public"."skill_dimensions"
 
 ALTER TABLE ONLY "public"."skill_dimensions"
     ADD CONSTRAINT "skill_dimensions_teacher_id_name_key" UNIQUE ("teacher_id", "name");
-
-
-
-ALTER TABLE ONLY "public"."student_plans"
-    ADD CONSTRAINT "student_plans_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."student_plans"
-    ADD CONSTRAINT "student_plans_token_key" UNIQUE ("token");
 
 
 
@@ -1949,10 +1700,6 @@ CREATE INDEX "group_enrollments_teacher_student_idx" ON "public"."group_enrollme
 
 
 
-CREATE INDEX "idx_attempts_session" ON "public"."note_attempts" USING "btree" ("session_id");
-
-
-
 CREATE INDEX "idx_credit_packages_student" ON "public"."credit_packages" USING "btree" ("student_id");
 
 
@@ -1974,10 +1721,6 @@ CREATE INDEX "idx_event_students_student" ON "public"."event_students" USING "bt
 
 
 CREATE INDEX "idx_events_teacher_starts" ON "public"."events" USING "btree" ("teacher_id", "starts_at");
-
-
-
-CREATE INDEX "idx_flashcard_student_plan" ON "public"."flashcard_progress" USING "btree" ("student_plan_id");
 
 
 
@@ -2037,19 +1780,7 @@ CREATE INDEX "idx_payments_invoice" ON "public"."payments" USING "btree" ("invoi
 
 
 
-CREATE INDEX "idx_plans_labels" ON "public"."plans" USING "gin" ("labels");
-
-
-
-CREATE INDEX "idx_plans_teacher" ON "public"."plans" USING "btree" ("teacher_id");
-
-
-
 CREATE INDEX "idx_push_subscriptions_teacher" ON "public"."push_subscriptions" USING "btree" ("teacher_id");
-
-
-
-CREATE INDEX "idx_sessions_student_plan" ON "public"."practice_sessions" USING "btree" ("student_plan_id");
 
 
 
@@ -2065,14 +1796,6 @@ CREATE INDEX "idx_skill_dimensions_teacher" ON "public"."skill_dimensions" USING
 
 
 
-CREATE INDEX "idx_student_plans_student" ON "public"."student_plans" USING "btree" ("student_id");
-
-
-
-CREATE INDEX "idx_student_plans_token" ON "public"."student_plans" USING "btree" ("token");
-
-
-
 CREATE INDEX "idx_students_guardian" ON "public"."students" USING "btree" ("guardian_id");
 
 
@@ -2082,14 +1805,6 @@ CREATE INDEX "idx_students_teacher" ON "public"."students" USING "btree" ("teach
 
 
 CREATE UNIQUE INDEX "idx_teachers_calendar_token" ON "public"."teachers" USING "btree" ("calendar_token");
-
-
-
-CREATE INDEX "music_library_items_teacher_idx" ON "public"."music_library_items" USING "btree" ("teacher_id", "created_at" DESC);
-
-
-
-CREATE INDEX "music_library_items_title_idx" ON "public"."music_library_items" USING "btree" ("teacher_id", "lower"("title"));
 
 
 
@@ -2106,18 +1821,6 @@ CREATE INDEX "session_attendance_teacher_idx" ON "public"."session_attendance" U
 
 
 CREATE INDEX "session_participants_teacher_idx" ON "public"."session_participants" USING "btree" ("teacher_id", "session_id");
-
-
-
-CREATE UNIQUE INDEX "sheet_music_assignments_one_active" ON "public"."sheet_music_assignments" USING "btree" ("music_item_id", "student_id") WHERE ("unassigned_at" IS NULL);
-
-
-
-CREATE INDEX "sheet_music_assignments_student_idx" ON "public"."sheet_music_assignments" USING "btree" ("student_id", "assigned_at" DESC);
-
-
-
-CREATE UNIQUE INDEX "student_plans_one_active_assignment" ON "public"."student_plans" USING "btree" ("student_id", "plan_id") WHERE ("unassigned_at" IS NULL);
 
 
 
@@ -2186,10 +1889,6 @@ CREATE OR REPLACE TRIGGER "payments_reopen_invoice" AFTER DELETE ON "public"."pa
 
 
 CREATE OR REPLACE TRIGGER "payments_rules" BEFORE DELETE OR UPDATE ON "public"."payments" FOR EACH ROW EXECUTE FUNCTION "public"."enforce_payment_rules"();
-
-
-
-CREATE OR REPLACE TRIGGER "plans_updated_at" BEFORE UPDATE ON "public"."plans" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 
 
 
@@ -2342,11 +2041,6 @@ ALTER TABLE ONLY "public"."events"
 
 
 
-ALTER TABLE ONLY "public"."flashcard_progress"
-    ADD CONSTRAINT "flashcard_progress_student_plan_id_fkey" FOREIGN KEY ("student_plan_id") REFERENCES "public"."student_plans"("id") ON DELETE CASCADE;
-
-
-
 ALTER TABLE ONLY "public"."group_enrollments"
     ADD CONSTRAINT "group_enrollments_group_id_teacher_id_workplace_id_fkey" FOREIGN KEY ("group_id", "teacher_id", "workplace_id") REFERENCES "public"."class_groups"("id", "teacher_id", "workplace_id") ON DELETE CASCADE;
 
@@ -2427,16 +2121,6 @@ ALTER TABLE ONLY "public"."lessons"
 
 
 
-ALTER TABLE ONLY "public"."music_library_items"
-    ADD CONSTRAINT "music_library_items_teacher_id_fkey" FOREIGN KEY ("teacher_id") REFERENCES "public"."teachers"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."note_attempts"
-    ADD CONSTRAINT "note_attempts_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "public"."practice_sessions"("id") ON DELETE CASCADE;
-
-
-
 ALTER TABLE ONLY "public"."notifications"
     ADD CONSTRAINT "notifications_teacher_id_fkey" FOREIGN KEY ("teacher_id") REFERENCES "public"."teachers"("id") ON DELETE CASCADE;
 
@@ -2444,16 +2128,6 @@ ALTER TABLE ONLY "public"."notifications"
 
 ALTER TABLE ONLY "public"."payments"
     ADD CONSTRAINT "payments_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."plans"
-    ADD CONSTRAINT "plans_teacher_id_fkey" FOREIGN KEY ("teacher_id") REFERENCES "public"."teachers"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."practice_sessions"
-    ADD CONSTRAINT "practice_sessions_student_plan_id_fkey" FOREIGN KEY ("student_plan_id") REFERENCES "public"."student_plans"("id") ON DELETE CASCADE;
 
 
 
@@ -2497,16 +2171,6 @@ ALTER TABLE ONLY "public"."session_participants"
 
 
 
-ALTER TABLE ONLY "public"."sheet_music_assignments"
-    ADD CONSTRAINT "sheet_music_assignments_music_item_id_fkey" FOREIGN KEY ("music_item_id") REFERENCES "public"."music_library_items"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."sheet_music_assignments"
-    ADD CONSTRAINT "sheet_music_assignments_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."students"("id") ON DELETE CASCADE;
-
-
-
 ALTER TABLE ONLY "public"."skill_assessments"
     ADD CONSTRAINT "skill_assessments_dimension_id_fkey" FOREIGN KEY ("dimension_id") REFERENCES "public"."skill_dimensions"("id") ON DELETE CASCADE;
 
@@ -2519,16 +2183,6 @@ ALTER TABLE ONLY "public"."skill_assessments"
 
 ALTER TABLE ONLY "public"."skill_dimensions"
     ADD CONSTRAINT "skill_dimensions_teacher_id_fkey" FOREIGN KEY ("teacher_id") REFERENCES "public"."teachers"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."student_plans"
-    ADD CONSTRAINT "student_plans_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "public"."plans"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."student_plans"
-    ADD CONSTRAINT "student_plans_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."students"("id") ON DELETE CASCADE;
 
 
 
@@ -2597,14 +2251,6 @@ ALTER TABLE "public"."agent_oauth_grants" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."agent_tool_receipts" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "attempts_teacher" ON "public"."note_attempts" TO "authenticated" USING (("session_id" IN ( SELECT "ps"."id"
-   FROM (("public"."practice_sessions" "ps"
-     JOIN "public"."student_plans" "sp" ON (("sp"."id" = "ps"."student_plan_id")))
-     JOIN "public"."students" "s" ON (("s"."id" = "sp"."student_id")))
-  WHERE ("s"."teacher_id" = "auth"."uid"()))));
-
 
 
 ALTER TABLE "public"."attendance" ENABLE ROW LEVEL SECURITY;
@@ -2691,16 +2337,6 @@ CREATE POLICY "events_teacher" ON "public"."events" USING (("teacher_id" = "auth
 
 
 
-ALTER TABLE "public"."flashcard_progress" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "flashcard_teacher" ON "public"."flashcard_progress" TO "authenticated" USING (("student_plan_id" IN ( SELECT "sp"."id"
-   FROM ("public"."student_plans" "sp"
-     JOIN "public"."students" "s" ON (("s"."id" = "sp"."student_id")))
-  WHERE ("s"."teacher_id" = "auth"."uid"()))));
-
-
-
 ALTER TABLE "public"."group_enrollments" ENABLE ROW LEVEL SECURITY;
 
 
@@ -2754,16 +2390,6 @@ CREATE POLICY "lessons_teacher" ON "public"."lessons" USING (("teacher_id" = "au
 
 
 
-ALTER TABLE "public"."music_library_items" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "music_library_items_teacher" ON "public"."music_library_items" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
-
-
-
-ALTER TABLE "public"."note_attempts" ENABLE ROW LEVEL SECURITY;
-
-
 ALTER TABLE "public"."notifications" ENABLE ROW LEVEL SECURITY;
 
 
@@ -2778,16 +2404,6 @@ CREATE POLICY "payments_teacher" ON "public"."payments" USING (("invoice_id" IN 
    FROM "public"."invoices"
   WHERE ("invoices"."teacher_id" = "auth"."uid"()))));
 
-
-
-ALTER TABLE "public"."plans" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "plans_teacher" ON "public"."plans" USING (("teacher_id" = "auth"."uid"()));
-
-
-
-ALTER TABLE "public"."practice_sessions" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."push_subscriptions" ENABLE ROW LEVEL SECURITY;
@@ -2811,26 +2427,6 @@ CREATE POLICY "session_participants_teacher" ON "public"."session_participants" 
 
 
 
-CREATE POLICY "sessions_teacher" ON "public"."practice_sessions" TO "authenticated" USING (("student_plan_id" IN ( SELECT "sp"."id"
-   FROM ("public"."student_plans" "sp"
-     JOIN "public"."students" "s" ON (("s"."id" = "sp"."student_id")))
-  WHERE ("s"."teacher_id" = "auth"."uid"()))));
-
-
-
-ALTER TABLE "public"."sheet_music_assignments" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "sheet_music_assignments_teacher" ON "public"."sheet_music_assignments" USING (("music_item_id" IN ( SELECT "music_library_items"."id"
-   FROM "public"."music_library_items"
-  WHERE ("music_library_items"."teacher_id" = "auth"."uid"())))) WITH CHECK ((("music_item_id" IN ( SELECT "music_library_items"."id"
-   FROM "public"."music_library_items"
-  WHERE ("music_library_items"."teacher_id" = "auth"."uid"()))) AND ("student_id" IN ( SELECT "students"."id"
-   FROM "public"."students"
-  WHERE ("students"."teacher_id" = "auth"."uid"())))));
-
-
-
 ALTER TABLE "public"."skill_assessments" ENABLE ROW LEVEL SECURITY;
 
 
@@ -2844,15 +2440,6 @@ ALTER TABLE "public"."skill_dimensions" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "skill_dimensions_teacher" ON "public"."skill_dimensions" USING (("teacher_id" = "auth"."uid"()));
-
-
-
-ALTER TABLE "public"."student_plans" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "student_plans_teacher" ON "public"."student_plans" USING (("student_id" IN ( SELECT "students"."id"
-   FROM "public"."students"
-  WHERE ("students"."teacher_id" = "auth"."uid"()))));
 
 
 
@@ -3066,11 +2653,6 @@ GRANT ALL ON TABLE "public"."events" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."flashcard_progress" TO "authenticated";
-GRANT ALL ON TABLE "public"."flashcard_progress" TO "service_role";
-
-
-
 GRANT ALL ON TABLE "public"."group_enrollments" TO "authenticated";
 GRANT ALL ON TABLE "public"."group_enrollments" TO "service_role";
 
@@ -3106,16 +2688,6 @@ GRANT ALL ON TABLE "public"."lessons" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."music_library_items" TO "authenticated";
-GRANT ALL ON TABLE "public"."music_library_items" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."note_attempts" TO "authenticated";
-GRANT ALL ON TABLE "public"."note_attempts" TO "service_role";
-
-
-
 GRANT ALL ON TABLE "public"."notifications" TO "authenticated";
 GRANT ALL ON TABLE "public"."notifications" TO "service_role";
 
@@ -3123,16 +2695,6 @@ GRANT ALL ON TABLE "public"."notifications" TO "service_role";
 
 GRANT ALL ON TABLE "public"."payments" TO "authenticated";
 GRANT ALL ON TABLE "public"."payments" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."plans" TO "authenticated";
-GRANT ALL ON TABLE "public"."plans" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."practice_sessions" TO "authenticated";
-GRANT ALL ON TABLE "public"."practice_sessions" TO "service_role";
 
 
 
@@ -3152,11 +2714,6 @@ GRANT ALL ON TABLE "public"."session_participants" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."sheet_music_assignments" TO "authenticated";
-GRANT ALL ON TABLE "public"."sheet_music_assignments" TO "service_role";
-
-
-
 GRANT ALL ON TABLE "public"."skill_assessments" TO "authenticated";
 GRANT ALL ON TABLE "public"."skill_assessments" TO "service_role";
 
@@ -3164,11 +2721,6 @@ GRANT ALL ON TABLE "public"."skill_assessments" TO "service_role";
 
 GRANT ALL ON TABLE "public"."skill_dimensions" TO "authenticated";
 GRANT ALL ON TABLE "public"."skill_dimensions" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."student_plans" TO "authenticated";
-GRANT ALL ON TABLE "public"."student_plans" TO "service_role";
 
 
 
