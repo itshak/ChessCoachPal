@@ -1,23 +1,23 @@
 # Implementation tasks: adopt-cognote-chesscoachpal
 
-All tasks start unchecked. A task can be marked complete only with a commit reference and observed verification evidence in docs/STATUS.md.
+**Binding policy:** [ADR-0001](../../../../docs/adr/0001-pre1-breaking-changes.md): zero compatibility with CogNote and zero backward compatibility between ChessCoachPal pre-1.0 releases. A task can be marked complete only with commit evidence and observed verification in docs/STATUS.md. The pre-1.0 schema is a fresh-install snapshot, not a migration chain.
 
 ## P0 — source, provenance, publication
 
-- [ ] 0.1 Obtain a reproducible clean source snapshot of CogNote SHA fff723ea0374df8f07a20e90e44c725499ec680a. Verify every tracked source file and lockfile by manifest and SHA comparison.
+- [ ] 0.1 Verify source provenance and MIT attribution for CogNote SHA fff723ea0374df8f07a20e90e44c725499ec680a; fork code as useful but **do not** promise behavioral/data compatibility.
 - [ ] 0.2 Replace legacy repository tree with a new root commit (no old parents); preserve MIT upstream author notice and document derivation.
 - [ ] 0.3 Review old refs, commits, tags, PR refs, cached SHA links, Actions artifacts/logs and other copies; rotate any exposed credentials. Do not claim cache/object purge without GitHub confirmation or fresh repository re-creation.
 - [ ] 0.4 Verify upstream and inherited third-party artwork/index/font licenses; remove music-only assets not necessary for basic operation.
 - [ ] 0.5 Audit repository and new history for actual student identities, workplace names, private links and secrets. Confirm no examples contain live data.
 - [ ] 0.6 Restore clean CI: package install, typecheck, unit tests, Docker build and seeded Playwright/RLS tests; capture pass/fail evidence.
-- [ ] 0.7 Do not change repository visibility until P0 publication checks are satisfied.
+- [ ] 0.7 The repository is already public; urgently complete historical privacy/license review, remediate any exposed credentials and document findings. Do not imply this audit is done.
 
 ## P1 — rebrand and baseline behavior
 
 - [ ] 1.1 Replace CogNote product copy in landing, nav, login, account, portal, dashboard, onboarding, e-mail, PDF, notifications and help; preserve upstream attribution.
 - [ ] 1.2 Create a ChessCoachPal rook/chat logo, favicon, PWA SVG and installable icons; update manifest, service worker cache, title, theme and social preview.
 - [ ] 1.3 Update README, contributor guidance, architecture, environment docs and Docker startup with accurate self-host instructions.
-- [ ] 1.4 Remove music-centric navigation; isolate practice, VexFlow, OSMD and music index screens behind temporary flags. Disable any obsolete routes without breaking imports or tests; document eventual deletion.
+- [ ] 1.4 Delete obsolete music-specific routes, schemas, dependencies, assets and test expectations. No compatibility flags or aliases for CogNote; retain only independently useful code with appropriate attribution.
 - [ ] 1.5 Add synthetic onboarding sample: one coach, two workplaces, one group and one private learner; no live names.
 - [ ] 1.6 Verify desktop/mobile, accessibility, keyboard navigation and no unintended visible upstream brand.
 
@@ -36,11 +36,11 @@ All tasks start unchecked. A task can be marked complete only with a commit refe
 
 ## P3 — workplaces, groups, attendance
 
-- [ ] 3.1 Add workplace schema with teacher ownership, timezone, locale, currency and policies; backfill default workplace for existing records.
+- [ ] 3.1 Define workplace schema in the initial snapshot with teacher ownership, timezone, locale, currency and policies; create default workplace for **new** teachers, not legacy backfill.
 - [ ] 3.2 Add canonical student registry plus workplace/group enrollments; handle the same student enrolled across contexts.
 - [ ] 3.3 Add independent lesson series/occurrences, class groups, session participant snapshots and per-student attendance/notes.
 - [ ] 3.4 Preserve DST-correct scheduling, idempotent occurrence generation and changes to future recurring lessons; add cross-workplace teacher conflict warnings.
-- [ ] 3.5 Migrate legacy one-student attendance, notes, makeup credits and invoices without losing history; verify counts and reversible mappings.
+- [ ] 3.5 Replace legacy single-student scheduling, music practice and invoicing data structures in the **current baseline schema**, delete obsolete code, and verify a fresh reset/seed. No CogNote data migration, backfill, mapping or compatibility layer.
 - [ ] 3.6 Build aggregated teacher calendar, workplace filter, group register and private lesson correction flow.
 - [ ] 3.7 Add RLS + authorization tests for owner, unrelated teacher and cross-workplace access; no parent token leaks.
 - [ ] 3.8 Implement per-student cancellation/makeup rules for group sessions without canceling the session.
@@ -58,7 +58,7 @@ All tasks start unchecked. A task can be marked complete only with a commit refe
 ## P5 — reliability, packaging and acceptance
 
 - [ ] 5.1 Ship Docker-based local PostgreSQL/Supabase installation with zero required cloud service accounts.
-- [ ] 5.2 Provide tested complete backup and restore (database plus uploaded files), import/export and schema rollback instructions.
+- [ ] 5.2 Provide tested backup/restore for current schema and assets; do not promise schema upgrade or rollback compatibility prior to 1.0.
 - [ ] 5.3 Implement persisted limits/queues where in-process rate limiting is unsafe; ensure service-role routes and portal tokens are reviewed.
 - [ ] 5.4 End-to-end acceptance: teacher enters group attendance via agent, corrects on website, generates localized report and restores from backup.
 - [ ] 5.5 Test failures: provider unavailable, repeated tool calls, two teachers, overlapping lessons, ambiguous names, missing permissions and concurrent edits.
