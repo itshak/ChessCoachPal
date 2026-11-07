@@ -85,6 +85,59 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const sessionRecord=await postDomain({action:"sessions.create",requestId:randomUUID(),
     workplaceId:workplace.id,groupId:group.id,title:"Agent lesson "+suffix,
     startsAt:"2027-04-12T14:00:00.000Z",durationMinutes:60,lessonNote:"Original"});
+  // The delegated MCP bearer MUST NOT expose a second teacher's records.
+  const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!, {auth:{persistSession:false,autoRefreshToken:false}});
+  const otherEmail = "mcp-isolation-" + suffix + "@example.com";
+  const {data:otherUser,error:otherError} = await admin.auth.admin.createUser({
+    email:otherEmail,password:"SyntheticPassword-123!",email_confirm:true,
+  });
+  expect(otherError).toBeNull();
+  expect(otherUser.user).toBeTruthy();
+  const otherId = otherUser.user!.id;
+  const {error:otherTeacherError} = await admin.from("teachers").insert({
+    id:otherId,email:otherEmail,display_name:"Synthetic MCP Teacher B",
+  });
+  expect(otherTeacherError).toBeNull();
+  const {data:foreignWorkplace,error:foreignWorkplaceError}=await admin.from("workplaces")
+    .select("id").eq("teacher_id",otherId).single();
+  expect(foreignWorkplaceError).toBeNull();
+  const {data:foreignStudent,error:foreignStudentError}=await admin.from("students")
+    .insert({teacher_id:otherId,name:"Private student "+suffix}).select("id").single();
+  expect(foreignStudentError).toBeNull();
+  const {error:foreignEnrollError}=await admin.from("workplace_enrollments").insert({
+    teacher_id:otherId,workplace_id:foreignWorkplace!.id,student_id:foreignStudent!.id,
+  });
+  expect(foreignEnrollError).toBeNull();
+  const {data:foreignSession,error:foreignSessionError}=await admin.from("teaching_sessions")
+    .insert({teacher_id:otherId,workplace_id:foreignWorkplace!.id,
+      student_id:foreignStudent!.id,title:"Private session "+suffix,
+      starts_at:"2027-04-13T14:00:00.000Z",duration_minutes:60,
+      lesson_note:"Other teacher private note",
+    }).select("id").single();
+  expect(foreignSessionError).toBeNull();
+  const outside=(await mcp("tools/call",{
+    name:"ccp_v1_sessions_participants",arguments:{sessionId:foreignSession!.id},
+  }));
+  expect(outside.isError).toBe(true);
+  expect(outside.structuredContent.error.code).toBe("NOT_FOUND");
+  const scopedSessions=(await mcp("tools/call",{
+    name:"ccp_v1_sessions_list",arguments:{query:"Private session "+suffix},
+  })).structuredContent.data;
+  expect(scopedSessions).toEqual([]);
+
+  // A name is not a stable ID: ambiguous matches return candidates, not a guessed write.
+  const duplicateName = "Synthetic duplicate " + suffix;
+  const duplicateA = await postDomain({action:"students.create",name:duplicateName});
+  const duplicateB = await postDomain({action:"students.create",name:duplicateName});
+  const ambiguous=(await mcp("tools/call",{
+    name:"ccp_v1_students_search",arguments:{query:duplicateName},
+  }));
+  expect(ambiguous.isError).toBe(true);
+  expect(ambiguous.structuredContent.error.code).toBe("NEEDS_RESOLUTION");
+  expect(ambiguous.structuredContent.error.candidates.map((x:{id:string})=>x.id).sort())
+    .toEqual([duplicateA.id,duplicateB.id].sort());
+
   const list = (await mcp("tools/call",{
     name:"ccp_v1_sessions_list",arguments:{query:"Agent lesson "+suffix},
   })).structuredContent.data;
@@ -129,13 +182,40 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const grants=(await connections.json()).connections as {id:string;client_id:string}[];
   const grant=grants.find(g=>g.client_id===clientId);
   expect(grant).toBeTruthy();
+  // Expiration rejects the old access token. Refresh rotates both credentials.
+  const {error:expireError}=await admin.from("agent_oauth_grants").update({
+    access_expires_at:new Date(Date.now()-60000).toISOString(),
+  }).eq("id",grant!.id);
+  expect(expireError).toBeNull();
+  const expired=await request.post("/mcp",{
+    headers:{Authorization:"Bearer "+token.access_token},
+    data:{jsonrpc:"2.0",id:8,method:"tools/list"},
+  });
+  expect(expired.status()).toBe(401);
+  const refreshed=await request.post("/oauth/token",{form:{
+    grant_type:"refresh_token",client_id:clientId,resource,
+    refresh_token:token.refresh_token,
+  }});
+  expect(refreshed.status(),await refreshed.text()).toBe(200);
+  const rotated=await refreshed.json();
+  expect(rotated.access_token).not.toBe(token.access_token);
+  const replayRefresh=await request.post("/oauth/token",{form:{
+    grant_type:"refresh_token",client_id:clientId,resource,
+    refresh_token:token.refresh_token,
+  }});
+  expect(replayRefresh.status()).toBe(400);
+  const active=await request.post("/mcp",{
+    headers:{Authorization:"Bearer "+rotated.access_token},
+    data:{jsonrpc:"2.0",id:9,method:"tools/list"},
+  });
+  expect(active.status(),await active.text()).toBe(200);
   const revoke=await page.request.delete("/api/agent/connections",{
     headers:{Origin:origin},data:{id:grant!.id},
   });
   expect(revoke.status(),await revoke.text()).toBe(200);
   const blocked=await request.post("/mcp",{
-    headers:{Authorization:"Bearer "+token.access_token},
-    data:{jsonrpc:"2.0",id:9,method:"tools/list"},
+    headers:{Authorization:"Bearer "+rotated.access_token},
+    data:{jsonrpc:"2.0",id:10,method:"tools/list"},
   });
   expect(blocked.status()).toBe(401);
 });
