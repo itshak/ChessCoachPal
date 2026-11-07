@@ -59,7 +59,7 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await expect(page.getByRole("status")).toContainText("Session changes saved.");
 
   await page.getByLabel("Lesson type").selectOption("private");
-  await page.getByLabel("Private student").selectOption({ label: student });
+  await page.getByRole("combobox", { name: "Private student", exact: true }).selectOption({ label: student });
   await page.getByLabel("Topic or title").fill(`E2E Private ${suffix}`);
   await page.getByLabel("Local date and time (selected workplace timezone)").fill("2027-04-02T15:00");
   await page.getByRole("button", { name: "Create lesson" }).click();
