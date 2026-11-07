@@ -74,9 +74,9 @@ test("serves the offline page when offline", async ({ page, context }) => {
   await gotoControlled(page);
   await context.setOffline(true);
   // The SW serves the cached /offline body for the requested URL without a
-  // redirect, so the document URL stays /lessons — assert the rendered content,
+  // redirect, so the document URL stays /learning — assert the rendered content,
   // not the URL (an /offline URL assertion would fail on correct behaviour).
-  await page.goto("/lessons").catch(() => {});
+  await page.goto("/learning").catch(() => {});
   await expect(page.getByRole("heading", { name: /offline/i })).toBeVisible();
 });
 
@@ -120,7 +120,7 @@ test("does not serve the offline shell for /api, /auth or /portal", async ({
   }
 
   // A non-excluded route does get the shell, which also proves we were offline.
-  await page.goto("/lessons").catch(() => {});
+  await page.goto("/learning").catch(() => {});
   await expect(page.getByRole("heading", { name: /offline/i })).toBeVisible();
 });
 
