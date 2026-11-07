@@ -482,7 +482,7 @@ CREATE TABLE public.chess_learning_resources (
   UNIQUE (teacher_id, request_id),
   CHECK (student_id IS NOT NULL OR session_id IS NOT NULL),
   CHECK (
-    (resource_type = 'lichess_study' AND provider_study_id ~ '^[a-zA-Z0-9]{8}$'
+    (resource_type = 'lichess_study' AND provider_study_id IS NOT NULL AND provider_study_id ~ '^[a-zA-Z0-9]{8}$'
       AND (provider_chapter_id IS NULL OR provider_chapter_id ~ '^[a-zA-Z0-9]{8}$'))
     OR (resource_type = 'external' AND provider_study_id IS NULL AND provider_chapter_id IS NULL)
   ),
