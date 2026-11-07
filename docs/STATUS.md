@@ -7,7 +7,7 @@
 The obsolete CogNote-adoption omnibus change was archived **as incomplete**, not incorrectly accepted: [historical record](../openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md). See [the v0.1.0 roadmap](../openspec/ROADMAP-v0.1.0.md) and [ADR-0001](adr/0001-pre1-breaking-changes.md).
 
 1. [complete-coaching-workflows](../openspec/changes/archive/2026-11-07-complete-coaching-workflows/proposal.md) — **ACCEPTED / archived**. Merged [PR #4](https://github.com/itshak/ChessCoachPal/pull/4) at main commit [a87fb63](https://github.com/itshak/ChessCoachPal/commit/a87fb63a8440a358d039187be48fce5a14609e36).
-2. [connect-chatgpt-and-claude](../openspec/changes/connect-chatgpt-and-claude/proposal.md) — **Proposed**; real MCP and delegated OAuth not yet implemented.
+2. [connect-chatgpt-and-claude](../openspec/changes/connect-chatgpt-and-claude/proposal.md) — **IN PROGRESS / NOT ACCEPTED**. [PR #5](https://github.com/itshak/ChessCoachPal/pull/5) delivers the initial MCP/OAuth gateway, but full tool coverage and real ChatGPT/Claude client demonstrations remain outstanding.
 3. [add-chess-learning-basics](../openspec/changes/add-chess-learning-basics/proposal.md) — **Proposed**; chess observation and learning-resource functionality not yet accepted.
 4. [remove-cognote-legacy-and-secure-data](../openspec/changes/remove-cognote-legacy-and-secure-data/proposal.md) — **Proposed**; inherited music paths, privacy/history and broader security audits remain outstanding.
 5. [verify-self-hosting-and-release-v0-1-0](../openspec/changes/verify-self-hosting-and-release-v0-1-0/proposal.md) — **Proposed**; no v0.1.0 release until other milestones and release checks pass.
@@ -26,6 +26,18 @@ The obsolete CogNote-adoption omnibus change was archived **as incomplete**, not
 **Real fresh-database E2E:** [run 42407121512](https://github.com/itshak/ChessCoachPal/actions/runs/42407121512) — `supabase start`, destructive reset of a **synthetic CI database**, production Next build, Playwright Chromium: **25 passed, 5 skipped, 0 failed**. Includes the two-workplace create/edit/reload path, private/group lessons, per-student notes and attendance, idempotent retries, historical roster and two-teacher isolation.
 
 **Superseded PR:** [PR #1](https://github.com/itshak/ChessCoachPal/pull/1) was closed unmerged; its first E2E run [42392868328](https://github.com/itshak/ChessCoachPal/actions/runs/42392868328) had a workplace selector failure, now corrected and verified in PR #4. The older main PWA browser regression ([42394424153](https://github.com/itshak/ChessCoachPal/actions/runs/42394424153)) was also fixed by PR #4 and covered by its passing browser run. These earlier failures are historical evidence, not current acceptance failures.
+
+## Milestone 2 — verified initial gateway, not full acceptance
+
+[PR #5](https://github.com/itshak/ChessCoachPal/pull/5) implements an opt-in stateless HTTP MCP endpoint, OAuth 2 authorization-code/PKCE with dynamically registered client redirect allowlists, teacher-scoped encrypted sessions, hashed short-lived bearer and rotating refresh tokens, consent, revocation UI, and generated tool/OpenAPI discovery.
+
+Exposed safe subset: teacher-owned workplace/student/group/session lookup, frozen participant rosters, individual attendance preview/record, and shared lesson topic/note update. Mutations use expected revisions and transactional idempotency receipts. Bulk writes, destructive actions, resource links, student/group CRUD, and scheduling/rescheduling through MCP are **not yet supported**; the website remains independently operable.
+
+**Passing automated evidence for application code commit [8ecc83d](https://github.com/itshak/ChessCoachPal/commit/8ecc83de1c56ad288381fd49e78a04eaa1ee3c93):** [CI run 42410931916](https://github.com/itshak/ChessCoachPal/actions/runs/42410931916) passed typecheck, unit tests, release helpers, Docker build and Compose; [E2E run 42410931858](https://github.com/itshak/ChessCoachPal/actions/runs/42410931858) passed a fresh synthetic Supabase startup/reset, production build and **26 Playwright browser tests, 5 skipped, 0 failed**. The new synthetic round trip covers registration, browser OAuth PKCE consent, token exchange/replay denial, MCP discovery, teacher session authorization, attendance/note writes, idempotent retry and stale revision rejection, website data parity, and immediate grant revocation.
+
+**Acceptance remains open:** no actual ChatGPT account nor Claude client has been connected to a public HTTPS instance, no sanitized real-client version/call transcript exists, and the full broader tool catalogue plus independent MCP two-teacher/security review remain unfinished. The passed synthetic client is **not** evidence of client-platform interoperability. Keep the Milestone 2 OpenSpec change active; do not archive it as accepted or release v0.1.0.
+
+Full configuration guidance and unsupported features: [AI_CONNECTORS.md](AI_CONNECTORS.md). All tests use synthetic data; do not reset production databases.
 
 ## Other accepted foundation
 
