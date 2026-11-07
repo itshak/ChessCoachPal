@@ -30,7 +30,10 @@ describe("delegated authorization security helpers",()=>{
     const encrypted=encryptSession(session);
     expect(encrypted).not.toContain("access_token");
     expect(decryptSession(encrypted)).toEqual(session);
-    const tampered=encrypted.slice(0,-2)+"zz";
+    const parts=encrypted.split(".");
+    // Mutate authenticated GCM tag bytes, not possibly redundant base64url tail bits.
+    parts[1]=(parts[1][0]==="A"?"B":"A")+parts[1].slice(1);
+    const tampered=parts.join(".");
     expect(()=>decryptSession(tampered)).toThrow();
   });
   it("issues random opaque tokens and stable non-reversible hashes",()=>{
