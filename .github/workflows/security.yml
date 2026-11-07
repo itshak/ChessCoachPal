@@ -32,7 +32,7 @@ jobs:
           if-no-files-found: warn
 
   actions-history:
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'docs/archive-m4-security'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.head_ref == 'docs/archive-m4-security'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
