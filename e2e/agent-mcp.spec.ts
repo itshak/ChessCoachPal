@@ -5,7 +5,8 @@ import { SEED_TEACHER, signInAsTeacher } from "./helpers/auth";
 
 test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> immediate revocation", async ({page, request}) => {
   const origin = "http://localhost:3000";
-  const callback = "https://synthetic-client.example/oauth/callback";
+  // Local loopback callback avoids depending on a fake external DNS name in CI.
+  const callback = "http://localhost:3000/oauth/synthetic-callback";
   const verifier = "s".repeat(64);
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   const resource = origin + "/mcp";
@@ -27,14 +28,12 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     resource,code_challenge_method:"S256",code_challenge:challenge,
     state:"synthetic-state-1234",scope:"coach:read coach:write",
   });
-  await page.route("https://synthetic-client.example/**", route => route.fulfill({
-    status:200,contentType:"text/html",body:"Authorized synthetic OAuth test callback",
-  }));
   await page.goto("/oauth/authorize?"+params.toString());
   await expect(page.getByRole("heading",{name:"Authorize AI connector"})).toBeVisible();
   await expect(page.getByText("coach:read coach:write", {exact:true})).toBeVisible();
   await page.getByRole("button",{name:"Authorize"}).click();
-  await page.waitForURL("https://synthetic-client.example/oauth/callback?**");
+  await page.waitForURL(url => url.pathname === "/oauth/synthetic-callback" &&
+    url.searchParams.has("code"), {waitUntil:"commit",timeout:20000});
   const code = new URL(page.url()).searchParams.get("code");
   expect(code).toBeTruthy();
 
