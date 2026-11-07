@@ -22,7 +22,7 @@ for file in "$db" "$storage" "$manifest"; do
 done
 
 echo "==> checking backup integrity"
-(cd "$BACKUP_DIR" && sha256sum -c --quiet "$(basename "$manifest")")
+(cd "$BACKUP_DIR" && sha256sum -c "$(basename "$manifest")")
 if tar -tzf "$storage" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
   echo "Unsafe storage archive entries." >&2; exit 2
 fi

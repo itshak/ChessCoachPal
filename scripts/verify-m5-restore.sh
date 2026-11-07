@@ -88,6 +88,8 @@ docker run --rm --network "container:$source_db" \
 
 echo "==> create second independent Supabase project with distinct ports"
 cp -a "$root/supabase" "$tmp/restore/supabase"
+# Restore target must be empty; local CLI would otherwise load synthetic seed.sql.
+sed -i '/^\[db.seed\]/,/^\[db.network_restrictions\]/ s/^enabled = true$/enabled = false/' "$tmp/restore/supabase/config.toml"
 sed -i \
   -e 's/project_id = "chesscoachpal"/project_id = "chesscoachpal_restore"/' \
   -e 's/5432/5442/g' "$tmp/restore/supabase/config.toml"
