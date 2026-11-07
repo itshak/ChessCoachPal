@@ -64,6 +64,16 @@ test("teacher website: verified chess observation, editable history, curated stu
   await expect(page.getByText(edited)).toBeVisible();
   await expect(page.getByRole("link",{name:linkName+" corrected"})).toBeVisible();
   await expect(page.getByText(suggested).locator("..")).toContainText("Verified");
+  // Provider availability never blocks locally stored observations or links.
+  await page.getByLabel("Link type").selectOption("external");
+  await page.getByLabel("Resource label").fill("Unavailable study "+suffix);
+  await page.getByLabel("HTTPS learning URL").fill("https://study.example.invalid/chess");
+  await page.getByRole("button",{name:"Save learning link"}).click();
+  await expect(page.getByRole("status")).toContainText("Learning resource saved");
+  await page.reload();
+  await expect(page.getByRole("link",{name:"Unavailable study "+suffix})).toBeVisible();
+  await expect(page.getByText(edited)).toBeVisible();
+  await page.getByLabel("Link type").selectOption("lichess_study");
   await page.getByLabel("Resource label").fill("Unsafe resource");
   await page.getByLabel("HTTPS learning URL").fill("https://lichess.org.evil.example/study/Ab12Cd34");
   await page.getByRole("button",{name:"Save learning link"}).click();
