@@ -17,7 +17,11 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 
 ## Status
 
-**Migration in progress.** CogNote is the pinned foundation; ChessCoachPal agent tools, multiple workplaces and group lessons must be implemented and verified. Imported upstream features are not automatically ChessCoachPal features. See [status](docs/STATUS.md).
+**Pre-1.0 work in progress.** A prototype coaching workflow now exists on `feat/first-coaching-workflow`: workplaces, groups, sessions, roster snapshots, per-student attendance, web editing and a narrow authenticated API. Fresh-install and agent-client tests remain outstanding; imported upstream features are not automatically accepted ChessCoachPal features. See [status](docs/STATUS.md).
+
+## Breaking-change policy
+
+**No compatibility with CogNote or across ChessCoachPal versions before 1.0.0.** Database schemas, APIs, routes and configuration may be replaced without upgrade migrations. Development databases must be reinitialized when contracts change; do not reset instances containing real data without an explicit operator decision and backup. See [ADR-0001](docs/adr/0001-pre1-breaking-changes.md).
 
 ## Documentation
 
