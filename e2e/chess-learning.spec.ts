@@ -77,7 +77,7 @@ test("teacher website: verified chess observation, editable history, curated stu
   await page.getByLabel("Resource label").fill("Unsafe resource");
   await page.getByLabel("HTTPS learning URL").fill("https://lichess.org.evil.example/study/Ab12Cd34");
   await page.getByRole("button",{name:"Save learning link"}).click();
-  await expect(page.getByRole("alert")).toContainText("direct lichess.org/study link");
+  await expect(page.locator("section[aria-label='Chess learning'] [role=alert]")).toContainText("direct lichess.org/study link");
 });
 
 test("database: two teachers cannot read or attach chess records across ownership",async()=>{
