@@ -11,6 +11,8 @@ ChessCoachPal is still prelaunch and has no stable released data format, API, da
 
 ## Decision
 
+**Two equally binding incompatibility rules:** (a) ChessCoachPal owes **zero compatibility to CogNote** (its data model, route names, settings, UI or upgrade path); and (b) **ChessCoachPal pre-1.0 versions owe zero compatibility to one another**. Existing source may be reused if useful, but never kept solely for compatibility. This covers the entire system, not just databases.
+
 **Until the first `1.0.0` release, all internal and external contracts may change incompatibly without migrations or deprecation periods.** Prefer the clearest correct architecture to compatibility with any earlier checkout, development database or inherited CogNote behavior.
 
 1. **Schema-first replacement, not incremental upgrade migrations.** Modify the canonical baseline schema and setup/seed files directly. Do **not** add sequential `ALTER TABLE` migrations, backfill jobs, compatibility views, dual reads/writes or adapters to keep older development databases working. Existing legacy CogNote migration files may be consolidated, rewritten or removed as part of the clean pre-1.0 bootstrap. If Supabase CLI still uses a `migrations/` directory as its installation mechanism, treat its consolidated baseline SQL as an **installation snapshot**, not an upgrade history.
@@ -36,6 +38,6 @@ ChessCoachPal is still prelaunch and has no stable released data format, API, da
 
 ## Implementation direction
 
-The recently introduced `20261107000000_chess_coaching_core.sql` additive migration is contrary to this decision. Remove it and fold its definitions into the canonical initial schema and RLS bootstrap in the active implementation branch. Review other inherited CogNote migrations for consolidation into an installation-only baseline as the port progresses.
+The recently introduced `20261107000000_chess_coaching_core.sql` additive migration is contrary to this decision. Remove it and fold its definitions into the canonical initial schema and RLS bootstrap in the active implementation branch. Consolidate or replace inherited CogNote migration history into a single installation-only baseline as the port progresses. No backward compatibility with CogNote or any ChessCoachPal pre-1.0 version may be required by acceptance criteria.
 
 **Acceptance evidence:** ADR in version control, implementation uses current schema on fresh database, and no compatibility layer is required by new features.
