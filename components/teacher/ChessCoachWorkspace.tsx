@@ -14,11 +14,11 @@ type Session = {
 };
 type Roster = { student_id: string; students: { name: string } | { name: string }[] };
 type Attendance = {
-  student_id: string; status: "present" | "absent" | "late" | "excused";
+  student_id: string; status: "unmarked" | "present" | "absent" | "late" | "excused";
   note: string;
 };
 type Result<T> = { ok?: boolean; data?: T; error?: { code: string; message?: string } };
-type AttendanceStatus = Attendance["status"];
+type AttendanceStatus = Exclude<Attendance["status"], "unmarked">;
 
 const field = "w-full rounded-lg border border-border bg-surface p-2 text-foreground";
 const button = "rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50";
@@ -537,10 +537,10 @@ function AttendanceRow({ name, existing, busy, onSave }: {
   busy: boolean;
   onSave: (status: AttendanceStatus, note: string) => void;
 }) {
-  const [status, setStatus] = useState<AttendanceStatus>(existing?.status ?? "present");
+  const [status, setStatus] = useState<AttendanceStatus>(existing?.status && existing.status !== "unmarked" ? existing.status : "present");
   const [note, setNote] = useState(existing?.note ?? "");
   useEffect(() => {
-    setStatus(existing?.status ?? "present");
+    setStatus(existing?.status && existing.status !== "unmarked" ? existing.status : "present");
     setNote(existing?.note ?? "");
   }, [existing?.status, existing?.note]);
   return <div className="rounded-lg border border-border p-3 space-y-2">
@@ -556,7 +556,7 @@ function AttendanceRow({ name, existing, busy, onSave }: {
         onChange={e => setNote(e.target.value)} />
     </label>
     <button className={button} disabled={busy} onClick={() => onSave(status, note)}>
-      {existing ? "Update attendance" : "Record attendance"}
+      {existing && existing.status !== "unmarked" ? "Update attendance" : "Record attendance"}
     </button>
   </div>;
 }

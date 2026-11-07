@@ -106,8 +106,12 @@ CREATE POLICY session_attendance_teacher ON public.session_attendance
   USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid());
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   public.workplaces, public.workplace_enrollments, public.class_groups, public.group_enrollments,
-  public.teaching_sessions, public.session_attendance
+  public.teaching_sessions
 TO authenticated, service_role;
+-- Attendance rows are populated by the snapshot trigger; clients may update,
+-- but may not delete or create rows outside the expected historical roster.
+GRANT SELECT, UPDATE ON TABLE public.session_attendance TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.session_attendance TO service_role;
 GRANT SELECT ON public.session_participants TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.session_participants TO service_role;
 REVOKE ALL ON TABLE

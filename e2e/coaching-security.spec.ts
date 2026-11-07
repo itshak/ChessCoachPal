@@ -46,8 +46,12 @@ test("teacher isolation, scoped IDs, roster snapshots and idempotent session ret
   const wOther = await asA({ action: "workplaces.create", name: `Other workplace ${suffix}`, timezone: "UTC", currency: "USD" });
   const stu1 = await asA({ action: "students.create", name: `Synthetic Alpha ${suffix}` });
   const stu2 = await asA({ action: "students.create", name: `Synthetic Beta ${suffix}` });
+  const stu3 = await asA({ action: "students.create", name: `Synthetic Gamma ${suffix}` });
+  const stu4 = await asA({ action: "students.create", name: `Synthetic Delta ${suffix}` });
   const grp = await asA({ action: "groups.create", name: `Synthetic group ${suffix}`, workplaceId: wA.id });
   await asA({ action: "groups.enroll", groupId: grp.id, studentId: stu1.id });
+  await asA({ action: "groups.enroll", groupId: grp.id, studentId: stu3.id });
+  await asA({ action: "groups.enroll", groupId: grp.id, studentId: stu4.id });
 
   const payload = {
     action: "sessions.create", workplaceId: wA.id, groupId: grp.id,
@@ -61,13 +65,19 @@ test("teacher isolation, scoped IDs, roster snapshots and idempotent session ret
   expect((await post(a, { ...payload, title: "Different lesson" })).status).toBe(409);
   expect((await post(a, { ...payload, requestId: crypto.randomUUID(), workplaceId: wOther.id })).status).toBe(404);
   const initialRoster = await asA({ action: "sessions.participants", sessionId: first.id });
-  expect(initialRoster.map((row: { student_id: string }) => row.student_id)).toEqual([stu1.id]);
+  expect(initialRoster.map((row: { student_id: string }) => row.student_id).sort())
+    .toEqual([stu1.id, stu3.id, stu4.id].sort());
+  const initialAttendance = await asA({ action: "attendance.list", sessionId: first.id });
+  expect(initialAttendance).toHaveLength(3);
+  expect(initialAttendance.every((a: { status: string }) => a.status === "unmarked")).toBe(true);
   await asA({ action: "groups.enroll", groupId: grp.id, studentId: stu2.id });
   const historicalRoster = await asA({ action: "sessions.participants", sessionId: first.id });
-  expect(historicalRoster).toHaveLength(1);
+  expect(historicalRoster).toHaveLength(3);
   expect((await post(a, { action: "attendance.record", sessionId: first.id, studentId: stu2.id, status: "present" })).status).toBe(404);
   await asA({ action: "attendance.record", sessionId: first.id, studentId: stu1.id, status: "absent", note: "One absence" });
-  expect((await asA({ action: "attendance.list", sessionId: first.id }))).toHaveLength(1);
+  const register = await asA({ action: "attendance.list", sessionId: first.id });
+  expect(register).toHaveLength(3);
+  expect(register.find((entry: { student_id: string }) => entry.student_id === stu1.id).status).toBe("absent");
   expect((await asA({ action: "sessions.list" })).find((s: { id: string }) => s.id === first.id).duration_minutes).toBe(60);
 
   const forbidden = await post(b, { action: "sessions.participants", sessionId: first.id });

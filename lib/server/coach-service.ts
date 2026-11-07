@@ -199,13 +199,13 @@ export async function attendanceRecord(
     .maybeSingle();
   if (!participant) throw notFound();
   const { data, error } = await db.from("session_attendance")
-    .upsert({
-      teacher_id: teacherId,
-      session_id: payload.sessionId, student_id: payload.studentId,
+    .update({
       status: payload.status, note: payload.note ?? "", updated_at: new Date().toISOString(),
-    }, { onConflict: "session_id,student_id" })
-    .select("student_id,status,note,updated_at").single();
+    }).eq("teacher_id", teacherId).eq("session_id", payload.sessionId)
+    .eq("student_id", payload.studentId)
+    .select("student_id,status,note,updated_at").maybeSingle();
   if (error) throw problem();
+  if (!data) throw notFound();
   return data;
 }
 

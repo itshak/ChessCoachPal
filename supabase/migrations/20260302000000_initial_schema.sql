@@ -210,7 +210,7 @@ CREATE TABLE public.session_attendance (
   teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
   session_id uuid NOT NULL,
   student_id uuid NOT NULL,
-  status text NOT NULL CHECK (status IN ('present', 'absent', 'late', 'excused')),
+  status text NOT NULL DEFAULT 'unmarked' CHECK (status IN ('unmarked', 'present', 'absent', 'late', 'excused')),
   note text NOT NULL DEFAULT '' CHECK (char_length(note) <= 5000),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (session_id, student_id),
@@ -252,9 +252,15 @@ BEGIN
     FROM public.group_enrollments e
     WHERE e.teacher_id = NEW.teacher_id AND e.group_id = NEW.group_id;
   END IF;
+  -- Every frozen participant receives exactly one initially unmarked attendance
+  -- row; membership changes cannot alter the historical register.
+  INSERT INTO public.session_attendance(teacher_id, session_id, student_id, status)
+  SELECT NEW.teacher_id, NEW.id, p.student_id, 'unmarked'
+    FROM public.session_participants p
+   WHERE p.teacher_id = NEW.teacher_id AND p.session_id = NEW.id;
   RETURN NEW;
 END;
-$$;
+$;
 CREATE TRIGGER chesscoachpal_snapshot_participants
 AFTER INSERT ON public.teaching_sessions
 FOR EACH ROW EXECUTE FUNCTION public.chesscoachpal_snapshot_participants();
