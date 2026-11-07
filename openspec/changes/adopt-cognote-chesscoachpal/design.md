@@ -35,7 +35,7 @@ A teacher owns a stable `workplaces` record: id, teacher_id, name, timezone, loc
 
 Compensation: `teaching_contracts`, `contract_rate_rules` (effective-dated, currency, duration thresholds, group-size and cancellation rules), `teacher_timesheet_entries`, `expected_payouts`, `payout_reconciliations`. Compute money with integer minor units/decimal, not floating point. Do not conflate workplace-paid instructor amounts with CogNote's existing family `invoices`. Preserve original invoice and makeup policies as separate functionality.
 
-Migration is additive and phased: create workplaces and policy references; backfill one default workplace per legacy teacher; create series, sessions, participants and attendance from existing lessons; dual-read compare counts/calculations; route new writes to new tables after gating; verify RLS; remove obsolete uniqueness constraints only after all queries/tests migrate. Old migrations remain immutable. Do not destroy legacy records until an export/backup and a reversible cutover are demonstrated.
+**ADR-0001 overrides earlier compatibility planning.** ChessCoachPal does not support CogNote databases or APIs and does not upgrade between pre-1.0 schemas. Edit the canonical fresh-install SQL directly, remove inherited incompatible tables and APIs outright, and do not write backfills, dual reads/writes, compatibility views or sequential upgrade migrations. Existing development environments must be explicitly reset and reseeded with the current schema; never automatically destroy actual user data. Inherited CogNote migration files are temporary installation scaffolding to consolidate into one bootstrap snapshot, not an upgrade contract.
 
 ## Chess teaching and integrations
 
