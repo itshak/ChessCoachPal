@@ -17,7 +17,7 @@ Deliver a real self-hosted **MCP-compatible tool server** and, where useful, Ope
 
 The first gateway is implemented and verified by [CI 42410931916](https://github.com/itshak/ChessCoachPal/actions/runs/42410931916) and [synthetic E2E 42410931858](https://github.com/itshak/ChessCoachPal/actions/runs/42410931858). It provides remote MCP HTTP transport, discoverable typed tools/OpenAPI, delegated OAuth PKCE, teacher-bound scopes, grant revocation, privacy-minimized transactional receipts, student/workplace/group/session reads, single-student attendance writes and shared lesson-note updates.
 
-**This is not the complete milestone.** Full create/edit and scheduling operations, resource linking, independent MCP two-teacher and client security checks, and actual supported ChatGPT and Claude client demonstrations remain outstanding. Bulk attendance commits are intentionally not exposed. Keep this change open, preserving the original acceptance conditions; never archive it as accepted based only on a synthetic HTTP client.
+**This is not the complete milestone.** Full create/edit and scheduling operations, resource linking, comprehensive security/client interoperability review and actual supported ChatGPT and Claude client demonstrations remain outstanding. Additional [CI 42411589348](https://github.com/itshak/ChessCoachPal/actions/runs/42411589348) and [E2E 42411589288](https://github.com/itshak/ChessCoachPal/actions/runs/42411589288) passed synthetic two-teacher isolation, ambiguity and token lifecycle coverage. Bulk attendance commits are intentionally not exposed. Keep this change open, preserving the original acceptance conditions; never archive it as accepted based only on a synthetic HTTP client.
 
 ## Initial tool scope
 
