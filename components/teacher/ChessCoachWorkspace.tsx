@@ -516,7 +516,7 @@ export function ChessCoachWorkspace() {
               </select>
             </label>
             <button className={button} disabled={busy}>Save session changes</button>
-          </form>
+          </form>}
           {session && roster.length === 0 &&
             <p className="text-sm text-muted">No participants were enrolled when this session was created.</p>}
           {roster.map(person => {
