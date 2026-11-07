@@ -16,3 +16,5 @@ Complete a checkbox only with merged implementation and observed audit/test evid
 - [ ] 4.12 Audit MIT notices, licenses and redistribution rights for bundled dependencies and assets; delete inappropriate material.
 - [ ] 4.13 Record passed security, asset review, PWA, build and integration evidence in docs/STATUS.md and docs/SECURITY.md; explicitly approve/block v0.1.0.
 
+## Verification policy — GitHub only
+All implementation and acceptance evidence for this development change SHALL come from merged GitHub commits and passing GitHub Actions tests/automated scans with synthetic data. No manual local deployment, live Lichess/ChatGPT/Claude login or actual vendor-client session is required to check tasks or archive this change. Record test URLs/findings in docs/STATUS.md (and docs/SECURITY.md for audits). The only real ChatGPT/Claude client exercise takes place at the **final local v0.1.0 prepublication release gate**; it does not waive security/privacy review requirements that can be completed in GitHub.

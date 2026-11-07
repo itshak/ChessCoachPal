@@ -33,3 +33,5 @@ Observations and resource links SHALL be restricted to their owning teacher and 
 - **WHEN** teacher B requests teacher A's student resource by UUID
 - **THEN** the server SHALL deny the request without revealing its details.
 
+## Development verification boundary
+All implementation and acceptance evidence for this development change SHALL come from merged GitHub commits and passing GitHub Actions tests/automated scans with synthetic data. No manual local deployment, live Lichess/ChatGPT/Claude login or actual vendor-client session is required to check tasks or archive this change. Record test URLs/findings in docs/STATUS.md (and docs/SECURITY.md for audits). The only real ChatGPT/Claude client exercise takes place at the **final local v0.1.0 prepublication release gate**; it does not waive security/privacy review requirements that can be completed in GitHub.

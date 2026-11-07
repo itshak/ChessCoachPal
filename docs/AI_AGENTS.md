@@ -1,6 +1,6 @@
 # AI-agent integration architecture
 
-**Implementation roadmap:** [connect-chatgpt-and-claude OpenSpec](../openspec/changes/connect-chatgpt-and-claude/proposal.md). A stateless MCP/OAuth gateway is being implemented in PR #5. Its safe subset and setup instructions are documented in [AI_CONNECTORS.md](AI_CONNECTORS.md). Real ChatGPT and Claude client connections are not yet verified.
+**Implementation roadmap:** The [initial MCP/OAuth gateway](../openspec/changes/archive/2026-11-07-connect-chatgpt-and-claude/proposal.md) is merged and archived based on synthetic GitHub CI/E2E. [Remaining v0.1.0 actions](../openspec/changes/expand-agent-coaching-tools/proposal.md) are actively planned for GitHub-only tests. Its safe subset and setup are in [AI_CONNECTORS.md](AI_CONNECTORS.md). Real ChatGPT and Claude client interoperability is unverified and is **only** a manual local test immediately before actual [v0.1.0 publication](LOCAL_CLIENT_ACCEPTANCE.md), not a development blocker.
 
 **Primary interaction model:** Teachers naturally tell ChatGPT or Claude what happened in their teaching practice. A secure, installed ChessCoachPal tool connector translates those intentions into typed operations. Website pages show the saved state and provide full manual editing. We do **not** require a built-in chatbot inside the website.
 
@@ -46,4 +46,4 @@ Every mutation maps to a reusable domain command. Do not expose unrestricted tab
 
 ## Acceptance evidence
 
-Demonstrate actual operation from a ChatGPT-compatible client and a Claude-compatible client into the same self-hosted database, followed by website correction, repeated-call idempotency, scope denial and provider-outage fallback. Until both client demonstrations pass, Milestone 2 **remains open**. The implemented subset and unsupported operations are described in [AI_CONNECTORS.md](AI_CONNECTORS.md).
+Development acceptance uses **automated GitHub Actions only**: simulated delegated clients exercise MCP against fresh synthetic Supabase, with retries, tenant/scope denial, provider-outage fallback and website correction. The archived foundation has passed; expanded tool coverage has a [separate active change](../openspec/changes/expand-agent-coaching-tools/proposal.md). **One manual release-only live-provider check** from the maintainer's machine, immediately before publishing v0.1.0, must demonstrate both real ChatGPT and Claude connections and website correction. See [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md). Its absence does not keep earlier development changes open.

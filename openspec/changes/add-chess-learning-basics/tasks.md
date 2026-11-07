@@ -11,3 +11,5 @@ Mark complete only after merged code and passing evidence is recorded in docs/ST
 - [ ] 3.7 Test ownership isolation, correct provenance, link validation, error handling and unavailable-resource fallback with synthetic fixtures.
 - [ ] 3.8 Document supported chess basics and deliberately deferred rating sync/engine work; capture evidence.
 
+## Verification policy — GitHub only
+All implementation and acceptance evidence for this development change SHALL come from merged GitHub commits and passing GitHub Actions tests/automated scans with synthetic data. No manual local deployment, live Lichess/ChatGPT/Claude login or actual vendor-client session is required to check tasks or archive this change. Record test URLs/findings in docs/STATUS.md (and docs/SECURITY.md for audits). The only real ChatGPT/Claude client exercise takes place at the **final local v0.1.0 prepublication release gate**; it does not waive security/privacy review requirements that can be completed in GitHub.

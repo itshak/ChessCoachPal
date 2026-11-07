@@ -17,7 +17,8 @@ Produce teacher-owned workplace/date-range teaching and attendance summary using
 - Fresh setup, safe first-run account creation, seeded synthetic workflow and production Next build.
 - Main CI: dependency install, typecheck, unit tests, release-helper tests, Docker image and Compose checks.
 - Browser E2E for create/edit/reload, group/private lesson and attendance, notes, PWA and core accessibility.
-- Real ChatGPT and Claude client tests with delegated teacher authorization, provider outage fallback and website correction.
+- **Development CI (automated on GitHub):** synthetic OAuth/MCP client tests with delegated teacher authorization, provider-unavailable website fallback, tenant denial and website correction. No live vendor accounts/secrets are needed.
+- **Final publication only (manual on maintainer's machine):** real ChatGPT and Claude authorization, tool write and website-correction smoke test against a secure HTTPS-reachable locally controlled synthetic deployment; sanitized sign-off must be recorded before the v0.1.0 bump merges. Refer to docs/LOCAL_CLIENT_ACCEPTANCE.md.
 - Two-teacher authorization/RLS checks, privacy/history audit and third-party license approval.
 - Restore backup into second disposable instance with uploaded objects and verify equivalence.
 
@@ -25,7 +26,7 @@ Document exact commit SHAs, test run URLs and approvals in docs/STATUS.md. Skipp
 
 ## GitHub release operation
 
-All six first-release checkboxes in docs/RELEASING.md require verified evidence before marking complete. The release-script validator refuses v0.1.0 while any are unchecked. When milestones 1–4 have passed, prepare v0.1.0 in package.json, package-lock.json and CHANGELOG.md through the scripted release preparation and review in a PR.
+All six first-release checkboxes in docs/RELEASING.md require evidence before marking complete. The release-script validator refuses v0.1.0 while any are unchecked. **Development milestones 1–4 (plus the 2b carry-over) close on GitHub automated evidence only.** When those and automated Milestone 5 gates pass, request the maintainer's final local real-client sign-off, record its sanitized outcome, *then* prepare v0.1.0 in package.json, package-lock.json and CHANGELOG.md via the scripted release preparation and reviewed PR. Never pre-bump/merge to trigger a release while this manual gate is open.
 
 Merging the reviewed version bump into main triggers the automatic GitHub Release workflow. It verifies fresh installation and tests, then creates an annotated tag for the exact commit, release notes from the changelog, and source-code ZIP and tar.gz. Do not manually tag an unverified release; a failed gate blocks publication.
 

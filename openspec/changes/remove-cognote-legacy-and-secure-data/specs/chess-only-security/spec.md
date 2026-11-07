@@ -42,3 +42,5 @@ Before release, maintainers SHALL inspect active source, retrievable GitHub hist
 - **THEN** maintainers SHALL rotate/remediate it and follow supported GitHub removal guidance if necessary
 - **AND** release approval SHALL remain blocked until resolution is documented.
 
+## Development verification boundary
+All implementation and acceptance evidence for this development change SHALL come from merged GitHub commits and passing GitHub Actions tests/automated scans with synthetic data. No manual local deployment, live Lichess/ChatGPT/Claude login or actual vendor-client session is required to check tasks or archive this change. Record test URLs/findings in docs/STATUS.md (and docs/SECURITY.md for audits). The only real ChatGPT/Claude client exercise takes place at the **final local v0.1.0 prepublication release gate**; it does not waive security/privacy review requirements that can be completed in GitHub.

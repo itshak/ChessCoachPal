@@ -26,7 +26,17 @@ The app SHALL compute an authorized workplace/date-range activity summary from s
 - **AND** attendance SHALL reflect four participant statuses.
 
 ### Requirement: Release readiness gates
-Publishing v0.1.0 MUST be prevented until the website, two real AI clients, security/tenant checks, fresh setup, backup/restore and privacy/license review have passed with evidence.
+Publishing v0.1.0 MUST be prevented until GitHub Actions has passed the website, synthetic MCP/OAuth/tenant security, fresh setup, backup/restore and privacy/license gates **and** the maintainer has completed one **last-minute manual local** real ChatGPT and real Claude client test with documented sanitized evidence. Development changes SHALL be accepted/archived on GitHub automated tests alone; real client account access SHALL NOT be a development requirement.
+
+#### Scenario: Development proceeds with no vendor accounts
+- **WHEN** GitHub Actions can exercise synthetic OAuth/MCP clients but real ChatGPT/Claude accounts are unavailable
+- **THEN** development verification and prior OpenSpec archives SHALL proceed without manual provider logins
+- **AND** v0.1.0 publication SHALL still wait for real client sign-off performed from the maintainer's machine just before release.
+
+#### Scenario: Final release is attempted without the manual local sign-off
+- **WHEN** any release checklist item, including the last-minute local ChatGPT/Claude evidence, is unchecked
+- **THEN** the GitHub release validator SHALL refuse the v0.1.0 tag and GitHub Release
+- **AND** the checked manual criterion SHALL never be inferred from passing synthetic tests.
 
 #### Scenario: Required Playwright check fails
 - **WHEN** any release-critical E2E test fails for a candidate commit
