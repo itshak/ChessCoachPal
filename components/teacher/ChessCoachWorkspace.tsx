@@ -59,6 +59,7 @@ export function ChessCoachWorkspace() {
   const [editTimezone, setEditTimezone] = useState("UTC");
   const [editCurrency, setEditCurrency] = useState("USD");
   const [editLocale, setEditLocale] = useState("en");
+  const [editWorkplacePolicy, setEditWorkplacePolicy] = useState("{}");
   const [newStudentName, setNewStudentName] = useState("");
   const [newStudentLevel, setNewStudentLevel] = useState("");
   const [editStudentId, setEditStudentId] = useState("");
@@ -150,10 +151,22 @@ export function ChessCoachWorkspace() {
 
   async function updateWorkplace(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    await perform(() => operation("workplaces.update", {
-      workplaceId, name: editWorkplaceName.trim(), timezone: editTimezone,
-      currency: editCurrency, locale: editLocale,
-    }), "Workplace saved.");
+    await perform(async () => {
+      let policy: Record<string, unknown>;
+      try {
+        const parsed: unknown = JSON.parse(editWorkplacePolicy);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("Policy must be a JSON object");
+        }
+        policy = parsed as Record<string, unknown>;
+      } catch {
+        throw new Error("Workplace policy must be a valid JSON object");
+      }
+      await operation("workplaces.update", {
+        workplaceId, name: editWorkplaceName.trim(), timezone: editTimezone,
+        currency: editCurrency, locale: editLocale, policy,
+      });
+    }, "Workplace saved.");
   }
 
   async function addStudent(e: FormEvent<HTMLFormElement>) {
@@ -289,6 +302,7 @@ export function ChessCoachWorkspace() {
     if (w) {
       setEditWorkplaceName(w.name); setEditTimezone(w.timezone);
       setEditCurrency(w.currency); setEditLocale(w.locale);
+      setEditWorkplacePolicy(JSON.stringify(w.policy ?? {}, null, 2));
     }
     void reloadEnrollments(workplaceId).catch(e => setError(String(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -394,6 +408,10 @@ export function ChessCoachWorkspace() {
             </label>
             <label className="block text-sm">Edit workplace locale
               <input className={field} value={editLocale} onChange={e => setEditLocale(e.target.value)} required />
+            </label>
+            <label className="block text-sm">Workplace policy (JSON)
+              <textarea className={field} rows={4} value={editWorkplacePolicy}
+                onChange={e => setEditWorkplacePolicy(e.target.value)} spellCheck={false} />
             </label>
             <button className={button} disabled={busy}>Save workplace</button>
           </form>}

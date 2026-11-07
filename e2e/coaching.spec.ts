@@ -20,6 +20,9 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await page.getByRole("button", { name: "Create workplace" }).click();
   await expect(page.getByLabel("Active workplace")).toContainText(workplaceB);
   await page.getByLabel("Active workplace").selectOption({ label: workplaceA });
+  await page.getByLabel("Workplace policy (JSON)").fill('{"cancellationHours":24}');
+  await page.getByRole("button", { name: "Save workplace" }).click();
+  await expect(page.getByRole("status")).toContainText("Workplace saved.");
 
   await page.getByLabel("New student name").fill(student);
   await page.getByLabel("New student skill level").fill("Pawn endings");
@@ -81,6 +84,7 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await page.reload();
   await expect(page.getByRole("heading", { name: "Chess coaching" })).toBeVisible();
   await page.getByLabel("Active workplace").selectOption({ label: workplaceA });
+  await expect(page.getByLabel("Workplace policy (JSON)")).toHaveValue(/cancellationHours/);
   const lesson = page.getByLabel("Lesson", { exact: true });
   const option = lesson.locator("option").filter({ hasText: topic });
   const sessionId = await option.getAttribute("value");
