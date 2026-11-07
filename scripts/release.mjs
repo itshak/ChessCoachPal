@@ -47,6 +47,16 @@ export function hasChanges(notes) {
   return notes.split("\n").some((line) => /^\s*-\s+\S/.test(line));
 }
 
+export function firstReleaseReady(markdown) {
+  const heading = "## v0.1.0: first functional release gate";
+  const start = markdown.indexOf(heading);
+  if (start < 0) return false;
+  const following = markdown.indexOf("\n## ", start + heading.length);
+  const block = markdown.slice(start, following >= 0 ? following : markdown.length);
+  const checks = [...block.matchAll(/^- \[([ xX])\] /gm)];
+  return checks.length >= 6 && checks.every((match) => match[1].toLowerCase() === "x");
+}
+
 export function prepareChangelog(markdown, version, date) {
   if (markdown.includes("## [" + version + "]")) throw new Error("Version already in CHANGELOG");
   if (!hasChanges(section(markdown, "Unreleased"))) {
@@ -97,6 +107,9 @@ export function main(command, version) {
     return;
   }
   assertPackageVersions(version);
+  if (version === "0.1.0" && !firstReleaseReady(readFileSync("docs/RELEASING.md", "utf8"))) {
+    throw new Error("v0.1.0 is blocked until every first-functional-release checklist item is checked");
+  }
   const markdown = readFileSync("CHANGELOG.md", "utf8");
   const notes = section(markdown, version);
   const heading = "## [" + version + "] - ";
