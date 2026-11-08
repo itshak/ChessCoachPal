@@ -12,8 +12,11 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "List and revoke OAuth grants from chat; website does so today"
+      "existingTools": [
+        "ccp_v1_connections_list",
+        "ccp_v1_connections_revoke"
+      ],
+      "explanation": "Shared owner-filtered OAuth grant listing and revocation used by website and MCP. Website enforces CSRF origin and MCP requires delegated coach:write + explicit confirmation. OAuth authorization remains browser consent-only."
     },
     {
       "path": "app/api/agent/openapi/route.ts",

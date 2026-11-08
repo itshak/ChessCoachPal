@@ -63,3 +63,7 @@ Website and MCP invoice details now share a tenant-scoped reader; three MCP tool
 ## Phase J: draft invoice and payment communication increment
 
 Shared website/MCP invoice service now supports changing draft notes/line items, voiding and deleting eligible invoices, plus explicitly confirmed email sending. Four MCP tools and delegated OAuth tests compare the financial state through website readback; no emails are sent in CI's synthetic mutation tests. **Unresolved:** transactional multi-line replacements, idempotency/exactly-once email, checkout, refunds/payment settlement and other billing/credit actions. Keep parity strict blocked.
+
+## Phase K: OAuth connection administration increment
+
+Website and MCP now call the same owner-scoped service to list active grants and revoke a chosen grant. Read-only clients cannot revoke; tokens and sessions never appear in the tool response, and delegated OAuth E2E confirms immediate access loss after revocation. Browser consent and original OAuth authorization flows remain explicitly secure-browser-only. **Full route/behavioral parity is not accepted** until the strict checklist passes.
