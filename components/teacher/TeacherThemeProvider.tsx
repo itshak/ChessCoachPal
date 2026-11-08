@@ -23,18 +23,18 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function readStoredTheme(): ThemeMode {
-  if (typeof window === "undefined") return "light";
+  if (typeof window === "undefined") return "dark";
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw === "dark" || raw === "light") return raw;
   } catch {
     /* ignore */
   }
-  return "light";
+  return "dark";
 }
 
 // localStorage is the source of truth; useSyncExternalStore keeps hydration
-// safe (server renders light) without a mount effect.
+// safe (server renders dark) without a mount effect.
 const themeListeners = new Set<() => void>();
 
 function subscribeTheme(listener: () => void) {
@@ -69,7 +69,7 @@ export function TeacherThemeProvider({ children }: { children: ReactNode }) {
   const theme = useSyncExternalStore(
     subscribeTheme,
     readStoredTheme,
-    () => "light" as ThemeMode
+    () => "dark" as ThemeMode
   );
 
   useEffect(() => {
@@ -105,7 +105,7 @@ export function TeacherThemeProvider({ children }: { children: ReactNode }) {
       observer.disconnect();
       root.removeAttribute("data-teacher-theme");
       const meta = document.querySelector('meta[name="theme-color"]');
-      meta?.setAttribute("content", themeColorFor("light"));
+      meta?.setAttribute("content", themeColorFor("dark"));
     };
   }, [theme]);
 
