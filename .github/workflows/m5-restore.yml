@@ -24,6 +24,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.0.0
       - name: Restore database and uploaded bytes into second clean install
         run: bash scripts/verify-m5-restore.sh
