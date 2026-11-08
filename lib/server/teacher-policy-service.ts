@@ -77,9 +77,9 @@ export async function teacherPolicyUpdate(
   const supabase=db;
   const user={id:teacherId,email:teacherEmail};
 
-  if (body.timezone) {
+  if (body.timezone !== undefined) {
     const { isValidTimezone } = await import("@/lib/timezones");
-    if (!isValidTimezone(body.timezone)) {
+    if (typeof body.timezone !== "string" || !isValidTimezone(body.timezone)) {
       return NextResponse.json({ error: "Invalid timezone" }, { status: 400 });
     }
   }

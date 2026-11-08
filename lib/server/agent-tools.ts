@@ -42,6 +42,7 @@ import {
  calendarLessonNoteRead,calendarLessonNoteWrite,LegacyAttendanceError,
 } from "@/lib/server/legacy-attendance-service";
 import { oauthOrigin } from "@/lib/server/agent-oauth-core";
+import { teacherPolicyView, teacherPolicyUpdate } from "@/lib/server/teacher-policy-service";
 import {
  teacherEventsList,teacherEventDetail,teacherEventCreate,teacherEventUpdate,
  teacherEventDeleteImpact,teacherEventDelete,teacherEventInviteEmail,TeacherEventError,
@@ -57,7 +58,6 @@ const eventChanges=z.object({
   studentIds:z.array(uuid).max(200).optional(),
   repertoireByStudent:z.record(uuid,z.string().max(10000)).optional(),
 }).strict();
-import {teacherPolicyView,teacherPolicyUpdate} from "@/lib/server/teacher-policy-service";
 const studioPolicyPatch=z.object({
  studioName:z.string().max(120).optional(),
  studioWebsite:z.string().max(300).optional(),
@@ -89,7 +89,6 @@ const studioPolicyPatch=z.object({
  bccFamilyEmails:z.boolean().optional(),
  bccEmail:z.string().max(320).nullable().optional(),
 }).strict();
-import {teacherPolicyView,teacherPolicyUpdate} from "@/lib/server/teacher-policy-service";
 
 const searchText = z.string().trim().min(1).max(80);
 const sessionId = z.object({ sessionId: uuid }).strict();
