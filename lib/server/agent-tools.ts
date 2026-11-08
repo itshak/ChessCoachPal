@@ -46,6 +46,7 @@ import {
  teacherEventsList,teacherEventDetail,teacherEventCreate,teacherEventUpdate,
  teacherEventDeleteImpact,teacherEventDelete,teacherEventInviteEmail,TeacherEventError,
 } from "@/lib/server/teacher-events-service";
+const uuid = z.string().uuid();
 const eventChanges=z.object({
   title:z.string().trim().min(1).max(200).optional(),
   description:z.string().max(10000).optional(),
@@ -56,7 +57,7 @@ const eventChanges=z.object({
   studentIds:z.array(uuid).max(200).optional(),
   repertoireByStudent:z.record(uuid,z.string().max(10000)).optional(),
 }).strict();
-const uuid = z.string().uuid();
+
 const searchText = z.string().trim().min(1).max(80);
 const sessionId = z.object({ sessionId: uuid }).strict();
 const shortName = z.string().trim().min(1).max(120);
