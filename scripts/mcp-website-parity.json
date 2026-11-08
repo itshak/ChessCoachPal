@@ -518,23 +518,32 @@
     {
       "path": "app/api/schedule/lessons/[id]/route.ts",
       "methods": [
+        "GET",
         "PUT",
         "DELETE"
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Reschedule/cancel/erase legacy lesson instance"
+      "existingTools": [
+        "ccp_v1_calendar_lessons_detail",
+        "ccp_v1_calendar_lessons_update",
+        "ccp_v1_calendar_lessons_delete"
+      ],
+      "explanation": "Shared private lesson detail/move/home-visit correction and ad-hoc deletion; broader case matrix still pending."
     },
     {
       "path": "app/api/schedule/lessons/route.ts",
       "methods": [
+        "GET",
         "POST"
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Create one-off/makeup legacy lesson"
+      "existingTools": [
+        "ccp_v1_calendar_lessons_list",
+        "ccp_v1_calendar_lessons_create"
+      ],
+      "explanation": "Private lesson list/create and makeup-credit validation shared with MCP; exhaustive acceptance remains partial."
     },
     {
       "path": "app/api/schedule/slots/[id]/route.ts",
@@ -544,18 +553,25 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Edit/disable/delete recurring slot"
+      "existingTools": [
+        "ccp_v1_calendar_slots_update",
+        "ccp_v1_calendar_slots_delete"
+      ],
+      "explanation": "Browser/MCP use same history-preserving recurring-slot adjustment/deletion service; atomic idempotency remains to verify."
     },
     {
       "path": "app/api/schedule/slots/route.ts",
       "methods": [
+        "GET",
         "POST"
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Create recurring slot"
+      "existingTools": [
+        "ccp_v1_calendar_slots_list",
+        "ccp_v1_calendar_slots_create"
+      ],
+      "explanation": "Recurring private lesson slot list/create share teacher-scoped service. Replay-safe writes and DST tests remain pending."
     },
     {
       "path": "app/api/settings/export/route.ts",

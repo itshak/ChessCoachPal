@@ -619,6 +619,69 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(foreignFamily.error.code).toBe("NOT_FOUND");
 
+  // Private legacy calendar differs from group teaching_sessions, but
+  // website and delegated MCP now use the same tenant-scoped calendar service.
+  for(const toolName of ["ccp_v1_calendar_slots_list","ccp_v1_calendar_slots_create",
+    "ccp_v1_calendar_slots_update","ccp_v1_calendar_slots_delete",
+    "ccp_v1_calendar_lessons_list","ccp_v1_calendar_lessons_detail",
+    "ccp_v1_calendar_lessons_create","ccp_v1_calendar_lessons_update",
+    "ccp_v1_calendar_lessons_delete"])expect(names).toContain(toolName);
+  const slotMade=(await call("ccp_v1_calendar_slots_create",{
+    studentId:profileId,dayOfWeek:0,startTime:"17:00",durationMinutes:45,
+    startDate:"2026-11-15",endDate:"2026-12-06",confirmed:true,
+  })).structuredContent;
+  expect(slotMade.error).toBeUndefined();
+  const slotId=slotMade.data.id as string;
+  const browserSlot=await page.request.get("/api/schedule/slots?studentId="+profileId);
+  expect(browserSlot.status(),await browserSlot.text()).toBe(200);
+  expect((await browserSlot.json()).some((x:{id:string})=>x.id===slotId)).toBe(true);
+  const slotUpdated=await page.request.put("/api/schedule/slots/"+slotId,{
+    data:{rateCents:2300},
+  });
+  expect(slotUpdated.status(),await slotUpdated.text()).toBe(200);
+  const listedSlots=(await call("ccp_v1_calendar_slots_list",{
+    studentId:profileId,
+  })).structuredContent.data;
+  expect(listedSlots.find((x:{id:string})=>x.id===slotId).rate_cents).toBe(2300);
+  const deletedSlot=(await call("ccp_v1_calendar_slots_delete",{
+    slotId,confirmed:true,
+  })).structuredContent;
+  expect(deletedSlot.error).toBeUndefined();
+  const afterSlotDelete=await page.request.get("/api/schedule/slots?studentId="+profileId);
+  expect((await afterSlotDelete.json()).some((x:{id:string})=>x.id===slotId)).toBe(false);
+  const madeLegacy=(await call("ccp_v1_calendar_lessons_create",{
+    studentId:profileId,date:"2026-11-18",time:"17:30",durationMinutes:45,
+    confirmed:true,
+  })).structuredContent;
+  expect(madeLegacy.error).toBeUndefined();
+  const legacyId=madeLegacy.data.id as string;
+  const browserLegacy=await page.request.get("/api/schedule/lessons/"+legacyId);
+  expect(browserLegacy.status()).toBe(200);
+  expect((await browserLegacy.json()).student_id).toBe(profileId);
+  const updatedLegacy=await page.request.put("/api/schedule/lessons/"+legacyId,{
+    data:{isHomeVisit:true},
+  });
+  expect(updatedLegacy.status(),await updatedLegacy.text()).toBe(200);
+  const fromMcp=(await call("ccp_v1_calendar_lessons_detail",{
+    lessonId:legacyId,
+  })).structuredContent.data;
+  expect(fromMcp.is_home_visit).toBe(true);
+  const legacyListed=(await call("ccp_v1_calendar_lessons_list",{
+    studentId:profileId,limit:100,offset:0,
+  })).structuredContent.data;
+  expect(legacyListed.lessons.some((x:{id:string})=>x.id===legacyId)).toBe(true);
+  const foreignCalendar=(await call("ccp_v1_calendar_lessons_create",{
+    studentId:foreignStudent!.id,date:"2026-11-20",time:"16:00",
+    confirmed:true,
+  })).structuredContent;
+  expect(foreignCalendar.error.code).toBe("NOT_FOUND");
+  const removedLegacy=(await call("ccp_v1_calendar_lessons_delete",{
+    lessonId:legacyId,confirmed:true,
+  })).structuredContent;
+  expect(removedLegacy.error).toBeUndefined();
+  const noLesson=await page.request.get("/api/schedule/lessons/"+legacyId);
+  expect(noLesson.status()).toBe(404);
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{

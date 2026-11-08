@@ -1,113 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getPolicy } from "@/lib/server/scheduling";
-import { zonedTimeToUtc, oneToOne, isDateString } from "@/lib/schedule";
-
-/**
- * Create an ad-hoc lesson (slot_id NULL) — used for one-off lessons and
- * make-ups. When makeupFor is set, it must reference an attendance row of a
- * cancellation for the same student; the UNIQUE constraint on
- * lessons.makeup_for guarantees a credit can only be redeemed once (§3).
- */
-export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const body = await req.json();
-  if (
-    !body.studentId ||
-    !isDateString(body.date) ||
-    !/^\d{2}:\d{2}$/.test(body.time ?? "")
-  ) {
-    return NextResponse.json(
-      { error: "studentId, date (YYYY-MM-DD) and time (HH:mm) are required" },
-      { status: 400 }
-    );
-  }
-
-  // The lesson's student must belong to this teacher (RLS only checks
-  // lessons.teacher_id, not whose student it references).
-  const { data: student } = await supabase
-    .from("students")
-    .select("id")
-    .eq("id", body.studentId)
-    .eq("teacher_id", user.id)
-    .maybeSingle();
-  if (!student) {
-    return NextResponse.json({ error: "Student not found" }, { status: 404 });
-  }
-
-  let durationMinutes = Number(body.durationMinutes) || 30;
-
-  if (body.makeupFor) {
-    // lessons!lesson_id disambiguates from the lessons.makeup_for relationship
-    const { data: credit } = await supabase
-      .from("attendance")
-      .select("id, status, lessons!lesson_id ( student_id, duration_minutes, teacher_id )")
-      .eq("id", body.makeupFor)
-      .single();
-
-    const lesson = oneToOne(
-      credit?.lessons as unknown as
-        | {
-            student_id: string;
-            duration_minutes: number;
-            teacher_id: string;
-          }[]
-        | null
-    );
-
-    if (!credit || lesson?.teacher_id !== user.id) {
-      return NextResponse.json({ error: "Credit not found" }, { status: 404 });
-    }
-    if (credit.status === "attended") {
-      return NextResponse.json(
-        { error: "That lesson was attended — no make-up credit" },
-        { status: 400 }
-      );
-    }
-    if (lesson.student_id !== body.studentId) {
-      return NextResponse.json(
-        { error: "Make-up must be for the same student" },
-        { status: 400 }
-      );
-    }
-    if (!Number(body.durationMinutes)) durationMinutes = lesson.duration_minutes;
-  }
-
-  const policy = await getPolicy(supabase, user.id);
-  const startsAt = zonedTimeToUtc(body.date, body.time, policy.timezone);
-
-  const { data, error } = await supabase
-    .from("lessons")
-    .insert({
-      teacher_id: user.id,
-      student_id: body.studentId,
-      slot_id: null,
-      lesson_date: body.date,
-      starts_at: startsAt.toISOString(),
-      duration_minutes: durationMinutes,
-      makeup_for: body.makeupFor || null,
-      is_home_visit: Boolean(body.isHomeVisit),
-    })
-    .select()
-    .single();
-
-  if (error) {
-    // Unique violation on makeup_for = credit already redeemed
-    const status = error.code === "23505" ? 409 : 500;
-    const message =
-      error.code === "23505"
-        ? "This make-up credit has already been used"
-        : error.message;
-    return NextResponse.json({ error: message }, { status });
-  }
-
-  return NextResponse.json(data);
+import { CalendarError } from "@/lib/server/legacy-calendar-service";
+async function teacher(){
+ const db=await createClient();const {data:{user}}=await db.auth.getUser();
+ return user?{db,id:user.id}:null;
+}
+const failure=(error:unknown)=>NextResponse.json({
+ error:error instanceof CalendarError?error.message:"Calendar unavailable",
+ code:error instanceof CalendarError?error.code:"DATABASE_ERROR",
+},{status:error instanceof CalendarError?error.status:500});
+import { calendarLessonsList, calendarLessonCreate, type LessonCreate } from "@/lib/server/legacy-calendar-service";
+export async function GET(req:NextRequest){
+ const auth=await teacher();if(!auth)return NextResponse.json({error:"Unauthorized"},{status:401});
+ try{const q=req.nextUrl.searchParams;const limit=Number(q.get("limit")??50),offset=Number(q.get("offset")??0);
+ if(!Number.isInteger(limit)||limit<1||limit>100||!Number.isInteger(offset)||offset<0||offset>100000)
+  return NextResponse.json({error:"Invalid pagination"},{status:400});
+ return NextResponse.json(await calendarLessonsList(auth.db,auth.id,{
+  studentId:q.get("studentId")||undefined,from:q.get("from")||undefined,
+  to:q.get("to")||undefined,limit,offset,
+ }));}catch(error){return failure(error);}
+}
+export async function POST(req:NextRequest){
+ const auth=await teacher();if(!auth)return NextResponse.json({error:"Unauthorized"},{status:401});
+ const body=await req.json().catch(()=>null);
+ if(!body||typeof body!=="object")return NextResponse.json({error:"Invalid JSON"},{status:400});
+ try{return NextResponse.json(await calendarLessonCreate(auth.db,auth.id,body as LessonCreate));}
+ catch(error){return failure(error);}
 }
