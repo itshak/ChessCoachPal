@@ -29,3 +29,8 @@ The GitHub test suite uses synthetic teachers, studies, OAuth clients and a fres
 **Not included:** Lichess or Chess.com rating sync, PGN/engine analysis, embedded boards, auto-generated lessons, content mirroring, billing or report adapters. These require later scoped changes.
 
 Pre-1.0 schema is fresh-install only; no CogNote compatibility or historical migration/backfill per ADR-0001.
+
+
+## Proposed next phase — full chess materials and student progress (NOT implemented)
+
+The separate [OpenSpec change](../openspec/changes/support-conversational-lesson-and-lichess-workflows/proposal.md) and [MCP workflow roadmap](MCP_WORKFLOW_ROADMAP.md) propose a website Materials → Lichess connection and study/chapter browser, per-student/workplace selected studies, server-authorized provider PGN lookup, image/FEN review, chapter publishing with capacity rollover, and richer student chess profiles (canonical Hebrew names, English aliases, 1–10 teacher strength, Lichess/Chess.com accounts and dated provider/time-control ratings). This is **planning, not current functionality**. Existing `skill_assessments` rates individual dimensions 1–5 and stays distinct from proposed overall strength 1–10. The public ChatGPT Plugin Directory is deferred until a reliable multi-teacher SaaS is available, tentatively v1.0.0 or a separately approved hosted beta.

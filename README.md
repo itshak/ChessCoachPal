@@ -17,7 +17,7 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 
 ## Status
 
-**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, Milestone 1 coaching workflows have merged. Milestone 2's initial MCP/OAuth gateway is merged and archived after GitHub CI/E2E verification. Milestone 3 chess-learning basics are also merged and archived with passing GitHub CI/E2E. Milestone 4 security hardening and Milestone 5 automated self-hosting/report/recovery implementation have merged and been archived on GitHub test evidence. The remaining publication privacy/history/license review, coaching-tool actions (2b) and final release gates stay active; v0.1.0 is not approved. Only the *final live ChatGPT/Claude client demonstrations* take place manually on the maintainer's machine immediately before actual v0.1.0 publication; no development change depends on live providers. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
+**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, Milestone 1 coaching workflows have merged. Milestone 2's initial MCP/OAuth gateway is merged and archived after GitHub CI/E2E verification. Milestone 3 chess-learning basics are also merged and archived with passing GitHub CI/E2E. Milestone 4 security hardening and Milestone 5 automated self-hosting/report/recovery implementation have merged and been archived on GitHub test evidence. The expanded coaching-tool change (2b) is archived; the final publication privacy/history/license and real ChatGPT/Claude acceptance gates remain blocked. A real Codex + Vercel/Supabase demo successfully created a synthetic student and workplace enrollment, but no v0.1.0 release has been approved. New end-to-end chess trainer workflows and richer student profiles are separately proposed, not yet implemented. Only the *final live ChatGPT/Claude client demonstrations* take place manually on the maintainer's machine immediately before actual v0.1.0 publication; no development change depends on live providers. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
 
 ## Versions and releases
 
@@ -29,20 +29,24 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 
 ## Documentation
 
-- **[v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md)** — five milestone outcomes with an active 2b follow-on; completed development changes close on GitHub evidence
+- **[v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md)** — archived implementation milestones; separate active publication and new proposed chess-trainer workflow development
 - [Complete coaching workflows](openspec/changes/archive/2026-11-07-complete-coaching-workflows/proposal.md)
 - [Archived MCP/OAuth foundation for ChatGPT and Claude](openspec/changes/archive/2026-11-07-connect-chatgpt-and-claude/proposal.md)
-- [Remaining v0.1.0 agent tools (active GitHub-only work)](openspec/changes/expand-agent-coaching-tools/proposal.md)
+- [Archived expanded MCP coaching tools (verified development 2b)](openspec/changes/archive/2026-11-08-expand-agent-coaching-tools/proposal.md)
 - [Archived chess learning basics](openspec/changes/archive/2026-11-07-add-chess-learning-basics/proposal.md)
 - [Archived Milestone 4 chess-only security implementation](openspec/changes/archive/2026-11-08-remove-cognote-legacy-and-secure-data/proposal.md)
 - [Archived Milestone 5 verified self-hosting and recovery implementation](openspec/changes/archive/2026-11-08-verify-self-hosting-and-release-v0-1-0/proposal.md)
-- [Active final v0.1.0 publication gates](openspec/changes/finalize-v0-1-0-publication/proposal.md)
+- [Active final v0.1.0 publication gates](openspec/changes/complete-v0-1-0-release-gates/proposal.md)
+- [Proposed full natural-language lessons, bilingual student profiles and Lichess materials/puzzles](openspec/changes/support-conversational-lesson-and-lichess-workflows/proposal.md)
+- [All current and proposed MCP commands](openspec/changes/support-conversational-lesson-and-lichess-workflows/tool-catalog.md)
+- [MCP trainer workflow and student model roadmap](docs/MCP_WORKFLOW_ROADMAP.md)
+- [Official ChatGPT plugin roadmap (target after public SaaS)](docs/PUBLIC_PLUGIN_SUBMISSION.md)
 - [Archived, incomplete original plan](openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md)
 - [New-install self-hosting, protected backup and second-instance restore](docs/SELF_HOSTING.md)
 - [Synthetic chess coach walkthrough](docs/CHESS_COACH_TUTORIAL.md)
 - [Chess learning (observations, approval, Lichess study links)](docs/CHESS_LEARNING.md)
 - [Agent interface](docs/AI_AGENTS.md)
-- [Remote ChatGPT / Claude connection guide (not yet live-verified)](docs/AI_CONNECTORS.md)
+- [Remote MCP/real Codex evidence; ChatGPT / Claude not yet live-verified](docs/AI_CONNECTORS.md)
 - [Final local client smoke test before publishing v0.1.0](docs/LOCAL_CLIENT_ACCEPTANCE.md)
 - [Public market landscape](docs/MARKET_RESEARCH.md)
 - [Architecture](docs/ARCHITECTURE.md)
@@ -53,3 +57,8 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 ## License
 
 MIT, including CogNote's original attribution. See [LICENSE](LICENSE). ChessCoachPal is independent of the original CogNote project.
+
+
+## Planned full chess-trainer experience — NOT implemented
+
+A separate [OpenSpec proposal](openspec/changes/support-conversational-lesson-and-lichess-workflows/proposal.md) covers “Today I taught Armond, Shushana and David Zaruk 13:00–14:30; we studied Classic Games 2, chapter 32”: resolve Hebrew/English student aliases, use scheduled hours only when explicit hours are absent, create **one** historical multi-student lesson and verified per-student study links without inventing comprehension assessments. It also plans website Lichess Study selection and reviewed image→FEN→PGN puzzle publishing with safe chapter rollover. Student profiles will gain Hebrew report names, English aliases, teacher strength 1–10, Lichess/Chess.com accounts and separate provider/time-control rating snapshots. Public official ChatGPT Plugin Directory listing is tentatively deferred until a hosted multi-teacher SaaS is launched at/after v1.0.0; semantic version is not a technical gate and an earlier security-reviewed beta is possible. See [strategy](docs/PUBLIC_PLUGIN_SUBMISSION.md).
