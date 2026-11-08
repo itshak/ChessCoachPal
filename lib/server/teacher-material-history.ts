@@ -62,6 +62,20 @@ export async function teacherMaterialHistory(db:Db,teacherId:string,filter:Mater
    throw failure(400,"VALIDATION_ERROR","Select a student, workplace, or session");
  if(filter.from&&filter.to&&filter.from>filter.to)
    throw failure(400,"VALIDATION_ERROR","Invalid date range");
+ // Check resource ownership even for empty results; foreign IDs never reveal
+ // whether another coach has material history.
+ for(const [table,id] of [
+  ["students",filter.studentId],
+  ["workplaces",filter.workplaceId],
+  ["teaching_sessions",filter.sessionId],
+ ] as const){
+  if(!id)continue;
+  const {data:owned,error:ownedError}=await db.from(table).select("id")
+    .eq("teacher_id",teacherId).eq("id",id).maybeSingle();
+  if(ownedError)throw failure(500,"DATABASE_ERROR","Unable to verify material filter");
+  if(!owned)throw failure(404,"NOT_FOUND","Selected student, workplace or lesson not found");
+ }
+
  const limit=Math.min(100,Math.max(1,filter.limit??50));
  const offset=Math.min(100000,Math.max(0,filter.offset??0));
  let query=db.from("chess_material_progress").select(
