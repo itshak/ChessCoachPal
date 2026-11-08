@@ -24,8 +24,8 @@ export default function LandingPage() {
         <section className="max-w-3xl space-y-5">
           <p className="font-semibold text-primary">Your friendly chess-coaching assistant</p>
           <h1 className="font-bold text-4xl md:text-6xl tracking-tight leading-tight">More time for coaching. Less time on admin.</h1>
-          <p className="text-lg text-muted">A free, open-source workspace for chess teachers: students, groups, scheduling, attendance, lesson notes and learning history. Designed around AI-agent input and a dependable website for review and editing.</p>
-          <p className="text-sm text-muted">Built on the MIT-licensed CogNote project. Agent integrations and chess-specific workplace features are actively being adapted; see project status before deploying.</p>
+          <p className="text-lg text-muted">An AI-first workspace for chess teachers: students, groups, schedules, attendance, lesson notes and learning history. Record through connected AI assistants and review or correct everything on the website.</p>
+          <p className="text-sm text-muted">Built using MIT-licensed CogNote components. ChessCoachPal original development is proprietary; integrations and coaching workflows remain under active development.</p>
           <div className="flex flex-wrap gap-3">
             <Link href="/login" className="rounded-lg bg-primary text-white px-5 py-3 font-semibold">Open teacher workspace</Link>
             <a href="https://github.com/itshak/ChessCoachPal" className="rounded-lg border border-border px-5 py-3 font-semibold">Source and documentation</a>
