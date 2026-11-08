@@ -32,8 +32,12 @@ export const metadata: Metadata = {
     "AI-first chess teaching assistant: manage students, group and private lessons, attendance, learning history and schedules through your connected AI tools or the web.",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: PWA.shortName },
   icons: {
-    icon: "/icon/chesscoachpal.svg",
-    apple: "/icon/chesscoachpal.svg", // Approved vector; PNG export is included in the brand asset package
+    icon: [
+      { url: "/icon/chesscoachpal.svg", type: "image/svg+xml" },
+      { url: "/icon/chesscoachpal-32.png", type: "image/png", sizes: "32x32" },
+      { url: "/icon/favicon.ico", type: "image/x-icon", sizes: "any" },
+    ],
+    apple: "/icon/chesscoachpal-180.png",
   },
 };
 
