@@ -14,12 +14,12 @@ ALTER TABLE public.students
 -- A searchable derived field keeps multilingual names and aliases in the same roster query.
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS name_search text NOT NULL DEFAULT '';
 CREATE OR REPLACE FUNCTION public.ccp_student_search_refresh() RETURNS trigger
-LANGUAGE plpgsql SET search_path=public AS $
+LANGUAGE plpgsql SET search_path=public AS $$
 BEGIN
   NEW.name_search := lower(NEW.name || ' ' || array_to_string(NEW.name_aliases, ' '));
   RETURN NEW;
 END;
-$;
+$$;
 CREATE TRIGGER ccp_student_search_refresh
 BEFORE INSERT OR UPDATE ON public.students
 FOR EACH ROW EXECUTE FUNCTION public.ccp_student_search_refresh();
