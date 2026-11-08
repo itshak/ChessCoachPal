@@ -195,9 +195,11 @@
       "kind": "teacher",
       "parity": "gap",
       "existingTools": [
-        "ccp_v1_billing_invoice_detail"
+        "ccp_v1_billing_invoice_detail",
+        "ccp_v1_billing_invoice_draft_update",
+        "ccp_v1_billing_invoice_delete"
       ],
-      "explanation": "Shared scoped invoice GET plus MCP list/details redacted by default. Invoice draft edit/delete still await shared MCP implementation."
+      "explanation": "Shared owner-scoped invoice GET, draft line edits and deletion between website and MCP; financial write atomicity and idempotency still require acceptance tests."
     },
     {
       "path": "app/api/billing/invoices/[id]/send/route.ts",
@@ -206,8 +208,10 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Send invoice with recipient/amount preview"
+      "existingTools": [
+        "ccp_v1_billing_invoice_send"
+      ],
+      "explanation": "Website and MCP invoke same invoice sender. MCP requires email confirmation and redacts generated checkout URL. Exactly-once external email is unverified."
     },
     {
       "path": "app/api/billing/invoices/[id]/void/route.ts",
@@ -216,8 +220,10 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Void invoice with confirmation; no current MCP finance command"
+      "existingTools": [
+        "ccp_v1_billing_invoice_void"
+      ],
+      "explanation": "Shared invoice void with status preconditions and prepaid-credits guard; confirmed MCP action. Concurrency/retry acceptance remains open."
     },
     {
       "path": "app/api/billing/invoices/bulk/route.ts",

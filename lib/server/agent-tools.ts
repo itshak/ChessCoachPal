@@ -50,6 +50,9 @@ import {
 import {
  teacherInvoicesList,teacherInvoiceDetail,safeInvoice,teacherPaymentsExport,TeacherBillingError,
 } from "@/lib/server/teacher-billing-read-service";
+import {
+ teacherInvoiceDelete,teacherInvoiceVoid,teacherInvoiceDraftUpdate,teacherInvoiceSend,InvoiceActionError,
+} from "@/lib/server/teacher-invoice-actions";
 const uuid = z.string().uuid();
 const eventChanges=z.object({
   title:z.string().trim().min(1).max(200).optional(),
@@ -137,6 +140,40 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_billing_invoice_draft_update",
+    description:"Edit the notes or replace every line of one identified draft invoice. Verify totals and lesson IDs before explicit confirmation; paid/sent invoices cannot be edited.",
+    schema:z.object({invoiceId:uuid,changes:z.object({
+      notes:z.string().max(2000).optional(),
+      items:z.array(z.object({
+        id:uuid.optional(),lessonId:uuid.nullable().optional(),
+        description:z.string().trim().min(1).max(500),
+        quantity:z.number().int().min(1).max(10000),
+        unitCents:z.number().int().min(0).max(100000000),
+        amountCents:z.number().int().min(0).max(100000000),
+      }).strict()).max(100).optional(),
+    }).strict(),confirmed:z.literal(true)}).strict()
+      .refine(v=>Object.keys(v.changes).length>0,"Changes required"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_billing_invoice_void",
+    description:"Void a draft or sent invoice after teacher confirms its ID. Paid invoices or already redeemed prepaid credits cannot be voided.",
+    schema:z.object({invoiceId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_billing_invoice_delete",
+    description:"Permanently delete one identified draft or void invoice after confirmation. Never remove paid/sent invoice history.",
+    schema:z.object({invoiceId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_billing_invoice_send",
+    description:"Email an existing draft invoice PDF and mark it sent, optionally creating a Stripe checkout link. Requires explicit approval for the external email and financial impact; never silently send/retry.",
+    schema:z.object({invoiceId:uuid,confirmed:z.literal(true),confirmedEmail:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_billing_invoices_list",
@@ -663,6 +700,25 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_billing_invoice_draft_update": {
+        const a=args as {invoiceId:string;changes:Parameters<typeof teacherInvoiceDraftUpdate>[3]};
+        return {data:await teacherInvoiceDraftUpdate(db,teacherId,a.invoiceId,a.changes)};
+      }
+      case "ccp_v1_billing_invoice_void": {
+        const a=args as {invoiceId:string};
+        return {data:await teacherInvoiceVoid(db,teacherId,a.invoiceId)};
+      }
+      case "ccp_v1_billing_invoice_delete": {
+        const a=args as {invoiceId:string};
+        return {data:await teacherInvoiceDelete(db,teacherId,a.invoiceId)};
+      }
+      case "ccp_v1_billing_invoice_send": {
+        const a=args as {invoiceId:string};
+        const user=(await db.auth.getUser()).data.user;
+        const result=await teacherInvoiceSend(db,teacherId,a.invoiceId,user?.email,oauthOrigin());
+        const {checkoutUrl,...safe}=result;
+        return {data:{...safe,checkoutCreated:Boolean(checkoutUrl)}};
+      }
       case "ccp_v1_billing_invoices_list": {
         const a=args as Parameters<typeof teacherInvoicesList>[2];
         return {data:await teacherInvoicesList(db,teacherId,a)};
@@ -1020,6 +1076,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof InvoiceActionError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherBillingError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherEventError)
