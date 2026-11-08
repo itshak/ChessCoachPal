@@ -19,14 +19,16 @@ CREATE TRIGGER ccp_groups_revision BEFORE UPDATE ON public.class_groups
 FOR EACH ROW EXECUTE FUNCTION public.ccp_touch_revision();
 
 -- Allow application writers to see revisions so web and MCP edits share one lock version.
--- The RPC acts under the end-user's JWT, not a service-role elevated identity.
+-- The RPC uses auth.uid() from the end-user JWT and explicitly owner-scopes every query.
+-- SECURITY DEFINER is needed only because receipt storage is never directly
+-- accessible to authenticated clients. Never allow a caller-provided teacher ID.
 CREATE OR REPLACE FUNCTION public.agent_coaching_mutate(
   p_operation text,
   p_payload jsonb,
   p_expected_updated_at timestamptz,
   p_idempotency_key uuid,
   p_client_id text
-) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $
 DECLARE
   v_teacher uuid := auth.uid();
   v_hash text;
