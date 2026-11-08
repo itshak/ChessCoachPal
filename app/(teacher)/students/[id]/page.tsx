@@ -9,6 +9,7 @@ import { RemoveStudentButton } from "@/components/teacher/RemoveStudentButton";
 import { StudentNotesEditor } from "@/components/teacher/StudentNotesEditor";
 import { StudentLessonNotes } from "@/components/teacher/StudentLessonNotes";
 import { StudentInfoCard } from "@/components/teacher/StudentInfoCard";
+import { StudentChessProfileEditor } from "@/components/teacher/StudentChessProfileEditor";
 import { EditableStudentName } from "@/components/teacher/EditableStudentName";
 import { SkillsPanel } from "@/components/teacher/skills/SkillsPanel";
 import { CreditPackagesCard } from "@/components/teacher/billing/CreditPackagesCard";
@@ -118,6 +119,15 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         createdAt={student.created_at}
         initialDefaultRateCents={student.default_rate_cents ?? null}
         initialTravelFeeCents={student.travel_fee_cents ?? null}
+      />
+      <StudentChessProfileEditor
+        studentId={id}
+        initialAliases={student.name_aliases ?? []}
+        initialStrength={student.strength ?? null}
+        initialLichessUsername={student.lichess_username ?? null}
+        initialChesscomUsername={student.chesscom_username ?? null}
+        initialLichessRating={student.lichess_rating ?? null}
+        initialChesscomRating={student.chesscom_rating ?? null}
       />
       <CreditPackagesCard
         studentId={id}

@@ -2,28 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createStudentWithOptionalFamily } from "@/lib/server/families";
 import { parseBody, studentCreateSchema } from "@/lib/server/api-schemas";
+import { teacherStudentsRoster, StudentProfileError } from "@/lib/server/student-profile-service";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const params = req.nextUrl.searchParams;
+  const paginate = params.has("limit") || params.has("offset") || params.has("query");
+  const limit = paginate ? Number(params.get("limit") ?? 50) : 1000;
+  const offset = Number(params.get("offset") ?? 0);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000 ||
+      !Number.isInteger(offset) || offset < 0 || offset > 100000)
+    return NextResponse.json({ error: "Invalid pagination" }, { status: 400 });
+  try {
+    const roster = await teacherStudentsRoster(supabase, user.id, {
+      query: params.get("query") ?? undefined,
+      includeArchived: params.get("activeOnly") !== "true",
+      limit, offset,
+    });
+    return NextResponse.json(paginate ? roster : roster.students);
+  } catch (error) {
+    return NextResponse.json({ error: "Student roster unavailable" }, {
+      status: error instanceof StudentProfileError ? error.status : 500,
+    });
   }
-
-  const { data, error } = await supabase
-    .from("students")
-    .select("*")
-    .eq("teacher_id", user.id)
-    .order("name");
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data);
 }
 
 export async function POST(req: NextRequest) {
