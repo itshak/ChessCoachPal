@@ -79,3 +79,7 @@ Teacher-scoped manual payment entry and mistaken-payment deletion share a domain
 ## Phase M: studio backup/import secure parity increment
 
 Website backup/restore and three MCP transfer actions share the same allowlisted transfer implementation. MCP exports deliberately omit family portal credentials and provider/OAuth secrets; a sanitized backup imported later generates fresh guardian portal tokens. The MCP importer requires a preview digest and explicit user confirmation; E2E checks export redaction and website readback after an import. **Not full parity:** large exports require secure browser handoff, import lacks transaction-level rollback and complete replay/impact checks, and the strict 93-case acceptance remains blocked.
+
+## Phase N: spreadsheet onboarding parity increment
+
+Teacher-scoped CSV/XLSX parsing, column mapping, previews and family/student importing now share website/MCP implementations. Four MCP operations support base64 input, deterministic mapping, opt-in external AI suggestion and explicitly confirmed writes. Synthetic OAuth E2E compares website multipart parsing and normalized preview, then imports a student and verifies website readback. **Unresolved:** transaction-level rollback for multi-family imports, exact quota reservations, idempotent import receipts, file-format edge cases, external-provider error/privacy scenarios and the full strict 93-case signoff. This is not OpenSpec completion.

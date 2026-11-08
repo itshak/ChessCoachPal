@@ -63,6 +63,11 @@ import {teacherManualPaymentRecord,teacherManualPaymentDelete,ManualPaymentError
 import {
  teacherSafeExport,teacherImportPreview,teacherImportApply,TeacherTransferError,
 } from "@/lib/server/teacher-transfer-service";
+import {
+ teacherSpreadsheetParse,teacherSpreadsheetPreview,teacherSpreadsheetSuggest,
+ teacherSpreadsheetCommit,SpreadsheetImportError,MAX_SPREADSHEET_BYTES,
+} from "@/lib/server/teacher-spreadsheet-import";
+import type {ColumnMapping} from "@/lib/spreadsheet-import";
 const uuid = z.string().uuid();
 const eventChanges=z.object({
   title:z.string().trim().min(1).max(200).optional(),
@@ -150,6 +155,34 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_import_spreadsheet_parse",
+    description:"Parse a teacher-supplied CSV/XLSX spreadsheet provided as base64 without writing data. Return proposed mapping and a preview. Max file size 2 MB.",
+    schema:z.object({filename:z.string().trim().min(1).max(120),
+      base64:z.string().min(1).max(3000000)}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_import_spreadsheet_preview",
+    description:"Preview normalized student/family import rows using a selected column mapping before any database mutations.",
+    schema:z.object({rows:z.array(z.record(z.string(),z.string())).max(500),
+      mapping:z.record(z.string(),z.string().nullable())}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_import_spreadsheet_suggest",
+    description:"Suggest source-header column mapping. Local deterministic heuristic by default; AI provider requires useAi=true and confirmedExternal=true because sample data is shared with the configured external AI.",
+    schema:z.object({headers:z.array(z.string()).min(1).max(150),
+      sampleRows:z.array(z.record(z.string(),z.string())).max(8).optional(),
+      useAi:z.boolean().default(false),confirmedExternal:z.literal(true).optional()}).strict()
+      .refine(x=>!x.useAi||x.confirmedExternal===true,"External AI needs confirmation"),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_import_spreadsheet_commit",
+    description:"Commit up to 500 reviewed student/family rows; detects existing student names and enforces teacher scope/free-tier limits. Explicit teacher confirmation required; partial success can occur.",
+    schema:z.object({rows:z.array(z.record(z.string(),z.string())).min(1).max(500),
+      mapping:z.record(z.string(),z.string().nullable()),confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_settings_export",
@@ -776,6 +809,31 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_import_spreadsheet_parse": {
+        const a=args as {filename:string;base64:string};
+        const bytes=Buffer.from(a.base64,"base64");
+        if(bytes.length>MAX_SPREADSHEET_BYTES)
+          return {error:{code:"FILE_TOO_LARGE",message:"Spreadsheet exceeds 2 MB"}};
+        const arrayBuffer=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;
+        return {data:teacherSpreadsheetParse(a.filename,arrayBuffer)};
+      }
+      case "ccp_v1_import_spreadsheet_preview": {
+        const a=args as {rows:Record<string,string>[];mapping:ColumnMapping};
+        return {data:teacherSpreadsheetPreview(a)};
+      }
+      case "ccp_v1_import_spreadsheet_suggest": {
+        const a=args as {headers:string[];sampleRows?:Record<string,string>[];useAi:boolean};
+        return {data:await teacherSpreadsheetSuggest(db,teacherId,a)};
+      }
+      case "ccp_v1_import_spreadsheet_commit": {
+        const a=args as {rows:Record<string,string>[];mapping:ColumnMapping};
+        const response=await teacherSpreadsheetCommit(db,teacherId,a);
+        const data=await response.json();
+        if(!response.ok)
+          return {error:{code:response.status===403?"LIMIT_REACHED":"VALIDATION_ERROR",
+            message:data.error??"Spreadsheet import failed"}};
+        return {data};
+      }
       case "ccp_v1_settings_export":
         return {data:await teacherSafeExport(db,teacherId)};
       case "ccp_v1_settings_import_preview": {
@@ -1193,6 +1251,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof SpreadsheetImportError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherTransferError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof ManualPaymentError)

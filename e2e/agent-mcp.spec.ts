@@ -985,6 +985,49 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(importedFromSite.status(),await importedFromSite.text()).toBe(200);
   expect((await importedFromSite.json()).name).toBe("Imported synthetic chess student "+suffix);
 
+  // The same spreadsheet mapping/preview and scoped import are available via
+  // website multipart upload and delegated MCP JSON/base64 workflow.
+  for(const name of ["ccp_v1_import_spreadsheet_parse",
+    "ccp_v1_import_spreadsheet_preview","ccp_v1_import_spreadsheet_suggest",
+    "ccp_v1_import_spreadsheet_commit"])expect(names).toContain(name);
+  const csvStudent="Imported CSV chess student "+suffix;
+  const csvText=["Student Name,Guardian Name,Email",
+    csvStudent+",Chess parent "+suffix+",csv-"+suffix+"@example.com"].join("\n")+"\n";
+  const parsedFile=(await call("ccp_v1_import_spreadsheet_parse",{
+    filename:"chess-students.csv",base64:Buffer.from(csvText).toString("base64"),
+  })).structuredContent;
+  expect(parsedFile.error).toBeUndefined();
+  expect(parsedFile.data.previewTotal).toBe(1);
+  const browserParse=await page.request.post("/api/import/spreadsheet/parse",{
+    multipart:{file:{name:"chess-students.csv",mimeType:"text/csv",buffer:Buffer.from(csvText)}},
+  });
+  expect(browserParse.status(),await browserParse.text()).toBe(200);
+  const browserParsed=await browserParse.json();
+  expect(parsedFile.data.rows).toEqual(browserParsed.rows);
+  expect(parsedFile.data.mapping).toEqual(browserParsed.mapping);
+  const remapped=(await call("ccp_v1_import_spreadsheet_preview",{
+    rows:parsedFile.data.rows,mapping:parsedFile.data.mapping,
+  })).structuredContent;
+  expect(remapped.error).toBeUndefined();
+  const webRemapped=await page.request.put("/api/import/spreadsheet/parse",{
+    data:{rows:parsedFile.data.rows,mapping:parsedFile.data.mapping},
+  });
+  expect(webRemapped.status(),await webRemapped.text()).toBe(200);
+  expect(remapped.data).toEqual(await webRemapped.json());
+  const mapped=(await call("ccp_v1_import_spreadsheet_suggest",{
+    headers:parsedFile.data.headers,useAi:false,
+  })).structuredContent;
+  expect(mapped.error).toBeUndefined();
+  expect(mapped.data.mapping.student_name).toBe("Student Name");
+  const csvCommitted=(await call("ccp_v1_import_spreadsheet_commit",{
+    rows:parsedFile.data.rows,mapping:parsedFile.data.mapping,confirmed:true,
+  })).structuredContent;
+  expect(csvCommitted.error).toBeUndefined();
+  expect(csvCommitted.data.studentsCreated).toBe(1);
+  const importedRoster=await page.request.get("/api/students?query="+encodeURIComponent(csvStudent));
+  expect(importedRoster.status(),await importedRoster.text()).toBe(200);
+  expect((await importedRoster.json()).students.some((s:{name:string})=>s.name===csvStudent)).toBe(true);
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{

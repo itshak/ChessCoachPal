@@ -420,8 +420,10 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Confirm spreadsheet import"
+      "existingTools": [
+        "ccp_v1_import_spreadsheet_commit"
+      ],
+      "explanation": "Shared owner-scoped family/student importer, name dedup and hosted-limit preflight; confirmed MCP writes. Transactional rollback, concurrency and robust quota checks still outstanding."
     },
     {
       "path": "app/api/import/spreadsheet/parse/route.ts",
@@ -431,8 +433,11 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Upload/parse spreadsheet and choose mapping"
+      "existingTools": [
+        "ccp_v1_import_spreadsheet_parse",
+        "ccp_v1_import_spreadsheet_preview"
+      ],
+      "explanation": "Shared CSV/XLSX parser and normalizer used by website multipart upload and MCP base64/JSON operations. 2 MB/500-row limits. Browser/MCP test covers sample preview; file variants still open."
     },
     {
       "path": "app/api/import/spreadsheet/suggest/route.ts",
@@ -441,8 +446,10 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "AI suggested import mapping"
+      "existingTools": [
+        "ccp_v1_import_spreadsheet_suggest"
+      ],
+      "explanation": "Shared local heuristics and optional configured external AI mapping; MCP requires explicit confirmation before sending samples to external AI. Provider errors and privacy tests outstanding."
     },
     {
       "path": "app/api/notifications/route.ts",
