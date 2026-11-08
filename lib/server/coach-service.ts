@@ -23,7 +23,7 @@ const conflict = () => new CoachError("CONFLICT", 409, "Request conflicts with a
 
 export async function workplacesList(db: Db, teacherId: string) {
   const { data, error } = await db.from("workplaces")
-    .select("id,name,timezone,currency,locale,policy").eq("teacher_id", teacherId).order("name").limit(100);
+    .select("id,name,timezone,currency,locale,policy,updated_at").eq("teacher_id", teacherId).order("name").limit(100);
   if (error) throw problem();
   return data;
 }
@@ -42,7 +42,7 @@ export async function workplacesCreate(
 
 export async function studentsSearch(db: Db, teacherId: string, search = "") {
   let query = db.from("students")
-    .select("id,name,level").eq("teacher_id", teacherId)
+    .select("id,name,level,updated_at").eq("teacher_id", teacherId)
     .is("archived_at", null).order("name").limit(100);
   if (search) {
     // Literal prefix search; escape PostgREST LIKE metacharacters.
@@ -56,7 +56,7 @@ export async function studentsSearch(db: Db, teacherId: string, search = "") {
 
 export async function groupsList(db: Db, teacherId: string) {
   const { data, error } = await db.from("class_groups")
-    .select("id,name,workplace_id").eq("teacher_id", teacherId).order("name").limit(100);
+    .select("id,name,workplace_id,updated_at").eq("teacher_id", teacherId).order("name").limit(100);
   if (error) throw problem();
   return data;
 }
