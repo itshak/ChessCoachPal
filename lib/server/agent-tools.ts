@@ -53,6 +53,7 @@ import {
 import {
  teacherInvoiceDelete,teacherInvoiceVoid,teacherInvoiceDraftUpdate,teacherInvoiceSend,InvoiceActionError,
 } from "@/lib/server/teacher-invoice-actions";
+import {teacherConnectionsList,teacherConnectionRevoke,ConnectionError} from "@/lib/server/teacher-connections-service";
 const uuid = z.string().uuid();
 const eventChanges=z.object({
   title:z.string().trim().min(1).max(200).optional(),
@@ -140,6 +141,17 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_connections_list",
+    description:"List active authorized AI connector grants (client ID, scopes and timestamp only). Never reveal OAuth tokens or stored provider secrets.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_connections_revoke",
+    description:"After explicit confirmation, immediately revoke one identified OAuth grant, possibly this very connection. The grant loses access to all MCP tools and token refresh.",
+    schema:z.object({connectionId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_billing_invoice_draft_update",
@@ -700,6 +712,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_connections_list":
+        return {data:await teacherConnectionsList(teacherId)};
+      case "ccp_v1_connections_revoke": {
+        const a=args as {connectionId:string};
+        return {data:await teacherConnectionRevoke(teacherId,a.connectionId)};
+      }
       case "ccp_v1_billing_invoice_draft_update": {
         const a=args as {invoiceId:string;changes:Parameters<typeof teacherInvoiceDraftUpdate>[3]};
         return {data:await teacherInvoiceDraftUpdate(db,teacherId,a.invoiceId,a.changes)};
@@ -1076,6 +1094,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof ConnectionError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof InvoiceActionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherBillingError)

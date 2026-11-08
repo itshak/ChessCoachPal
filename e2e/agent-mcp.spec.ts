@@ -930,6 +930,28 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const grants=(await connections.json()).connections as {id:string;client_id:string}[];
   const grant=grants.find(g=>g.client_id===clientId);
   expect(grant).toBeTruthy();
+  // Both surfaces use the same teacher-scoped, secret-free grant service.
+  expect(names).toContain("ccp_v1_connections_list");
+  expect(names).toContain("ccp_v1_connections_revoke");
+  expect(roNames).toContain("ccp_v1_connections_list");
+  expect(roNames).not.toContain("ccp_v1_connections_revoke");
+  const connectedByMcp=(await call("ccp_v1_connections_list",{})).structuredContent.data.connections;
+  expect(connectedByMcp.map((x:{id:string})=>x.id).sort())
+    .toEqual(grants.map(x=>x.id).sort());
+  expect(connectedByMcp.every((x:{access_token?:string;refresh_token?:string})=>
+    x.access_token===undefined&&x.refresh_token===undefined)).toBe(true);
+  const readOnlyGrant=grants.find(x=>x.client_id===roClientId);
+  expect(readOnlyGrant).toBeTruthy();
+  const revokedViaMcp=(await call("ccp_v1_connections_revoke",{
+    connectionId:readOnlyGrant!.id,confirmed:true,
+  })).structuredContent;
+  expect(revokedViaMcp.error).toBeUndefined();
+  const disabledReadOnly=await request.post("/mcp",{
+    headers:{Authorization:"Bearer "+roToken},
+    data:{jsonrpc:"2.0",id:randomUUID(),method:"tools/list"},
+  });
+  expect(disabledReadOnly.status()).toBe(401);
+
   // Expiration rejects the old access token. Refresh rotates both credentials.
   const {error:expireError}=await admin.from("agent_oauth_grants").update({
     access_expires_at:new Date(Date.now()-60000).toISOString(),
