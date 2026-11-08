@@ -2,7 +2,7 @@
 
 **Outcome: SUPERSEDED / PARTIAL, NOT A COMPLETED RELEASE.**
 
-This release-only proposal was the last active OpenSpec change after automated Milestones 1–5 and agent-tool change 2b had been archived. Its five release tasks 5.8–5.12 were still unchecked when archived. To record the genuine intermediate deployment milestone without claiming a first public release, the tasks and binding first-release scenarios were transferred intact to [the active release successor](../../../complete-v0-1-0-release-gates/proposal.md).
+This release-only proposal was the last active OpenSpec change after automated Milestones 1–5 and agent-tool change 2b had been archived. Its five release tasks 5.8–5.12 were still unchecked when archived. To record the genuine intermediate deployment milestone without claiming a first public release, the tasks and binding first-release scenarios were transferred intact to [the active release successor](../../complete-v0-1-0-release-gates/proposal.md).
 
 ## Verified working hosted MCP demonstration
 
