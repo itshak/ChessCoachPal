@@ -15,8 +15,6 @@ on:
 
 permissions:
   contents: read
-  # Required by dorny/paths-filter on pull_request (GET /pulls/{n}/files).
-  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -66,27 +64,47 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      # Use the locally checked-out git history instead of the GitHub
+      # installation's GET /pulls/{number}/files quota. On any uncertainty,
+      # build rather than silently skip a Docker regression.
       - name: Check Docker-relevant paths
         id: filter
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            docker:
-              - 'Dockerfile'
-              - '.dockerignore'
-              - 'docker-compose.example.yml'
-              - 'docker/**'
-              - 'package.json'
-              - 'package-lock.json'
-              - 'next.config.ts'
-              - 'tsconfig.json'
-              - 'postcss.config.mjs'
-              - 'proxy.ts'
-              - 'app/**'
-              - 'lib/**'
-              - 'components/**'
-              - 'public/**'
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE_SHA"
+            head="$PR_HEAD_SHA"
+          elif [[ "$EVENT_NAME" == "push" ]]; then
+            base="$PUSH_BEFORE"
+            head="$CURRENT_SHA"
+          else
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null ||
+             ! git cat-file -e "${head}^{commit}" 2>/dev/null; then
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git diff --name-only "$base" "$head" > "$RUNNER_TEMP/changed-files"; then
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if grep -Eq '^(Dockerfile$|\.dockerignore$|docker-compose\.example\.yml$|docker/|package\.json$|package-lock\.json$|next\.config\.ts$|tsconfig\.json$|postcss\.config\.mjs$|proxy\.ts$|app/|lib/|components/|public/)' "$RUNNER_TEMP/changed-files"; then
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docker=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Docker Buildx
         if: steps.filter.outputs.docker == 'true'
