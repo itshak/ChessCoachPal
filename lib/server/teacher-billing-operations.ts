@@ -8,6 +8,7 @@ import {createCheckoutSession} from "@/lib/payments";
 import {familyDisplayName,stripeCheckoutPrefillEmail} from "@/lib/guardians";
 import {oneToOne} from "@/lib/schedule";
 import {sendInvoice} from "@/lib/server/invoice-send";
+import {teacherInvoiceDelete,teacherInvoiceVoid} from "@/lib/server/teacher-invoice-actions";
 const DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
 
 /** Shared website/delegated MCP financial domain services. */
@@ -434,6 +435,11 @@ export async function teacherBillingBulk(supabase:SupabaseClient,teacherId:strin
     );
   }
 
+  // Prevent duplicate invoices being processed and emailed twice within one
+  // batch request. The model and website must both see the same rejection.
+  if (new Set(ids).size !== ids.length) {
+    return NextResponse.json({ error: "Select each invoice only once" }, { status: 400 });
+  }
   const results: { id: string; ok: boolean; error?: string }[] = [];
 
   for (const id of ids) {
@@ -455,55 +461,15 @@ export async function teacherBillingBulk(supabase:SupabaseClient,teacherId:strin
       continue;
     }
 
-    const { data: invoice } = await supabase
-      .from("invoices")
-      .select("id, status")
-      .eq("id", id)
-      .eq("teacher_id", teacherId)
-      .single();
-
-    if (!invoice) {
-      results.push({ id, ok: false, error: "Not found" });
-      continue;
-    }
-
-    if (action === "delete") {
-      if (invoice.status !== "draft" && invoice.status !== "void") {
-        results.push({
-          id,
-          ok: false,
-          error: "Only draft or void invoices can be deleted",
-        });
-        continue;
-      }
-      const { error } = await supabase
-        .from("invoices")
-        .delete()
-        .eq("id", id)
-        .eq("teacher_id", teacherId);
-      results.push({
-        id,
-        ok: !error,
-        error: error?.message,
-      });
-      continue;
-    }
-
-    // void
-    if (invoice.status === "paid") {
-      results.push({ id, ok: false, error: "Paid invoices cannot be voided" });
-      continue;
-    }
-    if (invoice.status === "void") {
+    // Reuse the same credit/paid-status guards as the single-invoice API.
+    // A per-invoice failure does not hide successful changes to other IDs.
+    try {
+      if (action === "delete") await teacherInvoiceDelete(supabase, teacherId, id);
+      else await teacherInvoiceVoid(supabase, teacherId, id);
       results.push({ id, ok: true });
-      continue;
+    } catch (error) {
+      results.push({ id, ok: false, error: error instanceof Error ? error.message : "Invoice action failed" });
     }
-    const { error } = await supabase
-      .from("invoices")
-      .update({ status: "void" })
-      .eq("id", id)
-      .eq("teacher_id", teacherId);
-    results.push({ id, ok: !error, error: error?.message });
   }
 
   const succeeded = results.filter((r) => r.ok).length;
