@@ -1028,6 +1028,89 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(importedRoster.status(),await importedRoster.text()).toBe(200);
   expect((await importedRoster.json()).students.some((s:{name:string})=>s.name===csvStudent)).toBe(true);
 
+  // Last five teacher-business route families: invoice generation, refresh,
+  // PDF, Stripe-link guard and bulk invoice actions use the same domain service.
+  for(const toolName of [
+    "ccp_v1_billing_generation_preview","ccp_v1_billing_generation_commit",
+    "ccp_v1_billing_invoice_regenerate","ccp_v1_billing_invoice_pdf",
+    "ccp_v1_billing_invoice_checkout","ccp_v1_billing_invoices_bulk",
+  ])expect(names).toContain(toolName);
+  const generationLesson=(await call("ccp_v1_calendar_lessons_create",{
+    studentId:profileId,date:"2027-08-18",time:"16:00",durationMinutes:50,
+    confirmed:true,
+  })).structuredContent;
+  expect(generationLesson.error).toBeUndefined();
+  const generationLessonId=generationLesson.data.id as string;
+  const genAttendance=(await call("ccp_v1_calendar_attendance_record",{
+    lessonId:generationLessonId,status:"attended",confirmed:true,
+    notifyFamily:false,
+  })).structuredContent;
+  expect(genAttendance.error).toBeUndefined();
+  const configuredGenRate=(await call("ccp_v1_studio_policy_update",{
+    changes:{defaultRateCents:4000},confirmed:true,
+  })).structuredContent;
+  expect(configuredGenRate.error).toBeUndefined();
+  const generationDates={periodStart:"2027-08-01",periodEnd:"2027-08-31"};
+  const generationWeb=await page.request.post("/api/billing/generate",{
+    data:generationDates,
+  });
+  expect(generationWeb.status(),await generationWeb.text()).toBe(200);
+  const generationMcp=(await call("ccp_v1_billing_generation_preview",
+    generationDates)).structuredContent;
+  expect(generationMcp.error).toBeUndefined();
+  expect(generationMcp.data.totalCents).toBe((await generationWeb.json()).totalCents);
+  expect(generationMcp.data.totalFamilies).toBe(1);
+  const generated=(await call("ccp_v1_billing_generation_commit",{
+    ...generationDates,confirmed:true,
+  })).structuredContent;
+  expect(generated.error).toBeUndefined();
+  expect(generated.data.count).toBe(1);
+  const generatedId=generated.data.created[0] as string;
+  const generatedSite=await page.request.get("/api/billing/invoices/"+generatedId);
+  expect(generatedSite.status(),await generatedSite.text()).toBe(200);
+  expect((await generatedSite.json()).invoice_items).toHaveLength(1);
+  const regenSite=await page.request.post("/api/billing/invoices/"+generatedId+"/regenerate");
+  expect(regenSite.status(),await regenSite.text()).toBe(200);
+  const afterRegen=await page.request.get("/api/billing/invoices/"+generatedId);
+  expect((await afterRegen.json()).subtotal_cents).toBe((await regenSite.json()).subtotalCents);
+  const regenMcp=(await call("ccp_v1_billing_invoice_regenerate",{
+    invoiceId:generatedId,confirmed:true,
+  })).structuredContent;
+  expect(regenMcp.error).toBeUndefined();
+  expect(regenMcp.data.ok).toBe(true);
+  const invoicePdf=(await call("ccp_v1_billing_invoice_pdf",{
+    invoiceId:generatedId,confirmed:true,
+  })).structuredContent;
+  expect(invoicePdf.error).toBeUndefined();
+  expect(invoicePdf.data.mimeType).toBe("application/pdf");
+  expect(Buffer.from(invoicePdf.data.base64,"base64").subarray(0,4).toString()).toBe("%PDF");
+  const invoicePdfWeb=await page.request.get("/api/billing/invoices/"+generatedId+"/pdf");
+  expect(invoicePdfWeb.status(),await invoicePdfWeb.text()).toBe(200);
+  expect((await invoicePdfWeb.body()).subarray(0,4).toString()).toBe("%PDF");
+  const checkoutMcp=(await call("ccp_v1_billing_invoice_checkout",{
+    invoiceId:generatedId,confirmed:true,confirmedExternal:true,
+  })).structuredContent;
+  // Synthetic tenant has no Stripe secret: neither surface may create payment links.
+  expect(checkoutMcp.error.code).toBe("VALIDATION_ERROR");
+  const checkoutWeb=await page.request.post("/api/billing/invoices/"+generatedId+"/checkout");
+  expect(checkoutWeb.status()).toBe(400);
+  const bulkVoid=(await call("ccp_v1_billing_invoices_bulk",{
+    ids:[generatedId],action:"void",confirmed:true,
+  })).structuredContent;
+  expect(bulkVoid.error).toBeUndefined();
+  expect(bulkVoid.data.succeeded).toBe(1);
+  const voidedSite=await page.request.get("/api/billing/invoices/"+generatedId);
+  expect((await voidedSite.json()).status).toBe("void");
+  const deletedSite=await page.request.post("/api/billing/invoices/bulk",{
+    data:{action:"delete",ids:[generatedId]},
+  });
+  expect(deletedSite.status(),await deletedSite.text()).toBe(200);
+  expect((await deletedSite.json()).succeeded).toBe(1);
+  const missingGenerated=(await call("ccp_v1_billing_invoice_detail",{
+    invoiceId:generatedId,
+  })).structuredContent;
+  expect(missingGenerated.error.code).toBe("NOT_FOUND");
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{

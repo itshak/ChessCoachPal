@@ -142,9 +142,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
-      "existingTools": [],
-      "explanation": "Generate invoices for teacher-owned students and families; not exposed via MCP"
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_billing_generation_preview",
+        "ccp_v1_billing_generation_commit"
+      ],
+      "explanation": "Shared teacher-scoped draft invoice preview and creation via MCP and website; E2E exercises period charges. Concurrent billing, exact-once redemptions and idempotent invoice generation remain unverified.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/checkout/route.ts",
@@ -152,9 +156,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
-      "existingTools": [],
-      "explanation": "Payment checkout initiation requires browser approval"
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_billing_invoice_checkout"
+      ],
+      "explanation": "Both interfaces call the same Stripe checkout creation service, with explicit MCP approval and browser payment handoff. Test covers unconfigured provider guard, not live Stripe/payment state or retries.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/mark-paid/route.ts",
@@ -186,9 +193,12 @@
         "GET"
       ],
       "kind": "teacher",
-      "parity": "gap",
-      "existingTools": [],
-      "explanation": "Retrieve private invoice PDF; no authorized MCP file/export action"
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_billing_invoice_pdf"
+      ],
+      "explanation": "Website and MCP both use the same loadInvoicePdf and owner checks. E2E validates PDF signatures; MCP returns base64 up to 512 KB, larger files use secure browser download. Privacy and size-limit coverage incomplete.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/regenerate/route.ts",
@@ -196,9 +206,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
-      "existingTools": [],
-      "explanation": "Regenerate invoice billing lines; no MCP finance write action"
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_billing_invoice_regenerate"
+      ],
+      "explanation": "Shared teacher-owned draft regeneration via website and confirmed MCP call, E2E readback. Multi-table invoice line replacement is non-transactional; concurrent edits remain unverified.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/route.ts",
@@ -246,9 +259,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
-      "existingTools": [],
-      "explanation": "Bulk send invoices with explicit approval"
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_billing_invoices_bulk"
+      ],
+      "explanation": "Website and MCP share bulk send/delete/void service and partial-success results. MCP requires explicit email approval for send; exactly-once emails, concurrency and all-recipient confirmation pending.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
       "path": "app/api/coaching/report/route.ts",
