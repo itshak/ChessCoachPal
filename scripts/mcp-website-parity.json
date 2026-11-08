@@ -492,28 +492,38 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Bulk legacy scheduled-lesson attendance"
+      "existingTools": [
+        "ccp_v1_calendar_attendance_bulk"
+      ],
+      "explanation": "Shared owner-scoped bulk attendance updates, per-row partial failures and opt-in family notice, with OAuth E2E; atomic write/retry safeguards remain."
     },
     {
       "path": "app/api/schedule/lessons/[id]/attendance/route.ts",
       "methods": [
+        "GET",
         "PUT"
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Per legacy lesson attendance (different model from MCP teaching session)"
+      "existingTools": [
+        "ccp_v1_calendar_attendance_read",
+        "ccp_v1_calendar_attendance_record"
+      ],
+      "explanation": "Shared scoped private lesson attendance read/edit/clear; MCP requires explicit confirmation for email, no automatic notifications. Retry-safe semantics remain to certify."
     },
     {
       "path": "app/api/schedule/lessons/[id]/note/route.ts",
       "methods": [
+        "GET",
         "PUT"
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Private/shared legacy lesson notes"
+      "existingTools": [
+        "ccp_v1_calendar_lesson_note_read",
+        "ccp_v1_calendar_lesson_note_update"
+      ],
+      "explanation": "Shared teacher-private and family lesson notes, with email opt-in, secret redaction and explicit confirmation; replay-safe email still open."
     },
     {
       "path": "app/api/schedule/lessons/[id]/route.ts",

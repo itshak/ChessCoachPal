@@ -682,6 +682,62 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const noLesson=await page.request.get("/api/schedule/lessons/"+legacyId);
   expect(noLesson.status()).toBe(404);
 
+  // Teacher-scoped one-on-one attendance, notes and bulk corrections.
+  // Explicit email flags default false: synthetic tests must send no family email.
+  for(const toolName of ["ccp_v1_calendar_attendance_read","ccp_v1_calendar_attendance_record",
+    "ccp_v1_calendar_attendance_bulk","ccp_v1_calendar_lesson_note_read",
+    "ccp_v1_calendar_lesson_note_update"])expect(names).toContain(toolName);
+  const attendanceLesson=(await call("ccp_v1_calendar_lessons_create",{
+    studentId:profileId,date:"2026-11-24",time:"18:00",durationMinutes:50,
+    confirmed:true,
+  })).structuredContent;
+  expect(attendanceLesson.error).toBeUndefined();
+  const attendanceLessonId=attendanceLesson.data.id as string;
+  const recordAttendance=(await call("ccp_v1_calendar_attendance_record",{
+    lessonId:attendanceLessonId,status:"attended",notifyFamily:false,
+    confirmed:true,
+  })).structuredContent;
+  expect(recordAttendance.error).toBeUndefined();
+  expect(recordAttendance.data.status).toBe("attended");
+  const attendanceSite=await page.request.get("/api/schedule/lessons/"+attendanceLessonId+"/attendance");
+  expect(attendanceSite.status()).toBe(200);
+  expect((await attendanceSite.json()).status).toBe("attended");
+  const noteFromTool=(await call("ccp_v1_calendar_lesson_note_update",{
+    lessonId:attendanceLessonId,body:"Studied opposition in king-and-pawn endings",
+    privateBody:"Teacher-only: calculate slower",sendEmail:false,confirmed:true,
+  })).structuredContent;
+  expect(noteFromTool.error).toBeUndefined();
+  expect(noteFromTool.data.emailed).toBe(false);
+  const noteSite=await page.request.get("/api/schedule/lessons/"+attendanceLessonId+"/note");
+  expect(noteSite.status()).toBe(200);
+  expect((await noteSite.json()).private_body).toBe("Teacher-only: calculate slower");
+  const maskedNote=(await call("ccp_v1_calendar_lesson_note_read",{
+    lessonId:attendanceLessonId,
+  })).structuredContent.data;
+  expect(maskedNote.private_body).toBeUndefined();
+  const fullNote=(await call("ccp_v1_calendar_lesson_note_read",{
+    lessonId:attendanceLessonId,includePrivate:true,confirmed:true,
+  })).structuredContent.data;
+  expect(fullNote.private_body).toBe("Teacher-only: calculate slower");
+  const otherLesson=(await page.request.post("/api/schedule/lessons",{
+    data:{studentId:profileId,date:"2026-11-25",time:"18:00",durationMinutes:40},
+  }));
+  expect(otherLesson.status(),await otherLesson.text()).toBe(200);
+  const otherLessonId=(await otherLesson.json()).id as string;
+  const bulk=(await call("ccp_v1_calendar_attendance_bulk",{
+    ids:[otherLessonId,randomUUID()],status:"no_show",notifyFamily:false,
+    confirmed:true,
+  })).structuredContent;
+  expect(bulk.error).toBeUndefined();
+  expect(bulk.data.succeeded).toBe(1);
+  expect(bulk.data.failed).toHaveLength(1);
+  const bulkSite=await page.request.get("/api/schedule/lessons/"+otherLessonId+"/attendance");
+  expect((await bulkSite.json()).status).toBe("no_show");
+  const forbiddenAttendance=(await call("ccp_v1_calendar_attendance_read",{
+    lessonId:foreignStudent!.id,
+  })).structuredContent;
+  expect(forbiddenAttendance.error.code).toBe("NOT_FOUND");
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{

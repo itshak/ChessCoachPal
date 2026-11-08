@@ -37,6 +37,11 @@ import {
  calendarLessonsList,calendarLessonDetail,calendarLessonCreate,calendarLessonUpdate,
  calendarLessonDelete,CalendarError,
 } from "@/lib/server/legacy-calendar-service";
+import {
+ calendarAttendanceRead,calendarAttendanceWrite,calendarAttendanceBulk,
+ calendarLessonNoteRead,calendarLessonNoteWrite,LegacyAttendanceError,
+} from "@/lib/server/legacy-attendance-service";
+import { oauthOrigin } from "@/lib/server/agent-oauth-core";
 const uuid = z.string().uuid();
 const searchText = z.string().trim().min(1).max(80);
 const sessionId = z.object({ sessionId: uuid }).strict();
@@ -82,6 +87,48 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_calendar_attendance_read",
+    description:"Read an identified private lesson's recorded attendance and cancellation notice.",
+    schema:z.object({lessonId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_calendar_attendance_record",
+    description:"Confirm one private lesson's attendance, cancellation, no-show or deliberate clearing. Notification emails require notifyFamily=true plus explicit confirmedEmail=true; default is no email.",
+    schema:z.object({lessonId:uuid,
+      status:z.enum(["attended","teacher_cancel","student_cancel","no_show"]).nullable(),
+      noticeChoice:z.enum(["now","timely","late","custom"]).optional(),
+      noticeAt:z.string().datetime({offset:true}).nullable().optional(),
+      cancelNote:z.string().max(1000).optional(),
+      notifyFamily:z.boolean().default(false),confirmedEmail:z.literal(true).optional(),
+      confirmed:z.literal(true),
+    }).strict().refine(v=>!v.notifyFamily||v.confirmedEmail===true,"Email requires explicit confirmation"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_calendar_attendance_bulk",
+    description:"Bulk record 1–50 private lesson attended/no-show/teacher-cancel outcomes, per-ID failures reported. Email notifications require explicit confirmedEmail=true.",
+    schema:z.object({ids:z.array(uuid).min(1).max(50),status:z.enum(["attended","no_show","teacher_cancel"]),
+      notifyFamily:z.boolean().default(false),confirmedEmail:z.literal(true).optional(),
+      confirmed:z.literal(true),
+    }).strict().refine(v=>!v.notifyFamily||v.confirmedEmail===true,"Email requires explicit confirmation"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_calendar_lesson_note_read",
+    description:"Read a private lesson's student-facing notes. Teacher-private note is redacted unless includePrivate=true and confirmed=true.",
+    schema:z.object({lessonId:uuid,includePrivate:z.boolean().default(false),
+      confirmed:z.literal(true).optional()}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_calendar_lesson_note_update",
+    description:"Save one lesson's family-facing and private notes. Email is opt-in, requiring sendEmail=true AND confirmedEmail=true, never a surprise side effect.",
+    schema:z.object({lessonId:uuid,body:z.string().max(10000).optional(),
+      privateBody:z.string().max(10000).optional(),sendEmail:z.boolean().default(false),
+      confirmedEmail:z.literal(true).optional(),confirmed:z.literal(true),
+    }).strict().refine(v=>!v.sendEmail||v.confirmedEmail===true,"Email requires explicit confirmation"),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_calendar_slots_list",
@@ -491,6 +538,40 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_calendar_attendance_read": {
+        const a=args as {lessonId:string};
+        return {data:await calendarAttendanceRead(db,teacherId,a.lessonId)};
+      }
+      case "ccp_v1_calendar_attendance_record": {
+        const a=args as {lessonId:string;notifyFamily:boolean;status:"attended"|"teacher_cancel"|"student_cancel"|"no_show"|null;
+          noticeChoice?:"now"|"timely"|"late"|"custom";noticeAt?:string|null;cancelNote?:string};
+        const user=a.notifyFamily?(await db.auth.getUser()).data.user:null;
+        return {data:await calendarAttendanceWrite(db,teacherId,a.lessonId,a,{
+          origin:a.notifyFamily?oauthOrigin():"",
+          teacherEmail:user?.email,
+        })};
+      }
+      case "ccp_v1_calendar_attendance_bulk": {
+        const a=args as {ids:string[];status:"attended"|"no_show"|"teacher_cancel";notifyFamily:boolean};
+        const user=a.notifyFamily?(await db.auth.getUser()).data.user:null;
+        return {data:await calendarAttendanceBulk(db,teacherId,a,{
+          origin:a.notifyFamily?oauthOrigin():"",teacherEmail:user?.email,
+        })};
+      }
+      case "ccp_v1_calendar_lesson_note_read": {
+        const a=args as {lessonId:string;includePrivate:boolean;confirmed?:boolean};
+        const note=await calendarLessonNoteRead(db,teacherId,a.lessonId);
+        if(!note||a.includePrivate&&a.confirmed===true)return {data:note};
+        const {private_body,...safe}=note;
+        return {data:safe};
+      }
+      case "ccp_v1_calendar_lesson_note_update": {
+        const a=args as {lessonId:string;body?:string;privateBody?:string;sendEmail:boolean};
+        const user=a.sendEmail?(await db.auth.getUser()).data.user:null;
+        return {data:await calendarLessonNoteWrite(db,teacherId,a.lessonId,a,{
+          origin:a.sendEmail?oauthOrigin():"",teacherEmail:user?.email,
+        })};
+      }
       case "ccp_v1_calendar_slots_list": {
         const a=args as {studentId?:string;activeOnly?:boolean};
         return {data:await calendarSlotsList(db,teacherId,a)};
@@ -752,6 +833,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof LegacyAttendanceError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof CalendarError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof GuardianServiceError)
