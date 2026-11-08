@@ -269,8 +269,10 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Email event with recipient confirmation"
+      "existingTools": [
+        "ccp_v1_events_email_invites"
+      ],
+      "explanation": "MCP invitations require explicit email approval, website uses shared sending service. Exactly-once email delivery needs work."
     },
     {
       "path": "app/api/events/[id]/route.ts",
@@ -281,8 +283,13 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Event read/edit/delete"
+      "existingTools": [
+        "ccp_v1_events_detail",
+        "ccp_v1_events_update",
+        "ccp_v1_events_delete_impact",
+        "ccp_v1_events_delete"
+      ],
+      "explanation": "Shared event details, roster correction and explicit deletion approval. Race-safe history/RSVP updates not yet certified."
     },
     {
       "path": "app/api/events/route.ts",
@@ -292,8 +299,11 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Read existing events and create calendar events; no current MCP events tools"
+      "existingTools": [
+        "ccp_v1_events_list",
+        "ccp_v1_events_create"
+      ],
+      "explanation": "Shared teacher-scoped event list/create and RSVP initialization. Atomic roster side-effects and idempotent writes remain uncertified."
     },
     {
       "path": "app/api/feeds/[token]/calendar/route.ts",
