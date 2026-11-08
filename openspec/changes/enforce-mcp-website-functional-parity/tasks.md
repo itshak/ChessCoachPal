@@ -47,3 +47,7 @@ Recurring lesson slots and ad-hoc/make-up private lessons now use shared teacher
 ## Phase F: legacy attendance/notes increment
 
 Teacher-scoped private attendance, cancellation notice, explicit family-email actions, bulk marking and teacher-private/family-facing lesson notes now share service code between website and five MCP operations. Synthetic tests verify no-email defaults, notes privacy and cross-tenant protections. **Not completed parity**: idempotent external notifications, real-world delivery checks, DST/cancellation rules, all historical correction cases and 93-case release gate remain open.
+
+## Phase G: event scheduling and invitation increment
+
+Teacher-owned events, assigned students, RSVP summaries, delete-impact preview, and explicit invitation emails now share browser/MCP service code. Seven MCP operations and synthetic delegated OAuth tests validate core list/detail/edit/delete flows without sending email. **Unresolved:** cross-request idempotency, transactional roster updates, exactly-once email, concurrency, and full case-matrix acceptance. This does **not** archive or complete the change.

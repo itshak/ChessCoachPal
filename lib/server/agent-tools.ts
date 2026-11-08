@@ -42,6 +42,20 @@ import {
  calendarLessonNoteRead,calendarLessonNoteWrite,LegacyAttendanceError,
 } from "@/lib/server/legacy-attendance-service";
 import { oauthOrigin } from "@/lib/server/agent-oauth-core";
+import {
+ teacherEventsList,teacherEventDetail,teacherEventCreate,teacherEventUpdate,
+ teacherEventDeleteImpact,teacherEventDelete,teacherEventInviteEmail,TeacherEventError,
+} from "@/lib/server/teacher-events-service";
+const eventChanges=z.object({
+  title:z.string().trim().min(1).max(200).optional(),
+  description:z.string().max(10000).optional(),
+  location:z.string().max(1000).optional(),
+  startsAt:z.string().datetime({offset:true}).optional(),
+  endsAt:z.string().datetime({offset:true}).nullable().optional(),
+  sendReminder:z.boolean().optional(),
+  studentIds:z.array(uuid).max(200).optional(),
+  repertoireByStudent:z.record(uuid,z.string().max(10000)).optional(),
+}).strict();
 const uuid = z.string().uuid();
 const searchText = z.string().trim().min(1).max(80);
 const sessionId = z.object({ sessionId: uuid }).strict();
@@ -87,6 +101,49 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_events_list",
+    description:"List teacher-owned class events and RSVP aggregates without exposing family contact details or tokens.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_events_detail",
+    description:"Read an identified event and student roster; family RSVP notes require includeRsvps=true and explicit confirmation.",
+    schema:z.object({eventId:uuid,includeRsvps:z.boolean().default(false),
+      confirmed:z.literal(true).optional()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_events_create",
+    description:"Create an event for named students, with optional repertoires and RSVP invitations in pending state. DOES NOT email without a separate confirmed send tool.",
+    schema:eventChanges.extend({title:z.string().trim().min(1).max(200),
+      startsAt:z.string().datetime({offset:true}),confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_events_update",
+    description:"Edit an event and optionally REPLACE the whole student roster. Get the current event first, then explicitly confirm changed students and dates.",
+    schema:eventChanges.extend({eventId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_events_delete_impact",
+    description:"Preview an event's student roster and RSVPs before permanent deletion.",
+    schema:z.object({eventId:uuid}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_events_delete",
+    description:"Permanently delete an event and associated RSVP records only after explicit teacher confirmation.",
+    schema:z.object({eventId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_events_email_invites",
+    description:"Explicit external action: email event invitations to participating families. Requires confirmation; no automatic emails on create or edit.",
+    schema:z.object({eventId:uuid,confirmed:z.literal(true),confirmedEmail:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_calendar_attendance_read",
@@ -538,6 +595,37 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_events_list":
+        return {data:await teacherEventsList(db,teacherId)};
+      case "ccp_v1_events_detail": {
+        const a=args as {eventId:string;includeRsvps:boolean;confirmed?:boolean};
+        const result=await teacherEventDetail(db,teacherId,a.eventId);
+        return {data:{event:{
+          ...result.event,
+          rsvps:a.includeRsvps&&a.confirmed===true?result.event.rsvps:[],
+        }}};
+      }
+      case "ccp_v1_events_create": {
+        const a=args as Parameters<typeof teacherEventCreate>[2];
+        return {data:await teacherEventCreate(db,teacherId,a)};
+      }
+      case "ccp_v1_events_update": {
+        const a=args as Parameters<typeof teacherEventUpdate>[3]&{eventId:string};
+        return {data:await teacherEventUpdate(db,teacherId,a.eventId,a)};
+      }
+      case "ccp_v1_events_delete_impact": {
+        const a=args as {eventId:string};
+        return {data:await teacherEventDeleteImpact(db,teacherId,a.eventId)};
+      }
+      case "ccp_v1_events_delete": {
+        const a=args as {eventId:string};
+        return {data:await teacherEventDelete(db,teacherId,a.eventId)};
+      }
+      case "ccp_v1_events_email_invites": {
+        const a=args as {eventId:string};
+        const user=(await db.auth.getUser()).data.user;
+        return {data:await teacherEventInviteEmail(db,teacherId,a.eventId,user?.email,oauthOrigin())};
+      }
       case "ccp_v1_calendar_attendance_read": {
         const a=args as {lessonId:string};
         return {data:await calendarAttendanceRead(db,teacherId,a.lessonId)};
@@ -833,6 +921,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof TeacherEventError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof LegacyAttendanceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CalendarError)

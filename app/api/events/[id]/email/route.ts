@@ -1,38 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  loadEventForEmail,
-  sendEventEmails,
-} from "@/lib/server/event-email";
-import { getPolicy } from "@/lib/server/scheduling";
+import { TeacherEventError } from "@/lib/server/teacher-events-service";
+async function auth(){
+  const db=await createClient();
+  const {data:{user}}=await db.auth.getUser();
+  return user?{db,id:user.id,email:user.email}:null;
+}
+function failure(error:unknown){
+  return NextResponse.json({
+    error:error instanceof TeacherEventError?error.message:"Event unavailable",
+    code:error instanceof TeacherEventError?error.code:"DATABASE_ERROR",
+  },{status:error instanceof TeacherEventError?error.status:500});
+}
 import { requestOrigin } from "@/lib/server/http";
-
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const event = await loadEventForEmail(supabase, id, user.id);
-  if (!event) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  const policy = await getPolicy(supabase, user.id);
-  const { sent, skipped } = await sendEventEmails({
-    event,
-    policy,
-    teacherEmail: user.email,
-    origin: requestOrigin(req),
-    mode: "invite",
-  });
-
-  return NextResponse.json({ sent, skipped });
+import {teacherEventInviteEmail} from "@/lib/server/teacher-events-service";
+type Context={params:Promise<{id:string}>};
+export async function POST(req:NextRequest,{params}:Context){
+ const teacher=await auth();if(!teacher)return NextResponse.json({error:"Unauthorized"},{status:401});
+ try{return NextResponse.json(await teacherEventInviteEmail(
+   teacher.db,teacher.id,(await params).id,teacher.email,requestOrigin(req)));
+ }catch(error){return failure(error);}
 }

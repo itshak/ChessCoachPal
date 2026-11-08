@@ -738,6 +738,43 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(forbiddenAttendance.error.code).toBe("NOT_FOUND");
 
+  // Teacher-scoped events share website/MCP domain service. No emails sent in synthetic test.
+  for(const toolName of ["ccp_v1_events_list","ccp_v1_events_detail",
+    "ccp_v1_events_create","ccp_v1_events_update","ccp_v1_events_delete_impact",
+    "ccp_v1_events_delete","ccp_v1_events_email_invites"])expect(names).toContain(toolName);
+  const eventAdded=(await call("ccp_v1_events_create",{
+    title:"Synthetic chess tournament "+suffix,startsAt:"2026-12-18T16:00:00+02:00",
+    endsAt:"2026-12-18T18:00:00+02:00",
+    location:"Test chess classroom",studentIds:[profileId],confirmed:true,
+  })).structuredContent;
+  expect(eventAdded.error).toBeUndefined();
+  const testEventId=eventAdded.data.event.id as string;
+  const eventSite=await page.request.get("/api/events/"+testEventId);
+  expect(eventSite.status(),await eventSite.text()).toBe(200);
+  const siteEvent=(await eventSite.json()).event;
+  expect(siteEvent.students.some((x:{studentId:string})=>x.studentId===profileId)).toBe(true);
+  const agentEvent=(await call("ccp_v1_events_detail",{eventId:testEventId})).structuredContent.data.event;
+  expect(agentEvent.title).toBe(siteEvent.title);
+  expect(agentEvent.rsvps).toEqual([]);
+  const eventsOverview=(await call("ccp_v1_events_list",{})).structuredContent.data.events;
+  expect(eventsOverview.some((x:{id:string})=>x.id===testEventId)).toBe(true);
+  const eventUpdate=await page.request.put("/api/events/"+testEventId,{data:{location:"Updated lesson venue"}});
+  expect(eventUpdate.status(),await eventUpdate.text()).toBe(200);
+  expect((await call("ccp_v1_events_detail",{eventId:testEventId})).structuredContent.data.event.location)
+    .toBe("Updated lesson venue");
+  const eventImpact=(await call("ccp_v1_events_delete_impact",{
+    eventId:testEventId,
+  })).structuredContent.data;
+  expect(eventImpact.studentCount).toBe(1);
+  const invalidEvent=await call("ccp_v1_events_detail",{eventId:randomUUID()});
+  expect(invalidEvent.structuredContent.error.code).toBe("NOT_FOUND");
+  const removedEvent=(await call("ccp_v1_events_delete",{
+    eventId:testEventId,confirmed:true,
+  })).structuredContent;
+  expect(removedEvent.error).toBeUndefined();
+  const eventMissing=await page.request.get("/api/events/"+testEventId);
+  expect(eventMissing.status()).toBe(404);
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{
