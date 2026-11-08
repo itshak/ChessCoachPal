@@ -505,6 +505,61 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(restore.status(),await restore.text()).toBe(200);
   expect((await restore.json()).archived_at).toBeNull();
 
+  // Skill dimensions and append-only assessments use the same scoped
+  // website/MCP service. Never delete seed dimensions or another coach's data.
+  for(const toolName of ["ccp_v1_skill_dimensions_list","ccp_v1_skill_dimensions_create",
+    "ccp_v1_skill_dimensions_update","ccp_v1_skill_dimensions_delete_impact",
+    "ccp_v1_skill_dimensions_delete","ccp_v1_student_skill_assessments_list",
+    "ccp_v1_student_skill_assessments_record"])expect(names).toContain(toolName);
+  const skillsSite=await page.request.get("/api/skills/dimensions");
+  expect(skillsSite.status()).toBe(200);
+  const skillTool=await call("ccp_v1_skill_dimensions_list",{});
+  expect(skillTool.structuredContent.data).toEqual(await skillsSite.json());
+  const freshDimension=await call("ccp_v1_skill_dimensions_create",{
+    name:"Synthetic chess tactics "+suffix,confirmed:true,
+  });
+  expect(freshDimension.isError).toBe(false);
+  const dimId=freshDimension.structuredContent.data.id as string;
+  const rename=await page.request.put("/api/skills/dimensions/"+dimId,{
+    data:{name:"Synthetic chess calculation "+suffix},
+  });
+  expect(rename.status(),await rename.text()).toBe(200);
+  const refreshedSkills=(await call("ccp_v1_skill_dimensions_list",{})).structuredContent.data;
+  expect(refreshedSkills.find((x:{id:string})=>x.id===dimId).name)
+    .toBe("Synthetic chess calculation "+suffix);
+  const assessed=await call("ccp_v1_student_skill_assessments_record",{
+    studentId:profileId,confirmed:true,
+    ratings:[{dimensionId:dimId,rating:4,note:"Synthetic tactical pattern"}],
+  });
+  expect(assessed.isError).toBe(false);
+  const assessmentId=assessed.structuredContent.data[0].id as string;
+  const skillHistory=await page.request.get("/api/students/"+profileId+"/skills");
+  expect(skillHistory.status()).toBe(200);
+  expect((await skillHistory.json()).some((x:{id:string})=>x.id===assessmentId)).toBe(true);
+  const mcpHistory=(await call("ccp_v1_student_skill_assessments_list",{
+    studentId:profileId,
+  })).structuredContent.data;
+  expect(mcpHistory.some((x:{id:string})=>x.id===assessmentId)).toBe(true);
+  const deniedSkill=(await call("ccp_v1_student_skill_assessments_list",{
+    studentId:foreignStudent!.id,
+  })).structuredContent;
+  expect(deniedSkill.error.code).toBe("NOT_FOUND");
+  const preview=(await call("ccp_v1_skill_dimensions_delete_impact",{
+    dimensionId:dimId,
+  })).structuredContent.data;
+  expect(preview.assessmentCount).toBe(1);
+  const rejectWrongCount=(await call("ccp_v1_skill_dimensions_delete",{
+    dimensionId:dimId,expectedAssessmentCount:0,confirmed:true,
+  })).structuredContent;
+  expect(rejectWrongCount.error.code).toBe("CONFLICT");
+  const deletedSkill=(await call("ccp_v1_skill_dimensions_delete",{
+    dimensionId:dimId,expectedAssessmentCount:1,confirmed:true,
+  })).structuredContent;
+  expect(deletedSkill.error).toBeUndefined();
+  expect(deletedSkill.data.deletedAssessmentCount).toBe(1);
+  const afterDeletion=await page.request.get("/api/students/"+profileId+"/skills");
+  expect((await afterDeletion.json()).some((x:{id:string})=>x.id===assessmentId)).toBe(false);
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{

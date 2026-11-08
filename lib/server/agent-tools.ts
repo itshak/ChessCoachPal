@@ -23,6 +23,10 @@ const safeStudentProfile = (row: Record<string,unknown>) => ({
   lichess_rating:row.lichess_rating,chesscom_rating:row.chesscom_rating,
   archived_at:row.archived_at,updated_at:row.updated_at,
 });
+import {
+ skillDimensionsList, skillDimensionsCreate, skillDimensionsUpdate, skillDimensionsDelete,
+ studentSkillAssessmentsList, studentSkillAssessmentsRecord, TeacherSkillsError,
+} from "@/lib/server/teacher-skills-service";
 const uuid = z.string().uuid();
 const searchText = z.string().trim().min(1).max(80);
 const sessionId = z.object({ sessionId: uuid }).strict();
@@ -68,6 +72,47 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_skill_dimensions_list",
+    description:"List teacher-owned 1–5 assessment dimensions; the website uses the same chess-specific dimensions.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_skill_dimensions_create",
+    description:"Create a teacher-owned skill dimension after teacher approval; avoid duplicates.",
+    schema:z.object({name:z.string().trim().min(1).max(120),confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_skill_dimensions_update",
+    description:"Rename one teacher-owned skill dimension while preserving assessments; confirm the name.",
+    schema:z.object({dimensionId:uuid,name:z.string().trim().min(1).max(120),confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_skill_dimensions_delete_impact",
+    description:"Preview how many historical assessments would be cascaded before removing a skill dimension.",
+    schema:z.object({dimensionId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_skill_dimensions_delete",
+    description:"PERMANENTLY delete the dimension and its assessment history. Require confirmed=true and the exact assessment count from the preview; never decide for the coach.",
+    schema:z.object({dimensionId:uuid,expectedAssessmentCount:z.number().int().min(0),confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_student_skill_assessments_list",
+    description:"Read timestamped 1–5 skill assessment history for an identified owned student, including archived learners.",
+    schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_student_skill_assessments_record",
+    description:"Append a confirmed set of 1–5 skill assessments for an identified student. Dates are in the studio's configured timezone.",
+    schema:z.object({studentId:uuid,ratings:z.array(z.object({
+      dimensionId:uuid,rating:z.number().int().min(1).max(5),note:z.string().max(2000).optional(),
+    }).strict()).min(1).max(20),confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name: "ccp_v1_students_roster",
@@ -330,6 +375,48 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_skill_dimensions_list":
+        return {data:await skillDimensionsList(db,teacherId)};
+      case "ccp_v1_skill_dimensions_create": {
+        const a=args as {name:string};
+        return {data:await skillDimensionsCreate(db,teacherId,a.name)};
+      }
+      case "ccp_v1_skill_dimensions_update": {
+        const a=args as {dimensionId:string;name:string};
+        return {data:await skillDimensionsUpdate(db,teacherId,a.dimensionId,a.name)};
+      }
+      case "ccp_v1_skill_dimensions_delete_impact": {
+        const a=args as {dimensionId:string};
+        const {data,error}=await db.from("skill_dimensions").select("id")
+          .eq("teacher_id",teacherId).eq("id",a.dimensionId).maybeSingle();
+        if(error) throw new TeacherSkillsError(500,"DATABASE_ERROR","Skill lookup failed");
+        if(!data) throw new TeacherSkillsError(404,"NOT_FOUND","Skill dimension not found");
+        const {count,error:countError}=await db.from("skill_assessments")
+          .select("id",{count:"exact",head:true}).eq("dimension_id",a.dimensionId);
+        if(countError) throw new TeacherSkillsError(500,"DATABASE_ERROR","Skill history unavailable");
+        return {data:{dimensionId:a.dimensionId,assessmentCount:count??0}};
+      }
+      case "ccp_v1_skill_dimensions_delete": {
+        const a=args as {dimensionId:string;expectedAssessmentCount:number};
+        const {data,error}=await db.from("skill_dimensions").select("id")
+          .eq("teacher_id",teacherId).eq("id",a.dimensionId).maybeSingle();
+        if(error) throw new TeacherSkillsError(500,"DATABASE_ERROR","Skill lookup failed");
+        if(!data) throw new TeacherSkillsError(404,"NOT_FOUND","Skill dimension not found");
+        const {count,error:countError}=await db.from("skill_assessments")
+          .select("id",{count:"exact",head:true}).eq("dimension_id",a.dimensionId);
+        if(countError) throw new TeacherSkillsError(500,"DATABASE_ERROR","Skill history unavailable");
+        if(count!==a.expectedAssessmentCount)
+          return {error:{code:"CONFLICT",message:"Assessment count changed. Re-preview the deletion impact."}};
+        return {data:await skillDimensionsDelete(db,teacherId,a.dimensionId)};
+      }
+      case "ccp_v1_student_skill_assessments_list": {
+        const a=args as {studentId:string};
+        return {data:await studentSkillAssessmentsList(db,teacherId,a.studentId)};
+      }
+      case "ccp_v1_student_skill_assessments_record": {
+        const a=args as {studentId:string;ratings:Parameters<typeof studentSkillAssessmentsRecord>[3]};
+        return {data:await studentSkillAssessmentsRecord(db,teacherId,a.studentId,a.ratings)};
+      }
       case "ccp_v1_students_roster": {
         const a=args as {query?:string;includeArchived:boolean;offset:number;limit:number};
         const result=await teacherStudentsRoster(db,teacherId,a);
@@ -481,6 +568,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof TeacherSkillsError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof StudentProfileError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CoachError)

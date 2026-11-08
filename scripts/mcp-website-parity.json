@@ -585,8 +585,12 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Edit/remove skill dimension"
+      "existingTools": [
+        "ccp_v1_skill_dimensions_update",
+        "ccp_v1_skill_dimensions_delete_impact",
+        "ccp_v1_skill_dimensions_delete"
+      ],
+      "explanation": "Shared rename and preview/confirmed delete implementation. Atomic approval and replay-safe deletion outstanding."
     },
     {
       "path": "app/api/skills/dimensions/route.ts",
@@ -596,8 +600,11 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Read/add skill dimensions"
+      "existingTools": [
+        "ccp_v1_skill_dimensions_list",
+        "ccp_v1_skill_dimensions_create"
+      ],
+      "explanation": "Shared teacher-scoped list and create implementation with delegated OAuth parity test. Idempotency for create not yet certified."
     },
     {
       "path": "app/api/students/[id]/route.ts",
@@ -618,12 +625,16 @@
     {
       "path": "app/api/students/[id]/skills/route.ts",
       "methods": [
+        "GET",
         "POST"
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Record per-dimension skill assessment"
+      "existingTools": [
+        "ccp_v1_student_skill_assessments_list",
+        "ccp_v1_student_skill_assessments_record"
+      ],
+      "explanation": "Shared append-only 1–5 assessments and history with teacher-local date. Replay-safe writes outstanding."
     },
     {
       "path": "app/api/students/route.ts",
