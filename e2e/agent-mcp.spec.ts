@@ -671,22 +671,22 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const empty=(await call("ccp_v1_students_create",{
     name:"Unlinked deletion test "+suffix,idempotencyKey:randomUUID(),
   })).structuredContent.data;
-  const impact=(await call("ccp_v1_students_delete_impact",{
+  const studentDeleteImpact=(await call("ccp_v1_students_delete_impact",{
     studentId:empty.entityId,
   })).structuredContent.data;
   const impactWeb=await page.request.get("/api/students/"+empty.entityId+"?deletePreview=true");
   expect(impactWeb.status()).toBe(200);
-  expect(impact).toEqual(await impactWeb.json());
-  expect(impact.canDelete).toBe(true);
+  expect(studentDeleteImpact).toEqual(await impactWeb.json());
+  expect(studentDeleteImpact.canDelete).toBe(true);
   expect((await call("ccp_v1_students_delete_impact",{
     studentId:foreignStudent!.id,
   })).structuredContent.error.code).toBe("NOT_FOUND");
   expect((await page.request.delete("/api/students/"+empty.entityId)).status()).toBe(400);
-  const removed=(await call("ccp_v1_students_delete",{
-    studentId:empty.entityId,expectedUpdatedAt:impact.updatedAt,confirmed:true,
+  const removedStudent=(await call("ccp_v1_students_delete",{
+    studentId:empty.entityId,expectedUpdatedAt:studentDeleteImpact.updatedAt,confirmed:true,
   })).structuredContent;
-  expect(removed.error).toBeUndefined();
-  expect(removed.data.deleted).toBe(true);
+  expect(removedStudent.error).toBeUndefined();
+  expect(removedStudent.data.deleted).toBe(true);
   expect((await page.request.get("/api/students/"+empty.entityId)).status()).toBe(404);
 
   // Skill dimensions and append-only assessments use the same scoped
