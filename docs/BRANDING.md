@@ -19,6 +19,9 @@ A recognizable ivory chess **knight as teacher**, facing a smaller **pawn as pup
 - Master: `public/icon/chesscoachpal.svg`
 - Next icon: `app/icon.svg` (keep byte-identical to master)
 - PWA maskable: `public/icon/chesscoachpal-maskable.svg` (full-bleed midnight backdrop, composition inset within adaptive safe region)
+- Generated favicon and app PNGs: `public/icon/favicon.ico`, `public/icon/chesscoachpal-{16,32,48,64,128,180,192,256,512,1024}.png`, plus maskable `192`/`512` PNGs.
+- Apple touch icon uses the 180px PNG; Android PWA manifest includes 192px and 512px primary and maskable PNGs.
+- Rebuild all raster assets after editing the master: `python -m pip install cairosvg pillow && python scripts/export-brand-icons.py`. The source SVG, not individual PNGs, is authoritative.
 - Do not recolor individual logo elements independently of the website palette.
 - Preserve the full symbol on dark backgrounds and keep enough clear space around it; avoid clipping the ear, pawn, book point, or outer border.
 
