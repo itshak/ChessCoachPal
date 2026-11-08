@@ -1,4 +1,4 @@
-> **Archive decision 2026-11-08:** Superseded, **not accepted as a published release**. All five tasks below were unchecked when archived. They are copied without completion claims to [complete-v0-1-0-release-gates](../../../complete-v0-1-0-release-gates/tasks.md). The real Codex test proves only a supported MCP read/create/enroll subset; it does not certify ChatGPT, Claude, release history privacy or v0.1.0 publication.
+> **Archive decision 2026-11-08:** Superseded, **not accepted as a published release**. All five tasks below were unchecked when archived. They are copied without completion claims to [complete-v0-1-0-release-gates](../../complete-v0-1-0-release-gates/tasks.md). The real Codex test proves only a supported MCP read/create/enroll subset; it does not certify ChatGPT, Claude, release history privacy or v0.1.0 publication.
 
 # Tasks — finalize-v0-1-0-publication (formerly Milestone 5.8–5.12)
 
