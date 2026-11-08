@@ -34,8 +34,8 @@ const catalogue = [
     description: "Read a teacher-owned workplace's date-range sessions and attendance totals, with optional CSV or text export. The same server calculation powers the website. Instructor minutes count each group lesson once. No student names or notes in this aggregate.",
     schema: z.object({
       workplaceId: uuid,
-      from: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
-      to: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
