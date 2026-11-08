@@ -1094,6 +1094,14 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(checkoutMcp.error.code).toBe("VALIDATION_ERROR");
   const checkoutWeb=await page.request.post("/api/billing/invoices/"+generatedId+"/checkout");
   expect(checkoutWeb.status()).toBe(400);
+  const duplicateBulk=await page.request.post("/api/billing/invoices/bulk",{
+    data:{ids:[generatedId,generatedId],action:"send"},
+  });
+  expect(duplicateBulk.status()).toBe(400);
+  const duplicateMcp=(await call("ccp_v1_billing_invoices_bulk",{
+    ids:[generatedId,generatedId],action:"void",confirmed:true,
+  })).structuredContent;
+  expect(duplicateMcp.error.code).toBe("VALIDATION_ERROR");
   const bulkVoid=(await call("ccp_v1_billing_invoices_bulk",{
     ids:[generatedId],action:"void",confirmed:true,
   })).structuredContent;
