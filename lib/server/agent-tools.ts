@@ -42,6 +42,7 @@ import {
  calendarLessonNoteRead,calendarLessonNoteWrite,LegacyAttendanceError,
 } from "@/lib/server/legacy-attendance-service";
 import { oauthOrigin } from "@/lib/server/agent-oauth-core";
+import { teacherPolicyView, teacherPolicyUpdate } from "@/lib/server/teacher-policy-service";
 import {
  teacherEventsList,teacherEventDetail,teacherEventCreate,teacherEventUpdate,
  teacherEventDeleteImpact,teacherEventDelete,teacherEventInviteEmail,TeacherEventError,
@@ -56,6 +57,37 @@ const eventChanges=z.object({
   sendReminder:z.boolean().optional(),
   studentIds:z.array(uuid).max(200).optional(),
   repertoireByStudent:z.record(uuid,z.string().max(10000)).optional(),
+}).strict();
+const studioPolicyPatch=z.object({
+ studioName:z.string().max(120).optional(),
+ studioWebsite:z.string().max(300).optional(),
+ studioContact:z.string().max(300).optional(),
+ studioInfo:z.string().max(5000).optional(),
+ lessonLabel:z.string().max(60).optional(),
+ lessonDurationOptions:z.array(z.number().int().min(5).max(240)).min(1).max(20).optional(),
+ timezone:z.string().max(100).optional(),
+ cancellationWindowHours:z.number().min(0).max(8760).optional(),
+ timelyCancelEarnsMakeup:z.boolean().optional(),
+ lateCancelEarnsMakeup:z.boolean().optional(),
+ noShowEarnsMakeup:z.boolean().optional(),
+ teacherCancelEarnsMakeup:z.boolean().optional(),
+ makeupCreditExpiryDays:z.number().int().min(0).max(3650).nullable().optional(),
+ billAttended:z.boolean().optional(),billNoShow:z.boolean().optional(),
+ billTeacherCancel:z.boolean().optional(),
+ billTimelyStudentCancel:z.boolean().optional(),billLateStudentCancel:z.boolean().optional(),
+ billMakeup:z.boolean().optional(),
+ defaultRateCents:z.number().int().min(0).max(10000000).nullable().optional(),
+ travelFeeCents:z.number().int().min(0).max(10000000).nullable().optional(),
+ durationRateCents:z.record(z.string(),z.number().int().min(0).max(10000000)).optional(),
+ rateBasis:z.enum(["per_lesson","per_hour"]).optional(),
+ currency:z.string().trim().min(3).max(3).optional(),
+ invoiceCadence:z.enum(["monthly","manual"]).optional(),
+ paymentInstructions:z.string().max(2000).optional(),
+ notifyInApp:z.boolean().optional(),
+ notifyEmailPortalCancel:z.boolean().optional(),
+ notifyEmailInvoicePaid:z.boolean().optional(),
+ bccFamilyEmails:z.boolean().optional(),
+ bccEmail:z.string().max(320).nullable().optional(),
 }).strict();
 
 const searchText = z.string().trim().min(1).max(80);
@@ -102,6 +134,18 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_studio_policy_get",
+    description:"Read the teacher's studio rules, rates, cancellation policies and billing settings. Secrets and payment QR data are redacted.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_studio_policy_update",
+    description:"Edit studio rates, cancellation rules, timezone, invoice settings and communication preferences with explicit confirmation. API keys and payment secrets are website-only secure inputs.",
+    schema:z.object({changes:studioPolicyPatch,confirmed:z.literal(true)}).strict()
+      .refine(v=>Object.keys(v.changes).length>0,"Changes required"),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_events_list",
@@ -596,6 +640,23 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_studio_policy_get": {
+        const p=await teacherPolicyView(db,teacherId);
+        return {data:{...p,payment_qr_code:null,
+          paymentQrCodeConfigured:Boolean(p.payment_qr_code)}};
+      }
+      case "ccp_v1_studio_policy_update": {
+        const a=args as {changes:Record<string,unknown>};
+        const user=(await db.auth.getUser()).data.user;
+        const response=await teacherPolicyUpdate(db,teacherId,user?.email,a.changes);
+        const body=await response.json();
+        if(!response.ok)return {error:{
+          code:response.status===400?"VALIDATION_ERROR":"DATABASE_ERROR",
+          message:body.error??"Could not update studio policy",
+        }};
+        return {data:{...body,payment_qr_code:null,
+          paymentQrCodeConfigured:Boolean(body.payment_qr_code)}};
+      }
       case "ccp_v1_events_list":
         return {data:await teacherEventsList(db,teacherId)};
       case "ccp_v1_events_detail": {

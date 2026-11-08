@@ -775,6 +775,30 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const eventMissing=await page.request.get("/api/events/"+testEventId);
   expect(eventMissing.status()).toBe(404);
 
+  // Studio preferences share the same validation and secret-masking service.
+  for(const toolName of ["ccp_v1_studio_policy_get","ccp_v1_studio_policy_update"])
+    expect(names).toContain(toolName);
+  const webPolicyResponse=await page.request.get("/api/settings/policy");
+  expect(webPolicyResponse.status(),await webPolicyResponse.text()).toBe(200);
+  const originalPolicy=await webPolicyResponse.json();
+  const mcpPolicy=(await call("ccp_v1_studio_policy_get",{})).structuredContent.data;
+  expect(mcpPolicy.studio_name).toBe(originalPolicy.studio_name);
+  expect(mcpPolicy.timezone).toBe(originalPolicy.timezone);
+  expect(mcpPolicy.stripe_secret_key).toBeNull();
+  expect(mcpPolicy.ai_api_key).toBeNull();
+  expect(mcpPolicy.payment_qr_code).toBeNull();
+  const updatedPolicy=(await call("ccp_v1_studio_policy_update",{
+    changes:{studioName:"Synthetic chess academy "+suffix},confirmed:true,
+  })).structuredContent;
+  expect(updatedPolicy.error).toBeUndefined();
+  expect(updatedPolicy.data.studio_name).toBe("Synthetic chess academy "+suffix);
+  const policyBrowser=await page.request.get("/api/settings/policy");
+  expect((await policyBrowser.json()).studio_name).toBe("Synthetic chess academy "+suffix);
+  const restorePolicy=await page.request.put("/api/settings/policy",{
+    data:{studioName:originalPolicy.studio_name},
+  });
+  expect(restorePolicy.status(),await restorePolicy.text()).toBe(200);
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{
