@@ -1,0 +1,9 @@
+# Tasks — complete-v0-1-0-release-gates
+
+Transferred without checking or waiver from the [superseded release proposal](../archive/2026-11-08-finalize-v0-1-0-publication/tasks.md). The working Codex/MCP demo is independently verified and logged at [docs/STATUS.md](../../../docs/STATUS.md), but final release requirements are still outstanding.
+
+- [ ] **5.8** Perform the **final** real ChatGPT **and** Claude delegated OAuth/MCP read/write, website correction, tenant isolation and grant revocation against maintainer-controlled synthetic HTTPS data. Record sanitized client, plan and results. The real Codex search/create/enroll demo is supplemental evidence only; do not substitute it for either vendor.
+- [ ] **5.9** Fully disposition historical M4 Actions log/artifact/PII/private URL and recoverable SHA candidates, GitHub Homepage metadata, unavailable/binary material and third-party redistribution-license findings using [the historical privacy ledger](../../../docs/HISTORICAL_PRIVACY_REVIEW.md). Record residual decisions and remedies. Only after 5.8 and all other gates, check the six docs/RELEASING.md boxes with supporting evidence.
+- [ ] **5.10** After final local signoff and checked release criteria, prepare and review a 0.1.0 `package.json`/`package-lock.json` bump and dated truthful `CHANGELOG.md` with pre-1.0 breaking-change policy; merge only with release authorization.
+- [ ] **5.11** Observe green release workflow for the exact approved main SHA, annotated `v0.1.0` Git tag and GitHub Release including changelog and GitHub ZIP/tar.gz source archives.
+- [ ] **5.12** Record final release URL, tested commit, fresh setup/DB-file recovery evidence and maintainer approval in docs/STATUS.md; archive this change **only after publication exists**.

@@ -1,3 +1,5 @@
+> **Archived as superseded, NOT released.** The binding final publication gates continue in [complete-v0-1-0-release-gates](../../complete-v0-1-0-release-gates/design.md). No release gate was waived.
+
 # Final publication workflow — binding gates
 
 - **Development on GitHub:** accept merged 2b and its passing main Actions evidence, verify automatic tenant isolation, OAuth/MCP contracts, fresh Compose signup, repeatable second-instance DB and uploaded-file recovery, PWA/accessibility and release tests with synthetic records only. Capture tested main commit and Action run URLs.
