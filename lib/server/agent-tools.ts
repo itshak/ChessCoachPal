@@ -11,6 +11,7 @@ import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
   chessResourcesList, chessResourcesCreate, chessResourcesUpdate } from "@/lib/server/chess-learning";
 import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
+import {materialCoverageFilter,teacherMaterialCoverageReport,MaterialCoverageError} from "@/lib/server/teacher-material-coverage";
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
@@ -724,6 +725,12 @@ const catalogue = [
     schema: observationInput, scope: "coach:write", readOnly: false,
   },
   {
+    name:"ccp_v1_materials_coverage_report",
+    description:"Full selected date-range, teacher-owned student or workplace coverage of explicitly assigned, actually taught and teacher-attested completed chess studies. Counts unique learners and deduplicates a shared group lesson once per resource; reports are never inferred from mere study links. Source metadata, counts and provenance warnings match website.",
+    schema:materialCoverageFilter,
+    scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_v1_materials_history_list",
     description:"List **explicitly recorded** study/material stages for a teacher-owned student, workplace or session. Stages distinguish assigned, actually taught, and teacher-attested completed; mere study links are never counted. Workplace results deduplicate sessions in page summary.",
     schema:materialsHistoryFilter,
@@ -1307,6 +1314,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as Parameters<typeof chessObservationsCreate>[2];
         return { data: await chessObservationsCreate(db,teacherId,a,"agent") };
       }
+      case "ccp_v1_materials_coverage_report": {
+        const a=args as Parameters<typeof teacherMaterialCoverageReport>[2];
+        return {data:await teacherMaterialCoverageReport(db,teacherId,a)};
+      }
       case "ccp_v1_materials_history_list": {
         const a=args as Parameters<typeof teacherMaterialHistory>[2];
         return {data:await teacherMaterialHistory(db,teacherId,a)};
@@ -1414,6 +1425,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof MaterialCoverageError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof MaterialHistoryError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof SpreadsheetImportError)
