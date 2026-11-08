@@ -231,9 +231,12 @@
         "GET"
       ],
       "kind": "teacher",
-      "parity": "gap",
-      "existingTools": [],
-      "explanation": "Workplace date-range teaching/attendance report plus text/CSV"
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_reports_workplace_summary"
+      ],
+      "explanation": "Read-only MCP summary and CSV/text exports reuse the same teacher-scoped report service as website GET; authenticated cross-interface/tenant E2E in e2e/agent-mcp.spec.ts",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
       "path": "app/api/cron/event-reminders/route.ts",

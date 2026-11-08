@@ -53,7 +53,17 @@ for (const route of inventory.apiRoutes) {
   const methods = [...source.matchAll(/export\s+(?:async\s+)?(?:function|const)\s+(GET|POST|PUT|PATCH|DELETE)\b/g)].map(m=>m[1]);
   assert(same(methods,route.methods),route.path+": HTTP methods changed; actual="+methods.join(",")+" expected="+route.methods.join(","));
   for (const t of route.existingTools) assert(liveNames.has(t),route.path+": claimed MCP tool does not exist: "+t);
-  if (route.parity==="mcp") assert(route.existingTools.length>0,route.path+": cannot mark MCP complete without current tool");
+  if (route.parity==="mcp") {
+    assert(route.existingTools.length>0,route.path+": cannot mark MCP complete without current tool");
+    assert(typeof route.evidenceTest==="string" && route.evidenceTest.startsWith("e2e/") &&
+      route.evidenceTest.endsWith(".spec.ts") && existsSync(join(root,route.evidenceTest)),
+      route.path+": marked MCP-complete without executable authenticated E2E reference");
+    if (typeof route.evidenceTest==="string" && existsSync(join(root,route.evidenceTest))) {
+      const testSource=readFileSync(join(root,route.evidenceTest),"utf8");
+      for (const toolName of route.existingTools)
+        assert(testSource.includes(toolName),route.path+": E2E reference does not name live tool "+toolName);
+    }
+  }
   if (route.kind==="teacher") assert(["mcp","partial","gap"].includes(route.parity),
     route.path+": user-facing business route needs direct MCP parity (a secure exception must be individually reviewed, not hidden)");
   if (route.kind==="system"||route.kind==="external"||route.kind==="ui") assert(route.parity==="not-applicable",
@@ -72,8 +82,17 @@ if (outstanding.length>0) {
   console.log("Release BLOCKED: "+outstanding.length+" teacher-business route surfaces still lack verified full MCP parity.");
   for (const r of outstanding) console.log("  "+r.parity+" "+r.path+": "+r.explanation);
 }
-if (process.argv.includes("--strict") && outstanding.length>0) {
-  errors.push("Strict MCP-first parity gate failed: "+outstanding.length+" teacher-business route surfaces incomplete.");
+const checklist=readFileSync(join(root,"docs/MCP_WEBSITE_PARITY_CHECKLIST.md"),"utf8");
+const cases=[...checklist.matchAll(/^\\|\\s*-\\s*\\[([ xX])\\]\\s*\\|/gm)];
+assert(cases.length===93,"Parity checklist expected exactly 93 behavioral scenarios; found "+cases.length);
+const pendingCases=cases.filter(match=>match[1]===" ").length;
+console.log("Browser ↔ MCP behavioral checklist: "+(cases.length-pendingCases)+"/"+cases.length+
+  " verified, "+pendingCases+" not yet checked.");
+if (process.argv.includes("--strict")) {
+  if (outstanding.length>0)
+    errors.push("Strict MCP-first parity gate failed: "+outstanding.length+" teacher-business route surfaces incomplete.");
+  if (pendingCases>0)
+    errors.push("Strict MCP-first parity gate failed: "+pendingCases+" unchecked browser/MCP behavior scenarios.");
 }
 if (errors.length) {
   for (const e of errors) console.error("ERROR: "+e);
