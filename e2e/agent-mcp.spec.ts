@@ -242,6 +242,12 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(madeWorkplace.revision).toBeTruthy();
   expect((await call("ccp_v1_workplaces_create",workplaceArgs)).structuredContent.data)
     .toEqual(madeWorkplace);
+  const differentPayloadReplay=await call("ccp_v1_workplaces_create",{
+    ...workplaceArgs,name:"Not another workplace", 
+  });
+  expect(differentPayloadReplay.isError).toBe(true);
+  expect(differentPayloadReplay.structuredContent.error.code).toBe("CONFLICT");
+  expect(JSON.stringify(madeWorkplace)).not.toContain(workplaceArgs.name);
   expect((await postDomain({action:"workplaces.list"}))
     .some((x:{id:string})=>x.id===madeWorkplace.entityId)).toBe(true);
   const workplaceUpdateArgs={workplaceId:madeWorkplace.entityId,
@@ -357,6 +363,50 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   });
   expect(blockedStudent.isError).toBe(true);
   expect(blockedStudent.structuredContent.error.code).toBe("NOT_FOUND");
+
+  // A delegated read-only OAuth grant must neither list nor invoke any write
+  // tool, even if the client guesses a valid, versioned tool name.
+  const roReg=await request.post("/oauth/register",{data:{
+    client_name:"Read-only synthetic MCP",redirect_uris:[callback],
+    token_endpoint_auth_method:"none",
+  }});
+  expect(roReg.status()).toBe(201);
+  const roClientId=(await roReg.json()).client_id as string;
+  const roParams=new URLSearchParams({
+    client_id:roClientId,redirect_uri:callback,response_type:"code",
+    resource,code_challenge_method:"S256",code_challenge:challenge,
+    state:"read-only-synthetic",scope:"coach:read",
+  });
+  await page.goto("/oauth/authorize?"+roParams.toString());
+  await expect(page.getByRole("heading",{name:"Authorize AI connector"})).toBeVisible();
+  await page.getByRole("button",{name:"Authorize"}).click();
+  await page.waitForURL(u=>u.pathname==="/oauth/synthetic-callback" &&
+    u.searchParams.has("code"),{waitUntil:"commit",timeout:20000});
+  const roCode=new URL(page.url()).searchParams.get("code")!;
+  const roResp=await request.post("/oauth/token",{form:{
+    grant_type:"authorization_code",client_id:roClientId,redirect_uri:callback,
+    code:roCode,code_verifier:verifier,resource,
+  }});
+  expect(roResp.status(),await roResp.text()).toBe(200);
+  const roToken=(await roResp.json()).access_token as string;
+  const roCall=async (method:string,params?:unknown)=>{
+    const res=await request.post("/mcp",{headers:{
+      Authorization:"Bearer "+roToken,"MCP-Protocol-Version":"2025-06-18",
+    },data:{jsonrpc:"2.0",id:randomUUID(),method,params}});
+    expect(res.status(),await res.text()).toBe(200);
+    return (await res.json()).result;
+  };
+  const roNames=(await roCall("tools/list")).tools.map((x:{name:string})=>x.name);
+  expect(roNames).toContain("ccp_v1_students_search");
+  expect(roNames).not.toContain("ccp_v1_students_create");
+  expect(roNames).not.toContain("ccp_v1_sessions_cancel");
+  const forbiddenWrite=await roCall("tools/call",{
+    name:"ccp_v1_students_create",arguments:{
+      name:"Never create with read-only token",idempotencyKey:randomUUID(),
+    },
+  });
+  expect(forbiddenWrite.isError).toBe(true);
+  expect(forbiddenWrite.structuredContent.error.code).toBe("FORBIDDEN");
 
   const connections=await page.request.get("/api/agent/connections");
   expect(connections.status()).toBe(200);
