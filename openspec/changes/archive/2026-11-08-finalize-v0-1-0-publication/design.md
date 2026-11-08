@@ -1,4 +1,4 @@
-> **Archived as superseded, NOT released.** The binding final publication gates continue in [complete-v0-1-0-release-gates](../../../complete-v0-1-0-release-gates/design.md). No release gate was waived.
+> **Archived as superseded, NOT released.** The binding final publication gates continue in [complete-v0-1-0-release-gates](../../complete-v0-1-0-release-gates/design.md). No release gate was waived.
 
 # Final publication workflow — binding gates
 
