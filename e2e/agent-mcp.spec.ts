@@ -846,6 +846,41 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(accountCsvMcp.csv).toBe(await accountCsvSite.text());
   expect(accountCsvMcp.csv).toContain("'=2+2");
 
+  // Financial mutations require explicit teacher confirmation and status checks.
+  // No email is sent in the mutation tests.
+  for(const toolName of ["ccp_v1_billing_invoice_draft_update",
+    "ccp_v1_billing_invoice_void","ccp_v1_billing_invoice_delete",
+    "ccp_v1_billing_invoice_send"])expect(names).toContain(toolName);
+  const {data:mutableInvoice,error:mutableError}=await admin.from("invoices").insert({
+    teacher_id:session!.user.id,guardian_id:acctGuardian!.id,status:"draft",
+    period_start:"2027-01-01",period_end:"2027-01-31",currency:"USD",subtotal_cents:0,
+  }).select("id").single();
+  expect(mutableError).toBeNull();
+  const mutableId=mutableInvoice!.id as string;
+  const changedDraft=(await call("ccp_v1_billing_invoice_draft_update",{
+    invoiceId:mutableId,changes:{notes:"Synthetic reviewed draft "+suffix},confirmed:true,
+  })).structuredContent;
+  expect(changedDraft.error).toBeUndefined();
+  const changedFromSite=await page.request.get("/api/billing/invoices/"+mutableId);
+  expect(changedFromSite.status(),await changedFromSite.text()).toBe(200);
+  expect((await changedFromSite.json()).notes).toBe("Synthetic reviewed draft "+suffix);
+  const voidedDraft=(await call("ccp_v1_billing_invoice_void",{
+    invoiceId:mutableId,confirmed:true,
+  })).structuredContent;
+  expect(voidedDraft.error).toBeUndefined();
+  const voidSite=await page.request.get("/api/billing/invoices/"+mutableId);
+  expect((await voidSite.json()).status).toBe("void");
+  const deletedDraft=(await call("ccp_v1_billing_invoice_delete",{
+    invoiceId:mutableId,confirmed:true,
+  })).structuredContent;
+  expect(deletedDraft.error).toBeUndefined();
+  const noDraft=await page.request.get("/api/billing/invoices/"+mutableId);
+  expect(noDraft.status()).toBe(404);
+  const invalidInvoice=(await call("ccp_v1_billing_invoice_void",{
+    invoiceId:randomUUID(),confirmed:true,
+  })).structuredContent;
+  expect(invalidInvoice.error.code).toBe("NOT_FOUND");
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{

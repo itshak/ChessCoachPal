@@ -59,3 +59,7 @@ Shared website/MCP policy service supports scoped read and editing of cancellati
 ## Phase I: billing visibility/accounting increment
 
 Website and MCP invoice details now share a tenant-scoped reader; three MCP tools provide paginated invoice list, redacted invoice details and explicitly confirmed CSV payment export. The browser CSV endpoint uses the same paginated export implementation and escapes spreadsheet formulas. **Not full parity**: all invoice writes, checkout, PDF, payment edits, credit packages and multi-record billing operations remain blockers, as does the strict parity checklist.
+
+## Phase J: draft invoice and payment communication increment
+
+Shared website/MCP invoice service now supports changing draft notes/line items, voiding and deleting eligible invoices, plus explicitly confirmed email sending. Four MCP tools and delegated OAuth tests compare the financial state through website readback; no emails are sent in CI's synthetic mutation tests. **Unresolved:** transactional multi-line replacements, idempotency/exactly-once email, checkout, refunds/payment settlement and other billing/credit actions. Keep parity strict blocked.
