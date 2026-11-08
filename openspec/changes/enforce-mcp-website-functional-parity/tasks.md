@@ -51,3 +51,7 @@ Teacher-scoped private attendance, cancellation notice, explicit family-email ac
 ## Phase G: event scheduling and invitation increment
 
 Teacher-owned events, assigned students, RSVP summaries, delete-impact preview, and explicit invitation emails now share browser/MCP service code. Seven MCP operations and synthetic delegated OAuth tests validate core list/detail/edit/delete flows without sending email. **Unresolved:** cross-request idempotency, transactional roster updates, exactly-once email, concurrency, and full case-matrix acceptance. This does **not** archive or complete the change.
+
+## Phase H: studio policy editor increment
+
+Shared website/MCP policy service supports scoped read and editing of cancellation, billing, rates, timezone and communications via the same validation logic. The two MCP operations have explicit confirmation, a narrow non-secret input schema and redacted output; credentials and payment QR must be set in a secure website flow. Full parity, idempotent policy updates, settings export/import and the strict acceptance checklist remain outstanding.

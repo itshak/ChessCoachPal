@@ -621,8 +621,11 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Studio scheduling rates/timezone/notification/payment/AI policy"
+      "existingTools": [
+        "ccp_v1_studio_policy_get",
+        "ccp_v1_studio_policy_update"
+      ],
+      "explanation": "Shared studio policy service reads and updates cancellation rules, rates and settings for website and MCP. MCP uses narrow allowlist and masks secrets/large QR blobs; secure secret input must remain browser-only. Replay/credential test acceptance is pending."
     },
     {
       "path": "app/api/skills/dimensions/[id]/route.ts",
