@@ -1,6 +1,6 @@
 # Change: enforce-mcp-website-functional-parity
 
-**Status:** APPLYING / NOT ACCEPTED. Dedicated owner of website↔MCP functional equality; separate from the [chess-specific narrative lesson/Lichess change](../support-conversational-lesson-and-lichess-workflows/proposal.md).
+**Status:** ACTIVE; PHASE A ACCEPTED, FULL PARITY NOT ACCEPTED. Dedicated owner of website↔MCP functional equality; separate from the [chess-specific narrative lesson/Lichess change](../support-conversational-lesson-and-lichess-workflows/proposal.md).
 
 ## Why
 Teacher workflows in ChessCoachPal must be controllable from ChatGPT, Claude, Codex or another delegated MCP client. An optional website cannot offer unique teacher-owned business data/actions. The audited baseline has **43 teacher-business routes: 40 gaps, 3 partial, 0 fully verified**. The [93-case checklist](../../../docs/MCP_WEBSITE_PARITY_CHECKLIST.md) remains unchecked. Existing 28 MCP tools are a useful subset, not full parity.
@@ -23,3 +23,9 @@ Teacher workflows in ChessCoachPal must be controllable from ChatGPT, Claude, Co
 **Boundaries:** No generic SQL, unbounded exports, cross-teacher queries, false "browser-only" waivers or unverified tool claims. Pre-1.0 schema changes follow ADR-0001, with no backward compatibility requirement. **Phase A needs no database reset.** Live ChatGPT/Claude acceptance is deferred to final local prepublication sign-off, not development CI.
 
 **Acceptance:** OpenSpec remains active until every task, complete registry and all 93 cases are verified on merged main; green normal CI is insufficient.
+
+## Accepted slice and outstanding work
+
+**Phase A evidence (merged main):** [PR #20](https://github.com/itshak/ChessCoachPal/pull/20), commit [759f104](https://github.com/itshak/ChessCoachPal/commit/759f1042c351efba1fc7293bf0da48e71612bb23); [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42481967664) passed source audit, PR-guard tests, TypeScript, 342 unit tests, Docker and Compose; [fresh synthetic E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42481967709) passed (26 browser tests); [restore](https://github.com/itshak/ChessCoachPal/actions/runs/42481967696), [self-host](https://github.com/itshak/ChessCoachPal/actions/runs/42481967682), and [security](https://github.com/itshak/ChessCoachPal/actions/runs/42481967641) passed.
+
+The source registry now includes 29 real MCP tools and 1 complete report route, but 39 teacher routes remain missing and 3 partial. **No approval of all 93 individual checklist scenarios is implied**; this OpenSpec stays active through phases B–F.

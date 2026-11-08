@@ -1,12 +1,12 @@
 # Mandatory MCP-first website parity checklist
 
-**Audit baseline:** 2026-11-08 · repository main `bb3a3fa6ad27a0d25ef7e39ae37c2988227e65c8` · **Status: FAIL / release blocked (report MCP slice in progress, verification pending)**. This is a review of code contracts, not a claim that all capabilities passed real OAuth execution. The only demonstrated live Codex workflow so far is student/workplace creation and enrollment. Existing 28 tool names are from `lib/server/agent-tools.ts`.
+**Audit baseline:** 2026-11-08 · audited original main `bb3a3fa`, refreshed at merged main `759f104` · **Status: FAIL / release blocked (Phase A report route verified, full parity unfinished)**. This is a review of code contracts, not a claim that all capabilities passed real OAuth execution. The only demonstrated live Codex workflow so far is student/workplace creation and enrollment. Current 29 tool names are from `lib/server/agent-tools.ts`. Phase A parity/tenant tests passed on [merged main](https://github.com/itshak/ChessCoachPal/actions/runs/42481967709); the full 93-case checklist is not approved.
 
 > **Product rule:** ChessCoachPal is MCP/Plugin first. The website is an *optional* visual interface to the same teacher-owned domain services. Every ordinary website-visible **business operation and editable field** requires a matching tested MCP command or a justified secure browser approval path; absence is a product defect, not a “website-only” feature. Do not archive the change or publish the next release while gaps remain.
 
 ## Source inventory and automated tests
 
-The [versioned machine-readable inventory](../scripts/mcp-website-parity.json) enumerates **61 app/api routes**, **17 teacher pages** and **49 teacher components**. Of the **43 teacher-business API route surfaces**, **1 has implemented source-level MCP/report parity (pending merged CI validation)**, **3 have partial coverage** and **39 are missing full MCP parity**. Some existing individual actions (e.g. workplace rename) work; route-level parity requires *all* actions and fields on that route, not one. Other route surfaces include auth, parent portal, webhooks, browser push and UI-only functions and are marked separately.
+The [versioned machine-readable inventory](../scripts/mcp-website-parity.json) enumerates **61 app/api routes**, **17 teacher pages** and **49 teacher components**. Of the **43 teacher-business API route surfaces**, **1 now has a merged CI-verified MCP/report parity adapter**, **3 have partial coverage** and **39 are missing full MCP parity**. Some existing individual actions (e.g. workplace rename) work; route-level parity requires *all* actions and fields on that route, not one. Other route surfaces include auth, parent portal, webhooks, browser push and UI-only functions and are marked separately.
 
 Run `npm run mcp:parity:audit` to validate that the inventory tracks every actual route/page/component, that listed HTTP methods match code, and that any claimed live MCP tool exists in the real catalogue. This **passes while explicitly reporting gaps** so normal CI stays green. Run `npm run mcp:parity:strict` to require zero missing/partial teacher-business routes; it **must currently fail** and is the GitHub Release publication gate. Strict success is necessary but **not sufficient**: the behavior and security cases below need synthetic database/browser OAuth integration tests and merged-main evidence. Every new feature PR MUST update the inventory and add website↔MCP behavioral tests; a changed route method/new page/new component with no inventory entry fails regular CI.
 
@@ -110,10 +110,10 @@ Website reference: `/coaching /api/coaching/report, /dashboard`.
 
 | Checklist | Test/action | Current evidence / blocker |
 | --- | --- | --- |
-| - [ ] | Generate workplace-local date-range session and attendance summary | **New MCP tool:** `ccp_v1_reports_workplace_summary` with shared service; pending merged-main E2E evidence |
-| - [ ] | Compute instructor teaching minutes once for simultaneous group lesson | **New MCP tool:** summary returns canonical instructor minutes; E2E regression added, still unchecked pending CI |
-| - [ ] | Inspect attendance present/absent/late/excused/unmarked breakdown | **New MCP tool:** same attendance aggregates; pending merged-main E2E verification |
-| - [ ] | Produce CSV and text from exactly same calculation | **New MCP tool:** `format=csv|text` uses website `reportCsv/reportText`; pending merged-main E2E evidence |
+| - [ ] | Generate workplace-local date-range session and attendance summary | **New MCP tool:** `ccp_v1_reports_workplace_summary` with shared service; merged-main E2E in [PR #20](https://github.com/itshak/ChessCoachPal/pull/20); full scenario sign-off still open |
+| - [ ] | Compute instructor teaching minutes once for simultaneous group lesson | **New MCP tool:** summary returns canonical instructor minutes; E2E/units verified; detailed checklist item still unchecked |
+| - [ ] | Inspect attendance present/absent/late/excused/unmarked breakdown | **New MCP tool:** same attendance aggregates; merged-main E2E passed; full scenario sign-off still open |
+| - [ ] | Produce CSV and text from exactly same calculation | **New MCP tool:** `format=csv|text` uses website `reportCsv/reportText`; merged-main E2E in [PR #20](https://github.com/itshak/ChessCoachPal/pull/20); full scenario sign-off still open |
 | - [ ] | Report student progress, strength, skills and material coverage | **Gap/protected** — MCP gap |
 | - [ ] | Report materials taught in workplace vs individual student coverage | **Gap/protected** — MCP gap |
 | - [ ] | Expose dashboard summary via MCP | **Gap/protected** — MCP gap |
@@ -172,7 +172,7 @@ Website reference: `Every business website page`.
 | - [ ] | Teacher B cannot read/update teacher A records by UUID/cursor | **Tool/reference:** `RLS` — must test for each new table |
 | - [ ] | Stale record expectedUpdatedAt and idempotency replay safely reject | **Tool/reference:** `current RPC` — test every mutation |
 | - [ ] | Every new website field/action has tested MCP counterpart or secure exception | **Gap/protected** — mandatory CI/review gap |
-| - [ ] | Report and website use same deterministic service, not different formulas | **New shared service:** `lib/server/coaching-report-service.ts`; pending merged-main E2E verification |
+| - [ ] | Report and website use same deterministic service, not different formulas | **New shared service:** `lib/server/coaching-report-service.ts`; merged-main E2E passed; full scenario sign-off still open |
 | - [ ] | Real read/write MCP actions tested through delegated OAuth plus website readback | **Tool/reference:** `current subset only` — future integration suite |
 | - [ ] | No raw SQL, secret fetch, guardian contacts in default tool results | **Tool/reference:** `current restrictions` — regression suite |
 | - [ ] | Long-running exports/imports/sends have explicit confirmation and receipts | **Gap/protected** — MCP gap |
