@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit",
     "release:prepare": "node scripts/release.mjs prepare",
     "release:validate": "node scripts/release.mjs validate",
-    "release:check": "node --test scripts/release-check.mjs"
+    "release:check": "node --test scripts/release-check.mjs",
+    "mcp:parity:audit": "node scripts/mcp-parity-audit.mjs",
+    "mcp:parity:strict": "node scripts/mcp-parity-audit.mjs --strict"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

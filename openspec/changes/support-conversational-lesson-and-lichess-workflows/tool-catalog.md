@@ -71,6 +71,34 @@ None of these existing commands connects to Lichess API, supports generic all-st
 
 **Do not make website Lichess password/PAT/OAuth consent into a chat tool.** "write" for metadata sync or rating refresh means persisted local metadata and external read; it still needs user authorization and sensible annotation. For every proposed tool, implement schema bounds, `coach:read` or `coach:write`, correct read-only/destructive/open-world hints, rate budgets, typed errors and generated OpenAPI parity.
 
+## PROPOSED complete teacher workspace, field editing and reporting
+
+**None of the tools below are available yet.** All belong in the existing `/mcp` endpoint (no extra reporting connector). Ordinary record fields must be editable using typed domain commands or a **field-allowlisted** and revision-checked patch preview/commit, not raw SQL.
+
+| New MCP tool (planned) | Intent / security |
+| --- | --- |
+| `ccp_v1_capabilities_list`, `ccp_v1_fields_describe` | Discover all authorized entities, business fields, read/write support, validation, sensitive approvals and exclusions. |
+| `ccp_v1_records_patch_preview`, `ccp_v1_records_patch_commit` | Review and atomically patch **one** allowed teacher-owned entity with exact field names, revision/digest/UUID idempotency; null-clear and sensitive field rules. |
+| `ccp_v1_workplaces_get`, `ccp_v1_workplaces_unenroll` | Workplace full safe details and reversible membership changes (no history rewrite). |
+| `ccp_v1_students_notes_list`, `ccp_v1_students_notes_update`, `ccp_v1_students_archive_preview`, `ccp_v1_students_archive_commit` | Existing website-only student notes/private fields, archive impact with appropriate PII/admin scopes. |
+| `ccp_v1_skills_dimensions_list`, `ccp_v1_skills_dimensions_upsert`, `ccp_v1_skills_assessments_list`, `ccp_v1_skills_assessments_record`, `ccp_v1_skills_assessments_correct` | Teacher-defined 1–5 chess skill axes and provenance-aware dated scores, separate from overall 1–10 strength. |
+| `ccp_v1_chess_observations_edit_preview`, `ccp_v1_chess_observations_edit_commit` | Revision-safe correction; teacher approval remains an explicit human action. |
+| `ccp_v1_materials_history_summary`, `ccp_v1_materials_coverage_matrix` | Material history per student, workplace, group, session and range; distinct taught/assigned/completed and no double counting. |
+| `ccp_v1_materials_assignments_list`, `ccp_v1_materials_assignments_upsert` | Manage selected study chapter assignments and teacher-confirmed progress without inferring understanding. |
+| **`ccp_v1_reports_workplace_summary`** | **Reuses deterministic existing website report** by workplace/date range: sessions, cancellations, teacher minutes counted once, participant attendance by status. |
+| **`ccp_v1_reports_student_progress`**, **`ccp_v1_reports_material_coverage`** | Student/skills/attendance and verified study/chapter coverage reports with source/unknown markers. |
+| **`ccp_v1_reports_export_prepare`**, **`ccp_v1_reports_export_create`** | Preview and export CSV/text (and supported PDF where implemented) with protected personal data, signed expiring download and CSV formula injection defense. |
+| `ccp_v1_families_list`, `ccp_v1_families_get`, `ccp_v1_families_update` | Guardian/child relationship management under `student:sensitive`; never default MCP roster output. |
+| `ccp_v1_events_list`, `ccp_v1_events_upsert`, `ccp_v1_events_cancel` | Teacher calendar, event management/RSVP information; inviting others separately approved. |
+| `ccp_v1_billing_summary`, `ccp_v1_billing_invoices_list`, `ccp_v1_billing_invoice_preview`, `ccp_v1_billing_invoice_commit` | Invoices, credits, mark-paid/void/reconciliation via finance scope and human approval; no processor credentials. |
+| `ccp_v1_communications_preview`, `ccp_v1_communications_send` | Exact recipient/content preview for teacher-approved notification, no unreviewed bulk sends. |
+| `ccp_v1_data_import_preview`, `ccp_v1_data_import_commit`, `ccp_v1_data_export_request` | Safe teacher import/export with mapping, PII checks, bounded output and idempotent commits. |
+| `ccp_v1_approval_request`, `ccp_v1_approval_status` | Safe chat-initiated website approval for credential/payment/destructive operations; never expose passwords or access tokens. |
+
+Extend proposed `ccp_v1_materials_history_list` to filter by **studentId or workplaceId or groupId or sessionId** (and dates), not just one student. The report/coverage tools must preserve the historical lesson's workplace and dedupe chapter count per lesson.
+
+**Mandatory implementation rule:** New website teacher-business features may not be merged as feature-complete without their equivalent MCP operations/tests, or a documented justified secure approval exception. [Audit checklist](../../../docs/MCP_WEBSITE_PARITY_CHECKLIST.md) and [source inventory](../../../scripts/mcp-website-parity.json) are release gates. Currently existing tools `ccp_v1_workplaces_update` and `ccp_v1_students_update` do support workplace name and basic student name/level updates; they do NOT support all website fields.
+
 ## Composite behavior: one sentence, not dozens of user commands
 
 For “Today I taught Armond, Shushana and David Zaruk 13:00–14:30, Classic Games 2 chapter 32,” an agent should orchestrate `teacher_context_get`, `students_resolve`, `schedule_day_preview`, `materials_chapters_search`, `lessons_capture_preview`, teacher review, then **one** `lessons_capture_commit`. The server owns authoritative IDs, one 90-minute instructor interval and database atomicity. Client-generated timestamps/UUIDs are never treated as ownership authority.

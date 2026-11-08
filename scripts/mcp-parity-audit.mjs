@@ -1,0 +1,83 @@
+#!/usr/bin/env node
+// ChessCoachPal MCP-first parity inventory: source-verifiable, reviewable,
+// intentionally non-strict during implementation. Strict mode blocks release.
+// This tests enumeration/tool claims, NOT a full authenticated browser/MCP E2E.
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const inventory = JSON.parse(readFileSync(join(root, "scripts/mcp-website-parity.json"), "utf8"));
+const errors = [];
+const assert = (ok, msg) => { if (!ok) errors.push(msg); };
+const filesUnder = (folder, predicate) => {
+  const output = [];
+  const scan = (absolute) => {
+    if (!existsSync(absolute)) return;
+    for (const ent of readdirSync(absolute, {withFileTypes:true})) {
+      const path = join(absolute, ent.name);
+      if (ent.isDirectory()) scan(path);
+      else if (ent.isFile()) {
+        const rel = relative(root, path).replaceAll("\\","/");
+        if (predicate(rel)) output.push(rel);
+      }
+    }
+  };
+  scan(join(root, folder));
+  return output.sort();
+};
+const same = (actual, expected) => JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort());
+const allApi = filesUnder("app/api", p => p.endsWith("/route.ts"));
+const allPages = filesUnder("app/(teacher)", p => p.endsWith("/page.tsx"));
+const allComponents = filesUnder("components/teacher", p => p.endsWith(".tsx"));
+const verifyCoverage = (label, actual, declared) => {
+  assert(new Set(declared).size===declared.length, label+": duplicate declared paths");
+  const x = actual.filter(p=>!declared.includes(p));
+  const y = declared.filter(p=>!actual.includes(p));
+  assert(x.length===0,label+": new/unreviewed files: "+x.join(", "));
+  assert(y.length===0,label+": missing/stale files: "+y.join(", "));
+};
+verifyCoverage("API routes",allApi,inventory.apiRoutes.map(r=>r.path));
+verifyCoverage("teacher pages",allPages,inventory.teacherPages);
+verifyCoverage("teacher components",allComponents,inventory.teacherComponents);
+
+const knownKinds = new Set(["teacher","auth","ui","external","system"]);
+const knownParities = new Set(["mcp","partial","gap","browser-only","not-applicable"]);
+const registeredTools = readFileSync(join(root,"lib/server/agent-tools.ts"),"utf8");
+const liveNames = new Set([...registeredTools.matchAll(/\bname\s*:\s*["'](ccp_v1_[a-z0-9_]+)["']/g)].map(m=>m[1]));
+for (const route of inventory.apiRoutes) {
+  assert(knownKinds.has(route.kind),route.path+": invalid classification");
+  assert(knownParities.has(route.parity),route.path+": invalid parity status");
+  assert(route.explanation && route.explanation.length>12,route.path+": missing justification");
+  const source = readFileSync(join(root,route.path),"utf8");
+  const methods = [...source.matchAll(/export\s+(?:async\s+)?(?:function|const)\s+(GET|POST|PUT|PATCH|DELETE)\b/g)].map(m=>m[1]);
+  assert(same(methods,route.methods),route.path+": HTTP methods changed; actual="+methods.join(",")+" expected="+route.methods.join(","));
+  for (const t of route.existingTools) assert(liveNames.has(t),route.path+": claimed MCP tool does not exist: "+t);
+  if (route.parity==="mcp") assert(route.existingTools.length>0,route.path+": cannot mark MCP complete without current tool");
+  if (route.kind==="teacher") assert(["mcp","partial","gap"].includes(route.parity),
+    route.path+": user-facing business route needs direct MCP parity (a secure exception must be individually reviewed, not hidden)");
+  if (route.kind==="system"||route.kind==="external"||route.kind==="ui") assert(route.parity==="not-applicable",
+    route.path+": non-teacher system route misclassified");
+  if (route.parity==="gap"||route.parity==="partial") assert(route.explanation.length>20,route.path+": gap needs reason");
+}
+assert(inventory.apiRoutes.length>50 && inventory.teacherPages.length>10 && inventory.teacherComponents.length>40,
+  "Inventory unexpectedly small; check against actual source files");
+assert(liveNames.size>=28,"MCP tool catalogue unexpectedly shrank: "+liveNames.size);
+const outstanding=inventory.apiRoutes.filter(r=>r.kind==="teacher"&&r.parity!=="mcp");
+const gap=outstanding.filter(r=>r.parity==="gap").length, partial=outstanding.filter(r=>r.parity==="partial").length;
+const secure=inventory.apiRoutes.filter(r=>r.parity==="browser-only").length;
+console.log("MCP-first source inventory: "+allApi.length+" API routes, "+allPages.length+" teacher pages, "+allComponents.length+" teacher components, "+liveNames.size+" live MCP tools.");
+console.log("Teacher-business endpoint parity: "+(inventory.apiRoutes.filter(r=>r.kind==="teacher").length-outstanding.length)+" complete / "+partial+" partial / "+gap+" missing; "+secure+" browser-only auth/hosted flows.");
+if (outstanding.length>0) {
+  console.log("Release BLOCKED: "+outstanding.length+" teacher-business route surfaces still lack verified full MCP parity.");
+  for (const r of outstanding) console.log("  "+r.parity+" "+r.path+": "+r.explanation);
+}
+if (process.argv.includes("--strict") && outstanding.length>0) {
+  errors.push("Strict MCP-first parity gate failed: "+outstanding.length+" teacher-business route surfaces incomplete.");
+}
+if (errors.length) {
+  for (const e of errors) console.error("ERROR: "+e);
+  process.exitCode=1;
+} else {
+  console.log("Inventory structure and live tool-name references verified"+(outstanding.length?" (NOT functionality parity)":"; strict parity holds for inventoried routes")+".");
+}

@@ -2,7 +2,7 @@
 
 **Implementation status:** The initial [OAuth/MCP foundation](../openspec/changes/archive/2026-11-07-connect-chatgpt-and-claude/proposal.md) and the [expanded coaching-tool implementation](../openspec/changes/archive/2026-11-08-expand-agent-coaching-tools/proposal.md) are GitHub-tested. Exact names, access rules and client setup are in [AI_CONNECTORS.md](AI_CONNECTORS.md). Real ChatGPT/Claude interoperability is still **unverified** and requires the maintainer's one-time [final local prepublication test](LOCAL_CLIENT_ACCEPTANCE.md).
 
-**Primary interaction model:** Teachers naturally tell ChatGPT or Claude what happened in their teaching practice. A secure, installed ChessCoachPal tool connector translates those intentions into typed operations. Website pages show the saved state and provide full manual editing. We do **not** require a built-in chatbot inside the website.
+**Primary interaction model:** ChessCoachPal is **MCP/Plugin first**, with the website an optional viewer/editor and secure consent/approval surface. Teachers naturally tell Codex, ChatGPT or Claude what they taught, which student to edit, what material they covered, or which reports they need. The same teacher-owned domain actions must be exposed via authenticated MCP and web; an operation available only in the web UI is a **parity defect** except narrowly justified protected browser actions. We do **not** require a built-in chatbot inside the website.
 
 ## End-to-end flow
 
@@ -30,7 +30,7 @@
 | Reporting | preview, runs | export, publish with confirmation |
 | Ratings | list, snapshot | refresh from authorized provider |
 
-The implemented v0.1.0 subset covers workplace, student and group CRUD/enrollment, sessions, single-student attendance, notes, and learning proposal/link operations. The wider compensation, rating, publishing, bulk and export commands in this table are **future design ideas, not available MCP tools**. Use [the exact supported tool list](AI_CONNECTORS.md); never expose unrestricted table CRUD, open-ended SQL or bulk exports to a language model.
+The current 28 live MCP tools cover a working subset: workplace/student/group CRUD/enrollment, newer teaching sessions, one-student attendance, notes, and learning proposal/link operations. This is **NOT full parity with the website**. The wider compensation, rating, publishing, bulk and export commands in this table are **future design ideas, not available MCP tools**. Use [the exact supported tool list](AI_CONNECTORS.md); never expose unrestricted table CRUD, open-ended SQL or bulk exports to a language model.
 
 ## Protocol and security
 
@@ -47,3 +47,10 @@ The implemented v0.1.0 subset covers workplace, student and group CRUD/enrollmen
 ## Acceptance evidence
 
 Development acceptance uses **automated GitHub Actions only**: simulated delegated clients exercise MCP against fresh synthetic Supabase, with retries, tenant/scope denial, provider-outage fallback and website correction. The initial foundation and expanded coaching tools passed synthetic GitHub verification; the latter is archived in [change 2b](../openspec/changes/archive/2026-11-08-expand-agent-coaching-tools/proposal.md). **One manual release-only live-provider check** from the maintainer's machine, immediately before publishing v0.1.0, must demonstrate both real ChatGPT and Claude connections and website correction. See [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md). Its absence does not keep earlier development changes open.
+
+
+## Mandatory parity and reporting gate
+
+A source-level audit found **61 API routes, 17 teacher pages, 49 teacher components**, and **43 teacher-business API route surfaces: 40 missing complete MCP coverage and 3 partial**. The audit/checklist is [MCP_WEBSITE_PARITY_CHECKLIST.md](MCP_WEBSITE_PARITY_CHECKLIST.md), automated registry [mcp-website-parity.json](../scripts/mcp-website-parity.json), normal `npm run mcp:parity:audit` and strict release `npm run mcp:parity:strict`. New website business features require a corresponding tested MCP read/write interface in the same PR or an approved sensitive browser handoff. These checks cannot substitute for the full 93 scenario authenticated website↔MCP/teacher-isolation tests.
+
+**Reports are part of the same MCP server, not a separate connector.** Website `/api/coaching/report` and `lib/coaching-report.ts` already support workplace/date-range sessions, teacher minutes and attendance; no current MCP report tool exists. Proposed `ccp_v1_reports_workplace_summary`, student progress/material coverage and CSV/text export tools must reuse the same service and require scope. Student/workplace materials history, complete student profiles, events/finance/imports/notifications are similarly proposed, not deployed. See [OpenSpec parity spec](../openspec/changes/support-conversational-lesson-and-lichess-workflows/specs/teacher-workspace-mcp-parity/spec.md).

@@ -1,0 +1,720 @@
+{
+  "version": 1,
+  "auditedAt": "2026-11-08",
+  "headSha": "bb3a3fa6ad27a0d25ef7e39ae37c2988227e65c8",
+  "policy": "MCP-first business-feature parity. Every website business action needs a tested MCP counterpart or documented secure browser approval; live strict parity is currently BLOCKED.",
+  "apiRoutes": [
+    {
+      "path": "app/api/agent/connections/route.ts",
+      "methods": [
+        "GET",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "List and revoke OAuth grants from chat; website does so today"
+    },
+    {
+      "path": "app/api/agent/openapi/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "system",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "OpenAPI schema handler (exported via GET alias)"
+    },
+    {
+      "path": "app/api/agent/v1/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_workplaces_list",
+        "ccp_v1_workplaces_create",
+        "ccp_v1_students_search",
+        "ccp_v1_students_create",
+        "ccp_v1_chess_categories_list",
+        "ccp_v1_chess_resources_link"
+      ],
+      "explanation": "Website coaching/learning gateway has operations beyond MCP, including category editing and observation approval"
+    },
+    {
+      "path": "app/api/auth/setup-teacher/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "auth",
+      "parity": "browser-only",
+      "existingTools": [],
+      "explanation": "First-run onboarding; authenticated signup/browser"
+    },
+    {
+      "path": "app/api/auth/signup/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "auth",
+      "parity": "browser-only",
+      "existingTools": [],
+      "explanation": "Sign up; password/verification browser-only"
+    },
+    {
+      "path": "app/api/auth/update-profile/route.ts",
+      "methods": [
+        "PUT"
+      ],
+      "kind": "auth",
+      "parity": "browser-only",
+      "existingTools": [],
+      "explanation": "Name/email/password account controls; secure browser"
+    },
+    {
+      "path": "app/api/auth/waitlist/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "system",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Public marketing waitlist, not teacher business management"
+    },
+    {
+      "path": "app/api/billing/credit-packages/[id]/route.ts",
+      "methods": [
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Update credit package expiry and terms"
+    },
+    {
+      "path": "app/api/billing/credit-packages/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Create credit packages"
+    },
+    {
+      "path": "app/api/billing/credit-redemptions/[id]/route.ts",
+      "methods": [
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Undo credit redemption with finance approval"
+    },
+    {
+      "path": "app/api/billing/export/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Export financial ledger"
+    },
+    {
+      "path": "app/api/billing/generate/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Generate invoices for teacher-owned students and families; not exposed via MCP"
+    },
+    {
+      "path": "app/api/billing/invoices/[id]/checkout/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Payment checkout initiation requires browser approval"
+    },
+    {
+      "path": "app/api/billing/invoices/[id]/mark-paid/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Manual payment confirmation"
+    },
+    {
+      "path": "app/api/billing/invoices/[id]/payments/[paymentId]/route.ts",
+      "methods": [
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Reverse payment with dedicated consent"
+    },
+    {
+      "path": "app/api/billing/invoices/[id]/pdf/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Retrieve private invoice PDF; no authorized MCP file/export action"
+    },
+    {
+      "path": "app/api/billing/invoices/[id]/regenerate/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Regenerate invoice billing lines; no MCP finance write action"
+    },
+    {
+      "path": "app/api/billing/invoices/[id]/route.ts",
+      "methods": [
+        "GET",
+        "PUT",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Read/edit/remove invoice draft"
+    },
+    {
+      "path": "app/api/billing/invoices/[id]/send/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Send invoice with recipient/amount preview"
+    },
+    {
+      "path": "app/api/billing/invoices/[id]/void/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Void invoice with confirmation; no current MCP finance command"
+    },
+    {
+      "path": "app/api/billing/invoices/bulk/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Bulk send invoices with explicit approval"
+    },
+    {
+      "path": "app/api/coaching/report/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Workplace date-range teaching/attendance report plus text/CSV"
+    },
+    {
+      "path": "app/api/cron/event-reminders/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "system",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Background event reminder dispatch"
+    },
+    {
+      "path": "app/api/dashboard/summary/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Dashboard counts/summary"
+    },
+    {
+      "path": "app/api/events/[id]/email/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Email event with recipient confirmation"
+    },
+    {
+      "path": "app/api/events/[id]/route.ts",
+      "methods": [
+        "GET",
+        "PUT",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Event read/edit/delete"
+    },
+    {
+      "path": "app/api/events/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Read existing events and create calendar events; no current MCP events tools"
+    },
+    {
+      "path": "app/api/feeds/[token]/calendar/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "external",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Tokenized ICS feed for calendar software; chat may manage token but should not expose it"
+    },
+    {
+      "path": "app/api/guardians/[id]/rotate-token/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Family portal token rotation; safe approval only"
+    },
+    {
+      "path": "app/api/guardians/[id]/route.ts",
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Update/delete family with sensitive-data safeguards"
+    },
+    {
+      "path": "app/api/guardians/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Family read/create with PII scope"
+    },
+    {
+      "path": "app/api/hosted-billing/checkout/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "auth",
+      "parity": "browser-only",
+      "existingTools": [],
+      "explanation": "Hosting subscription checkout; web reauth"
+    },
+    {
+      "path": "app/api/hosted-billing/portal/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "auth",
+      "parity": "browser-only",
+      "existingTools": [],
+      "explanation": "Hosting provider portal; browser-only handoff"
+    },
+    {
+      "path": "app/api/hosted-billing/webhook/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "system",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Subscription webhook (not a teacher chat action)"
+    },
+    {
+      "path": "app/api/import/spreadsheet/commit/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Confirm spreadsheet import"
+    },
+    {
+      "path": "app/api/import/spreadsheet/parse/route.ts",
+      "methods": [
+        "POST",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Upload/parse spreadsheet and choose mapping"
+    },
+    {
+      "path": "app/api/import/spreadsheet/suggest/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "AI suggested import mapping"
+    },
+    {
+      "path": "app/api/notifications/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Notification inbox/read status"
+    },
+    {
+      "path": "app/api/onboarding/tour/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "ui",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "UI tour completion flag, not a teacher business operation"
+    },
+    {
+      "path": "app/api/portal/[token]/calendar/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "external",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Guardian portal (separate delegated actor)"
+    },
+    {
+      "path": "app/api/portal/[token]/events/[id]/rsvp/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "external",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Guardian RSVP, cannot impersonate guardian through teacher token"
+    },
+    {
+      "path": "app/api/portal/[token]/lessons/[id]/cancel/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "external",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Guardian cancellation, cannot impersonate guardian through teacher token"
+    },
+    {
+      "path": "app/api/push/config/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "ui",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Browser push VAPID settings; no model credential action"
+    },
+    {
+      "path": "app/api/push/subscribe/route.ts",
+      "methods": [
+        "POST",
+        "DELETE"
+      ],
+      "kind": "ui",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Browser/device push subscription control"
+    },
+    {
+      "path": "app/api/schedule/attendance/bulk/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Bulk legacy scheduled-lesson attendance"
+    },
+    {
+      "path": "app/api/schedule/lessons/[id]/attendance/route.ts",
+      "methods": [
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Per legacy lesson attendance (different model from MCP teaching session)"
+    },
+    {
+      "path": "app/api/schedule/lessons/[id]/note/route.ts",
+      "methods": [
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Private/shared legacy lesson notes"
+    },
+    {
+      "path": "app/api/schedule/lessons/[id]/route.ts",
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Reschedule/cancel/erase legacy lesson instance"
+    },
+    {
+      "path": "app/api/schedule/lessons/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Create one-off/makeup legacy lesson"
+    },
+    {
+      "path": "app/api/schedule/slots/[id]/route.ts",
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Edit/disable/delete recurring slot"
+    },
+    {
+      "path": "app/api/schedule/slots/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Create recurring slot"
+    },
+    {
+      "path": "app/api/settings/export/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Export teacher-owned data (PII approval)"
+    },
+    {
+      "path": "app/api/settings/import/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Import teacher-owned data (preview/approval)"
+    },
+    {
+      "path": "app/api/settings/policy/route.ts",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Studio scheduling rates/timezone/notification/payment/AI policy"
+    },
+    {
+      "path": "app/api/skills/dimensions/[id]/route.ts",
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Edit/remove skill dimension"
+    },
+    {
+      "path": "app/api/skills/dimensions/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Read/add skill dimensions"
+    },
+    {
+      "path": "app/api/students/[id]/route.ts",
+      "methods": [
+        "PUT",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_students_update"
+      ],
+      "explanation": "MCP only name and freeform level; website also birthdate, rates, family, archive/delete, etc."
+    },
+    {
+      "path": "app/api/students/[id]/skills/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [],
+      "explanation": "Record per-dimension skill assessment"
+    },
+    {
+      "path": "app/api/students/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_students_search",
+        "ccp_v1_students_create"
+      ],
+      "explanation": "Website GET entire roster; MCP search requires nonempty query; create basics supported"
+    },
+    {
+      "path": "app/api/teacher/calendar-token/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "auth",
+      "parity": "browser-only",
+      "existingTools": [],
+      "explanation": "Rotate calendar feed secret; approval/reauth"
+    },
+    {
+      "path": "app/api/webhooks/stripe/[teacherId]/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "system",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Payment webhook; never expose as chat tool"
+    }
+  ],
+  "teacherPages": [
+    "app/(teacher)/account/page.tsx",
+    "app/(teacher)/ai-connections/page.tsx",
+    "app/(teacher)/billing/[id]/page.tsx",
+    "app/(teacher)/billing/page.tsx",
+    "app/(teacher)/coaching/page.tsx",
+    "app/(teacher)/dashboard/page.tsx",
+    "app/(teacher)/events/[id]/page.tsx",
+    "app/(teacher)/events/new/page.tsx",
+    "app/(teacher)/events/page.tsx",
+    "app/(teacher)/families/[id]/page.tsx",
+    "app/(teacher)/families/page.tsx",
+    "app/(teacher)/help/page.tsx",
+    "app/(teacher)/learning/page.tsx",
+    "app/(teacher)/schedule/page.tsx",
+    "app/(teacher)/students/[id]/page.tsx",
+    "app/(teacher)/students/page.tsx",
+    "app/(teacher)/studio/page.tsx"
+  ],
+  "teacherComponents": [
+    "components/teacher/AccountSettings.tsx",
+    "components/teacher/AddStudentForm.tsx",
+    "components/teacher/AgentConnections.tsx",
+    "components/teacher/ArchiveStudentButton.tsx",
+    "components/teacher/ChessCoachWorkspace.tsx",
+    "components/teacher/ChessLearningPanel.tsx",
+    "components/teacher/CoachingReportPanel.tsx",
+    "components/teacher/CopyLinkClient.tsx",
+    "components/teacher/EditableStudentName.tsx",
+    "components/teacher/FamiliesManager.tsx",
+    "components/teacher/FamilyDetailActions.tsx",
+    "components/teacher/FamilyForm.tsx",
+    "components/teacher/HostedLimitBanner.tsx",
+    "components/teacher/NotificationBell.tsx",
+    "components/teacher/OnboardingTour.tsx",
+    "components/teacher/PushOwnership.tsx",
+    "components/teacher/RemoveStudentButton.tsx",
+    "components/teacher/StartTourLink.tsx",
+    "components/teacher/StudentInfoCard.tsx",
+    "components/teacher/StudentLessonNotes.tsx",
+    "components/teacher/StudentNotesEditor.tsx",
+    "components/teacher/TeacherNav.tsx",
+    "components/teacher/TeacherThemeProvider.tsx",
+    "components/teacher/billing/BillingList.tsx",
+    "components/teacher/billing/CreditPackagesCard.tsx",
+    "components/teacher/billing/InvoiceDetailClient.tsx",
+    "components/teacher/billing/InvoiceList.tsx",
+    "components/teacher/billing/PaymentSettingsButton.tsx",
+    "components/teacher/events/EventDetailClient.tsx",
+    "components/teacher/events/EventForm.tsx",
+    "components/teacher/events/NewEventForm.tsx",
+    "components/teacher/schedule/BulkAttendancePanel.tsx",
+    "components/teacher/schedule/MakeupPanel.tsx",
+    "components/teacher/schedule/PolicySettings.tsx",
+    "components/teacher/schedule/SlotManager.tsx",
+    "components/teacher/schedule/WeekView.tsx",
+    "components/teacher/settings/BillingSettingsForm.tsx",
+    "components/teacher/settings/DataTransferSettings.tsx",
+    "components/teacher/settings/HostingSettingsForm.tsx",
+    "components/teacher/settings/NotificationSettingsForm.tsx",
+    "components/teacher/settings/OptionalAiSettingsForm.tsx",
+    "components/teacher/settings/PaymentsSettingsForm.tsx",
+    "components/teacher/settings/PushNotificationToggle.tsx",
+    "components/teacher/settings/SpreadsheetImportSettings.tsx",
+    "components/teacher/settings/StudioSettingsForm.tsx",
+    "components/teacher/settings/TeacherCalendarFeed.tsx",
+    "components/teacher/settings/TimezoneSettingsForm.tsx",
+    "components/teacher/skills/SkillsCharts.tsx",
+    "components/teacher/skills/SkillsPanel.tsx"
+  ]
+}
