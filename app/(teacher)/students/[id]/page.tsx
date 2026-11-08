@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { ChessLearningPanel } from "@/components/teacher/ChessLearningPanel";
+import { MaterialHistoryPanel } from "@/components/teacher/MaterialHistoryPanel";
 import { ArchiveStudentButton } from "@/components/teacher/ArchiveStudentButton";
 import { RemoveStudentButton } from "@/components/teacher/RemoveStudentButton";
 import { StudentNotesEditor } from "@/components/teacher/StudentNotesEditor";
@@ -157,6 +158,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialNotes={student.teacher_notes ?? ""}
       />
       <StudentLessonNotes notes={lessonNotes} timezone={policy.timezone} />
+      <div className="mb-8"><MaterialHistoryPanel fixedStudentId={id} /></div>
 
       <h2 className="text-lg font-semibold mb-3">Progress</h2>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">

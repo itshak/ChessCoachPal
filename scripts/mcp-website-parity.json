@@ -271,6 +271,23 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/materials/route.ts",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_materials_history_list",
+        "ccp_v1_materials_history_record",
+        "ccp_v1_materials_history_void"
+      ],
+      "explanation": "Teacher-scoped immutable, typed material assignments/taught/completed evidence with resource/roster/workplace validation, UUID replay receipts and revision-guarded retraction. Browser and OAuth MCP use same service; synthetic cross-tenant, replay, stale and joined-result tests.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
+    },
+    {
       "path": "app/api/coaching/report/route.ts",
       "methods": [
         "GET"
@@ -812,6 +829,7 @@
     "components/teacher/FamilyDetailActions.tsx",
     "components/teacher/FamilyForm.tsx",
     "components/teacher/HostedLimitBanner.tsx",
+    "components/teacher/MaterialHistoryPanel.tsx",
     "components/teacher/NotificationBell.tsx",
     "components/teacher/OnboardingTour.tsx",
     "components/teacher/PushOwnership.tsx",

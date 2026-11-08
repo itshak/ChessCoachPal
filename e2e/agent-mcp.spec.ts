@@ -193,6 +193,72 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     name:"ccp_v1_chess_resources_list",arguments:{studentId:student.id},
   })).structuredContent.data;
   expect(resources.some((v:{id:string})=>v.id===linked.data.id)).toBe(true);
+  // Explicit material evidence is different from a resource URL being linked.
+  // Teacher-confirmed stage, workplace, session roster and page summaries must
+  // match between the website and the delegated OAuth client.
+  for(const toolName of ["ccp_v1_materials_history_list",
+    "ccp_v1_materials_history_record","ccp_v1_materials_history_void"])
+    expect(names).toContain(toolName);
+  const emptyMaterial=(await mcp("tools/call",{name:"ccp_v1_materials_history_list",
+    arguments:{studentId:student.id,workplaceId:workplace.id},
+  })).structuredContent;
+  expect(emptyMaterial.error).toBeUndefined();
+  expect(emptyMaterial.data.total).toBe(0); // Linking a study is not teaching it.
+  const materialClaimKey=randomUUID();
+  const materialClaimArgs={
+    studentId:student.id,workplaceId:workplace.id,sessionId:sessionRecord.id,
+    resourceId:linked.data.id,stage:"taught",occurredOn:"2027-04-12",
+    note:"Opposition and corresponding squares",requestId:materialClaimKey,confirmed:true,
+  };
+  const materialWritten=(await mcp("tools/call",{name:"ccp_v1_materials_history_record",
+    arguments:materialClaimArgs,
+  })).structuredContent;
+  expect(materialWritten.error).toBeUndefined();
+  expect(materialWritten.data.replayed).toBe(false);
+  const materialId=materialWritten.data.id as string;
+  const materialReplayed=(await mcp("tools/call",{name:"ccp_v1_materials_history_record",
+    arguments:materialClaimArgs,
+  })).structuredContent;
+  expect(materialReplayed.error).toBeUndefined();
+  expect(materialReplayed.data.replayed).toBe(true);
+  expect(materialReplayed.data.id).toBe(materialId);
+  const materialChangedKey=(await mcp("tools/call",{name:"ccp_v1_materials_history_record",
+    arguments:{...materialClaimArgs,stage:"completed"},
+  })).structuredContent;
+  expect(materialChangedKey.error.code).toBe("IDEMPOTENCY_CONFLICT");
+  const materialRange=new URLSearchParams({
+    studentId:student.id,workplaceId:workplace.id,from:"2027-04-12",to:"2027-04-12",
+  });
+  const materialWeb=await page.request.get("/api/coaching/materials?"+materialRange);
+  expect(materialWeb.status(),await materialWeb.text()).toBe(200);
+  const materialMcp=(await mcp("tools/call",{name:"ccp_v1_materials_history_list",
+    arguments:{studentId:student.id,workplaceId:workplace.id,
+      from:"2027-04-12",to:"2027-04-12"},
+  })).structuredContent;
+  expect(materialMcp.data).toEqual(await materialWeb.json());
+  expect(materialMcp.data.entries[0].id).toBe(materialId);
+  expect(materialMcp.data.pageSummary.uniqueSessionMaterialCount).toBe(1);
+  expect(materialMcp.data.truthBasis).toBe("explicit_teacher_record_only");
+  const materialVoided=await page.request.patch("/api/coaching/materials",{
+    data:{entryId:materialId,expectedUpdatedAt:materialWritten.data.updated_at,
+      reason:"Synthetic correction: the study was not actually taught",confirmed:true},
+  });
+  expect(materialVoided.status(),await materialVoided.text()).toBe(200);
+  const materialGone=(await mcp("tools/call",{name:"ccp_v1_materials_history_list",
+    arguments:{studentId:student.id},
+  })).structuredContent;
+  expect(materialGone.data.entries.some((row:{id:string})=>row.id===materialId)).toBe(false);
+  const materialAudit=(await mcp("tools/call",{name:"ccp_v1_materials_history_list",
+    arguments:{studentId:student.id,includeVoided:true},
+  })).structuredContent;
+  expect(materialAudit.data.entries.find((row:{id:string})=>row.id===materialId).void_reason)
+    .toContain("not actually taught");
+  const staleMaterial=(await mcp("tools/call",{name:"ccp_v1_materials_history_void",
+    arguments:{entryId:materialId,expectedUpdatedAt:materialWritten.data.updated_at,
+      reason:"Attempted second removal",confirmed:true},
+  })).structuredContent;
+  expect(staleMaterial.error.code).toBe("CONFLICT");
+
   const missingApproval=(await mcp("tools/call",{
     name:"ccp_v1_chess_observations_approve",arguments:{observationId:proposed.data.id},
   })).structuredContent;
@@ -246,6 +312,18 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     name:"ccp_v1_sessions_list",arguments:{query:"Private session "+suffix},
   })).structuredContent.data;
   expect(scopedSessions).toEqual([]);
+
+  const foreignMaterial=(await mcp("tools/call",{
+    name:"ccp_v1_materials_history_list",arguments:{studentId:foreignStudent!.id},
+  })).structuredContent;
+  expect(foreignMaterial.error.code).toBe("NOT_FOUND");
+  const foreignMaterialWrite=(await mcp("tools/call",{
+    name:"ccp_v1_materials_history_record",arguments:{
+      studentId:foreignStudent!.id,resourceId:linked.data.id,
+      stage:"taught",occurredOn:"2027-04-12",requestId:randomUUID(),confirmed:true,
+    },
+  })).structuredContent;
+  expect(foreignMaterialWrite.error.code).toBe("NOT_FOUND");
 
   // A name is not a stable ID: ambiguous matches return candidates, not a guessed write.
   const duplicateName = "Synthetic duplicate " + suffix;
