@@ -85,6 +85,31 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const sessionRecord=await postDomain({action:"sessions.create",requestId:randomUUID(),
     workplaceId:workplace.id,groupId:group.id,title:"Agent lesson "+suffix,
     startsAt:"2027-04-12T14:00:00.000Z",durationMinutes:60,lessonNote:"Original"});
+  // The website and the delegated MCP grant must return identical scoped report data.
+  const reportArgs = { workplaceId: workplace.id, from: "2027-04-12", to: "2027-04-12" };
+  expect(names).toContain("ccp_v1_reports_workplace_summary");
+  const reportCall = (await mcp("tools/call", {
+    name: "ccp_v1_reports_workplace_summary", arguments: reportArgs,
+  })).structuredContent;
+  expect(reportCall.error).toBeUndefined();
+  const websiteReport = await page.request.get("/api/coaching/report?" + new URLSearchParams(reportArgs));
+  expect(websiteReport.status(), await websiteReport.text()).toBe(200);
+  expect(reportCall.data).toEqual(await websiteReport.json());
+  expect(reportCall.data.report.teachingMinutes).toBe(60);
+  const csvReport = (await mcp("tools/call", {
+    name: "ccp_v1_reports_workplace_summary", arguments: { ...reportArgs, format: "csv" },
+  })).structuredContent;
+  expect(csvReport.data.report).toEqual(reportCall.data.report);
+  expect(csvReport.data.export).toContain("Teaching minutes");
+  const textReport = (await mcp("tools/call", {
+    name: "ccp_v1_reports_workplace_summary", arguments: { ...reportArgs, format: "text" },
+  })).structuredContent;
+  expect(textReport.data.export).toContain("Teaching minutes: 60");
+  const invalidReport = (await mcp("tools/call", {
+    name: "ccp_v1_reports_workplace_summary", arguments: { ...reportArgs, from: "2027-04-13" },
+  })).structuredContent;
+  expect(invalidReport.error.code).toBe("VALIDATION_ERROR");
+
   // Chess learning tool contract: agents can propose and link, but cannot approve.
   for (const name of ["ccp_v1_chess_categories_list","ccp_v1_chess_observations_propose",
     "ccp_v1_chess_resources_link","ccp_v1_chess_observations_list","ccp_v1_chess_resources_list"]) {
@@ -146,6 +171,11 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const {data:foreignWorkplace,error:foreignWorkplaceError}=await admin.from("workplaces")
     .select("id").eq("teacher_id",otherId).single();
   expect(foreignWorkplaceError).toBeNull();
+  const foreignReport = (await mcp("tools/call", {
+    name: "ccp_v1_reports_workplace_summary",
+    arguments: { workplaceId: foreignWorkplace!.id, from: "2027-04-12", to: "2027-04-13" },
+  })).structuredContent;
+  expect(foreignReport.error.code).toBe("NOT_FOUND");
   const {data:foreignStudent,error:foreignStudentError}=await admin.from("students")
     .insert({teacher_id:otherId,name:"Private student "+suffix}).select("id").single();
   expect(foreignStudentError).toBeNull();
