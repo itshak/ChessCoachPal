@@ -60,6 +60,9 @@ import {
  teacherCreditRedemptionReturn,CreditServiceError,
 } from "@/lib/server/teacher-credit-service";
 import {teacherManualPaymentRecord,teacherManualPaymentDelete,ManualPaymentError} from "@/lib/server/teacher-manual-payments";
+import {
+ teacherSafeExport,teacherImportPreview,teacherImportApply,TeacherTransferError,
+} from "@/lib/server/teacher-transfer-service";
 const uuid = z.string().uuid();
 const eventChanges=z.object({
   title:z.string().trim().min(1).max(200).optional(),
@@ -147,6 +150,25 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_settings_export",
+    description:"Export teacher-owned chess academy data as portable JSON after explicit approval. Guardian portal credentials and provider secrets are NOT returned. Large backups require a secure browser download.",
+    schema:z.object({confirmed:z.literal(true)}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_settings_import_preview",
+    description:"Preview a ChessCoachPal export without writing any data. Returns SHA-256, table counts, size and warnings. Review before any import.",
+    schema:z.object({payload:z.unknown()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_settings_import_apply",
+    description:"High-impact merge import into the teacher account. Require explicit confirmation and the exact SHA-256 digest from a reviewed preview. Existing records with matching IDs may be modified and some guardian portal links rotated.",
+    schema:z.object({payload:z.unknown(),
+      expectedSha256:z.string().regex(/^[a-f0-9]{64}$/),confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_billing_manual_payment_record",
@@ -754,6 +776,17 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_settings_export":
+        return {data:await teacherSafeExport(db,teacherId)};
+      case "ccp_v1_settings_import_preview": {
+        const a=args as {payload:unknown};
+        const {payload,...preview}=teacherImportPreview(a.payload);
+        return {data:preview};
+      }
+      case "ccp_v1_settings_import_apply": {
+        const a=args as {payload:unknown;expectedSha256:string};
+        return {data:await teacherImportApply(db,teacherId,a.payload,a.expectedSha256)};
+      }
       case "ccp_v1_billing_manual_payment_record": {
         const a=args as {invoiceId:string;amountCents?:number;note?:string;idempotencyKey:string};
         return {data:await teacherManualPaymentRecord(db,teacherId,a.invoiceId,a)};
@@ -1160,6 +1193,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof TeacherTransferError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof ManualPaymentError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CreditServiceError)

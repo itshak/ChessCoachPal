@@ -75,3 +75,7 @@ Teacher-owned credit packages (including pending/current balances), draft purcha
 ## Phase L: manual payment reconciliation increment
 
 Teacher-scoped manual payment entry and mistaken-payment deletion share a domain service between website and MCP. Two confirmed tools are included. The MCP record operation requires an idempotency key and uses per-invoice unique external IDs to avoid duplicate requests; E2E covers same-key replay, changed-payload conflict, website readback and removal. **Not completion:** payment/invoice transaction atomicity, concurrent edits, Stripe side effects, remaining invoice-generation/checkout flows, and all 93 strict parity cases remain open.
+
+## Phase M: studio backup/import secure parity increment
+
+Website backup/restore and three MCP transfer actions share the same allowlisted transfer implementation. MCP exports deliberately omit family portal credentials and provider/OAuth secrets; a sanitized backup imported later generates fresh guardian portal tokens. The MCP importer requires a preview digest and explicit user confirmation; E2E checks export redaction and website readback after an import. **Not full parity:** large exports require secure browser handoff, import lacks transaction-level rollback and complete replay/impact checks, and the strict 93-case acceptance remains blocked.

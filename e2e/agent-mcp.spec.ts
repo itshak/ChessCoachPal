@@ -948,6 +948,43 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const manualAfterDelete=await page.request.get("/api/billing/invoices/"+acctInvoice!.id);
   expect((await manualAfterDelete.json()).payments.some((x:{id:string})=>x.id===manualPaymentId)).toBe(false);
 
+  // Backup/restore parity: the AI-visible export intentionally omits portal
+  // tokens, whereas the authenticated website download is a full backup.
+  for(const name of ["ccp_v1_settings_export","ccp_v1_settings_import_preview",
+    "ccp_v1_settings_import_apply"])expect(names).toContain(name);
+  const webBackup=await page.request.get("/api/settings/export");
+  expect(webBackup.status(),await webBackup.text()).toBe(200);
+  const websiteBackup=await webBackup.json();
+  const transferExport=(await call("ccp_v1_settings_export",{confirmed:true})).structuredContent;
+  expect(transferExport.error).toBeUndefined();
+  expect(transferExport.data.guardianPortalLinksExcluded).toBe(true);
+  const safeBackup=transferExport.data.export;
+  expect(safeBackup.version).toBe(websiteBackup.version);
+  expect(safeBackup.tables.students.length).toBe(websiteBackup.tables.students.length);
+  expect(safeBackup.tables.guardians.every((g:{portal_token?:string})=>g.portal_token===undefined)).toBe(true);
+  const importedId=randomUUID();
+  const importPayload={
+    version:1,exportedAt:"2026-11-08T00:00:00.000Z",teacherId:session!.user.id,
+    tables:{students:[{id:importedId,name:"Imported synthetic chess student "+suffix}]},
+  };
+  const importPreview=(await call("ccp_v1_settings_import_preview",{
+    payload:importPayload,
+  })).structuredContent;
+  expect(importPreview.error).toBeUndefined();
+  expect(importPreview.data.counts.students).toBe(1);
+  const badDigest=(await call("ccp_v1_settings_import_apply",{
+    payload:importPayload,expectedSha256:"0".repeat(64),confirmed:true,
+  })).structuredContent;
+  expect(badDigest.error.code).toBe("PREVIEW_CHANGED");
+  const imported=(await call("ccp_v1_settings_import_apply",{
+    payload:importPayload,expectedSha256:importPreview.data.sha256,confirmed:true,
+  })).structuredContent;
+  expect(imported.error).toBeUndefined();
+  expect(imported.data.counts.students).toBe(1);
+  const importedFromSite=await page.request.get("/api/students/"+importedId);
+  expect(importedFromSite.status(),await importedFromSite.text()).toBe(200);
+  expect((await importedFromSite.json()).name).toBe("Imported synthetic chess student "+suffix);
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{
