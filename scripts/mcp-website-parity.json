@@ -312,19 +312,27 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Family portal token rotation; safe approval only"
+      "existingTools": [
+        "ccp_v1_guardians_rotate_portal_token"
+      ],
+      "explanation": "MCP can revoke/rotate a family portal link after confirmation but never sees the new secret; website remains the secure place to retrieve it. Replay-safe rotation awaits tests."
     },
     {
       "path": "app/api/guardians/[id]/route.ts",
       "methods": [
+        "GET",
         "PUT",
         "DELETE"
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Update/delete family with sensitive-data safeguards"
+      "existingTools": [
+        "ccp_v1_guardians_detail",
+        "ccp_v1_guardians_update",
+        "ccp_v1_guardians_delete_impact",
+        "ccp_v1_guardians_delete"
+      ],
+      "explanation": "Owned family detail and membership changes, with deletion impact preview; atomic roster update and safe repeat receipts remain to certify."
     },
     {
       "path": "app/api/guardians/route.ts",
@@ -334,8 +342,11 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Family read/create with PII scope"
+      "existingTools": [
+        "ccp_v1_guardians_list",
+        "ccp_v1_guardians_create"
+      ],
+      "explanation": "Shared teacher-scoped family list and creation. MCP masks portal tokens and contacts by default; idempotency and atomic family/member creation require further certification."
     },
     {
       "path": "app/api/hosted-billing/checkout/route.ts",
