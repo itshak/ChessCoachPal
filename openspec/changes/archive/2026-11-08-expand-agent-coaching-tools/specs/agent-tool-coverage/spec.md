@@ -1,4 +1,4 @@
-# Remaining v0.1.0 agent coaching tool coverage
+# Archived accepted change delta — v0.1.0 agent coaching tool coverage
 
 ## ADDED Requirements
 
@@ -24,3 +24,5 @@ GitHub Actions SHALL validate each exposed tool with fresh synthetic database an
 - **WHEN** neither AI provider can be reached or logged into
 - **THEN** all implementation and security tests SHALL still run on GitHub and development acceptance SHALL remain possible
 - **AND** real-provider interoperability SHALL be reserved for the separate final local v0.1.0 release gate.
+
+**Applied:** Merged [PR #13](https://github.com/itshak/ChessCoachPal/pull/13) / main [e0d99bc](https://github.com/itshak/ChessCoachPal/commit/e0d99bc5429dbd639b6a8a3a613c34f8610ebc59). Passing main GitHub CI/E2E/security/Compose/restore evidence in docs/STATUS.md; real ChatGPT/Claude release-only test is still pending.\n

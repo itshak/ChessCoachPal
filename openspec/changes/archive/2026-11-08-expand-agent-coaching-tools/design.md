@@ -1,4 +1,4 @@
-# Design — remaining agent coaching actions
+# Archived design — accepted scoped coaching-tool expansion
 
 ## Shared operation model
 
