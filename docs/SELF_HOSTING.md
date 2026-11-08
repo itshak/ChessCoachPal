@@ -2,6 +2,8 @@
 
 Current pre-1.0 fresh-install schema only (ADR-0001). A teacher can use the website without ChatGPT, Claude, Notion, Google or Lichess accounts. PostgreSQL/Supabase is required. Keep real student details out of GitHub, logs, screenshots and CI.
 
+**Licensing:** The following instructions describe a deployment mechanism, not a license to reproduce or operate the proprietary ChessCoachPal portions. New deployments of proprietary code require authorization from the relevant copyright holder. The MIT rights of CogNote and historical ChessCoachPal releases remain intact; see [LICENSE](../LICENSE), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) and [ADR-0002](adr/0002-proprietary-licensing.md).
+
 ## Initial setup (new empty installation)
 
 Install Docker Engine, Compose v2 and Buildx. Make ports 3000 (app) and 8000 (API gateway) available. Clone the ChessCoachPal repository, then run:

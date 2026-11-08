@@ -2,9 +2,9 @@
 
 **Your friendly chess-coaching assistant.**
 
-ChessCoachPal is an **MIT-licensed, self-hostable, MCP/Plugin-first workspace for chess teachers**, with an optional website for viewing, editing and high-risk approval. The intended primary input is authenticated ChatGPT/Claude tools, with a website for browsing, correcting, editing, scheduling and reporting. **The initial MCP/OAuth gateway is implemented and automatically verified**; real ChatGPT/Claude client interoperability is reserved for the final local prepublication v0.1.0 smoke test and has not yet been demonstrated. All core website features work without an AI subscription.
+ChessCoachPal is a **proprietary, publicly viewable, MCP/Plugin-first workspace for chess teachers**, with an optional website for viewing, editing and high-risk approval. The intended primary input is authenticated ChatGPT/Claude tools, with a website for browsing, correcting, editing, scheduling and reporting. **The initial MCP/OAuth gateway is implemented and automatically verified**; real ChatGPT/Claude client interoperability is reserved for the final local prepublication v0.1.0 smoke test and has not yet been demonstrated. All core website features work without an AI subscription.
 
-The project is built from [CogNote](https://github.com/andresjmorales/cognote), the MIT-licensed teacher-management application created by Andres Jaime Morales. See [source attribution](docs/UPSTREAM.md).
+The project is built from [CogNote](https://github.com/andresjmorales/cognote), the MIT-licensed teacher-management application created by Andres Jaime Morales. Its original MIT notice is preserved; see [source attribution](docs/UPSTREAM.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Purpose
 
@@ -13,7 +13,7 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 - **Workplaces:** schools, clubs, online classes and private practice with independent policies.
 - **Group and private lessons:** per-student attendance, shared teaching notes, instructor time counted once per class.
 - **Chess learning history:** verified teacher observations, reviewable AI suggestions, selected Lichess Study and HTTPS learning links (rating synchronization is deferred).
-- **Private and portable:** Docker self-hosting, PostgreSQL, guarded backup/restore, deterministic workplace reports and exports, strong permission boundaries.
+- **Private and portable:** Docker deployment for authorized operators, PostgreSQL, guarded backup/restore, deterministic workplace reports and exports, strong permission boundaries.
 
 ## Status
 
@@ -52,11 +52,11 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 - [Architecture](docs/ARCHITECTURE.md)
 - [Branding](docs/BRANDING.md)
 - [Security](docs/SECURITY.md)
-- [MIT attribution](docs/UPSTREAM.md)
+- [Proprietary licensing decision](docs/adr/0002-proprietary-licensing.md), [upstream attribution](docs/UPSTREAM.md), and [MIT/third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## License
 
-MIT, including CogNote's original attribution. See [LICENSE](LICENSE). ChessCoachPal is independent of the original CogNote project.
+**Proprietary for original ChessCoachPal material going forward**, with MIT-licensed CogNote and previously licensed components retained under their respective terms. See [LICENSE](LICENSE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and [ADR-0002](docs/adr/0002-proprietary-licensing.md). Earlier MIT grants are not revoked. Public repository access does not authorize redistribution or hosted deployment of proprietary portions. ChessCoachPal is independent of the original CogNote project.
 
 
 ## Planned full chess-trainer experience — NOT implemented

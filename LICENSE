@@ -1,22 +1,33 @@
-MIT License
+CHESSCOACHPAL — PROPRIETARY SOFTWARE NOTICE
+Effective from the licensing transition of 2026-11-08
 
-Copyright (c) 2026 Andres Jaime Morales
-Copyright (c) 2026 ChessCoachPal contributors
+Copyright (c) 2026 ChessCoachPal copyright holders.
+All rights reserved as to their original ChessCoachPal contributions, subject to
+the exceptions below.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+The original ChessCoachPal software made available in and after this revision
+is proprietary unless an identifiable component is separately licensed.
+Except as expressly permitted by applicable law, the applicable copyright
+holder, or an existing license governing particular material, no permission
+is granted to copy, modify, distribute, sublicense, sell, offer as a hosted
+service, or otherwise exploit the proprietary ChessCoachPal code without
+prior written authorization.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Public visibility of this GitHub repository and availability of source archives
+do not grant an open-source license for proprietary portions. Viewing and
+forking within GitHub remain subject to GitHub's applicable terms.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+THIRD-PARTY AND PREVIOUSLY LICENSED MATERIAL
+
+This project includes material based on CogNote by Andres Jaime Morales,
+originally made available under the MIT License. It also includes material
+previously distributed as part of ChessCoachPal under MIT. Those earlier
+license grants and other copyright holders' rights are not revoked or
+overridden by this notice.
+
+See THIRD_PARTY_NOTICES.md for the preserved MIT notice and
+docs/UPSTREAM.md for attribution. Other separately licensed dependencies
+and assets retain their applicable terms.
+
+This notice is not a claim of exclusive ownership of CogNote, of code
+previously licensed by other copyright holders, or of third-party materials.

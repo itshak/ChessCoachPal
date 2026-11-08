@@ -54,4 +54,4 @@ For `0.x` releases, users may have to reinstall or explicitly reinitialize a dev
 
 The release workflow needs GitHub Actions permission to write repository contents so it can create tags and GitHub Releases. The workflow requests `contents: write`; repository or organization settings must allow Actions to use that permission. If tag protection/rulesets block release tags, allow this workflow through the corresponding trusted mechanism. Do not store Personal Access Tokens in source.
 
-The `package.json` field `private: true` means the app is not published to npm; **GitHub Releases** are the distribution channel.
+The `package.json` field `private: true` means the app is not published to npm; **GitHub Releases** are the distribution channel. GitHub-generated source archives do not grant an open-source license to proprietary ChessCoachPal material. See [LICENSE](../LICENSE), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md), and [ADR-0002](adr/0002-proprietary-licensing.md). Release readiness still requires the independent third-party licensing and asset review.

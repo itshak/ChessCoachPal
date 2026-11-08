@@ -12,6 +12,7 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 - A release readiness checklist to reserve `v0.1.0` for the first genuinely usable chess-teaching application.
 
 ### Changed
+- Switched original ChessCoachPal development to a proprietary source license, retaining CogNote's MIT notice and historical MIT grants; Git history and public GitHub Actions remain unchanged (ADR-0002).
 - Reset the inherited `package.json` version to `0.0.0` to identify unreleased development snapshots; no public version has been published yet.
 - Pre-1.0 versions explicitly have no compatibility commitment to CogNote or to earlier ChessCoachPal versions. See [ADR-0001](docs/adr/0001-pre1-breaking-changes.md).
 
