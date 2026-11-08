@@ -1,40 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sumAmountCents } from "@/lib/billing";
+import { teacherInvoiceDetail,TeacherBillingError } from "@/lib/server/teacher-billing-read-service";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { data: invoice, error } = await supabase
-    .from("invoices")
-    .select(
-      `
-      *,
-      guardians ( id, name, family_name, email, secondary_email, email_recipients, portal_token ),
-      invoice_items ( * ),
-      payments ( * )
-    `
-    )
-    .eq("id", id)
-    .eq("teacher_id", user.id)
-    .single();
-
-  if (error || !invoice) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  return NextResponse.json(invoice);
+export async function GET(_req:NextRequest,{params}:{params:Promise<{id:string}>}){
+  const {id}=await params;
+  const db=await createClient();
+  const {data:{user}}=await db.auth.getUser();
+  if(!user)return NextResponse.json({error:"Unauthorized"},{status:401});
+  try{return NextResponse.json(await teacherInvoiceDetail(db,user.id,id));}
+  catch(error){return NextResponse.json({error:error instanceof TeacherBillingError?error.message:"Invoice unavailable"},{
+    status:error instanceof TeacherBillingError?error.status:500,
+  });}
 }
 
 export async function PUT(
