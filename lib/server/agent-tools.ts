@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, groupsList, groupsMembers,
-  sessionsList, sessionsParticipants, studentsSearch, workplacesList,
+  sessionsList, sessionsParticipants, studentsSearch, workplacesList, workplacesEnrollments,
 } from "@/lib/server/coach-service";
 
 import { chessCategoriesList, chessObservationsList, chessObservationsCreate,
@@ -13,6 +13,13 @@ import { chessUuid, observationInput, resourceInput } from "@/lib/chess-learning
 const uuid = z.string().uuid();
 const searchText = z.string().trim().min(1).max(80);
 const sessionId = z.object({ sessionId: uuid }).strict();
+const shortName = z.string().trim().min(1).max(120);
+const instant = z.string().datetime({offset:true});
+const mutation = {idempotencyKey:uuid};
+const revision = {...mutation,expectedUpdatedAt:instant};
+const resourcePolicy = z.record(z.string(),z.unknown());
+const locale = z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/);
+const currency = z.string().regex(/^[A-Z]{3}$/);
 
 const catalogue = [
   {
@@ -100,6 +107,102 @@ const catalogue = [
     description: "Save a specific HTTPS learning resource or Lichess Study link for a student/session. Does not fetch provider contents; confirm the teacher's choice.",
     schema: resourceInput, scope: "coach:write", readOnly: false,
   },
+  // All new writes are routed through the single transactional teacher-owned SQL
+  // operation. The receipt is replay-safe and contains only IDs and audit metadata.
+  {
+    name: "ccp_v1_workplaces_create",
+    description: "Create a teacher-owned workplace. Confirm its name, IANA time zone and currency.",
+    schema: z.object({name:shortName, timezone:z.string().min(1).max(80),
+      currency:currency.default("USD"),locale:locale.default("en"),
+      policy:resourcePolicy.default({}),...mutation}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_workplaces_update",
+    description:"Edit an identified workplace using its latest revision from workplaces_list. No silent overwrite.",
+    schema:z.object({workplaceId:uuid,name:shortName.optional(),timezone:z.string().min(1).max(80).optional(),
+      currency:currency.optional(),locale:locale.optional(),policy:resourcePolicy.optional(),...revision}).strict()
+      .refine(v => v.name!==undefined || v.timezone!==undefined || v.currency!==undefined ||
+        v.locale!==undefined || v.policy!==undefined,"At least one change is required"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_students_create",
+    description:"Create one teacher-owned learner. Confirm the name and use a fresh idempotency key.",
+    schema:z.object({name:shortName,level:z.string().trim().max(120).nullable().optional(),...mutation}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_students_update",
+    description:"Edit a specific student ID, never an ambiguous name. Requires revision from students_search.",
+    schema:z.object({studentId:uuid,name:shortName.optional(),
+      level:z.string().trim().max(120).nullable().optional(),...revision}).strict()
+      .refine(v=>v.name!==undefined||v.level!==undefined,"At least one change is required"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_workplaces_enroll",
+    description:"Enroll an identified student in an identified workplace. Single-member only.",
+    schema:z.object({workplaceId:uuid,studentId:uuid,...mutation}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_workplaces_enrollments",
+    description:"List members of an identified teacher-owned workplace.",
+    schema:z.object({workplaceId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_groups_create",
+    description:"Create a class group inside one identified authorized workplace.",
+    schema:z.object({workplaceId:uuid,name:shortName,...mutation}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_groups_update",
+    description:"Rename an identified group within its workplace, with revision and retry key.",
+    schema:z.object({groupId:uuid,workplaceId:uuid,name:shortName,...revision}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_groups_enroll",
+    description:"Add one identified student to one identified group; the workplace enrollment is included atomically.",
+    schema:z.object({groupId:uuid,studentId:uuid,...mutation}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_groups_unenroll",
+    description:"Remove one explicitly confirmed current group membership. Historical frozen lesson rosters remain unchanged.",
+    schema:z.object({groupId:uuid,studentId:uuid,...mutation,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_sessions_details",
+    description:"Read one identified lesson, including its current revision and frozen roster.",
+    schema:sessionId,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_sessions_create",
+    description:"Schedule one identified workplace/group or student lesson at an ISO instant WITH offset; conflicts are rejected. Frozen participants at creation.",
+    schema:z.object({workplaceId:uuid,groupId:uuid.optional(),studentId:uuid.optional(),
+      title:z.string().trim().min(1).max(160),startsAt:instant,
+      durationMinutes:z.number().int().min(15).max(480),lessonNote:z.string().max(10000).default(""),
+      ...mutation}).strict().refine(v=>Boolean(v.groupId)!==Boolean(v.studentId),
+      "Choose exactly one group or student"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_sessions_reschedule",
+    description:"Reschedule an identified scheduled lesson; requires its latest revision, explicit offset and confirmation.",
+    schema:z.object({sessionId:uuid,startsAt:instant,
+      durationMinutes:z.number().int().min(15).max(480),...revision,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_sessions_cancel",
+    description:"Cancel ONE identified scheduled lesson after confirmation. Does not delete history.",
+    schema:z.object({sessionId:uuid,...revision,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
 ] as const;
 
 export const exposedTools = catalogue.map(t => ({
@@ -121,12 +224,45 @@ export function validateCall(name: string, input: unknown) {
 }
 
 export async function runTool(db: SupabaseClient, teacherId: string,
-  name: string, input: unknown, scopes: string[]) {
+  name: string, input: unknown, scopes: string[], clientId: string) {
   const parsed = validateCall(name, input);
   if ("error" in parsed) return { error: parsed.error };
   const { tool, args } = parsed;
   if (!scopes.includes(tool!.scope)) return { error: { code: "FORBIDDEN", message: "Insufficient OAuth scope" } };
   try {
+    // Scoped SQL RPC uses the end-user's JWT and RLS, not the service role.
+    // It checks expected revision and stores the receipt and domain write in the same transaction.
+    const operations: Record<string,string> = {
+      ccp_v1_workplaces_create:"workplaces.create",ccp_v1_workplaces_update:"workplaces.update",
+      ccp_v1_workplaces_enroll:"workplaces.enroll",
+      ccp_v1_students_create:"students.create",ccp_v1_students_update:"students.update",
+      ccp_v1_groups_create:"groups.create",ccp_v1_groups_update:"groups.update",
+      ccp_v1_groups_enroll:"groups.enroll",ccp_v1_groups_unenroll:"groups.unenroll",
+      ccp_v1_sessions_create:"sessions.create",ccp_v1_sessions_reschedule:"sessions.reschedule",
+      ccp_v1_sessions_cancel:"sessions.cancel",
+    };
+    if (name in operations) {
+      const payload = args as Record<string,unknown>;
+      if (payload.timezone !== undefined) {
+        // The browser's canonical domain operation also rejects invalid IANA zones.
+        const {assertTimezone} = await import("@/lib/server/coach-service");
+        assertTimezone(payload.timezone as string);
+      }
+      const {data,error} = await db.rpc("agent_coaching_mutate",{
+        p_operation:operations[name],
+        p_payload:payload,
+        p_expected_updated_at:payload.expectedUpdatedAt ?? null,
+        p_idempotency_key:payload.idempotencyKey,
+        p_client_id:clientId,
+      });
+      if (error) {
+        const msg = error.message || "";
+        const code = /CONFLICT|23505|23P01/.test(msg)?"CONFLICT":
+          /NOT_FOUND/.test(msg)?"NOT_FOUND":"VALIDATION_ERROR";
+        return {error:{code,message:"Mutation rejected. Re-read the authorized record and verify IDs, revision, and schedule."}};
+      }
+      return {data};
+    }
     switch (name) {
       case "ccp_v1_chess_categories_list":
         return { data: await chessCategoriesList(db,teacherId) };
@@ -145,6 +281,17 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_chess_resources_link": {
         const a=args as Parameters<typeof chessResourcesCreate>[2];
         return { data: await chessResourcesCreate(db,teacherId,a) };
+      }
+      case "ccp_v1_workplaces_enrollments":
+        return {data:await workplacesEnrollments(db,teacherId,(args as {workplaceId:string}).workplaceId)};
+      case "ccp_v1_sessions_details": {
+        const id=(args as {sessionId:string}).sessionId;
+        const {data,error}=await db.from("teaching_sessions")
+          .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id,updated_at")
+          .eq("teacher_id",teacherId).eq("id",id).maybeSingle();
+        if (error) throw new CoachError("DATABASE_ERROR",500,"Lesson lookup failed");
+        if (!data) return {error:{code:"NOT_FOUND",message:"Lesson not found"}};
+        return {data:{...data,participants:await sessionsParticipants(db,teacherId,id)}};
       }
       case "ccp_v1_workplaces_list":
         return { data: await workplacesList(db, teacherId) };

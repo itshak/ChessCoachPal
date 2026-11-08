@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       const name = message.params?.name;
       if (typeof name !== "string") return json(rpc(id, undefined, {code:-32602,message:"Missing tool name"}));
       const result = await runTool(auth.db, auth.teacherId, name,
-        message.params?.arguments ?? {}, auth.scopes);
+        message.params?.arguments ?? {}, auth.scopes, auth.clientId);
       const failure = "error" in result;
       return json(rpc(id, { content: [{ type: "text", text: JSON.stringify(result) }],
         isError: failure, structuredContent: result }));
