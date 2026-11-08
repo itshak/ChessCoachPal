@@ -1,0 +1,7 @@
+# Final publication workflow — binding gates
+
+- **Development on GitHub:** finish 2b, verify automatic tenant isolation, OAuth/MCP contracts, fresh Compose signup, repeatable second-instance DB and uploaded-file recovery, PWA/accessibility and release tests with synthetic records only. Capture tested main commit and Action run URLs.
+- **History/privacy/license review:** disposition every outstanding Actions log/artifact/private URL/email candidate, older recoverable SHA and third-party asset. Do not conflate a regex scan with redistribution approval; rotate/revoke real credentials if found and use documented GitHub remediation.
+- **Last local manual client step:** only directly before v0.1.0 publication, use real ChatGPT and Claude on the maintainer's computer with a secure HTTPS-reachable local synthetic app. Log sanitized client versions, delegated authorization, a write and website correction, and revocation in docs/STATUS.md. No service-role keys in clients.
+- **Final publication:** check all six docs/RELEASING.md criteria with evidence, prepare/validate version 0.1.0 and dated CHANGELOG.md, review and merge the version-bump PR. The GitHub release workflow verifies the exact candidate commit with clean Supabase browser E2E plus full Compose and DB/file restore, then creates the annotated v0.1.0 tag and GitHub Release with GitHub-provided source archives. Observe and document URLs. Never bump early.
+- **Compatibility:** ADR-0001 requires zero CogNote or inter-0.x compatibility; never auto-reset databases with real records.
