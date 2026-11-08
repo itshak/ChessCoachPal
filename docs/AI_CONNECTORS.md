@@ -52,3 +52,9 @@ New coaching writes use a single transactional database mutation that binds the 
 - The website is always available without either provider; provider outages cannot commit unconfirmed writes.
 
 **Security caveats:** The first-release code is still undergoing tests and review. Before allowing real children's data, confirm externally accessible HTTPS, origin/cookie behavior behind your proxy, registration abuse limits, token encryption key custody, cross-teacher isolation, and revocation with real client versions. Do not log access/refresh tokens, OAuth codes, model prompts, or student notes. Use only synthetic data in integration trials.
+
+## 2026-11-08 hosted staging and Codex preflight
+
+For the final manual test, a **disposable Vercel + Supabase staging project** is also supported as an alternative to a local HTTPS tunnel; the maintainer still initiates the real client tests from their own computer. Follow [STAGING_MCP_ACCEPTANCE.md](STAGING_MCP_ACCEPTANCE.md). Do not put any real student data in staging. Current ChatGPT custom write connections require an eligible Business or Enterprise/Edu workspace; Claude supports remote custom connectors on its individual and organizational plans. An individual ChatGPT Pro custom connector may be read-only. Current ChatGPT UI is Plugins > Add custom MCP server rather than assuming Developer Mode is mandatory. Codex CLI can separately add the HTTPS /mcp URL and run OAuth login; **Codex does not replace testing ChatGPT and Claude themselves**.
+
+OAuth refresh and vendor-specific handling remain unverified until the final two real client tests; if permission scope or tool linking fails, stop release and fix through GitHub PR/CI rather than asserting compatibility.
