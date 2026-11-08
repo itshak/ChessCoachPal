@@ -451,14 +451,14 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(oldProfile.name).toBe((await oldSite.json()).name);
   expect(oldProfile.teacher_notes).toBeUndefined();
   const aliases=["כינוי סינתטי "+suffix,"Synthetic alias "+suffix];
-  const update=(await call("ccp_v1_students_profile_edit",{
+  const profileEdit=(await call("ccp_v1_students_profile_edit",{
     studentId:profileId,expectedUpdatedAt:oldProfile.updated_at,confirmed:true,
     changes:{nameAliases:aliases,strength:7,lichessUsername:"lichess_test",
       chesscomUsername:"Chesscom_test",lichessRating:1450,chesscomRating:1510,
       teacherNotes:"Private synthetic notes"},
   })).structuredContent;
-  expect(update.error).toBeUndefined();
-  expect(update.data.strength).toBe(7);
+  expect(profileEdit.error).toBeUndefined();
+  expect(profileEdit.data.strength).toBe(7);
   const webProfile=await page.request.get("/api/students/"+profileId);
   expect(webProfile.status()).toBe(200);
   const actualProfile=await webProfile.json();
