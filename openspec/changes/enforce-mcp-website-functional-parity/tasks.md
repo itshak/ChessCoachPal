@@ -67,3 +67,7 @@ Shared website/MCP invoice service now supports changing draft notes/line items,
 ## Phase K: OAuth connection administration increment
 
 Website and MCP now call the same owner-scoped service to list active grants and revoke a chosen grant. Read-only clients cannot revoke; tokens and sessions never appear in the tool response, and delegated OAuth E2E confirms immediate access loss after revocation. Browser consent and original OAuth authorization flows remain explicitly secure-browser-only. **Full route/behavioral parity is not accepted** until the strict checklist passes.
+
+## Phase L: prepaid chess lesson credits increment
+
+Teacher-owned credit packages (including pending/current balances), draft purchase invoice creation, expiry correction and redemption returns share website/MCP business services; four new scoped tools require explicit confirmation for writes. Synthetic browser/OAuth tests verify package/invoice linkage, balance equality and expiry updates without charging or emailing families. Remaining risks: cross-entity transactional purchase, replay safety, financial statement reconciliation, bulk credit application and full 93-case matrix. Do not archive.

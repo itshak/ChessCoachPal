@@ -54,6 +54,11 @@ import {
  teacherInvoiceDelete,teacherInvoiceVoid,teacherInvoiceDraftUpdate,teacherInvoiceSend,InvoiceActionError,
 } from "@/lib/server/teacher-invoice-actions";
 import {teacherConnectionsList,teacherConnectionRevoke,ConnectionError} from "@/lib/server/teacher-connections-service";
+import {creditPackageCreateSchema} from "@/lib/server/api-schemas";
+import {
+ teacherCreditPackagesList,teacherCreditPackageCreate,teacherCreditPackageExpiry,
+ teacherCreditRedemptionReturn,CreditServiceError,
+} from "@/lib/server/teacher-credit-service";
 const uuid = z.string().uuid();
 const eventChanges=z.object({
   title:z.string().trim().min(1).max(200).optional(),
@@ -141,6 +146,29 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_credits_packages_list",
+    description:"Read prepaid packages, redeemed/pending balances, invoice status and expiration for an identified student or all coach-owned students.",
+    schema:z.object({studentId:uuid.optional()}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_credits_package_create",
+    description:"Sell a confirmed set of prepaid lesson credits by creating a draft invoice linked to an owned student and family. No payment or email is sent by this tool.",
+    schema:creditPackageCreateSchema.extend({confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_credits_package_expiry",
+    description:"Change or clear the expiry of an owned prepaid package, never before its start or dates of already redeemed lessons.",
+    schema:z.object({packageId:uuid,expiresOn:z.string().date().nullable(),
+      confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_credits_redemption_return",
+    description:"Return one identified used lesson credit to its prepaid package; changes what can be billed next. Teacher confirmation required.",
+    schema:z.object({redemptionId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_connections_list",
@@ -712,6 +740,22 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_credits_packages_list": {
+        const a=args as {studentId?:string};
+        return {data:await teacherCreditPackagesList(db,teacherId,a.studentId)};
+      }
+      case "ccp_v1_credits_package_create": {
+        const a=args as Parameters<typeof teacherCreditPackageCreate>[2];
+        return {data:await teacherCreditPackageCreate(db,teacherId,a)};
+      }
+      case "ccp_v1_credits_package_expiry": {
+        const a=args as {packageId:string;expiresOn:string|null};
+        return {data:await teacherCreditPackageExpiry(db,teacherId,a.packageId,a.expiresOn)};
+      }
+      case "ccp_v1_credits_redemption_return": {
+        const a=args as {redemptionId:string};
+        return {data:await teacherCreditRedemptionReturn(db,teacherId,a.redemptionId)};
+      }
       case "ccp_v1_connections_list":
         return {data:await teacherConnectionsList(teacherId)};
       case "ccp_v1_connections_revoke": {
@@ -1094,6 +1138,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof CreditServiceError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof ConnectionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof InvoiceActionError)

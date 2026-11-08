@@ -881,6 +881,46 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(invalidInvoice.error.code).toBe("NOT_FOUND");
 
+  // Prepaid chess lessons: draft invoice and balance parity, no charge/email.
+  for(const toolName of ["ccp_v1_credits_packages_list","ccp_v1_credits_package_create",
+    "ccp_v1_credits_package_expiry","ccp_v1_credits_redemption_return"])
+    expect(names).toContain(toolName);
+  const linkForCredits=await page.request.put("/api/students/"+profileId,{
+    data:{guardianId:acctGuardian!.id},
+  });
+  expect(linkForCredits.status(),await linkForCredits.text()).toBe(200);
+  const prepaidPackage=(await call("ccp_v1_credits_package_create",{
+    studentId:profileId,credits:4,durationMinutes:45,priceCents:10000,
+    startsOn:"2026-11-08",expiresOn:"2027-03-31",confirmed:true,
+  })).structuredContent;
+  expect(prepaidPackage.error).toBeUndefined();
+  const prepaidId=prepaidPackage.data.packageId as string;
+  const prepaidInvoice=await page.request.get("/api/billing/invoices/"+prepaidPackage.data.invoiceId);
+  expect(prepaidInvoice.status(),await prepaidInvoice.text()).toBe(200);
+  expect((await prepaidInvoice.json()).invoice_items.some((x:{kind:string})=>x.kind==="credit_package"))
+    .toBe(true);
+  const prepaidWebsite=await page.request.get("/api/billing/credit-packages?studentId="+profileId);
+  expect(prepaidWebsite.status(),await prepaidWebsite.text()).toBe(200);
+  const prepaidWebList=(await prepaidWebsite.json()).packages;
+  const prepaidMcpList=(await call("ccp_v1_credits_packages_list",{
+    studentId:profileId,
+  })).structuredContent.data.packages;
+  expect(prepaidMcpList).toEqual(prepaidWebList);
+  expect(prepaidMcpList.some((x:{id:string})=>x.id===prepaidId)).toBe(true);
+  const expiryChanged=await page.request.patch("/api/billing/credit-packages/"+prepaidId,{
+    data:{expiresOn:"2027-04-30"},
+  });
+  expect(expiryChanged.status(),await expiryChanged.text()).toBe(200);
+  const prepaidAfterChange=(await call("ccp_v1_credits_packages_list",{
+    studentId:profileId,
+  })).structuredContent.data.packages;
+  expect(prepaidAfterChange.find((x:{id:string})=>x.id===prepaidId).expiresOn)
+    .toBe("2027-04-30");
+  const nonExistentRedemption=(await call("ccp_v1_credits_redemption_return",{
+    redemptionId:randomUUID(),confirmed:true,
+  })).structuredContent;
+  expect(nonExistentRedemption.error.code).toBe("NOT_FOUND");
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{
