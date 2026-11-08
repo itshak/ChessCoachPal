@@ -625,8 +625,10 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Export teacher-owned data (PII approval)"
+      "existingTools": [
+        "ccp_v1_settings_export"
+      ],
+      "explanation": "Shared teacher-scoped backup service. MCP creates a portable data export without model-visible family portal tokens/provider credentials; full raw export remains browser download for secure delivery. Size cap and browser fallback documented."
     },
     {
       "path": "app/api/settings/import/route.ts",
@@ -635,8 +637,11 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Import teacher-owned data (preview/approval)"
+      "existingTools": [
+        "ccp_v1_settings_import_preview",
+        "ccp_v1_settings_import_apply"
+      ],
+      "explanation": "Shared allowlisted tenant-scoped import. MCP requires SHA-256 preview digest and explicit confirmation, browser keeps file upload. Transactional rollback and complete destructive-import scenario tests remain pending."
     },
     {
       "path": "app/api/settings/policy/route.ts",

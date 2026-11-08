@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {generateShortToken} from "@/lib/token";
 
 /**
  * ChessCoachPal pre-1.0 backup format. No CogNote/music import compatibility.
@@ -136,6 +137,16 @@ export async function importStudioExport(
       : rows;
     if (table === "studio_policies") {
       for (const row of safe) for (const field of POLICY_SECRET_FIELDS) delete (row as Record<string, unknown>)[field];
+    }
+    // A model-visible portable export deliberately omits portal credentials.
+    // On import, generate fresh random links for guardians whose tokens were
+    // withheld rather than writing NULL or accepting a predictable placeholder.
+    if (table === "guardians") {
+      for (const original of safe) {
+        const row = original as Record<string, unknown>;
+        if (typeof row.portal_token !== "string" || !row.portal_token.trim())
+          row.portal_token = generateShortToken();
+      }
     }
     const error = await upsertAll(supabase, table, safe);
     if (error) return { ok: false, error };
