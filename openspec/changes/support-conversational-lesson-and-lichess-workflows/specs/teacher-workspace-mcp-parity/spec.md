@@ -1,6 +1,6 @@
 # Proposed specification delta: MCP-first website feature and reporting parity
 
-**Status: PROPOSED, release-blocking and unimplemented.** The present 28 live MCP tools have partial coverage only. The [complete code-audited checklist](../../../../docs/MCP_WEBSITE_PARITY_CHECKLIST.md) contains 93 uncompleted behavioral/security cases and the [machine inventory](../../../../scripts/mcp-website-parity.json) contains 61 routes/17 pages/49 components.
+**Status: PROPOSED, release-blocking and unimplemented.** The present 28 live MCP tools have partial coverage only. The [complete code-audited checklist](../../../../../docs/MCP_WEBSITE_PARITY_CHECKLIST.md) contains 93 uncompleted behavioral/security cases and the [machine inventory](../../../../../scripts/mcp-website-parity.json) contains 61 routes/17 pages/49 components.
 
 ## Requirement: Website is an optional presentation layer, not the authoritative API
 
