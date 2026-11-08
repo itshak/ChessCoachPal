@@ -1,71 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const body = await req.json();
-  const name = typeof body.name === "string" ? body.name.trim() : "";
-  if (!name) {
-    return NextResponse.json({ error: "Name is required" }, { status: 400 });
-  }
-
-  const { data, error } = await supabase
-    .from("skill_dimensions")
-    .update({ name })
-    .eq("id", id)
-    .eq("teacher_id", user.id)
-    .select("id, name, sort_order")
-    .single();
-
-  if (error) {
-    if (error.code === "23505") {
-      return NextResponse.json(
-        { error: `A skill named "${name}" already exists` },
-        { status: 409 }
-      );
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data);
+import { skillDimensionsUpdate, skillDimensionsDelete, TeacherSkillsError } from "@/lib/server/teacher-skills-service";
+type Context={params:Promise<{id:string}>};
+async function teacher() {
+  const db=await createClient();
+  const {data:{user}}=await db.auth.getUser();
+  return user?{db,teacherId:user.id}:null;
 }
-
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // Cascades to skill_assessments — the UI confirms before calling.
-  const { error } = await supabase
-    .from("skill_dimensions")
-    .delete()
-    .eq("id", id)
-    .eq("teacher_id", user.id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ ok: true });
+export async function PUT(req:NextRequest,{params}:Context) {
+  const auth=await teacher();
+  if(!auth) return NextResponse.json({error:"Unauthorized"},{status:401});
+  const {id}=await params;
+  const body=await req.json().catch(()=>null);
+  try {return NextResponse.json(await skillDimensionsUpdate(auth.db,auth.teacherId,id,
+    typeof body?.name==="string"?body.name:""));}
+  catch(error) {return NextResponse.json({error:error instanceof TeacherSkillsError?error.message:"Unable to update skill"},{
+    status:error instanceof TeacherSkillsError?error.status:500,
+  });}
+}
+export async function DELETE(_req:NextRequest,{params}:Context) {
+  const auth=await teacher();
+  if(!auth) return NextResponse.json({error:"Unauthorized"},{status:401});
+  const {id}=await params;
+  try {
+    await skillDimensionsDelete(auth.db,auth.teacherId,id);
+    return NextResponse.json({ok:true});
+  } catch(error) {return NextResponse.json({error:error instanceof TeacherSkillsError?error.message:"Unable to delete skill"},{
+    status:error instanceof TeacherSkillsError?error.status:500,
+  });}
 }

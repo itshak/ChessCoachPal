@@ -6,12 +6,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * which a migration-time seed can't do.
  */
 export const DEFAULT_DIMENSIONS = [
-  "Musicianship",
-  "Rhythm",
-  "Sight Reading",
-  "Technique",
-  "Musicality",
-  "Theory",
+  "Opening principles",
+  "Tactics",
+  "Calculation",
+  "Positional understanding",
+  "Endgames",
+  "Time management",
 ];
 
 export interface SkillDimension {
