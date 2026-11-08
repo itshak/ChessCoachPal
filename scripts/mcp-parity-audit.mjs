@@ -5,6 +5,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateCheckedParityRow } from "./parity-evidence.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const inventory = JSON.parse(readFileSync(join(root, "scripts/mcp-website-parity.json"), "utf8"));
@@ -93,25 +94,14 @@ if (outstanding.length>0) {
 const checklist=readFileSync(join(root,"docs/MCP_WEBSITE_PARITY_CHECKLIST.md"),"utf8");
 const cases=[...checklist.matchAll(/^\|\s*-\s*\[([ xX])\]\s*\|/gm)];
 assert(cases.length===93,"Parity checklist expected exactly 93 behavioral scenarios; found "+cases.length);
-// A checked box is never proof by itself. Require an explicit executable
-// authenticated browser/MCP E2E reference on the same checklist row.
-// This prevents accidental/manual sign-off from bypassing release validation.
+// One checked scenario needs one named test that exercises both interfaces.
+// The E2E job must actually execute those tests before a release is accepted.
 const checklistRows=checklist.split("\n").filter(line=>/^\|\s*-\s*\[[ xX]\]\s*\|/.test(line));
 for (const [index,row] of checklistRows.entries()) {
   if (!/^\|\s*-\s*\[[xX]\]/.test(row)) continue;
-  const references=[...row.matchAll(/(?:^|[\s`(])((?:e2e\/)[a-zA-Z0-9_./-]+\.spec\.ts)(?:\s*#\s*([a-zA-Z0-9_-]+))?/g)];
-  assert(references.length>0,"Checked parity scenario "+(index+1)+" must name an executable e2e/*.spec.ts evidence path on its row");
-  for (const match of references) {
-    const path=match[1];
-    assert(existsSync(join(root,path)),"Checked parity scenario "+(index+1)+" references missing test "+path);
-    if (existsSync(join(root,path))) {
-      const source=readFileSync(join(root,path),"utf8");
-      assert(/ccp_v1_[a-z0-9_]+/.test(source),
-        "Checked parity scenario "+(index+1)+" E2E reference must exercise a named MCP tool: "+path);
-      assert(/\/mcp|mcp\/|tools\/call|callTool|mcpCall|invokeMcp|callMcp/.test(source),
-        "Checked parity scenario "+(index+1)+" E2E reference must exercise MCP transport: "+path);
-    }
-  }
+  for (const message of validateCheckedParityRow(row,index+1,
+    path => existsSync(join(root,path)),
+    path => readFileSync(join(root,path),"utf8"))) errors.push(message);
 }
 const pendingCases=cases.filter(match=>match[1]===" ").length;
 console.log("Browser ↔ MCP behavioral checklist: "+(cases.length-pendingCases)+"/"+cases.length+

@@ -109,3 +109,7 @@ New shared, read-only `teacherUnifiedLessonHistory` service and `ccp_v1_lessons_
 ## Phase R: teacher-owned student archive preflight (PR #44, pending validation)
 
 Site and MCP now share read-only archival commitment preflight. Active recurring slots, future private lessons, scheduled direct/group lessons (including frozen rosters), and live group memberships block archive; lookup failures are not silently treated as zero. The website requests a preview before confirmation; MCP has a bounded read tool; synthetic OAuth E2E compares both and denies other tenants. Active student count failures now fail closed. **B2/C remain unchecked**: serializable active-quota reservations, permanent-deletion preview, all 93 cases and merged-main evidence remain outstanding. Do not archive.
+
+## Phase S: enforce named browser/MCP acceptance evidence (PR #44)
+
+Checked checklist rows now need a distinct, named Playwright test (`e2e/*.spec.ts#PARITY-id`) that actually invokes MCP and a website API and makes assertions. Unit tests reject unanchored evidence, missing transports, and unsafe paths. This is a source audit, not proof that E2E ran or parity is complete; all 93 boxes remain unchecked and the OpenSpec stays active.
