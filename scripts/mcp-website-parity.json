@@ -93,18 +93,24 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Update credit package expiry and terms"
+      "existingTools": [
+        "ccp_v1_credits_package_expiry"
+      ],
+      "explanation": "Shared expiry edit with used-credit historical date validation and explicit MCP confirmation; concurrency case matrix outstanding."
     },
     {
       "path": "app/api/billing/credit-packages/route.ts",
       "methods": [
+        "GET",
         "POST"
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Create credit packages"
+      "existingTools": [
+        "ccp_v1_credits_packages_list",
+        "ccp_v1_credits_package_create"
+      ],
+      "explanation": "Same teacher-scoped prepaid balance and draft credit invoice creation for site/MCP. Purchase requires confirmation, no automatic email. Multi-record transaction and idempotency still open."
     },
     {
       "path": "app/api/billing/credit-redemptions/[id]/route.ts",
@@ -113,8 +119,10 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Undo credit redemption with finance approval"
+      "existingTools": [
+        "ccp_v1_credits_redemption_return"
+      ],
+      "explanation": "Shared owner-scoped credit return, confirmed MCP action. Ledger effects and exact replay not yet certified."
     },
     {
       "path": "app/api/billing/export/route.ts",
