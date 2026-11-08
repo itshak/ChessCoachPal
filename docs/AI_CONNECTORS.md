@@ -1,6 +1,6 @@
-# Remote ChatGPT and Claude MCP connector — expanded synthetic CI coverage; live clients release-only
+# ChessCoachPal MCP — 28 implemented tools, live Codex demo; ChatGPT/Claude release acceptance outstanding
 
-**Important:** The initial server-side MCP/OAuth foundation passed GitHub automated CI/E2E and is archived as development work. This **does not** establish real ChatGPT/Claude interoperability. Do **not** test real provider clients during development milestones; both live client tests are required **only once, immediately before publishing v0.1.0, on the maintainer's machine**, using a synthetic locally controlled HTTPS-reachable instance. Record sanitized evidence via [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md). No production approval or voice-tool support is implied.
+**Important:** The initial server-side MCP/OAuth foundation passed GitHub CI/E2E; a real Codex remote MCP connection has now performed synthetic student/workplace/enrollment writes, independently verified in the hosted Supabase database. **This does not establish real ChatGPT/Claude interoperability.** Do **not** test real provider clients during development milestones; both live client tests are required **only once, immediately before publishing v0.1.0, on the maintainer's machine**, using a synthetic locally controlled HTTPS-reachable instance. Record sanitized evidence via [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md). No production approval or voice-tool support is implied.
 
 ## Host configuration
 
@@ -58,3 +58,10 @@ New coaching writes use a single transactional database mutation that binds the 
 For the final manual test, a **disposable Vercel + Supabase staging project** is also supported as an alternative to a local HTTPS tunnel; the maintainer still initiates the real client tests from their own computer. Follow [STAGING_MCP_ACCEPTANCE.md](STAGING_MCP_ACCEPTANCE.md). Do not put any real student data in staging. Current ChatGPT custom write connections require an eligible Business or Enterprise/Edu workspace; Claude supports remote custom connectors on its individual and organizational plans. An individual ChatGPT Pro custom connector may be read-only. Current ChatGPT UI is Plugins > Add custom MCP server rather than assuming Developer Mode is mandatory. Codex CLI can separately add the HTTPS /mcp URL and run OAuth login; **Codex does not replace testing ChatGPT and Claude themselves**.
 
 OAuth refresh and vendor-specific handling remain unverified until the final two real client tests; if permission scope or tool linking fails, stop release and fix through GitHub PR/CI rather than asserting compatibility.
+
+
+## Proposed complete chess-trainer commands (NOT IMPLEMENTED)
+
+See [the 28 existing tools vs every proposed command](../openspec/changes/support-conversational-lesson-and-lichess-workflows/tool-catalog.md), [design](../openspec/changes/support-conversational-lesson-and-lichess-workflows/design.md), and [workflow roadmap](MCP_WORKFLOW_ROADMAP.md). Pending scope includes `ccp_v1_students_list/resolve` for all roster and English/Hebrew aliases; source-tagged 1–10 teacher strength and separate Lichess/Chess.com rating histories; weekly scheduled hours and effective student/workplace slots; preview/commit for one ad-hoc multiple-student lesson; connected Lichess study/chapter search and assignments; and reviewed image-derived FEN to Lichess puzzle chapter publish with 64-chapter rollover. These names must **not** be emitted by live tool discovery before corresponding backend implementation.
+
+The public Plugin Directory is a **future hosted SaaS distribution** option, recommended at/after public v1.0.0 SaaS (an earlier properly approved beta is possible). Custom MCP and self-hosting continue independently; see [publication guide](PUBLIC_PLUGIN_SUBMISSION.md).

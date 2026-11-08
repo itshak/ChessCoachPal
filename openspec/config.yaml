@@ -22,3 +22,10 @@ rules:
     - Cite merged commit and passing GitHub Actions test evidence in docs/STATUS.md for development changes.
     - Never require live ChatGPT or Claude accounts in a development spec/task; move live-client acceptance solely to final local v0.1.0 prepublication release gate.
     - Never mark an active change complete based only on an unmerged draft PR.
+
+# New OpenSpec proposal (not applied): support-conversational-lesson-and-lichess-workflows
+# includes bilingual alias resolution, 1-10 strength, source-aware ratings,
+# ad-hoc multi-student capture, schedule fallback, connected studies and
+# image-assisted validated FEN/Puzzle chapter publishing. Keep release-only
+# complete-v0-1-0-release-gates separate, and defer public SaaS/Plugin Directory
+# to an explicitly reviewed hosted production launch (target v1.0.0 or beta).
