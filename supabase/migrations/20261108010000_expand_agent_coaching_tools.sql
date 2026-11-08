@@ -28,7 +28,7 @@ CREATE OR REPLACE FUNCTION public.agent_coaching_mutate(
   p_expected_updated_at timestamptz,
   p_idempotency_key uuid,
   p_client_id text
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_teacher uuid := auth.uid();
   v_hash text;
