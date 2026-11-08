@@ -27,6 +27,11 @@ import {
  skillDimensionsList, skillDimensionsCreate, skillDimensionsUpdate, skillDimensionsDelete,
  studentSkillAssessmentsList, studentSkillAssessmentsRecord, TeacherSkillsError,
 } from "@/lib/server/teacher-skills-service";
+import { guardianCreateSchema, guardianUpdateSchema } from "@/lib/server/api-schemas";
+import { guardiansList, guardianDetail, guardianCreate, guardianUpdate,
+ guardianDeleteImpact, guardianDelete, guardianRotatePortalToken, safeGuardian,
+ GuardianServiceError,
+} from "@/lib/server/teacher-guardian-service";
 const uuid = z.string().uuid();
 const searchText = z.string().trim().min(1).max(80);
 const sessionId = z.object({ sessionId: uuid }).strict();
@@ -72,6 +77,44 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_guardians_list",
+    description:"List teacher-owned families with student names. Contact details and portal credentials are redacted; use an identified detail read and explicit confirmation for contact data.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_guardians_detail",
+    description:"Read one identified family. Contact details require includeContacts=true plus confirmed=true; never disclose the portal token.",
+    schema:z.object({guardianId:uuid,includeContacts:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_guardians_create",
+    description:"Create a family, optionally linking existing students or creating named children. Requires explicit teacher confirmation; never return family portal tokens or contact info to the model.",
+    schema:guardianCreateSchema.extend({confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_guardians_update",
+    description:"Update family contacts, recipient preferences and exact current roster; changing studentIds replaces membership. Require teacher confirmation.",
+    schema:guardianUpdateSchema.extend({guardianId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_guardians_delete_impact",
+    description:"Preview student and invoice obligations that block family deletion.",
+    schema:z.object({guardianId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_guardians_delete",
+    description:"Permanently remove an empty family only with explicit approval; student or invoice dependencies block deletion.",
+    schema:z.object({guardianId:uuid,confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_guardians_rotate_portal_token",
+    description:"Invalidate an existing family-portal link and create a fresh one. Old links immediately stop working. New secret is NEVER returned to the model; view the URL securely on the website.",
+    schema:z.object({guardianId:uuid,confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_skill_dimensions_list",
@@ -375,6 +418,38 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_guardians_list": {
+        const rows=await guardiansList(db,teacherId);
+        return {data:rows.map(row=>safeGuardian(row))};
+      }
+      case "ccp_v1_guardians_detail": {
+        const a=args as {guardianId:string;includeContacts:boolean;confirmed?:boolean};
+        const row=await guardianDetail(db,teacherId,a.guardianId);
+        return {data:safeGuardian(row,a.includeContacts&&a.confirmed===true)};
+      }
+      case "ccp_v1_guardians_create": {
+        const a=args as Parameters<typeof guardianCreate>[2];
+        const row=await guardianCreate(db,teacherId,a);
+        return {data:safeGuardian(row)};
+      }
+      case "ccp_v1_guardians_update": {
+        const a=args as Parameters<typeof guardianUpdate>[3] & {guardianId:string};
+        const row=await guardianUpdate(db,teacherId,a.guardianId,a);
+        return {data:safeGuardian(row)};
+      }
+      case "ccp_v1_guardians_delete_impact": {
+        const a=args as {guardianId:string};
+        return {data:await guardianDeleteImpact(db,teacherId,a.guardianId)};
+      }
+      case "ccp_v1_guardians_delete": {
+        const a=args as {guardianId:string};
+        return {data:await guardianDelete(db,teacherId,a.guardianId)};
+      }
+      case "ccp_v1_guardians_rotate_portal_token": {
+        const a=args as {guardianId:string};
+        const rotated=await guardianRotatePortalToken(db,teacherId,a.guardianId);
+        return {data:{ok:true,id:rotated.id,secretNotReturned:true}};
+      }
       case "ccp_v1_skill_dimensions_list":
         return {data:await skillDimensionsList(db,teacherId)};
       case "ccp_v1_skill_dimensions_create": {
@@ -568,6 +643,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof GuardianServiceError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherSkillsError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof StudentProfileError)

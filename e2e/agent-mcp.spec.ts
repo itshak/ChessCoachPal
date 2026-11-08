@@ -560,6 +560,65 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const afterDeletion=await page.request.get("/api/students/"+profileId+"/skills");
   expect((await afterDeletion.json()).some((x:{id:string})=>x.id===assessmentId)).toBe(false);
 
+  // Guardian/contact lifecycle parity with secret redaction and cross-tenant denial.
+  for(const toolName of ["ccp_v1_guardians_list","ccp_v1_guardians_detail",
+    "ccp_v1_guardians_create","ccp_v1_guardians_update",
+    "ccp_v1_guardians_delete_impact","ccp_v1_guardians_delete",
+    "ccp_v1_guardians_rotate_portal_token"])expect(names).toContain(toolName);
+  const newFamily=(await call("ccp_v1_guardians_create",{
+    name:"Synthetic chess family "+suffix,email:"synthetic-"+suffix+"@example.com",
+    confirmed:true,
+  })).structuredContent;
+  expect(newFamily.error).toBeUndefined();
+  expect(newFamily.data.portal_token).toBeUndefined();
+  expect(newFamily.data.email).toBeUndefined();
+  const gid=newFamily.data.id as string;
+  const familyWebsite=await page.request.get("/api/guardians/"+gid);
+  expect(familyWebsite.status()).toBe(200);
+  const originalPortal=(await familyWebsite.json()).portal_token as string;
+  expect(originalPortal).toBeTruthy();
+  const contact=(await call("ccp_v1_guardians_detail",{
+    guardianId:gid,includeContacts:true,confirmed:true,
+  })).structuredContent.data;
+  expect(contact.email).toContain("synthetic-");
+  expect(contact.portal_token).toBeUndefined();
+  const editFamily=await page.request.put("/api/guardians/"+gid,{
+    data:{familyName:"Chess academy test "+suffix},
+  });
+  expect(editFamily.status(),await editFamily.text()).toBe(200);
+  const familyFromMcp=(await call("ccp_v1_guardians_detail",{
+    guardianId:gid,
+  })).structuredContent.data;
+  expect(familyFromMcp.family_name).toBe("Chess academy test "+suffix);
+  const rotation=(await call("ccp_v1_guardians_rotate_portal_token",{
+    guardianId:gid,confirmed:true,
+  })).structuredContent;
+  expect(rotation.error).toBeUndefined();
+  expect(rotation.data.secretNotReturned).toBe(true);
+  expect(rotation.data.portal_token).toBeUndefined();
+  const afterRotation=await page.request.get("/api/guardians/"+gid);
+  expect((await afterRotation.json()).portal_token).not.toBe(originalPortal);
+  const impact=(await call("ccp_v1_guardians_delete_impact",{
+    guardianId:gid,
+  })).structuredContent.data;
+  expect(impact.studentCount).toBe(0);
+  expect(impact.invoiceCount).toBe(0);
+  const deleteFamily=(await call("ccp_v1_guardians_delete",{
+    guardianId:gid,confirmed:true,
+  })).structuredContent;
+  expect(deleteFamily.error).toBeUndefined();
+  const afterFamilyDelete=await page.request.get("/api/guardians/"+gid);
+  expect(afterFamilyDelete.status()).toBe(404);
+  // No model-visible family portal secrets, even for a foreign teacher UUID.
+  const {data:otherFamily,error:otherFamilyError}=await admin.from("guardians").insert({
+    teacher_id:otherId,name:"Other coach guardian "+suffix,portal_token:randomUUID(),
+  }).select("id").single();
+  expect(otherFamilyError).toBeNull();
+  const foreignFamily=(await call("ccp_v1_guardians_detail",{
+    guardianId:otherFamily!.id,includeContacts:true,confirmed:true,
+  })).structuredContent;
+  expect(foreignFamily.error.code).toBe("NOT_FOUND");
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{
