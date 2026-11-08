@@ -8,7 +8,7 @@ context: |
   A teacher has configurable Workplaces, groups, students, lesson
   sessions and per-student attendance. No board in v0.1.0.
   Current phase is 0.0.0 development. Use ROADMAP-v0.1.0.md for five
-  scoped, testable outcomes (Milestones 1, 2 foundation, 3, 4 and 5 automated self-hosting archived; active 2b and final publication follow-on). All pre-release development acceptance uses automated GitHub Actions with synthetic fixtures. Actual ChatGPT/Claude vendor-client testing is reserved solely for the final manual local prepublication v0.1.0 sign-off. ADR-0001 overrides inherited compatibility
+  scoped, testable outcomes (Milestones 1, 2 foundation, 3, 4 and 5 automated self-hosting archived; accepted 2b archived, successor final publication release gate active). All pre-release development acceptance uses automated GitHub Actions with synthetic fixtures. Real Codex MCP search/create/enroll has been demonstrated against the hosted synthetic Supabase demo, but actual ChatGPT/Claude vendor-client acceptance is reserved for the final manual local prepublication v0.1.0 sign-off. Public ChatGPT Plugin Directory publication is a separate future workstream. ADR-0001 overrides inherited compatibility
   directions: no CogNote compatibility or pre-1.0 data/API upgrade support.
 rules:
   proposal:

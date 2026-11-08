@@ -1,8 +1,8 @@
 # Change: finalize-v0-1-0-publication
 
-- **Status:** Proposed / publication BLOCKED. This is the final release-only successor to the [archived automated Milestone 5 implementation](../archive/2026-11-08-verify-self-hosting-and-release-v0-1-0/proposal.md).
+- **Status:** ARCHIVED 2026-11-08 — SUPERSEDED / NOT ACCEPTED. The recorded live Codex deployment evidence is a distinct, verified milestone, not completion of this release-only change. This is the final release-only successor to the [archived automated Milestone 5 implementation](../2026-11-08-verify-self-hosting-and-release-v0-1-0/proposal.md).
 - **Target:** v0.1.0, **not** version 0.0.0.
-- **Dependencies:** Accepted [2b agent-tool scope](../archive/2026-11-08-expand-agent-coaching-tools/proposal.md), source/history/privacy/redistribution clearance (M4 tasks 4.10–4.12 carried as old M5 task 5.9), all six [release criteria](../../../docs/RELEASING.md), and the maintainer's final local ChatGPT/Claude approval.
+- **Dependencies:** Accepted [2b agent-tool scope](../2026-11-08-expand-agent-coaching-tools/proposal.md), source/history/privacy/redistribution clearance (M4 tasks 4.10–4.12 carried as old M5 task 5.9), all six [release criteria](../../../docs/RELEASING.md), and the maintainer's final local ChatGPT/Claude approval.
 
 ## Why
 
