@@ -755,9 +755,10 @@
       "existingTools": [
         "ccp_v1_students_update",
         "ccp_v1_students_profile",
-        "ccp_v1_students_profile_edit"
+        "ccp_v1_students_profile_edit",
+        "ccp_v1_students_archive_preview"
       ],
-      "explanation": "Student read/profile/aliases/strength/ratings/notes/archival now have website and MCP adapters. Safe replay, atomic hosted limit, deletion impact and all 93 cases remain unverified."
+      "explanation": "Profile archive preview and mutation share teacher-scoped website/MCP services. Preflight covers recurring slots, future private lessons, future group/direct sessions and live group memberships; failed counts block archiving. Atomic hosted capacity and deletion impact remain unresolved; strict cases pending."
     },
     {
       "path": "app/api/students/[id]/skills/route.ts",

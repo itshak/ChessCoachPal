@@ -19,11 +19,24 @@ export function ArchiveStudentButton({
   const [busy, setBusy] = useState(false);
 
   async function toggle() {
-    if (!archived && !window.confirm(
-      "Archive this student? Teaching history will be retained. Resolve future lessons and recurring slots first."
-    )) return;
     setBusy(true);
     try {
+      if (!archived) {
+        const response = await fetch(`/api/students/${studentId}?archivePreview=true`);
+        const preview = await response.json().catch(() => null);
+        if (!response.ok || !preview) {
+          showToast(preview?.error ?? "Could not verify student commitments", "error");
+          return;
+        }
+        if (!preview.canArchive) {
+          const blockers = Object.entries(preview.blockers as Record<string, number>)
+            .filter(([, count]) => count > 0)
+            .map(([name, count]) => `${name}: ${count}`).join(", ");
+          showToast("Resolve before archiving: " + blockers, "error");
+          return;
+        }
+        if (!window.confirm("Archive this student? All teaching history will be retained.")) return;
+      }
       const res = await fetch(`/api/students/${studentId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

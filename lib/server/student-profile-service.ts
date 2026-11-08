@@ -49,6 +49,36 @@ export async function teacherStudentProfile(db: Db, teacherId: string, studentId
   if (!data) throw new StudentProfileError(404,"NOT_FOUND","Student not found");
   return data;
 }
+/** Advisory preflight shared by website and delegated MCP. Fail closed on query errors. */
+export async function teacherStudentArchivePreview(db: Db, teacherId: string, studentId: string) {
+  const student = await teacherStudentProfile(db, teacherId, studentId);
+  const now = new Date().toISOString();
+  const checks = await Promise.all([
+    db.from("lesson_slots").select("id", {count:"exact", head:true})
+      .eq("teacher_id",teacherId).eq("student_id",studentId).eq("active",true),
+    db.from("lessons").select("id", {count:"exact", head:true})
+      .eq("teacher_id",teacherId).eq("student_id",studentId).gte("starts_at",now),
+    db.from("teaching_sessions").select("id", {count:"exact", head:true})
+      .eq("teacher_id",teacherId).eq("student_id",studentId)
+      .eq("status","scheduled").gte("starts_at",now),
+    db.from("session_participants")
+      .select("session_id,teaching_sessions!inner(id)", {count:"exact",head:true})
+      .eq("teacher_id",teacherId).eq("student_id",studentId)
+      .eq("teaching_sessions.status","scheduled")
+      .gte("teaching_sessions.starts_at",now),
+    db.from("group_enrollments").select("id", {count:"exact",head:true})
+      .eq("teacher_id",teacherId).eq("student_id",studentId),
+  ]);
+  if (checks.some(({error})=>error))
+    throw new StudentProfileError(503,"PREVIEW_UNAVAILABLE","Cannot verify future commitments; archive was not performed");
+  const [recurringSlots,futurePrivateLessons,futureDirectSessions,
+    futureGroupSessions,activeGroupMemberships] = checks.map(({count})=>count ?? 0);
+  const blockers = {recurringSlots,futurePrivateLessons,futureDirectSessions,
+    futureGroupSessions,activeGroupMemberships};
+  return {studentId,archived:Boolean(student.archived_at),updatedAt:student.updated_at,
+    blockers,canArchive:Object.values(blockers).every(count=>count===0)};
+}
+
 /** Website and MCP execute this exact code with the same RLS-bound teacher database client. */
 export async function teacherStudentPatch(db: Db, teacherId: string, studentId: string,
   patch: StudentProfilePatch, expectedUpdatedAt?: string) {
@@ -68,17 +98,10 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
     }
   }
   if (patch.archived === true && !existing.archived_at) {
-    // Do not silently discard the student's future commitments or an active recurring slot.
-    const today = new Date().toISOString();
-    const [{count:slots},{count:legacy},{count:sessions}] = await Promise.all([
-      db.from("lesson_slots").select("id",{count:"exact",head:true}).eq("student_id",studentId).eq("active",true),
-      db.from("lessons").select("id",{count:"exact",head:true}).eq("student_id",studentId).gte("starts_at",today),
-      db.from("teaching_sessions").select("id",{count:"exact",head:true}).eq("teacher_id",teacherId)
-        .eq("student_id",studentId).eq("status","scheduled").gte("starts_at",today),
-    ]);
-    if ((slots ?? 0) + (legacy ?? 0) + (sessions ?? 0) > 0)
+    const preview=await teacherStudentArchivePreview(db,teacherId,studentId);
+    if (!preview.canArchive)
       throw new StudentProfileError(409,"FUTURE_COMMITMENTS",
-        "Student has active recurring slots or future lessons. Resolve these commitments before archiving.");
+        "Resolve recurring slots, future private/group lessons and current group membership before archiving");
   }
   const cents = (value:number|string|null) => value === null || value === "" ? null :
     Math.max(0,Math.round(Number(value)));

@@ -61,7 +61,7 @@ export async function countActiveStudents(
 
   if (error) {
     console.error("countActiveStudents:", error);
-    return 0;
+    throw new Error("Unable to verify active-student capacity");
   }
   return count ?? 0;
 }

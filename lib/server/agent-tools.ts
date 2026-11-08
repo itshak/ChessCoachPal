@@ -17,7 +17,7 @@ import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coachi
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
   TeacherOverviewError } from "@/lib/server/teacher-overview-service";
 
-import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, StudentProfileError } from "@/lib/server/student-profile-service";
+import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, teacherStudentArchivePreview, StudentProfileError } from "@/lib/server/student-profile-service";
 import { studentUpdateSchema } from "@/lib/server/api-schemas";
 import { assertWithinHostedLimit } from "@/lib/server/entitlements";
 const safeStudentProfile = (row: Record<string,unknown>) => ({
@@ -619,6 +619,11 @@ const catalogue = [
     description: "Read an identified student's profile. Private teacher notes and family/contact fields are excluded unless includePrivate=true AND confirmed=true. Avoid exposing children's information unnecessarily.",
     schema:z.object({studentId:uuid,includePrivate:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
     scope:"coach:read",readOnly:true,
+  },
+  {
+    name: "ccp_v1_students_archive_preview",
+    description: "Read the teacher-owned student's archival blockers (recurring slots, future private/group lessons, current group memberships) before requesting archival. No private notes or contacts are exposed.",
+    schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name: "ccp_v1_students_profile_edit",
@@ -1251,6 +1256,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {studentId:string;includePrivate:boolean;confirmed?:boolean};
         const profile=await teacherStudentProfile(db,teacherId,a.studentId);
         return {data:a.includePrivate && a.confirmed ? profile : safeStudentProfile(profile)};
+      }
+      case "ccp_v1_students_archive_preview": {
+        const arg=args as {studentId:string};
+        return {data:await teacherStudentArchivePreview(db,teacherId,arg.studentId)};
       }
       case "ccp_v1_students_profile_edit": {
         const a=args as {studentId:string;expectedUpdatedAt:string;changes:Parameters<typeof teacherStudentPatch>[3]};

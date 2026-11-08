@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { retireEmptyGuardians } from "@/lib/server/families";
 import { parseBody, studentUpdateSchema } from "@/lib/server/api-schemas";
-import { teacherStudentPatch, teacherStudentProfile, StudentProfileError } from "@/lib/server/student-profile-service";
+import { teacherStudentArchivePreview, teacherStudentPatch, teacherStudentProfile, StudentProfileError } from "@/lib/server/student-profile-service";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -13,6 +13,8 @@ export async function GET(
   const { data: { user } } = await db.auth.getUser();
   if (!user) return NextResponse.json({error:"Unauthorized"},{status:401});
   try {
+    if (req.nextUrl.searchParams.get("archivePreview") === "true")
+      return NextResponse.json(await teacherStudentArchivePreview(db,user.id,id));
     return NextResponse.json(await teacherStudentProfile(db,user.id,id));
   } catch(error) {
     return NextResponse.json({error:error instanceof StudentProfileError?error.message:"Student unavailable"},{

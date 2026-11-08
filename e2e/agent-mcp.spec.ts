@@ -572,7 +572,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
 
   // Browser/MCP student profile parity: chess fields, notes, aliases, archived records.
   for (const toolName of ["ccp_v1_students_roster","ccp_v1_students_profile",
-    "ccp_v1_students_profile_edit"]) expect(names).toContain(toolName);
+    "ccp_v1_students_profile_edit","ccp_v1_students_archive_preview"]) expect(names).toContain(toolName);
   const profileId=madeStudent.entityId;
   const oldProfile=(await call("ccp_v1_students_profile",{studentId:profileId})).structuredContent.data;
   const oldSite=await page.request.get("/api/students/"+profileId);
@@ -616,6 +616,17 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     studentId:foreignStudent!.id,
   })).structuredContent;
   expect(forbiddenProfile.error.code).toBe("NOT_FOUND");
+  const previewMcp=(await call("ccp_v1_students_archive_preview",{
+    studentId:profileId,
+  })).structuredContent.data;
+  const previewWeb=await page.request.get("/api/students/"+profileId+"?archivePreview=true");
+  expect(previewWeb.status()).toBe(200);
+  expect(previewMcp).toEqual(await previewWeb.json());
+  expect(previewMcp.canArchive).toBe(true);
+  const foreignPreview=(await call("ccp_v1_students_archive_preview",{
+    studentId:foreignStudent!.id,
+  })).structuredContent;
+  expect(foreignPreview.error.code).toBe("NOT_FOUND");
   const archive=(await call("ccp_v1_students_profile_edit",{
     studentId:profileId,expectedUpdatedAt:actualProfile.updated_at,confirmed:true,
     changes:{archived:true},
