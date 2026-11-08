@@ -259,6 +259,44 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(staleMaterial.error.code).toBe("CONFLICT");
 
+  // Full-period material coverage is a distinct, source-grounded report.
+  // The linked reference alone and subsequently retracted claim count as ZERO.
+  expect(names).toContain("ccp_v1_materials_coverage_report");
+  const coverageArgs={workplaceId:workplace.id,from:"2027-04-12",to:"2027-04-12"};
+  const coverageEmpty=(await mcp("tools/call",{
+    name:"ccp_v1_materials_coverage_report",arguments:coverageArgs,
+  })).structuredContent;
+  expect(coverageEmpty.error).toBeUndefined();
+  expect(coverageEmpty.data.totals.resourceCount).toBe(0);
+  for(const stage of ["assigned","taught","completed"] as const){
+    const recorded=(await mcp("tools/call",{
+      name:"ccp_v1_materials_history_record",
+      arguments:{...materialClaimArgs,stage,requestId:randomUUID()},
+    })).structuredContent;
+    expect(recorded.error).toBeUndefined();
+  }
+  const coverageMcp=(await mcp("tools/call",{
+    name:"ccp_v1_materials_coverage_report",arguments:coverageArgs,
+  })).structuredContent;
+  expect(coverageMcp.error).toBeUndefined();
+  const websiteCoverage=await page.request.get("/api/coaching/material-report?"+
+    new URLSearchParams(coverageArgs));
+  expect(websiteCoverage.status(),await websiteCoverage.text()).toBe(200);
+  expect(coverageMcp.data).toEqual(await websiteCoverage.json());
+  expect(coverageMcp.data.completeRange).toBe(true);
+  expect(coverageMcp.data.totals.resourceCount).toBe(1);
+  expect(coverageMcp.data.totals.assignmentEvidenceCount).toBe(1);
+  expect(coverageMcp.data.totals.teachingEvidenceCount).toBe(1);
+  expect(coverageMcp.data.totals.completionEvidenceCount).toBe(1);
+  expect(coverageMcp.data.totals.distinctTeachingEvents).toBe(1);
+  expect(coverageMcp.data.materials[0].taughtStudentCount).toBe(1);
+  expect(coverageMcp.data.teachingTimeExcluded).toBe(true);
+  const studentCoverage=(await mcp("tools/call",{
+    name:"ccp_v1_materials_coverage_report",
+    arguments:{studentId:student.id,from:"2027-04-12",to:"2027-04-12"},
+  })).structuredContent;
+  expect(studentCoverage.data.materials).toEqual(coverageMcp.data.materials);
+
   const missingApproval=(await mcp("tools/call",{
     name:"ccp_v1_chess_observations_approve",arguments:{observationId:proposed.data.id},
   })).structuredContent;
@@ -324,6 +362,12 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     },
   })).structuredContent;
   expect(foreignMaterialWrite.error.code).toBe("NOT_FOUND");
+
+  const deniedCoverage=(await mcp("tools/call",{
+    name:"ccp_v1_materials_coverage_report",
+    arguments:{workplaceId:foreignWorkplace!.id,from:"2027-04-12",to:"2027-04-13"},
+  })).structuredContent;
+  expect(deniedCoverage.error.code).toBe("NOT_FOUND");
 
   // A name is not a stable ID: ambiguous matches return candidates, not a guessed write.
   const duplicateName = "Synthetic duplicate " + suffix;
