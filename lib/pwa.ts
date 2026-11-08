@@ -38,36 +38,32 @@ export function isIosBrowser({
   );
 }
 
-/** Shared PWA metadata. Kept in lib/ so vitest's node environment can cover it.
- *  themeColor is the light default; themeColorDark is the dark surface. The
- *  theme-color meta follows the in-app teacher theme (a localStorage preference
- *  that deliberately does not follow the OS). */
+/** Shared PWA metadata. Dark is the default; teacher light is opt-in.
+ * The two brand colors are also defined in app/globals.css and the approved
+ * app SVGs. They must be updated together during future rebranding. */
 export const PWA = {
   name: "ChessCoachPal",
   shortName: "CoachPal",
   description:
-    "AI-agent-first chess teaching assistant for workplaces, class groups, lessons and student attendance.",
-  themeColor: "#ffffff", // --color-surface (light)
-  themeColorDark: "#1c1f28", // --color-surface (dark)
-  backgroundColor: "#faf9f7", // --color-background (light) — matches <body>, avoids a white flash
+    "AI-first chess teaching assistant for workplaces, class groups, lessons and student attendance.",
+  themeColor: "#0D1829", // default dark surface, matches --color-surface
+  themeColorDark: "#0D1829",
+  themeColorLight: "#FFFFFF",
+  backgroundColor: "#0B1322", // default dark background, matches --color-background
   startUrl: "/",
   scope: "/",
 } as const;
 
 export function themeColorFor(mode: "light" | "dark"): string {
-  return mode === "dark" ? PWA.themeColorDark : PWA.themeColor;
+  return mode === "light" ? PWA.themeColorLight : PWA.themeColorDark;
 }
 
-/** Cookie mirroring the teacher theme so the server can render a matching
- *  theme-color. Written by TeacherThemeProvider; localStorage stays the client
- *  source of truth. */
 export const THEME_COOKIE = "chesscoachpal-theme";
 
 export type ThemeModeName = "light" | "dark";
 
-/** Maps a raw cookie value to a theme mode. Anything unrecognised (missing
- *  cookie, tampering, an older value) falls back to light, matching the
- *  server-rendered default. */
+/** Missing, invalid or tampered cookies fall back to brand dark mode. */
 export function themeModeFromCookie(value: string | undefined): ThemeModeName {
-  return value === "dark" ? "dark" : "light";
+  return value === "light" ? "light" : "dark";
 }
+
