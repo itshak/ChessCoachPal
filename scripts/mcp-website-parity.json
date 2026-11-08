@@ -301,6 +301,19 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/unified-lessons/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_lessons_history_unified"
+      ],
+      "explanation": "Shared teacher-scoped, date-bounded read of both teaching_sessions and legacy lessons; preserves old records, flags exact cross-model duplicates, distinguishes booked vs evidenced teaching minutes, sums teacher interval union once. Delegated OAuth/website E2E checks same filtered persisted history, group overlap and foreign tenant denial.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
+    },
+    {
       "path": "app/api/cron/event-reminders/route.ts",
       "methods": [
         "GET",
@@ -841,6 +854,7 @@
     "components/teacher/StudentNotesEditor.tsx",
     "components/teacher/TeacherNav.tsx",
     "components/teacher/TeacherThemeProvider.tsx",
+    "components/teacher/UnifiedLessonHistoryPanel.tsx",
     "components/teacher/billing/BillingList.tsx",
     "components/teacher/billing/CreditPackagesCard.tsx",
     "components/teacher/billing/InvoiceDetailClient.tsx",
