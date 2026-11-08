@@ -151,3 +151,7 @@ The last five route families with no MCP tool were addressed in PR #39: invoice 
 ### Chess-learning teacher verification boundary
 
 Four additional MCP commands now cover chess skill category creation/updates, observation corrections and edits to saved Lichess learning references. AI-proposed observation **approval remains browser-only** because allowing the model to mark its own proposals `verified_by = teacher` would falsify provenance. This narrow exception is documented in [proposed ADR-0004](adr/0004-teacher-verification-provenance.md), subject to maintainer review; it is not a blanket waiver of website/MCP functional parity.
+
+## 2026-11-08 material progress evidence increment (PR pending)
+
+MCP-first material tracking now distinguishes assigned, actually taught and teacher-confirmed completed. A shared website/MCP service records idempotent, teacher-scoped evidence and revision-safe corrections while preserving audit history and existing learning links; a new student/learning editor exposes the same operations. This is **not complete historic material coverage**: earlier legacy lessons have no verified material assignments, and whole-period workplace deduplicated reporting, full Lichess chapter fetching, and the 93-case acceptance still need implementation and evidence. Do not archive the parity OpenSpec or pass the release gate solely because the route has a tool. Verify PR/full main CI before status is accepted.
