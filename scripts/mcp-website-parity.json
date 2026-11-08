@@ -255,9 +255,12 @@
         "GET"
       ],
       "kind": "teacher",
-      "parity": "gap",
-      "existingTools": [],
-      "explanation": "Dashboard counts/summary"
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_dashboard_summary"
+      ],
+      "explanation": "Teacher-scoped shared service powers website and MCP; real delegated OAuth browser comparison and notification write/readback in E2E",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
       "path": "app/api/events/[id]/email/route.ts",
@@ -402,9 +405,13 @@
         "PATCH"
       ],
       "kind": "teacher",
-      "parity": "gap",
-      "existingTools": [],
-      "explanation": "Notification inbox/read status"
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_notifications_list",
+        "ccp_v1_notifications_mark_read"
+      ],
+      "explanation": "Teacher-scoped shared service powers website and MCP; real delegated OAuth browser comparison and notification write/readback in E2E",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
       "path": "app/api/onboarding/tour/route.ts",

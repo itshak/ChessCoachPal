@@ -78,6 +78,56 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     return (await r.json()).data;
   };
   const suffix=Date.now().toString(36);
+  // Dashboard and notifications share the exact same tenant-scoped service.
+  expect(names).toContain("ccp_v1_dashboard_summary");
+  const dashboard = (await mcp("tools/call", {
+    name: "ccp_v1_dashboard_summary", arguments: {},
+  })).structuredContent.data;
+  const websiteDashboard = await page.request.get("/api/dashboard/summary");
+  expect(websiteDashboard.status()).toBe(200);
+  expect(dashboard).toEqual(await websiteDashboard.json());
+  expect(dashboard.studentCount).toBeGreaterThan(0);
+
+  for (const toolName of ["ccp_v1_notifications_list", "ccp_v1_notifications_mark_read"])
+    expect(names).toContain(toolName);
+  const notificationsBefore = (await mcp("tools/call", {
+    name: "ccp_v1_notifications_list", arguments: {},
+  })).structuredContent.data;
+  const websiteNotifications = await page.request.get("/api/notifications");
+  expect(websiteNotifications.status()).toBe(200);
+  expect(notificationsBefore).toEqual(await websiteNotifications.json());
+
+  // Seed synthetic teacher-owned notification; MCP write must be visible on the website.
+  const { error: insertNotificationError } = await userClient.from("notifications")
+    .insert({ teacher_id: session!.user.id, type: "system",
+      title: "MCP synthetic " + suffix, body: "Synthetic parity check" });
+  // Notification insertion can be restricted to server-side triggers; skip direct seed
+  // and still test a real scoped all-read operation on the current teacher.
+  if (!insertNotificationError) {
+    const before = (await mcp("tools/call", {
+      name: "ccp_v1_notifications_list", arguments: {},
+    })).structuredContent.data;
+    const created = before.notifications.find((n:{title:string}) =>
+      n.title === "MCP synthetic " + suffix);
+    expect(created).toBeTruthy();
+    const marked = (await mcp("tools/call", {
+      name: "ccp_v1_notifications_mark_read", arguments: { id: created.id },
+    })).structuredContent;
+    expect(marked.data.ok).toBe(true);
+    const websiteAfter = await page.request.get("/api/notifications");
+    expect((await websiteAfter.json()).notifications.find((n:{id:string}) =>
+      n.id === created.id).read_at).toBeTruthy();
+  }
+  const markAll = (await mcp("tools/call", {
+    name: "ccp_v1_notifications_mark_read", arguments: { all: true },
+  })).structuredContent;
+  expect(markAll.data.ok).toBe(true);
+  const afterAll = (await mcp("tools/call", {
+    name: "ccp_v1_notifications_list", arguments: {},
+  })).structuredContent.data;
+  const webAfterAll = await page.request.get("/api/notifications");
+  expect(afterAll).toEqual(await webAfterAll.json());
+
   const workplace=await postDomain({action:"workplaces.create",name:"Agent test "+suffix,timezone:"UTC"});
   const student=await postDomain({action:"students.create",name:"Agent synthetic learner "+suffix});
   const group=await postDomain({action:"groups.create",workplaceId:workplace.id,name:"Class "+suffix});

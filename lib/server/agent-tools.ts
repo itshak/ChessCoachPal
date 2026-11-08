@@ -11,6 +11,8 @@ import { chessCategoriesList, chessObservationsList, chessObservationsCreate,
 import { chessUuid, observationInput, resourceInput } from "@/lib/chess-learning";
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
+import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
+  TeacherOverviewError } from "@/lib/server/teacher-overview-service";
 
 const uuid = z.string().uuid();
 const searchText = z.string().trim().min(1).max(80);
@@ -28,6 +30,24 @@ const catalogue = [
     name: "ccp_v1_workplaces_list",
     description: "List the connected teacher's workplaces. Use workplace IDs, never invent names.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
+  },
+  {
+    name: "ccp_v1_dashboard_summary",
+    description: "Read the same teacher-owned student/workplace/group and last-seven-day session totals as the website dashboard.",
+    schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
+  },
+  {
+    name: "ccp_v1_notifications_list",
+    description: "Read the 30 most recent teacher notifications and unread count, exactly as on the website.",
+    schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
+  },
+  {
+    name: "ccp_v1_notifications_mark_read",
+    description: "Mark a specific notification ID or all of the teacher's unread notifications as read. Confirm before modifying notification state.",
+    schema: z.object({
+      id: uuid.optional(), all: z.literal(true).optional(),
+    }).strict().refine(v => v.all === true || !!v.id, "id or all required"),
+    scope: "coach:write", readOnly: false,
   },
   {
     name: "ccp_v1_reports_workplace_summary",
@@ -277,6 +297,22 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_dashboard_summary":
+        return { data: await teacherDashboardSummary(db, teacherId) };
+      case "ccp_v1_notifications_list":
+        return { data: await teacherNotificationsList(db, teacherId) };
+      case "ccp_v1_notifications_mark_read": {
+        const a = args as { id?: string; all?: boolean };
+        try {
+          return { data: await teacherNotificationsMarkRead(db, teacherId, a) };
+        } catch (error) {
+          if (error instanceof TeacherOverviewError) return { error: {
+            code: error.status === 400 ? "VALIDATION_ERROR" : "DATABASE_ERROR",
+            message: error.message,
+          } };
+          throw error;
+        }
+      }
       case "ccp_v1_reports_workplace_summary": {
         const a = args as { workplaceId: string; from: string; to: string; format: "json" | "csv" | "text" };
         try {
