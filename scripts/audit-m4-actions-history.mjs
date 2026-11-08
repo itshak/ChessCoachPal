@@ -51,7 +51,8 @@ const report = {
 };
 const seen = new Set();
 function finding(collection, run, source, rule) {
-  const key = collection + "|" + run + "|" + source + "|" + rule;
+  const family = collection === report.highConfidenceFindings ? "high-confidence" : "review";
+  const key = family + "|" + run + "|" + source + "|" + rule;
   if (!seen.has(key)) {
     seen.add(key);
     collection.push({ run, source, rule });

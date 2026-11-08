@@ -21,6 +21,10 @@ GitHub verifies the current main commit with `CI` (typecheck, unit tests, Docker
 
 The existing [GitHub release workflow](../.github/workflows/release.yml) skips unpublished `0.0.0`; a later reviewed `0.1.0` version/changelog commit will trigger the candidate checks and **only then** create an annotated tag, GitHub Release and source zip/tar.gz. The release validator checks all six [readiness criteria](RELEASING.md). Do not merge the version bump or set the manual checkbox before real provider sign-off.
 
+## Updated historic privacy triage (2026-11-08)
+
+A newer merged-main Actions audit covered **367 runs, 352 log archives, 122 artifacts** and recorded **151 heuristic flags across 76 runs**. Manual follow-up traced the 15 artifact-run email flags to Playwright trace screenshot filenames and synthetic fixtures, and the 61 flagged CI Docker-log runs to public build metadata. **Critically, the repository's public Homepage metadata still points to an unrelated old Vercel bridge**, echoed in historical Actions logs. That setting must be corrected by the maintainer, and archived copies/residual risks and asset redistribution must receive explicit disposition. The original 125 counts below describe an earlier snapshot; see [historical privacy ledger](HISTORICAL_PRIVACY_REVIEW.md). **Publication remains BLOCKED.**
+
 ## Items not automatically cleared for publication
 
 1. **Historical privacy and redistribution audit:** The recorded GitHub Actions archive scan reviewed 258 runs, 246 retrievable log archives, 76 artifact ZIPs and 2,630 readable text entries, with **0 high-confidence credential-pattern detections**. It also found **125 heuristic review candidates across 60 runs**, 9 unavailable logs, and 67 unreadable/large/binary entries. These are **not** confirmed exposures, but they are not permission to publish. Triage each candidate and any old/publicly reachable GitHub object, remediate/rotate actual secrets if discovered, and record a release-authorized decision. A redacted scan cannot prove PII or third-party asset clearance.
@@ -30,6 +34,6 @@ The existing [GitHub release workflow](../.github/workflows/release.yml) skips u
 
 ## Human handoff
 
-The next manual action is **not to publish**. First resolve outstanding historical privacy/license leads; after all non-provider gates have cleared, follow [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md) on the maintainer machine. Only the maintainer's recorded success authorizes the final version-bump PR and automated GitHub publication.
+The next manual action is **not to publish**. Correct the old public GitHub Homepage and disposition affected historical logs; then use the [disposable Vercel + Supabase staging runbook](STAGING_MCP_ACCEPTANCE.md) if preferable to a local HTTPS tunnel. First resolve outstanding historical privacy/license leads; after all non-provider gates have cleared, follow [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md) on the maintainer machine. Only the maintainer's recorded success authorizes the final version-bump PR and automated GitHub publication.
 
 **Compatibility:** Until 1.0.0 there is no compatibility commitment to CogNote or prior ChessCoachPal versions. Never reset a real database as part of testing.
