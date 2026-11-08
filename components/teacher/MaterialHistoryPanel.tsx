@@ -9,6 +9,10 @@ type MaterialEntry={
  occurred_on:string;note:string;updated_at:string;session_id:string|null;
  chess_learning_resources:Resource|null;students:{name:string}|null;
 };
+type MaterialAggregate={evidenceClaims:number;studentCount:number;sessionCount:number;
+ uniqueSessionMaterialStageCount:number;stages:{assigned:number;taught:number;completed:number};
+ resources:Array<{resourceId:string;label:string|null;stages:{assigned:number;taught:number;completed:number};
+  studentCount:number;sessionCount:number}>};
 type MaterialResult={entries:MaterialEntry[];total:number;nextOffset:number|null;
  pageSummary:{entries:number;studentCount:number;uniqueSessionMaterialCount:number};
  summaryScope:string;truthBasis:string};
@@ -33,6 +37,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
  const [rows,setRows]=useState<MaterialEntry[]>([]);
  const [nextOffset,setNextOffset]=useState<number|null>(null);
  const [total,setTotal]=useState(0);
+ const [aggregate,setAggregate]=useState<MaterialAggregate|null>(null);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [success,setSuccess]=useState("");
@@ -58,7 +63,13 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
   const params=new URLSearchParams({limit:"50",offset:String(offset)});
   if(studentId)params.set("studentId",studentId);
   if(workplaceId)params.set("workplaceId",workplaceId);
-  const result=await json("/api/coaching/materials?"+params) as MaterialResult;
+  const [result,summary]=await Promise.all([
+   json("/api/coaching/materials?"+params) as Promise<MaterialResult>,
+   offset===0 ? json("/api/coaching/materials?"+new URLSearchParams({
+     ...Object.fromEntries(params.entries()),aggregate:"true",offset:"0",
+   })) as Promise<MaterialAggregate> : Promise.resolve(null),
+  ]);
+  if(summary)setAggregate(summary);
   setRows(prev=>offset===0?result.entries:[...prev,...result.entries]);
   setNextOffset(result.nextOffset);setTotal(result.total);
  },[studentId,workplaceId]);
@@ -121,6 +132,13 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
   </div>
   <div className="space-y-2" aria-live="polite">
    <h3 className="font-medium">Recorded evidence ({total})</h3>
+   {aggregate&&<div className="text-sm rounded-lg border border-border p-3 space-y-2" aria-label="Whole-history material summary">
+    <p className="font-medium">Whole-history evidence (not just this page): {aggregate.evidenceClaims} claims</p>
+    <p className="text-muted">Assigned {aggregate.stages.assigned} · Taught {aggregate.stages.taught} · Teacher-confirmed completed {aggregate.stages.completed} · Students {aggregate.studentCount} · Unique session/material/stage combinations {aggregate.uniqueSessionMaterialStageCount}</p>
+    <ul className="space-y-1">{aggregate.resources.map(item=><li key={item.resourceId}>
+     {item.label||"Linked material"}: {item.stages.assigned} assigned, {item.stages.taught} taught, {item.stages.completed} completed (across {item.studentCount} students)
+    </li>)}</ul>
+   </div>}
    {rows.length===0&&<p className="text-sm text-muted">No material learning evidence recorded for this selection.</p>}
    <ul className="space-y-2">
     {rows.map(row=><li key={row.id} className="border border-border rounded-lg p-3 flex justify-between gap-3">

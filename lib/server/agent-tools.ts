@@ -10,7 +10,7 @@ import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
   chessObservationsList, chessObservationsCreate, chessObservationsUpdate,
   chessResourcesList, chessResourcesCreate, chessResourcesUpdate } from "@/lib/server/chess-learning";
 import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
-import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
+import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
@@ -742,6 +742,11 @@ const catalogue = [
     scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_v1_materials_aggregate",
+    description:"Summarize the entire filtered student/workplace/session material evidence ledger (not merely the current page). Counts assigned/taught/completed separately and deduplicates group sessions. Explicit teacher evidence only, not inferred mastery; up to 5000 claims.",
+    schema:materialsHistoryFilter,scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_v1_materials_history_record",
     description:"After explicit teacher confirmation, append an assigned/taught/completed claim for a linked study/resource and identified learner, optionally tied to workplace/session. requestId makes repeats idempotent; a model must never infer completed from merely opening a study.",
     schema:materialsHistoryRecord,
@@ -1330,6 +1335,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_materials_history_list": {
         const a=args as Parameters<typeof teacherMaterialHistory>[2];
         return {data:await teacherMaterialHistory(db,teacherId,a)};
+      }
+      case "ccp_v1_materials_aggregate": {
+        return {data:await teacherMaterialAggregate(db,teacherId,args as Parameters<typeof teacherMaterialAggregate>[2])};
       }
       case "ccp_v1_materials_history_record": {
         const a=args as Parameters<typeof teacherMaterialRecord>[2];

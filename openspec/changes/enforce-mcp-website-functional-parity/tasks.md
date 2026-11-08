@@ -113,3 +113,7 @@ Site and MCP now share read-only archival commitment preflight. Active recurring
 ## Phase S: enforce named browser/MCP acceptance evidence (PR #44)
 
 Checked checklist rows now need a distinct, named Playwright test (`e2e/*.spec.ts#PARITY-id`) that actually invokes MCP and a website API and makes assertions. Unit tests reject unanchored evidence, missing transports, and unsafe paths. This is a source audit, not proof that E2E ran or parity is complete; all 93 boxes remain unchecked and the OpenSpec stays active.
+
+## Phase T: full-filtered material aggregates (PR #44, awaiting CI)
+
+Added shared student/workplace/session material summary across the entire filtered ledger (up to 5000 records), not merely the visible page. Read-only MCP aggregation and website GET share the same service; dashboard/editor shows assigned, taught and completed separately. Group session/material/stage combinations are deduplicated for teacher totals; repeated claims and individual student coverage remain separately visible. Concurrent pagination drift returns an explicit error, not truncated numbers. Unit and synthetic OAuth/browser tests added. **B4 remains unchecked** pending all imported legacy sources, provider chapter operations, and full 93-case signoffs.

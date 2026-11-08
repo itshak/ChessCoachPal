@@ -282,9 +282,10 @@
       "existingTools": [
         "ccp_v1_materials_history_list",
         "ccp_v1_materials_history_record",
-        "ccp_v1_materials_history_void"
+        "ccp_v1_materials_history_void",
+        "ccp_v1_materials_aggregate"
       ],
-      "explanation": "Teacher-scoped immutable, typed material assignments/taught/completed evidence with resource/roster/workplace validation, UUID replay receipts and revision-guarded retraction. Browser and OAuth MCP use same service; synthetic cross-tenant, replay, stale and joined-result tests.",
+      "explanation": "Whole-filtered material summary and individual teacher-attested evidence ledger use the same website/MCP service. Full aggregate runs bounded pagination, checks for concurrent drift and deduplicates session/material/stage combinations across group participants. Existing explicit claims only. Provider write/read completeness and 93 strict cases remain separate blockers.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {

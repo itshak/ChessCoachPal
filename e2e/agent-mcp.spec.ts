@@ -197,7 +197,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   // Teacher-confirmed stage, workplace, session roster and page summaries must
   // match between the website and the delegated OAuth client.
   for(const toolName of ["ccp_v1_materials_history_list",
-    "ccp_v1_materials_history_record","ccp_v1_materials_history_void"])
+    "ccp_v1_materials_history_record","ccp_v1_materials_history_void","ccp_v1_materials_aggregate"])
     expect(names).toContain(toolName);
   const emptyMaterial=(await mcp("tools/call",{name:"ccp_v1_materials_history_list",
     arguments:{studentId:student.id,workplaceId:workplace.id},
@@ -239,6 +239,15 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(materialMcp.data.entries[0].id).toBe(materialId);
   expect(materialMcp.data.pageSummary.uniqueSessionMaterialCount).toBe(1);
   expect(materialMcp.data.truthBasis).toBe("explicit_teacher_record_only");
+  const fullAggregate=(await mcp("tools/call",{name:"ccp_v1_materials_aggregate",
+    arguments:{studentId:student.id,workplaceId:workplace.id,from:"2027-04-12",to:"2027-04-12"},
+  })).structuredContent;
+  const webAggregate=await page.request.get("/api/coaching/materials?"+materialRange+"&aggregate=true");
+  expect(webAggregate.status(),await webAggregate.text()).toBe(200);
+  expect(fullAggregate.data).toEqual(await webAggregate.json());
+  expect(fullAggregate.data.summaryScope).toBe("entire_filtered_history");
+  expect(fullAggregate.data.stages.taught).toBe(1);
+  expect(fullAggregate.data.stages.completed).toBe(0);
   const materialVoided=await page.request.patch("/api/coaching/materials",{
     data:{entryId:materialId,expectedUpdatedAt:materialWritten.data.updated_at,
       reason:"Synthetic correction: the study was not actually taught",confirmed:true},
@@ -248,6 +257,10 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     arguments:{studentId:student.id},
   })).structuredContent;
   expect(materialGone.data.entries.some((row:{id:string})=>row.id===materialId)).toBe(false);
+  const afterVoidAggregate=(await mcp("tools/call",{name:"ccp_v1_materials_aggregate",
+    arguments:{studentId:student.id,workplaceId:workplace.id},
+  })).structuredContent;
+  expect(afterVoidAggregate.data.evidenceClaims).toBe(0);
   const materialAudit=(await mcp("tools/call",{name:"ccp_v1_materials_history_list",
     arguments:{studentId:student.id,includeVoided:true},
   })).structuredContent;
