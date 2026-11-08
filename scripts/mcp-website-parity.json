@@ -131,7 +131,7 @@
       "kind": "teacher",
       "parity": "gap",
       "existingTools": [],
-      "explanation": "Generate invoices"
+      "explanation": "Generate invoices for teacher-owned students and families; not exposed via MCP"
     },
     {
       "path": "app/api/billing/invoices/[id]/checkout/route.ts",
@@ -171,7 +171,7 @@
       "kind": "teacher",
       "parity": "gap",
       "existingTools": [],
-      "explanation": "Download invoice PDF"
+      "explanation": "Retrieve private invoice PDF; no authorized MCP file/export action"
     },
     {
       "path": "app/api/billing/invoices/[id]/regenerate/route.ts",
@@ -181,7 +181,7 @@
       "kind": "teacher",
       "parity": "gap",
       "existingTools": [],
-      "explanation": "Regenerate invoice"
+      "explanation": "Regenerate invoice billing lines; no MCP finance write action"
     },
     {
       "path": "app/api/billing/invoices/[id]/route.ts",
@@ -213,7 +213,7 @@
       "kind": "teacher",
       "parity": "gap",
       "existingTools": [],
-      "explanation": "Void invoice"
+      "explanation": "Void invoice with confirmation; no current MCP finance command"
     },
     {
       "path": "app/api/billing/invoices/bulk/route.ts",
@@ -287,7 +287,7 @@
       "kind": "teacher",
       "parity": "gap",
       "existingTools": [],
-      "explanation": "Event list/create"
+      "explanation": "Read existing events and create calendar events; no current MCP events tools"
     },
     {
       "path": "app/api/feeds/[token]/calendar/route.ts",
