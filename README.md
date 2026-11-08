@@ -17,7 +17,7 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 
 ## Status
 
-**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, Milestone 1 coaching workflows have merged. Milestone 2's initial MCP/OAuth gateway is merged and archived after GitHub CI/E2E verification. Milestone 3 chess-learning basics are also merged and archived with passing GitHub CI/E2E. Milestone 4 chess-only code/security hardening has merged with passing GitHub CI, E2E and reachable-history scans. Milestone 5 automated self-hosting/reporting and recovery work is under review in PR #11. The remaining publication privacy/history review, coaching-tool actions (2b) and final release gates stay open; v0.1.0 is not approved. Only the *final live ChatGPT/Claude client demonstrations* take place manually on the maintainer's machine immediately before actual v0.1.0 publication; no development change depends on live providers. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
+**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, Milestone 1 coaching workflows have merged. Milestone 2's initial MCP/OAuth gateway is merged and archived after GitHub CI/E2E verification. Milestone 3 chess-learning basics are also merged and archived with passing GitHub CI/E2E. Milestone 4 security hardening and Milestone 5 automated self-hosting/report/recovery implementation have merged and been archived on GitHub test evidence. The remaining publication privacy/history/license review, coaching-tool actions (2b) and final release gates stay active; v0.1.0 is not approved. Only the *final live ChatGPT/Claude client demonstrations* take place manually on the maintainer's machine immediately before actual v0.1.0 publication; no development change depends on live providers. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
 
 ## Versions and releases
 
@@ -35,7 +35,8 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 - [Remaining v0.1.0 agent tools (active GitHub-only work)](openspec/changes/expand-agent-coaching-tools/proposal.md)
 - [Archived chess learning basics](openspec/changes/archive/2026-11-07-add-chess-learning-basics/proposal.md)
 - [Archived Milestone 4 chess-only security implementation](openspec/changes/archive/2026-11-08-remove-cognote-legacy-and-secure-data/proposal.md)
-- [Verify self-hosting and release v0.1.0](openspec/changes/verify-self-hosting-and-release-v0-1-0/proposal.md)
+- [Archived Milestone 5 verified self-hosting and recovery implementation](openspec/changes/archive/2026-11-08-verify-self-hosting-and-release-v0-1-0/proposal.md)
+- [Active final v0.1.0 publication gates](openspec/changes/finalize-v0-1-0-publication/proposal.md)
 - [Archived, incomplete original plan](openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md)
 - [New-install self-hosting, protected backup and second-instance restore](docs/SELF_HOSTING.md)
 - [Synthetic chess coach walkthrough](docs/CHESS_COACH_TUTORIAL.md)
