@@ -44,13 +44,13 @@ verifyCoverage("teacher components",allComponents,inventory.teacherComponents);
 const knownKinds = new Set(["teacher","auth","ui","external","system"]);
 const knownParities = new Set(["mcp","partial","gap","browser-only","not-applicable"]);
 const registeredTools = readFileSync(join(root,"lib/server/agent-tools.ts"),"utf8");
-const liveNames = new Set([...registeredTools.matchAll(/\\bname\\s*:\\s*["'](ccp_v1_[a-z0-9_]+)["']/g)].map(m=>m[1]));
+const liveNames = new Set([...registeredTools.matchAll(/\bname\s*:\s*["'](ccp_v1_[a-z0-9_]+)["']/g)].map(m=>m[1]));
 for (const route of inventory.apiRoutes) {
   assert(knownKinds.has(route.kind),route.path+": invalid classification");
   assert(knownParities.has(route.parity),route.path+": invalid parity status");
   assert(route.explanation && route.explanation.length>12,route.path+": missing justification");
   const source = readFileSync(join(root,route.path),"utf8");
-  const methods = [...source.matchAll(/export\\s+(?:async\\s+)?(?:function|const)\\s+(GET|POST|PUT|PATCH|DELETE)\\b/g)].map(m=>m[1]);
+  const methods = [...source.matchAll(/export\s+(?:async\s+)?(?:function|const)\s+(GET|POST|PUT|PATCH|DELETE)\b/g)].map(m=>m[1]);
   assert(same(methods,route.methods),route.path+": HTTP methods changed; actual="+methods.join(",")+" expected="+route.methods.join(","));
   for (const t of route.existingTools) assert(liveNames.has(t),route.path+": claimed MCP tool does not exist: "+t);
   if (route.parity==="mcp") assert(route.existingTools.length>0,route.path+": cannot mark MCP complete without current tool");
