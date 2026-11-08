@@ -5,6 +5,7 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 ## [Unreleased]
 
 ### Added
+- Expanded scoped MCP coaching tools for workplace/student/group creation and edits, enrollment, one-off session scheduling/rescheduling/cancellation and lesson readback, with atomic idempotency receipts, revision checks, and synthetic OAuth scope/tenant security tests.
 - Deterministic teacher-scoped workplace/date-range teaching and attendance report with RTL-aware Hebrew presentation and safe CSV/text export.
 - Guarded current-schema full-database/uploaded-file backup and second-installation restore scripts, SHA-256 checks, synthetic CI restore workflow, and operator tutorial.
 - A versioned release process with validated SemVer tags, release notes extracted from this changelog, fresh-install tests, and automatic GitHub Release publishing.

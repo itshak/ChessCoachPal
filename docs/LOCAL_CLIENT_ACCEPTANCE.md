@@ -4,7 +4,7 @@
 
 ## Preconditions
 
-1. Milestones 1 and 2 foundation are archived, and active changes 2b, 3 and 4 plus all non-provider development/release readiness tests are completed/accepted with *merged* GitHub Actions evidence in docs/STATUS.md. Keep package version **0.0.0** until this local test passes.
+1. Milestones 1, 2 foundation, 2b, 3 and 4 are archived based on *merged* GitHub Actions evidence in docs/STATUS.md, and remaining non-provider release-readiness checks must be completed before this manual test. Keep package version **0.0.0** until this local test passes.
 2. On the maintainer's own computer, use a fresh, disposable ChessCoachPal self-hosted instance and **synthetic students, sessions and teachers only**. Do not reset an existing database with real students. Enable MCP credentials only for this test; use a dedicated random `MCP_SESSION_ENCRYPTION_KEY` and nonproduction Supabase keys. Never commit credentials.
 3. Real remote ChatGPT/Claude clients cannot directly reach an arbitrary `localhost` server. Expose **only the temporary test instance** via a secure HTTPS domain or vetted HTTPS tunnel from the local machine; set `MCP_PUBLIC_ORIGIN` to its exact reachable HTTPS origin. Disable the exposure and revoke test grants afterward. Protect the public registration endpoint with rate limits and avoid logging tokens/prompts/student details.
 4. Use supported account/plan options with custom **write-capable** MCP connectors for both vendors, if available. Current provider UI/access may change; verify the actual supported client and version rather than assuming an account is eligible. Follow [AI_CONNECTORS.md](AI_CONNECTORS.md).
@@ -21,7 +21,7 @@
 | Revoke client authorization in website; verify subsequent tool calls are denied | Not tested | Not tested |
 | Confirm no secrets, real student names, private prompts or unsafe URL appear in saved evidence | Not tested | Not tested |
 
-If the expanded tool scope is implemented before this test, include **at least one create/edit** operation available to the real clients; use an idempotency key and expected revision as required. **Do not accept a simulated HTTP client as a substitute** for both real platforms.
+The expanded tools are implemented: **both** live clients must exercise at least one authorized create and one revision-checked edit (using a fresh UUID idempotency key for each intentional mutation), then demonstrate website readback/correction and revocation. Do not substitute synthetic MCP calls for either provider. **Do not accept a simulated HTTP client as a substitute** for both real platforms.
 
 ## Pass/fail and release sign-off
 

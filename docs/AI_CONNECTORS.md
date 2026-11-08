@@ -1,4 +1,4 @@
-# Remote ChatGPT and Claude MCP connector — automated foundation verified; real clients release-only
+# Remote ChatGPT and Claude MCP connector — expanded synthetic CI coverage; live clients release-only
 
 **Important:** The initial server-side MCP/OAuth foundation passed GitHub automated CI/E2E and is archived as development work. This **does not** establish real ChatGPT/Claude interoperability. Do **not** test real provider clients during development milestones; both live client tests are required **only once, immediately before publishing v0.1.0, on the maintainer's machine**, using a synthetic locally controlled HTTPS-reachable instance. Record sanitized evidence via [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md). No production approval or voice-tool support is implied.
 
@@ -24,16 +24,24 @@ An authorized organization/workspace developer or administrator can create a cus
 
 **Not yet tested against a real ChatGPT account.** The endpoint is a proposed integration, not an asserted compatible connector. Remote HTTPS reachability or a supported secure tunnel is required; direct localhost is not available to ChatGPT cloud clients.
 
-## Available tools (limited safe subset)
+## Available delegated MCP tools (v0.1.0 development candidate)
 
-- \`ccp_v1_workplaces_list\`, \`ccp_v1_students_search\`, \`ccp_v1_groups_list\`, \`ccp_v1_groups_members\`
-- \`ccp_v1_sessions_list\`, \`ccp_v1_sessions_participants\`, \`ccp_v1_attendance_preview\`
-- \`ccp_v1_attendance_record\`: **one student** per call with explicit session/student IDs, preview's \`updated_at\`, a new UUID idempotency key and a confirmed status. Bulk changes are deliberately **not exposed**.
-- \`ccp_v1_sessions_note_update\`: updates an identified session's topic/note against its exact revision and an idempotency key.
+The server exposes the following **exact tool names**, backed by the same teacher-owned data as the website. These have synthetic OAuth/MCP + fresh-Supabase GitHub tests; this is **not** a claim that a live ChatGPT or Claude client has passed.
 
-All tools read and write through a real delegated teacher session, Postgres row-level security, and the existing coaching tables. The two SQL mutation functions atomically record a minimal receipt and reject stale revisions or duplicate-but-different payloads. Receipts contain IDs, operation and revision, not full student notes or model prompts. A user can edit the resulting record in \`/coaching\`.
+| Area | Read tools | Write tools |
+| --- | --- | --- |
+| Workplaces | `ccp_v1_workplaces_list`, `ccp_v1_workplaces_enrollments` | `ccp_v1_workplaces_create`, `ccp_v1_workplaces_update`, `ccp_v1_workplaces_enroll` |
+| Students | `ccp_v1_students_search` | `ccp_v1_students_create`, `ccp_v1_students_update` |
+| Groups | `ccp_v1_groups_list`, `ccp_v1_groups_members` | `ccp_v1_groups_create`, `ccp_v1_groups_update`, `ccp_v1_groups_enroll`, `ccp_v1_groups_unenroll` |
+| Sessions | `ccp_v1_sessions_list`, `ccp_v1_sessions_details`, `ccp_v1_sessions_participants` | `ccp_v1_sessions_create`, `ccp_v1_sessions_reschedule`, `ccp_v1_sessions_cancel`, `ccp_v1_sessions_note_update` |
+| Attendance | `ccp_v1_attendance_preview` | `ccp_v1_attendance_record` (one student per call) |
+| Chess learning | `ccp_v1_chess_categories_list`, `ccp_v1_chess_observations_list`, `ccp_v1_chess_resources_list` | `ccp_v1_chess_observations_propose`, `ccp_v1_chess_resources_link` (propose/link only; teacher review in website) |
 
-**Deliberately not exposed yet:** creation/editing of students, groups or workplaces; session scheduling or rescheduling; bulk attendance; destructive actions; financial operations; family notifications; resource linking; provider voice mode. Do not treat the proposal's broader initial catalogue as implemented.
+**Required guardrails:** Use stable UUIDs discovered from an authorized list/search; duplicate names return `NEEDS_RESOLUTION`, not a guessed write. Each new coaching mutation uses a UUID `idempotencyKey`; replay the **same** key and payload on transport retry, and use a **new** key only for a distinct intentional operation. Updates and reschedules/cancellations additionally require `expectedUpdatedAt` from the latest record revision (or `updated_at` returned by list/details). Group membership removal, rescheduling and cancellation require `confirmed: true` for a specific record. Session start times must be ISO 8601 instants with an explicit UTC offset. Session writes reject overlapping teacher time; group-session rosters remain historically frozen when live membership changes.
+
+New coaching writes use a single transactional database mutation that binds the teacher identity to the delegated OAuth session, enforces owner IDs, returns a minimal `operation`/`entityId`/`revision`/`actorId`/`clientId`/`idempotencyKey` receipt, and rejects stale writes or mismatched idempotency-key replays. Existing attendance/note and learning operations retain their separate preexisting validated contracts and scopes. Receipts must not contain student names, notes, prompts, or OAuth secrets. `coach:read` clients cannot discover or invoke write tools.
+
+**Not exposed:** broad SQL/database access, bulk attendance edits, deletion of students or lesson history, family notifications, financial mutations, observation approval, remote chess-provider content fetching, or live voice-tool entry. The standalone `/coaching` website remains available without AI accounts or during provider outages.
 
 ## Troubleshooting and security
 
