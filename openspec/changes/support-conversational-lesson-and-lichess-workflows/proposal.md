@@ -20,6 +20,16 @@ Make ChessCoachPal genuinely agent-first for chess teachers. A teacher can tell 
 - Chess-learning currently saves sanitized Lichess study **URLs**, not remote PGN or chapter metadata. No current Lichess account connection or provider write exists.
 - Current release remains `0.0.0`. The [active v0.1.0 publication gate](../complete-v0-1-0-release-gates/proposal.md) remains blocked. A public multitenant SaaS and official ChatGPT Plugin Directory listing are **separate later objectives**. This implementation change is scoped independently; whether all new features belong in v0.1.0 requires a revised release decision, not an implicit relaxation of the gate.
 
+## Mandatory MCP-first feature parity, not merely a connector
+
+**Release-blocking requirement:** All ordinary operations and business-data fields that the authenticated teacher can use on the website MUST be usable from the same `/mcp` endpoint, with authorization and equivalent results. We are **MCP / Plugin first**; the website is an optional visual editor/reviewer. Exposing one or two functions per webpage does not constitute parity. All new teacher-business web features MUST ship corresponding MCP tools or an explicitly reviewed secure approval handoff in the **same feature PR**.
+
+An actual code audit ([93-case checklist](../../../docs/MCP_WEBSITE_PARITY_CHECKLIST.md), [61-route/17-page/49-component registry](../../../scripts/mcp-website-parity.json)) found **43 teacher-business API route surfaces: 40 missing complete MCP parity, 3 partial and none wholly verified**. The 28 live MCP tools are a functioning subset, not a complete teacher control plane. These numbers are *route-level static inventory*, not counts of working individual tool operations. `npm run mcp:parity:audit` is a source inventory check; `npm run mcp:parity:strict` must pass as an additional mandatory release gate after actual website↔MCP integration tests.
+
+This includes renaming workplaces and students, editing/clearing ordinary student fields and names/aliases/level, schedule, notes, progress, events and groups; **complete materials learned by student or at workplace**; **the same workplace/date-range teaching-and-attendance reports available on the website**; and reviewable exports. Do not create a separate reports connector: add reporting functions to the **existing MCP gateway**, reusing `lib/coaching-report.ts` so website and chat cannot disagree. Sensitive finance, parent-contact and send operations require least-privilege consent and review; passwords, OAuth/client/processor secrets and parent-originated actions remain outside generic chat writes.
+
+Implementation MUST maintain an allowlisted editable-field registry, `ccp_v1_capabilities_list` and `ccp_v1_fields_describe`, plus typed per-domain actions and bounded `ccp_v1_records_patch_preview/commit` for ordinary record changes. No free-form SQL, cross-tenant filters or arbitrary JSON column patching. **All 93 checklist scenarios remain unverified until suitable integration tests exist.**
+
 ## Deliverables
 
 1. Complete safe versioned MCP command catalogue for students/profile/aliases/ratings, schedules, lessons and progress, and Lichess material/puzzle management, with explicit read/write tool scopes and preview-confirmation patterns.
