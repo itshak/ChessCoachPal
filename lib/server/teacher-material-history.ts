@@ -94,7 +94,12 @@ export async function teacherMaterialHistory(db:Db,teacherId:string,filter:Mater
  if(!filter.includeVoided)query=query.is("voided_at",null);
  const {data,error,count}=await query;
  if(error)throw failure(500,"DATABASE_ERROR","Material history unavailable");
- const rows=(data??[]).slice(0,limit);
+ const rows=((data??[]) as unknown as Array<{
+  id:string;student_id:string;session_id:string|null;resource_id:string;stage:string;
+  workplace_id:string|null;occurred_on:string;updated_at:string;
+  chess_learning_resources:{label:string;url:string;resource_type:string}|null;
+  students:{name:string}|null;
+ }>).slice(0,limit);
  return {entries:rows,total:count??0,nextOffset:(data?.length??0)>limit?offset+limit:null,
   pageSummary:{
    entries:rows.length,
