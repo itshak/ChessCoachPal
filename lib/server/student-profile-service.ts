@@ -27,10 +27,10 @@ export type StudentProfilePatch = {
 /** Bounded, navigable roster. Archived students remain accessible via explicit filter. */
 export async function teacherStudentsRoster(db: Db, teacherId: string,
   opts: { query?: string; includeArchived?: boolean; offset?: number; limit?: number } = {}) {
-  const limit = Math.min(100, Math.max(1, opts.limit ?? 50));
+  const limit = Math.min(1000, Math.max(1, opts.limit ?? 1000));
   const offset = Math.min(100000, Math.max(0, opts.offset ?? 0));
   let query = db.from("students")
-    .select("id,name,name_aliases,strength,lichess_username,chesscom_username,lichess_rating,chesscom_rating,level,archived_at,updated_at")
+    .select("*")
     .eq("teacher_id", teacherId).order("name").order("id")
     .range(offset, offset + limit);
   if (!opts.includeArchived) query = query.is("archived_at", null);

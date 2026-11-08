@@ -12,8 +12,16 @@ ALTER TABLE public.students
   ADD CONSTRAINT ccp_students_chesscom_rating_range CHECK (chesscom_rating IS NULL OR chesscom_rating BETWEEN 100 AND 4000),
   ADD CONSTRAINT ccp_students_alias_limit CHECK (cardinality(name_aliases) <= 20);
 -- A searchable derived field keeps multilingual names and aliases in the same roster query.
-ALTER TABLE public.students
-  ADD COLUMN IF NOT EXISTS name_search text GENERATED ALWAYS AS (
-    lower(name || ' ' || array_to_string(name_aliases, ' '))
-  ) STORED;
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS name_search text NOT NULL DEFAULT '';
+CREATE OR REPLACE FUNCTION public.ccp_student_search_refresh() RETURNS trigger
+LANGUAGE plpgsql SET search_path=public AS $
+BEGIN
+  NEW.name_search := lower(NEW.name || ' ' || array_to_string(NEW.name_aliases, ' '));
+  RETURN NEW;
+END;
+$;
+CREATE TRIGGER ccp_student_search_refresh
+BEFORE INSERT OR UPDATE OF name, name_aliases ON public.students
+FOR EACH ROW EXECUTE FUNCTION public.ccp_student_search_refresh();
+UPDATE public.students SET name_search = lower(name || ' ' || array_to_string(name_aliases, ' '));
 CREATE INDEX IF NOT EXISTS ccp_students_teacher_active_name ON public.students(teacher_id, archived_at, name);

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -24,12 +23,11 @@ export function StudentNotesEditor({
   async function handleSave() {
     setSaving(true);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("students")
-        .update({ teacher_notes: notes })
-        .eq("id", studentId);
-      if (error) {
+      const response = await fetch(`/api/students/${studentId}`,{
+        method:"PUT",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({teacherNotes:notes}),
+      });
+      if (!response.ok) {
         showToast("Failed to save notes. Please try again.", "error");
         return;
       }

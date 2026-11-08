@@ -47,7 +47,19 @@ export const studentCreateSchema = z.object({
   adultSelf: z.boolean().optional(),
 });
 
+const aliases = z.array(z.string().trim().min(1).max(120)).max(20);
+const chessHandle = z.union([z.string().trim().max(30).regex(/^[A-Za-z0-9_-]*$/), z.null()]);
+const chessRating = z.number().int().min(100).max(4000).nullable();
+
 export const studentUpdateSchema = z.object({
+  nameAliases: aliases.optional(),
+  strength: z.number().int().min(1).max(10).nullable().optional(),
+  lichessUsername: chessHandle.optional(),
+  chesscomUsername: chessHandle.optional(),
+  lichessRating: chessRating.optional(),
+  chesscomRating: chessRating.optional(),
+  teacherNotes: optionalText(50_000),
+
   name: trimmedName.optional(),
   parentContact: optionalText(500),
   guardianId: optionalUuid,
