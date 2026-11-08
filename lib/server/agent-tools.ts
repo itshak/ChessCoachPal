@@ -12,6 +12,7 @@ import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
 import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import { reportCsv, reportText } from "@/lib/coaching-report";
+import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
   TeacherOverviewError } from "@/lib/server/teacher-overview-service";
@@ -156,6 +157,12 @@ const catalogue = [
       id: uuid.optional(), all: z.literal(true).optional(),
     }).strict().refine(v => v.all === true || !!v.id, "id or all required"),
     scope: "coach:write", readOnly: false,
+  },
+  {
+    name:"ccp_v1_lessons_history_unified",
+    description:"Read one bounded calendar period across historic private lessons and current coaching/group sessions. Preserves both sources, flags exact overlaps, and computes instructor booked vs actually evidenced minutes as interval unions (groups count once); legacy workplace attribution is unknown rather than guessed. Optional student/workplace filters.",
+    schema:unifiedLessonFilter,
+    scope:"coach:read",readOnly:true,
   },
   {
     name: "ccp_v1_reports_workplace_summary",
@@ -1265,6 +1272,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           throw error;
         }
       }
+      case "ccp_v1_lessons_history_unified": {
+        const a=args as Parameters<typeof teacherUnifiedLessonHistory>[2];
+        return {data:await teacherUnifiedLessonHistory(db,teacherId,a)};
+      }
       case "ccp_v1_reports_workplace_summary": {
         const a = args as { workplaceId: string; from: string; to: string; format: "json" | "csv" | "text" };
         try {
@@ -1414,6 +1425,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof UnifiedHistoryError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof MaterialHistoryError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof SpreadsheetImportError)
