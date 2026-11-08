@@ -35,10 +35,10 @@ test("serves an installable manifest", async ({ page, request }) => {
   expect(manifest.start_url).toBe("/");
   expect(manifest.icons.length).toBeGreaterThanOrEqual(2);
   for (const icon of manifest.icons as {src:string;type:string}[]) {
-    expect(icon.src).toMatch(/^\/icon\/chesscoachpal(?:-maskable)?\.svg$/);
+    expect(icon.src).toMatch(/^\/icon\/chesscoachpal(?:-maskable)?(?:-\\d+)?\\.(?:svg|png)$/);
     const asset = await request.get(icon.src, { maxRedirects: 0 });
     expect(asset.status(), icon.src).toBe(200);
-    expect(asset.headers()["content-type"], icon.src).toContain("image/svg+xml");
+    expect(asset.headers()["content-type"], icon.src).toContain(icon.src.endsWith(".svg") ? "image/svg+xml" : "image/png");
   }
   expect(
     manifest.icons.some((icon: { purpose?: string }) => icon.purpose === "maskable"),
