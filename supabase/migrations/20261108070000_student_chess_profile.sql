@@ -21,7 +21,7 @@ BEGIN
 END;
 $;
 CREATE TRIGGER ccp_student_search_refresh
-BEFORE INSERT OR UPDATE OF name, name_aliases ON public.students
+BEFORE INSERT OR UPDATE ON public.students
 FOR EACH ROW EXECUTE FUNCTION public.ccp_student_search_refresh();
 UPDATE public.students SET name_search = lower(name || ' ' || array_to_string(name_aliases, ' '));
 CREATE INDEX IF NOT EXISTS ccp_students_teacher_active_name ON public.students(teacher_id, archived_at, name);

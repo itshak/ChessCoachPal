@@ -40,7 +40,7 @@ export function StudentInfoCard({
           field="level"
           type="text"
           initialValue={initialLevel}
-          placeholder="e.g. RCM Level 3, Faber 2B"
+          placeholder="e.g. Beginner, intermediate, or tactical training"
           emptyLabel="Set level"
           display={(v) => v}
         />

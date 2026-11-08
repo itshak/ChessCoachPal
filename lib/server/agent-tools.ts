@@ -14,6 +14,9 @@ import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coachi
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
   TeacherOverviewError } from "@/lib/server/teacher-overview-service";
 
+import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, StudentProfileError } from "@/lib/server/student-profile-service";
+import { studentUpdateSchema } from "@/lib/server/api-schemas";
+import { assertWithinHostedLimit } from "@/lib/server/entitlements";
 const uuid = z.string().uuid();
 const searchText = z.string().trim().min(1).max(80);
 const sessionId = z.object({ sessionId: uuid }).strict();
@@ -59,6 +62,26 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name: "ccp_v1_students_roster",
+    description: "Page through the teacher's complete learner roster, including historical archived students if requested. Includes aliases, chess strength, teacher-recorded provider ratings, and revision timestamps; omits private notes and guardian contact data.",
+    schema: z.object({query:z.string().trim().max(80).optional(),includeArchived:z.boolean().default(false),
+      offset:z.number().int().min(0).max(100000).default(0),limit:z.number().int().min(1).max(100).default(50)}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name: "ccp_v1_students_profile",
+    description: "Read an identified student's profile. Private teacher notes and family/contact fields are excluded unless includePrivate=true AND confirmed=true. Avoid exposing children's information unnecessarily.",
+    schema:z.object({studentId:uuid,includePrivate:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name: "ccp_v1_students_profile_edit",
+    description: "Edit one student's chess handles, aliases, strength (1-10), teacher-entered ratings, lesson rates, private notes, birthdate, family, or archive state. Use the latest updated_at revision and confirm any privacy-sensitive change; reconcile future commitments before archiving. Reload after conflicts; do not automatically retry a mutation.",
+    schema:z.object({studentId:uuid,expectedUpdatedAt:instant,changes:studentUpdateSchema,
+      confirmed:z.literal(true)}).strict().refine(v=>Object.keys(v.changes).length>0,"Changes required"),
+    scope:"coach:write",readOnly:false,
   },
   {
     name: "ccp_v1_students_search",
@@ -275,6 +298,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       ccp_v1_sessions_cancel:"sessions.cancel",
     };
     if (name in operations) {
+      if (name === "ccp_v1_students_create") {
+        const check=await assertWithinHostedLimit(db,teacherId,"students");
+        if (!check.allowed) return {error:{code:"HOSTED_LIMIT_REACHED",message:check.message ?? "Hosted active-student limit reached"}};
+      }
       const payload = args as Record<string,unknown>;
       if (payload.timezone !== undefined) {
         // The browser's canonical domain operation also rejects invalid IANA zones.
@@ -297,6 +324,22 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_students_roster": {
+        const a=args as {query?:string;includeArchived:boolean;offset:number;limit:number};
+        return {data:await teacherStudentsRoster(db,teacherId,a)};
+      }
+      case "ccp_v1_students_profile": {
+        const a=args as {studentId:string;includePrivate:boolean;confirmed?:boolean};
+        const profile=await teacherStudentProfile(db,teacherId,a.studentId);
+        const {teacher_notes,parent_contact,guardian_id,birthdate,default_rate_cents,
+          travel_fee_cents,...safe}=profile;
+        return {data:a.includePrivate && a.confirmed ?
+          {...safe,teacher_notes,parent_contact,guardian_id,birthdate,default_rate_cents,travel_fee_cents}:safe};
+      }
+      case "ccp_v1_students_profile_edit": {
+        const a=args as {studentId:string;expectedUpdatedAt:string;changes:Parameters<typeof teacherStudentPatch>[3]};
+        return {data:await teacherStudentPatch(db,teacherId,a.studentId,a.changes,a.expectedUpdatedAt)};
+      }
       case "ccp_v1_dashboard_summary":
         return { data: await teacherDashboardSummary(db, teacherId) };
       case "ccp_v1_notifications_list":
@@ -362,14 +405,15 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return { data: await workplacesList(db, teacherId) };
       case "ccp_v1_students_search": {
         const a = args as {query:string};
-        const rows = await studentsSearch(db, teacherId, a.query);
-        const exact = rows?.filter((s: {name:string}) => s.name.normalize("NFC").toLocaleLowerCase() ===
-          a.query.normalize("NFC").toLocaleLowerCase()) ?? [];
-        if (exact.length > 1) return { error: { code: "NEEDS_RESOLUTION",
-          message: "Multiple students have this name. Ask for a distinguishing identifier.",
-          candidates: exact.map((s: {id:string;name:string}) => ({ id: s.id, name: s.name })),
-        } };
-        return { data: rows };
+        const result = await teacherStudentsRoster(db,teacherId,{query:a.query,includeArchived:true,limit:100});
+        const rows = result.students;
+        const norm = (v:string) => v.normalize("NFC").toLocaleLowerCase();
+        const exact = rows.filter(row => norm(row.name)===norm(a.query) ||
+          (row.name_aliases as string[]).some(alias=>norm(alias)===norm(a.query)));
+        if (exact.length > 1) return {error:{code:"NEEDS_RESOLUTION",
+          message:"Multiple students share this name or alias. Ask for a stable student ID.",
+          candidates:exact.map(row=>({id:row.id,name:row.name}))}};
+        return {data:rows};
       }
       case "ccp_v1_groups_list":
         return { data: await groupsList(db, teacherId) };
@@ -433,6 +477,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof StudentProfileError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof CoachError)
       return { error: { code: error.code, message: error.message } };
     return { error: { code: "DATABASE_ERROR", message: "Operation failed" } };
