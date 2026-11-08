@@ -799,6 +799,53 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   });
   expect(restorePolicy.status(),await restorePolicy.text()).toBe(200);
 
+  // Read-only financial parity. Seed a fully owned invoice and payment
+  // through CI's service role, then compare website CSV and MCP output.
+  for(const toolName of ["ccp_v1_billing_invoices_list",
+    "ccp_v1_billing_invoice_detail","ccp_v1_billing_payments_export"])
+    expect(names).toContain(toolName);
+  const {data:acctGuardian,error:acctGError}=await admin.from("guardians").insert({
+    teacher_id:session!.user.id,name:"Accounting family "+suffix,
+    email:"accounting-"+suffix+"@example.com",portal_token:randomUUID(),
+  }).select("id").single();
+  expect(acctGError).toBeNull();
+  const {data:acctInvoice,error:acctIError}=await admin.from("invoices").insert({
+    teacher_id:session!.user.id,guardian_id:acctGuardian!.id,status:"sent",
+    period_start:"2026-11-01",period_end:"2026-11-30",currency:"USD",subtotal_cents:12500,
+  }).select("id").single();
+  expect(acctIError).toBeNull();
+  const {error:acctPError}=await admin.from("payments").insert({
+    invoice_id:acctInvoice!.id,amount_cents:2500,method:"manual",note:"=2+2",
+  });
+  expect(acctPError).toBeNull();
+  const websiteBill=await page.request.get("/api/billing/invoices/"+acctInvoice!.id);
+  expect(websiteBill.status(),await websiteBill.text()).toBe(200);
+  const originalBill=await websiteBill.json();
+  expect(originalBill.guardians.portal_token).toBeTruthy();
+  const safeBill=(await call("ccp_v1_billing_invoice_detail",{
+    invoiceId:acctInvoice!.id,
+  })).structuredContent.data;
+  expect(safeBill.id).toBe(originalBill.id);
+  expect(safeBill.guardians.portal_token).toBeUndefined();
+  expect(safeBill.stripe_checkout_url).toBeUndefined();
+  expect(safeBill.guardians.email).toBeUndefined();
+  expect(safeBill.payments[0].note).toBeUndefined();
+  const confirmedBill=(await call("ccp_v1_billing_invoice_detail",{
+    invoiceId:acctInvoice!.id,includePrivate:true,confirmed:true,
+  })).structuredContent.data;
+  expect(confirmedBill.guardians.email).toContain("accounting-");
+  expect(confirmedBill.guardians.portal_token).toBeUndefined();
+  const billPage=(await call("ccp_v1_billing_invoices_list",{limit:100,offset:0}))
+    .structuredContent.data.invoices;
+  expect(billPage.some((x:{id:string})=>x.id===acctInvoice!.id)).toBe(true);
+  const accountCsvSite=await page.request.get("/api/billing/export?from=2026-11-01&to=2026-11-30");
+  expect(accountCsvSite.status(),await accountCsvSite.text()).toBe(200);
+  const accountCsvMcp=(await call("ccp_v1_billing_payments_export",{
+    from:"2026-11-01",to:"2026-11-30",confirmed:true,
+  })).structuredContent.data;
+  expect(accountCsvMcp.csv).toBe(await accountCsvSite.text());
+  expect(accountCsvMcp.csv).toContain("'=2+2");
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{

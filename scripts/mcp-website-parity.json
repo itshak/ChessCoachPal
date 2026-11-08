@@ -120,8 +120,10 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Export financial ledger"
+      "existingTools": [
+        "ccp_v1_billing_payments_export"
+      ],
+      "explanation": "Shared teacher-scoped accounting CSV with formula injection hardening and browser/MCP parity test. Sensitive export requires explicit MCP approval."
     },
     {
       "path": "app/api/billing/generate/route.ts",
@@ -192,8 +194,10 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Read/edit/remove invoice draft"
+      "existingTools": [
+        "ccp_v1_billing_invoice_detail"
+      ],
+      "explanation": "Shared scoped invoice GET plus MCP list/details redacted by default. Invoice draft edit/delete still await shared MCP implementation."
     },
     {
       "path": "app/api/billing/invoices/[id]/send/route.ts",

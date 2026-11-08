@@ -47,6 +47,9 @@ import {
  teacherEventsList,teacherEventDetail,teacherEventCreate,teacherEventUpdate,
  teacherEventDeleteImpact,teacherEventDelete,teacherEventInviteEmail,TeacherEventError,
 } from "@/lib/server/teacher-events-service";
+import {
+ teacherInvoicesList,teacherInvoiceDetail,safeInvoice,teacherPaymentsExport,TeacherBillingError,
+} from "@/lib/server/teacher-billing-read-service";
 const uuid = z.string().uuid();
 const eventChanges=z.object({
   title:z.string().trim().min(1).max(200).optional(),
@@ -134,6 +137,26 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_billing_invoices_list",
+    description:"List scoped invoices and their balances for this teacher, paginated. No portal tokens, checkout URLs or family email addresses.",
+    schema:z.object({status:z.enum(["draft","sent","paid","void"]).optional(),
+      offset:z.number().int().min(0).max(100000).default(0),
+      limit:z.number().int().min(1).max(100).default(50)}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_billing_invoice_detail",
+    description:"Read one owned invoice with item and payment history. Family contacts and payment notes require includePrivate=true plus confirmation; portal tokens and Stripe secrets never returned.",
+    schema:z.object({invoiceId:uuid,includePrivate:z.boolean().default(false),
+      confirmed:z.literal(true).optional()}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_billing_payments_export",
+    description:"Export accountant-facing CSV of teacher-owned payments in an optional YYYY-MM-DD period, including family names and payment notes. Requires explicit teacher confirmation; safely escapes CSV formulas.",
+    schema:z.object({from:z.string().date().optional(),to:z.string().date().optional(),
+      confirmed:z.literal(true)}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_v1_studio_policy_get",
@@ -640,6 +663,20 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_billing_invoices_list": {
+        const a=args as Parameters<typeof teacherInvoicesList>[2];
+        return {data:await teacherInvoicesList(db,teacherId,a)};
+      }
+      case "ccp_v1_billing_invoice_detail": {
+        const a=args as {invoiceId:string;includePrivate:boolean;confirmed?:boolean};
+        const invoice=await teacherInvoiceDetail(db,teacherId,a.invoiceId);
+        return {data:safeInvoice(invoice,a.includePrivate&&a.confirmed===true)};
+      }
+      case "ccp_v1_billing_payments_export": {
+        const a=args as {from?:string;to?:string};
+        const report=await teacherPaymentsExport(db,teacherId,a);
+        return {data:{...report,format:"csv"}};
+      }
       case "ccp_v1_studio_policy_get": {
         const p=await teacherPolicyView(db,teacherId);
         return {data:{...p,payment_qr_code:null,
@@ -983,6 +1020,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof TeacherBillingError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherEventError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LegacyAttendanceError)
