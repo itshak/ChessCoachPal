@@ -1,4 +1,4 @@
-# Example: self-hosting CogNote with its own trimmed Supabase stack.
+# Example: self-hosting ChessCoachPal with its own trimmed Supabase stack.
 #
 # NOT used automatically — `docker compose` only picks up compose.yaml,
 # compose.yml, docker-compose.yaml or docker-compose.yml, so this file can live
@@ -23,17 +23,17 @@
 #   db        Postgres (supabase/postgres image: roles, auth + storage schemas)
 #   auth      GoTrue  — email/password signup + sessions
 #   rest      PostgREST — the Data API the app queries
-#   storage   Storage API — the private sheet-music bucket (files on a volume)
+#   storage   Storage API — the private avatar uploads (files on a volume)
 #   gateway   nginx reverse proxy fronting auth/rest/storage at /auth/v1,
 #             /rest/v1, /storage/v1 and terminating CORS
 #   migrate   one-shot: applies supabase/migrations/*.sql, tracked in the
 #             same ledger as `supabase db push`
-#   app       CogNote itself
+#   app       ChessCoachPal itself
 #   cron      optional (profile "cron"): pings /api/cron/event-reminders daily
 #   backup    optional (profile "backup"): scheduled DB + storage/secret backups
 #
 # Services intentionally omitted vs. upstream Supabase: Studio, Realtime, Edge
-# Functions, Analytics, Supavisor and imgproxy — CogNote uses none of them.
+# Functions, Analytics, Supavisor and imgproxy — ChessCoachPal uses none of them.
 #
 # WIRING (set in .env.local, see .env.example):
 #   SUPABASE_PUBLIC_URL   where the browser AND the app reach the gateway
@@ -45,7 +45,7 @@
 #                         publishes a demo pair here. The gateway denies
 #                         /storage/v1/s3, which the app never uses.
 
-name: cognote
+name: chesscoachpal
 
 x-logging: &logging
   driver: json-file
@@ -291,6 +291,27 @@ services:
       - |
         echo "$$CRON_SCHEDULE wget -q -O- --header 'Authorization: Bearer $$CRON_SECRET' http://app:3000/api/cron/event-reminders >/proc/1/fd/1 2>&1" > /etc/crontabs/root
         exec crond -f -l 8
+
+  # Explicit restore into a SECOND, EMPTY stack. See docs/SELF_HOSTING.md.
+  restore:
+    image: supabase/postgres:17.6.1.136
+    profiles: ["restore"]
+    restart: "no"
+    logging: *logging
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      DB_HOST: db
+      BACKUP_DIR: /backups
+      RESTORE_DATE: ${RESTORE_DATE:-}
+      RESTORE_CONFIRM: ${RESTORE_CONFIRM:-}
+    volumes:
+      - ./docker/supabase/restore.sh:/restore.sh:ro
+      - storage-data:/var/lib/storage
+      - ./backups:/backups:ro
+    entrypoint: ["/bin/bash", "/restore.sh"]
 
   # Optional: scheduled backup of the DB, the storage volume and the env/secrets.
   # Enable with: docker compose --env-file .env.local --profile backup up -d

@@ -5,6 +5,8 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 ## [Unreleased]
 
 ### Added
+- Deterministic teacher-scoped workplace/date-range teaching and attendance report with RTL-aware Hebrew presentation and safe CSV/text export.
+- Guarded current-schema full-database/uploaded-file backup and second-installation restore scripts, SHA-256 checks, synthetic CI restore workflow, and operator tutorial.
 - A versioned release process with validated SemVer tags, release notes extracted from this changelog, fresh-install tests, and automatic GitHub Release publishing.
 - A release readiness checklist to reserve `v0.1.0` for the first genuinely usable chess-teaching application.
 

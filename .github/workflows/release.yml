@@ -110,6 +110,26 @@ jobs:
           path: test-results/
           retention-days: 7
           if-no-files-found: ignore
+      # First-release recovery and self-host checks are mandatory on the
+      # exact candidate commit, not merely green in a previous PR workflow.
+      - name: Stop browser-test Supabase before recovery checks
+        if: steps.candidate.outputs.publish == 'true'
+        run: supabase stop --no-backup
+      - name: Recover synthetic data and uploaded bytes in a second clean database
+        if: steps.candidate.outputs.publish == 'true'
+        env:
+          CI: "true"
+          M5_SYNTHETIC_RESTORE: "1"
+        run: bash scripts/verify-m5-restore.sh
+      - name: Stop recovery Supabase before testing the self-host stack
+        if: steps.candidate.outputs.publish == 'true'
+        run: supabase stop --no-backup
+      - name: Verify fresh self-hosted Compose startup and signup
+        if: steps.candidate.outputs.publish == 'true'
+        env:
+          CI: "true"
+          M5_SYNTHETIC_COMPOSE: "1"
+        run: bash scripts/verify-m5-compose.sh
       - name: Publish tag and release
         if: steps.candidate.outputs.publish == 'true'
         env:
