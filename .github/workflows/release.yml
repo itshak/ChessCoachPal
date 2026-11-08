@@ -9,6 +9,8 @@ on:
       - scripts/release.mjs
       - scripts/release-check.mjs
       - .github/workflows/release.yml
+      - scripts/mcp-parity-audit.mjs
+      - scripts/mcp-website-parity.json
   workflow_dispatch:
 permissions:
   contents: write
@@ -40,6 +42,10 @@ jobs:
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # MCP-first is a release gate, never a best-effort documentation goal.
+          # The non-strict audit in normal CI can be green with explicit gaps;
+          # strict mode rejects ANY ordinary teacher-business route not yet MCP-complete.
+          node scripts/mcp-parity-audit.mjs --strict
           node scripts/release.mjs validate "$VERSION"
           git fetch origin main --tags
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || { echo "::error::Release must be current main"; exit 1; }
