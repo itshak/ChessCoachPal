@@ -15,8 +15,6 @@ const prodOnly =
 /** Load `/` and wait until the page is actually controlled by /sw.js —
  *  `serviceWorker.ready` can resolve before clients.claim() lands. */
 async function gotoControlled(page: Page) {
-  expect(manifest.icons.some((icon: { src: string }) => icon.src === "/icon/chesscoachpal-192.png")).toBe(true);
-  expect(manifest.icons.some((icon: { src: string }) => icon.src === "/icon/chesscoachpal-maskable-512.png")).toBe(true);
 
   await page.goto("/");
   const controlled = await page.evaluate(async () => {
@@ -47,6 +45,8 @@ test("serves an installable manifest", async ({ page, request }) => {
     manifest.icons.some((icon: { purpose?: string }) => icon.purpose === "maskable"),
     "manifest must ship a maskable icon or Android clips the artwork"
   ).toBe(true);
+  expect(manifest.icons.some((icon: { src: string }) => icon.src === "/icon/chesscoachpal-192.png")).toBe(true);
+  expect(manifest.icons.some((icon: { src: string }) => icon.src === "/icon/chesscoachpal-maskable-512.png")).toBe(true);
 
   await page.goto("/");
   await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
