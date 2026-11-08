@@ -1,12 +1,65 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">ChessCoachPal maskable rook and conversation mark</title>
-  <rect width="128" height="128" fill="#102A43"/>
-  <!-- Keep the complete logo within the central maskable safe zone. -->
-  <g transform="translate(20 20) scale(0.6875)">
-    <path d="M32 29h14v14h10V29h16v14h10V29h14v27l-8 8 5 28H35l5-28-8-8V29Z" fill="#F8FAFC"/>
-    <path d="M31 96h65v9H31z" fill="#F8FAFC"/>
-    <circle cx="94" cy="86" r="23" fill="#33D6A6" stroke="#102A43" stroke-width="4"/>
-    <path d="M82 88h24M82 81h16" stroke="#102A43" stroke-width="5" stroke-linecap="round"/>
-    <path d="m82 105 1-11 11 8z" fill="#33D6A6"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" width="1254" height="1254" role="img" aria-labelledby="title desc">
+<title id="title">ChessCoachPal maskable icon</title>
+<desc id="desc">An ivory chess knight guiding a smaller pupil pawn over an open book on midnight blue.</desc>
+<defs>
+    <radialGradient id="outer" cx="55%" cy="38%" r="78%"><stop stop-color="#142337"/><stop offset=".55" stop-color="#0B1322"/><stop offset="1" stop-color="#070B16"/></radialGradient>
+    <radialGradient id="inner" cx="52%" cy="25%" r="79%"><stop stop-color="#11293A"/><stop offset=".54" stop-color="#0D1829"/><stop offset="1" stop-color="#0A1020"/></radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2=".12" y2="1" gradientUnits="objectBoundingBox"><stop stop-color="#FFEF9C"/><stop offset=".24" stop-color="#F4C65B"/><stop offset=".58" stop-color="#CB8B22"/><stop offset=".82" stop-color="#FDD36D"/><stop offset="1" stop-color="#A46B22"/></linearGradient>
+    <linearGradient id="rimSheen" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#FFF9C1"/><stop offset=".25" stop-color="#FFD66C"/><stop offset=".55" stop-color="#D79E34"/><stop offset=".8" stop-color="#E7B449"/><stop offset="1" stop-color="#80591F"/></linearGradient>
+    <linearGradient id="teal" x1="650" y1="258" x2="1050" y2="685" gradientUnits="userSpaceOnUse"><stop stop-color="#064449"/><stop offset=".34" stop-color="#23B7AB"/><stop offset=".58" stop-color="#50DDCD"/><stop offset=".83" stop-color="#179789"/><stop offset="1" stop-color="#0A6F69"/></linearGradient>
+    <linearGradient id="tealLight" x1="636" y1="260" x2="990" y2="385" gradientUnits="userSpaceOnUse"><stop stop-color="#1C7C7D" stop-opacity="0"/><stop offset=".53" stop-color="#64E2D3" stop-opacity=".64"/><stop offset="1" stop-color="#64E2D3" stop-opacity="0"/></linearGradient>
+    <linearGradient id="ivory" x1="278" y1="218" x2="690" y2="881" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFEF8"/><stop offset=".28" stop-color="#F9F3E8"/><stop offset=".66" stop-color="#EDE3D5"/><stop offset="1" stop-color="#C9BAA4"/></linearGradient>
+    <linearGradient id="face" x1="560" y1="233" x2="751" y2="560" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFCF5"/><stop offset=".53" stop-color="#F5EFE5"/><stop offset="1" stop-color="#D1C4B3"/></linearGradient>
+    <linearGradient id="mane" x1="210" y1="250" x2="450" y2="691" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFBF4"/><stop offset=".52" stop-color="#F3EBDF"/><stop offset=".8" stop-color="#D8CBBB"/><stop offset="1" stop-color="#B9AA98"/></linearGradient>
+    <linearGradient id="maneShade" x1="272" y1="301" x2="444" y2="703" gradientUnits="userSpaceOnUse"><stop stop-color="#E4DACD"/><stop offset=".58" stop-color="#BEAF9C"/><stop offset="1" stop-color="#F6EEE2"/></linearGradient>
+    <linearGradient id="neckShade" x1="424" y1="372" x2="665" y2="862" gradientUnits="userSpaceOnUse"><stop stop-color="#D6CABA"/><stop offset=".55" stop-color="#F6EFE5"/><stop offset="1" stop-color="#B3A692"/></linearGradient>
+    <radialGradient id="pawnHead" cx="35%" cy="23%" r="80%"><stop stop-color="#FFFFF9"/><stop offset=".55" stop-color="#F3EADC"/><stop offset="1" stop-color="#C1B29A"/></radialGradient>
+    <linearGradient id="pawnStem" x1="779" y1="674" x2="910" y2="807" gradientUnits="userSpaceOnUse"><stop stop-color="#FBF6EC"/><stop offset=".52" stop-color="#F1E8DA"/><stop offset="1" stop-color="#C9B9A3"/></linearGradient>
+    <linearGradient id="page" x1="260" y1="808" x2="550" y2="1000" gradientUnits="userSpaceOnUse"><stop stop-color="#FDF9F2"/><stop offset=".55" stop-color="#F3EADF"/><stop offset="1" stop-color="#C7B8A5"/></linearGradient>
+    <linearGradient id="pageRight" x1="658" y1="815" x2="1030" y2="994" gradientUnits="userSpaceOnUse"><stop stop-color="#FDF8F0"/><stop offset=".66" stop-color="#EDE2D4"/><stop offset="1" stop-color="#BAAA94"/></linearGradient>
+    <linearGradient id="gold" x1="146" y1="923" x2="1066" y2="1020" gradientUnits="userSpaceOnUse"><stop stop-color="#DE9C24"/><stop offset=".2" stop-color="#F9D86C"/><stop offset=".46" stop-color="#E6B447"/><stop offset=".51" stop-color="#FFE382"/><stop offset=".73" stop-color="#F6C958"/><stop offset="1" stop-color="#C98B23"/></linearGradient>
+    <linearGradient id="underpage" x1="0" y1="914" x2="0" y2="1017" gradientUnits="userSpaceOnUse"><stop stop-color="#726451"/><stop offset=".47" stop-color="#382F2B"/><stop offset="1" stop-color="#0A1020"/></linearGradient>
+    <filter id="smallShadow" x="-20%" y="-20%" width="140%" height="150%"><feGaussianBlur in="SourceAlpha" stdDeviation="3" result="b"/><feOffset in="b" dy="3" result="o"/><feComponentTransfer in="o" result="a"><feFuncA type="linear" slope=".25"/></feComponentTransfer><feMerge><feMergeNode in="a"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="rimShadow" x="-15%" y="-15%" width="130%" height="130%"><feGaussianBlur stdDeviation="3"/></filter>
+    <clipPath id="horseClip"><path d="M601,324 L603,323 L647,357 L667,370 L670,374 L672,381 L685,401 L684,402 L673,392 L663,386 L650,385 L636,379 L625,365 L622,356 L622,350Z M631,164 L614,177 L575,218 L548,215 L541,216 L531,214 L494,216 L451,224 L428,232 L421,233 L385,249 L357,265 L333,282 L308,303 L281,330 L258,359 L241,386 L227,414 L256,389 L291,366 L330,347 L352,338 L355,339 L323,357 L293,379 L256,414 L238,436 L219,465 L208,486 L199,507 L191,532 L187,553 L186,575 L185,576 L187,607 L193,634 L199,651 L210,672 L210,647 L215,631 L222,648 L234,670 L255,696 L280,717 L307,733 L298,719 L284,689 L274,656 L268,617 L268,576 L272,544 L278,518 L290,484 L308,446 L330,410 L354,378 L366,364 L399,331 L414,318 L440,302 L475,285 L500,276 L544,265 L545,266 L541,272 L511,282 L472,302 L452,315 L422,339 L393,369 L376,390 L361,412 L349,434 L347,435 L346,440 L341,450 L339,451 L338,456 L335,460 L335,463 L332,467 L331,473 L328,478 L319,505 L314,526 L309,564 L309,596 L312,623 L318,652 L334,705 L336,716 L336,735 L332,749 L324,762 L307,779 L287,792 L311,786 L342,781 L365,780 L366,779 L403,779 L434,782 L457,786 L502,799 L543,818 L562,830 L581,845 L597,861 L609,876 L618,890 L627,910 L636,892 L645,868 L651,846 L655,821 L655,808 L656,807 L655,771 L651,743 L645,719 L633,688 L615,656 L589,622 L577,608 L570,602 L568,598 L543,569 L517,530 L506,506 L499,482 L497,469 L497,438 L502,413 L509,394 L511,393 L513,410 L516,421 L525,438 L535,449 L555,461 L574,466 L588,467 L637,492 L651,502 L659,510 L670,533 L676,539 L686,544 L703,546 L713,544 L724,539 L732,532 L746,506 L750,495 L749,491 L750,482 L747,477 L748,476 L737,456 L735,455 L723,431 L721,430 L722,429 L719,426 L709,406 L705,401 L697,383 L695,382 L693,377 L694,376 L693,361 L690,351 L681,342 L681,340 L677,337 L677,335 L673,332 L673,330 L665,322 L664,319 L651,305 L646,297 L643,295 L641,291 L615,260 L621,211 L625,192 L624,191 L627,181 L628,171Z" fill-rule="evenodd"/></clipPath>
+  </defs>
+<rect width="1254" height="1254" fill="#0B1322"/>
+<!-- Maskable safe-zone: center the entire foreground in a 70% inset, without a cropped ornamental rim. -->
+<g transform="translate(188 188) scale(0.7)">
+<!-- A single open protective arc; communication/AI is implied, not a robot badge. -->
+  <path d="M602 278 C735 207 851 230 944 308 C1053 399 1090 554 1034 677 C1017 714 990 748 960 775 C1000 712 1022 643 1020 568 C1017 444 950 340 840 296 C761 265 691 264 622 294 Z" fill="url(#teal)"/>
+  <path d="M632 274 C761 218 866 249 953 332 C877 270 747 249 632 296 Z" fill="url(#tealLight)" opacity=".82"/>
+
+  <!-- Redrawn using the exact contours of the approved raster, not a generic chess-horse shape. -->
+  <path d="M601,324 L603,323 L647,357 L667,370 L670,374 L672,381 L685,401 L684,402 L673,392 L663,386 L650,385 L636,379 L625,365 L622,356 L622,350Z M631,164 L614,177 L575,218 L548,215 L541,216 L531,214 L494,216 L451,224 L428,232 L421,233 L385,249 L357,265 L333,282 L308,303 L281,330 L258,359 L241,386 L227,414 L256,389 L291,366 L330,347 L352,338 L355,339 L323,357 L293,379 L256,414 L238,436 L219,465 L208,486 L199,507 L191,532 L187,553 L186,575 L185,576 L187,607 L193,634 L199,651 L210,672 L210,647 L215,631 L222,648 L234,670 L255,696 L280,717 L307,733 L298,719 L284,689 L274,656 L268,617 L268,576 L272,544 L278,518 L290,484 L308,446 L330,410 L354,378 L366,364 L399,331 L414,318 L440,302 L475,285 L500,276 L544,265 L545,266 L541,272 L511,282 L472,302 L452,315 L422,339 L393,369 L376,390 L361,412 L349,434 L347,435 L346,440 L341,450 L339,451 L338,456 L335,460 L335,463 L332,467 L331,473 L328,478 L319,505 L314,526 L309,564 L309,596 L312,623 L318,652 L334,705 L336,716 L336,735 L332,749 L324,762 L307,779 L287,792 L311,786 L342,781 L365,780 L366,779 L403,779 L434,782 L457,786 L502,799 L543,818 L562,830 L581,845 L597,861 L609,876 L618,890 L627,910 L636,892 L645,868 L651,846 L655,821 L655,808 L656,807 L655,771 L651,743 L645,719 L633,688 L615,656 L589,622 L577,608 L570,602 L568,598 L543,569 L517,530 L506,506 L499,482 L497,469 L497,438 L502,413 L509,394 L511,393 L513,410 L516,421 L525,438 L535,449 L555,461 L574,466 L588,467 L637,492 L651,502 L659,510 L670,533 L676,539 L686,544 L703,546 L713,544 L724,539 L732,532 L746,506 L750,495 L749,491 L750,482 L747,477 L748,476 L737,456 L735,455 L723,431 L721,430 L722,429 L719,426 L709,406 L705,401 L697,383 L695,382 L693,377 L694,376 L693,361 L690,351 L681,342 L681,340 L677,337 L677,335 L673,332 L673,330 L665,322 L664,319 L651,305 L646,297 L643,295 L641,291 L615,260 L621,211 L625,192 L624,191 L627,181 L628,171Z" fill="url(#ivory)" fill-rule="evenodd"/>
+  <g clip-path="url(#horseClip)">
+    <!-- Broad gradients reproduce the original neck S-curve without posterized layers. -->
+    <path d="M521 344 C481 406 432 475 437 540 C445 601 520 652 579 710 C626 754 642 799 650 888 C626 828 606 783 553 742 C494 700 419 653 382 598 C359 562 359 513 376 472 C406 415 461 369 521 344Z" fill="url(#neckShade)" opacity=".83"/>
+    <path d="M511 346 C485 406 477 457 495 512 C517 569 576 606 601 654 C627 691 647 743 649 805 C624 748 578 696 525 661 C472 620 439 584 434 533 C428 466 464 397 511 346Z" fill="url(#face)" opacity=".48"/>
+    <path d="M558 456 C605 458 642 484 661 515 C678 546 715 549 738 515 C713 559 683 559 665 528 C639 484 600 475 558 456Z" fill="url(#neckShade)" opacity=".75"/>
+    <path d="M226 413 C300 338 402 268 540 249 C413 285 311 363 225 414 Z" fill="url(#face)" opacity=".72"/>
+    <path d="M214 620 C233 571 255 519 285 478 C260 575 266 643 305 730 C254 696 218 653 214 620Z" fill="url(#maneShade)" opacity=".43"/>
+    <path d="M562 278 L627 165 L599 278 Z" fill="url(#face)" opacity=".6"/>
   </g>
+  <!-- Sharply defined eye and ear are preserved by the source-contour even-odd silhouette. -->
+
+  <!-- Pawn: head, collar, stem and base are separate vector elements. -->
+  <circle cx="833" cy="598" r="64" fill="url(#pawnHead)" stroke="#FAF5EB" stroke-width="2"/>
+  <path d="M786 674 C796 676 814 678 831 678 C849 678 866 675 878 672 C883 671 889 676 889 682 C889 691 879 696 868 696 L797 696 C787 696 779 692 779 683 C779 678 782 675 786 674 Z" fill="url(#pawnHead)"/>
+  <path d="M801 696 L868 696 C869 724 887 748 907 766 C893 782 769 781 751 764 C781 740 797 714 801 696 Z" fill="url(#pawnStem)"/>
+  <path d="M766 755 C810 753 857 755 898 759 C922 766 931 785 935 797 C851 774 792 785 727 818 C727 787 743 769 766 755 Z" fill="url(#pawnHead)"/>
+
+  <!-- Open-book pages. Shallow layers are deliberate to create the recognizable book silhouette. -->
+  <path d="M220 824 C351 777 474 804 545 855 C586 883 609 910 624 945 C652 899 688 859 760 829 C832 795 915 783 1020 825 L1081 928 C963 901 851 886 759 906 C694 920 655 952 624 991 C580 940 529 921 453 906 C373 891 254 903 156 929 Z" fill="#0A1120" opacity=".86"/>
+  <path d="M220 822 C340 780 465 793 550 856 C583 882 609 909 623 944 L624 988 C557 917 476 892 369 892 C295 892 219 905 156 929 Z" fill="url(#page)"/>
+  <path d="M624 944 C650 891 698 856 769 827 C842 795 927 791 1021 825 L1081 929 C1013 911 925 897 836 897 C734 897 670 927 624 988 Z" fill="url(#pageRight)"/>
+  <path d="M159 928 C273 880 403 866 494 897 C549 911 596 942 623 985 L623 1005 C565 951 497 925 390 916 C294 907 212 922 145 945 Z" fill="url(#underpage)"/>
+  <path d="M624 984 C666 929 741 900 840 894 C934 891 1018 908 1084 927 L1101 966 C1014 934 909 918 834 921 C726 925 666 958 624 1005 Z" fill="url(#underpage)"/>
+  <path d="M153 945 C258 920 364 913 464 923 C533 930 590 961 617 997 Q624 1008 632 997 C667 955 738 930 819 922 C919 911 1015 927 1088 944 L1107 982 C1003 955 918 946 841 949 C745 953 671 979 640 1016 C633 1024 624 1030 619 1026 C568 979 481 955 382 950 C295 946 216 957 134 983 Z" fill="url(#gold)"/>
+  <path d="M140 981 C247 951 326 945 418 956 C522 967 584 994 612 1026 C621 1036 628 1039 639 1030 C678 982 756 957 854 954 C949 949 1024 960 1102 981" fill="none" stroke="#9B651E" stroke-width="5" stroke-linecap="round" opacity=".68"/>
+  <path d="M157 943 C271 916 368 917 460 928 C545 940 589 966 623 1004 C662 964 726 937 816 927 C924 914 1008 924 1086 944" fill="none" stroke="#FFE99E" stroke-opacity=".72" stroke-width="2.6"/>
+  <!-- Spine definition precisely at the book's center. -->
+  <path d="M623 944 L624 989" stroke="#E4D9C8" stroke-width="4" stroke-linecap="round"/>
+
+</g>
 </svg>

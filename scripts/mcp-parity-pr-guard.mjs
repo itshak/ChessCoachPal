@@ -10,10 +10,13 @@ const inventory = JSON.parse(readFileSync(join(root, "scripts/mcp-website-parity
 export function parityChangeViolations(paths, registry = inventory) {
   const changed = new Set(paths);
   const teacherApi = new Set(registry.apiRoutes.filter(r => r.kind === "teacher").map(r => r.path));
+  // Pure presentation/theme infrastructure has no teacher-owned data operations.
+  // Business components and API routes still require same-PR MCP parity.
+  const visualOnly = new Set(["components/teacher/TeacherThemeProvider.tsx"]);
   const teacherSurfaces = paths.filter(p =>
     teacherApi.has(p) ||
     (p.startsWith("app/(teacher)/") && p.endsWith("/page.tsx")) ||
-    (p.startsWith("components/teacher/") && p.endsWith(".tsx"))
+    (p.startsWith("components/teacher/") && p.endsWith(".tsx") && !visualOnly.has(p))
   );
   if (teacherSurfaces.length === 0) return [];
   const issues = [];

@@ -1,6 +1,6 @@
-// Bump when the precache list or /offline changes: activate() drops every other
+// Bump when the precached icon artwork, list, or /offline changes: activate() drops every other
 // cache name, which is what evicts the previous shell.
-const CACHE = "chesscoachpal-shell-v2";
+const CACHE = "chesscoachpal-shell-v3";
 const OFFLINE_URL = "/offline";
 // The offline page is self-contained, so only it and the home-screen icon are
 // needed for a correct cold first offline render.

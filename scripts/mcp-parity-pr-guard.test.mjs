@@ -13,6 +13,13 @@ test("documentation changes do not invoke teacher feature gate", () => {
 test("teacher API changes without MCP, registry, E2E fail", () => {
   assert.equal(parityChangeViolations([route]).length, 3);
 });
+test("visual-only teacher theme provider is not a business parity surface", () => {
+  assert.deepEqual(parityChangeViolations(["components/teacher/TeacherThemeProvider.tsx"]), []);
+  assert.equal(parityChangeViolations([
+    "components/teacher/TeacherThemeProvider.tsx",
+    "components/teacher/StudentInfoCard.tsx",
+  ]).length, 3);
+});
 test("teacher component feature changes require same parity deltas", () => {
   assert.equal(parityChangeViolations(["components/teacher/StudentInfoCard.tsx"]).length, 3);
 });

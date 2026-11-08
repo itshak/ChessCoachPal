@@ -29,11 +29,15 @@ export const metadata: Metadata = {
     template: "ChessCoachPal - %s",
   },
   description:
-    "Open-source chess coaching assistant for teachers: workplaces, group and private lessons, student attendance, learning observations, and authenticated AI-agent tools",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: PWA.shortName },
+    "AI-first chess teaching assistant: manage students, group and private lessons, attendance, learning history and schedules through your connected AI tools or the web.",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: PWA.shortName },
   icons: {
-    icon: "/icon/chesscoachpal.svg",
-    apple: "/icon/chesscoachpal.svg", // Keep visible ChessCoachPal identity; PNG fallback can be added after asset review
+    icon: [
+      { url: "/icon/chesscoachpal.svg", type: "image/svg+xml" },
+      { url: "/icon/chesscoachpal-32.png", type: "image/png", sizes: "32x32" },
+      { url: "/icon/favicon.ico", type: "image/x-icon", sizes: "any" },
+    ],
+    apple: "/icon/chesscoachpal-180.png",
   },
 };
 
