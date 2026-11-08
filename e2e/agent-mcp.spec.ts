@@ -221,6 +221,143 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const afterAttendance = (await postDomain({action:"attendance.list",sessionId:sessionRecord.id}));
   expect(afterAttendance[0].status).toBe("present");
 
+
+  // The 2b tool surface is exercised over real delegated OAuth/MCP, with a
+  // synthetic database and website-domain readback; no vendor accounts involved.
+  const call = async (name:string, args:Record<string,unknown>) =>
+    (await mcp("tools/call",{name,arguments:args}));
+  for (const name of [
+    "ccp_v1_workplaces_create","ccp_v1_workplaces_update","ccp_v1_workplaces_enroll",
+    "ccp_v1_students_create","ccp_v1_students_update",
+    "ccp_v1_groups_create","ccp_v1_groups_update","ccp_v1_groups_enroll",
+    "ccp_v1_groups_unenroll","ccp_v1_sessions_create","ccp_v1_sessions_reschedule",
+    "ccp_v1_sessions_cancel","ccp_v1_sessions_details",
+  ]) expect(names).toContain(name);
+
+  const workplaceArgs={name:"MCP workplace "+suffix,timezone:"UTC",currency:"USD",
+    locale:"en",policy:{},idempotencyKey:randomUUID()};
+  const madeWorkplace=(await call("ccp_v1_workplaces_create",workplaceArgs)).structuredContent.data;
+  expect(madeWorkplace.actorId).toBe(session!.user.id);
+  expect(madeWorkplace.clientId).toBe(clientId);
+  expect(madeWorkplace.revision).toBeTruthy();
+  expect((await call("ccp_v1_workplaces_create",workplaceArgs)).structuredContent.data)
+    .toEqual(madeWorkplace);
+  expect((await postDomain({action:"workplaces.list"}))
+    .some((x:{id:string})=>x.id===madeWorkplace.entityId)).toBe(true);
+  const workplaceUpdateArgs={workplaceId:madeWorkplace.entityId,
+    name:"Renamed MCP workplace "+suffix,expectedUpdatedAt:madeWorkplace.revision,
+    idempotencyKey:randomUUID()};
+  const revisedWorkplace=(await call("ccp_v1_workplaces_update",workplaceUpdateArgs))
+    .structuredContent.data;
+  expect(revisedWorkplace.revision).not.toBe(madeWorkplace.revision);
+  const staleWorkplace=await call("ccp_v1_workplaces_update",{
+    ...workplaceUpdateArgs,name:"Should not overwrite",idempotencyKey:randomUUID(),
+  });
+  expect(staleWorkplace.isError).toBe(true);
+  expect(staleWorkplace.structuredContent.error.code).toBe("CONFLICT");
+
+  const madeStudent=(await call("ccp_v1_students_create",{
+    name:"MCP learner "+suffix,level:"Beginner",idempotencyKey:randomUUID(),
+  })).structuredContent.data;
+  const studentUpdate=(await call("ccp_v1_students_update",{
+    studentId:madeStudent.entityId,level:"Intermediate",
+    expectedUpdatedAt:madeStudent.revision,idempotencyKey:randomUUID(),
+  })).structuredContent.data;
+  expect(studentUpdate.revision).not.toBe(madeStudent.revision);
+  expect((await postDomain({action:"students.search",query:"MCP learner "+suffix}))
+    .find((s:{id:string})=>s.id===madeStudent.entityId).level).toBe("Intermediate");
+  const joined=(await call("ccp_v1_workplaces_enroll",{
+    workplaceId:madeWorkplace.entityId,studentId:madeStudent.entityId,
+    idempotencyKey:randomUUID(),
+  })).structuredContent;
+  expect(joined.data.operation).toBe("workplaces.enroll");
+  const enrollments=(await call("ccp_v1_workplaces_enrollments",{
+    workplaceId:madeWorkplace.entityId,
+  })).structuredContent.data;
+  expect(enrollments.some((r:{student_id:string})=>r.student_id===madeStudent.entityId)).toBe(true);
+
+  const madeGroup=(await call("ccp_v1_groups_create",{
+    workplaceId:madeWorkplace.entityId,name:"MCP group "+suffix,idempotencyKey:randomUUID(),
+  })).structuredContent.data;
+  const revisedGroup=(await call("ccp_v1_groups_update",{
+    groupId:madeGroup.entityId,workplaceId:madeWorkplace.entityId,
+    name:"Updated MCP group "+suffix,expectedUpdatedAt:madeGroup.revision,
+    idempotencyKey:randomUUID(),
+  })).structuredContent.data;
+  expect(revisedGroup.revision).not.toBe(madeGroup.revision);
+  const enrollArgs={groupId:madeGroup.entityId,studentId:madeStudent.entityId,
+    idempotencyKey:randomUUID()};
+  const groupEnroll=(await call("ccp_v1_groups_enroll",enrollArgs)).structuredContent.data;
+  expect((await call("ccp_v1_groups_enroll",enrollArgs)).structuredContent.data).toEqual(groupEnroll);
+  expect((await call("ccp_v1_groups_members",{groupId:madeGroup.entityId}))
+    .structuredContent.data).toHaveLength(1);
+
+  const lessonArgs={workplaceId:madeWorkplace.entityId,groupId:madeGroup.entityId,
+    title:"MCP new lesson "+suffix,startsAt:"2027-06-21T10:00:00.000Z",
+    durationMinutes:60,lessonNote:"Synthetic",idempotencyKey:randomUUID()};
+  const scheduled=(await call("ccp_v1_sessions_create",lessonArgs)).structuredContent.data;
+  expect((await call("ccp_v1_sessions_create",lessonArgs)).structuredContent.data).toEqual(scheduled);
+  const lessonDetails=(await call("ccp_v1_sessions_details",{
+    sessionId:scheduled.entityId,
+  })).structuredContent.data;
+  expect(lessonDetails.participants).toHaveLength(1);
+  const collided=await call("ccp_v1_sessions_create",{
+    ...lessonArgs,title:"Overlaps",idempotencyKey:randomUUID(),
+  });
+  expect(collided.isError).toBe(true);
+  expect(collided.structuredContent.error.code).toBe("CONFLICT");
+
+  const rescheduleArgs={sessionId:scheduled.entityId,startsAt:"2027-06-22T10:00:00.000Z",
+    durationMinutes:45,expectedUpdatedAt:scheduled.revision,
+    confirmed:true,idempotencyKey:randomUUID()};
+  const moved=(await call("ccp_v1_sessions_reschedule",rescheduleArgs)).structuredContent.data;
+  expect((await call("ccp_v1_sessions_reschedule",rescheduleArgs)).structuredContent.data).toEqual(moved);
+  const staleMove=await call("ccp_v1_sessions_reschedule",{
+    ...rescheduleArgs,startsAt:"2027-06-23T10:00:00.000Z",idempotencyKey:randomUUID(),
+  });
+  expect(staleMove.isError).toBe(true);
+  expect(staleMove.structuredContent.error.code).toBe("CONFLICT");
+  const fromSite=(await postDomain({action:"sessions.list"}))
+    .find((s:{id:string})=>s.id===scheduled.entityId);
+  expect(fromSite.starts_at).toBe("2027-06-22T10:00:00+00:00");
+  expect(fromSite.duration_minutes).toBe(45);
+  // Website corrections remain available after a delegated tool action.
+  await postDomain({action:"sessions.update",sessionId:scheduled.entityId,
+    lessonNote:"Website correction after MCP"});
+  const corrected=(await call("ccp_v1_sessions_details",{
+    sessionId:scheduled.entityId,
+  })).structuredContent.data;
+  expect(corrected.lesson_note).toBe("Website correction after MCP");
+  const canceled=(await call("ccp_v1_sessions_cancel",{
+    sessionId:scheduled.entityId,expectedUpdatedAt:corrected.updated_at,
+    idempotencyKey:randomUUID(),confirmed:true,
+  })).structuredContent.data;
+  expect(canceled.operation).toBe("sessions.cancel");
+
+  // A membership change cannot rewrite a frozen historical lesson roster.
+  const removed=(await call("ccp_v1_groups_unenroll",{
+    groupId:madeGroup.entityId,studentId:madeStudent.entityId,
+    idempotencyKey:randomUUID(),confirmed:true,
+  })).structuredContent.data;
+  expect(removed.operation).toBe("groups.unenroll");
+  expect((await call("ccp_v1_groups_members",{groupId:madeGroup.entityId}))
+    .structuredContent.data).toHaveLength(0);
+  expect((await call("ccp_v1_sessions_details",{sessionId:scheduled.entityId}))
+    .structuredContent.data.participants).toHaveLength(1);
+
+  const blockedTenant=await call("ccp_v1_groups_create",{
+    workplaceId:foreignWorkplace!.id,name:"Cross-tenant attempt",
+    idempotencyKey:randomUUID(),
+  });
+  expect(blockedTenant.isError).toBe(true);
+  expect(blockedTenant.structuredContent.error.code).toBe("NOT_FOUND");
+  const blockedStudent=await call("ccp_v1_workplaces_enroll",{
+    workplaceId:madeWorkplace.entityId,studentId:foreignStudent!.id,
+    idempotencyKey:randomUUID(),
+  });
+  expect(blockedStudent.isError).toBe(true);
+  expect(blockedStudent.structuredContent.error.code).toBe("NOT_FOUND");
+
   const connections=await page.request.get("/api/agent/connections");
   expect(connections.status()).toBe(200);
   const grants=(await connections.json()).connections as {id:string;client_id:string}[];
