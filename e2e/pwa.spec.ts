@@ -15,6 +15,9 @@ const prodOnly =
 /** Load `/` and wait until the page is actually controlled by /sw.js —
  *  `serviceWorker.ready` can resolve before clients.claim() lands. */
 async function gotoControlled(page: Page) {
+  expect(manifest.icons.some((icon: { src: string }) => icon.src === "/icon/chesscoachpal-192.png")).toBe(true);
+  expect(manifest.icons.some((icon: { src: string }) => icon.src === "/icon/chesscoachpal-maskable-512.png")).toBe(true);
+
   await page.goto("/");
   const controlled = await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
@@ -35,7 +38,7 @@ test("serves an installable manifest", async ({ page, request }) => {
   expect(manifest.start_url).toBe("/");
   expect(manifest.icons.length).toBeGreaterThanOrEqual(2);
   for (const icon of manifest.icons as {src:string;type:string}[]) {
-    expect(icon.src).toMatch(/^\/icon\/chesscoachpal(?:-maskable)?(?:-\\d+)?\\.(?:svg|png)$/);
+    expect(icon.src).toMatch(/^\/icon\/chesscoachpal(?:-maskable)?(?:-\d+)?\.(?:svg|png)$/);
     const asset = await request.get(icon.src, { maxRedirects: 0 });
     expect(asset.status(), icon.src).toBe(200);
     expect(asset.headers()["content-type"], icon.src).toContain(icon.src.endsWith(".svg") ? "image/svg+xml" : "image/png");
