@@ -9,15 +9,16 @@ describe("PWA constants", () => {
   });
 
   it("uses valid hex colours for the manifest", () => {
-    for (const c of [PWA.themeColor, PWA.themeColorDark, PWA.backgroundColor]) {
+    for (const c of [PWA.themeColor, PWA.themeColorDark, PWA.themeColorLight, PWA.backgroundColor]) {
       expect(c).toMatch(/^#[0-9a-fA-F]{6}$/);
     }
   });
 
   it("maps theme modes to the correct surface colour", () => {
-    expect(themeColorFor("light")).toBe(PWA.themeColor);
+    expect(themeColorFor("light")).toBe(PWA.themeColorLight);
     expect(themeColorFor("dark")).toBe(PWA.themeColorDark);
-    expect(PWA.themeColorDark).toBe("#1c1f28");
+    expect(PWA.themeColorDark).toBe("#0D1829");
+    expect(PWA.themeColor).toBe("#0D1829");
   });
 
   it("scopes the app to the site root", () => {
@@ -35,12 +36,12 @@ describe("theme cookie", () => {
     expect(THEME_COOKIE).toBe("chesscoachpal-theme");
   });
 
-  it("maps a cookie value to a theme mode, defaulting to light", () => {
+  it("maps a cookie value to a theme mode, defaulting to dark", () => {
     expect(themeModeFromCookie("dark")).toBe("dark");
     expect(themeModeFromCookie("light")).toBe("light");
-    expect(themeModeFromCookie(undefined)).toBe("light");
-    expect(themeModeFromCookie("Dark")).toBe("light");
-    expect(themeModeFromCookie("garbage")).toBe("light");
+    expect(themeModeFromCookie(undefined)).toBe("dark");
+    expect(themeModeFromCookie("Dark")).toBe("dark");
+    expect(themeModeFromCookie("garbage")).toBe("dark");
   });
 });
 
