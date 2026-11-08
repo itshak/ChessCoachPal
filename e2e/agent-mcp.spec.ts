@@ -319,7 +319,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(staleMove.structuredContent.error.code).toBe("CONFLICT");
   const fromSite=(await postDomain({action:"sessions.list"}))
     .find((s:{id:string})=>s.id===scheduled.entityId);
-  expect(fromSite.starts_at).toBe("2027-06-22T10:00:00+00:00");
+  expect(new Date(fromSite.starts_at).toISOString()).toBe("2027-06-22T10:00:00.000Z");
   expect(fromSite.duration_minutes).toBe(45);
   // Website corrections remain available after a delegated tool action.
   await postDomain({action:"sessions.update",sessionId:scheduled.entityId,
