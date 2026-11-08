@@ -19,6 +19,9 @@ export function ArchiveStudentButton({
   const [busy, setBusy] = useState(false);
 
   async function toggle() {
+    if (!archived && !window.confirm(
+      "Archive this student? Teaching history will be retained. Resolve future lessons and recurring slots first."
+    )) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/students/${studentId}`, {

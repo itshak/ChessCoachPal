@@ -602,15 +602,18 @@
     {
       "path": "app/api/students/[id]/route.ts",
       "methods": [
+        "GET",
         "PUT",
         "DELETE"
       ],
       "kind": "teacher",
       "parity": "partial",
       "existingTools": [
-        "ccp_v1_students_update"
+        "ccp_v1_students_update",
+        "ccp_v1_students_profile",
+        "ccp_v1_students_profile_edit"
       ],
-      "explanation": "MCP only name and freeform level; website also birthdate, rates, family, archive/delete, etc."
+      "explanation": "Student read/profile/aliases/strength/ratings/notes/archival now have website and MCP adapters. Safe replay, atomic hosted limit, deletion impact and all 93 cases remain unverified."
     },
     {
       "path": "app/api/students/[id]/skills/route.ts",
@@ -632,9 +635,10 @@
       "parity": "partial",
       "existingTools": [
         "ccp_v1_students_search",
-        "ccp_v1_students_create"
+        "ccp_v1_students_create",
+        "ccp_v1_students_roster"
       ],
-      "explanation": "Website GET entire roster; MCP search requires nonempty query; create basics supported"
+      "explanation": "Website and MCP support roster search/pagination and chess profile; create with family and transaction-level quota parity remain open."
     },
     {
       "path": "app/api/teacher/calendar-token/route.ts",
@@ -695,6 +699,7 @@
     "components/teacher/PushOwnership.tsx",
     "components/teacher/RemoveStudentButton.tsx",
     "components/teacher/StartTourLink.tsx",
+    "components/teacher/StudentChessProfileEditor.tsx",
     "components/teacher/StudentInfoCard.tsx",
     "components/teacher/StudentLessonNotes.tsx",
     "components/teacher/StudentNotesEditor.tsx",

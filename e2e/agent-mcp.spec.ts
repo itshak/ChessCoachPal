@@ -441,6 +441,70 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(blockedStudent.isError).toBe(true);
   expect(blockedStudent.structuredContent.error.code).toBe("NOT_FOUND");
 
+  // Browser/MCP student profile parity: chess fields, notes, aliases, archived records.
+  for (const toolName of ["ccp_v1_students_roster","ccp_v1_students_profile",
+    "ccp_v1_students_profile_edit"]) expect(names).toContain(toolName);
+  const profileId=madeStudent.entityId;
+  const oldProfile=(await call("ccp_v1_students_profile",{studentId:profileId})).structuredContent.data;
+  const oldSite=await page.request.get("/api/students/"+profileId);
+  expect(oldSite.status()).toBe(200);
+  expect(oldProfile.name).toBe((await oldSite.json()).name);
+  expect(oldProfile.teacher_notes).toBeUndefined();
+  const aliases=["כינוי סינתטי "+suffix,"Synthetic alias "+suffix];
+  const update=(await call("ccp_v1_students_profile_edit",{
+    studentId:profileId,expectedUpdatedAt:oldProfile.updated_at,confirmed:true,
+    changes:{nameAliases:aliases,strength:7,lichessUsername:"lichess_test",
+      chesscomUsername:"Chesscom_test",lichessRating:1450,chesscomRating:1510,
+      teacherNotes:"Private synthetic notes"},
+  })).structuredContent;
+  expect(update.error).toBeUndefined();
+  expect(update.data.strength).toBe(7);
+  const webProfile=await page.request.get("/api/students/"+profileId);
+  expect(webProfile.status()).toBe(200);
+  const actualProfile=await webProfile.json();
+  expect(actualProfile.name_aliases).toEqual(aliases);
+  expect(actualProfile.teacher_notes).toBe("Private synthetic notes");
+  expect(actualProfile.lichess_rating).toBe(1450);
+  const aliasSearch=(await call("ccp_v1_students_search",{query:aliases[0]})).structuredContent;
+  expect(aliasSearch.error).toBeUndefined();
+  expect(aliasSearch.data.some((row:{id:string})=>row.id===profileId)).toBe(true);
+  expect(aliasSearch.data.find((row:{id:string})=>row.id===profileId).teacher_notes).toBeUndefined();
+  const privateProfile=(await call("ccp_v1_students_profile",{
+    studentId:profileId,includePrivate:true,confirmed:true,
+  })).structuredContent.data;
+  expect(privateProfile.teacher_notes).toBe("Private synthetic notes");
+  const staleEdit=(await call("ccp_v1_students_profile_edit",{
+    studentId:profileId,expectedUpdatedAt:oldProfile.updated_at,confirmed:true,
+    changes:{strength:6},
+  })).structuredContent;
+  expect(staleEdit.error.code).toBe("CONFLICT");
+  const roster=(await call("ccp_v1_students_roster",{
+    includeArchived:true,offset:0,limit:100,
+  })).structuredContent.data;
+  expect(roster.students.some((row:{id:string})=>row.id===profileId)).toBe(true);
+  expect(roster.students.find((row:{id:string})=>row.id===profileId).teacher_notes).toBeUndefined();
+  const forbiddenProfile=(await call("ccp_v1_students_profile",{
+    studentId:foreignStudent!.id,
+  })).structuredContent;
+  expect(forbiddenProfile.error.code).toBe("NOT_FOUND");
+  const archive=(await call("ccp_v1_students_profile_edit",{
+    studentId:profileId,expectedUpdatedAt:actualProfile.updated_at,confirmed:true,
+    changes:{archived:true},
+  })).structuredContent;
+  expect(archive.error).toBeUndefined();
+  expect(archive.data.archived_at).toBeTruthy();
+  const activeRoster=(await call("ccp_v1_students_roster",{
+    includeArchived:false,limit:100,
+  })).structuredContent.data.students;
+  expect(activeRoster.some((row:{id:string})=>row.id===profileId)).toBe(false);
+  const archivedFromWebsite=await page.request.get("/api/students/"+profileId);
+  expect((await archivedFromWebsite.json()).archived_at).toBeTruthy();
+  const restore=(await page.request.put("/api/students/"+profileId,{
+    data:{archived:false},
+  }));
+  expect(restore.status(),await restore.text()).toBe(200);
+  expect((await restore.json()).archived_at).toBeNull();
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{

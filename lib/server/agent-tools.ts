@@ -17,6 +17,12 @@ import { teacherDashboardSummary, teacherNotificationsList, teacherNotifications
 import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, StudentProfileError } from "@/lib/server/student-profile-service";
 import { studentUpdateSchema } from "@/lib/server/api-schemas";
 import { assertWithinHostedLimit } from "@/lib/server/entitlements";
+const safeStudentProfile = (row: Record<string,unknown>) => ({
+  id:row.id,name:row.name,name_aliases:row.name_aliases,level:row.level,
+  strength:row.strength,lichess_username:row.lichess_username,chesscom_username:row.chesscom_username,
+  lichess_rating:row.lichess_rating,chesscom_rating:row.chesscom_rating,
+  archived_at:row.archived_at,updated_at:row.updated_at,
+});
 const uuid = z.string().uuid();
 const searchText = z.string().trim().min(1).max(80);
 const sessionId = z.object({ sessionId: uuid }).strict();
@@ -326,15 +332,13 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     switch (name) {
       case "ccp_v1_students_roster": {
         const a=args as {query?:string;includeArchived:boolean;offset:number;limit:number};
-        return {data:await teacherStudentsRoster(db,teacherId,a)};
+        const result=await teacherStudentsRoster(db,teacherId,a);
+        return {data:{students:result.students.map(safeStudentProfile),nextOffset:result.nextOffset}};
       }
       case "ccp_v1_students_profile": {
         const a=args as {studentId:string;includePrivate:boolean;confirmed?:boolean};
         const profile=await teacherStudentProfile(db,teacherId,a.studentId);
-        const {teacher_notes,parent_contact,guardian_id,birthdate,default_rate_cents,
-          travel_fee_cents,...safe}=profile;
-        return {data:a.includePrivate && a.confirmed ?
-          {...safe,teacher_notes,parent_contact,guardian_id,birthdate,default_rate_cents,travel_fee_cents}:safe};
+        return {data:a.includePrivate && a.confirmed ? profile : safeStudentProfile(profile)};
       }
       case "ccp_v1_students_profile_edit": {
         const a=args as {studentId:string;expectedUpdatedAt:string;changes:Parameters<typeof teacherStudentPatch>[3]};
@@ -413,7 +417,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         if (exact.length > 1) return {error:{code:"NEEDS_RESOLUTION",
           message:"Multiple students share this name or alias. Ask for a stable student ID.",
           candidates:exact.map(row=>({id:row.id,name:row.name}))}};
-        return {data:rows};
+        return {data:rows.map(safeStudentProfile)};
       }
       case "ccp_v1_groups_list":
         return { data: await groupsList(db, teacherId) };
