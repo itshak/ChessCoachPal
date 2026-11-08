@@ -42,9 +42,13 @@
         "ccp_v1_students_search",
         "ccp_v1_students_create",
         "ccp_v1_chess_categories_list",
-        "ccp_v1_chess_resources_link"
+        "ccp_v1_chess_resources_link",
+        "ccp_v1_chess_categories_create",
+        "ccp_v1_chess_categories_update",
+        "ccp_v1_chess_observations_update",
+        "ccp_v1_chess_resources_update"
       ],
-      "explanation": "Website coaching/learning gateway has operations beyond MCP, including category editing and observation approval"
+      "explanation": "Shared teacher-scoped chess category edits, observation corrections and resource updates now have MCP counterparts. Agent-proposed observation approval remains an intentionally protected teacher-browser-only provenance action (MCP may read approved status). Legacy gateway workflows and 93 cases still await full evidence."
     },
     {
       "path": "app/api/auth/setup-teacher/route.ts",

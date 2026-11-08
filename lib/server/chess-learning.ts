@@ -140,7 +140,7 @@ export async function chessObservationsUpdate(db:Db,teacherId:string,id:string,
   return data;
 }
 
-/** Explicit teacher-owned website action only. Never route this via MCP. */
+/** Sensitive provenance: only the teacher-owned browser action may approve agent observations. MCP may propose or correct, but must never self-verify. */
 export async function chessObservationsApprove(db:Db,teacherId:string,id:string) {
   const {data,error}=await db.from("chess_observations").update({
     verified_at:new Date().toISOString(),verified_by:teacherId,updated_at:new Date().toISOString(),

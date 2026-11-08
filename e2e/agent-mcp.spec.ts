@@ -1119,6 +1119,82 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(missingGenerated.error.code).toBe("NOT_FOUND");
 
+  // Legacy /api/agent/v1 website learning actions now have matching
+  // delegated MCP category/observation/resource correction and approval.
+  for(const toolName of ["ccp_v1_chess_categories_create",
+    "ccp_v1_chess_categories_update","ccp_v1_chess_observations_update",
+    "ccp_v1_chess_resources_update"])
+    expect(names).toContain(toolName);
+  const madeCategory=(await call("ccp_v1_chess_categories_create",{
+    name:"Chess endgames "+suffix,description:"Synthetic tests",
+    sortOrder:200,confirmed:true,
+  })).structuredContent;
+  expect(madeCategory.error).toBeUndefined();
+  const learningCategoryId=madeCategory.data.id as string;
+  const fromWebCategories=await page.request.post("/api/agent/v1",{
+    data:{action:"chess.categories.list"},
+  });
+  expect(fromWebCategories.status(),await fromWebCategories.text()).toBe(200);
+  expect((await fromWebCategories.json()).data.some(
+    (x:{id:string})=>x.id===learningCategoryId)).toBe(true);
+  const categoryEdited=await page.request.post("/api/agent/v1",{
+    data:{action:"chess.categories.update",categoryId:learningCategoryId,
+      name:"King and pawn endgames "+suffix},
+  });
+  expect(categoryEdited.status(),await categoryEdited.text()).toBe(200);
+  const fromMcpCategories=(await call("ccp_v1_chess_categories_list",{}))
+    .structuredContent.data;
+  expect(fromMcpCategories.find((x:{id:string})=>x.id===learningCategoryId).name)
+    .toBe("King and pawn endgames "+suffix);
+  const proposedLearning=(await call("ccp_v1_chess_observations_propose",{
+    studentId:profileId,categoryId:learningCategoryId,
+    observation:"Student understands the key squares",requestId:randomUUID(),
+  })).structuredContent;
+  expect(proposedLearning.error).toBeUndefined();
+  const observationId=proposedLearning.data.id as string;
+  const correctedLearning=(await call("ccp_v1_chess_observations_update",{
+    observationId,observation:"Student understands opposition and key squares",
+    confirmed:true,
+  })).structuredContent;
+  expect(correctedLearning.error).toBeUndefined();
+  const observationFromWeb=await page.request.post("/api/agent/v1",{
+    data:{action:"chess.observations.list",studentId:profileId},
+  });
+  expect(observationFromWeb.status(),await observationFromWeb.text()).toBe(200);
+  expect((await observationFromWeb.json()).data.find(
+    (x:{id:string})=>x.id===observationId).observation)
+    .toBe("Student understands opposition and key squares");
+  const approvedInBrowser=await page.request.post("/api/agent/v1",{
+    data:{action:"chess.observations.approve",observationId},
+  });
+  expect(approvedInBrowser.status(),await approvedInBrowser.text()).toBe(200);
+  expect((await approvedInBrowser.json()).data.verified_at).toBeTruthy();
+  const approvedReadMcp=(await call("ccp_v1_chess_observations_list",{
+    studentId:profileId,
+  })).structuredContent.data;
+  expect(approvedReadMcp.find((x:{id:string})=>x.id===observationId).verified_at).toBeTruthy();
+  const afterApprovalSite=await page.request.post("/api/agent/v1",{
+    data:{action:"chess.observations.list",studentId:profileId},
+  });
+  expect((await afterApprovalSite.json()).data.find(
+    (x:{id:string})=>x.id===observationId).verified_at).toBeTruthy();
+  const linkCreated=(await call("ccp_v1_chess_resources_link",{
+    studentId:profileId,label:"Synthetic Lichess study",
+    url:"https://lichess.org/study/abcdefgh",
+    resourceType:"lichess_study",requestId:randomUUID(),
+  })).structuredContent;
+  expect(linkCreated.error).toBeUndefined();
+  const resourceId=linkCreated.data.id as string;
+  const linkEdited=await page.request.post("/api/agent/v1",{
+    data:{action:"chess.resources.update",resourceId,label:"Updated Lichess study"},
+  });
+  expect(linkEdited.status(),await linkEdited.text()).toBe(200);
+  const resourceRead=(await call("ccp_v1_chess_resources_list",{
+    studentId:profileId,
+  })).structuredContent.data;
+  expect(resourceRead.find((x:{id:string})=>x.id===resourceId).label)
+    .toBe("Updated Lichess study");
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{
