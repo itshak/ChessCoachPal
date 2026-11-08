@@ -64,6 +64,11 @@ for (const route of inventory.apiRoutes) {
         assert(testSource.includes(toolName),route.path+": E2E reference does not name live tool "+toolName);
     }
   }
+  // Every teacher-business route now has an MCP tool counterpart, even if
+  // its behavior remains unverified. Make this structural floor mandatory
+  // in ordinary CI so no future website feature can be MCP-invisible.
+  if (route.kind==="teacher") assert(route.existingTools.length>0,
+    route.path+": MCP-first invariant broken: teacher route has no registered MCP tool");
   if (route.kind==="teacher") assert(["mcp","partial","gap"].includes(route.parity),
     route.path+": user-facing business route needs direct MCP parity (a secure exception must be individually reviewed, not hidden)");
   if (route.kind==="system"||route.kind==="external"||route.kind==="ui") assert(route.parity==="not-applicable",
@@ -76,6 +81,9 @@ assert(liveNames.size>=28,"MCP tool catalogue unexpectedly shrank: "+liveNames.s
 const outstanding=inventory.apiRoutes.filter(r=>r.kind==="teacher"&&r.parity!=="mcp");
 const gap=outstanding.filter(r=>r.parity==="gap").length, partial=outstanding.filter(r=>r.parity==="partial").length;
 const secure=inventory.apiRoutes.filter(r=>r.parity==="browser-only").length;
+const teacherRoutes=inventory.apiRoutes.filter(r=>r.kind==="teacher");
+console.log("MCP endpoint catalogue floor: "+teacherRoutes.filter(r=>r.existingTools.length>0).length+
+  "/"+teacherRoutes.length+" teacher-business route families have named MCP tools (NOT equivalent to verified behavior).");
 console.log("MCP-first source inventory: "+allApi.length+" API routes, "+allPages.length+" teacher pages, "+allComponents.length+" teacher components, "+liveNames.size+" live MCP tools.");
 console.log("Teacher-business endpoint parity: "+(inventory.apiRoutes.filter(r=>r.kind==="teacher").length-outstanding.length)+" complete / "+partial+" partial / "+gap+" missing; "+secure+" browser-only auth/hosted flows.");
 if (outstanding.length>0) {

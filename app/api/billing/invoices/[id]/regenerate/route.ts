@@ -1,136 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { getPolicy } from "@/lib/server/scheduling";
+import {NextRequest,NextResponse} from "next/server";
+import {createClient} from "@/lib/supabase/server";
 import {
-  derivePeriodItems,
-  getInvoicedLessonIds,
-} from "@/lib/server/billing";
-import { sumAmountCents } from "@/lib/billing";
-import { loadCreditInputs, recordRedemptions } from "@/lib/server/credits";
-
-/**
- * Re-derive line items for a draft invoice from current attendance × policy.
- * Replaces existing items. Lessons already on *other* invoices stay excluded;
- * lessons currently on this draft are included again. Lessons a prepaid
- * package now covers use a credit instead of a line.
- */
-export async function POST(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { data: invoice } = await supabase
-    .from("invoices")
-    .select("id, status, guardian_id, period_start, period_end, currency")
-    .eq("id", id)
-    .eq("teacher_id", user.id)
-    .single();
-
-  if (!invoice) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-  if (invoice.status !== "draft") {
-    return NextResponse.json(
-      { error: "Only draft invoices can be regenerated" },
-      { status: 400 }
-    );
-  }
-
-  const { data: creditPackage } = await supabase
-    .from("credit_packages")
-    .select("id")
-    .eq("invoice_id", id)
-    .maybeSingle();
-  if (creditPackage) {
-    return NextResponse.json(
-      { error: "Prepaid credit invoices have no lessons to regenerate" },
-      { status: 400 }
-    );
-  }
-
-  const policy = await getPolicy(supabase, user.id);
-
-  try {
-    const [excludeLessonIds, travelInvoicedLessonIds, credits] =
-      await Promise.all([
-        getInvoicedLessonIds(supabase, user.id, { exceptInvoiceId: id }),
-        getInvoicedLessonIds(supabase, user.id, {
-          exceptInvoiceId: id,
-          kind: "travel",
-        }),
-        loadCreditInputs(supabase, user.id),
-      ]);
-    const { items, newRedemptions } = await derivePeriodItems(
-      supabase,
-      user.id,
-      invoice.period_start,
-      invoice.period_end,
-      policy,
-      {
-        guardianId: invoice.guardian_id,
-        excludeLessonIds,
-        travelInvoicedLessonIds,
-        credits,
-      }
-    );
-
-    await supabase.from("invoice_items").delete().eq("invoice_id", id);
-
-    // After clearing this draft's lines, so lessons it held can take a credit.
-    const redemptionError = await recordRedemptions(
-      supabase,
-      user.id,
-      newRedemptions
-    );
-    if (redemptionError) {
-      return NextResponse.json({ error: redemptionError }, { status: 500 });
-    }
-
-    if (items.length > 0) {
-      const { error: itemsError } = await supabase.from("invoice_items").insert(
-        items.map((item, idx) => ({
-          invoice_id: id,
-          lesson_id: item.lessonId,
-          kind: item.kind,
-          description: item.description,
-          quantity: item.quantity,
-          unit_cents: item.unitCents,
-          amount_cents: item.amountCents,
-          sort_order: idx,
-        }))
-      );
-      if (itemsError) {
-        return NextResponse.json({ error: itemsError.message }, { status: 500 });
-      }
-    }
-
-    const subtotal = sumAmountCents(items);
-    const { error } = await supabase
-      .from("invoices")
-      .update({ subtotal_cents: subtotal })
-      .eq("id", id)
-      .eq("teacher_id", user.id);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({
-      ok: true,
-      itemCount: items.length,
-      subtotalCents: subtotal,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+ teacherBillingGenerate,teacherBillingRegenerate,teacherBillingCheckout,teacherBillingBulk,
+} from "@/lib/server/teacher-billing-operations";
+async function teacher(){
+ const db=await createClient();const {data:{user}}=await db.auth.getUser();
+ return user?{db,id:user.id,email:user.email}:null;
+}
+function failure(error:unknown){
+ return NextResponse.json({error:error instanceof Error?error.message:"Billing operation unavailable"},{status:500});
+}
+export async function POST(_req:NextRequest,{params}:{params:Promise<{id:string}>}){
+ const auth=await teacher();if(!auth)return NextResponse.json({error:"Unauthorized"},{status:401});
+ try{return await teacherBillingRegenerate(auth.db,auth.id,(await params).id);}
+ catch(error){return failure(error);}
 }
