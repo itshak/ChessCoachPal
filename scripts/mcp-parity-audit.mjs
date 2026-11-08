@@ -83,7 +83,7 @@ if (outstanding.length>0) {
   for (const r of outstanding) console.log("  "+r.parity+" "+r.path+": "+r.explanation);
 }
 const checklist=readFileSync(join(root,"docs/MCP_WEBSITE_PARITY_CHECKLIST.md"),"utf8");
-const cases=[...checklist.matchAll(/^\\|\\s*-\\s*\\[([ xX])\\]\\s*\\|/gm)];
+const cases=[...checklist.matchAll(/^\|\s*-\s*\[([ xX])\]\s*\|/gm)];
 assert(cases.length===93,"Parity checklist expected exactly 93 behavioral scenarios; found "+cases.length);
 const pendingCases=cases.filter(match=>match[1]===" ").length;
 console.log("Browser ↔ MCP behavioral checklist: "+(cases.length-pendingCases)+"/"+cases.length+
