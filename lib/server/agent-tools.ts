@@ -32,6 +32,11 @@ import { guardiansList, guardianDetail, guardianCreate, guardianUpdate,
  guardianDeleteImpact, guardianDelete, guardianRotatePortalToken, safeGuardian,
  GuardianServiceError,
 } from "@/lib/server/teacher-guardian-service";
+import {
+ calendarSlotsList,calendarSlotCreate,calendarSlotUpdate,calendarSlotDelete,
+ calendarLessonsList,calendarLessonDetail,calendarLessonCreate,calendarLessonUpdate,
+ calendarLessonDelete,CalendarError,
+} from "@/lib/server/legacy-calendar-service";
 const uuid = z.string().uuid();
 const searchText = z.string().trim().min(1).max(80);
 const sessionId = z.object({ sessionId: uuid }).strict();
@@ -77,6 +82,74 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_calendar_slots_list",
+    description:"List existing recurring private-lesson time slots for the authenticated teacher.",
+    schema:z.object({studentId:uuid.optional(),activeOnly:z.boolean().optional()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_calendar_slots_create",
+    description:"Create a confirmed private recurring lesson slot and materialize upcoming occurrences in the teacher timezone.",
+    schema:z.object({studentId:uuid,dayOfWeek:z.number().int().min(0).max(6),
+      startTime:z.string().regex(/^\d{2}:\d{2}$/),durationMinutes:z.number().int().min(1).max(480).optional(),
+      startDate:z.string().date().optional(),endDate:z.string().date().nullable().optional(),
+      rateCents:z.number().int().min(0).nullable().optional(),isHomeVisit:z.boolean().optional(),
+      confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_calendar_slots_update",
+    description:"Edit a confirmed recurring slot; upcoming unmarked occurrences are synchronized, while marked history and notes are preserved.",
+    schema:z.object({slotId:uuid,changes:z.object({
+      dayOfWeek:z.number().int().min(0).max(6).optional(),
+      startTime:z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
+      durationMinutes:z.number().int().min(1).max(480).optional(),
+      startDate:z.string().date().optional(),endDate:z.string().date().nullable().optional(),
+      rateCents:z.number().int().min(0).nullable().optional(),
+      active:z.boolean().optional(),isHomeVisit:z.boolean().optional(),
+    }).strict(),confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_calendar_slots_delete",
+    description:"Permanently remove one recurring slot after explicit confirmation. Unmarked future occurrences can disappear; marked history is retained.",
+    schema:z.object({slotId:uuid,confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_calendar_lessons_list",
+    description:"List dated private lessons with stable IDs and optional student/date filters. These differ from group teaching_sessions.",
+    schema:z.object({studentId:uuid.optional(),from:z.string().date().optional(),
+      to:z.string().date().optional(),offset:z.number().int().min(0).default(0),
+      limit:z.number().int().min(1).max(100).default(50)}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_calendar_lessons_detail",
+    description:"Read one identified private lesson and whether it is already marked.",
+    schema:z.object({lessonId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_calendar_lessons_create",
+    description:"Create a confirmed private ad-hoc or makeup lesson in the studio timezone, validating makeup credit ownership.",
+    schema:z.object({studentId:uuid,date:z.string().date(),
+      time:z.string().regex(/^\d{2}:\d{2}$/),durationMinutes:z.number().int().min(1).max(480).optional(),
+      makeupFor:uuid.nullable().optional(),isHomeVisit:z.boolean().optional(),
+      confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_calendar_lessons_update",
+    description:"Correct one identified private lesson date, time, duration or home visit after confirmation. Marked lessons cannot be rescheduled.",
+    schema:z.object({lessonId:uuid,changes:z.object({
+      date:z.string().date().optional(),time:z.string().regex(/^\d{2}:\d{2}$/).optional(),
+      durationMinutes:z.number().int().min(1).max(480).optional(),
+      isHomeVisit:z.boolean().optional(),
+    }).strict(),confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_calendar_lessons_delete",
+    description:"Permanently delete a confirmed ad-hoc private lesson. Recurring occurrences must be cancelled instead.",
+    schema:z.object({lessonId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_guardians_list",
@@ -418,6 +491,42 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_calendar_slots_list": {
+        const a=args as {studentId?:string;activeOnly?:boolean};
+        return {data:await calendarSlotsList(db,teacherId,a)};
+      }
+      case "ccp_v1_calendar_slots_create": {
+        const a=args as Parameters<typeof calendarSlotCreate>[2];
+        return {data:await calendarSlotCreate(db,teacherId,a)};
+      }
+      case "ccp_v1_calendar_slots_update": {
+        const a=args as {slotId:string;changes:Parameters<typeof calendarSlotUpdate>[3]};
+        return {data:await calendarSlotUpdate(db,teacherId,a.slotId,a.changes)};
+      }
+      case "ccp_v1_calendar_slots_delete": {
+        const a=args as {slotId:string};
+        return {data:await calendarSlotDelete(db,teacherId,a.slotId)};
+      }
+      case "ccp_v1_calendar_lessons_list": {
+        const a=args as Parameters<typeof calendarLessonsList>[2];
+        return {data:await calendarLessonsList(db,teacherId,a)};
+      }
+      case "ccp_v1_calendar_lessons_detail": {
+        const a=args as {lessonId:string};
+        return {data:await calendarLessonDetail(db,teacherId,a.lessonId)};
+      }
+      case "ccp_v1_calendar_lessons_create": {
+        const a=args as Parameters<typeof calendarLessonCreate>[2];
+        return {data:await calendarLessonCreate(db,teacherId,a)};
+      }
+      case "ccp_v1_calendar_lessons_update": {
+        const a=args as {lessonId:string;changes:Parameters<typeof calendarLessonUpdate>[3]};
+        return {data:await calendarLessonUpdate(db,teacherId,a.lessonId,a.changes)};
+      }
+      case "ccp_v1_calendar_lessons_delete": {
+        const a=args as {lessonId:string};
+        return {data:await calendarLessonDelete(db,teacherId,a.lessonId)};
+      }
       case "ccp_v1_guardians_list": {
         const rows=await guardiansList(db,teacherId);
         return {data:rows.map(row=>safeGuardian(row))};
@@ -643,6 +752,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof CalendarError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof GuardianServiceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherSkillsError)
