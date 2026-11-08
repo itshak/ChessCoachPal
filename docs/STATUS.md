@@ -155,3 +155,7 @@ Four additional MCP commands now cover chess skill category creation/updates, ob
 ## 2026-11-08 material progress evidence increment (PR pending)
 
 MCP-first material tracking now distinguishes assigned, actually taught and teacher-confirmed completed. A shared website/MCP service records idempotent, teacher-scoped evidence and revision-safe corrections while preserving audit history and existing learning links; a new student/learning editor exposes the same operations. This is **not complete historic material coverage**: earlier legacy lessons have no verified material assignments, and whole-period workplace deduplicated reporting, full Lichess chapter fetching, and the 93-case acceptance still need implementation and evidence. Do not archive the parity OpenSpec or pass the release gate solely because the route has a tool. Verify PR/full main CI before status is accepted.
+
+## 2026-11-08 material coverage report increment (PR in verification)
+
+Added a full-period evidence-based chess learning report by student/workplace with a shared website panel and read-only MCP. Actual taught, assigned and teacher-confirmed completed are counted separately; source links and distinct group session events are preserved, and teaching minutes are deliberately excluded from material evidence metrics. The historical unknowns are not filled with model inference. This is an incremental improvement, not strict 93-case parity acceptance; do not archive until the entire change passes.

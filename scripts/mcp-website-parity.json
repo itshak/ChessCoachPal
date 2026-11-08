@@ -271,6 +271,19 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/material-report/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_materials_coverage_report"
+      ],
+      "explanation": "Full-period, source-grounded teacher-attested material coverage by owned workplace/student, independently counted assignment/taught/completed, unique student coverage and deduplicated group teaching events. Shared website/MCP domain service, pure unit tests and OAuth/browser equality/foreign denial E2E.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
+    },
+    {
       "path": "app/api/coaching/materials/route.ts",
       "methods": [
         "GET",
@@ -829,6 +842,7 @@
     "components/teacher/FamilyDetailActions.tsx",
     "components/teacher/FamilyForm.tsx",
     "components/teacher/HostedLimitBanner.tsx",
+    "components/teacher/MaterialCoverageReportPanel.tsx",
     "components/teacher/MaterialHistoryPanel.tsx",
     "components/teacher/NotificationBell.tsx",
     "components/teacher/OnboardingTour.tsx",
