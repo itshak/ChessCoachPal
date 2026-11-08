@@ -544,10 +544,10 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     studentId:foreignStudent!.id,
   })).structuredContent;
   expect(deniedSkill.error.code).toBe("NOT_FOUND");
-  const preview=(await call("ccp_v1_skill_dimensions_delete_impact",{
+  const dimensionPreview=(await call("ccp_v1_skill_dimensions_delete_impact",{
     dimensionId:dimId,
   })).structuredContent.data;
-  expect(preview.assessmentCount).toBe(1);
+  expect(dimensionPreview.assessmentCount).toBe(1);
   const rejectWrongCount=(await call("ccp_v1_skill_dimensions_delete",{
     dimensionId:dimId,expectedAssessmentCount:0,confirmed:true,
   })).structuredContent;
