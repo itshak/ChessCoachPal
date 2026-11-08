@@ -1,7 +1,9 @@
 schema: spec-driven
 context: |
-  ChessCoachPal is an MIT-licensed, self-hostable, agent-first chess
+  ChessCoachPal is a proprietary-licensed, self-hostable, agent-first chess
   teaching management application based on CogNote by Andres Jaime Morales.
+  Preserve CogNote MIT attribution and third-party notices; ChessCoachPal's own
+  code is proprietary according to ADR-0002.
   ChatGPT and Claude tool calls are the primary data input interface.
   The web application uses the same services for viewing and editing.
   Initial persistence uses PostgreSQL, Supabase Auth and RLS.
@@ -22,6 +24,8 @@ rules:
     - Cite merged commit and passing GitHub Actions test evidence in docs/STATUS.md for development changes.
     - Never require live ChatGPT or Claude accounts in a development spec/task; move live-client acceptance solely to final local v0.1.0 prepublication release gate.
     - Never mark an active change complete based only on an unmerged draft PR.
+    - ADR-0003 is binding: every teacher website business feature must have same-PR MCP tool, registry and authenticated parity tests; no web-only business fields/actions.
+    - Release strict validation must pass all 93 browser/MCP scenarios and have zero partial/gap teacher-business routes.
 
 # New OpenSpec proposal (not applied): support-conversational-lesson-and-lichess-workflows
 # includes bilingual alias resolution, 1-10 strength, source-aware ratings,

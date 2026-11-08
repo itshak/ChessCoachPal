@@ -11,7 +11,7 @@
 
 Full stack runs locally — no cloud accounts required. Details: [README.md](README.md#getting-started).
 
-Please use **permissive-licensed dependencies only** (no GPL/AGPL) so the project stays cleanly MIT.
+Respect third-party license obligations and attribution. ChessCoachPal's own current license is proprietary; see [LICENSE](LICENSE) and [ADR-0002](docs/adr/0002-proprietary-licensing.md).
 
 ## Testing
 
@@ -52,6 +52,12 @@ PWA_E2E=1 npm run test:e2e   # PowerShell: $env:PWA_E2E="1"; npm run test:e2e
 To keep dev running, start the production build elsewhere (`PORT=3001 npm run start`) and point Playwright at it with `PLAYWRIGHT_BASE_URL`.
 
 Playwright uses its own browser context — it does not reuse your logged-in Chrome session. Sign-in / create-student can pass against an existing local DB if the seed teacher still exists. Flows that hit fixed seed tokens or named seed students need a successful `db reset` (or equivalent seed data).
+
+## Mandatory MCP-first parity for every website feature
+
+ChessCoachPal is **MCP/Plugin first**. Under [ADR-0003](docs/adr/0003-mcp-website-business-parity.md), **every new teacher-facing website business feature, editable field, operation, report or export must have an equivalent authenticated MCP tool in the same PR**. Add tools to the existing `/mcp` connection, reuse the same tenant-scoped domain service, update [the parity registry](scripts/mcp-website-parity.json), and write an E2E test comparing the website with delegated OAuth/MCP behavior and foreign-teacher denial. Secrets and payment authorization may require an explicitly documented secure browser handoff; ordinary business gaps do not qualify.
+
+Normal CI runs `npm run mcp:parity:audit` and `npm run mcp:parity:guard-test`; PR CI also requires same-PR registry/tool/E2E deltas for teacher UI/API code changes. `npm run mcp:parity:strict` is **expected to fail until all routes and all 93 detailed scenarios are verified** and is a hard GitHub Release gate. Do not falsely mark a route complete or check a scenario without real merged-main test evidence. See the active [parity OpenSpec](openspec/changes/enforce-mcp-website-functional-parity/proposal.md).
 
 ## Changing the pre-1.0 schema
 

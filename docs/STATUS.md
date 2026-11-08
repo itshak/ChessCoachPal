@@ -2,6 +2,10 @@
 
 **Updated:** 2026-11-08 · **Branch of record:** main · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
+## MCP-first website parity — actively implementing, release still blocked
+
+New [ADR-0003](adr/0003-mcp-website-business-parity.md) mandates equivalent authenticated MCP functionality for every new teacher website business feature in the same PR. Dedicated active [OpenSpec change](../openspec/changes/enforce-mcp-website-functional-parity/proposal.md) is **not accepted**. The first implementation introduces `ccp_v1_reports_workplace_summary` with JSON/CSV/text and shared report service, a real browser/MCP E2E comparison and PR changed-surface CI guard. The source-level inventory target moves from 40 gaps/3 partial to **39 gaps/3 partial/1 report route with an MCP adapter**; no full behavioral acceptance is claimed before checks pass. **All 93 checklist scenarios remain unchecked.** Full parity and actual live ChatGPT/Claude sign-off are still release blockers.
+
 ## OpenSpec acceptance and roadmap
 
 The obsolete CogNote-adoption omnibus change was archived **as incomplete**, not incorrectly accepted: [historical record](../openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md). See [the v0.1.0 roadmap](../openspec/ROADMAP-v0.1.0.md) and [ADR-0001](adr/0001-pre1-breaking-changes.md).

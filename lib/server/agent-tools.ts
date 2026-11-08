@@ -9,6 +9,8 @@ import {
 import { chessCategoriesList, chessObservationsList, chessObservationsCreate,
   chessResourcesList, chessResourcesCreate } from "@/lib/server/chess-learning";
 import { chessUuid, observationInput, resourceInput } from "@/lib/chess-learning";
+import { reportCsv, reportText } from "@/lib/coaching-report";
+import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
 
 const uuid = z.string().uuid();
 const searchText = z.string().trim().min(1).max(80);
@@ -26,6 +28,17 @@ const catalogue = [
     name: "ccp_v1_workplaces_list",
     description: "List the connected teacher's workplaces. Use workplace IDs, never invent names.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
+  },
+  {
+    name: "ccp_v1_reports_workplace_summary",
+    description: "Read a teacher-owned workplace's date-range sessions and attendance totals, with optional CSV or text export. The same server calculation powers the website. Instructor minutes count each group lesson once. No student names or notes in this aggregate.",
+    schema: z.object({
+      workplaceId: uuid,
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      format: z.enum(["json", "csv", "text"]).default("json"),
+    }).strict(),
+    scope: "coach:read", readOnly: true,
   },
   {
     name: "ccp_v1_students_search",
@@ -264,6 +277,22 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_reports_workplace_summary": {
+        const a = args as { workplaceId: string; from: string; to: string; format: "json" | "csv" | "text" };
+        try {
+          const result = await workplaceTeachingReport(db, teacherId, a.workplaceId, a.from, a.to);
+          if (a.format === "csv") return { data: { ...result, format: "csv", export: reportCsv(result.report) } };
+          if (a.format === "text") return { data: { ...result, format: "text", export: reportText(result.report) } };
+          return { data: result };
+        } catch (error) {
+          if (error instanceof ReportServiceError) return { error: {
+            code: error.status === 404 ? "NOT_FOUND" : error.status === 400 ? "VALIDATION_ERROR" : "DATABASE_ERROR",
+            message: error.status === 404 ? "Workplace not found" :
+              error.status === 400 ? "Invalid report range or workplace" : "Report unavailable",
+          } };
+          throw error;
+        }
+      }
       case "ccp_v1_chess_categories_list":
         return { data: await chessCategoriesList(db,teacherId) };
       case "ccp_v1_chess_observations_list": {
