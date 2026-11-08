@@ -97,27 +97,24 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(websiteNotifications.status()).toBe(200);
   expect(notificationsBefore).toEqual(await websiteNotifications.json());
 
-  // Seed synthetic teacher-owned notification; MCP write must be visible on the website.
-  const { error: insertNotificationError } = await userClient.from("notifications")
-    .insert({ teacher_id: session!.user.id, type: "system",
-      title: "MCP synthetic " + suffix, body: "Synthetic parity check" });
-  // Notification insertion can be restricted to server-side triggers; skip direct seed
-  // and still test a real scoped all-read operation on the current teacher.
-  if (!insertNotificationError) {
-    const before = (await mcp("tools/call", {
-      name: "ccp_v1_notifications_list", arguments: {},
-    })).structuredContent.data;
-    const created = before.notifications.find((n:{title:string}) =>
-      n.title === "MCP synthetic " + suffix);
-    expect(created).toBeTruthy();
-    const marked = (await mcp("tools/call", {
-      name: "ccp_v1_notifications_mark_read", arguments: { id: created.id },
-    })).structuredContent;
-    expect(marked.data.ok).toBe(true);
-    const websiteAfter = await page.request.get("/api/notifications");
-    expect((await websiteAfter.json()).notifications.find((n:{id:string}) =>
-      n.id === created.id).read_at).toBeTruthy();
-  }
+  // Seed a real notification via synthetic CI admin, never by delegated MCP.
+  const notificationAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: seededNotification, error: notificationSeedError } = await notificationAdmin
+    .from("notifications").insert({
+      teacher_id: session!.user.id, type: "event_rsvp",
+      title: "MCP synthetic " + suffix, body: "Synthetic parity check",
+    }).select("id").single();
+  expect(notificationSeedError).toBeNull();
+  expect(seededNotification?.id).toBeTruthy();
+  const marked = (await mcp("tools/call", {
+    name: "ccp_v1_notifications_mark_read", arguments: { id: seededNotification!.id },
+  })).structuredContent;
+  expect(marked.data.ok).toBe(true);
+  const websiteAfter = await page.request.get("/api/notifications");
+  expect(websiteAfter.status()).toBe(200);
+  expect((await websiteAfter.json()).notifications.find((n:{id:string}) =>
+    n.id === seededNotification!.id).read_at).toBeTruthy();
   const markAll = (await mcp("tools/call", {
     name: "ccp_v1_notifications_mark_read", arguments: { all: true },
   })).structuredContent;
