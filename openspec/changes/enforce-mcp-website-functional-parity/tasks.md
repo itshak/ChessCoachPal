@@ -71,3 +71,7 @@ Website and MCP now call the same owner-scoped service to list active grants and
 ## Phase L: prepaid chess lesson credits increment
 
 Teacher-owned credit packages (including pending/current balances), draft purchase invoice creation, expiry correction and redemption returns share website/MCP business services; four new scoped tools require explicit confirmation for writes. Synthetic browser/OAuth tests verify package/invoice linkage, balance equality and expiry updates without charging or emailing families. Remaining risks: cross-entity transactional purchase, replay safety, financial statement reconciliation, bulk credit application and full 93-case matrix. Do not archive.
+
+## Phase L: manual payment reconciliation increment
+
+Teacher-scoped manual payment entry and mistaken-payment deletion share a domain service between website and MCP. Two confirmed tools are included. The MCP record operation requires an idempotency key and uses per-invoice unique external IDs to avoid duplicate requests; E2E covers same-key replay, changed-payload conflict, website readback and removal. **Not completion:** payment/invoice transaction atomicity, concurrent edits, Stripe side effects, remaining invoice-generation/checkout flows, and all 93 strict parity cases remain open.

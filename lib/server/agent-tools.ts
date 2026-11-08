@@ -59,6 +59,7 @@ import {
  teacherCreditPackagesList,teacherCreditPackageCreate,teacherCreditPackageExpiry,
  teacherCreditRedemptionReturn,CreditServiceError,
 } from "@/lib/server/teacher-credit-service";
+import {teacherManualPaymentRecord,teacherManualPaymentDelete,ManualPaymentError} from "@/lib/server/teacher-manual-payments";
 const uuid = z.string().uuid();
 const eventChanges=z.object({
   title:z.string().trim().min(1).max(200).optional(),
@@ -146,6 +147,19 @@ const catalogue = [
       format: z.enum(["json", "csv", "text"]).default("json"),
     }).strict(),
     scope: "coach:read", readOnly: true,
+  },
+  {
+    name:"ccp_v1_billing_manual_payment_record",
+    description:"Record an actual payment already received outside ChessCoachPal against a teacher-owned invoice. This tool does not charge a card. Use a new idempotencyKey per real-world payment, reuse it on retries, verify invoice balance first and require explicit teacher confirmation.",
+    schema:z.object({invoiceId:uuid,amountCents:z.number().int().min(1).optional(),
+      note:z.string().max(500).optional(),idempotencyKey:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_billing_manual_payment_delete",
+    description:"Remove a mistakenly recorded manual payment from one identified owned invoice after explicit confirmation. A Stripe payment requires refund on the provider, not deletion.",
+    schema:z.object({invoiceId:uuid,paymentId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_credits_packages_list",
@@ -740,6 +754,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_billing_manual_payment_record": {
+        const a=args as {invoiceId:string;amountCents?:number;note?:string;idempotencyKey:string};
+        return {data:await teacherManualPaymentRecord(db,teacherId,a.invoiceId,a)};
+      }
+      case "ccp_v1_billing_manual_payment_delete": {
+        const a=args as {invoiceId:string;paymentId:string};
+        return {data:await teacherManualPaymentDelete(db,teacherId,a.invoiceId,a.paymentId)};
+      }
       case "ccp_v1_credits_packages_list": {
         const a=args as {studentId?:string};
         return {data:await teacherCreditPackagesList(db,teacherId,a.studentId)};
@@ -1138,6 +1160,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof ManualPaymentError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof CreditServiceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof ConnectionError)
