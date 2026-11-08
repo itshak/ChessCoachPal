@@ -10,6 +10,7 @@ import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
   chessObservationsList, chessObservationsCreate, chessObservationsUpdate,
   chessResourcesList, chessResourcesCreate, chessResourcesUpdate } from "@/lib/server/chess-learning";
 import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
+import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
@@ -723,6 +724,24 @@ const catalogue = [
     schema: observationInput, scope: "coach:write", readOnly: false,
   },
   {
+    name:"ccp_v1_materials_history_list",
+    description:"List **explicitly recorded** study/material stages for a teacher-owned student, workplace or session. Stages distinguish assigned, actually taught, and teacher-attested completed; mere study links are never counted. Workplace results deduplicate sessions in page summary.",
+    schema:materialsHistoryFilter,
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_materials_history_record",
+    description:"After explicit teacher confirmation, append an assigned/taught/completed claim for a linked study/resource and identified learner, optionally tied to workplace/session. requestId makes repeats idempotent; a model must never infer completed from merely opening a study.",
+    schema:materialsHistoryRecord,
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_materials_history_void",
+    description:"Correct mistaken teaching/learning evidence. Requires exact updatedAt revision, reason and explicit confirmation. Retains original claim in the audit trail; does not silently delete history.",
+    schema:materialsHistoryVoid,
+    scope:"coach:write",readOnly:false,
+  },
+  {
     name: "ccp_v1_chess_resources_list",
     description: "Read saved Lichess Study and HTTPS resource references, not provider contents.",
     schema: z.object({studentId:chessUuid.optional(),sessionId:chessUuid.optional()}).strict()
@@ -1288,6 +1307,18 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as Parameters<typeof chessObservationsCreate>[2];
         return { data: await chessObservationsCreate(db,teacherId,a,"agent") };
       }
+      case "ccp_v1_materials_history_list": {
+        const a=args as Parameters<typeof teacherMaterialHistory>[2];
+        return {data:await teacherMaterialHistory(db,teacherId,a)};
+      }
+      case "ccp_v1_materials_history_record": {
+        const a=args as Parameters<typeof teacherMaterialRecord>[2];
+        return {data:await teacherMaterialRecord(db,teacherId,a)};
+      }
+      case "ccp_v1_materials_history_void": {
+        const a=args as Parameters<typeof teacherMaterialVoid>[2];
+        return {data:await teacherMaterialVoid(db,teacherId,a)};
+      }
       case "ccp_v1_chess_resources_list": {
         const a=args as {studentId?:string;sessionId?:string};
         return { data: await chessResourcesList(db,teacherId,a) };
@@ -1383,6 +1414,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof MaterialHistoryError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof SpreadsheetImportError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherTransferError)
