@@ -35,3 +35,10 @@ The source registry now includes 29 real MCP tools and 1 complete report route, 
 **Additional verified increment:** [PR #21](https://github.com/itshak/ChessCoachPal/pull/21) merged at [5a52fde](https://github.com/itshak/ChessCoachPal/commit/5a52fdeb47e11b0498f1d983adc2adb86bd97978). [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42485032664), [OAuth/browser E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42485032822), [self-host](https://github.com/itshak/ChessCoachPal/actions/runs/42485032685), [restore](https://github.com/itshak/ChessCoachPal/actions/runs/42485032699), and [security](https://github.com/itshak/ChessCoachPal/actions/runs/42485032780) all passed. E2E needed one retry after a transient Supabase Docker port collision on the shared runner; the subsequent full suite passed.
 
 The source registry now lists 3 MCP-covered teacher routes, 3 partial and 37 gaps. All 93 detailed behavioral checklist scenarios remain unchecked; this change is **not** accepted or archived.
+
+
+## Current status — 2026-11-09
+
+[PR #42](https://github.com/itshak/ChessCoachPal/pull/42) merged as [d93b6ef](https://github.com/itshak/ChessCoachPal/commit/d93b6efb0c6f96d1f07e48640ee8e342af4e891b). Shared, bounded website/MCP lesson history now distinguishes old private lessons from coaching sessions, flags likely cross-model duplicates without deleting them, unions overlapping instructor minutes, and never guesses historic workplace attribution. PR-head GitHub CI, E2E, security, self-host and backup/restore workflows passed (see STATUS.md).
+
+**No full acceptance:** Current registry = 43 route families have tools, 5 verified, 8 partial, 32 gaps. **0/93** detailed behavior/security scenarios are signed off. Cross-model mutations, report/material aggregates, transactionality and replay, external side effects, student lifecycle, and cross-tenant test evidence remain unresolved. Normal CI does not replace strict parity. Remain ACTIVE until the strict gate and complete checklist pass on merged main.
