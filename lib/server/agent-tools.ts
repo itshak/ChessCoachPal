@@ -6,9 +6,10 @@ import {
   sessionsList, sessionsParticipants, studentsSearch, workplacesList, workplacesEnrollments,
 } from "@/lib/server/coach-service";
 
-import { chessCategoriesList, chessObservationsList, chessObservationsCreate,
-  chessResourcesList, chessResourcesCreate } from "@/lib/server/chess-learning";
-import { chessUuid, observationInput, resourceInput } from "@/lib/chess-learning";
+import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
+  chessObservationsList, chessObservationsCreate, chessObservationsUpdate,
+  chessResourcesList, chessResourcesCreate, chessResourcesUpdate } from "@/lib/server/chess-learning";
+import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
@@ -671,6 +672,41 @@ const catalogue = [
     }).strict(), scope: "coach:write", readOnly: false,
   },
   {
+    name:"ccp_v1_chess_categories_create",
+    description:"Create a teacher-owned chess skill category. Confirm its label before adding to progress history.",
+    schema:z.object({name:categoryName,description:z.string().max(500).optional(),
+      sortOrder:z.number().int().min(0).max(10000).optional(),confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_chess_categories_update",
+    description:"Rename, describe or reorder an existing chess skill category without rewriting observations. Explicit confirmation required.",
+    schema:z.object({categoryId:chessUuid,name:categoryName.optional(),
+      description:z.string().max(500).optional(),
+      sortOrder:z.number().int().min(0).max(10000).optional(),
+      confirmed:z.literal(true)}).strict().refine(a=>a.name!==undefined||a.description!==undefined||
+      a.sortOrder!==undefined,"Provide a change"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_chess_observations_update",
+    description:"Correct a teacher-owned existing chess observation, skill category or observation date. Do not silently alter confirmed history; teacher approval required.",
+    schema:z.object({observationId:chessUuid,observation:observationText.optional(),
+      categoryId:chessUuid.optional(),observedAt:observedAt.optional(),
+      confirmed:z.literal(true)}).strict().refine(a=>a.observation!==undefined||
+      a.categoryId!==undefined||a.observedAt!==undefined,"Provide a correction"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_chess_resources_update",
+    description:"Correct one identified saved Lichess Study or external HTTPS resource title, URL or type. The safe HTTPS whitelist applies to every update.",
+    schema:z.object({resourceId:chessUuid,label:resourceLabel.optional(),
+      url:resourceUrl.optional(),resourceType:resourceType.optional(),
+      confirmed:z.literal(true)}).strict().refine(a=>a.label!==undefined||
+      a.url!==undefined||a.resourceType!==undefined,"Provide a change"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
     name: "ccp_v1_chess_categories_list",
     description: "Read configurable teacher-owned chess skills. Select stable category IDs before proposing an observation.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
@@ -1225,6 +1261,22 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           } };
           throw error;
         }
+      }
+      case "ccp_v1_chess_categories_create": {
+        const a=args as {name:string;description?:string;sortOrder?:number};
+        return {data:await chessCategoriesCreate(db,teacherId,a)};
+      }
+      case "ccp_v1_chess_categories_update": {
+        const a=args as {categoryId:string;name?:string;description?:string;sortOrder?:number};
+        return {data:await chessCategoriesUpdate(db,teacherId,a.categoryId,a)};
+      }
+      case "ccp_v1_chess_observations_update": {
+        const a=args as {observationId:string;observation?:string;categoryId?:string;observedAt?:string};
+        return {data:await chessObservationsUpdate(db,teacherId,a.observationId,a)};
+      }
+      case "ccp_v1_chess_resources_update": {
+        const a=args as {resourceId:string;label?:string;url?:string;resourceType?:"lichess_study"|"external"};
+        return {data:await chessResourcesUpdate(db,teacherId,a.resourceId,a)};
       }
       case "ccp_v1_chess_categories_list":
         return { data: await chessCategoriesList(db,teacherId) };
