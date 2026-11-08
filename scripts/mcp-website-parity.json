@@ -757,9 +757,11 @@
         "ccp_v1_students_update",
         "ccp_v1_students_profile",
         "ccp_v1_students_profile_edit",
-        "ccp_v1_students_archive_preview"
+        "ccp_v1_students_archive_preview",
+        "ccp_v1_students_delete_impact",
+        "ccp_v1_students_delete"
       ],
-      "explanation": "Profile archive preview and mutation share teacher-scoped website/MCP services. Preflight covers recurring slots, future private lessons, future group/direct sessions and live group memberships; failed counts block archiving. Atomic hosted capacity and deletion impact remain unresolved; strict cases pending."
+      "explanation": "Student profile/archiving plus confirmed, revision-guarded deletion impact and unlinked-profile removal share website/MCP services. Historical dependent lessons, rosters, materials, skills and credits block delete, favoring archive. Serializable deletion, full erasure, atomic hosted cap and full behavioral acceptance remain open."
     },
     {
       "path": "app/api/students/[id]/skills/route.ts",

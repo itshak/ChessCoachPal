@@ -117,3 +117,7 @@ Checked checklist rows now need a distinct, named Playwright test (`e2e/*.spec.t
 ## Phase T: full-filtered material aggregates (PR #44, awaiting CI)
 
 Added shared student/workplace/session material summary across the entire filtered ledger (up to 5000 records), not merely the visible page. Read-only MCP aggregation and website GET share the same service; dashboard/editor shows assigned, taught and completed separately. Group session/material/stage combinations are deduplicated for teacher totals; repeated claims and individual student coverage remain separately visible. Concurrent pagination drift returns an explicit error, not truncated numbers. Unit and synthetic OAuth/browser tests added. **B4 remains unchecked** pending all imported legacy sources, provider chapter operations, and full 93-case signoffs.
+
+## Phase U: shared student deletion impact and unlinked removal (PR #44)
+
+Owner-scoped website and delegated MCP now share a delete-impact preview across teaching, roster, progress, material and credit references. Ordinary permanent deletion accepts only unlinked profiles with explicit confirmation and the reviewed revision; historical records block it in favor of archive. OAuth synthetic test covers website/MCP equality, foreign tenant, dependency denial, missing approval and successful unlinked deletion. Database-level concurrent dependency prevention and lawful erasure of historical records are still open; no B2/B8/C signoff, do not archive.

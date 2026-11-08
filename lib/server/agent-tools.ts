@@ -17,7 +17,7 @@ import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coachi
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
   TeacherOverviewError } from "@/lib/server/teacher-overview-service";
 
-import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, teacherStudentArchivePreview, StudentProfileError } from "@/lib/server/student-profile-service";
+import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, StudentProfileError } from "@/lib/server/student-profile-service";
 import { studentUpdateSchema } from "@/lib/server/api-schemas";
 import { assertWithinHostedLimit } from "@/lib/server/entitlements";
 const safeStudentProfile = (row: Record<string,unknown>) => ({
@@ -619,6 +619,17 @@ const catalogue = [
     description: "Read an identified student's profile. Private teacher notes and family/contact fields are excluded unless includePrivate=true AND confirmed=true. Avoid exposing children's information unnecessarily.",
     schema:z.object({studentId:uuid,includePrivate:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
     scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_students_delete_impact",
+    description:"Read owner-scoped teaching, roster, material, progress and credit dependencies before permanent deletion. Prefer archive for historical students.",
+    schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_students_delete",
+    description:"Permanently remove an unlinked student profile only with the reviewed revision and explicit teacher confirmation. Historical linked records block this action; archive instead.",
+    schema:z.object({studentId:uuid,expectedUpdatedAt:instant,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name: "ccp_v1_students_archive_preview",
@@ -1261,6 +1272,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {studentId:string;includePrivate:boolean;confirmed?:boolean};
         const profile=await teacherStudentProfile(db,teacherId,a.studentId);
         return {data:a.includePrivate && a.confirmed ? profile : safeStudentProfile(profile)};
+      }
+      case "ccp_v1_students_delete_impact": {
+        const a=args as {studentId:string};
+        return {data:await teacherStudentDeleteImpact(db,teacherId,a.studentId)};
+      }
+      case "ccp_v1_students_delete": {
+        const a=args as {studentId:string;expectedUpdatedAt:string};
+        return {data:await teacherStudentDelete(db,teacherId,a.studentId,a.expectedUpdatedAt)};
       }
       case "ccp_v1_students_archive_preview": {
         const arg=args as {studentId:string};

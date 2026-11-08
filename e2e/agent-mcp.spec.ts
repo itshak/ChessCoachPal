@@ -585,7 +585,8 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
 
   // Browser/MCP student profile parity: chess fields, notes, aliases, archived records.
   for (const toolName of ["ccp_v1_students_roster","ccp_v1_students_profile",
-    "ccp_v1_students_profile_edit","ccp_v1_students_archive_preview"]) expect(names).toContain(toolName);
+    "ccp_v1_students_profile_edit","ccp_v1_students_archive_preview",
+    "ccp_v1_students_delete_impact","ccp_v1_students_delete"]) expect(names).toContain(toolName);
   const profileId=madeStudent.entityId;
   const oldProfile=(await call("ccp_v1_students_profile",{studentId:profileId})).structuredContent.data;
   const oldSite=await page.request.get("/api/students/"+profileId);
@@ -657,6 +658,36 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   }));
   expect(restore.status(),await restore.text()).toBe(200);
   expect((await restore.json()).archived_at).toBeNull();
+
+  const historicalImpact=(await call("ccp_v1_students_delete_impact",{
+    studentId:profileId,
+  })).structuredContent.data;
+  expect(historicalImpact.canDelete).toBe(false);
+  expect(historicalImpact.blockers.sessionParticipants).toBeGreaterThan(0);
+  const blockedDelete=(await call("ccp_v1_students_delete",{
+    studentId:profileId,expectedUpdatedAt:historicalImpact.updatedAt,confirmed:true,
+  })).structuredContent;
+  expect(blockedDelete.error.code).toBe("HISTORY_DEPENDENCIES");
+  const empty=(await call("ccp_v1_students_create",{
+    name:"Unlinked deletion test "+suffix,idempotencyKey:randomUUID(),
+  })).structuredContent.data;
+  const impact=(await call("ccp_v1_students_delete_impact",{
+    studentId:empty.entityId,
+  })).structuredContent.data;
+  const impactWeb=await page.request.get("/api/students/"+empty.entityId+"?deletePreview=true");
+  expect(impactWeb.status()).toBe(200);
+  expect(impact).toEqual(await impactWeb.json());
+  expect(impact.canDelete).toBe(true);
+  expect((await call("ccp_v1_students_delete_impact",{
+    studentId:foreignStudent!.id,
+  })).structuredContent.error.code).toBe("NOT_FOUND");
+  expect((await page.request.delete("/api/students/"+empty.entityId)).status()).toBe(400);
+  const removed=(await call("ccp_v1_students_delete",{
+    studentId:empty.entityId,expectedUpdatedAt:impact.updatedAt,confirmed:true,
+  })).structuredContent;
+  expect(removed.error).toBeUndefined();
+  expect(removed.data.deleted).toBe(true);
+  expect((await page.request.get("/api/students/"+empty.entityId)).status()).toBe(404);
 
   // Skill dimensions and append-only assessments use the same scoped
   // website/MCP service. Never delete seed dimensions or another coach's data.

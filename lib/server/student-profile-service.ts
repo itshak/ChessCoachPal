@@ -132,3 +132,45 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
     await retireEmptyGuardians(db,teacherId,[existing.guardian_id]);
   return data;
 }
+
+/** Deletion is distinct from archiving. Never silently cascade linked teaching history. */
+export async function teacherStudentDeleteImpact(db: Db, teacherId: string, studentId: string) {
+  const student=await teacherStudentProfile(db,teacherId,studentId);
+  const references=[
+    ["privateLessons","lessons",true],["recurringSlots","lesson_slots",true],
+    ["directSessions","teaching_sessions",true],["sessionParticipants","session_participants",true],
+    ["groupMemberships","group_enrollments",true],["workplaceMemberships","workplace_enrollments",true],
+    ["skills","skill_assessments",false],["resources","chess_learning_resources",true],
+    ["observations","chess_observations",true],["materials","chess_material_progress",true],
+    ["events","event_students",false],["credits","credit_packages",false],
+  ] as const;
+  const counts=await Promise.all(references.map(([,table,scope])=>{
+    let query=db.from(table).select("student_id",{count:"exact",head:true}).eq("student_id",studentId);
+    if(scope)query=query.eq("teacher_id",teacherId);
+    return query;
+  }));
+  if(counts.some(row=>row.error))
+    throw new StudentProfileError(503,"PREVIEW_UNAVAILABLE","Unable to verify linked teaching history; deletion not performed");
+  const blockers=Object.fromEntries(references.map(([name],i)=>[name,counts[i].count??0])) as Record<string,number>;
+  return {studentId,name:student.name,archived:Boolean(student.archived_at),
+    updatedAt:student.updated_at,blockers,canDelete:Object.values(blockers).every(count=>count===0)};
+}
+
+/** Only empty profiles can be removed through ordinary website/MCP workflows.
+ * Historical erasure with regulatory retention requirements needs a dedicated flow.
+ */
+export async function teacherStudentDelete(db:Db,teacherId:string,studentId:string,expectedUpdatedAt:string){
+  const preview=await teacherStudentDeleteImpact(db,teacherId,studentId);
+  if(preview.updatedAt!==expectedUpdatedAt)
+    throw new StudentProfileError(409,"CONFLICT","Student changed; review deletion impact again");
+  if(!preview.canDelete)
+    throw new StudentProfileError(409,"HISTORY_DEPENDENCIES",
+      "Linked teaching, group, chess progress or financial history exists. Archive the student instead.");
+  const {data,error}=await db.from("students").delete().eq("teacher_id",teacherId)
+    .eq("id",studentId).eq("updated_at",expectedUpdatedAt)
+    .select("id,guardian_id").maybeSingle();
+  if(error)throw new StudentProfileError(409,"DELETE_BLOCKED","Deletion failed; linked history or concurrent edits may exist");
+  if(!data)throw new StudentProfileError(409,"CONFLICT","Student changed or was removed; re-read before deleting");
+  if(data.guardian_id)await retireEmptyGuardians(db,teacherId,[data.guardian_id]);
+  return {deleted:true,studentId:data.id};
+}
