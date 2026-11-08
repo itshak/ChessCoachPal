@@ -921,6 +921,33 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(nonExistentRedemption.error.code).toBe("NOT_FOUND");
 
+  // Manual payments are real-world receipts, not a request to charge a card.
+  for(const name of ["ccp_v1_billing_manual_payment_record","ccp_v1_billing_manual_payment_delete"])
+    expect(names).toContain(name);
+  const manualKey=randomUUID();
+  const manualArgs={invoiceId:acctInvoice!.id,amountCents:1200,
+    note:"Cash received at chess class",idempotencyKey:manualKey,confirmed:true};
+  const manualWrite=(await call("ccp_v1_billing_manual_payment_record",manualArgs)).structuredContent;
+  expect(manualWrite.error).toBeUndefined();
+  expect(manualWrite.data.amountCents).toBe(1200);
+  const manualPaymentId=manualWrite.data.paymentId as string;
+  const manualFromSite=await page.request.get("/api/billing/invoices/"+acctInvoice!.id);
+  expect(manualFromSite.status(),await manualFromSite.text()).toBe(200);
+  expect((await manualFromSite.json()).payments.some((x:{id:string})=>x.id===manualPaymentId)).toBe(true);
+  const manualReplay=(await call("ccp_v1_billing_manual_payment_record",manualArgs)).structuredContent;
+  expect(manualReplay.error).toBeUndefined();
+  expect(manualReplay.data.replayed).toBe(true);
+  expect(manualReplay.data.paymentId).toBe(manualPaymentId);
+  const manualConflict=(await call("ccp_v1_billing_manual_payment_record",{
+    ...manualArgs,amountCents:1500,
+  })).structuredContent;
+  expect(manualConflict.error.code).toBe("IDEMPOTENCY_CONFLICT");
+  const manualRemoved=await page.request.delete(
+    "/api/billing/invoices/"+acctInvoice!.id+"/payments/"+manualPaymentId);
+  expect(manualRemoved.status(),await manualRemoved.text()).toBe(200);
+  const manualAfterDelete=await page.request.get("/api/billing/invoices/"+acctInvoice!.id);
+  expect((await manualAfterDelete.json()).payments.some((x:{id:string})=>x.id===manualPaymentId)).toBe(false);
+
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
   const roReg=await request.post("/oauth/register",{data:{

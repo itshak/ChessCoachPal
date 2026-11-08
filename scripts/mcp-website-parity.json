@@ -163,8 +163,10 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Manual payment confirmation"
+      "existingTools": [
+        "ccp_v1_billing_manual_payment_record"
+      ],
+      "explanation": "Shared scoped manual payment service with per-invoice idempotency receipt for MCP, explicit approval and owner checks. Atomic provider side effects/concurrency still require acceptance."
     },
     {
       "path": "app/api/billing/invoices/[id]/payments/[paymentId]/route.ts",
@@ -173,8 +175,10 @@
       ],
       "kind": "teacher",
       "parity": "gap",
-      "existingTools": [],
-      "explanation": "Reverse payment with dedicated consent"
+      "existingTools": [
+        "ccp_v1_billing_manual_payment_delete"
+      ],
+      "explanation": "Shared teacher-scoped removal of mistaken manual payments only. Payment trigger reopens underpaid invoices; Stripe refunds remain a secure external-provider operation."
     },
     {
       "path": "app/api/billing/invoices/[id]/pdf/route.ts",
