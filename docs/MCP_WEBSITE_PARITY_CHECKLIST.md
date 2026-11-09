@@ -19,6 +19,8 @@ The [versioned machine-readable inventory](../scripts/mcp-website-parity.json) e
 
 Run `npm run mcp:parity:audit` to validate that the inventory tracks every actual route/page/component, that listed HTTP methods match code, and that any claimed live MCP tool exists in the real catalogue. This **passes while explicitly reporting gaps** so normal CI stays green. Run `npm run mcp:parity:strict` to require zero missing/partial teacher-business routes; it **must currently fail** and is the GitHub Release publication gate. Strict success is necessary but **not sufficient**: the behavior and security cases below need synthetic database/browser OAuth integration tests and merged-main evidence. Every new feature PR MUST update the inventory and add website↔MCP behavioral tests; a changed route method/new page/new component with no inventory entry fails regular CI.
 
+**PR #44 candidate E2E sign-off (2026-11-09):** 22/93 cases now cite unique, individually named delegated OAuth ↔ website Playwright scenarios passing on PR head `78c9c17`. GitHub Actions [E2E run 42685623529](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) passed (55 tests, 5 intentionally skipped); CI, security, Compose, backup/restore passed on the same SHA. **This is PR-head evidence only**, not merged-main acceptance. Strict parity remains **BLOCKED** by the other 71 unchecked scenarios and 40 partially covered/gap teacher route families. Never archive OpenSpec or publish release until all scenarios and merged-main gates pass.
+
 ## Concrete browser ↔ MCP test cases
 
 Legend in the third column: **Live tool** = present in current MCP catalogue but this exact parity test remains unchecked; **Gap** = absent/incomplete MCP capability; **Protected** = requires narrow scope, explicit confirmation or safe browser handoff. Tick a row only when a test exercises the website action and the same record via authenticated MCP under the same teacher, checks revisions/storage/output, and verifies cross-teacher denial. Some rows are multi-step workflow tests.
@@ -29,12 +31,12 @@ Website reference: `/coaching, /api/agent/v1`.
 
 | Checklist | Test/action | Current evidence / blocker |
 | --- | --- | --- |
-| - [ ] | List all teacher workplaces and read details | **Tool/reference:** `ccp_v1_workplaces_list` — implemented tool; needs E2E |
-| - [ ] | Create workplace with correct timezone/currency | **Tool/reference:** `ccp_v1_workplaces_create` — implemented tool; needs E2E |
+| - [x] | List all teacher workplaces and read details | **E2E accepted on PR head:** `e2e/parity-workplaces.spec.ts#PARITY-workplaces-list`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
+| - [x] | Create workplace with correct timezone/currency | **E2E accepted on PR head:** `e2e/parity-workplaces.spec.ts#PARITY-workplaces-create`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [ ] | Rename workplace without changing historical reports | **Tool/reference:** `ccp_v1_workplaces_update` — implemented tool; needs E2E |
 | - [ ] | Edit timezone, locale, currency, validated policy with revision | **Tool/reference:** `ccp_v1_workplaces_update` — implemented tool; high-impact schedule preview missing |
 | - [ ] | List workplace enrollments | **Tool/reference:** `ccp_v1_workplaces_enrollments` — implemented tool |
-| - [ ] | Enroll student | **Tool/reference:** `ccp_v1_workplaces_enroll` — implemented tool |
+| - [x] | Enroll student | **E2E accepted on PR head:** `e2e/parity-workplaces.spec.ts#PARITY-workplaces-enroll`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [ ] | Unenroll or archive student/workplace without rewriting lesson history | **Gap/protected** — MCP gap |
 | - [ ] | List and edit all workplace material defaults/history | **Gap/protected** — MCP gap |
 
@@ -44,20 +46,20 @@ Website reference: `/students, /students/[id], /api/students`.
 
 | Checklist | Test/action | Current evidence / blocker |
 | --- | --- | --- |
-| - [ ] | List entire student roster without query and paginate | **Gap/protected** — MCP gap: search currently requires nonempty query |
-| - [ ] | Search by Hebrew full name, English aliases and nicknames | **Tool/reference:** `ccp_v1_students_search` — partial: name only; alias resolution missing |
-| - [ ] | Create student, canonical full Hebrew name | **Tool/reference:** `ccp_v1_students_create` — implemented basic creation |
+| - [x] | List entire student roster without query and paginate | **E2E accepted on PR head:** `e2e/parity-students.spec.ts#PARITY-students-roster`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
+| - [x] | Search by Hebrew full name, English aliases and nicknames | **E2E accepted on PR head:** `e2e/parity-students.spec.ts#PARITY-students-search`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
+| - [x] | Create student, canonical full Hebrew name | **E2E accepted on PR head:** `e2e/parity-students.spec.ts#PARITY-students-create`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [ ] | Rename student (reports preserve canonical full name) | **Tool/reference:** `ccp_v1_students_update` — implemented basic name edit |
 | - [ ] | Edit inherited free-form level | **Tool/reference:** `ccp_v1_students_update` — implemented basic level edit |
-| - [ ] | Add/edit/remove English and Hebrew aliases | **Gap/protected** — MCP gap |
+| - [x] | Add/edit/remove English and Hebrew aliases | **E2E accepted on PR head:** `e2e/parity-students.spec.ts#PARITY-students-profile-fields`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [ ] | Read/edit optional birthdate and practice start date | **Gap/protected** — MCP gap, privacy-sensitive |
 | - [ ] | Read/edit teacher notes with private-data scope | **Gap/protected** — MCP gap; website has direct Supabase write |
 | - [ ] | Read/edit hourly rates/travel fees | **Gap/protected** — MCP gap; finance-sensitive |
-| - [ ] | Archive/unarchive or review deletion impact | **Gap/protected** — MCP gap; protected workflow |
+| - [x] | Archive/unarchive or review deletion impact | **E2E accepted on PR head:** `e2e/parity-students.spec.ts#PARITY-students-archive`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [ ] | Manage 1–10 teacher strength and goals/history | **Gap/protected** — MCP gap |
 | - [ ] | Manage Lichess/Chess.com usernames and per-time-control ratings/history | **Gap/protected** — MCP gap |
 | - [ ] | Read attendance, lesson notes and existing skill observations | **Tool/reference:** `ccp_v1_chess_observations_list` — partial, two teaching history models |
-| - [ ] | Add/correct dimension skill assessments, preserving 1–5 history | **Gap/protected** — MCP gap |
+| - [x] | Add/correct dimension skill assessments, preserving 1–5 history | **E2E accepted on PR head:** `e2e/parity-students.spec.ts#PARITY-students-skills`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 
 ### Groups and classes
 
@@ -65,9 +67,9 @@ Website reference: `/coaching, /api/agent/v1`.
 
 | Checklist | Test/action | Current evidence / blocker |
 | --- | --- | --- |
-| - [ ] | List groups and memberships | **Tool/reference:** `ccp_v1_groups_list / ccp_v1_groups_members` — implemented |
-| - [ ] | Create and rename group | **Tool/reference:** `ccp_v1_groups_create / ccp_v1_groups_update` — implemented |
-| - [ ] | Add/remove group participant with workplace validation | **Tool/reference:** `ccp_v1_groups_enroll / ccp_v1_groups_unenroll` — implemented |
+| - [x] | List groups and memberships | **E2E accepted on PR head:** `e2e/parity-groups.spec.ts#PARITY-groups-list`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
+| - [x] | Create and rename group | **E2E accepted on PR head:** `e2e/parity-groups.spec.ts#PARITY-groups-create-update`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
+| - [x] | Add/remove group participant with workplace validation | **E2E accepted on PR head:** `e2e/parity-groups.spec.ts#PARITY-groups-memberships`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [ ] | View archived group roster without changing history | **Gap/protected** — missing historical projection tests |
 | - [ ] | Attach default lesson studies to group/workplace | **Gap/protected** — MCP gap |
 
@@ -81,8 +83,8 @@ Website reference: `/schedule, /api/schedule`.
 | - [ ] | Resolve local schedule, DST, holidays and student workplace slots | **Gap/protected** — MCP gap |
 | - [ ] | Create one-off or makeup legacy lesson | **Gap/protected** — MCP gap (different table from MCP sessions) |
 | - [ ] | Create single-student/new group teaching session | **Tool/reference:** `ccp_v1_sessions_create` — implemented with alternate teaching_sessions model |
-| - [ ] | Capture a single ad-hoc lesson for arbitrary 3 students | **Gap/protected** — MCP gap |
-| - [ ] | List dates/sessions and frozen participants | **Tool/reference:** `ccp_v1_sessions_list / ccp_v1_sessions_participants` — implemented new session model only |
+| - [x] | Capture a single ad-hoc lesson for arbitrary 3 students | **E2E accepted on PR head:** `e2e/parity-ad-hoc.spec.ts#PARITY-ad-hoc-three-students`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
+| - [x] | List dates/sessions and frozen participants | **E2E accepted on PR head:** `e2e/parity-ad-hoc.spec.ts#PARITY-ad-hoc-mcp-create`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [ ] | Reschedule or cancel teaching session | **Tool/reference:** `ccp_v1_sessions_reschedule / ccp_v1_sessions_cancel` — implemented in new model |
 | - [ ] | Edit legacy calendar lesson start/end, home visit, status | **Gap/protected** — MCP gap |
 | - [ ] | Read/record attendance for an individual teaching-session participant | **Tool/reference:** `ccp_v1_attendance_preview / ccp_v1_attendance_record` — implemented tool |
@@ -98,13 +100,13 @@ Website reference: `/learning, /coaching, /students/[id]`.
 
 | Checklist | Test/action | Current evidence / blocker |
 | --- | --- | --- |
-| - [ ] | List configured chess skill categories | **Tool/reference:** `ccp_v1_chess_categories_list` — implemented |
+| - [x] | List configured chess skill categories | **E2E accepted on PR head:** `e2e/parity-learning.spec.ts#PARITY-chess-categories`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [ ] | Create/rename/reorder/delete skill categories | **Gap/protected** — website agent/v1 only; MCP gap |
 | - [ ] | Read student chess observations | **Tool/reference:** `ccp_v1_chess_observations_list` — implemented |
 | - [ ] | Propose unverified observation | **Tool/reference:** `ccp_v1_chess_observations_propose` — implemented |
-| - [ ] | Correct observation and teacher-confirm/approve it | **Gap/protected** — website agent/v1 only; MCP gap |
+| - [x] | Correct observation and teacher-confirm/approve it | **E2E accepted on PR head:** `e2e/parity-learning.spec.ts#PARITY-chess-observations`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [ ] | List saved study URLs linked to student/session | **Tool/reference:** `ccp_v1_chess_resources_list` — implemented limited links |
-| - [ ] | Link permitted Lichess Study/HTTPS material to student/session | **Tool/reference:** `ccp_v1_chess_resources_link` — implemented URL only |
+| - [x] | Link permitted Lichess Study/HTTPS material to student/session | **E2E accepted on PR head:** `e2e/parity-learning.spec.ts#PARITY-chess-resources`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [ ] | Edit/unlink previously attached resource | **Gap/protected** — website agent/v1 only; MCP gap |
 | - [ ] | Connect and revoke teacher Lichess study scopes securely | **Gap/protected** — MCP + website gap; secure browser consent |
 | - [ ] | Search actual studies and chapter 32 by PGN metadata | **Gap/protected** — MCP gap |
@@ -119,10 +121,10 @@ Website reference: `/coaching /api/coaching/report, /dashboard`.
 
 | Checklist | Test/action | Current evidence / blocker |
 | --- | --- | --- |
-| - [ ] | Generate workplace-local date-range session and attendance summary | **New MCP tool:** `ccp_v1_reports_workplace_summary` with shared service; merged-main E2E in [PR #20](https://github.com/itshak/ChessCoachPal/pull/20); full scenario sign-off still open |
-| - [ ] | Compute instructor teaching minutes once for simultaneous group lesson | **New MCP tool:** summary returns canonical instructor minutes; E2E/units verified; detailed checklist item still unchecked |
-| - [ ] | Inspect attendance present/absent/late/excused/unmarked breakdown | **New MCP tool:** same attendance aggregates; merged-main E2E passed; full scenario sign-off still open |
-| - [ ] | Produce CSV and text from exactly same calculation | **New MCP tool:** `format=csv|text` uses website `reportCsv/reportText`; merged-main E2E in [PR #20](https://github.com/itshak/ChessCoachPal/pull/20); full scenario sign-off still open |
+| - [x] | Generate workplace-local date-range session and attendance summary | **E2E accepted on PR head:** `e2e/parity-reports.spec.ts#PARITY-reports-workplace-summary`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
+| - [x] | Compute instructor teaching minutes once for simultaneous group lesson | **E2E accepted on PR head:** `e2e/parity-reports.spec.ts#PARITY-reports-group-teacher-minutes`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
+| - [x] | Inspect attendance present/absent/late/excused/unmarked breakdown | **E2E accepted on PR head:** `e2e/parity-reports.spec.ts#PARITY-reports-attendance-breakdown`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
+| - [x] | Produce CSV and text from exactly same calculation | **E2E accepted on PR head:** `e2e/parity-reports.spec.ts#PARITY-reports-csv-text`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |text` uses website `reportCsv/reportText`; merged-main E2E in [PR #20](https://github.com/itshak/ChessCoachPal/pull/20); full scenario sign-off still open |
 | - [ ] | Report student progress, strength, skills and material coverage | **Gap/protected** — MCP gap |
 | - [ ] | Report materials taught in workplace vs individual student coverage | **Gap/protected** — MCP gap |
 | - [ ] | Expose dashboard summary via MCP | **Gap/protected** — MCP gap |
@@ -148,7 +150,7 @@ Website reference: `/billing, /api/billing`.
 | --- | --- | --- |
 | - [ ] | Read invoice list/details and totals | **Gap/protected** — MCP gap |
 | - [ ] | Generate/regenerate invoices with period and rate checks | **Gap/protected** — MCP gap |
-| - [ ] | Edit invoice draft/line items | **Gap/protected** — MCP gap |
+| - [x] | Edit invoice draft/line items | **E2E accepted on PR head:** `e2e/parity-invoice-draft.spec.ts#PARITY-billing-invoice-edit`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [ ] | Mark invoice paid/add/reverse payment with audit | **Gap/protected** — MCP gap; finance scope required |
 | - [ ] | Void and delete invoice drafts safely | **Gap/protected** — MCP gap; dedicated confirmation |
 | - [ ] | Send one or bulk invoices after preview of recipient and amount | **Gap/protected** — MCP gap; communication/finance scopes |
