@@ -44,7 +44,12 @@ export async function teacherAssignmentsList(db:Db,teacherId:string,filter:Assig
     .select(select,{count:"exact"}).eq("teacher_id",teacherId).eq("student_id",filter.studentId)
     .order("created_at",{ascending:false}).order("id").range(filter.offset,filter.offset+filter.limit);
   if(error)throw failure(500,"DATABASE_ERROR","Unable to read homework");
-  return {assignments:(data??[]).slice(0,filter.limit),total:count??0,
+  const rows=(data??[]).slice(0,filter.limit).map(row=>{
+    // Normalize PostgREST composite-FK projection to one nullable material.
+    const relation=row.learning_materials;
+    return {...row,learning_materials:Array.isArray(relation)?relation[0]??null:relation??null};
+  });
+  return {assignments:rows,total:count??0,
     nextOffset:(data?.length??0)>filter.limit?filter.offset+filter.limit:null};
 }
 function interpretRpcError(error:{message:string},action:string):never {
