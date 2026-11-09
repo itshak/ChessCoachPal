@@ -163,9 +163,11 @@ export async function POST(req: NextRequest) {
       issues: parsed.error.issues.map(i => ({ path: i.path.join("."), message: i.message })) },
   }, 400);
   const call = parsed.data;
-  // Teacher acceptance of AI-authored progress is a cookie-authenticated,
-  // same-origin human action, not a delegated bearer-token operation.
-  if(call.action==="chess.observations.approve" && auth.bearer)
+  // Model-originated credentials may propose or correct observations, but
+  // MUST NOT assert teacher-verification provenance either by approval
+  // or by creating a record as if it were manually teacher-attested.
+  if((call.action==="chess.observations.approve" ||
+      call.action==="chess.observations.create") && auth.bearer)
     return json({error:{code:"BROWSER_APPROVAL_REQUIRED",
       message:"Teacher approval must be completed in the signed-in website"}},403);
   const { db, teacherId } = auth;
