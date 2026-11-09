@@ -2958,7 +2958,7 @@ GRANT SELECT,INSERT ON public.learning_materials,public.chess_games,public.chess
 CREATE FUNCTION public.ccp_material_catalog_create(
  p_kind text, p_title text, p_description text,
  p_source_url text, p_details jsonb, p_request_id uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $ccp$
 DECLARE
  v_teacher uuid := auth.uid();
  v_material uuid;
@@ -3023,7 +3023,7 @@ BEGIN
  END IF;
  RETURN jsonb_build_object('id',v_material,'kind',p_kind,'title',btrim(p_title),'replayed',false);
 END;
-$$;
+$ccp$;
 REVOKE ALL ON FUNCTION public.ccp_material_catalog_create(text,text,text,text,jsonb,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_material_catalog_create(text,text,text,text,jsonb,uuid) TO authenticated;
 -- END ChessCoachPal typed learning materials.
