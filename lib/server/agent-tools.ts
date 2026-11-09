@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, groupsList, groupsMembers,
-  sessionsList, sessionsParticipants, sessionsAdHocCreate, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
+  sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
 } from "@/lib/server/coach-service";
 
 import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
@@ -883,6 +883,22 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_sessions_edit",
+    description:"Confirmed, revision-checked edit of a teaching session's title, shared note, time, duration or status (including completed). All writes share the website's atomic domain service; preserve frozen participants.",
+    schema:z.object({
+      sessionId:uuid,
+      changes:z.object({
+        title:z.string().trim().min(1).max(160).optional(),
+        startsAt:instant.optional(),
+        durationMinutes:z.number().int().min(15).max(480).optional(),
+        lessonNote:z.string().max(10000).optional(),
+        status:z.enum(["scheduled","completed","cancelled"]).optional(),
+      }).strict().refine(x=>Object.keys(x).length>0,"At least one change required"),
+      ...revision,confirmed:z.literal(true),
+    }).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_v1_sessions_reschedule",
     description:"Reschedule an identified scheduled lesson; requires its latest revision, explicit offset and confirmation.",
     schema:z.object({sessionId:uuid,startsAt:instant,
@@ -1407,6 +1423,16 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await sessionsAdHocCreate(db,teacherId,{
           ...a,requestId:a.idempotencyKey,
         })};
+      }
+      case "ccp_v1_sessions_edit": {
+        const a=args as {sessionId:string;changes:{title?:string;startsAt?:string;
+          durationMinutes?:number;lessonNote?:string;
+          status?:"scheduled"|"completed"|"cancelled"};
+          expectedUpdatedAt:string;idempotencyKey:string};
+        const updated=await sessionsUpdate(db,teacherId,a.sessionId,{
+          ...a.changes,expectedUpdatedAt:a.expectedUpdatedAt,requestId:a.idempotencyKey,
+        });
+        return {data:updated};
       }
       case "ccp_v1_sessions_details": {
         const id=(args as {sessionId:string}).sessionId;
