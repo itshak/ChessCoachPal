@@ -44,7 +44,7 @@ export function validateUniqueCheckedParityReferences(rows) {
   const seen = new Map();
   const errors = [];
   for (const [index, row] of rows.entries()) {
-    if (!/^\\|\\s*-\\s*\\[[xX]\\]/.test(row)) continue;
+    if (!/^\|\s*-\s*\[[xX]\]/.test(row)) continue;
     for (const [, file, id] of row.matchAll(evidencePattern)) {
       const key = file + "#" + id;
       if (seen.has(key)) {
