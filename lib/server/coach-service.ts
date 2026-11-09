@@ -178,7 +178,10 @@ export async function sessionsCreate(
   const { data, error } = await db.from("teaching_sessions")
     .insert(values)
     .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id").single();
-  if (error?.code === "23505") {
+  // The DB schedule guard runs before the unique request-id constraint, so
+  // a valid retry can surface as exclusion conflict (23P01), not just 23505.
+  // Compare the persisted request before deciding whether this is a replay.
+  if (error?.code === "23505" || error?.code === "23P01") {
     const { data: previous } = await db.from("teaching_sessions")
       .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
       .eq("teacher_id", teacherId).eq("request_id", payload.requestId).maybeSingle();
