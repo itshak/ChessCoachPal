@@ -74,7 +74,8 @@ export function ChessCoachWorkspace() {
   const [workplaceId, setWorkplaceId] = useState("");
   const [groupId, setGroupId] = useState("");
   const [studentId, setStudentId] = useState("");
-  const [mode, setMode] = useState<"group" | "private">("group");
+  const [mode, setMode] = useState<"group" | "private" | "ad_hoc">("group");
+  const [adHocIds,setAdHocIds]=useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [start, setStart] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
@@ -243,7 +244,7 @@ export function ChessCoachWorkspace() {
 
   async function schedule(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!start || (mode === "group" ? !groupId : !studentId)) {
+    if (!start || (mode === "group" ? !groupId : mode === "private" ? !studentId : adHocIds.length<2)) {
       setError("Choose a time and a class group or student."); return;
     }
     const zone = workplaces.find(w => w.id === workplaceId)?.timezone ?? "UTC";
@@ -253,6 +254,7 @@ export function ChessCoachWorkspace() {
     const payload = {
       workplaceId, groupId: mode === "group" ? groupId : undefined,
       studentId: mode === "private" ? studentId : undefined,
+      studentIds: mode === "ad_hoc" ? [...adHocIds].sort() : undefined,
       title: title.trim(), startsAt, durationMinutes, lessonNote,
     };
     const signature = JSON.stringify(payload);
@@ -260,10 +262,11 @@ export function ChessCoachWorkspace() {
       requestRef.current = { signature, id: crypto.randomUUID() };
     }
     await perform(async () => {
-      const created = await operation<Session>("sessions.create", { ...payload, requestId: requestRef.current!.id });
+      const created = await operation<Session>(mode==="ad_hoc"?"sessions.createAdHoc":"sessions.create",
+        { ...payload, requestId: requestRef.current!.id });
       requestRef.current = null;
       setSelectedSessionId(created.id);
-      setTitle(""); setLessonNote(""); setStart("");
+      setTitle(""); setLessonNote(""); setStart(""); setAdHocIds([]);
     }, "Lesson session created with a frozen attendance roster.");
   }
 
@@ -520,8 +523,9 @@ export function ChessCoachWorkspace() {
           <h2 className="text-lg font-semibold">Schedule a lesson</h2>
           <form className="space-y-2" onSubmit={schedule}>
             <label className="block text-sm">Lesson type
-              <select className={field} value={mode} onChange={e => setMode(e.target.value as "group" | "private")}>
+              <select className={field} value={mode} onChange={e => setMode(e.target.value as "group" | "private" | "ad_hoc")}>
                 <option value="group">Group</option><option value="private">Private student</option>
+                <option value="ad_hoc">Ad-hoc multi-student</option>
               </select>
             </label>
             {mode === "group" ?
@@ -530,7 +534,17 @@ export function ChessCoachWorkspace() {
                   <option value="">Select group</option>
                   {localGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
-              </label> :
+              </label> : mode==="ad_hoc" ?
+              <fieldset className="space-y-1 rounded-lg border border-border p-3">
+                <legend className="text-sm font-medium">Choose 2–50 students from this workplace</legend>
+                {students.filter(st=>enrolledIds.includes(st.id)).map(st=><label key={st.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={adHocIds.includes(st.id)}
+                    onChange={e=>setAdHocIds(old=>e.target.checked ?
+                      [...new Set([...old,st.id])].slice(0,50) : old.filter(id=>id!==st.id))} />
+                  {st.name}
+                </label>)}
+                <p className="text-xs text-muted">{adHocIds.length} selected. Attendance is frozen at creation.</p>
+              </fieldset> :
               <label className="block text-sm">Private student
                 <select className={field} value={studentId} onChange={e => setStudentId(e.target.value)} required>
                   <option value="">Select student</option>
