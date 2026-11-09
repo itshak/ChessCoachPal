@@ -19,7 +19,7 @@ The [versioned machine-readable inventory](../scripts/mcp-website-parity.json) e
 
 Run `npm run mcp:parity:audit` to validate that the inventory tracks every actual route/page/component, that listed HTTP methods match code, and that any claimed live MCP tool exists in the real catalogue. This **passes while explicitly reporting gaps** so normal CI stays green. Run `npm run mcp:parity:strict` to require zero missing/partial teacher-business routes; it **must currently fail** and is the GitHub Release publication gate. Strict success is necessary but **not sufficient**: the behavior and security cases below need synthetic database/browser OAuth integration tests and merged-main evidence. Every new feature PR MUST update the inventory and add website↔MCP behavioral tests; a changed route method/new page/new component with no inventory entry fails regular CI.
 
-**PR #44 candidate E2E sign-off (2026-11-09):** 22/93 cases now cite unique, individually named delegated OAuth ↔ website Playwright scenarios passing on PR head `78c9c17`. GitHub Actions [E2E run 42685623529](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) passed (55 tests, 5 intentionally skipped); CI, security, Compose, backup/restore passed on the same SHA. **This is PR-head evidence only**, not merged-main acceptance. Strict parity remains **BLOCKED** by the other 71 unchecked scenarios and 40 partially covered/gap teacher route families. Never archive OpenSpec or publish release until all scenarios and merged-main gates pass.
+**PR #44 candidate E2E sign-off (2026-11-09):** 27/93 cases now cite unique, individually named delegated OAuth ↔ website Playwright scenarios passing on PR head `426843ae`. GitHub Actions [E2E run 42690460778](https://github.com/itshak/ChessCoachPal/actions/runs/42690460778) passed (61 tests, 5 intentionally skipped); CI, security, Compose, backup/restore passed on the same SHA. **This is PR-head evidence only**, not merged-main acceptance. Strict parity remains **BLOCKED** by the other 66 unchecked scenarios and 40 partially covered/gap teacher route families. Never archive OpenSpec or publish release until all scenarios and merged-main gates pass.
 
 ## Concrete browser ↔ MCP test cases
 
@@ -33,11 +33,11 @@ Website reference: `/coaching, /api/agent/v1`.
 | --- | --- | --- |
 | - [x] | List all teacher workplaces and read details | **E2E accepted on PR head:** `e2e/parity-workplaces.spec.ts#PARITY-workplaces-list`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
 | - [x] | Create workplace with correct timezone/currency | **E2E accepted on PR head:** `e2e/parity-workplaces.spec.ts#PARITY-workplaces-create`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
-| - [ ] | Rename workplace without changing historical reports | **Tool/reference:** `ccp_v1_workplaces_update` — implemented tool; needs E2E |
-| - [ ] | Edit timezone, locale, currency, validated policy with revision | **Tool/reference:** `ccp_v1_workplaces_update` — implemented tool; high-impact schedule preview missing |
-| - [ ] | List workplace enrollments | **Tool/reference:** `ccp_v1_workplaces_enrollments` — implemented tool |
+| - [x] | Rename workplace without changing historical reports | **PR-head E2E:** `e2e/parity-workplaces-extended.spec.ts#PARITY-workplaces-rename`; [passing 61-test OAuth/browser suite](https://github.com/itshak/ChessCoachPal/actions/runs/42690460778) |
+| - [x] | Edit timezone, locale, currency, validated policy with revision | **PR-head E2E:** `e2e/parity-workplaces-extended.spec.ts#PARITY-workplaces-policy`; [passing 61-test OAuth/browser suite](https://github.com/itshak/ChessCoachPal/actions/runs/42690460778) |
+| - [x] | List workplace enrollments | **PR-head E2E:** `e2e/parity-workplaces-extended.spec.ts#PARITY-workplaces-enrollments`; [passing 61-test OAuth/browser suite](https://github.com/itshak/ChessCoachPal/actions/runs/42690460778) |
 | - [x] | Enroll student | **E2E accepted on PR head:** `e2e/parity-workplaces.spec.ts#PARITY-workplaces-enroll`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
-| - [ ] | Unenroll or archive student/workplace without rewriting lesson history | **Gap/protected** — MCP gap |
+| - [x] | Unenroll or archive student/workplace without rewriting lesson history | **PR-head E2E:** `e2e/parity-workplaces-extended.spec.ts#PARITY-workplaces-unenroll-history`; [passing 61-test OAuth/browser suite](https://github.com/itshak/ChessCoachPal/actions/runs/42690460778) |
 | - [ ] | List and edit all workplace material defaults/history | **Gap/protected** — MCP gap |
 
 ### Students and progress
@@ -89,7 +89,7 @@ Website reference: `/schedule, /api/schedule`.
 | - [ ] | Edit legacy calendar lesson start/end, home visit, status | **Gap/protected** — MCP gap |
 | - [ ] | Read/record attendance for an individual teaching-session participant | **Tool/reference:** `ccp_v1_attendance_preview / ccp_v1_attendance_record` — implemented tool |
 | - [ ] | Record/review bulk legacy attendance with exact roster | **Gap/protected** — MCP gap |
-| - [ ] | Edit shared teaching session note | **Tool/reference:** `ccp_v1_sessions_note_update` — implemented tool |
+| - [x] | Edit shared teaching session note | **PR-head E2E:** `e2e/parity-session-edit.spec.ts#PARITY-sessions-title-completion`; [passing 61-test OAuth/browser suite](https://github.com/itshak/ChessCoachPal/actions/runs/42690460778) |
 | - [ ] | Edit private/shared legacy lesson notes | **Gap/protected** — MCP gap |
 | - [ ] | Reconcile legacy lessons and new teaching_sessions (no double counting) | **Gap/protected** — critical data-model gap |
 | - [ ] | Correct completed lesson/roster history with revision | **Gap/protected** — MCP gap |
