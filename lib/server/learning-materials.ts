@@ -89,6 +89,16 @@ export class MaterialCatalogError extends Error {
 }
 const fail = (status:number, code:string, message:string) => new MaterialCatalogError(status,code,message);
 const select = "id,teacher_id,kind,title,description,source_url,created_at,updated_at,chess_games(pgn,white_player,black_player,result),chess_puzzles(fen,solution,themes),chess_drills(instructions,mode,repetitions),chess_study_chapters(provider,study_id,chapter_id)";
+// PostgREST may materialize a composite-FK 1:1 relation as a one-element array.
+// Stabilize the website/MCP contract to one nullable typed payload object.
+function normalizeMaterial(row:Record<string,unknown>) {
+  const normalized={...row};
+  for(const field of ["chess_games","chess_puzzles","chess_drills","chess_study_chapters"]) {
+    const value=row[field];
+    normalized[field]=Array.isArray(value)?(value[0]??null):(value??null);
+  }
+  return normalized;
+}
 
 export async function teacherMaterialCatalogList(db: Db, teacherId: string, options: MaterialCatalogFilter) {
   let query = db.from("learning_materials").select(select, {count: "exact"})
@@ -103,7 +113,7 @@ export async function teacherMaterialCatalogList(db: Db, teacherId: string, opti
   const { data, error, count } = await query;
   if (error) throw fail(500,"DATABASE_ERROR","Learning materials are unavailable");
   return {
-    materials:(data??[]).slice(0,options.limit),
+    materials:(data??[]).slice(0,options.limit).map(row=>normalizeMaterial(row as Record<string,unknown>)),
     total:count??0,
     nextOffset:(data?.length??0)>options.limit?options.offset+options.limit:null,
   };
@@ -113,7 +123,7 @@ export async function teacherMaterialCatalogGet(db:Db, teacherId:string, materia
     .eq("teacher_id",teacherId).eq("id",materialId).maybeSingle();
   if (error) throw fail(500,"DATABASE_ERROR","Learning material lookup failed");
   if (!data) throw fail(404,"NOT_FOUND","Learning material not found");
-  return data;
+  return normalizeMaterial(data as Record<string,unknown>);
 }
 export async function teacherMaterialCatalogCreate(db:Db,teacherId:string,input:MaterialCatalogCreate) {
   // Type-safe website/MCP service, plus server-side tenant/RLS/transaction checks.
