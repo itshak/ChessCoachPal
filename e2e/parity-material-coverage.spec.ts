@@ -5,7 +5,7 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 type Tool=(name:string,args:Record<string,unknown>)=>Promise<{
  data?:any;error?:{code:string;message:string};
 }>;
-async function fixture(call:Tool){
+async function fixture(call:Tool,hour:number){
  const suffix=randomUUID().slice(0,8);
  const w=await call("ccp_v1_workplaces_create",{
    name:"Coverage "+suffix,timezone:"Asia/Jerusalem",currency:"ILS",locale:"he",
@@ -32,7 +32,7 @@ async function fixture(call:Tool){
  }
  const made=await call("ccp_v1_sessions_create",{
    workplaceId,groupId:group.data.entityId,
-   title:"Endgame coverage "+suffix,startsAt:"2041-03-01T10:00:00+02:00",
+   title:"Endgame coverage "+suffix,startsAt:"2041-03-01T"+String(hour).padStart(2,"0")+":00:00+02:00",
    durationMinutes:60,lessonNote:"Two pupils, one instructor session",
    idempotencyKey:randomUUID(),
  });
@@ -65,7 +65,7 @@ async function webMaterials(page:Page,opts:Record<string,string>){
 
 test("PARITY:PARITY-materials-student-history enumerates explicitly taught student lessons by date",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const ctx=await fixture(call);
+ const ctx=await fixture(call,8);
  await claim(call,ctx,ctx.studentIds[0],"assigned");
  const taught=await claim(call,ctx,ctx.studentIds[0],"taught");
  const filters={studentId:ctx.studentIds[0],from:"2041-03-01",to:"2041-03-01"};
@@ -82,7 +82,7 @@ test("PARITY:PARITY-materials-student-history enumerates explicitly taught stude
 
 test("PARITY:PARITY-materials-workplace deduplicates group lesson studies in full aggregates",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const ctx=await fixture(call);
+ const ctx=await fixture(call,10);
  for(const studentId of ctx.studentIds)await claim(call,ctx,studentId,"taught");
  const query={workplaceId:ctx.workplaceId,from:"2041-03-01",to:"2041-03-01"};
  const browser=await webMaterials(page,{...query,aggregate:"true"});
@@ -98,7 +98,7 @@ test("PARITY:PARITY-materials-workplace deduplicates group lesson studies in ful
 
 test("PARITY:PARITY-materials-stage-reconciliation never invents learned or completed status",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const ctx=await fixture(call);
+ const ctx=await fixture(call,12);
  const studentId=ctx.studentIds[0];
  await claim(call,ctx,studentId,"assigned");
  const filters={studentId,workplaceId:ctx.workplaceId,
@@ -119,7 +119,7 @@ test("PARITY:PARITY-materials-stage-reconciliation never invents learned or comp
 
 test("PARITY:PARITY-materials-workplace-student-report distinguishes individual from whole-class claims",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const ctx=await fixture(call);
+ const ctx=await fixture(call,14);
  await claim(call,ctx,ctx.studentIds[0],"taught");
  await claim(call,ctx,ctx.studentIds[1],"assigned");
  const wp={workplaceId:ctx.workplaceId,from:"2041-03-01",to:"2041-03-01"};
