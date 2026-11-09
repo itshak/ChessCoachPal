@@ -78,6 +78,61 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     return (await r.json()).data;
   };
   const suffix=Date.now().toString(36);
+  // Typed reusable chess materials: website and MCP share one teacher-owned
+  // domain service. Game and puzzle must have distinct typed records.
+  for (const toolName of ["ccp_v1_learning_materials_list",
+    "ccp_v1_learning_materials_get","ccp_v1_learning_materials_create"])
+    expect(names).toContain(toolName);
+  const gameRequestId=randomUUID();
+  const gameArguments={
+    kind:"game",title:"MCP Steinitz game "+suffix,description:"Annotated source game",
+    sourceUrl:null,requestId:gameRequestId,
+    details:{pgn:"1. e4 e5 2. Nf3 Nc6 *",whitePlayer:"White",blackPlayer:"Black",result:"*"},
+  };
+  const gameCreated=(await mcp("tools/call",{name:"ccp_v1_learning_materials_create",
+    arguments:gameArguments})).structuredContent;
+  expect(gameCreated.error).toBeUndefined();
+  expect(gameCreated.data.replayed).toBe(false);
+  const materialId=gameCreated.data.material.id as string;
+  const websiteGame=await page.request.get("/api/training/materials?id="+materialId);
+  expect(websiteGame.status(),await websiteGame.text()).toBe(200);
+  expect(gameCreated.data.material).toEqual(await websiteGame.json());
+  expect(gameCreated.data.material.chess_games.pgn).toContain("Nf3");
+  expect(gameCreated.data.material.chess_puzzles).toBeNull();
+  const gameReplay=(await mcp("tools/call",{name:"ccp_v1_learning_materials_create",
+    arguments:gameArguments})).structuredContent;
+  expect(gameReplay.data.replayed).toBe(true);
+  expect(gameReplay.data.material.id).toBe(materialId);
+  const gameConflict=(await mcp("tools/call",{name:"ccp_v1_learning_materials_create",
+    arguments:{...gameArguments,title:"Changed title with same request ID"}})).structuredContent;
+  expect(gameConflict.error.code).toBe("IDEMPOTENCY_CONFLICT");
+
+  const puzzleRequest={
+    kind:"puzzle",title:"Website fork puzzle "+suffix,description:"Synthetic position",sourceUrl:null,
+    requestId:randomUUID(),
+    details:{fen:"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",solution:null,themes:["fork"]},
+  };
+  const puzzleWeb=await page.request.post("/api/training/materials",{data:puzzleRequest});
+  expect(puzzleWeb.status(),await puzzleWeb.text()).toBe(201);
+  const puzzleId=(await puzzleWeb.json()).material.id as string;
+  const puzzleMcp=(await mcp("tools/call",{name:"ccp_v1_learning_materials_get",
+    arguments:{materialId:puzzleId}})).structuredContent;
+  expect(puzzleMcp.error).toBeUndefined();
+  expect(puzzleMcp.data.chess_puzzles.themes).toEqual(["fork"]);
+  expect(puzzleMcp.data.chess_games).toBeNull();
+  const invalidFen=await page.request.post("/api/training/materials",{data:{
+    ...puzzleRequest,requestId:randomUUID(),
+    details:{...puzzleRequest.details,fen:"not a valid chess FEN"},
+  }});
+  expect(invalidFen.status()).toBe(400);
+  const catalogList=(await mcp("tools/call",{name:"ccp_v1_learning_materials_list",
+    arguments:{kind:"game",query:"MCP Steinitz game "+suffix,limit:30,offset:0}})).structuredContent;
+  expect(catalogList.error).toBeUndefined();
+  const websiteCatalog=await page.request.get("/api/training/materials?"+
+    new URLSearchParams({kind:"game",query:"MCP Steinitz game "+suffix,limit:"30",offset:"0"}));
+  expect(websiteCatalog.status()).toBe(200);
+  expect(catalogList.data).toEqual(await websiteCatalog.json());
+  expect(catalogList.data.total).toBe(1);
   // Dashboard and notifications share the exact same tenant-scoped service.
   expect(names).toContain("ccp_v1_dashboard_summary");
   const dashboard = (await mcp("tools/call", {
