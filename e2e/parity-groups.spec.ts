@@ -1,0 +1,124 @@
+import {randomUUID} from "node:crypto";
+import {expect,test} from "@playwright/test";
+import {delegatedTool} from "./helpers/delegated-mcp";
+
+const label=(prefix:string)=>prefix+" "+randomUUID().slice(0,9);
+async function workplace(callTool:(n:string,a:Record<string,unknown>)=>Promise<any>){
+ const data=(await callTool("ccp_v1_workplaces_list",{})).data as Array<{id:string}>;
+ expect(data.length).toBeGreaterThan(0);
+ return data[0].id;
+}
+async function createGroup(callTool:(n:string,a:Record<string,unknown>)=>Promise<any>,
+  workplaceId:string){
+ const r=await callTool("ccp_v1_groups_create",{
+   workplaceId,name:label("Class"),idempotencyKey:randomUUID(),
+ });
+ expect(r.error).toBeUndefined();
+ return r.data as {entityId:string;revision:string};
+}
+async function createStudent(callTool:(n:string,a:Record<string,unknown>)=>Promise<any>){
+ const r=await callTool("ccp_v1_students_create",{
+   name:label("Class member"),idempotencyKey:randomUUID(),
+ });
+ expect(r.error).toBeUndefined();
+ return (r.data as {entityId:string}).entityId;
+}
+
+test("PARITY:PARITY-groups-list compares group and member ownership between transports",async({page,request})=>{
+ const callTool=await delegatedTool(page,request);
+ const id=await workplace(callTool);
+ await createGroup(callTool,id);
+ const web=await page.request.post("/api/agent/v1",{data:{action:"groups.list"}});
+ expect(web.status()).toBe(200);
+ const groups=(await web.json()).data as Array<{id:string;workplace_id:string}>;
+ const tool=(await callTool("ccp_v1_groups_list",{})).data;
+ expect(tool).toEqual(groups);
+ const owned=groups.find(g=>g.workplace_id===id);
+ expect(owned).toBeTruthy();
+ const webMembers=await page.request.post("/api/agent/v1",{data:{
+   action:"groups.members",groupId:owned!.id,
+ }});
+ expect(webMembers.status()).toBe(200);
+ expect((await webMembers.json()).data).toEqual((await callTool(
+   "ccp_v1_groups_members",{groupId:owned!.id})).data);
+});
+
+test("PARITY:PARITY-groups-create-update keeps class rename and revision identical",async({page,request})=>{
+ const callTool=await delegatedTool(page,request);
+ const wp=await workplace(callTool);
+ const created=await createGroup(callTool,wp);
+ const renamed=await callTool("ccp_v1_groups_update",{
+   groupId:created.entityId,workplaceId:wp,name:label("Corrected class"),
+   expectedUpdatedAt:created.revision,idempotencyKey:randomUUID(),
+ });
+ expect(renamed.error).toBeUndefined();
+ const browserList=await page.request.post("/api/agent/v1",{data:{action:"groups.list"}});
+ expect(browserList.status()).toBe(200);
+ expect((await browserList.json()).data.some(
+   (g:{id:string})=>g.id===created.entityId)).toBe(true);
+ const siteEdit=await page.request.post("/api/agent/v1",{data:{
+   action:"groups.update",groupId:created.entityId,workplaceId:wp,
+   name:label("Browser class name"),
+ }});
+ expect(siteEdit.status()).toBe(200);
+ const after=(await callTool("ccp_v1_groups_list",{})).data as Array<{id:string;name:string}>;
+ expect(after.find(g=>g.id===created.entityId)?.name)
+   .toBe((await siteEdit.json()).data.name);
+ const stale=await callTool("ccp_v1_groups_update",{
+   groupId:created.entityId,workplaceId:wp,name:"Wrong stale edit",
+   expectedUpdatedAt:created.revision,idempotencyKey:randomUUID(),
+ });
+ expect(stale.error?.code).toBe("CONFLICT");
+});
+
+test("PARITY:PARITY-groups-memberships preserves frozen session roster after removal",async({page,request})=>{
+ const callTool=await delegatedTool(page,request);
+ const wp=await workplace(callTool),group=await createGroup(callTool,wp);
+ const a=await createStudent(callTool),b=await createStudent(callTool);
+ for(const studentId of [a,b]){
+   const enrolled=await callTool("ccp_v1_groups_enroll",{
+     groupId:group.entityId,studentId,idempotencyKey:randomUUID(),
+   });
+   expect(enrolled.error).toBeUndefined();
+ }
+ const website=await page.request.post("/api/agent/v1",{data:{
+   action:"groups.members",groupId:group.entityId,
+ }});
+ expect(website.status()).toBe(200);
+ expect((await website.json()).data).toEqual((await callTool(
+   "ccp_v1_groups_members",{groupId:group.entityId})).data);
+ const startsAt=new Date(Date.now()+800000000000+Math.floor(Math.random()*200000000)).toISOString();
+ const created=await callTool("ccp_v1_sessions_create",{
+   workplaceId:wp,groupId:group.entityId,
+   title:label("Frozen roster lesson"),startsAt,durationMinutes:45,
+   lessonNote:"Synthetic lesson",idempotencyKey:randomUUID(),
+ });
+ expect(created.error).toBeUndefined();
+ const sessionId=(created.data as {entityId:string}).entityId;
+ const snapshot=await callTool("ccp_v1_sessions_details",{sessionId});
+ expect(((snapshot.data as {participants:Array<{student_id:string}>}).participants)
+   .map(x=>x.student_id).sort()).toEqual([a,b].sort());
+ const removed=await page.request.post("/api/agent/v1",{data:{
+   action:"groups.unenroll",groupId:group.entityId,studentId:a,
+ }});
+ expect(removed.status()).toBe(200);
+ const current=(await callTool("ccp_v1_groups_members",{
+   groupId:group.entityId,
+ })).data as Array<{student_id:string}>;
+ expect(current.map(x=>x.student_id)).toEqual([b]);
+ const frozenAfter=await page.request.post("/api/agent/v1",{data:{
+   action:"sessions.participants",sessionId,
+ }});
+ expect(frozenAfter.status()).toBe(200);
+ expect((await frozenAfter.json()).data.map((x:{student_id:string})=>x.student_id).sort())
+   .toEqual([a,b].sort());
+ expect((await callTool("ccp_v1_sessions_details",{sessionId})).data)
+   .toMatchObject({id:sessionId});
+ const removedSecond=await callTool("ccp_v1_groups_unenroll",{
+   groupId:group.entityId,studentId:b,idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(removedSecond.error).toBeUndefined();
+ expect((await callTool("ccp_v1_sessions_participants",{
+   sessionId,
+ })).data).toEqual(await frozenAfter.json().then(x=>x.data));
+});
