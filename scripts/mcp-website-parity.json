@@ -799,6 +799,23 @@
       "explanation": "Rotate calendar feed secret; approval/reauth"
     },
     {
+      "path": "app/api/training/assignments/route.ts",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_training_assignments_list",
+        "ccp_v1_training_assignments_create",
+        "ccp_v1_training_attempt_record",
+        "ccp_v1_training_review_record"
+      ],
+      "explanation": "Shared teacher-scoped website/MCP assignment list, confirmed student-specific/batch material assignments, manual attempt evidence and independent teacher reviews. Full goal/plan editing, correction and 93-case verification remain later scope."
+    },
+    {
       "path": "app/api/training/materials/route.ts",
       "methods": [
         "GET",
@@ -838,6 +855,7 @@
     "app/(teacher)/families/page.tsx",
     "app/(teacher)/help/page.tsx",
     "app/(teacher)/learning/page.tsx",
+    "app/(teacher)/reports/page.tsx",
     "app/(teacher)/schedule/page.tsx",
     "app/(teacher)/students/[id]/page.tsx",
     "app/(teacher)/students/page.tsx",
@@ -870,6 +888,7 @@
     "components/teacher/StudentNotesEditor.tsx",
     "components/teacher/TeacherNav.tsx",
     "components/teacher/TeacherThemeProvider.tsx",
+    "components/teacher/TrainingHomeworkPanel.tsx",
     "components/teacher/UnifiedLessonHistoryPanel.tsx",
     "components/teacher/billing/BillingList.tsx",
     "components/teacher/billing/CreditPackagesCard.tsx",
