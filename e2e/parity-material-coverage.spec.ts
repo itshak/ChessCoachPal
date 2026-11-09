@@ -69,7 +69,10 @@ test("PARITY:PARITY-materials-student-history enumerates explicitly taught stude
  await claim(call,ctx,ctx.studentIds[0],"assigned");
  const taught=await claim(call,ctx,ctx.studentIds[0],"taught");
  const filters={studentId:ctx.studentIds[0],from:"2041-03-01",to:"2041-03-01"};
- const browser=await webMaterials(page,filters);
+ const browserResponse=await page.request.get("/api/coaching/materials?"+
+   new URLSearchParams(filters));
+ expect(browserResponse.status(),await browserResponse.text()).toBe(200);
+ const browser=await browserResponse.json();
  const mcp=await call("ccp_v1_materials_history_list",filters);
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(browser);
@@ -85,7 +88,10 @@ test("PARITY:PARITY-materials-workplace deduplicates group lesson studies in ful
  const ctx=await fixture(call,10);
  for(const studentId of ctx.studentIds)await claim(call,ctx,studentId,"taught");
  const query={workplaceId:ctx.workplaceId,from:"2041-03-01",to:"2041-03-01"};
- const browser=await webMaterials(page,{...query,aggregate:"true"});
+ const browserResponse=await page.request.get("/api/coaching/materials?"+
+   new URLSearchParams({...query,aggregate:"true"}));
+ expect(browserResponse.status(),await browserResponse.text()).toBe(200);
+ const browser=await browserResponse.json();
  const mcp=await call("ccp_v1_materials_aggregate",query);
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(browser);
@@ -103,7 +109,10 @@ test("PARITY:PARITY-materials-stage-reconciliation never invents learned or comp
  await claim(call,ctx,studentId,"assigned");
  const filters={studentId,workplaceId:ctx.workplaceId,
    from:"2041-03-01",to:"2041-03-01"};
- const assigned=await webMaterials(page,{...filters,aggregate:"true"});
+ const assignedResponse=await page.request.get("/api/coaching/materials?"+
+   new URLSearchParams({...filters,aggregate:"true"}));
+ expect(assignedResponse.status(),await assignedResponse.text()).toBe(200);
+ const assigned=await assignedResponse.json();
  expect(assigned.stages).toEqual({assigned:1,taught:0,completed:0});
  const mcpAssigned=await call("ccp_v1_materials_aggregate",filters);
  expect(mcpAssigned.data).toEqual(assigned);
@@ -123,7 +132,10 @@ test("PARITY:PARITY-materials-workplace-student-report distinguishes individual 
  await claim(call,ctx,ctx.studentIds[0],"taught");
  await claim(call,ctx,ctx.studentIds[1],"assigned");
  const wp={workplaceId:ctx.workplaceId,from:"2041-03-01",to:"2041-03-01"};
- const website=await webMaterials(page,{...wp,aggregate:"true"});
+ const websiteResponse=await page.request.get("/api/coaching/materials?"+
+   new URLSearchParams({...wp,aggregate:"true"}));
+ expect(websiteResponse.status(),await websiteResponse.text()).toBe(200);
+ const website=await websiteResponse.json();
  const mcp=await call("ccp_v1_materials_aggregate",wp);
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(website);
