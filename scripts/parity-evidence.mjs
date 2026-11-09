@@ -36,3 +36,25 @@ export function validateCheckedParityRow(row, ordinal, exists, read) {
   }
   return errors;
 }
+
+/** One executable scenario may not silently sign off multiple distinct cases.
+ * Each checked acceptance row needs independent, reviewable behavior evidence.
+ */
+export function validateUniqueCheckedParityReferences(rows) {
+  const seen = new Map();
+  const errors = [];
+  for (const [index, row] of rows.entries()) {
+    if (!/^\\|\\s*-\\s*\\[[xX]\\]/.test(row)) continue;
+    for (const [, file, id] of row.matchAll(evidencePattern)) {
+      const key = file + "#" + id;
+      if (seen.has(key)) {
+        errors.push("Checked scenario " + (index + 1) + " reuses evidence " +
+          key + " from scenario " + seen.get(key) +
+          "; add an individually named E2E parity test");
+      } else {
+        seen.set(key, index + 1);
+      }
+    }
+  }
+  return errors;
+}
