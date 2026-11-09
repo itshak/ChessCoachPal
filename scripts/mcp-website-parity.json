@@ -478,11 +478,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_import_spreadsheet_commit"
       ],
-      "explanation": "Shared owner-scoped family/student importer, name dedup and hosted-limit preflight; confirmed MCP writes. Transactional rollback, concurrency and robust quota checks still outstanding."
+      "explanation": "Explicit confirmed delegated MCP import and authenticated website commit share tenant-scoped atomic SQL receipt, duplicate mapping and idempotent replay, accepted in OAuth/browser E2E 42709042700; separate rollback tests also exist.",
+      "evidenceTest": "e2e/parity-spreadsheet-commit.spec.ts"
     },
     {
       "path": "app/api/import/spreadsheet/parse/route.ts",
@@ -491,12 +492,13 @@
         "PUT"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_import_spreadsheet_parse",
         "ccp_v1_import_spreadsheet_preview"
       ],
-      "explanation": "Shared CSV/XLSX parser and normalizer used by website multipart upload and MCP base64/JSON operations. 2 MB/500-row limits. Browser/MCP test covers sample preview; file variants still open."
+      "explanation": "Website multipart CSV parse/mapping and preview match delegated MCP parse/preview on exact normalized rows, accepted in OAuth/browser E2E 42709042700.",
+      "evidenceTest": "e2e/parity-spreadsheet-commit.spec.ts"
     },
     {
       "path": "app/api/import/spreadsheet/suggest/route.ts",
@@ -690,11 +692,12 @@
         "GET"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_settings_export"
       ],
-      "explanation": "Shared teacher-scoped backup service. MCP creates a portable data export without model-visible family portal tokens/provider credentials; full raw export remains browser download for secure delivery. Size cap and browser fallback documented."
+      "explanation": "Shared teacher-scoped website full backup versus confirmed, size-bounded, model-safe MCP export with portal credentials stripped; accepted in named OAuth/browser E2E 42709042700.",
+      "evidenceTest": "e2e/parity-teacher-export.spec.ts"
     },
     {
       "path": "app/api/settings/import/route.ts",
