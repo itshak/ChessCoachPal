@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateCheckedParityRow } from "./parity-evidence.mjs";
+import { validateCheckedParityRow, validateUniqueCheckedParityReferences } from "./parity-evidence.mjs";
 
 const path = "e2e/parity.spec.ts";
 const row = "| - [x] | Archive student | " + path + "#PARITY-student-archive |";
@@ -26,4 +26,11 @@ test("validates transport and assertions within the named test", () => {
 });
 test("rejects unsafe references", () => {
   assert.match(check(valid, "| - [x] | Archive | e2e/../private.spec.ts#PARITY-student-archive |")[0], /unsafe/);
+});
+
+test("each checked requirement needs distinct named executable evidence", () => {
+  const other = "| - [x] | Another behavior | e2e/parity.spec.ts#PARITY-student-update |";
+  assert.deepEqual(validateUniqueCheckedParityReferences([row, other]), []);
+  assert.match(validateUniqueCheckedParityReferences([row, row])[0], /reuses evidence/);
+  assert.deepEqual(validateUniqueCheckedParityReferences([row, row.replace("[x]", "[ ]")]), []);
 });
