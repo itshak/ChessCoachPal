@@ -13,6 +13,7 @@ import {
 
 import {
   chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
+  chessCategoriesDeleteImpact, chessCategoriesDelete,
   chessObservationsList, chessObservationsCreate, chessObservationsUpdate, chessObservationsApprove,
   chessResourcesList, chessResourcesCreate, chessResourcesUpdate,
 } from "@/lib/server/chess-learning";
@@ -81,6 +82,9 @@ const calls = z.discriminatedUnion("action", [
   z.object({ action: z.literal("chess.categories.update"), categoryId:chessUuid,
     name:categoryName.optional(), description:z.string().max(500).optional(),
     sortOrder:z.number().int().min(0).max(10000).optional() }),
+  z.object({ action:z.literal("chess.categories.deleteImpact"), categoryId:chessUuid }),
+  z.object({ action:z.literal("chess.categories.delete"), categoryId:chessUuid,
+    confirmed:z.literal(true) }),
   z.object({ action: z.literal("chess.observations.list"), studentId:chessUuid,
     sessionId:chessUuid.optional() }),
   observationInput.extend({ action:z.literal("chess.observations.create") }),
@@ -108,6 +112,7 @@ const toolNames = [
   "sessions.list", "sessions.create", "sessions.createAdHoc", "sessions.update", "sessions.participants",
   "attendance.list", "attendance.record",
   "chess.categories.list","chess.categories.create","chess.categories.update",
+  "chess.categories.deleteImpact","chess.categories.delete",
   "chess.observations.list","chess.observations.create","chess.observations.propose",
   "chess.observations.update","chess.observations.approve",
   "chess.resources.list","chess.resources.link","chess.resources.update",
@@ -231,6 +236,10 @@ export async function POST(req: NextRequest) {
         result = await chessCategoriesCreate(db,teacherId,call); break;
       case "chess.categories.update":
         result = await chessCategoriesUpdate(db,teacherId,call.categoryId,call); break;
+      case "chess.categories.deleteImpact":
+        result = await chessCategoriesDeleteImpact(db,teacherId,call.categoryId);break;
+      case "chess.categories.delete":
+        result = await chessCategoriesDelete(db,teacherId,call.categoryId);break;
       case "chess.observations.list":
         result = await chessObservationsList(db,teacherId,call.studentId,call.sessionId); break;
       case "chess.observations.create":
