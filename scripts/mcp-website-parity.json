@@ -11,12 +11,13 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_connections_list",
         "ccp_v1_connections_revoke"
       ],
-      "explanation": "Shared owner-filtered OAuth grant listing and revocation used by website and MCP. Website enforces CSRF origin and MCP requires delegated coach:write + explicit confirmation. OAuth authorization remains browser consent-only."
+      "explanation": "Verified website GET/DELETE and delegated MCP list/confirmed revoke share tenant-filtered, secret-free OAuth grant service; browser CSRF/consent remains protected. Independent 99-pass E2E at 3fce603 checks connection identity, redaction and revocation; comprehensive agent E2E checks immediate token denial, read-only permission and website-side revocation.",
+      "evidenceTest": "e2e/parity-connections.spec.ts"
     },
     {
       "path": "app/api/agent/openapi/route.ts",
