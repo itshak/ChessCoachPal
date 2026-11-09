@@ -28,6 +28,8 @@ export const legacyActionTools=Object.freeze({
   "chess.categories.list":"ccp_v1_chess_categories_list",
   "chess.categories.create":"ccp_v1_chess_categories_create",
   "chess.categories.update":"ccp_v1_chess_categories_update",
+  "chess.categories.deleteImpact":"ccp_v1_chess_categories_delete_impact",
+  "chess.categories.delete":"ccp_v1_chess_categories_delete",
   "chess.observations.list":"ccp_v1_chess_observations_list",
   "chess.observations.create":null,
   "chess.observations.propose":"ccp_v1_chess_observations_propose",
