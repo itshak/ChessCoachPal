@@ -170,6 +170,7 @@ test("PARITY:PARITY-workplaces-unenroll-history preserves frozen lessons across 
     action:"workplaces.enroll",workplaceId:id,studentId:learner,
   }});
   expect(siteJoin.status(),await siteJoin.text()).toBe(200);
-  expect(((await callTool("ccp_v1_workplaces_enrollments",{workplaceId:id})).data
-    as Array<{student_id:string}>).some(x=>x.student_id===learner)).toBe(true);
+  const restoredMembers=(await callTool("ccp_v1_workplaces_enrollments",{workplaceId:id}))
+    .data as Array<{student_id:string}>;
+  expect(restoredMembers.some(x=>x.student_id===learner)).toBe(true);
 });
