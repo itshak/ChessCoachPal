@@ -43,7 +43,7 @@ export async function delegatedTool(page: Page, request: APIRequestContext, scop
       params:{name,arguments:args}}});
     expect(reply.status(),await reply.text()).toBe(200);
     return (await reply.json()).result.structuredContent as
-      {data?:unknown;error?:{code:string;message:string}};
+      {data?:any;error?:{code:string;message:string}};
   };
 }
 
