@@ -6,7 +6,7 @@
 
 **Latest evidence:** PR-head [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42523621060), [delegated OAuth E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42523621045), [security](https://github.com/itshak/ChessCoachPal/actions/runs/42523621097), [self-host](https://github.com/itshak/ChessCoachPal/actions/runs/42523621131), and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/42523621103) all succeeded. Postmerge [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42528998607) succeeded; [E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42528998666), [security](https://github.com/itshak/ChessCoachPal/actions/runs/42528998631), [self-host](https://github.com/itshak/ChessCoachPal/actions/runs/42528998606), and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/42528998613) also succeeded on merged main. Vercel returned a deployment build-rate-limit status on the PR, so not all third-party checks were green.
 
-**Latest draft PR-head evidence (not merged-main):** [87 passing OAuth + website E2E tests](https://github.com/itshak/ChessCoachPal/actions/runs/42698521763), [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42698521719), [security](https://github.com/itshak/ChessCoachPal/actions/runs/42698521454), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/42698521779), [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/42698521474) on `52b90b6`. **51 of 93 distinct scenarios have executable evidence; 42 remain unverified.** Additional code/test audit commits after that SHA require a fresh full pass. Current draft registry has **45 teacher route families (5 verified, 8 partial, 32 gaps)**. No release or merge acceptance is implied; the strict gate remains blocked.
+**Latest draft PR-head evidence (not merged-main):** [Authenticated website/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42701196373), [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42701196692), [security](https://github.com/itshak/ChessCoachPal/actions/runs/42701196844), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/42701196337), and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/42701196436) all succeeded on `39745a8`. **59/93** distinct cases now have individually named, executed browser/MCP evidence; **34 remain unchecked**. This reconciles eight existing, previously uncited E2E tests; it does not imply new feature implementation or merged-main acceptance. Current draft registry remains **45 teacher route families (5 verified, 8 partial, 32 gaps)**, so strict parity remains **BLOCKED**. Changes made after this SHA must receive fresh checks.
 
 **Historical source-audit baseline and the still-required 93-case matrix follow.**
 
@@ -21,7 +21,7 @@ The [versioned machine-readable inventory](../scripts/mcp-website-parity.json) e
 
 Run `npm run mcp:parity:audit` to validate that the inventory tracks every actual route/page/component, that listed HTTP methods match code, and that any claimed live MCP tool exists in the real catalogue. This **passes while explicitly reporting gaps** so normal CI stays green. Run `npm run mcp:parity:strict` to require zero missing/partial teacher-business routes; it **must currently fail** and is the GitHub Release publication gate. Strict success is necessary but **not sufficient**: the behavior and security cases below need synthetic database/browser OAuth integration tests and merged-main evidence. Every new feature PR MUST update the inventory and add website↔MCP behavioral tests; a changed route method/new page/new component with no inventory entry fails regular CI.
 
-**PR #44 candidate E2E sign-off (2026-11-09):** 51/93 cases now cite unique, individually named delegated OAuth ↔ website Playwright scenarios passing on PR head `52b90b6`. GitHub Actions [E2E run 42698521763](https://github.com/itshak/ChessCoachPal/actions/runs/42698521763) passed (87 tests, 5 intentionally skipped); CI, security, Compose, backup/restore passed on the same SHA. **This is PR-head evidence only**, not merged-main acceptance. Strict parity remains **BLOCKED** by the other 42 unchecked scenarios and 40 partially covered/gap teacher route families. Never archive OpenSpec or publish release until all scenarios and merged-main gates pass.
+**PR #44 candidate E2E sign-off (2026-11-09):** Previous `52b90b6` baseline credited 51/93 scenarios. Review of already-existing, passing, separately titled tests at `39745a8` adds eight more: **59/93 evidenced on PR head, 34 unchecked**. [Latest successful E2E run](https://github.com/itshak/ChessCoachPal/actions/runs/42701196373); this is not a final-head or merged-main release sign-off. Strict parity stays **BLOCKED** by unaccepted scenarios and 40 partial/gap teacher routes. Do not archive OpenSpec or publish a release.
 
 ## Concrete browser ↔ MCP test cases
 
@@ -103,13 +103,13 @@ Website reference: `/learning, /coaching, /students/[id]`.
 | Checklist | Test/action | Current evidence / blocker |
 | --- | --- | --- |
 | - [x] | List configured chess skill categories | **E2E accepted on PR head:** `e2e/parity-learning.spec.ts#PARITY-chess-categories`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
-| - [ ] | Create/rename/reorder/delete skill categories | **Gap/protected** — website agent/v1 only; MCP gap |
-| - [ ] | Read student chess observations | **Tool/reference:** `ccp_v1_chess_observations_list` — implemented |
-| - [ ] | Propose unverified observation | **Tool/reference:** `ccp_v1_chess_observations_propose` — implemented |
+| - [x] | Create/rename/reorder/delete skill categories | **Authenticated PR-head E2E:** `e2e/parity-chess-category-delete.spec.ts#PARITY-chess-categories-lifecycle`; [passing OAuth/website suite](https://github.com/itshak/ChessCoachPal/actions/runs/42701196373) at `39745a8`. |
+| - [x] | Read student chess observations | **Authenticated PR-head E2E:** `e2e/parity-observations-and-links.spec.ts#PARITY-chess-observations-read`; [passing OAuth/website suite](https://github.com/itshak/ChessCoachPal/actions/runs/42701196373) at `39745a8`. |
+| - [x] | Propose unverified observation | **Authenticated PR-head E2E:** `e2e/parity-observations-and-links.spec.ts#PARITY-chess-observations-proposal`; [passing OAuth/website suite](https://github.com/itshak/ChessCoachPal/actions/runs/42701196373) at `39745a8`. |
 | - [x] | Correct observation and teacher-confirm/approve it | **E2E accepted on PR head:** `e2e/parity-learning.spec.ts#PARITY-chess-observations`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
-| - [ ] | List saved study URLs linked to student/session | **Tool/reference:** `ccp_v1_chess_resources_list` — implemented limited links |
+| - [x] | List saved study URLs linked to student/session | **Authenticated PR-head E2E:** `e2e/parity-observations-and-links.spec.ts#PARITY-chess-resources-list`; [passing OAuth/website suite](https://github.com/itshak/ChessCoachPal/actions/runs/42701196373) at `39745a8`. |
 | - [x] | Link permitted Lichess Study/HTTPS material to student/session | **E2E accepted on PR head:** `e2e/parity-learning.spec.ts#PARITY-chess-resources`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
-| - [ ] | Edit/unlink previously attached resource | **Gap/protected** — website agent/v1 only; MCP gap |
+| - [x] | Edit/unlink previously attached resource | **Authenticated PR-head E2E:** `e2e/parity-resource-unlink.spec.ts#PARITY-chess-resources-edit-unlink`; [passing OAuth/website suite](https://github.com/itshak/ChessCoachPal/actions/runs/42701196373) at `39745a8`. |
 | - [ ] | Connect and revoke teacher Lichess study scopes securely | **Gap/protected** — MCP + website gap; secure browser consent |
 | - [ ] | Search actual studies and chapter 32 by PGN metadata | **Gap/protected** — MCP gap |
 | - [x] | List **all material taught** by student over date range | **Passing PR-head OAuth/browser E2E:** `e2e/parity-material-coverage.spec.ts#PARITY-materials-student-history`; [87-test run](https://github.com/itshak/ChessCoachPal/actions/runs/42698521763), final-head rerun required |
@@ -153,8 +153,8 @@ Website reference: `/billing, /api/billing`.
 | - [ ] | Read invoice list/details and totals | **Gap/protected** — MCP gap |
 | - [ ] | Generate/regenerate invoices with period and rate checks | **Gap/protected** — MCP gap |
 | - [x] | Edit invoice draft/line items | **E2E accepted on PR head:** `e2e/parity-invoice-draft.spec.ts#PARITY-billing-invoice-edit`; [passing authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42685623529) |
-| - [ ] | Mark invoice paid/add/reverse payment with audit | **Gap/protected** — MCP gap; finance scope required |
-| - [ ] | Void and delete invoice drafts safely | **Gap/protected** — MCP gap; dedicated confirmation |
+| - [x] | Mark invoice paid/add/reverse payment with audit | **Authenticated PR-head E2E:** `e2e/parity-billing-lifecycle.spec.ts#PARITY-billing-manual-payment`; [passing OAuth/website suite](https://github.com/itshak/ChessCoachPal/actions/runs/42701196373) at `39745a8`. |
+| - [x] | Void and delete invoice drafts safely | **Authenticated PR-head E2E:** `e2e/parity-billing-lifecycle.spec.ts#PARITY-billing-void-delete`; [passing OAuth/website suite](https://github.com/itshak/ChessCoachPal/actions/runs/42701196373) at `39745a8`. |
 | - [ ] | Send one or bulk invoices after preview of recipient and amount | **Gap/protected** — MCP gap; communication/finance scopes |
 | - [ ] | Create/update credit packages, redeem/undo credits | **Gap/protected** — MCP gap |
 | - [ ] | Create payment checkout, inspect PDF, export ledger | **Gap/protected** — MCP gap; secure checkout link |
@@ -165,7 +165,7 @@ Website reference: `/studio, /account, /ai-connections`.
 
 | Checklist | Test/action | Current evidence / blocker |
 | --- | --- | --- |
-| - [ ] | Read/edit studio timezone, scheduling, rates, billing and notification policy | **Gap/protected** — website policy API exists; MCP gap |
+| - [x] | Read/edit studio timezone, scheduling, rates, billing and notification policy | **Authenticated PR-head E2E:** `e2e/parity-policy.spec.ts#PARITY-studio-policy`; [passing OAuth/website suite](https://github.com/itshak/ChessCoachPal/actions/runs/42701196373) at `39745a8`. |
 | - [ ] | Read/edit optional AI settings without disclosing keys | **Gap/protected** — protected browser approval/secret boundary |
 | - [ ] | Edit display name, email/password and MFA | **Gap/protected** — browser secure reauthentication, not generic MCP |
 | - [ ] | Manage delegated MCP connection grants/revoke | **Tool/reference:** `oauth revoke endpoint` — available consent route, but in-chat grant inventory/manage missing |
