@@ -51,7 +51,7 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
 
   await page.getByLabel("Session group").selectOption({ label: group });
   await page.getByLabel("Topic or title").fill(topic);
-  await page.getByLabel("Local date and time (selected workplace timezone)").fill("2027-04-01T17:00");
+  await page.getByLabel("Local date and time (selected workplace timezone)").fill("2047-10-13T17:00");
   await page.getByLabel("Teaching note").fill("Opposition.");
   await page.getByRole("button", { name: "Create lesson" }).click();
   await expect(page.getByRole("status")).toContainText("Lesson session created");
@@ -68,7 +68,7 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await page.getByLabel("Lesson type").selectOption("private");
   await page.getByRole("combobox", { name: "Private student", exact: true }).selectOption({ label: student });
   await page.getByLabel("Topic or title").fill(`E2E Private ${suffix}`);
-  await page.getByLabel("Local date and time (selected workplace timezone)").fill("2027-04-02T15:00");
+  await page.getByLabel("Local date and time (selected workplace timezone)").fill("2047-10-14T15:00");
   await page.getByRole("button", { name: "Create lesson" }).click();
   await expect(page.getByRole("status")).toContainText("Lesson session created");
   await expect(page.getByText(/Instructor time in this workplace/)).toContainText("120 minutes");
