@@ -16,7 +16,7 @@
     "release:prepare": "node scripts/release.mjs prepare",
     "release:validate": "node scripts/release.mjs validate",
     "release:check": "node --test scripts/release-check.mjs",
-    "mcp:parity:guard-test": "node --test scripts/mcp-parity-pr-guard.test.mjs scripts/mcp-parity-audit.test.mjs scripts/parity-evidence.test.mjs",
+    "mcp:parity:guard-test": "node --test scripts/mcp-parity-pr-guard.test.mjs scripts/mcp-parity-audit.test.mjs scripts/parity-evidence.test.mjs scripts/mcp-legacy-actions.test.mjs",
     "mcp:parity:audit": "node scripts/mcp-parity-audit.mjs",
     "mcp:parity:strict": "node scripts/mcp-parity-audit.mjs --strict"
   },
