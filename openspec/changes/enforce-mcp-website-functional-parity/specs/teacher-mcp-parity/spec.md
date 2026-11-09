@@ -38,3 +38,14 @@ The website unified lesson-history endpoint and delegated MCP lesson-history too
 - **WHEN** a foreign teacher ID, foreign workplace, or invalid date/window is supplied **THEN** neither website nor MCP SHALL leak records or accept the request.
 
 **Delivery boundary:** This shared history *read* increment is implemented by [PR #42](https://github.com/itshak/ChessCoachPal/pull/42). Mutating historic lessons, revisions, audit corrections, the full 93-case sign-off and strict gate remain part of this active change and SHALL NOT be declared complete based on this reader alone.
+
+## Requirement: Secure preview and credential operations SHALL preserve the MCP-first boundary
+
+### Scenarios
+- **WHEN** a teacher reviews a pending event invitation or draft invoice by website/MCP **THEN** both surfaces SHALL use the same owner-scoped preview service and return send readiness, content/amount and recipient counts without sending; recipient addresses require explicit confirmation in MCP and portal tokens/payment-provider secrets SHALL never be returned.
+- **WHEN** a signed-in teacher rotates a calendar feed through MCP **THEN** the old token SHALL be invalidated, confirmation SHALL be required, and the newly generated bearer secret SHALL only be accessible through a signed-in website interface, not MCP output.
+- **WHEN** a coach edits their ordinary display name/avatar or inspects factual student progress through either interface **THEN** the operations SHALL be tenant-scoped and return equivalent values; passwords, sign-in emails and MFA remain secure authentication controls.
+- **WHEN** a model changes the optional AI provider or clears an existing key **THEN** it SHALL require confirmation and SHALL NOT accept, read or return raw provider credentials; replacement-key entry is a secure website-only flow.
+- **WHEN** a teacher initiates invoice sending in the website **THEN** a failed draft save SHALL abort sending, and the teacher SHALL review the current amount/recipients after PDF validation and confirm the external email action.
+
+**Acceptance status:** These incremental workflows have PR-head OAuth/browser evidence where listed in the 93-case ledger. This is not a waiver for exactly-once invoice/event delivery, full UI click-path coverage, upstream Lichess operations, or final strict release verification.

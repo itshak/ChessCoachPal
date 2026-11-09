@@ -84,12 +84,13 @@
         "PUT"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_teacher_profile_get",
         "ccp_v1_teacher_profile_update"
       ],
-      "explanation": "Ordinary self-owned display name/avatar edits now share the same website/MCP validation, with confirmation and secure avatar path restriction. Sign-in email, passwords and MFA remain secure browser-only Supabase Auth operations. Await independent delegated E2E."
+      "explanation": "Confirmed MCP and website display/avatar edit domain service with owner-scoped path validation. Login email, passwords and MFA remain separately secured browser-only auth flows; one independently named OAuth/browser test passed at bf7c205.",
+      "evidenceTest": "e2e/parity-teacher-profile.spec.ts"
     },
     {
       "path": "app/api/auth/waitlist/route.ts",
@@ -145,11 +146,12 @@
         "GET"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_payments_export"
       ],
-      "explanation": "Shared teacher-scoped accounting CSV with formula injection hardening and browser/MCP parity test. Sensitive export requires explicit MCP approval."
+      "explanation": "Shared owner-scoped accountant CSV is accessible on signed-in website and only through confirmed MCP export, with HTML/CSV formula prefix escaping and Hebrew content; independent website/MCP E2E passed at bf7c205.",
+      "evidenceTest": "e2e/parity-accounting-export.spec.ts"
     },
     {
       "path": "app/api/billing/generate/route.ts",
@@ -320,11 +322,12 @@
         "GET"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_reports_student_progress"
       ],
-      "explanation": "New shared factual student progress report aggregates teacher-approved 1–10 strength, latest recorded skill assessments and explicitly attested material-stage coverage; avoids inferred mastery/guardian data. Await independently named OAuth/browser E2E acceptance."
+      "explanation": "Shared report reads teacher-scoped strength, skills and explicitly attested material claims without private notes or fabricated mastery; independent authenticated website/MCP E2E at bf7c205.",
+      "evidenceTest": "e2e/parity-student-progress.spec.ts"
     },
     {
       "path": "app/api/coaching/unified-lessons/route.ts",
@@ -828,12 +831,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_calendar_feed_status",
         "ccp_v1_calendar_feed_rotate"
       ],
-      "explanation": "Shared teacher-scoped calendar-feed rotation: signed-in website can view the regenerated secret, while confirmed MCP revocation deliberately redacts the new token. Acceptance requires an independent authenticated website/MCP test. Previously misclassified as browser-only."
+      "explanation": "Confirmed MCP rotates/revokes calendar bearer secret without exposing it, website returns new token to signed-in owner, invalidated old feed confirmed by authenticated cross-surface E2E at bf7c205.",
+      "evidenceTest": "e2e/parity-calendar-token.spec.ts"
     },
     {
       "path": "app/api/webhooks/stripe/[teacherId]/route.ts",
