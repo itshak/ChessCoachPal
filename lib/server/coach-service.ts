@@ -409,6 +409,9 @@ export async function sessionsUpdate(
     .eq("teacher_id", teacherId).eq("id", sessionId)
     .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
     .maybeSingle();
+  // The database interval guard rejects a conflicting reschedule with 23P01.
+  // Surface the same 409 conflict that MCP returns, never a generic 500.
+  if (error?.code === "23P01") throw conflict();
   if (error) throw problem();
   if (!data) throw notFound();
   return data;
