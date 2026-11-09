@@ -93,8 +93,8 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     arguments:gameArguments})).structuredContent;
   expect(gameCreated.error).toBeUndefined();
   expect(gameCreated.data.replayed).toBe(false);
-  const materialId=gameCreated.data.material.id as string;
-  const websiteGame=await page.request.get("/api/training/materials?id="+materialId);
+  const typedGameMaterialId=gameCreated.data.material.id as string;
+  const websiteGame=await page.request.get("/api/training/materials?id="+typedGameMaterialId);
   expect(websiteGame.status(),await websiteGame.text()).toBe(200);
   expect(gameCreated.data.material).toEqual(await websiteGame.json());
   expect(gameCreated.data.material.chess_games.pgn).toContain("Nf3");
@@ -102,7 +102,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const gameReplay=(await mcp("tools/call",{name:"ccp_v1_learning_materials_create",
     arguments:gameArguments})).structuredContent;
   expect(gameReplay.data.replayed).toBe(true);
-  expect(gameReplay.data.material.id).toBe(materialId);
+  expect(gameReplay.data.material.id).toBe(typedGameMaterialId);
   const gameConflict=(await mcp("tools/call",{name:"ccp_v1_learning_materials_create",
     arguments:{...gameArguments,title:"Changed title with same request ID"}})).structuredContent;
   expect(gameConflict.error.code).toBe("IDEMPOTENCY_CONFLICT");
