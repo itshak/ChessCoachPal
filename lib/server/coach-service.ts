@@ -305,6 +305,28 @@ export async function workplacesEnroll(
   return data ?? { workplace_id: workplaceId, student_id: studentId };
 }
 
+
+/** Remove a current workplace membership, never a historic session snapshot.
+ * A database trigger enforces current-group and future-direct-lesson blockers
+ * inside the DELETE transaction, so concurrent/group changes cannot cascade.
+ * Repeated calls converge on an absent enrollment without secondary effects.
+ */
+export async function workplacesUnenroll(
+  db: Db, teacherId: string, workplaceId: string, studentId: string
+) {
+  const {data: workplace,error: workplaceError}=await db.from("workplaces")
+    .select("id").eq("teacher_id",teacherId).eq("id",workplaceId).maybeSingle();
+  if(workplaceError)throw problem();
+  if(!workplace)throw notFound();
+  const {data,error}=await db.from("workplace_enrollments").delete()
+    .eq("teacher_id",teacherId).eq("workplace_id",workplaceId).eq("student_id",studentId)
+    .select("student_id").maybeSingle();
+  if(error?.code==="23503")throw new CoachError("CONFLICT",409,
+    "Remove active group membership and cancel future direct lessons before unenrolling");
+  if(error)throw problem();
+  return {workplace_id:workplaceId,student_id:studentId,removed:Boolean(data)};
+}
+
 export async function workplacesEnrollments(db: Db, teacherId: string, workplaceId: string) {
   const { data: workplace } = await db.from("workplaces")
     .select("id").eq("id", workplaceId).eq("teacher_id", teacherId).maybeSingle();

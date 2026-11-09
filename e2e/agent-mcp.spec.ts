@@ -570,6 +570,61 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect((await call("ccp_v1_sessions_details",{sessionId:scheduled.entityId}))
     .structuredContent.data.participants).toHaveLength(1);
 
+
+  // Current workplace membership removal is symmetric across the browser and
+  // delegated MCP. The database must not silently cascade a group enrollment.
+  expect(names).toContain("ccp_v1_workplaces_unenroll");
+  const membershipStudent=(await call("ccp_v1_students_create",{
+    name:"Workplace lifecycle "+suffix,idempotencyKey:randomUUID(),
+  })).structuredContent.data.entityId as string;
+  await postDomain({action:"workplaces.enroll",
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent});
+  const removeMcp=(await call("ccp_v1_workplaces_unenroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
+  })).structuredContent.data;
+  expect(removeMcp).toEqual({workplace_id:madeWorkplace.entityId,
+    student_id:membershipStudent,removed:true});
+  const siteRoster=await postDomain({action:"workplaces.enrollments",
+    workplaceId:madeWorkplace.entityId});
+  expect(siteRoster.some((r:{student_id:string})=>r.student_id===membershipStudent)).toBe(false);
+  const removedAgain=(await call("ccp_v1_workplaces_unenroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
+  })).structuredContent.data;
+  expect(removedAgain.removed).toBe(false);
+  await call("ccp_v1_workplaces_enroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
+  });
+  const removeSite=await postDomain({action:"workplaces.unenroll",
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true});
+  expect(removeSite).toEqual(removeMcp);
+  expect((await call("ccp_v1_workplaces_enrollments",{
+    workplaceId:madeWorkplace.entityId,
+  })).structuredContent.data.some((r:{student_id:string})=>r.student_id===membershipStudent)).toBe(false);
+  await call("ccp_v1_groups_enroll",{
+    groupId:madeGroup.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
+  });
+  const groupBlocked=await call("ccp_v1_workplaces_unenroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
+  });
+  expect(groupBlocked.structuredContent.error.code).toBe("CONFLICT");
+  const siteBlocked=await page.request.post("/api/agent/v1",{data:{
+    action:"workplaces.unenroll",workplaceId:madeWorkplace.entityId,
+    studentId:membershipStudent,confirmed:true,
+  },headers:{Authorization:"Bearer "+session!.access_token}});
+  expect(siteBlocked.status()).toBe(409);
+  expect((await call("ccp_v1_groups_members",{groupId:madeGroup.entityId}))
+    .structuredContent.data.some((r:{student_id:string})=>r.student_id===membershipStudent)).toBe(true);
+  await call("ccp_v1_groups_unenroll",{
+    groupId:madeGroup.entityId,studentId:membershipStudent,
+    idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect((await call("ccp_v1_workplaces_unenroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
+  })).structuredContent.data.removed).toBe(true);
+  expect((await call("ccp_v1_workplaces_unenroll",{
+    workplaceId:foreignWorkplace!.id,studentId:membershipStudent,confirmed:true,
+  })).structuredContent.error.code).toBe("NOT_FOUND");
+
   const blockedTenant=await call("ccp_v1_groups_create",{
     workplaceId:foreignWorkplace!.id,name:"Cross-tenant attempt",
     idempotencyKey:randomUUID(),

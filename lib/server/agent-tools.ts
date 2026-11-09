@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, groupsList, groupsMembers,
-  sessionsList, sessionsParticipants, studentsSearch, workplacesList, workplacesEnrollments,
+  sessionsList, sessionsParticipants, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
 } from "@/lib/server/coach-service";
 
 import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
@@ -821,6 +821,12 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_workplaces_unenroll",
+    description:"Explicitly remove one current workplace enrollment. Group memberships and future direct lessons must be cleared first; historic frozen rosters remain untouched.",
+    schema:z.object({workplaceId:uuid,studentId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_v1_workplaces_enrollments",
     description:"List members of an identified teacher-owned workplace.",
     schema:z.object({workplaceId:uuid}).strict(),scope:"coach:read",readOnly:true,
@@ -1376,6 +1382,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_v1_workplaces_enrollments":
         return {data:await workplacesEnrollments(db,teacherId,(args as {workplaceId:string}).workplaceId)};
+      case "ccp_v1_workplaces_unenroll": {
+        const a=args as {workplaceId:string;studentId:string};
+        return {data:await workplacesUnenroll(db,teacherId,a.workplaceId,a.studentId)};
+      }
       case "ccp_v1_sessions_details": {
         const id=(args as {sessionId:string}).sessionId;
         const {data,error}=await db.from("teaching_sessions")

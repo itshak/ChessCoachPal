@@ -7,7 +7,7 @@ import {
   attendanceList, attendanceRecord,
   groupsCreate, groupsEnroll, groupsUnenroll, groupsList, groupsMembers,
   sessionsCreate, sessionsList, sessionsParticipants, studentsSearch,
-  workplacesCreate, workplacesList, workplacesUpdate, workplacesEnroll, workplacesEnrollments,
+  workplacesCreate, workplacesList, workplacesUpdate, workplacesEnroll, workplacesUnenroll, workplacesEnrollments,
   studentsCreate, studentsUpdate, groupsUpdate, sessionsUpdate, assertTimezone,
 } from "@/lib/server/coach-service";
 
@@ -36,6 +36,7 @@ const calls = z.discriminatedUnion("action", [
     locale: z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).optional(),
     policy: z.record(z.string(), z.unknown()).optional() }),
   z.object({ action: z.literal("workplaces.enroll"), workplaceId: uuid, studentId: uuid }),
+  z.object({ action: z.literal("workplaces.unenroll"), workplaceId: uuid, studentId: uuid, confirmed: z.literal(true) }),
   z.object({ action: z.literal("workplaces.enrollments"), workplaceId: uuid }),
   z.object({ action: z.literal("students.create"), name: shortName,
     level: z.string().trim().max(120).nullable().optional() }),
@@ -95,7 +96,7 @@ const calls = z.discriminatedUnion("action", [
 ]);
 
 const toolNames = [
-  "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll", "workplaces.enrollments",
+  "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll", "workplaces.unenroll", "workplaces.enrollments",
   "students.search", "students.create", "students.update",
   "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
   "sessions.list", "sessions.create", "sessions.update", "sessions.participants",
@@ -173,6 +174,8 @@ export async function POST(req: NextRequest) {
         }); break;
       case "workplaces.enroll":
         result = await workplacesEnroll(db, teacherId, call.workplaceId, call.studentId); break;
+      case "workplaces.unenroll":
+        result = await workplacesUnenroll(db, teacherId, call.workplaceId, call.studentId); break;
       case "workplaces.enrollments":
         result = await workplacesEnrollments(db, teacherId, call.workplaceId); break;
       case "students.search":
