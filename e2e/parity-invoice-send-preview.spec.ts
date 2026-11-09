@@ -62,6 +62,15 @@ test("PARITY:PARITY-billing-send-preview checks totals and contacts without emai
  const browserPrivate=await page.request.get(path+"?includeRecipients=true");
  expect(browserPrivate.status()).toBe(200);
  expect(await browserPrivate.json()).toEqual(approved.data);
+ await page.goto("/billing/"+invoiceId);
+ await page.getByRole("button",{name:"Send",exact:true}).click();
+ const dialog=page.getByRole("alertdialog");
+ await expect(dialog).toBeVisible();
+ await expect(dialog).toContainText("Review invoice before sending");
+ await expect(dialog).toContainText("Recipients: 1");
+ await expect(dialog).toContainText(email);
+ await dialog.getByRole("button",{name:"Cancel"}).click();
+ await expect(dialog).not.toBeVisible();
  const invoiceAfter=await page.request.get("/api/billing/invoices/"+invoiceId);
  expect(invoiceAfter.status()).toBe(200);
  expect((await invoiceAfter.json()).status).toBe("draft");

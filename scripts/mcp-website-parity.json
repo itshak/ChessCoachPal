@@ -256,7 +256,7 @@
         "ccp_v1_billing_invoice_send_preview",
         "ccp_v1_billing_invoice_send"
       ],
-      "explanation": "Website and MCP now offer a shared owner-scoped, non-mutating draft/PDF/amount/recipient-preview endpoint; recipient email addresses require confirmed contact access. Actual sending requires separate write/email confirmation and still lacks independently verified exactly-once delivery receipts; route remains gap."
+      "explanation": "Invoice UI now checks draft-save success, retrieves shared PDF/amount/recipient preview and requires a final external-send confirmation showing recipients and totals. MCP has matching confirmed contact preview and an explicit send tool. Exactly-once delivery receipts/live mail-provider verification still absent, so route remains gap."
     },
     {
       "path": "app/api/billing/invoices/[id]/void/route.ts",
