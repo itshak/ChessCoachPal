@@ -16,6 +16,7 @@ import {
   chessCategoriesDeleteImpact, chessCategoriesDelete,
   chessObservationsList, chessObservationsCreate, chessObservationsUpdate, chessObservationsApprove,
   chessResourcesList, chessResourcesCreate, chessResourcesUpdate,
+  chessResourcesUnlinkImpact, chessResourcesUnlink,
 } from "@/lib/server/chess-learning";
 import { chessUuid, categoryName, observationText, resourceInput, observationInput,
   resourceLabel, resourceUrl, resourceType, observedAt } from "@/lib/chess-learning";
@@ -96,6 +97,9 @@ const calls = z.discriminatedUnion("action", [
   z.object({ action:z.literal("chess.resources.list"),
     studentId:chessUuid.optional(), sessionId:chessUuid.optional() }),
   resourceInput.safeExtend({ action:z.literal("chess.resources.link") }),
+  z.object({ action:z.literal("chess.resources.unlinkImpact"), resourceId:chessUuid }),
+  z.object({ action:z.literal("chess.resources.unlink"), resourceId:chessUuid,
+    confirmed:z.literal(true) }),
   z.object({ action:z.literal("chess.resources.update"), resourceId:chessUuid,
     label:resourceLabel.optional(), url:resourceUrl.optional(),resourceType:resourceType.optional() }),
   z.object({ action: z.literal("attendance.record"),
@@ -116,6 +120,7 @@ const toolNames = [
   "chess.observations.list","chess.observations.create","chess.observations.propose",
   "chess.observations.update","chess.observations.approve",
   "chess.resources.list","chess.resources.link","chess.resources.update",
+  "chess.resources.unlinkImpact","chess.resources.unlink",
 ] as const;
 
 function json(body: unknown, status = 200) {
@@ -254,6 +259,10 @@ export async function POST(req: NextRequest) {
         result = await chessResourcesList(db,teacherId,call); break;
       case "chess.resources.link":
         result = await chessResourcesCreate(db,teacherId,call); break;
+      case "chess.resources.unlinkImpact":
+        result = await chessResourcesUnlinkImpact(db,teacherId,call.resourceId);break;
+      case "chess.resources.unlink":
+        result = await chessResourcesUnlink(db,teacherId,call.resourceId);break;
       case "chess.resources.update":
         result = await chessResourcesUpdate(db,teacherId,call.resourceId,call); break;
     }
