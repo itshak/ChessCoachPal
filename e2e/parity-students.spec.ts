@@ -183,8 +183,12 @@ test("PARITY:PARITY-students-delete requires impact preview and revision on both
 test("PARITY:PARITY-students-skills preserves 1–5 append-only assessment history",async({page,request})=>{
  const callTool=await delegatedTool(page,request);
  const id=await mcpStudent(callTool,unique("Skill history"));
- const dimensions=(await callTool("ccp_v1_skill_dimensions_list",{})).data as Array<{id:string}>;
- expect(dimensions.length).toBeGreaterThan(0);
+ const madeDimension=await callTool("ccp_v1_skill_dimensions_create",{
+   name:unique("Synthetic history skill"),confirmed:true,
+ });
+ expect(madeDimension.error).toBeUndefined();
+ const dimensions=[madeDimension.data as {id:string}];
+ expect(dimensions[0].id).toMatch(/^[0-9a-f-]{36}$/);
  const first=await callTool("ccp_v1_student_skill_assessments_record",{
    studentId:id,ratings:[{dimensionId:dimensions[0].id,rating:3,note:"First review"}],
    confirmed:true,
