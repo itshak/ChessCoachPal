@@ -5,7 +5,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateCheckedParityRow } from "./parity-evidence.mjs";
+import { validateCheckedParityRow, validateUniqueCheckedParityReferences } from "./parity-evidence.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const inventory = JSON.parse(readFileSync(join(root, "scripts/mcp-website-parity.json"), "utf8"));
@@ -103,6 +103,7 @@ for (const [index,row] of checklistRows.entries()) {
     path => existsSync(join(root,path)),
     path => readFileSync(join(root,path),"utf8"))) errors.push(message);
 }
+errors.push(...validateUniqueCheckedParityReferences(checklistRows));
 const pendingCases=cases.filter(match=>match[1]===" ").length;
 console.log("Browser ↔ MCP behavioral checklist: "+(cases.length-pendingCases)+"/"+cases.length+
   " verified, "+pendingCases+" not yet checked.");
