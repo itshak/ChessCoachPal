@@ -137,3 +137,7 @@ A `BEFORE INSERT/UPDATE/DELETE` database trigger serializes every active-student
 ## Phase U: transactional spreadsheet import and replay receipts (pending verification)
 
 Replaces the row-by-row partial-success importer with a single tenant-scoped PostgreSQL transaction: teacher-row locking, student-name/archived dedup, family creation/reuse, capacity reservation, and keyed receipt are all committed or rolled back together. Website and MCP call the same RPC; a normalized-payload derived default retry key and optional explicit idempotency key reject changed-payload replays. The E2E suite must prove full rollback on quota conflicts, safe rerun, no portal credential exposure and cross-teacher denial. **B7 and the 93-case matrix remain unchecked** pending exhaustive transfer/import/export validation and merged-main acceptance.
+
+## Phase V: atomic ad-hoc sessions (pending full acceptance)
+
+Shared MCP `ccp_v1_sessions_ad_hoc_create` and browser `sessions.createAdHoc` call a single authenticated tenant-scoped RPC to create 2–50 student one-off sessions without permanent class groups. The database reserves teacher time under an advisory lock, atomically inserts a frozen roster and unmarked attendance, and rejects changed-request UUID replays. Direct API clients cannot write the special roster_mode column. Per-scenario browser/MCP and group-roster tests remain necessary; this is not full B3/C signoff.

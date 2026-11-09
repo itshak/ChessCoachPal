@@ -197,6 +197,38 @@ export async function sessionsCreate(
   return data;
 }
 
+
+/** Atomically create a one-off lesson for 2–50 distinct workplace students.
+ * The owner-scoped RPC freezes the approved participants, attendance and
+ * session in the same transaction, and provides request-UUID replay safety.
+ */
+export async function sessionsAdHocCreate(db:Db,teacherId:string,payload:{
+  workplaceId:string;studentIds:string[];title:string;startsAt:string;
+  durationMinutes:number;lessonNote?:string;requestId:string;
+}){
+  void teacherId; // RPC enforces auth.uid() and enrollment ownership in SQL.
+  assertSessionSchedule(payload.startsAt,payload.durationMinutes);
+  if(payload.studentIds.length<2||payload.studentIds.length>50||
+    new Set(payload.studentIds).size!==payload.studentIds.length)
+    throw new CoachError("VALIDATION_ERROR",400,"Choose 2–50 distinct students");
+  const {data,error}=await db.rpc("ccp_teacher_ad_hoc_session_create",{
+    p_workplace_id:payload.workplaceId,p_student_ids:payload.studentIds,
+    p_title:payload.title,p_starts_at:payload.startsAt,
+    p_duration_minutes:payload.durationMinutes,
+    p_lesson_note:payload.lessonNote??"",p_request_id:payload.requestId,
+  });
+  if(error){
+    if(/CONFLICT|23P01|23505/.test(error.message))
+      throw new CoachError("CONFLICT",409,"Session conflicts with an existing lesson or changed replay");
+    if(/NOT_FOUND|42501/.test(error.message))
+      throw new CoachError("NOT_FOUND",404,"Workplace or student enrollment not found");
+    if(/INVALID|DUPLICATE|22023/.test(error.message))
+      throw new CoachError("VALIDATION_ERROR",400,"Invalid ad-hoc session");
+    throw problem();
+  }
+  return data;
+}
+
 export async function sessionsParticipants(db: Db, teacherId: string, sessionId: string) {
   const { data: session } = await db.from("teaching_sessions")
     .select("id").eq("teacher_id", teacherId).eq("id", sessionId).maybeSingle();

@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, groupsList, groupsMembers,
-  sessionsList, sessionsParticipants, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
+  sessionsList, sessionsParticipants, sessionsAdHocCreate, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
 } from "@/lib/server/coach-service";
 
 import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
@@ -857,6 +857,16 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_sessions_ad_hoc_create",
+    description:"Schedule a single one-off lesson for 2–50 already enrolled students without a permanent class. Freeze roster and unmarked attendance atomically. Confirm approved participants and time.",
+    schema:z.object({workplaceId:uuid,studentIds:z.array(uuid).min(2).max(50),
+      title:z.string().trim().min(1).max(160),startsAt:instant,
+      durationMinutes:z.number().int().min(15).max(480),
+      lessonNote:z.string().max(10000).default(""),idempotencyKey:uuid,
+      confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_v1_sessions_details",
     description:"Read one identified lesson, including its current revision and frozen roster.",
     schema:sessionId,scope:"coach:read",readOnly:true,
@@ -1389,6 +1399,13 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_workplaces_unenroll": {
         const a=args as {workplaceId:string;studentId:string};
         return {data:await workplacesUnenroll(db,teacherId,a.workplaceId,a.studentId)};
+      }
+      case "ccp_v1_sessions_ad_hoc_create": {
+        const a=args as {workplaceId:string;studentIds:string[];title:string;
+          startsAt:string;durationMinutes:number;lessonNote:string;idempotencyKey:string};
+        return {data:await sessionsAdHocCreate(db,teacherId,{
+          ...a,requestId:a.idempotencyKey,
+        })};
       }
       case "ccp_v1_sessions_details": {
         const id=(args as {sessionId:string}).sessionId;

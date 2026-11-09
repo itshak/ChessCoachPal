@@ -6,7 +6,7 @@ import {
   CoachError,
   attendanceList, attendanceRecord,
   groupsCreate, groupsEnroll, groupsUnenroll, groupsList, groupsMembers,
-  sessionsCreate, sessionsList, sessionsParticipants, studentsSearch,
+  sessionsCreate, sessionsAdHocCreate, sessionsList, sessionsParticipants, studentsSearch,
   workplacesCreate, workplacesList, workplacesUpdate, workplacesEnroll, workplacesUnenroll, workplacesEnrollments,
   studentsCreate, studentsUpdate, groupsUpdate, sessionsUpdate, assertTimezone,
 } from "@/lib/server/coach-service";
@@ -60,6 +60,12 @@ const calls = z.discriminatedUnion("action", [
   }).refine(v => Boolean(v.groupId) !== Boolean(v.studentId), {
     message: "Provide exactly one of groupId or studentId",
   }),
+  z.object({ action: z.literal("sessions.createAdHoc"),workplaceId:uuid,
+    studentIds:z.array(uuid).min(2).max(50),title:z.string().trim().min(1).max(160),
+    startsAt:z.string().datetime({offset:true}),
+    durationMinutes:z.number().int().min(15).max(480),
+    lessonNote:z.string().max(10000).default(""),requestId:uuid,
+  }),
   z.object({ action: z.literal("sessions.update"), sessionId: uuid,
     title: z.string().trim().min(1).max(160).optional(),
     startsAt: z.string().datetime({ offset: true }).optional(),
@@ -99,7 +105,7 @@ const toolNames = [
   "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll", "workplaces.unenroll", "workplaces.enrollments",
   "students.search", "students.create", "students.update",
   "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
-  "sessions.list", "sessions.create", "sessions.update", "sessions.participants",
+  "sessions.list", "sessions.create", "sessions.createAdHoc", "sessions.update", "sessions.participants",
   "attendance.list", "attendance.record",
   "chess.categories.list","chess.categories.create","chess.categories.update",
   "chess.observations.list","chess.observations.create","chess.observations.propose",
@@ -209,6 +215,8 @@ export async function POST(req: NextRequest) {
         result = await sessionsCreate(db, teacherId, call); break;
       case "sessions.update":
         result = await sessionsUpdate(db, teacherId, call.sessionId, call); break;
+      case "sessions.createAdHoc":
+        result=await sessionsAdHocCreate(db,teacherId,call);break;
       case "sessions.participants":
         result = await sessionsParticipants(db, teacherId, call.sessionId); break;
       case "attendance.list":
