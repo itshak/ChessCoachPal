@@ -12,15 +12,18 @@ import { useTeacherTheme } from "@/components/teacher/TeacherThemeProvider";
 import { IosInstallHint } from "@/components/pwa/IosInstallHint";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", tour: "dashboard" },
+  { href: "/dashboard", label: "Today", tour: "dashboard" },
   { href: "/students", label: "Students", tour: "students" },
-  { href: "/coaching", label: "Coaching", tour: "coaching" },
-  { href: "/learning", label: "Chess learning", tour: "learning" },
-  { href: "/families", label: "Families", tour: "families" },
-  { href: "/schedule", label: "Schedule", tour: "schedule" },
-  { href: "/events", label: "Events", tour: "events" },
-  { href: "/billing", label: "Billing", tour: "billing" },
-  { href: "/studio", label: "Studio", tour: "studio" },
+  { href: "/coaching", label: "Lessons", tour: "coaching" },
+  { href: "/learning", label: "Training & Materials", tour: "learning" },
+  { href: "/schedule", label: "Calendar", tour: "schedule" },
+  { href: "/reports", label: "Reports", tour: "reports" },
+];
+const secondaryNavItems = [
+  { href: "/families", label: "Contacts & Guardians", tour: "families" },
+  { href: "/events", label: "Chess events", tour: "events" },
+  { href: "/billing", label: "Business & billing", tour: "billing" },
+  { href: "/studio", label: "Coaching settings", tour: "studio" },
 ];
 
 function NavTab({
@@ -225,6 +228,7 @@ export function TeacherNav({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [moreOpen,setMoreOpen] = useState(false);
 
   return (
     <header className="bg-surface border-b border-border">
@@ -259,6 +263,19 @@ export function TeacherNav({
                 </NavTab>
               );
             })}
+            <div className="relative">
+              <button type="button" className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${secondaryNavItems.some(item=>pathname.startsWith(item.href))?"bg-primary/10 text-primary":"text-muted hover:text-foreground hover:bg-surface-dim"}`}
+                aria-label="More coaching options" aria-expanded={moreOpen} onClick={()=>setMoreOpen(v=>!v)}>
+                More
+              </button>
+              {moreOpen&&<div className="absolute top-full right-0 mt-2 w-56 rounded-lg border border-border bg-surface z-50 shadow-lg p-1">
+                {secondaryNavItems.map(item=><Link key={item.href} href={item.href} data-tour={item.tour}
+                  onClick={()=>setMoreOpen(false)}
+                  className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-surface-dim">
+                  {item.label}
+                </Link>)}
+              </div>}
+            </div>
           </nav>
         </div>
 
@@ -320,6 +337,12 @@ export function TeacherNav({
               </NavTab>
             );
           })}
+          <div className="pt-2 text-xs text-muted font-semibold px-3">More coaching tools</div>
+          {secondaryNavItems.map(item=><NavTab key={item.href} href={item.href} tour={item.tour}
+            active={pathname.startsWith(item.href)} onClick={()=>setMobileOpen(false)}
+            className="block px-3 py-2 rounded-lg text-sm text-muted hover:text-foreground hover:bg-surface-dim">
+            {item.label}
+          </NavTab>)}
         </div>
       )}
     </header>
