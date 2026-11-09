@@ -53,7 +53,10 @@ const read=async(page:import("@playwright/test").Page,wp:string,day:string)=>{
 test("PARITY:PARITY-reports-workplace-summary uses same timezone-local calculation",async({page,request})=>{
  const callTool=await delegatedTool(page,request),day="2042-03-04";
  const {workplaceId}=await fixture(callTool,page,day);
- const site=await read(page,workplaceId,day);
+ const siteResponse=await page.request.get("/api/coaching/report?"+
+   new URLSearchParams({workplaceId,from:day,to:day}));
+ expect(siteResponse.status(),await siteResponse.text()).toBe(200);
+ const site=await siteResponse.json();
  const mcp=await callTool("ccp_v1_reports_workplace_summary",{
    workplaceId,from:day,to:day,format:"json",
  });
@@ -69,7 +72,10 @@ test("PARITY:PARITY-reports-workplace-summary uses same timezone-local calculati
 test("PARITY:PARITY-reports-group-teacher-minutes counts one teacher hour",async({page,request})=>{
  const callTool=await delegatedTool(page,request),day="2042-03-05";
  const {workplaceId}=await fixture(callTool,page,day);
- const site=await read(page,workplaceId,day);
+ const siteResponse=await page.request.get("/api/coaching/report?"+
+   new URLSearchParams({workplaceId,from:day,to:day}));
+ expect(siteResponse.status(),await siteResponse.text()).toBe(200);
+ const site=await siteResponse.json();
  const mcp=await callTool("ccp_v1_reports_workplace_summary",{
    workplaceId,from:day,to:day,
  });
@@ -82,7 +88,10 @@ test("PARITY:PARITY-reports-group-teacher-minutes counts one teacher hour",async
 test("PARITY:PARITY-reports-attendance-breakdown distinguishes marked and unmarked",async({page,request})=>{
  const callTool=await delegatedTool(page,request),day="2042-03-06";
  const {workplaceId}=await fixture(callTool,page,day);
- const site=await read(page,workplaceId,day);
+ const siteResponse=await page.request.get("/api/coaching/report?"+
+   new URLSearchParams({workplaceId,from:day,to:day}));
+ expect(siteResponse.status(),await siteResponse.text()).toBe(200);
+ const site=await siteResponse.json();
  const mcp=await callTool("ccp_v1_reports_workplace_summary",{
    workplaceId,from:day,to:day,
  });
@@ -96,7 +105,10 @@ test("PARITY:PARITY-reports-attendance-breakdown distinguishes marked and unmark
 test("PARITY:PARITY-reports-csv-text export exactly the browser JSON calculation",async({page,request})=>{
  const callTool=await delegatedTool(page,request),day="2042-03-07";
  const {workplaceId}=await fixture(callTool,page,day);
- const site=await read(page,workplaceId,day);
+ const siteResponse=await page.request.get("/api/coaching/report?"+
+   new URLSearchParams({workplaceId,from:day,to:day}));
+ expect(siteResponse.status(),await siteResponse.text()).toBe(200);
+ const site=await siteResponse.json();
  const csv=await callTool("ccp_v1_reports_workplace_summary",{
    workplaceId,from:day,to:day,format:"csv",
  });
