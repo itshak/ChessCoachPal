@@ -18,6 +18,7 @@ import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} fro
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
 import {teacherCalendarFeedStatus,teacherCalendarFeedRotate,CalendarFeedTokenError} from "@/lib/server/teacher-calendar-feed-service";
 import {teacherProfileGet,teacherProfileUpdate,TeacherProfileError} from "@/lib/server/teacher-profile-service";
+import {teacherStudentProgressReport} from "@/lib/server/teacher-student-progress-service";
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
   TeacherOverviewError } from "@/lib/server/teacher-overview-service";
 
@@ -417,6 +418,11 @@ const catalogue = [
     description:"Permanently delete an event and associated RSVP records only after explicit teacher confirmation.",
     schema:z.object({eventId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_reports_student_progress",
+    description:"Read factual teacher-attested student progress: 1–10 strength, optional chess platform ratings, latest skill assessments with assessment counts, and full non-voided material evidence coverage. No inferred mastery or guardian/private notes.",
+    schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_v1_teacher_profile_get",
@@ -1213,6 +1219,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {eventId:string};
         return {data:await teacherEventDelete(db,teacherId,a.eventId)};
       }
+      case "ccp_v1_reports_student_progress":
+        return {data:await teacherStudentProgressReport(
+          db,teacherId,(args as {studentId:string}).studentId)};
       case "ccp_v1_teacher_profile_get":
         return {data:await teacherProfileGet(db,teacherId)};
       case "ccp_v1_teacher_profile_update": {

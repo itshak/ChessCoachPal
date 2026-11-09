@@ -313,6 +313,18 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/student-progress/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [
+        "ccp_v1_reports_student_progress"
+      ],
+      "explanation": "New shared factual student progress report aggregates teacher-approved 1–10 strength, latest recorded skill assessments and explicitly attested material-stage coverage; avoids inferred mastery/guardian data. Await independently named OAuth/browser E2E acceptance."
+    },
+    {
       "path": "app/api/coaching/unified-lessons/route.ts",
       "methods": [
         "GET"
