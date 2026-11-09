@@ -134,7 +134,7 @@ test("PARITY:PARITY-students-private-notes redacts default MCP read and permits 
   const after=await callTool("ccp_v1_students_profile",{
     studentId:id,includePrivate:true,confirmed:true,
   });
-  expect(after.data.teacher_notes).toBeNull();
+  expect(after.data.teacher_notes).toBe("");
 });
 
 test("PARITY:PARITY-students-rate-fee corrects money fields bidirectionally with scoped access",async({page,request})=>{
