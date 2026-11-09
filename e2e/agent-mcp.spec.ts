@@ -1431,6 +1431,12 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect((await observationFromWeb.json()).data.find(
     (x:{id:string})=>x.id===observationId).observation)
     .toBe("Student understands opposition and key squares");
+  const deniedBearerApproval=await request.post("/api/agent/v1",{
+    data:{action:"chess.observations.approve",observationId},
+    headers:{Authorization:"Bearer "+session!.access_token},
+  });
+  expect(deniedBearerApproval.status()).toBe(403);
+  expect((await deniedBearerApproval.json()).error.code).toBe("BROWSER_APPROVAL_REQUIRED");
   const approvedInBrowser=await page.request.post("/api/agent/v1",{
     data:{action:"chess.observations.approve",observationId},
   });
