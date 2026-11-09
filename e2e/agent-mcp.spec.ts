@@ -182,6 +182,75 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
 
   const workplace=await postDomain({action:"workplaces.create",name:"Agent test "+suffix,timezone:"UTC"});
   const student=await postDomain({action:"students.create",name:"Agent synthetic learner "+suffix});
+
+  // Instructor-assigned homework has its own lifecycle, distinct from the
+  // typed chess material and independently reviewed skill assessments.
+  for(const toolName of ["ccp_v1_training_assignments_list",
+    "ccp_v1_training_assignments_create","ccp_v1_training_attempt_record",
+    "ccp_v1_training_review_record"])
+    expect(names).toContain(toolName);
+  const homeworkInput={
+    studentIds:[student.id],materialId:typedGameMaterialId,
+    instructions:"Annotate two alternative moves",dueOn:null,
+    requestId:randomUUID(),confirmed:true,
+  };
+  const assigned=(await mcp("tools/call",{
+    name:"ccp_v1_training_assignments_create",arguments:homeworkInput,
+  })).structuredContent;
+  expect(assigned.error).toBeUndefined();
+  expect(assigned.data.studentCount).toBe(1);
+  expect(assigned.data.replayed).toBe(false);
+  const homeworkId=assigned.data.assignmentIds[0] as string;
+  const replayedHomework=(await mcp("tools/call",{
+    name:"ccp_v1_training_assignments_create",arguments:homeworkInput,
+  })).structuredContent;
+  expect(replayedHomework.data.assignmentIds[0]).toBe(homeworkId);
+  expect(replayedHomework.data.replayed).toBe(true);
+  const homeworkRange=new URLSearchParams({studentId:student.id,limit:"30",offset:"0"});
+  const homeworkWeb=await page.request.get("/api/training/assignments?"+homeworkRange);
+  expect(homeworkWeb.status(),await homeworkWeb.text()).toBe(200);
+  const homeworkMcp=(await mcp("tools/call",{
+    name:"ccp_v1_training_assignments_list",
+    arguments:{studentId:student.id,limit:30,offset:0},
+  })).structuredContent;
+  expect(homeworkMcp.error).toBeUndefined();
+  expect(homeworkMcp.data).toEqual(await homeworkWeb.json());
+  expect(homeworkMcp.data.assignments[0].learning_materials.kind).toBe("game");
+  const attemptArgs={
+    assignmentId:homeworkId,outcome:"completed",note:"Coach observed homework completed",
+    requestId:randomUUID(),confirmed:true,
+  };
+  const attemptResult=(await mcp("tools/call",{
+    name:"ccp_v1_training_attempt_record",arguments:attemptArgs,
+  })).structuredContent;
+  expect(attemptResult.error).toBeUndefined();
+  const completedAttemptId=attemptResult.data.attemptId as string;
+  const attemptRepeat=(await mcp("tools/call",{
+    name:"ccp_v1_training_attempt_record",arguments:attemptArgs,
+  })).structuredContent;
+  expect(attemptRepeat.data.attemptId).toBe(completedAttemptId);
+  expect(attemptRepeat.data.replayed).toBe(true);
+  const review=await page.request.patch("/api/training/assignments",{data:{
+    action:"review",assignmentId:homeworkId,attemptId:completedAttemptId,
+    verdict:"needs_work",feedback:"Explain the missed candidate move",
+    requestId:randomUUID(),confirmed:true,
+  }});
+  expect(review.status(),await review.text()).toBe(200);
+  const reviewedHomework=(await mcp("tools/call",{
+    name:"ccp_v1_training_assignments_list",
+    arguments:{studentId:student.id,limit:30,offset:0},
+  })).structuredContent;
+  expect(reviewedHomework.error).toBeUndefined();
+  expect(reviewedHomework.data.assignments[0].assignment_attempts[0].outcome).toBe("completed");
+  expect(reviewedHomework.data.assignments[0].assignment_reviews[0].verdict).toBe("needs_work");
+  const reviewedWeb=await page.request.get("/api/training/assignments?"+homeworkRange);
+  expect(reviewedHomework.data).toEqual(await reviewedWeb.json());
+  const invalidHomework=(await mcp("tools/call",{
+    name:"ccp_v1_training_assignments_create",
+    arguments:{...homeworkInput,requestId:randomUUID(),materialId:randomUUID()},
+  })).structuredContent;
+  expect(invalidHomework.error.code).toBe("NOT_FOUND");
+
   const group=await postDomain({action:"groups.create",workplaceId:workplace.id,name:"Class "+suffix});
   await postDomain({action:"groups.enroll",groupId:group.id,studentId:student.id});
   const sessionRecord=await postDomain({action:"sessions.create",requestId:randomUUID(),
