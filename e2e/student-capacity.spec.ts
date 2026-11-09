@@ -114,3 +114,46 @@ test("unmetered self-hosted teacher is not subjected to hosted cap", async () =>
   expect(counter?.active_student_count).toBe(4);
   expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
 });
+
+
+test("new hosted trial teacher cannot bypass free cap after trial expires",async()=>{
+  const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+  });
+  const email="hosted-origin-"+randomUUID()+"@example.com";
+  const password="SyntheticOrigin-123!";
+  const {data:user,error:userError}=await admin.auth.admin.createUser({
+    email,password,email_confirm:true,
+  });
+  expect(userError).toBeNull();
+  const id=user.user!.id;
+  const {error:createError}=await admin.from("teachers").insert({
+    id,email,display_name:"Hosted origin protection",
+    hosted_plan:"trial",trial_ends_at:"2020-01-01T00:00:00Z",
+    hosted_max_active_students:1,
+    // hosted_enforced intentionally omitted: production signup default.
+  });
+  expect(createError).toBeNull();
+  const {data:teacher,error:fetchError}=await admin.from("teachers")
+    .select("hosted_enforced,hosted_plan,active_student_count")
+    .eq("id",id).single();
+  expect(fetchError).toBeNull();
+  expect(teacher).toMatchObject({
+    hosted_enforced:true,hosted_plan:"trial",active_student_count:0,
+  });
+  const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+  });
+  expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();
+  const attempts=await Promise.all([0,1,2,3].map(i=>auth.from("students")
+    .insert({teacher_id:id,name:"Origin learner "+i+" "+randomUUID()})
+    .select("id").single()));
+  expect(attempts.filter(x=>!x.error)).toHaveLength(1);
+  expect(attempts.filter(x=>x.error?.message.includes("HOSTED_LIMIT_REACHED")))
+    .toHaveLength(3);
+  const {data:counter}=await admin.from("teachers").select("active_student_count")
+    .eq("id",id).single();
+  expect(counter?.active_student_count).toBe(1);
+  expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
+});
