@@ -7,6 +7,7 @@ import {
 } from "@/lib/server/coach-service";
 
 import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
+  chessCategoriesDeleteImpact, chessCategoriesDelete,
   chessObservationsList, chessObservationsCreate, chessObservationsUpdate,
   chessResourcesList, chessResourcesCreate, chessResourcesUpdate } from "@/lib/server/chess-learning";
 import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
@@ -715,6 +716,18 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_chess_categories_delete_impact",
+    description:"Preview whether a teacher-owned chess skill category has historical observations. Used before a confirmed deletion.",
+    schema:z.object({categoryId:chessUuid}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_chess_categories_delete",
+    description:"Delete only an unused teacher-owned chess skill category after explicit confirmation. Never erase recorded chess observations.",
+    schema:z.object({categoryId:chessUuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_v1_chess_observations_update",
     description:"Correct a teacher-owned existing chess observation, skill category or observation date. Do not silently alter confirmed history; teacher approval required.",
     schema:z.object({observationId:chessUuid,observation:observationText.optional(),
@@ -1369,6 +1382,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_chess_categories_update": {
         const a=args as {categoryId:string;name?:string;description?:string;sortOrder?:number};
         return {data:await chessCategoriesUpdate(db,teacherId,a.categoryId,a)};
+      }
+      case "ccp_v1_chess_categories_delete_impact": {
+        const a=args as {categoryId:string};
+        return {data:await chessCategoriesDeleteImpact(db,teacherId,a.categoryId)};
+      }
+      case "ccp_v1_chess_categories_delete": {
+        const a=args as {categoryId:string;confirmed:true};
+        return {data:await chessCategoriesDelete(db,teacherId,a.categoryId)};
       }
       case "ccp_v1_chess_observations_update": {
         const a=args as {observationId:string;observation?:string;categoryId?:string;observedAt?:string};
