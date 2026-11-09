@@ -11,7 +11,7 @@ async function draftInvoice(){
    });
  const name="Atomic invoice family "+randomUUID().slice(0,8);
  const {data:guardian,error:guardianError}=await admin.from("guardians")
-   .insert({teacher_id:teacherId,name}).select("id").single();
+   .insert({teacher_id:teacherId,name,portal_token:randomUUID()}).select("id").single();
  expect(guardianError).toBeNull();
  const {data:invoice,error:invoiceError}=await admin.from("invoices").insert({
    teacher_id:teacherId,guardian_id:guardian!.id,period_start:"2041-05-01",
