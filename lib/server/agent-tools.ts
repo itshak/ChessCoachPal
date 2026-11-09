@@ -238,9 +238,10 @@ const catalogue = [
   },
   {
     name:"ccp_v1_import_spreadsheet_commit",
-    description:"Commit up to 500 reviewed student/family rows; detects existing student names and enforces teacher scope/free-tier limits. Explicit teacher confirmation required; partial success can occur.",
+    description:"Atomically import up to 500 reviewed student/family rows with explicit approval and idempotent receipts. A failed batch rolls back all student and family writes. Archived names are deduplicated.",
     schema:z.object({rows:z.array(z.record(z.string(),z.string())).min(1).max(500),
-      mapping:z.record(z.string(),z.string().nullable()),confirmed:z.literal(true)}).strict(),
+      mapping:z.record(z.string(),z.string().nullable()),confirmed:z.literal(true),
+      idempotencyKey:uuid.optional()}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -997,11 +998,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherSpreadsheetSuggest(db,teacherId,a)};
       }
       case "ccp_v1_import_spreadsheet_commit": {
-        const a=args as {rows:Record<string,string>[];mapping:ColumnMapping};
+        const a=args as {rows:Record<string,string>[];mapping:ColumnMapping;idempotencyKey?:string};
         const response=await teacherSpreadsheetCommit(db,teacherId,a);
         const data=await response.json();
         if(!response.ok)
-          return {error:{code:response.status===403?"LIMIT_REACHED":"VALIDATION_ERROR",
+          return {error:{code:response.status===403?"HOSTED_LIMIT_REACHED":
+            response.status===409?"CONFLICT":"VALIDATION_ERROR",
             message:data.error??"Spreadsheet import failed"}};
         return {data};
       }

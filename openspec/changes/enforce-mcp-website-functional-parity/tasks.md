@@ -133,3 +133,7 @@ Added a confirmed `ccp_v1_workplaces_unenroll` command and website `workplaces.u
 ## Phase T: atomic hosted student quotas (PR #44, pending test verification)
 
 A `BEFORE INSERT/UPDATE/DELETE` database trigger serializes every active-student reservation on a teacher row and rejects concurrent overcapacity writes, including direct SQL, imports and reactivations. Only trusted server onboarding stores hosted deployment mode and cap, and teacher JWTs cannot tamper with counters or plan. Expired entitlement demotion has a tightly scoped RPC. Direct database archiving now checks future lesson and active group commitments. **B2 and B8 stay unchecked** until transactional imports, full scenario signoff and merged-main tests prove closure; do not archive.
+
+## Phase U: transactional spreadsheet import and replay receipts (pending verification)
+
+Replaces the row-by-row partial-success importer with a single tenant-scoped PostgreSQL transaction: teacher-row locking, student-name/archived dedup, family creation/reuse, capacity reservation, and keyed receipt are all committed or rolled back together. Website and MCP call the same RPC; a normalized-payload derived default retry key and optional explicit idempotency key reject changed-payload replays. The E2E suite must prove full rollback on quota conflicts, safe rerun, no portal credential exposure and cross-teacher denial. **B7 and the 93-case matrix remain unchecked** pending exhaustive transfer/import/export validation and merged-main acceptance.
