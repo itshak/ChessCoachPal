@@ -9,7 +9,8 @@ import {
 import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
   chessCategoriesDeleteImpact, chessCategoriesDelete,
   chessObservationsList, chessObservationsCreate, chessObservationsUpdate,
-  chessResourcesList, chessResourcesCreate, chessResourcesUpdate } from "@/lib/server/chess-learning";
+  chessResourcesList, chessResourcesCreate, chessResourcesUpdate,
+  chessResourcesUnlinkImpact, chessResourcesUnlink } from "@/lib/server/chess-learning";
 import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import { reportCsv, reportText } from "@/lib/coaching-report";
@@ -716,6 +717,18 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_chess_resources_unlink_impact",
+    description:"Preview linked teacher-attested material claims before removing a study URL. Refuse history loss.",
+    schema:z.object({resourceId:chessUuid}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_chess_resources_unlink",
+    description:"Unlink only a teaching resource with no historical claims after explicit confirmation; does not erase learning history.",
+    schema:z.object({resourceId:chessUuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_v1_chess_categories_delete_impact",
     description:"Preview whether a teacher-owned chess skill category has historical observations. Used before a confirmed deletion.",
     schema:z.object({categoryId:chessUuid}).strict(),
@@ -1394,6 +1407,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_chess_observations_update": {
         const a=args as {observationId:string;observation?:string;categoryId?:string;observedAt?:string};
         return {data:await chessObservationsUpdate(db,teacherId,a.observationId,a)};
+      }
+      case "ccp_v1_chess_resources_unlink_impact": {
+        const a=args as {resourceId:string};
+        return {data:await chessResourcesUnlinkImpact(db,teacherId,a.resourceId)};
+      }
+      case "ccp_v1_chess_resources_unlink": {
+        const a=args as {resourceId:string;confirmed:true};
+        return {data:await chessResourcesUnlink(db,teacherId,a.resourceId)};
       }
       case "ccp_v1_chess_resources_update": {
         const a=args as {resourceId:string;label?:string;url?:string;resourceType?:"lichess_study"|"external"};
