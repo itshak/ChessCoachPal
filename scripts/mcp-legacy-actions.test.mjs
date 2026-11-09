@@ -9,7 +9,7 @@ test("every legacy business action has a registered MCP tool or reviewed teacher
   assert.deepEqual(validateLegacyActionCoverage(gateway,catalogue),[]);
 });
 test("a new website gateway action without MCP coverage cannot pass",()=>{
-  const edited=gateway.replace('action:z.literal("workplaces.list")',
+  const edited=gateway.replace(/action\s*:\s*z\.literal\("workplaces.list"\)/,
     'action:z.literal("unreviewed.action")');
   assert.match(validateLegacyActionCoverage(edited,catalogue).join("\n"),/Unreviewed legacy website action/);
 });
