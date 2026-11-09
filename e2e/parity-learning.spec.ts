@@ -1,6 +1,8 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {createClient} from "@supabase/supabase-js";
+import {SEED_TEACHER} from "./helpers/auth";
 
 async function firstStudent(page:import("@playwright/test").Page){
  const r=await page.request.get("/api/students?limit=1");
@@ -116,4 +118,49 @@ test("PARITY:PARITY-chess-resources validates trusted HTTPS links on both transp
    url:hostile,resourceType:"lichess_study",
  }});
  expect(refusedSite.status()).toBe(400);
+});
+
+
+test("PARITY:PARITY-chess-observation-attestation blocks bearer self-verification",async({page,request})=>{
+  const callTool=await delegatedTool(page,request);
+  const studentId=await firstStudent(page);
+  const categories=(await callTool("ccp_v1_chess_categories_list",{})).data as Array<{id:string}>;
+  expect(categories.length).toBeGreaterThan(0);
+  const categoryId=categories[0].id;
+  const proposed=await callTool("ccp_v1_chess_observations_propose",{
+    studentId,categoryId,observation:"Not yet verified "+randomUUID(),
+    requestId:randomUUID(),
+  });
+  expect(proposed.error).toBeUndefined();
+  expect(proposed.data.verified_at).toBeNull();
+  const website=await page.request.post("/api/agent/v1",{data:{
+    action:"chess.observations.create",studentId,categoryId,
+    observation:"Directly teacher-attested observation "+randomUUID(),
+    requestId:randomUUID(),
+  }});
+  expect(website.status(),await website.text()).toBe(201);
+  const verified=(await website.json()).data as {
+    id:string;source:string;verified_at:string|null;verified_by:string|null;
+  };
+  expect(verified.source).toBe("teacher");
+  expect(verified.verified_at).toBeTruthy();
+  expect(verified.verified_by).toBeTruthy();
+  const mcpList=(await callTool("ccp_v1_chess_observations_list",{studentId}))
+    .data as Array<{id:string;verified_at:string|null}>;
+  expect(mcpList.find(x=>x.id===verified.id)?.verified_at).toBeTruthy();
+  expect(mcpList.find(x=>x.id===proposed.data.id)?.verified_at).toBeNull();
+
+  const bearer=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {auth:{persistSession:false,autoRefreshToken:false}});
+  const {data:{session},error}=await bearer.auth.signInWithPassword(SEED_TEACHER);
+  expect(error).toBeNull();
+  expect(session).toBeTruthy();
+  const rejected=await request.post("/api/agent/v1",{
+    headers:{Authorization:"Bearer "+session!.access_token},
+    data:{action:"chess.observations.create",studentId,categoryId,
+      observation:"Forged model attestation",requestId:randomUUID()},
+  });
+  expect(rejected.status(),await rejected.text()).toBe(403);
+  expect((await rejected.json()).error.code).toBe("BROWSER_APPROVAL_REQUIRED");
 });
