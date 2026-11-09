@@ -109,7 +109,7 @@ test("PARITY:PARITY-workplaces-create preserves timezone currency and locale on 
     action:"workplaces.create",name:"Browser parity "+randomUUID(),
     timezone:zone,currency,locale,policy:{},
   }});
-  expect(website.status(),await website.text()).toBe(200);
+  expect(website.status(),await website.text()).toBe(201);
   const siteRow=(await website.json()).data as {id:string;timezone:string;currency:string;locale:string};
   const receipt=await callTool("ccp_v1_workplaces_create",{
     name:"MCP parity "+randomUUID(),timezone:zone,currency,locale,policy:{},
@@ -161,7 +161,7 @@ test("PARITY:PARITY-workplaces-enroll records only owned students through both s
   const websiteStudent=await page.request.post("/api/agent/v1",{data:{
     action:"students.create",name:"Browser member "+randomUUID(),
   }});
-  expect(websiteStudent.status()).toBe(200);
+  expect(websiteStudent.status()).toBe(201);
   const secondId=(await websiteStudent.json()).data.id as string;
   const websiteEnrollment=await page.request.post("/api/agent/v1",{data:{
     action:"workplaces.enroll",workplaceId:workplace.entityId,studentId:secondId,
