@@ -18,7 +18,47 @@ concurrency:
   group: chesscoachpal-release
   cancel-in-progress: false
 jobs:
+  verify_vercel_credentials:
+    name: Verify Vercel production access (no deployment)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      VERCEL_ORG_ID: team_aZxN1BOwcDQOlq3QUY6ljI4r
+      VERCEL_PROJECT_ID: prj_44EgXG3SrKoKN3KLPltt7KTVlIrF
+    steps:
+      - name: Require repository-level Vercel token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "${VERCEL_TOKEN:-}" ]]; then
+            echo "::error::Missing repository-level VERCEL_TOKEN Actions secret."
+            exit 1
+          fi
+      - name: Checkout (no repository scripts executed)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Install pinned Vercel CLI
+        run: npm install --global vercel@65.12.1
+      - name: Verify token and target production project without deploying
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'rm -rf .vercel' EXIT
+          vercel pull --yes --environment=production
+          echo "Vercel production project configuration fetched successfully; no deployment created."
+
   publish:
+    needs: verify_vercel_credentials
     outputs:
       published: ${{ steps.candidate.outputs.publish }}
       tag: v${{ steps.candidate.outputs.version }}
