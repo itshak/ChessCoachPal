@@ -17,6 +17,7 @@ import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
 import {teacherCalendarFeedStatus,teacherCalendarFeedRotate,CalendarFeedTokenError} from "@/lib/server/teacher-calendar-feed-service";
+import {teacherProfileGet,teacherProfileUpdate,TeacherProfileError} from "@/lib/server/teacher-profile-service";
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
   TeacherOverviewError } from "@/lib/server/teacher-overview-service";
 
@@ -415,6 +416,21 @@ const catalogue = [
     name:"ccp_v1_events_delete",
     description:"Permanently delete an event and associated RSVP records only after explicit teacher confirmation.",
     schema:z.object({eventId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_teacher_profile_get",
+    description:"Read this coach's display name and public avatar reference without authentication credentials or account email.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_teacher_profile_update",
+    description:"Update the coach's display name or their own approved avatar URL after explicit confirmation. Password, login email and MFA are website-only secured account operations.",
+    schema:z.object({
+      displayName:z.string().trim().min(1).max(200).optional(),
+      avatarUrl:z.string().url().max(2048).nullable().optional(),
+      confirmed:z.literal(true),
+    }).strict().refine(a=>a.displayName!==undefined||a.avatarUrl!==undefined,"No profile changes"),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1197,6 +1213,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {eventId:string};
         return {data:await teacherEventDelete(db,teacherId,a.eventId)};
       }
+      case "ccp_v1_teacher_profile_get":
+        return {data:await teacherProfileGet(db,teacherId)};
+      case "ccp_v1_teacher_profile_update": {
+        const a=args as {displayName?:string;avatarUrl?:string|null};
+        return {data:await teacherProfileUpdate(db,teacherId,a)};
+      }
       case "ccp_v1_calendar_feed_status":
         return {data:await teacherCalendarFeedStatus(db,teacherId)};
       case "ccp_v1_calendar_feed_rotate":
@@ -1607,6 +1629,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof InvoiceActionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherBillingError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof TeacherProfileError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CalendarFeedTokenError)
       return {error:{code:error.code,message:error.message}};

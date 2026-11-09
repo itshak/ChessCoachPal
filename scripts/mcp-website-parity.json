@@ -83,10 +83,13 @@
       "methods": [
         "PUT"
       ],
-      "kind": "auth",
-      "parity": "browser-only",
-      "existingTools": [],
-      "explanation": "Name/email/password account controls; secure browser"
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [
+        "ccp_v1_teacher_profile_get",
+        "ccp_v1_teacher_profile_update"
+      ],
+      "explanation": "Ordinary self-owned display name/avatar edits now share the same website/MCP validation, with confirmation and secure avatar path restriction. Sign-in email, passwords and MFA remain secure browser-only Supabase Auth operations. Await independent delegated E2E."
     },
     {
       "path": "app/api/auth/waitlist/route.ts",
