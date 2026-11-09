@@ -129,3 +129,7 @@ The website and delegated MCP deletion preflight remains advisory. Added a Postg
 ## Phase S: workplace enrollment removal parity (PR #44, pending review)
 
 Added a confirmed `ccp_v1_workplaces_unenroll` command and website `workplaces.unenroll` action invoking one teacher-owned service. PostgreSQL blocks deletes with live group membership or scheduled future direct lessons instead of silently cascading group-enrollment rows. Existing frozen session participants and teaching history remain immutable. The synthetic delegated OAuth E2E round-trips website and MCP enrollment/removal, proves repeat convergence and cross-tenant denial, and asserts a blocked live group cannot be removed from its workplace by either surface. **This is one B1 increment, not completed parity**; other lifecycle/history/corrective actions and 93-case signoffs remain outstanding.
+
+## Phase T: atomic hosted student quotas (PR #44, pending test verification)
+
+A `BEFORE INSERT/UPDATE/DELETE` database trigger serializes every active-student reservation on a teacher row and rejects concurrent overcapacity writes, including direct SQL, imports and reactivations. Only trusted server onboarding stores hosted deployment mode and cap, and teacher JWTs cannot tamper with counters or plan. Expired entitlement demotion has a tightly scoped RPC. Direct database archiving now checks future lesson and active group commitments. **B2 and B8 stay unchecked** until transactional imports, full scenario signoff and merged-main tests prove closure; do not archive.

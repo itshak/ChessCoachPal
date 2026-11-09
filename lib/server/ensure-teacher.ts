@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { hostedSignupFields } from "@/lib/entitlements";
+import { hostedSignupFields, getDeploymentMode, getHostedLimits } from "@/lib/entitlements";
 import { isUniqueViolation } from "@/lib/onboarding";
 import { ensureStudioPolicyRow } from "@/lib/server/ensure-policy";
 import { ensureWelcomeNotification } from "@/lib/server/notifications";
@@ -28,6 +28,8 @@ export async function ensureTeacherForAuthUser(
     .eq("id", opts.userId)
     .maybeSingle();
 
+  const hostedEnforced = getDeploymentMode()==="hosted";
+  const hostedCapacity = getHostedLimits().maxStudents;
   let created = false;
   let tourCompletedAt: string | null = existing?.onboarding_tour_completed_at ?? null;
 
@@ -44,6 +46,8 @@ export async function ensureTeacherForAuthUser(
       display_name: display,
       hosted_plan: hosted.hosted_plan,
       trial_ends_at: hosted.trial_ends_at,
+      hosted_enforced: hostedEnforced,
+      hosted_max_active_students: hostedCapacity,
     });
 
     if (error && isUniqueViolation(error)) {
@@ -60,6 +64,14 @@ export async function ensureTeacherForAuthUser(
       created = true;
       tourCompletedAt = null;
     }
+  }
+
+  // Entitlement provisioning is privileged and cannot be spoofed by a teacher JWT.
+  if (existing && hostedEnforced) {
+    const {error:capacityError}=await serviceClient.from("teachers").update({
+      hosted_enforced:true,hosted_max_active_students:hostedCapacity,
+    }).eq("id",opts.userId);
+    if(capacityError)return {ok:false,error:"Failed to verify hosted capacity"};
   }
 
   await ensureStudioPolicyRow(

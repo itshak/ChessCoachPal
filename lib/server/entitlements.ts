@@ -40,10 +40,8 @@ export async function persistDemotionIfNeeded(
 ): Promise<void> {
   if (!demotedFrom || !stored) return;
   if (stored.hosted_plan === "free") return;
-  const { error } = await supabase
-    .from("teachers")
-    .update({ hosted_plan: "free" })
-    .eq("id", teacherId);
+  const { error } = await supabase.rpc("ccp_demote_expired_hosted_plan");
+  void teacherId;
   if (error) {
     console.error("persistDemotionIfNeeded:", error);
   }

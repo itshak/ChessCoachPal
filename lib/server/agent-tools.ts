@@ -941,7 +941,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       });
       if (error) {
         const msg = error.message || "";
-        const code = /CONFLICT|23505|23P01/.test(msg)?"CONFLICT":
+        const code = /HOSTED_LIMIT_REACHED/.test(msg)?"HOSTED_LIMIT_REACHED":
+          /FUTURE_COMMITMENTS/.test(msg)?"FUTURE_COMMITMENTS":
+          /CONFLICT|23505|23P01/.test(msg)?"CONFLICT":
           /NOT_FOUND/.test(msg)?"NOT_FOUND":"VALIDATION_ERROR";
         return {error:{code,message:"Mutation rejected. Re-read the authorized record and verify IDs, revision, and schedule."}};
       }

@@ -126,6 +126,10 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
   let request = db.from("students").update(update).eq("teacher_id",teacherId).eq("id",studentId);
   if (expectedUpdatedAt) request = request.eq("updated_at",expectedUpdatedAt);
   const {data,error} = await request.select("*").maybeSingle();
+  if (error?.message?.includes("HOSTED_LIMIT_REACHED"))
+    throw new StudentProfileError(403,"HOSTED_LIMIT_REACHED","Active-student capacity reached");
+  if (error?.message?.includes("FUTURE_COMMITMENTS"))
+    throw new StudentProfileError(409,"FUTURE_COMMITMENTS","Resolve future commitments before archiving");
   if (error) throw new StudentProfileError(500,"DATABASE_ERROR","Student update failed");
   if (!data) throw new StudentProfileError(409,"CONFLICT","Student changed or was deleted; reload before editing");
   if (existing.guardian_id && patch.guardianId !== undefined && existing.guardian_id !== (patch.guardianId || null))

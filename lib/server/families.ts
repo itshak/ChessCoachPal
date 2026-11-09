@@ -149,10 +149,11 @@ export async function createStudentWithOptionalFamily(
     .single();
 
   if (error || !student) {
+    const capacity=error?.message?.includes("HOSTED_LIMIT_REACHED");
     return {
-      ok: false,
-      error: error?.message ?? "Failed to create student",
-      status: 500,
+      ok:false,
+      error:capacity?"Active-student capacity reached":error?.message ?? "Failed to create student",
+      status:capacity?403:500,
     };
   }
 
