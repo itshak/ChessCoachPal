@@ -312,9 +312,10 @@ const catalogue = [
   },
   {
     name:"ccp_v1_billing_invoice_draft_update",
-    description:"Edit the notes or replace every line of one identified draft invoice. Verify totals and lesson IDs before explicit confirmation; paid/sent invoices cannot be edited.",
+    description:"Atomically replace draft invoice lines and notes, with optional expected revision. A failed line/FK/payment guard rolls back the whole edit. Explicit confirmation required.",
     schema:z.object({invoiceId:uuid,changes:z.object({
       notes:z.string().max(2000).optional(),
+      expectedUpdatedAt:instant.optional(),
       items:z.array(z.object({
         id:uuid.optional(),lessonId:uuid.nullable().optional(),
         description:z.string().trim().min(1).max(500),

@@ -141,3 +141,7 @@ Replaces the row-by-row partial-success importer with a single tenant-scoped Pos
 ## Phase V: atomic ad-hoc sessions (pending full acceptance)
 
 Shared MCP `ccp_v1_sessions_ad_hoc_create` and browser `sessions.createAdHoc` call a single authenticated tenant-scoped RPC to create 2–50 student one-off sessions without permanent class groups. The database reserves teacher time under an advisory lock, atomically inserts a frozen roster and unmarked attendance, and rejects changed-request UUID replays. Direct API clients cannot write the special roster_mode column. Per-scenario browser/MCP and group-roster tests remain necessary; this is not full B3/C signoff.
+
+## Phase W: atomic invoice draft line edits (pending PR verification)
+
+A tenant-authorized SQL RPC locks the draft invoice and validates all replacement lines, lesson ownership, prepaid-credit restrictions, notes and optional revision before mutating any data. It deletes/recreates line rows, updates subtotal and notes, and commits or rolls back as a single transaction. Website and MCP use the exact shared service; no external payment/email side effects happen here. B6 remains unchecked until other invoice regeneration, payment settlement, checkout and communication transaction/replay cases pass in merged main.
