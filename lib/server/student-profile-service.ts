@@ -169,6 +169,9 @@ export async function teacherStudentDelete(db:Db,teacherId:string,studentId:stri
   const {data,error}=await db.from("students").delete().eq("teacher_id",teacherId)
     .eq("id",studentId).eq("updated_at",expectedUpdatedAt)
     .select("id,guardian_id").maybeSingle();
+  if(error?.code==="23503" && error.message?.includes("HISTORY_DEPENDENCIES"))
+    throw new StudentProfileError(409,"HISTORY_DEPENDENCIES",
+      "Linked teaching, group, chess progress or financial history exists. Archive the student instead.");
   if(error)throw new StudentProfileError(409,"DELETE_BLOCKED","Deletion failed; linked history or concurrent edits may exist");
   if(!data)throw new StudentProfileError(409,"CONFLICT","Student changed or was removed; re-read before deleting");
   if(data.guardian_id)await retireEmptyGuardians(db,teacherId,[data.guardian_id]);

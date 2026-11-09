@@ -682,6 +682,28 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     studentId:foreignStudent!.id,
   })).structuredContent.error.code).toBe("NOT_FOUND");
   expect((await page.request.delete("/api/students/"+empty.entityId)).status()).toBe(400);
+  // A linked row added *after* an empty preview must make even a raw
+  // authenticated SQL DELETE fail, not cascade teaching/workplace history.
+  const addedMembership=await postDomain({action:"workplaces.enroll",
+    workplaceId:madeWorkplace.entityId,studentId:empty.entityId});
+  expect(addedMembership.student_id).toBe(empty.entityId);
+  const rawDelete=await userClient.from("students").delete()
+    .eq("teacher_id",session!.user.id).eq("id",empty.entityId);
+  expect(rawDelete.error?.code).toBe("23503");
+  expect(rawDelete.error?.message).toContain("HISTORY_DEPENDENCIES");
+  const staleMcpDelete=(await call("ccp_v1_students_delete",{
+    studentId:empty.entityId,expectedUpdatedAt:studentDeleteImpact.updatedAt,confirmed:true,
+  })).structuredContent;
+  expect(staleMcpDelete.error.code).toBe("HISTORY_DEPENDENCIES");
+  const staleWebsiteDelete=await page.request.delete("/api/students/"+empty.entityId,{
+    data:{confirmed:true,expectedUpdatedAt:studentDeleteImpact.updatedAt},
+  });
+  expect(staleWebsiteDelete.status()).toBe(409);
+  expect((await staleWebsiteDelete.json()).code).toBe("HISTORY_DEPENDENCIES");
+  const {error:membershipRemovalError}=await userClient.from("workplace_enrollments")
+    .delete().eq("teacher_id",session!.user.id)
+    .eq("workplace_id",madeWorkplace.entityId).eq("student_id",empty.entityId);
+  expect(membershipRemovalError).toBeNull();
   const removedStudent=(await call("ccp_v1_students_delete",{
     studentId:empty.entityId,expectedUpdatedAt:studentDeleteImpact.updatedAt,confirmed:true,
   })).structuredContent;
