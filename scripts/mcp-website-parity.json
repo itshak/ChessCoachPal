@@ -51,9 +51,11 @@
         "ccp_v1_sessions_ad_hoc_create",
         "ccp_v1_sessions_edit",
         "ccp_v1_chess_categories_delete_impact",
-        "ccp_v1_chess_categories_delete"
+        "ccp_v1_chess_categories_delete",
+        "ccp_v1_chess_resources_unlink_impact",
+        "ccp_v1_chess_resources_unlink"
       ],
-      "explanation": "Shared teacher-scoped chess category edits, observation corrections and resource updates now have MCP counterparts. Agent-proposed observation approval remains an intentionally protected teacher-browser-only provenance action (MCP may read approved status). Legacy gateway workflows and 93 cases still await full evidence. Confirmed workplace unenrollment blocks live group membership and future direct sessions; this increment has delegated OAuth cross-surface readback but does not close all legacy gateway actions. Supports atomic multi-student 2–50 ad-hoc sessions with frozen roster via shared RPC and serialization of schedule conflicts. Session status/title/note/time corrections now have a confirmed revision-guarded MCP tool using the same atomic SQL RPC as website sessions.update; release behavioral acceptance remains open. Category deletion impact/confirmed deletion preserve attested observations via PostgreSQL FK restriction."
+      "explanation": "Shared teacher-scoped chess category edits, observation corrections and resource updates now have MCP counterparts. Agent-proposed observation approval remains an intentionally protected teacher-browser-only provenance action (MCP may read approved status). Legacy gateway workflows and 93 cases still await full evidence. Confirmed workplace unenrollment blocks live group membership and future direct sessions; this increment has delegated OAuth cross-surface readback but does not close all legacy gateway actions. Supports atomic multi-student 2–50 ad-hoc sessions with frozen roster via shared RPC and serialization of schedule conflicts. Session status/title/note/time corrections now have a confirmed revision-guarded MCP tool using the same atomic SQL RPC as website sessions.update; release behavioral acceptance remains open. Category deletion impact/confirmed deletion preserve attested observations via PostgreSQL FK restriction. Linked-resource unlink is available via both surfaces; FK protects historical material claims."
     },
     {
       "path": "app/api/auth/setup-teacher/route.ts",
