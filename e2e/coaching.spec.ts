@@ -101,3 +101,20 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await expect(page.getByLabel("Session status")).toHaveValue("completed");
   await expect(page.getByText(/Instructor time in this workplace/)).toContainText("60 minutes");
 });
+
+
+test("teacher navigation centers lessons and training; contacts and billing stay optional",async({page})=>{
+  await signInAsTeacher(page);
+  await page.goto("/dashboard");
+  const nav=page.getByRole("navigation").first();
+  for(const label of ["Today","Students","Lessons","Training & Materials","Calendar","Reports"])
+    await expect(nav.getByRole("link",{name:label,exact:true})).toBeVisible();
+  await expect(nav.getByRole("link",{name:"Families",exact:true})).toHaveCount(0);
+  await nav.getByRole("button",{name:"More coaching options"}).click();
+  await expect(nav.getByRole("link",{name:"Contacts & Guardians"})).toBeVisible();
+  await expect(nav.getByRole("link",{name:"Business & billing"})).toBeVisible();
+  await nav.getByRole("link",{name:"Reports",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Teaching reports"})).toBeVisible();
+  await page.goto("/learning");
+  await expect(page.getByRole("heading",{name:"Homework and training follow-up"})).toBeVisible();
+});
