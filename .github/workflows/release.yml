@@ -19,6 +19,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
+    outputs:
+      published: ${{ steps.candidate.outputs.publish }}
+      tag: v${{ steps.candidate.outputs.version }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -58,6 +61,16 @@ jobs:
             test "$(git rev-parse "refs/tags/${TAG}^{commit}")" = "$(git rev-parse HEAD)" || { echo "::error::Never reuse an existing unpublished tag"; exit 1; }
           fi
           echo "publish=true" >> "$GITHUB_OUTPUT"
+      # Fail before creating the tag when Vercel deploy credentials are missing.
+      - name: Require Vercel release token
+        if: steps.candidate.outputs.publish == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [[ -z "${VERCEL_TOKEN:-}" ]]; then
+            echo "::error::Set the VERCEL_TOKEN GitHub Actions secret before publishing a version."
+            exit 1
+          fi
       - name: Install
         if: steps.candidate.outputs.publish == 'true'
         run: npm ci
@@ -157,3 +170,57 @@ jobs:
           if [[ "$VERSION" == *-* ]]; then args+=(--prerelease); fi
           gh "${args[@]}"
           # GitHub provides source-code ZIP and tar.gz for every tagged release.
+
+  deploy_vercel:
+    name: Deploy version tag to Vercel production
+    needs: publish
+    # The normal release job creates the version tag with GITHUB_TOKEN.
+    # That tag push cannot trigger a separate on: push: tags workflow.
+    if: needs.publish.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: production
+    permissions:
+      contents: read
+    env:
+      VERCEL_ORG_ID: team_aZxN1BOwcDQOlq3QUY6ljI4r
+      VERCEL_PROJECT_ID: prj_44EgXG3SrKoKN3KLPltt7KTVlIrF
+      RELEASE_TAG: ${{ needs.publish.outputs.tag }}
+      RELEASE_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout the exact published version tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.publish.outputs.tag }}
+          persist-credentials: false
+
+      - name: Verify release tag points to tested commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Not a SemVer version tag: $RELEASE_TAG"
+            exit 1
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$RELEASE_SHA" ]]; then
+            echo "::error::Published tag is not the release-tested commit."
+            exit 1
+          fi
+
+      - name: Install pinned Vercel CLI
+        run: npm install --global vercel@65.12.1
+
+      - name: Pull Vercel production configuration
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=production
+
+      - name: Build Vercel production artifact
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod
+
+      - name: Deploy tagged artifact to Vercel production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy --prebuilt --prod --yes
