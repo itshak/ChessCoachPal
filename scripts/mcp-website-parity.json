@@ -810,10 +810,13 @@
       "methods": [
         "POST"
       ],
-      "kind": "auth",
-      "parity": "browser-only",
-      "existingTools": [],
-      "explanation": "Rotate calendar feed secret; approval/reauth"
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [
+        "ccp_v1_calendar_feed_status",
+        "ccp_v1_calendar_feed_rotate"
+      ],
+      "explanation": "Shared teacher-scoped calendar-feed rotation: signed-in website can view the regenerated secret, while confirmed MCP revocation deliberately redacts the new token. Acceptance requires an independent authenticated website/MCP test. Previously misclassified as browser-only."
     },
     {
       "path": "app/api/webhooks/stripe/[teacherId]/route.ts",

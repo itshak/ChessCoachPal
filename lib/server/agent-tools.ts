@@ -16,6 +16,7 @@ import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teach
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
+import {teacherCalendarFeedStatus,teacherCalendarFeedRotate,CalendarFeedTokenError} from "@/lib/server/teacher-calendar-feed-service";
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
   TeacherOverviewError } from "@/lib/server/teacher-overview-service";
 
@@ -415,6 +416,16 @@ const catalogue = [
     description:"Permanently delete an event and associated RSVP records only after explicit teacher confirmation.",
     schema:z.object({eventId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_calendar_feed_status",
+    description:"Check whether this teacher has an active calendar feed. Never returns the bearer link or token.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_calendar_feed_rotate",
+    description:"After explicit teacher confirmation, revoke the old calendar feed and generate a new link. The old link immediately stops working. The new secret is only available to the signed-in website, never to MCP.",
+    schema:z.object({confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_events_email_preview",
@@ -1186,6 +1197,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {eventId:string};
         return {data:await teacherEventDelete(db,teacherId,a.eventId)};
       }
+      case "ccp_v1_calendar_feed_status":
+        return {data:await teacherCalendarFeedStatus(db,teacherId)};
+      case "ccp_v1_calendar_feed_rotate":
+        return {data:await teacherCalendarFeedRotate(db,teacherId)};
       case "ccp_v1_events_email_preview": {
         const a=args as {eventId:string;includeRecipients:boolean;confirmed?:boolean};
         return {data:await teacherEventInvitePreview(
@@ -1592,6 +1607,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof InvoiceActionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherBillingError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof CalendarFeedTokenError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherEventError)
       return {error:{code:error.code,message:error.message}};
