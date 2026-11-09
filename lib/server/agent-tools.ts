@@ -50,7 +50,7 @@ import { oauthOrigin } from "@/lib/server/agent-oauth-core";
 import { teacherPolicyView, teacherPolicyUpdate } from "@/lib/server/teacher-policy-service";
 import {
  teacherEventsList,teacherEventDetail,teacherEventCreate,teacherEventUpdate,
- teacherEventDeleteImpact,teacherEventDelete,teacherEventInviteEmail,TeacherEventError,
+ teacherEventDeleteImpact,teacherEventDelete,teacherEventInviteEmail,teacherEventInvitePreview,TeacherEventError,
 } from "@/lib/server/teacher-events-service";
 import {
  teacherInvoicesList,teacherInvoiceDetail,safeInvoice,teacherPaymentsExport,TeacherBillingError,
@@ -415,6 +415,15 @@ const catalogue = [
     description:"Permanently delete an event and associated RSVP records only after explicit teacher confirmation.",
     schema:z.object({eventId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_events_email_preview",
+    description:"Preview exactly the event invitation subject/body and intended recipient counts, with no email sent. Add includeRecipients=true plus confirmed=true to reveal addresses. Never returns family portal tokens or URLs.",
+    schema:z.object({eventId:uuid,includeRecipients:z.boolean().default(false),
+      confirmed:z.literal(true).optional()}).strict()
+      .refine(a=>!a.includeRecipients||a.confirmed===true,
+        "Recipient contact details require explicit confirmation"),
+    scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_v1_events_email_invites",
@@ -1176,6 +1185,11 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_events_delete": {
         const a=args as {eventId:string};
         return {data:await teacherEventDelete(db,teacherId,a.eventId)};
+      }
+      case "ccp_v1_events_email_preview": {
+        const a=args as {eventId:string;includeRecipients:boolean;confirmed?:boolean};
+        return {data:await teacherEventInvitePreview(
+          db,teacherId,a.eventId,a.includeRecipients&&a.confirmed===true)};
       }
       case "ccp_v1_events_email_invites": {
         const a=args as {eventId:string};

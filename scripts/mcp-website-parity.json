@@ -349,14 +349,16 @@
     {
       "path": "app/api/events/[id]/email/route.ts",
       "methods": [
+        "GET",
         "POST"
       ],
       "kind": "teacher",
       "parity": "gap",
       "existingTools": [
+        "ccp_v1_events_email_preview",
         "ccp_v1_events_email_invites"
       ],
-      "explanation": "MCP invitations require explicit email approval, website uses shared sending service. Exactly-once email delivery needs work."
+      "explanation": "Shared owner-scoped non-mutating invitation preview and actual send now render from identical templates. GET website and delegated MCP preview redact portal tokens, require explicit confirmation for recipient contacts. Sending still requires explicit write/email approval and lacks verified exactly-once receipts; route remains gap until full delivery/replay acceptance."
     },
     {
       "path": "app/api/events/[id]/route.ts",

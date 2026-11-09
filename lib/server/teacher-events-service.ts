@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateEventEndAfterStart } from "@/lib/events";
 import { oneToOne } from "@/lib/schedule";
 import { familyDisplayName } from "@/lib/guardians";
-import { loadEventForEmail, sendEventEmails } from "@/lib/server/event-email";
+import { loadEventForEmail, previewEventEmails, sendEventEmails } from "@/lib/server/event-email";
 import { getPolicy } from "@/lib/server/scheduling";
 import type { RsvpStatus } from "@/lib/supabase/types";
 
@@ -192,6 +192,15 @@ export async function teacherEventDelete(db:Db,teacherId:string,id:string){
  if(error)throw failure(500,"DATABASE_ERROR","Unable to delete event");
  if(!data)throw failure(404,"NOT_FOUND","Event not found");
  return {ok:true};
+}
+/** Teacher-approved preview; tokens stay in the internal send service only. */
+export async function teacherEventInvitePreview(
+ db:Db,teacherId:string,id:string,includeRecipients=false
+){
+ const event=await loadEventForEmail(db,id,teacherId);
+ if(!event)throw failure(404,"NOT_FOUND","Event not found");
+ const policy=await getPolicy(db,teacherId);
+ return previewEventEmails({event,policy,mode:"invite",includeRecipients});
 }
 export async function teacherEventInviteEmail(db:Db,teacherId:string,id:string,
  teacherEmail:string|undefined,origin:string){
