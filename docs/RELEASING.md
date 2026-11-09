@@ -50,6 +50,18 @@ The checklist is a **release decision**, not an automated claim that the current
 
 For `0.x` releases, users may have to reinstall or explicitly reinitialize a development database. We **do not** retain CogNote migrations, API aliases or migration chains for old ChessCoachPal versions solely for compatibility. Never automatically erase a database that might contain real information. Decide the post-`1.0.0` compatibility and migration contract before publishing that milestone.
 
+## Vercel deployment policy: tagged releases only
+
+**Vercel's automatic Git deployments are disabled** in [`vercel.json`](../vercel.json) with `git.deploymentEnabled: false`. Preview deployments are also disabled in the Vercel project settings. Regular pushes to `main`, feature branches and pull requests continue to run GitHub CI without consuming a Vercel deployment.
+
+The existing [release workflow](../.github/workflows/release.yml) runs the complete release gates, creates the annotated `vX.Y.Z` tag and GitHub Release, **then deploys that exact tested tag to Vercel production** with `vercel pull --environment=production`, `vercel build --prod` and `vercel deploy --prebuilt --prod`. It does not publish on regular pushes while `package.json` is `0.0.0`. SemVer prerelease tags such as `v0.2.0-beta.1` are supported.
+
+**Required once:** create a Vercel access token with access to the `itshaks-projects` team, and configure it as the repository-level `VERCEL_TOKEN` **GitHub Actions secret** (Settings → Secrets and variables → Actions). The release-validation job runs before a production environment is entered, so an environment-only secret will not satisfy its pre-tag credential check. Do not store the token in source, docs or GitHub Actions variables. Nonsecret team/project IDs are bound in the release job. The workflow fails **before creating the release tag** if `VERCEL_TOKEN` is missing. The `production` GitHub Actions environment may separately require maintainer approval for the deployment job, if desired.
+
+The deploy is a separate GitHub Actions job that starts only after successful tag publication. A standalone `push.tags` workflow would **not** run for these tags: GitHub suppresses follow-up workflow events caused by the release workflow's `GITHUB_TOKEN`. Do not create/version-tag manually to bypass the tested release pipeline. If Vercel deployment fails after the GitHub Release succeeds, use **Re-run failed jobs** on that release workflow to retry only the deploy job without republishing the tag.
+
+The setting does not prohibit an authorized operator from manually deploying with the Vercel CLI/API; it disables automatic Git-triggered deployments. Existing production remains served until the next successful tagged release. No deployment is needed just to turn off automatic Git builds.
+
 ## GitHub permissions
 
 The release workflow needs GitHub Actions permission to write repository contents so it can create tags and GitHub Releases. The workflow requests `contents: write`; repository or organization settings must allow Actions to use that permission. If tag protection/rulesets block release tags, allow this workflow through the corresponding trusted mechanism. Do not store Personal Access Tokens in source.
