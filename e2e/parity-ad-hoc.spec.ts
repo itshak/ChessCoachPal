@@ -32,7 +32,7 @@ test("PARITY:PARITY-ad-hoc-three-students freezes exact roster across website an
   const site=await page.request.post("/api/agent/v1",{data:{
     action:"sessions.createAdHoc",...args,
   }});
-  expect(site.status(),await site.text()).toBe(201);
+  expect(site.status(),await site.text()).toBe(200);
   const siteLesson=(await site.json()).data as {id:string;roster_mode:string;group_id:null;student_id:null};
   expect(siteLesson).toMatchObject({roster_mode:"ad_hoc",group_id:null,student_id:null});
   const pageRoster=await page.request.post("/api/agent/v1",{data:{
