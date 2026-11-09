@@ -128,6 +128,11 @@ const studioPolicyPatch=z.object({
  notifyEmailInvoicePaid:z.boolean().optional(),
  bccFamilyEmails:z.boolean().optional(),
  bccEmail:z.string().max(320).nullable().optional(),
+ // Model may select an existing provider or clear a stored key, but may never
+ // submit/read raw BYO secrets; entering replacement credentials stays in
+ // the signed-in website's secure settings flow.
+ aiProvider:z.enum(["none","openai","anthropic"]).optional(),
+ clearAiApiKey:z.literal(true).optional(),
 }).strict();
 
 const searchText = z.string().trim().min(1).max(80);
@@ -386,7 +391,7 @@ const catalogue = [
   },
   {
     name:"ccp_v1_studio_policy_update",
-    description:"Edit studio rates, cancellation rules, timezone, invoice settings and communication preferences with explicit confirmation. API keys and payment secrets are website-only secure inputs.",
+    description:"Edit studio rates, policies and optional AI provider, or clear an existing AI key with explicit confirmation. New API keys and payment secrets remain browser-only secure inputs, never accepted through MCP.",
     schema:z.object({changes:studioPolicyPatch,confirmed:z.literal(true)}).strict()
       .refine(v=>Object.keys(v.changes).length>0,"Changes required"),
     scope:"coach:write",readOnly:false,

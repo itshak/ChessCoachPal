@@ -743,7 +743,7 @@
         "ccp_v1_studio_policy_get",
         "ccp_v1_studio_policy_update"
       ],
-      "explanation": "Shared studio policy service reads and updates cancellation rules, rates and settings for website and MCP. MCP uses narrow allowlist and masks secrets/large QR blobs; secure secret input must remain browser-only. Replay/credential test acceptance is pending."
+      "explanation": "Shared tenant-scoped studio policy service now supports confirmed MCP AI provider selection and clearing a saved AI key, alongside billing/scheduling policies. Raw secret/API-key replacement stays signed-in browser only; MCP read always masks credential values. Route remains gap until security and complete field-level parity evidence is accepted."
     },
     {
       "path": "app/api/skills/dimensions/[id]/route.ts",
