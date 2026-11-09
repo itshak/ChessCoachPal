@@ -389,6 +389,7 @@ export async function sessionsUpdate(
   updates: {
     title?: string; startsAt?: string; durationMinutes?: number;
     lessonNote?: string; status?: "scheduled" | "completed" | "cancelled";
+    expectedUpdatedAt?: string; requestId?: string;
   }
 ) {
   if (updates.startsAt !== undefined || updates.durationMinutes !== undefined) {
@@ -399,20 +400,35 @@ export async function sessionsUpdate(
       throw new CoachError("VALIDATION_ERROR", 400, "Duration must be an integer between 15 and 480 minutes");
     }
   }
-  const changes: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const changes: Record<string,unknown> = {};
   if (updates.title !== undefined) changes.title = updates.title;
-  if (updates.startsAt !== undefined) changes.starts_at = updates.startsAt;
-  if (updates.durationMinutes !== undefined) changes.duration_minutes = updates.durationMinutes;
-  if (updates.lessonNote !== undefined) changes.lesson_note = updates.lessonNote;
+  if (updates.startsAt !== undefined) changes.startsAt = updates.startsAt;
+  if (updates.durationMinutes !== undefined) changes.durationMinutes = updates.durationMinutes;
+  if (updates.lessonNote !== undefined) changes.lessonNote = updates.lessonNote;
   if (updates.status !== undefined) changes.status = updates.status;
-  const { data, error } = await db.from("teaching_sessions").update(changes)
-    .eq("teacher_id", teacherId).eq("id", sessionId)
-    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
-    .maybeSingle();
-  // The database interval guard rejects a conflicting reschedule with 23P01.
-  // Surface the same 409 conflict that MCP returns, never a generic 500.
-  if (error?.code === "23P01") throw conflict();
+  if (!Object.keys(changes).length)
+    throw new CoachError("VALIDATION_ERROR",400,"At least one session change is required");
+  const {data: existing,error: lookupError}=await db.from("teaching_sessions")
+    .select("id,updated_at").eq("teacher_id",teacherId).eq("id",sessionId).maybeSingle();
+  if (lookupError) throw problem();
+  if (!existing) throw notFound();
+  // Legacy website mutations use a freshly observed revision and new request key.
+  // MCP always supplies both; either transport goes through the SAME SQL transaction.
+  const {error}=await db.rpc("ccp_teacher_session_patch",{
+    p_session_id:sessionId,p_changes:changes,
+    p_expected_updated_at:updates.expectedUpdatedAt ?? existing.updated_at,
+    p_idempotency_key:updates.requestId ?? crypto.randomUUID(),
+  });
+  if (error?.code==="23P01" || error?.code==="23505" ||
+      /SESSION_REPLAY_CONFLICT|SESSION_REVISION_CONFLICT/.test(error?.message??""))
+    throw conflict();
+  if (error?.code==="22023") throw new CoachError("VALIDATION_ERROR",400,
+    "Invalid session correction");
   if (error) throw problem();
+  const {data, error: readError}=await db.from("teaching_sessions")
+    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
+    .eq("teacher_id",teacherId).eq("id",sessionId).maybeSingle();
+  if (readError) throw problem();
   if (!data) throw notFound();
   return data;
 }
