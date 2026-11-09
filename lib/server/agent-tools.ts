@@ -12,6 +12,7 @@ import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
 import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import {materialCatalogCreateSchema,materialCatalogFilterSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogGet,teacherMaterialCatalogList,MaterialCatalogError} from "@/lib/server/learning-materials";
+import {assignmentListSchema,assignmentCreateSchema,assignmentAttemptSchema,assignmentReviewSchema,teacherAssignmentsList,teacherAssignmentsCreate,teacherAssignmentAttempt,teacherAssignmentReview,AssignmentServiceError} from "@/lib/server/training-assignments";
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
@@ -873,6 +874,27 @@ const catalogue = [
     description:"Create one typed game, puzzle, drill, study chapter or HTTPS link. Student mastery and assignments are separate. Require an idempotency UUID.",
     schema:materialCatalogCreateSchema,scope:"coach:write",readOnly:false,
   },
+
+  {
+    name:"ccp_v1_training_assignments_list",
+    description:"List a teacher's student-specific chess homework, linked materials, documented attempts and reviews. A completed item is not a verified skill assessment.",
+    schema:assignmentListSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_training_assignments_create",
+    description:"Assign one existing game/puzzle/drill/study material to 1-100 active students, with independent assignment IDs. Explicit confirmation and retry-safe request UUID required.",
+    schema:assignmentCreateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_training_attempt_record",
+    description:"Record instructor-entered homework attempt/completion evidence without claiming mastery; explicit confirmed idempotent write.",
+    schema:assignmentAttemptSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_training_review_record",
+    description:"Record separate teacher feedback on one homework assignment or attempt; does not alter a teacher-verified student skill grade.",
+    schema:assignmentReviewSchema,scope:"coach:write",readOnly:false,
+  },
 ] as const;
 
 export const exposedTools = catalogue.map(t => ({
@@ -938,6 +960,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_training_assignments_list":
+        return {data:await teacherAssignmentsList(db,teacherId,args as Parameters<typeof teacherAssignmentsList>[2])};
+      case "ccp_v1_training_assignments_create":
+        return {data:await teacherAssignmentsCreate(db,teacherId,args as Parameters<typeof teacherAssignmentsCreate>[2])};
+      case "ccp_v1_training_attempt_record":
+        return {data:await teacherAssignmentAttempt(db,teacherId,args as Parameters<typeof teacherAssignmentAttempt>[2])};
+      case "ccp_v1_training_review_record":
+        return {data:await teacherAssignmentReview(db,teacherId,args as Parameters<typeof teacherAssignmentReview>[2])};
       case "ccp_v1_learning_materials_list":
         return {data:await teacherMaterialCatalogList(db,teacherId,args as Parameters<typeof teacherMaterialCatalogList>[2])};
       case "ccp_v1_learning_materials_get":
@@ -1449,6 +1479,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
     if (error instanceof UnifiedHistoryError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof AssignmentServiceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof MaterialCatalogError)
       return {error:{code:error.code,message:error.message}};
