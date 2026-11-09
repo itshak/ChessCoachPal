@@ -1288,6 +1288,12 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const importedRoster=await page.request.get("/api/students?query="+encodeURIComponent(csvStudent));
   expect(importedRoster.status(),await importedRoster.text()).toBe(200);
   expect((await importedRoster.json()).students.some((s:{name:string})=>s.name===csvStudent)).toBe(true);
+  const importReplay=await page.request.post("/api/import/spreadsheet/commit",{
+    data:{rows:parsedFile.data.rows,mapping:parsedFile.data.mapping},
+  });
+  expect(importReplay.status(),await importReplay.text()).toBe(200);
+  expect(await importReplay.json()).toEqual(csvCommitted.data);
+  expect(JSON.stringify(csvCommitted.data)).not.toContain("portal_token");
 
   // Last five teacher-business route families: invoice generation, refresh,
   // PDF, Stripe-link guard and bulk invoice actions use the same domain service.
