@@ -113,7 +113,9 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
   if (patch.chesscomUsername !== undefined) update.chesscom_username = patch.chesscomUsername;
   if (patch.lichessRating !== undefined) update.lichess_rating = patch.lichessRating;
   if (patch.chesscomRating !== undefined) update.chesscom_rating = patch.chesscomRating;
-  if (patch.teacherNotes !== undefined) update.teacher_notes = patch.teacherNotes;
+  // teacher_notes is NOT NULL in the canonical schema. Treat nullable API
+  // clearing as an empty note instead of writing SQL NULL and returning 500.
+  if (patch.teacherNotes !== undefined) update.teacher_notes = patch.teacherNotes ?? "";
   if (patch.parentContact !== undefined) update.parent_contact = patch.parentContact;
   if (patch.guardianId !== undefined) update.guardian_id = patch.guardianId || null;
   if (patch.level !== undefined) update.level = patch.level?.trim() || null;
