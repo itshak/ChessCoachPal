@@ -6,6 +6,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateCheckedParityRow, validateUniqueCheckedParityReferences } from "./parity-evidence.mjs";
+import { validateLegacyActionCoverage } from "./mcp-legacy-actions.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const inventory = JSON.parse(readFileSync(join(root, "scripts/mcp-website-parity.json"), "utf8"));
@@ -46,6 +47,8 @@ const knownKinds = new Set(["teacher","auth","ui","external","system"]);
 const knownParities = new Set(["mcp","partial","gap","browser-only","not-applicable"]);
 const registeredTools = readFileSync(join(root,"lib/server/agent-tools.ts"),"utf8");
 const liveNames = new Set([...registeredTools.matchAll(/\bname\s*:\s*["'](ccp_v1_[a-z0-9_]+)["']/g)].map(m=>m[1]));
+errors.push(...validateLegacyActionCoverage(
+  readFileSync(join(root,"app/api/agent/v1/route.ts"),"utf8"), registeredTools));
 for (const route of inventory.apiRoutes) {
   assert(knownKinds.has(route.kind),route.path+": invalid classification");
   assert(knownParities.has(route.parity),route.path+": invalid parity status");
