@@ -2958,7 +2958,7 @@ GRANT SELECT,INSERT ON public.learning_materials,public.chess_games,public.chess
 CREATE FUNCTION public.ccp_material_catalog_create(
  p_kind text, p_title text, p_description text,
  p_source_url text, p_details jsonb, p_request_id uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $
 DECLARE
  v_teacher uuid := auth.uid();
  v_material uuid;
