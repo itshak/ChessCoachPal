@@ -36,7 +36,7 @@ export async function delegatedTool(page: Page, request: APIRequestContext, scop
   }});
   expect(exchange.status(),await exchange.text()).toBe(200);
   const token=(await exchange.json()).access_token as string;
-  return async (name:string,args:Record<string,unknown>)=>{
+  const invoke=async (name:string,args:Record<string,unknown>)=>{
     const reply=await request.post("/mcp",{headers:{
       Authorization:"Bearer "+token,"MCP-Protocol-Version":"2025-06-18",
     },data:{jsonrpc:"2.0",id:randomUUID(),method:"tools/call",
@@ -45,5 +45,8 @@ export async function delegatedTool(page: Page, request: APIRequestContext, scop
     return (await reply.json()).result.structuredContent as
       {data?:any;error?:{code:string;message:string}};
   };
+  // Stable client identity lets acceptance tests target only their own OAuth
+  // grant for revocation instead of touching parallel/seeded connections.
+  return Object.assign(invoke,{clientId});
 }
 
