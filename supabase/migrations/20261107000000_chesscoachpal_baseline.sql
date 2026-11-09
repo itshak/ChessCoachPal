@@ -3027,3 +3027,176 @@ $ccp$;
 REVOKE ALL ON FUNCTION public.ccp_material_catalog_create(text,text,text,text,jsonb,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_material_catalog_create(text,text,text,text,jsonb,uuid) TO authenticated;
 -- END ChessCoachPal typed learning materials.
+
+
+
+-- BEGIN teacher-recorded chess homework: assignments, attempts and reviews.
+-- All three are distinct evidence events; completion never means mastery.
+CREATE TABLE public.training_assignments (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+ student_id uuid NOT NULL,
+ material_id uuid NOT NULL,
+ instructions text NOT NULL DEFAULT '' CHECK (char_length(instructions) <= 5000),
+ due_on date,
+ batch_request_id uuid NOT NULL,
+ request_hash text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(teacher_id,id),
+ UNIQUE(teacher_id,batch_request_id,student_id),
+ FOREIGN KEY(student_id,teacher_id) REFERENCES public.students(id,teacher_id),
+ FOREIGN KEY(teacher_id,material_id) REFERENCES public.learning_materials(teacher_id,id)
+);
+CREATE INDEX training_assignments_student_idx ON public.training_assignments
+ (teacher_id,student_id,created_at DESC);
+
+CREATE TABLE public.assignment_attempts (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+ assignment_id uuid NOT NULL,
+ outcome text NOT NULL CHECK(outcome IN ('in_progress','submitted','completed')),
+ note text NOT NULL DEFAULT '' CHECK(char_length(note) <= 5000),
+ source text NOT NULL DEFAULT 'teacher_manual' CHECK(source='teacher_manual'),
+ recorded_at timestamptz NOT NULL DEFAULT now(),
+ request_id uuid NOT NULL,
+ request_hash text NOT NULL,
+ UNIQUE(teacher_id,id),
+ UNIQUE(teacher_id,request_id),
+ FOREIGN KEY(teacher_id,assignment_id) REFERENCES public.training_assignments(teacher_id,id)
+);
+CREATE TABLE public.assignment_reviews (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+ assignment_id uuid NOT NULL,
+ attempt_id uuid,
+ verdict text NOT NULL CHECK(verdict IN ('reviewed','needs_work')),
+ feedback text NOT NULL DEFAULT '' CHECK(char_length(feedback) <= 5000),
+ reviewed_at timestamptz NOT NULL DEFAULT now(),
+ request_id uuid NOT NULL,
+ request_hash text NOT NULL,
+ UNIQUE(teacher_id,id),
+ UNIQUE(teacher_id,request_id),
+ FOREIGN KEY(teacher_id,assignment_id) REFERENCES public.training_assignments(teacher_id,id),
+ FOREIGN KEY(teacher_id,attempt_id) REFERENCES public.assignment_attempts(teacher_id,id)
+);
+ALTER TABLE public.training_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.assignment_attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.assignment_reviews ENABLE ROW LEVEL SECURITY;
+CREATE POLICY training_assignments_owner ON public.training_assignments
+ FOR ALL TO authenticated USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+CREATE POLICY assignment_attempts_owner ON public.assignment_attempts
+ FOR ALL TO authenticated USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+CREATE POLICY assignment_reviews_owner ON public.assignment_reviews
+ FOR ALL TO authenticated USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+GRANT SELECT ON public.training_assignments,public.assignment_attempts,public.assignment_reviews TO authenticated;
+GRANT ALL ON public.training_assignments,public.assignment_attempts,public.assignment_reviews TO service_role;
+
+-- One request can fan out to several students. One database transaction means
+-- either every authorized student gets an assignment or none do.
+CREATE FUNCTION public.ccp_assign_material(
+ p_student_ids uuid[],p_material_id uuid,p_instructions text,p_due_on date,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_assign$
+DECLARE
+ v_teacher uuid := auth.uid(); v_student uuid; v_id uuid;
+ v_sorted uuid[]; v_hash text; v_prior text; v_ids uuid[] := ARRAY[]::uuid[];
+ v_created integer := 0;
+BEGIN
+ IF v_teacher IS NULL OR p_request_id IS NULL OR p_material_id IS NULL OR
+    cardinality(p_student_ids) NOT BETWEEN 1 AND 100 OR
+    char_length(coalesce(p_instructions,''))>5000 THEN
+   RAISE EXCEPTION 'VALIDATION_ERROR';
+ END IF;
+ SELECT array_agg(s ORDER BY s) INTO v_sorted FROM unnest(p_student_ids) AS all_ids(s);
+ IF cardinality(v_sorted) <> (SELECT count(DISTINCT s) FROM unnest(v_sorted) AS ids(s)) THEN
+   RAISE EXCEPTION 'DUPLICATE_STUDENTS';
+ END IF;
+ IF NOT EXISTS (SELECT 1 FROM public.learning_materials
+      WHERE id=p_material_id AND teacher_id=v_teacher) OR
+    (SELECT count(*) FROM public.students
+      WHERE id=ANY(v_sorted) AND teacher_id=v_teacher AND archived_at IS NULL) <> cardinality(v_sorted)
+ THEN RAISE EXCEPTION 'NOT_FOUND'; END IF;
+ v_hash := md5(jsonb_build_array(v_sorted,p_material_id,coalesce(p_instructions,''),p_due_on)::text);
+ SELECT request_hash INTO v_prior FROM public.training_assignments
+    WHERE teacher_id=v_teacher AND batch_request_id=p_request_id LIMIT 1;
+ IF v_prior IS NOT NULL AND v_prior <> v_hash THEN RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT'; END IF;
+ FOREACH v_student IN ARRAY v_sorted LOOP
+   v_id := NULL;
+   INSERT INTO public.training_assignments
+     (teacher_id,student_id,material_id,instructions,due_on,batch_request_id,request_hash)
+   VALUES(v_teacher,v_student,p_material_id,coalesce(p_instructions,''),p_due_on,p_request_id,v_hash)
+   ON CONFLICT(teacher_id,batch_request_id,student_id) DO NOTHING RETURNING id INTO v_id;
+   IF v_id IS NULL THEN
+     SELECT id INTO v_id FROM public.training_assignments
+       WHERE teacher_id=v_teacher AND batch_request_id=p_request_id AND student_id=v_student
+         AND request_hash=v_hash;
+     IF v_id IS NULL THEN RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT'; END IF;
+   ELSE
+     v_created := v_created+1;
+   END IF;
+   v_ids := array_append(v_ids,v_id);
+ END LOOP;
+ RETURN jsonb_build_object('assignmentIds',v_ids,'replayed',v_created=0,'studentCount',cardinality(v_ids));
+END;
+$ccp_assign$;
+
+CREATE FUNCTION public.ccp_assignment_record_attempt(
+ p_assignment_id uuid,p_outcome text,p_note text,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_attempt$
+DECLARE
+ v_teacher uuid:=auth.uid();v_id uuid;v_hash text;v_previous public.assignment_attempts%ROWTYPE;
+BEGIN
+ IF v_teacher IS NULL OR p_request_id IS NULL OR p_outcome NOT IN ('in_progress','submitted','completed')
+    OR char_length(coalesce(p_note,''))>5000 THEN RAISE EXCEPTION 'VALIDATION_ERROR'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.training_assignments
+   WHERE teacher_id=v_teacher AND id=p_assignment_id) THEN RAISE EXCEPTION 'NOT_FOUND'; END IF;
+ v_hash:=md5(jsonb_build_array(p_assignment_id,p_outcome,coalesce(p_note,''))::text);
+ INSERT INTO public.assignment_attempts(teacher_id,assignment_id,outcome,note,request_id,request_hash)
+ VALUES(v_teacher,p_assignment_id,p_outcome,coalesce(p_note,''),p_request_id,v_hash)
+ ON CONFLICT(teacher_id,request_id) DO NOTHING RETURNING id INTO v_id;
+ IF v_id IS NULL THEN
+   SELECT * INTO v_previous FROM public.assignment_attempts
+    WHERE teacher_id=v_teacher AND request_id=p_request_id;
+   IF v_previous.id IS NULL OR v_previous.request_hash<>v_hash
+     THEN RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT'; END IF;
+   RETURN jsonb_build_object('attemptId',v_previous.id,'replayed',true);
+ END IF;
+ RETURN jsonb_build_object('attemptId',v_id,'replayed',false);
+END;
+$ccp_attempt$;
+
+CREATE FUNCTION public.ccp_assignment_record_review(
+ p_assignment_id uuid,p_attempt_id uuid,p_verdict text,p_feedback text,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_review$
+DECLARE
+ v_teacher uuid:=auth.uid();v_id uuid;v_hash text;v_previous public.assignment_reviews%ROWTYPE;
+BEGIN
+ IF v_teacher IS NULL OR p_request_id IS NULL OR p_verdict NOT IN ('reviewed','needs_work')
+    OR char_length(coalesce(p_feedback,''))>5000 THEN RAISE EXCEPTION 'VALIDATION_ERROR'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.training_assignments
+   WHERE teacher_id=v_teacher AND id=p_assignment_id) THEN RAISE EXCEPTION 'NOT_FOUND'; END IF;
+ IF p_attempt_id IS NOT NULL AND NOT EXISTS(
+   SELECT 1 FROM public.assignment_attempts WHERE teacher_id=v_teacher
+    AND id=p_attempt_id AND assignment_id=p_assignment_id)
+ THEN RAISE EXCEPTION 'ATTEMPT_MISMATCH'; END IF;
+ v_hash:=md5(jsonb_build_array(p_assignment_id,p_attempt_id,p_verdict,coalesce(p_feedback,''))::text);
+ INSERT INTO public.assignment_reviews(teacher_id,assignment_id,attempt_id,verdict,feedback,request_id,request_hash)
+ VALUES(v_teacher,p_assignment_id,p_attempt_id,p_verdict,coalesce(p_feedback,''),p_request_id,v_hash)
+ ON CONFLICT(teacher_id,request_id) DO NOTHING RETURNING id INTO v_id;
+ IF v_id IS NULL THEN
+   SELECT * INTO v_previous FROM public.assignment_reviews
+    WHERE teacher_id=v_teacher AND request_id=p_request_id;
+   IF v_previous.id IS NULL OR v_previous.request_hash<>v_hash
+     THEN RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT'; END IF;
+   RETURN jsonb_build_object('reviewId',v_previous.id,'replayed',true);
+ END IF;
+ RETURN jsonb_build_object('reviewId',v_id,'replayed',false);
+END;
+$ccp_review$;
+REVOKE ALL ON FUNCTION public.ccp_assign_material(uuid[],uuid,text,date,uuid) FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.ccp_assignment_record_attempt(uuid,text,text,uuid) FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.ccp_assignment_record_review(uuid,uuid,text,text,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_assign_material(uuid[],uuid,text,date,uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_assignment_record_attempt(uuid,text,text,uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_assignment_record_review(uuid,uuid,text,text,uuid) TO authenticated;
+-- END chess homework core.
