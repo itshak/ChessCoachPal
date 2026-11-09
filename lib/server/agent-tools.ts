@@ -18,6 +18,7 @@ import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} fro
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
 import {teacherCalendarFeedStatus,teacherCalendarFeedRotate,CalendarFeedTokenError} from "@/lib/server/teacher-calendar-feed-service";
 import {teacherProfileGet,teacherProfileUpdate,TeacherProfileError} from "@/lib/server/teacher-profile-service";
+import {teacherInvoiceSendPreview,InvoiceSendPreviewError} from "@/lib/server/teacher-invoice-send-preview";
 import {teacherStudentProgressReport} from "@/lib/server/teacher-student-progress-service";
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
   TeacherOverviewError } from "@/lib/server/teacher-overview-service";
@@ -343,6 +344,14 @@ const catalogue = [
     description:"Permanently delete one identified draft or void invoice after confirmation. Never remove paid/sent invoice history.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_billing_invoice_send_preview",
+    description:"Non-mutating preview of an owned draft invoice: PDF readiness, amount, recipient count, subject and content summary. includeRecipients=true requires confirmed=true; never reveal portal tokens or Stripe URLs.",
+    schema:z.object({invoiceId:uuid,includeRecipients:z.boolean().default(false),
+      confirmed:z.literal(true).optional()}).strict()
+      .refine(a=>!a.includeRecipients||a.confirmed===true,"Email addresses require confirmation"),
+    scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_v1_billing_invoice_send",
@@ -1155,6 +1164,11 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {invoiceId:string};
         return {data:await teacherInvoiceDelete(db,teacherId,a.invoiceId)};
       }
+      case "ccp_v1_billing_invoice_send_preview": {
+        const a=args as {invoiceId:string;includeRecipients:boolean;confirmed?:boolean};
+        return {data:await teacherInvoiceSendPreview(
+          db,teacherId,a.invoiceId,a.includeRecipients&&a.confirmed===true)};
+      }
       case "ccp_v1_billing_invoice_send": {
         const a=args as {invoiceId:string};
         const user=(await db.auth.getUser()).data.user;
@@ -1634,6 +1648,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CreditServiceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof ConnectionError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof InvoiceSendPreviewError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof InvoiceActionError)
       return {error:{code:error.code,message:error.message}};
