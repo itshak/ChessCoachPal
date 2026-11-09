@@ -799,6 +799,21 @@
       "explanation": "Rotate calendar feed secret; approval/reauth"
     },
     {
+      "path": "app/api/training/materials/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_learning_materials_list",
+        "ccp_v1_learning_materials_get",
+        "ccp_v1_learning_materials_create"
+      ],
+      "explanation": "Shared website/MCP typed game/puzzle/drill/study chapter catalog, teacher-scoped list/get and atomic create. This first slice does not yet implement update/delete, full PGN legality, assignment linkage or full behavioral sign-off; remains partial."
+    },
+    {
       "path": "app/api/webhooks/stripe/[teacherId]/route.ts",
       "methods": [
         "POST"
@@ -842,6 +857,7 @@
     "components/teacher/FamilyDetailActions.tsx",
     "components/teacher/FamilyForm.tsx",
     "components/teacher/HostedLimitBanner.tsx",
+    "components/teacher/LearningMaterialsCatalog.tsx",
     "components/teacher/MaterialHistoryPanel.tsx",
     "components/teacher/NotificationBell.tsx",
     "components/teacher/OnboardingTour.tsx",

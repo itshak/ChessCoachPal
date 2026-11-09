@@ -2862,3 +2862,168 @@ create policy avatars_storage_delete on storage.objects
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
+
+
+
+-- BEGIN ChessCoachPal typed learning materials (fresh-install canonical schema).
+-- A shared catalog ID links games, puzzles, drills and study chapters without
+-- treating all chess content as a game or claiming a link was taught.
+CREATE TABLE public.learning_materials (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+ kind text NOT NULL CHECK (kind IN ('game','puzzle','drill','study_chapter','external_link')),
+ title text NOT NULL CHECK (char_length(btrim(title)) BETWEEN 1 AND 160),
+ description text NOT NULL DEFAULT '' CHECK (char_length(description) <= 4000),
+ source_url text CHECK (source_url IS NULL OR (source_url ~ '^https://[^[:space:]]+$' AND char_length(source_url) <= 2048)),
+ request_id uuid NOT NULL,
+ request_hash text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE (teacher_id,id),
+ UNIQUE (teacher_id,request_id)
+);
+CREATE INDEX learning_materials_search ON public.learning_materials (teacher_id,kind,created_at DESC);
+
+CREATE TABLE public.chess_games (
+ material_id uuid PRIMARY KEY,
+ teacher_id uuid NOT NULL,
+ pgn text NOT NULL CHECK (char_length(btrim(pgn)) BETWEEN 1 AND 150000),
+ white_player text NOT NULL DEFAULT '' CHECK (char_length(white_player) <= 120),
+ black_player text NOT NULL DEFAULT '' CHECK (char_length(black_player) <= 120),
+ result text NOT NULL DEFAULT '*' CHECK (result IN ('1-0','0-1','1/2-1/2','*')),
+ FOREIGN KEY (teacher_id,material_id) REFERENCES public.learning_materials(teacher_id,id) ON DELETE CASCADE
+);
+CREATE TABLE public.chess_puzzles (
+ material_id uuid PRIMARY KEY,
+ teacher_id uuid NOT NULL,
+ fen text NOT NULL CHECK (char_length(btrim(fen)) BETWEEN 15 AND 150),
+ solution text CHECK (solution IS NULL OR char_length(solution) <= 5000),
+ themes text[] NOT NULL DEFAULT ARRAY[]::text[] CHECK (cardinality(themes) <= 20),
+ FOREIGN KEY (teacher_id,material_id) REFERENCES public.learning_materials(teacher_id,id) ON DELETE CASCADE
+);
+CREATE TABLE public.chess_drills (
+ material_id uuid PRIMARY KEY,
+ teacher_id uuid NOT NULL,
+ instructions text NOT NULL CHECK (char_length(btrim(instructions)) BETWEEN 1 AND 5000),
+ mode text NOT NULL DEFAULT 'other' CHECK (mode IN ('calculation','repetition','endgame','opening','other')),
+ repetitions integer CHECK (repetitions IS NULL OR repetitions BETWEEN 1 AND 10000),
+ FOREIGN KEY (teacher_id,material_id) REFERENCES public.learning_materials(teacher_id,id) ON DELETE CASCADE
+);
+CREATE TABLE public.chess_study_chapters (
+ material_id uuid PRIMARY KEY,
+ teacher_id uuid NOT NULL,
+ provider text NOT NULL DEFAULT 'lichess' CHECK (provider IN ('lichess','other')),
+ study_id text CHECK (study_id IS NULL OR char_length(study_id) BETWEEN 1 AND 128),
+ chapter_id text CHECK (chapter_id IS NULL OR char_length(chapter_id) BETWEEN 1 AND 128),
+ FOREIGN KEY (teacher_id,material_id) REFERENCES public.learning_materials(teacher_id,id) ON DELETE CASCADE
+);
+CREATE TABLE public.learning_material_relations (
+ teacher_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+ from_material_id uuid NOT NULL,
+ to_material_id uuid NOT NULL,
+ relation_type text NOT NULL CHECK (relation_type IN ('extracted_from','derived_from','prerequisite')),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY (teacher_id,from_material_id,to_material_id,relation_type),
+ FOREIGN KEY (teacher_id,from_material_id) REFERENCES public.learning_materials(teacher_id,id) ON DELETE CASCADE,
+ FOREIGN KEY (teacher_id,to_material_id) REFERENCES public.learning_materials(teacher_id,id) ON DELETE CASCADE,
+ CHECK (from_material_id <> to_material_id)
+);
+
+ALTER TABLE public.learning_materials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chess_games ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chess_puzzles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chess_drills ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chess_study_chapters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.learning_material_relations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY owner_learning_materials ON public.learning_materials
+ FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+CREATE POLICY owner_chess_games ON public.chess_games
+ FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+CREATE POLICY owner_chess_puzzles ON public.chess_puzzles
+ FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+CREATE POLICY owner_chess_drills ON public.chess_drills
+ FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+CREATE POLICY owner_chess_study_chapters ON public.chess_study_chapters
+ FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+CREATE POLICY owner_learning_material_relations ON public.learning_material_relations
+ FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+GRANT SELECT ON public.learning_materials,public.chess_games,public.chess_puzzles,
+ public.chess_drills,public.chess_study_chapters,public.learning_material_relations TO authenticated;
+GRANT SELECT,INSERT ON public.learning_materials,public.chess_games,public.chess_puzzles,
+ public.chess_drills,public.chess_study_chapters,public.learning_material_relations TO service_role;
+
+-- SECURITY DEFINER is intentionally limited to an authenticated user derived
+-- solely from auth.uid(); the function never accepts caller-supplied teacher IDs.
+-- A single transaction rolls back the catalog root on any subtype error.
+CREATE FUNCTION public.ccp_material_catalog_create(
+ p_kind text, p_title text, p_description text,
+ p_source_url text, p_details jsonb, p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $ccp$
+DECLARE
+ v_teacher uuid := auth.uid();
+ v_material uuid;
+ v_hash text;
+ v_previous public.learning_materials%ROWTYPE;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED'; END IF;
+ IF p_request_id IS NULL OR p_kind NOT IN ('game','puzzle','drill','study_chapter','external_link') OR
+    char_length(btrim(coalesce(p_title,''))) NOT BETWEEN 1 AND 160 OR
+    char_length(coalesce(p_description,'')) > 4000 OR
+    (p_source_url IS NOT NULL AND
+       (p_source_url !~ '^https://[^[:space:]]+$' OR char_length(p_source_url)>2048)) OR
+    p_details IS NULL OR jsonb_typeof(p_details) <> 'object' THEN
+   RAISE EXCEPTION 'VALIDATION_ERROR';
+ END IF;
+ v_hash := md5(jsonb_build_array(p_kind,btrim(p_title),coalesce(p_description,''),p_source_url,p_details)::text);
+ SELECT * INTO v_previous FROM public.learning_materials
+   WHERE teacher_id=v_teacher AND request_id=p_request_id;
+ IF FOUND THEN
+   IF v_previous.request_hash <> v_hash THEN RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT'; END IF;
+   RETURN jsonb_build_object('id',v_previous.id,'kind',v_previous.kind,'title',v_previous.title,'replayed',true);
+ END IF;
+ INSERT INTO public.learning_materials(teacher_id,kind,title,description,source_url,request_id,request_hash)
+ VALUES(v_teacher,p_kind,btrim(p_title),coalesce(p_description,''),p_source_url,p_request_id,v_hash)
+ ON CONFLICT(teacher_id,request_id) DO NOTHING RETURNING id INTO v_material;
+ IF v_material IS NULL THEN
+   SELECT * INTO v_previous FROM public.learning_materials
+     WHERE teacher_id=v_teacher AND request_id=p_request_id;
+   IF v_previous.id IS NULL OR v_previous.request_hash <> v_hash
+     THEN RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT'; END IF;
+   RETURN jsonb_build_object('id',v_previous.id,'kind',v_previous.kind,'title',v_previous.title,'replayed',true);
+ END IF;
+ IF p_kind='game' THEN
+   IF char_length(btrim(coalesce(p_details->>'pgn',''))) NOT BETWEEN 1 AND 150000
+      OR coalesce(p_details->>'result','*') NOT IN ('1-0','0-1','1/2-1/2','*')
+      THEN RAISE EXCEPTION 'INVALID_GAME'; END IF;
+   INSERT INTO public.chess_games(material_id,teacher_id,pgn,white_player,black_player,result)
+    VALUES(v_material,v_teacher,p_details->>'pgn',coalesce(p_details->>'whitePlayer',''),
+           coalesce(p_details->>'blackPlayer',''),coalesce(p_details->>'result','*'));
+ ELSIF p_kind='puzzle' THEN
+   IF char_length(btrim(coalesce(p_details->>'fen',''))) NOT BETWEEN 15 AND 150
+      OR jsonb_typeof(coalesce(p_details->'themes','[]'::jsonb))<>'array'
+      THEN RAISE EXCEPTION 'INVALID_PUZZLE'; END IF;
+   INSERT INTO public.chess_puzzles(material_id,teacher_id,fen,solution,themes)
+    VALUES(v_material,v_teacher,p_details->>'fen',p_details->>'solution',
+           COALESCE(ARRAY(SELECT jsonb_array_elements_text(coalesce(p_details->'themes','[]'::jsonb))),ARRAY[]::text[]));
+ ELSIF p_kind='drill' THEN
+   IF char_length(btrim(coalesce(p_details->>'instructions',''))) NOT BETWEEN 1 AND 5000
+      THEN RAISE EXCEPTION 'INVALID_DRILL'; END IF;
+   INSERT INTO public.chess_drills(material_id,teacher_id,instructions,mode,repetitions)
+    VALUES(v_material,v_teacher,p_details->>'instructions',
+      coalesce(p_details->>'mode','other'),(p_details->>'repetitions')::integer);
+ ELSIF p_kind='study_chapter' THEN
+   IF p_source_url IS NULL OR
+      char_length(btrim(coalesce(p_details->>'studyId',''))) NOT BETWEEN 1 AND 128
+      THEN RAISE EXCEPTION 'INVALID_CHAPTER'; END IF;
+   INSERT INTO public.chess_study_chapters(material_id,teacher_id,provider,study_id,chapter_id)
+    VALUES(v_material,v_teacher,coalesce(p_details->>'provider','lichess'),
+      p_details->>'studyId',nullif(p_details->>'chapterId',''));
+ ELSE
+   IF p_source_url IS NULL OR p_details <> '{}'::jsonb THEN RAISE EXCEPTION 'INVALID_LINK'; END IF;
+ END IF;
+ RETURN jsonb_build_object('id',v_material,'kind',p_kind,'title',btrim(p_title),'replayed',false);
+END;
+$ccp$;
+REVOKE ALL ON FUNCTION public.ccp_material_catalog_create(text,text,text,text,jsonb,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_material_catalog_create(text,text,text,text,jsonb,uuid) TO authenticated;
+-- END ChessCoachPal typed learning materials.

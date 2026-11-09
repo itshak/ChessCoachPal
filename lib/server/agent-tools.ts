@@ -11,6 +11,7 @@ import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
   chessResourcesList, chessResourcesCreate, chessResourcesUpdate } from "@/lib/server/chess-learning";
 import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
+import {materialCatalogCreateSchema,materialCatalogFilterSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogGet,teacherMaterialCatalogList,MaterialCatalogError} from "@/lib/server/learning-materials";
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
@@ -856,6 +857,22 @@ const catalogue = [
     schema:z.object({sessionId:uuid,...revision,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
+
+  {
+    name:"ccp_v1_learning_materials_list",
+    description:"Search/list teacher-owned chess learning materials by type and title; games, puzzles, drills and studies share a catalog but have different typed details.",
+    schema:materialCatalogFilterSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_learning_materials_get",
+    description:"Fetch one specific teacher-owned typed chess learning material and its details. A link alone is not proof of teaching.",
+    schema:z.object({materialId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_learning_materials_create",
+    description:"Create one typed game, puzzle, drill, study chapter or HTTPS link. Student mastery and assignments are separate. Require an idempotency UUID.",
+    schema:materialCatalogCreateSchema,scope:"coach:write",readOnly:false,
+  },
 ] as const;
 
 export const exposedTools = catalogue.map(t => ({
@@ -921,6 +938,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_learning_materials_list":
+        return {data:await teacherMaterialCatalogList(db,teacherId,args as Parameters<typeof teacherMaterialCatalogList>[2])};
+      case "ccp_v1_learning_materials_get":
+        return {data:await teacherMaterialCatalogGet(db,teacherId,(args as {materialId:string}).materialId)};
+      case "ccp_v1_learning_materials_create":
+        return {data:await teacherMaterialCatalogCreate(db,teacherId,args as Parameters<typeof teacherMaterialCatalogCreate>[2])};
       case "ccp_v1_billing_generation_preview": {
         const a=args as {periodStart:string;periodEnd:string};
         return await billingActionResponse(await teacherBillingGenerate(db,teacherId,a));
@@ -1426,6 +1449,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
     if (error instanceof UnifiedHistoryError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof MaterialCatalogError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof MaterialHistoryError)
       return {error:{code:error.code,message:error.message}};
