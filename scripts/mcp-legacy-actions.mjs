@@ -38,6 +38,8 @@ export const legacyActionTools=Object.freeze({
   "chess.resources.list":"ccp_v1_chess_resources_list",
   "chess.resources.link":"ccp_v1_chess_resources_link",
   "chess.resources.update":"ccp_v1_chess_resources_update",
+  "chess.resources.unlinkImpact":"ccp_v1_chess_resources_unlink_impact",
+  "chess.resources.unlink":"ccp_v1_chess_resources_unlink",
 });
 export const narrowBrowserExceptions=Object.freeze({
   "chess.observations.create":
