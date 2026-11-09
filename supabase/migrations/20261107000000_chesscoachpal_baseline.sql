@@ -2952,9 +2952,9 @@ GRANT SELECT ON public.learning_materials,public.chess_games,public.chess_puzzle
 GRANT SELECT,INSERT ON public.learning_materials,public.chess_games,public.chess_puzzles,
  public.chess_drills,public.chess_study_chapters,public.learning_material_relations TO service_role;
 
--- SECURITY INVOKER means RLS remains active for every INSERT. One function
--- invocation is a single database transaction, so subtype failures roll back
--- the catalog root and never leave partial/orphan material records.
+-- SECURITY DEFINER is intentionally limited to an authenticated user derived
+-- solely from auth.uid(); the function never accepts caller-supplied teacher IDs.
+-- A single transaction rolls back the catalog root on any subtype error.
 CREATE FUNCTION public.ccp_material_catalog_create(
  p_kind text, p_title text, p_description text,
  p_source_url text, p_details jsonb, p_request_id uuid
