@@ -52,13 +52,14 @@ test("PARITY:PARITY-ad-hoc-three-students freezes exact roster across website an
   const attendance=(await webAttendance.json()).data as Array<{student_id:string;status:string}>;
   expect(attendance).toHaveLength(3);
   expect(attendance.every(a=>a.status==="unmarked")).toBe(true);
+  const {requestId: _websiteRequestId,...mcpArgs}=args;
   const replay=await callTool("ccp_v1_sessions_ad_hoc_create",{
-    ...args,idempotencyKey:requestId,confirmed:true,
+    ...mcpArgs,idempotencyKey:requestId,confirmed:true,
   });
   expect(replay.error).toBeUndefined();
   expect(replay.data).toEqual(siteLesson);
   const changed=await callTool("ccp_v1_sessions_ad_hoc_create",{
-    ...args,title:"Changed topic",idempotencyKey:requestId,confirmed:true,
+    ...mcpArgs,title:"Changed topic",idempotencyKey:requestId,confirmed:true,
   });
   expect(changed.error?.code).toBe("CONFLICT");
   const overlap=await page.request.post("/api/agent/v1",{data:{
