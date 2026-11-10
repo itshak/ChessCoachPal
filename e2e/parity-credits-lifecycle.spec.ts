@@ -139,6 +139,16 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
    packageId,expiresOn:"2042-07-09",confirmed:true,
  });
  expect(mcpWrongExpiry.error?.code).toBe("CONFLICT");
+ // Database-level invariant also rejects direct or concurrently racing
+ // expiry edits, not just the preflight in the website/MCP service.
+ const directViolation=await admin.from("credit_packages")
+   .update({expires_on:"2042-07-09"}).eq("id",packageId);
+ expect(directViolation.error?.message).toContain("CREDIT_EXPIRY_HISTORY_CONFLICT");
+ const afterDenied=await admin.from("credit_packages").select("expires_on")
+   .eq("id",packageId).single();
+ expect(afterDenied.error).toBeNull();
+ expect(afterDenied.data?.expires_on).toBe("2042-09-30");
+
  // A separate authenticated teacher cannot delete another coach's redeemed
  // lesson or read a successful-return receipt. The RPC derives auth.uid().
  const foreignEmail="foreign-credit-"+randomUUID()+"@example.com";
