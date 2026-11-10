@@ -80,6 +80,36 @@ describe("ChessCoachPal portable backup", () => {
     expect(upserts.studio_policies?.[0]).not.toHaveProperty("stripe_secret_key");
   });
 
+  it("rejects malformed later tables before writing any earlier student records", async () => {
+    const teacherId = "00000000-0000-0000-0000-000000000002";
+    const upserts: Record<string, unknown[]> = {};
+    const payload = payloadWithVersion(DATA_EXPORT_VERSION);
+    payload.tables.students = [{ id: "must-not-be-imported", name: "Early table" }];
+    payload.tables.payments = [{ id: "valid" }, null as unknown as Record<string, unknown>];
+    expect(parseExportPayload(payload)).toBeNull();
+    const result = await importStudioExport(stubSupabase(upserts), teacherId, payload);
+    expect(result.ok).toBe(false);
+    expect(upserts).toEqual({});
+  });
+
+  it("rejects non-array records and malformed policies before any partial restore", async () => {
+    for (const malformed of [
+      { students: { id: "incorrect-object" } },
+      { payments: "not an array" },
+      { studio_policies: [{ id: "policy-must-be-an-object" }] },
+      { guardians: [[], { id: "g" }] },
+    ]) {
+      const upserts: Record<string, unknown[]> = {};
+      const payload = payloadWithVersion(DATA_EXPORT_VERSION);
+      payload.tables.students = [{ id: "should-not-be-written", name: "Ada" }];
+      Object.assign(payload.tables, malformed);
+      expect(parseExportPayload(payload)).toBeNull();
+      const result = await importStudioExport(stubSupabase(upserts), "teacher", payload);
+      expect(result.ok).toBe(false);
+      expect(upserts).toEqual({});
+    }
+  });
+
   it("rejects unsupported versions before writing any data", async () => {
     const upserts: Record<string, unknown[]> = {};
     const result = await importStudioExport(stubSupabase(upserts), "teacher", payloadWithVersion(99));
