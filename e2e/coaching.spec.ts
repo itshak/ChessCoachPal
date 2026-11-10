@@ -56,7 +56,7 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await page.getByRole("button", { name: "Create lesson" }).click();
   await expect(page.getByRole("status")).toContainText("Lesson session created");
   await expect(page.getByRole("button", { name: "Record attendance" })).toBeVisible();
-  await page.getByLabel("Attendance").selectOption("absent");
+  await page.getByRole("combobox", { name: /^Attendance/ }).selectOption("absent");
   await page.getByLabel("Student note").fill("Absent with notice");
   await page.getByRole("button", { name: "Record attendance" }).click();
   await expect(page.getByRole("status")).toContainText("Attendance saved.");
@@ -96,7 +96,7 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   expect(matchingIndex).toBeGreaterThan(0);
   await lesson.selectOption({ index: matchingIndex });
   await expect(page.getByLabel("Shared session note")).toHaveValue("Improved opposition and calculation");
-  await expect(page.getByLabel("Attendance")).toHaveValue("absent");
+  await expect(page.getByRole("combobox", { name: /^Attendance/ })).toHaveValue("absent");
   await expect(page.getByLabel("Student note")).toHaveValue("Absent with notice");
   await expect(page.getByLabel("Session status")).toHaveValue("completed");
   await expect(page.getByText(/Instructor time in this workplace/)).toContainText("60 minutes");
