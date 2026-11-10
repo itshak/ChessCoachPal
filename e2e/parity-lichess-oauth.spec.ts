@@ -52,7 +52,7 @@ async function startMockLichess(){
       if(url.pathname==="/api/study/by/mockchesscoach"){
         res.writeHead(200,{"Content-Type":"application/x-ndjson"});
         res.end(JSON.stringify({id:"StUd1234",name:"Synthetic chess endgames",
-          createdAt:1400000000000,updatedAt:1800000000000})+"\\n");
+          createdAt:1400000000000,updatedAt:1800000000000})+"\n");
         return;
       }
       const pgn=Array.from({length:40},(_,i)=>{
@@ -67,8 +67,8 @@ async function startMockLichess(){
           `[Opening "${index===32?"Lucena bridge":"Four Knights"}"]`,
           `[ECO "${index===32?"E00":"C47"}"]`,
           '[Result "*"]',"","*",
-        ].join("\\n");
-      }).join("\\n\\n");
+        ].join("\n");
+      }).join("\n\n");
       res.writeHead(200,{"Content-Type":"application/x-chess-pgn"});
       res.end(pgn);return;
     }
