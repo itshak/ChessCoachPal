@@ -43,6 +43,35 @@ async function startMockLichess(){
       res.writeHead(200,{"Content-Type":"application/json"});
       res.end(JSON.stringify({id:"mockchesscoach",username:"mockchesscoach"}));return;
     }
+    if(req.method==="GET"&&(url.pathname==="/api/study/by/mockchesscoach"||
+       url.pathname==="/api/study/StUd1234.pgn")){
+      const token=(req.headers.authorization??"").replace(/^Bearer /,"");
+      if(!tokens.get(token)?.includes("study:read")||revoked.has(token)){
+        res.writeHead(401);res.end();return;
+      }
+      if(url.pathname==="/api/study/by/mockchesscoach"){
+        res.writeHead(200,{"Content-Type":"application/x-ndjson"});
+        res.end(JSON.stringify({id:"StUd1234",name:"Synthetic chess endgames",
+          createdAt:1400000000000,updatedAt:1800000000000})+"\\n");
+        return;
+      }
+      const pgn=Array.from({length:40},(_,i)=>{
+        const index=i+1;
+        const chapterId="Ch"+String(index).padStart(6,"0");
+        const name=index===32?"Rook endgame: Lucena position":"Opening chapter "+index;
+        return [
+          `[Event "Synthetic chess endgames: ${name}"]`,
+          '[StudyName "Synthetic chess endgames"]',
+          `[ChapterName "${name}"]`,
+          `[ChapterURL "https://lichess.org/study/StUd1234/${chapterId}"]`,
+          `[Opening "${index===32?"Lucena bridge":"Four Knights"}"]`,
+          `[ECO "${index===32?"E00":"C47"}"]`,
+          '[Result "*"]',"","*",
+        ].join("\\n");
+      }).join("\\n\\n");
+      res.writeHead(200,{"Content-Type":"application/x-chess-pgn"});
+      res.end(pgn);return;
+    }
     if(req.method==="DELETE"&&url.pathname==="/api/token"){
       if(failRevoke){res.writeHead(503);res.end();return;}
       const token=(req.headers.authorization??"").replace(/^Bearer /,"");
@@ -157,4 +186,68 @@ test("PARITY:PARITY-lichess-tenant-security never returns another coach's provid
   }finally{
     expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
   }
+});
+
+
+test("PARITY:PARITY-lichess-study-chapter-32 searches actual OAuth-authorized PGN metadata in website and MCP",async({page,request})=>{
+  const provider=await startMockLichess();
+  try{
+    const call=await delegatedTool(page,request);
+    const disconnected=await page.request.get("/api/lichess/studies");
+    expect(disconnected.status()).toBe(409);
+    const modelDisconnected=await call("ccp_v1_lichess_studies_search",{});
+    expect(modelDisconnected.error).toBeDefined();
+
+    await page.goto("/api/lichess/connect?mode=read");
+    await page.waitForURL(u=>u.pathname==="/learning"&&u.searchParams.get("lichess")==="connected");
+    const listing=await page.request.get("/api/lichess/studies?query=chess");
+    expect(listing.status(),await listing.text()).toBe(200);
+    const studies=await listing.json();
+    expect(studies.studies).toMatchObject([
+      {id:"StUd1234",name:"Synthetic chess endgames"},
+    ]);
+    const mcpList=await call("ccp_v1_lichess_studies_search",{query:"chess"});
+    expect(mcpList.error).toBeUndefined();
+    expect(mcpList.data).toEqual(studies);
+    expect(JSON.stringify(mcpList.data)).not.toContain([...provider.tokens.keys()][0]);
+
+    // PGN's ChapterName, StudyName, ECO, Opening and ChapterURL tags are
+    // authoritative. The 32nd chapter is not confused with "Chapter 3".
+    const url="/api/lichess/studies?studyId=StUd1234&chapterNumber=32&query=Lucena";
+    const website=await page.request.get(url);
+    expect(website.status(),await website.text()).toBe(200);
+    const chapter=await website.json();
+    expect(chapter.chapterCount).toBe(40);
+    expect(chapter.matches).toHaveLength(1);
+    expect(chapter.matches[0]).toMatchObject({
+      studyId:"StUd1234",studyName:"Synthetic chess endgames",
+      chapterNumber:32,chapterName:"Rook endgame: Lucena position",
+      chapterUrl:"https://lichess.org/study/StUd1234/Ch000032",
+      opening:"Lucena bridge",eco:"E00",
+    });
+    const model=await call("ccp_v1_lichess_studies_search",{
+      studyId:"StUd1234",chapterNumber:32,query:"Lucena",limit:50,
+    });
+    expect(model.error).toBeUndefined();
+    expect(model.data).toEqual(chapter);
+    expect(JSON.stringify(model.data)).not.toContain([...provider.tokens.keys()][0]);
+
+    const impossible=await page.request.get(
+      "/api/lichess/studies?studyId=StUd1234&chapterNumber=64");
+    expect(impossible.status()).toBe(200);
+    expect((await impossible.json()).matches).toHaveLength(0);
+    expect((await page.request.get("/api/lichess/studies?chapterNumber=32")).status()).toBe(400);
+    expect((await call("ccp_v1_lichess_studies_search",{chapterNumber:32})).error?.code)
+      .toBe("VALIDATION_ERROR");
+    expect((await page.request.get("/api/lichess/studies?studyId=../secret")).status()).toBe(400);
+
+    const disconnect=await page.request.delete("/api/lichess/connection",{
+      data:{confirmed:true},
+    });
+    expect(disconnect.status()).toBe(200);
+    expect((await page.request.get(url)).status()).toBe(409);
+    expect((await call("ccp_v1_lichess_studies_search",{
+      studyId:"StUd1234",chapterNumber:32,
+    })).error).toBeDefined();
+  }finally{await close(provider.server);}
 });
