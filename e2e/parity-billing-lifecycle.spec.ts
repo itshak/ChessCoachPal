@@ -116,3 +116,36 @@ test("PARITY:PARITY-billing-void-delete refuses silent paid erasure and preserve
  const missing=await page.request.get("/api/billing/invoices/"+another.id);
  expect(missing.status()).toBe(404);
 });
+
+test("PARITY:PARITY-billing-manual-payment-open-checkout-fails-closed in browser and MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const policy=await page.request.get("/api/settings/policy");
+ expect(policy.status()).toBe(200);
+ const currentPolicy=await policy.json();
+ test.skip(currentPolicy.payment_provider==="stripe",
+   "Synthetic fail-closed test requires the local manual studio without real Stripe credentials");
+ const seeded=await invoice("sent",6000);
+ const sessionId="cs_test_"+randomUUID().replaceAll("-","");
+ const saved=await seeded.admin.from("invoices").update({
+   stripe_checkout_session_id:sessionId,
+   stripe_checkout_url:"https://checkout.stripe.com/c/pay/"+sessionId,
+ }).eq("id",seeded.id);
+ expect(saved.error).toBeNull();
+ const web=await page.request.post("/api/billing/invoices/"+seeded.id+"/mark-paid",{
+   data:{amountCents:2000,note:"Never record while Stripe link cannot be retired"},
+ });
+ expect(web.status(),await web.text()).toBe(409);
+ expect((await web.json()).error).toContain("Reconnect Stripe");
+ const mcp=await call("ccp_v1_billing_manual_payment_record",{
+   invoiceId:seeded.id,amountCents:2000,note:"Never record while Stripe link cannot be retired",
+   idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(mcp.error?.code).toBe("CHECKOUT_RECONCILIATION_REQUIRED");
+ const details=await siteInvoice(page,seeded.id);
+ expect(details.status).toBe("sent");
+ expect(details.payments).toHaveLength(0);
+ const {data:unchanged,error}=await seeded.admin.from("invoices")
+   .select("stripe_checkout_session_id").eq("id",seeded.id).single();
+ expect(error).toBeNull();
+ expect(unchanged?.stripe_checkout_session_id).toBe(sessionId);
+});
