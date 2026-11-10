@@ -139,11 +139,21 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
    packageId,expiresOn:"2042-07-09",confirmed:true,
  });
  expect(mcpWrongExpiry.error?.code).toBe("CONFLICT");
- const returned=await call("ccp_v1_credits_redemption_return",{
-   redemptionId:pkg.redemptions[0].id,confirmed:true,
- });
+ // Race the FIRST website and MCP return: SQL must commit one deletion and
+ // one replay receipt, not permit lost writes or fail the losing request.
+ const [returned,browserFirst]=await Promise.all([
+   call("ccp_v1_credits_redemption_return",{
+     redemptionId:pkg.redemptions[0].id,confirmed:true,
+   }),
+   page.request.delete("/api/billing/credit-redemptions/"+pkg.redemptions[0].id),
+ ]);
  expect(returned.error).toBeUndefined();
- expect(returned.data).toEqual({ok:true,replayed:false});
+ expect(browserFirst.status(),await browserFirst.text()).toBe(200);
+ const browserResult=await browserFirst.json();
+ expect([returned.data.replayed,browserResult.replayed].sort())
+   .toEqual([false,true]);
+ expect(returned.data.ok).toBe(true);
+ expect(browserResult.ok).toBe(true);
  const afterReturn=await page.request.get("/api/billing/credit-packages?studentId="+studentId);
  expect(afterReturn.status(),await afterReturn.text()).toBe(200);
  const restored=(await afterReturn.json()).packages.find((x:{id:string})=>x.id===packageId);
