@@ -19,10 +19,37 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
    studentId,credits:2,durationMinutes:45,priceCents:9000,
    startsOn:"2042-07-01",expiresOn:"2042-08-01",
  };
- const made=await call("ccp_v1_credits_package_create",{...payload,confirmed:true});
+ const requestId=randomUUID();
+ const made=await call("ccp_v1_credits_package_create",{
+   ...payload,requestId,confirmed:true,
+ });
  expect(made.error).toBeUndefined();
+ expect(made.data.replayed).toBe(false);
  const packageId=made.data.packageId as string;
  const invoiceId=made.data.invoiceId as string;
+ const replay=await call("ccp_v1_credits_package_create",{
+   ...payload,requestId,confirmed:true,
+ });
+ expect(replay.error).toBeUndefined();
+ expect(replay.data).toMatchObject({packageId,invoiceId,replayed:true});
+ const conflict=await call("ccp_v1_credits_package_create",{
+   ...payload,priceCents:9900,requestId,confirmed:true,
+ });
+ expect(conflict.error?.code).toBe("CONFLICT");
+ const browserRequestId=randomUUID();
+ const browserCreate=await page.request.post("/api/billing/credit-packages",{
+   data:{...payload,requestId:browserRequestId},
+ });
+ expect(browserCreate.status(),await browserCreate.text()).toBe(200);
+ const browserProduct=await browserCreate.json();
+ expect(browserProduct.replayed).toBe(false);
+ const browserReplay=await page.request.post("/api/billing/credit-packages",{
+   data:{...payload,requestId:browserRequestId},
+ });
+ expect(browserReplay.status(),await browserReplay.text()).toBe(200);
+ expect(await browserReplay.json()).toMatchObject({
+   packageId:browserProduct.packageId,invoiceId:browserProduct.invoiceId,replayed:true,
+ });
  const website=await page.request.get("/api/billing/credit-packages?studentId="+studentId);
  expect(website.status(),await website.text()).toBe(200);
  const initial=(await website.json()).packages as Array<any>;
@@ -61,6 +88,17 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  const {error:activateError}=await admin.from("invoices").update({status:"sent"})
    .eq("id",invoiceId).eq("teacher_id",signed.data.user!.id);
  expect(activateError).toBeNull();
+ const countBefore=await admin.from("invoices").select("id",{head:true,count:"exact"})
+   .eq("teacher_id",signed.data.user!.id);
+ expect(countBefore.error).toBeNull();
+ const rejected=await page.request.post("/api/billing/credit-packages",{
+   data:{...payload,studentId:randomUUID(),requestId:randomUUID()},
+ });
+ expect(rejected.status(),await rejected.text()).toBe(404);
+ const countAfter=await admin.from("invoices").select("id",{head:true,count:"exact"})
+   .eq("teacher_id",signed.data.user!.id);
+ expect(countAfter.error).toBeNull();
+ expect(countAfter.count).toBe(countBefore.count);
  const lesson=await call("ccp_v1_calendar_lessons_create",{
    studentId,date:"2042-07-10",time:"10:00",durationMinutes:45,confirmed:true,
  });
