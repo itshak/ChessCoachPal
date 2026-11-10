@@ -324,13 +324,14 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "partial",
       "existingTools": [
         "ccp_v1_sessions_roster_preview",
         "ccp_v1_sessions_roster_correct",
         "ccp_v1_sessions_roster_revisions_list"
       ],
-      "explanation": "Website and MCP share teacher-owned frozen-session roster preview, revision-checked explicitly confirmed correction and append-only audit. Corrections require UUID idempotency keys and an audit reason, and private removed-attendance notes require additional approval. Full history/tenant/replay E2E, cross-model reconciliation and strict acceptance remain unverified; do not classify as complete until passing evidence is reviewed."
+      "explanation": "Named authenticated website/MCP E2E at b61820b verifies owned frozen roster previews, confirmed revision-checked group/finished-history correction, browser/MCP replay, idempotency conflicts, persisted attendance audit and private-note approval. The dedicated case passed in GitHub run 42882873971 (132 pass). Cross-tenant source-record fixtures, linked historical learning/finance side effects and full route-family review remain unverified; not full-route parity.",
+      "evidenceTest": "e2e/parity-completed-roster-correction.spec.ts"
     },
     {
       "path": "app/api/coaching/student-progress/route.ts",
