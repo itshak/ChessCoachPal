@@ -827,7 +827,7 @@
         "ccp_v1_student_skill_assessments_list",
         "ccp_v1_student_skill_assessments_record"
       ],
-      "explanation": "Shared append-only 1–5 assessments and history with teacher-local date. Replay-safe writes outstanding."
+      "explanation": "Shared append-only 1–5 assessment RPC with teacher-scoped atomic transaction, immutable request receipts and explicit website/MCP retry key. New cross-transport replay/tenant E2E required; full route classification pending executed evidence."
     },
     {
       "path": "app/api/students/route.ts",

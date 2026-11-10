@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOrSeedDimensions } from "@/lib/server/skills";
 import { getPolicy } from "@/lib/server/scheduling";
@@ -76,25 +77,50 @@ export async function studentSkillAssessmentsList(db:Db,teacherId:string,student
   return data??[];
 }
 export type SkillRating = {dimensionId:string;rating:number;note?:string};
-export async function studentSkillAssessmentsRecord(db:Db,teacherId:string,studentId:string,ratings:SkillRating[]) {
-  if(!ratings.length||ratings.length>20||ratings.some(r=>!Number.isInteger(r.rating)||r.rating<1||r.rating>5||r.note?.length && r.note.length>2000))
+const uuidPattern=/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+
+/**
+ * Append one teacher-confirmed assessment round as a single DB transaction.
+ * One request UUID has one immutable payload and one stable receipt across
+ * website ↔ delegated MCP retries, including concurrent/reordered attempts.
+ */
+export async function studentSkillAssessmentsRecord(
+  db:Db,teacherId:string,studentId:string,ratings:SkillRating[],idempotencyKey?:string
+) {
+  if(!Array.isArray(ratings)||!ratings.length||ratings.length>20||
+    ratings.some(r=>!r||typeof r!=="object"||!uuidPattern.test(r.dimensionId)||
+      !Number.isInteger(r.rating)||r.rating<1||r.rating>5||
+      (r.note!==undefined&&(typeof r.note!=="string"||r.note.length>2000))))
     throw failure(400,"VALIDATION_ERROR","Provide 1–20 ratings, each 1–5 with optional short notes");
+  if(idempotencyKey!==undefined&&!uuidPattern.test(idempotencyKey))
+    throw failure(400,"VALIDATION_ERROR","A retry key must be a UUID");
+  const ids=[...new Set(ratings.map(r=>r.dimensionId.toLowerCase()))];
+  if(ids.length!==ratings.length)
+    throw failure(400,"VALIDATION_ERROR","Use each skill dimension once per assessment round");
   const {data:student,error:studentError}=await db.from("students").select("id")
     .eq("id",studentId).eq("teacher_id",teacherId).maybeSingle();
   if(studentError) throw failure(500,"DATABASE_ERROR","Student lookup failed");
   if(!student) throw failure(404,"NOT_FOUND","Student not found");
-  const ids=[...new Set(ratings.map(r=>r.dimensionId))];
-  if(ids.length!==ratings.length) throw failure(400,"VALIDATION_ERROR","Use each skill dimension once per assessment round");
   const {data:dimensions,error:dimError}=await db.from("skill_dimensions").select("id")
     .eq("teacher_id",teacherId).in("id",ids);
   if(dimError) throw failure(500,"DATABASE_ERROR","Skill lookup failed");
   if(dimensions?.length!==ids.length) throw failure(404,"NOT_FOUND","Skill dimension not found");
   const policy=await getPolicy(db,teacherId);
   const assessedOn=toLocalDateString(new Date(),policy.timezone);
-  const {data,error}=await db.from("skill_assessments").insert(ratings.map(r=>({
-    student_id:studentId,dimension_id:r.dimensionId,rating:r.rating,
-    note:typeof r.note==="string"&&r.note.trim()?r.note.trim():null,assessed_on:assessedOn,
-  }))).select("id,dimension_id,rating,note,assessed_on,created_at");
-  if(error) throw failure(500,"DATABASE_ERROR","Unable to record skill assessment");
-  return data??[];
+  const normalized=ratings.map(r=>({
+    dimensionId:r.dimensionId.toLowerCase(),rating:r.rating,
+    note:typeof r.note==="string"&&r.note.trim()?r.note.trim():null,
+  }));
+  const {data,error}=await db.rpc("ccp_skill_assessments_record",{
+    p_student_id:studentId,
+    p_assessed_on:assessedOn,
+    p_ratings:normalized,
+    p_request_id:idempotencyKey??randomUUID(),
+  });
+  if(error?.code==="23505") throw failure(409,"CONFLICT","Retry key reused with different assessment details");
+  if(error?.code==="42501") throw failure(404,"NOT_FOUND","Student or skill dimension not found");
+  if(error?.code==="22023"||error?.code==="22P02"||error?.code==="23514")
+    throw failure(400,"VALIDATION_ERROR","Invalid assessment values");
+  if(error||!Array.isArray(data)) throw failure(500,"DATABASE_ERROR","Unable to record skill assessment");
+  return data;
 }

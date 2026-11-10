@@ -671,10 +671,10 @@ const catalogue = [
   },
   {
     name:"ccp_v1_student_skill_assessments_record",
-    description:"Append a confirmed set of 1–5 skill assessments for an identified student. Dates are in the studio's configured timezone.",
+    description:"Append teacher-approved 1–5 skill assessments atomically. Supply the same idempotencyKey UUID on retries; one retry key cannot be reused for changed ratings.",
     schema:z.object({studentId:uuid,ratings:z.array(z.object({
       dimensionId:uuid,rating:z.number().int().min(1).max(5),note:z.string().max(2000).optional(),
-    }).strict()).min(1).max(20),confirmed:z.literal(true)}).strict(),
+    }).strict()).min(1).max(20),idempotencyKey:uuid.optional(),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1454,8 +1454,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await studentSkillAssessmentsList(db,teacherId,a.studentId)};
       }
       case "ccp_v1_student_skill_assessments_record": {
-        const a=args as {studentId:string;ratings:Parameters<typeof studentSkillAssessmentsRecord>[3]};
-        return {data:await studentSkillAssessmentsRecord(db,teacherId,a.studentId,a.ratings)};
+        const a=args as {studentId:string;ratings:Parameters<typeof studentSkillAssessmentsRecord>[3];idempotencyKey?:string};
+        return {data:await studentSkillAssessmentsRecord(db,teacherId,a.studentId,a.ratings,a.idempotencyKey)};
       }
       case "ccp_v1_students_roster": {
         const a=args as {query?:string;includeArchived:boolean;offset:number;limit:number};

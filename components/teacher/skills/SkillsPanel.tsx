@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Card } from "@/components/ui/card";
@@ -46,6 +46,7 @@ export function SkillsPanel({
   const [draft, setDraft] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ratingRequestRef = useRef<{signature:string;id:string}|null>(null);
 
   const dimensionById = useMemo(
     () => new Map(dimensions.map((d) => [d.id, d])),
@@ -97,6 +98,7 @@ export function SkillsPanel({
       if (prev) initial[d.id] = prev.rating;
     }
     setDraft(initial);
+    ratingRequestRef.current=null;
     setError(null);
     setRating(true);
   }
@@ -110,13 +112,17 @@ export function SkillsPanel({
       setRating(false);
       return;
     }
+    const signature=JSON.stringify(ratings);
+    if(ratingRequestRef.current?.signature!==signature)
+      ratingRequestRef.current={signature,id:crypto.randomUUID()};
+    const idempotencyKey=ratingRequestRef.current.id;
     setSaving(true);
     setError(null);
     try {
       const res = await fetch(`/api/students/${studentId}/skills`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ratings }),
+        body: JSON.stringify({ ratings, idempotencyKey }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
@@ -124,6 +130,7 @@ export function SkillsPanel({
         setSaving(false);
         return;
       }
+      ratingRequestRef.current=null;
       setRating(false);
       router.refresh();
     } catch {

@@ -21,7 +21,7 @@ export async function POST(req:NextRequest,{params}:Context) {
   const body=await req.json().catch(()=>null);
   if(!Array.isArray(body?.ratings))return NextResponse.json({error:"ratings required"},{status:400});
   try {return NextResponse.json(await studentSkillAssessmentsRecord(teacher.db,teacher.id,
-    (await params).id,body.ratings));}
+    (await params).id,body.ratings,body.idempotencyKey));}
   catch(error){return NextResponse.json({error:error instanceof TeacherSkillsError?error.message:"Unable to record skills"},{
     status:error instanceof TeacherSkillsError?error.status:500,
   });}
