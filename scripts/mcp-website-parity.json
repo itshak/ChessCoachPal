@@ -971,6 +971,7 @@
     "app/(teacher)/studio/page.tsx"
   ],
   "teacherComponents": [
+    "components/teacher/AccountMfaSettings.tsx",
     "components/teacher/AccountSettings.tsx",
     "components/teacher/AddStudentForm.tsx",
     "components/teacher/AgentConnections.tsx",
