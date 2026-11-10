@@ -2,6 +2,8 @@ import "server-only";
 import { z } from "zod";
 import { lichessConnectionStatus,lichessConnectionHandoff,disconnectLichess,LichessConnectionError } from "@/lib/server/lichess-connections";
 import {teacherLichessStudiesSearch} from "@/lib/server/lichess-studies";
+import {puzzleDraftSchema,puzzlePublishSchema} from "@/lib/lichess-puzzles";
+import {teacherLichessPuzzlePreview,teacherLichessPuzzlePublish,LichessPuzzleError} from "@/lib/server/lichess-puzzles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, groupsList, groupsMembers,
@@ -670,6 +672,16 @@ const catalogue = [
     name:"ccp_v1_lichess_connection_status",
     description:"Read teacher Lichess account username, study scopes and connection status. No provider credentials are accessible.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_lichess_puzzle_preview",
+    description:"Review a chess-board FEN and solution SAN/PGN inferred from a photo or supplied by the teacher. Display the 8x8 board and exact chapter import preview and SHA-256 for teacher correction. NEVER publish from this tool; image recognition is not a verified FEN until the teacher visually confirms it.",
+    schema:puzzleDraftSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_lichess_puzzle_publish",
+    description:"Publish exactly one teacher-reviewed FEN puzzle as a Lichess study chapter. Requires separate study:write browser grant, matching SHA-256 from a preview, new UUID idempotency key, and explicit confirmation both to create the chapter and to contact Lichess. Provider timeouts are ambiguous and must be reconciled in browser, never retried automatically.",
+    schema:puzzlePublishSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_lichess_studies_search",
@@ -1482,6 +1494,13 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_lichess_connection_status": {
         return {data:await lichessConnectionStatus(teacherId)};
       }
+      case "ccp_v1_lichess_puzzle_preview": {
+        return {data:teacherLichessPuzzlePreview(args as Parameters<typeof teacherLichessPuzzlePreview>[0])};
+      }
+      case "ccp_v1_lichess_puzzle_publish": {
+        return {data:await teacherLichessPuzzlePublish(
+          db,teacherId,args as Parameters<typeof teacherLichessPuzzlePublish>[2])};
+      }
       case "ccp_v1_lichess_studies_search": {
         const a=args as {studyId?:string;query?:string;chapterNumber?:number;limit:number};
         return {data:await teacherLichessStudiesSearch(teacherId,a)};
@@ -1803,6 +1822,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CalendarError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof GuardianServiceError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof LichessPuzzleError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LichessConnectionError)
       return {error:{code:error.code,message:error.message}};
