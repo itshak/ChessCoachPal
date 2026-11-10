@@ -27,6 +27,9 @@ export async function PUT(req:NextRequest,{params}:Context) {
   if(!auth) return NextResponse.json({error:"Unauthorized"},{status:401});
   const {id}=await params;
   const body=await req.json().catch(()=>null);
+  if(!body||typeof body!=="object"||Array.isArray(body)||
+     Object.keys(body).some(key=>key!=="name"))
+    return NextResponse.json({error:"name required"},{status:400});
   try {return NextResponse.json(await skillDimensionsUpdate(auth.db,auth.teacherId,id,
     typeof body?.name==="string"?body.name:""));}
   catch(error) {return failure(error,"Unable to update skill");}
@@ -35,7 +38,9 @@ export async function DELETE(req:NextRequest,{params}:Context) {
   const auth=await teacher();
   if(!auth) return NextResponse.json({error:"Unauthorized"},{status:401});
   const body=await req.json().catch(()=>null);
-  if(body?.confirmed!==true||body?.expectedAssessmentCount!==0)
+  if(!body||typeof body!=="object"||Array.isArray(body)||
+     Object.keys(body).some(key=>key!=="confirmed"&&key!=="expectedAssessmentCount")||
+     body.confirmed!==true||body.expectedAssessmentCount!==0)
     return NextResponse.json({error:"Explicit deletion approval and zero-assessment preview required"},{status:400});
   try {
     return NextResponse.json(await skillDimensionsDelete(

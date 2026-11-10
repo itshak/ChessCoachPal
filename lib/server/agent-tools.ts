@@ -666,8 +666,8 @@ const catalogue = [
   },
   {
     name:"ccp_v1_student_skill_assessments_list",
-    description:"Read timestamped 1–5 skill assessment history for an identified owned student, including archived learners.",
-    schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
+    description:"Page through complete timestamped 1–5 skill history for an owned student, including archived learners.",
+    schema:z.object({studentId:uuid,limit:z.number().int().min(1).max(1000).default(1000),offset:z.number().int().min(0).max(1000000).default(0)}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_v1_student_skill_assessments_record",
@@ -1450,8 +1450,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await skillDimensionsDelete(db,teacherId,a.dimensionId,a.expectedAssessmentCount)};
       }
       case "ccp_v1_student_skill_assessments_list": {
-        const a=args as {studentId:string};
-        return {data:await studentSkillAssessmentsList(db,teacherId,a.studentId)};
+        const a=args as {studentId:string;limit:number;offset:number};
+        return {data:await studentSkillAssessmentsList(db,teacherId,a.studentId,{limit:a.limit,offset:a.offset})};
       }
       case "ccp_v1_student_skill_assessments_record": {
         const a=args as {studentId:string;ratings:Parameters<typeof studentSkillAssessmentsRecord>[3];idempotencyKey?:string};

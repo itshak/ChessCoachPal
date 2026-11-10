@@ -65,14 +65,21 @@ export async function skillDimensionsDelete(
   if(!data) throw failure(404,"NOT_FOUND","Skill dimension not found");
   return {ok:true,deletedAssessmentCount:0};
 }
-export async function studentSkillAssessmentsList(db:Db,teacherId:string,studentId:string) {
+export async function studentSkillAssessmentsList(
+  db:Db,teacherId:string,studentId:string,opts:{limit?:number;offset?:number}={}
+) {
+  const limit=opts.limit??1000,offset=opts.offset??0;
+  if(!Number.isInteger(limit)||limit<1||limit>1000||
+     !Number.isInteger(offset)||offset<0||offset>1000000)
+    throw failure(400,"VALIDATION_ERROR","Pagination requires limit 1–1000 and offset 0–1000000");
   const {data:student,error:lookup}=await db.from("students").select("id")
     .eq("id",studentId).eq("teacher_id",teacherId).maybeSingle();
   if(lookup) throw failure(500,"DATABASE_ERROR","Unable to load student skills");
   if(!student) throw failure(404,"NOT_FOUND","Student not found");
   const {data,error}=await db.from("skill_assessments")
     .select("id,dimension_id,rating,note,assessed_on,created_at")
-    .eq("student_id",studentId).order("assessed_on").order("created_at").limit(1000);
+    .eq("student_id",studentId).order("assessed_on").order("created_at").order("id")
+    .range(offset,offset+limit-1);
   if(error) throw failure(500,"DATABASE_ERROR","Unable to load student skills");
   return data??[];
 }

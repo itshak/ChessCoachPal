@@ -16,6 +16,18 @@ test("PARITY:PARITY-skill-dimensions-lifecycle preserves assessments across webs
  expect((await siteList.json()).some((x:{id:string})=>x.id===id)).toBe(true);
  expect((await call("ccp_v1_skill_dimensions_list",{})).data).toEqual(
    await (await page.request.get("/api/skills/dimensions")).json());
+ const fromWebsite=await page.request.post("/api/skills/dimensions",{
+   data:{name:unique("Website-created skill")},
+ });
+ expect(fromWebsite.status(),await fromWebsite.text()).toBe(200);
+ const websiteId=(await fromWebsite.json()).id as string;
+ expect((await call("ccp_v1_skill_dimensions_list",{})).data
+   .some((x:{id:string})=>x.id===websiteId)).toBe(true);
+ const websiteUnused=await call("ccp_v1_skill_dimensions_delete_impact",{dimensionId:websiteId});
+ expect(websiteUnused.data).toMatchObject({assessmentCount:0,canDelete:true});
+ expect((await call("ccp_v1_skill_dimensions_delete",{
+   dimensionId:websiteId,expectedAssessmentCount:0,confirmed:true,
+ })).error).toBeUndefined();
  const rename=unique("Corrected bishop endgames");
  const edited=await page.request.put("/api/skills/dimensions/"+id,{data:{name:rename}});
  expect(edited.status(),await edited.text()).toBe(200);
@@ -26,6 +38,12 @@ test("PARITY:PARITY-skill-dimensions-lifecycle preserves assessments across webs
  });
  expect(revised.error).toBeUndefined();
  expect((await page.request.put("/api/skills/dimensions/"+id,{data:{name:" "}})).status()).toBe(400);
+ expect((await page.request.put("/api/skills/dimensions/"+id,{
+   data:{name:"Improper",studentId:randomUUID()},
+ })).status()).toBe(400);
+ expect((await page.request.post("/api/skills/dimensions",{
+   data:{name:unique("Forbidden extra"),studentId:randomUUID()},
+ })).status()).toBe(400);
  expect((await page.request.post("/api/skills/dimensions",{
    data:{name:revised.data.name},
  })).status()).toBe(409);

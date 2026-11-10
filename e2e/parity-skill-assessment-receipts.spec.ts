@@ -60,6 +60,31 @@ test("PARITY:PARITY-skill-assessment-receipts replays one atomic round between r
  const mcpHistory=await call("ccp_v1_student_skill_assessments_list",{studentId});
  expect(mcpHistory.error).toBeUndefined();
  expect(mcpHistory.data).toEqual(values);
+
+ const second=await page.request.post("/api/students/"+studentId+"/skills",{
+   data:{ratings:[{dimensionId,rating:4,note:"Later evidence"}],idempotencyKey:randomUUID()},
+ });
+ expect(second.status(),await second.text()).toBe(200);
+ const third=await call("ccp_v1_student_skill_assessments_record",{
+   studentId,ratings:[{dimensionId,rating:5,note:"Third teacher review"}],
+   idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(third.error).toBeUndefined();
+ const complete=(await (await page.request.get("/api/students/"+studentId+"/skills")).json()) as
+   Array<{id:string;dimension_id:string;rating:number}>;
+ expect(complete).toHaveLength(3);
+ const pageTwo=await page.request.get("/api/students/"+studentId+"/skills?limit=2&offset=1");
+ expect(pageTwo.status()).toBe(200);
+ expect(await pageTwo.json()).toEqual(complete.slice(1,3));
+ const delegatedPage=await call("ccp_v1_student_skill_assessments_list",{
+   studentId,limit:2,offset:1,
+ });
+ expect(delegatedPage.error).toBeUndefined();
+ expect(delegatedPage.data).toEqual(complete.slice(1,3));
+ expect((await page.request.get("/api/students/"+studentId+"/skills?limit=-1")).status()).toBe(400);
+ expect((await call("ccp_v1_student_skill_assessments_list",{
+   studentId,limit:1001,
+ })).error?.code).toBe("VALIDATION_ERROR");
 });
 
 test("PARITY:PARITY-skill-assessment-cross-tenant protects student and dimension on website and MCP",async({page,request})=>{
