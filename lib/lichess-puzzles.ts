@@ -1,4 +1,19 @@
 import {createHash} from "node:crypto";
+import {z} from "zod";
+
+export const puzzleDraftSchema=z.object({
+ studyId:z.string().regex(/^[A-Za-z0-9]{8}$/),
+ chapterName:z.string().trim().min(1).max(100),
+ fen:z.string().trim().min(10).max(120),
+ moves:z.string().trim().min(1).max(2500),
+ orientation:z.enum(["white","black"]).optional(),
+}).strict();
+export const puzzlePublishSchema=puzzleDraftSchema.extend({
+ expectedSha256:z.string().regex(/^[a-f0-9]{64}$/),
+ idempotencyKey:z.string().uuid(),
+ confirmed:z.literal(true),
+ confirmedExternal:z.literal(true),
+}).strict();
 
 export class PuzzleReviewError extends Error {
   constructor(public code:string,message:string){super(message);}
