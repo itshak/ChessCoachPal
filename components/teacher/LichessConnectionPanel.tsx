@@ -17,7 +17,7 @@ export function LichessConnectionPanel(){
   const [error,setError]=useState("");
   const [notice,setNotice]=useState("");
   const [busy,setBusy]=useState(false);
-  const {confirmDialog}=useConfirm();
+  const confirmDialog=useConfirm();
   const refresh=useCallback(async()=>{
     const res=await fetch("/api/lichess/connection",{cache:"no-store"});
     if(!res.ok)throw new Error("Could not load Lichess permissions");
