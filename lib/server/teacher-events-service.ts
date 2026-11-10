@@ -208,7 +208,7 @@ export async function teacherEventInviteEmail(db:Db,teacherId:string,id:string,
  if(!event)throw failure(404,"NOT_FOUND","Event not found");
  const policy=await getPolicy(db,teacherId);
  const {sent,skipped}=await sendEventEmails({
-  event,policy,teacherEmail,origin,mode:"invite",
+  db,teacherId,event,policy,teacherEmail,origin,mode:"invite",
  });
  return {sent,skipped};
 }
