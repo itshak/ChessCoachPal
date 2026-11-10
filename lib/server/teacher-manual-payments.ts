@@ -11,7 +11,7 @@ const fail=(s:number,c:string,m:string)=>new ManualPaymentError(s,c,m);
 export type ManualPaymentInput={
  amountCents?:number|null;note?:string;idempotencyKey?:string;
 };
-const invoiceSelect="id,status,subtotal_cents,stripe_checkout_session_id,payments(id,amount_cents,method,note,external_id)";
+const invoiceSelect="id,status,subtotal_cents,stripe_checkout_session_id,stripe_checkout_url,payments(id,amount_cents,method,note,external_id)";
 type PaymentRecord={id:string;amount_cents:number;method:string;note:string;external_id:string|null};
 async function invoiceForPayment(db:Db,teacherId:string,id:string){
  const {data,error}=await db.from("invoices").select(invoiceSelect)
@@ -44,6 +44,29 @@ export async function teacherManualPaymentRecord(db:Db,teacherId:string,id:strin
   throw fail(409,"CONFLICT","Send an invoice before making a partial payment");
  const amount=resolveManualPaymentAmount(requested,before.balanceCents);
  if(!amount.ok)throw fail(400,"VALIDATION_ERROR",amount.error);
+ // A manual receipt may not coexist with a live Stripe payment link.
+ // Retire the provider session BEFORE inserting money; a completed/unknown
+ // session or missing provider credentials blocks the entire operation.
+ // Clearing the persisted link ahead of insertion is safe: a failed insert
+ // leaves an expired (not payable) Checkout link, never an orphaned charge.
+ if(invoice.stripe_checkout_session_id||invoice.stripe_checkout_url){
+  if(!invoice.stripe_checkout_session_id)
+   throw fail(409,"CHECKOUT_RECONCILIATION_REQUIRED","An invoice payment link needs provider reconciliation before recording cash");
+  const policy=await getPolicy(db,teacherId);
+  if(!policy.stripe_secret_key)
+   throw fail(409,"CHECKOUT_RECONCILIATION_REQUIRED","Reconnect Stripe and retire the Checkout link before recording a manual payment");
+  try{await expireCheckoutSession(policy.stripe_secret_key,invoice.stripe_checkout_session_id);}
+  catch{
+   throw fail(409,"CHECKOUT_RECONCILIATION_REQUIRED","Could not safely retire Stripe Checkout; verify provider payment before recording cash");
+  }
+  const {data:cleared,error:clearError}=await db.from("invoices")
+   .update({stripe_checkout_session_id:null,stripe_checkout_url:null})
+   .eq("id",id).eq("teacher_id",teacherId)
+   .eq("stripe_checkout_session_id",invoice.stripe_checkout_session_id)
+   .in("status",["draft","sent"]).select("id").maybeSingle();
+  if(clearError||!cleared)
+   throw fail(409,"CHECKOUT_RECONCILIATION_REQUIRED","Invoice changed while retiring Stripe Checkout; refresh before recording payment");
+ }
  const {data:record,error:recordError}=await db.from("payments").insert({
   invoice_id:id,amount_cents:amount.amountCents,method:"manual",note,
   ...(key?{external_id:key}:{}),
@@ -59,19 +82,9 @@ export async function teacherManualPaymentRecord(db:Db,teacherId:string,id:strin
  const after=summarizePayments(invoice.subtotal_cents,[
   ...amounts,{amountCents:amount.amountCents},
  ]);
- let checkoutCleared=false;
- if(invoice.stripe_checkout_session_id){
-  const policy=await getPolicy(db,teacherId);
-  if(policy.stripe_secret_key){
-   try {await expireCheckoutSession(policy.stripe_secret_key,invoice.stripe_checkout_session_id);}
-   catch(error){console.error("Unable to expire outdated checkout:",error instanceof Error?error.message:"unknown error");}
-  }
-  checkoutCleared=true;
- }
- if(after.settled||checkoutCleared){
+ if(after.settled){
   const {error}=await db.from("invoices").update({
-   ...(after.settled?{status:"paid",paid_at:new Date().toISOString(),payment_method:"manual"}:{}),
-   ...(checkoutCleared?{stripe_checkout_session_id:null,stripe_checkout_url:null}:{}),
+   status:"paid",paid_at:new Date().toISOString(),payment_method:"manual",
   }).eq("id",id).eq("teacher_id",teacherId);
   if(error)throw fail(500,"DATABASE_ERROR","Payment recorded, but invoice status update failed; reconcile payment before retry");
  }
