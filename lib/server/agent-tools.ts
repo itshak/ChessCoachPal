@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
-import { lichessConnectionStatus,lichessConnectionHandoff,disconnectLichess,LichessConnectionError } from "@/lib/server/lichess-connections";
+import { lichessConnectionStatus,lichessConnectionHandoff,disconnectLichess,LichessConnectionError } from "@/lib/server/lichess-connections";;
+import {teacherLichessStudiesSearch} from "@/lib/server/lichess-studies";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, groupsList, groupsMembers,
@@ -669,6 +670,18 @@ const catalogue = [
     name:"ccp_v1_lichess_connection_status",
     description:"Read teacher Lichess account username, study scopes and connection status. No provider credentials are accessible.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_lichess_studies_search",
+    description:"Discover your connected Lichess studies by name, then search a selected 8-character study ID by PGN chapter metadata, opening, ECO or exact chapter number (including chapter 32). Requires study:read browser consent; returns only sanitized chapter metadata, never PGN text or access tokens.",
+    schema:z.object({
+      studyId:z.string().regex(/^[A-Za-z0-9]{8}$/).optional(),
+      query:z.string().max(120).optional(),
+      chapterNumber:z.number().int().min(1).max(64).optional(),
+      limit:z.number().int().min(1).max(100).default(50),
+    }).strict().refine(x=>x.chapterNumber===undefined||!!x.studyId,
+      "Choose a study ID before searching an exact chapter number"),
+    scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_v1_lichess_connect_handoff",
@@ -1468,6 +1481,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_v1_lichess_connection_status": {
         return {data:await lichessConnectionStatus(teacherId)};
+      }
+      case "ccp_v1_lichess_studies_search": {
+        const a=args as {studyId?:string;query?:string;chapterNumber?:number;limit:number};
+        return {data:await teacherLichessStudiesSearch(teacherId,a)};
       }
       case "ccp_v1_lichess_connect_handoff": {
         const a=args as {mode:"read"|"write"};
