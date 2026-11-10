@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { lichessConnectionStatus,lichessConnectionHandoff,disconnectLichess,LichessConnectionError } from "@/lib/server/lichess-connections";;
+import { lichessConnectionStatus,lichessConnectionHandoff,disconnectLichess,LichessConnectionError } from "@/lib/server/lichess-connections";
 import {teacherLichessStudiesSearch} from "@/lib/server/lichess-studies";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
