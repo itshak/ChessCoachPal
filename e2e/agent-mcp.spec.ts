@@ -77,7 +77,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     expect(r.status(),await r.text()).toBeLessThan(300);
     return (await r.json()).data;
   };
-  const suffix=Date.now().toString(36);
+  const suffix=randomUUID().slice(0,10);
   // Dashboard and notifications share the exact same tenant-scoped service.
   expect(names).toContain("ccp_v1_dashboard_summary");
   const dashboard = (await mcp("tools/call", {
@@ -813,13 +813,17 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     dimensionId:dimId,expectedAssessmentCount:0,confirmed:true,
   })).structuredContent;
   expect(rejectWrongCount.error.code).toBe("CONFLICT");
-  const deletedSkill=(await call("ccp_v1_skill_dimensions_delete",{
+  const refusedHistoryLoss=(await call("ccp_v1_skill_dimensions_delete",{
     dimensionId:dimId,expectedAssessmentCount:1,confirmed:true,
   })).structuredContent;
-  expect(deletedSkill.error).toBeUndefined();
-  expect(deletedSkill.data.deletedAssessmentCount).toBe(1);
-  const afterDeletion=await page.request.get("/api/students/"+profileId+"/skills");
-  expect((await afterDeletion.json()).some((x:{id:string})=>x.id===assessmentId)).toBe(false);
+  expect(refusedHistoryLoss.error.code).toBe("CONFLICT");
+  const afterRefusal=await page.request.get("/api/students/"+profileId+"/skills");
+  expect(afterRefusal.status()).toBe(200);
+  expect((await afterRefusal.json()).some((x:{id:string})=>x.id===assessmentId)).toBe(true);
+  const intactDimension=(await call("ccp_v1_skill_dimensions_delete_impact",{
+    dimensionId:dimId,
+  })).structuredContent.data;
+  expect(intactDimension).toMatchObject({assessmentCount:1,canDelete:false});
 
   // Guardian/contact lifecycle parity with secret redaction and cross-tenant denial.
   for(const toolName of ["ccp_v1_guardians_list","ccp_v1_guardians_detail",
