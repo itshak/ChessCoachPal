@@ -98,6 +98,14 @@ export async function createCheckoutSession(
   return { sessionId: session.id, url: session.url };
 }
 
+/** Deciding whether a provider link is safely retired is deliberately fail-closed. */
+export function checkoutExpiryAction(status:string|null):"expire"|"safe"{
+  if(status==="expired")return "safe";
+  if(status==="open")return "expire";
+  if(status==="complete")throw new Error("Stripe Checkout has completed; reconcile the provider payment before recording another payment");
+  throw new Error("Stripe Checkout status is unknown; cannot safely retire the payment link");
+}
+
 /**
  * Expire an open Checkout Session so its link can no longer be paid (e.g.
  * after a manual payment changed what is owed). Already completed or
@@ -109,14 +117,9 @@ export async function expireCheckoutSession(
 ): Promise<void> {
   const stripe = createStripeClient(secretKey);
   const session = await stripe.checkout.sessions.retrieve(sessionId);
-  if (session.status === "expired") return;
-  if (session.status === "complete") {
-    throw new Error("Stripe Checkout has completed; reconcile the provider payment before recording another payment");
+  if (checkoutExpiryAction(session.status) === "expire") {
+    await stripe.checkout.sessions.expire(sessionId);
   }
-  if (session.status !== "open") {
-    throw new Error("Stripe Checkout status is unknown; cannot safely retire the payment link");
-  }
-  await stripe.checkout.sessions.expire(sessionId);
 }
 
 export function constructWebhookEvent(
