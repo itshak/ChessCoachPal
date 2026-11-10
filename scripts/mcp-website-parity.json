@@ -134,11 +134,12 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_credits_redemption_return"
       ],
-      "explanation": "Shared owner-scoped credit return, confirmed MCP action. Ledger effects and exact replay not yet certified."
+      "explanation": "Teacher-owned credit redemption returns use one authenticated atomic SQL transaction and a durable replay receipt. Delegated MCP approval and website DELETE race on the same redeemed credit; exactly one first-return and one replay result are accepted, balances are read back from both surfaces, and unknown IDs are denied. All five PR-head workflows passed on ac60c348; no external side effect.",
+      "evidenceTest": "e2e/parity-credits-lifecycle.spec.ts"
     },
     {
       "path": "app/api/billing/export/route.ts",
