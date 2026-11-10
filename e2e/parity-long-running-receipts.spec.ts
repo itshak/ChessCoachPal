@@ -58,9 +58,9 @@ test("PARITY:PARITY-safety-long-running-receipts confirms export/import/send wit
   const websiteStudent=await page.request.get("/api/students/"+studentId);
   expect(websiteStudent.status(),await websiteStudent.text()).toBe(200);
   expect((await websiteStudent.json()).name).toBe(studentName);
-  const browserPreview=await page.request.put("/api/settings/import",{data:{payload}});
-  expect(browserPreview.status(),await browserPreview.text()).toBe(200);
-  expect((await browserPreview.json()).sha256).toBe(preview.data.sha256);
+  const importBrowserPreview=await page.request.put("/api/settings/import",{data:{payload}});
+  expect(importBrowserPreview.status(),await importBrowserPreview.text()).toBe(200);
+  expect((await importBrowserPreview.json()).sha256).toBe(preview.data.sha256);
   const unreviewedBrowser=await page.request.post("/api/settings/import",{data:payload});
   expect(unreviewedBrowser.status()).toBe(400);
   const browserReplay=await page.request.post("/api/settings/import",{
