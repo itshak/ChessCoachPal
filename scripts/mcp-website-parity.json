@@ -108,11 +108,12 @@
         "PATCH"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_credits_package_expiry"
       ],
-      "explanation": "Shared expiry edit with used-credit historical date validation and explicit MCP confirmation; concurrency case matrix outstanding."
+      "explanation": "142-pass authenticated E2E on PR commit 12ec30b verifies website PATCH ↔ MCP confirmed expiry edit, cleared/extended expiry, redeemed lesson prohibition, foreign-tenant denial and direct database trigger refusal. Package UPDATE row locking serializes against redemption INSERT locks so historical paid lessons cannot be invalidated by racing direct writes.",
+      "evidenceTest": "e2e/parity-credits-lifecycle.spec.ts"
     },
     {
       "path": "app/api/billing/credit-packages/route.ts",
@@ -121,12 +122,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_credits_packages_list",
         "ccp_v1_credits_package_create"
       ],
-      "explanation": "Same teacher-scoped prepaid balance and draft credit invoice creation for site/MCP. Purchase requires confirmation, no automatic email. Multi-record transaction and idempotency still open."
+      "explanation": "142-pass authenticated E2E on PR commit 12ec30b verifies website↔MCP prepaid package GET and transactional POST, durable requestId replay and changed-payload conflict, invalid/foreign student isolation, no phantom draft invoice and shared balances; both clients use atomic owner-scoped ccp_credit_package_create SQL transaction.",
+      "evidenceTest": "e2e/parity-credits-lifecycle.spec.ts"
     },
     {
       "path": "app/api/billing/credit-redemptions/[id]/route.ts",
@@ -390,12 +392,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_events_email_preview",
         "ccp_v1_events_email_invites"
       ],
-      "explanation": "Shared owner-scoped non-mutating invitation preview and actual send now render from identical templates. GET website and delegated MCP preview redact portal tokens, require explicit confirmation for recipient contacts. Sending still requires explicit write/email approval and lacks verified exactly-once receipts; route remains gap until full delivery/replay acceptance."
+      "explanation": "142-pass real synthetic Mailpit E2E on PR commit 12ec30b verifies identical browser/MCP invitation preview, no token or private recipient leak, explicit MCP external-email approval, one durable PostgreSQL send receipt in a simultaneous cross-client send race, provider delivery once, retries skipped, and 404/NOT_FOUND across both clients for another teacher's event.",
+      "evidenceTest": "e2e/parity-event-email-delivery.spec.ts"
     },
     {
       "path": "app/api/events/[id]/route.ts",
