@@ -307,15 +307,27 @@ export async function teacherBillingCheckout(supabase:SupabaseClient,teacherId:s
       customerEmail: stripeCheckoutPrefillEmail(family),
     });
 
-    await supabase
+    // Do not tell the browser or MCP that the session is safely linked if
+    // the invoice moved to a nonpayable state or persistence failed. A retry
+    // uses the same Stripe idempotency key for identical Checkout parameters.
+    const { data: persisted, error: persistError } = await supabase
       .from("invoices")
       .update({
         stripe_checkout_session_id: session.sessionId,
         stripe_checkout_url: session.url,
       })
       .eq("id", id)
-      .eq("teacher_id", teacherId);
+      .eq("teacher_id", teacherId)
+      .in("status", ["draft", "sent"])
+      .select("id")
+      .maybeSingle();
 
+    if (persistError || !persisted) {
+      return NextResponse.json(
+        { error: "Checkout session could not be saved; review the invoice before retrying" },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(session);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
