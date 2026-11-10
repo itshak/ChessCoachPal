@@ -923,6 +923,32 @@
       "parity": "browser-only",
       "existingTools": [],
       "explanation": "Lichess OAuth callback binds encrypted verifier/state to authenticated teacher and never exposes access tokens through MCP or website."
+    },
+    {
+      "path": "app/api/lichess/puzzles/preview/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_lichess_puzzle_preview"
+      ],
+      "explanation": "Human-reviewed chess image→FEN board and deterministic PGN SHA-256 preview via the same pure function from both clients. No provider write; named signed E2E and final-head CI pending.",
+      "evidenceTest": "e2e/parity-lichess-puzzle.spec.ts"
+    },
+    {
+      "path": "app/api/lichess/puzzles/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_lichess_puzzle_publish"
+      ],
+      "explanation": "Explicit approved publish to Lichess study:write via server-only bearer token and unique owner-scoped provider-attempt receipts; ambiguous writes never auto-retry. Named provider E2E and final-head CI pending.",
+      "evidenceTest": "e2e/parity-lichess-puzzle.spec.ts"
     }
   ],
   "teacherPages": [
@@ -959,6 +985,7 @@
     "components/teacher/FamilyForm.tsx",
     "components/teacher/HostedLimitBanner.tsx",
     "components/teacher/LichessConnectionPanel.tsx",
+    "components/teacher/LichessPuzzlePublisher.tsx",
     "components/teacher/LichessStudyExplorer.tsx",
     "components/teacher/MaterialHistoryPanel.tsx",
     "components/teacher/NotificationBell.tsx",
