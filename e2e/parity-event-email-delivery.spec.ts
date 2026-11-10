@@ -1,5 +1,6 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
+import {createClient} from "@supabase/supabase-js";
 import {delegatedTool} from "./helpers/delegated-mcp";
 import {mailpitMessagesTo} from "./helpers/mailpit";
 
@@ -64,4 +65,53 @@ test("PARITY:PARITY-events-invitation-delivery previews and sends one local SMTP
  const eventDetail=await page.request.get("/api/events/"+eventId);
  expect(eventDetail.status(),await eventDetail.text()).toBe(200);
  expect((await eventDetail.json()).event.id).toBe(eventId);
+});
+
+test("PARITY:PARITY-events-email-tenant-isolation denies foreign invitation preview and delivery",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ const email="foreign-invite-"+randomUUID()+"@example.com";
+ const user=await admin.auth.admin.createUser({
+  email,password:"SyntheticForeignCoach-123!",email_confirm:true,
+ });
+ expect(user.error).toBeNull();
+ const teacherId=user.data.user!.id;
+ const recipient="foreign-event-recipient-"+randomUUID()+"@example.com";
+ try{
+  expect((await admin.from("teachers").insert({
+   id:teacherId,email,display_name:"Private event teacher",
+  })).error).toBeNull();
+  const family=await admin.from("guardians").insert({
+   teacher_id:teacherId,name:"Foreign invite family",
+   email:recipient,portal_token:randomUUID(),
+  }).select("id").single();
+  expect(family.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacherId,name:"Private chess pupil",guardian_id:family.data!.id,
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const event=await admin.from("events").insert({
+   teacher_id:teacherId,title:"Private tournament",
+   starts_at:"2042-12-01T09:00:00+02:00",
+  }).select("id").single();
+  expect(event.error).toBeNull();
+  const eventId=event.data!.id as string;
+  expect((await admin.from("event_students").insert({
+   event_id:eventId,student_id:student.data!.id,repertoire:"Bishop endgames",
+  })).error).toBeNull();
+  const api="/api/events/"+eventId+"/email";
+  expect((await page.request.get(api)).status()).toBe(404);
+  expect((await call("ccp_v1_events_email_preview",{eventId})).error?.code)
+   .toBe("NOT_FOUND");
+  expect((await page.request.post(api)).status()).toBe(404);
+  expect((await call("ccp_v1_events_email_invites",{
+   eventId,confirmed:true,confirmedEmail:true,
+  })).error?.code).toBe("NOT_FOUND");
+  expect((await mailpitMessagesTo(request,recipient)).length).toBe(0);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacherId)).error).toBeNull();
+ }
 });
