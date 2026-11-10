@@ -890,6 +890,19 @@
       "evidenceTest": "e2e/parity-lichess-oauth.spec.ts"
     },
     {
+      "path": "app/api/lichess/studies/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_lichess_studies_search"
+      ],
+      "explanation": "New server-only Lichess API uses OAuth study:read and bounded real NDJSON/PGN metadata parsing with no raw provider token or private game text exposed. Browser and MCP share the exact domain operation; 40-chapter synthetic provider cross-interface E2E awaits final green CI.",
+      "evidenceTest": "e2e/parity-lichess-oauth.spec.ts"
+    },
+    {
       "path": "app/api/lichess/connect/route.ts",
       "methods": [
         "GET"
@@ -945,6 +958,8 @@
     "components/teacher/FamilyDetailActions.tsx",
     "components/teacher/FamilyForm.tsx",
     "components/teacher/HostedLimitBanner.tsx",
+    "components/teacher/LichessConnectionPanel.tsx",
+    "components/teacher/LichessStudyExplorer.tsx",
     "components/teacher/MaterialHistoryPanel.tsx",
     "components/teacher/NotificationBell.tsx",
     "components/teacher/OnboardingTour.tsx",
@@ -983,7 +998,6 @@
     "components/teacher/settings/TeacherCalendarFeed.tsx",
     "components/teacher/settings/TimezoneSettingsForm.tsx",
     "components/teacher/skills/SkillsCharts.tsx",
-    "components/teacher/skills/SkillsPanel.tsx",
-    "components/teacher/LichessConnectionPanel.tsx"
+    "components/teacher/skills/SkillsPanel.tsx"
   ]
 }
