@@ -64,6 +64,18 @@ export async function sendInvoice(
   }
 
   const { invoice, family, policy, pdfBytes } = loaded.data;
+  // One request must claim this draft BEFORE creating any Stripe checkout
+  // or delivering any email. A losing concurrent website/MCP/bulk caller is
+  // rejected rather than replaying external side effects on an already-sent
+  // invoice. In particular, PostgREST update errors alone do not indicate
+  // whether any row matched the original draft status.
+  const {data:claimed,error:claimError}=await supabase.from("invoices").update({
+    status:"sent",sent_at:new Date().toISOString(),
+  }).eq("id",id).eq("teacher_id",teacherId).eq("status","draft")
+    .select("id").maybeSingle();
+  if(claimError)return {ok:false,error:"Unable to claim invoice send"};
+  if(!claimed)return {ok:false,
+    error:"Invoice already sent or being processed; check delivery status before retrying"};
   const familyName = familyDisplayName(family);
 
   let checkoutUrl: string | null = invoice.stripe_checkout_url;
@@ -107,18 +119,6 @@ export async function sendInvoice(
         "Pay link could not be created. Use Create pay link to try again";
     }
   }
-
-  const { error: updateError } = await supabase
-    .from("invoices")
-    .update({
-      status: "sent",
-      sent_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .eq("teacher_id", teacherId)
-    .eq("status", "draft");
-
-  if (updateError) return { ok: false, error: updateError.message };
 
   const recipients = familyEmailRecipients(family);
   let emailed = false;
