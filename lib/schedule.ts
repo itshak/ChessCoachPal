@@ -149,7 +149,7 @@ export function zonedTimeToUtc(
   timeZone: string,
   gap: "shift-forward" | "reject" = "shift-forward"
 ): Date {
-  const match = /^([01]\\d|2[0-3]):([0-5]\\d)(?::([0-5]\\d))?$/.exec(timeStr);
+  const match = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(timeStr);
   if (!isDateString(dateStr) || !match) {
     throw new RangeError("Invalid local date or 24-hour time");
   }
