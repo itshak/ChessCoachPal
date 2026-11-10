@@ -724,6 +724,7 @@
     {
       "path": "app/api/settings/import/route.ts",
       "methods": [
+        "PUT",
         "POST"
       ],
       "kind": "teacher",
@@ -732,7 +733,7 @@
         "ccp_v1_settings_import_preview",
         "ccp_v1_settings_import_apply"
       ],
-      "explanation": "Shared allowlisted tenant-scoped import. MCP requires SHA-256 preview digest and explicit confirmation, browser keeps file upload. Transactional rollback and complete destructive-import scenario tests remain pending."
+      "explanation": "Website and MCP both require a teacher-scoped non-mutating SHA-256 preview plus explicit matching digest and confirmation before an allowlisted import; authenticated OAuth/browser readback tests verify cross-surface receipts and reject raw website POST. Import transactions and full destructive rollback evidence remain open, so the route is still a gap."
     },
     {
       "path": "app/api/settings/policy/route.ts",

@@ -51,9 +51,11 @@ export function teacherImportPreview(raw:unknown,maxBytes=MAX_MCP_IMPORT_BYTES):
  ];
  return {payload,sha256:createHash("sha256").update(serialized).digest("hex"),counts,bytes,warnings};
 }
-export async function teacherImportApply(db:Db,teacherId:string,raw:unknown,expectedSha256?:string){
+export async function teacherImportApply(db:Db,teacherId:string,raw:unknown,expectedSha256:string){
  const preview=teacherImportPreview(raw);
- if(expectedSha256&&preview.sha256!==expectedSha256)
+ if(!/^[a-f0-9]{64}$/.test(expectedSha256))
+  throw fail(400,"PREVIEW_REQUIRED","An explicitly reviewed SHA-256 digest is required");
+ if(preview.sha256!==expectedSha256)
   throw fail(409,"PREVIEW_CHANGED","The import payload differs from the previously reviewed preview");
  // Domain import contains table allowlisting and writes only as this tenant.
  const result=await importStudioExport(db,teacherId,preview.payload);
