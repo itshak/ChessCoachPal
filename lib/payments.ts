@@ -6,6 +6,7 @@
  * BYO keys. Manual is the zero-config default.
  */
 
+import { createHash } from "node:crypto";
 import Stripe from "stripe";
 
 export interface CheckoutSessionArgs {
@@ -64,12 +65,31 @@ export function buildCheckoutSessionParams(
   };
 }
 
+/** Stable Stripe retry key for identical teacher-owned checkout requests.
+ *
+ * Includes amount, currency, invoice, redirect URLs and other session
+ * parameters. Never put guardian emails or provider secrets directly into
+ * an idempotency key. Changed amounts receive fresh keys.
+ *
+ * Stripe retains idempotency responses for a limited window: callers must
+ * still persist receipts and guard stale balances transactionally.
+ */
+export function checkoutSessionIdempotencyKey(
+  args: Omit<CheckoutSessionArgs, "secretKey">
+): string {
+  return "ccp-checkout-v1-" + createHash("sha256")
+    .update(JSON.stringify(buildCheckoutSessionParams(args)))
+    .digest("hex");
+}
+
 export async function createCheckoutSession(
   args: CheckoutSessionArgs
 ): Promise<CheckoutSessionResult> {
   const stripe = createStripeClient(args.secretKey);
+  const { secretKey: _secretKey, ...publicArgs } = args;
   const session = await stripe.checkout.sessions.create(
-    buildCheckoutSessionParams(args)
+    buildCheckoutSessionParams(publicArgs),
+    { idempotencyKey: checkoutSessionIdempotencyKey(publicArgs) }
   );
 
   if (!session.url) {
