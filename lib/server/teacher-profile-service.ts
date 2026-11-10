@@ -16,6 +16,11 @@ export async function teacherProfileUpdate(
  db:SupabaseClient,teacherId:string,changes:{
  displayName?:unknown;avatarUrl?:unknown;
 }){
+ // This domain operation is shared by the website and MCP. Authentication
+ // credentials, sign-in email, and MFA settings require a secure browser
+ // identity flow; reject rather than silently ignoring such extra inputs.
+ if(Object.keys(changes).some(key=>key!=="displayName"&&key!=="avatarUrl"))
+   throw new TeacherProfileError(400,"VALIDATION_ERROR","Unsupported profile field");
  const patch:{display_name?:string;avatar_url?:string|null}={};
  if(changes.displayName!==undefined){
    if(typeof changes.displayName!=="string"||!changes.displayName.trim())
