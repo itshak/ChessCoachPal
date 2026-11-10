@@ -679,6 +679,57 @@ export function ChessCoachWorkspace() {
             </label>
             <button className={button} disabled={busy}>Save session changes</button>
           </form>}
+          {session && rosterRevision && <form onSubmit={correctHistoricalRoster}
+            className="space-y-3 border-y border-border py-4">
+            <h3 className="font-semibold">Correct frozen lesson roster</h3>
+            <p className="text-xs text-muted">Changes only this lesson's historical
+              participants, not current class enrollment. Removed attendance
+              is preserved in the audit. Linked chess observations and materials
+              must be addressed before removing a learner.</p>
+            <label className="block text-sm">Find learner
+              <input className={field} value={rosterSearch}
+                placeholder="Search by name" onChange={e=>setRosterSearch(e.target.value)}/>
+            </label>
+            <div className="max-h-44 overflow-y-auto rounded-lg border border-border p-2 space-y-1"
+              role="group" aria-label="Correct historical lesson participants">
+              {rosterCandidates.filter(s=>rosterEditIds.includes(s.id)||
+                s.name.toLocaleLowerCase().includes(rosterSearch.toLocaleLowerCase()))
+                .slice(0,80).map(s=><label key={s.id}
+                className="flex items-center gap-2 text-sm px-1 py-1">
+                <input type="checkbox" checked={rosterEditIds.includes(s.id)}
+                  onChange={e=>setRosterEditIds(current=>e.target.checked
+                    ? [...current,s.id] : current.filter(id=>id!==s.id))}/>
+                <span>{s.name}</span>
+              </label>)}
+            </div>
+            <p className="text-xs text-muted">{rosterEditIds.length}
+              learner(s) selected. At most 80 matching learners displayed.</p>
+            <label className="block text-sm">Reason for correction
+              <textarea className={field} value={rosterReason}
+                onChange={e=>setRosterReason(e.target.value)}
+                placeholder="Explain the required historical attendance correction"
+                minLength={8} maxLength={1000} required rows={2}/>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" checked={rosterConfirmed}
+                onChange={e=>setRosterConfirmed(e.target.checked)}/>
+              <span>I have reviewed this historical correction and understand
+                removed attendance is retained in the audit.</span>
+            </label>
+            <button className={button} disabled={busy||!rosterRevision||
+              !rosterConfirmed||rosterReason.trim().length<8||rosterEditIds.length===0}>
+              Confirm historical correction
+            </button>
+            <div>
+              <button type="button" className="text-sm text-primary underline"
+                onClick={()=>void loadRosterAudit()}>View correction history</button>
+              {rosterAudit.map(entry=><p key={entry.id} className="text-xs text-muted mt-1">
+                {new Date(entry.createdAt).toLocaleString()} — {entry.reason}
+                {" · "}{entry.previousStudentIds.length} to {entry.correctedStudentIds.length}
+                {" · "}{entry.removedAttendanceCount} removed attendance row(s) audited
+              </p>)}
+            </div>
+          </form>}
           {session && roster.length === 0 &&
             <p className="text-sm text-muted">No participants were enrolled when this session was created.</p>}
           {session && rosterSessionId === selectedSessionId && roster.map(person => {
