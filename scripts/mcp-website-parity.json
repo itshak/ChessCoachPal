@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "auditedAt": "2026-11-08",
-  "headSha": "bb3a3fa6ad27a0d25ef7e39ae37c2988227e65c8",
+  "auditedAt": "2026-11-10",
+  "headSha": "cf00dff6325dde7235d0543e789d1a07501b4269",
   "policy": "MCP-first business-feature parity. Every website business action needs a tested MCP counterpart or documented secure browser approval; live strict parity is currently BLOCKED.",
   "apiRoutes": [
     {
@@ -774,13 +774,14 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_skill_dimensions_update",
         "ccp_v1_skill_dimensions_delete_impact",
         "ccp_v1_skill_dimensions_delete"
       ],
-      "explanation": "Shared owner-scoped preview, rename and confirmed zero-assessment removal with DB safeguard against concurrent historical assessment loss. Delegated website/MCP acceptance is pending; do not promote until executed."
+      "explanation": "Delegated browser/MCP 139-pass E2E at cf00dff verifies owner-scoped dimension delete-impact GET, website/MCP PUT rename, confirmed DELETE for assessment-free categories, DB-enforced preservation of assessed history, validation and cross-teacher denial. Named tools and both transports independently verified.",
+      "evidenceTest": "e2e/parity-skill-dimensions-lifecycle.spec.ts"
     },
     {
       "path": "app/api/skills/dimensions/route.ts",
@@ -789,12 +790,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "partial",
       "existingTools": [
         "ccp_v1_skill_dimensions_list",
         "ccp_v1_skill_dimensions_create"
       ],
-      "explanation": "Shared teacher-scoped list and create implementation with delegated OAuth parity test. Idempotency for create not yet certified."
+      "explanation": "139-pass delegated OAuth/browser E2E at cf00dff verifies owner-scoped category list and create from both transports, field validation and duplicate-name rejection; further create-retry/idempotency and explicit list foreign-tenant omission remain to certify before full-route promotion.",
+      "evidenceTest": "e2e/parity-skill-dimensions-lifecycle.spec.ts"
     },
     {
       "path": "app/api/students/[id]/route.ts",
@@ -822,12 +824,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_student_skill_assessments_list",
         "ccp_v1_student_skill_assessments_record"
       ],
-      "explanation": "Shared append-only 1–5 assessment RPC with teacher-scoped atomic transaction, immutable request receipts and explicit website/MCP retry key. New cross-transport replay/tenant E2E required; full route classification pending executed evidence."
+      "explanation": "Delegated website/MCP 139-pass E2E at cf00dff verifies teacher-owned atomic 1–5 assessment POST with cross-transport idempotent replay, changed-payload 409, append-only history, GET pagination and cross-tenant student/dimension denial. Named tools and both transports independently verified.",
+      "evidenceTest": "e2e/parity-skill-assessment-receipts.spec.ts"
     },
     {
       "path": "app/api/students/route.ts",
@@ -875,12 +878,13 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_lichess_connection_status",
         "ccp_v1_lichess_connection_disconnect"
       ],
-      "explanation": "Teacher-owned connection status and confirmed revoke via browser/MCP with server-only encrypted credential custody. Synthetic OAuth E2E is pending; live provider acceptance separately required."
+      "explanation": "Delegated OAuth/browser PKCE study:read/write grant E2E at cf00dff (139 pass) verifies website and MCP status equality, scope elevation, explicit revoke approval, provider-revocation failure disclosure, secret/token redaction, repeated disconnect and cross-tenant isolation. Browser-only /connect and /callback protect provider credentials.",
+      "evidenceTest": "e2e/parity-lichess-oauth.spec.ts"
     },
     {
       "path": "app/api/lichess/connect/route.ts",
