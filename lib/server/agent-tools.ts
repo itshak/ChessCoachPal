@@ -1283,8 +1283,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_teacher_profile_get":
         return {data:await teacherProfileGet(db,teacherId)};
       case "ccp_v1_teacher_profile_update": {
-        const a=args as {displayName?:string;avatarUrl?:string|null};
-        return {data:await teacherProfileUpdate(db,teacherId,a)};
+        const a=args as {displayName?:string;avatarUrl?:string|null;confirmed:true};
+        // Approval is an MCP transport control, never an editable profile field.
+        // Pass only the same domain fields accepted by the website.
+        return {data:await teacherProfileUpdate(db,teacherId,{
+          displayName:a.displayName,avatarUrl:a.avatarUrl,
+        })};
       }
       case "ccp_v1_calendar_feed_status":
         return {data:await teacherCalendarFeedStatus(db,teacherId)};
