@@ -219,7 +219,12 @@ export async function calendarLessonCreate(db:Db,teacherId:string,input:LessonCr
   if(input.durationMinutes===undefined)duration=lesson.duration_minutes;
  }
  const policy=await getPolicy(db,teacherId);
- const startsAt=zonedTimeToUtc(input.date,input.time,policy.timezone);
+ let startsAt:Date;
+ try {
+  startsAt=zonedTimeToUtc(input.date,input.time,policy.timezone,"reject");
+ } catch {
+  throw failure(400,"VALIDATION_ERROR","Local lesson time does not exist in the studio timezone (DST gap)");
+ }
  const {data,error}=await db.from("lessons").insert({
   teacher_id:teacherId,student_id:input.studentId,slot_id:null,
   lesson_date:input.date,starts_at:startsAt.toISOString(),
