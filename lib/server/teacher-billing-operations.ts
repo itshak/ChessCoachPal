@@ -2,7 +2,7 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import {NextResponse} from "next/server";
 import {getPolicy} from "@/lib/server/scheduling";
 import {derivePeriodItems,getInvoicedLessonIds} from "@/lib/server/billing";
-import {loadCreditInputs,recordRedemptions} from "@/lib/server/credits";
+import {loadCreditInputs} from "@/lib/server/credits";
 import {groupItemsByGuardian,sumAmountCents,summarizePayments} from "@/lib/billing";
 import {createCheckoutSession} from "@/lib/payments";
 import {familyDisplayName,stripeCheckoutPrefillEmail} from "@/lib/guardians";
@@ -98,89 +98,33 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
     });
   }
 
-  // Record credits before writing lesson lines: the database refuses a
-  // redemption for a lesson that is already invoiced, and vice versa.
-  const redemptionError = await recordRedemptions(
-    supabase,
-    teacherId,
-    newRedemptions
-  );
-  if (redemptionError) {
-    return NextResponse.json({ error: redemptionError }, { status: 500 });
-  }
-
-  if (drafts.length === 0 && newRedemptions.size > 0) {
+  if (drafts.length === 0 && newRedemptions.size === 0) {
     return NextResponse.json({
-      created: [],
-      count: 0,
-      skippedAlreadyInvoiced,
-      creditsUsed: newRedemptions.size,
+      error: skippedAlreadyInvoiced > 0
+        ? "All billable lessons in this period are already on another invoice"
+        : "No billable lessons in this period",
+    }, {status:400});
+  }
+
+  // The database validates teacher/family/lesson ownership and writes ALL
+  // related invoices, lines and credit redemptions in one transaction.
+  // Any failure rolls back the complete period rather than leaving partly
+  // issued invoices or spent credits visible to the website or MCP.
+  const {data:committed,error:commitError}=await supabase.rpc(
+    "ccp_invoice_generation_commit",{
+      p_period_start:periodStart,p_period_end:periodEnd,p_drafts:drafts,
+      p_redemptions:[...newRedemptions].map(([lessonId,packageId])=>({
+        lessonId,packageId,
+      })),
     });
+  if(commitError){
+    const conflict=/INVOICE_ALREADY_COMMITTED|23505/.test(commitError.message);
+    return NextResponse.json({
+      error:conflict?"Lessons have already been invoiced; refresh the preview":
+        "Invoice creation failed and was rolled back",
+    },{status:conflict?409:500});
   }
-
-  if (drafts.length === 0) {
-    return NextResponse.json(
-      {
-        error:
-          skippedAlreadyInvoiced > 0
-            ? "All billable lessons in this period are already on another invoice"
-            : "No billable lessons in this period",
-      },
-      { status: 400 }
-    );
-  }
-
-  const created: string[] = [];
-  for (const draft of drafts) {
-    const { data: invoice, error } = await supabase
-      .from("invoices")
-      .insert({
-        teacher_id: teacherId,
-        guardian_id: draft.guardianId,
-        period_start: periodStart,
-        period_end: periodEnd,
-        status: "draft",
-        subtotal_cents: draft.subtotalCents,
-        currency: policy.currency,
-      })
-      .select("id")
-      .single();
-
-    if (error || !invoice) {
-      return NextResponse.json(
-        { error: error?.message ?? "Failed to create invoice" },
-        { status: 500 }
-      );
-    }
-
-    const rows = draft.items.map((item, idx) => ({
-      invoice_id: invoice.id,
-      lesson_id: item.lessonId,
-      kind: item.kind,
-      description: item.description,
-      quantity: item.quantity,
-      unit_cents: item.unitCents,
-      amount_cents: item.amountCents,
-      sort_order: idx,
-    }));
-
-    const { error: itemsError } = await supabase
-      .from("invoice_items")
-      .insert(rows);
-
-    if (itemsError) {
-      await supabase.from("invoices").delete().eq("id", invoice.id);
-      return NextResponse.json({ error: itemsError.message }, { status: 500 });
-    }
-    created.push(invoice.id);
-  }
-
-  return NextResponse.json({
-    created,
-    count: created.length,
-    skippedAlreadyInvoiced,
-    creditsUsed: newRedemptions.size,
-  });
+  return NextResponse.json({...committed,skippedAlreadyInvoiced});
 }
 
 export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId:string,id:string):Promise<NextResponse>{
@@ -239,52 +183,25 @@ export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId
       }
     );
 
-    await supabase.from("invoice_items").delete().eq("invoice_id", id);
-
-    // After clearing this draft's lines, so lessons it held can take a credit.
-    const redemptionError = await recordRedemptions(
-      supabase,
-      teacherId,
-      newRedemptions
-    );
-    if (redemptionError) {
-      return NextResponse.json({ error: redemptionError }, { status: 500 });
+    // Regeneration never clears the original lines until EVERY new line,
+    // redemption and subtotal is known to be valid. One RPC gives both MCP
+    // and browser the same all-or-nothing transaction.
+    const {data:regenerated,error:regenError}=await supabase.rpc(
+      "ccp_invoice_regenerate_atomic",{
+        p_invoice_id:id,p_items:items,
+        p_redemptions:[...newRedemptions].map(([lessonId,packageId])=>({
+          lessonId,packageId,
+        })),
+      });
+    if(regenError){
+      const conflict=/INVOICE_ALREADY_COMMITTED|INVOICE_REGENERATION_BLOCKED|23505|23514/.test(
+        regenError.message);
+      return NextResponse.json({
+        error:conflict?"Invoice changed or lessons were already billed; refresh first":
+          "Invoice regeneration failed; original lines were preserved",
+      },{status:conflict?409:500});
     }
-
-    if (items.length > 0) {
-      const { error: itemsError } = await supabase.from("invoice_items").insert(
-        items.map((item, idx) => ({
-          invoice_id: id,
-          lesson_id: item.lessonId,
-          kind: item.kind,
-          description: item.description,
-          quantity: item.quantity,
-          unit_cents: item.unitCents,
-          amount_cents: item.amountCents,
-          sort_order: idx,
-        }))
-      );
-      if (itemsError) {
-        return NextResponse.json({ error: itemsError.message }, { status: 500 });
-      }
-    }
-
-    const subtotal = sumAmountCents(items);
-    const { error } = await supabase
-      .from("invoices")
-      .update({ subtotal_cents: subtotal })
-      .eq("id", id)
-      .eq("teacher_id", teacherId);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({
-      ok: true,
-      itemCount: items.length,
-      subtotalCents: subtotal,
-    });
+    return NextResponse.json(regenerated);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });
