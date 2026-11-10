@@ -11,12 +11,17 @@ export const defaultCreateSchema=z.object({
  label:z.string().trim().min(1).max(160),url:studyUrl,
  notes:z.string().max(1000).default(""),requestId:uuid,confirmed:z.literal(true),
 }).strict();
-export const defaultUpdateSchema=z.object({
+const defaultUpdateBaseSchema=z.object({
  operation:z.literal("default.update"),defaultId:uuid,
  expectedUpdatedAt:z.string().datetime({offset:true}),
  label:z.string().trim().min(1).max(160).optional(),url:studyUrl.optional(),
  notes:z.string().max(1000).optional(),confirmed:z.literal(true),
-}).strict().refine(v=>v.label!==undefined||v.url!==undefined||v.notes!==undefined,
+}).strict();
+export const defaultUpdateSchema=defaultUpdateBaseSchema.refine(
+ v=>v.label!==undefined||v.url!==undefined||v.notes!==undefined,
+ "At least one edit required");
+export const defaultUpdateToolSchema=defaultUpdateBaseSchema.omit({operation:true}).refine(
+ v=>v.label!==undefined||v.url!==undefined||v.notes!==undefined,
  "At least one edit required");
 export const defaultArchiveSchema=z.object({
  operation:z.literal("default.archive"),defaultId:uuid,
