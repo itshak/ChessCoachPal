@@ -1,6 +1,12 @@
 # ChessCoachPal development and release status
 
-**Updated:** 2026-11-08 · **Branch of record:** main · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
+**Updated:** 2026-11-10 · **Branch of record:** main · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
+
+## Current PR #44 parity implementation status — 2026-11-10
+
+**Draft PR #44 is still open and not merged.** At tested source [`ece2085`](https://github.com/itshak/ChessCoachPal/commit/ece20852197dd20cf17c1bbee1a9a2fed6ababfd), [E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42802938648) passed **128 synthetic delegated-OAuth browser/MCP cases** (5 intentionally skipped), and [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42802938529), [security](https://github.com/itshak/ChessCoachPal/actions/runs/42802938491), [self-host Compose](https://github.com/itshak/ChessCoachPal/actions/runs/42802938433), and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/42802938876) passed. The coach-facing /coaching page now exposes material-study history/defaults, and a new synthetic invoice bulk-send test proves reviewed recipients/totals and no duplicate SMTP email across website/MCP retries.
+
+**Behavioral parity: 83/93 verified, 10 unchecked; route-family acceptance: 13/48 verified, 8 partial, 27 gaps.** The separately tracked previous merged-main snapshot below is historical and must not be misread as current PR coverage. The remaining checklist includes historical schedule correction, Lichess study authorization/PGN/FEN writes, live payment/provider handoffs, secure account settings, exhaustive per-field mappings, and long-running action receipts. Route-level semantic gaps also remain beyond those ten scenarios. **Strict `npm run mcp:parity:strict` is expected to fail**. Do not archive the active OpenSpec or merge this draft PR solely because its normal CI suite passes. Final acceptance also requires full green tests and strict parity on the eventual merged main; live ChatGPT/Claude client testing is a separate prepublication gate.
 
 ## MCP-first website parity — actively implementing, release still blocked
 
