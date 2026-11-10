@@ -14,7 +14,7 @@ import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
 import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import {
- defaultCreateSchema,defaultUpdateSchema,defaultArchiveSchema,
+ defaultCreateSchema,defaultUpdateSchema,defaultUpdateToolSchema,defaultArchiveSchema,
  teacherMaterialDefaultsList,teacherMaterialDefaultCreate,
  teacherMaterialDefaultUpdate,teacherMaterialDefaultArchive,MaterialDefaultError,
 } from "@/lib/server/teacher-material-defaults";
@@ -871,7 +871,7 @@ const catalogue = [
   {
     name:"ccp_v1_material_default_update",
     description:"Correct a study default label/link/notes with latest revision and explicit confirmation, retaining the prior values in the audit trail.",
-    schema:defaultUpdateSchema.omit({operation:true}),
+    schema:defaultUpdateToolSchema,
     scope:"coach:write",readOnly:false,
   },
   {
