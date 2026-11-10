@@ -81,12 +81,12 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
  },[fixedStudentId]);
  const loadDefaults=useCallback(async()=>{
   if(!workplaceId){setDefaults([]);setDefaultHistory([]);return;}
-  const params=new URLSearchParams({defaults:"true",workplaceId});
+  const params=new URLSearchParams({defaults:"true",workplaceId,includeArchived:"true"});
   if(groupId)params.set("groupId",groupId);
   const data=await json("/api/coaching/materials?"+params) as {
     defaults:DefaultStudy[];history:DefaultHistory[];
   };
-  setDefaults(data.defaults);setDefaultHistory(data.history);
+  setDefaults(data.defaults.filter(x=>!x.archived_at));setDefaultHistory(data.history);
  },[workplaceId,groupId]);
  useEffect(()=>{let active=true;void loadDefaults().catch(e=>{if(active)setError(String(e));});
   return ()=>{active=false;};},[loadDefaults]);
