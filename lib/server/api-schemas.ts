@@ -117,6 +117,7 @@ export const creditPackageCreateSchema = z.object({
   priceCents: z.number().int(),
   startsOn: dateString.optional(),
   expiresOn: optionalDate,
+  requestId: z.uuid().optional(),
 });
 
 export const creditPackageUpdateSchema = z.object({
