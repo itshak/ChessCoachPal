@@ -58,6 +58,17 @@ export const studentUpdateSchema = z.object({
   chesscomUsername: chessHandle.optional(),
   lichessRating: chessRating.optional(),
   chesscomRating: chessRating.optional(),
+  chessGoals: optionalText(5000),
+  chessRatings: z.object({
+    lichess:z.object({
+      bullet:chessRating.optional(),blitz:chessRating.optional(),rapid:chessRating.optional(),
+      classical:chessRating.optional(),daily:chessRating.optional(),puzzle:chessRating.optional(),
+    }).strict().optional(),
+    chesscom:z.object({
+      bullet:chessRating.optional(),blitz:chessRating.optional(),rapid:chessRating.optional(),
+      classical:chessRating.optional(),daily:chessRating.optional(),puzzle:chessRating.optional(),
+    }).strict().optional(),
+  }).strict().optional(),
   teacherNotes: optionalText(50_000),
 
   name: trimmedName.optional(),

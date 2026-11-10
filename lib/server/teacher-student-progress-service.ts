@@ -31,6 +31,7 @@ export async function teacherStudentProgressReport(
      strength:student.strength,lichessUsername:student.lichess_username,
      chesscomUsername:student.chesscom_username,
      lichessRating:student.lichess_rating,chesscomRating:student.chesscom_rating,
+     chessGoals:student.chess_goals,chessRatings:student.chess_ratings,
      archived:Boolean(student.archived_at)},
    skills:dimensions.map(d=>({
      dimensionId:d.id,name:d.name,sortOrder:d.sort_order,

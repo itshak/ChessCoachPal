@@ -130,6 +130,8 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialChesscomUsername={student.chesscom_username ?? null}
         initialLichessRating={student.lichess_rating ?? null}
         initialChesscomRating={student.chesscom_rating ?? null}
+        initialGoals={student.chess_goals ?? ""}
+        initialRatings={student.chess_ratings ?? {}}
       />
       <CreditPackagesCard
         studentId={id}

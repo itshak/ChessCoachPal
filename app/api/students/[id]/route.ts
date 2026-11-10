@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 import { parseBody, studentUpdateSchema } from "@/lib/server/api-schemas";
-import { teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, teacherStudentPatch, teacherStudentProfile, StudentProfileError } from "@/lib/server/student-profile-service";
+import { teacherStudentArchivePreview, teacherStudentChessHistory, teacherStudentDeleteImpact, teacherStudentDelete, teacherStudentPatch, teacherStudentProfile, StudentProfileError } from "@/lib/server/student-profile-service";
 
 export async function GET(
   req: NextRequest,
@@ -13,6 +13,11 @@ export async function GET(
   const { data: { user } } = await db.auth.getUser();
   if (!user) return NextResponse.json({error:"Unauthorized"},{status:401});
   try {
+    if (req.nextUrl.searchParams.get("chessHistory") === "true")
+      return NextResponse.json(await teacherStudentChessHistory(db,user.id,id,{
+        offset:Number(req.nextUrl.searchParams.get("offset")??0),
+        limit:Number(req.nextUrl.searchParams.get("limit")??50),
+      }));
     if (req.nextUrl.searchParams.get("deletePreview") === "true")
       return NextResponse.json(await teacherStudentDeleteImpact(db,user.id,id));
     if (req.nextUrl.searchParams.get("archivePreview") === "true")

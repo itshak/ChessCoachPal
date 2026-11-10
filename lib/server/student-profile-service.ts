@@ -14,6 +14,8 @@ export type StudentProfilePatch = {
   chesscomUsername?: string | null;
   lichessRating?: number | null;
   chesscomRating?: number | null;
+  chessGoals?: string | null;
+  chessRatings?: Record<string,Record<string,number|null>>;
   teacherNotes?: string | null;
   parentContact?: string | null;
   guardianId?: string | null;
@@ -49,6 +51,23 @@ export async function teacherStudentProfile(db: Db, teacherId: string, studentId
   if (!data) throw new StudentProfileError(404,"NOT_FOUND","Student not found");
   return data;
 }
+/** Append-only, owner-scoped manual chess ratings/strength/goals audit history. */
+export async function teacherStudentChessHistory(db:Db,teacherId:string,studentId:string,
+  opts:{offset?:number;limit?:number}={}){
+ await teacherStudentProfile(db,teacherId,studentId);
+ const offset=Math.min(100000,Math.max(0,opts.offset??0));
+ const limit=Math.min(100,Math.max(1,opts.limit??50));
+ const {data,error}=await db.from("student_chess_profile_history")
+  .select("id,field_name,previous_value,next_value,created_at")
+  .eq("teacher_id",teacherId).eq("student_id",studentId)
+  .order("created_at",{ascending:false}).order("id",{ascending:false})
+  .range(offset,offset+limit);
+ if(error)throw new StudentProfileError(500,"DATABASE_ERROR",
+   "Chess profile history unavailable");
+ return {studentId,entries:(data??[]).slice(0,limit),
+   nextOffset:(data?.length??0)>limit?offset+limit:null};
+}
+
 /** Advisory preflight shared by website and delegated MCP. Fail closed on query errors. */
 export async function teacherStudentArchivePreview(db: Db, teacherId: string, studentId: string) {
   const student = await teacherStudentProfile(db, teacherId, studentId);
@@ -113,6 +132,15 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
   if (patch.chesscomUsername !== undefined) update.chesscom_username = patch.chesscomUsername;
   if (patch.lichessRating !== undefined) update.lichess_rating = patch.lichessRating;
   if (patch.chesscomRating !== undefined) update.chesscom_rating = patch.chesscomRating;
+  if (patch.chessGoals !== undefined) update.chess_goals = patch.chessGoals ?? "";
+  if (patch.chessRatings !== undefined) {
+    const existingRatings=(existing.chess_ratings??{}) as Record<string,Record<string,number|null>>;
+    const merged:Record<string,Record<string,number|null>>={...existingRatings};
+    for(const [provider,values] of Object.entries(patch.chessRatings)){
+      merged[provider]={...(existingRatings[provider]??{}),...values};
+    }
+    update.chess_ratings=merged;
+  }
   // teacher_notes is NOT NULL in the canonical schema. Treat nullable API
   // clearing as an empty note instead of writing SQL NULL and returning 500.
   if (patch.teacherNotes !== undefined) update.teacher_notes = patch.teacherNotes ?? "";
@@ -149,6 +177,7 @@ export async function teacherStudentDeleteImpact(db: Db, teacherId: string, stud
     ["skills","skill_assessments",false],["resources","chess_learning_resources",true],
     ["observations","chess_observations",true],["materials","chess_material_progress",true],
     ["events","event_students",false],["credits","credit_packages",false],
+    ["chessProfileHistory","student_chess_profile_history",true],
   ] as const;
   const counts=await Promise.all(references.map(([,table,scope])=>{
     let query=db.from(table).select("student_id",{count:"exact",head:true}).eq("student_id",studentId);

@@ -23,13 +23,14 @@ import {teacherStudentProgressReport} from "@/lib/server/teacher-student-progres
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
   TeacherOverviewError } from "@/lib/server/teacher-overview-service";
 
-import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, StudentProfileError } from "@/lib/server/student-profile-service";
+import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, teacherStudentChessHistory, teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, StudentProfileError } from "@/lib/server/student-profile-service";
 import { studentUpdateSchema } from "@/lib/server/api-schemas";
 import { assertWithinHostedLimit } from "@/lib/server/entitlements";
 const safeStudentProfile = (row: Record<string,unknown>) => ({
   id:row.id,name:row.name,name_aliases:row.name_aliases,level:row.level,
   strength:row.strength,lichess_username:row.lichess_username,chesscom_username:row.chesscom_username,
   lichess_rating:row.lichess_rating,chesscom_rating:row.chesscom_rating,
+  chess_goals:row.chess_goals,chess_ratings:row.chess_ratings,
   archived_at:row.archived_at,updated_at:row.updated_at,
 });
 import {
@@ -678,6 +679,14 @@ const catalogue = [
     name: "ccp_v1_students_profile",
     description: "Read an identified student's profile. Private teacher notes and family/contact fields are excluded unless includePrivate=true AND confirmed=true. Avoid exposing children's information unnecessarily.",
     schema:z.object({studentId:uuid,includePrivate:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_students_chess_history",
+    description:"Read teacher-entered 1-10 strength, goals, handles and provider/time-control rating changes; timestamps and old/new values are recorded, but no provider verification is implied.",
+    schema:z.object({studentId:uuid,
+      offset:z.number().int().min(0).max(100000).default(0),
+      limit:z.number().int().min(1).max(100).default(50)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
@@ -1414,6 +1423,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {studentId:string;includePrivate:boolean;confirmed?:boolean};
         const profile=await teacherStudentProfile(db,teacherId,a.studentId);
         return {data:a.includePrivate && a.confirmed ? profile : safeStudentProfile(profile)};
+      }
+      case "ccp_v1_students_chess_history": {
+        const a=args as {studentId:string;offset:number;limit:number};
+        return {data:await teacherStudentChessHistory(db,teacherId,a.studentId,a)};
       }
       case "ccp_v1_students_delete_impact": {
         const a=args as {studentId:string};
