@@ -77,6 +77,8 @@ export async function teacherCreditPackageExpiry(db:Db,teacherId:string,id:strin
   throw fail(409,"CONFLICT",`A credit was used for a lesson on ${latest}`);
  const {error}=await db.from("credit_packages").update({expires_on:expiresOn})
   .eq("id",id).eq("teacher_id",teacherId);
+ if(error?.message.includes("CREDIT_EXPIRY_HISTORY_CONFLICT"))
+  throw fail(409,"CONFLICT","Expiry would invalidate a lesson already paid with these credits");
  if(error)throw fail(500,"DATABASE_ERROR","Unable to change package expiry");
  return {ok:true};
 }
