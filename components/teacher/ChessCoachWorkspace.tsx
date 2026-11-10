@@ -17,6 +17,13 @@ type Attendance = {
   student_id: string; status: "unmarked" | "present" | "absent" | "late" | "excused";
   note: string;
 };
+type RosterPreview = {
+  sessionId:string;updatedAt:string;studentIds:string[];
+};
+type RosterAudit = {
+  id:string;createdAt:string;reason:string;
+  previousStudentIds:string[];correctedStudentIds:string[];removedAttendanceCount:number;
+};
 type Result<T> = { ok?: boolean; data?: T; error?: { code: string; message?: string } };
 type AttendanceStatus = Exclude<Attendance["status"], "unmarked">;
 
@@ -89,6 +96,13 @@ export function ChessCoachWorkspace() {
   const requestRef = useRef<{ signature: string; id: string } | null>(null);
   const [roster, setRoster] = useState<Roster[]>([]);
   const [rosterSessionId, setRosterSessionId] = useState("");
+  const [rosterCandidates,setRosterCandidates]=useState<Student[]>([]);
+  const [rosterEditIds,setRosterEditIds]=useState<string[]>([]);
+  const [rosterRevision,setRosterRevision]=useState("");
+  const [rosterReason,setRosterReason]=useState("");
+  const [rosterSearch,setRosterSearch]=useState("");
+  const [rosterConfirmed,setRosterConfirmed]=useState(false);
+  const [rosterAudit,setRosterAudit]=useState<RosterAudit[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -114,17 +128,31 @@ export function ChessCoachWorkspace() {
     setRoster([]);
     setAttendance([]);
     setRosterSessionId("");
+    setRosterEditIds([]);setRosterRevision("");setRosterReason("");
+    setRosterConfirmed(false);setRosterAudit([]);
     if (selectedSessionId) {
       void Promise.all([
         operation<Roster[]>("sessions.participants", { sessionId: selectedSessionId }),
         operation<Attendance[]>("attendance.list", { sessionId: selectedSessionId }),
-      ]).then(([people, marks]) => {
-        if (active) {
-          setRoster(people);
-          setAttendance(marks);
+        fetch("/api/coaching/sessions/"+encodeURIComponent(selectedSessionId)+"/roster",
+          {cache:"no-store"}).then(async response=>{
+          if(!response.ok)throw new Error("Unable to read frozen roster");
+          return await response.json() as RosterPreview;
+        }),
+        fetch("/api/students?limit=1000",{cache:"no-store"}).then(async response=>{
+          if(!response.ok)throw new Error("Unable to load teacher student roster");
+          const result=await response.json() as {students:Student[]};
+          return result.students;
+        }),
+      ]).then(([people,marks,preview,candidates])=>{
+        if(active){
+          setRoster(people);setAttendance(marks);
           setRosterSessionId(selectedSessionId);
+          setRosterEditIds(preview.studentIds);
+          setRosterRevision(preview.updatedAt);
+          setRosterCandidates(candidates);
         }
-      }).catch(e => { if (active) setError(String(e)); });
+      }).catch(e=>{if(active)setError(String(e));});
     }
     return () => { active = false; };
   }, [selectedSessionId]);
