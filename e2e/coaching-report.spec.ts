@@ -26,8 +26,12 @@ test("workplace report is teacher-scoped, counts group minutes once, and exports
     requestId: crypto.randomUUID() });
   await action("attendance.record", { sessionId: session.id, studentId: student1.id, status: "present" });
   await action("attendance.record", { sessionId: session.id, studentId: student2.id, status: "absent" });
+  // The report selector loaded before the API-created workplace existed.
+  // Reload after seeding rather than racing the initial client-side fetch.
+  await page.reload();
   await expect(page.getByRole("heading", { name: "Teaching activity report" })).toBeVisible();
-  // Separate component loads its workplace selector independently of the coaching workspace.
+  await expect(page.getByLabel("Report workplace").locator(`option[value="${workplace.id}"]`))
+    .toHaveCount(1);
   await page.getByLabel("Report workplace").selectOption(workplace.id);
   await page.getByLabel("From date").fill("2027-04-01");
   await page.getByLabel("To date").fill("2027-04-02");
