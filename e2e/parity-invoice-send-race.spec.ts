@@ -3,6 +3,7 @@ import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
 import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {mailpitMessagesTo} from "./helpers/mailpit";
 
 test("PARITY:PARITY-billing-send-concurrent-claim rejects duplicate website/MCP external email attempts",async({page,request})=>{
  const call=await delegatedTool(page,request);
@@ -15,9 +16,10 @@ test("PARITY:PARITY-billing-send-concurrent-claim rejects duplicate website/MCP 
  });
  const signed=await auth.auth.signInWithPassword(SEED_TEACHER);
  expect(signed.error).toBeNull();
+ const recipient="send-once-"+randomUUID()+"@example.com";
  const guardian=await admin.from("guardians").insert({
    teacher_id:signed.data.user!.id,name:"Send-once family "+randomUUID(),
-   email:"send-once-"+randomUUID()+"@example.com",portal_token:randomUUID(),
+   email:recipient,portal_token:randomUUID(),
  }).select("id").single();
  expect(guardian.error).toBeNull();
  const invoice=await admin.from("invoices").insert({
@@ -44,8 +46,8 @@ test("PARITY:PARITY-billing-send-concurrent-claim rejects duplicate website/MCP 
    invoiceId,confirmed:true,
  });
  expect(unapproved.error?.code).toBe("VALIDATION_ERROR");
- // CI EMAIL_PROVIDER is unset: no real email may go out. This test proves
- // the race-safe claim, but does not assert provider delivery.
+ // CI uses Mailpit SMTP: this exercises a real provider response while
+ // never sending external mail or touching real family inboxes.
  const [website,mcp]=await Promise.all([
    page.request.post("/api/billing/invoices/"+invoiceId+"/send"),
    call("ccp_v1_billing_invoice_send",{
@@ -57,6 +59,13 @@ test("PARITY:PARITY-billing-send-concurrent-claim rejects duplicate website/MCP 
  expect(Number(siteWon)+Number(mcpWon)).toBe(1);
  if(!siteWon)expect(website.status()).toBe(409);
  if(!mcpWon)expect(mcp.error?.code).toBe("CONFLICT");
+ if(siteWon)expect((await website.json()).emailed).toBe(true);
+ if(mcpWon)expect(mcp.data.emailed).toBe(true);
+ await expect.poll(async()=> (await mailpitMessagesTo(request,recipient)).length,{
+   timeout:10000,
+ }).toBe(1);
+ const delivery=(await mailpitMessagesTo(request,recipient))[0];
+ expect(delivery.Subject).toContain("Invoice");
  const browserDetail=await page.request.get("/api/billing/invoices/"+invoiceId);
  expect(browserDetail.status(),await browserDetail.text()).toBe(200);
  const body=await browserDetail.json();
@@ -74,4 +83,5 @@ test("PARITY:PARITY-billing-send-concurrent-claim rejects duplicate website/MCP 
  const final=await page.request.get("/api/billing/invoices/"+invoiceId);
  expect(final.status()).toBe(200);
  expect((await final.json()).sent_at).toBe(body.sent_at);
+ expect((await mailpitMessagesTo(request,recipient)).length).toBe(1);
 });
