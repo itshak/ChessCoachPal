@@ -109,9 +109,14 @@ export async function expireCheckoutSession(
 ): Promise<void> {
   const stripe = createStripeClient(secretKey);
   const session = await stripe.checkout.sessions.retrieve(sessionId);
-  if (session.status === "open") {
-    await stripe.checkout.sessions.expire(sessionId);
+  if (session.status === "expired") return;
+  if (session.status === "complete") {
+    throw new Error("Stripe Checkout has completed; reconcile the provider payment before recording another payment");
   }
+  if (session.status !== "open") {
+    throw new Error("Stripe Checkout status is unknown; cannot safely retire the payment link");
+  }
+  await stripe.checkout.sessions.expire(sessionId);
 }
 
 export function constructWebhookEvent(
