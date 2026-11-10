@@ -51,7 +51,7 @@ test("PARITY:PARITY-calendar-dst-gap-safety rejects missing wall times and match
    const id=(await valid.json()).id as string;
    const mcp=await call("ccp_v1_calendar_lessons_detail",{lessonId:id});
    expect(mcp.error).toBeUndefined();
-   expect(mcp.data.starts_at).toBe("2026-11-01T06:30:00.000Z");
+   expect(new Date(mcp.data.starts_at).toISOString()).toBe("2026-11-01T06:30:00.000Z");
    const badMove=await page.request.put("/api/schedule/lessons/"+id,{data:{
      date:"2026-03-08",time:"02:30",
    }});
@@ -60,7 +60,7 @@ test("PARITY:PARITY-calendar-dst-gap-safety rejects missing wall times and match
      lessonId:id,changes:{date:"2026-03-08",time:"02:30"},confirmed:true,
    });
    expect(mcpBadMove.error?.code).toBe("VALIDATION_ERROR");
-   expect((await websiteDetail(page,id)).starts_at).toBe("2026-11-01T06:30:00.000Z");
+   expect(new Date((await websiteDetail(page,id)).starts_at).toISOString()).toBe("2026-11-01T06:30:00.000Z");
  }finally{
    const restore=await page.request.put("/api/settings/policy",{data:{timezone:original}});
    expect(restore.status(),await restore.text()).toBe(200);
