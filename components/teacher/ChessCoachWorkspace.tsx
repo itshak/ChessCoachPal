@@ -311,6 +311,48 @@ export function ChessCoachWorkspace() {
     }), "Session changes saved.");
   }
 
+  async function correctHistoricalRoster(e:FormEvent<HTMLFormElement>){
+    e.preventDefault();
+    if(!selectedSessionId||!rosterRevision||!rosterConfirmed)return;
+    const url="/api/coaching/sessions/"+encodeURIComponent(selectedSessionId)+"/roster";
+    await perform(async()=>{
+      const response=await fetch(url,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          studentIds:rosterEditIds,expectedUpdatedAt:rosterRevision,
+          reason:rosterReason.trim(),idempotencyKey:crypto.randomUUID(),
+          confirmed:true,
+        }),
+      });
+      const outcome=await response.json() as {error?:string};
+      if(!response.ok)throw new Error(outcome.error??"Roster correction failed");
+      const [preview,people,marks]=await Promise.all([
+        fetch(url,{cache:"no-store"}).then(async r=>{
+          if(!r.ok)throw new Error("Unable to reload corrected roster");
+          return await r.json() as RosterPreview;
+        }),
+        operation<Roster[]>("sessions.participants",{sessionId:selectedSessionId}),
+        operation<Attendance[]>("attendance.list",{sessionId:selectedSessionId}),
+      ]);
+      setRosterEditIds(preview.studentIds);setRosterRevision(preview.updatedAt);
+      setRoster(people);setAttendance(marks);setRosterSessionId(selectedSessionId);
+      setRosterReason("");setRosterConfirmed(false);setRosterAudit([]);
+    },"Historical roster corrected; removed attendance is retained in the audit log.");
+  }
+
+  async function loadRosterAudit(){
+    if(!selectedSessionId)return;
+    setError("");
+    try{
+      const response=await fetch("/api/coaching/sessions/"+
+        encodeURIComponent(selectedSessionId)+"/roster?revisions=true",
+        {cache:"no-store"});
+      if(!response.ok)throw new Error("Unable to load correction history");
+      const body=await response.json() as {corrections:RosterAudit[]};
+      setRosterAudit(body.corrections);
+    }catch(e){setError(e instanceof Error?e.message:"Unable to load correction history");}
+  }
+
   async function record(student: string, status: AttendanceStatus, note: string) {
     await perform(async () => {
       await operation("attendance.record", {
