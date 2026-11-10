@@ -81,7 +81,7 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
  expect(reversed.status(),await reversed.text()).toBe(200);
  const siteRegen=await page.request.post(
    "/api/billing/invoices/"+invoiceId+"/regenerate",
- });
+ );
  expect(siteRegen.status(),await siteRegen.text()).toBe(200);
  expect((await siteRegen.json()).subtotalCents).toBe(8100);
  const final=await call("ccp_v1_billing_invoice_detail",{invoiceId});
