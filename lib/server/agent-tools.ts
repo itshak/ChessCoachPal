@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { lichessConnectionStatus,lichessConnectionHandoff,disconnectLichess,LichessConnectionError } from "@/lib/server/lichess-connections";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, groupsList, groupsMembers,
@@ -663,6 +664,22 @@ const catalogue = [
     description:"Delete only an unused dimension with teacher approval and zero-assessment preview; rename used dimensions instead.",
     schema:z.object({dimensionId:uuid,expectedAssessmentCount:z.number().int().min(0),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_lichess_connection_status",
+    description:"Read teacher Lichess account username, study scopes and connection status. No provider credentials are accessible.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_lichess_connect_handoff",
+    description:"Return a secure signed-in browser URL to grant Lichess study:read or separately approve study:write using OAuth PKCE; MCP never receives secrets.",
+    schema:z.object({mode:z.enum(["read","write"]).default("read")}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_lichess_connection_disconnect",
+    description:"Disconnect/revoke the teacher's Lichess token only with explicit approval. Report provider revocation failures and manual action truthfully.",
+    schema:z.object({confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_student_skill_assessments_list",
@@ -1449,6 +1466,16 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {dimensionId:string;expectedAssessmentCount:number};
         return {data:await skillDimensionsDelete(db,teacherId,a.dimensionId,a.expectedAssessmentCount)};
       }
+      case "ccp_v1_lichess_connection_status": {
+        return {data:await lichessConnectionStatus(teacherId)};
+      }
+      case "ccp_v1_lichess_connect_handoff": {
+        const a=args as {mode:"read"|"write"};
+        return {data:lichessConnectionHandoff(a.mode)};
+      }
+      case "ccp_v1_lichess_connection_disconnect": {
+        return {data:await disconnectLichess(teacherId)};
+      }
       case "ccp_v1_student_skill_assessments_list": {
         const a=args as {studentId:string;limit:number;offset:number};
         return {data:await studentSkillAssessmentsList(db,teacherId,a.studentId,{limit:a.limit,offset:a.offset})};
@@ -1759,6 +1786,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CalendarError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof GuardianServiceError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof LichessConnectionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherSkillsError)
       return {error:{code:error.code,message:error.message}};

@@ -867,6 +867,42 @@
       "parity": "not-applicable",
       "existingTools": [],
       "explanation": "Payment webhook; never expose as chat tool"
+    },
+    {
+      "path": "app/api/lichess/connection/route.ts",
+      "methods": [
+        "GET",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [
+        "ccp_v1_lichess_connection_status",
+        "ccp_v1_lichess_connection_disconnect"
+      ],
+      "explanation": "Teacher-owned connection status and confirmed revoke via browser/MCP with server-only encrypted credential custody. Synthetic OAuth E2E is pending; live provider acceptance separately required."
+    },
+    {
+      "path": "app/api/lichess/connect/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "auth",
+      "parity": "browser-only",
+      "existingTools": [
+        "ccp_v1_lichess_connect_handoff"
+      ],
+      "explanation": "Secure browser PKCE initiation is an explicit human provider-consent exception; MCP only returns a safe handoff URL, never a secret."
+    },
+    {
+      "path": "app/api/lichess/callback/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "auth",
+      "parity": "browser-only",
+      "existingTools": [],
+      "explanation": "Lichess OAuth callback binds encrypted verifier/state to authenticated teacher and never exposes access tokens through MCP or website."
     }
   ],
   "teacherPages": [
@@ -940,6 +976,7 @@
     "components/teacher/settings/TeacherCalendarFeed.tsx",
     "components/teacher/settings/TimezoneSettingsForm.tsx",
     "components/teacher/skills/SkillsCharts.tsx",
-    "components/teacher/skills/SkillsPanel.tsx"
+    "components/teacher/skills/SkillsPanel.tsx",
+    "components/teacher/LichessConnectionPanel.tsx"
   ]
 }
