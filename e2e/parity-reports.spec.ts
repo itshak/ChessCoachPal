@@ -151,3 +151,57 @@ test("PARITY:PARITY-reports-ranges rejects invalid range and foreign workplace",
  });
  expect(otherMcp.error?.code).toBe("NOT_FOUND");
 });
+
+test("PARITY:PARITY-reports-hebrew-timezone-csv-safety honors local midnight and excludes formula-like names",async({page,request})=>{
+ const callTool=await delegatedTool(page,request);
+ const name='=HYPERLINK("https://attacker.invalid","משפחת שחמט") '+randomUUID();
+ const workplace=await callTool("ccp_v1_workplaces_create",{
+   name,timezone:"Asia/Jerusalem",currency:"ILS",locale:"he",
+   policy:{},idempotencyKey:randomUUID(),
+ });
+ expect(workplace.error).toBeUndefined();
+ const workplaceId=workplace.data.entityId as string;
+ const created=await callTool("ccp_v1_students_create",{
+   name:"רבקה כהן "+randomUUID().slice(0,8),idempotencyKey:randomUUID(),
+ });
+ expect(created.error).toBeUndefined();
+ const studentId=created.data.entityId as string;
+ const enrolled=await callTool("ccp_v1_workplaces_enroll",{
+   workplaceId,studentId,idempotencyKey:randomUUID(),
+ });
+ expect(enrolled.error).toBeUndefined();
+ // At this date Jerusalem is UTC+3: 22:30 UTC belongs to the following local
+ // day, and a session 24h later must not be counted in that first local day.
+ for(const startsAt of ["2042-06-17T22:30:00.000Z","2042-06-18T22:30:00.000Z"]){
+   const session=await callTool("ccp_v1_sessions_create",{
+     workplaceId,studentId,title:"שיעור שחמט",startsAt,
+     durationMinutes:45,lessonNote:"Teacher observation",
+     idempotencyKey:randomUUID(),
+   });
+   expect(session.error).toBeUndefined();
+ }
+ const from="2042-06-18",to="2042-06-18";
+ const browser=await page.request.get("/api/coaching/report?"+
+   new URLSearchParams({workplaceId,from,to}));
+ expect(browser.status(),await browser.text()).toBe(200);
+ const site=await browser.json();
+ expect(site.workplace.name).toBe(name);
+ expect(site.report.timezone).toBe("Asia/Jerusalem");
+ expect(site.report.locale).toBe("he");
+ expect(site.report.sessions).toBe(1);
+ expect(site.report.teachingMinutes).toBe(45);
+ const report=await callTool("ccp_v1_reports_workplace_summary",{
+   workplaceId,from,to,format:"json",
+ });
+ expect(report.error).toBeUndefined();
+ expect(report.data).toEqual(site);
+ const csv=await callTool("ccp_v1_reports_workplace_summary",{
+   workplaceId,from,to,format:"csv",
+ });
+ expect(csv.error).toBeUndefined();
+ expect(csv.data.report).toEqual(site.report);
+ expect(csv.data.export).toBe(reportCsv(site.report));
+ expect(csv.data.export).toMatch(/^\uFEFF"Metric","Value"/);
+ expect(csv.data.export).not.toContain("=HYPERLINK");
+ expect(csv.data.export).not.toContain("רבקה כהן");
+});
