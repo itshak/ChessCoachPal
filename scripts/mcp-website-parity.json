@@ -318,6 +318,21 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/sessions/[id]/roster/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "gap",
+      "existingTools": [
+        "ccp_v1_sessions_roster_preview",
+        "ccp_v1_sessions_roster_correct",
+        "ccp_v1_sessions_roster_revisions_list"
+      ],
+      "explanation": "Website and MCP share teacher-owned frozen-session roster preview, revision-checked explicitly confirmed correction and append-only audit. Corrections require UUID idempotency keys and an audit reason, and private removed-attendance notes require additional approval. Full history/tenant/replay E2E, cross-model reconciliation and strict acceptance remain unverified; do not classify as complete until passing evidence is reviewed."
+    },
+    {
       "path": "app/api/coaching/student-progress/route.ts",
       "methods": [
         "GET"
