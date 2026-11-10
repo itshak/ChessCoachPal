@@ -123,8 +123,10 @@ async function upsertAll(
 export async function importStudioExport(
   supabase: SupabaseClient, teacherId: string, payload: StudioDataExport
 ): Promise<{ ok: true; counts: Record<string, number> } | { ok: false; error: string }> {
-  if (!payload || payload.version !== DATA_EXPORT_VERSION || !payload.tables || typeof payload.tables !== "object") {
-    return { ok: false, error: "Unsupported ChessCoachPal export format" };
+  // Validate the entire allowlisted backup before the first upsert. Without
+  // this, malformed rows in a later table could crash after earlier writes.
+  if (!parseExportPayload(payload)) {
+    return { ok: false, error: "Unsupported ChessCoachPal export format or invalid table shape" };
   }
   const counts: Record<string, number> = {};
   for (const table of IMPORT_ORDER) {
@@ -165,9 +167,28 @@ export async function importStudioExport(
   return { ok: true, counts };
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** Check every restorable table before any writes. Unknown tables remain ignored
+ * (never restored), including old non-chess tables. Absent tables are allowed
+ * for intentionally minimal exports. */
 export function parseExportPayload(raw: unknown): StudioDataExport | null {
-  if (!raw || typeof raw !== "object") return null;
-  const obj = raw as StudioDataExport;
-  if (obj.version !== DATA_EXPORT_VERSION || !obj.tables || typeof obj.tables !== "object" || Array.isArray(obj.tables)) return null;
-  return obj;
+  if (!isRecord(raw) || raw.version !== DATA_EXPORT_VERSION || !isRecord(raw.tables))
+    return null;
+  const tables = raw.tables;
+  for (const table of IMPORT_ORDER) {
+    const source = tables[table];
+    if (source === undefined) continue;
+    if (table === "studio_policies") {
+      if (source !== null && !isRecord(source)) return null;
+    } else if (!Array.isArray(source) || !source.every(isRecord)) {
+      return null;
+    }
+  }
+  if (raw.teacher_profile != null &&
+      (!isRecord(raw.teacher_profile) ||
+       (raw.teacher_profile.display_name !== undefined &&
+        typeof raw.teacher_profile.display_name !== "string"))) return null;
+  return raw as StudioDataExport;
 }
