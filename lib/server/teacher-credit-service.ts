@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPolicy } from "@/lib/server/scheduling";
 import { loadCreditBalances, loadCreditPackages } from "@/lib/server/credits";
-import { validateCreditPackage,describeCreditPackage } from "@/lib/credits";
+import { validateCreditPackage } from "@/lib/credits";
 import { oneToOne,toLocalDateString } from "@/lib/schedule";
 type Db=SupabaseClient;
 export class CreditServiceError extends Error {
@@ -9,7 +9,7 @@ export class CreditServiceError extends Error {
 }
 const fail=(s:number,c:string,m:string)=>new CreditServiceError(s,c,m);
 export type CreateCreditInput={studentId:string;credits:number;durationMinutes:number;
- priceCents:number;startsOn?:string;expiresOn?:string|null};
+ priceCents:number;startsOn?:string;expiresOn?:string|null;requestId?:string};
 export async function teacherCreditPackagesList(db:Db,teacherId:string,studentId?:string){
  const policy=await getPolicy(db,teacherId);
  const today=toLocalDateString(new Date(),policy.timezone);
@@ -21,6 +21,11 @@ export async function teacherCreditPackagesList(db:Db,teacherId:string,studentId
  }
  return {packages:await loadCreditPackages(db,teacherId)};
 }
+/**
+ * Purchase package, invoice and invoice line in ONE authenticated SQL
+ * transaction. The RPC derives teacher ownership and studio currency from
+ * auth.uid() rather than trusting browser/MCP financial or tenant claims.
+ */
 export async function teacherCreditPackageCreate(db:Db,teacherId:string,input:CreateCreditInput){
  const policy=await getPolicy(db,teacherId);
  const today=toLocalDateString(new Date(),policy.timezone);
@@ -30,34 +35,29 @@ export async function teacherCreditPackageCreate(db:Db,teacherId:string,input:Cr
  };
  const invalid=validateCreditPackage(request);
  if(invalid)throw fail(400,"VALIDATION_ERROR",invalid);
- const {data:student,error:studentError}=await db.from("students")
-  .select("id,name,guardian_id,archived_at")
-  .eq("teacher_id",teacherId).eq("id",input.studentId).maybeSingle();
- if(studentError)throw fail(500,"DATABASE_ERROR","Student lookup failed");
- if(!student)throw fail(404,"NOT_FOUND","Student not found");
- if(student.archived_at)throw fail(409,"ARCHIVED","Reactivate student before selling prepaid lessons");
- if(!student.guardian_id)throw fail(400,"VALIDATION_ERROR","Link the student to a family before selling credits");
- const {data:invoice,error:invoiceError}=await db.from("invoices").insert({
-  teacher_id:teacherId,guardian_id:student.guardian_id,period_start:today,
-  period_end:today,status:"draft",subtotal_cents:request.priceCents,currency:policy.currency,
- }).select("id").single();
- if(invoiceError||!invoice)throw fail(500,"DATABASE_ERROR","Unable to create prepaid invoice");
- const {error:itemError}=await db.from("invoice_items").insert({
-  invoice_id:invoice.id,lesson_id:null,kind:"credit_package",
-  description:`Prepaid ${describeCreditPackage(request.credits,request.durationMinutes)} - ${student.name}`,
-  quantity:1,unit_cents:request.priceCents,amount_cents:request.priceCents,sort_order:0,
+ const {data,error}=await db.rpc("ccp_credit_package_create",{
+  p_student_id:input.studentId,
+  p_credits:request.credits,
+  p_duration_minutes:request.durationMinutes,
+  p_price_cents:request.priceCents,
+  p_starts_on:request.startsOn,
+  p_expires_on:request.expiresOn,
+  p_request_id:input.requestId??null,
  });
- const {data:creditPackage,error:packageError}=itemError?{data:null,error:itemError}:
-  await db.from("credit_packages").insert({
-   teacher_id:teacherId,student_id:student.id,invoice_id:invoice.id,
-   credits:request.credits,duration_minutes:request.durationMinutes,
-   price_cents:request.priceCents,starts_on:request.startsOn,expires_on:request.expiresOn,
-  }).select("id").single();
- if(packageError||!creditPackage){
-  await db.from("invoices").delete().eq("id",invoice.id).eq("teacher_id",teacherId);
-  throw fail(500,"DATABASE_ERROR","Prepaid package failed; draft invoice was rolled back");
+ if(error){
+  if(error.message.includes("CREDIT_REQUEST_CONFLICT"))
+    throw fail(409,"CONFLICT","This request ID was already used for different package terms");
+  if(error.message.includes("ARCHIVED_STUDENT"))
+    throw fail(409,"ARCHIVED","Reactivate student before selling prepaid lessons");
+  if(error.message.includes("FAMILY_REQUIRED"))
+    throw fail(400,"VALIDATION_ERROR","Link the student to a family before selling credits");
+  if(error.message.includes("INVALID_CREDIT_PACKAGE"))
+    throw fail(400,"VALIDATION_ERROR","Invalid prepaid package terms");
+  if(/NOT_FOUND|POLICY_NOT_FOUND/.test(error.message))
+    throw fail(404,"NOT_FOUND","Student, family or studio policy not found");
+  throw fail(500,"DATABASE_ERROR","Prepaid package could not be created; no partial invoice was left behind");
  }
- return {packageId:creditPackage.id,invoiceId:invoice.id};
+ return data as {packageId:string;invoiceId:string;replayed:boolean};
 }
 export async function teacherCreditPackageExpiry(db:Db,teacherId:string,id:string,expiresOn:string|null){
  const {data:existing,error:lookup}=await db.from("credit_packages")
