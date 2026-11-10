@@ -211,3 +211,74 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  expect((await afterReplay.json()).packages.find((x:{id:string})=>x.id===packageId).usedCredits)
    .toBe(0);
 });
+
+test("PARITY:PARITY-credits-tenant-scope denies foreign package reads creates and expiry edits",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
+ const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const email="foreign-credits-"+randomUUID()+"@example.com";
+ const account=await admin.auth.admin.createUser({
+  email,password:"SyntheticOtherCoach-123!",email_confirm:true,
+ });
+ expect(account.error).toBeNull();
+ const teacherId=account.data.user!.id;
+ try{
+  expect((await admin.from("teachers").insert({
+   id:teacherId,email,display_name:"Foreign prepaid credit coach",
+  })).error).toBeNull();
+  const family=await admin.from("guardians").insert({
+   teacher_id:teacherId,name:"Private family",portal_token:randomUUID(),
+  }).select("id").single();
+  expect(family.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacherId,name:"Foreign chess pupil",guardian_id:family.data!.id,
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const foreignStudentId=student.data!.id as string;
+  const invoice=await admin.from("invoices").insert({
+   teacher_id:teacherId,guardian_id:family.data!.id,status:"draft",
+   period_start:"2042-01-01",period_end:"2042-01-31",
+   currency:"USD",subtotal_cents:7500,
+  }).select("id").single();
+  expect(invoice.error).toBeNull();
+  const pkg=await admin.from("credit_packages").insert({
+   teacher_id:teacherId,student_id:foreignStudentId,invoice_id:invoice.data!.id,
+   credits:5,duration_minutes:45,price_cents:7500,
+   starts_on:"2042-01-01",expires_on:"2042-12-31",
+  }).select("id").single();
+  expect(pkg.error).toBeNull();
+  const packageId=pkg.data!.id as string;
+  const listSite=await page.request.get("/api/billing/credit-packages");
+  expect(listSite.status(),await listSite.text()).toBe(200);
+  expect((await listSite.json()).packages.some((x:{id:string})=>x.id===packageId)).toBe(false);
+  const listMcp=await call("ccp_v1_credits_packages_list",{});
+  expect(listMcp.error).toBeUndefined();
+  expect(listMcp.data.packages.some((x:{id:string})=>x.id===packageId)).toBe(false);
+  expect((await page.request.get("/api/billing/credit-packages?studentId="+foreignStudentId)).status()).toBe(404);
+  expect((await call("ccp_v1_credits_packages_list",{
+   studentId:foreignStudentId,
+  })).error?.code).toBe("NOT_FOUND");
+  expect((await page.request.post("/api/billing/credit-packages",{
+   data:{studentId:foreignStudentId,credits:2,durationMinutes:45,
+    priceCents:4000,startsOn:"2042-02-01",requestId:randomUUID()},
+  })).status()).toBe(404);
+  expect((await call("ccp_v1_credits_package_create",{
+   studentId:foreignStudentId,credits:2,durationMinutes:45,
+   priceCents:4000,startsOn:"2042-02-01",requestId:randomUUID(),confirmed:true,
+  })).error?.code).toBe("NOT_FOUND");
+  expect((await page.request.patch("/api/billing/credit-packages/"+packageId,{
+   data:{expiresOn:"2043-01-01"},
+  })).status()).toBe(404);
+  expect((await call("ccp_v1_credits_package_expiry",{
+   packageId,expiresOn:"2043-01-01",confirmed:true,
+  })).error?.code).toBe("NOT_FOUND");
+  const {data:unchanged,error}=await admin.from("credit_packages")
+   .select("expires_on").eq("id",packageId).single();
+  expect(error).toBeNull();
+  expect(unchanged?.expires_on).toBe("2042-12-31");
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacherId)).error).toBeNull();
+ }
+});
