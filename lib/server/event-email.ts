@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {createHash} from "node:crypto";
 import { sendEmail } from "@/lib/email";
 import { formatEventWhen } from "@/lib/events";
 import {
@@ -83,7 +84,7 @@ export async function loadEventForEmail(
  * Reminder mode skips RSVP = no.
  */
 type PreparedEmail = {
-  to:string[];subject:string;text:string;portalToken:string|null;
+  guardianId:string;to:string[];subject:string;text:string;portalToken:string|null;
 };
 /**
  * Prepare exactly the same messages used by the real send path.
@@ -124,7 +125,7 @@ function prepareEventEmails(event:EventEmailRow,policy:StudioPolicy,mode:EventEm
       ?"Details and RSVP are in your family portal."
       :"Please RSVP in your family portal.";
     const text=`Hi ${familyGreetingNames(family)},\n\n${intro}\n\nWhen: ${when}${locationLine}${descriptionLine}${repertoireLines}\n\n${cta}\n\n${signature}`;
-    messages.push({to:recipients,subject,text,portalToken:family.portal_token});
+    messages.push({guardianId:rsvp.guardian_id,to:recipients,subject,text,portalToken:family.portal_token});
   }
   return {messages,skipped};
 }
@@ -144,6 +145,7 @@ export function previewEventEmails(args:{
   };
 }
 export async function sendEventEmails(args:{
+  db:SupabaseClient;teacherId:string;
   event:EventEmailRow;policy:StudioPolicy;teacherEmail?:string|null;
   origin:string;mode:EventEmailMode;
 }):Promise<{sent:number;skipped:number}>{
@@ -151,14 +153,36 @@ export async function sendEventEmails(args:{
   const origin=args.origin.replace(/\/$/,"");
   let sent=0,skipped=initialSkipped;
   for(const message of messages){
+    const portalUrl=message.portalToken?`${origin}/portal/${message.portalToken}`:undefined;
+    const bcc=familyEmailBcc(args.policy);
+    const fromName=args.policy.studio_name
+      ?`${args.policy.studio_name} (via ChessCoachPal)`:undefined;
+    const contentHash=createHash("sha256").update(JSON.stringify({
+      to:message.to,bcc,subject:message.subject,text:message.text,
+      portalUrl,replyTo:args.teacherEmail??null,fromName,
+    })).digest("hex");
+    // Unique receipt is the atomic cross-process send claim. If it already
+    // exists (including ambiguous attempted/failed sends), never retry
+    // automatically: avoid duplicate mail after an SMTP/provider timeout.
+    const {data:receipt,error:claimError}=await args.db
+      .from("event_email_deliveries").insert({
+        teacher_id:args.teacherId,event_id:args.event.id,
+        guardian_id:message.guardianId,mode:args.mode,
+        content_hash:contentHash,status:"attempted",
+      }).select("id").single();
+    if(claimError?.code==="23505"){skipped++;continue;}
+    if(claimError||!receipt)
+      throw new Error("Unable to reserve event invitation delivery; no email sent");
     const result=await sendEmail({
-      to:message.to,bcc:familyEmailBcc(args.policy),subject:message.subject,
-      text:message.text,
-      fromName:args.policy.studio_name
-        ?`${args.policy.studio_name} (via ChessCoachPal)`:undefined,
-      replyTo:args.teacherEmail??undefined,
-      portalUrl:message.portalToken?`${origin}/portal/${message.portalToken}`:undefined,
+      to:message.to,bcc,subject:message.subject,text:message.text,
+      fromName,replyTo:args.teacherEmail??undefined,portalUrl,
+      idempotencyKey:`event/${args.event.id}/${message.guardianId}/${args.mode}/${contentHash}`,
     });
+    const {error:markError}=await args.db.from("event_email_deliveries")
+      .update({status:result.sent?"sent":"failed",
+        sent_at:result.sent?new Date().toISOString():null})
+      .eq("id",receipt.id).eq("teacher_id",args.teacherId);
+    if(markError)throw new Error("Event delivery acknowledgement unavailable; inspect receipt before retrying");
     if(result.sent)sent++;
     else skipped++;
   }
