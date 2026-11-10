@@ -81,9 +81,20 @@ export async function teacherCreditPackageExpiry(db:Db,teacherId:string,id:strin
  return {ok:true};
 }
 export async function teacherCreditRedemptionReturn(db:Db,teacherId:string,id:string){
- const {data,error}=await db.from("credit_redemptions").delete()
-  .eq("id",id).eq("teacher_id",teacherId).select("id");
- if(error)throw fail(500,"DATABASE_ERROR","Unable to return used credit");
- if(!data?.length)throw fail(404,"NOT_FOUND","Credit redemption not found");
- return {ok:true};
+ // No direct DELETE: a one-shot REST delete would make cross-client retries
+ // indistinguishable from unauthorized IDs. This authenticated RPC checks
+ // auth.uid(), serializes concurrent returns, and writes the replay receipt in
+ // the same transaction. teacherId remains the request's owned-tenant context,
+ // but the SQL NEVER trusts it as a caller-supplied authorization parameter.
+ void teacherId;
+ const {data,error}=await db.rpc("ccp_credit_redemption_return",{
+  p_redemption_id:id,
+ });
+ if(error){
+  if(/NOT_FOUND/.test(error.message))throw fail(404,"NOT_FOUND","Credit redemption not found");
+  if(/INVALID_REDEMPTION_ID/.test(error.message))
+   throw fail(400,"VALIDATION_ERROR","Invalid credit redemption ID");
+  throw fail(500,"DATABASE_ERROR","Unable to return used credit");
+ }
+ return data as {ok:true;replayed:boolean};
 }
