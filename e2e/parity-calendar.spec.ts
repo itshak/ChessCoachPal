@@ -24,6 +24,49 @@ async function websiteDetail(page:Page,id:string){
  return await res.json();
 }
 
+test("PARITY:PARITY-calendar-dst-gap-safety rejects missing wall times and matches real fold instants",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const settings=await page.request.get("/api/settings/policy");
+ expect(settings.status(),await settings.text()).toBe(200);
+ const original=(await settings.json()).timezone as string;
+ const timezone=await page.request.put("/api/settings/policy",{data:{timezone:"America/Chicago"}});
+ expect(timezone.status(),await timezone.text()).toBe(200);
+ try{
+   const studentId=await student(call);
+   const invalid=await page.request.post("/api/schedule/lessons",{data:{
+     studentId,date:"2026-03-08",time:"02:30",durationMinutes:45,
+   }});
+   expect(invalid.status(),await invalid.text()).toBe(400);
+   expect((await invalid.json()).code).toBe("VALIDATION_ERROR");
+   const invalidMcp=await call("ccp_v1_calendar_lessons_create",{
+     studentId,date:"2026-03-08",time:"02:30",durationMinutes:45,confirmed:true,
+   });
+   expect(invalidMcp.error?.code).toBe("VALIDATION_ERROR");
+
+   // Repeat the earlier 01:30 during fall-back consistently in both clients.
+   const valid=await page.request.post("/api/schedule/lessons",{data:{
+     studentId,date:"2026-11-01",time:"01:30",durationMinutes:45,
+   }});
+   expect(valid.status(),await valid.text()).toBe(200);
+   const id=(await valid.json()).id as string;
+   const mcp=await call("ccp_v1_calendar_lessons_detail",{lessonId:id});
+   expect(mcp.error).toBeUndefined();
+   expect(mcp.data.starts_at).toBe("2026-11-01T06:30:00.000Z");
+   const badMove=await page.request.put("/api/schedule/lessons/"+id,{data:{
+     date:"2026-03-08",time:"02:30",
+   }});
+   expect(badMove.status(),await badMove.text()).toBe(400);
+   const mcpBadMove=await call("ccp_v1_calendar_lessons_update",{
+     lessonId:id,changes:{date:"2026-03-08",time:"02:30"},confirmed:true,
+   });
+   expect(mcpBadMove.error?.code).toBe("VALIDATION_ERROR");
+   expect((await websiteDetail(page,id)).starts_at).toBe("2026-11-01T06:30:00.000Z");
+ }finally{
+   const restore=await page.request.put("/api/settings/policy",{data:{timezone:original}});
+   expect(restore.status(),await restore.text()).toBe(200);
+ }
+});
+
 test("PARITY:PARITY-calendar-recurring-slots supports list create edit disable and delete",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const studentId=await student(call);
