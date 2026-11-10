@@ -143,12 +143,29 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
    redemptionId:pkg.redemptions[0].id,confirmed:true,
  });
  expect(returned.error).toBeUndefined();
+ expect(returned.data).toEqual({ok:true,replayed:false});
  const afterReturn=await page.request.get("/api/billing/credit-packages?studentId="+studentId);
  expect(afterReturn.status(),await afterReturn.text()).toBe(200);
  const restored=(await afterReturn.json()).packages.find((x:{id:string})=>x.id===packageId);
  expect(restored.usedCredits).toBe(0);
  expect(restored.redemptions).toHaveLength(0);
- const missing=await page.request.delete(
+ // Website retry of a successful MCP return MUST not claim an unknown ID or
+ // apply a second financial mutation. Receipt survives in the same SQL tx.
+ const browserRetry=await page.request.delete(
    "/api/billing/credit-redemptions/"+pkg.redemptions[0].id);
- expect(missing.status()).toBe(404);
+ expect(browserRetry.status(),await browserRetry.text()).toBe(200);
+ expect(await browserRetry.json()).toEqual({ok:true,replayed:true});
+ const modelRetry=await call("ccp_v1_credits_redemption_return",{
+   redemptionId:pkg.redemptions[0].id,confirmed:true,
+ });
+ expect(modelRetry.error).toBeUndefined();
+ expect(modelRetry.data).toEqual({ok:true,replayed:true});
+ const noForeignReceipt=await call("ccp_v1_credits_redemption_return",{
+   redemptionId:randomUUID(),confirmed:true,
+ });
+ expect(noForeignReceipt.error?.code).toBe("NOT_FOUND");
+ const afterReplay=await page.request.get("/api/billing/credit-packages?studentId="+studentId);
+ expect(afterReplay.status(),await afterReplay.text()).toBe(200);
+ expect((await afterReplay.json()).packages.find((x:{id:string})=>x.id===packageId).usedCredits)
+   .toBe(0);
 });
