@@ -54,6 +54,10 @@ jobs:
             echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY:-$SECRET_KEY}"
             echo "TOKEN_ENCRYPTION_KEY=$token_key"
             echo "MCP_PUBLIC_ORIGIN=http://localhost:3000"
+            echo "EMAIL_PROVIDER=smtp"
+            echo "SMTP_HOST=127.0.0.1"
+            echo "SMTP_PORT=54325"
+            echo "EMAIL_FROM_ADDRESS=notifications@chesscoachpal.test"
           } >> "$GITHUB_ENV"
 
       - name: Build app
