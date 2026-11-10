@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildCheckoutSessionParams, checkoutSessionIdempotencyKey } from "@/lib/payments";
+import { buildCheckoutSessionParams, checkoutSessionIdempotencyKey, checkoutExpiryAction } from "@/lib/payments";
 import { stripeCheckoutPrefillEmail } from "@/lib/guardians";
 
 const baseArgs = {
@@ -75,5 +75,18 @@ describe("Stripe checkout website/MCP retry keys", () => {
     const withSecret = checkoutSessionIdempotencyKey({...baseArgs, secretKey: "sk_test_only_synthetic"} as typeof baseArgs);
     expect(withSecret).toBe(publicKey);
     expect(withSecret).not.toContain("sk_test_only_synthetic");
+  });
+});
+
+describe("Stripe Checkout retirement guard", () => {
+  it("expires only genuinely open links and accepts an already-expired link", () => {
+    expect(checkoutExpiryAction("open")).toBe("expire");
+    expect(checkoutExpiryAction("expired")).toBe("safe");
+  });
+
+  it("blocks double settlement for completed or ambiguous provider statuses", () => {
+    expect(() => checkoutExpiryAction("complete")).toThrow(/reconcile/i);
+    expect(() => checkoutExpiryAction(null)).toThrow(/unknown/i);
+    expect(() => checkoutExpiryAction("unrecognized")).toThrow(/unknown/i);
   });
 });
