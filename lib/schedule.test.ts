@@ -59,9 +59,8 @@ describe("zonedTimeToUtc", () => {
       "2026-11-01T22:00:00.000Z"
     );
   });
-});
 
-it("resolves DST folds deterministically and never moves recurring gap times backwards", () => {
+  it("resolves DST folds deterministically and never moves recurring gap times backwards", () => {
     // The first 01:30 during fall-back, not the repeated second occurrence.
     expect(zonedTimeToUtc("2026-11-01", "01:30", CHICAGO).toISOString()).toBe(
       "2026-11-01T06:30:00.000Z"
