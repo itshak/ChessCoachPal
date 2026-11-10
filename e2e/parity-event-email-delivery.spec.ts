@@ -43,19 +43,27 @@ test("PARITY:PARITY-events-invitation-delivery previews and sends one local SMTP
  });
  expect(unconfirmed.error?.code).toBe("VALIDATION_ERROR");
  expect((await mailpitMessagesTo(request,recipient)).length).toBe(0);
- const first=await call("ccp_v1_events_email_invites",{
-   eventId,confirmed:true,confirmedEmail:true,
- });
+ // Exercise simultaneous cross-client send attempts: the PostgreSQL
+ // receipt must select exactly one sender before either SMTP request.
+ const [first,viaSite]=await Promise.all([
+   call("ccp_v1_events_email_invites",{
+     eventId,confirmed:true,confirmedEmail:true,
+   }),
+   page.request.post(endpoint),
+ ]);
  expect(first.error).toBeUndefined();
- expect(first.data).toMatchObject({sent:1,skipped:0});
+ expect(viaSite.status(),await viaSite.text()).toBe(200);
+ const websiteResult=await viaSite.json();
+ expect([first.data.sent,websiteResult.sent].sort()).toEqual([0,1]);
+ expect([first.data.skipped,websiteResult.skipped].sort()).toEqual([0,1]);
  await expect.poll(async()=>(await mailpitMessagesTo(request,recipient)).length,{
    timeout:10000,
  }).toBe(1);
  const message=(await mailpitMessagesTo(request,recipient))[0];
  expect(message.Subject).toContain(title);
- const viaSite=await page.request.post(endpoint);
- expect(viaSite.status(),await viaSite.text()).toBe(200);
- expect(await viaSite.json()).toMatchObject({sent:0,skipped:1});
+ const siteReplay=await page.request.post(endpoint);
+ expect(siteReplay.status(),await siteReplay.text()).toBe(200);
+ expect(await siteReplay.json()).toMatchObject({sent:0,skipped:1});
  const replay=await call("ccp_v1_events_email_invites",{
    eventId,confirmed:true,confirmedEmail:true,
  });
