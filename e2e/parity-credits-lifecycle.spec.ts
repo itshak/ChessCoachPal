@@ -139,6 +139,38 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
    packageId,expiresOn:"2042-07-09",confirmed:true,
  });
  expect(mcpWrongExpiry.error?.code).toBe("CONFLICT");
+ // A separate authenticated teacher cannot delete another coach's redeemed
+ // lesson or read a successful-return receipt. The RPC derives auth.uid().
+ const foreignEmail="foreign-credit-"+randomUUID()+"@example.com";
+ const foreignUser=await admin.auth.admin.createUser({
+   email:foreignEmail,password:"SyntheticForeignCredit-123!",email_confirm:true,
+ });
+ expect(foreignUser.error).toBeNull();
+ const foreignId=foreignUser.data.user!.id;
+ try {
+   const otherTeacher=await admin.from("teachers").insert({
+     id:foreignId,email:foreignEmail,display_name:"Foreign credit coach",
+   });
+   expect(otherTeacher.error).toBeNull();
+   const foreignClient=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+     auth:{persistSession:false,autoRefreshToken:false},
+   });
+   const foreignLogin=await foreignClient.auth.signInWithPassword({
+     email:foreignEmail,password:"SyntheticForeignCredit-123!",
+   });
+   expect(foreignLogin.error).toBeNull();
+   const foreignReturn=await foreignClient.rpc("ccp_credit_redemption_return",{
+     p_redemption_id:pkg.redemptions[0].id,
+   });
+   expect(foreignReturn.data).toBeNull();
+   expect(foreignReturn.error?.message).toContain("NOT_FOUND");
+   const stillUsed=await page.request.get("/api/billing/credit-packages?studentId="+studentId);
+   expect(stillUsed.status(),await stillUsed.text()).toBe(200);
+   expect((await stillUsed.json()).packages.find((x:{id:string})=>x.id===packageId).usedCredits)
+     .toBe(1);
+ } finally {
+   expect((await admin.auth.admin.deleteUser(foreignId)).error).toBeNull();
+ }
  // Race the FIRST website and MCP return: SQL must commit one deletion and
  // one replay receipt, not permit lost writes or fail the losing request.
  const [returned,browserFirst]=await Promise.all([
