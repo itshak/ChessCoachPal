@@ -6,6 +6,10 @@ import {
   sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
 } from "@/lib/server/coach-service";
 
+import {
+  teacherSessionRosterPreview,teacherSessionRosterCorrect,teacherSessionRosterAudit,
+  SessionRosterCorrectionError,
+} from "@/lib/server/session-roster-corrections";
 import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
   chessCategoriesDeleteImpact, chessCategoriesDelete,
   chessObservationsList, chessObservationsCreate, chessObservationsUpdate,
@@ -1027,6 +1031,27 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_sessions_roster_preview",
+    description:"Read the exact frozen roster and revision of one owned session; group enrollments are unaffected.",
+    schema:z.object({sessionId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_sessions_roster_correct",
+    description:"Confirm one revision-checked correction to a session's FROZEN historical roster, not group membership. Provide all desired owned student IDs, reason and idempotency key; removed attendance is audited. Removing linked chess evidence is blocked.",
+    schema:z.object({sessionId:uuid,studentIds:z.array(uuid).min(1).max(100),
+      expectedUpdatedAt:instant,idempotencyKey:uuid,
+      reason:z.string().trim().min(8).max(1000),confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_sessions_roster_revisions_list",
+    description:"Read append-only historical roster corrections, redacting removed attendance notes unless includePrivate=true and confirmed=true.",
+    schema:z.object({sessionId:uuid,includePrivate:z.boolean().default(false),
+      confirmed:z.literal(true).optional()}).strict()
+      .refine(v=>!v.includePrivate||v.confirmed===true,"Private attendance notes require explicit confirmation"),
+    scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_v1_sessions_cancel",
     description:"Cancel ONE identified scheduled lesson after confirmation. Does not delete history.",
     schema:z.object({sessionId:uuid,...revision,confirmed:z.literal(true)}).strict(),
@@ -1618,7 +1643,21 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         });
         return {data:updated};
       }
-      case "ccp_v1_sessions_details": {
+      case "ccp_v1_sessions_roster_preview": {
+         const a=args as {sessionId:string};
+         return {data:await teacherSessionRosterPreview(db,teacherId,a.sessionId)};
+       }
+       case "ccp_v1_sessions_roster_correct": {
+         const a=args as {sessionId:string;studentIds:string[];
+           expectedUpdatedAt:string;idempotencyKey:string;reason:string};
+         return {data:await teacherSessionRosterCorrect(db,teacherId,a.sessionId,a)};
+       }
+       case "ccp_v1_sessions_roster_revisions_list": {
+         const a=args as {sessionId:string;includePrivate:boolean;confirmed?:boolean};
+         return {data:await teacherSessionRosterAudit(db,teacherId,a.sessionId,
+           a.includePrivate&&a.confirmed===true)};
+       }
+       case "ccp_v1_sessions_details": {
         const id=(args as {sessionId:string}).sessionId;
         const {data,error}=await db.from("teaching_sessions")
           .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id,updated_at")
@@ -1740,6 +1779,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof TeacherSkillsError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof StudentProfileError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof SessionRosterCorrectionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CoachError)
       return { error: { code: error.code, message: error.message } };
