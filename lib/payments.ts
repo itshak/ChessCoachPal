@@ -86,10 +86,9 @@ export async function createCheckoutSession(
   args: CheckoutSessionArgs
 ): Promise<CheckoutSessionResult> {
   const stripe = createStripeClient(args.secretKey);
-  const { secretKey: _secretKey, ...publicArgs } = args;
   const session = await stripe.checkout.sessions.create(
-    buildCheckoutSessionParams(publicArgs),
-    { idempotencyKey: checkoutSessionIdempotencyKey(publicArgs) }
+    buildCheckoutSessionParams(args),
+    { idempotencyKey: checkoutSessionIdempotencyKey(args) }
   );
 
   if (!session.url) {
