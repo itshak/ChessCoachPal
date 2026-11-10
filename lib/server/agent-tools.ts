@@ -13,6 +13,11 @@ import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
   chessResourcesUnlinkImpact, chessResourcesUnlink } from "@/lib/server/chess-learning";
 import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
+import {
+ defaultCreateSchema,defaultUpdateSchema,defaultArchiveSchema,
+ teacherMaterialDefaultsList,teacherMaterialDefaultCreate,
+ teacherMaterialDefaultUpdate,teacherMaterialDefaultArchive,MaterialDefaultError,
+} from "@/lib/server/teacher-material-defaults";
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
@@ -851,6 +856,31 @@ const catalogue = [
     schema:materialsHistoryFilter,scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_v1_material_defaults_list",
+    description:"Read teacher-owned default Lichess studies for one workplace and optional group, including versioned change history. Defaults do not imply taught or completed.",
+    schema:z.object({workplaceId:uuid,groupId:uuid.optional(),
+      includeArchived:z.boolean().default(false)}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_material_default_create",
+    description:"Attach one explicitly confirmed official Lichess study/chapter default to a workplace or group. Idempotent request ID and owner validation; does not claim any student learned it.",
+    schema:defaultCreateSchema.omit({operation:true}),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_material_default_update",
+    description:"Correct a study default label/link/notes with latest revision and explicit confirmation, retaining the prior values in the audit trail.",
+    schema:defaultUpdateSchema.omit({operation:true}),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_material_default_archive",
+    description:"Archive a study default with revision and confirmation, retaining historical audits and teaching evidence.",
+    schema:defaultArchiveSchema.omit({operation:true}),
+    scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_v1_materials_history_record",
     description:"After explicit teacher confirmation, append an assigned/taught/completed claim for a linked study/resource and identified learner, optionally tied to workplace/session. requestId makes repeats idempotent; a model must never infer completed from merely opening a study.",
     schema:materialsHistoryRecord,
@@ -1529,6 +1559,22 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_materials_aggregate": {
         return {data:await teacherMaterialAggregate(db,teacherId,args as Parameters<typeof teacherMaterialAggregate>[2])};
       }
+      case "ccp_v1_material_defaults_list": {
+        const a=args as Parameters<typeof teacherMaterialDefaultsList>[2];
+        return {data:await teacherMaterialDefaultsList(db,teacherId,a)};
+      }
+      case "ccp_v1_material_default_create": {
+        return {data:await teacherMaterialDefaultCreate(db,teacherId,
+          defaultCreateSchema.parse({...args,operation:"default.create"}))};
+      }
+      case "ccp_v1_material_default_update": {
+        return {data:await teacherMaterialDefaultUpdate(db,teacherId,
+          defaultUpdateSchema.parse({...args,operation:"default.update"}))};
+      }
+      case "ccp_v1_material_default_archive": {
+        return {data:await teacherMaterialDefaultArchive(db,teacherId,
+          defaultArchiveSchema.parse({...args,operation:"default.archive"}))};
+      }
       case "ccp_v1_materials_history_record": {
         const a=args as Parameters<typeof teacherMaterialRecord>[2];
         return {data:await teacherMaterialRecord(db,teacherId,a)};
@@ -1654,6 +1700,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
     if (error instanceof UnifiedHistoryError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof MaterialDefaultError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof MaterialHistoryError)
       return {error:{code:error.code,message:error.message}};
