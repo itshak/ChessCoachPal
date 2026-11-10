@@ -122,3 +122,66 @@ test("PARITY:PARITY-groups-memberships preserves frozen session roster after rem
    sessionId,
  })).data).toEqual(await frozenAfter.json().then(x=>x.data));
 });
+
+test("PARITY:PARITY-groups-archived-roster retains frozen lesson history after archiving a former member",async({page,request})=>{
+ const callTool=await delegatedTool(page,request);
+ const wp=await workplace(callTool),group=await createGroup(callTool,wp);
+ const first=await createStudent(callTool),second=await createStudent(callTool);
+ for(const studentId of [first,second]){
+   const joined=await callTool("ccp_v1_groups_enroll",{
+     groupId:group.entityId,studentId,idempotencyKey:randomUUID(),
+   });
+   expect(joined.error).toBeUndefined();
+ }
+ // A completed historical lesson must not gain or lose students when the
+ // live roster changes, or when a student is archived after teaching ends.
+ const created=await callTool("ccp_v1_sessions_create",{
+   workplaceId:wp,groupId:group.entityId,
+   title:label("Historical chess class"),
+   startsAt:"2026-06-01T12:00:00.000Z",durationMinutes:60,
+   lessonNote:"Preserved historical roster",idempotencyKey:randomUUID(),
+ });
+ expect(created.error).toBeUndefined();
+ const sessionId=created.data.entityId as string;
+ const websiteBefore=await page.request.post("/api/agent/v1",{data:{
+   action:"sessions.participants",sessionId,
+ }});
+ expect(websiteBefore.status(),await websiteBefore.text()).toBe(200);
+ const frozen=(await websiteBefore.json()).data as Array<{student_id:string}>;
+ expect(frozen.map(x=>x.student_id).sort()).toEqual([first,second].sort());
+ const removed=await callTool("ccp_v1_groups_unenroll",{
+   groupId:group.entityId,studentId:first,idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(removed.error).toBeUndefined();
+ const preview=await callTool("ccp_v1_students_archive_preview",{studentId:first});
+ expect(preview.error).toBeUndefined();
+ const sitePreview=await page.request.get(
+   "/api/students/"+first+"?archivePreview=true");
+ expect(sitePreview.status(),await sitePreview.text()).toBe(200);
+ expect(await sitePreview.json()).toEqual(preview.data);
+ expect(preview.data.canArchive).toBe(true);
+ const archived=await page.request.put("/api/students/"+first,{
+   data:{archived:true},
+ });
+ expect(archived.status(),await archived.text()).toBe(200);
+ const mcpStudent=await callTool("ccp_v1_students_profile",{studentId:first});
+ expect(mcpStudent.error).toBeUndefined();
+ expect(mcpStudent.data.archived_at).toBeTruthy();
+ const websiteAfter=await page.request.post("/api/agent/v1",{data:{
+   action:"sessions.participants",sessionId,
+ }});
+ expect(websiteAfter.status(),await websiteAfter.text()).toBe(200);
+ const saved=(await websiteAfter.json()).data;
+ expect(saved).toEqual(frozen);
+ const mcpAfter=await callTool("ccp_v1_sessions_participants",{sessionId});
+ expect(mcpAfter.error).toBeUndefined();
+ expect(mcpAfter.data).toEqual(saved);
+ const current=await callTool("ccp_v1_groups_members",{groupId:group.entityId});
+ expect(current.error).toBeUndefined();
+ expect((current.data as Array<{student_id:string}>).map(x=>x.student_id))
+   .toEqual([second]);
+ const historical=await callTool("ccp_v1_sessions_details",{sessionId});
+ expect(historical.error).toBeUndefined();
+ expect((historical.data.participants as Array<{student_id:string}>)
+   .map(x=>x.student_id).sort()).toEqual([first,second].sort());
+});
