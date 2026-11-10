@@ -71,7 +71,11 @@ export function planLessonMove(
 
   if (input.date !== undefined || input.time !== undefined) {
     const time = input.time ?? localTimeInput(lesson.starts_at, timeZone);
-    patch.starts_at = zonedTimeToUtc(nextDate, time, timeZone).toISOString();
+    try {
+      patch.starts_at = zonedTimeToUtc(nextDate, time, timeZone, "reject").toISOString();
+    } catch {
+      return { ok: false, error: "Local time does not exist in the studio timezone (DST gap)" };
+    }
   }
 
   if (dateChanged && lesson.slot_id) {
