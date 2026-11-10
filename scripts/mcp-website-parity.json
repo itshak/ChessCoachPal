@@ -769,6 +769,7 @@
     {
       "path": "app/api/skills/dimensions/[id]/route.ts",
       "methods": [
+        "GET",
         "PUT",
         "DELETE"
       ],
@@ -779,7 +780,7 @@
         "ccp_v1_skill_dimensions_delete_impact",
         "ccp_v1_skill_dimensions_delete"
       ],
-      "explanation": "Shared rename and preview/confirmed delete implementation. Atomic approval and replay-safe deletion outstanding."
+      "explanation": "Shared owner-scoped preview, rename and confirmed zero-assessment removal with DB safeguard against concurrent historical assessment loss. Delegated website/MCP acceptance is pending; do not promote until executed."
     },
     {
       "path": "app/api/skills/dimensions/route.ts",

@@ -250,23 +250,44 @@ function ManageDimensions({
   }
 
   async function removeDimension(d: Dimension) {
-    const ok = await confirmDialog({
-      title: "Delete skill?",
-      message: `Delete "${d.name}"? All of its ratings (for every student) will be deleted too.`,
-      confirmLabel: "Delete",
-      variant: "danger",
-    });
-    if (!ok) return;
     setBusy(true);
     setError(null);
-    const res = await fetch(`/api/skills/dimensions/${d.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      const err = await res.json().catch(() => null);
-      setError(err?.error ?? "Failed to delete skill");
-    } else {
-      onChanged();
+    try {
+      const url="/api/skills/dimensions/"+d.id;
+      const preview=await fetch(url);
+      if(!preview.ok) {
+        setError("Unable to inspect this skill's rating history.");
+        return;
+      }
+      const impact=await preview.json() as {assessmentCount:number;canDelete:boolean};
+      if(!impact.canDelete) {
+        setError('"' + d.name + '" has ' + impact.assessmentCount +
+          ' historical rating(s). Rename the skill instead; its records cannot be erased here.');
+        return;
+      }
+      const ok=await confirmDialog({
+        title:"Delete unused skill?",
+        message:'Delete "'+d.name+'"? It has no historical student ratings.',
+        confirmLabel:"Delete",
+        variant:"danger",
+      });
+      if(!ok) return;
+      const res=await fetch(url,{
+        method:"DELETE",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({confirmed:true,expectedAssessmentCount:0}),
+      });
+      if(!res.ok) {
+        const err=await res.json().catch(()=>null);
+        setError(err?.error ?? "Failed to delete skill");
+      } else {
+        onChanged();
+      }
+    } catch {
+      setError("Failed to inspect or delete skill");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   return (

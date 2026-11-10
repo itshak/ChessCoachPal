@@ -35,17 +35,34 @@ export async function skillDimensionsUpdate(db:Db,teacherId:string,id:string,nam
   if(!data) throw failure(404,"NOT_FOUND","Skill dimension not found");
   return data;
 }
-export async function skillDimensionsDelete(db:Db,teacherId:string,id:string) {
-  const {data:dimension,error:lookupError}=await db.from("skill_dimensions").select("id")
-    .eq("id",id).eq("teacher_id",teacherId).maybeSingle();
+/** Refuse ordinary deletion of dimensions that hold teacher-attested skill history. */
+export async function skillDimensionsDeleteImpact(db:Db,teacherId:string,id:string) {
+  const {data:dimension,error:lookupError}=await db.from("skill_dimensions")
+    .select("id").eq("id",id).eq("teacher_id",teacherId).maybeSingle();
   if(lookupError) throw failure(500,"DATABASE_ERROR","Unable to inspect skill");
   if(!dimension) throw failure(404,"NOT_FOUND","Skill dimension not found");
-  const {count,error:countError}=await db.from("skill_assessments").select("id",{count:"exact",head:true})
-    .eq("dimension_id",id);
+  const {count,error:countError}=await db.from("skill_assessments")
+    .select("id",{count:"exact",head:true}).eq("dimension_id",id);
   if(countError) throw failure(500,"DATABASE_ERROR","Unable to inspect rating history");
-  const {error}=await db.from("skill_dimensions").delete().eq("id",id).eq("teacher_id",teacherId);
+  const assessmentCount=count??0;
+  return {dimensionId:id,assessmentCount,canDelete:assessmentCount===0};
+}
+export async function skillDimensionsDelete(
+  db:Db,teacherId:string,id:string,expectedAssessmentCount:number
+) {
+  if(expectedAssessmentCount!==0)
+    throw failure(409,"CONFLICT","Assessed skills cannot be deleted. Rename the dimension to preserve student history.");
+  const impact=await skillDimensionsDeleteImpact(db,teacherId,id);
+  if(!impact.canDelete)
+    throw failure(409,"CONFLICT","The skill has historical assessments. Rename it instead of deleting them.");
+  // The database trigger also rejects a concurrent new rating after preview.
+  const {data,error}=await db.from("skill_dimensions").delete()
+    .eq("id",id).eq("teacher_id",teacherId).select("id").maybeSingle();
+  if(error?.code==="23503")
+    throw failure(409,"CONFLICT","Skill history changed; deletion was refused. Refresh the preview.");
   if(error) throw failure(500,"DATABASE_ERROR","Unable to delete skill dimension");
-  return {ok:true,deletedAssessmentCount:count??0};
+  if(!data) throw failure(404,"NOT_FOUND","Skill dimension not found");
+  return {ok:true,deletedAssessmentCount:0};
 }
 export async function studentSkillAssessmentsList(db:Db,teacherId:string,studentId:string) {
   const {data:student,error:lookup}=await db.from("students").select("id")

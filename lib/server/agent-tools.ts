@@ -43,7 +43,7 @@ const safeStudentProfile = (row: Record<string,unknown>) => ({
   archived_at:row.archived_at,updated_at:row.updated_at,
 });
 import {
- skillDimensionsList, skillDimensionsCreate, skillDimensionsUpdate, skillDimensionsDelete,
+ skillDimensionsList, skillDimensionsCreate, skillDimensionsUpdate, skillDimensionsDeleteImpact, skillDimensionsDelete,
  studentSkillAssessmentsList, studentSkillAssessmentsRecord, TeacherSkillsError,
 } from "@/lib/server/teacher-skills-service";
 import { guardianCreateSchema, guardianUpdateSchema } from "@/lib/server/api-schemas";
@@ -655,12 +655,12 @@ const catalogue = [
   },
   {
     name:"ccp_v1_skill_dimensions_delete_impact",
-    description:"Preview how many historical assessments would be cascaded before removing a skill dimension.",
+    description:"Preview whether a skill dimension is unused and may be removed. Preserve all historic ratings.",
     schema:z.object({dimensionId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_v1_skill_dimensions_delete",
-    description:"PERMANENTLY delete the dimension and its assessment history. Require confirmed=true and the exact assessment count from the preview; never decide for the coach.",
+    description:"Delete only an unused dimension with teacher approval and zero-assessment preview; rename used dimensions instead.",
     schema:z.object({dimensionId:uuid,expectedAssessmentCount:z.number().int().min(0),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
@@ -1443,27 +1443,11 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_v1_skill_dimensions_delete_impact": {
         const a=args as {dimensionId:string};
-        const {data,error}=await db.from("skill_dimensions").select("id")
-          .eq("teacher_id",teacherId).eq("id",a.dimensionId).maybeSingle();
-        if(error) throw new TeacherSkillsError(500,"DATABASE_ERROR","Skill lookup failed");
-        if(!data) throw new TeacherSkillsError(404,"NOT_FOUND","Skill dimension not found");
-        const {count,error:countError}=await db.from("skill_assessments")
-          .select("id",{count:"exact",head:true}).eq("dimension_id",a.dimensionId);
-        if(countError) throw new TeacherSkillsError(500,"DATABASE_ERROR","Skill history unavailable");
-        return {data:{dimensionId:a.dimensionId,assessmentCount:count??0}};
+        return {data:await skillDimensionsDeleteImpact(db,teacherId,a.dimensionId)};
       }
       case "ccp_v1_skill_dimensions_delete": {
         const a=args as {dimensionId:string;expectedAssessmentCount:number};
-        const {data,error}=await db.from("skill_dimensions").select("id")
-          .eq("teacher_id",teacherId).eq("id",a.dimensionId).maybeSingle();
-        if(error) throw new TeacherSkillsError(500,"DATABASE_ERROR","Skill lookup failed");
-        if(!data) throw new TeacherSkillsError(404,"NOT_FOUND","Skill dimension not found");
-        const {count,error:countError}=await db.from("skill_assessments")
-          .select("id",{count:"exact",head:true}).eq("dimension_id",a.dimensionId);
-        if(countError) throw new TeacherSkillsError(500,"DATABASE_ERROR","Skill history unavailable");
-        if(count!==a.expectedAssessmentCount)
-          return {error:{code:"CONFLICT",message:"Assessment count changed. Re-preview the deletion impact."}};
-        return {data:await skillDimensionsDelete(db,teacherId,a.dimensionId)};
+        return {data:await skillDimensionsDelete(db,teacherId,a.dimensionId,a.expectedAssessmentCount)};
       }
       case "ccp_v1_student_skill_assessments_list": {
         const a=args as {studentId:string};
