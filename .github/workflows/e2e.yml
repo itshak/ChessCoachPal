@@ -72,8 +72,10 @@ jobs:
           npx --yes wait-on --timeout 60000 http://localhost:3000
 
       - name: Install Playwright browsers
-        # GitHub-hosted runners have Chromium runtime libraries; avoid an\n        # extra apt font-package fetch (prior CI failed on Ubuntu mirror DNS).\n        # Browser launch still fails if any required library is missing.\n        run: npx playwright install chromium
-
+        # GitHub-hosted runners have Chromium runtime libraries; avoid an
+        # extra apt font-package fetch (prior CI failed on Ubuntu mirror DNS).
+        # Browser launch still fails if any required library is missing.
+        run: npx playwright install chromium
       - name: Run smoke suite
         run: npm run test:e2e
 
