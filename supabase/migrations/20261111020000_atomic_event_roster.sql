@@ -107,6 +107,16 @@ BEGIN
   END IF;
 
   IF p_student_ids IS NOT NULL THEN
+    -- A roster replacement must reject repertoire assigned to a student
+    -- outside that replacement; silently dropping a coach's note is unsafe.
+    IF EXISTS (
+      SELECT 1 FROM jsonb_each(p_repertoire) AS item
+      WHERE item.key <> ALL(p_student_ids::text[])
+        OR jsonb_typeof(item.value)<>'string'
+        OR length(item.value #>> '{}')>10000
+    ) THEN
+      RAISE EXCEPTION 'EVENT_INVALID_REPERTOIRE' USING ERRCODE='22023';
+    END IF;
     DELETE FROM public.event_students
       WHERE event_id=v_event.id AND NOT (student_id=ANY(p_student_ids));
     FOR v_roster,v_index IN
@@ -124,7 +134,11 @@ BEGIN
       INSERT INTO public.event_students(event_id,student_id,repertoire,sort_order)
       VALUES(v_event.id,v_roster,v_repertoire,v_index-1)
       ON CONFLICT(event_id,student_id) DO UPDATE SET
-        repertoire=EXCLUDED.repertoire,sort_order=EXCLUDED.sort_order;
+        -- Keep previously recorded student-specific notes when the caller
+        -- replaces the roster but does not explicitly replace those notes.
+        repertoire=CASE WHEN p_repertoire ? v_roster::text
+          THEN EXCLUDED.repertoire ELSE event_students.repertoire END,
+        sort_order=EXCLUDED.sort_order;
     END LOOP;
 
     -- Keep existing responses for families still invited; add new pending
@@ -141,10 +155,29 @@ BEGIN
       JOIN public.students s ON s.id=es.student_id
       WHERE es.event_id=v_event.id AND s.guardian_id IS NOT NULL
       ON CONFLICT(event_id,guardian_id) DO NOTHING;
+  ELSE
+    -- Editing repertoire alone must not be ignored: the website editor and
+    -- MCP both permit patches without replacing the whole student roster.
+    -- Validate all keys before writing anything; unknown roster IDs fail
+    -- rather than silently losing a coach's correction.
+    IF EXISTS (
+      SELECT 1 FROM jsonb_each(p_repertoire) AS item
+      WHERE jsonb_typeof(item.value)<>'string'
+        OR length(item.value #>> '{}')>10000
+        OR NOT EXISTS (
+          SELECT 1 FROM public.event_students es
+          WHERE es.event_id=v_event.id AND es.student_id::text=item.key
+        )
+    ) THEN
+      RAISE EXCEPTION 'EVENT_INVALID_REPERTOIRE' USING ERRCODE='22023';
+    END IF;
+    UPDATE public.event_students AS es SET repertoire=item.value #>> '{}'
+      FROM jsonb_each(p_repertoire) AS item
+      WHERE es.event_id=v_event.id AND es.student_id::text=item.key;
   END IF;
   RETURN to_jsonb(v_event);
 END;
-$$;
+$;
 REVOKE ALL ON FUNCTION public.ccp_teacher_event_save(uuid,jsonb,uuid[],jsonb)
  FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_event_save(uuid,jsonb,uuid[],jsonb)
