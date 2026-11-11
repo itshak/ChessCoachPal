@@ -69,3 +69,8 @@ Keep [PR #51](https://github.com/itshak/ChessCoachPal/pull/51) in draft while th
 
 - Maintained the **fixed 93 historical checklist case IDs** and established `docs/MCP_NEW_PARITY_SCENARIOS.md` for additional domain cases. The audit validates both matrices without treating new coverage as a replacement for an old case.
 - The teacher component inventory now explicitly includes `LessonCompletionPanel`; MCP attendance uses the imported shared service rather than the deleted MCP-specific SQL writer. Exact-head E2E and CI remain release gates.
+
+### 2026-11-12 — green cross-interface completion acceptance
+
+- Source commit `2309bd345bf3d44d711cf49fe3935d20b70c11a2` passed [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43108081495), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43108081459), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43108081484), [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43108081537) and [authenticated website↔MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43108081440) (**184 passed; five intentional skips; zero failures**).
+- The new independent `sessions.complete` checklist case is now checked. The historical 93-case baseline remains untouched. Calendar `lessons` / `attendance` cutover and unrelated route parity gaps remain open; do not archive OpenSpec or merge the draft PR.

@@ -8,4 +8,4 @@ is green. New routes/fields require additional cases, not renaming old ones.
 
 | Verified | New independently required behavior | Test and acceptance evidence |
 | --- | --- | --- |
-| - [ ] | Atomically complete one canonical coaching lesson with every frozen learner's explicit attendance | **Candidate awaiting exact-head authenticated browser/MCP E2E:** `e2e/parity-session-completion.spec.ts#PARITY-sessions-complete-atomic`; stale expected revisions must roll back the entire lesson. |
+| - [x] | Atomically complete one canonical coaching lesson with every frozen learner's explicit attendance | **Accepted with 184 passed, five skipped, no failures:** `e2e/parity-session-completion.spec.ts#PARITY-sessions-complete-atomic`; stale revisions roll back the entire lesson; [exact-head E2E evidence](https://github.com/itshak/ChessCoachPal/actions/runs/43108081440) at `2309bd3`. |
