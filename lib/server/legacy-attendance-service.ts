@@ -43,6 +43,10 @@ export async function calendarAttendanceRead(db:Db,teacherId:string,lessonId:str
 export async function calendarAttendanceWrite(db:Db,teacherId:string,lessonId:string,
  input:AttendanceInput,ctx:Context){
  const lesson=await ownedLesson(db,teacherId,lessonId);
+ // External family messages are opt-in on BOTH website and MCP. The write
+ // must fail before changing attendance if a trusted delivery origin is absent.
+ if(input.status==="teacher_cancel"&&input.notifyFamily===true&&!ctx.origin)
+  throw failure(400,"VALIDATION_ERROR","Trusted origin is required to notify families");
  if(input.status===null) {
   const {error}=await db.from("attendance").delete().eq("lesson_id",lessonId);
   if(error)throw failure(500,"DATABASE_ERROR","Unable to clear attendance");
@@ -66,7 +70,7 @@ export async function calendarAttendanceWrite(db:Db,teacherId:string,lessonId:st
  },{onConflict:"lesson_id"}).select().single();
  if(error)throw failure(500,"DATABASE_ERROR","Unable to record attendance");
  let emailed=false,emailError:string|undefined;
- if(input.status==="teacher_cancel"&&input.notifyFamily!==false){
+ if(input.status==="teacher_cancel"&&input.notifyFamily===true){
   if(!ctx.origin)throw failure(400,"VALIDATION_ERROR","Trusted origin is required to notify families");
   const policy=await getPolicy(db,teacherId);
   const result=await emailFamilyTeacherCancel({
@@ -82,6 +86,9 @@ export async function calendarAttendanceBulk(db:Db,teacherId:string,input:BulkAt
   throw failure(400,"VALIDATION_ERROR","Invalid bulk attendance status");
  if(!input.ids.length||input.ids.length>50||new Set(input.ids).size!==input.ids.length)
   throw failure(400,"VALIDATION_ERROR","Provide 1–50 distinct lesson IDs");
+ // No partial attendance writes on an invalid notification request.
+ if(input.status==="teacher_cancel"&&input.notifyFamily===true&&!ctx.origin)
+  throw failure(400,"VALIDATION_ERROR","Trusted origin is required to notify families");
  const {data:owned,error:lookup}=await db.from("lessons")
   .select("id").eq("teacher_id",teacherId).in("id",input.ids);
  if(lookup)throw failure(500,"DATABASE_ERROR","Unable to validate lesson ownership");
@@ -99,7 +106,7 @@ export async function calendarAttendanceBulk(db:Db,teacherId:string,input:BulkAt
   succeeded++;
   if(input.status==="teacher_cancel")cancelled.push(id);
  }
- if(input.status==="teacher_cancel"&&input.notifyFamily!==false&&cancelled.length){
+ if(input.status==="teacher_cancel"&&input.notifyFamily===true&&cancelled.length){
   if(!ctx.origin)throw failure(400,"VALIDATION_ERROR","Trusted origin is required to notify families");
   const policy=await getPolicy(db,teacherId);
   const result=await emailFamiliesTeacherCancelBulk({
@@ -121,6 +128,8 @@ export async function calendarLessonNoteRead(db:Db,teacherId:string,lessonId:str
 export async function calendarLessonNoteWrite(db:Db,teacherId:string,lessonId:string,
  input:NotesInput,ctx:Context){
  await ownedLesson(db,teacherId,lessonId);
+ if(input.sendEmail===true&&!ctx.origin)
+  throw failure(400,"VALIDATION_ERROR","Trusted origin is required to send lesson notes");
  const familyBody=typeof input.body==="string"?input.body.trim():"";
  const privateBody=typeof input.privateBody==="string"?input.privateBody.trim():"";
  const shared=familyBody.length>0;
