@@ -7,9 +7,10 @@ type Session = { id:string;title:string;starts_at:string;student_id:string|null 
 type Category = { id:string;name:string;description:string;sort_order:number };
 type Observation = { id:string;student_id:string;session_id:string|null;category_id:string;
   observation:string;observed_at:string;source:"teacher"|"agent";verified_at:string|null };
-type Resource = { id:string;student_id:string|null;session_id:string|null;label:string;
-  url:string;resource_type:"lichess_study"|"external";provider_study_id:string|null;
-  provider_chapter_id:string|null };
+type MaterialOption={id:string;title:string;kind:string;source_url:string|null};
+type MaterialLink={id:string;student_id:string|null;session_id:string|null;material_id:string;
+ revision:number;learning_materials:MaterialOption|MaterialOption[]|null};
+type MaterialLinkPage={links:MaterialLink[];total:number;nextOffset:number|null};
 type Envelope<T> = {ok?:boolean;data?:T;error?:{code:string;message?:string}};
 
 const inputClass="w-full rounded-lg border border-border bg-surface p-2 text-foreground";
@@ -38,19 +39,17 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
   const [sessionId,setSessionId]=useState("");
   const [categoryId,setCategoryId]=useState("");
   const [observations,setObservations]=useState<Observation[]>([]);
-  const [resources,setResources]=useState<Resource[]>([]);
+  const [links,setLinks]=useState<MaterialLink[]>([]);
+  const [materials,setMaterials]=useState<MaterialOption[]>([]);
+  const [materialId,setMaterialId]=useState("");
   const [newCategory,setNewCategory]=useState("");
   const [editCategory,setEditCategory]=useState("");
   const [observation,setObservation]=useState("");
-  const [linkLabel,setLinkLabel]=useState("");
-  const [linkUrl,setLinkUrl]=useState("");
-  const [linkKind,setLinkKind]=useState<"lichess_study"|"external">("lichess_study");
   const [target,setTarget]=useState<"student"|"session">("student");
   const [editObservationId,setEditObservationId]=useState("");
   const [editObservationText,setEditObservationText]=useState("");
-  const [editResourceId,setEditResourceId]=useState("");
-  const [editResourceLabel,setEditResourceLabel]=useState("");
-  const [editResourceUrl,setEditResourceUrl]=useState("");
+  const [editLinkId,setEditLinkId]=useState("");
+  const [editMaterialId,setEditMaterialId]=useState("");
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [notice,setNotice]=useState("");
@@ -62,12 +61,12 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
   },[]);
 
   const refreshHistory=useCallback(async()=>{
-    if (!studentId) {setObservations([]);setResources([]);return;}
-    const [notes,links]=await Promise.all([
+    if (!studentId) {setObservations([]);setLinks([]);return;}
+    const [notes,linked]=await Promise.all([
       command<Observation[]>("chess.observations.list",{studentId,...(sessionId?{sessionId}:{})}),
-      command<Resource[]>("chess.resources.list",{studentId,...(sessionId?{sessionId}:{})}),
+      command<MaterialLinkPage>("materials.links.list",{studentId,...(sessionId?{sessionId}:{})}),
     ]);
-    setObservations(notes);setResources(links);
+    setObservations(notes);setLinks(linked.links);
   },[studentId,sessionId]);
 
   useEffect(()=>{
@@ -87,15 +86,24 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
 
   useEffect(()=>{
     let active=true;
-    if (!studentId) {setObservations([]);setResources([]);return;}
+    if (!studentId) {setObservations([]);setLinks([]);return;}
     void Promise.all([
       command<Observation[]>("chess.observations.list",{studentId,...(sessionId?{sessionId}:{})}),
-      command<Resource[]>("chess.resources.list",{studentId,...(sessionId?{sessionId}:{})}),
-    ]).then(([notes,links])=>{
-      if(active){setObservations(notes);setResources(links);}
-    }).catch(e=>{if(active){setObservations([]);setResources([]);setError(String(e));}});
+      command<MaterialLinkPage>("materials.links.list",{studentId,...(sessionId?{sessionId}:{})}),
+    ]).then(([notes,linked])=>{
+      if(active){setObservations(notes);setLinks(linked.links);}
+    }).catch(e=>{if(active){setObservations([]);setLinks([]);setError(String(e));}});
     return ()=>{active=false;};
   },[studentId,sessionId]);
+
+  const refreshMaterials=useCallback(async()=>{
+    const response=await fetch("/api/training/materials?limit=100",{cache:"no-store"});
+    if(!response.ok)throw new Error("Could not load the typed material catalog");
+    const value=await response.json() as {materials:MaterialOption[]};
+    setMaterials(value.materials);
+    setMaterialId(old=>value.materials.some(m=>m.id===old)?old:value.materials[0]?.id??"");
+  },[]);
+  useEffect(()=>{void refreshMaterials().catch(e=>setError(String(e)));},[refreshMaterials]);
 
   useEffect(()=>{
     setEditCategory(categories.find(item=>item.id===categoryId)?.name??"");
@@ -144,25 +152,42 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
       setEditObservationId("");
     },"Observation corrected.");
   }
-  async function addResource(e:FormEvent<HTMLFormElement>){
-    e.preventDefault();
+  async function addLink(e:FormEvent<HTMLFormElement>){
+    e.preventDefault();if(!materialId)return;
+    if(!window.confirm("Attach this typed learning material? This is not evidence that it was taught."))return;
     await run(async()=>{
-      await command("chess.resources.link",{
-        ...(target==="session"?{sessionId}:{studentId}),
-        label:linkLabel.trim(),url:linkUrl.trim(),resourceType:linkKind,
+      await command("materials.links.create",{
+        materialId,...(target==="session"?{sessionId}:{studentId}),
+        requestId:crypto.randomUUID(),confirmed:true,
       });
-      setLinkLabel("");setLinkUrl("");
-    },"Learning resource saved; external availability is not required.");
+    },"Material associated with the selected student or lesson.");
   }
-  async function saveResource(e:FormEvent<HTMLFormElement>){
+  async function saveLink(e:FormEvent<HTMLFormElement>){
     e.preventDefault();
+    const old=links.find(x=>x.id===editLinkId);
+    if(!old||!editMaterialId)return;
     await run(async()=>{
-      await command("chess.resources.update",{
-        resourceId:editResourceId,label:editResourceLabel.trim(),url:editResourceUrl.trim(),
+      await command("materials.links.update",{
+        linkId:old.id,materialId:editMaterialId,expectedRevision:old.revision,confirmed:true,
       });
-      setEditResourceId("");
-    },"Learning link corrected.");
+      setEditLinkId("");
+    },"Material association corrected.");
   }
+  async function unlink(link:MaterialLink){
+    await run(async()=>{
+      const preview=await command<{evidencePreserved:boolean;explanation:string}>(
+        "materials.links.unlinkImpact",{linkId:link.id});
+      if(!preview.evidencePreserved||
+         !window.confirm("Remove this association? Existing learning evidence and the material remain."))return;
+      await command("materials.links.unlink",{
+        linkId:link.id,expectedRevision:link.revision,confirmed:true,
+      });
+    },"Material link removed; evidence and catalog record preserved.");
+  }
+  const selectedMaterial=(link:MaterialLink)=>{
+    const value=link.learning_materials;
+    return Array.isArray(value)?value[0]??null:value;
+  };
 
   return (
     <section aria-label="Chess learning" className="space-y-4">
@@ -251,48 +276,57 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
           </li>)}</ul>}
       </div>
       <div className={boxClass}>
-        <h3 className="font-semibold">Selected studies and learning links</h3>
-        <p className="text-sm text-muted">Only the link is stored; the external study may be unavailable without affecting your notes.</p>
-        <form className="grid gap-2 md:grid-cols-2" onSubmit={addResource}>
-          <label>Resource label
-            <input aria-label="Resource label" className={inputClass} value={linkLabel} maxLength={160} required onChange={e=>setLinkLabel(e.target.value)}/>
-          </label>
-          <label>HTTPS learning URL
-            <input aria-label="HTTPS learning URL" className={inputClass} type="url" value={linkUrl} maxLength={2048} required
-              placeholder="https://lichess.org/study/Ab12Cd34" onChange={e=>setLinkUrl(e.target.value)}/>
-          </label>
-          <label>Link type
-            <select aria-label="Link type" className={inputClass} value={linkKind}
-              onChange={e=>setLinkKind(e.target.value as "lichess_study"|"external")}>
-              <option value="lichess_study">Lichess Study</option>
-              <option value="external">Other HTTPS resource</option>
+        <h3 className="font-semibold">Selected learning materials</h3>
+        <p className="text-sm text-muted">Create or edit a game, study chapter, puzzle, drill, or HTTPS link in the typed materials catalog on the Training &amp; materials page. This panel only attaches an existing material to a student or lesson. A link never proves learning.</p>
+        <button type="button" className="underline text-sm" disabled={busy}
+          onClick={()=>void refreshMaterials().catch(e=>setError(String(e)))}>
+          Refresh material catalog
+        </button>
+        <form className="grid gap-2 md:grid-cols-2" onSubmit={addLink}>
+          <label>Learning material
+            <select aria-label="Learning material" className={inputClass} value={materialId}
+              onChange={e=>setMaterialId(e.target.value)} required>
+              {!materials.length&&<option value="">Create a material in the catalog first</option>}
+              {materials.map(m=><option key={m.id} value={m.id}>{m.title} · {m.kind}</option>)}
             </select>
           </label>
-          <label>Attach link to
-            <select aria-label="Attach link to" className={inputClass} value={target}
+          <label>Attach material to
+            <select aria-label="Attach material to" className={inputClass} value={target}
               onChange={e=>setTarget(e.target.value as "student"|"session")}>
               <option value="student">Student</option>
               {sessionId&&<option value="session">Selected coaching lesson</option>}
             </select>
           </label>
-          <div><button className={actionClass} disabled={busy||!studentId||(target==="session"&&!sessionId)}>Save learning link</button></div>
+          <div><button className={actionClass}
+            disabled={busy||!materialId||!studentId||(target==="session"&&!sessionId)}>
+            Attach learning material
+          </button></div>
         </form>
-        {resources.length===0?<p className="text-sm text-muted">No saved links for this view.</p>:
-          <ul className="space-y-3">{resources.map(link=><li key={link.id} className="border-t border-border pt-3">
-            <a className="text-primary underline break-all" href={link.url} target="_blank" rel="noopener noreferrer">{link.label}</a>
-            <p className="text-xs text-muted">{link.resource_type==="lichess_study"?"Lichess Study":"External HTTPS resource"} · {link.session_id?"Lesson":"Student"} {link.provider_study_id?"· Study "+link.provider_study_id:""}</p>
-            <button type="button" className="text-sm underline" onClick={()=>{
-              setEditResourceId(link.id);setEditResourceLabel(link.label);setEditResourceUrl(link.url);
-            }}>Edit link</button>
-            {editResourceId===link.id&&<form className="space-y-2 mt-2" onSubmit={saveResource}>
-              <input aria-label="Edit resource label" className={inputClass} value={editResourceLabel}
-                maxLength={160} required onChange={e=>setEditResourceLabel(e.target.value)}/>
-              <input aria-label="Edit resource URL" className={inputClass} type="url" value={editResourceUrl}
-                maxLength={2048} required onChange={e=>setEditResourceUrl(e.target.value)}/>
-              <button className={actionClass} disabled={busy}>Save link correction</button>
-              <button type="button" className="px-3" onClick={()=>setEditResourceId("")}>Cancel</button>
-            </form>}
-          </li>)}</ul>}
+        {links.length===0?<p className="text-sm text-muted">No material associations for this view.</p>:
+          <ul className="space-y-3">{links.map(link=>{
+            const material=selectedMaterial(link);
+            return <li key={link.id} className="border-t border-border pt-3">
+              <p className="font-medium">{material?.title??"Unknown material"}</p>
+              {material?.source_url&&<a className="text-primary underline break-all"
+                href={material.source_url} target="_blank" rel="noopener noreferrer">Open source link</a>}
+              <p className="text-xs text-muted">{material?.kind??"Material"} · {link.session_id?"Lesson":"Student"} · Revision {link.revision}</p>
+              <div className="flex gap-3">
+                <button type="button" className="text-sm underline" onClick={()=>{
+                  setEditLinkId(link.id);setEditMaterialId(link.material_id);
+                }}>Reassign material</button>
+                <button type="button" className="text-sm underline" disabled={busy}
+                  onClick={()=>void unlink(link)}>Unlink</button>
+              </div>
+              {editLinkId===link.id&&<form className="space-y-2 mt-2" onSubmit={saveLink}>
+                <select aria-label="Replacement learning material" className={inputClass}
+                  value={editMaterialId} onChange={e=>setEditMaterialId(e.target.value)}>
+                  {materials.map(m=><option key={m.id} value={m.id}>{m.title}</option>)}
+                </select>
+                <button className={actionClass} disabled={busy||!editMaterialId}>Save association</button>
+                <button type="button" className="px-3" onClick={()=>setEditLinkId("")}>Cancel</button>
+              </form>}
+            </li>;
+          })}</ul>}
       </div>
     </section>
   );
