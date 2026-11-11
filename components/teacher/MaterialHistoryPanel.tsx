@@ -3,7 +3,7 @@ import {useCallback,useEffect,useState,type FormEvent} from "react";
 
 type Student={id:string;name:string};
 type Workplace={id:string;name:string};
-type Resource={id:string;label:string;url:string};
+type MaterialOption={id:string;title:string;source_url:string|null};
 type Group={id:string;name:string;workplace_id:string};
 type DefaultStudy={
  id:string;workplace_id:string;group_id:string|null;label:string;url:string;
@@ -14,11 +14,11 @@ type DefaultHistory={id:string;default_id:string;action:string;
 type MaterialEntry={
  id:string;student_id:string;workplace_id:string|null;stage:"assigned"|"taught"|"completed";
  occurred_on:string;note:string;updated_at:string;session_id:string|null;
- chess_learning_resources:Resource|null;students:{name:string}|null;
+ learning_materials:MaterialOption|null;students:{name:string}|null;
 };
 type MaterialAggregate={evidenceClaims:number;studentCount:number;sessionCount:number;
  uniqueSessionMaterialStageCount:number;stages:{assigned:number;taught:number;completed:number};
- resources:Array<{resourceId:string;label:string|null;stages:{assigned:number;taught:number;completed:number};
+ materials:Array<{materialId:string;label:string|null;stages:{assigned:number;taught:number;completed:number};
   studentCount:number;sessionCount:number}>};
 type MaterialResult={entries:MaterialEntry[];total:number;nextOffset:number|null;
  pageSummary:{entries:number;studentCount:number;uniqueSessionMaterialCount:number};
@@ -47,8 +47,8 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
  const [editDefaultNotes,setEditDefaultNotes]=useState("");
  const [studentId,setStudentId]=useState(fixedStudentId||"");
  const [workplaceId,setWorkplaceId]=useState("");
- const [resources,setResources]=useState<Resource[]>([]);
- const [resourceId,setResourceId]=useState("");
+ const [materials,setMaterials]=useState<MaterialOption[]>([]);
+ const [materialId,setMaterialId]=useState("");
  const [stage,setStage]=useState<"assigned"|"taught"|"completed">("taught");
  const [occurredOn,setOccurredOn]=useState(new Date().toISOString().slice(0,10));
  const [note,setNote]=useState("");
@@ -148,20 +148,20 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
  useEffect(()=>{let active=true;void load().catch(e=>{if(active)setError(String(e));});return ()=>{active=false;};},[load]);
  useEffect(()=>{
   let active=true;
-  if(!studentId){setResources([]);setResourceId("");return;}
-  void json("/api/agent/v1",{method:"POST",headers:{"Content-Type":"application/json"},
-   body:JSON.stringify({action:"chess.resources.list",studentId}),
-  }).then(v=>{if(active){const result=(v.data??[]) as Resource[];setResources(result);setResourceId(prev=>result.some(r=>r.id===prev)?prev:result[0]?.id||"");}})
+  if(!studentId){setMaterials([]);setMaterialId("");return;}
+  void json("/api/training/materials?limit=100")
+   .then(v=>{if(active){const result=(v.materials??[]) as MaterialOption[];setMaterials(result);
+     setMaterialId(prev=>result.some(r=>r.id===prev)?prev:result[0]?.id||"");}})
    .catch(e=>{if(active)setError(String(e));});
   return ()=>{active=false;};
  },[studentId]);
  async function record(e:FormEvent<HTMLFormElement>){
-  e.preventDefault();if(!studentId||!resourceId)return;
+  e.preventDefault();if(!studentId||!materialId)return;
   if(!window.confirm("Record this material as "+stage+" for the selected student? This is teacher-attested evidence."))return;
   setBusy(true);setError("");setSuccess("");
   try{
    await json("/api/coaching/materials",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({studentId,resourceId,...(workplaceId?{workplaceId}:{}),
+    body:JSON.stringify({studentId,materialId,...(workplaceId?{workplaceId}:{}),
      stage,occurredOn,note,requestId:crypto.randomUUID(),confirmed:true}),
    });
    setNote("");await load();setSuccess("Material evidence recorded.");
@@ -272,7 +272,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
    {aggregate&&<div className="text-sm rounded-lg border border-border p-3 space-y-2" aria-label="Whole-history material summary">
     <p className="font-medium">Whole-history evidence (not just this page): {aggregate.evidenceClaims} claims</p>
     <p className="text-muted">Assigned {aggregate.stages.assigned} · Taught {aggregate.stages.taught} · Teacher-confirmed completed {aggregate.stages.completed} · Students {aggregate.studentCount} · Unique session/material/stage combinations {aggregate.uniqueSessionMaterialStageCount}</p>
-    <ul className="space-y-1">{aggregate.resources.map(item=><li key={item.resourceId}>
+    <ul className="space-y-1">{aggregate.materials.map(item=><li key={item.materialId}>
      {item.label||"Linked material"}: {item.stages.assigned} assigned, {item.stages.taught} taught, {item.stages.completed} completed (across {item.studentCount} students)
     </li>)}</ul>
    </div>}
@@ -280,10 +280,10 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
    <ul className="space-y-2">
     {rows.map(row=><li key={row.id} className="border border-border rounded-lg p-3 flex justify-between gap-3">
      <div className="text-sm">
-      <strong>{row.chess_learning_resources?.label||"Unlinked material"}</strong>
+      <strong>{row.learning_materials?.title||"Unknown material"}</strong>
       <span className="ml-2 text-muted">{row.stage} · {row.occurred_on}</span>
       {row.note&&<p className="text-muted whitespace-pre-wrap">{row.note}</p>}
-      {row.chess_learning_resources?.url&&<a className="text-primary underline" target="_blank" rel="noopener noreferrer" href={row.chess_learning_resources.url}>Study source</a>}
+      {row.learning_materials?.source_url&&<a className="text-primary underline" target="_blank" rel="noopener noreferrer" href={row.learning_materials.source_url}>Source link</a>}
      </div>
      <button type="button" className="text-sm text-primary disabled:opacity-50" disabled={busy} onClick={()=>void retract(row)}>Correct</button>
     </li>)}
@@ -295,9 +295,9 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
    <p className="text-xs text-muted">First attach a study or HTTPS learning link in Chess learning, then select it here.</p>
    <div className="grid gap-3 md:grid-cols-2">
     <label className="text-sm">Study / reference
-     <select className={input} value={resourceId} onChange={e=>setResourceId(e.target.value)} required>
-      {!resources.length&&<option value="">No attached study yet</option>}
-      {resources.map(r=><option key={r.id} value={r.id}>{r.label}</option>)}
+     <select className={input} value={materialId} onChange={e=>setMaterialId(e.target.value)} required>
+      {!materials.length&&<option value="">Create a typed learning material first</option>}
+      {materials.map(r=><option key={r.id} value={r.id}>{r.title}</option>)}
      </select>
     </label>
     <label className="text-sm">Learning stage
@@ -314,7 +314,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
      <input className={input} value={note} maxLength={2000} onChange={e=>setNote(e.target.value)} placeholder="Chapter, outcome or exercise notes" />
     </label>
    </div>
-   <button type="submit" className={button} disabled={busy||!studentId||!resourceId}>{busy?"Saving…":"Confirm and record"}</button>
+   <button type="submit" className={button} disabled={busy||!studentId||!materialId}>{busy?"Saving…":"Confirm and record"}</button>
   </form>
  </section>;
 }

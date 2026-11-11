@@ -30,3 +30,8 @@ test("ADR-0001 strict release gate blocks separate resource/material catalog",()
  ok(errors.some(x=>x.includes("separate learning-resource catalog")));
  deepStrictEqual(canonicalSchemaErrors({...clean,strictMaterials:true}),[]);
 });
+
+test("ADR-0001: duplicate resource-keyed history tables are not part of current schema",()=>{
+ const errors=canonicalSchemaErrors({...clean,sql:clean.sql+" CREATE TABLE public.chess_material_progress (id uuid);"});
+ ok(errors.some(e=>e.includes("Duplicate material evidence ledger")));
+});

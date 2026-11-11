@@ -3,7 +3,7 @@ import {summarizeMaterialClaims,type MaterialSummaryRow} from "./material-aggreg
 
 const claim=(id:string,studentId:string,sessionId:string|null,
   stage:"assigned"|"taught"|"completed"="taught"):MaterialSummaryRow=>({
-    id,studentId,sessionId,stage,resourceId:"book-1",label:"Endgame study",
+    id,studentId,sessionId,stage,materialId:"book-1",label:"Endgame study",
   });
 describe("whole-history material evidence aggregation",()=>{
   it("does not multiply one group session/material by its two students",()=>{
@@ -13,7 +13,7 @@ describe("whole-history material evidence aggregation",()=>{
     expect(result.uniqueSessionMaterialStageCount).toBe(1);
     expect(result.sessionCount).toBe(1);
     expect(result.studentCount).toBe(2);
-    expect(result.resources[0].studentCount).toBe(2);
+    expect(result.materials[0].studentCount).toBe(2);
   });
   it("preserves distinct assigned/taught/completed stages without inferring mastery",()=>{
     const result=summarizeMaterialClaims([claim("1","s1",null,"assigned"),
@@ -23,7 +23,7 @@ describe("whole-history material evidence aggregation",()=>{
     expect(result.uniqueSessionMaterialStageCount).toBe(0);
   });
   it("returns an empty, safe summary",()=>{
-    expect(summarizeMaterialClaims([])).toMatchObject({evidenceClaims:0,resources:[],
+    expect(summarizeMaterialClaims([])).toMatchObject({evidenceClaims:0,materials:[],
       studentCount:0,stages:{assigned:0,taught:0,completed:0}});
   });
 });

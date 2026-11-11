@@ -24,14 +24,15 @@ test("PARITY:PARITY-progress-student-summary unifies strength, skill history and
    confirmed:true,
  });
  expect(assessment.error).toBeUndefined();
- const resource=await call("ccp_v1_chess_resources_link",{
-   studentId,label:"Rook workbook "+randomUUID(),
-   url:"https://lichess.org/study/AbCd1234",
-   resourceType:"lichess_study",requestId:randomUUID(),
+ const material=await call("ccp_v1_learning_materials_create",{
+   kind:"study_chapter",title:"Rook workbook "+randomUUID(),
+   description:"",sourceUrl:"https://lichess.org/study/AbCd1234",
+   details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
+   requestId:randomUUID(),
  });
- expect(resource.error).toBeUndefined();
+ expect(material.error).toBeUndefined();
  const history=await call("ccp_v1_materials_history_record",{
-   studentId,resourceId:resource.data.id,stage:"taught",
+   studentId,materialId:material.data.material.id,stage:"taught",
    occurredOn:"2042-04-20",note:"Teacher confirms lesson",
    requestId:randomUUID(),confirmed:true,
  });

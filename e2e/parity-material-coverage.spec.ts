@@ -38,19 +38,20 @@ async function fixture(call:Tool,hour:number){
  });
  expect(made.error).toBeUndefined();
  const sessionId=made.data.entityId as string;
- const linked=await call("ccp_v1_chess_resources_link",{
-   sessionId,label:"King and pawn "+suffix,
-   url:"https://lichess.org/study/AbCd1234",
-   resourceType:"lichess_study",requestId:randomUUID(),
+ const material=await call("ccp_v1_learning_materials_create",{
+   kind:"study_chapter",title:"King and pawn "+suffix,
+   description:"",sourceUrl:"https://lichess.org/study/AbCd1234",
+   details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
+   requestId:randomUUID(),
  });
- expect(linked.error).toBeUndefined();
+ expect(material.error).toBeUndefined();
  return {workplaceId,groupId:group.data.entityId as string,studentIds,
-   sessionId,resourceId:linked.data.id as string};
+   sessionId,materialId:material.data.material.id as string};
 }
 async function claim(call:Tool,ctx:Awaited<ReturnType<typeof fixture>>,
  studentId:string,stage:"assigned"|"taught"|"completed"){
  const result=await call("ccp_v1_materials_history_record",{
-   studentId,resourceId:ctx.resourceId,sessionId:ctx.sessionId,
+   studentId,materialId:ctx.materialId,sessionId:ctx.sessionId,
    workplaceId:ctx.workplaceId,stage,occurredOn:"2041-03-01",
    note:"Teacher-confirmed "+stage,requestId:randomUUID(),confirmed:true,
  });
@@ -150,4 +151,20 @@ test("PARITY:PARITY-materials-workplace-student-report distinguishes individual 
    expect(childSite.evidenceClaims).toBe(1);
    expect(childSite.stages[stage]).toBe(1);
  }
+});
+
+test("PARITY:material evidence rejects a nonexistent canonical material from both interfaces",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const ctx=await fixture(call,16);
+ const payload={studentId:ctx.studentIds[0],materialId:randomUUID(),
+   sessionId:ctx.sessionId,workplaceId:ctx.workplaceId,
+   stage:"taught",occurredOn:"2041-03-01",note:"Must not be recorded",
+   requestId:randomUUID(),confirmed:true};
+ const website=await page.request.post("/api/coaching/materials",{data:payload});
+ expect(website.status(),await website.text()).toBe(404);
+ const mcp=await call("ccp_v1_materials_history_record",payload);
+ expect(mcp.error?.code).toBe("NOT_FOUND");
+ const history=await call("ccp_v1_materials_history_list",{studentId:ctx.studentIds[0]});
+ expect(history.error).toBeUndefined();
+ expect(history.data.total).toBe(0);
 });

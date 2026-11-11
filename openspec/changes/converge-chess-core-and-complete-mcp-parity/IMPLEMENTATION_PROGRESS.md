@@ -41,3 +41,11 @@ Keep [PR #51](https://github.com/itshak/ChessCoachPal/pull/51) in draft while th
 - Skill-dimension creation now uses one teacher-scoped SQL transaction and an optional request UUID shared by the website and MCP, with an immutable response receipt, concurrent sort allocation and cross-interface replay/conflict checks. This corrects a concrete outstanding retry gap without importing or converting any old schema.
 - Removed an unnecessary format-version field from the parity evidence inventory. Current MCP tool names remain stable during this integration; their names are not a legacy API adapter or a schema-upgrade contract.
 - Added browser↔delegated MCP E2E for same-key replay, changed-payload rejection and reverse-direction creation. These new tests remain **unverified until executed on this exact commit**; do not promote the skill-dimensions route or archive the OpenSpec based on this implementation alone.
+
+## Canonical typed material teaching-evidence increment — implementation candidate
+
+- One fresh-install `material_teaching_evidence` ledger now references `learning_materials` by tenant-owned `material_id`. The old `chess_material_progress` ledger was removed, not migrated or dual-read.
+- Teacher website and authenticated MCP use `materialId` for recording/filtering evidence. Student/workplace aggregates and the website history editor select from the typed material catalog; no legacy resource-to-material translation or backup version negotiation was added.
+- The material lifecycle preview and PostgreSQL archive transaction both block archiving records with material-teaching history. Current-shape portable backup/restore includes the new ledger.
+- Added revised unit/E2E fixtures covering canonical IDs, student reports, group-session deduplication, invalid material IDs, and URL reference removal without erasing independent historical evidence.
+- **Still open:** eliminate the separately writable `chess_learning_resources` URL-link catalog and update the remaining website/MCP surfaces, consolidate the lesson history writer, finish all other parity gaps, run strict gates and verify on merged main. This is not an OpenSpec completion or release acceptance.

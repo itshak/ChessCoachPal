@@ -48,6 +48,7 @@ describe("ChessCoachPal portable backup", () => {
     payload.tables.event_students=[{id:"es1",event_id:"e1"}];
     payload.tables.learning_materials=[{id:"m1",kind:"game",title:"A recorded game",teacher_id:"old"}];
     payload.tables.chess_games=[{material_id:"m1",teacher_id:"old",pgn:"1. e4 *"}];
+    payload.tables.material_teaching_evidence=[{id:"ev1",teacher_id:"old",student_id:"s1",material_id:"m1",stage:"taught"}];
     payload.tables.training_assignments=[{id:"ha1",teacher_id:"old",material_id:"m1"}];
     payload.tables.student_training_plans=[{id:"tp1",teacher_id:"old",title:"Endgames",goals:[]}];
     payload.tables.student_training_plan_revisions=[{plan_id:"tp1",teacher_id:"old",revision:1}];
@@ -60,7 +61,7 @@ describe("ChessCoachPal portable backup", () => {
     const tables=calls[0].args.p_tables as StudioDataExport["tables"];
     for(const table of ["students","workplaces","teaching_sessions",
       "chess_observations","events","event_students",
-      "learning_materials","chess_games","training_assignments",
+      "learning_materials","chess_games","material_teaching_evidence","training_assignments",
       "student_training_plans","student_training_plan_revisions"]) {
       expect(tables[table]).toEqual(payload.tables[table]);
     }
@@ -171,6 +172,7 @@ describe("ChessCoachPal portable backup", () => {
     expect((backup.tables.students as unknown[])).toHaveLength(1205);
     expect((backup.tables.skill_assessments as unknown[])).toHaveLength(1205);
     expect(backup.tables).toHaveProperty("learning_materials");
+    expect(backup.tables).toHaveProperty("material_teaching_evidence");
     expect(backup.tables).toHaveProperty("training_assignments");
     expect(backup.tables).toHaveProperty("student_training_plans");
     expect(backup.tables).toHaveProperty("student_training_plan_revisions");

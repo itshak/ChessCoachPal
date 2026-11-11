@@ -70,7 +70,7 @@ test("PARITY:PARITY-chess-resources-edit-unlink preserves authorizations and rem
  expect((after.data as Array<{id:string}>).some(x=>x.id===secondId)).toBe(false);
 });
 
-test("PARITY:PARITY-chess-resources-retention refuses unlink once teacher teaching claims exist",async({page,request})=>{
+test("PARITY:PARITY-chess-resources-retention keeps typed material history after URL unlink",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const student=(await call("ccp_v1_students_create",{
    name:"Learning history "+randomUUID(),idempotencyKey:randomUUID(),
@@ -91,9 +91,17 @@ test("PARITY:PARITY-chess-resources-retention refuses unlink once teacher teachi
  });
  expect(resource.error).toBeUndefined();
  const resourceId=resource.data.id as string;
+ const material=await call("ccp_v1_learning_materials_create",{
+   kind:"study_chapter",title:"Retention study "+randomUUID(),
+   description:"",sourceUrl:"https://lichess.org/study/AbCd1234",
+   details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
+   requestId:randomUUID(),
+ });
+ expect(material.error).toBeUndefined();
+ const materialId=material.data.material.id as string;
  const claim=await call("ccp_v1_materials_history_record",{
    studentId:student.entityId,workplaceId:workplace.entityId,
-   resourceId,stage:"taught",occurredOn:"2027-04-01",
+   materialId,stage:"taught",occurredOn:"2027-04-01",
    note:"Historical study evidence",requestId:randomUUID(),confirmed:true,
  });
  expect(claim.error).toBeUndefined();
@@ -101,15 +109,12 @@ test("PARITY:PARITY-chess-resources-retention refuses unlink once teacher teachi
    action:"chess.resources.unlinkImpact",resourceId,
  }});
  expect(site.status(),await site.text()).toBe(200);
- expect((await site.json()).data).toMatchObject({canUnlink:false,claimCount:1});
- const refused=await call("ccp_v1_chess_resources_unlink",{
+ expect((await site.json()).data).toMatchObject({canUnlink:true,claimCount:0});
+ const removed=await call("ccp_v1_chess_resources_unlink",{
    resourceId,confirmed:true,
  });
- expect(refused.error?.code).toBe("CONFLICT");
- const siteRefused=await page.request.post("/api/agent/v1",{data:{
-   action:"chess.resources.unlink",resourceId,confirmed:true,
- }});
- expect(siteRefused.status()).toBe(409);
+ expect(removed.error).toBeUndefined();
+ expect(removed.data.unlinked).toBe(true);
  const ledger=await call("ccp_v1_materials_history_list",{
    studentId:student.entityId,workplaceId:workplace.entityId,
  });
