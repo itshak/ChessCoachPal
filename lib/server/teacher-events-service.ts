@@ -14,7 +14,7 @@ const failure=(s:number,c:string,m:string)=>new TeacherEventError(s,c,m);
 export type TeacherEventInput={
  title?:string;description?:string;location?:string;startsAt?:string;
  endsAt?:string|null;sendReminder?:boolean;studentIds?:string[];
- repertoireByStudent?:Record<string,string>;
+ repertoireByStudent?:Record<string,string>;idempotencyKey?:string;
 };
 const validDate=(v:string|undefined)=>!!v&&!Number.isNaN(Date.parse(v));
 const info="id,title,description,location,starts_at,ends_at,send_reminder,reminder_sent_at,created_at,updated_at";
@@ -34,13 +34,20 @@ async function saveEvent(db:Db,teacherId:string,id:string|null,input:TeacherEven
   if(input.startsAt!==undefined)fields.starts_at=input.startsAt;
   if(input.endsAt!==undefined)fields.ends_at=input.endsAt||null;
   if(input.sendReminder!==undefined)fields.send_reminder=input.sendReminder;
-  const {data,error}=await db.rpc("ccp_teacher_event_save",{
+  if(input.idempotencyKey!==undefined&&
+     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.idempotencyKey))
+    throw failure(400,"VALIDATION_ERROR","Event idempotencyKey must be a UUID");
+  const {data,error}=await db.rpc("ccp_teacher_event_save_replay",{
     p_event_id:id,p_fields:fields,
     p_student_ids:input.studentIds===undefined?(id?null:[]):input.studentIds,
     p_repertoire:input.repertoireByStudent??{},
+    p_request_id:input.idempotencyKey??null,
   });
   void teacherId;
   if(error) {
+    if(error.code==="23505"||error.message.includes("EVENT_REQUEST_CONFLICT"))
+      throw failure(409,"IDEMPOTENCY_CONFLICT",
+        "This event idempotencyKey was already used with different details");
     if(error.code==="22023"||error.code==="22007"||error.code==="22008")
       throw failure(400,"VALIDATION_ERROR","Invalid event dates, details or roster");
     if(error.message.includes("NOT_FOUND")||error.code==="42501")
