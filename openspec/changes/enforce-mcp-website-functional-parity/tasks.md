@@ -206,3 +206,5 @@ The baseline student/guardian FK detaches students on guardian deletion; a new a
 ### Pre-CI review correction: teacher-role authorization
 
 The new guardian and event SQL mutations no longer request `SELECT ... FOR UPDATE` on the restricted `teachers` row. They validate teacher existence with ordinary SELECT, use owner-scoped resource row locks and foreign-key constraints, and rely on the existing hosted-cap trigger's internal serialization when students are inserted. This avoids requiring broader teacher-table UPDATE privileges for website and OAuth/MCP calls. This is a source review fix, **not a claim of test success**.
+
+A further pre-CI SQL review added a post-write affected-row count check to guardian roster replacement. If an owned student disappears between preflight and the transaction's reassignment, the function now aborts and rolls back rather than returning success with incomplete membership.

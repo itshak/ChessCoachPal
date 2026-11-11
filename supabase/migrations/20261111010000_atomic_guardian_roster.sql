@@ -17,6 +17,7 @@ DECLARE
   v_name text;
   v_new jsonb;
   v_existing_ids integer;
+  v_assigned integer;
   v_prior_guardians uuid[];
   v_old uuid;
 BEGIN
@@ -121,6 +122,12 @@ BEGIN
         AND NOT (id=ANY(p_student_ids));
     UPDATE public.students SET guardian_id=v_guardian.id
       WHERE teacher_id=v_teacher AND id=ANY(p_student_ids);
+    GET DIAGNOSTICS v_assigned = ROW_COUNT;
+    -- A student may have disappeared between preflight and the write.
+    -- Never acknowledge a partly reassigned roster.
+    IF v_assigned<>cardinality(p_student_ids) THEN
+      RAISE EXCEPTION 'GUARDIAN_ROSTER_CHANGED' USING ERRCODE='40001';
+    END IF;
   END IF;
 
   FOR v_new IN SELECT value FROM jsonb_array_elements(p_new_students) LOOP
