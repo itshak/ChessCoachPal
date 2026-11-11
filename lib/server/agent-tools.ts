@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import {eventChanges} from "@/lib/server/teacher-event-schemas";
 import { lichessConnectionStatus,lichessConnectionHandoff,disconnectLichess,LichessConnectionError } from "@/lib/server/lichess-connections";
 import {teacherLichessStudiesSearch} from "@/lib/server/lichess-studies";
 import {puzzleDraftSchema,puzzlePublishSchema} from "@/lib/lichess-puzzles";
@@ -102,17 +103,6 @@ async function billingActionResponse(result:Response){
   message:body.error??"Billing action failed"}};
 }
 const uuid = z.string().uuid();
-const eventChanges=z.object({
-  title:z.string().trim().min(1).max(200).optional(),
-  description:z.string().max(10000).optional(),
-  location:z.string().max(1000).optional(),
-  startsAt:z.string().datetime({offset:true}).optional(),
-  endsAt:z.string().datetime({offset:true}).nullable().optional(),
-  sendReminder:z.boolean().optional(),
-  studentIds:z.array(uuid).max(200).optional(),
-  repertoireByStudent:z.record(uuid,z.string().max(10000)).optional(),
-  idempotencyKey:uuid.optional(),
-}).strict();
 const studioPolicyPatch=z.object({
  studioName:z.string().max(120).optional(),
  studioWebsite:z.string().max(300).optional(),
