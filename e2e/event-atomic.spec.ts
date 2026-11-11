@@ -60,6 +60,42 @@ test("PARITY:PARITY-events-transaction-roundtrip preserves RSVP roster across we
  expect(web.status(),await web.text()).toBe(200);
  expect((await web.json()).event.students.map((s:{studentId:string})=>s.studentId))
    .toEqual([studentId]);
+ // Website must be able to edit one student's learning repertoire without
+ // replacing the event roster; MCP reads the exact same persisted value.
+ const webRepertoire=await page.request.put("/api/events/"+id,{data:{
+   repertoireByStudent:{[studentId]:"Coach reviewed rook endgame"},
+ }});
+ expect(webRepertoire.status(),await webRepertoire.text()).toBe(200);
+ const afterWeb=await call("ccp_v1_events_detail",{eventId:id});
+ expect(afterWeb.error).toBeUndefined();
+ expect(afterWeb.data.event.students).toMatchObject([{
+   studentId,repertoire:"Coach reviewed rook endgame",
+ }]);
+ // MCP can then correct that same field without sending studentIds.
+ const modelRepertoire=await call("ccp_v1_events_update",{
+   eventId:id,repertoireByStudent:{[studentId]:"Knight forks reviewed"},
+   confirmed:true,
+ });
+ expect(modelRepertoire.error).toBeUndefined();
+ const afterModel=await page.request.get("/api/events/"+id);
+ expect(afterModel.status(),await afterModel.text()).toBe(200);
+ expect((await afterModel.json()).event.students[0].repertoire)
+   .toBe("Knight forks reviewed");
+ // Re-submitting the same roster with no repertoire payload must not clear
+ // existing teaching notes or rewrite the student's RSVP history.
+ const preserve=await page.request.put("/api/events/"+id,{data:{
+   studentIds:[studentId],title:title+" preserved",
+ }});
+ expect(preserve.status(),await preserve.text()).toBe(200);
+ const preserved=await call("ccp_v1_events_detail",{eventId:id});
+ expect(preserved.data.event.students[0].repertoire).toBe("Knight forks reviewed");
+ // An unknown student ID must reject atomically, not silently discard notes.
+ const unknown=await page.request.put("/api/events/"+id,{data:{
+   repertoireByStudent:{[randomUUID()]:"Must not be recorded"},
+ }});
+ expect(unknown.status(),await unknown.text()).toBe(400);
+ const unchanged=await call("ccp_v1_events_detail",{eventId:id});
+ expect(unchanged.data.event.students[0].repertoire).toBe("Knight forks reviewed");
  const edited=await page.request.put("/api/events/"+id,{data:{
    title:title+" reviewed",studentIds:[],
  }});
