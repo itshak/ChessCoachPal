@@ -1,0 +1,127 @@
+import {randomUUID} from "node:crypto";
+import {expect,test} from "@playwright/test";
+import {delegatedTool} from "./helpers/delegated-mcp";
+
+type Tool=Awaited<ReturnType<typeof delegatedTool>>;
+const name=(prefix:string)=>prefix+" "+randomUUID().slice(0,9);
+async function fixture(call:Tool){
+ const workplace=await call("ccp_v1_workplaces_create",{
+  name:name("Atomic lesson"),timezone:"UTC",currency:"USD",locale:"en",policy:{},
+  idempotencyKey:randomUUID(),
+ });
+ expect(workplace.error).toBeUndefined();
+ const workplaceId=workplace.data.entityId as string;
+ const students:string[]=[];
+ for(let i=0;i<2;i++){
+  const created=await call("ccp_v1_students_create",{
+   name:name("Student"),idempotencyKey:randomUUID(),
+  });
+  expect(created.error).toBeUndefined();
+  const studentId=created.data.entityId as string;
+  students.push(studentId);
+  expect((await call("ccp_v1_workplaces_enroll",{
+   workplaceId,studentId,idempotencyKey:randomUUID(),
+  })).error).toBeUndefined();
+ }
+ const group=await call("ccp_v1_groups_create",{
+  workplaceId,name:name("Frozen class"),idempotencyKey:randomUUID(),
+ });
+ expect(group.error).toBeUndefined();
+ const groupId=group.data.entityId as string;
+ for(const studentId of students)
+  expect((await call("ccp_v1_groups_enroll",{
+   groupId,studentId,idempotencyKey:randomUUID(),
+  })).error).toBeUndefined();
+ const created=await call("ccp_v1_sessions_create",{
+  workplaceId,groupId,title:name("Endgame session"),
+  startsAt:"2056-07-11T10:00:00Z",durationMinutes:60,
+  lessonNote:"",idempotencyKey:randomUUID(),
+ });
+ expect(created.error).toBeUndefined();
+ const sessionId=created.data.entityId as string;
+ const details=await call("ccp_v1_sessions_details",{sessionId});
+ expect(details.error).toBeUndefined();
+ const attendance=await call("ccp_v1_attendance_preview",{sessionId});
+ expect(attendance.error).toBeUndefined();
+ const rows=attendance.data.attendance as Array<{
+  student_id:string;status:string;updated_at:string;
+ }>;
+ expect(rows).toHaveLength(2);
+ return {workplaceId,studentIds:students,sessionId,
+  updatedAt:details.data.updated_at as string,rows};
+}
+
+test("PARITY:PARITY-sessions-complete-atomic rolls back stale roster and replays across website/MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const ctx=await fixture(call);
+ const attendance=ctx.rows.map((row,i)=>({
+  studentId:row.student_id,status:i===0?"present" as const:"late" as const,
+  note:i===0?"Participated":"Late arrival",expectedUpdatedAt:row.updated_at,
+ }));
+ const payload={action:"sessions.complete" as const,sessionId:ctx.sessionId,
+  expectedUpdatedAt:ctx.updatedAt,idempotencyKey:randomUUID(),
+  attendance,lessonNote:"Opposition and triangulation",confirmed:true as const};
+ const stale=await page.request.post("/api/agent/v1",{data:{
+  ...payload,idempotencyKey:randomUUID(),attendance:[
+   {...attendance[0],expectedUpdatedAt:"2000-01-01T00:00:00.000Z"},
+   attendance[1],
+  ],
+ }});
+ expect(stale.status(),await stale.text()).toBe(409);
+ const before=await call("ccp_v1_sessions_details",{sessionId:ctx.sessionId});
+ expect(before.error).toBeUndefined();
+ expect(before.data.status).toBe("scheduled");
+ const registerBefore=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
+ expect(registerBefore.data.attendance.every((a:{status:string})=>a.status==="unmarked")).toBe(true);
+ const partial=await call("ccp_v1_sessions_complete",{
+  ...payload,attendance:[attendance[0]],idempotencyKey:randomUUID(),
+ });
+ expect(partial.error?.code).toBe("VALIDATION_ERROR");
+ const committed=await page.request.post("/api/agent/v1",{data:payload});
+ expect(committed.status(),await committed.text()).toBe(200);
+ const receipt=(await committed.json()).data;
+ expect(receipt).toMatchObject({operation:"sessions.commit",sessionId:ctx.sessionId});
+ expect(receipt.attendance).toHaveLength(2);
+ const replay=await call("ccp_v1_sessions_complete",{
+  sessionId:payload.sessionId,expectedUpdatedAt:payload.expectedUpdatedAt,
+  idempotencyKey:payload.idempotencyKey,attendance,lessonNote:payload.lessonNote,confirmed:true,
+ });
+ expect(replay.error).toBeUndefined();
+ expect(replay.data).toEqual(receipt);
+ const changedKey=await call("ccp_v1_sessions_complete",{
+  ...payload,lessonNote:"Different confirmation",
+ });
+ expect(changedKey.error?.code).toBe("CONFLICT");
+ const after=await call("ccp_v1_sessions_details",{sessionId:ctx.sessionId});
+ expect(after.data.status).toBe("completed");
+ expect(after.data.lesson_note).toBe("Opposition and triangulation");
+ const websiteAttendance=await page.request.post("/api/agent/v1",{
+  data:{action:"attendance.list",sessionId:ctx.sessionId},
+ });
+ expect(websiteAttendance.status()).toBe(200);
+ const rows=(await websiteAttendance.json()).data;
+ expect(rows.find((x:{student_id:string})=>x.student_id===attendance[0].studentId).status).toBe("present");
+ expect(rows.find((x:{student_id:string})=>x.student_id===attendance[1].studentId).status).toBe("late");
+});
+
+test("PARITY:PARITY-sessions-complete-website form requires explicit per-learner approval",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const ctx=await fixture(call);
+ await page.goto("/coaching");
+ const panel=page.locator('section[aria-label="Complete coaching lesson"]');
+ await expect(panel).toBeVisible();
+ await panel.getByLabel("Lesson to complete").selectOption(ctx.sessionId);
+ const roster=await page.request.get("/api/coaching/sessions/"+ctx.sessionId+"/roster");
+ expect(roster.status()).toBe(200);
+ const persons=(await roster.json()).participants as Array<{studentId:string;name:string}>;
+ for(const person of persons)
+  await panel.getByLabel("Attendance for "+person.name).selectOption("present");
+ await panel.getByText("I confirm these attendance statuses and lesson completion.").click();
+ await panel.getByRole("button",{name:"Complete lesson"}).click();
+ await expect(panel.getByRole("status")).toContainText("committed atomically");
+ const details=await call("ccp_v1_sessions_details",{sessionId:ctx.sessionId});
+ expect(details.error).toBeUndefined();
+ expect(details.data.status).toBe("completed");
+ const attendance=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
+ expect(attendance.data.attendance.every((a:{status:string})=>a.status==="present")).toBe(true);
+});

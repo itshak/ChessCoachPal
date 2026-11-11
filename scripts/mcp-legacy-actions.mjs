@@ -22,6 +22,7 @@ export const legacyActionTools=Object.freeze({
   "sessions.create":"ccp_v1_sessions_create",
   "sessions.createAdHoc":"ccp_v1_sessions_ad_hoc_create",
   "sessions.update":"ccp_v1_sessions_edit",
+  "sessions.complete":"ccp_v1_sessions_complete",
   "sessions.participants":"ccp_v1_sessions_participants",
   "attendance.list":"ccp_v1_attendance_preview",
   "attendance.record":"ccp_v1_attendance_record",

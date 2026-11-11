@@ -53,9 +53,10 @@
         "ccp_v1_chess_categories_delete_impact",
         "ccp_v1_chess_categories_delete",
         "ccp_v1_material_links_unlink_impact",
-        "ccp_v1_material_links_unlink"
+        "ccp_v1_material_links_unlink",
+        "ccp_v1_sessions_complete"
       ],
-      "explanation": "Current website gateway and delegated MCP now expose create/list/update/unlink/impact of student- or lesson-scoped material_links pointing directly to teacher-owned learning_materials. Old independently writable URL-resource table and tool contracts removed. The shared service preserves teacher authorization and material identity; authenticated cross-client acceptance, all other gateway actions and the full 93-case checklist remain under review. Agent-proposed observation approval stays deliberately teacher-browser-only for provenance."
+      "explanation": "Current website gateway and delegated MCP now expose create/list/update/unlink/impact of student- or lesson-scoped material_links pointing directly to teacher-owned learning_materials. Old independently writable URL-resource table and tool contracts removed. The shared service preserves teacher authorization and material identity; authenticated cross-client acceptance, all other gateway actions and the full 93-case checklist remain under review. Agent-proposed observation approval stays deliberately teacher-browser-only for provenance. Canonical coaching session status, lesson note and roster attendance now mutate through one ccp_teacher_session_commit SQL RPC on BOTH website and MCP; sessions.complete atomically finalizes every frozen participant. Legacy scheduled-calendar lessons remain separate and must be replaced before the one-occurrence OpenSpec is accepted."
     },
     {
       "path": "app/api/auth/setup-teacher/route.ts",

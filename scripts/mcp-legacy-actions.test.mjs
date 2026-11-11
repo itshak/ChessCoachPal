@@ -5,7 +5,7 @@ import {validateLegacyActionCoverage,legacyActionTools} from "./mcp-legacy-actio
 const gateway=readFileSync(new URL("../app/api/agent/v1/route.ts",import.meta.url),"utf8");
 const catalogue=readFileSync(new URL("../lib/server/agent-tools.ts",import.meta.url),"utf8");
 test("every current domain action has a registered MCP tool or reviewed teacher browser exception",()=>{
-  assert.equal(Object.keys(legacyActionTools).length,37);
+  assert.equal(Object.keys(legacyActionTools).length,38);
   assert.deepEqual(validateLegacyActionCoverage(gateway,catalogue),[]);
 });
 test("a new website gateway action without MCP coverage cannot pass",()=>{
