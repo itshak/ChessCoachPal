@@ -8,7 +8,7 @@ const material=()=>({
  requestId:randomUUID(),
 });
 
-test("PARITY:material links support create, website/MCP correction, replay and safe unlink",async({page,request})=>{
+test("PARITY:PARITY-material-links-edit-unlink supports create, correction, replay and safe unlink",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const student=(await call("ccp_v1_students_create",{
    name:"Material link "+randomUUID(),idempotencyKey:randomUUID(),

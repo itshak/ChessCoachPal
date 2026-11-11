@@ -7,7 +7,8 @@ import {
 } from "@/lib/chess-learning";
 
 type Db=SupabaseClient;
-const fail=(code:string,status:number,message:string)=>new CoachError(code,status,message);
+const fail=(code:ConstructorParameters<typeof CoachError>[0],
+ status:number,message:string)=>new CoachError(code,status,message);
 const missing=()=>fail("NOT_FOUND",404,"Material, student, session or link not found");
 const fields="id,material_id,student_id,session_id,revision,created_at,updated_at,learning_materials(title,kind,source_url)";
 
@@ -73,8 +74,13 @@ export async function materialLinksCreate(db:Db,teacherId:string,input:z.infer<t
   const {data:old,error:lookup}=await db.from("material_links")
    .select(fields+",request_id").eq("teacher_id",teacherId).eq("request_id",input.requestId).maybeSingle();
   if(lookup)throw fail("DATABASE_ERROR",500,"Unable to verify retry");
-  if(old&&old.material_id===row.material_id&&old.student_id===row.student_id&&old.session_id===row.session_id)
-   return {link:old,replayed:true};
+  const original=old as unknown as {
+   id:string;material_id:string;student_id:string|null;session_id:string|null;
+   revision:number;created_at:string;updated_at:string;request_id:string;
+  }|null;
+  if(original&&original.material_id===row.material_id&&
+     original.student_id===row.student_id&&original.session_id===row.session_id)
+   return {link:original,replayed:true};
   throw fail("IDEMPOTENCY_CONFLICT",409,"Request ID already belongs to a different material link");
  }
  if(error?.code==="23503"||error?.code==="23514")throw missing();

@@ -98,8 +98,8 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
     materialCoverage:{
       entries:materials.entries.map(row=>({
         id:row.id,studentId:row.student_id,sessionId:row.session_id,
-        resourceId:row.resource_id,stage:row.stage,occurredOn:row.occurred_on,
-        label:row.chess_learning_resources?.label??null,
+        materialId:row.material_id,stage:row.stage,occurredOn:row.occurred_on,
+        label:row.learning_materials?.title??null,
       })),
       total:materials.total,nextOffset:materials.nextOffset,
       truthBasis:"explicit_teacher_record_only",
