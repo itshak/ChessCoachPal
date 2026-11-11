@@ -34,7 +34,11 @@ async function fixture(call:Tool){
   })).error).toBeUndefined();
  const created=await call("ccp_v1_sessions_create",{
   workplaceId,groupId,title:name("Endgame session"),
-  startsAt:"2056-07-11T10:00:00Z",durationMinutes:60,
+  // Never re-use a teacher-wide scheduled interval across test retries. One
+  // failed assertion must not make every retry conflict with an earlier fixture.
+  startsAt:new Date(Date.UTC(2058,0,1)+
+   (Number.parseInt(randomUUID().slice(0,8),16)%(366*24*3600))*1000).toISOString(),
+  durationMinutes:60,
   lessonNote:"",idempotencyKey:randomUUID(),
  });
  expect(created.error).toBeUndefined();
@@ -61,6 +65,13 @@ test("PARITY:PARITY-sessions-complete-atomic rolls back stale roster and replays
  const payload={action:"sessions.complete" as const,sessionId:ctx.sessionId,
   expectedUpdatedAt:ctx.updatedAt,idempotencyKey:randomUUID(),
   attendance,lessonNote:"Opposition and triangulation",confirmed:true as const};
+ // Website action discriminator is not part of the strictly validated MCP
+ // tool arguments. Build one shared domain payload without an alias.
+ const mcpPayload={
+  sessionId:payload.sessionId,expectedUpdatedAt:payload.expectedUpdatedAt,
+  idempotencyKey:payload.idempotencyKey,attendance:payload.attendance,
+  lessonNote:payload.lessonNote,confirmed:true as const,
+ };
  const stale=await page.request.post("/api/agent/v1",{data:{
   ...payload,idempotencyKey:randomUUID(),attendance:[
    {...attendance[0],expectedUpdatedAt:"2000-01-01T00:00:00.000Z"},
@@ -74,7 +85,7 @@ test("PARITY:PARITY-sessions-complete-atomic rolls back stale roster and replays
  const registerBefore=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
  expect(registerBefore.data.attendance.every((a:{status:string})=>a.status==="unmarked")).toBe(true);
  const partial=await call("ccp_v1_sessions_complete",{
-  ...payload,attendance:[attendance[0]],idempotencyKey:randomUUID(),
+  ...mcpPayload,attendance:[attendance[0]],idempotencyKey:randomUUID(),
  });
  expect(partial.error?.code).toBe("VALIDATION_ERROR");
  const committed=await page.request.post("/api/agent/v1",{data:payload});
@@ -89,7 +100,7 @@ test("PARITY:PARITY-sessions-complete-atomic rolls back stale roster and replays
  expect(replay.error).toBeUndefined();
  expect(replay.data).toEqual(receipt);
  const changedKey=await call("ccp_v1_sessions_complete",{
-  ...payload,lessonNote:"Different confirmation",
+  ...mcpPayload,lessonNote:"Different confirmation",
  });
  expect(changedKey.error?.code).toBe("CONFLICT");
  const after=await call("ccp_v1_sessions_details",{sessionId:ctx.sessionId});
