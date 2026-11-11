@@ -80,46 +80,60 @@ test("PARITY:PARITY-chess-observations requires actual browser-only teacher appr
  expect((await siteList.json()).data).toEqual(readMcp);
 });
 
-test("PARITY:PARITY-chess-resources validates trusted HTTPS links on both transports",async({page,request})=>{
- const callTool=await delegatedTool(page,request);
+test("PARITY:PARITY-material-links shares the typed catalog and revision guarded associations",async({page,request})=>{
+ const call=await delegatedTool(page,request);
  const studentId=await firstStudent(page);
- const url="https://lichess.org/study/AbCd1234/QwEr5678";
- const resource=await callTool("ccp_v1_chess_resources_link",{
-   studentId,label:"Synthetic study "+randomUUID().slice(0,8),
-   url,resourceType:"lichess_study",requestId:randomUUID(),
- });
- expect(resource.error).toBeUndefined();
- const id=(resource.data as {id:string}).id;
- const browserList=await page.request.post("/api/agent/v1",{data:{
-   action:"chess.resources.list",studentId,
- }});
- expect(browserList.status()).toBe(200);
- const rows=(await browserList.json()).data as Array<{id:string;provider_chapter_id:string}>;
- expect(rows.find(x=>x.id===id)?.provider_chapter_id).toBe("QwEr5678");
- expect((await callTool("ccp_v1_chess_resources_list",{studentId})).data).toEqual(rows);
- const editMcp=await callTool("ccp_v1_chess_resources_update",{
-   resourceId:id,label:"Corrected study",confirmed:true,
- });
- expect(editMcp.error).toBeUndefined();
- const editSite=await page.request.post("/api/agent/v1",{data:{
-   action:"chess.resources.update",resourceId:id,label:"Website corrected",
- }});
- expect(editSite.status()).toBe(200);
- const rowsAfter=(await callTool("ccp_v1_chess_resources_list",{studentId})).data as
-  Array<{id:string;label:string}>;
- expect(rowsAfter.find(x=>x.id===id)?.label).toBe("Website corrected");
- const hostile="https://lichess.org.attacker.example/study/AbCd1234";
- const refusedMcp=await callTool("ccp_v1_chess_resources_link",{
-   studentId,label:"Fake",url:hostile,resourceType:"lichess_study",
- });
- expect(refusedMcp.error).toBeDefined();
- const refusedSite=await page.request.post("/api/agent/v1",{data:{
-   action:"chess.resources.link",studentId,label:"Fake",
-   url:hostile,resourceType:"lichess_study",
- }});
- expect(refusedSite.status()).toBe(400);
+ const material=await call("ccp_v1_learning_materials_create",{
+ kind:"study_chapter",title:"Test study "+randomUUID().slice(0,8),
+ description:"",sourceUrl:"https://lichess.org/study/AbCd1234",
+ details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
+ requestId:randomUUID(),
 });
-
+ expect(material.error).toBeUndefined();
+ const materialId=material.data.material.id as string;
+ const requestId=randomUUID();
+ const linked=await call("ccp_v1_material_links_create",{
+   studentId,materialId,requestId,confirmed:true,
+ });
+ expect(linked.error).toBeUndefined();
+ expect(linked.data.link.material_id).toBe(materialId);
+ const id=linked.data.link.id as string;
+ const browser=await page.request.post("/api/agent/v1",{data:{
+   action:"materials.links.list",studentId,
+ }});
+ expect(browser.status(),await browser.text()).toBe(200);
+ const current=(await browser.json()).data;
+ const mcp=await call("ccp_v1_material_links_list",{studentId});
+ expect(mcp.error).toBeUndefined();
+ expect(mcp.data).toEqual(current);
+ expect(current.links.some((l:{id:string;material_id:string})=>l.id===id&&l.material_id===materialId)).toBe(true);
+ const replay=await page.request.post("/api/agent/v1",{data:{
+   action:"materials.links.create",studentId,materialId,requestId,confirmed:true,
+ }});
+ expect(replay.status(),await replay.text()).toBe(201);
+ expect((await replay.json()).data.replayed).toBe(true);
+ const alternate=await call("ccp_v1_learning_materials_create",{
+ kind:"study_chapter",title:"Test study "+randomUUID().slice(0,8),
+ description:"",sourceUrl:"https://lichess.org/study/AbCd1234",
+ details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
+ requestId:randomUUID(),
+,requestId:randomUUID()});
+ expect(alternate.error).toBeUndefined();
+ const corrected=await call("ccp_v1_material_links_update",{
+   linkId:id,materialId:alternate.data.material.id,
+   expectedRevision:linked.data.link.revision,confirmed:true,
+ });
+ expect(corrected.error).toBeUndefined();
+ const stale=await page.request.post("/api/agent/v1",{data:{
+   action:"materials.links.update",linkId:id,materialId,
+   expectedRevision:linked.data.link.revision,confirmed:true,
+ }});
+ expect(stale.status()).toBe(409);
+ const foreign=await call("ccp_v1_material_links_create",{
+   studentId,materialId:randomUUID(),requestId:randomUUID(),confirmed:true,
+ });
+ expect(foreign.error?.code).toBe("NOT_FOUND");
+});
 
 test("PARITY:PARITY-chess-observation-attestation blocks bearer self-verification",async({page,request})=>{
   const callTool=await delegatedTool(page,request);

@@ -61,28 +61,34 @@ test("PARITY:PARITY-chess-observations-proposal remains unverified until explici
    .toHaveLength(2);
 });
 
-test("PARITY:PARITY-chess-resources-list enumerates saved HTTPS and Lichess references without fetching content",async({page,request})=>{
+test("PARITY:PARITY-material-links-list enumerates canonical student materials without fetching content",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const made=await call("ccp_v1_students_create",{
-   name:"Study URL student "+randomUUID(),idempotencyKey:randomUUID(),
+   name:"Study association student "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(made.error).toBeUndefined();
  const studentId=made.data.entityId as string;
- const linked=await page.request.post("/api/agent/v1",{data:{
-   action:"chess.resources.link",studentId,
-   label:"Endgame study "+randomUUID(),url:"https://lichess.org/study/AbCd1234",
-   resourceType:"lichess_study",requestId:randomUUID(),
+ const material=await call("ccp_v1_learning_materials_create",{
+ kind:"study_chapter",title:"Test study "+randomUUID().slice(0,8),
+ description:"",sourceUrl:"https://lichess.org/study/AbCd1234",
+ details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
+ requestId:randomUUID(),
+});
+ expect(material.error).toBeUndefined();
+ const materialId=material.data.material.id as string;
+ const website=await page.request.post("/api/agent/v1",{data:{
+   action:"materials.links.create",studentId,materialId,
+   requestId:randomUUID(),confirmed:true,
  }});
- expect(linked.status(),await linked.text()).toBe(200);
- const resourceId=(await linked.json()).data.id as string;
- const mcp=await call("ccp_v1_chess_resources_list",{studentId});
+ expect(website.status(),await website.text()).toBe(201);
+ const linkId=(await website.json()).data.link.id as string;
+ const mcp=await call("ccp_v1_material_links_list",{studentId});
  expect(mcp.error).toBeUndefined();
- expect((mcp.data as Array<{id:string}>).some(x=>x.id===resourceId)).toBe(true);
+ expect(mcp.data.links.some((l:{id:string})=>l.id===linkId)).toBe(true);
  const browser=await page.request.post("/api/agent/v1",{data:{
-   action:"chess.resources.list",studentId,
+   action:"materials.links.list",studentId,
  }});
  expect(browser.status(),await browser.text()).toBe(200);
  expect(mcp.data).toEqual((await browser.json()).data);
- expect((mcp.data as Array<{id:string;url:string}>)
-   .find(x=>x.id===resourceId)?.url).toBe("https://lichess.org/study/AbCd1234");
+ expect(mcp.data.links.find((l:{id:string})=>l.id===linkId).material_id).toBe(materialId);
 });
