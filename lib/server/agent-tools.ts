@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import {eventChanges} from "@/lib/server/teacher-event-schemas";
+import {manualPaymentMcpSchema} from "@/lib/server/manual-payment-schemas";
 import { lichessConnectionStatus,lichessConnectionHandoff,disconnectLichess,LichessConnectionError } from "@/lib/server/lichess-connections";
 import {teacherLichessStudiesSearch} from "@/lib/server/lichess-studies";
 import {puzzleDraftSchema,puzzlePublishSchema} from "@/lib/lichess-puzzles";
@@ -289,8 +290,7 @@ const catalogue = [
   {
     name:"ccp_v1_billing_manual_payment_record",
     description:"Record an actual payment already received outside ChessCoachPal against a teacher-owned invoice. This tool does not charge a card. Use a new idempotencyKey per real-world payment, reuse it on retries, verify invoice balance first and require explicit teacher confirmation.",
-    schema:z.object({invoiceId:uuid,amountCents:z.number().int().min(1).optional(),
-      note:z.string().max(500).optional(),idempotencyKey:uuid,confirmed:z.literal(true)}).strict(),
+    schema:manualPaymentMcpSchema.extend({invoiceId:uuid}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
