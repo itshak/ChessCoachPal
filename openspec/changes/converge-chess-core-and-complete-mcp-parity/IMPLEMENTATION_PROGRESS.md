@@ -35,3 +35,9 @@ The canonical-schema cleanup candidate `069ab80b3180f11f62085e3c81bebda49b821e46
 An ADR-0001 CI guard checks for one fresh-install SQL snapshot, absent material mapping bridge, and one unversioned backup contract. Its stricter `npm run schema:canonical:strict` mode intentionally blocks the final release until `chess_learning_resources` and the parallel material-progress writer are replaced by direct typed-material evidence. Do not label this code fully canonical merely because the non-strict CI succeeds.
 
 Keep [PR #51](https://github.com/itshak/ChessCoachPal/pull/51) in draft while the strict parity inventory is incomplete. Updating one registry label or deleting a test is not evidence of feature parity.
+
+## 2026-11-11 current-schema implementation increment (not parity acceptance)
+
+- Skill-dimension creation now uses one teacher-scoped SQL transaction and an optional request UUID shared by the website and MCP, with an immutable response receipt, concurrent sort allocation and cross-interface replay/conflict checks. This corrects a concrete outstanding retry gap without importing or converting any old schema.
+- Removed an unnecessary format-version field from the parity evidence inventory. Current MCP tool names remain stable during this integration; their names are not a legacy API adapter or a schema-upgrade contract.
+- Added browser↔delegated MCP E2E for same-key replay, changed-payload rejection and reverse-direction creation. These new tests remain **unverified until executed on this exact commit**; do not promote the skill-dimensions route or archive the OpenSpec based on this implementation alone.

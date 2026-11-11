@@ -12,17 +12,25 @@ const failure = (status:number,code:string,message:string) => new TeacherSkillsE
 export async function skillDimensionsList(db: Db, teacherId:string) {
   try {return await getOrSeedDimensions(db,teacherId);} catch {throw failure(500,"DATABASE_ERROR","Unable to list skill dimensions");}
 }
-export async function skillDimensionsCreate(db:Db,teacherId:string,name:string) {
+export async function skillDimensionsCreate(db:Db,teacherId:string,name:string,argumentsRequestId?:string) {
   const value=name.trim();
   if (!value || value.length > 120) throw failure(400,"VALIDATION_ERROR","Skill name must contain 1–120 characters");
   // Scope the order lookup: another teacher's dimensions must not affect ours.
-  const {data:last,error:lastError}=await db.from("skill_dimensions").select("sort_order")
-    .eq("teacher_id",teacherId).order("sort_order",{ascending:false}).limit(1).maybeSingle();
-  if(lastError) throw failure(500,"DATABASE_ERROR","Unable to create skill");
-  const {data,error}=await db.from("skill_dimensions").insert({
-    teacher_id:teacherId,name:value,sort_order:(last?.sort_order ?? -1)+1,
-  }).select("id,name,sort_order").single();
-  if(error?.code==="23505") throw failure(409,"CONFLICT","A skill with this name already exists");
+  const requestId=argumentsRequestId;
+  if(requestId!==undefined&&(typeof requestId!=="string"||!uuidPattern.test(requestId)))
+    throw failure(400,"VALIDATION_ERROR","Request ID must be a UUID");
+  // Authenticated database identity, not a client-supplied teacher ID,
+  // determines ownership inside one serializable transaction.
+  void teacherId;
+  const {data,error}=await db.rpc("ccp_skill_dimension_create",{
+    p_name:value,p_request_id:requestId??randomUUID(),
+  });
+  if(error?.code==="23505") throw failure(409,"CONFLICT",
+    /SKILL_DIMENSION_REQUEST_CONFLICT/.test(error.message??"")
+      ?"Request ID was already used with different skill details"
+      :"A skill with this name already exists");
+  if(error?.code==="42501") throw failure(403,"FORBIDDEN","Teacher authentication required");
+  if(error?.code==="22023") throw failure(400,"VALIDATION_ERROR","Invalid skill dimension");
   if(error||!data) throw failure(500,"DATABASE_ERROR","Unable to create skill");
   return data;
 }

@@ -17,9 +17,10 @@ export async function POST(req:NextRequest) {
   if(!user) return NextResponse.json({error:"Unauthorized"},{status:401});
   const body=await req.json().catch(()=>null);
   if(!body||typeof body!=="object"||Array.isArray(body)||
-     Object.keys(body).some(key=>key!=="name"))
+     Object.keys(body).some(key=>key!=="name"&&key!=="requestId"))
     return NextResponse.json({error:"name required"},{status:400});
-  try {return NextResponse.json(await skillDimensionsCreate(db,user.id,typeof body?.name==="string"?body.name:""));}
+  try {return NextResponse.json(await skillDimensionsCreate(db,user.id,typeof body?.name==="string"?body.name:"",
+    body?.requestId===undefined?undefined:body.requestId));}
   catch(error) {return NextResponse.json({error:error instanceof TeacherSkillsError?error.message:"Unable to create skill"},{
     status:error instanceof TeacherSkillsError?error.status:500,
   });}

@@ -11,6 +11,9 @@ import { validateLegacyActionCoverage } from "./mcp-legacy-actions.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const inventory = JSON.parse(readFileSync(join(root, "scripts/mcp-website-parity.json"), "utf8"));
 const errors = [];
+// A fresh-install/current-contract inventory has no schema or compatibility version.
+if (Object.prototype.hasOwnProperty.call(inventory, "version"))
+  errors.push("Parity inventory must describe only the current contract, without a format version");
 const assert = (ok, msg) => { if (!ok) errors.push(msg); };
 const filesUnder = (folder, predicate) => {
   const output = [];

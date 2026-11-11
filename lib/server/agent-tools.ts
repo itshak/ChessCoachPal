@@ -664,7 +664,7 @@ const catalogue = [
   {
     name:"ccp_v1_skill_dimensions_create",
     description:"Create a teacher-owned skill dimension after teacher approval; avoid duplicates.",
-    schema:z.object({name:z.string().trim().min(1).max(120),confirmed:z.literal(true)}).strict(),
+    schema:z.object({name:z.string().trim().min(1).max(120),requestId:uuid.optional(),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1651,8 +1651,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_skill_dimensions_list":
         return {data:await skillDimensionsList(db,teacherId)};
       case "ccp_v1_skill_dimensions_create": {
-        const a=args as {name:string};
-        return {data:await skillDimensionsCreate(db,teacherId,a.name)};
+        const a=args as {name:string;requestId?:string};
+        return {data:await skillDimensionsCreate(db,teacherId,a.name,a.requestId)};
       }
       case "ccp_v1_skill_dimensions_update": {
         const a=args as {dimensionId:string;name:string};

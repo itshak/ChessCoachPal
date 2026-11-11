@@ -7093,3 +7093,68 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.ccp_teacher_backup_restore(jsonb, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_backup_restore(jsonb, text, text) TO authenticated;
+
+
+-- Canonical, teacher-scoped skill-dimension creation.
+-- A request UUID binds one immutable creation payload to one stable result;
+-- retries across browser and delegated MCP cannot create duplicate dimensions.
+CREATE TABLE public.skill_dimension_create_receipts (
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  request_id uuid NOT NULL,
+  payload jsonb NOT NULL,
+  result jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (teacher_id,request_id)
+);
+ALTER TABLE public.skill_dimension_create_receipts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.skill_dimension_create_receipts FROM PUBLIC,anon,authenticated;
+
+CREATE OR REPLACE FUNCTION public.ccp_skill_dimension_create(
+  p_name text,p_request_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE
+  v_teacher uuid:=auth.uid();
+  v_name text:=btrim(coalesce(p_name,''));
+  v_payload jsonb;
+  v_old_payload jsonb;
+  v_old_result jsonb;
+  v_id uuid;
+  v_order integer;
+  v_result jsonb;
+BEGIN
+  IF v_teacher IS NULL THEN
+    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+  END IF;
+  IF char_length(v_name) NOT BETWEEN 1 AND 120 OR p_request_id IS NULL THEN
+    RAISE EXCEPTION 'INVALID_SKILL_DIMENSION' USING ERRCODE='22023';
+  END IF;
+  v_payload:=jsonb_build_object('name',v_name);
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    v_teacher::text||':skill-dimension-request:'||p_request_id::text,0));
+  SELECT payload,result INTO v_old_payload,v_old_result
+  FROM public.skill_dimension_create_receipts
+  WHERE teacher_id=v_teacher AND request_id=p_request_id;
+  IF FOUND THEN
+    IF v_old_payload IS DISTINCT FROM v_payload THEN
+      RAISE EXCEPTION 'SKILL_DIMENSION_REQUEST_CONFLICT' USING ERRCODE='23505';
+    END IF;
+    RETURN v_old_result;
+  END IF;
+
+  -- Serialize a teacher's sort-order allocation, even for distinct requests.
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    v_teacher::text||':skill-dimension-sort',0));
+  SELECT coalesce(max(sort_order),-1)+1 INTO v_order
+  FROM public.skill_dimensions WHERE teacher_id=v_teacher;
+  INSERT INTO public.skill_dimensions(teacher_id,name,sort_order)
+  VALUES(v_teacher,v_name,v_order)
+  RETURNING id INTO v_id;
+  v_result:=jsonb_build_object('id',v_id,'name',v_name,'sort_order',v_order);
+  INSERT INTO public.skill_dimension_create_receipts(teacher_id,request_id,payload,result)
+  VALUES(v_teacher,p_request_id,v_payload,v_result);
+  RETURN v_result;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.ccp_skill_dimension_create(text,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_skill_dimension_create(text,uuid) TO authenticated;

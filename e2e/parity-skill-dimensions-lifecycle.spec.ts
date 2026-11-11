@@ -141,3 +141,48 @@ test("PARITY:PARITY-skill-dimensions-tenant-boundary refuses foreign dimensions 
    expect((await admin.auth.admin.deleteUser(teacherId)).error).toBeNull();
  }
 });
+
+test("PARITY:skill-dimension-create-request-replay uses one cross-interface receipt",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const requestId=randomUUID();
+ const name=unique("Retry-safe fork training");
+ const original=await call("ccp_v1_skill_dimensions_create",{
+   name,requestId,confirmed:true,
+ });
+ expect(original.error).toBeUndefined();
+ const webReplay=await page.request.post("/api/skills/dimensions",{data:{name,requestId}});
+ expect(webReplay.status(),await webReplay.text()).toBe(200);
+ expect(await webReplay.json()).toEqual(original.data);
+ const mcpReplay=await call("ccp_v1_skill_dimensions_create",{
+   name,requestId,confirmed:true,
+ });
+ expect(mcpReplay.error).toBeUndefined();
+ expect(mcpReplay.data).toEqual(original.data);
+ const listed=await page.request.get("/api/skills/dimensions");
+ expect(listed.status()).toBe(200);
+ expect((await listed.json()).filter((d:{id:string})=>d.id===original.data.id)).toHaveLength(1);
+ const conflicting=await page.request.post("/api/skills/dimensions",{
+   data:{name:name+" changed",requestId},
+ });
+ expect(conflicting.status()).toBe(409);
+ const badMcp=await call("ccp_v1_skill_dimensions_create",{
+   name:name+" changed",requestId,confirmed:true,
+ });
+ expect(badMcp.error?.code).toBe("CONFLICT");
+ expect((await page.request.post("/api/skills/dimensions",{
+   data:{name:unique("Invalid request ID"),requestId:"not-a-uuid"},
+ })).status()).toBe(400);
+
+ // Reverse transport: a website creation must replay unchanged over delegated MCP.
+ const websiteRequest=randomUUID();
+ const websiteName=unique("Website-first skill receipt");
+ const website=await page.request.post("/api/skills/dimensions",{
+   data:{name:websiteName,requestId:websiteRequest},
+ });
+ expect(website.status(),await website.text()).toBe(200);
+ const mcpFromWeb=await call("ccp_v1_skill_dimensions_create",{
+   name:websiteName,requestId:websiteRequest,confirmed:true,
+ });
+ expect(mcpFromWeb.error).toBeUndefined();
+ expect(mcpFromWeb.data).toEqual(await website.json());
+});

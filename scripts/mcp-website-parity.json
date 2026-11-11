@@ -1,5 +1,4 @@
 {
-  "version": 1,
   "auditedAt": "2026-11-11",
   "headSha": "d18356c5e0a469c1655b515d62a76eef46dc284d",
   "policy": "MCP-first business-feature parity. Every website business action needs a tested MCP counterpart or documented secure browser approval; strict release parity remains BLOCKED pending remaining route-family and 93-case acceptance.",
