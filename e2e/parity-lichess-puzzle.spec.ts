@@ -207,3 +207,29 @@ test("PARITY:PARITY-lichess-approved-puzzle-provider-import requires write scope
   expect(JSON.stringify(receipts)).not.toContain([...provider.tokens.keys()][0]);
  }finally{await close(provider.server);}
 });
+
+
+test("PARITY:PARITY-lichess-image-extraction-consent rejects unsafe uploads equally via website and MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const png=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),
+   Buffer.alloc(64)]).toString("base64");
+ const missingConsent=await page.request.post("/api/lichess/puzzles/preview",{
+  data:{kind:"image",imageBase64:png,mediaType:"image/png"},
+ });
+ expect(missingConsent.status(),await missingConsent.text()).toBe(400);
+ const mcpNoApproval=await call("ccp_v1_lichess_image_fen_propose",{
+  imageBase64:png,mediaType:"image/png",confirmed:true,
+ });
+ expect(mcpNoApproval.error?.code).toBe("VALIDATION_ERROR");
+ // A mismatched MIME/magic header must fail before provider settings and
+ // external network access on both pathways, even after explicit consent.
+ const website=await page.request.post("/api/lichess/puzzles/preview",{
+  data:{kind:"image",imageBase64:png,mediaType:"image/jpeg",confirmedExternal:true},
+ });
+ expect(website.status(),await website.text()).toBe(400);
+ expect((await website.json()).code).toBe("VALIDATION_ERROR");
+ const mcp=await call("ccp_v1_lichess_image_fen_propose",{
+  imageBase64:png,mediaType:"image/jpeg",confirmedExternal:true,confirmed:true,
+ });
+ expect(mcp.error?.code).toBe("VALIDATION_ERROR");
+});
