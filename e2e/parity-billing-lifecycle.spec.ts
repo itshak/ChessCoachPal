@@ -199,3 +199,35 @@ test("PARITY:PARITY-billing-atomic-manual-payment-settlement serializes browser 
  expect(last.payments).toHaveLength(2);
  expect(last.status).toBe("paid");
 });
+
+
+test("PARITY:PARITY-billing-atomic-payment-correction reopens settled invoice from MCP and website",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const seeded=await invoice("sent",5000);
+ const paid=await call("ccp_v1_billing_manual_payment_record",{
+   invoiceId:seeded.id,amountCents:5000,note:"Mistaken paid entry",
+   idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(paid.error).toBeUndefined();
+ expect(paid.data.paid).toBe(true);
+ expect((await siteInvoice(page,seeded.id)).status).toBe("paid");
+ const corrected=await page.request.delete(
+   "/api/billing/invoices/"+seeded.id+"/payments/"+paid.data.paymentId,
+ );
+ expect(corrected.status(),await corrected.text()).toBe(200);
+ expect((await corrected.json()).status).toBe("sent");
+ expect((await siteInvoice(page,seeded.id)).payments).toHaveLength(0);
+ const second=await page.request.post("/api/billing/invoices/"+seeded.id+"/mark-paid",{
+   data:{amountCents:5000,note:"Correct actual payment",idempotencyKey:randomUUID()},
+ });
+ expect(second.status(),await second.text()).toBe(200);
+ const secondPayment=(await second.json()).paymentId as string;
+ const removed=await call("ccp_v1_billing_manual_payment_delete",{
+   invoiceId:seeded.id,paymentId:secondPayment,confirmed:true,
+ });
+ expect(removed.error).toBeUndefined();
+ expect(removed.data.status).toBe("sent");
+ const final=await siteInvoice(page,seeded.id);
+ expect(final.status).toBe("sent");
+ expect(final.payments).toHaveLength(0);
+});
