@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Enforce ADR-0001 current-schema-only contract
+        run: npm run schema:canonical:guard && npm run schema:canonical:guard-test
+
       - name: Audit MCP-first website and API coverage (baseline; gaps explicitly reported)
         run: npm run mcp:parity:audit
 

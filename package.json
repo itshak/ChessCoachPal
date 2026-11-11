@@ -18,7 +18,10 @@
     "release:check": "node --test scripts/release-check.mjs",
     "mcp:parity:guard-test": "node --test scripts/mcp-parity-pr-guard.test.mjs scripts/mcp-parity-audit.test.mjs scripts/parity-evidence.test.mjs scripts/mcp-legacy-actions.test.mjs",
     "mcp:parity:audit": "node scripts/mcp-parity-audit.mjs",
-    "mcp:parity:strict": "node scripts/mcp-parity-audit.mjs --strict"
+    "mcp:parity:strict": "node scripts/mcp-parity-audit.mjs --strict",
+    "schema:canonical:guard": "node scripts/pre1-schema-guard.mjs",
+    "schema:canonical:guard-test": "node --test scripts/pre1-schema-guard.test.mjs",
+    "schema:canonical:strict": "node scripts/pre1-schema-guard.mjs --strict-materials"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
