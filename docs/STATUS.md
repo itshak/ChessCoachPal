@@ -2,6 +2,12 @@
 
 **Updated:** 2026-11-10 · **Branch of record:** main · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
+## 2026-11-11 follow-on safety fixes — UNVERIFIED; CI STILL DEFERRED
+
+[Draft PR #44](https://github.com/itshak/ChessCoachPal/pull/44) now includes [calendar scan hardening `29b845d`](https://github.com/itshak/ChessCoachPal/commit/29b845d826015d6b6af271694d05f5709f3b37d4) and [input validation `22af068`](https://github.com/itshak/ChessCoachPal/commit/22af068cc8ddf80b9e3e436008b87b9e893a049e). The shared legacy calendar service now fully pages future recurring-slot lesson candidates in deterministic order with a fail-closed 20,000-row safety limit; formerly it relied on one unpaged PostgREST response and could silently miss later rows during slot update/delete. Shared website/MCP slot and one-off lesson writes now reject impossible clock times, malformed booleans and invalid cent amounts before persistence. Synthetic unit regressions cover 1,205 future rows, oversized refusal-before-deletion, and invalid clock/cents/boolean input. **These changes have NOT run any tests or GitHub CI**: both commits explicitly skip CI, honoring the user's implementation-first instruction.
+
+This does NOT resolve snapshot/race-safe slot corrections, workplace holidays, configured provider transactions, image-to-FEN workflows, source-wide 53-route behavioral acceptance or six remaining checklist cases. The last independently verified baseline remains 87/93 individually evidenced scenarios and 24/53 fully verified teacher route families; no new signoff is claimed. Keep the OpenSpec active and PR #44 draft; run full CI, E2E, security, Compose, restore and strict parity only after all remaining implementation fixes are complete.
+
 ## 2026-11-11 source implementation checkpoint — DO NOT MERGE
 
 **Candidate branch:** [draft PR #44](https://github.com/itshak/ChessCoachPal/pull/44), latest source commit [`05646bd`](https://github.com/itshak/ChessCoachPal/commit/05646bd629ac780f819c7ecf1f6fa8180748ef72). This is **not** verified acceptance: new commits carry `[skip ci]` to respect the requirement to defer CI until the implementation fixes are finished. There is **no new test, security, Compose, restore, or release workflow success** attributable to these changes.
