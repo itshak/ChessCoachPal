@@ -24,7 +24,10 @@ export async function GET(
       return NextResponse.json(await teacherStudentArchivePreview(db,user.id,id));
     return NextResponse.json(await teacherStudentProfile(db,user.id,id));
   } catch(error) {
-    return NextResponse.json({error:error instanceof StudentProfileError?error.message:"Student unavailable"},{
+    return NextResponse.json({
+      error:error instanceof StudentProfileError?error.message:"Student unavailable",
+      code:error instanceof StudentProfileError?error.code:"DATABASE_ERROR",
+    },{
       status:error instanceof StudentProfileError?error.status:500,
     });
   }
