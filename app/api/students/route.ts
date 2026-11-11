@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
       // archived pupils remain accessible on explicit historical requests.
       includeArchived: params.get("includeArchived") === "true" &&
         params.get("activeOnly") !== "true",
+      archivedOnly: params.get("archivedOnly") === "true" &&
+        params.get("activeOnly") !== "true",
       limit, offset,
     });
     return NextResponse.json(paginate ? roster : roster.students);
