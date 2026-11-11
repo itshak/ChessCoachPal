@@ -15,7 +15,6 @@ test("PARITY:PARITY-import-rollback rejects a later invalid row without persisti
   const guardianId=randomUUID();
   const studentId=randomUUID();
   const payload={
-    version:backup.version,
     exportedAt:new Date().toISOString(),
     teacherId:backup.teacherId,
     tables:{

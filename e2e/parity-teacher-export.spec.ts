@@ -23,7 +23,7 @@ test("PARITY:PARITY-teacher-export preserves website backup but strips portal cr
  const safe=await call("ccp_v1_settings_export",{confirmed:true});
  expect(safe.error).toBeUndefined();
  expect(safe.data.guardianPortalLinksExcluded).toBe(true);
- expect(safe.data.export.version).toBe(fullBackup.version);
+ expect(Object.keys(safe.data.export).sort()).toEqual(Object.keys(fullBackup).sort());
  const safeGuardians=safe.data.export.tables.guardians as Array<{
    id:string;portal_token?:string;
  }>;

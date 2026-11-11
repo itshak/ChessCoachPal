@@ -12,7 +12,7 @@ Two streams overlap and must be integrated before more parity coding:
 1. [`enforce-mcp-website-functional-parity`](../enforce-mcp-website-functional-parity/proposal.md) and draft [PR #44](https://github.com/itshak/ChessCoachPal/pull/44) cover broad teacher website/MCP parity, including legacy calendar, guardians, events, invoices, exports, Lichess and account/provider handoffs.
 2. [`refocus-student-centered-chess-coaching`](../refocus-student-centered-chess-coaching/proposal.md), merged as specification [PR #47](https://github.com/itshak/ChessCoachPal/pull/47), with implementation candidates [PR #48](https://github.com/itshak/ChessCoachPal/pull/48) (typed materials) and [PR #49](https://github.com/itshak/ChessCoachPal/pull/49) (homework, student-first navigation), changes the canonical material, student/contact and lesson domain. [`support-conversational-lesson-and-lichess-workflows`](../support-conversational-lesson-and-lichess-workflows/proposal.md) also overlaps.
 
-Completing/testing legacy implementations before choosing their canonical successor risks throwaway code, parallel writes and duplicated historical lessons. Conversely, calling a new page "chess-first" does not waive parity for retained optional billing/guardian/event functions.
+One current chess schema and one materials catalog are required. Do not add adapters, backfills, dual reads or imports from earlier development data. Keeping the professional billing/guardian/event features does not require keeping their obsolete data models.
 
 ## Verified baseline to reconcile, not assume accepted
 
@@ -33,14 +33,14 @@ PR #44's latest source head was `8535d06469e6f1087b767ccb02503b381400d74f` when 
 
 Read [design.md](design.md), [integration-matrix.md](integration-matrix.md), [tasks.md](tasks.md) and [specs/integrated-coaching-parity/spec.md](specs/integrated-coaching-parity/spec.md) in that order. Perform stages **A → B → C → D → E** (source reconciliation → integration → gap closure → test campaign → audited merge/archive). Do not start final acceptance testing while the agreed implementation backlog remains open; do not mark a scenario complete merely to get a green strict gate. Avoid unsolicited per-route PRs and CI churn: use one coordinated implementation PR/branch after resolving the candidate-branch topology.
 
-Preserve all functional work from #44/#48/#49, resolving conflicts explicitly. Do not merge all branches blindly: #49 is stacked on #48, while #44 is an older, overlapping umbrella. Establish one canonical implementation and eliminate duplicate adapters only when the replacement behavior and historical preservation are proven. Any inability to finish is recorded as a real blocker with precise code/test evidence, not reclassified as a secure browser exception.
+Preserve all functional work from #44/#48/#49, resolving conflicts explicitly. Do not merge all branches blindly: #49 is stacked on #48, while #44 is an older, overlapping umbrella. Establish one fresh-install implementation. Delete previous-schema adapters outright; test current teacher functionality from new fixtures. Any inability to finish is recorded as a real blocker with precise code/test evidence, not reclassified as a secure browser exception.
 
 ## Non-goals
 
 - No removal of usable invoice/payment/credit, event or guardianship features simply to reduce the denominator.
 - No exposure of private strategy, unpublished pricing, credentials or real student data in the public repository, PR descriptions, fixtures or logs.
 - No new arbitrary SQL MCP surface, secrets-in-chat, bypassed consent, or direct provider billing charges in synthetic tests.
-- No production migration/reset and no retroactive declaration of provider-live, ChatGPT-live or Claude-live acceptance.
+- The only supported installation is a clean current-schema setup. Never silently reset an instance that might hold real data. Provider-live, ChatGPT-live and Claude-live acceptance remain separate.
 - No v0.1.0 release, OpenSpec archive or feature-PR merge based on this documentation-only change.
 
 ## Acceptance

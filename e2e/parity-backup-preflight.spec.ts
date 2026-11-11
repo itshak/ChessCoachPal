@@ -12,7 +12,7 @@ test("PARITY:PARITY-safety-backup-preflight rejects late-table malformed imports
  const backup=await exported.json();
  const studentId=randomUUID();
  const payload={
-   version:backup.version,exportedAt:new Date().toISOString(),
+   exportedAt:new Date().toISOString(),
    teacherId:backup.teacherId,
    tables:{
      students:[{id:studentId,name:"Must not partially import "+randomUUID()}],

@@ -1,13 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * ChessCoachPal pre-1.0 backup format. No CogNote/music import compatibility.
- * OAuth grants, access tokens, provider secrets, Stripe identifiers and
- * uploaded binary objects are deliberately excluded from portable exports.
+ * Only one current ChessCoachPal teacher-data backup shape; no prior-format
+ * adapters or version negotiation. OAuth credentials, payment secrets and
+ * binary objects are excluded from portable exports.
  */
-export const DATA_EXPORT_VERSION = 2 as const;
 export type StudioDataExport = {
-  version: number;
   exportedAt: string;
   teacherId: string;
   teacher_profile?: { display_name?: string } | null;
@@ -32,7 +30,6 @@ const IMPORT_ORDER = [
   "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
   "chess_study_chapters", "learning_material_relations",
   "training_assignments", "assignment_attempts", "assignment_reviews",
-  "learning_material_legacy_links",
   "student_training_plans", "student_training_plan_revisions",
 ] as const;
 
@@ -45,7 +42,6 @@ const TEACHER_SCOPED = [
   "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
   "chess_study_chapters", "learning_material_relations",
   "training_assignments", "assignment_attempts", "assignment_reviews",
-  "learning_material_legacy_links",
   "student_training_plans", "student_training_plan_revisions",
 ] as const;
 
@@ -114,7 +110,6 @@ export async function buildStudioExport(
         chess_games:["material_id"],chess_puzzles:["material_id"],
         chess_drills:["material_id"],chess_study_chapters:["material_id"],
         learning_material_relations:["from_material_id","to_material_id","relation_type"],
-        learning_material_legacy_links:["resource_id"],
         student_training_plan_revisions:["plan_id","revision"],
       };
       const orderKeys=keyOrders[table]??["id"];
@@ -154,7 +149,6 @@ export async function buildStudioExport(
   if (profileError) throw new Error(`Export profile: ${profileError.message}`);
 
   return {
-    version: DATA_EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     teacherId,
     teacher_profile: profile ? { display_name: profile.display_name ?? "" } : null,
@@ -176,8 +170,7 @@ export async function importStudioExport(
   // The invoker's auth.uid() is authoritative inside the RPC; never pass a
   // writable teacher_id argument that an MCP or website client could spoof.
   if (!teacherId) return {ok:false,error:"Authenticated teacher is required"};
-  // Strip unknown/deprecated tables and policy credentials before the RPC
-  // request itself; the database separately enforces the same allowlist.
+  // Validate the exact current table allowlist before any database writes.
   const safeTables:StudioDataExport["tables"]={};
   for (const table of IMPORT_ORDER) {
     const source=payload.tables[table];
@@ -203,13 +196,17 @@ export async function importStudioExport(
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
-/** Check every restorable table before any writes. Unknown tables remain ignored
- * (never restored), including old non-chess tables. Absent tables are allowed
- * for intentionally minimal exports. */
+/** Accept the current schema only; a foreign table or unknown top-level
+ * property is a validation failure, not an excuse for translation. */
 export function parseExportPayload(raw: unknown): StudioDataExport | null {
-  if (!isRecord(raw) || raw.version !== DATA_EXPORT_VERSION || !isRecord(raw.tables))
-    return null;
-  const tables = raw.tables;
+  if (!isRecord(raw) || !isRecord(raw.tables) ||
+      typeof raw.exportedAt !== "string" || !Number.isFinite(Date.parse(raw.exportedAt)) ||
+      typeof raw.teacherId !== "string" || raw.teacherId.length===0) return null;
+  const rootKeys=new Set(["exportedAt","teacherId","teacher_profile","tables"]);
+  if(Object.keys(raw).some(key=>!rootKeys.has(key))) return null;
+  const tables=raw.tables;
+  const allowedTables=new Set<string>(IMPORT_ORDER);
+  if(Object.keys(tables).some(table=>!allowedTables.has(table))) return null;
   for (const table of IMPORT_ORDER) {
     const source = tables[table];
     if (source === undefined) continue;

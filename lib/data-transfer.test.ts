@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  DATA_EXPORT_VERSION, parseExportPayload, importStudioExport,
+  parseExportPayload, importStudioExport,
   buildStudioExport, EXPORT_PAGE_SIZE,
   type StudioDataExport,
 } from "@/lib/data-transfer";
@@ -9,9 +9,9 @@ import {
 const TEACHER="00000000-0000-0000-0000-000000000002";
 const DIGEST="a".repeat(64);
 
-function payloadWithVersion(version: number): StudioDataExport {
+function currentPayload(): StudioDataExport {
   return {
-    version,exportedAt:new Date().toISOString(),
+    exportedAt:new Date().toISOString(),
     teacherId:"00000000-0000-0000-0000-000000000001",
     tables:{studio_policies:null,guardians:[],students:[]},
   };
@@ -30,16 +30,16 @@ function stubSupabase(calls:RpcCall[], failure?:string):SupabaseClient {
 }
 
 describe("ChessCoachPal portable backup", () => {
-  it("accepts only the current pre-1.0 chess-only format", () => {
-    expect(DATA_EXPORT_VERSION).toBe(2);
-    expect(parseExportPayload(payloadWithVersion(DATA_EXPORT_VERSION))).not.toBeNull();
-    expect(parseExportPayload(payloadWithVersion(2))).toBeNull();
-    expect(parseExportPayload({version:DATA_EXPORT_VERSION})).toBeNull();
+  it("accepts one current schema and rejects unsupported fields", () => {
+    expect(parseExportPayload(currentPayload())).not.toBeNull();
+    expect(parseExportPayload({...currentPayload(),version:1})).toBeNull();
+    expect(parseExportPayload({...currentPayload(),tables:{unrecognized:[]}})).toBeNull();
+    expect(parseExportPayload({tables:{}})).toBeNull();
   });
 
   it("sends all coaching records to one authenticated, atomic RPC without spoofable teacher ID",async()=>{
     const calls:RpcCall[]=[];
-    const payload=payloadWithVersion(DATA_EXPORT_VERSION);
+    const payload=currentPayload();
     payload.tables.students=[{id:"s1",name:"Ada",teacher_id:"old"}];
     payload.tables.workplaces=[{id:"w1",name:"Chess club",teacher_id:"old"}];
     payload.tables.teaching_sessions=[{id:"t1",title:"Endgames",teacher_id:"old"}];
@@ -66,27 +66,27 @@ describe("ChessCoachPal portable backup", () => {
     }
   });
 
-  it("never sends removed music tables or policy credentials to SQL",async()=>{
+  it("rejects unrecognized table names before any RPC", async()=>{
     const calls:RpcCall[]=[];
-    const payload=payloadWithVersion(DATA_EXPORT_VERSION);
-    payload.tables.plans=[{id:"malicious"}];
-    payload.tables.sheet_music_assignments=[{id:"malicious"}];
-    payload.tables.studio_policies={
-      teacher_id:"old",timezone:"UTC",
-      ai_api_key:"secret",stripe_secret_key:"secret",
-      stripe_publishable_key:"secret",stripe_webhook_secret:"secret",
-    };
-    const result=await importStudioExport(stubSupabase(calls),TEACHER,payload,DIGEST);
-    expect(result.ok).toBe(true);
-    const tables=calls[0].args.p_tables as StudioDataExport["tables"];
-    expect(tables.plans).toBeUndefined();
-    expect(tables.sheet_music_assignments).toBeUndefined();
-    expect(tables.studio_policies).toEqual({teacher_id:"old",timezone:"UTC"});
+    const payload=currentPayload();
+    payload.tables.unrecognized_materials=[{id:"unrecognized"}];
+    expect(parseExportPayload(payload)).toBeNull();
+    expect((await importStudioExport(stubSupabase(calls),TEACHER,payload,DIGEST)).ok).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  it("omits policy credentials in the current authenticated restore", async()=>{
+    const calls:RpcCall[]=[];
+    const payload=currentPayload();
+    payload.tables.studio_policies={teacher_id:"old",timezone:"UTC",stripe_secret_key:"secret",ai_api_key:"secret"};
+    expect((await importStudioExport(stubSupabase(calls),TEACHER,payload,DIGEST)).ok).toBe(true);
+    expect((calls[0].args.p_tables as StudioDataExport["tables"]).studio_policies)
+      .toEqual({teacher_id:"old",timezone:"UTC"});
   });
 
   it("rejects malformed later tables before invoking the database transaction",async()=>{
     const calls:RpcCall[]=[];
-    const payload=payloadWithVersion(DATA_EXPORT_VERSION);
+    const payload=currentPayload();
     payload.tables.students=[{id:"must-not-be-imported",name:"Early table"}];
     payload.tables.student_training_plan_revisions=[{plan_id:"valid"},null as unknown as Record<string,unknown>];
     expect(parseExportPayload(payload)).toBeNull();
@@ -103,7 +103,7 @@ describe("ChessCoachPal portable backup", () => {
       {guardians:[[],{id:"g"}]},
     ]) {
       const calls:RpcCall[]=[];
-      const payload=payloadWithVersion(DATA_EXPORT_VERSION);
+      const payload=currentPayload();
       payload.tables.students=[{id:"should-not-be-written",name:"Ada"}];
       Object.assign(payload.tables,malformed);
       expect(parseExportPayload(payload)).toBeNull();
@@ -113,17 +113,18 @@ describe("ChessCoachPal portable backup", () => {
     }
   });
 
-  it("rejects unsupported backup versions and missing teacher before SQL",async()=>{
+  it("rejects extra root fields and missing teacher before RPC",async()=>{
     const calls:RpcCall[]=[];
-    expect((await importStudioExport(stubSupabase(calls),TEACHER,payloadWithVersion(99),DIGEST)).ok).toBe(false);
-    expect((await importStudioExport(stubSupabase(calls),"",payloadWithVersion(DATA_EXPORT_VERSION),DIGEST)).ok).toBe(false);
+    const malformed={...currentPayload(),unknown:"not part of the schema"};
+    expect((await importStudioExport(stubSupabase(calls),TEACHER,malformed,DIGEST)).ok).toBe(false);
+    expect((await importStudioExport(stubSupabase(calls),"",currentPayload(),DIGEST)).ok).toBe(false);
     expect(calls).toEqual([]);
   });
 
   it("returns transactional failure without claiming a partial success",async()=>{
     const calls:RpcCall[]=[];
     const result=await importStudioExport(stubSupabase(calls,"violates not-null constraint"),
-      TEACHER,payloadWithVersion(DATA_EXPORT_VERSION),DIGEST);
+      TEACHER,currentPayload(),DIGEST);
     expect(result).toEqual({ok:false,error:"violates not-null constraint"});
     expect(calls).toHaveLength(1);
   });

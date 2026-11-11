@@ -37,7 +37,7 @@ test("PARITY:PARITY-portable-chess-backup-restores-typed-content-homework-goals-
  const response=await page.request.get("/api/settings/export");
  expect(response.status(),await response.text()).toBe(200);
  const backup=await response.json();
- expect(backup.version).toBe(2);
+ expect(Object.keys(backup).sort()).toEqual(["exportedAt","tables","teacherId","teacher_profile"].sort());
  const only=(table:string,field:string,value:string)=>
    (backup.tables[table] as Array<Record<string,unknown>>)
      .filter(row=>row[field]===value);
@@ -53,7 +53,7 @@ test("PARITY:PARITY-portable-chess-backup-restores-typed-content-homework-goals-
  expect(tables.chess_games[0].pgn).toContain("d4");
  expect(tables.student_training_plan_revisions[0].snapshot).toBeDefined();
 
- const payload={version:backup.version,teacherId:backup.teacherId,
+ const payload={teacherId:backup.teacherId,
    exportedAt:new Date().toISOString(),tables};
  const websitePreview=await page.request.put("/api/settings/import",{data:{payload}});
  expect(websitePreview.status(),await websitePreview.text()).toBe(200);

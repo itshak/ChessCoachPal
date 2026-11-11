@@ -35,7 +35,7 @@ export type TransferPreview={payload:StudioDataExport;sha256:string;counts:Recor
  bytes:number;warnings:string[]};
 export function teacherImportPreview(raw:unknown,maxBytes=MAX_MCP_IMPORT_BYTES):TransferPreview {
  const payload=parseExportPayload(raw);
- if(!payload)throw fail(400,"VALIDATION_ERROR","Unrecognized export format or missing tables");
+ if(!payload)throw fail(400,"VALIDATION_ERROR","Backup payload does not match the current teacher-data schema");
  const serialized=JSON.stringify(payload);
  const bytes=Buffer.byteLength(serialized,"utf8");
  if(bytes>maxBytes)throw fail(413,"IMPORT_TOO_LARGE","Export is too large for a single import request");

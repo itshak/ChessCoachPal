@@ -302,21 +302,6 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
-      "path": "app/api/coaching/materials/legacy-bridge/route.ts",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "partial",
-      "existingTools": [
-        "ccp_v1_material_legacy_bridge_list",
-        "ccp_v1_material_legacy_bridge_change"
-      ],
-      "explanation": "Shared reviewed mapping between retained per-student/session legacy chess learning URLs and typed catalog entities. Uses teacher-bound SQL receipts, source/provider matching, archive protection and separately named authenticated website/delegated-MCP E2E. Existing material history is not rewritten; broader student-centered parity acceptance still pending.",
-      "evidenceTest": "e2e/parity-legacy-material-bridge.spec.ts"
-    },
-    {
       "path": "app/api/coaching/materials/route.ts",
       "methods": [
         "GET",
@@ -1107,7 +1092,6 @@
     "components/teacher/FamilyForm.tsx",
     "components/teacher/HostedLimitBanner.tsx",
     "components/teacher/LearningMaterialsCatalog.tsx",
-    "components/teacher/LegacyMaterialBridgePanel.tsx",
     "components/teacher/LichessConnectionPanel.tsx",
     "components/teacher/LichessPuzzlePublisher.tsx",
     "components/teacher/LichessStudyExplorer.tsx",

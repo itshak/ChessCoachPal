@@ -1515,7 +1515,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(safeBackup.tables.guardians.every((g:{portal_token?:string})=>g.portal_token===undefined)).toBe(true);
   const importedId=randomUUID();
   const importPayload={
-    version:1,exportedAt:"2026-11-08T00:00:00.000Z",teacherId:session!.user.id,
+    exportedAt:"2026-11-08T00:00:00.000Z",teacherId:session!.user.id,
     tables:{students:[{id:importedId,name:"Imported synthetic chess student "+suffix}]},
   };
   const importPreview=(await call("ccp_v1_settings_import_preview",{

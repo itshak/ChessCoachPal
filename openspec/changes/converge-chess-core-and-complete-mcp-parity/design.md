@@ -4,7 +4,7 @@
 
 ## 1. Source control and integration topology
 
-Before implementation, inspect **live** main, PR #44, #48 and #49 heads, diff/base ancestry, OpenSpec tasks and CI, the current schema, generated MCP catalogue and versioned parity registry. Avoid assuming the branch or commit IDs in this proposal are still current.
+Before implementation, inspect **live** main, PR #44, #48 and #49 heads, diff/base ancestry, OpenSpec tasks and CI, the current schema, generated MCP catalogue and parity registry. Avoid assuming the branch or commit IDs in this proposal are still current.
 
 - Create **one integration implementation branch/PR** from up-to-date main. Bring in the typed-material implementation from #48, then the stacked homework/navigation implementation #49, respecting actual git ancestry, so its material references are not orphaned. Reconcile #44's much larger parity work against the resulting tree with a reviewed merge/cherry-pick/port of retained deltas. **Do not blindly merge #44** (which predates the canonical changes) and do not silently overwrite #48/#49.
 - Track a source-of-truth mapping for every conflicting file/service/table/API/test, with explicit disposition: reused unchanged, adapted to canonical model, replaced with behavior preservation, or deferred *only if never made a supported teacher operation*. Keep migrated IDs/history and RLS/tenant constraints intact.
@@ -15,15 +15,15 @@ Before implementation, inspect **live** main, PR #44, #48 and #49 heads, diff/ba
 
 ### Student, contact and payer
 
-`students` remain canonical, independent teaching identities with stable UUID, aliases, strength, skill/rating history, active/archive lifecycle and optional contacts. A coach can create an adult without a fictitious family, compulsory birthdate or guardian. Allow shared contacts for siblings but separate child histories and granular guardian consent/access. Keep business payer/responsibility separate from lesson visibility. Preserve existing guardian/family business flows through a compatible *new domain service or intentional user-visible migration path* with the same authenticated website/MCP features; no direct destructive removal. Historical portal tokens and contact secret handling remain protected. Existing real-data installations must not be reset without operator inventory, backup and explicit authorization.
+Students are independent teaching identities with aliases, strength, rating history and active/archive lifecycle. Contacts, guardian roles and payer authority are optional, permission-scoped teacher features. Implement one current model and matching website/MCP operations; no family-schema conversion bridge or prior-data migration.
 
 ### Lesson occurrence vs scheduling rules
 
-Use one canonical teacher-owned lesson occurrence with frozen participants and per-student attendance, notes, actual materials and teacher teaching duration. Group, individual and ad hoc instruction must share this occurrence model, with recurrence and workplace policy modeled independently as scheduling intent, not a competing completed-lesson writer. Preserve old `lesson_slots/lessons` data through an audited import/projection/migration that does not invent attributions or erase existing records. Existing schedule/list/update/attendance/notes routes and MCP tools must be adapted to the canonical service until replaced by equivalent supported routes/tools. When replacing an old route, update the website, MCP, registry, tests, links and history migration *together*. Scheduling remains available; do not use canonicalization as an excuse to drop recurring private lessons or holiday/DST support.
+Use one canonical occurrence per actual private/group/ad hoc lesson with frozen participants, attendance/material evidence and one teacher duration. Recurrence and workplace rules describe future scheduling only. Replace parallel completed-lesson writers with one fresh-install model. Do not import, backfill or dual-read older development lesson tables. Keep the supported scheduling features and matching website/MCP tools.
 
 ### Learning material identity and evidence
 
-Use one `learning_materials` teacher-owned root with validated typed `chess_games`, `chess_puzzles`, `chess_drills`, `chess_study_chapters` and external link payloads; no puzzles stored in games, no permissive one-table misc JSON. Match #48's foundation (create/search/get) with full edit/correction/delete-impact and history/reference lifecycle. Reconcile old `chess_learning_resources`, study URLs and `chess_material_progress` with stable provenance; preserve the distinction linked / taught / assigned / attempted / completed / reviewed / teacher-assessed. Use explicit ownership-valid material relations, collections and source-game references. Existing material reports and workplace/student aggregation resolve through the canonical IDs and cannot double-count one group lesson.
+Use only one typed `learning_materials` root plus `chess_games`, `chess_puzzles`, `chess_drills`, `chess_study_chapters` and HTTPS links. Remove `chess_learning_resources` as an alternate materials catalog, any ID-mapping bridge, and any old-source conversion. Student teaching coverage, assignment, attempt, review and assessment evidence must reference canonical material IDs directly. Website/MCP CRUD and reports must share one source.
 
 ### Homework, plans and briefings
 
@@ -33,7 +33,7 @@ Integrate #49's separate assignments/attempts/reviews into the canonical materia
 
 **Do not delete billing or financial functionality** because it may be a supported professional-tier differentiator. Reconcile invoice/credit calculations against the one canonical lesson/attendance history (no duplicate teacher time, invoice lines or redeemed credits). Finish atomic draft editing, generation, regeneration, void/delete, manual payment and reversal, checkout request state, PDF, ledger, bulk send, exactly-once provider/email receipts, concurrency and replay. Use synthetic Stripe/email provider fixtures for required automated acceptance; never charge real cards in CI. Payment-card entry, subscription portal and financial account auth are secure handoffs. Verify plan gating identically through web and MCP, without exposing private prices, thresholds or entitlements.
 
-Keep event/roster/RSVP/communications and consent-protected guardian functions as supported optional features. Preserve notifications, emails and portal role restrictions. A retired legacy facade is acceptable only if all supported UI+MCP operations have an equivalent tested canonical successor; record the change precisely.
+Retain supported events, contacts, guardian portals, notifications and professional finance on current domain models. A previous-schema endpoint, alias or compatibility facade is not a retained feature; remove it and test equivalent current user workflows.
 
 For Lichess, retain the existing study search/OAuth/read, manual FEN/puzzle preview and optionally enabled publishing if those operations exist in the supported website. The newer student-first proposal defers **new remote provider writes from its core rollout**, not a silent deletion of already supported provider tools. Where publishing remains exposed, finish reviewed image→candidate FEN→edited full FEN→validated PGN→explicit confirmed study/chapter publish with 64-chapter rollover, permission and external retry semantics, including safe provider mocks. Do not require server vision to guess castling rights, en-passant, side to move or move counters. Provider write may be deferred **only through an explicit separate scope decision that simultaneously removes it from supported UI/MCP release surfaces and amends both older OpenSpecs**. Default instruction: **keep and complete it**.
 
@@ -64,7 +64,7 @@ Recommended checkpoint discipline:
 
 ## 6. Security, continuity and rollout
 
-RLS + owner composite FKs protect every material subtype, session, contact, payment, event, homework and record. Idempotent writes are tenant-scoped; changes are retry-safe across website and MCP. Avoid credential leaks in model output, tests and source history. Keep the accepted ADR-0001 pre-1.0 no-compatibility posture but do not wipe real tenant data. On any potentially destructive schema transition, provide operator-facing impact inventory, export/backup, explicit approval, dry-run, isolated synthetic migration tests and rollback/recovery notes before any production operation.
+RLS and teacher-scoped FKs protect the canonical chess schema; website/MCP writes remain authenticated, confirmed and retry-safe. ADR-0001 requires exactly one fresh-install SQL snapshot, no upgrade chain, no older data bridge, and no backup-format version negotiation. Reset and seed synthetic test databases as required; never automatically erase real teacher or student records.
 
 ## 7. Required final report format
 

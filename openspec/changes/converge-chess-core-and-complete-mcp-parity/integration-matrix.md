@@ -7,16 +7,16 @@
 | Concern | Candidate source | Canonical result and implementation rule |
 | --- | --- | --- |
 | Student identity, names, ratings, archival, quotas | Main + PR #44; student-first spec #47 | One teacher-owned `students` entity, aliases, rating/skill history and validated lifecycle; remove fictitious adult-family requirement without orphaning guardian operations |
-| Contact/guardian/payer | PR #44's guardians/families; #47 contact model | Optional role/permission-scoped contacts and separate payer; grandfathered contact/history behavior preserved through compatible website/MCP operations |
-| Group and private/ad hoc lesson history | Main legacy `lesson_slots/lessons` plus `teaching_sessions`; PR #44 unified-history reader; #47 canonical-session spec | **One actual lesson occurrence** with frozen participants/attendance and one teacher duration; recurrence is schedule intent; reconcile historical records instead of preserving two independently writable completed-lesson models |
+| Contact/guardian/payer | Current student-first design | One optional permission-scoped contacts, guardian and payer domain, no prior family data adapter |
+| Group and private/ad hoc lessons | Canonical lesson occurrence | A single actual occurrence with frozen roster and teacher duration; no dual completed-lesson writer or earlier-schema conversion |
 | Conversation, aliases, exact chapters | `support-conversational-lesson-and-lichess-workflows` + PR #44 | One identity-resolution + preview/confirmed commit workflow reused by canonical lesson service; ambiguity and missing time fail without side effects |
-| Learning materials, typed payload | PR #48 (dependency of #49); PR #44 material evidence/Lichess; #47 typed-material spec | One `learning_materials` root and chess games, puzzles, drills, study chapters, external links; unify existing URL/history evidence without false taught/mastery claims |
+| Typed learning materials | Canonical typed catalog | `learning_materials` + chess-specific subtypes are the only material records; no `chess_learning_resources` catalog or prior-material mapping |
 | Assignments, attempts and reviews | PR #49 (stacked on #48) | Preserve per-student assignment IDs and distinct teacher review; complete plans/goals/corrections/reports/briefing via web and MCP |
 | Compensation/finance | Main/PR #44 billing + canonical session attendance | Retain invoice, manual pay, credit, PDF, checkout, reports and rates; source invoiceable activity from canonical session projection, no duplicate charges |
 | Events, guardian portal, notifications | PR #44 + new contact role/permission model | Keep optional operations and privacy approvals; reconcile event membership and guardian authorities without unrelated history deletion |
 | Lichess read/write and image-FEN | PR #44 + earlier conversational OpenSpec; typed puzzle/study in #48 | Keep supported study read/preview/publish workflows; store verified material identities and remote chapter IDs in canonical catalog; safe provider retries |
 | Auth/account, hosted subscription | Existing browser flows and PR #44 handoff work | MCP initiation/status where applicable, website only for secret entry or card information; no generic business-operation exemption |
-| Reporting/export/import | Main and PR #44 | One projection over canonical students/sessions/materials/assignments, shared by website/MCP with identical date/timezone/output semantics |
+| Reporting/export/import | Current teacher data services | Only current typed material and lesson references, and one current unversioned backup shape; no previous-schema adapter |
 
 ## 2. Exact current partial/gap route families to close or replace with tested canonical equivalents
 
@@ -78,7 +78,7 @@ The old 93 scenarios remain the historical release matrix. Add separately enumer
 2. Siblings share a consent-limited contact with separate lesson/material histories and no unauthorized payer visibility.
 3. Archival/reactivation of an active/returning student preserves canonical history under concurrent hosted capacity attempts.
 4. One 90-minute multi-student lesson produces one teacher duration, frozen attendance/roster and per-student observation/material history; retries and corrections do not duplicate it.
-5. Old private/group history reconciles without deleting previously taught time or double-counting teacher pay.
+5. Fresh private/group lessons use one occurrence with no duplicated teacher minutes or earlier-schema import.
 6. Typed game PGN, puzzle FEN, drill and study chapter and external link create/read/edit/delete-impact, validation, relationships, provenance and tenant enforcement.
 7. Group-batch homework fans out one assignment per student; attempts, teacher review and goal changes retain distinct source facts, replay and history.
 8. One factual briefing reports recent lessons, taught vs assigned materials, reviews, verified assessments and unknowns identically through website and MCP without Lichess/AI.

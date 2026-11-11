@@ -5,11 +5,12 @@
 ### Requirement: Canonical source reconciliation precedes parity acceptance
 The implementation SHALL reconcile the existing functional parity stream with the student-centered model, including the proposed PR #48 typed materials and PR #49 assignment/navigation functionality, before claiming full parity. It SHALL select one canonical writer/source of truth for each student, contact, actual lesson, scheduling rule, material, homework, report and financial calculation. Previously supported data and business features SHALL NOT disappear merely to lower parity workload.
 
-#### Scenario: Overlapping legacy and canonical lessons
-- **WHEN** a coach has a historical private lesson in the legacy calendar and newer group sessions
-- **THEN** both histories SHALL remain attributable to their actual source without erasing data, guessing attribution or counting the same teacher time twice
-- **AND** a new completed lesson SHALL be committed through one canonical occurrence service
-- **AND** website and MCP projections SHALL return equivalent time, roster and correction results.
+#### Scenario: Canonical fresh-install lessons
+- **WHEN** a coach records private and group lessons on the current new schema
+- **THEN** both SHALL be written through one occurrence service
+- **AND** teacher minutes and participant evidence SHALL not be duplicated
+- **AND** website and MCP SHALL show identical factual results
+- **AND** no import from older development schema SHALL be required.
 
 #### Scenario: Concurrent candidate branches
 - **WHEN** the integration agent combines PR #44, typed-material PR #48 and stacked homework PR #49
@@ -32,7 +33,7 @@ Invoices, credit packages/redemptions, manual payment, PDFs, ledger exports, che
 - **AND** no unentitled mutation or sensitive read SHALL succeed by calling MCP directly.
 
 ### Requirement: Student-first contacts do not sacrifice guardian security
-A teacher SHALL create an independent student with no required family or guardian. A student MAY have optional purpose-limited contacts, guardians and a separately authorized payer. Previously supported guardian/portal functions SHALL be reconciled rather than removed without explicit supported behavior replacement.
+A teacher SHALL create an independent student with no required family or guardian. A student MAY have optional purpose-limited contacts, guardians and a separately authorized payer. Guardian, payer and portal functions SHALL use the current website/MCP domain model without earlier family-schema converters.
 
 #### Scenario: Adults and shared junior contact
 - **WHEN** a coach adds an adult with only a name and later adds two juniors linked to one consented guardian
@@ -55,7 +56,7 @@ The system SHALL store one real teaching occurrence per group/private/ad hoc les
 - **AND** correcting future occurrences SHALL NOT rewrite completed history or silently drop students.
 
 ### Requirement: Typed chess materials and homework have one durable identity
-A teacher-owned `learning_materials` root SHALL support correctly validated chess game, puzzle, drill, study chapter and external link types, with source relations and historical provenance. Assignments, student attempts, reviews and independent assessments SHALL remain distinct. Every editable typed field, association, status change, correction and search/filter SHALL have website and typed MCP parity.
+Only the teacher-owned `learning_materials` catalog SHALL store chess game, puzzle, drill, study chapter and link materials with typed relations. The former `chess_learning_resources` catalog and material-ID mapping bridge SHALL NOT exist in the final schema. Assignments, student attempts, reviews and independent assessments SHALL remain distinct. Every editable typed field, association, status change, correction and search/filter SHALL have website and typed MCP parity.
 
 #### Scenario: Extract a puzzle and assign it to one student
 - **WHEN** a coach attaches a puzzle to a source game and assigns the puzzle to one of two pupils in a shared lesson
