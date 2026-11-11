@@ -124,8 +124,10 @@ async function upcomingSlotLessons(db:Db,slotId:string):Promise<Upcoming[]>{
  }
  return rows;
 }
-async function syncUpcoming(db:Db,slot:SlotRow,timezone:string,today:string,homeVisitChanged:boolean,
- upcoming:Upcoming[]){
+async function syncUpcoming(db:Db,slot:SlotRow,timezone:string,today:string,homeVisitChanged:boolean){
+ // Re-read immediately before reconciliation: never rely on the earlier
+ // size preflight as an attendance/notes snapshot across concurrent writes.
+ const upcoming=await upcomingSlotLessons(db,slot.id);
  const unmarked=upcoming.filter(l=>!oneToOne(l.attendance)&&!l.rescheduled_from_date);
  const until=unmarked.reduce((max,l)=>l.lesson_date>max?l.lesson_date:max,addDays(today,56));
  const byDate=new Map(computeOccurrences(slot,today,until,timezone).map(x=>[x.lesson_date,x]));
@@ -198,7 +200,7 @@ export async function calendarSlotUpdate(db:Db,teacherId:string,id:string,input:
  // Perform the bounded complete future-lesson preflight BEFORE saving the slot.
  // A too-large or unavailable inventory must not leave a changed slot behind.
  // Full concurrent, atomic reconciliation still requires a database transaction.
- const upcoming=affects?await upcomingSlotLessons(db,id):[];
+ if(affects)await upcomingSlotLessons(db,id);
  const {data,error}=await db.from("lesson_slots").update(update)
   .eq("teacher_id",teacherId).eq("id",id).select("*").maybeSingle();
  if(error)throw failure(500,"DATABASE_ERROR","Unable to update recurring slot");
@@ -207,7 +209,7 @@ export async function calendarSlotUpdate(db:Db,teacherId:string,id:string,input:
   const policy=await getPolicy(db,teacherId);
   const today=toLocalDateString(new Date(),policy.timezone);
   await syncUpcoming(db,data as SlotRow,policy.timezone,today,
-   "is_home_visit" in update&&update.is_home_visit!==before.is_home_visit,upcoming);
+   "is_home_visit" in update&&update.is_home_visit!==before.is_home_visit);
   await materializeLessons(db,teacherId,today,addDays(today,56));
  }
  return data;
