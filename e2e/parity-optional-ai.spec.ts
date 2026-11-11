@@ -46,3 +46,21 @@ test("PARITY:PARITY-optional-ai-settings masks browser-entered key and permits c
    expect(restored.status(),await restored.text()).toBe(200);
  }
 });
+
+
+test("PARITY:PARITY-spreadsheet-external-ai-consent prevents unapproved student samples leaving website or MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const sample={headers:["Name","Email"],sampleRows:[{Name:"Private student",Email:"private@example.com"}]};
+ const website=await page.request.post("/api/import/spreadsheet/suggest",{data:sample});
+ expect(website.status(),await website.text()).toBe(400);
+ expect(await website.json()).toMatchObject({code:"CONFIRMATION_REQUIRED"});
+ const model=await call("ccp_v1_import_spreadsheet_suggest",{
+   ...sample,useAi:true,
+ });
+ expect(model.error?.code).toBe("VALIDATION_ERROR");
+ const permittedHeuristic=await call("ccp_v1_import_spreadsheet_suggest",{
+   ...sample,useAi:false,
+ });
+ expect(permittedHeuristic.error).toBeUndefined();
+ expect(permittedHeuristic.data.mapping).toBeDefined();
+});
