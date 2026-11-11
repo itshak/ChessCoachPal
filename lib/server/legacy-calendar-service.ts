@@ -233,8 +233,16 @@ export async function calendarSlotDelete(db:Db,teacherId:string,id:string){
 }
 export async function calendarLessonsList(db:Db,teacherId:string,
  opts:{studentId?:string;from?:string;to?:string;offset?:number;limit?:number}={}){
- const limit=Math.min(100,Math.max(1,opts.limit??50));
- const offset=Math.max(0,opts.offset??0);
+ const limit=opts.limit??50,offset=opts.offset??0;
+ if(!Number.isSafeInteger(limit)||limit<1||limit>100||
+    !Number.isSafeInteger(offset)||offset<0||offset>100000)
+  throw failure(400,"VALIDATION_ERROR","Invalid calendar pagination");
+ if((opts.from!==undefined&&!isDateString(opts.from))||
+    (opts.to!==undefined&&!isDateString(opts.to))||
+    (opts.from&&opts.to&&opts.from>opts.to))
+  throw failure(400,"VALIDATION_ERROR","Invalid lesson date range");
+ if(opts.studentId!==undefined&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(opts.studentId))
+  throw failure(400,"VALIDATION_ERROR","Invalid student ID");
  let query=db.from("lessons").select("*").eq("teacher_id",teacherId)
  .order("starts_at",{ascending:false}).range(offset,offset+limit);
  if(opts.studentId)query=query.eq("student_id",opts.studentId);
