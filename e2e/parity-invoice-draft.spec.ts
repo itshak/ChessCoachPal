@@ -115,3 +115,25 @@ test("PARITY:PARITY-billing-invoice-revision and rollback reject foreign lesson 
  });
  expect(browserUnknown.status()).toBe(404);
 });
+
+
+test("PARITY:PARITY-billing-invoice-detail-delete removes only reviewed drafts from website and MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const first=await draftInvoice();
+ const before=await websiteInvoice(page,first.id);
+ expect(before.status).toBe("draft");
+ const fromMcp=await call("ccp_v1_billing_invoice_detail",{invoiceId:first.id});
+ expect(fromMcp.error).toBeUndefined();
+ expect(fromMcp.data.id).toBe(first.id);
+ const removed=await call("ccp_v1_billing_invoice_delete",{
+   invoiceId:first.id,confirmed:true,
+ });
+ expect(removed.error).toBeUndefined();
+ expect(removed.data.ok).toBe(true);
+ expect((await page.request.get("/api/billing/invoices/"+first.id)).status()).toBe(404);
+ const second=await draftInvoice();
+ const deleted=await page.request.delete("/api/billing/invoices/"+second.id);
+ expect(deleted.status(),await deleted.text()).toBe(200);
+ const modelAfter=await call("ccp_v1_billing_invoice_detail",{invoiceId:second.id});
+ expect(modelAfter.error?.code).toBe("NOT_FOUND");
+});
