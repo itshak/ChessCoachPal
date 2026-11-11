@@ -9,7 +9,7 @@ import {teacherLichessPuzzlePreview,teacherLichessPuzzlePublish,LichessPuzzleErr
 import {teacherImageFenPropose,imageFenInputSchema,ImageFenError} from "@/lib/server/teacher-image-fen";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  CoachError, attendanceList, groupsList, groupsMembers,
+  CoachError, attendanceList, attendanceRecord, groupsList, groupsMembers,
   sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, sessionsComplete, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
 } from "@/lib/server/coach-service";
 

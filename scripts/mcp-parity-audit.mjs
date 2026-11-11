@@ -109,8 +109,20 @@ for (const [index,row] of checklistRows.entries()) {
     path => existsSync(join(root,path)),
     path => readFileSync(join(root,path),"utf8"))) errors.push(message);
 }
-errors.push(...validateUniqueCheckedParityReferences(checklistRows));
+// New canonical workflows are a distinct, growable matrix. The baseline remains
+// exactly 93 named cases; never hide regressions by renumbering that inventory.
+const nextMatrix=readFileSync(join(root,"docs/MCP_NEW_PARITY_SCENARIOS.md"),"utf8");
+const nextRows=nextMatrix.split("\n").filter(line=>/^\|\s*-\s*\[[ xX]\]\s*\|/.test(line));
+assert(nextRows.length>=1,"New chess-first parity matrix must contain independently named cases");
+for(const [index,row] of nextRows.entries()){
+ if(!/^\|\s*-\s*\[[xX]\]/.test(row))continue;
+ for(const message of validateCheckedParityRow(row,index+1,
+  path=>existsSync(join(root,path)),
+  path=>readFileSync(join(root,path),"utf8")))errors.push(message);
+}
+errors.push(...validateUniqueCheckedParityReferences([...checklistRows,...nextRows]));
 const pendingCases=cases.filter(match=>match[1]===" ").length;
+console.log("New canonical parity workflows: "+(nextRows.length-nextRows.filter(x=>/^\|\s*-\s*\[ \]/.test(x)).length)+"/"+nextRows.length+" verified.");
 console.log("Browser ↔ MCP behavioral checklist: "+(cases.length-pendingCases)+"/"+cases.length+
   " verified, "+pendingCases+" not yet checked.");
 if (process.argv.includes("--strict")) {
