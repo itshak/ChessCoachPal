@@ -54,7 +54,7 @@ const chessRating = z.number().int().min(100).max(4000).nullable();
 
 const optionalStudentCents = z.union([
   z.number().int().min(0).max(10_000_000),
-  z.string().trim().regex(/^\\d{0,8}$/).refine(value =>
+  z.string().trim().regex(/^\d{0,8}$/).refine(value =>
     value==="" || Number(value)<=10_000_000,{message:"Amount must be whole cents at most 10,000,000"}),
   z.null(),
 ]).optional();
