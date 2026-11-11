@@ -20,9 +20,12 @@ import {
 import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
   chessCategoriesDeleteImpact, chessCategoriesDelete,
   chessObservationsList, chessObservationsCreate, chessObservationsUpdate,
-  chessResourcesList, chessResourcesCreate, chessResourcesUpdate,
-  chessResourcesUnlinkImpact, chessResourcesUnlink } from "@/lib/server/chess-learning";
-import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
+ } from "@/lib/server/chess-learning";
+import {materialLinksList,materialLinksCreate,materialLinksUpdate,
+ materialLinksUnlinkImpact,materialLinksUnlink} from "@/lib/server/material-links";
+import { chessUuid, categoryName, observationText, observedAt, observationInput,
+ materialLinkListInput,materialLinkCreateInput,materialLinkUpdateInput,materialLinkUnlinkInput,
+} from "@/lib/chess-learning";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import {materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,materialRelationListSchema,materialRelationSchema,materialArchivePreviewSchema,materialLifecycleSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,teacherMaterialRelationsList,teacherMaterialRelationChange,teacherMaterialArchivePreview,teacherMaterialLifecycleChange,MaterialCatalogError} from "@/lib/server/learning-materials";
 import {assignmentListSchema,assignmentCreateSchema,assignmentAttemptSchema,assignmentReviewSchema,teacherAssignmentsList,teacherAssignmentsCreate,teacherAssignmentAttempt,teacherAssignmentReview,AssignmentServiceError} from "@/lib/server/training-assignments";
@@ -856,16 +859,14 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_chess_resources_unlink_impact",
-    description:"Preview linked teacher-attested material claims before removing a study URL. Refuse history loss.",
-    schema:z.object({resourceId:chessUuid}).strict(),
-    scope:"coach:read",readOnly:true,
+    name:"ccp_v1_material_links_unlink_impact",
+    description:"Preview removal of one canonical material association; learning material and attested evidence remain intact.",
+    schema:z.object({linkId:chessUuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_chess_resources_unlink",
-    description:"Unlink only a teaching resource with no historical claims after explicit confirmation; does not erase learning history.",
-    schema:z.object({resourceId:chessUuid,confirmed:z.literal(true)}).strict(),
-    scope:"coach:write",readOnly:false,
+    name:"ccp_v1_material_links_unlink",
+    description:"Remove one current material/student or material/session association with expected revision and explicit approval. History is preserved.",
+    schema:materialLinkUnlinkInput,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_chess_categories_delete_impact",
@@ -889,13 +890,9 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_chess_resources_update",
-    description:"Correct one identified saved Lichess Study or external HTTPS resource title, URL or type. The safe HTTPS whitelist applies to every update.",
-    schema:z.object({resourceId:chessUuid,label:resourceLabel.optional(),
-      url:resourceUrl.optional(),resourceType:resourceType.optional(),
-      confirmed:z.literal(true)}).strict().refine(a=>a.label!==undefined||
-      a.url!==undefined||a.resourceType!==undefined,"Provide a change"),
-    scope:"coach:write",readOnly:false,
+    name:"ccp_v1_material_links_update",
+    description:"Reassign one identified student/session material link to another canonical typed material; revision check and confirmation required. Edit content via learning_materials_update.",
+    schema:materialLinkUpdateInput,scope:"coach:write",readOnly:false,
   },
   {
     name: "ccp_v1_chess_categories_list",
@@ -962,16 +959,14 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name: "ccp_v1_chess_resources_list",
-    description: "Read saved Lichess Study and HTTPS resource references, not provider contents.",
-    schema: z.object({studentId:chessUuid.optional(),sessionId:chessUuid.optional()}).strict()
-      .refine(v => Boolean(v.studentId || v.sessionId), "Choose a student or session"),
-    scope: "coach:read", readOnly: true,
+    name:"ccp_v1_material_links_list",
+    description:"List canonical typed material associations for one teacher-owned student or lesson, including catalog title and source URL.",
+    schema:materialLinkListInput,scope:"coach:read",readOnly:true,
   },
   {
-    name: "ccp_v1_chess_resources_link",
-    description: "Save a specific HTTPS learning resource or Lichess Study link for a student/session. Does not fetch provider contents; confirm the teacher's choice.",
-    schema: resourceInput, scope: "coach:write", readOnly: false,
+    name:"ccp_v1_material_links_create",
+    description:"Attach an existing typed learning material to a student or coaching session, with explicit approval and an idempotent request UUID. Does not imply mastery.",
+    schema:materialLinkCreateInput,scope:"coach:write",readOnly:false,
   },
   // All new writes are routed through the single transactional teacher-owned SQL
   // operation. The receipt is replay-safe and contains only IDs and audit metadata.
@@ -1785,17 +1780,17 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {observationId:string;observation?:string;categoryId?:string;observedAt?:string};
         return {data:await chessObservationsUpdate(db,teacherId,a.observationId,a)};
       }
-      case "ccp_v1_chess_resources_unlink_impact": {
-        const a=args as {resourceId:string};
-        return {data:await chessResourcesUnlinkImpact(db,teacherId,a.resourceId)};
+      case "ccp_v1_material_links_unlink_impact": {
+        const a=args as {linkId:string};
+        return {data:await materialLinksUnlinkImpact(db,teacherId,a.linkId)};
       }
-      case "ccp_v1_chess_resources_unlink": {
-        const a=args as {resourceId:string;confirmed:true};
-        return {data:await chessResourcesUnlink(db,teacherId,a.resourceId)};
+      case "ccp_v1_material_links_unlink": {
+        const a=args as Parameters<typeof materialLinksUnlink>[2];
+        return {data:await materialLinksUnlink(db,teacherId,a)};
       }
-      case "ccp_v1_chess_resources_update": {
-        const a=args as {resourceId:string;label?:string;url?:string;resourceType?:"lichess_study"|"external"};
-        return {data:await chessResourcesUpdate(db,teacherId,a.resourceId,a)};
+      case "ccp_v1_material_links_update": {
+        const a=args as Parameters<typeof materialLinksUpdate>[2];
+        return {data:await materialLinksUpdate(db,teacherId,a)};
       }
       case "ccp_v1_chess_categories_list":
         return { data: await chessCategoriesList(db,teacherId) };
@@ -1838,13 +1833,13 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as Parameters<typeof teacherMaterialVoid>[2];
         return {data:await teacherMaterialVoid(db,teacherId,a)};
       }
-      case "ccp_v1_chess_resources_list": {
-        const a=args as {studentId?:string;sessionId?:string};
-        return { data: await chessResourcesList(db,teacherId,a) };
+      case "ccp_v1_material_links_list": {
+        const a=args as Parameters<typeof materialLinksList>[2];
+        return {data:await materialLinksList(db,teacherId,a)};
       }
-      case "ccp_v1_chess_resources_link": {
-        const a=args as Parameters<typeof chessResourcesCreate>[2];
-        return { data: await chessResourcesCreate(db,teacherId,a) };
+      case "ccp_v1_material_links_create": {
+        const a=args as Parameters<typeof materialLinksCreate>[2];
+        return {data:await materialLinksCreate(db,teacherId,a)};
       }
       case "ccp_v1_workplaces_enrollments":
         return {data:await workplacesEnrollments(db,teacherId,(args as {workplaceId:string}).workplaceId)};

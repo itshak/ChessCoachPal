@@ -21,7 +21,7 @@ const IMPORT_ORDER = [
   "studio_policies", "guardians", "students", "workplaces", "class_groups",
   "workplace_enrollments", "group_enrollments", "teaching_sessions",
   "session_participants", "session_attendance", "chess_skill_categories",
-  "chess_observations", "chess_learning_resources", "lesson_slots", "lessons",
+  "chess_observations", "lesson_slots", "lessons",
   "attendance", "lesson_notes", "skill_dimensions", "skill_assessments",
   "invoices", "invoice_items", "payments", "events", "event_students",
   "event_rsvps", "credit_packages", "credit_redemptions",
@@ -29,7 +29,7 @@ const IMPORT_ORDER = [
   // respects material root/subtypes → relations → homework/reviews → plans.
   "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
   "chess_study_chapters", "learning_material_relations",
-  "material_teaching_evidence", "training_assignments", "assignment_attempts", "assignment_reviews",
+  "material_links", "material_teaching_evidence", "training_assignments", "assignment_attempts", "assignment_reviews",
   "student_training_plans", "student_training_plan_revisions",
 ] as const;
 
@@ -37,11 +37,11 @@ const TEACHER_SCOPED = [
   "guardians", "students", "workplaces", "class_groups",
   "workplace_enrollments", "group_enrollments", "teaching_sessions",
   "session_participants", "session_attendance", "chess_skill_categories",
-  "chess_observations", "chess_learning_resources", "lesson_slots", "lessons",
+  "chess_observations", "lesson_slots", "lessons",
   "skill_dimensions", "invoices", "events", "credit_packages", "credit_redemptions",
   "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
   "chess_study_chapters", "learning_material_relations",
-  "material_teaching_evidence", "training_assignments", "assignment_attempts", "assignment_reviews",
+  "material_links", "material_teaching_evidence", "training_assignments", "assignment_attempts", "assignment_reviews",
   "student_training_plans", "student_training_plan_revisions",
 ] as const;
 

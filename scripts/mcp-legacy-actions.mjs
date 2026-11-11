@@ -35,11 +35,11 @@ export const legacyActionTools=Object.freeze({
   "chess.observations.propose":"ccp_v1_chess_observations_propose",
   "chess.observations.update":"ccp_v1_chess_observations_update",
   "chess.observations.approve":null,
-  "chess.resources.list":"ccp_v1_chess_resources_list",
-  "chess.resources.link":"ccp_v1_chess_resources_link",
-  "chess.resources.update":"ccp_v1_chess_resources_update",
-  "chess.resources.unlinkImpact":"ccp_v1_chess_resources_unlink_impact",
-  "chess.resources.unlink":"ccp_v1_chess_resources_unlink",
+  "materials.links.list":"ccp_v1_material_links_list",
+  "materials.links.create":"ccp_v1_material_links_create",
+  "materials.links.update":"ccp_v1_material_links_update",
+  "materials.links.unlinkImpact":"ccp_v1_material_links_unlink_impact",
+  "materials.links.unlink":"ccp_v1_material_links_unlink",
 });
 export const narrowBrowserExceptions=Object.freeze({
   "chess.observations.create":

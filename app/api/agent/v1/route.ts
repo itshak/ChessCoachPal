@@ -15,11 +15,12 @@ import {
   chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
   chessCategoriesDeleteImpact, chessCategoriesDelete,
   chessObservationsList, chessObservationsCreate, chessObservationsUpdate, chessObservationsApprove,
-  chessResourcesList, chessResourcesCreate, chessResourcesUpdate,
-  chessResourcesUnlinkImpact, chessResourcesUnlink,
-} from "@/lib/server/chess-learning";
-import { chessUuid, categoryName, observationText, resourceInput, observationInput,
-  resourceLabel, resourceUrl, resourceType, observedAt } from "@/lib/chess-learning";
+ } from "@/lib/server/chess-learning";
+import { chessUuid, categoryName, observationText, observationInput, observedAt,
+ materialLinkListInput,materialLinkCreateInput,materialLinkUpdateInput,materialLinkUnlinkInput,
+} from "@/lib/chess-learning";
+import {materialLinksList,materialLinksCreate,materialLinksUpdate,
+ materialLinksUnlinkImpact,materialLinksUnlink} from "@/lib/server/material-links";
 
 export const dynamic = "force-dynamic";
 
@@ -94,14 +95,11 @@ const calls = z.discriminatedUnion("action", [
     observation:observationText.optional(), categoryId:chessUuid.optional(),
     observedAt:observedAt.optional() }),
   z.object({ action:z.literal("chess.observations.approve"), observationId:chessUuid }),
-  z.object({ action:z.literal("chess.resources.list"),
-    studentId:chessUuid.optional(), sessionId:chessUuid.optional() }),
-  resourceInput.safeExtend({ action:z.literal("chess.resources.link") }),
-  z.object({ action:z.literal("chess.resources.unlinkImpact"), resourceId:chessUuid }),
-  z.object({ action:z.literal("chess.resources.unlink"), resourceId:chessUuid,
-    confirmed:z.literal(true) }),
-  z.object({ action:z.literal("chess.resources.update"), resourceId:chessUuid,
-    label:resourceLabel.optional(), url:resourceUrl.optional(),resourceType:resourceType.optional() }),
+  materialLinkListInput.safeExtend({action:z.literal("materials.links.list")}),
+  materialLinkCreateInput.safeExtend({action:z.literal("materials.links.create")}),
+  z.object({action:z.literal("materials.links.unlinkImpact"),linkId:chessUuid}),
+  materialLinkUnlinkInput.safeExtend({action:z.literal("materials.links.unlink")}),
+  materialLinkUpdateInput.safeExtend({action:z.literal("materials.links.update")}),
   z.object({ action: z.literal("attendance.record"),
     sessionId: uuid, studentId: uuid,
     status: z.enum(["present", "absent", "late", "excused"]),
@@ -119,8 +117,8 @@ const toolNames = [
   "chess.categories.deleteImpact","chess.categories.delete",
   "chess.observations.list","chess.observations.create","chess.observations.propose",
   "chess.observations.update","chess.observations.approve",
-  "chess.resources.list","chess.resources.link","chess.resources.update",
-  "chess.resources.unlinkImpact","chess.resources.unlink",
+  "materials.links.list","materials.links.create","materials.links.update",
+  "materials.links.unlinkImpact","materials.links.unlink",
 ] as const;
 
 function json(body: unknown, status = 200) {
@@ -255,16 +253,16 @@ export async function POST(req: NextRequest) {
         result = await chessObservationsUpdate(db,teacherId,call.observationId,call); break;
       case "chess.observations.approve":
         result = await chessObservationsApprove(db,teacherId,call.observationId); break;
-      case "chess.resources.list":
-        result = await chessResourcesList(db,teacherId,call); break;
-      case "chess.resources.link":
-        result = await chessResourcesCreate(db,teacherId,call); break;
-      case "chess.resources.unlinkImpact":
-        result = await chessResourcesUnlinkImpact(db,teacherId,call.resourceId);break;
-      case "chess.resources.unlink":
-        result = await chessResourcesUnlink(db,teacherId,call.resourceId);break;
-      case "chess.resources.update":
-        result = await chessResourcesUpdate(db,teacherId,call.resourceId,call); break;
+      case "materials.links.list":
+        result=await materialLinksList(db,teacherId,call);break;
+      case "materials.links.create":
+        result=await materialLinksCreate(db,teacherId,call);break;
+      case "materials.links.unlinkImpact":
+        result=await materialLinksUnlinkImpact(db,teacherId,call.linkId);break;
+      case "materials.links.unlink":
+        result=await materialLinksUnlink(db,teacherId,call);break;
+      case "materials.links.update":
+        result=await materialLinksUpdate(db,teacherId,call);break;
     }
     return json({ ok: true, data: result }, call.action.endsWith(".create") ? 201 : 200);
   } catch (error) {

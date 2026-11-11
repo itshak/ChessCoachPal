@@ -25,6 +25,8 @@ export function canonicalSchemaErrors({
  }
  if(/DATA_EXPORT_VERSION|(?:^|\n)\s*version:\s*(?:number|[0-9])|raw\.version|backup\.version/i.test(transfer))
    errors.push("Current teacher backup must not have format-version negotiation");
+ if(/chess_learning_resources/i.test(sql))
+   errors.push("Independent URL material catalog prohibited; use material_links → learning_materials");
  if(/CREATE TABLE\s+(?:public\.)?chess_material_progress\s*\(/i.test(sql))
    errors.push("Duplicate material evidence ledger forbidden; use material_teaching_evidence");
  if(strictMaterials&&/chess_learning_resources|chess_material_progress\s*\(/i.test(sql))

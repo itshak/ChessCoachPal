@@ -4,10 +4,7 @@ import { z } from "zod";
 export const chessUuid = z.string().uuid();
 export const categoryName = z.string().trim().min(1).max(80);
 export const observationText = z.string().trim().min(1).max(5000);
-export const resourceLabel = z.string().trim().min(1).max(160);
-export const resourceUrl = z.string().trim().min(1).max(2048);
 export const observedAt = z.string().datetime({ offset: true });
-export const resourceType = z.enum(["lichess_study", "external"]);
 
 export const observationInput = z.object({
   studentId: chessUuid,
@@ -18,16 +15,22 @@ export const observationInput = z.object({
   requestId: chessUuid.optional(),
 }).strict();
 
-export const resourceInput = z.object({
-  studentId: chessUuid.optional(),
-  sessionId: chessUuid.optional(),
-  label: resourceLabel,
-  url: resourceUrl,
-  resourceType,
-  requestId: chessUuid.optional(),
-}).strict().refine(v => Boolean(v.studentId || v.sessionId), {
-  message: "A student or session is required",
-});
+export const materialLinkListInput = z.object({
+ studentId:chessUuid.optional(),sessionId:chessUuid.optional(),
+ offset:z.number().int().min(0).max(100000).default(0),
+ limit:z.number().int().min(1).max(100).default(50),
+}).strict().refine(v=>Boolean(v.studentId||v.sessionId),"Choose a student or session");
+export const materialLinkCreateInput = z.object({
+ materialId:chessUuid,studentId:chessUuid.optional(),sessionId:chessUuid.optional(),
+ requestId:chessUuid,confirmed:z.literal(true),
+}).strict().refine(v=>Boolean(v.studentId||v.sessionId),"Choose a student or session");
+export const materialLinkUpdateInput = z.object({
+ linkId:chessUuid,materialId:chessUuid,expectedRevision:z.number().int().min(1),
+ confirmed:z.literal(true),
+}).strict();
+export const materialLinkUnlinkInput = z.object({
+ linkId:chessUuid,expectedRevision:z.number().int().min(1),confirmed:z.literal(true),
+}).strict();
 
 /**
  * Only preserve an HTTPS reference; never fetch external learning content.

@@ -609,30 +609,6 @@ COMMENT ON COLUMN "public"."attendance"."cancel_note" IS 'Optional note from fam
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."chess_learning_resources" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "teacher_id" "uuid" NOT NULL,
-    "student_id" "uuid",
-    "session_id" "uuid",
-    "label" "text" NOT NULL,
-    "url" "text" NOT NULL,
-    "resource_type" "text" NOT NULL,
-    "provider_study_id" "text",
-    "provider_chapter_id" "text",
-    "request_id" "uuid",
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "chess_learning_resources_check" CHECK ((("student_id" IS NOT NULL) OR ("session_id" IS NOT NULL))),
-    CONSTRAINT "chess_learning_resources_check1" CHECK (((("resource_type" = 'lichess_study'::"text") AND ("provider_study_id" IS NOT NULL) AND ("provider_study_id" ~ '^[a-zA-Z0-9]{8}$'::"text") AND (("provider_chapter_id" IS NULL) OR ("provider_chapter_id" ~ '^[a-zA-Z0-9]{8}$'::"text"))) OR (("resource_type" = 'external'::"text") AND ("provider_study_id" IS NULL) AND ("provider_chapter_id" IS NULL)))),
-    CONSTRAINT "chess_learning_resources_label_check" CHECK ((("char_length"("btrim"("label")) >= 1) AND ("char_length"("btrim"("label")) <= 160))),
-    CONSTRAINT "chess_learning_resources_resource_type_check" CHECK (("resource_type" = ANY (ARRAY['lichess_study'::"text", 'external'::"text"]))),
-    CONSTRAINT "chess_learning_resources_url_check" CHECK (((("char_length"("url") >= 9) AND ("char_length"("url") <= 2048)) AND ("url" ~ '^https://'::"text")))
-);
-
-
-ALTER TABLE "public"."chess_learning_resources" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."chess_observations" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "teacher_id" "uuid" NOT NULL,
@@ -1391,16 +1367,6 @@ ALTER TABLE ONLY "public"."attendance"
 
 
 
-ALTER TABLE ONLY "public"."chess_learning_resources"
-    ADD CONSTRAINT "chess_learning_resources_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."chess_learning_resources"
-    ADD CONSTRAINT "chess_learning_resources_teacher_id_request_id_key" UNIQUE ("teacher_id", "request_id");
-
-
-
 ALTER TABLE ONLY "public"."chess_observations"
     ADD CONSTRAINT "chess_observations_pkey" PRIMARY KEY ("id");
 
@@ -1691,14 +1657,6 @@ CREATE INDEX "chess_observations_session_idx" ON "public"."chess_observations" U
 
 
 
-CREATE INDEX "chess_resources_session_idx" ON "public"."chess_learning_resources" USING "btree" ("teacher_id", "session_id");
-
-
-
-CREATE INDEX "chess_resources_student_idx" ON "public"."chess_learning_resources" USING "btree" ("teacher_id", "student_id", "created_at" DESC);
-
-
-
 CREATE INDEX "chess_skill_categories_teacher_idx" ON "public"."chess_skill_categories" USING "btree" ("teacher_id", "sort_order");
 
 
@@ -1934,26 +1892,6 @@ ALTER TABLE ONLY "public"."agent_tool_receipts"
 
 ALTER TABLE ONLY "public"."attendance"
     ADD CONSTRAINT "attendance_lesson_id_fkey" FOREIGN KEY ("lesson_id") REFERENCES "public"."lessons"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."chess_learning_resources"
-    ADD CONSTRAINT "chess_learning_resources_session_id_student_id_fkey" FOREIGN KEY ("session_id", "student_id") REFERENCES "public"."session_participants"("session_id", "student_id");
-
-
-
-ALTER TABLE ONLY "public"."chess_learning_resources"
-    ADD CONSTRAINT "chess_learning_resources_session_id_teacher_id_fkey" FOREIGN KEY ("session_id", "teacher_id") REFERENCES "public"."teaching_sessions"("id", "teacher_id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."chess_learning_resources"
-    ADD CONSTRAINT "chess_learning_resources_student_id_teacher_id_fkey" FOREIGN KEY ("student_id", "teacher_id") REFERENCES "public"."students"("id", "teacher_id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."chess_learning_resources"
-    ADD CONSTRAINT "chess_learning_resources_teacher_id_fkey" FOREIGN KEY ("teacher_id") REFERENCES "public"."teachers"("id") ON DELETE CASCADE;
 
 
 
@@ -2270,13 +2208,6 @@ ALTER TABLE "public"."attendance" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "attendance_teacher" ON "public"."attendance" USING (("lesson_id" IN ( SELECT "lessons"."id"
    FROM "public"."lessons"
   WHERE ("lessons"."teacher_id" = "auth"."uid"()))));
-
-
-
-ALTER TABLE "public"."chess_learning_resources" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "chess_learning_resources_teacher" ON "public"."chess_learning_resources" TO "authenticated" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
 
 
 
@@ -2617,11 +2548,6 @@ GRANT ALL ON TABLE "public"."attendance" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."chess_learning_resources" TO "authenticated";
-GRANT ALL ON TABLE "public"."chess_learning_resources" TO "service_role";
-
-
-
 GRANT ALL ON TABLE "public"."chess_observations" TO "authenticated";
 GRANT ALL ON TABLE "public"."chess_observations" TO "service_role";
 
@@ -2889,6 +2815,68 @@ CREATE TABLE public.learning_materials (
  UNIQUE (teacher_id,request_id)
 );
 CREATE INDEX learning_materials_search ON public.learning_materials (teacher_id,kind,created_at DESC);
+
+-- Student/session links point to the single typed material catalog. They have
+-- no duplicate label, URL or provider identity, and cannot imply teaching.
+CREATE TABLE public.material_links (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  material_id uuid NOT NULL,
+  student_id uuid,
+  session_id uuid,
+  request_id uuid NOT NULL,
+  revision bigint NOT NULL DEFAULT 1 CHECK (revision>=1),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT material_links_target_required CHECK (student_id IS NOT NULL OR session_id IS NOT NULL),
+  CONSTRAINT material_links_teacher_request UNIQUE(teacher_id,request_id),
+  CONSTRAINT material_links_material_owner
+    FOREIGN KEY(teacher_id,material_id) REFERENCES public.learning_materials(teacher_id,id) ON DELETE RESTRICT,
+  CONSTRAINT material_links_student_owner
+    FOREIGN KEY(student_id,teacher_id) REFERENCES public.students(id,teacher_id) ON DELETE RESTRICT,
+  CONSTRAINT material_links_session_owner
+    FOREIGN KEY(session_id,teacher_id) REFERENCES public.teaching_sessions(id,teacher_id) ON DELETE RESTRICT,
+  CONSTRAINT material_links_session_student_member
+    FOREIGN KEY(session_id,student_id) REFERENCES public.session_participants(session_id,student_id) ON DELETE RESTRICT
+);
+CREATE INDEX material_links_student_recent ON public.material_links(teacher_id,student_id,created_at DESC);
+CREATE INDEX material_links_session_recent ON public.material_links(teacher_id,session_id,created_at DESC);
+CREATE INDEX material_links_material_recent ON public.material_links(teacher_id,material_id);
+ALTER TABLE public.material_links ENABLE ROW LEVEL SECURITY;
+CREATE POLICY material_links_teacher_owner ON public.material_links
+ FOR ALL TO authenticated USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.material_links TO authenticated;
+GRANT ALL ON public.material_links TO service_role;
+
+CREATE FUNCTION public.ccp_material_links_validate() RETURNS trigger
+LANGUAGE plpgsql SET search_path=public,pg_temp AS $links$
+BEGIN
+  IF TG_OP='UPDATE' THEN
+    IF (NEW.id,NEW.teacher_id,NEW.student_id,NEW.session_id,NEW.request_id,NEW.created_at)
+      IS DISTINCT FROM
+       (OLD.id,OLD.teacher_id,OLD.student_id,OLD.session_id,OLD.request_id,OLD.created_at)
+    THEN RAISE EXCEPTION 'MATERIAL_LINK_SCOPE_IMMUTABLE' USING ERRCODE='22023'; END IF;
+    NEW.revision:=OLD.revision+1;
+  END IF;
+  -- Lock the material row so concurrent archives cannot race a new link.
+  PERFORM 1 FROM public.learning_materials
+    WHERE teacher_id=NEW.teacher_id AND id=NEW.material_id AND archived_at IS NULL
+    FOR SHARE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'MATERIAL_NOT_ACTIVE' USING ERRCODE='23503'; END IF;
+  IF NEW.student_id IS NOT NULL THEN
+    PERFORM 1 FROM public.students WHERE id=NEW.student_id AND teacher_id=NEW.teacher_id
+      AND archived_at IS NULL;
+    IF NOT FOUND THEN RAISE EXCEPTION 'STUDENT_NOT_ACTIVE' USING ERRCODE='23503'; END IF;
+  END IF;
+  NEW.updated_at:=clock_timestamp();
+  RETURN NEW;
+END;
+$links$;
+CREATE TRIGGER ccp_material_links_validate_trg
+ BEFORE INSERT OR UPDATE ON public.material_links
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_material_links_validate();
+REVOKE ALL ON FUNCTION public.ccp_material_links_validate() FROM PUBLIC,anon,authenticated;
+
 
 CREATE TABLE public.chess_games (
  material_id uuid PRIMARY KEY,
@@ -3547,7 +3535,7 @@ BEGIN
     UNION ALL SELECT 1 FROM public.group_enrollments WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.workplace_enrollments WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.skill_assessments WHERE student_id = OLD.id
-    UNION ALL SELECT 1 FROM public.chess_learning_resources WHERE student_id = OLD.id
+    UNION ALL SELECT 1 FROM public.material_links WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.chess_observations WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.material_teaching_evidence WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.event_students WHERE student_id = OLD.id
@@ -4924,7 +4912,7 @@ BEGIN
  IF EXISTS(SELECT 1 FROM public.chess_observations o
    WHERE o.teacher_id=v_teacher AND o.session_id=p_session_id
      AND o.student_id=ANY(v_removed))
-   OR EXISTS(SELECT 1 FROM public.chess_learning_resources r
+   OR EXISTS(SELECT 1 FROM public.material_links r
    WHERE r.teacher_id=v_teacher AND r.session_id=p_session_id
      AND r.student_id=ANY(v_removed)) THEN
    RAISE EXCEPTION 'ROSTER_HAS_LINKED_CHESS_EVIDENCE' USING ERRCODE='23514';
@@ -5274,7 +5262,7 @@ BEGIN
     'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
     'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
     'session_participants', 'session_attendance', 'chess_skill_categories',
-    'chess_observations', 'chess_learning_resources', 'lesson_slots', 'lessons',
+    'chess_observations', 'lesson_slots', 'lessons',
     'attendance', 'lesson_notes', 'skill_dimensions', 'skill_assessments',
     'invoices', 'invoice_items', 'payments', 'events', 'event_students',
     'event_rsvps', 'credit_packages', 'credit_redemptions'
@@ -5315,7 +5303,7 @@ BEGIN
         'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
         'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
         'session_participants', 'session_attendance', 'chess_skill_categories',
-        'chess_observations', 'chess_learning_resources', 'lesson_slots', 'lessons',
+        'chess_observations', 'lesson_slots', 'lessons',
         'skill_dimensions', 'invoices', 'events', 'credit_packages',
         'credit_redemptions'
       ]) THEN
@@ -6490,6 +6478,7 @@ DECLARE
  v_assignments integer;
  v_relations integer;
  v_evidence integer;
+ v_links integer;
 BEGIN
  IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED'; END IF;
  IF p_material_id IS NULL OR p_expected_revision IS NULL OR p_expected_revision<1
@@ -6525,7 +6514,9 @@ BEGIN
       (from_material_id=p_material_id OR to_material_id=p_material_id);
    SELECT count(*) INTO v_evidence FROM public.material_teaching_evidence
      WHERE teacher_id=v_teacher AND material_id=p_material_id;
-   IF v_assignments>0 OR v_relations>0 OR v_evidence>0
+   SELECT count(*) INTO v_links FROM public.material_links
+     WHERE teacher_id=v_teacher AND material_id=p_material_id;
+   IF v_assignments>0 OR v_relations>0 OR v_evidence>0 OR v_links>0
      THEN RAISE EXCEPTION 'HISTORY_DEPENDENCIES'; END IF;
    UPDATE public.learning_materials SET archived_at=clock_timestamp(),
      updated_at=clock_timestamp(),revision=revision+1
@@ -6846,7 +6837,7 @@ BEGIN
  FOREACH v_table IN ARRAY ARRAY[
    'learning_materials','chess_games','chess_puzzles','chess_drills',
    'chess_study_chapters','learning_material_relations',
-   'material_teaching_evidence','training_assignments','assignment_attempts','assignment_reviews',
+   'material_links','material_teaching_evidence','training_assignments','assignment_attempts','assignment_reviews',
    'student_training_plans','student_training_plan_revisions'
  ] LOOP
    v_rows := p_tables -> v_table;
@@ -6997,7 +6988,7 @@ BEGIN
     'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
     'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
     'session_participants', 'session_attendance', 'chess_skill_categories',
-    'chess_observations', 'chess_learning_resources', 'lesson_slots', 'lessons',
+    'chess_observations', 'lesson_slots', 'lessons',
     'attendance', 'lesson_notes', 'skill_dimensions', 'skill_assessments',
     'invoices', 'invoice_items', 'payments', 'events', 'event_students',
     'event_rsvps', 'credit_packages', 'credit_redemptions'
@@ -7038,7 +7029,7 @@ BEGIN
         'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
         'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
         'session_participants', 'session_attendance', 'chess_skill_categories',
-        'chess_observations', 'chess_learning_resources', 'lesson_slots', 'lessons',
+        'chess_observations', 'lesson_slots', 'lessons',
         'skill_dimensions', 'invoices', 'events', 'credit_packages',
         'credit_redemptions'
       ]) THEN
