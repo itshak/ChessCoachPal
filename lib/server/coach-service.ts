@@ -308,12 +308,7 @@ export async function attendanceRecord(
 }
 
 export async function sessionsComplete(
-  db:Db,teacherId:string,input:{
-    sessionId:string;expectedUpdatedAt:string;idempotencyKey:string;
-    attendance:Array<{studentId:string;status:"present"|"absent"|"late"|"excused";
-      note:string;expectedUpdatedAt:string}>;
-    lessonNote?:string;
-  }
+  db:Db,teacherId:string,input:import("@/lib/lesson-completion").LessonCompletionInput
 ){
  void teacherId; // Authoritative transaction uses auth.uid() for all rows.
  if(input.attendance.length<1||input.attendance.length>50)

@@ -8,7 +8,7 @@ import {
   groupsCreate, groupsEnroll, groupsUnenroll, groupsList, groupsMembers,
   sessionsCreate, sessionsAdHocCreate, sessionsList, sessionsParticipants, studentsSearch,
   workplacesCreate, workplacesList, workplacesUpdate, workplacesEnroll, workplacesUnenroll, workplacesEnrollments,
-  studentsCreate, studentsUpdate, groupsUpdate, sessionsUpdate, assertTimezone,
+  studentsCreate, studentsUpdate, groupsUpdate, sessionsUpdate, sessionsComplete, assertTimezone,
 } from "@/lib/server/coach-service";
 
 import {
@@ -21,6 +21,7 @@ import { chessUuid, categoryName, observationText, observationInput, observedAt,
 } from "@/lib/chess-learning";
 import {materialLinksList,materialLinksCreate,materialLinksUpdate,
  materialLinksUnlinkImpact,materialLinksUnlink} from "@/lib/server/material-links";
+import {lessonCompletionSchema} from "@/lib/lesson-completion";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +77,7 @@ const calls = z.discriminatedUnion("action", [
     lessonNote: z.string().max(10000).optional(),
     status: z.enum(["scheduled", "completed", "cancelled"]).optional(),
   }),
+  lessonCompletionSchema.safeExtend({action:z.literal("sessions.complete")}),
   z.object({ action: z.literal("sessions.participants"), sessionId: uuid }),
   z.object({ action: z.literal("attendance.list"), sessionId: uuid }),
   z.object({ action: z.literal("chess.categories.list") }),
@@ -111,7 +113,7 @@ const toolNames = [
   "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll", "workplaces.unenroll", "workplaces.enrollments",
   "students.search", "students.create", "students.update",
   "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
-  "sessions.list", "sessions.create", "sessions.createAdHoc", "sessions.update", "sessions.participants",
+  "sessions.list", "sessions.create", "sessions.createAdHoc", "sessions.update", "sessions.complete", "sessions.participants",
   "attendance.list", "attendance.record",
   "chess.categories.list","chess.categories.create","chess.categories.update",
   "chess.categories.deleteImpact","chess.categories.delete",
@@ -225,6 +227,8 @@ export async function POST(req: NextRequest) {
         result = await sessionsCreate(db, teacherId, call); break;
       case "sessions.update":
         result = await sessionsUpdate(db, teacherId, call.sessionId, call); break;
+      case "sessions.complete":
+        result = await sessionsComplete(db,teacherId,call);break;
       case "sessions.createAdHoc":
         result=await sessionsAdHocCreate(db,teacherId,call);break;
       case "sessions.participants":

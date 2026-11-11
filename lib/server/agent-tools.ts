@@ -10,7 +10,7 @@ import {teacherImageFenPropose,imageFenInputSchema,ImageFenError} from "@/lib/se
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, groupsList, groupsMembers,
-  sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
+  sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, sessionsComplete, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
 } from "@/lib/server/coach-service";
 
 import {
@@ -26,6 +26,7 @@ import {materialLinksList,materialLinksCreate,materialLinksUpdate,
 import { chessUuid, categoryName, observationText, observedAt, observationInput,
  materialLinkListInput,materialLinkCreateInput,materialLinkUpdateInput,materialLinkUnlinkInput,
 } from "@/lib/chess-learning";
+import {lessonCompletionSchema,type LessonCompletionInput} from "@/lib/lesson-completion";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import {materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,materialRelationListSchema,materialRelationSchema,materialArchivePreviewSchema,materialLifecycleSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,teacherMaterialRelationsList,teacherMaterialRelationChange,teacherMaterialArchivePreview,teacherMaterialLifecycleChange,MaterialCatalogError} from "@/lib/server/learning-materials";
 import {assignmentListSchema,assignmentCreateSchema,assignmentAttemptSchema,assignmentReviewSchema,teacherAssignmentsList,teacherAssignmentsCreate,teacherAssignmentAttempt,teacherAssignmentReview,AssignmentServiceError} from "@/lib/server/training-assignments";
@@ -1092,6 +1093,11 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_sessions_complete",
+    description:"Atomically record the complete frozen student roster and mark one coaching lesson completed. Requires one explicit present/absent/late/excused status and current attendance revision per student, current lesson revision, one idempotency UUID and confirmation. No material mastery inferred.",
+    schema:lessonCompletionSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_v1_sessions_reschedule",
     description:"Reschedule an identified scheduled lesson; requires its latest revision, explicit offset and confirmation.",
     schema:z.object({sessionId:uuid,startsAt:instant,
@@ -1863,6 +1869,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           ...a.changes,expectedUpdatedAt:a.expectedUpdatedAt,requestId:a.idempotencyKey,
         });
         return {data:updated};
+      }
+      case "ccp_v1_sessions_complete": {
+        return {data:await sessionsComplete(db,teacherId,args as LessonCompletionInput)};
       }
       case "ccp_v1_sessions_roster_preview": {
          const a=args as {sessionId:string};
