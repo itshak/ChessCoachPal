@@ -122,3 +122,56 @@ test("PARITY:PARITY-events-crud schedules event roster and synchronizes changes 
  const gone=await page.request.get("/api/events/"+eventId);
  expect(gone.status()).toBe(404);
 });
+
+
+test("PARITY:PARITY-family-portal-replay keeps exactly one rotated secret across browser and MCP retries",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const create=await call("ccp_v1_guardians_create",{
+   name:"Replay family "+randomUUID(),confirmed:true,
+ });
+ expect(create.error).toBeUndefined();
+ const id=create.data.id as string;
+ const key=randomUUID();
+ const url="/api/guardians/"+id+"/rotate-token";
+ const website=await page.request.post(url,{data:{requestId:key}});
+ expect(website.status(),await website.text()).toBe(200);
+ expect((await website.json()).replayed).toBe(false);
+ const first=await page.request.get("/api/guardians/"+id);
+ expect(first.status(),await first.text()).toBe(200);
+ const firstToken=(await first.json()).portal_token as string;
+ expect(firstToken).toBeTruthy();
+
+ const modelRetry=await call("ccp_v1_guardians_rotate_portal_token",{
+   guardianId:id,requestId:key,confirmed:true,
+ });
+ expect(modelRetry.error).toBeUndefined();
+ expect(modelRetry.data.replayed).toBe(true);
+ expect(modelRetry.data.secretNotReturned).toBe(true);
+ expect(modelRetry.data.portal_token).toBeUndefined();
+ const stable=await page.request.get("/api/guardians/"+id);
+ expect((await stable.json()).portal_token).toBe(firstToken);
+
+ const anotherKey=randomUUID();
+ const modelRotate=await call("ccp_v1_guardians_rotate_portal_token",{
+   guardianId:id,requestId:anotherKey,confirmed:true,
+ });
+ expect(modelRotate.error).toBeUndefined();
+ expect(modelRotate.data.replayed).toBe(false);
+ const newToken=(await (await page.request.get("/api/guardians/"+id)).json()).portal_token as string;
+ expect(newToken).toBeTruthy();
+ expect(newToken).not.toBe(firstToken);
+
+ const browserRetry=await page.request.post(url,{data:{requestId:anotherKey}});
+ expect(browserRetry.status(),await browserRetry.text()).toBe(200);
+ expect((await browserRetry.json()).replayed).toBe(true);
+ expect((await (await page.request.get("/api/guardians/"+id)).json()).portal_token).toBe(newToken);
+
+ const other=await call("ccp_v1_guardians_create",{
+   name:"Different family "+randomUUID(),confirmed:true,
+ });
+ expect(other.error).toBeUndefined();
+ const conflict=await call("ccp_v1_guardians_rotate_portal_token",{
+   guardianId:other.data.id,requestId:anotherKey,confirmed:true,
+ });
+ expect(conflict.error?.code).toBe("IDEMPOTENCY_CONFLICT");
+});
