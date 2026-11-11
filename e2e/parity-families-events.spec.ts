@@ -175,3 +175,58 @@ test("PARITY:PARITY-family-portal-replay keeps exactly one rotated secret across
  });
  expect(conflict.error?.code).toBe("IDEMPOTENCY_CONFLICT");
 });
+
+
+test("PARITY:PARITY-families-list-create matches website and MCP while redacting contact details",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const websiteName="Browser family "+randomUUID();
+ const created=await page.request.post("/api/guardians",{data:{
+   name:websiteName,email:"synthetic-"+randomUUID()+"@example.com",
+ }});
+ expect(created.status(),await created.text()).toBe(200);
+ const websiteFamily=await created.json();
+ const listedSite=await page.request.get("/api/guardians");
+ expect(listedSite.status(),await listedSite.text()).toBe(200);
+ const listedModel=await call("ccp_v1_guardians_list",{});
+ expect(listedModel.error).toBeUndefined();
+ const record=(listedModel.data as Array<{id:string;name:string;email?:string;portal_token?:string}>)
+   .find(x=>x.id===websiteFamily.id);
+ expect(record).toMatchObject({id:websiteFamily.id,name:websiteName});
+ expect(record?.email).toBeUndefined();
+ expect(record?.portal_token).toBeUndefined();
+ expect((await listedSite.json()).some((x:{id:string})=>x.id===websiteFamily.id)).toBe(true);
+ const modelName="Model family "+randomUUID();
+ const modelCreate=await call("ccp_v1_guardians_create",{
+   name:modelName,confirmed:true,
+ });
+ expect(modelCreate.error).toBeUndefined();
+ const webDetail=await page.request.get("/api/guardians/"+modelCreate.data.id);
+ expect(webDetail.status(),await webDetail.text()).toBe(200);
+ expect((await webDetail.json()).name).toBe(modelName);
+});
+
+test("PARITY:PARITY-events-list-create shares exact event summaries from website and MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const title="Browser chess event "+randomUUID();
+ const browser=await page.request.post("/api/events",{data:{
+   title,startsAt:"2045-01-23T11:00:00+02:00",
+   endsAt:"2045-01-23T13:00:00+02:00",studentIds:[],
+ }});
+ expect(browser.status(),await browser.text()).toBe(201);
+ const eventId=(await browser.json()).event.id as string;
+ const model=await call("ccp_v1_events_list",{});
+ expect(model.error).toBeUndefined();
+ const site=await page.request.get("/api/events");
+ expect(site.status(),await site.text()).toBe(200);
+ expect(model.data).toEqual(await site.json());
+ expect(model.data.events.some((x:{id:string;title:string})=>
+   x.id===eventId&&x.title===title)).toBe(true);
+ const other=await call("ccp_v1_events_create",{
+   title:"Model chess event "+randomUUID(),
+   startsAt:"2045-01-24T14:00:00+02:00",studentIds:[],confirmed:true,
+ });
+ expect(other.error).toBeUndefined();
+ const detail=await page.request.get("/api/events/"+other.data.event.id);
+ expect(detail.status(),await detail.text()).toBe(200);
+ expect((await detail.json()).event.title).toBe(other.data.event.title);
+});
