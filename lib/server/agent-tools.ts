@@ -39,7 +39,6 @@ import { teacherDashboardSummary, teacherNotificationsList, teacherNotifications
 import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, teacherStudentChessHistory, teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, StudentProfileError } from "@/lib/server/student-profile-service";
 import { studentUpdateSchema,studentCreateSchema } from "@/lib/server/api-schemas";
 import { createStudentWithOptionalFamily } from "@/lib/server/families";
-import { assertWithinHostedLimit } from "@/lib/server/entitlements";
 const safeStudentProfile = (row: Record<string,unknown>) => ({
   id:row.id,name:row.name,name_aliases:row.name_aliases,level:row.level,
   strength:row.strength,lichess_username:row.lichess_username,chesscom_username:row.chesscom_username,
@@ -1169,10 +1168,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       ccp_v1_sessions_cancel:"sessions.cancel",
     };
     if (name in operations) {
-      if (name === "ccp_v1_students_create") {
-        const check=await assertWithinHostedLimit(db,teacherId,"students");
-        if (!check.allowed) return {error:{code:"HOSTED_LIMIT_REACHED",message:check.message ?? "Hosted active-student limit reached"}};
-      }
+      // A repeated student-create idempotency key must be able to replay
+      // even after its first success used the last hosted slot. Capacity is
+      // enforced atomically by the database trigger on all NEW inserts.
       const payload = args as Record<string,unknown>;
       if (payload.timezone !== undefined) {
         // The browser's canonical domain operation also rejects invalid IANA zones.
