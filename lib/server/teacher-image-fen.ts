@@ -1,4 +1,5 @@
 import "server-only";
+import {z} from "zod";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {fenBoard,PuzzleReviewError} from "@/lib/lichess-puzzles";
 import {getPolicy} from "@/lib/server/scheduling";
@@ -16,6 +17,14 @@ export type ImageFenInput={
 };
 export const MAX_FEN_IMAGE_BYTES=2*1024*1024;
 export const MAX_FEN_IMAGE_BASE64=Math.ceil(MAX_FEN_IMAGE_BYTES/3)*4+4;
+export const imageFenInputSchema=z.object({
+ imageBase64:z.string().min(16).max(MAX_FEN_IMAGE_BASE64),
+ mediaType:z.enum(["image/png","image/jpeg","image/webp"]),
+ confirmedExternal:z.literal(true),
+}).strict();
+export const imageFenWebsiteSchema=imageFenInputSchema.extend({
+ kind:z.literal("image"),
+}).strict();
 function validatedImage(input:ImageFenInput):Buffer{
  if(!input||input.confirmedExternal!==true)
   throw fail(400,"CONFIRMATION_REQUIRED",
