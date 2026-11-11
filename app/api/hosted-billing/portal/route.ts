@@ -4,13 +4,14 @@ import { getDeploymentMode } from "@/lib/entitlements";
 import {
   createPlatformStripe,
   isHostedCheckoutConfigured,
+  hostedBillingReturnOrigin,
 } from "@/lib/hosted-billing/stripe";
 
 /**
  * Stripe Customer Portal for ChessCoachPal Hosted Pro (cancel / payment method).
  * Distinct from teacher BYO lesson Stripe in Billing → Payment settings.
  */
-export async function POST(request: Request) {
+export async function POST() {
   if (getDeploymentMode() !== "hosted") {
     return NextResponse.json(
       { error: "Hosted billing is not enabled on this deployment" },
@@ -57,12 +58,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  const origin =
-    siteUrl ||
-    (process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : new URL(request.url).origin || "http://localhost:3000");
+  const origin=hostedBillingReturnOrigin();
+  if(!origin)return NextResponse.json({
+    error:"Hosted payment return URL is not safely configured",
+  },{status:503});
 
   try {
     const portal = await stripe.billingPortal.sessions.create({
@@ -72,7 +71,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ url: portal.url });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Portal failed.";
-    console.error("[hosted-billing/portal]", message);
+    console.error("[hosted-billing/portal] provider request failed",
+      err instanceof Error?err.name:"UnknownError");
     if (/no such customer/i.test(message) || /resource_missing/i.test(message)) {
       return NextResponse.json(
         {
@@ -82,6 +82,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Billing portal is temporarily unavailable" }, { status: 502 });
   }
 }
