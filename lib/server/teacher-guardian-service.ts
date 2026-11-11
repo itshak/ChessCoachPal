@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertWithinHostedLimit, limitReachedResponse } from "@/lib/server/entitlements";
-import { generateShortToken } from "@/lib/token";
 
 type Db = SupabaseClient;
 type MemberInput={name:string;birthdate?:string|null};
@@ -135,13 +134,26 @@ export async function guardianDelete(db:Db,teacherId:string,id:string){
   if(error)throw failure(500,"DATABASE_ERROR","Unable to delete family");
   return {ok:true};
 }
-/** Website can display the new portal credential; MCP MUST redact it. */
-export async function guardianRotatePortalToken(db:Db,teacherId:string,id:string){
-  const {data,error}=await db.from("guardians")
-    .update({portal_token:generateShortToken()})
-    .eq("teacher_id",teacherId).eq("id",id)
-    .select("id,portal_token").maybeSingle();
-  if(error)throw failure(500,"DATABASE_ERROR","Unable to rotate family portal link");
-  if(!data)throw failure(404,"NOT_FOUND","Family not found");
-  return data;
+/** Website can display the new portal credential; MCP MUST redact it.
+ * Optional requestId makes an approved retry return the same rotation receipt.
+ * The SQL transaction validates the authenticated tenant independently.
+ */
+export async function guardianRotatePortalToken(
+  db:Db,teacherId:string,id:string,requestId?:string
+){
+  if(requestId!==undefined&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId))
+    throw failure(400,"VALIDATION_ERROR","Rotation requestId must be a UUID");
+  const {data,error}=await db.rpc("ccp_guardian_rotate_portal_token",{
+    p_guardian_id:id,p_request_id:requestId??null,
+  });
+  void teacherId;
+  if(error){
+    if(error.code==="23505")throw failure(409,"IDEMPOTENCY_CONFLICT",
+      "This rotation requestId was used for a different family");
+    if(error.code==="42501")throw failure(404,"NOT_FOUND","Family not found");
+    throw failure(500,"DATABASE_ERROR","Unable to rotate family portal link");
+  }
+  if(!data||typeof data!=="object"||Array.isArray(data))
+    throw failure(500,"DATABASE_ERROR","Portal rotation returned an invalid receipt");
+  return data as {id:string;portal_token:string;replayed:boolean};
 }
