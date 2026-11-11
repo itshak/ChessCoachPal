@@ -519,7 +519,7 @@ const catalogue = [
   },
   {
     name:"ccp_v1_calendar_attendance_record",
-    description:"Confirm one private lesson's attendance, cancellation, no-show or deliberate clearing. Notification emails require notifyFamily=true plus explicit confirmedEmail=true; default is no email.",
+    description:"Write one private-calendar attendance decision through a teacher-locked, revision-checked SQL transaction. For safe cross-interface replay supply expectedMarkedAt (null if unmarked) AND idempotencyKey; changed-payload reuse or stale revisions conflict. Student cancellation replay needs explicit noticeAt. Family notification requires teacher_cancel plus notifyFamily=true and confirmedEmail=true; default is no email.",
     schema:z.object({lessonId:uuid,
       status:z.enum(["attended","teacher_cancel","student_cancel","no_show"]).nullable(),
       noticeChoice:z.enum(["now","timely","late","custom"]).optional(),

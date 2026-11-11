@@ -73,6 +73,36 @@ describe("legacy calendar external-message consent",()=>{
    .rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
   expect(writes).toHaveLength(0);
  });
+ it("uses one authenticated SQL writer instead of direct attendance upsert",async()=>{
+  const writes:Record<string,unknown>[]=[];
+  const result=await calendarAttendanceWrite(fakeAttendanceDb(writes),"teacher-one",
+    "lesson-one",{status:"attended",expectedMarkedAt:null,
+     idempotencyKey:"00000000-0000-4000-8000-000000000011"},noOrigin);
+  expect(result.status).toBe("attended");
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toMatchObject({
+   p_lesson_id:"lesson-one",p_status:"attended",p_expected_marked_at:null,
+   p_notify_family:false,p_idempotency_key:"00000000-0000-4000-8000-000000000011",
+  });
+ });
+ it("rejects missing optimistic preconditions and nonreplayable cancellation notice",async()=>{
+  const writes:Record<string,unknown>[]=[];
+  await expect(calendarAttendanceWrite(fakeAttendanceDb(writes),"teacher-one",
+   "lesson-one",{status:"attended",idempotencyKey:"00000000-0000-4000-8000-000000000012"},
+   noOrigin)).rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+  await expect(calendarAttendanceWrite(fakeAttendanceDb(writes),"teacher-one",
+   "lesson-one",{status:"student_cancel",expectedMarkedAt:null,
+    idempotencyKey:"00000000-0000-4000-8000-000000000013",noticeChoice:"now"},
+   noOrigin)).rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+  expect(writes).toHaveLength(0);
+ });
+ it("rejects email side effects unrelated to teacher cancellation",async()=>{
+  const writes:Record<string,unknown>[]=[];
+  await expect(calendarAttendanceWrite(fakeAttendanceDb(writes),"teacher-one",
+   "lesson-one",{status:"attended",notifyFamily:true},{origin:"http://localhost:3000"}))
+   .rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+  expect(writes).toHaveLength(0);
+ });
  it("rejects invalid email origin before saving private or family lesson notes",async()=>{
   const writes:Record<string,unknown>[]=[];
   await expect(calendarLessonNoteWrite(fakeAttendanceDb(writes),"teacher-one",
