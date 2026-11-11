@@ -42,7 +42,7 @@ export async function GET(req:NextRequest){
  }
  const parsed=materialsHistoryFilter.safeParse({
    studentId:q.get("studentId")||undefined,workplaceId:q.get("workplaceId")||undefined,
-   sessionId:q.get("sessionId")||undefined,resourceId:q.get("resourceId")||undefined,
+   sessionId:q.get("sessionId")||undefined,materialId:q.get("materialId")||undefined,
    stage:q.get("stage")||undefined,from:q.get("from")||undefined,to:q.get("to")||undefined,
    includeVoided:q.get("includeVoided")==="true",
    offset:Number(q.get("offset")??0),limit:Number(q.get("limit")??50),

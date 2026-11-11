@@ -951,7 +951,7 @@ const catalogue = [
   },
   {
     name:"ccp_v1_materials_history_record",
-    description:"After explicit teacher confirmation, append an assigned/taught/completed claim for a linked study/resource and identified learner, optionally tied to workplace/session. requestId makes repeats idempotent; a model must never infer completed from merely opening a study.",
+    description:"After explicit teacher confirmation, append an assigned/taught/completed claim for a canonical typed material ID and identified learner, optionally tied to workplace/session. requestId makes repeats idempotent; a model must never infer completed from merely opening a study.",
     schema:materialsHistoryRecord,
     scope:"coach:write",readOnly:false,
   },

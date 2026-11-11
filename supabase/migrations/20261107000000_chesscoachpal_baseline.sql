@@ -3523,107 +3523,6 @@ FOR EACH ROW EXECUTE FUNCTION public.ccp_student_search_refresh();
 UPDATE public.students SET name_search = lower(name || ' ' || array_to_string(name_aliases, ' '));
 CREATE INDEX IF NOT EXISTS ccp_students_teacher_active_name ON public.students(teacher_id, archived_at, name);
 
--- Explicit chess material coverage; linked studies are NOT automatically "taught".
--- Pre-1.0 schema, fresh installations only. No material content is fetched from Lichess.
-CREATE TABLE public.chess_material_progress (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  teacher_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  student_id uuid NOT NULL REFERENCES public.students(id),
-  workplace_id uuid REFERENCES public.workplaces(id),
-  session_id uuid REFERENCES public.teaching_sessions(id),
-  resource_id uuid NOT NULL REFERENCES public.chess_learning_resources(id),
-  stage text NOT NULL CHECK (stage IN ('assigned','taught','completed')),
-  occurred_on date NOT NULL,
-  note text NOT NULL DEFAULT '' CHECK (char_length(note) <= 2000),
-  request_id uuid NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  voided_at timestamptz,
-  void_reason text CHECK (void_reason IS NULL OR (char_length(btrim(void_reason)) BETWEEN 5 AND 500)),
-  CONSTRAINT chess_material_progress_request UNIQUE (teacher_id,request_id),
-  CONSTRAINT chess_material_progress_void_pair CHECK
-    ((voided_at IS NULL) = (void_reason IS NULL))
-);
-CREATE INDEX chess_material_progress_student_idx
- ON public.chess_material_progress(teacher_id,student_id,occurred_on DESC,id);
-CREATE INDEX chess_material_progress_workplace_idx
- ON public.chess_material_progress(teacher_id,workplace_id,occurred_on DESC,id);
-CREATE INDEX chess_material_progress_session_idx
- ON public.chess_material_progress(teacher_id,session_id);
-
-ALTER TABLE public.chess_material_progress ENABLE ROW LEVEL SECURITY;
-CREATE POLICY chess_material_progress_owner ON public.chess_material_progress
- FOR ALL TO authenticated USING (teacher_id = auth.uid())
- WITH CHECK (teacher_id = auth.uid());
-GRANT SELECT,INSERT,UPDATE ON public.chess_material_progress TO authenticated;
-GRANT ALL ON public.chess_material_progress TO service_role;
-
--- Bound each student's material claim to teacher-owned resources/rosters/workplace.
--- The trigger also protects direct browser Supabase writes, not just MCP or API.
-CREATE FUNCTION public.ccp_material_progress_validate() RETURNS trigger
-LANGUAGE plpgsql SET search_path=public AS $$
-DECLARE v_workplace uuid; v_source_student uuid; v_source_session uuid;
-BEGIN
-  IF TG_OP = 'UPDATE' THEN
-    IF (NEW.teacher_id,NEW.student_id,NEW.workplace_id,NEW.session_id,
-        NEW.resource_id,NEW.stage,NEW.occurred_on,NEW.note,NEW.request_id,
-        NEW.created_at)
-      IS DISTINCT FROM
-       (OLD.teacher_id,OLD.student_id,OLD.workplace_id,OLD.session_id,
-        OLD.resource_id,OLD.stage,OLD.occurred_on,OLD.note,OLD.request_id,
-        OLD.created_at) THEN
-      RAISE EXCEPTION 'MATERIAL_HISTORY_IMMUTABLE';
-    END IF;
-    IF OLD.voided_at IS NOT NULL OR NEW.voided_at IS NULL OR
-       NEW.void_reason IS NULL OR length(btrim(NEW.void_reason)) < 5 THEN
-      RAISE EXCEPTION 'INVALID_MATERIAL_VOID';
-    END IF;
-    NEW.updated_at := clock_timestamp();
-    RETURN NEW;
-  END IF;
-  PERFORM 1 FROM public.students
-   WHERE id=NEW.student_id AND teacher_id=NEW.teacher_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND_STUDENT'; END IF;
-  SELECT student_id,session_id INTO v_source_student,v_source_session
-    FROM public.chess_learning_resources
-    WHERE id=NEW.resource_id AND teacher_id=NEW.teacher_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND_RESOURCE'; END IF;
-  IF v_source_student IS NOT NULL AND v_source_student<>NEW.student_id THEN
-    RAISE EXCEPTION 'RESOURCE_STUDENT_MISMATCH';
-  END IF;
-  IF v_source_session IS NOT NULL AND v_source_session IS DISTINCT FROM NEW.session_id THEN
-    RAISE EXCEPTION 'RESOURCE_SESSION_MISMATCH';
-  END IF;
-  IF NEW.workplace_id IS NOT NULL THEN
-    PERFORM 1 FROM public.workplaces WHERE id=NEW.workplace_id AND teacher_id=NEW.teacher_id;
-    IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND_WORKPLACE'; END IF;
-  END IF;
-  IF NEW.session_id IS NOT NULL THEN
-    SELECT workplace_id INTO v_workplace FROM public.teaching_sessions
-      WHERE id=NEW.session_id AND teacher_id=NEW.teacher_id;
-    IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND_SESSION'; END IF;
-    IF NEW.workplace_id IS DISTINCT FROM v_workplace THEN
-      RAISE EXCEPTION 'SESSION_WORKPLACE_MISMATCH';
-    END IF;
-    PERFORM 1 FROM public.session_participants
-      WHERE teacher_id=NEW.teacher_id AND session_id=NEW.session_id
-        AND student_id=NEW.student_id;
-    IF NOT FOUND THEN RAISE EXCEPTION 'NOT_SESSION_PARTICIPANT'; END IF;
-  ELSIF NEW.workplace_id IS NOT NULL THEN
-    PERFORM 1 FROM public.workplace_enrollments
-      WHERE teacher_id=NEW.teacher_id AND workplace_id=NEW.workplace_id
-        AND student_id=NEW.student_id;
-    IF NOT FOUND THEN RAISE EXCEPTION 'NOT_WORKPLACE_ENROLLED'; END IF;
-  END IF;
-  NEW.updated_at := clock_timestamp();
-  RETURN NEW;
-END;
-$$;
-CREATE TRIGGER ccp_material_progress_validate_trg
- BEFORE INSERT OR UPDATE ON public.chess_material_progress
- FOR EACH ROW EXECUTE FUNCTION public.ccp_material_progress_validate();
-REVOKE ALL ON FUNCTION public.ccp_material_progress_validate() FROM PUBLIC,anon,authenticated;
-
 -- Direct owner-scoped student removals must never cascade linked teaching records.
 -- The API's deletion impact preview is advisory; the final safety check belongs
 -- in the DELETE transaction, after PostgreSQL acquires the student row lock.
@@ -3650,7 +3549,7 @@ BEGIN
     UNION ALL SELECT 1 FROM public.skill_assessments WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.chess_learning_resources WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.chess_observations WHERE student_id = OLD.id
-    UNION ALL SELECT 1 FROM public.chess_material_progress WHERE student_id = OLD.id
+    UNION ALL SELECT 1 FROM public.material_teaching_evidence WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.event_students WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.credit_packages WHERE student_id = OLD.id
   ) THEN
@@ -6590,6 +6489,7 @@ DECLARE
  v_hash text;
  v_assignments integer;
  v_relations integer;
+ v_evidence integer;
 BEGIN
  IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED'; END IF;
  IF p_material_id IS NULL OR p_expected_revision IS NULL OR p_expected_revision<1
@@ -6623,7 +6523,9 @@ BEGIN
    SELECT count(*) INTO v_relations FROM public.learning_material_relations
      WHERE teacher_id=v_teacher AND
       (from_material_id=p_material_id OR to_material_id=p_material_id);
-   IF v_assignments>0 OR v_relations>0
+   SELECT count(*) INTO v_evidence FROM public.material_teaching_evidence
+     WHERE teacher_id=v_teacher AND material_id=p_material_id;
+   IF v_assignments>0 OR v_relations>0 OR v_evidence>0
      THEN RAISE EXCEPTION 'HISTORY_DEPENDENCIES'; END IF;
    UPDATE public.learning_materials SET archived_at=clock_timestamp(),
      updated_at=clock_timestamp(),revision=revision+1
@@ -6817,6 +6719,104 @@ GRANT EXECUTE ON FUNCTION public.ccp_student_training_plan_commit(
 -- Restoration is an explicit, audited coach-owned operation using one
 -- authenticated backup receipt; the helper enforces teacher ownership and
 -- checks each upsert target before allowing a conflict update.
+-- Explicit chess material coverage; linked studies are NOT automatically "taught".
+-- The one typed catalog owns material identity; this ledger stores only explicit teaching evidence.
+CREATE TABLE public.material_teaching_evidence (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  student_id uuid NOT NULL REFERENCES public.students(id),
+  workplace_id uuid REFERENCES public.workplaces(id),
+  session_id uuid REFERENCES public.teaching_sessions(id),
+  material_id uuid NOT NULL,
+  CONSTRAINT material_evidence_material_owner_fk
+   FOREIGN KEY(teacher_id,material_id) REFERENCES public.learning_materials(teacher_id,id)
+   ON DELETE RESTRICT,
+  stage text NOT NULL CHECK (stage IN ('assigned','taught','completed')),
+  occurred_on date NOT NULL,
+  note text NOT NULL DEFAULT '' CHECK (char_length(note) <= 2000),
+  request_id uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  voided_at timestamptz,
+  void_reason text CHECK (void_reason IS NULL OR (char_length(btrim(void_reason)) BETWEEN 5 AND 500)),
+  CONSTRAINT material_teaching_evidence_request UNIQUE (teacher_id,request_id),
+  CONSTRAINT material_teaching_evidence_void_pair CHECK
+    ((voided_at IS NULL) = (void_reason IS NULL))
+);
+CREATE INDEX material_teaching_evidence_student_idx
+ ON public.material_teaching_evidence(teacher_id,student_id,occurred_on DESC,id);
+CREATE INDEX material_teaching_evidence_workplace_idx
+ ON public.material_teaching_evidence(teacher_id,workplace_id,occurred_on DESC,id);
+CREATE INDEX material_teaching_evidence_session_idx
+ ON public.material_teaching_evidence(teacher_id,session_id);
+
+ALTER TABLE public.material_teaching_evidence ENABLE ROW LEVEL SECURITY;
+CREATE POLICY material_teaching_evidence_owner ON public.material_teaching_evidence
+ FOR ALL TO authenticated USING (teacher_id = auth.uid())
+ WITH CHECK (teacher_id = auth.uid());
+GRANT SELECT,INSERT,UPDATE ON public.material_teaching_evidence TO authenticated;
+GRANT ALL ON public.material_teaching_evidence TO service_role;
+
+-- Bound each student's material claim to teacher-owned resources/rosters/workplace.
+-- The trigger also protects direct browser Supabase writes, not just MCP or API.
+CREATE FUNCTION public.ccp_material_progress_validate() RETURNS trigger
+LANGUAGE plpgsql SET search_path=public AS $$
+DECLARE v_workplace uuid;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF (NEW.teacher_id,NEW.student_id,NEW.workplace_id,NEW.session_id,
+        NEW.material_id,NEW.stage,NEW.occurred_on,NEW.note,NEW.request_id,
+        NEW.created_at)
+      IS DISTINCT FROM
+       (OLD.teacher_id,OLD.student_id,OLD.workplace_id,OLD.session_id,
+        OLD.material_id,OLD.stage,OLD.occurred_on,OLD.note,OLD.request_id,
+        OLD.created_at) THEN
+      RAISE EXCEPTION 'MATERIAL_HISTORY_IMMUTABLE';
+    END IF;
+    IF OLD.voided_at IS NOT NULL OR NEW.voided_at IS NULL OR
+       NEW.void_reason IS NULL OR length(btrim(NEW.void_reason)) < 5 THEN
+      RAISE EXCEPTION 'INVALID_MATERIAL_VOID';
+    END IF;
+    NEW.updated_at := clock_timestamp();
+    RETURN NEW;
+  END IF;
+  PERFORM 1 FROM public.students
+   WHERE id=NEW.student_id AND teacher_id=NEW.teacher_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND_STUDENT'; END IF;
+  PERFORM 1 FROM public.learning_materials
+    WHERE id=NEW.material_id AND teacher_id=NEW.teacher_id AND archived_at IS NULL;
+  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND_ACTIVE_MATERIAL'; END IF;
+  IF NEW.workplace_id IS NOT NULL THEN
+    PERFORM 1 FROM public.workplaces WHERE id=NEW.workplace_id AND teacher_id=NEW.teacher_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND_WORKPLACE'; END IF;
+  END IF;
+  IF NEW.session_id IS NOT NULL THEN
+    SELECT workplace_id INTO v_workplace FROM public.teaching_sessions
+      WHERE id=NEW.session_id AND teacher_id=NEW.teacher_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND_SESSION'; END IF;
+    IF NEW.workplace_id IS DISTINCT FROM v_workplace THEN
+      RAISE EXCEPTION 'SESSION_WORKPLACE_MISMATCH';
+    END IF;
+    PERFORM 1 FROM public.session_participants
+      WHERE teacher_id=NEW.teacher_id AND session_id=NEW.session_id
+        AND student_id=NEW.student_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'NOT_SESSION_PARTICIPANT'; END IF;
+  ELSIF NEW.workplace_id IS NOT NULL THEN
+    PERFORM 1 FROM public.workplace_enrollments
+      WHERE teacher_id=NEW.teacher_id AND workplace_id=NEW.workplace_id
+        AND student_id=NEW.student_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'NOT_WORKPLACE_ENROLLED'; END IF;
+  END IF;
+  NEW.updated_at := clock_timestamp();
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER ccp_material_progress_validate_trg
+ BEFORE INSERT OR UPDATE ON public.material_teaching_evidence
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_material_progress_validate();
+REVOKE ALL ON FUNCTION public.ccp_material_progress_validate() FROM PUBLIC,anon,authenticated;
+
+
 CREATE FUNCTION public.ccp_restore_canonical_chess_rows(p_tables jsonb)
  RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
  SET search_path='' AS $restore_chess$
@@ -6846,7 +6846,7 @@ BEGIN
  FOREACH v_table IN ARRAY ARRAY[
    'learning_materials','chess_games','chess_puzzles','chess_drills',
    'chess_study_chapters','learning_material_relations',
-   'training_assignments','assignment_attempts','assignment_reviews',
+   'material_teaching_evidence','training_assignments','assignment_attempts','assignment_reviews',
    'student_training_plans','student_training_plan_revisions'
  ] LOOP
    v_rows := p_tables -> v_table;

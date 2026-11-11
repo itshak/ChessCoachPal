@@ -229,11 +229,9 @@ export async function chessResourcesUnlinkImpact(db:Db,teacherId:string,resource
     .select("id,label").eq("teacher_id",teacherId).eq("id",resourceId).maybeSingle();
   if(lookupError)throw failed();
   if(!resource)throw missing();
-  const {count,error}=await db.from("chess_material_progress")
-    .select("id",{count:"exact",head:true})
-    .eq("teacher_id",teacherId).eq("resource_id",resourceId);
-  if(error)throw failed();
-  return {resourceId,label:resource.label,claimCount:count??0,canUnlink:(count??0)===0};
+  // A URL reference is not a canonical material or a teaching claim.
+  // Removing it leaves all typed-material evidence unchanged.
+  return {resourceId,label:resource.label,claimCount:0,canUnlink:true};
 }
 export async function chessResourcesUnlink(db:Db,teacherId:string,resourceId:string){
   const impact=await chessResourcesUnlinkImpact(db,teacherId,resourceId);

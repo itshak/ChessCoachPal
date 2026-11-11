@@ -25,6 +25,8 @@ export function canonicalSchemaErrors({
  }
  if(/DATA_EXPORT_VERSION|(?:^|\n)\s*version:\s*(?:number|[0-9])|raw\.version|backup\.version/i.test(transfer))
    errors.push("Current teacher backup must not have format-version negotiation");
+ if(/CREATE TABLE\s+(?:public\.)?chess_material_progress\s*\(/i.test(sql))
+   errors.push("Duplicate material evidence ledger forbidden; use material_teaching_evidence");
  if(strictMaterials&&/chess_learning_resources|chess_material_progress\s*\(/i.test(sql))
    errors.push("Canonical typed-material gate requires removal of the separate learning-resource catalog and progress writer");
  if(/"version"\s*:\s*backup\.version|\bversion\s*:\s*1\s*,\s*exportedAt/.test(transfer))

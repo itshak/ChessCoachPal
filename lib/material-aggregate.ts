@@ -1,6 +1,6 @@
 /** Deterministic, full-filtered-history material summary. Claims are teacher-attested evidence, not inferred mastery. */
 export type MaterialSummaryRow = {
-  id:string;studentId:string;sessionId:string|null;resourceId:string;
+  id:string;studentId:string;sessionId:string|null;materialId:string;
   stage:"assigned"|"taught"|"completed";label:string|null;
 };
 const stageCount=()=>({assigned:0,taught:0,completed:0});
@@ -10,21 +10,21 @@ export function summarizeMaterialClaims(rows:MaterialSummaryRow[]){
   const groupSessionStages=new Set<string>();
   const studentMaterialStages=new Set<string>();
   const stages=stageCount();
-  const resources=new Map<string,{resourceId:string;label:string|null;
+  const materials=new Map<string,{materialId:string;label:string|null;
     claims:ReturnType<typeof stageCount>;students:Set<string>;sessions:Set<string>}>();
   for(const row of rows){
     students.add(row.studentId);
     if(row.sessionId){
       sessions.add(row.sessionId);
-      groupSessionStages.add(JSON.stringify([row.sessionId,row.resourceId,row.stage]));
+      groupSessionStages.add(JSON.stringify([row.sessionId,row.materialId,row.stage]));
     }
-    studentMaterialStages.add(JSON.stringify([row.studentId,row.resourceId,row.stage]));
+    studentMaterialStages.add(JSON.stringify([row.studentId,row.materialId,row.stage]));
     stages[row.stage]++;
-    let item=resources.get(row.resourceId);
+    let item=materials.get(row.materialId);
     if(!item){
-      item={resourceId:row.resourceId,label:row.label,claims:stageCount(),
+      item={materialId:row.materialId,label:row.label,claims:stageCount(),
         students:new Set(),sessions:new Set()};
-      resources.set(row.resourceId,item);
+      materials.set(row.materialId,item);
     }
     item.claims[row.stage]++;
     item.students.add(row.studentId);
@@ -35,9 +35,9 @@ export function summarizeMaterialClaims(rows:MaterialSummaryRow[]){
     uniqueSessionMaterialStageCount:groupSessionStages.size,
     uniqueStudentMaterialStageCount:studentMaterialStages.size,
     stages,
-    resources:[...resources.values()].map(r=>({
-      resourceId:r.resourceId,label:r.label,stages:r.claims,
+    materials:[...materials.values()].map(r=>({
+      materialId:r.materialId,label:r.label,stages:r.claims,
       studentCount:r.students.size,sessionCount:r.sessions.size,
-    })).sort((a,b)=>(a.label??"").localeCompare(b.label??"")||a.resourceId.localeCompare(b.resourceId)),
+    })).sort((a,b)=>(a.label??"").localeCompare(b.label??"")||a.materialId.localeCompare(b.materialId)),
   };
 }

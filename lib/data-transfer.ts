@@ -29,7 +29,7 @@ const IMPORT_ORDER = [
   // respects material root/subtypes → relations → homework/reviews → plans.
   "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
   "chess_study_chapters", "learning_material_relations",
-  "training_assignments", "assignment_attempts", "assignment_reviews",
+  "material_teaching_evidence", "training_assignments", "assignment_attempts", "assignment_reviews",
   "student_training_plans", "student_training_plan_revisions",
 ] as const;
 
@@ -41,7 +41,7 @@ const TEACHER_SCOPED = [
   "skill_dimensions", "invoices", "events", "credit_packages", "credit_redemptions",
   "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
   "chess_study_chapters", "learning_material_relations",
-  "training_assignments", "assignment_attempts", "assignment_reviews",
+  "material_teaching_evidence", "training_assignments", "assignment_attempts", "assignment_reviews",
   "student_training_plans", "student_training_plan_revisions",
 ] as const;
 

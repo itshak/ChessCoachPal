@@ -250,19 +250,22 @@ export async function teacherMaterialRelationChange(
  */
 export async function teacherMaterialArchivePreview(db:Db,teacherId:string,materialId:string){
  const material=await teacherMaterialCatalogGet(db,teacherId,materialId);
- const [assignments,relations]=await Promise.all([
+ const [assignments,relations,evidence]=await Promise.all([
    db.from("training_assignments").select("id",{count:"exact",head:true})
     .eq("teacher_id",teacherId).eq("material_id",materialId),
    db.from("learning_material_relations").select("from_material_id",{count:"exact",head:true})
     .eq("teacher_id",teacherId)
     .or("from_material_id.eq."+materialId+",to_material_id.eq."+materialId),
+   db.from("material_teaching_evidence").select("id",{count:"exact",head:true})
+    .eq("teacher_id",teacherId).eq("material_id",materialId),
  ]);
- if(assignments.error||relations.error)
+ if(assignments.error||relations.error||evidence.error)
    throw fail(503,"PREVIEW_UNAVAILABLE","Unable to verify material history dependencies");
- const assignmentCount=assignments.count??0,relationshipCount=relations.count??0;
+ const assignmentCount=assignments.count??0,relationshipCount=relations.count??0,
+   evidenceCount=evidence.count??0;
  return {materialId,title:material.title,kind:material.kind,revision:material.revision,
-   archived:material.archived_at!==null,assignmentCount,relationshipCount,
-   canArchive:assignmentCount===0&&relationshipCount===0,
+   archived:material.archived_at!==null,assignmentCount,relationshipCount,evidenceCount,
+   canArchive:assignmentCount===0&&relationshipCount===0&&evidenceCount===0,
    safety:"Archiving hides a material from active search but retains its identity and prior records"};
 }
 export async function teacherMaterialLifecycleChange(
