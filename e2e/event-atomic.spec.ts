@@ -105,3 +105,52 @@ test("PARITY:PARITY-events-transaction-roundtrip preserves RSVP roster across we
  expect(model.data.event.title).toBe(title+" reviewed");
  expect(model.data.event.students).toEqual([]);
 });
+
+
+test("PARITY:PARITY-event-cross-client-idempotency rejects conflicting retries and writes one event",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const key=randomUUID();
+ const title="One event per reviewed request "+randomUUID();
+ const start="2027-10-09T14:00:00+03:00";
+ const created=await call("ccp_v1_events_create",{
+   title,startsAt:start,idempotencyKey:key,confirmed:true,
+ });
+ expect(created.error).toBeUndefined();
+ const id=created.data.event.id as string;
+
+ const webRetry=await page.request.post("/api/events",{data:{
+   title,startsAt:start,idempotencyKey:key,
+ }});
+ expect(webRetry.status(),await webRetry.text()).toBe(201);
+ expect((await webRetry.json()).event.id).toBe(id);
+
+ const browserList=await page.request.get("/api/events");
+ expect(browserList.status(),await browserList.text()).toBe(200);
+ expect((await browserList.json()).events.filter(
+   (e:{title:string})=>e.title===title)).toHaveLength(1);
+
+ const changed=await page.request.post("/api/events",{data:{
+   title:title+" conflicting",startsAt:start,idempotencyKey:key,
+ }});
+ expect(changed.status(),await changed.text()).toBe(409);
+
+ const updateKey=randomUUID();
+ const browserUpdate=await page.request.put("/api/events/"+id,{data:{
+   location:"Reviewed club venue",idempotencyKey:updateKey,
+ }});
+ expect(browserUpdate.status(),await browserUpdate.text()).toBe(200);
+ const modelRetry=await call("ccp_v1_events_update",{
+   eventId:id,location:"Reviewed club venue",idempotencyKey:updateKey,
+   confirmed:true,
+ });
+ expect(modelRetry.error).toBeUndefined();
+ const after=(await (await page.request.get("/api/events/"+id)).json()).event;
+ expect(after.location).toBe("Reviewed club venue");
+ const updateConflict=await call("ccp_v1_events_update",{
+   eventId:id,location:"Different venue",idempotencyKey:updateKey,
+   confirmed:true,
+ });
+ expect(updateConflict.error?.code).toBe("IDEMPOTENCY_CONFLICT");
+ const final=(await (await page.request.get("/api/events/"+id)).json()).event;
+ expect(final.location).toBe("Reviewed club venue");
+});
