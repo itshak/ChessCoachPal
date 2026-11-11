@@ -39,6 +39,16 @@ test("PARITY:PARITY-student-training-plans-goal-history keeps explicit coach dec
  expect(webOne.status(),await webOne.text()).toBe(200);
  expect(one.data).toEqual(await webOne.json());
 
+ const deletePreviewWeb=await page.request.get("/api/students/"+studentId+"?deletePreview=true");
+ expect(deletePreviewWeb.status(),await deletePreviewWeb.text()).toBe(200);
+ const deletePreview=await deletePreviewWeb.json();
+ const deletePreviewMcp=await call("ccp_v1_students_delete_impact",{studentId});
+ expect(deletePreviewMcp.error).toBeUndefined();
+ expect(deletePreviewMcp.data).toEqual(deletePreview);
+ expect(deletePreview.blockers.trainingPlans).toBe(1);
+ expect(deletePreview.blockers.typedHomework).toBe(0);
+ expect(deletePreview.canDelete).toBe(false);
+
  // Neither interface can infer mastery from a checked-off task.
  const invalid={...draft,planId,expectedRevision:1,status:"completed",
    goals:[{...goal,status:"achieved",coachEvidence:""}],
@@ -102,4 +112,20 @@ test("PARITY:PARITY-student-training-plans-goal-history keeps explicit coach dec
  expect(allPlans.data.plans.find((x:{id:string})=>x.id===planId).status).toBe("archived");
  const unknown=await call("ccp_v1_training_plans_get",{planId:randomUUID()});
  expect(unknown.error?.code).toBe("NOT_FOUND");
+});
+
+test("PARITY:PARITY-student-training-plan-read-only-grant cannot create goals or inspect unknown plan IDs",async({page,request})=>{
+ const call=await delegatedTool(page,request,"coach:read");
+ const attempted=await call("ccp_v1_training_plans_commit",{
+   studentId:randomUUID(),title:"Forbidden goal write",summary:"",
+   status:"draft",goals:[],requestId:randomUUID(),confirmed:true,
+ });
+ expect(attempted.error?.code).toBe("FORBIDDEN");
+ const unavailableId=randomUUID();
+ const read=await call("ccp_v1_training_plans_get",{planId:unavailableId});
+ expect(read.error?.code).toBe("NOT_FOUND");
+ const web=await page.request.get("/api/training/plans?"+
+   new URLSearchParams({planId:unavailableId}));
+ expect(web.status(),await web.text()).toBe(404);
+ expect(JSON.stringify(read)).not.toContain("teacher_id");
 });

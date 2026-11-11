@@ -201,6 +201,8 @@ export async function teacherStudentDeleteImpact(db: Db, teacherId: string, stud
     ["observations","chess_observations",true],["materials","chess_material_progress",true],
     ["events","event_students",false],["credits","credit_packages",false],
     ["chessProfileHistory","student_chess_profile_history",true],
+    ["typedHomework","training_assignments",true],
+    ["trainingPlans","student_training_plans",true],
   ] as const;
   const counts=await Promise.all(references.map(([,table,scope])=>{
     let query=db.from(table).select("student_id",{count:"exact",head:true}).eq("student_id",studentId);

@@ -61,8 +61,8 @@ export function StudentTrainingPlansPanel({studentId}:{studentId:string}){
      });
      const data=await response.json();
      if(!response.ok)throw new Error(data.error||"Unable to save a plan");
-     setNotice(editing?"Training plan corrected with audit history.":"Training plan created.");
-     select(null);await load();
+     const message=editing?"Training plan corrected with audit history.":"Training plan created.";
+     select(null);setNotice(message);await load();
    }catch(e){setError(e instanceof Error?e.message:"Unable to save training plan");}
    finally{setBusy(false);}
  }
