@@ -292,7 +292,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
   </div>
   <form onSubmit={record} className="space-y-3 border-t border-border pt-3">
    <h3 className="font-medium">Record material evidence</h3>
-   <p className="text-xs text-muted">First attach a study or HTTPS learning link in Chess learning, then select it here.</p>
+   <p className="text-xs text-muted">Choose a game, puzzle, drill, study chapter, or HTTPS link from the typed Training & Materials catalog.</p>
    <div className="grid gap-3 md:grid-cols-2">
     <label className="text-sm">Study / reference
      <select className={input} value={materialId} onChange={e=>setMaterialId(e.target.value)} required>

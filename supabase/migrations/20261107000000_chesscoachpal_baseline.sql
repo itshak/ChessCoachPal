@@ -6757,9 +6757,9 @@ CREATE POLICY material_teaching_evidence_owner ON public.material_teaching_evide
 GRANT SELECT,INSERT,UPDATE ON public.material_teaching_evidence TO authenticated;
 GRANT ALL ON public.material_teaching_evidence TO service_role;
 
--- Bound each student's material claim to teacher-owned resources/rosters/workplace.
+-- Bound each student's material claim to teacher-owned typed materials/rosters/workplace.
 -- The trigger also protects direct browser Supabase writes, not just MCP or API.
-CREATE FUNCTION public.ccp_material_progress_validate() RETURNS trigger
+CREATE FUNCTION public.ccp_material_evidence_validate() RETURNS trigger
 LANGUAGE plpgsql SET search_path=public AS $$
 DECLARE v_workplace uuid;
 BEGIN
@@ -6811,10 +6811,10 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-CREATE TRIGGER ccp_material_progress_validate_trg
+CREATE TRIGGER ccp_material_evidence_validate_trg
  BEFORE INSERT OR UPDATE ON public.material_teaching_evidence
- FOR EACH ROW EXECUTE FUNCTION public.ccp_material_progress_validate();
-REVOKE ALL ON FUNCTION public.ccp_material_progress_validate() FROM PUBLIC,anon,authenticated;
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_material_evidence_validate();
+REVOKE ALL ON FUNCTION public.ccp_material_evidence_validate() FROM PUBLIC,anon,authenticated;
 
 
 CREATE FUNCTION public.ccp_restore_canonical_chess_rows(p_tables jsonb)

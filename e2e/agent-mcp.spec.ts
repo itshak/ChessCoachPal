@@ -490,10 +490,20 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(emptyMaterial.error).toBeUndefined();
   expect(emptyMaterial.data.total).toBe(0); // Linking a study is not teaching it.
+  const typedMaterial=(await mcp("tools/call",{
+    name:"ccp_v1_learning_materials_create",arguments:{
+      kind:"study_chapter",title:"Synthetic study of opposition "+suffix,
+      description:"",sourceUrl:"https://lichess.org/study/Ab12Cd34",
+      details:{provider:"lichess",studyId:"Ab12Cd34",chapterId:null},
+      requestId:randomUUID(),
+    },
+  })).structuredContent;
+  expect(typedMaterial.error).toBeUndefined();
+  const canonicalMaterialId=typedMaterial.data.material.id as string;
   const materialClaimKey=randomUUID();
   const materialClaimArgs={
     studentId:student.id,workplaceId:workplace.id,sessionId:sessionRecord.id,
-    resourceId:linked.data.id,stage:"taught",occurredOn:"2027-04-12",
+    materialId:canonicalMaterialId,stage:"taught",occurredOn:"2027-04-12",
     note:"Opposition and corresponding squares",requestId:materialClaimKey,confirmed:true,
   };
   const materialWritten=(await mcp("tools/call",{name:"ccp_v1_materials_history_record",
@@ -669,7 +679,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(foreignMaterial.error.code).toBe("NOT_FOUND");
   const foreignMaterialWrite=(await mcp("tools/call",{
     name:"ccp_v1_materials_history_record",arguments:{
-      studentId:foreignStudent!.id,resourceId:linked.data.id,
+      studentId:foreignStudent!.id,materialId:canonicalMaterialId,
       stage:"taught",occurredOn:"2027-04-12",requestId:randomUUID(),confirmed:true,
     },
   })).structuredContent;

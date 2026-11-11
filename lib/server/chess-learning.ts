@@ -223,7 +223,7 @@ export async function chessResourcesCreate(db:Db,teacherId:string,input:Resource
   return data;
 }
 
-/** Deleting a material link must not erase teacher-attested teaching claims. */
+/** URL-only references are independent of canonical typed-material teaching evidence. */
 export async function chessResourcesUnlinkImpact(db:Db,teacherId:string,resourceId:string){
   const {data:resource,error:lookupError}=await db.from("chess_learning_resources")
     .select("id,label").eq("teacher_id",teacherId).eq("id",resourceId).maybeSingle();
