@@ -124,8 +124,8 @@ async function upcomingSlotLessons(db:Db,slotId:string):Promise<Upcoming[]>{
  }
  return rows;
 }
-async function syncUpcoming(db:Db,slot:SlotRow,timezone:string,today:string,homeVisitChanged:boolean){
- const upcoming=await upcomingSlotLessons(db,slot.id);
+async function syncUpcoming(db:Db,slot:SlotRow,timezone:string,today:string,homeVisitChanged:boolean,
+ upcoming:Upcoming[]){
  const unmarked=upcoming.filter(l=>!oneToOne(l.attendance)&&!l.rescheduled_from_date);
  const until=unmarked.reduce((max,l)=>l.lesson_date>max?l.lesson_date:max,addDays(today,56));
  const byDate=new Map(computeOccurrences(slot,today,until,timezone).map(x=>[x.lesson_date,x]));
@@ -191,19 +191,23 @@ export async function calendarSlotUpdate(db:Db,teacherId:string,id:string,input:
  const start=(update.start_date??before.start_date) as string;
  const end=(update.end_date!==undefined?update.end_date:before.end_date) as string|null;
  if(end&&end<start)throw failure(400,"VALIDATION_ERROR","End date precedes start date");
- const {data,error}=await db.from("lesson_slots").update(update)
-  .eq("teacher_id",teacherId).eq("id",id).select("*").maybeSingle();
- if(error)throw failure(500,"DATABASE_ERROR","Unable to update recurring slot");
- if(!data)throw failure(404,"NOT_FOUND","Recurring slot not found");
  const timeOld=String(before.start_time).replace(/:00$/,"");
  const timeNew=String(update.start_time??before.start_time).replace(/:00$/,"");
  const affects=["day_of_week","duration_minutes","start_date","end_date","active","is_home_visit"]
   .some(k=>k in update&&update[k]!==before[k])||timeOld!==timeNew;
+ // Perform the bounded complete future-lesson preflight BEFORE saving the slot.
+ // A too-large or unavailable inventory must not leave a changed slot behind.
+ // Full concurrent, atomic reconciliation still requires a database transaction.
+ const upcoming=affects?await upcomingSlotLessons(db,id):[];
+ const {data,error}=await db.from("lesson_slots").update(update)
+  .eq("teacher_id",teacherId).eq("id",id).select("*").maybeSingle();
+ if(error)throw failure(500,"DATABASE_ERROR","Unable to update recurring slot");
+ if(!data)throw failure(404,"NOT_FOUND","Recurring slot not found");
  if(affects){
   const policy=await getPolicy(db,teacherId);
   const today=toLocalDateString(new Date(),policy.timezone);
   await syncUpcoming(db,data as SlotRow,policy.timezone,today,
-   "is_home_visit" in update&&update.is_home_visit!==before.is_home_visit);
+   "is_home_visit" in update&&update.is_home_visit!==before.is_home_visit,upcoming);
   await materializeLessons(db,teacherId,today,addDays(today,56));
  }
  return data;
