@@ -127,6 +127,25 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const correctionStale=(await mcp("tools/call",{name:"ccp_v1_learning_materials_update",
     arguments:{...correction,requestId:randomUUID()}})).structuredContent;
   expect(correctionStale.error.code).toBe("STALE_REVISION");
+  const concurrentCorrection={
+    ...correction,requestId:randomUUID(),
+    expectedRevision:correctedMaterial.revision as number,
+    title:"MCP Steinitz game "+suffix+" concurrently revised",
+  };
+  const [parallelWeb,parallelMcp]=await Promise.all([
+    page.request.patch("/api/training/materials",{data:concurrentCorrection}),
+    mcp("tools/call",{name:"ccp_v1_learning_materials_update",
+      arguments:concurrentCorrection}),
+  ]);
+  expect(parallelWeb.status(),await parallelWeb.text()).toBe(200);
+  expect(parallelMcp.structuredContent.error).toBeUndefined();
+  const webParallel=await parallelWeb.json();
+  const modelParallel=parallelMcp.structuredContent.data;
+  expect(webParallel.resultingRevision).toBe(correctedMaterial.revision+1);
+  expect(modelParallel.resultingRevision).toBe(webParallel.resultingRevision);
+  expect(webParallel.material.id).toBe(typedGameMaterialId);
+  expect(modelParallel.material.id).toBe(typedGameMaterialId);
+  expect([webParallel.replayed,modelParallel.replayed].sort()).toEqual([false,true]);
   const gameReplay=(await mcp("tools/call",{name:"ccp_v1_learning_materials_create",
     arguments:gameArguments})).structuredContent;
   expect(gameReplay.data.replayed).toBe(true);
@@ -216,16 +235,18 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     materialId:puzzleId,expectedRevision:archivePreview.data.revision as number,
     action:"archive",requestId:randomUUID(),confirmed:true,
   };
-  const archiveMcp=(await mcp("tools/call",{
-    name:"ccp_v1_learning_material_lifecycle_change",
-    arguments:archiveInput,
-  })).structuredContent;
-  expect(archiveMcp.error).toBeUndefined();
-  expect(archiveMcp.data.receipt.replayed).toBe(false);
+  const [archiveBrowser,archiveModel]=await Promise.all([
+    page.request.post("/api/training/materials/lifecycle",{data:archiveInput}),
+    mcp("tools/call",{name:"ccp_v1_learning_material_lifecycle_change",
+      arguments:archiveInput}),
+  ]);
+  expect(archiveBrowser.status(),await archiveBrowser.text()).toBe(200);
+  expect(archiveModel.structuredContent.error).toBeUndefined();
+  const archiveWeb=await archiveBrowser.json();
+  const archiveMcp=archiveModel.structuredContent;
   expect(archiveMcp.data.material.archived_at).not.toBeNull();
-  const archivedReplay=await page.request.post("/api/training/materials/lifecycle",{data:archiveInput});
-  expect(archivedReplay.status(),await archivedReplay.text()).toBe(200);
-  expect((await archivedReplay.json()).receipt.replayed).toBe(true);
+  expect(archiveMcp.data.receipt.revision).toBe(archiveWeb.receipt.revision);
+  expect([archiveWeb.receipt.replayed,archiveMcp.data.receipt.replayed].sort()).toEqual([false,true]);
   const archivedList=await page.request.get("/api/training/materials?"+
     new URLSearchParams({kind:"puzzle",query:"Website fork puzzle "+suffix,limit:"30",offset:"0"}));
   expect(archivedList.status()).toBe(200);

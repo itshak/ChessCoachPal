@@ -46,6 +46,15 @@ BEGIN
  SELECT * INTO v_root FROM public.learning_materials
    WHERE teacher_id=v_teacher AND id=p_material_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND'; END IF;
+ -- Under concurrent website+MCP replay the first commit may become visible
+ -- only after this caller obtains the material row lock.
+ SELECT * INTO v_old FROM public.learning_material_lifecycle_receipts
+   WHERE teacher_id=v_teacher AND request_id=p_request_id;
+ IF FOUND THEN
+   IF v_old.request_hash<>v_hash THEN RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT'; END IF;
+   RETURN jsonb_build_object('materialId',v_old.material_id,'action',v_old.action,
+     'revision',v_old.resulting_revision,'replayed',true);
+ END IF;
  IF v_root.revision<>p_expected_revision THEN RAISE EXCEPTION 'STALE_REVISION'; END IF;
  IF p_action='archive' THEN
    IF v_root.archived_at IS NOT NULL THEN RAISE EXCEPTION 'ALREADY_ARCHIVED'; END IF;

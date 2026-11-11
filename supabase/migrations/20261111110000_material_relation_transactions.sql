@@ -56,6 +56,17 @@ BEGIN
    AND id IN (p_from_material_id,p_to_material_id) ORDER BY id FOR UPDATE;
  GET DIAGNOSTICS v_locked=ROW_COUNT;
  IF v_locked<>2 THEN RAISE EXCEPTION 'NOT_FOUND'; END IF;
+ -- Recheck after ordered locks: identical concurrent requests replay rather
+ -- than incorrectly reporting STALE_REVISION to the slower client.
+ SELECT * INTO v_receipt FROM public.learning_material_relation_receipts
+   WHERE teacher_id=v_teacher AND request_id=p_request_id;
+ IF FOUND THEN
+   IF v_receipt.request_hash<>v_hash
+     THEN RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT'; END IF;
+   RETURN jsonb_build_object('fromMaterialId',v_receipt.from_material_id,
+     'toMaterialId',v_receipt.to_material_id,'relationType',v_receipt.relation_type,
+     'action',v_receipt.action,'revision',v_receipt.resulting_revision,'replayed',true);
+ END IF;
  SELECT * INTO v_source FROM public.learning_materials
    WHERE teacher_id=v_teacher AND id=p_from_material_id;
  SELECT * INTO v_target FROM public.learning_materials

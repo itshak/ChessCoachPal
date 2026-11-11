@@ -56,6 +56,16 @@ BEGIN
  SELECT * INTO v_root FROM public.learning_materials
    WHERE teacher_id=v_teacher AND id=p_material_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND'; END IF;
+ -- Another caller may have committed the identical request while we waited
+ -- for the row lock; re-read its receipt BEFORE comparing stale revisions.
+ SELECT * INTO v_receipt FROM public.learning_material_edit_receipts
+   WHERE teacher_id=v_teacher AND request_id=p_request_id;
+ IF FOUND THEN
+   IF v_receipt.material_id<>p_material_id OR v_receipt.request_hash<>v_hash
+     THEN RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT'; END IF;
+   RETURN jsonb_build_object('id',v_receipt.material_id,
+     'revision',v_receipt.resulting_revision,'replayed',true);
+ END IF;
  IF v_root.kind<>p_kind THEN RAISE EXCEPTION 'KIND_MISMATCH'; END IF;
  IF v_root.revision<>p_expected_revision THEN RAISE EXCEPTION 'STALE_REVISION'; END IF;
 
