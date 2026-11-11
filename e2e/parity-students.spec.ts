@@ -50,7 +50,17 @@ test("PARITY:PARITY-students-roster pages complete and archived rosters consiste
    .toEqual(other.students.map(x=>x.id));
  const historic=await mcpStudent(callTool,unique("Historical learner"));
  await updateProfile(callTool,page,historic,{archived:true});
- const siteHistoric=await page.request.get("/api/students?limit=50&query="+
+ const activeOnly=await page.request.get("/api/students?limit=50&query="+
+   encodeURIComponent("Historical learner"));
+ expect(activeOnly.status()).toBe(200);
+ expect((await activeOnly.json()).students.some((x:{id:string})=>x.id===historic)).toBe(false);
+ const mcpDefault=await callTool("ccp_v1_students_roster",{
+   query:"Historical learner",limit:50,
+ });
+ expect(mcpDefault.error).toBeUndefined();
+ expect(((mcpDefault.data as {students:Array<{id:string}>}).students)
+   .some(x=>x.id===historic)).toBe(false);
+ const siteHistoric=await page.request.get("/api/students?limit=50&includeArchived=true&query="+
    encodeURIComponent("Historical learner"));
  expect(siteHistoric.status()).toBe(200);
  expect((await siteHistoric.json()).students.some((x:{id:string})=>x.id===historic)).toBe(true);
