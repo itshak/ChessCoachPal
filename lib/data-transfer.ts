@@ -43,6 +43,34 @@ function asRows(data: unknown): Record<string, unknown>[] {
 function ids(rows: Record<string, unknown>[]): string[] {
   return rows.map(row => row.id).filter((id): id is string => typeof id === "string");
 }
+/**
+ * PostgREST ordinarily caps query results to 1000 rows. Backups must not
+ * silently truncate later students, history or financial records.
+ * A bounded deterministic scan returns all pages, or fails explicitly rather
+ * than offering a deceptively "successful" incomplete backup.
+ */
+export const EXPORT_PAGE_SIZE=500;
+export const EXPORT_MAX_ROWS_PER_TABLE=20_000;
+type ExportPage={data:unknown;error:{message:string}|null};
+async function readExportPages(
+  label:string,fetchPage:(start:number,end:number)=>Promise<ExportPage>
+):Promise<Record<string,unknown>[]> {
+  const all:Record<string,unknown>[]=[];
+  for(let offset=0;;offset+=EXPORT_PAGE_SIZE){
+    const {data,error}=await fetchPage(offset,offset+EXPORT_PAGE_SIZE-1);
+    if(error)throw new Error(`Export ${label}: ${error.message}`);
+    if(data!==null&&!Array.isArray(data))
+      throw new Error(`Export ${label}: unexpected database response`);
+    const batch=asRows(data);
+    if(batch.length>EXPORT_PAGE_SIZE)
+      throw new Error(`Export ${label}: invalid page size`);
+    if(all.length+batch.length>EXPORT_MAX_ROWS_PER_TABLE)
+      throw new Error(`Export ${label}: exceeds safe export row limit; contact support for a dedicated backup`);
+    all.push(...batch);
+    if(batch.length<EXPORT_PAGE_SIZE)break;
+  }
+  return all;
+}
 function policyWithoutSecrets(
   policy: Record<string, unknown> | null
 ): Record<string, unknown> | null {
@@ -62,18 +90,32 @@ export async function buildStudioExport(
   tables.studio_policies = policyWithoutSecrets(policy.data as Record<string, unknown> | null);
 
   for (const table of TEACHER_SCOPED) {
-    const { data, error } = await supabase.from(table).select("*").eq("teacher_id", teacherId);
-    if (error) throw new Error(`Export ${table}: ${error.message}`);
-    tables[table] = asRows(data);
+    tables[table]=await readExportPages(table,async(start,end)=>{
+      const query=supabase.from(table).select("*").eq("teacher_id",teacherId);
+      // A few roster relations have composite keys rather than an id.
+      const ordered=table==="session_participants"
+        ? query.order("session_id").order("student_id")
+        : table==="group_enrollments"
+          ? query.order("group_id").order("student_id")
+          : query.order("id");
+      const {data,error}=await ordered.range(start,end);
+      return {data,error};
+    });
   }
 
   async function children(table: string, fk: string, parents: string[]) {
     if (!parents.length) { tables[table] = []; return; }
     const rows: Record<string, unknown>[] = [];
     for (let start = 0; start < parents.length; start += 200) {
-      const { data, error } = await supabase.from(table).select("*").in(fk, parents.slice(start, start + 200));
-      if (error) throw new Error(`Export ${table}: ${error.message}`);
-      rows.push(...asRows(data));
+      const parentIds=parents.slice(start,start+200);
+      const page=await readExportPages(table,async(from,to)=>{
+        const {data,error}=await supabase.from(table).select("*")
+          .in(fk,parentIds).order("id").range(from,to);
+        return {data,error};
+      });
+      if(rows.length+page.length>EXPORT_MAX_ROWS_PER_TABLE)
+        throw new Error(`Export ${table}: exceeds safe export row limit; contact support for a dedicated backup`);
+      rows.push(...page);
     }
     tables[table] = rows;
   }

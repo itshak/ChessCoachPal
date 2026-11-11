@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DATA_EXPORT_VERSION, parseExportPayload, importStudioExport,
+  buildStudioExport, EXPORT_PAGE_SIZE,
   type StudioDataExport,
 } from "@/lib/data-transfer";
 
@@ -118,5 +119,50 @@ describe("ChessCoachPal portable backup", () => {
       TEACHER,payloadWithVersion(1),DIGEST);
     expect(result).toEqual({ok:false,error:"violates not-null constraint"});
     expect(calls).toHaveLength(1);
+  });
+  it("exports more than Supabase's default 1000 rows, including dependent history",async()=>{
+    const teacherId=TEACHER;
+    const students=Array.from({length:1205},(_,i)=>({
+      id:"student-"+String(i).padStart(5,"0"),teacher_id:teacherId,name:"Student "+i,
+    }));
+    const assessments=Array.from({length:1205},(_,i)=>({
+      id:"assessment-"+String(i).padStart(5,"0"),student_id:students[0].id,
+      rating:3,dimension_id:"dimension-1",
+    }));
+    const source:Record<string,Record<string,unknown>[]>={students,
+      skill_assessments:assessments,teachers:[{id:teacherId,display_name:"Coach"}]};
+    const ranges:Record<string,number>={};
+    const db={
+      from(table:string){
+        let records=[...(source[table]??[])];
+        const query={
+          select(_columns:string){return query;},
+          eq(key:string,value:unknown){
+            records=records.filter(x=>x[key]===value);return query;
+          },
+          in(key:string,values:string[]){
+            records=records.filter(x=>values.includes(String(x[key])));return query;
+          },
+          order(key:string){
+            records.sort((a,b)=>String(a[key]??"").localeCompare(String(b[key]??"")));
+            return query;
+          },
+          range(from:number,to:number){
+            ranges[table]=(ranges[table]??0)+1;
+            return Promise.resolve({data:records.slice(from,to+1),error:null});
+          },
+          maybeSingle(){
+            return Promise.resolve({data:records[0]??null,error:null});
+          },
+        };
+        return query;
+      },
+    } as unknown as SupabaseClient;
+    const backup=await buildStudioExport(db,teacherId);
+    expect(EXPORT_PAGE_SIZE).toBeLessThan(1000);
+    expect((backup.tables.students as unknown[])).toHaveLength(1205);
+    expect((backup.tables.skill_assessments as unknown[])).toHaveLength(1205);
+    expect(ranges.students).toBeGreaterThan(1);
+    expect(ranges.skill_assessments).toBeGreaterThan(1);
   });
 });
