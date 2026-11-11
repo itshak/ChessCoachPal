@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {calendarSlotsList,calendarSlotDelete,calendarSlotCreate,calendarLessonCreate,CalendarError} from "@/lib/server/legacy-calendar-service";
+import {calendarSlotsList,calendarSlotDelete,calendarSlotUpdate,calendarSlotCreate,calendarLessonCreate,CalendarError} from "@/lib/server/legacy-calendar-service";
 
 type Slot={id:string;teacher_id:string;student_id:string;day_of_week:number;start_time:string;active:boolean};
 
@@ -111,6 +111,18 @@ describe("future recurring-slot mutation safety",()=>{
   await expect(calendarSlotDelete(mockedDeletionDb(future(20001),deleted,pages),"teacher-one","slot-one"))
     .rejects.toMatchObject({status:413,code:"ROSTER_TOO_LARGE"});
   expect(deleted).toHaveLength(0);
+ });
+ it("refuses an oversized recurring-slot update before changing the slot",async()=>{
+  const deleted:string[]=[];const pages:number[]=[];
+  // This mock intentionally has no slot update method. If the service writes
+  // first, it throws rather than returning the expected preflight error.
+  await expect(calendarSlotUpdate(
+   mockedDeletionDb(future(20001),deleted,pages),"teacher-one","slot-one",
+   {active:false},
+  )).rejects.toMatchObject({status:413,code:"ROSTER_TOO_LARGE"});
+  expect(deleted).toHaveLength(0);
+  expect(pages.at(0)).toBe(0);
+  expect(pages.length).toBeGreaterThan(1);
  });
  it("rejects nonsensical clock times without touching the database",async()=>{
   const noDb={} as SupabaseClient;
