@@ -20,6 +20,10 @@ export type AttendanceInput={
  status:"attended"|"teacher_cancel"|"student_cancel"|"no_show"|null;
  noticeChoice?:StudentCancelNoticeChoice;noticeAt?:string|null;cancelNote?:string;
  notifyFamily?:boolean;
+ /** Explicit optimistic precondition; null means no attendance exists. */
+ expectedMarkedAt?:string|null;
+ /** Reuse on timeout; same UUID+payload returns the saved result. */
+ idempotencyKey?:string;
 };
 export type NotesInput={body?:string;privateBody?:string;sendEmail?:boolean};
 export type BulkAttendanceInput={
@@ -43,16 +47,9 @@ export async function calendarAttendanceRead(db:Db,teacherId:string,lessonId:str
 export async function calendarAttendanceWrite(db:Db,teacherId:string,lessonId:string,
  input:AttendanceInput,ctx:Context){
  const lesson=await ownedLesson(db,teacherId,lessonId);
- // External family messages are opt-in on BOTH website and MCP. The write
- // must fail before changing attendance if a trusted delivery origin is absent.
  if(input.status==="teacher_cancel"&&input.notifyFamily===true&&!ctx.origin)
   throw failure(400,"VALIDATION_ERROR","Trusted origin is required to notify families");
- if(input.status===null) {
-  const {error}=await db.from("attendance").delete().eq("lesson_id",lessonId);
-  if(error)throw failure(500,"DATABASE_ERROR","Unable to clear attendance");
-  return {ok:true,cleared:true};
- }
- if(!["attended","teacher_cancel","student_cancel","no_show"].includes(input.status))
+ if(input.status!==null&&!["attended","teacher_cancel","student_cancel","no_show"].includes(input.status))
   throw failure(400,"VALIDATION_ERROR","Invalid attendance status");
  const cancelNote=typeof input.cancelNote==="string"?input.cancelNote.trim().slice(0,1000):"";
  let noticeAt:string|null=null;
@@ -64,14 +61,42 @@ export async function calendarAttendanceWrite(db:Db,teacherId:string,lessonId:st
   noticeAt=resolveStudentCancelNoticeAt(choice,lesson.starts_at,
    policy.cancellation_window_hours,input.noticeAt??null);
  }
- const {data,error}=await db.from("attendance").upsert({
-  lesson_id:lessonId,status:input.status,notice_at:noticeAt,cancel_note:cancelNote,
-  marked_at:new Date().toISOString(),
- },{onConflict:"lesson_id"}).select().single();
- if(error)throw failure(500,"DATABASE_ERROR","Unable to record attendance");
+ // Both the website and the delegated MCP can supply the same signed
+ // precondition+key. Older UI callers without either get a freshly observed
+ // precondition and a new UUID; they STILL pass through the same SQL writer.
+ const suppliedKey=input.idempotencyKey!==undefined;
+ const suppliedRevision=input.expectedMarkedAt!==undefined;
+ if(suppliedKey!==suppliedRevision)
+  throw failure(400,"VALIDATION_ERROR",
+   "Provide both an attendance revision and idempotency key");
+ let expected=input.expectedMarkedAt??null;
+ if(!suppliedRevision){
+  const {data:current,error:readError}=await db.from("attendance")
+   .select("marked_at").eq("lesson_id",lessonId).maybeSingle();
+  if(readError)throw failure(500,"DATABASE_ERROR","Unable to read attendance revision");
+  expected=current?.marked_at??null;
+ }
+ const requestId=input.idempotencyKey??crypto.randomUUID();
+ const {data,error}=await db.rpc("ccp_calendar_attendance_commit",{
+  p_lesson_id:lessonId,p_status:input.status,
+  p_notice_at:noticeAt,p_cancel_note:cancelNote,
+  p_expected_marked_at:expected,p_idempotency_key:requestId,
+ });
+ if(error){
+  if(error.code==="23505"||/REVISION_CONFLICT|REPLAY_CONFLICT/.test(error.message))
+   throw failure(409,"CONFLICT","Attendance changed; reload and retry with the current revision");
+  if(error.code==="42501")
+   throw failure(404,"NOT_FOUND","Lesson not found");
+  if(error.code==="22023")
+   throw failure(400,"VALIDATION_ERROR","Invalid attendance decision");
+  throw failure(500,"DATABASE_ERROR","Unable to commit attendance atomically");
+ }
+ if(input.status===null)return {ok:true,cleared:true,
+  idempotencyKey:requestId,replayed:data?.replayed===true};
  let emailed=false,emailError:string|undefined;
- if(input.status==="teacher_cancel"&&input.notifyFamily===true){
-  if(!ctx.origin)throw failure(400,"VALIDATION_ERROR","Trusted origin is required to notify families");
+ // The replay is a database read, not a second permission to send email.
+ // Email delivery still requires an outbox/receipt for crash-safe exactly-once.
+ if(data?.replayed!==true&&input.status==="teacher_cancel"&&input.notifyFamily===true){
   const policy=await getPolicy(db,teacherId);
   const result=await emailFamilyTeacherCancel({
    supabase:db,lessonId,teacherId,teacherEmail:ctx.teacherEmail,
@@ -81,6 +106,7 @@ export async function calendarAttendanceWrite(db:Db,teacherId:string,lessonId:st
  }
  return {...data,emailed,emailError};
 }
+
 export async function calendarAttendanceBulk(db:Db,teacherId:string,input:BulkAttendanceInput,ctx:Context) {
  if(!BULK_ATTENDANCE_STATUSES.includes(input.status as AttendanceStatus))
   throw failure(400,"VALIDATION_ERROR","Invalid bulk attendance status");

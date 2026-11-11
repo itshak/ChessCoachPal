@@ -4125,6 +4125,83 @@ CREATE TRIGGER ccp_completed_session_guard_trg
  BEFORE UPDATE OF status ON public.teaching_sessions
  FOR EACH ROW EXECUTE FUNCTION public.ccp_completed_session_guard();
 
+-- Explicit current-schema attendance transaction for the calendar's
+-- still-supported private lesson workflows. Website and MCP share the same
+-- tenant-authenticated mutation while the full occurrence cutover is pending.
+-- Serialize on the lesson row even when attendance has not yet been inserted.
+CREATE OR REPLACE FUNCTION public.ccp_calendar_attendance_commit(
+ p_lesson_id uuid,p_status text,p_notice_at timestamptz,
+ p_cancel_note text,p_expected_marked_at timestamptz,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $calendar_attendance$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_lesson public.lessons%ROWTYPE;
+ v_att public.attendance%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_hash text;v_saved_receipt jsonb;v_receipt jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN
+   RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_lesson_id IS NULL OR p_idempotency_key IS NULL OR
+   (p_status IS NOT NULL AND p_status NOT IN
+    ('attended','teacher_cancel','student_cancel','no_show')) OR
+    char_length(coalesce(p_cancel_note,''))>1000 OR
+    (p_status IS DISTINCT FROM 'student_cancel' AND p_notice_at IS NOT NULL) THEN
+   RAISE EXCEPTION 'INVALID_CALENDAR_ATTENDANCE' USING ERRCODE='22023';
+ END IF;
+ v_hash:=md5(jsonb_build_array('calendar.attendance.commit',
+   p_lesson_id,p_status,p_notice_at,p_cancel_note,p_expected_marked_at)::text);
+ INSERT INTO public.agent_tool_receipts(
+   teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'calendar.attendance.commit',
+   v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_saved FROM public.agent_tool_receipts
+    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+   IF NOT FOUND OR v_saved.operation<>'calendar.attendance.commit'
+      OR v_saved.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'CALENDAR_ATTENDANCE_REPLAY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_lesson FROM public.lessons
+  WHERE teacher_id=v_teacher AND id=p_lesson_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'CALENDAR_LESSON_NOT_FOUND' USING ERRCODE='42501'; END IF;
+ SELECT * INTO v_att FROM public.attendance
+  WHERE lesson_id=p_lesson_id FOR UPDATE;
+ IF v_att.marked_at IS DISTINCT FROM p_expected_marked_at THEN
+   RAISE EXCEPTION 'CALENDAR_ATTENDANCE_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF p_status IS NULL THEN
+   DELETE FROM public.attendance WHERE lesson_id=p_lesson_id;
+   v_receipt:=jsonb_build_object('ok',true,'cleared',true,
+     'lessonId',p_lesson_id,'idempotencyKey',p_idempotency_key);
+ ELSIF v_att.id IS NULL THEN
+   INSERT INTO public.attendance(lesson_id,status,notice_at,cancel_note,marked_at)
+    VALUES(p_lesson_id,p_status,p_notice_at,coalesce(p_cancel_note,''),
+      clock_timestamp()) RETURNING * INTO v_att;
+   v_receipt:=to_jsonb(v_att)||
+     jsonb_build_object('idempotencyKey',p_idempotency_key);
+ ELSE
+   UPDATE public.attendance SET
+    status=p_status,notice_at=p_notice_at,
+    cancel_note=coalesce(p_cancel_note,''),marked_at=clock_timestamp()
+    WHERE id=v_att.id RETURNING * INTO v_att;
+   v_receipt:=to_jsonb(v_att)||
+     jsonb_build_object('idempotencyKey',p_idempotency_key);
+ END IF;
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$calendar_attendance$;
+REVOKE ALL ON FUNCTION public.ccp_calendar_attendance_commit(
+ uuid,text,timestamptz,text,timestamptz,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_calendar_attendance_commit(
+ uuid,text,timestamptz,text,timestamptz,uuid) TO authenticated;
+
 -- Historical direct lessons must outlive current workplace enrollment.
 -- Existing FK tied lessons to the *live* membership row, making a safe
 -- unenroll impossible even for completed/past lessons. Keep student and

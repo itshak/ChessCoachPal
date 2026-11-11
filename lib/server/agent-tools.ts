@@ -525,9 +525,13 @@ const catalogue = [
       noticeChoice:z.enum(["now","timely","late","custom"]).optional(),
       noticeAt:z.string().datetime({offset:true}).nullable().optional(),
       cancelNote:z.string().max(1000).optional(),
+      expectedMarkedAt:z.string().datetime({offset:true}).nullable().optional(),
+      idempotencyKey:uuid.optional(),
       notifyFamily:z.boolean().default(false),confirmedEmail:z.literal(true).optional(),
       confirmed:z.literal(true),
-    }).strict().refine(v=>!v.notifyFamily||v.confirmedEmail===true,"Email requires explicit confirmation"),
+    }).strict().refine(v=>!v.notifyFamily||v.confirmedEmail===true,"Email requires explicit confirmation")
+      .refine(v=>(v.idempotencyKey===undefined)===(v.expectedMarkedAt===undefined),
+       "Revision and idempotency key must be supplied together"),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1552,7 +1556,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_v1_calendar_attendance_record": {
         const a=args as {lessonId:string;notifyFamily:boolean;status:"attended"|"teacher_cancel"|"student_cancel"|"no_show"|null;
-          noticeChoice?:"now"|"timely"|"late"|"custom";noticeAt?:string|null;cancelNote?:string};
+          noticeChoice?:"now"|"timely"|"late"|"custom";noticeAt?:string|null;cancelNote?:string;
+          expectedMarkedAt?:string|null;idempotencyKey?:string};
         const user=a.notifyFamily?(await db.auth.getUser()).data.user:null;
         return {data:await calendarAttendanceWrite(db,teacherId,a.lessonId,a,{
           origin:a.notifyFamily?oauthOrigin():"",

@@ -6,6 +6,12 @@ import {
 
 function fakeAttendanceDb(writes:Record<string,unknown>[]){
  return {
+  async rpc(operation:string,args:Record<string,unknown>){
+   if(operation!=="ccp_calendar_attendance_commit")
+    throw new Error("Unexpected RPC "+operation);
+   writes.push(args);
+   return {data:{status:args.p_status,replayed:false},error:null};
+  },
   from(table:string){
    if(table==="lessons"){
     const q={
@@ -19,15 +25,18 @@ function fakeAttendanceDb(writes:Record<string,unknown>[]){
     return q;
    }
    if(table==="attendance"){
-    return {upsert(row:Record<string,unknown>){
-     writes.push(row);
-     return {
-      select(){return {single:async()=>({data:row,error:null})};},
-      then(resolve:(r:{error:null})=>unknown){
+    const q={
+     select(_columns:string){return q;},
+     eq(_name:string,_value:string){return q;},
+     maybeSingle:async()=>({data:null,error:null}),
+     upsert(row:Record<string,unknown>){
+      writes.push(row);
+      return {then(resolve:(r:{error:null})=>unknown){
        return Promise.resolve({error:null}).then(resolve);
-      },
-     };
-    }};
+      }};
+     },
+    };
+    return q;
    }
    throw new Error("Unexpected database table: "+table);
   },
