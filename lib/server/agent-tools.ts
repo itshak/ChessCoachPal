@@ -6,6 +6,7 @@ import { lichessConnectionStatus,lichessConnectionHandoff,disconnectLichess,Lich
 import {teacherLichessStudiesSearch} from "@/lib/server/lichess-studies";
 import {puzzleDraftSchema,puzzlePublishSchema} from "@/lib/lichess-puzzles";
 import {teacherLichessPuzzlePreview,teacherLichessPuzzlePublish,LichessPuzzleError} from "@/lib/server/lichess-puzzles";
+import {teacherImageFenPropose,imageFenInputSchema,ImageFenError} from "@/lib/server/teacher-image-fen";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, groupsList, groupsMembers,
@@ -683,6 +684,12 @@ const catalogue = [
     name:"ccp_v1_lichess_connection_status",
     description:"Read teacher Lichess account username, study scopes and connection status. No provider credentials are accessible.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_lichess_image_fen_propose",
+    description:"With explicit teacher consent, send a chessboard photo (PNG/JPEG/WebP, at most 2MB) to a teacher-configured external AI to PROPOSE a FEN. Images may contain personal information. This is an unverified draft, not a factual reconstruction or a publishing action. All 64 squares and game-state placeholders must be reviewed and corrected before a separate PGN preview and Lichess publication approval.",
+    schema:imageFenInputSchema.extend({confirmed:z.literal(true)}).strict(),
+    scope:"coach:read",readOnly:false,
   },
   {
     name:"ccp_v1_lichess_puzzle_preview",
@@ -1544,6 +1551,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_lichess_connection_status": {
         return {data:await lichessConnectionStatus(teacherId)};
       }
+      case "ccp_v1_lichess_image_fen_propose": {
+        const input=args as Parameters<typeof teacherImageFenPropose>[2];
+        return {data:await teacherImageFenPropose(db,teacherId,input)};
+      }
       case "ccp_v1_lichess_puzzle_preview": {
         return {data:teacherLichessPuzzlePreview(args as Parameters<typeof teacherLichessPuzzlePreview>[0])};
       }
@@ -1874,6 +1885,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof GuardianServiceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LichessPuzzleError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof ImageFenError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LichessConnectionError)
       return {error:{code:error.code,message:error.message}};
