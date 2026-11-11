@@ -75,3 +75,52 @@ test("PARITY:PARITY-guardians-atomic-mutation preserves website/MCP member equal
   const read=await page.request.get("/api/guardians/"+guardianId);
   expect((await read.json()).students.map((x:{id:string})=>x.id)).toEqual([id]);
 });
+
+
+test("PARITY:PARITY-family-cross-client-idempotency creates one child and rejects altered replays",async({page,request})=>{
+  const call=await delegatedTool(page,request);
+  const key=randomUUID();
+  const name="One family "+randomUUID();
+  const childName="One child "+randomUUID();
+  const payload={
+    name,newStudents:[{name:childName}],idempotencyKey:key,
+  };
+  const created=await call("ccp_v1_guardians_create",{
+    ...payload,confirmed:true,
+  });
+  expect(created.error).toBeUndefined();
+  const guardianId=created.data.id as string;
+
+  const retry=await page.request.post("/api/guardians",{data:payload});
+  expect(retry.status(),await retry.text()).toBe(200);
+  expect((await retry.json()).id).toBe(guardianId);
+  const detail=await page.request.get("/api/guardians/"+guardianId);
+  expect(detail.status(),await detail.text()).toBe(200);
+  const family=await detail.json();
+  expect(family.students.filter((s:{name:string})=>s.name===childName)).toHaveLength(1);
+  const conflict=await page.request.post("/api/guardians",{data:{
+    name:name+" conflicted",newStudents:[{name:childName}],idempotencyKey:key,
+  }});
+  expect(conflict.status(),await conflict.text()).toBe(409);
+
+  const updateKey=randomUUID();
+  const newFamilyName="Changed family "+randomUUID();
+  const edited=await page.request.put("/api/guardians/"+guardianId,{data:{
+    familyName:newFamilyName,idempotencyKey:updateKey,
+  }});
+  expect(edited.status(),await edited.text()).toBe(200);
+  const modelRetry=await call("ccp_v1_guardians_update",{
+    guardianId,familyName:newFamilyName,idempotencyKey:updateKey,confirmed:true,
+  });
+  expect(modelRetry.error).toBeUndefined();
+  const familyAfter=await call("ccp_v1_guardians_detail",{guardianId});
+  expect(familyAfter.error).toBeUndefined();
+  expect(familyAfter.data.family_name).toBe(newFamilyName);
+  const reject=await call("ccp_v1_guardians_update",{
+    guardianId,familyName:"Different reuse",idempotencyKey:updateKey,
+    confirmed:true,
+  });
+  expect(reject.error?.code).toBe("IDEMPOTENCY_CONFLICT");
+  const final=await page.request.get("/api/guardians/"+guardianId);
+  expect((await final.json()).family_name).toBe(newFamilyName);
+});
