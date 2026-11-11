@@ -149,3 +149,53 @@ test("PARITY:PARITY-billing-manual-payment-open-checkout-fails-closed in browser
  expect(error).toBeNull();
  expect(unchanged?.stripe_checkout_session_id).toBe(sessionId);
 });
+
+
+test("PARITY:PARITY-billing-atomic-manual-payment-settlement serializes browser and MCP retries",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const seeded=await invoice("sent",10000);
+ const key=randomUUID();
+ const url="/api/billing/invoices/"+seeded.id+"/mark-paid";
+ const payload={amountCents:3000,note:"Cash exactly once",idempotencyKey:key};
+ const [browser,agent]=await Promise.all([
+   page.request.post(url,{data:payload}),
+   call("ccp_v1_billing_manual_payment_record",{
+     invoiceId:seeded.id,...payload,confirmed:true,
+   }),
+ ]);
+ expect(browser.status(),await browser.text()).toBe(200);
+ expect(agent.error).toBeUndefined();
+ const browserResult=await browser.json();
+ expect(browserResult.paymentId).toBe(agent.data.paymentId);
+ expect([browserResult.replayed,agent.data.replayed].filter(Boolean)).toHaveLength(1);
+ const after=await siteInvoice(page,seeded.id);
+ expect(after.status).toBe("sent");
+ expect(after.payments.filter((p:{id:string})=>p.id===browserResult.paymentId)).toHaveLength(1);
+ expect(after.payments.reduce((sum:number,p:{amount_cents:number})=>
+   sum+p.amount_cents,0)).toBe(3000);
+
+ const settled=await page.request.post(url,{data:{
+   amountCents:7000,note:"Remaining cash balance",idempotencyKey:randomUUID(),
+ }});
+ expect(settled.status(),await settled.text()).toBe(200);
+ expect((await settled.json()).paid).toBe(true);
+ const paid=await call("ccp_v1_billing_invoice_detail",{invoiceId:seeded.id});
+ expect(paid.error).toBeUndefined();
+ expect(paid.data.status).toBe("paid");
+ expect(paid.data.payments.reduce((sum:number,p:{amount_cents:number})=>
+   sum+p.amount_cents,0)).toBe(10000);
+
+ const delayedRetry=await call("ccp_v1_billing_manual_payment_record",{
+   invoiceId:seeded.id,...payload,confirmed:true,
+ });
+ expect(delayedRetry.error).toBeUndefined();
+ expect(delayedRetry.data.replayed).toBe(true);
+ expect(delayedRetry.data.paymentId).toBe(browserResult.paymentId);
+ const conflict=await page.request.post(url,{data:{
+   amountCents:3001,note:"Cash exactly once",idempotencyKey:key,
+ }});
+ expect(conflict.status(),await conflict.text()).toBe(409);
+ const last=await siteInvoice(page,seeded.id);
+ expect(last.payments).toHaveLength(2);
+ expect(last.status).toBe("paid");
+});
