@@ -18,7 +18,10 @@ export async function GET(req: NextRequest) {
   try {
     const roster = await teacherStudentsRoster(supabase, user.id, {
       query: params.get("query") ?? undefined,
-      includeArchived: params.get("activeOnly") !== "true",
+      // Match the website Students page and the MCP roster default:
+      // archived pupils remain accessible on explicit historical requests.
+      includeArchived: params.get("includeArchived") === "true" &&
+        params.get("activeOnly") !== "true",
       limit, offset,
     });
     return NextResponse.json(paginate ? roster : roster.students);
