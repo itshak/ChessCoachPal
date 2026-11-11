@@ -26,6 +26,11 @@ export async function GET(req: NextRequest) {
         params.get("activeOnly") !== "true",
       limit, offset,
     });
+    if(!paginate&&roster.nextOffset!==null)
+      return NextResponse.json({
+        error:"Student list exceeds the unpaged response limit; use limit and offset",
+        code:"PAGINATION_REQUIRED",
+      },{status:413});
     return NextResponse.json(paginate ? roster : roster.students);
   } catch (error) {
     return NextResponse.json({ error: "Student roster unavailable" }, {
