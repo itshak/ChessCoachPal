@@ -847,9 +847,10 @@
       "existingTools": [
         "ccp_v1_students_search",
         "ccp_v1_students_create",
-        "ccp_v1_students_roster"
+        "ccp_v1_students_roster",
+        "ccp_v1_students_create_full"
       ],
-      "explanation": "Website and MCP support roster search/pagination and chess profile; create with family and transaction-level quota parity remain open."
+      "explanation": "Website and MCP offer active/archived/all paginated roster views. New candidate full student+family creation shares one authenticated SQL transaction, tenant-derived quota trigger and cross-client request receipts; browser/MCP E2E and full field/tenant acceptance still require final execution. Do not promote to verified before passing tests."
     },
     {
       "path": "app/api/teacher/calendar-token/route.ts",
