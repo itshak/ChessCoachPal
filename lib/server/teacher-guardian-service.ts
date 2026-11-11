@@ -8,6 +8,7 @@ export type GuardianChange={
   secondaryName?:string|null;secondaryEmail?:string|null;secondaryPhone?:string|null;
   emailRecipients?:"primary"|"secondary"|"both";
   studentIds?:string[];newStudents?:MemberInput[];
+  idempotencyKey?:string;
 };
 export class GuardianServiceError extends Error {
   constructor(public status:number,public code:string,message:string){super(message);}
@@ -90,12 +91,21 @@ async function writeGuardian(
   // and quota checks while locked, before committing any roster mutation.
   if(input.studentIds!==undefined)await verifyStudents(db,teacherId,existing);
   const newRows=await checkNewStudents(db,teacherId,input);
-  const {data,error}=await db.rpc("ccp_guardian_save",{
+  if(input.idempotencyKey!==undefined&&
+     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.idempotencyKey))
+    throw failure(400,"VALIDATION_ERROR","Family idempotencyKey must be a UUID");
+  const {data,error}=await db.rpc("ccp_guardian_save_replay",{
     p_guardian_id:guardianId,p_fields:guardianFields(input),
     p_student_ids:existing,p_replace_members:input.studentIds!==undefined,
     p_new_students:newRows.map(x=>({name:x.name,birthdate:x.birthdate})),
+    p_request_id:input.idempotencyKey??null,
   });
   if(error){
+    if(error.code==="23505"||error.message.includes("GUARDIAN_REQUEST_CONFLICT"))
+      throw failure(409,"IDEMPOTENCY_CONFLICT",
+        "Family idempotencyKey was already used with different details");
+    if(error.code==="23514"&&error.message.includes("GUARDIAN_ALREADY_DELETED"))
+      throw failure(409,"CONFLICT","Family was deleted after the recorded request");
     if(error.message.includes("HOSTED_LIMIT_REACHED"))
       throw failure(403,"HOSTED_LIMIT_REACHED","Active-student capacity reached");
     if(error.message.includes("NOT_FOUND"))
