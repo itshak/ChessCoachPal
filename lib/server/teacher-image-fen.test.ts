@@ -29,6 +29,8 @@ describe("BYO image-to-FEN proposed draft security",()=>{
   expect(mocks.getPolicy).not.toHaveBeenCalled();
  });
  it("rejects oversized, false MIME, corrupt and noncanonical base64 before any fetch",async()=>{
+  const outbound=vi.fn();
+  vi.stubGlobal("fetch",outbound);
   for(const input of [
    {...valid,mediaType:"image/jpeg" as const},
    {...valid,imageBase64:"not-base64"},
@@ -38,7 +40,7 @@ describe("BYO image-to-FEN proposed draft security",()=>{
    await expect(teacherImageFenPropose(noDb,"teacher",input))
     .rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
   }
-  expect(mocks.getPolicy).not.toHaveBeenCalled();
+  expect(outbound).not.toHaveBeenCalled();
  });
  it("returns only an unverified FEN review proposal; never publishes or persists",async()=>{
   const fetchMock=vi.fn(async(_url:string,request:RequestInit)=>
