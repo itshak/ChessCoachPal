@@ -114,6 +114,8 @@ export const guardianCreateSchema = z.object({
   emailRecipients,
   studentIds: z.array(z.uuid()).max(200).optional(),
   newStudents: newStudentsList,
+  // Optional durable retry receipt shared by website and delegated MCP.
+  idempotencyKey: z.uuid().optional(),
 });
 
 export const guardianUpdateSchema = guardianCreateSchema.partial();
