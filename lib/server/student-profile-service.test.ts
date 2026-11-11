@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {teacherStudentsRoster,teacherStudentPatch} from "@/lib/server/student-profile-service";
+import {teacherStudentsRoster,teacherStudentPatch,teacherStudentChessHistory} from "@/lib/server/student-profile-service";
 import {studentUpdateSchema} from "@/lib/server/api-schemas";
 
 type Student={id:string;teacher_id:string;name:string;archived_at:string|null;name_search:string};
@@ -139,5 +139,19 @@ describe("teacher student monetary field parity",()=>{
   expect(edited).toMatchObject({default_rate_cents:4500,travel_fee_cents:null});
   expect(studentUpdateSchema.safeParse({defaultRateCents:"4500",travelFeeCents:""}).success)
    .toBe(true);
+ });
+});
+
+
+describe("student chess history pagination parity",()=>{
+ it("refuses malformed or unbounded browser query parameters before any DB call",async()=>{
+  const noDb={} as SupabaseClient;
+  for(const paging of [
+   {offset:Number.NaN},{offset:-1},{offset:100001},{offset:2.5},
+   {limit:0},{limit:101},{limit:Number.POSITIVE_INFINITY},{limit:2.7},
+  ]){
+   await expect(teacherStudentChessHistory(noDb,"teacher","student",paging))
+    .rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+  }
  });
 });
