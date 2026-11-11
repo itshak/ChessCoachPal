@@ -198,3 +198,7 @@ Shared website/MCP event create/update now use an authenticated SQL transaction 
 ## 2026-11-11 candidate: secure browser handoffs for account and hosted subscription (unverified)
 
 New read-only scoped MCP tools `ccp_v1_account_security_handoff` and `ccp_v1_hosted_subscription_handoff` provide the authenticated website Account entrypoint while preserving password/MFA, Stripe checkout and billing-portal reauthentication in the browser/provider. Dedicated browser/delegated OAuth tests assert no secret-bearing action URLs, but **live provider flow, secure exception review, and full parity remain pending**. Neither checklist row nor route family is signed off before executed CI/E2E and reviewer approval.
+
+## 2026-11-11 candidate: race-safe guardian deletion (unverified)
+
+The baseline student/guardian FK detaches students on guardian deletion; a new authenticated PostgreSQL BEFORE DELETE trigger now refuses the deletion when an existing student or invoice points at the family, even after a stale website/MCP preview. A real PostgREST synthetic test explicitly attaches a student after a clean preview, asserts SQL 23503 and unchanged student guardian, then detaches and allows deletion. Privileged tenant erasure remains separate. No B5/B8/C signoff until full verification.
