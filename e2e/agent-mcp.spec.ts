@@ -99,6 +99,34 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(gameCreated.data.material).toEqual(await websiteGame.json());
   expect(gameCreated.data.material.chess_games.pgn).toContain("Nf3");
   expect(gameCreated.data.material.chess_puzzles).toBeNull();
+  // Canonical typed-material correction now uses one atomic root+subtype
+  // revision-checked transaction in both website and delegated MCP.
+  expect(names).toContain("ccp_v1_learning_materials_update");
+  const correction={
+    ...gameArguments,title:"MCP corrected Steinitz game "+suffix,
+    materialId:typedGameMaterialId,
+    expectedRevision:gameCreated.data.material.revision as number,
+    requestId:randomUUID(),confirmed:true,
+  };
+  const correctedWeb=await page.request.patch("/api/training/materials",{data:correction});
+  expect(correctedWeb.status(),await correctedWeb.text()).toBe(200);
+  const correctedMaterial=(await correctedWeb.json()).material;
+  expect(correctedMaterial.revision).toBe(correction.expectedRevision+1);
+  expect(correctedMaterial.title).toBe(correction.title);
+  const correctedMcp=(await mcp("tools/call",{name:"ccp_v1_learning_materials_get",
+    arguments:{materialId:typedGameMaterialId}})).structuredContent;
+  expect(correctedMcp.data).toEqual(correctedMaterial);
+  const correctedReplay=(await mcp("tools/call",{name:"ccp_v1_learning_materials_update",
+    arguments:correction})).structuredContent;
+  expect(correctedReplay.error).toBeUndefined();
+  expect(correctedReplay.data.replayed).toBe(true);
+  expect(correctedReplay.data.resultingRevision).toBe(correctedMaterial.revision);
+  const correctionConflict=(await mcp("tools/call",{name:"ccp_v1_learning_materials_update",
+    arguments:{...correction,title:"Different correction using same key"}})).structuredContent;
+  expect(correctionConflict.error.code).toBe("IDEMPOTENCY_CONFLICT");
+  const correctionStale=(await mcp("tools/call",{name:"ccp_v1_learning_materials_update",
+    arguments:{...correction,requestId:randomUUID()}})).structuredContent;
+  expect(correctionStale.error.code).toBe("STALE_REVISION");
   const gameReplay=(await mcp("tools/call",{name:"ccp_v1_learning_materials_create",
     arguments:gameArguments})).structuredContent;
   expect(gameReplay.data.replayed).toBe(true);

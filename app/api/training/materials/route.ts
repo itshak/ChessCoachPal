@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
-  materialCatalogCreateSchema,materialCatalogFilterSchema,
-  teacherMaterialCatalogCreate,teacherMaterialCatalogGet,teacherMaterialCatalogList,
+  materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,
+  teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,
   MaterialCatalogError,
 } from "@/lib/server/learning-materials";
 import { z } from "zod";
@@ -47,4 +47,18 @@ export async function POST(request:NextRequest) {
     const created=await teacherMaterialCatalogCreate(context.db,context.teacherId,parsed.data);
     return NextResponse.json(created,{status:created.replayed?200:201});
   } catch(error) {return errorResponse(error);}
+}
+
+export async function PATCH(request:NextRequest) {
+  const context=await authenticate();
+  if (!context) return NextResponse.json({error:"Unauthorized"},{status:401});
+  const parsed=materialCatalogUpdateSchema.safeParse(await request.json().catch(()=>null));
+  if(!parsed.success)
+    return NextResponse.json({error:"Invalid typed material update",issues:parsed.error.issues},{status:400});
+  try{
+    return NextResponse.json(
+      await teacherMaterialCatalogUpdate(context.db,context.teacherId,parsed.data),
+      {headers:{"Cache-Control":"no-store"}},
+    );
+  }catch(error){return errorResponse(error);}
 }

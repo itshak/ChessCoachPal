@@ -964,16 +964,18 @@
       "path": "app/api/training/materials/route.ts",
       "methods": [
         "GET",
-        "POST"
+        "POST",
+        "PATCH"
       ],
       "kind": "teacher",
       "parity": "partial",
       "existingTools": [
         "ccp_v1_learning_materials_list",
         "ccp_v1_learning_materials_get",
-        "ccp_v1_learning_materials_create"
+        "ccp_v1_learning_materials_create",
+        "ccp_v1_learning_materials_update"
       ],
-      "explanation": "Shared website/MCP typed game/puzzle/drill/study chapter catalog, teacher-scoped list/get and atomic create. This first slice does not yet implement update/delete, full PGN legality, assignment linkage or full behavioral sign-off; remains partial."
+      "explanation": "Shared teacher-scoped typed chess material catalog including atomic root+typed detail edits, revision-checked corrections, durable idempotent receipts and both website/MCP operations. Typed material relation/collection lifecycle, full PGN legality and complete route-level acceptance still incomplete; do not promote from partial without comprehensive executed tests."
     },
     {
       "path": "app/api/webhooks/stripe/[teacherId]/route.ts",

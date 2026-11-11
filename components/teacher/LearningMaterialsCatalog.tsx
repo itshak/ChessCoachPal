@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 type MaterialKind="game"|"puzzle"|"drill"|"study_chapter"|"external_link";
 type Material={
-  id:string;kind:MaterialKind;title:string;description:string;source_url:string|null;
+  id:string;kind:MaterialKind;title:string;description:string;source_url:string|null;revision:number;
   chess_games:{pgn:string;white_player:string;black_player:string;result:string}|null;
   chess_puzzles:{fen:string;solution:string|null;themes:string[]}|null;
   chess_drills:{instructions:string;mode:string;repetitions:number|null}|null;
@@ -20,6 +20,7 @@ const labels:Record<MaterialKind,string>={
 
 export function LearningMaterialsCatalog(){
   const [items,setItems]=useState<Material[]>([]);
+  const [editing,setEditing]=useState<{id:string;revision:number}|null>(null);
   const [total,setTotal]=useState(0);
   const [kind,setKind]=useState<MaterialKind>("game");
   const [title,setTitle]=useState("");
@@ -56,6 +57,25 @@ export function LearningMaterialsCatalog(){
     void load().catch(()=>{if(active)setError("Unable to load materials");});
     return()=>{active=false};
   },[load]);
+  function beginEdit(material:Material){
+    setEditing({id:material.id,revision:material.revision});
+    setKind(material.kind);setTitle(material.title);setDescription(material.description);
+    setSourceUrl(material.source_url??"");
+    setPgn(material.chess_games?.pgn??"");
+    setWhite(material.chess_games?.white_player??"");
+    setBlack(material.chess_games?.black_player??"");
+    setResult((material.chess_games?.result??"*") as typeof result);
+    setFen(material.chess_puzzles?.fen??"");
+    setSolution(material.chess_puzzles?.solution??"");
+    setThemes(material.chess_puzzles?.themes.join(", ")??"");
+    setInstructions(material.chess_drills?.instructions??"");
+    setMode((material.chess_drills?.mode??"other") as typeof mode);
+    setRepetitions(material.chess_drills?.repetitions?.toString()??"");
+    setProvider((material.chess_study_chapters?.provider??"lichess") as typeof provider);
+    setStudyId(material.chess_study_chapters?.study_id??"");
+    setChapterId(material.chess_study_chapters?.chapter_id??"");
+    setStatus("");setError("");
+  }
   async function create(event:FormEvent<HTMLFormElement>){
     event.preventDefault();setBusy(true);setError("");setStatus("");
     const details:Record<string,unknown>=kind==="game"
@@ -67,14 +87,16 @@ export function LearningMaterialsCatalog(){
     const payload={
       kind,title:title.trim(),description,sourceUrl:sourceUrl.trim()||null,details,
       requestId:crypto.randomUUID(),
+      ...(editing?{materialId:editing.id,expectedRevision:editing.revision,confirmed:true}:{}),
     };
     try {
       const response=await fetch("/api/training/materials",{
-        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),
+        method:editing?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),
       });
       const data=await response.json();
       if(!response.ok)throw new Error(data.error||"Unable to create material");
-      setStatus("Material saved to the reusable learning library.");
+      setStatus(editing?"Material correction saved.":"Material saved to the reusable learning library.");
+      setEditing(null);
       setTitle("");setDescription("");setPgn("");setFen("");setInstructions("");
       setSourceUrl("");setStudyId("");setChapterId("");setThemes("");setSolution("");
       await load();
@@ -87,10 +109,10 @@ export function LearningMaterialsCatalog(){
       <p className="text-sm text-muted">Games, puzzles, drills and study chapters have separate chess-specific records in one searchable catalog. Saving a resource does not mark it as taught or mastered.</p>
     </div>
     <form onSubmit={create} className="rounded-xl border border-border p-4 space-y-3">
-      <h3 className="text-lg font-semibold">Add chess material</h3>
+      <h3 className="text-lg font-semibold">{editing?"Correct chess material":"Add chess material"}</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">Material type
-          <select className={field} value={kind} onChange={e=>setKind(e.target.value as MaterialKind)}>
+          <select className={field} value={kind} disabled={!!editing} onChange={e=>setKind(e.target.value as MaterialKind)}>
             {kinds.map(k=><option key={k} value={k}>{labels[k]}</option>)}
           </select>
         </label>
@@ -158,7 +180,14 @@ export function LearningMaterialsCatalog(){
           <input className={field} maxLength={128} value={chapterId} onChange={e=>setChapterId(e.target.value)}/>
         </label>
       </div>}
-      <button className={button} type="submit" disabled={busy}>{busy?"Saving…":"Save material"}</button>
+      <div className="flex gap-2">
+        <button className={button} type="submit" disabled={busy}>{busy?"Saving…":editing?"Save correction":"Save material"}</button>
+        {editing&&<button className="rounded-lg border border-border px-4 py-2 text-sm" type="button" onClick={()=>{
+          setEditing(null);setTitle("");setDescription("");setPgn("");setFen("");
+          setInstructions("");setSourceUrl("");setStudyId("");setChapterId("");
+          setThemes("");setSolution("");setStatus("");setError("");
+        }}>Cancel correction</button>}
+      </div>
       {error&&<p role="alert" className="text-sm text-red-500">{error}</p>}
       {status&&<p role="status" className="text-sm text-emerald-600">{status}</p>}
     </form>
@@ -173,6 +202,7 @@ export function LearningMaterialsCatalog(){
       {items.map(material=><div key={material.id} className="rounded-lg border border-border p-3 space-y-1">
         <strong className="text-sm">{material.title}</strong>
         <span className="ml-2 text-xs text-muted">{labels[material.kind]}</span>
+        <button className="ml-3 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>beginEdit(material)} aria-label={"Correct "+material.title}>Correct material</button>
         {material.description&&<p className="text-sm">{material.description}</p>}
         {material.chess_games&&<p className="text-xs text-muted">{material.chess_games.white_player} – {material.chess_games.black_player} ({material.chess_games.result})</p>}
         {material.chess_puzzles&&<p className="text-xs font-mono break-all">FEN: {material.chess_puzzles.fen}</p>}

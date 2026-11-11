@@ -2,27 +2,17 @@
 import "server-only";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fenBoard } from "@/lib/lichess-puzzles";
 
 // A typed catalog, not a polymorphic "games" table. PGNs and puzzle positions
 // are stored as coach-supplied content; neither implies engine verification.
 export function structurallyValidFen(value: string): boolean {
-  const parts = value.trim().split(/\s+/);
-  if (parts.length !== 6) return false;
-  const ranks = parts[0].split("/");
-  if (ranks.length !== 8 || !ranks.every(rank => {
-    let squares = 0;
-    for (const character of rank) {
-      if (/[1-8]/.test(character)) squares += Number(character);
-      else if (/[prnbqkPRNBQK]/.test(character)) squares += 1;
-      else return false;
-    }
-    return squares === 8;
-  })) return false;
-  if (!["w", "b"].includes(parts[1])) return false;
-  if (!/^(-|[KQkq]{1,4})$/.test(parts[2]) || new Set(parts[2]).size !== parts[2].length) return false;
-  if (!/^(-|[a-h][36])$/.test(parts[3])) return false;
-  return /^\d+$/.test(parts[4]) && /^[1-9]\d*$/.test(parts[5]);
+  // Share the same board/king/pawn/counter validation as the existing reviewed
+  // Lichess puzzle preview. Do not accept a structurally incomplete position
+  // into the new typed materials catalog when the older editor would reject it.
+  try { fenBoard(value); return true; } catch { return false; }
 }
+
 const uuid = z.string().uuid();
 const base = z.object({
   title: z.string().trim().min(1).max(160),
