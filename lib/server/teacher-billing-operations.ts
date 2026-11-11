@@ -330,11 +330,12 @@ export async function teacherBillingCheckout(supabase:SupabaseClient,teacherId:s
     }
     return NextResponse.json(session);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("Stripe checkout failed:", message);
+    // Provider exception strings are not safe to send to a browser or an AI
+    // client: they may contain account identifiers, request internals or URLs.
+    console.error("Stripe checkout failed",err instanceof Error?err.name:"ProviderError");
     return NextResponse.json(
-      { error: `Stripe error: ${message}` },
-      { status: 500 }
+      { error: "Checkout provider unavailable; reconcile this invoice before retrying" },
+      { status: 502 }
     );
   }
 }
