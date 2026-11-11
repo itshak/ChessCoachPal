@@ -12,9 +12,15 @@ import {teacherSpreadsheetSuggest} from "@/lib/server/teacher-spreadsheet-import
 export async function POST(req:NextRequest){
  const teacher=await auth();if(!teacher)return NextResponse.json({error:"Unauthorized"},{status:401});
  const body=await req.json().catch(()=>null);
- if(!Array.isArray(body?.headers)||!body.headers.length)
+ if(!body||typeof body!=="object"||Array.isArray(body)||
+    !Array.isArray(body.headers)||!body.headers.length)
    return NextResponse.json({error:"headers required"},{status:400});
+ if(body.confirmedExternal!==true)
+   return NextResponse.json({
+     error:"Explicit approval is required before sharing spreadsheet samples with an external AI",
+     code:"CONFIRMATION_REQUIRED",
+   },{status:400});
  try{return NextResponse.json(await teacherSpreadsheetSuggest(teacher.db,teacher.id,{
-  headers:body.headers,sampleRows:Array.isArray(body.sampleRows)?body.sampleRows:[],useAi:true,
+  headers:body.headers,sampleRows:body.sampleRows??[],useAi:true,confirmedExternal:true,
  }));}catch(error){return fail(error);}
 }
