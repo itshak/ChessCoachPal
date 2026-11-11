@@ -231,3 +231,29 @@ test("PARITY:PARITY-billing-atomic-payment-correction reopens settled invoice fr
  expect(final.status).toBe("sent");
  expect(final.payments).toHaveLength(0);
 });
+
+
+test("PARITY:PARITY-billing-shared-payment-validation rejects unknown fields in website and MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const seeded=await invoice("sent",5000);
+ const payload={amountCents:2000,note:"Valid cash",idempotencyKey:randomUUID()};
+ const invalidWeb=await page.request.post(
+  "/api/billing/invoices/"+seeded.id+"/mark-paid",{
+    data:{...payload,stripeToken:"must never accept"},
+  });
+ expect(invalidWeb.status(),await invalidWeb.text()).toBe(400);
+ const invalidModel=await call("ccp_v1_billing_manual_payment_record",{
+   invoiceId:seeded.id,...payload,stripeToken:"must never accept",confirmed:true,
+ });
+ expect(invalidModel.error?.code).toBe("VALIDATION_ERROR");
+ const detail=await siteInvoice(page,seeded.id);
+ expect(detail.payments).toHaveLength(0);
+ const valid=await page.request.post(
+  "/api/billing/invoices/"+seeded.id+"/mark-paid",{data:payload});
+ expect(valid.status(),await valid.text()).toBe(200);
+ const replay=await call("ccp_v1_billing_manual_payment_record",{
+   invoiceId:seeded.id,...payload,confirmed:true,
+ });
+ expect(replay.error).toBeUndefined();
+ expect(replay.data.paymentId).toBe((await valid.json()).paymentId);
+});
