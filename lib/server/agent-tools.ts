@@ -111,6 +111,7 @@ const eventChanges=z.object({
   sendReminder:z.boolean().optional(),
   studentIds:z.array(uuid).max(200).optional(),
   repertoireByStudent:z.record(uuid,z.string().max(10000)).optional(),
+  idempotencyKey:uuid.optional(),
 }).strict();
 const studioPolicyPatch=z.object({
  studioName:z.string().max(120).optional(),
@@ -424,7 +425,7 @@ const catalogue = [
   },
   {
     name:"ccp_v1_events_create",
-    description:"Create an event for named students, with optional repertoires and RSVP invitations in pending state. DOES NOT email without a separate confirmed send tool.",
+    description:"Create an event for named students, with optional student repertoires, pending RSVPs and atomic idempotencyKey replay across website/MCP. DOES NOT email without a separate confirmed send tool.",
     schema:eventChanges.extend({title:z.string().trim().min(1).max(200),
       startsAt:z.string().datetime({offset:true}),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
