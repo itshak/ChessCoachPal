@@ -34,10 +34,24 @@ export function teacherSpreadsheetParse(filename:string,buffer:ArrayBuffer){
 }
 export async function teacherSpreadsheetSuggest(db:SupabaseClient,teacherId:string,input:{
  headers:string[];sampleRows?:Record<string,string>[];useAi?:boolean;
+ confirmedExternal?:boolean;
 }){
- if(!Array.isArray(input.headers)||!input.headers.length||input.headers.length>150)
-   throw fail(400,"VALIDATION_ERROR","Provide between 1 and 150 headers");
+ if(!Array.isArray(input.headers)||!input.headers.length||input.headers.length>150||
+    input.headers.some(h=>typeof h!=="string"||h.length>200))
+   throw fail(400,"VALIDATION_ERROR","Provide 1–150 text headers, each at most 200 characters");
+ if(input.sampleRows!==undefined&&(!Array.isArray(input.sampleRows)||
+    input.sampleRows.length>8||input.sampleRows.some(row=>
+      !row||typeof row!=="object"||Array.isArray(row)||
+      Object.keys(row).length>150||Object.entries(row).some(([key,value])=>
+        key.length>200||typeof value!=="string"||value.length>512))))
+   throw fail(400,"VALIDATION_ERROR","Sample rows must be at most 8 small text-only rows");
+ if(input.useAi!==undefined&&typeof input.useAi!=="boolean")
+   throw fail(400,"VALIDATION_ERROR","AI selection must be a boolean");
  if(!input.useAi)return {mapping:suggestColumnMapping(input.headers),warning:null};
+ // A direct website POST, delegated MCP call or internal service call must
+ // never disclose student/guardian samples to an external AI by default.
+ if(input.confirmedExternal!==true)
+   throw fail(400,"CONFIRMATION_REQUIRED","Approve sharing preview rows with the external AI provider first");
  const policy=await getPolicy(db,teacherId);
  if(policy.ai_provider==="none"||!policy.ai_api_key)
    throw fail(400,"NOT_CONFIGURED","Optional AI is not configured; map columns manually");
