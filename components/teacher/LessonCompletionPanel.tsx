@@ -66,15 +66,14 @@ export function LessonCompletionPanel(){
   })));
   setConfirmed(false);
  },[]);
- useEffect(()=>{
-  let mounted=true;
-  void api<Session[]>("sessions.list").then(items=>{
-    if(!mounted)return;
-    setSessions(items);
-    setSessionId(old=>old&&items.some(s=>s.id===old)?old:items[0]?.id??"");
-  }).catch(e=>{if(mounted)setError(String(e));});
-  return ()=>{mounted=false;};
+ const refreshSessions=useCallback(async()=>{
+  const items=await api<Session[]>("sessions.list");
+  setSessions(items);
+  setSessionId(old=>old&&items.some(s=>s.id===old)?old:items[0]?.id??"");
  },[]);
+ useEffect(()=>{
+  void refreshSessions().catch(e=>setError(String(e)));
+ },[refreshSessions]);
  useEffect(()=>{
   let mounted=true;
   void refresh(sessionId).catch(e=>{if(mounted){setRoster(null);setError(String(e));}});
@@ -121,6 +120,10 @@ export function LessonCompletionPanel(){
   </header>
   {error&&<p role="alert" className="text-error">{error}</p>}
   {notice&&<p role="status" className="text-success">{notice}</p>}
+  <button type="button" disabled={busy} className="text-sm underline"
+   onClick={()=>void refreshSessions().catch(e=>setError(String(e)))}>
+   Refresh lessons
+  </button>
   <label className="block">Lesson
    <select className={select} aria-label="Lesson to complete" value={sessionId}
      onChange={e=>{rosterLoad.current++;setRoster(null);setDecisions({});

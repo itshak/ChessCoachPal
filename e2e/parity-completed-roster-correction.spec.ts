@@ -48,10 +48,19 @@ test("PARITY:PARITY-calendar-correct-frozen-history completes group roster corre
  expect(browserAttendance.status(),await browserAttendance.text()).toBe(200);
  const details=await call("ccp_v1_sessions_details",{sessionId});
  expect(details.error).toBeUndefined();
- const completed=await call("ccp_v1_sessions_edit",{
+ const attendance=await call("ccp_v1_attendance_preview",{sessionId});
+ expect(attendance.error).toBeUndefined();
+ const completed=await call("ccp_v1_sessions_complete",{
    sessionId,expectedUpdatedAt:details.data.updated_at,
    idempotencyKey:randomUUID(),confirmed:true,
-   changes:{status:"completed"},
+   attendance:attendance.data.attendance.map((row:{
+     student_id:string;status:string;note:string;updated_at:string;
+   })=>({
+     studentId:row.student_id,
+     status:row.status==="absent"?"absent":"present",
+     note:row.note,
+     expectedUpdatedAt:row.updated_at,
+   })),
  });
  expect(completed.error).toBeUndefined();
 

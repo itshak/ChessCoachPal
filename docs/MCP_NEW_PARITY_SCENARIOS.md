@@ -9,3 +9,4 @@ is green. New routes/fields require additional cases, not renaming old ones.
 | Verified | New independently required behavior | Test and acceptance evidence |
 | --- | --- | --- |
 | - [x] | Atomically complete one canonical coaching lesson with every frozen learner's explicit attendance | **Accepted with 184 passed, five skipped, no failures:** `e2e/parity-session-completion.spec.ts#PARITY-sessions-complete-atomic`; stale revisions roll back the entire lesson; [exact-head E2E evidence](https://github.com/itshak/ChessCoachPal/actions/runs/43108081440) at `2309bd3`. |
+| - [ ] | Reject status-only coaching completion at website, delegated MCP and direct authenticated database boundary | **Pending exact-head acceptance:** `e2e/parity-session-completion.spec.ts#PARITY-completion-cannot-bypass`; only the full frozen-roster atomic completion may set status completed. |

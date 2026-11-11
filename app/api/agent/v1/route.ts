@@ -75,7 +75,7 @@ const calls = z.discriminatedUnion("action", [
     startsAt: z.string().datetime({ offset: true }).optional(),
     durationMinutes: z.number().int().min(15).max(480).optional(),
     lessonNote: z.string().max(10000).optional(),
-    status: z.enum(["scheduled", "completed", "cancelled"]).optional(),
+    status: z.enum(["scheduled", "cancelled"]).optional(),
   }),
   lessonCompletionSchema.safeExtend({action:z.literal("sessions.complete")}),
   z.object({ action: z.literal("sessions.participants"), sessionId: uuid }),

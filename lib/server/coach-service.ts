@@ -459,6 +459,9 @@ export async function sessionsUpdate(
       throw new CoachError("VALIDATION_ERROR", 400, "Duration must be an integer between 15 and 480 minutes");
     }
   }
+  if(updates.status==="completed")
+    throw new CoachError("VALIDATION_ERROR",400,
+      "Complete this lesson with explicit attendance for its entire frozen roster");
   const changes: Record<string,unknown> = {};
   if (updates.title !== undefined) changes.title = updates.title;
   if (updates.startsAt !== undefined) changes.startsAt = updates.startsAt;

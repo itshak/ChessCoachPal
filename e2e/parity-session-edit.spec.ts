@@ -30,9 +30,22 @@ test("PARITY:PARITY-sessions-title-completion shares web and MCP revisioned less
   const mcp=await callTool("ccp_v1_sessions_edit",{
     sessionId,expectedUpdatedAt:before.data.updated_at,
     idempotencyKey:key,confirmed:true,
-    changes:{title:"Revised chess topic",status:"completed",lessonNote:"Teacher confirmed progress"},
+    changes:{title:"Revised chess topic",lessonNote:"Teacher confirmed progress"},
   });
   expect(mcp.error).toBeUndefined();
+  const beforeCompletion=await callTool("ccp_v1_sessions_details",{sessionId});
+  expect(beforeCompletion.error).toBeUndefined();
+  const roster=await callTool("ccp_v1_attendance_preview",{sessionId});
+  expect(roster.error).toBeUndefined();
+  const completed=await callTool("ccp_v1_sessions_complete",{
+    sessionId,expectedUpdatedAt:beforeCompletion.data.updated_at,
+    idempotencyKey:randomUUID(),confirmed:true,
+    attendance:roster.data.attendance.map((row:{student_id:string;updated_at:string})=>({
+      studentId:row.student_id,status:"present",note:"Attended",
+      expectedUpdatedAt:row.updated_at,
+    })),
+  });
+  expect(completed.error).toBeUndefined();
   const website=await page.request.post("/api/agent/v1",{
     data:{action:"sessions.list"},
   });

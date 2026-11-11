@@ -307,7 +307,8 @@ export function ChessCoachWorkspace() {
     catch (e) { setError(e instanceof Error ? e.message : "Invalid lesson time"); return; }
     await perform(() => operation("sessions.update", {
       sessionId: selectedSessionId, title: editSessionTitle.trim(), startsAt,
-      durationMinutes: editDuration, lessonNote: editSessionNote, status: editStatus,
+      durationMinutes: editDuration, lessonNote: editSessionNote,
+      ...(editStatus==="completed"?{}:{status:editStatus}),
     }), "Session changes saved.");
   }
 
@@ -673,10 +674,12 @@ export function ChessCoachWorkspace() {
             </label>
             <label className="block text-sm">Session status
               <select className={field} value={editStatus} onChange={e => setEditStatus(e.target.value as Session["status"])}>
-                <option value="scheduled">Scheduled</option><option value="completed">Completed</option>
+                <option value="scheduled">Scheduled</option>
+                {editStatus==="completed"&&<option value="completed" disabled>Completed (recorded with full attendance)</option>}
                 <option value="cancelled">Cancelled</option>
               </select>
             </label>
+            <p className="text-xs text-muted">To finish a lesson, use “Complete a coaching lesson” below and confirm the full frozen attendance roster.</p>
             <button className={button} disabled={busy}>Save session changes</button>
           </form>}
           {session && rosterRevision && <form onSubmit={correctHistoricalRoster}

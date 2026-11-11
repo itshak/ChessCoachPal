@@ -61,9 +61,16 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await page.getByRole("button", { name: "Record attendance" }).click();
   await expect(page.getByRole("status")).toContainText("Attendance saved.");
   await page.getByLabel("Shared session note").fill("Improved opposition and calculation");
-  await page.getByLabel("Session status").selectOption("completed");
   await page.getByRole("button", { name: "Save session changes" }).click();
   await expect(page.getByRole("status")).toContainText("Session changes saved.");
+  const completedSessionId=await page.getByRole("combobox",{name:"Lesson",exact:true}).inputValue();
+  const completion=page.locator('section[aria-label="Complete coaching lesson"]');
+  await completion.getByRole("button",{name:"Refresh lessons"}).click();
+  await completion.getByLabel("Lesson to complete").selectOption(completedSessionId);
+  await completion.getByLabel("Attendance for "+student).selectOption("absent");
+  await completion.getByRole("checkbox",{name:/I confirm these attendance statuses/}).check();
+  await completion.getByRole("button",{name:"Complete lesson"}).click();
+  await expect(completion.getByRole("status")).toContainText("committed atomically");
 
   await page.getByLabel("Lesson type").selectOption("private");
   await page.getByRole("combobox", { name: "Private student", exact: true }).selectOption({ label: student });

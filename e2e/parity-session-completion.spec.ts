@@ -1,4 +1,6 @@
 import {randomUUID} from "node:crypto";
+import {createClient} from "@supabase/supabase-js";
+import {SEED_TEACHER} from "./helpers/auth";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
@@ -136,4 +138,35 @@ test("PARITY:PARITY-sessions-complete-website form requires explicit per-learner
  expect(details.data.lesson_note).toBe("Original teacher note stays unless explicitly changed");
  const attendance=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
  expect(attendance.data.attendance.every((a:{status:string})=>a.status==="present")).toBe(true);
+});
+
+test("PARITY:completion cannot bypass frozen roster through ordinary website/MCP or direct RLS write",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const ctx=await fixture(call);
+ const directWebsite=await page.request.post("/api/agent/v1",{
+  data:{action:"sessions.update",sessionId:ctx.sessionId,status:"completed"},
+ });
+ expect(directWebsite.status(),await directWebsite.text()).toBe(400);
+ const deniedMcp=await call("ccp_v1_sessions_edit",{
+  sessionId:ctx.sessionId,changes:{status:"completed"},
+  expectedUpdatedAt:ctx.updatedAt,idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(deniedMcp.error?.code).toBe("VALIDATION_ERROR");
+ const client=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const signIn=await client.auth.signInWithPassword(SEED_TEACHER);
+ expect(signIn.error).toBeNull();
+ const {error:rawError}=await client.from("teaching_sessions")
+  .update({status:"completed"})
+  .eq("id",ctx.sessionId)
+  .eq("teacher_id",signIn.data.user!.id);
+ expect(rawError?.code).toBe("22023");
+ const still=await call("ccp_v1_sessions_details",{sessionId:ctx.sessionId});
+ expect(still.error).toBeUndefined();
+ expect(still.data.status).toBe("scheduled");
+ const register=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
+ expect(register.error).toBeUndefined();
+ expect(register.data.attendance.every((row:{status:string})=>row.status==="unmarked")).toBe(true);
 });

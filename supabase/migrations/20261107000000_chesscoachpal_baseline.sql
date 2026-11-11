@@ -4037,14 +4037,18 @@ BEGIN
  IF p_changes<>'{}'::jsonb AND v_session.updated_at IS DISTINCT FROM p_expected_updated_at THEN
    RAISE EXCEPTION 'SESSION_REVISION_CONFLICT' USING ERRCODE='23505';
  END IF;
- -- A combined completion must explicitly cover EVERY frozen participant.
- -- Existing status-only edits remain non-attesting: no mastery is inferred.
- IF (p_changes->>'status')='completed' AND jsonb_array_length(p_attendance)>0 THEN
+ -- Status=completed is possible only with an explicit, complete frozen
+ -- roster. An empty array is NOT a valid shortcut, even if some attendance
+ -- was recorded individually before completion.
+ IF (p_changes->>'status')='completed' THEN
    SELECT count(*) INTO v_count FROM public.session_participants
     WHERE teacher_id=v_teacher AND session_id=p_session_id;
-   IF v_count<>jsonb_array_length(p_attendance) THEN
+   IF v_count=0 OR v_count<>jsonb_array_length(p_attendance) THEN
      RAISE EXCEPTION 'INCOMPLETE_SESSION_ROSTER' USING ERRCODE='22023';
    END IF;
+   -- Transaction-local proof read by the status trigger. Direct PostgREST
+   -- updates cannot create completed sessions outside this RPC.
+   PERFORM set_config('ccp.confirmed_session_completion',p_session_id::text,true);
  END IF;
  IF p_changes<>'{}'::jsonb THEN
    UPDATE public.teaching_sessions SET
@@ -4098,6 +4102,28 @@ REVOKE ALL ON FUNCTION public.ccp_teacher_session_commit(
  uuid,jsonb,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_session_commit(
  uuid,jsonb,jsonb,timestamptz,uuid) TO authenticated;
+
+-- Enforce the canonical completed transition at the table boundary, not only
+-- at website/MCP validators. An authenticated direct PostgREST UPDATE cannot
+-- bypass the full-roster, revisioned transaction by setting status='completed'.
+CREATE FUNCTION public.ccp_completed_session_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $complete_guard$
+BEGIN
+ IF auth.uid() IS NOT NULL AND NEW.status='completed'
+    AND OLD.status IS DISTINCT FROM 'completed'
+    AND current_setting('ccp.confirmed_session_completion',true)
+         IS DISTINCT FROM NEW.id::text THEN
+   RAISE EXCEPTION 'COMPLETION_REQUIRES_FROZEN_ROSTER'
+     USING ERRCODE='22023';
+ END IF;
+ RETURN NEW;
+END;
+$complete_guard$;
+REVOKE ALL ON FUNCTION public.ccp_completed_session_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_completed_session_guard_trg
+ BEFORE UPDATE OF status ON public.teaching_sessions
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_completed_session_guard();
 
 -- Historical direct lessons must outlive current workplace enrollment.
 -- Existing FK tied lessons to the *live* membership row, making a safe
