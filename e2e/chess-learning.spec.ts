@@ -27,10 +27,11 @@ test("teacher website: observations and canonical typed material associations",a
  expect(created.status(),await created.text()).toBe(201);
  const materialId=(await created.json()).material.id as string;
  await page.getByRole("button",{name:"Refresh material catalog"}).click();
- await page.getByLabel("Learning material").selectOption(materialId);
+ const learningPanel=page.locator('section[aria-label="Chess learning"]');
+ await learningPanel.getByLabel("Learning material",{exact:true}).selectOption(materialId);
  page.once("dialog",dialog=>dialog.accept());
- await page.getByRole("button",{name:"Attach learning material"}).click();
- await expect(page.getByRole("status")).toContainText("Material associated");
+ await learningPanel.getByRole("button",{name:"Attach learning material"}).click();
+ await expect(learningPanel.getByRole("status")).toContainText("Material associated");
  const browser=await page.request.post("/api/agent/v1",{
    data:{action:"materials.links.list",studentId},
  });
@@ -48,10 +49,10 @@ test("teacher website: observations and canonical typed material associations",a
  expect(other.status(),await other.text()).toBe(201);
  const replacementId=(await other.json()).material.id as string;
  await page.getByRole("button",{name:"Refresh material catalog"}).click();
- await page.getByRole("button",{name:"Reassign material"}).first().click();
- await page.getByLabel("Replacement learning material").selectOption(replacementId);
- await page.getByRole("button",{name:"Save association"}).click();
- await expect(page.getByRole("status")).toContainText("association corrected");
+ await learningPanel.getByRole("button",{name:"Reassign material"}).first().click();
+ await learningPanel.getByLabel("Replacement learning material",{exact:true}).selectOption(replacementId);
+ await learningPanel.getByRole("button",{name:"Save association"}).click();
+ await expect(learningPanel.getByRole("status")).toContainText("association corrected");
  const revised=await page.request.post("/api/agent/v1",{
    data:{action:"materials.links.list",studentId},
  });
@@ -61,7 +62,7 @@ test("teacher website: observations and canonical typed material associations",a
 
  await page.reload();
  await expect(page.getByText(note)).toBeVisible();
- await expect(page.getByText(/Alternative endgame study/)).toBeVisible();
+ await expect(page.locator('section[aria-label="Chess learning"]').getByText(/Alternative endgame study/).first()).toBeVisible();
 });
 
 test("database: two teachers cannot read or attach chess records across ownership",async()=>{
