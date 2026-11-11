@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {generateShortToken} from "@/lib/token";
 
 /**
  * ChessCoachPal pre-1.0 backup format. No CogNote/music import compatibility.
@@ -37,7 +36,6 @@ const TEACHER_SCOPED = [
   "chess_observations", "chess_learning_resources", "lesson_slots", "lessons",
   "skill_dimensions", "invoices", "events", "credit_packages", "credit_redemptions",
 ] as const;
-const TEACHER_SCOPED_SET = new Set<string>(TEACHER_SCOPED);
 
 function asRows(data: unknown): Record<string, unknown>[] {
   return (data as Record<string, unknown>[] | null) ?? [];
@@ -101,70 +99,30 @@ export async function buildStudioExport(
   };
 }
 
-function withTeacherId(rows: Record<string, unknown>[], teacherId: string) {
-  return rows.map(row => ({ ...row, teacher_id: teacherId }));
-}
-
-async function upsertAll(
-  supabase: SupabaseClient, table: string, rows: Record<string, unknown>[]
-): Promise<string | null> {
-  for (let i = 0; i < rows.length; i += 200) {
-    const { error } = await supabase.from(table).upsert(rows.slice(i, i + 200));
-    if (error) return `${table}: ${error.message}`;
-  }
-  return null;
-}
-
 /**
- * Only restores the explicitly allowed chess/teacher tables; unknown tables
- * cannot be injected by a malicious export. Cross-owner IDs remain subject
- * to RLS and tenant-ownership foreign-key constraints.
+ * A reviewed backup is applied by a single authenticated Postgres function.
+ * One failure must never leave half of a student's teaching history restored.
+ * The SQL function enforces RLS, tenant-scoped owners, FK order, hosted quotas,
+ * and an atomic SHA-256 keyed replay receipt for cross-client retries.
  */
 export async function importStudioExport(
-  supabase: SupabaseClient, teacherId: string, payload: StudioDataExport
+  supabase: SupabaseClient, teacherId: string, payload: StudioDataExport, sha256: string
 ): Promise<{ ok: true; counts: Record<string, number> } | { ok: false; error: string }> {
-  // Validate the entire allowlisted backup before the first upsert. Without
-  // this, malformed rows in a later table could crash after earlier writes.
-  if (!parseExportPayload(payload)) {
-    return { ok: false, error: "Unsupported ChessCoachPal export format or invalid table shape" };
-  }
-  const counts: Record<string, number> = {};
-  for (const table of IMPORT_ORDER) {
-    const source = payload.tables[table];
-    const rows = table === "studio_policies"
-      ? source && !Array.isArray(source) ? [source as Record<string, unknown>] : []
-      : asRows(source);
-    const safe = TEACHER_SCOPED_SET.has(table) || table === "studio_policies"
-      ? withTeacherId(rows, teacherId)
-      : rows;
-    if (table === "studio_policies") {
-      for (const row of safe) for (const field of POLICY_SECRET_FIELDS) delete (row as Record<string, unknown>)[field];
-    }
-    // A model-visible portable export deliberately omits portal credentials.
-    // On import, generate fresh random links for guardians whose tokens were
-    // withheld rather than writing NULL or accepting a predictable placeholder.
-    if (table === "guardians") {
-      for (const original of safe) {
-        const row = original as Record<string, unknown>;
-        if (typeof row.portal_token !== "string" || !row.portal_token.trim())
-          row.portal_token = generateShortToken();
-      }
-    }
-    const error = await upsertAll(supabase, table, safe);
-    if (error) return { ok: false, error };
-    counts[table] = rows.length;
-  }
-
-  const importedName = payload.teacher_profile?.display_name?.trim();
-  if (importedName) {
-    const { data: profile } = await supabase.from("teachers").select("display_name").eq("id", teacherId).maybeSingle();
-    if (profile && !profile.display_name?.trim()) {
-      const { error } = await supabase.from("teachers").update({ display_name: importedName }).eq("id", teacherId);
-      if (error) return { ok: false, error: `teacher_profile: ${error.message}` };
-      counts.teacher_profile = 1;
-    }
-  }
-  return { ok: true, counts };
+  if (!parseExportPayload(payload))
+    return {ok:false,error:"Unsupported ChessCoachPal export format or invalid table shape"};
+  // The invoker's auth.uid() is authoritative inside the RPC; never pass a
+  // writable teacher_id argument that an MCP or website client could spoof.
+  if (!teacherId) return {ok:false,error:"Authenticated teacher is required"};
+  const { data, error } = await supabase.rpc("ccp_teacher_backup_restore", {
+    p_tables:payload.tables,
+    p_display_name:payload.teacher_profile?.display_name ?? null,
+    p_digest:sha256,
+  });
+  if (error) return {ok:false,error:error.message};
+  const counts=(data as {counts?:Record<string,number>}|null)?.counts;
+  if (!counts || typeof counts!=="object" || Array.isArray(counts))
+    return {ok:false,error:"Restore completed without a valid transaction receipt"};
+  return {ok:true,counts};
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
