@@ -1940,25 +1940,20 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           requiresConfirmation: true, bulkCommitAvailable: false } };
       }
       case "ccp_v1_attendance_record": {
-        const a = args as {sessionId:string;studentId:string;status:string;note:string;expectedUpdatedAt:string;idempotencyKey:string};
-        const { data, error } = await db.rpc("agent_record_attendance", {
-          p_session_id: a.sessionId, p_student_id: a.studentId, p_status: a.status,
-          p_note: a.note, p_expected_updated_at: a.expectedUpdatedAt,
-          p_idempotency_key: a.idempotencyKey,
-        });
-        if (error) return { error: { code: error.message.includes("CONFLICT") ? "CONFLICT" : "VALIDATION_ERROR",
-          message: "Attendance was not changed. Re-read the session and verify the expected revision and student." } };
-        return { data };
+        const a=args as {sessionId:string;studentId:string;status:string;note:string;
+          expectedUpdatedAt:string;idempotencyKey:string};
+        return {data:await attendanceRecord(db,teacherId,{
+          ...a,requestId:a.idempotencyKey,
+        })};
       }
       case "ccp_v1_sessions_note_update": {
-        const a = args as {sessionId:string;lessonNote:string;expectedUpdatedAt:string;idempotencyKey:string};
-        const { data, error } = await db.rpc("agent_update_session_note", {
-          p_session_id: a.sessionId, p_lesson_note: a.lessonNote,
-          p_expected_updated_at: a.expectedUpdatedAt, p_idempotency_key: a.idempotencyKey,
+        const a=args as {sessionId:string;lessonNote:string;expectedUpdatedAt:string;idempotencyKey:string};
+        const updated=await sessionsUpdate(db,teacherId,a.sessionId,{
+          lessonNote:a.lessonNote,expectedUpdatedAt:a.expectedUpdatedAt,
+          requestId:a.idempotencyKey,
         });
-        if (error) return { error: { code: error.message.includes("CONFLICT") ? "CONFLICT" : "VALIDATION_ERROR",
-          message: "Session note was not changed. Re-read the session and expected revision." } };
-        return { data };
+        return {data:{operation:"sessions.note.update",sessionId:a.sessionId,
+          revision:updated.updated_at,idempotencyKey:a.idempotencyKey}};
       }
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };

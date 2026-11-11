@@ -254,24 +254,88 @@ export async function attendanceList(db: Db, teacherId: string, sessionId: strin
   return data;
 }
 
+/** One current coaching attendance writer for website and delegated MCP.
+ * The SQL transaction owns authorization, frozen-roster membership, revision,
+ * request receipts and rollback. No web-only direct UPDATE survives.
+ */
 export async function attendanceRecord(
   db: Db, teacherId: string,
-  payload: { sessionId: string; studentId: string; status: string; note?: string }
+  payload:{sessionId:string;studentId:string;status:string;note?:string;
+    expectedUpdatedAt?:string;requestId?:string}
 ) {
-  const { data: participant } = await db.from("session_participants")
-    .select("student_id").eq("teacher_id", teacherId)
-    .eq("session_id", payload.sessionId).eq("student_id", payload.studentId)
-    .maybeSingle();
-  if (!participant) throw notFound();
-  const { data, error } = await db.from("session_attendance")
-    .update({
-      status: payload.status, note: payload.note ?? "", updated_at: new Date().toISOString(),
-    }).eq("teacher_id", teacherId).eq("session_id", payload.sessionId)
-    .eq("student_id", payload.studentId)
-    .select("student_id,status,note,updated_at").maybeSingle();
-  if (error) throw problem();
-  if (!data) throw notFound();
-  return data;
+ if(!["present","absent","late","excused"].includes(payload.status)||
+    (payload.note??"").length>5000)
+   throw new CoachError("VALIDATION_ERROR",400,"Invalid attendance status or note");
+ if(Boolean(payload.requestId)!==Boolean(payload.expectedUpdatedAt))
+   throw new CoachError("VALIDATION_ERROR",400,
+    "Provide both the attendance revision and idempotency key");
+ let expected=payload.expectedUpdatedAt;
+ if(!expected){
+   const {data,error}=await db.from("session_attendance")
+    .select("updated_at").eq("teacher_id",teacherId)
+    .eq("session_id",payload.sessionId).eq("student_id",payload.studentId).maybeSingle();
+   if(error)throw problem();
+   if(!data)throw notFound();
+   expected=data.updated_at;
+ }
+ const requestId=payload.requestId??crypto.randomUUID();
+ const {data:receipt,error}=await db.rpc("ccp_teacher_session_commit",{
+   p_session_id:payload.sessionId,p_changes:{},
+   p_attendance:[{
+     studentId:payload.studentId,status:payload.status,
+     note:payload.note??"",expectedUpdatedAt:expected,
+   }],
+   p_expected_updated_at:null,p_idempotency_key:requestId,
+ });
+ if(error){
+   if(error.code==="23505"||/CONFLICT|REVISION/.test(error.message))
+     throw conflict();
+   if(error.code==="42501"||/NOT_FOUND/.test(error.message))
+     throw notFound();
+   if(error.code==="22023")throw new CoachError("VALIDATION_ERROR",400,
+     "Invalid attendance correction");
+   throw problem();
+ }
+ // MCP callers receive the immutable SQL receipt for replay; website callers
+ // retain the ordinary row shape used by the teaching workspace.
+ if(payload.requestId)return receipt;
+ const {data,error:readError}=await db.from("session_attendance")
+   .select("student_id,status,note,updated_at").eq("teacher_id",teacherId)
+   .eq("session_id",payload.sessionId).eq("student_id",payload.studentId).maybeSingle();
+ if(readError)throw problem();
+ if(!data)throw notFound();
+ return data;
+}
+
+export async function sessionsComplete(
+  db:Db,teacherId:string,input:{
+    sessionId:string;expectedUpdatedAt:string;idempotencyKey:string;
+    attendance:Array<{studentId:string;status:"present"|"absent"|"late"|"excused";
+      note:string;expectedUpdatedAt:string}>;
+    lessonNote?:string;
+  }
+){
+ void teacherId; // Authoritative transaction uses auth.uid() for all rows.
+ if(input.attendance.length<1||input.attendance.length>50)
+   throw new CoachError("VALIDATION_ERROR",400,"Complete the frozen roster for this session");
+ const {data,error}=await db.rpc("ccp_teacher_session_commit",{
+   p_session_id:input.sessionId,
+   p_changes:{status:"completed",...(input.lessonNote!==undefined?{lessonNote:input.lessonNote}:{})},
+   p_attendance:input.attendance,
+   p_expected_updated_at:input.expectedUpdatedAt,
+   p_idempotency_key:input.idempotencyKey,
+ });
+ if(error){
+   if(error.code==="23505"||/CONFLICT|REVISION/.test(error.message))
+     throw conflict();
+   if(error.code==="42501"||/NOT_FOUND/.test(error.message))
+     throw notFound();
+   if(error.code==="22023"||/INCOMPLETE_SESSION_ROSTER/.test(error.message))
+     throw new CoachError("VALIDATION_ERROR",400,
+       "Every frozen participant needs one explicit status and current revision");
+   throw problem();
+ }
+ return data;
 }
 
 /** Strict IANA validation. The database retains the requested zone, not the server's zone. */
@@ -414,8 +478,8 @@ export async function sessionsUpdate(
   if (!existing) throw notFound();
   // Legacy website mutations use a freshly observed revision and new request key.
   // MCP always supplies both; either transport goes through the SAME SQL transaction.
-  const {error}=await db.rpc("ccp_teacher_session_patch",{
-    p_session_id:sessionId,p_changes:changes,
+  const {error}=await db.rpc("ccp_teacher_session_commit",{
+    p_session_id:sessionId,p_changes:changes,p_attendance:[],
     p_expected_updated_at:updates.expectedUpdatedAt ?? existing.updated_at,
     p_idempotency_key:updates.requestId ?? crypto.randomUUID(),
   });
@@ -426,7 +490,7 @@ export async function sessionsUpdate(
     "Invalid session correction");
   if (error) throw problem();
   const {data, error: readError}=await db.from("teaching_sessions")
-    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
+    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id,updated_at")
     .eq("teacher_id",teacherId).eq("id",sessionId).maybeSingle();
   if (readError) throw problem();
   if (!data) throw notFound();

@@ -62,7 +62,7 @@ test("teacher website: observations and canonical typed material associations",a
 
  await page.reload();
  await expect(page.getByText(note)).toBeVisible();
- await expect(page.locator('section[aria-label="Chess learning"]').getByText(/Alternative endgame study/).first()).toBeVisible();
+ await expect(page.locator('section[aria-label="Chess learning"] li p.font-medium').filter({hasText:/Alternative endgame study/})).toBeVisible();
 });
 
 test("database: two teachers cannot read or attach chess records across ownership",async()=>{

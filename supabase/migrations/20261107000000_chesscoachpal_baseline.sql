@@ -45,98 +45,6 @@ CREATE TYPE "public"."rsvp_status" AS ENUM (
 ALTER TYPE "public"."rsvp_status" OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."agent_record_attendance"("p_session_id" "uuid", "p_student_id" "uuid", "p_status" "text", "p_note" "text", "p_expected_updated_at" timestamp with time zone, "p_idempotency_key" "uuid") RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public', 'pg_temp'
-    AS $$
-DECLARE
-  v_teacher uuid := auth.uid();
-  v_hash text;
-  v_saved public.agent_tool_receipts%ROWTYPE;
-  v_updated public.session_attendance%ROWTYPE;
-  v_receipt jsonb;
-BEGIN
-  IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED'; END IF;
-  IF p_status NOT IN ('present','absent','late','excused') OR
-      char_length(coalesce(p_note,'')) > 5000 OR p_expected_updated_at IS NULL THEN
-    RAISE EXCEPTION 'VALIDATION_ERROR';
-  END IF;
-  v_hash := md5(jsonb_build_array(p_session_id,p_student_id,p_status,p_note,p_expected_updated_at)::text);
-  INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
-  VALUES(v_teacher,p_idempotency_key,'attendance.record',v_hash,'{}'::jsonb)
-  ON CONFLICT DO NOTHING;
-  IF NOT FOUND THEN
-    SELECT * INTO v_saved FROM public.agent_tool_receipts
-    WHERE teacher_id = v_teacher AND idempotency_key = p_idempotency_key;
-    IF v_saved.operation <> 'attendance.record' OR v_saved.request_hash <> v_hash THEN
-      RAISE EXCEPTION 'CONFLICT';
-    END IF;
-    RETURN v_saved.receipt;
-  END IF;
-  UPDATE public.session_attendance SET status = p_status, note = coalesce(p_note,''),
-    updated_at = clock_timestamp()
-  WHERE teacher_id = v_teacher AND session_id = p_session_id AND student_id = p_student_id
-    AND updated_at = p_expected_updated_at
-  RETURNING * INTO v_updated;
-  IF NOT FOUND THEN RAISE EXCEPTION 'CONFLICT_OR_NOT_FOUND'; END IF;
-  v_receipt := jsonb_build_object('operation','attendance.record',
-    'sessionId',p_session_id,'studentId',p_student_id,'status',p_status,
-    'revision',v_updated.updated_at,'timestamp',now(),'idempotencyKey',p_idempotency_key);
-  UPDATE public.agent_tool_receipts SET receipt = v_receipt
-  WHERE teacher_id = v_teacher AND idempotency_key = p_idempotency_key;
-  RETURN v_receipt;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."agent_record_attendance"("p_session_id" "uuid", "p_student_id" "uuid", "p_status" "text", "p_note" "text", "p_expected_updated_at" timestamp with time zone, "p_idempotency_key" "uuid") OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."agent_update_session_note"("p_session_id" "uuid", "p_lesson_note" "text", "p_expected_updated_at" timestamp with time zone, "p_idempotency_key" "uuid") RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public', 'pg_temp'
-    AS $$
-DECLARE
-  v_teacher uuid := auth.uid();
-  v_hash text;
-  v_saved public.agent_tool_receipts%ROWTYPE;
-  v_updated public.teaching_sessions%ROWTYPE;
-  v_receipt jsonb;
-BEGIN
-  IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED'; END IF;
-  IF p_lesson_note IS NULL OR char_length(p_lesson_note) > 10000
-      OR p_expected_updated_at IS NULL THEN RAISE EXCEPTION 'VALIDATION_ERROR'; END IF;
-  v_hash := md5(jsonb_build_array(p_session_id,p_lesson_note,p_expected_updated_at)::text);
-  INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
-  VALUES(v_teacher,p_idempotency_key,'sessions.note.update',v_hash,'{}'::jsonb)
-  ON CONFLICT DO NOTHING;
-  IF NOT FOUND THEN
-    SELECT * INTO v_saved FROM public.agent_tool_receipts
-    WHERE teacher_id = v_teacher AND idempotency_key = p_idempotency_key;
-    IF v_saved.operation <> 'sessions.note.update' OR v_saved.request_hash <> v_hash THEN
-      RAISE EXCEPTION 'CONFLICT';
-    END IF;
-    RETURN v_saved.receipt;
-  END IF;
-  UPDATE public.teaching_sessions SET lesson_note = p_lesson_note,
-    updated_at = clock_timestamp()
-  WHERE teacher_id = v_teacher AND id = p_session_id
-    AND updated_at = p_expected_updated_at
-  RETURNING * INTO v_updated;
-  IF NOT FOUND THEN RAISE EXCEPTION 'CONFLICT_OR_NOT_FOUND'; END IF;
-  v_receipt := jsonb_build_object('operation','sessions.note.update',
-    'sessionId',p_session_id,'revision',v_updated.updated_at,
-    'timestamp',now(),'idempotencyKey',p_idempotency_key);
-  UPDATE public.agent_tool_receipts SET receipt = v_receipt
-  WHERE teacher_id = v_teacher AND idempotency_key = p_idempotency_key;
-  RETURN v_receipt;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."agent_update_session_note"("p_session_id" "uuid", "p_lesson_note" "text", "p_expected_updated_at" timestamp with time zone, "p_idempotency_key" "uuid") OWNER TO "postgres";
-
-
 CREATE OR REPLACE FUNCTION "public"."chesscoachpal_seed_chess_skills"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     SET "search_path" TO 'public'
@@ -2437,18 +2345,6 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
-REVOKE ALL ON FUNCTION "public"."agent_record_attendance"("p_session_id" "uuid", "p_student_id" "uuid", "p_status" "text", "p_note" "text", "p_expected_updated_at" timestamp with time zone, "p_idempotency_key" "uuid") FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."agent_record_attendance"("p_session_id" "uuid", "p_student_id" "uuid", "p_status" "text", "p_note" "text", "p_expected_updated_at" timestamp with time zone, "p_idempotency_key" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."agent_record_attendance"("p_session_id" "uuid", "p_student_id" "uuid", "p_status" "text", "p_note" "text", "p_expected_updated_at" timestamp with time zone, "p_idempotency_key" "uuid") TO "service_role";
-
-
-
-REVOKE ALL ON FUNCTION "public"."agent_update_session_note"("p_session_id" "uuid", "p_lesson_note" "text", "p_expected_updated_at" timestamp with time zone, "p_idempotency_key" "uuid") FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."agent_update_session_note"("p_session_id" "uuid", "p_lesson_note" "text", "p_expected_updated_at" timestamp with time zone, "p_idempotency_key" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."agent_update_session_note"("p_session_id" "uuid", "p_lesson_note" "text", "p_expected_updated_at" timestamp with time zone, "p_idempotency_key" "uuid") TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."chesscoachpal_seed_chess_skills"() TO "anon";
 GRANT ALL ON FUNCTION "public"."chesscoachpal_seed_chess_skills"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."chesscoachpal_seed_chess_skills"() TO "service_role";
@@ -3440,12 +3336,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 REVOKE EXECUTE ON FUNCTION
   public.agent_coaching_mutate(text,jsonb,timestamptz,uuid,text)
   FROM PUBLIC, anon;
-REVOKE EXECUTE ON FUNCTION
-  public.agent_record_attendance(uuid,uuid,text,text,timestamptz,uuid)
-  FROM PUBLIC, anon;
-REVOKE EXECUTE ON FUNCTION
-  public.agent_update_session_note(uuid,text,timestamptz,uuid)
-  FROM PUBLIC, anon;
 -- This function runs exclusively as a trigger and is not a public API.
 REVOKE EXECUTE ON FUNCTION
   public.chesscoachpal_snapshot_participants()
@@ -3454,21 +3344,12 @@ REVOKE EXECUTE ON FUNCTION
 GRANT EXECUTE ON FUNCTION
   public.agent_coaching_mutate(text,jsonb,timestamptz,uuid,text)
   TO authenticated;
-GRANT EXECUTE ON FUNCTION
-  public.agent_record_attendance(uuid,uuid,text,text,timestamptz,uuid)
-  TO authenticated;
-GRANT EXECUTE ON FUNCTION
-  public.agent_update_session_note(uuid,text,timestamptz,uuid)
-  TO authenticated;
-
 DO $privileges$
 DECLARE
   func regprocedure;
 BEGIN
   FOREACH func IN ARRAY ARRAY[
     'public.agent_coaching_mutate(text,jsonb,timestamptz,uuid,text)'::regprocedure,
-    'public.agent_record_attendance(uuid,uuid,text,text,timestamptz,uuid)'::regprocedure,
-    'public.agent_update_session_note(uuid,text,timestamptz,uuid)'::regprocedure,
     'public.chesscoachpal_snapshot_participants()'::regprocedure
   ] LOOP
     IF has_function_privilege('anon',func,'EXECUTE') THEN
@@ -4067,30 +3948,44 @@ GRANT EXECUTE ON FUNCTION public.ccp_invoice_draft_update(
 -- MCP and website use one revision-checked, idempotent session editor.
 -- A teacher may update title, time/duration, shared note and completed/cancelled
 -- status. Frozen lesson participants are deliberately immutable here.
-CREATE OR REPLACE FUNCTION public.ccp_teacher_session_patch(
-  p_session_id uuid,
-  p_changes jsonb,
-  p_expected_updated_at timestamptz,
-  p_idempotency_key uuid
-) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+-- One canonical current-schema write transaction for a coaching lesson:
+-- topic/time/status AND explicit frozen-roster attendance. Both website
+-- and delegated MCP use this function; there are no agent-only writers.
+CREATE OR REPLACE FUNCTION public.ccp_teacher_session_commit(
+  p_session_id uuid,p_changes jsonb,p_attendance jsonb,
+  p_expected_updated_at timestamptz,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $commit$
 DECLARE
-  v_teacher uuid := auth.uid();
-  v_hash text;
-  v_saved public.agent_tool_receipts%ROWTYPE;
-  v_session public.teaching_sessions%ROWTYPE;
-  v_receipt jsonb;
+ v_teacher uuid:=auth.uid();
+ v_session public.teaching_sessions%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_att public.session_attendance%ROWTYPE;
+ v_hash text;
+ v_row jsonb;
+ v_student uuid;
+ v_expected_att timestamptz;
+ v_seen uuid[]:=ARRAY[]::uuid[];
+ v_count integer;
+ v_changed jsonb:='[]'::jsonb;
+ v_receipt jsonb;
+ v_last_status text;
+ v_last_revision timestamptz;
+ v_operation text;
 BEGIN
-  IF v_teacher IS NULL THEN
-    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
-  END IF;
-  IF p_session_id IS NULL OR p_idempotency_key IS NULL OR
-    p_expected_updated_at IS NULL OR p_changes IS NULL OR
-    jsonb_typeof(p_changes)<>'object' OR p_changes='{}'::jsonb OR
+ IF v_teacher IS NULL THEN
+   RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_session_id IS NULL OR p_idempotency_key IS NULL OR
+    p_changes IS NULL OR jsonb_typeof(p_changes)<>'object' OR
+    p_attendance IS NULL OR jsonb_typeof(p_attendance)<>'array' OR
+    (p_changes='{}'::jsonb AND p_attendance='[]'::jsonb) OR
+    jsonb_array_length(p_attendance)>50 OR
+    (p_changes<>'{}'::jsonb AND p_expected_updated_at IS NULL) OR
     (p_changes - ARRAY['title','startsAt','durationMinutes','lessonNote','status'])<>'{}'::jsonb THEN
-    RAISE EXCEPTION 'INVALID_SESSION_PATCH' USING ERRCODE='22023';
-  END IF;
-  IF (p_changes ? 'title' AND (
+   RAISE EXCEPTION 'INVALID_SESSION_COMMIT' USING ERRCODE='22023';
+ END IF;
+ IF (p_changes ? 'title' AND (
       jsonb_typeof(p_changes->'title')<>'string' OR
       char_length(btrim(p_changes->>'title')) NOT BETWEEN 1 AND 160))
     OR (p_changes ? 'lessonNote' AND (
@@ -4103,25 +3998,56 @@ BEGIN
     OR (p_changes ? 'status' AND (
       jsonb_typeof(p_changes->'status')<>'string' OR
       p_changes->>'status' NOT IN ('scheduled','completed','cancelled')))
-    OR (p_changes ? 'startsAt' AND
-      jsonb_typeof(p_changes->'startsAt')<>'string')
-  THEN
-    RAISE EXCEPTION 'INVALID_SESSION_PATCH' USING ERRCODE='22023';
-  END IF;
-  v_hash:=md5(jsonb_build_array('sessions.patch',p_session_id,p_changes,p_expected_updated_at)::text);
-  INSERT INTO public.agent_tool_receipts(
-    teacher_id,idempotency_key,operation,request_hash,receipt
-  ) VALUES(v_teacher,p_idempotency_key,'sessions.patch',v_hash,'{}'::jsonb)
-  ON CONFLICT DO NOTHING;
-  IF NOT FOUND THEN
-    SELECT * INTO v_saved FROM public.agent_tool_receipts
-      WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
-    IF NOT FOUND OR v_saved.operation<>'sessions.patch' OR v_saved.request_hash<>v_hash THEN
-      RAISE EXCEPTION 'SESSION_REPLAY_CONFLICT' USING ERRCODE='23505';
-    END IF;
-    RETURN v_saved.receipt;
-  END IF;
-  UPDATE public.teaching_sessions SET
+    OR (p_changes ? 'startsAt' AND jsonb_typeof(p_changes->'startsAt')<>'string') THEN
+   RAISE EXCEPTION 'INVALID_SESSION_COMMIT' USING ERRCODE='22023';
+ END IF;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_attendance) LOOP
+   IF jsonb_typeof(v_row)<>'object' OR
+      (v_row - ARRAY['studentId','status','note','expectedUpdatedAt'])<>'{}'::jsonb OR
+      jsonb_typeof(v_row->'studentId')<>'string' OR
+      jsonb_typeof(v_row->'status')<>'string' OR
+      jsonb_typeof(v_row->'expectedUpdatedAt')<>'string' OR
+      v_row->>'status' NOT IN ('present','absent','late','excused') OR
+      char_length(coalesce(v_row->>'note',''))>5000 THEN
+     RAISE EXCEPTION 'INVALID_SESSION_ATTENDANCE' USING ERRCODE='22023';
+   END IF;
+   v_student:=(v_row->>'studentId')::uuid;
+   IF v_student=ANY(v_seen) THEN
+     RAISE EXCEPTION 'DUPLICATE_ATTENDANCE_STUDENT' USING ERRCODE='22023';
+   END IF;
+   v_seen:=array_append(v_seen,v_student);
+ END LOOP;
+ v_hash:=md5(jsonb_build_array('sessions.commit',p_session_id,p_changes,
+   p_attendance,p_expected_updated_at)::text);
+ INSERT INTO public.agent_tool_receipts(
+   teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'sessions.commit',v_hash,'{}'::jsonb)
+ ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_saved FROM public.agent_tool_receipts
+    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+   IF NOT FOUND OR v_saved.operation<>'sessions.commit' OR v_saved.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'SESSION_REPLAY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt;
+ END IF;
+ SELECT * INTO v_session FROM public.teaching_sessions
+   WHERE id=p_session_id AND teacher_id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'SESSION_NOT_FOUND' USING ERRCODE='42501'; END IF;
+ IF p_changes<>'{}'::jsonb AND v_session.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+   RAISE EXCEPTION 'SESSION_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ -- A combined completion must explicitly cover EVERY frozen participant.
+ -- Existing status-only edits remain non-attesting: no mastery is inferred.
+ IF (p_changes->>'status')='completed' AND jsonb_array_length(p_attendance)>0 THEN
+   SELECT count(*) INTO v_count FROM public.session_participants
+    WHERE teacher_id=v_teacher AND session_id=p_session_id;
+   IF v_count<>jsonb_array_length(p_attendance) THEN
+     RAISE EXCEPTION 'INCOMPLETE_SESSION_ROSTER' USING ERRCODE='22023';
+   END IF;
+ END IF;
+ IF p_changes<>'{}'::jsonb THEN
+   UPDATE public.teaching_sessions SET
     title=CASE WHEN p_changes ? 'title' THEN btrim(p_changes->>'title') ELSE title END,
     starts_at=CASE WHEN p_changes ? 'startsAt' THEN
       (p_changes->>'startsAt')::timestamptz ELSE starts_at END,
@@ -4132,25 +4058,46 @@ BEGIN
     status=CASE WHEN p_changes ? 'status' THEN
       p_changes->>'status' ELSE status END,
     updated_at=clock_timestamp()
-  WHERE id=p_session_id AND teacher_id=v_teacher
-    AND updated_at=p_expected_updated_at
-  RETURNING * INTO v_session;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'SESSION_REVISION_CONFLICT' USING ERRCODE='23505';
-  END IF;
-  v_receipt:=jsonb_build_object('sessionId',v_session.id,
-    'revision',v_session.updated_at,'operation','sessions.patch',
-    'idempotencyKey',p_idempotency_key);
-  UPDATE public.agent_tool_receipts SET receipt=v_receipt
-    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
-  RETURN v_receipt;
+   WHERE id=p_session_id AND teacher_id=v_teacher RETURNING * INTO v_session;
+ END IF;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_attendance) LOOP
+   v_student:=(v_row->>'studentId')::uuid;
+   v_expected_att:=(v_row->>'expectedUpdatedAt')::timestamptz;
+   UPDATE public.session_attendance
+      SET status=v_row->>'status',
+          note=coalesce(v_row->>'note',''),
+          updated_at=clock_timestamp()
+    WHERE teacher_id=v_teacher AND session_id=p_session_id
+      AND student_id=v_student AND updated_at=v_expected_att
+    RETURNING * INTO v_att;
+   IF NOT FOUND THEN
+     RAISE EXCEPTION 'ATTENDANCE_REVISION_CONFLICT_OR_NOT_FOUND'
+       USING ERRCODE='23505';
+   END IF;
+   v_last_status:=v_att.status;
+   v_last_revision:=v_att.updated_at;
+   v_changed:=v_changed||jsonb_build_array(jsonb_build_object(
+     'studentId',v_att.student_id,'status',v_att.status,'note',v_att.note,
+     'revision',v_att.updated_at));
+ END LOOP;
+ v_operation:=CASE WHEN p_changes='{}'::jsonb THEN 'attendance.record'
+   WHEN p_changes = jsonb_build_object('lessonNote',p_changes->>'lessonNote')
+     AND p_attendance='[]'::jsonb THEN 'sessions.note.update'
+   ELSE 'sessions.commit' END;
+ v_receipt:=jsonb_build_object('operation',v_operation,
+   'sessionId',v_session.id,'revision',
+     CASE WHEN p_changes='{}'::jsonb THEN v_last_revision ELSE v_session.updated_at END,
+   'status',coalesce(v_last_status,v_session.status),
+   'attendance',v_changed,'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt;
 END;
-$$;
-
-REVOKE ALL ON FUNCTION public.ccp_teacher_session_patch(
-  uuid,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_teacher_session_patch(
-  uuid,jsonb,timestamptz,uuid) TO authenticated;
+$commit$;
+REVOKE ALL ON FUNCTION public.ccp_teacher_session_commit(
+ uuid,jsonb,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_teacher_session_commit(
+ uuid,jsonb,jsonb,timestamptz,uuid) TO authenticated;
 
 -- Historical direct lessons must outlive current workplace enrollment.
 -- Existing FK tied lessons to the *live* membership row, making a safe
