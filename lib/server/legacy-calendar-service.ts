@@ -11,7 +11,8 @@ export class CalendarError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);}
 }
 const failure=(s:number,c:string,m:string)=>new CalendarError(s,c,m);
-const timePattern=/^\d{2}:\d{2}$/;
+const timePattern=/^([01]\d|2[0-3]):[0-5]\d$/;
+const slotTimePattern=/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
 const dateOrNull=(d:string|null|undefined)=>!d||isDateString(d);
 export type SlotCreate={
  studentId:string;dayOfWeek:number;startTime:string;durationMinutes?:number;
@@ -99,11 +100,24 @@ type Upcoming={id:string;lesson_date:string;starts_at:string;duration_minutes:nu
  attendance:{id:string}|{id:string}[]|null;
  lesson_notes:{id:string}|{id:string}[]|null};
 async function upcomingSlotLessons(db:Db,slotId:string):Promise<Upcoming[]>{
- const {data,error}=await db.from("lessons").select(
-  "id,lesson_date,starts_at,duration_minutes,is_home_visit,rescheduled_from_date,attendance!lesson_id (id),lesson_notes (id)"
- ).eq("slot_id",slotId).gte("starts_at",new Date().toISOString());
- if(error)throw failure(500,"DATABASE_ERROR","Unable to inspect upcoming lessons");
- return (data??[]) as Upcoming[];
+ // Inspect every ordered page before mutation: a truncated list can erase
+ // or leave unexpected future lessons when a recurring slot is corrected.
+ const rows:Upcoming[]=[];
+ const cutoff=new Date().toISOString();
+ const pageSize=500,maxRows=20_000;
+ for(let offset=0;;offset+=pageSize){
+  const {data,error}=await db.from("lessons").select(
+   "id,lesson_date,starts_at,duration_minutes,is_home_visit,rescheduled_from_date,attendance!lesson_id (id),lesson_notes (id)"
+  ).eq("slot_id",slotId).gte("starts_at",cutoff)
+   .order("starts_at").order("id").range(offset,offset+pageSize-1);
+  if(error)throw failure(500,"DATABASE_ERROR","Unable to inspect upcoming lessons");
+  const page=(data??[]) as Upcoming[];
+  if(rows.length+page.length>maxRows)
+   throw failure(413,"ROSTER_TOO_LARGE","Upcoming recurring lesson inventory exceeds safe mutation size");
+  rows.push(...page);
+  if(page.length<pageSize)break;
+ }
+ return rows;
 }
 async function syncUpcoming(db:Db,slot:SlotRow,timezone:string,today:string,homeVisitChanged:boolean){
  const upcoming=await upcomingSlotLessons(db,slot.id);
@@ -140,7 +154,7 @@ export async function calendarSlotUpdate(db:Db,teacherId:string,id:string,input:
   update.day_of_week=input.dayOfWeek;
  }
  if(input.startTime!==undefined){
-  if(!/^\d{2}:\d{2}(:\d{2})?$/.test(input.startTime))throw failure(400,"VALIDATION_ERROR","Invalid start time");
+  if(!slotTimePattern.test(input.startTime))throw failure(400,"VALIDATION_ERROR","Invalid start time");
   update.start_time=input.startTime;
  }
  if(input.durationMinutes!==undefined){

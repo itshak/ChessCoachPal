@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {calendarSlotsList,CalendarError} from "@/lib/server/legacy-calendar-service";
+import {calendarSlotsList,calendarSlotDelete,calendarSlotCreate,calendarLessonCreate,CalendarError} from "@/lib/server/legacy-calendar-service";
 
 type Slot={id:string;teacher_id:string;student_id:string;day_of_week:number;start_time:string;active:boolean};
 
@@ -63,5 +63,62 @@ describe("teacher recurring slot history",()=>{
    await expect(calendarSlotsList(fakeDb(slots,[]),teacherId)).rejects.toMatchObject({
      code:"ROSTER_TOO_LARGE",status:413,
    } satisfies Partial<CalendarError>);
+ });
+});
+
+type Future={id:string;slot_id:string;starts_at:string;lesson_date:string;
+ duration_minutes:number;is_home_visit:boolean;rescheduled_from_date:null;attendance:[];lesson_notes:[]};
+function mockedDeletionDb(items:Future[],deleted:string[],pages:number[]){
+ const slot={id:"slot-one",teacher_id:"teacher-one"};
+ return {from(table:string){
+  const equal=new Map<string,unknown>();let since="";let deleting=false;
+  const q={
+   select(_s:string){return q;},
+   eq(k:string,v:unknown){equal.set(k,v);return q;},
+   gte(k:string,v:string){if(k==="starts_at")since=v;return q;},
+   order(_k:string){return q;},
+   range(a:number,b:number){
+    pages.push(a);
+    const rows=items.filter(x=>x.slot_id===equal.get("slot_id")&&x.starts_at>=since)
+      .sort((x,y)=>x.starts_at.localeCompare(y.starts_at)||x.id.localeCompare(y.id));
+    return Promise.resolve({data:rows.slice(a,b+1),error:null});
+   },
+   maybeSingle(){return Promise.resolve({data:slot,error:null});},
+   delete(){deleting=true;return q;},
+   then<T>(resolve:(v:{error:null})=>T){
+    if(deleting&&table==="lessons")deleted.push(String(equal.get("id")));
+    return Promise.resolve(resolve({error:null}));
+   },
+  };
+  return q;
+ }} as unknown as SupabaseClient;
+}
+function future(count:number):Future[]{return Array.from({length:count},(_,i)=>({
+ id:"lesson-"+String(i).padStart(6,"0"),slot_id:"slot-one",
+ starts_at:"2099-01-01T10:00:00.000Z",lesson_date:"2099-01-01",
+ duration_minutes:30,is_home_visit:false,rescheduled_from_date:null,attendance:[],lesson_notes:[],
+}));}
+describe("future recurring-slot mutation safety",()=>{
+ it("reads all 1205 future lessons rather than silently stopping at the first 1000",async()=>{
+  const deleted:string[]=[];const pages:number[]=[];
+  await calendarSlotDelete(mockedDeletionDb(future(1205),deleted,pages),"teacher-one","slot-one");
+  expect(deleted).toHaveLength(1205);
+  expect(new Set(deleted).size).toBe(1205);
+  expect(pages).toEqual([0,500,1000]);
+ });
+ it("refuses more than 20000 future rows before writing any deletion",async()=>{
+  const deleted:string[]=[];const pages:number[]=[];
+  await expect(calendarSlotDelete(mockedDeletionDb(future(20001),deleted,pages),"teacher-one","slot-one"))
+    .rejects.toMatchObject({status:413,code:"ROSTER_TOO_LARGE"});
+  expect(deleted).toHaveLength(0);
+ });
+ it("rejects nonsensical clock times without touching the database",async()=>{
+  const noDb={} as SupabaseClient;
+  await expect(calendarSlotCreate(noDb,"teacher-one",{
+   studentId:"student",dayOfWeek:0,startTime:"28:99",
+  })).rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+  await expect(calendarLessonCreate(noDb,"teacher-one",{
+   studentId:"student",date:"2099-01-01",time:"24:61",
+  })).rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
  });
 });
