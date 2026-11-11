@@ -104,3 +104,30 @@ test("PARITY:PARITY-studio-payment-qr-provider-fields makes every approved payme
    expect(restore.status(),await restore.text()).toBe(200);
  }
 });
+
+
+test("PARITY:PARITY-policy-invalid-field-validation rejects coercion equally on both surfaces without persistence",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const before=await page.request.get("/api/settings/policy");
+ expect(before.status(),await before.text()).toBe(200);
+ const original=await before.json();
+ for(const changes of [
+   {notifyInApp:"false"},
+   {billAttended:"false"},
+   {defaultRateCents:2.5},
+   {travelFeeCents:-300},
+   {durationRateCents:{"45":2.5}},
+   {makeupCreditExpiryDays:2.5},
+ ]){
+   const browser=await page.request.put("/api/settings/policy",{data:changes});
+   expect(browser.status(),await browser.text()).toBe(400);
+   const mcp=await call("ccp_v1_studio_policy_update",{changes,confirmed:true});
+   expect(mcp.error?.code).toBe("VALIDATION_ERROR");
+ }
+ const after=await page.request.get("/api/settings/policy");
+ expect(after.status(),await after.text()).toBe(200);
+ const final=await after.json();
+ for(const field of ["default_rate_cents","travel_fee_cents",
+   "notify_in_app","bill_attended","makeup_credit_expiry_days"])
+   expect(final[field]).toEqual(original[field]);
+});
