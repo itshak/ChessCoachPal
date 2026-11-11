@@ -69,6 +69,16 @@ test("PARITY:PARITY-students-roster pages complete and archived rosters consiste
  });
  expect(((mcpHistoric.data as {students:Array<{id:string}>}).students)
    .some(x=>x.id===historic)).toBe(true);
+ const onlyWebsite=await page.request.get("/api/students?limit=50&archivedOnly=true&query="+
+   encodeURIComponent("Historical learner"));
+ expect(onlyWebsite.status(),await onlyWebsite.text()).toBe(200);
+ const onlyModel=await callTool("ccp_v1_students_roster",{
+   query:"Historical learner",archivedOnly:true,limit:50,
+ });
+ expect(onlyModel.error).toBeUndefined();
+ expect((await onlyWebsite.json()).students.map((x:{id:string})=>x.id))
+   .toEqual((onlyModel.data as {students:Array<{id:string}>}).students.map(x=>x.id));
+ expect((await onlyWebsite.json()).students.some((x:{id:string})=>x.id===historic)).toBe(true);
 });
 
 test("PARITY:PARITY-students-search matches Hebrew names and aliases and requires disambiguation",async({page,request})=>{
