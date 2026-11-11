@@ -76,7 +76,11 @@ function parseProviderFen(content:unknown){
  if(typeof proposal.fen!=="string"||proposal.fen.length>120)
   throw fail(422,"REVIEW_REQUIRED","The image did not yield a reviewable chess position");
  try{
-  const parsed=fenBoard(proposal.fen);
+  // A still image only establishes a proposed piece placement. The vision
+  // provider must never determine game-state fields that the photo cannot
+  // prove. Always neutralize its guessed turn, rights, target and clocks.
+  const placement=proposal.fen.trim().split(/\s+/)[0];
+  const parsed=fenBoard(placement+" w - - 0 1");
   return {
    proposedFen:parsed.canonical,
    board:parsed.board,

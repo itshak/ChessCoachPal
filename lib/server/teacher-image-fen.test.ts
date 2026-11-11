@@ -60,6 +60,19 @@ describe("BYO image-to-FEN proposed draft security",()=>{
   expect(String(init.body)).toContain("image/png;base64,");
   expect(String(init.body)).not.toContain("synthetic-api-key");
  });
+ it("discards unprovable game-state fields from provider FEN on both transports",async()=>{
+  vi.stubGlobal("fetch",vi.fn(async()=>response(JSON.stringify({
+   fen:"4k3/8/8/8/8/8/8/4K3 b KQkq e3 43 67",
+   notes:"AI guesses that black will move",
+  }))));
+  const result=await teacherImageFenPropose(noDb,"teacher",valid);
+  expect(result.proposedFen).toBe("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+  expect(result.sideToMove).toBe("white");
+  expect(result.unknownGameState).toEqual([
+   "sideToMove","castlingRights","enPassant","halfmoveClock","fullmoveNumber",
+  ]);
+  expect(result.needsTeacherReview).toBe(true);
+ });
  it("never fabricates a FEN for ambiguous or invalid provider suggestions",async()=>{
   for(const candidate of [
    JSON.stringify({fen:null,notes:"ambiguous"}),
