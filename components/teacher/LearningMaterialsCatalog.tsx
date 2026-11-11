@@ -52,7 +52,7 @@ export function LearningMaterialsCatalog(){
   const [showArchived,setShowArchived]=useState(false);
   const [archivePreview,setArchivePreview]=useState<{
     materialId:string;title:string;revision:number;archived:boolean;
-    assignmentCount:number;relationshipCount:number;canArchive:boolean;
+    assignmentCount:number;relationshipCount:number;legacyResourceCount:number;canArchive:boolean;
   }|null>(null);
   const load=useCallback(async()=>{
     const params=new URLSearchParams({limit:"100",includeArchived:showArchived?"true":"false"});
@@ -176,7 +176,7 @@ export function LearningMaterialsCatalog(){
     </div>
     {archivePreview&&<div className="rounded-xl border border-border p-4 space-y-2" aria-label="Material archive impact">
       <h3 className="font-semibold">Archive preview: {archivePreview.title}</h3>
-      <p className="text-sm text-muted">Assignments linked: {archivePreview.assignmentCount} · Material relationships: {archivePreview.relationshipCount}. Archiving hides unused material from active search; it never erases stored history.</p>
+      <p className="text-sm text-muted">Assignments linked: {archivePreview.assignmentCount} · Material relationships: {archivePreview.relationshipCount} · Historical study links: {archivePreview.legacyResourceCount}. Archiving hides unused material from active search; it never erases stored history.</p>
       {!archivePreview.canArchive&&<p role="alert" className="text-sm text-red-500">This material is referenced. Resolve the linked records before archiving.</p>}
       <div className="flex gap-2">
         <button type="button" className={button} disabled={busy||!archivePreview.canArchive} onClick={()=>{void changeMaterialLifecycle(archivePreview.materialId,archivePreview.revision,"archive");}}>Confirm archive</button>

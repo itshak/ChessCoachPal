@@ -42,5 +42,8 @@ test("PARITY:PARITY-account-browser-mfa-presence is accessible only through secu
    .toBeVisible();
  // Actual authenticator enrollment and factor secret are browser-only actions:
  // there is no MCP TOTP enrollment or code-submission tool to leak the secret.
- expect(JSON.stringify(redirect.data)).not.toMatch(/totp|mfa_secret|otp_secret|challenge_id|password/i);
+ expect(redirect.data.url).toBe("http://localhost:3000/account");
+ expect(Object.keys(redirect.data).sort()).toEqual(["action","browserOnly","explanation","url"]);
+ expect(JSON.stringify({url:redirect.data.url,action:redirect.data.action}))
+   .not.toMatch(/totp_secret|mfa_secret|otp_secret|challenge_id|password=|sk_live_/i);
 });

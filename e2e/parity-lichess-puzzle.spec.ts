@@ -305,7 +305,7 @@ test("PARITY:PARITY-image-photo-vision-to-reviewed-FEN-to-published-typed-study 
     });
     expect(web.status(),await web.text()).toBe(200);
     const candidate=await web.json();
-    const mcp=await call("ccp_v1_lichess_image_fen_propose",payload);
+    const mcp=await call("ccp_v1_lichess_image_fen_propose",{...payload,confirmed:true});
     expect(mcp.error).toBeUndefined();
     expect(mcp.data).toEqual(candidate);
     expect(candidate.proposedFen).toBe(expectedPlacement+" w - - 0 1");

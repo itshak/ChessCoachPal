@@ -34,6 +34,7 @@ import {
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
 import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
+import {legacyMaterialBridgeListSchema,legacyMaterialBridgeChangeSchema,teacherLegacyMaterialBridgeList,teacherLegacyMaterialBridgeChange,LegacyMaterialBridgeError} from "@/lib/server/material-legacy-bridge";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
 import {teacherCalendarFeedStatus,teacherCalendarFeedRotate,CalendarFeedTokenError} from "@/lib/server/teacher-calendar-feed-service";
 import {teacherProfileGet,teacherProfileUpdate,TeacherProfileError} from "@/lib/server/teacher-profile-service";
@@ -1192,6 +1193,16 @@ const catalogue = [
     schema:assignmentReviewSchema,scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_material_legacy_bridge_list",
+    description:"List old student/session-specific study resource links with their explicitly confirmed typed catalog identities. Never infer teaching or mastery from a link.",
+    schema:legacyMaterialBridgeListSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_material_legacy_bridge_change",
+    description:"Link or unlink a historical chess study/resource ID to one authorized teacher-owned typed material after review. Durable cross-interface idempotent receipt; historical claims remain unchanged.",
+    schema:legacyMaterialBridgeChangeSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_v1_coach_briefing_get",
     description:"Prepare a fact-based teacher-owned student briefing: recent lesson history, explicitly attested material, assigned homework, coach reviews and approved chess observations. Each item has stored source IDs, with unknowns marked. No AI-inferred mastery.",
     schema:coachBriefingSchema,scope:"coach:read",readOnly:true,
@@ -1262,6 +1273,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_material_legacy_bridge_list":
+        return {data:await teacherLegacyMaterialBridgeList(db,teacherId,args as Parameters<typeof teacherLegacyMaterialBridgeList>[2])};
+      case "ccp_v1_material_legacy_bridge_change":
+        return {data:await teacherLegacyMaterialBridgeChange(db,teacherId,args as Parameters<typeof teacherLegacyMaterialBridgeChange>[2])};
       case "ccp_v1_coach_briefing_get":
         return {data:await teacherCoachBriefing(db,teacherId,args as Parameters<typeof teacherCoachBriefing>[2])};
       case "ccp_v1_training_assignments_list":
@@ -1946,6 +1961,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof LegacyMaterialBridgeError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof CoachBriefingError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof UnifiedHistoryError)
