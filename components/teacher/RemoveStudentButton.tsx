@@ -16,12 +16,36 @@ export function RemoveStudentButton({
   const { showToast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [revision, setRevision] = useState<string | null>(null);
 
+  async function reviewRemove(){
+    setChecking(true);
+    try{
+      const res=await fetch("/api/students/"+studentId+"?deletePreview=true",{cache:"no-store"});
+      const impact=await res.json().catch(()=>null);
+      if(!res.ok||!impact){
+        showToast(impact?.error??"Could not review deletion impact","error");
+        return;
+      }
+      if(!impact.canDelete){
+        const refs=Object.entries(impact.blockers as Record<string,number>)
+          .filter(([,count])=>count>0).map(([name,count])=>name+": "+count).join(", ");
+        showToast("Student has linked teaching history. Archive instead. "+refs,"error");
+        return;
+      }
+      setRevision(impact.updatedAt);
+      setConfirmOpen(true);
+    }catch{
+      showToast("Could not review deletion impact","error");
+    }finally{setChecking(false);}
+  }
   async function handleRemove() {
     setRemoving(true);
     try {
-      const res = await fetch(`/api/students/${studentId}`, {
-        method: "DELETE",
+      const res = await fetch("/api/students/"+studentId, {
+        method:"DELETE",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({confirmed:true,expectedUpdatedAt:revision}),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
@@ -43,7 +67,8 @@ export function RemoveStudentButton({
         variant="ghost"
         size="sm"
         className="text-error hover:bg-error/10 hover:text-error"
-        onClick={() => setConfirmOpen(true)}
+        onClick={() => void reviewRemove()}
+        disabled={checking || removing}
       >
         Remove student
       </Button>
@@ -59,7 +84,7 @@ export function RemoveStudentButton({
           >
             <h3 className="font-semibold text-lg mb-1">Remove student?</h3>
             <p className="text-muted text-sm mb-4">
-              &quot;{studentName}&quot; will be removed from your student list. Their lesson assignments and practice history will be deleted. This cannot be undone.
+              &quot;{studentName}&quot; has no linked teaching history. This permanently removes their remaining profile information and cannot be undone. Archive to preserve the record.
             </p>
             <div className="flex justify-end gap-2">
               <Button

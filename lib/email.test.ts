@@ -128,7 +128,8 @@ describe("sendEmail BCC", () => {
     });
     expect(result.sent).toBe(true);
     expect(resendSend).toHaveBeenCalledWith(
-      expect.objectContaining({ bcc: ["teacher@example.com"] })
+      expect.objectContaining({ bcc: ["teacher@example.com"] }),
+      undefined
     );
   });
 

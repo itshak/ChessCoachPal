@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { summarizeMaterialClaims, type MaterialSummaryRow } from "@/lib/material-aggregate";
 
 type Db=SupabaseClient;
 const uuid=z.string().uuid();
@@ -108,6 +109,35 @@ export async function teacherMaterialHistory(db:Db,teacherId:string,filter:Mater
    uniqueSessionMaterialCount:new Set(rows.filter(x=>x.session_id)
      .map(x=>x.session_id+"|"+x.resource_id+"|"+x.stage)).size,
   },summaryScope:"current_page",truthBasis:"explicit_teacher_record_only"};
+}
+/** Complete (not page-scoped) aggregates for one identified student/workplace/session.
+ * Refuse a truncated result rather than showing incomplete teacher-learning history.
+ * Page-wise read consistency is checked by both total and record ID uniqueness.
+ */
+export async function teacherMaterialAggregate(db:Db,teacherId:string,filter:MaterialFilter){
+  const first=await teacherMaterialHistory(db,teacherId,{...filter,offset:0,limit:1});
+  const expected=first.total;
+  if(expected>5000)
+    throw failure(413,"TOO_MANY_RECORDS","Reduce the material history date range (maximum 5000 claims)");
+  const rows:MaterialSummaryRow[]=[];
+  const ids=new Set<string>();
+  for(let offset=0;offset<expected;offset+=100){
+    const page=await teacherMaterialHistory(db,teacherId,{...filter,offset,limit:100});
+    if(page.total!==expected)
+      throw failure(409,"HISTORY_CHANGED","Material history changed while summarizing; retry the request");
+    for(const item of page.entries){
+      if(ids.has(item.id))
+        throw failure(409,"HISTORY_CHANGED","Material history changed while summarizing; retry the request");
+      ids.add(item.id);
+      rows.push({id:item.id,studentId:item.student_id,sessionId:item.session_id,
+        resourceId:item.resource_id,stage:item.stage as MaterialSummaryRow["stage"],
+        label:item.chess_learning_resources?.label??null});
+    }
+  }
+  if(rows.length!==expected)
+    throw failure(409,"HISTORY_CHANGED","Material history changed while summarizing; retry the request");
+  return {...summarizeMaterialClaims(rows),summaryScope:"entire_filtered_history",
+    truthBasis:"explicit_teacher_record_only",maxClaims:5000};
 }
 export async function teacherMaterialRecord(db:Db,teacherId:string,input:MaterialRecord){
  await validateDependencies(db,teacherId,input);

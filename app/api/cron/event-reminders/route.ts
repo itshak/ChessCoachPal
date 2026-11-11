@@ -123,6 +123,8 @@ export async function GET(req: NextRequest) {
     };
 
     const { sent, skipped } = await sendEventEmails({
+      db:supabase,
+      teacherId,
       event: emailEvent,
       policy,
       teacherEmail: emailByTeacher.get(teacherId) ?? null,

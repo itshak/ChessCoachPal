@@ -48,22 +48,52 @@ export function DataTransferSettings() {
     setMessage(null);
     setError(null);
     try {
-      const text = await file.text();
-      const json = JSON.parse(text) as unknown;
-      const res = await fetch("/api/settings/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(json),
+      const raw = JSON.parse(await file.text()) as unknown;
+      const headers = { "Content-Type": "application/json" };
+      const previewResponse = await fetch("/api/settings/import", {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ payload: raw }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const preview = await previewResponse.json().catch(() => ({}));
+      if (!previewResponse.ok) {
+        throw new Error(preview.error ?? "Could not preview import");
+      }
+      const counts = preview.counts as Record<string, number>;
+      const total = Object.values(counts).reduce((a, b) => a + b, 0);
+      const warnings = Array.isArray(preview.warnings)
+        ? (preview.warnings as string[])
+        : [];
+      const reviewed = await confirm({
+        title: "Review ChessCoachPal import",
+        message:
+          `Import ${total} rows (${preview.bytes} bytes) from ${file.name}. ` +
+          `Existing matching IDs may be overwritten. ` +
+          warnings.join(" ") +
+          ` Review digest: ${preview.sha256}.`,
+        confirmLabel: "Import reviewed backup",
+      });
+      if (!reviewed) return;
+
+      const response = await fetch("/api/settings/import", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: raw,
+          expectedSha256: preview.sha256,
+          confirmed: true,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
         throw new Error(data.error ?? "Import failed");
       }
-      const total = Object.values(data.counts as Record<string, number>).reduce(
-        (a, b) => a + b,
-        0
-      );
-      setMessage(`Import complete (${total} rows upserted).`);
+      if (data.sha256 !== preview.sha256) {
+        throw new Error("Import receipt digest did not match the reviewed backup.");
+      }
+      const imported = Object.values(data.counts as Record<string, number>)
+        .reduce((a, b) => a + b, 0);
+      setMessage(`Import complete (${imported} rows upserted; reviewed digest verified).`);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed");
@@ -109,16 +139,7 @@ export function DataTransferSettings() {
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (!file) return;
-            void (async () => {
-              const ok = await confirm({
-                title: "Import data?",
-                message:
-                  "Import will upsert rows from this file into your studio (same IDs overwrite existing rows).",
-                confirmLabel: "Import",
-              });
-              if (ok) void handleImportFile(file);
-              else if (fileRef.current) fileRef.current.value = "";
-            })();
+            void handleImportFile(file);
           }}
         />
       </div>

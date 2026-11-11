@@ -11,7 +11,9 @@ export class CalendarError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);}
 }
 const failure=(s:number,c:string,m:string)=>new CalendarError(s,c,m);
-const timePattern=/^\d{2}:\d{2}$/;
+const timePattern=/^([01]\d|2[0-3]):[0-5]\d$/;
+const slotTimePattern=/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+const validRate=(value:unknown)=>value===null||(typeof value==="number"&&Number.isSafeInteger(value)&&value>=0);
 const dateOrNull=(d:string|null|undefined)=>!d||isDateString(d);
 export type SlotCreate={
  studentId:string;dayOfWeek:number;startTime:string;durationMinutes?:number;
@@ -51,18 +53,34 @@ async function ownedLesson(db:Db,teacherId:string,lessonId:string){
  return data;
 }
 export async function calendarSlotsList(db:Db,teacherId:string,opts:{studentId?:string;activeOnly?:boolean}={}){
- let query=db.from("lesson_slots").select("*").eq("teacher_id",teacherId)
-   .order("day_of_week").order("start_time").limit(1000);
- if(opts.studentId)query=query.eq("student_id",opts.studentId);
- if(opts.activeOnly)query=query.eq("active",true);
- const {data,error}=await query;
- if(error)throw failure(500,"DATABASE_ERROR","Unable to list recurring slots");
- return data??[];
+ // PostgREST imposes a 1000-row response cap. The old single-query list
+ // silently hid additional slots from both the website and delegated MCP.
+ // Scan all pages in stable order, or fail explicitly at a safe upper bound.
+ const rows:Record<string,unknown>[]=[];
+ const pageSize=500,maxRows=20_000;
+ for(let offset=0;;offset+=pageSize){
+   let query=db.from("lesson_slots").select("*").eq("teacher_id",teacherId)
+     .order("day_of_week").order("start_time").order("id");
+   if(opts.studentId)query=query.eq("student_id",opts.studentId);
+   if(opts.activeOnly)query=query.eq("active",true);
+   const {data,error}=await query.range(offset,offset+pageSize-1);
+   if(error)throw failure(500,"DATABASE_ERROR","Unable to list recurring slots");
+   const page=data??[];
+   if(rows.length+page.length>maxRows)
+     throw failure(413,"ROSTER_TOO_LARGE","Recurring slot inventory exceeds safe listing size");
+   rows.push(...page);
+   if(page.length<pageSize)break;
+ }
+ return rows;
 }
 export async function calendarSlotCreate(db:Db,teacherId:string,input:SlotCreate){
  if(!Number.isInteger(input.dayOfWeek)||input.dayOfWeek<0||input.dayOfWeek>6||
     !timePattern.test(input.startTime)||!dateOrNull(input.startDate)||!dateOrNull(input.endDate))
    throw failure(400,"VALIDATION_ERROR","Valid weekday (0–6), time HH:mm and dates are required");
+ if(input.rateCents!==undefined&&!validRate(input.rateCents))
+  throw failure(400,"VALIDATION_ERROR","Rate must be a nonnegative integer number of cents or null");
+ if(input.isHomeVisit!==undefined&&typeof input.isHomeVisit!=="boolean")
+  throw failure(400,"VALIDATION_ERROR","Home visit must be a boolean");
  await ownedStudent(db,teacherId,input.studentId);
  const policy=await getPolicy(db,teacherId);
  const today=toLocalDateString(new Date(),policy.timezone);
@@ -87,13 +105,28 @@ type Upcoming={id:string;lesson_date:string;starts_at:string;duration_minutes:nu
  attendance:{id:string}|{id:string}[]|null;
  lesson_notes:{id:string}|{id:string}[]|null};
 async function upcomingSlotLessons(db:Db,slotId:string):Promise<Upcoming[]>{
- const {data,error}=await db.from("lessons").select(
-  "id,lesson_date,starts_at,duration_minutes,is_home_visit,rescheduled_from_date,attendance!lesson_id (id),lesson_notes (id)"
- ).eq("slot_id",slotId).gte("starts_at",new Date().toISOString());
- if(error)throw failure(500,"DATABASE_ERROR","Unable to inspect upcoming lessons");
- return (data??[]) as Upcoming[];
+ // Inspect every ordered page before mutation: a truncated list can erase
+ // or leave unexpected future lessons when a recurring slot is corrected.
+ const rows:Upcoming[]=[];
+ const cutoff=new Date().toISOString();
+ const pageSize=500,maxRows=20_000;
+ for(let offset=0;;offset+=pageSize){
+  const {data,error}=await db.from("lessons").select(
+   "id,lesson_date,starts_at,duration_minutes,is_home_visit,rescheduled_from_date,attendance!lesson_id (id),lesson_notes (id)"
+  ).eq("slot_id",slotId).gte("starts_at",cutoff)
+   .order("starts_at").order("id").range(offset,offset+pageSize-1);
+  if(error)throw failure(500,"DATABASE_ERROR","Unable to inspect upcoming lessons");
+  const page=(data??[]) as Upcoming[];
+  if(rows.length+page.length>maxRows)
+   throw failure(413,"ROSTER_TOO_LARGE","Upcoming recurring lesson inventory exceeds safe mutation size");
+  rows.push(...page);
+  if(page.length<pageSize)break;
+ }
+ return rows;
 }
 async function syncUpcoming(db:Db,slot:SlotRow,timezone:string,today:string,homeVisitChanged:boolean){
+ // Re-read immediately before reconciliation: never rely on the earlier
+ // size preflight as an attendance/notes snapshot across concurrent writes.
  const upcoming=await upcomingSlotLessons(db,slot.id);
  const unmarked=upcoming.filter(l=>!oneToOne(l.attendance)&&!l.rescheduled_from_date);
  const until=unmarked.reduce((max,l)=>l.lesson_date>max?l.lesson_date:max,addDays(today,56));
@@ -128,7 +161,7 @@ export async function calendarSlotUpdate(db:Db,teacherId:string,id:string,input:
   update.day_of_week=input.dayOfWeek;
  }
  if(input.startTime!==undefined){
-  if(!/^\d{2}:\d{2}(:\d{2})?$/.test(input.startTime))throw failure(400,"VALIDATION_ERROR","Invalid start time");
+  if(!slotTimePattern.test(input.startTime))throw failure(400,"VALIDATION_ERROR","Invalid start time");
   update.start_time=input.startTime;
  }
  if(input.durationMinutes!==undefined){
@@ -144,21 +177,34 @@ export async function calendarSlotUpdate(db:Db,teacherId:string,id:string,input:
   if(!dateOrNull(input.endDate))throw failure(400,"VALIDATION_ERROR","Invalid end date");
   update.end_date=input.endDate||null;
  }
- if(input.active!==undefined)update.active=input.active;
- if(input.rateCents!==undefined)update.rate_cents=input.rateCents;
- if(input.isHomeVisit!==undefined)update.is_home_visit=input.isHomeVisit;
+ if(input.active!==undefined){
+  if(typeof input.active!=="boolean")throw failure(400,"VALIDATION_ERROR","Active must be a boolean");
+  update.active=input.active;
+ }
+ if(input.rateCents!==undefined){
+  if(!validRate(input.rateCents))throw failure(400,"VALIDATION_ERROR","Rate must be a nonnegative integer number of cents or null");
+  update.rate_cents=input.rateCents;
+ }
+ if(input.isHomeVisit!==undefined){
+  if(typeof input.isHomeVisit!=="boolean")throw failure(400,"VALIDATION_ERROR","Home visit must be a boolean");
+  update.is_home_visit=input.isHomeVisit;
+ }
  if(!Object.keys(update).length)throw failure(400,"VALIDATION_ERROR","Nothing to update");
  const start=(update.start_date??before.start_date) as string;
  const end=(update.end_date!==undefined?update.end_date:before.end_date) as string|null;
  if(end&&end<start)throw failure(400,"VALIDATION_ERROR","End date precedes start date");
- const {data,error}=await db.from("lesson_slots").update(update)
-  .eq("teacher_id",teacherId).eq("id",id).select("*").maybeSingle();
- if(error)throw failure(500,"DATABASE_ERROR","Unable to update recurring slot");
- if(!data)throw failure(404,"NOT_FOUND","Recurring slot not found");
  const timeOld=String(before.start_time).replace(/:00$/,"");
  const timeNew=String(update.start_time??before.start_time).replace(/:00$/,"");
  const affects=["day_of_week","duration_minutes","start_date","end_date","active","is_home_visit"]
   .some(k=>k in update&&update[k]!==before[k])||timeOld!==timeNew;
+ // Perform the bounded complete future-lesson preflight BEFORE saving the slot.
+ // A too-large or unavailable inventory must not leave a changed slot behind.
+ // Full concurrent, atomic reconciliation still requires a database transaction.
+ if(affects)await upcomingSlotLessons(db,id);
+ const {data,error}=await db.from("lesson_slots").update(update)
+  .eq("teacher_id",teacherId).eq("id",id).select("*").maybeSingle();
+ if(error)throw failure(500,"DATABASE_ERROR","Unable to update recurring slot");
+ if(!data)throw failure(404,"NOT_FOUND","Recurring slot not found");
  if(affects){
   const policy=await getPolicy(db,teacherId);
   const today=toLocalDateString(new Date(),policy.timezone);
@@ -187,8 +233,16 @@ export async function calendarSlotDelete(db:Db,teacherId:string,id:string){
 }
 export async function calendarLessonsList(db:Db,teacherId:string,
  opts:{studentId?:string;from?:string;to?:string;offset?:number;limit?:number}={}){
- const limit=Math.min(100,Math.max(1,opts.limit??50));
- const offset=Math.max(0,opts.offset??0);
+ const limit=opts.limit??50,offset=opts.offset??0;
+ if(!Number.isSafeInteger(limit)||limit<1||limit>100||
+    !Number.isSafeInteger(offset)||offset<0||offset>100000)
+  throw failure(400,"VALIDATION_ERROR","Invalid calendar pagination");
+ if((opts.from!==undefined&&!isDateString(opts.from))||
+    (opts.to!==undefined&&!isDateString(opts.to))||
+    (opts.from&&opts.to&&opts.from>opts.to))
+  throw failure(400,"VALIDATION_ERROR","Invalid lesson date range");
+ if(opts.studentId!==undefined&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(opts.studentId))
+  throw failure(400,"VALIDATION_ERROR","Invalid student ID");
  let query=db.from("lessons").select("*").eq("teacher_id",teacherId)
  .order("starts_at",{ascending:false}).range(offset,offset+limit);
  if(opts.studentId)query=query.eq("student_id",opts.studentId);
@@ -204,6 +258,8 @@ export async function calendarLessonDetail(db:Db,teacherId:string,id:string){
 export async function calendarLessonCreate(db:Db,teacherId:string,input:LessonCreate){
  if(!isDateString(input.date)||!timePattern.test(input.time))
   throw failure(400,"VALIDATION_ERROR","Date YYYY-MM-DD and time HH:mm required");
+ if(input.isHomeVisit!==undefined&&typeof input.isHomeVisit!=="boolean")
+  throw failure(400,"VALIDATION_ERROR","Home visit must be a boolean");
  await ownedStudent(db,teacherId,input.studentId);
  let duration=input.durationMinutes??30;
  if(!Number.isInteger(duration)||duration<1||duration>480)
@@ -219,7 +275,12 @@ export async function calendarLessonCreate(db:Db,teacherId:string,input:LessonCr
   if(input.durationMinutes===undefined)duration=lesson.duration_minutes;
  }
  const policy=await getPolicy(db,teacherId);
- const startsAt=zonedTimeToUtc(input.date,input.time,policy.timezone);
+ let startsAt:Date;
+ try {
+  startsAt=zonedTimeToUtc(input.date,input.time,policy.timezone,"reject");
+ } catch {
+  throw failure(400,"VALIDATION_ERROR","Local lesson time does not exist in the studio timezone (DST gap)");
+ }
  const {data,error}=await db.from("lessons").insert({
   teacher_id:teacherId,student_id:input.studentId,slot_id:null,
   lesson_date:input.date,starts_at:startsAt.toISOString(),
@@ -230,6 +291,8 @@ export async function calendarLessonCreate(db:Db,teacherId:string,input:LessonCr
  return data;
 }
 export async function calendarLessonUpdate(db:Db,teacherId:string,id:string,input:LessonPatch){
+ if(input.isHomeVisit!==undefined&&typeof input.isHomeVisit!=="boolean")
+  throw failure(400,"VALIDATION_ERROR","Home visit must be a boolean");
  const lesson=await ownedLesson(db,teacherId,id);
  const update:Record<string,unknown>={};
  const warnings:string[]=[];

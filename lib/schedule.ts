@@ -136,21 +136,65 @@ function tzOffsetMs(ts: number, timeZone: string): number {
 }
 
 /**
- * Convert a local wall-clock time in an IANA timezone to a UTC Date.
- * Two-pass: the first guess may sit on the wrong side of a DST transition.
+ * Resolve a studio-local wall-clock time against actual IANA timezone rules.
+ *
+ * In a fall-back fold, use the earlier of the two real instants consistently.
+ * Recurring slots use the default 'shift-forward' rule for a spring-forward
+ * gap (02:30 -> 03:30); explicit one-off/rescheduled lessons must instead
+ * request 'reject', so a coach never silently books a different time.
  */
 export function zonedTimeToUtc(
-  dateStr: string, // "YYYY-MM-DD"
-  timeStr: string, // "HH:mm" or "HH:mm:ss"
-  timeZone: string
+  dateStr: string,
+  timeStr: string,
+  timeZone: string,
+  gap: "shift-forward" | "reject" = "shift-forward"
 ): Date {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const [hh, mm] = timeStr.split(":").map(Number);
-  const utcGuess = Date.UTC(y, m - 1, d, hh, mm);
-  let offset = tzOffsetMs(utcGuess, timeZone);
-  const secondPass = tzOffsetMs(utcGuess - offset, timeZone);
-  if (secondPass !== offset) offset = secondPass;
-  return new Date(utcGuess - offset);
+  const match = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(timeStr);
+  if (!isDateString(dateStr) || !match) {
+    throw new RangeError("Invalid local date or 24-hour time");
+  }
+
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const second = Number(match[3] ?? "0");
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute, second);
+  const target = `${dateStr}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}`;
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone, hour12: false, year: "numeric", month: "2-digit",
+    day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  function localClock(instant: number): string {
+    const parts = formatter.formatToParts(new Date(instant));
+    const read = (kind: string) => parts.find(p => p.type === kind)?.value ?? "0";
+    const hh = Number(read("hour")) % 24; // Some Intl locales render midnight as 24.
+    return `${read("year")}-${read("month")}-${read("day")}T${String(hh).padStart(2, "0")}:${read("minute")}:${read("second")}`;
+  }
+
+  // Sample both sides of transitions: solving with only one offset can turn
+  // a nonexistent 02:30 spring lesson into a real but incorrect 01:30 lesson.
+  const offsets = new Set([-48, -24, -12, 0, 12, 24, 48]
+    .map(hours => tzOffsetMs(utcGuess + hours * 60 * 60 * 1000, timeZone)));
+  const candidates = [...offsets].map(offset => {
+    const ms = utcGuess - offset;
+    return { ms, clock: localClock(ms) };
+  });
+  const exact = candidates.filter(candidate => candidate.clock === target);
+  if (exact.length) {
+    // Earliest occurrence of an ambiguous fall-back wall-clock time.
+    return new Date(Math.min(...exact.map(candidate => candidate.ms)));
+  }
+  if (gap === "reject") {
+    throw new RangeError("Local time does not exist in the studio timezone (DST gap)");
+  }
+
+  // Preserve a recurring slot on its calendar date by moving forward by the
+  // DST gap, never backwards into a time before the teacher's requested slot.
+  const after = candidates.filter(candidate => candidate.clock > target)
+    .sort((a, b) => a.clock.localeCompare(b.clock) || a.ms - b.ms);
+  if (!after.length) throw new RangeError("Unable to resolve local time");
+  return new Date(after[0].ms);
 }
 
 /** "YYYY-MM-DD" for a Date interpreted in the given timezone. */

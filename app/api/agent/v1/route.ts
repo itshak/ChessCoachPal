@@ -6,15 +6,17 @@ import {
   CoachError,
   attendanceList, attendanceRecord,
   groupsCreate, groupsEnroll, groupsUnenroll, groupsList, groupsMembers,
-  sessionsCreate, sessionsList, sessionsParticipants, studentsSearch,
-  workplacesCreate, workplacesList, workplacesUpdate, workplacesEnroll, workplacesEnrollments,
+  sessionsCreate, sessionsAdHocCreate, sessionsList, sessionsParticipants, studentsSearch,
+  workplacesCreate, workplacesList, workplacesUpdate, workplacesEnroll, workplacesUnenroll, workplacesEnrollments,
   studentsCreate, studentsUpdate, groupsUpdate, sessionsUpdate, assertTimezone,
 } from "@/lib/server/coach-service";
 
 import {
   chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
+  chessCategoriesDeleteImpact, chessCategoriesDelete,
   chessObservationsList, chessObservationsCreate, chessObservationsUpdate, chessObservationsApprove,
   chessResourcesList, chessResourcesCreate, chessResourcesUpdate,
+  chessResourcesUnlinkImpact, chessResourcesUnlink,
 } from "@/lib/server/chess-learning";
 import { chessUuid, categoryName, observationText, resourceInput, observationInput,
   resourceLabel, resourceUrl, resourceType, observedAt } from "@/lib/chess-learning";
@@ -36,6 +38,7 @@ const calls = z.discriminatedUnion("action", [
     locale: z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).optional(),
     policy: z.record(z.string(), z.unknown()).optional() }),
   z.object({ action: z.literal("workplaces.enroll"), workplaceId: uuid, studentId: uuid }),
+  z.object({ action: z.literal("workplaces.unenroll"), workplaceId: uuid, studentId: uuid, confirmed: z.literal(true) }),
   z.object({ action: z.literal("workplaces.enrollments"), workplaceId: uuid }),
   z.object({ action: z.literal("students.create"), name: shortName,
     level: z.string().trim().max(120).nullable().optional() }),
@@ -59,6 +62,12 @@ const calls = z.discriminatedUnion("action", [
   }).refine(v => Boolean(v.groupId) !== Boolean(v.studentId), {
     message: "Provide exactly one of groupId or studentId",
   }),
+  z.object({ action: z.literal("sessions.createAdHoc"),workplaceId:uuid,
+    studentIds:z.array(uuid).min(2).max(50),title:z.string().trim().min(1).max(160),
+    startsAt:z.string().datetime({offset:true}),
+    durationMinutes:z.number().int().min(15).max(480),
+    lessonNote:z.string().max(10000).default(""),requestId:uuid,
+  }),
   z.object({ action: z.literal("sessions.update"), sessionId: uuid,
     title: z.string().trim().min(1).max(160).optional(),
     startsAt: z.string().datetime({ offset: true }).optional(),
@@ -74,6 +83,9 @@ const calls = z.discriminatedUnion("action", [
   z.object({ action: z.literal("chess.categories.update"), categoryId:chessUuid,
     name:categoryName.optional(), description:z.string().max(500).optional(),
     sortOrder:z.number().int().min(0).max(10000).optional() }),
+  z.object({ action:z.literal("chess.categories.deleteImpact"), categoryId:chessUuid }),
+  z.object({ action:z.literal("chess.categories.delete"), categoryId:chessUuid,
+    confirmed:z.literal(true) }),
   z.object({ action: z.literal("chess.observations.list"), studentId:chessUuid,
     sessionId:chessUuid.optional() }),
   observationInput.extend({ action:z.literal("chess.observations.create") }),
@@ -85,6 +97,9 @@ const calls = z.discriminatedUnion("action", [
   z.object({ action:z.literal("chess.resources.list"),
     studentId:chessUuid.optional(), sessionId:chessUuid.optional() }),
   resourceInput.safeExtend({ action:z.literal("chess.resources.link") }),
+  z.object({ action:z.literal("chess.resources.unlinkImpact"), resourceId:chessUuid }),
+  z.object({ action:z.literal("chess.resources.unlink"), resourceId:chessUuid,
+    confirmed:z.literal(true) }),
   z.object({ action:z.literal("chess.resources.update"), resourceId:chessUuid,
     label:resourceLabel.optional(), url:resourceUrl.optional(),resourceType:resourceType.optional() }),
   z.object({ action: z.literal("attendance.record"),
@@ -95,15 +110,17 @@ const calls = z.discriminatedUnion("action", [
 ]);
 
 const toolNames = [
-  "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll", "workplaces.enrollments",
+  "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll", "workplaces.unenroll", "workplaces.enrollments",
   "students.search", "students.create", "students.update",
   "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
-  "sessions.list", "sessions.create", "sessions.update", "sessions.participants",
+  "sessions.list", "sessions.create", "sessions.createAdHoc", "sessions.update", "sessions.participants",
   "attendance.list", "attendance.record",
   "chess.categories.list","chess.categories.create","chess.categories.update",
+  "chess.categories.deleteImpact","chess.categories.delete",
   "chess.observations.list","chess.observations.create","chess.observations.propose",
   "chess.observations.update","chess.observations.approve",
   "chess.resources.list","chess.resources.link","chess.resources.update",
+  "chess.resources.unlinkImpact","chess.resources.unlink",
 ] as const;
 
 function json(body: unknown, status = 200) {
@@ -156,6 +173,13 @@ export async function POST(req: NextRequest) {
       issues: parsed.error.issues.map(i => ({ path: i.path.join("."), message: i.message })) },
   }, 400);
   const call = parsed.data;
+  // Model-originated credentials may propose or correct observations, but
+  // MUST NOT assert teacher-verification provenance either by approval
+  // or by creating a record as if it were manually teacher-attested.
+  if((call.action==="chess.observations.approve" ||
+      call.action==="chess.observations.create") && auth.bearer)
+    return json({error:{code:"BROWSER_APPROVAL_REQUIRED",
+      message:"Teacher approval must be completed in the signed-in website"}},403);
   const { db, teacherId } = auth;
   try {
     let result: unknown;
@@ -173,6 +197,8 @@ export async function POST(req: NextRequest) {
         }); break;
       case "workplaces.enroll":
         result = await workplacesEnroll(db, teacherId, call.workplaceId, call.studentId); break;
+      case "workplaces.unenroll":
+        result = await workplacesUnenroll(db, teacherId, call.workplaceId, call.studentId); break;
       case "workplaces.enrollments":
         result = await workplacesEnrollments(db, teacherId, call.workplaceId); break;
       case "students.search":
@@ -201,6 +227,8 @@ export async function POST(req: NextRequest) {
         result = await sessionsCreate(db, teacherId, call); break;
       case "sessions.update":
         result = await sessionsUpdate(db, teacherId, call.sessionId, call); break;
+      case "sessions.createAdHoc":
+        result=await sessionsAdHocCreate(db,teacherId,call);break;
       case "sessions.participants":
         result = await sessionsParticipants(db, teacherId, call.sessionId); break;
       case "attendance.list":
@@ -213,6 +241,10 @@ export async function POST(req: NextRequest) {
         result = await chessCategoriesCreate(db,teacherId,call); break;
       case "chess.categories.update":
         result = await chessCategoriesUpdate(db,teacherId,call.categoryId,call); break;
+      case "chess.categories.deleteImpact":
+        result = await chessCategoriesDeleteImpact(db,teacherId,call.categoryId);break;
+      case "chess.categories.delete":
+        result = await chessCategoriesDelete(db,teacherId,call.categoryId);break;
       case "chess.observations.list":
         result = await chessObservationsList(db,teacherId,call.studentId,call.sessionId); break;
       case "chess.observations.create":
@@ -227,6 +259,10 @@ export async function POST(req: NextRequest) {
         result = await chessResourcesList(db,teacherId,call); break;
       case "chess.resources.link":
         result = await chessResourcesCreate(db,teacherId,call); break;
+      case "chess.resources.unlinkImpact":
+        result = await chessResourcesUnlinkImpact(db,teacherId,call.resourceId);break;
+      case "chess.resources.unlink":
+        result = await chessResourcesUnlink(db,teacherId,call.resourceId);break;
       case "chess.resources.update":
         result = await chessResourcesUpdate(db,teacherId,call.resourceId,call); break;
     }

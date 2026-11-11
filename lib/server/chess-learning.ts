@@ -72,6 +72,32 @@ export async function chessCategoriesUpdate(db: Db, teacherId: string,
   return data;
 }
 
+/** Deleting a skill category must never cascade teacher-attested chess observations. */
+export async function chessCategoriesDeleteImpact(db:Db,teacherId:string,categoryId:string) {
+  const {data:category,error:lookupError}=await db.from("chess_skill_categories")
+    .select("id,name").eq("teacher_id",teacherId).eq("id",categoryId).maybeSingle();
+  if(lookupError)throw failed();
+  if(!category)throw missing();
+  const {count,error}=await db.from("chess_observations")
+    .select("id",{count:"exact",head:true})
+    .eq("teacher_id",teacherId).eq("category_id",categoryId);
+  if(error)throw failed();
+  return {categoryId,name:category.name,observationCount:count??0,
+    canDelete:(count??0)===0};
+}
+export async function chessCategoriesDelete(db:Db,teacherId:string,categoryId:string){
+  const impact=await chessCategoriesDeleteImpact(db,teacherId,categoryId);
+  if(!impact.canDelete)throw conflict();
+  // The observation FK is RESTRICT/NO ACTION: concurrent history insertion
+  // cannot be silently cascaded between preview and DELETE.
+  const {data,error}=await db.from("chess_skill_categories").delete()
+    .eq("teacher_id",teacherId).eq("id",categoryId).select("id").maybeSingle();
+  if(error?.code==="23503")throw conflict();
+  if(error)throw failed();
+  if(!data)throw missing();
+  return {deleted:true,categoryId};
+}
+
 export async function chessObservationsList(db: Db, teacherId: string,
   studentId: string, sessionId?: string) {
   await checkContext(db,teacherId,studentId,sessionId);
@@ -195,6 +221,30 @@ export async function chessResourcesCreate(db:Db,teacherId:string,input:Resource
   if (error?.code==="23503" || error?.code==="23514") throw missing();
   if (error) throw failed();
   return data;
+}
+
+/** Deleting a material link must not erase teacher-attested teaching claims. */
+export async function chessResourcesUnlinkImpact(db:Db,teacherId:string,resourceId:string){
+  const {data:resource,error:lookupError}=await db.from("chess_learning_resources")
+    .select("id,label").eq("teacher_id",teacherId).eq("id",resourceId).maybeSingle();
+  if(lookupError)throw failed();
+  if(!resource)throw missing();
+  const {count,error}=await db.from("chess_material_progress")
+    .select("id",{count:"exact",head:true})
+    .eq("teacher_id",teacherId).eq("resource_id",resourceId);
+  if(error)throw failed();
+  return {resourceId,label:resource.label,claimCount:count??0,canUnlink:(count??0)===0};
+}
+export async function chessResourcesUnlink(db:Db,teacherId:string,resourceId:string){
+  const impact=await chessResourcesUnlinkImpact(db,teacherId,resourceId);
+  if(!impact.canUnlink)throw conflict();
+  const {data,error}=await db.from("chess_learning_resources").delete()
+    .eq("teacher_id",teacherId).eq("id",resourceId)
+    .select("id").maybeSingle();
+  if(error?.code==="23503")throw conflict();
+  if(error)throw failed();
+  if(!data)throw missing();
+  return {unlinked:true,resourceId};
 }
 
 export async function chessResourcesUpdate(db:Db,teacherId:string,id:string,

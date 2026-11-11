@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {createHash} from "node:crypto";
 import { sendEmail } from "@/lib/email";
 import { formatEventWhen } from "@/lib/events";
 import {
@@ -82,109 +83,108 @@ export async function loadEventForEmail(
  * Email invited families about an event (manual invite or day-before reminder).
  * Reminder mode skips RSVP = no.
  */
-export async function sendEventEmails(args: {
-  event: EventEmailRow;
-  policy: StudioPolicy;
-  teacherEmail?: string | null;
-  origin: string;
-  mode: EventEmailMode;
-}): Promise<{ sent: number; skipped: number }> {
-  const { event, policy, mode } = args;
-  const when = formatEventWhen(event.starts_at, event.ends_at, policy.timezone);
-  const signature = policy.studio_name
+type PreparedEmail = {
+  guardianId:string;to:string[];subject:string;text:string;portalToken:string|null;
+};
+/**
+ * Prepare exactly the same messages used by the real send path.
+ * An MCP or website preview never returns the portalToken.
+ */
+function prepareEventEmails(event:EventEmailRow,policy:StudioPolicy,mode:EventEmailMode){
+  const when=formatEventWhen(event.starts_at,event.ends_at,policy.timezone);
+  const signature=policy.studio_name
     ? `— ${policy.studio_name} (sent via ChessCoachPal Studio)`
     : "— Sent via ChessCoachPal Studio";
-  const origin = args.origin.replace(/\/$/, "");
-
-  const performersByGuardian = new Map<
-    string,
-    { name: string; repertoire: string }[]
-  >();
-
-  for (const row of event.event_students ?? []) {
-    const student = oneToOne(row.students);
-    if (!student?.guardian_id) continue;
-    const list = performersByGuardian.get(student.guardian_id) ?? [];
-    list.push({
-      name: student.name,
-      repertoire: row.repertoire?.trim() ?? "",
-    });
-    performersByGuardian.set(student.guardian_id, list);
+  const performersByGuardian=new Map<string,{name:string;repertoire:string}[]>();
+  for(const row of event.event_students??[]){
+    const student=oneToOne(row.students);
+    if(!student?.guardian_id)continue;
+    const list=performersByGuardian.get(student.guardian_id)??[];
+    list.push({name:student.name,repertoire:row.repertoire?.trim()??""});
+    performersByGuardian.set(student.guardian_id,list);
   }
-
-  let sent = 0;
-  let skipped = 0;
-
-  for (const rsvp of event.event_rsvps ?? []) {
-    if (mode === "reminder" && rsvp.status === "no") {
-      skipped += 1;
-      continue;
-    }
-
-    const family = oneToOne(rsvp.guardians);
-    if (!family) {
-      skipped += 1;
-      continue;
-    }
-
-    const recipients = familyEmailRecipients(family);
-    if (recipients.length === 0) {
-      skipped += 1;
-      continue;
-    }
-
-    const kids = performersByGuardian.get(rsvp.guardian_id) ?? [];
-    const repertoireLines =
-      kids.length === 0
-        ? ""
-        : `\n\nPerforming:\n${kids
-            .map((k) =>
-              k.repertoire
-                ? `• ${k.name} — ${k.repertoire}`
-                : `• ${k.name}`
-            )
-            .join("\n")}`;
-
-    const locationLine = event.location?.trim()
-      ? `\nLocation: ${event.location.trim()}`
-      : "";
-    const descriptionLine = event.description?.trim()
-      ? `\n\n${event.description.trim()}`
-      : "";
-
-    const greeting = familyGreetingNames(family);
-    const subject =
-      mode === "reminder"
-        ? `Reminder: ${event.title} is tomorrow`
-        : `${event.title} — ${when}`;
-    const intro =
-      mode === "reminder"
-        ? `This is a reminder that ${event.title} is tomorrow.`
-        : `You're invited to ${event.title}.`;
-    const cta =
-      mode === "reminder"
-        ? "Details and RSVP are in your family portal."
-        : "Please RSVP in your family portal.";
-
-    const portalToken = family.portal_token;
-    const result = await sendEmail({
-      to: recipients,
-      bcc: familyEmailBcc(policy),
-      subject,
-      text: `Hi ${greeting},\n\n${intro}\n\nWhen: ${when}${locationLine}${descriptionLine}${repertoireLines}\n\n${cta}\n\n${signature}`,
-      fromName: policy.studio_name
-        ? `${policy.studio_name} (via ChessCoachPal)`
-        : undefined,
-      replyTo: args.teacherEmail ?? undefined,
-      portalUrl: portalToken ? `${origin}/portal/${portalToken}` : undefined,
-    });
-
-    if (result.sent) {
-      sent += 1;
-    } else {
-      skipped += 1;
-    }
+  const messages:PreparedEmail[]=[];
+  let skipped=0;
+  for(const rsvp of event.event_rsvps??[]){
+    if(mode==="reminder"&&rsvp.status==="no"){skipped++;continue;}
+    const family=oneToOne(rsvp.guardians);
+    if(!family){skipped++;continue;}
+    const recipients=familyEmailRecipients(family);
+    if(recipients.length===0){skipped++;continue;}
+    const kids=performersByGuardian.get(rsvp.guardian_id)??[];
+    const repertoireLines=kids.length===0?"":"\n\nPerforming:\n"+kids.map(k=>
+      k.repertoire?`• ${k.name} — ${k.repertoire}`:`• ${k.name}`).join("\n");
+    const locationLine=event.location?.trim()?`\nLocation: ${event.location.trim()}`:"";
+    const descriptionLine=event.description?.trim()?`\n\n${event.description.trim()}`:"";
+    const subject=mode==="reminder"
+      ?`Reminder: ${event.title} is tomorrow`:`${event.title} — ${when}`;
+    const intro=mode==="reminder"
+      ?`This is a reminder that ${event.title} is tomorrow.`
+      :`You're invited to ${event.title}.`;
+    const cta=mode==="reminder"
+      ?"Details and RSVP are in your family portal."
+      :"Please RSVP in your family portal.";
+    const text=`Hi ${familyGreetingNames(family)},\n\n${intro}\n\nWhen: ${when}${locationLine}${descriptionLine}${repertoireLines}\n\n${cta}\n\n${signature}`;
+    messages.push({guardianId:rsvp.guardian_id,to:recipients,subject,text,portalToken:family.portal_token});
   }
-
-  return { sent, skipped };
+  return {messages,skipped};
+}
+/** Non-mutating, same-template preview. No bearer-visible portal links or credentials. */
+export function previewEventEmails(args:{
+ event:EventEmailRow;policy:StudioPolicy;mode:EventEmailMode;includeRecipients?:boolean;
+}){
+  const {messages,skipped}=prepareEventEmails(args.event,args.policy,args.mode);
+  return {
+    draftCount:messages.length,skippedCount:skipped,
+    recipientCount:messages.reduce((n,m)=>n+m.to.length,0),
+    drafts:messages.map(m=>({
+      subject:m.subject,text:m.text,recipientCount:m.to.length,
+      portalLinkIncluded:Boolean(m.portalToken),
+      ...(args.includeRecipients?{recipients:m.to}:{}),
+    })),
+  };
+}
+export async function sendEventEmails(args:{
+  db:SupabaseClient;teacherId:string;
+  event:EventEmailRow;policy:StudioPolicy;teacherEmail?:string|null;
+  origin:string;mode:EventEmailMode;
+}):Promise<{sent:number;skipped:number}>{
+  const {messages,skipped:initialSkipped}=prepareEventEmails(args.event,args.policy,args.mode);
+  const origin=args.origin.replace(/\/$/,"");
+  let sent=0,skipped=initialSkipped;
+  for(const message of messages){
+    const portalUrl=message.portalToken?`${origin}/portal/${message.portalToken}`:undefined;
+    const bcc=familyEmailBcc(args.policy);
+    const fromName=args.policy.studio_name
+      ?`${args.policy.studio_name} (via ChessCoachPal)`:undefined;
+    const contentHash=createHash("sha256").update(JSON.stringify({
+      to:message.to,bcc,subject:message.subject,text:message.text,
+      portalUrl,replyTo:args.teacherEmail??null,fromName,
+    })).digest("hex");
+    // Unique receipt is the atomic cross-process send claim. If it already
+    // exists (including ambiguous attempted/failed sends), never retry
+    // automatically: avoid duplicate mail after an SMTP/provider timeout.
+    const {data:receipt,error:claimError}=await args.db
+      .from("event_email_deliveries").insert({
+        teacher_id:args.teacherId,event_id:args.event.id,
+        guardian_id:message.guardianId,mode:args.mode,
+        content_hash:contentHash,status:"attempted",
+      }).select("id").single();
+    if(claimError?.code==="23505"){skipped++;continue;}
+    if(claimError||!receipt)
+      throw new Error("Unable to reserve event invitation delivery; no email sent");
+    const result=await sendEmail({
+      to:message.to,bcc,subject:message.subject,text:message.text,
+      fromName,replyTo:args.teacherEmail??undefined,portalUrl,
+      idempotencyKey:`event/${args.event.id}/${message.guardianId}/${args.mode}/${contentHash}`,
+    });
+    const {error:markError}=await args.db.from("event_email_deliveries")
+      .update({status:result.sent?"sent":"failed",
+        sent_at:result.sent?new Date().toISOString():null})
+      .eq("id",receipt.id).eq("teacher_id",args.teacherId);
+    if(markError)throw new Error("Event delivery acknowledgement unavailable; inspect receipt before retrying");
+    if(result.sent)sent++;
+    else skipped++;
+  }
+  return {sent,skipped};
 }

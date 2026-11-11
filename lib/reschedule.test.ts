@@ -25,6 +25,11 @@ describe("localTimeInput", () => {
 });
 
 describe("planLessonMove", () => {
+  it("rejects an explicit move to a nonexistent local spring DST time", () => {
+    expect(planLessonMove({ date: "2026-03-08", time: "02:30" }, slotLesson, CHICAGO))
+      .toMatchObject({ ok: false, error: expect.stringMatching(/does not exist/) });
+  });
+
   it("moves a slot lesson to a new date, preserving local time and recording the origin", () => {
     const plan = planLessonMove({ date: "2026-07-09" }, slotLesson, CHICAGO);
     expect(plan.ok).toBe(true);

@@ -13,8 +13,18 @@ function failure(error:unknown){
   },{status:error instanceof TeacherEventError?error.status:500});
 }
 import { requestOrigin } from "@/lib/server/http";
-import {teacherEventInviteEmail} from "@/lib/server/teacher-events-service";
+import {teacherEventInviteEmail,teacherEventInvitePreview} from "@/lib/server/teacher-events-service";
 type Context={params:Promise<{id:string}>};
+/** Same exact template as the send path, but without external side effects. */
+export async function GET(req:NextRequest,{params}:Context){
+ const teacher=await auth();
+ if(!teacher)return NextResponse.json({error:"Unauthorized"},{status:401});
+ try{return NextResponse.json(await teacherEventInvitePreview(
+   teacher.db,teacher.id,(await params).id,
+   req.nextUrl.searchParams.get("includeRecipients")==="true"
+ ),{headers:{"Cache-Control":"no-store"}});}
+ catch(error){return failure(error);}
+}
 export async function POST(req:NextRequest,{params}:Context){
  const teacher=await auth();if(!teacher)return NextResponse.json({error:"Unauthorized"},{status:401});
  try{return NextResponse.json(await teacherEventInviteEmail(

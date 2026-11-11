@@ -76,10 +76,10 @@ describe("onboarding tour steps", () => {
     expect(ids).toEqual([
       "welcome",
       "students",
-      "families",
+      "learning",
       "schedule",
       "coaching",
-      "billing",
+      "reports",
       "account",
     ]);
   });

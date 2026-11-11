@@ -51,12 +51,12 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
 
   await page.getByLabel("Session group").selectOption({ label: group });
   await page.getByLabel("Topic or title").fill(topic);
-  await page.getByLabel("Local date and time (selected workplace timezone)").fill("2027-04-01T17:00");
+  await page.getByLabel("Local date and time (selected workplace timezone)").fill("2047-10-13T17:00");
   await page.getByLabel("Teaching note").fill("Opposition.");
   await page.getByRole("button", { name: "Create lesson" }).click();
   await expect(page.getByRole("status")).toContainText("Lesson session created");
   await expect(page.getByRole("button", { name: "Record attendance" })).toBeVisible();
-  await page.getByLabel("Attendance").selectOption("absent");
+  await page.getByRole("combobox", { name: /^Attendance/ }).selectOption("absent");
   await page.getByLabel("Student note").fill("Absent with notice");
   await page.getByRole("button", { name: "Record attendance" }).click();
   await expect(page.getByRole("status")).toContainText("Attendance saved.");
@@ -68,7 +68,7 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await page.getByLabel("Lesson type").selectOption("private");
   await page.getByRole("combobox", { name: "Private student", exact: true }).selectOption({ label: student });
   await page.getByLabel("Topic or title").fill(`E2E Private ${suffix}`);
-  await page.getByLabel("Local date and time (selected workplace timezone)").fill("2027-04-02T15:00");
+  await page.getByLabel("Local date and time (selected workplace timezone)").fill("2047-10-14T15:00");
   await page.getByRole("button", { name: "Create lesson" }).click();
   await expect(page.getByRole("status")).toContainText("Lesson session created");
   await expect(page.getByText(/Instructor time in this workplace/)).toContainText("120 minutes");
@@ -96,8 +96,25 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   expect(matchingIndex).toBeGreaterThan(0);
   await lesson.selectOption({ index: matchingIndex });
   await expect(page.getByLabel("Shared session note")).toHaveValue("Improved opposition and calculation");
-  await expect(page.getByLabel("Attendance")).toHaveValue("absent");
+  await expect(page.getByRole("combobox", { name: /^Attendance/ })).toHaveValue("absent");
   await expect(page.getByLabel("Student note")).toHaveValue("Absent with notice");
   await expect(page.getByLabel("Session status")).toHaveValue("completed");
   await expect(page.getByText(/Instructor time in this workplace/)).toContainText("60 minutes");
+});
+
+
+test("teacher navigation centers lessons and training; contacts and billing stay optional",async({page})=>{
+  await signInAsTeacher(page);
+  await page.goto("/dashboard");
+  const nav=page.getByRole("navigation").first();
+  for(const label of ["Today","Students","Lessons","Training & Materials","Calendar","Reports"])
+    await expect(nav.getByRole("link",{name:label,exact:true})).toBeVisible();
+  await expect(nav.getByRole("link",{name:"Families",exact:true})).toHaveCount(0);
+  await nav.getByRole("button",{name:"More coaching options"}).click();
+  await expect(nav.getByRole("link",{name:"Contacts & Guardians"})).toBeVisible();
+  await expect(nav.getByRole("link",{name:"Business & billing"})).toBeVisible();
+  await nav.getByRole("link",{name:"Reports",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Teaching reports"})).toBeVisible();
+  await page.goto("/learning");
+  await expect(page.getByRole("heading",{name:"Homework and training follow-up"})).toBeVisible();
 });

@@ -178,7 +178,10 @@ export async function sessionsCreate(
   const { data, error } = await db.from("teaching_sessions")
     .insert(values)
     .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id").single();
-  if (error?.code === "23505") {
+  // The DB schedule guard runs before the unique request-id constraint, so
+  // a valid retry can surface as exclusion conflict (23P01), not just 23505.
+  // Compare the persisted request before deciding whether this is a replay.
+  if (error?.code === "23505" || error?.code === "23P01") {
     const { data: previous } = await db.from("teaching_sessions")
       .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
       .eq("teacher_id", teacherId).eq("request_id", payload.requestId).maybeSingle();
@@ -194,6 +197,38 @@ export async function sessionsCreate(
     return previous;
   }
   if (error) throw problem();
+  return data;
+}
+
+
+/** Atomically create a one-off lesson for 2–50 distinct workplace students.
+ * The owner-scoped RPC freezes the approved participants, attendance and
+ * session in the same transaction, and provides request-UUID replay safety.
+ */
+export async function sessionsAdHocCreate(db:Db,teacherId:string,payload:{
+  workplaceId:string;studentIds:string[];title:string;startsAt:string;
+  durationMinutes:number;lessonNote?:string;requestId:string;
+}){
+  void teacherId; // RPC enforces auth.uid() and enrollment ownership in SQL.
+  assertSessionSchedule(payload.startsAt,payload.durationMinutes);
+  if(payload.studentIds.length<2||payload.studentIds.length>50||
+    new Set(payload.studentIds).size!==payload.studentIds.length)
+    throw new CoachError("VALIDATION_ERROR",400,"Choose 2–50 distinct students");
+  const {data,error}=await db.rpc("ccp_teacher_ad_hoc_session_create",{
+    p_workplace_id:payload.workplaceId,p_student_ids:payload.studentIds,
+    p_title:payload.title,p_starts_at:payload.startsAt,
+    p_duration_minutes:payload.durationMinutes,
+    p_lesson_note:payload.lessonNote??"",p_request_id:payload.requestId,
+  });
+  if(error){
+    if(/CONFLICT|23P01|23505/.test(error.message))
+      throw new CoachError("CONFLICT",409,"Session conflicts with an existing lesson or changed replay");
+    if(/NOT_FOUND|42501/.test(error.message))
+      throw new CoachError("NOT_FOUND",404,"Workplace or student enrollment not found");
+    if(/INVALID|DUPLICATE|22023/.test(error.message))
+      throw new CoachError("VALIDATION_ERROR",400,"Invalid ad-hoc session");
+    throw problem();
+  }
   return data;
 }
 
@@ -305,6 +340,28 @@ export async function workplacesEnroll(
   return data ?? { workplace_id: workplaceId, student_id: studentId };
 }
 
+
+/** Remove a current workplace membership, never a historic session snapshot.
+ * A database trigger enforces current-group and future-direct-lesson blockers
+ * inside the DELETE transaction, so concurrent/group changes cannot cascade.
+ * Repeated calls converge on an absent enrollment without secondary effects.
+ */
+export async function workplacesUnenroll(
+  db: Db, teacherId: string, workplaceId: string, studentId: string
+) {
+  const {data: workplace,error: workplaceError}=await db.from("workplaces")
+    .select("id").eq("teacher_id",teacherId).eq("id",workplaceId).maybeSingle();
+  if(workplaceError)throw problem();
+  if(!workplace)throw notFound();
+  const {data,error}=await db.from("workplace_enrollments").delete()
+    .eq("teacher_id",teacherId).eq("workplace_id",workplaceId).eq("student_id",studentId)
+    .select("student_id").maybeSingle();
+  if(error?.code==="23503")throw new CoachError("CONFLICT",409,
+    "Remove active group membership and cancel future direct lessons before unenrolling");
+  if(error)throw problem();
+  return {workplace_id:workplaceId,student_id:studentId,removed:Boolean(data)};
+}
+
 export async function workplacesEnrollments(db: Db, teacherId: string, workplaceId: string) {
   const { data: workplace } = await db.from("workplaces")
     .select("id").eq("id", workplaceId).eq("teacher_id", teacherId).maybeSingle();
@@ -332,6 +389,7 @@ export async function sessionsUpdate(
   updates: {
     title?: string; startsAt?: string; durationMinutes?: number;
     lessonNote?: string; status?: "scheduled" | "completed" | "cancelled";
+    expectedUpdatedAt?: string; requestId?: string;
   }
 ) {
   if (updates.startsAt !== undefined || updates.durationMinutes !== undefined) {
@@ -342,17 +400,35 @@ export async function sessionsUpdate(
       throw new CoachError("VALIDATION_ERROR", 400, "Duration must be an integer between 15 and 480 minutes");
     }
   }
-  const changes: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const changes: Record<string,unknown> = {};
   if (updates.title !== undefined) changes.title = updates.title;
-  if (updates.startsAt !== undefined) changes.starts_at = updates.startsAt;
-  if (updates.durationMinutes !== undefined) changes.duration_minutes = updates.durationMinutes;
-  if (updates.lessonNote !== undefined) changes.lesson_note = updates.lessonNote;
+  if (updates.startsAt !== undefined) changes.startsAt = updates.startsAt;
+  if (updates.durationMinutes !== undefined) changes.durationMinutes = updates.durationMinutes;
+  if (updates.lessonNote !== undefined) changes.lessonNote = updates.lessonNote;
   if (updates.status !== undefined) changes.status = updates.status;
-  const { data, error } = await db.from("teaching_sessions").update(changes)
-    .eq("teacher_id", teacherId).eq("id", sessionId)
-    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
-    .maybeSingle();
+  if (!Object.keys(changes).length)
+    throw new CoachError("VALIDATION_ERROR",400,"At least one session change is required");
+  const {data: existing,error: lookupError}=await db.from("teaching_sessions")
+    .select("id,updated_at").eq("teacher_id",teacherId).eq("id",sessionId).maybeSingle();
+  if (lookupError) throw problem();
+  if (!existing) throw notFound();
+  // Legacy website mutations use a freshly observed revision and new request key.
+  // MCP always supplies both; either transport goes through the SAME SQL transaction.
+  const {error}=await db.rpc("ccp_teacher_session_patch",{
+    p_session_id:sessionId,p_changes:changes,
+    p_expected_updated_at:updates.expectedUpdatedAt ?? existing.updated_at,
+    p_idempotency_key:updates.requestId ?? crypto.randomUUID(),
+  });
+  if (error?.code==="23P01" || error?.code==="23505" ||
+      /SESSION_REPLAY_CONFLICT|SESSION_REVISION_CONFLICT/.test(error?.message??""))
+    throw conflict();
+  if (error?.code==="22023") throw new CoachError("VALIDATION_ERROR",400,
+    "Invalid session correction");
   if (error) throw problem();
+  const {data, error: readError}=await db.from("teaching_sessions")
+    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
+    .eq("teacher_id",teacherId).eq("id",sessionId).maybeSingle();
+  if (readError) throw problem();
   if (!data) throw notFound();
   return data;
 }

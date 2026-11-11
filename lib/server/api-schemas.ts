@@ -45,11 +45,19 @@ export const studentCreateSchema = z.object({
   contactPhone: optionalText(50),
   contactName: optionalText(200),
   adultSelf: z.boolean().optional(),
+  idempotencyKey: z.uuid().optional(),
 });
 
 const aliases = z.array(z.string().trim().min(1).max(120)).max(20);
 const chessHandle = z.union([z.string().trim().max(30).regex(/^[A-Za-z0-9_-]*$/), z.null()]);
 const chessRating = z.number().int().min(100).max(4000).nullable();
+
+const optionalStudentCents = z.union([
+  z.number().int().min(0).max(10_000_000),
+  z.string().trim().regex(/^\d{0,8}$/).refine(value =>
+    value==="" || Number(value)<=10_000_000,{message:"Amount must be whole cents at most 10,000,000"}),
+  z.null(),
+]).optional();
 
 export const studentUpdateSchema = z.object({
   nameAliases: aliases.optional(),
@@ -58,6 +66,17 @@ export const studentUpdateSchema = z.object({
   chesscomUsername: chessHandle.optional(),
   lichessRating: chessRating.optional(),
   chesscomRating: chessRating.optional(),
+  chessGoals: optionalText(5000),
+  chessRatings: z.object({
+    lichess:z.object({
+      bullet:chessRating.optional(),blitz:chessRating.optional(),rapid:chessRating.optional(),
+      classical:chessRating.optional(),daily:chessRating.optional(),puzzle:chessRating.optional(),
+    }).strict().optional(),
+    chesscom:z.object({
+      bullet:chessRating.optional(),blitz:chessRating.optional(),rapid:chessRating.optional(),
+      classical:chessRating.optional(),daily:chessRating.optional(),puzzle:chessRating.optional(),
+    }).strict().optional(),
+  }).strict().optional(),
   teacherNotes: optionalText(50_000),
 
   name: trimmedName.optional(),
@@ -66,12 +85,11 @@ export const studentUpdateSchema = z.object({
   level: optionalText(120),
   birthdate: optionalDate,
   practiceStartDate: optionalDate,
-  defaultRateCents: z
-    .union([z.number().min(0).max(10_000_000), z.string().max(20), z.null()])
-    .optional(),
-  travelFeeCents: z
-    .union([z.number().min(0).max(10_000_000), z.string().max(20), z.null()])
-    .optional(),
+  // The website accepts whole-cent form strings, but never malformed,
+  // negative, fractional, exponential or out-of-range amounts. MCP exposes
+  // the same numeric semantics through its stricter structured schema.
+  defaultRateCents: optionalStudentCents,
+  travelFeeCents: optionalStudentCents,
   archived: z.boolean().optional(),
 });
 
@@ -103,6 +121,8 @@ export const guardianCreateSchema = z.object({
   emailRecipients,
   studentIds: z.array(z.uuid()).max(200).optional(),
   newStudents: newStudentsList,
+  // Optional durable retry receipt shared by website and delegated MCP.
+  idempotencyKey: z.uuid().optional(),
 });
 
 export const guardianUpdateSchema = guardianCreateSchema.partial();
@@ -117,6 +137,7 @@ export const creditPackageCreateSchema = z.object({
   priceCents: z.number().int(),
   startsOn: dateString.optional(),
   expiresOn: optionalDate,
+  requestId: z.uuid().optional(),
 });
 
 export const creditPackageUpdateSchema = z.object({
