@@ -177,7 +177,7 @@ BEGIN
   END IF;
   RETURN to_jsonb(v_event);
 END;
-$;
+$$;
 REVOKE ALL ON FUNCTION public.ccp_teacher_event_save(uuid,jsonb,uuid[],jsonb)
  FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_event_save(uuid,jsonb,uuid[],jsonb)
