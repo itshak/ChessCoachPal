@@ -33,18 +33,22 @@ export async function teacherStudentsRoster(db: Db, teacherId: string,
   const limit = Math.min(1000, Math.max(1, opts.limit ?? 1000));
   const offset = Math.min(100000, Math.max(0, opts.offset ?? 0));
   let query = db.from("students")
-    .select("*")
+    .select("*", {count:"exact"})
     .eq("teacher_id", teacherId).order("name").order("id")
-    .range(offset, offset + limit);
+    .range(offset, offset + limit - 1);
   if (opts.archivedOnly) query = query.not("archived_at", "is", null);
   else if (!opts.includeArchived) query = query.is("archived_at", null);
   if (opts.query?.trim()) {
     const literal = opts.query.trim().replace(/[\\%_]/g, "\\$&");
     query = query.ilike("name_search", `%${literal}%`);
   }
-  const { data, error } = await query;
-  if (error) throw new StudentProfileError(500,"DATABASE_ERROR","Student roster unavailable");
-  return { students: (data ?? []).slice(0, limit), nextOffset: (data?.length ?? 0) > limit ? offset+limit : null };
+  const { data, error, count } = await query;
+  if (error || count === null)
+    throw new StudentProfileError(500,"DATABASE_ERROR","Student roster or pagination count unavailable");
+  return {
+    students:data??[],
+    nextOffset:count > offset+(data?.length??0) ? offset+(data?.length??0) : null,
+  };
 }
 export async function teacherStudentProfile(db: Db, teacherId: string, studentId: string) {
   const {data,error} = await db.from("students").select("*")
