@@ -31,7 +31,7 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
   const from=input.from??ninetyDaysAgo,to=input.to??today;
   if(from>to)throw fail(400,"VALIDATION_ERROR","End date precedes start date");
   const {data:student,error:studentError}=await db.from("students")
-    .select("id,name,archived_at,chess_strength,chess_goals")
+    .select("id,name,archived_at,strength,chess_goals")
     .eq("teacher_id",teacherId).eq("id",input.studentId).maybeSingle();
   if(studentError)throw fail(500,"DATABASE_ERROR","Student details unavailable");
   if(!student)throw fail(404,"NOT_FOUND","Student not found");
@@ -71,7 +71,7 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
   });
 
   const unknowns:string[]=[];
-  if(student.chess_strength==null)
+  if(student.strength==null)
     unknowns.push("Overall chess strength has not been explicitly recorded by the coach.");
   if(!known.length)
     unknowns.push("No verified chess observations are recorded in this briefing window.");
@@ -83,7 +83,7 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
 
   return {
     student:{id:student.id,name:student.name,archived:student.archived_at!==null,
-      chessStrength:student.chess_strength??null,teacherGoals:student.chess_goals??""},
+      chessStrength:student.strength??null,teacherGoals:student.chess_goals??""},
     range:{from,to,timezone:lessons.filter.timezone},
     lessonHistory:{
       entries:lessons.entries,total:lessons.total,nextOffset:lessons.nextOffset,
