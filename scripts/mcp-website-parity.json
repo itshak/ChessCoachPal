@@ -193,7 +193,7 @@
       "existingTools": [
         "ccp_v1_billing_manual_payment_record"
       ],
-      "explanation": "Shared scoped manual payment service with per-invoice idempotency receipt for MCP, explicit approval and owner checks. Atomic provider side effects/concurrency still require acceptance."
+      "explanation": "Candidate shared owner-scoped SQL transaction now locks invoice, checks outstanding balance and expected retired Stripe session, inserts cash receipt and marks settlement atomically. Browser/MCP race and replay E2E added, unexecuted; configured provider acceptance remains."
     },
     {
       "path": "app/api/billing/invoices/[id]/payments/[paymentId]/route.ts",
@@ -415,7 +415,7 @@
         "ccp_v1_events_delete_impact",
         "ccp_v1_events_delete"
       ],
-      "explanation": "Shared event details, roster correction and explicit deletion approval. Race-safe history/RSVP updates not yet certified."
+      "explanation": "Candidate atomic event update, roster/RSVP history preservation, one-student repertoire patches, and durable revision-safe cross-client request replay; complete source/test acceptance pending."
     },
     {
       "path": "app/api/events/route.ts",
@@ -429,7 +429,7 @@
         "ccp_v1_events_list",
         "ccp_v1_events_create"
       ],
-      "explanation": "Shared teacher-scoped event list/create and RSVP initialization. Atomic roster side-effects and idempotent writes remain uncertified."
+      "explanation": "Atomic event/roster/RSVP transaction and durable request receipts are implemented; website/MCP creation, replay and rollback synthetic tests added but unexecuted. Provider delivery and cross-tenant acceptance remain required."
     },
     {
       "path": "app/api/feeds/[token]/calendar/route.ts",
@@ -451,7 +451,7 @@
       "existingTools": [
         "ccp_v1_guardians_rotate_portal_token"
       ],
-      "explanation": "MCP can revoke/rotate a family portal link after confirmation but never sees the new secret; website remains the secure place to retrieve it. Replay-safe rotation awaits tests."
+      "explanation": "Candidate tenant-owned SQL rotation now supports optional UUID request receipts with cross-client replay and secret redaction; new OAuth browser/MCP regression is committed but unexecuted. Route remains unverified until concurrency, tenant scope, real portal and replay acceptance pass."
     },
     {
       "path": "app/api/guardians/[id]/route.ts",
@@ -468,7 +468,7 @@
         "ccp_v1_guardians_delete_impact",
         "ccp_v1_guardians_delete"
       ],
-      "explanation": "Owned family detail and membership changes, with deletion impact preview; atomic roster update and safe repeat receipts remain to certify."
+      "explanation": "Atomic family membership replacement, durable request receipts and deletion race restriction are implemented for both transports, with rollback, replay and tenant tests pending final CI. Do not treat tool-name coverage as verified."
     },
     {
       "path": "app/api/guardians/route.ts",
@@ -482,7 +482,7 @@
         "ccp_v1_guardians_list",
         "ccp_v1_guardians_create"
       ],
-      "explanation": "Shared teacher-scoped family list and creation. MCP masks portal tokens and contacts by default; idempotency and atomic family/member creation require further certification."
+      "explanation": "Candidate website/MCP family creation shares atomic SQL with full student membership validation, durable request receipts, paginated complete listings and safe model redaction; pending synthetic test execution and cross-tenant acceptance."
     },
     {
       "path": "app/api/hosted-billing/checkout/route.ts",
@@ -768,7 +768,7 @@
         "ccp_v1_studio_policy_get",
         "ccp_v1_studio_policy_update"
       ],
-      "explanation": "Shared tenant-scoped studio policy service now supports confirmed MCP AI provider selection and clearing a saved AI key, alongside billing/scheduling policies. Raw secret/API-key replacement stays signed-in browser only; MCP read always masks credential values. Route remains gap until security and complete field-level parity evidence is accepted."
+      "explanation": "Candidate MCP policy includes ordinary payment-provider edits, confirmed payment QR data reads/updates and explicit Stripe credential clearing, with raw provider secrets excluded. Extensive per-field and tenant-specific security acceptance still pending."
     },
     {
       "path": "app/api/skills/dimensions/[id]/route.ts",
