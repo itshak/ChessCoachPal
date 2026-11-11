@@ -55,6 +55,8 @@ jobs:
             echo "TOKEN_ENCRYPTION_KEY=$token_key"
             echo "MCP_PUBLIC_ORIGIN=http://localhost:3000"
             echo "LICHESS_API_ORIGIN=http://127.0.0.1:3999" # CI-only loopback OAuth provider, never production
+            echo "CCP_SYNTHETIC_VISION_ORIGIN=http://127.0.0.1:3998" # fixed loopback AI vision stub
+            echo "CCP_SYNTHETIC_STRIPE_ORIGIN=http://127.0.0.1:3997" # fixed loopback Stripe stub
             echo "EMAIL_PROVIDER=smtp"
             echo "SMTP_HOST=127.0.0.1"
             echo "SMTP_PORT=54325"
@@ -70,7 +72,7 @@ jobs:
           npx --yes wait-on --timeout 60000 http://localhost:3000
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        # GitHub-hosted runners have Chromium runtime libraries; avoid an\n        # extra apt font-package fetch (prior CI failed on Ubuntu mirror DNS).\n        # Browser launch still fails if any required library is missing.\n        run: npx playwright install chromium
 
       - name: Run smoke suite
         run: npm run test:e2e

@@ -149,12 +149,23 @@ test("PARITY:PARITY-lichess-approved-puzzle-provider-import requires write scope
   });
   expect(provider.imports).toHaveLength(1);
   expect(provider.imports[0].pgn).toContain('[FEN "'+sampleFen+'"]');
+  const storedMaterial=await page.request.get("/api/training/materials?id="+first.data.materialId);
+  expect(storedMaterial.status(),await storedMaterial.text()).toBe(200);
+  const catalogChapter=await storedMaterial.json();
+  expect(catalogChapter.kind).toBe("study_chapter");
+  expect(catalogChapter.chess_study_chapters).toMatchObject({
+   provider:"lichess",study_id:draft.studyId,chapter_id:"PuZz0001",
+  });
+  expect(catalogChapter.source_url).toBe(first.data.chapterUrl);
+  const typedMcp=await call("ccp_v1_learning_materials_get",{materialId:first.data.materialId});
+  expect(typedMcp.error).toBeUndefined();
+  expect(typedMcp.data).toEqual(catalogChapter);
   const replayWebsite=await page.request.post("/api/lichess/puzzles",{
    data:approved,
   });
   expect(replayWebsite.status(),await replayWebsite.text()).toBe(200);
   expect(await replayWebsite.json()).toMatchObject({
-   ok:true,replayed:true,chapterId:"PuZz0001",
+   ok:true,replayed:true,chapterId:"PuZz0001",materialId:first.data.materialId,
   });
   expect(provider.imports).toHaveLength(1);
 
@@ -232,4 +243,118 @@ test("PARITY:PARITY-lichess-image-extraction-consent rejects unsafe uploads equa
   imageBase64:png,mediaType:"image/jpeg",confirmedExternal:true,confirmed:true,
  });
  expect(mcp.error?.code).toBe("VALIDATION_ERROR");
+});
+
+
+test("PARITY:PARITY-image-photo-vision-to-reviewed-FEN-to-published-typed-study uses one website/MCP workflow",async({page,request})=>{
+  // Production never accepts synthetic inference hosts. The E2E runner
+  // explicitly configures an exact fixed loopback endpoint in CI.
+  test.skip(process.env.CI!=="true"||
+    process.env.CCP_SYNTHETIC_VISION_ORIGIN!=="http://127.0.0.1:3998",
+    "Requires synthetic CI-only vision provider origin");
+
+  let visionCount=0;
+  const expectedPlacement=sampleFen.split(" ")[0];
+  const vision=createServer(async(req,res)=>{
+    if(req.method!=="POST"||req.url!=="/v1/chat/completions"){
+      res.writeHead(404);res.end();return;
+    }
+    const authorization=req.headers.authorization??"";
+    if(!authorization.startsWith("Bearer synthetic-chess-vision-")){
+      res.writeHead(401);res.end();return;
+    }
+    let content="";
+    for await(const chunk of req)content+=String(chunk);
+    const body=JSON.parse(content);
+    if(!JSON.stringify(body.messages).includes("image/png")){
+      res.writeHead(400);res.end();return;
+    }
+    visionCount++;
+    // Deliberately incorrect game-state fields: a photo never proves these.
+    const hallucinatedState=expectedPlacement+" b KQkq e3 17 45";
+    res.writeHead(200,{"Content-Type":"application/json"});
+    res.end(JSON.stringify({choices:[{message:{
+      content:JSON.stringify({fen:hallucinatedState,notes:"Synthetic board placement only"}),
+    }}]}));
+  });
+  await new Promise<void>((resolve,reject)=>{
+    vision.once("error",reject);vision.listen(3998,"127.0.0.1",resolve);
+  });
+  let provider:Awaited<ReturnType<typeof startProvider>>|null=null;
+  let policySet=false;
+  try{
+    provider=await startProvider();
+    const call=await delegatedTool(page,request);
+    const before=await page.request.get("/api/settings/policy");
+    expect(before.status(),await before.text()).toBe(200);
+    const policy=await before.json();
+    expect(policy.ai?.apiKey?.configured).toBe(false);
+    const setPolicy=await page.request.put("/api/settings/policy",{data:{
+      aiProvider:"openai",aiApiKey:"synthetic-chess-vision-"+randomUUID(),
+    }});
+    expect(setPolicy.status(),await setPolicy.text()).toBe(200);
+    policySet=true;
+
+    // A real minimal PNG is used as the synthetic input; the provider never
+    // sees real children's photos or credentials in this test.
+    const imageBase64=
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==";
+    const payload={imageBase64,mediaType:"image/png",confirmedExternal:true};
+    const web=await page.request.post("/api/lichess/puzzles/preview",{
+      data:{kind:"image",...payload},
+    });
+    expect(web.status(),await web.text()).toBe(200);
+    const candidate=await web.json();
+    const mcp=await call("ccp_v1_lichess_image_fen_propose",payload);
+    expect(mcp.error).toBeUndefined();
+    expect(mcp.data).toEqual(candidate);
+    expect(candidate.proposedFen).toBe(expectedPlacement+" w - - 0 1");
+    expect(candidate.needsTeacherReview).toBe(true);
+    expect(candidate.unknownGameState).toEqual([
+      "sideToMove","castlingRights","enPassant","halfmoveClock","fullmoveNumber",
+    ]);
+    expect(candidate.source).toBe("UNVERIFIED_IMAGE_AI_PROPOSAL");
+    expect(visionCount).toBe(2);
+    expect(JSON.stringify(candidate)).not.toContain("synthetic-chess-vision-");
+
+    // The teacher corrects every game-state placeholder before PGN approval.
+    const reviewedDraft={...draft,chapterName:"Vision-reviewed Lichess chapter "+randomUUID().slice(0,8),
+      fen:sampleFen};
+    const previewWeb=await page.request.post("/api/lichess/puzzles/preview",{data:reviewedDraft});
+    expect(previewWeb.status(),await previewWeb.text()).toBe(200);
+    const preview=await previewWeb.json();
+    const previewMcp=await call("ccp_v1_lichess_puzzle_preview",reviewedDraft);
+    expect(previewMcp.error).toBeUndefined();
+    expect(previewMcp.data).toEqual(preview);
+    expect(preview.pgn).toContain('[SetUp "1"]');
+
+    // Provider OAuth scope is upgraded only through the secure browser.
+    await page.goto("/api/lichess/connect?mode=write");
+    await page.waitForURL(u=>u.pathname==="/learning"&&u.searchParams.get("lichess")==="connected");
+    const approved={...reviewedDraft,expectedSha256:preview.sha256,
+      idempotencyKey:randomUUID(),confirmed:true,confirmedExternal:true};
+    const published=await call("ccp_v1_lichess_puzzle_publish",approved);
+    expect(published.error).toBeUndefined();
+    expect(published.data.ok).toBe(true);
+    expect(provider.imports).toHaveLength(1);
+    expect(provider.imports[0].pgn).toContain('[FEN "'+sampleFen+'"]');
+    const materialWeb=await page.request.get("/api/training/materials?id="+published.data.materialId);
+    expect(materialWeb.status(),await materialWeb.text()).toBe(200);
+    const typed=await materialWeb.json();
+    expect(typed.kind).toBe("study_chapter");
+    expect(typed.chess_study_chapters.chapter_id).toBe(published.data.chapterId);
+    const replay=await page.request.post("/api/lichess/puzzles",{data:approved});
+    expect(replay.status(),await replay.text()).toBe(200);
+    expect((await replay.json()).materialId).toBe(published.data.materialId);
+    expect(provider.imports).toHaveLength(1);
+  }finally{
+    if(policySet){
+      const cleared=await page.request.put("/api/settings/policy",{
+        data:{aiProvider:"none",clearAiApiKey:true},
+      });
+      expect(cleared.status(),await cleared.text()).toBe(200);
+    }
+    if(provider)await close(provider.server);
+    await close(vision);
+  }
 });

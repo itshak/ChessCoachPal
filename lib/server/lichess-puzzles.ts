@@ -2,6 +2,7 @@ import "server-only";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {buildPuzzlePreview,PuzzleReviewError,type PuzzleDraft} from "@/lib/lichess-puzzles";
 import {authorizedLichessToken,lichessOrigin} from "@/lib/server/lichess-connections";
+import {teacherMaterialCatalogCreate} from "@/lib/server/learning-materials";
 
 export class LichessPuzzleError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);}
@@ -38,14 +39,39 @@ async function existingPublication(db:SupabaseClient,teacherId:string,
   throw fail(409,"IDEMPOTENCY_CONFLICT","This publishing request ID was already used for different reviewed content");
  return (request??content) as Receipt|null;
 }
-function handleExisting(row:Receipt){
+/**
+ * Reconcile an externally confirmed chapter to the single typed catalog.
+ * The Lichess request receipt is authoritative; a failed DB material link
+ * must NEVER trigger another remote import. Local retries are safe because
+ * the catalog key is the original validated publication UUID.
+ */
+async function ensureCatalogChapter(
+ db:SupabaseClient,teacherId:string,row:Receipt
+){
  if(row.status!=="published"||!row.provider_chapter_id)
   throw fail(409,"PROVIDER_RECONCILIATION_REQUIRED",
-   "Lichess publication status is ambiguous. Inspect the study in Lichess; do not automatically retry this chapter");
+   "Lichess publication status is ambiguous. Inspect the study before retrying");
+ const chapterUrl=`https://lichess.org/study/${row.study_id}/${row.provider_chapter_id}`;
+ try{
+  const result=await teacherMaterialCatalogCreate(db,teacherId,{
+   kind:"study_chapter",
+   title:row.chapter_name,
+   description:"Teacher-approved Lichess puzzle chapter",
+   sourceUrl:chapterUrl,
+   details:{provider:"lichess",studyId:row.study_id,chapterId:row.provider_chapter_id},
+   requestId:row.request_id,
+  });
+  return {materialId:result.material.id as string,chapterUrl};
+ }catch{
+  throw fail(503,"MATERIAL_SYNC_PENDING",
+   "The Lichess chapter is published but the typed learning material could not be linked. Reuse the same publishing request to reconcile locally; do not republish");
+ }
+}
+async function handleExisting(db:SupabaseClient,teacherId:string,row:Receipt){
+ const {materialId,chapterUrl}=await ensureCatalogChapter(db,teacherId,row);
  return {
   ok:true,replayed:true,studyId:row.study_id,chapterId:row.provider_chapter_id,
-  chapterName:row.chapter_name,
-  chapterUrl:`https://lichess.org/study/${row.study_id}/${row.provider_chapter_id}`,
+  chapterName:row.chapter_name,chapterUrl,materialId,
  };
 }
 export async function teacherLichessPuzzlePublish(
@@ -62,7 +88,7 @@ export async function teacherLichessPuzzlePublish(
  const {token}=await authorizedLichessToken(teacherId,"study:write");
  const prior=await existingPublication(db,teacherId,
   preview.studyId,input.idempotencyKey,preview.sha256);
- if(prior)return handleExisting(prior);
+ if(prior)return handleExisting(db,teacherId,prior);
  // Database unique constraints are the cross-client at-most-once provider claim.
  const {data:receipt,error:claimError}=await db.from("lichess_puzzle_publications")
   .insert({
@@ -72,7 +98,7 @@ export async function teacherLichessPuzzlePublish(
  if(claimError?.code==="23505"){
   const seen=await existingPublication(db,teacherId,
    preview.studyId,input.idempotencyKey,preview.sha256);
-  if(seen)return handleExisting(seen);
+  if(seen)return handleExisting(db,teacherId,seen);
   throw fail(409,"PROVIDER_RECONCILIATION_REQUIRED","A Lichess publishing attempt is already in progress");
  }
  if(claimError||!receipt)
@@ -130,9 +156,13 @@ export async function teacherLichessPuzzlePublish(
  if(saveError||!saved)
   throw fail(503,"PROVIDER_RECONCILIATION_REQUIRED",
    "Lichess published the chapter but its local receipt could not be stored; inspect the study");
+ const {materialId,chapterUrl}=await ensureCatalogChapter(db,teacherId,{
+   id:receipt.id,request_id:input.idempotencyKey,content_hash:preview.sha256,
+   study_id:preview.studyId,chapter_name:preview.chapterName,
+   status:"published",provider_chapter_id:created.id,
+ });
  return {
   ok:true,replayed:false,studyId:preview.studyId,chapterId:created.id,
-  chapterName:preview.chapterName,
-  chapterUrl:`https://lichess.org/study/${preview.studyId}/${created.id}`,
+  chapterName:preview.chapterName,chapterUrl,materialId,
  };
 }

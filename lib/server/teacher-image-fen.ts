@@ -99,9 +99,15 @@ function parseProviderFen(content:unknown){
 async function requestProvider(provider:"openai"|"anthropic",apiKey:string,input:ImageFenInput){
  let response:Response;
  try{
-  response=await fetch(provider==="openai"?
+  // Synthetic-only fixed loopback provider for the GitHub E2E campaign.
+  // No user-defined URL, network host or production override is permitted.
+  const syntheticVision=provider==="openai"&&process.env.CI==="true"&&
+    process.env.CCP_SYNTHETIC_VISION_ORIGIN==="http://127.0.0.1:3998";
+  const endpoint=syntheticVision?
+    "http://127.0.0.1:3998/v1/chat/completions":provider==="openai"?
     "https://api.openai.com/v1/chat/completions":
-    "https://api.anthropic.com/v1/messages",{
+    "https://api.anthropic.com/v1/messages";
+  response=await fetch(endpoint,{
    method:"POST",redirect:"error",cache:"no-store",signal:AbortSignal.timeout(20000),
    headers:provider==="openai"?{
     Authorization:"Bearer "+apiKey,"Content-Type":"application/json",

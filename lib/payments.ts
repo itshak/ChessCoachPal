@@ -29,9 +29,15 @@ export interface CheckoutSessionResult {
 }
 
 export function createStripeClient(secretKey: string): Stripe {
+  // Only the GitHub synthetic test runner can substitute this exact loopback
+  // endpoint. In all production environments Stripe traffic remains HTTPS
+  // to the official provider with no user-controllable host or protocol.
+  const mockStripe=process.env.CI==="true"&&
+    process.env.CCP_SYNTHETIC_STRIPE_ORIGIN==="http://127.0.0.1:3997";
   return new Stripe(secretKey, {
     apiVersion: "2026-06-24.dahlia",
     typescript: true,
+    ...(mockStripe?{host:"127.0.0.1",port:3997,protocol:"http" as const,maxNetworkRetries:0}:{}),
   });
 }
 
