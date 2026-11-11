@@ -43,7 +43,7 @@ function validatedImage(input:ImageFenInput):Buffer{
 }
 const PROMPT=[
  "Read ONLY the chessboard in this photograph or screenshot.",
- "Return a JSON object with exactly {\\\"fen\\\":string|null,\\\"notes\\\":string}.",
+ "Return a JSON object with exactly {\"fen\":string|null,\"notes\":string}.",
  "If piece colors, exact squares, or board orientation are ambiguous, return fen:null.",
  "Use standard FEN: 8 ranks from black's home rank (8) to white's (1).",
  "A static image cannot prove game-state fields. Use w - - 0 1 ONLY as",
