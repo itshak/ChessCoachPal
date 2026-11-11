@@ -56,11 +56,16 @@ async function verifyStudents(db:Db,teacherId:string,ids:string[]) {
   if(data?.length!==distinct.length)throw failure(404,"NOT_FOUND","A student is not owned by this teacher");
   return data;
 }
-async function checkNewStudents(db:Db,teacherId:string,input:GuardianChange) {
+async function checkNewStudents(
+  db:Db,teacherId:string,input:GuardianChange,skipCapacityPreflight=false
+) {
   const rows=(input.newStudents??[]).filter(x=>x.name.trim()).map(x=>({
     teacher_id:teacherId,name:x.name.trim(),birthdate:x.birthdate||null,
   }));
-  if(rows.length>0) {
+  // A key-replayed request must not fail because its original successful
+  // student insert filled the quota. The database independently checks
+  // capacity inside the actual transaction for NEW requests.
+  if(rows.length>0&&!skipCapacityPreflight) {
     const check=await assertWithinHostedLimit(db,teacherId,"students",rows.length);
     if(!check.allowed){
       const result=limitReachedResponse(check);
@@ -90,7 +95,8 @@ async function writeGuardian(
   // Helpful early errors; the database independently repeats the ownership
   // and quota checks while locked, before committing any roster mutation.
   if(input.studentIds!==undefined)await verifyStudents(db,teacherId,existing);
-  const newRows=await checkNewStudents(db,teacherId,input);
+  const newRows=await checkNewStudents(db,teacherId,input,
+    input.idempotencyKey!==undefined);
   if(input.idempotencyKey!==undefined&&
      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.idempotencyKey))
     throw failure(400,"VALIDATION_ERROR","Family idempotencyKey must be a UUID");
