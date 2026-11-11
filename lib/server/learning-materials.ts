@@ -62,6 +62,19 @@ const link = base.extend({
 export const materialCatalogCreateSchema = z.discriminatedUnion("kind", [
   game, puzzle, drill, study, link,
 ]);
+const materialUpdateFields={
+  materialId: uuid,expectedRevision:z.number().int().min(1),
+  confirmed:z.literal(true),
+};
+export const materialCatalogUpdateSchema = z.discriminatedUnion("kind",[
+  game.extend(materialUpdateFields),
+  puzzle.extend(materialUpdateFields),
+  drill.extend(materialUpdateFields),
+  study.extend(materialUpdateFields),
+  link.extend(materialUpdateFields),
+]);
+export type MaterialCatalogUpdate=z.infer<typeof materialCatalogUpdateSchema>;
+
 export const materialCatalogFilterSchema = z.object({
   kind: z.enum(["game", "puzzle", "drill", "study_chapter", "external_link"]).optional(),
   query: z.string().trim().max(120).optional(),
@@ -78,7 +91,7 @@ export class MaterialCatalogError extends Error {
   }
 }
 const fail = (status:number, code:string, message:string) => new MaterialCatalogError(status,code,message);
-const select = "id,teacher_id,kind,title,description,source_url,created_at,updated_at,chess_games(pgn,white_player,black_player,result),chess_puzzles(fen,solution,themes),chess_drills(instructions,mode,repetitions),chess_study_chapters(provider,study_id,chapter_id)";
+const select = "id,teacher_id,kind,title,description,source_url,revision,created_at,updated_at,chess_games(pgn,white_player,black_player,result),chess_puzzles(fen,solution,themes),chess_drills(instructions,mode,repetitions),chess_study_chapters(provider,study_id,chapter_id)";
 // PostgREST may materialize a composite-FK 1:1 relation as a one-element array.
 // Stabilize the website/MCP contract to one nullable typed payload object.
 function normalizeMaterial(row:Record<string,unknown>) {
@@ -131,4 +144,38 @@ export async function teacherMaterialCatalogCreate(db:Db,teacherId:string,input:
     throw fail(500,"DATABASE_ERROR","Invalid material receipt");
   const created=await teacherMaterialCatalogGet(db,teacherId,data.id);
   return {material:created,replayed:data.replayed===true};
+}
+
+/**
+ * Corrections use one owner-derived SQL transaction for both the catalog root
+ * and type-specific record. A stale revision or same-key changed payload makes
+ * no write; the edit receipt survives retries from either UI or delegated MCP.
+ */
+export async function teacherMaterialCatalogUpdate(
+ db:Db,teacherId:string,input:MaterialCatalogUpdate
+) {
+  const {data,error}=await db.rpc("ccp_material_catalog_update",{
+    p_material_id:input.materialId,
+    p_expected_revision:input.expectedRevision,
+    p_kind:input.kind,p_title:input.title,p_description:input.description,
+    p_source_url:input.sourceUrl,p_details:input.details,p_request_id:input.requestId,
+  });
+  if(error){
+    if (/IDEMPOTENCY_CONFLICT/.test(error.message))
+      throw fail(409,"IDEMPOTENCY_CONFLICT","Request key was used for a different material change");
+    if (/STALE_REVISION/.test(error.message))
+      throw fail(409,"STALE_REVISION","Material has changed; reload before updating");
+    if (/KIND_MISMATCH/.test(error.message))
+      throw fail(409,"KIND_MISMATCH","The material kind cannot be changed");
+    if (/NOT_FOUND/.test(error.message))
+      throw fail(404,"NOT_FOUND","Learning material not found");
+    if (/INVALID_|VALIDATION_ERROR|check constraint|23514/.test(error.message))
+      throw fail(400,"VALIDATION_ERROR","Invalid material update");
+    throw fail(500,"DATABASE_ERROR","Unable to update learning material");
+  }
+  if (!data || typeof data!=="object" || typeof data.id!=="string" ||
+      typeof data.revision!=="number")
+    throw fail(500,"DATABASE_ERROR","Invalid material update receipt");
+  return {material:await teacherMaterialCatalogGet(db,teacherId,data.id),
+    replayed:data.replayed===true,resultingRevision:data.revision as number};
 }
