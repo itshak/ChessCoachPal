@@ -88,19 +88,25 @@ export async function teacherManualPaymentRecord(db:Db,teacherId:string,id:strin
  return data as Record<string,unknown>;
 }
 
-export async function teacherManualPaymentDelete(db:Db,teacherId:string,invoiceId:string,paymentId:string){
- const invoice=await invoiceForPayment(db,teacherId,invoiceId);
- if(invoice.status==="void")throw fail(409,"CONFLICT","Void invoice payments cannot be removed");
- const payment=((invoice.payments??[]) as PaymentRecord[]).find(p=>p.id===paymentId);
- if(!payment)throw fail(404,"NOT_FOUND","Payment not found for this invoice");
- if(payment.method!=="manual")
-  throw fail(409,"STRIPE_REFUND_REQUIRED","Stripe payments can only be refunded through Stripe");
- const {data,error}=await db.from("payments").delete().eq("id",paymentId)
-  .eq("invoice_id",invoiceId).select("id");
- if(error)throw fail(500,"DATABASE_ERROR","Could not remove payment");
- if(!data?.length)throw fail(409,"CONFLICT","Payment was already changed");
- const {data:updated,error:lookup}=await db.from("invoices").select("status")
-  .eq("id",invoiceId).eq("teacher_id",teacherId).maybeSingle();
- if(lookup)throw fail(500,"DATABASE_ERROR","Payment removed; unable to verify invoice state");
- return {ok:true,status:updated?.status??null};
+export async function teacherManualPaymentDelete(
+ db:Db,teacherId:string,invoiceId:string,paymentId:string
+){
+ // Serializes against the same invoice row lock used by payment insertion.
+ // DB trigger recalculates settled status before this transaction returns.
+ const {data,error}=await db.rpc("ccp_manual_payment_remove",{
+  p_invoice_id:invoiceId,p_payment_id:paymentId,
+ });
+ void teacherId;
+ if(error){
+  if(error.message.includes("STRIPE_REFUND_REQUIRED"))
+   throw fail(409,"STRIPE_REFUND_REQUIRED","Stripe payments can only be refunded through Stripe");
+  if(error.message.includes("INVOICE_VOID"))
+   throw fail(409,"CONFLICT","Void invoice payments cannot be removed");
+  if(error.code==="42501")
+   throw fail(404,"NOT_FOUND","Invoice or payment not found");
+  throw fail(500,"DATABASE_ERROR","Payment removal was rolled back");
+ }
+ if(!data||typeof data!=="object"||Array.isArray(data))
+  throw fail(500,"DATABASE_ERROR","Payment removal returned an invalid receipt");
+ return data as {ok:true;status:string};
 }
