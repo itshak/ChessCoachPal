@@ -140,7 +140,7 @@ test("PARITY:PARITY-sessions-complete-website form requires explicit per-learner
  expect(attendance.data.attendance.every((a:{status:string})=>a.status==="present")).toBe(true);
 });
 
-test("PARITY:completion cannot bypass frozen roster through ordinary website/MCP or direct RLS write",async({page,request})=>{
+test("PARITY:PARITY-completion-cannot-bypass rejects ordinary website/MCP and direct RLS completion",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const ctx=await fixture(call);
  const directWebsite=await page.request.post("/api/agent/v1",{
