@@ -11,6 +11,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname),
+      // Next.js resolves this compile-time boundary; Vitest's plain Node
+      // runner needs a harmless stub without weakening production imports.
+      "server-only": path.resolve(__dirname, "test-support/server-only.ts"),
     },
   },
 });
