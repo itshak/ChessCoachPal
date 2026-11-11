@@ -23,8 +23,14 @@ async function invoiceForPayment(db:Db,teacherId:string,id:string){
 export async function teacherManualPaymentRecord(db:Db,teacherId:string,id:string,input:ManualPaymentInput){
  const invoice=await invoiceForPayment(db,teacherId,id);
  const payments=(invoice.payments??[]) as PaymentRecord[];
- const key=input.idempotencyKey?`mcp:${input.idempotencyKey}`:null;
+ const key=input.idempotencyKey? `mcp:${input.idempotencyKey}`:null;
  const note=typeof input.note==="string"?input.note.trim().slice(0,500):"";
+ if(input.idempotencyKey!==undefined&&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.idempotencyKey))
+  throw fail(400,"VALIDATION_ERROR","Payment idempotencyKey must be a UUID");
+ // A saved receipt always wins over the current balance. Retrying a settled
+ // payment must return its original ID, not add another payment or report
+ // a misleading new settlement.
  if(key){
   const replay=payments.find(p=>p.external_id===key);
   if(replay){
@@ -34,63 +40,54 @@ export async function teacherManualPaymentRecord(db:Db,teacherId:string,id:strin
   }
  }
  if(invoice.status==="void")throw fail(409,"CONFLICT","Cannot pay a void invoice");
- const amounts=payments.map(p=>({amountCents:p.amount_cents}));
- const before=summarizePayments(invoice.subtotal_cents,amounts);
+ const before=summarizePayments(invoice.subtotal_cents,
+   payments.map(p=>({amountCents:p.amount_cents})));
  if(invoice.status==="paid"&&before.settled)return {ok:true,alreadyPaid:true};
  const requested=input.amountCents??null;
- if(requested!==null&&(!Number.isSafeInteger(requested)||requested<0))
-  throw fail(400,"VALIDATION_ERROR","Payment amount must be whole nonnegative cents");
+ if(requested!==null&&(!Number.isSafeInteger(requested)||requested<=0))
+  throw fail(400,"VALIDATION_ERROR","Payment amount must be whole positive cents");
  if(invoice.status==="draft"&&requested!==null)
   throw fail(409,"CONFLICT","Send an invoice before making a partial payment");
  const amount=resolveManualPaymentAmount(requested,before.balanceCents);
  if(!amount.ok)throw fail(400,"VALIDATION_ERROR",amount.error);
- // A manual receipt may not coexist with a live Stripe payment link.
- // Retire the provider session BEFORE inserting money; a completed/unknown
- // session or missing provider credentials blocks the entire operation.
- // Clearing the persisted link ahead of insertion is safe: a failed insert
- // leaves an expired (not payable) Checkout link, never an orphaned charge.
- if(invoice.stripe_checkout_session_id||invoice.stripe_checkout_url){
-  if(!invoice.stripe_checkout_session_id)
+ // Retire external Checkout BEFORE touching financial rows. If it is complete
+ // or its status is unknown, refuse rather than risking a double charge.
+ // The SQL transaction rechecks the EXACT invoice session ID and makes
+ // clearing the link, payment INSERT and status change all-or-nothing.
+ const expectedSession=invoice.stripe_checkout_session_id as string|null;
+ if(expectedSession||invoice.stripe_checkout_url){
+  if(!expectedSession)
    throw fail(409,"CHECKOUT_RECONCILIATION_REQUIRED","An invoice payment link needs provider reconciliation before recording cash");
   const policy=await getPolicy(db,teacherId);
   if(!policy.stripe_secret_key)
    throw fail(409,"CHECKOUT_RECONCILIATION_REQUIRED","Reconnect Stripe and retire the Checkout link before recording a manual payment");
-  try{await expireCheckoutSession(policy.stripe_secret_key,invoice.stripe_checkout_session_id);}
+  try{await expireCheckoutSession(policy.stripe_secret_key,expectedSession);}
   catch{
    throw fail(409,"CHECKOUT_RECONCILIATION_REQUIRED","Could not safely retire Stripe Checkout; verify provider payment before recording cash");
   }
-  const {data:cleared,error:clearError}=await db.from("invoices")
-   .update({stripe_checkout_session_id:null,stripe_checkout_url:null})
-   .eq("id",id).eq("teacher_id",teacherId)
-   .eq("stripe_checkout_session_id",invoice.stripe_checkout_session_id)
-   .in("status",["draft","sent"]).select("id").maybeSingle();
-  if(clearError||!cleared)
-   throw fail(409,"CHECKOUT_RECONCILIATION_REQUIRED","Invoice changed while retiring Stripe Checkout; refresh before recording payment");
  }
- const {data:record,error:recordError}=await db.from("payments").insert({
-  invoice_id:id,amount_cents:amount.amountCents,method:"manual",note,
-  ...(key?{external_id:key}:{}),
- }).select("id").single();
- if(recordError?.code==="23505"&&key){
-  const latest=await invoiceForPayment(db,teacherId,id);
-  const replay=((latest.payments??[]) as PaymentRecord[]).find(p=>p.external_id===key);
-  if(replay&&replay.note===note&&(requested===null||replay.amount_cents===requested))
-   return {ok:true,replayed:true,paymentId:replay.id,amountCents:replay.amount_cents};
-  throw fail(409,"IDEMPOTENCY_CONFLICT","Payment key already in use");
+ const {data,error}=await db.rpc("ccp_manual_payment_commit",{
+  p_invoice_id:id,p_amount_cents:requested,p_note:note,
+  p_request_id:input.idempotencyKey??null,
+  p_expected_checkout_session:expectedSession,
+ });
+ if(error){
+  if(error.code==="23505"||error.message.includes("MANUAL_PAYMENT_REQUEST_CONFLICT"))
+   throw fail(409,"IDEMPOTENCY_CONFLICT","Payment idempotency key was already used with different details");
+  if(/CHECKOUT_RECONCILIATION_REQUIRED|STRIPE_PAYMENT_RECONCILIATION_REQUIRED/.test(error.message))
+   throw fail(409,"CHECKOUT_RECONCILIATION_REQUIRED","Invoice payment provider state changed; reconcile Checkout before recording cash");
+  if(/INVOICE_VOID|PARTIAL_DRAFT_PAYMENT/.test(error.message))
+   throw fail(409,"CONFLICT","Invoice state changed; refresh before recording payment");
+  if(/INVALID_MANUAL_PAYMENT|INVOICE_NOTHING_OWED|INVALID_MANUAL_PAYMENT_AMOUNT/.test(error.message))
+   throw fail(400,"VALIDATION_ERROR","Payment amount exceeds the remaining invoice balance");
+  if(error.code==="42501")throw fail(404,"NOT_FOUND","Invoice not found");
+  throw fail(500,"DATABASE_ERROR","Payment could not be recorded; no partial payment was saved");
  }
- if(recordError||!record)throw fail(500,"DATABASE_ERROR","Payment could not be recorded");
- const after=summarizePayments(invoice.subtotal_cents,[
-  ...amounts,{amountCents:amount.amountCents},
- ]);
- if(after.settled){
-  const {error}=await db.from("invoices").update({
-   status:"paid",paid_at:new Date().toISOString(),payment_method:"manual",
-  }).eq("id",id).eq("teacher_id",teacherId);
-  if(error)throw fail(500,"DATABASE_ERROR","Payment recorded, but invoice status update failed; reconcile payment before retry");
- }
- return {ok:true,paid:after.settled,balanceCents:after.balanceCents,
-  paymentId:record.id,amountCents:amount.amountCents};
+ if(!data||typeof data!=="object"||Array.isArray(data))
+  throw fail(500,"DATABASE_ERROR","Payment transaction returned invalid data");
+ return data as Record<string,unknown>;
 }
+
 export async function teacherManualPaymentDelete(db:Db,teacherId:string,invoiceId:string,paymentId:string){
  const invoice=await invoiceForPayment(db,teacherId,invoiceId);
  if(invoice.status==="void")throw fail(409,"CONFLICT","Void invoice payments cannot be removed");
