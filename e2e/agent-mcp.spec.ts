@@ -227,10 +227,10 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(archivePreview.error).toBeUndefined();
   expect(archivePreview.data.canArchive).toBe(true);
   expect(archivePreview.data.assignmentCount).toBe(0);
-  const previewWeb=await page.request.get("/api/training/materials/lifecycle?"+
+  const materialArchivePreviewWeb=await page.request.get("/api/training/materials/lifecycle?"+
     new URLSearchParams({materialId:puzzleId}));
-  expect(previewWeb.status()).toBe(200);
-  expect(archivePreview.data).toEqual(await previewWeb.json());
+  expect(materialArchivePreviewWeb.status()).toBe(200);
+  expect(archivePreview.data).toEqual(await materialArchivePreviewWeb.json());
   const archiveInput={
     materialId:puzzleId,expectedRevision:archivePreview.data.revision as number,
     action:"archive",requestId:randomUUID(),confirmed:true,
@@ -258,12 +258,12 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(archivedListMcp.error).toBeUndefined();
   expect(archivedListMcp.data.materials.some((m:{id:string})=>m.id===puzzleId)).toBe(true);
-  const restore=await page.request.post("/api/training/materials/lifecycle",{data:{
+  const materialRestore=await page.request.post("/api/training/materials/lifecycle",{data:{
     materialId:puzzleId,expectedRevision:archiveMcp.data.material.revision,
     action:"restore",requestId:randomUUID(),confirmed:true,
   }});
-  expect(restore.status(),await restore.text()).toBe(200);
-  expect((await restore.json()).material.archived_at).toBeNull();
+  expect(materialRestore.status(),await materialRestore.text()).toBe(200);
+  expect((await materialRestore.json()).material.archived_at).toBeNull();
   const invalidFen=await page.request.post("/api/training/materials",{data:{
     ...puzzleRequest,requestId:randomUUID(),
     details:{...puzzleRequest.details,fen:"not a valid chess FEN"},

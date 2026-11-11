@@ -1,6 +1,6 @@
 "use client";
 
-import {useCallback,useEffect,useState} from "react";
+import {useCallback,useEffect,useMemo,useState} from "react";
 import {createClient} from "@/lib/supabase/client";
 import {useConfirm} from "@/components/ui/confirm-dialog";
 
@@ -18,7 +18,9 @@ export function AccountMfaSettings(){
  const [ready,setReady]=useState(false);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
- const client=createClient();
+ // Stable browser auth client prevents repeatedly enrolling/listing factors
+ // on every React rerender of the security settings panel.
+ const client=useMemo(()=>createClient(),[]);
 
  const refresh=useCallback(async()=>{
   const {data,error}=await client.auth.mfa.listFactors();

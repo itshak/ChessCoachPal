@@ -29,3 +29,18 @@ test("PARITY:PARITY-hosted-subscription-handoff opens signed-in account without 
  expect((await page.request.get("/account")).status()).toBe(200);
  expect(JSON.stringify(data)).not.toMatch(/checkout\.stripe\.com|sk_(?:test|live)_|client_secret/i);
 });
+
+test("PARITY:PARITY-account-browser-mfa-presence is accessible only through secure signed-in UI",async({page,request})=>{
+ const call=await delegatedTool(page,request,"coach:read");
+ const redirect=await call("ccp_v1_account_security_handoff",{});
+ expect(redirect.error).toBeUndefined();
+ await page.goto(new URL(redirect.data.url).pathname);
+ await expect(page.getByRole("heading",{name:"Account Settings"})).toBeVisible();
+ await expect(page.getByRole("heading",{name:"Two-factor authentication"})).toBeVisible();
+ const mfaPanel=page.getByRole("region",{name:"Two-factor authentication"});
+ await expect(mfaPanel.getByText(/Setup, codes and recovery stay in this secure signed-in browser/i))
+   .toBeVisible();
+ // Actual authenticator enrollment and factor secret are browser-only actions:
+ // there is no MCP TOTP enrollment or code-submission tool to leak the secret.
+ expect(JSON.stringify(redirect.data)).not.toMatch(/totp|mfa_secret|otp_secret|challenge_id|password/i);
+});
