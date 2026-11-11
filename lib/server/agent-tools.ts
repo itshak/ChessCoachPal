@@ -647,8 +647,8 @@ const catalogue = [
   },
   {
     name:"ccp_v1_guardians_rotate_portal_token",
-    description:"Invalidate an existing family-portal link and create a fresh one. Old links immediately stop working. New secret is NEVER returned to the model; view the URL securely on the website.",
-    schema:z.object({guardianId:uuid,confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+    description:"Invalidate an existing family-portal link and create a fresh one. Optional requestId safely replays a confirmed rotation across website/MCP retries. New secret is NEVER returned to the model; view the URL securely on the website.",
+    schema:z.object({guardianId:uuid,requestId:uuid.optional(),confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_skill_dimensions_list",
@@ -1493,9 +1493,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await guardianDelete(db,teacherId,a.guardianId)};
       }
       case "ccp_v1_guardians_rotate_portal_token": {
-        const a=args as {guardianId:string};
-        const rotated=await guardianRotatePortalToken(db,teacherId,a.guardianId);
-        return {data:{ok:true,id:rotated.id,secretNotReturned:true}};
+        const a=args as {guardianId:string;requestId?:string};
+        const rotated=await guardianRotatePortalToken(db,teacherId,a.guardianId,a.requestId);
+        return {data:{ok:true,id:rotated.id,replayed:rotated.replayed,
+          secretNotReturned:true}};
       }
       case "ccp_v1_skill_dimensions_list":
         return {data:await skillDimensionsList(db,teacherId)};
