@@ -128,8 +128,21 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
       throw new StudentProfileError(409,"FUTURE_COMMITMENTS",
         "Resolve recurring slots, future private/group lessons and current group membership before archiving");
   }
-  const cents = (value:number|string|null) => value === null || value === "" ? null :
-    Math.max(0,Math.round(Number(value)));
+  // Never round, clamp, or silently coerce malformed monetary inputs.
+  // Shared website/MCP service enforces the same integer-cent invariant.
+  const cents = (value:number|string|null) => {
+    if(value===null)return null;
+    if(typeof value==="string"){
+      const normalized=value.trim();
+      if(normalized==="")return null;
+      if(!/^\\d{1,8}$/.test(normalized))
+        throw new StudentProfileError(400,"VALIDATION_ERROR","Rate/fee must be whole cents");
+      value=Number(normalized);
+    }
+    if(!Number.isSafeInteger(value)||value<0||value>10_000_000)
+      throw new StudentProfileError(400,"VALIDATION_ERROR","Rate/fee must be 0–10,000,000 whole cents");
+    return value;
+  };
   const update: Record<string,unknown> = {};
   if (patch.name !== undefined) update.name = patch.name;
   if (patch.nameAliases !== undefined) update.name_aliases = [...new Set(patch.nameAliases.map(x=>x.trim()).filter(Boolean))];
