@@ -139,7 +139,7 @@ export default async function StudentsPage({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          {!students.length ? (
+          {rosterError ? null : !students.length ? (
             <Card className="text-center text-muted py-12">
               <div className="text-4xl mb-3">👋</div>
               <p className="text-lg">
