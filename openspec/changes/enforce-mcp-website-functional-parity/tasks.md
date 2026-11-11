@@ -184,3 +184,9 @@ Shared authenticated SQL transaction `ccp_session_roster_correct` powers website
 ## 2026-11-11 candidate: bounded complete backup table scans (pending verification)
 
 The website and model-safe MCP backup paths previously shared an export helper that used an unpaged PostgREST SELECT, so large student rosters or material/financial histories could be silently truncated at the database response cap. The shared exporter now uses stable ordered pages for every table and child relation, fails closed at a declared safety ceiling, and includes unit coverage for more than 1,000 students and child assessments. This is a source implementation increment only; it does **not** sign off B7/B8/C or change route/93-case acceptance counts. Full snapshot consistency and comprehensive restore/provider readiness remain release blockers. CI and E2E have not yet been invoked for this increment.
+
+## 2026-11-11 candidate: atomic family and roster mutation (pending CI)
+
+Previously guardian create/update ran independent PostgREST writes: new family creation, existing-member reassignment, and new-student insertion could partially persist on failure. The website and MCP now call the same authenticated teacher-locked SQL transaction, which validates all existing student ownership and enforces capacity while inserting family/new students and replacing membership. A direct-authenticated SQL rollback E2E and cross-interface membership test were added. This remains an **unverified implementation candidate**, not a checked route or behavioral scenario. Preserve strict B5/B8/C gates until all workflows run and cross-tenant/replay evidence is exhaustive.
+
+The same candidate also removes an unpaged 1,000-family cap in the shared guardian list; a unit fixture now asserts stable cross-page retrieval of 1,205 families without changing the conservative strict-parity gate.
