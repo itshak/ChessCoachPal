@@ -47,10 +47,16 @@ export async function calendarAttendanceRead(db:Db,teacherId:string,lessonId:str
 export async function calendarAttendanceWrite(db:Db,teacherId:string,lessonId:string,
  input:AttendanceInput,ctx:Context){
  const lesson=await ownedLesson(db,teacherId,lessonId);
+ if(input.notifyFamily===true&&input.status!=="teacher_cancel")
+  throw failure(400,"VALIDATION_ERROR","Only teacher cancellation sends cancellation messages");
  if(input.status==="teacher_cancel"&&input.notifyFamily===true&&!ctx.origin)
   throw failure(400,"VALIDATION_ERROR","Trusted origin is required to notify families");
  if(input.status!==null&&!["attended","teacher_cancel","student_cancel","no_show"].includes(input.status))
   throw failure(400,"VALIDATION_ERROR","Invalid attendance status");
+ if(input.idempotencyKey&&input.status==="student_cancel"&&
+    (!input.noticeAt&&(input.noticeChoice??"now")==="now"))
+  throw failure(400,"VALIDATION_ERROR",
+   "A replayable student cancellation requires an explicit noticeAt timestamp");
  const cancelNote=typeof input.cancelNote==="string"?input.cancelNote.trim().slice(0,1000):"";
  let noticeAt:string|null=null;
  if(input.status==="student_cancel"){
@@ -81,6 +87,7 @@ export async function calendarAttendanceWrite(db:Db,teacherId:string,lessonId:st
   p_lesson_id:lessonId,p_status:input.status,
   p_notice_at:noticeAt,p_cancel_note:cancelNote,
   p_expected_marked_at:expected,p_idempotency_key:requestId,
+  p_notify_family:input.notifyFamily===true,
  });
  if(error){
   if(error.code==="23505"||/REVISION_CONFLICT|REPLAY_CONFLICT/.test(error.message))

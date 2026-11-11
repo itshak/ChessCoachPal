@@ -4131,7 +4131,8 @@ CREATE TRIGGER ccp_completed_session_guard_trg
 -- Serialize on the lesson row even when attendance has not yet been inserted.
 CREATE OR REPLACE FUNCTION public.ccp_calendar_attendance_commit(
  p_lesson_id uuid,p_status text,p_notice_at timestamptz,
- p_cancel_note text,p_expected_marked_at timestamptz,p_idempotency_key uuid
+ p_cancel_note text,p_expected_marked_at timestamptz,p_idempotency_key uuid,
+ p_notify_family boolean
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=public,pg_temp AS $calendar_attendance$
 DECLARE
@@ -4148,11 +4149,14 @@ BEGIN
    (p_status IS NOT NULL AND p_status NOT IN
     ('attended','teacher_cancel','student_cancel','no_show')) OR
     char_length(coalesce(p_cancel_note,''))>1000 OR
+    p_notify_family IS NULL OR
+    (p_notify_family AND p_status IS DISTINCT FROM 'teacher_cancel') OR
     (p_status IS DISTINCT FROM 'student_cancel' AND p_notice_at IS NOT NULL) THEN
    RAISE EXCEPTION 'INVALID_CALENDAR_ATTENDANCE' USING ERRCODE='22023';
  END IF;
  v_hash:=md5(jsonb_build_array('calendar.attendance.commit',
-   p_lesson_id,p_status,p_notice_at,p_cancel_note,p_expected_marked_at)::text);
+   p_lesson_id,p_status,p_notice_at,p_cancel_note,p_expected_marked_at,
+   p_notify_family)::text);
  INSERT INTO public.agent_tool_receipts(
    teacher_id,idempotency_key,operation,request_hash,receipt
  ) VALUES(v_teacher,p_idempotency_key,'calendar.attendance.commit',
@@ -4198,9 +4202,9 @@ BEGIN
 END;
 $calendar_attendance$;
 REVOKE ALL ON FUNCTION public.ccp_calendar_attendance_commit(
- uuid,text,timestamptz,text,timestamptz,uuid) FROM PUBLIC,anon;
+ uuid,text,timestamptz,text,timestamptz,uuid,boolean) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_calendar_attendance_commit(
- uuid,text,timestamptz,text,timestamptz,uuid) TO authenticated;
+ uuid,text,timestamptz,text,timestamptz,uuid,boolean) TO authenticated;
 
 -- Historical direct lessons must outlive current workplace enrollment.
 -- Existing FK tied lessons to the *live* membership row, making a safe
