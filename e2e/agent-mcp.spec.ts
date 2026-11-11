@@ -1688,7 +1688,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   // delegated MCP category/observation/resource correction and approval.
   for(const toolName of ["ccp_v1_chess_categories_create",
     "ccp_v1_chess_categories_update","ccp_v1_chess_observations_update",
-    "ccp_v1_chess_resources_update"])
+    "ccp_v1_material_links_update"])
     expect(names).toContain(toolName);
   const madeCategory=(await call("ccp_v1_chess_categories_create",{
     name:"Chess endgames "+suffix,description:"Synthetic tests",
@@ -1749,22 +1749,37 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   });
   expect((await afterApprovalSite.json()).data.find(
     (x:{id:string})=>x.id===observationId).verified_at).toBeTruthy();
+  const study=(await call("ccp_v1_learning_materials_create",{
+    kind:"study_chapter",title:"Synthetic linked endgame study "+suffix,
+    description:"",sourceUrl:"https://lichess.org/study/abcdefgh",
+    details:{provider:"lichess",studyId:"abcdefgh",chapterId:null},
+    requestId:randomUUID(),
+  })).structuredContent;
+  expect(study.error).toBeUndefined();
+  const firstMaterialId=study.data.material.id as string;
   const linkCreated=(await call("ccp_v1_material_links_create",{
-    studentId:profileId,label:"Synthetic Lichess study",
-    url:"https://lichess.org/study/abcdefgh",
-    resourceType:"lichess_study",requestId:randomUUID(),
+    studentId:profileId,materialId:firstMaterialId,
+    requestId:randomUUID(),confirmed:true,
   })).structuredContent;
   expect(linkCreated.error).toBeUndefined();
-  const resourceId=linkCreated.data.id as string;
+  const linkId=linkCreated.data.link.id as string;
+  const alternative=(await call("ccp_v1_learning_materials_create",{
+    kind:"external_link",title:"Alternative training study "+suffix,
+    description:"",sourceUrl:"https://example.org/endgame",
+    details:{},requestId:randomUUID(),
+  })).structuredContent;
+  expect(alternative.error).toBeUndefined();
   const linkEdited=await page.request.post("/api/agent/v1",{
-    data:{action:"chess.resources.update",resourceId,label:"Updated Lichess study"},
+    data:{action:"materials.links.update",linkId,
+      materialId:alternative.data.material.id,
+      expectedRevision:linkCreated.data.link.revision,confirmed:true},
   });
   expect(linkEdited.status(),await linkEdited.text()).toBe(200);
-  const resourceRead=(await call("ccp_v1_material_links_list",{
+  const materialRead=(await call("ccp_v1_material_links_list",{
     studentId:profileId,
   })).structuredContent.data;
-  expect(resourceRead.find((x:{id:string})=>x.id===resourceId).label)
-    .toBe("Updated Lichess study");
+  expect(materialRead.links.find((x:{id:string})=>x.id===linkId).material_id)
+    .toBe(alternative.data.material.id);
 
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.
