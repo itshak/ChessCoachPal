@@ -453,6 +453,16 @@ const catalogue = [
     schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_v1_account_security_handoff",
+    description:"Open the signed-in website to change login email, password or multi-factor authentication using provider-secured reauthentication. MCP never sees credentials, recovery codes or MFA secrets.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_hosted_subscription_handoff",
+    description:"Open the signed-in Account page to review hosting plan, start subscription Checkout or enter Stripe billing portal securely in the browser. MCP cannot collect card data or create a Stripe session without the required browser confirmation.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_v1_teacher_profile_get",
     description:"Read this coach's display name and public avatar reference without authentication credentials or account email.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
@@ -1347,6 +1357,20 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_reports_student_progress":
         return {data:await teacherStudentProgressReport(
           db,teacherId,(args as {studentId:string}).studentId)};
+      case "ccp_v1_account_security_handoff":
+        return {data:{
+          url:oauthOrigin()+"/account",
+          browserOnly:true,
+          action:"account-security",
+          explanation:"Open the signed-in Account page and complete any required reauthentication. Email, password, MFA keys and recovery codes must never be submitted to a model.",
+        }};
+      case "ccp_v1_hosted_subscription_handoff":
+        return {data:{
+          url:oauthOrigin()+"/account",
+          browserOnly:true,
+          action:"hosted-billing",
+          explanation:"On hosted deployments, review the plan and choose Upgrade or Manage billing in your signed-in browser. Payment-card entry and Stripe sessions remain in secure website/provider flows.",
+        }};
       case "ccp_v1_teacher_profile_get":
         return {data:await teacherProfileGet(db,teacherId)};
       case "ccp_v1_teacher_profile_update": {

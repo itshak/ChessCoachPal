@@ -194,3 +194,7 @@ The same candidate also removes an unpaged 1,000-family cap in the shared guardi
 ## 2026-11-11 candidate: transactional event, roster and RSVP writes (pending CI)
 
 Shared website/MCP event create/update now use an authenticated SQL transaction under the teacher lock, validating student ownership and preserving RSVP responses for still-invited families. Previously event rows, roster deletes/inserts and RSVP sync could partially persist after a later failure. Authenticated E2E rollback and browser/delegated-OAuth equivalence scenarios are added, and event history list scans beyond the PostgREST row cap. Implementation is **unverified** pending complete fixes and comprehensive CI; B5/B8/C remain unchecked and strict release is still blocked.
+
+## 2026-11-11 candidate: secure browser handoffs for account and hosted subscription (unverified)
+
+New read-only scoped MCP tools `ccp_v1_account_security_handoff` and `ccp_v1_hosted_subscription_handoff` provide the authenticated website Account entrypoint while preserving password/MFA, Stripe checkout and billing-portal reauthentication in the browser/provider. Dedicated browser/delegated OAuth tests assert no secret-bearing action URLs, but **live provider flow, secure exception review, and full parity remain pending**. Neither checklist row nor route family is signed off before executed CI/E2E and reviewer approval.
