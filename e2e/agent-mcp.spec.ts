@@ -445,7 +445,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
 
   // Chess learning tool contract: agents can propose and link, but cannot approve.
   for (const name of ["ccp_v1_chess_categories_list","ccp_v1_chess_observations_propose",
-    "ccp_v1_chess_resources_link","ccp_v1_chess_observations_list","ccp_v1_chess_resources_list"]) {
+    "ccp_v1_material_links_create","ccp_v1_chess_observations_list","ccp_v1_material_links_list"]) {
     expect(names).toContain(name);
   }
   expect(names).not.toContain("ccp_v1_chess_observations_approve");
@@ -462,23 +462,31 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(proposed.data.source).toBe("agent");
   expect(proposed.data.verified_at).toBeNull();
-  const linked=(await mcp("tools/call",{
-    name:"ccp_v1_chess_resources_link",arguments:{
-      studentId:student.id,sessionId:sessionRecord.id,
-      label:"Synthetic Lichess opposition study",
-      url:"https://lichess.org/study/Ab12Cd34",resourceType:"lichess_study",
+  const typedMaterial=(await mcp("tools/call",{
+    name:"ccp_v1_learning_materials_create",arguments:{
+      kind:"study_chapter",title:"Synthetic study of opposition "+suffix,
+      description:"",sourceUrl:"https://lichess.org/study/Ab12Cd34",
+      details:{provider:"lichess",studyId:"Ab12Cd34",chapterId:null},
       requestId:randomUUID(),
     },
   })).structuredContent;
-  expect(linked.data.provider_study_id).toBe("Ab12Cd34");
+  expect(typedMaterial.error).toBeUndefined();
+  const canonicalMaterialId=typedMaterial.data.material.id as string;
+  const linked=(await mcp("tools/call",{
+    name:"ccp_v1_material_links_create",arguments:{
+      studentId:student.id,sessionId:sessionRecord.id,
+      materialId:canonicalMaterialId,requestId:randomUUID(),confirmed:true,
+    },
+  })).structuredContent;
+  expect(linked.data.link.material_id).toBe(canonicalMaterialId);
   const observations=(await mcp("tools/call",{
     name:"ccp_v1_chess_observations_list",arguments:{studentId:student.id},
   })).structuredContent.data;
   expect(observations.some((v:{id:string})=>v.id===proposed.data.id)).toBe(true);
-  const resources=(await mcp("tools/call",{
-    name:"ccp_v1_chess_resources_list",arguments:{studentId:student.id},
-  })).structuredContent.data;
-  expect(resources.some((v:{id:string})=>v.id===linked.data.id)).toBe(true);
+  const associations=(await mcp("tools/call",{
+    name:"ccp_v1_material_links_list",arguments:{studentId:student.id},
+  })).structuredContent.data.links;
+  expect(associations.some((v:{id:string})=>v.id===linked.data.link.id)).toBe(true);
   // Explicit material evidence is different from a resource URL being linked.
   // Teacher-confirmed stage, workplace, session roster and page summaries must
   // match between the website and the delegated OAuth client.
@@ -490,16 +498,6 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(emptyMaterial.error).toBeUndefined();
   expect(emptyMaterial.data.total).toBe(0); // Linking a study is not teaching it.
-  const typedMaterial=(await mcp("tools/call",{
-    name:"ccp_v1_learning_materials_create",arguments:{
-      kind:"study_chapter",title:"Synthetic study of opposition "+suffix,
-      description:"",sourceUrl:"https://lichess.org/study/Ab12Cd34",
-      details:{provider:"lichess",studyId:"Ab12Cd34",chapterId:null},
-      requestId:randomUUID(),
-    },
-  })).structuredContent;
-  expect(typedMaterial.error).toBeUndefined();
-  const canonicalMaterialId=typedMaterial.data.material.id as string;
   const materialClaimKey=randomUUID();
   const materialClaimArgs={
     studentId:student.id,workplaceId:workplace.id,sessionId:sessionRecord.id,
@@ -1751,7 +1749,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   });
   expect((await afterApprovalSite.json()).data.find(
     (x:{id:string})=>x.id===observationId).verified_at).toBeTruthy();
-  const linkCreated=(await call("ccp_v1_chess_resources_link",{
+  const linkCreated=(await call("ccp_v1_material_links_create",{
     studentId:profileId,label:"Synthetic Lichess study",
     url:"https://lichess.org/study/abcdefgh",
     resourceType:"lichess_study",requestId:randomUUID(),
@@ -1762,7 +1760,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     data:{action:"chess.resources.update",resourceId,label:"Updated Lichess study"},
   });
   expect(linkEdited.status(),await linkEdited.text()).toBe(200);
-  const resourceRead=(await call("ccp_v1_chess_resources_list",{
+  const resourceRead=(await call("ccp_v1_material_links_list",{
     studentId:profileId,
   })).structuredContent.data;
   expect(resourceRead.find((x:{id:string})=>x.id===resourceId).label)

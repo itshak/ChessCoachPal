@@ -35,3 +35,9 @@ test("ADR-0001: duplicate resource-keyed history tables are not part of current 
  const errors=canonicalSchemaErrors({...clean,sql:clean.sql+" CREATE TABLE public.chess_material_progress (id uuid);"});
  ok(errors.some(e=>e.includes("Duplicate material evidence ledger")));
 });
+
+test("ADR-0001: reject an independent material URL catalog in the canonical SQL",()=>{
+ const sql=clean.sql+" CREATE TABLE public.chess_learning_resources (id uuid);";
+ const failures=canonicalSchemaErrors({...clean,sql});
+ ok(failures.some(e=>e.includes("Independent URL material catalog")));
+});

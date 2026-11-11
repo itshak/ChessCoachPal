@@ -117,7 +117,7 @@ test("PARITY:PARITY-material-links shares the typed catalog and revision guarded
  description:"",sourceUrl:"https://lichess.org/study/AbCd1234",
  details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
  requestId:randomUUID(),
-,requestId:randomUUID()});
+});
  expect(alternate.error).toBeUndefined();
  const corrected=await call("ccp_v1_material_links_update",{
    linkId:id,materialId:alternate.data.material.id,

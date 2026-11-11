@@ -1,36 +1,21 @@
-# Chess learning basics (Milestone 3)
+# Chess learning and canonical material associations
 
-ChessCoachPal supports **teacher-owned** chess skill categories, observation history and saved external learning references without requiring a Lichess account or an engine.
+ChessCoachPal stores exactly **one typed learning-material catalog** in `learning_materials`. A game, puzzle, drill, study chapter or external HTTPS link has a stable catalog ID, title and type-specific content. Student and lesson associations are stored in `material_links` with a foreign key to that ID, never as a second material resource record.
 
-## What is implemented
+## Teacher workflow
 
-- Every new teacher receives six editable categories: Tactics, Calculation, Endgames, Strategy, Opening principles and Time management. Teachers can create, rename, describe and reorder categories through authenticated domain actions.
-- A chess observation belongs to exactly one student and optionally a coaching session whose frozen roster includes that student. It records its skill, text, observed timestamp, author/source and verification state.
-- Website-authored observations are teacher verified. Delegated MCP agents may **only propose** unverified observations, preserving their source; the website offers a separate explicit **Approve suggestion** action. Correcting text never silently approves an AI proposal.
-- Teachers may save selected Lichess Study URLs and general HTTPS links to a student or lesson, and edit them later. Lichess study and optional chapter IDs are retained when present. Only URLs and teacher-entered labels are stored; no studies are copied, fetched or synchronized.
-- The website offers the **Chess learning** page and embeds a learning panel in **Coaching** and student detail pages. Observations and links are loaded from the database after reload.
+The **Training & materials** page contains the typed material catalog and Chess Learning panel. Create and edit materials in the catalog, using the current game/PGN, puzzle/FEN, drill, study chapter or external-link form. In Chess Learning, choose a learner and optionally a lesson, refresh the material catalog, then **Attach learning material**. The attachment is an association, **not evidence that the material has been taught**. Reassign an association by selecting another material, or unlink it. Both actions preserve the material and all independently recorded teaching evidence.
 
-## Using the website
+The teacher can also record chess skill categories and observations. New teachers receive six starter categories. Teacher-authored observations are verified; AI proposals remain unverified until a human approves them in the browser. Changing observation text does not silently change provenance.
 
-Choose a learner; optionally choose a coaching lesson containing that learner. Select an existing chess skill or add one, then record an observation. Suggested AI observations remain marked *Unverified* in the history until the teacher chooses **Approve suggestion**. Use **Edit observation** to correct text without changing provenance.
+## Website / MCP parity
 
-Save a study or other external link with an HTTPS URL and descriptive label, and choose a student or selected session as its target. A selected study link can be opened separately; external website failures never block viewing or editing stored records.
+The website domain API and delegated MCP use the same ownership-scoped services for `materials.links.list`, `materials.links.create`, `materials.links.update`, `materials.links.unlinkImpact` and `materials.links.unlink`. The corresponding MCP tools are `ccp_v1_material_links_list`, `ccp_v1_material_links_create`, `ccp_v1_material_links_update`, `ccp_v1_material_links_unlink_impact` and `ccp_v1_material_links_unlink`. Creating a link requires a canonical material ID, target student or lesson, request UUID and explicit confirmation. Reassignment and unlinking require the latest revision.
 
-## Agent safety boundary
+The typed catalog is edited through the shared `/api/training/materials` routes and their MCP counterparts. No link operation edits material content. Both interfaces retain explicit teacher-attested material history in `material_teaching_evidence`, even after removing an association. The backend does not fetch or mirror provider content just to establish a link.
 
-The delegated OAuth/MCP gateway exposes **read categories**, **read observations**, **propose observation**, **read resources**, and **link resource** tools. There is deliberately **no** MCP approval or edit-verified-observation operation. The website's authenticated Supabase session API owns review/correction. Agents must use stable student/category/session IDs and ask the teacher to resolve ambiguity.
+Tenant isolation is enforced with teacher-owned composite foreign keys, session membership constraints, RLS and service checks. Archived materials are not linkable, and a material with current associations cannot be archived. Authenticated browser/MCP E2E and the full parity checklist remain mandatory acceptance gates, not optional validations.
 
-Foreign records and invalid student/session associations are rejected through both service checks and composite database foreign keys. RLS isolates teacher-owned records and no anon/student-token privileges are granted.
+## Clean prelaunch schema
 
-## Validation and deferred features
-
-The GitHub test suite uses synthetic teachers, studies, OAuth clients and a fresh Supabase database. No live provider accounts or network fetches are part of Milestone 3 acceptance. Real ChatGPT/Claude client demonstration is deferred exclusively to final local pre-publication v0.1.0 sign-off.
-
-**Not included:** Lichess or Chess.com rating sync, PGN/engine analysis, embedded boards, auto-generated lessons, content mirroring, billing or report adapters. These require later scoped changes.
-
-Pre-1.0 schema is fresh-install only; no CogNote compatibility or historical migration/backfill per ADR-0001.
-
-
-## Proposed next phase — full chess materials and student progress (NOT implemented)
-
-The separate [OpenSpec change](../openspec/changes/support-conversational-lesson-and-lichess-workflows/proposal.md) and [MCP workflow roadmap](MCP_WORKFLOW_ROADMAP.md) propose a website Materials → Lichess connection and study/chapter browser, per-student/workplace selected studies, server-authorized provider PGN lookup, image/FEN review, chapter publishing with capacity rollover, and richer student chess profiles (canonical Hebrew names, English aliases, 1–10 teacher strength, Lichess/Chess.com accounts and dated provider/time-control ratings). This is **planning, not current functionality**. Existing `skill_assessments` rates individual dimensions 1–5 and stays distinct from proposed overall strength 1–10. The public ChatGPT Plugin Directory is deferred until a reliable multi-teacher SaaS is available, tentatively v1.0.0 or a separately approved hosted beta.
+Per ADR-0001, this is a **fresh-install-only** schema. The independent `chess_learning_resources` table and old tool/action names are **deleted**, not read, translated, migrated or kept as aliases. A prelaunch development database created from a prior snapshot requires an **explicit full reset and reseed**; exporting/backing up actual user data requires the operator's informed decision before any destructive step. No automatic reset is performed by this change.

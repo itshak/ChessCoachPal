@@ -42,20 +42,20 @@
         "ccp_v1_students_search",
         "ccp_v1_students_create",
         "ccp_v1_chess_categories_list",
-        "ccp_v1_chess_resources_link",
+        "ccp_v1_material_links_create",
         "ccp_v1_chess_categories_create",
         "ccp_v1_chess_categories_update",
         "ccp_v1_chess_observations_update",
-        "ccp_v1_chess_resources_update",
+        "ccp_v1_material_links_update",
         "ccp_v1_workplaces_unenroll",
         "ccp_v1_sessions_ad_hoc_create",
         "ccp_v1_sessions_edit",
         "ccp_v1_chess_categories_delete_impact",
         "ccp_v1_chess_categories_delete",
-        "ccp_v1_chess_resources_unlink_impact",
-        "ccp_v1_chess_resources_unlink"
+        "ccp_v1_material_links_unlink_impact",
+        "ccp_v1_material_links_unlink"
       ],
-      "explanation": "Shared teacher-scoped chess category edits, observation corrections and resource updates now have MCP counterparts. Agent-proposed observation approval remains an intentionally protected teacher-browser-only provenance action (MCP may read approved status). Legacy gateway workflows and 93 cases still await full evidence. Confirmed workplace unenrollment blocks live group membership and future direct sessions; this increment has delegated OAuth cross-surface readback but does not close all legacy gateway actions. Supports atomic multi-student 2–50 ad-hoc sessions with frozen roster via shared RPC and serialization of schedule conflicts. Session status/title/note/time corrections now have a confirmed revision-guarded MCP tool using the same atomic SQL RPC as website sessions.update; release behavioral acceptance remains open. Category deletion impact/confirmed deletion preserve attested observations via PostgreSQL FK restriction. Linked-resource unlink is available via both surfaces; FK protects historical material claims."
+      "explanation": "Current website gateway and delegated MCP now expose create/list/update/unlink/impact of student- or lesson-scoped material_links pointing directly to teacher-owned learning_materials. Old independently writable URL-resource table and tool contracts removed. The shared service preserves teacher authorization and material identity; authenticated cross-client acceptance, all other gateway actions and the full 93-case checklist remain under review. Agent-proposed observation approval stays deliberately teacher-browser-only for provenance."
     },
     {
       "path": "app/api/auth/setup-teacher/route.ts",
