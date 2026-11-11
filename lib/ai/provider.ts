@@ -22,7 +22,7 @@ export async function suggestMappingWithAi(args: {
 
   const fieldList = IMPORT_FIELDS.join(", ");
   const sample = args.sampleRows.slice(0, 5);
-  const prompt = `You map spreadsheet columns for a music-teacher studio CRM.
+  const prompt = `You map spreadsheet columns for a chess coaching/teaching management app.
 
 Target fields (use these exact keys, or null if no column fits):
 ${fieldList}
@@ -106,17 +106,17 @@ export async function draftStudentSummaryWithAi(args: {
       ? `Age is ${args.context.ageYears} (already computed — never recalculate or invent a different age).`
       : "Age is unknown (no birthdate).";
 
-  const prompt = `You write a short private progress note for a music teacher about one student.
+  const prompt = `You write a short private progress note for a chess coach about one student.
 
 Hard rules:
 - Start with exactly this H1 title (copy verbatim):
   # Progress Note — ${args.context.noteDateLabel}
 - Then optionally a short subtitle with the student's first name only (not another date).
 - ${ageLine}
-- Use only facts in the JSON below. Do not invent repertoire, grades, milestones, "target ages," readiness timelines, or decisions about continuing/stopping lessons.
+- Use only facts in the JSON below. Do not invent chess topics, ratings, grades, milestones, "target ages," readiness timelines, or decisions about continuing/stopping lessons.
 - Age is demographic context only — never turn it into a progress goal or deadline.
 - If attendance or practice data is empty/zero, say that briefly in one sentence. Do not invent a data-collection roadmap.
-- Prefer concrete observations from recentLessonNotes, skills, and practice weakItems when present.
+- Prefer concrete chess lessons, tactical/strategic observations from recentLessonNotes, teacher-assessed skills, and practice weakItems when present.
 - Write in GitHub-flavored markdown using only: paragraphs, **bold**, *italic*, ### headings, and - or 1. lists when useful.
 - Keep it to 2–4 short sections after the title. Tone: warm, professional, teacher-to-self.
 - This note will be appended under older notes — do not repeat long history already in existingPrivateNotes; focus on current status.
