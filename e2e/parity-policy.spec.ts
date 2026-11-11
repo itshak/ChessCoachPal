@@ -50,3 +50,57 @@ test("PARITY:PARITY-studio-policy covers timezone scheduling rates invoices and 
    expect(restore.status(),await restore.text()).toBe(200);
  }
 });
+
+
+test("PARITY:PARITY-studio-payment-qr-provider-fields makes every approved payment setting editable in both clients",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const originalRes=await page.request.get("/api/settings/policy");
+ expect(originalRes.status(),await originalRes.text()).toBe(200);
+ const original=await originalRes.json();
+ const qr="data:image/png;base64,"+
+   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+p+6UAAAAASUVORK5CYII=";
+ try{
+   const changed=await call("ccp_v1_studio_policy_update",{
+     changes:{paymentProvider:"manual",paymentQrCode:qr},confirmed:true,
+   });
+   expect(changed.error).toBeUndefined();
+   const browser=await page.request.get("/api/settings/policy");
+   expect(browser.status(),await browser.text()).toBe(200);
+   const webPolicy=await browser.json();
+   expect(webPolicy.payment_provider).toBe("manual");
+   expect(webPolicy.payment_qr_code).toBe(qr);
+
+   const ordinary=await call("ccp_v1_studio_policy_get",{});
+   expect(ordinary.error).toBeUndefined();
+   expect(ordinary.data.payment_qr_code).toBeNull();
+   expect(ordinary.data.paymentQrCodeConfigured).toBe(true);
+   const noConsent=await call("ccp_v1_studio_policy_get",{
+     includePaymentQrCode:true,
+   });
+   expect(noConsent.error).toBeUndefined();
+   expect(noConsent.data.payment_qr_code).toBeNull();
+   const approved=await call("ccp_v1_studio_policy_get",{
+     includePaymentQrCode:true,confirmed:true,
+   });
+   expect(approved.error).toBeUndefined();
+   expect(approved.data.payment_qr_code).toBe(qr);
+
+   const rejectSecrets=await call("ccp_v1_studio_policy_update",{
+     changes:{stripeSecretKey:"sk_live_must_not_enter_model"},confirmed:true,
+   });
+   expect(rejectSecrets.error?.code).toBe("VALIDATION_ERROR");
+   const cleared=await page.request.put("/api/settings/policy",{data:{
+     paymentQrCode:null,
+   }});
+   expect(cleared.status(),await cleared.text()).toBe(200);
+   const modelFinal=await call("ccp_v1_studio_policy_get",{});
+   expect(modelFinal.error).toBeUndefined();
+   expect(modelFinal.data.paymentQrCodeConfigured).toBe(false);
+ }finally{
+   const restore=await page.request.put("/api/settings/policy",{data:{
+     paymentProvider:original.payment_provider,
+     paymentQrCode:original.payment_qr_code??null,
+   }});
+   expect(restore.status(),await restore.text()).toBe(200);
+ }
+});
