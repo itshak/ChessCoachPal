@@ -135,7 +135,7 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
     if(typeof value==="string"){
       const normalized=value.trim();
       if(normalized==="")return null;
-      if(!/^\\d{1,8}$/.test(normalized))
+      if(!/^\d{1,8}$/.test(normalized))
         throw new StudentProfileError(400,"VALIDATION_ERROR","Rate/fee must be whole cents");
       value=Number(normalized);
     }
