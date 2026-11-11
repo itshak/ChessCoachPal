@@ -742,8 +742,9 @@ const catalogue = [
   },
   {
     name: "ccp_v1_students_roster",
-    description: "Page through the teacher's complete learner roster, including historical archived students if requested. Includes aliases, chess strength, teacher-recorded provider ratings, and revision timestamps; omits private notes and guardian contact data.",
-    schema: z.object({query:z.string().trim().max(80).optional(),includeArchived:z.boolean().default(false),
+    description: "Page through active learners by default, all learners with includeArchived=true, or only former pupils with archivedOnly=true. Includes chess profiles and revisions; excludes private notes and guardian contacts.",
+    schema: z.object({query:z.string().trim().max(80).optional(),
+      includeArchived:z.boolean().default(false),archivedOnly:z.boolean().default(false),
       offset:z.number().int().min(0).max(100000).default(0),limit:z.number().int().min(1).max(100).default(50)}).strict(),
     scope:"coach:read",readOnly:true,
   },
@@ -1560,7 +1561,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await studentSkillAssessmentsRecord(db,teacherId,a.studentId,a.ratings,a.idempotencyKey)};
       }
       case "ccp_v1_students_roster": {
-        const a=args as {query?:string;includeArchived:boolean;offset:number;limit:number};
+        const a=args as {query?:string;includeArchived:boolean;archivedOnly:boolean;offset:number;limit:number};
         const result=await teacherStudentsRoster(db,teacherId,a);
         return {data:{students:result.students.map(safeStudentProfile),nextOffset:result.nextOffset}};
       }
