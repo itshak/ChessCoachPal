@@ -1,6 +1,6 @@
 "use client";
 
-import {useState,type FormEvent} from "react";
+import {useEffect,useState,type FormEvent} from "react";
 import {useConfirm} from "@/components/ui/confirm-dialog";
 
 type Preview={
@@ -23,6 +23,9 @@ export function LichessPuzzlePublisher(){
  const [studyId,setStudyId]=useState("");
  const [chapterName,setChapterName]=useState("Reviewed chess puzzle");
  const [fen,setFen]=useState("");
+ const [imageFile,setImageFile]=useState<File|null>(null);
+ const [localImageUrl,setLocalImageUrl]=useState<string|null>(null);
+ const [imageWarning,setImageWarning]=useState("");
  const [moves,setMoves]=useState("");
  const [orientation,setOrientation]=useState<"white"|"black">("white");
  const [preview,setPreview]=useState<Preview|null>(null);
@@ -31,11 +34,57 @@ export function LichessPuzzlePublisher(){
  const [ambiguous,setAmbiguous]=useState(false);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
+ useEffect(()=>{
+  if(!imageFile){setLocalImageUrl(null);return;}
+  const localUrl=URL.createObjectURL(imageFile);
+  setLocalImageUrl(localUrl);
+  return ()=>URL.revokeObjectURL(localUrl);
+ },[imageFile]);
  function invalidate(){
   setPreview(null);setPublished(null);setRequestId(null);setAmbiguous(false);setError("");
  }
  function data(){return {studyId:studyId.trim(),chapterName:chapterName.trim(),
    fen:fen.trim(),moves:moves.trim(),orientation};}
+ async function proposeFenFromImage(){
+  if(!imageFile)return;
+  if(imageFile.size>2*1024*1024||imageFile.size<32||
+     !["image/png","image/jpeg","image/webp"].includes(imageFile.type)){
+   setError("Choose a PNG, JPEG or WebP chessboard image up to 2 MB");
+   return;
+  }
+  const approved=await confirm({
+   title:"Share this chessboard image with external AI?",
+   message:"Your configured OpenAI or Anthropic account will receive this image to propose a FEN. The image could include names or other personal information. The proposed position is unverified; you must check all 64 squares, orientation and game-state placeholders before any publication. You can enter FEN manually instead.",
+   confirmLabel:"Share image for proposal",
+  });
+  if(!approved)return;
+  setBusy(true);setError("");setImageWarning("");setPreview(null);
+  try{
+   const imageBase64=await new Promise<string>((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error("Unable to read chessboard image"));
+    reader.onload=()=>{
+     const result=reader.result;
+     if(typeof result!=="string"||!result.includes(","))
+      reject(new Error("Unable to encode chessboard image"));
+     else resolve(result.slice(result.indexOf(",")+1));
+    };
+    reader.readAsDataURL(imageFile);
+   });
+   const res=await fetch("/api/lichess/puzzles/preview",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({kind:"image",mediaType:imageFile.type,
+      imageBase64,confirmedExternal:true}),
+   });
+   const body=await res.json().catch(()=>({}));
+   if(!res.ok)throw new Error(body.error??"Could not propose a chess position");
+   // A proposal is untrusted input, not an approved board or Lichess action.
+   setFen(body.proposedFen);
+   setImageWarning(body.warning??"Verify every square and all game-state fields.");
+   setRequestId(null);setPublished(null);setAmbiguous(false);
+  }catch(e){setError(e instanceof Error?e.message:"Image analysis failed");}
+  finally{setBusy(false);}
+ }
  async function review(event:FormEvent){
   event.preventDefault();setBusy(true);setError("");setPublished(null);
   try{
@@ -83,6 +132,27 @@ export function LichessPuzzlePublisher(){
    your chess photo, then paste it here. Review the actual board and solution.
    Neither a generated FEN nor a preview automatically publishes anything.
   </p>
+  <div className="space-y-3 rounded-lg border border-border p-3" aria-label="Optional chessboard image to FEN proposal">
+   <p className="text-sm font-semibold">Optional: propose FEN from a board image</p>
+   <p className="text-xs text-muted">Select a local PNG, JPEG or WebP (max 2 MB). Nothing is sent when you select it. Sending requires a separate confirmation and a BYO vision-capable AI connection. The output is an unverified draft, never a published chapter.</p>
+   <input type="file" accept="image/png,image/jpeg,image/webp"
+    aria-label="Chessboard screenshot or photograph"
+    onChange={event=>{invalidate();setImageWarning("");
+      setImageFile(event.target.files?.[0]??null);}}
+    className="block w-full max-w-md text-sm"/>
+   {localImageUrl&&<div className="space-y-1">
+    <p className="text-xs text-muted">Your original image for comparison</p>
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img src={localImageUrl} alt="Original chessboard image for review"
+     className="max-h-72 w-auto max-w-full rounded-md border border-border object-contain"/>
+   </div>}
+   <button type="button" disabled={!imageFile||busy}
+    onClick={()=>void proposeFenFromImage()}
+    className="rounded-md border border-primary px-4 py-2 text-sm font-semibold text-primary disabled:opacity-50">
+    {busy?"Analyzing image…":"Confirm and propose FEN from image"}
+   </button>
+   {imageWarning&&<p role="status" className="text-xs text-muted">{imageWarning}</p>}
+  </div>
   <form className="grid gap-3 sm:grid-cols-2" onSubmit={e=>void review(e)}>
    <label className="text-sm">Destination Lichess study ID
     <input value={studyId} onChange={e=>{invalidate();setStudyId(e.target.value);}}
