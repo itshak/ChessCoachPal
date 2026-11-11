@@ -40,30 +40,49 @@ export default async function StudentsPage({
   const params = await searchParams;
   const showArchived = params.show === "archived";
 
-  let studentsQuery = supabase
-    .from("students")
-    .select("id, name, level, birthdate, parent_contact, archived_at, created_at, guardians ( name, family_name )")
-    .eq("teacher_id", user.id)
-    .order("name");
-
-  if (showArchived) {
-    studentsQuery = studentsQuery.not("archived_at", "is", null);
-  } else {
-    studentsQuery = studentsQuery.is("archived_at", null);
+  // The default PostgREST response caps at 1,000 rows. Both the website
+  // and MCP must show the complete active/archived roster, not the first
+  // thousand learners silently. Stable secondary ordering prevents ties at
+  // page boundaries; oversized rosters fail visibly instead of truncating.
+  const students: StudentListRow[] = [];
+  const guardians: Array<{id:string;name:string;family_name:string|null}> = [];
+  const pageSize = 500;
+  const maxRows = 20_000;
+  let rosterError: string | null = null;
+  for (let offset = 0; offset <= maxRows; offset += pageSize) {
+    let query = supabase.from("students")
+      .select("id, name, level, birthdate, parent_contact, archived_at, created_at, guardians ( name, family_name )")
+      .eq("teacher_id", user.id).order("name").order("id");
+    query = showArchived
+      ? query.not("archived_at", "is", null)
+      : query.is("archived_at", null);
+    const { data, error } = await query.range(offset, offset + pageSize - 1);
+    if (error) { rosterError = "Student roster could not be loaded."; break; }
+    const chunk = (data ?? []) as unknown as StudentListRow[];
+    if (students.length + chunk.length > maxRows) {
+      rosterError = "Student roster is too large for this view. Use an export.";
+      break;
+    }
+    students.push(...chunk);
+    if (chunk.length < pageSize) break;
   }
+  for (let offset = 0; offset <= maxRows && !rosterError; offset += pageSize) {
+    const {data,error} = await supabase.from("guardians")
+      .select("id,name,family_name").eq("teacher_id",user.id)
+      .order("name").order("id").range(offset,offset+pageSize-1);
+    if(error){rosterError="Family options could not be loaded.";break;}
+    const chunk=data??[];
+    if(guardians.length+chunk.length>maxRows){
+      rosterError="Family roster is too large for this view. Use an export.";
+      break;
+    }
+    guardians.push(...chunk);
+    if(chunk.length<pageSize)break;
+  }
+  // Never represent a truncated result as the full roster.
+  if(rosterError)students.length=0;
 
-  const [{ data: studentsData }, { data: guardians }] = await Promise.all([
-    studentsQuery,
-    supabase
-      .from("guardians")
-      .select("id, name, family_name")
-      .eq("teacher_id", user.id)
-      .order("name"),
-  ]);
-
-  const students = (studentsData ?? []) as unknown as StudentListRow[];
-
-  const guardianOptions = (guardians ?? []).map((g) => ({
+  const guardianOptions = guardians.map((g) => ({
     id: g.id,
     name: familyDisplayName(g),
   }));
@@ -116,6 +135,7 @@ export default async function StudentsPage({
       </div>
 
       {limitBanner}
+      {rosterError && <p role="alert" className="mb-4 text-sm text-error">{rosterError}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
