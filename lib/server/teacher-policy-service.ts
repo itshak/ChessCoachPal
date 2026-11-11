@@ -77,6 +77,38 @@ export async function teacherPolicyUpdate(
   const supabase=db;
   const user={id:teacherId,email:teacherEmail};
 
+  // Reject misspelled/unsupported fields instead of reporting a successful
+  // save while silently discarding them. Website-only provider credentials
+  // are individually allowlisted but never permitted in the MCP schema.
+  const allowed=new Set([
+    "studioName","studioWebsite","studioContact","studioInfo","lessonLabel",
+    "lessonDurationOptions","timezone","cancellationWindowHours",
+    "timelyCancelEarnsMakeup","lateCancelEarnsMakeup","noShowEarnsMakeup",
+    "teacherCancelEarnsMakeup","makeupCreditExpiryDays","billAttended",
+    "billNoShow","billTeacherCancel","billTimelyStudentCancel",
+    "billLateStudentCancel","billMakeup","defaultRateCents",
+    "durationRateCents","travelFeeCents","rateBasis","currency",
+    "invoiceCadence","paymentInstructions","paymentQrCode","paymentProvider",
+    "notifyInApp","notifyEmailPortalCancel","notifyEmailInvoicePaid",
+    "bccFamilyEmails","bccEmail","aiProvider","aiApiKey",
+    "clearAiApiKey","stripeSecretKey","stripePublishableKey",
+    "stripeWebhookSecret","clearStripeSecretKey",
+    "clearStripePublishableKey","clearStripeWebhookSecret",
+  ]);
+  for(const key of Object.keys(body)){
+    if(!allowed.has(key))
+      return NextResponse.json({error:"Unsupported policy field: "+key},{status:400});
+  }
+  const textFields:[string,number][]=[
+    ["studioName",120],["studioWebsite",300],["studioContact",300],
+    ["studioInfo",5000],["lessonLabel",60],["paymentInstructions",2000],
+  ];
+  for(const [key,max] of textFields){
+    if(body[key]!==undefined&&(typeof body[key]!=="string" ||
+      (body[key] as string).length>max))
+      return NextResponse.json({error:key+" must be text of at most "+max+" characters"},{status:400});
+  }
+
   // Website and MCP must reject malformed settings before persistence. In
   // particular Boolean("false") is true, and rounding cents changes intent.
   const booleanFields=[
