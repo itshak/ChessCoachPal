@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "auditedAt": "2026-11-10",
-  "headSha": "cf00dff6325dde7235d0543e789d1a07501b4269",
-  "policy": "MCP-first business-feature parity. Every website business action needs a tested MCP counterpart or documented secure browser approval; live strict parity is currently BLOCKED.",
+  "auditedAt": "2026-11-11",
+  "headSha": "d18356c5e0a469c1655b515d62a76eef46dc284d",
+  "policy": "MCP-first business-feature parity. Every website business action needs a tested MCP counterpart or documented secure browser approval; strict release parity remains BLOCKED pending remaining route-family and 93-case acceptance.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -748,12 +748,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_settings_import_preview",
         "ccp_v1_settings_import_apply"
       ],
-      "explanation": "Website and MCP both require a teacher-scoped non-mutating SHA-256 preview plus explicit matching digest and confirmation before an allowlisted import; authenticated OAuth/browser readback tests verify cross-surface receipts and reject raw website POST. Import transactions and full destructive rollback evidence remain open, so the route is still a gap."
+      "explanation": "Website and delegated OAuth/MCP share reviewed SHA-256 preview, explicit approval, tenant-owned atomic PostgreSQL restore and replay receipt; browser/MCP rollback E2E at d18356c proves a valid guardian insert is rolled back after a later invalid student, and long-running-receipts E2E verifies confirmed success plus cross-client replay.",
+      "evidenceTest": "e2e/parity-import-atomic.spec.ts"
     },
     {
       "path": "app/api/settings/policy/route.ts",
@@ -895,11 +896,11 @@
         "GET"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_lichess_studies_search"
       ],
-      "explanation": "New server-only Lichess API uses OAuth study:read and bounded real NDJSON/PGN metadata parsing with no raw provider token or private game text exposed. Browser and MCP share the exact domain operation; 40-chapter synthetic provider cross-interface E2E awaits final green CI.",
+      "explanation": "OAuth study:read and server-only bounded NDJSON/PGN metadata search share one service for website and MCP. Authenticated E2E at d18356c uses a 40-chapter synthetic Lichess provider, proves exact chapter 32, scoped revocation, input errors and absence of credentials from model output.",
       "evidenceTest": "e2e/parity-lichess-oauth.spec.ts"
     },
     {
@@ -930,11 +931,11 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_lichess_puzzle_preview"
       ],
-      "explanation": "Human-reviewed chess image→FEN board and deterministic PGN SHA-256 preview via the same pure function from both clients. No provider write; named signed E2E and final-head CI pending.",
+      "explanation": "Website and delegated MCP use exactly the same human-reviewed FEN board/PGN preview with SHA-256 and invalid-FEN rejection. Authenticated cross-transport E2E at d18356c verifies identical previews and no provider publishing during preview; vision extraction from an uploaded image is client-dependent, not an asserted server capability.",
       "evidenceTest": "e2e/parity-lichess-puzzle.spec.ts"
     },
     {
@@ -943,11 +944,11 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_lichess_puzzle_publish"
       ],
-      "explanation": "Explicit approved publish to Lichess study:write via server-only bearer token and unique owner-scoped provider-attempt receipts; ambiguous writes never auto-retry. Named provider E2E and final-head CI pending.",
+      "explanation": "Website and delegated MCP share approved Lichess study:write publishing, SHA-256 preview confirmation and tenant-scoped idempotent provider receipts. Authenticated synthetic-provider E2E at d18356c verifies scope denial, cross-client replay, changed-content conflicts and fail-closed ambiguous provider 503 without duplicate writes.",
       "evidenceTest": "e2e/parity-lichess-puzzle.spec.ts"
     }
   ],
