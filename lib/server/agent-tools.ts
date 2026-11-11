@@ -33,6 +33,7 @@ import {
 } from "@/lib/server/teacher-material-defaults";
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
+import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
 import {teacherCalendarFeedStatus,teacherCalendarFeedRotate,CalendarFeedTokenError} from "@/lib/server/teacher-calendar-feed-service";
 import {teacherProfileGet,teacherProfileUpdate,TeacherProfileError} from "@/lib/server/teacher-profile-service";
@@ -1170,6 +1171,11 @@ const catalogue = [
     description:"Record separate teacher feedback on one homework assignment or attempt; does not alter a teacher-verified student skill grade.",
     schema:assignmentReviewSchema,scope:"coach:write",readOnly:false,
   },
+  {
+    name:"ccp_v1_coach_briefing_get",
+    description:"Prepare a fact-based teacher-owned student briefing: recent lesson history, explicitly attested material, assigned homework, coach reviews and approved chess observations. Each item has stored source IDs, with unknowns marked. No AI-inferred mastery.",
+    schema:coachBriefingSchema,scope:"coach:read",readOnly:true,
+  },
 ] as const;
 
 export const exposedTools = catalogue.map(t => ({
@@ -1236,6 +1242,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_coach_briefing_get":
+        return {data:await teacherCoachBriefing(db,teacherId,args as Parameters<typeof teacherCoachBriefing>[2])};
       case "ccp_v1_training_assignments_list":
         return {data:await teacherAssignmentsList(db,teacherId,args as Parameters<typeof teacherAssignmentsList>[2])};
       case "ccp_v1_training_assignments_create":
@@ -1910,6 +1918,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof CoachBriefingError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof UnifiedHistoryError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof MaterialDefaultError)

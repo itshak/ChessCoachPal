@@ -273,6 +273,24 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(reviewedHomework.data.assignments[0].assignment_reviews[0].verdict).toBe("needs_work");
   const reviewedWeb=await page.request.get("/api/training/assignments?"+homeworkRange);
   expect(reviewedHomework.data).toEqual(await reviewedWeb.json());
+  // The student-focused next-lesson briefing is deterministic, offline-ready
+  // and identical when read via authenticated website or delegated MCP.
+  expect(names).toContain("ccp_v1_coach_briefing_get");
+  const briefingTo=new Date().toISOString().slice(0,10);
+  const briefingFrom=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  const briefingInput={studentId:student.id,from:briefingFrom,to:briefingTo,limit:20};
+  const briefingMcp=(await mcp("tools/call",{
+    name:"ccp_v1_coach_briefing_get",arguments:briefingInput,
+  })).structuredContent;
+  expect(briefingMcp.error).toBeUndefined();
+  const briefingWeb=await page.request.get("/api/coaching/briefing?"+
+    new URLSearchParams({studentId:student.id,from:briefingFrom,to:briefingTo,limit:"20"}));
+  expect(briefingWeb.status(),await briefingWeb.text()).toBe(200);
+  expect(briefingMcp.data).toEqual(await briefingWeb.json());
+  expect(briefingMcp.data.student.name).toBe(student.name);
+  expect(briefingMcp.data.homework.entries.some(
+    (entry:{id:string})=>entry.id===homeworkId)).toBe(true);
+  expect(briefingMcp.data.basis).toBe("stored_teacher_owned_records_no_inferred_mastery");
   const invalidHomework=(await mcp("tools/call",{
     name:"ccp_v1_training_assignments_create",
     arguments:{...homeworkInput,requestId:randomUUID(),materialId:randomUUID()},

@@ -289,6 +289,19 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/briefing/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_coach_briefing_get"
+      ],
+      "explanation": "Shared deterministic student next-lesson briefing reads canonical typed homework, teacher-attested material history, unified lesson history and approved observations. Website student details and delegated MCP share one teacher-scoped service. New OAuth/browser cross-interface test added; complete acceptance and integration tests pending.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
+    },
+    {
       "path": "app/api/coaching/materials/route.ts",
       "methods": [
         "GET",
@@ -1021,6 +1034,7 @@
     "components/teacher/billing/PaymentSettingsButton.tsx",
     "components/teacher/ChessCoachWorkspace.tsx",
     "components/teacher/ChessLearningPanel.tsx",
+    "components/teacher/CoachBriefingPanel.tsx",
     "components/teacher/CoachingReportPanel.tsx",
     "components/teacher/CopyLinkClient.tsx",
     "components/teacher/EditableStudentName.tsx",

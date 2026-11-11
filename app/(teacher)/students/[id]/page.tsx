@@ -12,6 +12,7 @@ import { StudentLessonNotes } from "@/components/teacher/StudentLessonNotes";
 import { StudentInfoCard } from "@/components/teacher/StudentInfoCard";
 import { StudentChessProfileEditor } from "@/components/teacher/StudentChessProfileEditor";
 import { UnifiedLessonHistoryPanel } from "@/components/teacher/UnifiedLessonHistoryPanel";
+import { CoachBriefingPanel } from "@/components/teacher/CoachBriefingPanel";
 import { EditableStudentName } from "@/components/teacher/EditableStudentName";
 import { SkillsPanel } from "@/components/teacher/skills/SkillsPanel";
 import { CreditPackagesCard } from "@/components/teacher/billing/CreditPackagesCard";
@@ -161,6 +162,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialNotes={student.teacher_notes ?? ""}
       />
       <StudentLessonNotes notes={lessonNotes} timezone={policy.timezone} />
+      <CoachBriefingPanel studentId={id} />
       <div className="mb-8"><UnifiedLessonHistoryPanel fixedStudentId={id}/></div>
       <div className="mb-8"><MaterialHistoryPanel fixedStudentId={id} /></div>
 
