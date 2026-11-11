@@ -51,13 +51,26 @@ async function ownedLesson(db:Db,teacherId:string,lessonId:string){
  return data;
 }
 export async function calendarSlotsList(db:Db,teacherId:string,opts:{studentId?:string;activeOnly?:boolean}={}){
- let query=db.from("lesson_slots").select("*").eq("teacher_id",teacherId)
-   .order("day_of_week").order("start_time").limit(1000);
- if(opts.studentId)query=query.eq("student_id",opts.studentId);
- if(opts.activeOnly)query=query.eq("active",true);
- const {data,error}=await query;
- if(error)throw failure(500,"DATABASE_ERROR","Unable to list recurring slots");
- return data??[];
+ // PostgREST imposes a 1000-row response cap. The old single-query list
+ // silently hid additional slots from both the website and delegated MCP.
+ // Scan all pages in stable order, or fail explicitly at a safe upper bound.
+ const rows:Record<string,unknown>[]=[];
+ const pageSize=500,maxRows=20_000;
+ for(let offset=0;;offset+=pageSize){
+   let query=db.from("lesson_slots").select("*").eq("teacher_id",teacherId)
+     .order("day_of_week").order("start_time").order("id")
+     .range(offset,offset+pageSize-1);
+   if(opts.studentId)query=query.eq("student_id",opts.studentId);
+   if(opts.activeOnly)query=query.eq("active",true);
+   const {data,error}=await query;
+   if(error)throw failure(500,"DATABASE_ERROR","Unable to list recurring slots");
+   const page=data??[];
+   if(rows.length+page.length>maxRows)
+     throw failure(413,"ROSTER_TOO_LARGE","Recurring slot inventory exceeds safe listing size");
+   rows.push(...page);
+   if(page.length<pageSize)break;
+ }
+ return rows;
 }
 export async function calendarSlotCreate(db:Db,teacherId:string,input:SlotCreate){
  if(!Number.isInteger(input.dayOfWeek)||input.dayOfWeek<0||input.dayOfWeek>6||
