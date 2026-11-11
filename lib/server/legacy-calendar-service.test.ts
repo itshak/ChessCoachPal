@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {calendarSlotsList,calendarSlotDelete,calendarSlotUpdate,calendarSlotCreate,calendarLessonCreate,CalendarError} from "@/lib/server/legacy-calendar-service";
+import {calendarSlotsList,calendarSlotDelete,calendarSlotUpdate,calendarSlotCreate,calendarLessonsList,calendarLessonCreate,CalendarError} from "@/lib/server/legacy-calendar-service";
 
 type Slot={id:string;teacher_id:string;student_id:string;day_of_week:number;start_time:string;active:boolean};
 
@@ -141,5 +141,21 @@ describe("future recurring-slot mutation safety",()=>{
   await expect(calendarLessonCreate(noDb,"teacher-one",{
    studentId:"student",date:"2099-01-01",time:"12:30",isHomeVisit:"yes" as unknown as boolean,
   })).rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+ });
+});
+
+
+describe("calendar website/MCP pagination and filter validation",()=>{
+ const noDb={} as SupabaseClient;
+ it("rejects malformed offsets, limits, dates and student IDs before DB access",async()=>{
+  for(const options of [
+   {limit:0},{limit:101},{limit:1.5},{offset:-1},{offset:100001},
+   {offset:Number.NaN},{offset:2.5},{from:"not-a-date"},
+   {to:"not-a-date"},{from:"2040-02-05",to:"2040-02-04"},
+   {studentId:"not-uuid"},
+  ]){
+   await expect(calendarLessonsList(noDb,"teacher-one",options))
+    .rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+  }
  });
 });
