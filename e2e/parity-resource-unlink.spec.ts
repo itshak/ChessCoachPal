@@ -33,7 +33,7 @@ test("PARITY:PARITY-material-links-edit-unlink supports create, correction, repl
  const conflicting=await call("ccp_v1_material_links_create",{
    studentId,materialId:altMaterialId,requestId:key,confirmed:true,
  });
- expect(conflicting.error?.code).toBe("IDEMPOTENCY_CONFLICT");
+ expect(conflicting.error?.code).toBe("CONFLICT");
  const corrected=await page.request.post("/api/agent/v1",{data:{
    action:"materials.links.update",linkId:link.id,materialId:altMaterialId,
    expectedRevision:link.revision,confirmed:true,

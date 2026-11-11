@@ -81,7 +81,7 @@ export async function materialLinksCreate(db:Db,teacherId:string,input:z.infer<t
   if(original&&original.material_id===row.material_id&&
      original.student_id===row.student_id&&original.session_id===row.session_id)
    return {link:original,replayed:true};
-  throw fail("IDEMPOTENCY_CONFLICT",409,"Request ID already belongs to a different material link");
+  throw fail("CONFLICT",409,"Request ID already belongs to a different material link");
  }
  if(error?.code==="23503"||error?.code==="23514")throw missing();
  if(error)throw fail("DATABASE_ERROR",500,"Unable to attach material");
