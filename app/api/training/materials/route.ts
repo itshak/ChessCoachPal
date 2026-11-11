@@ -32,6 +32,7 @@ export async function GET(request:NextRequest) {
     const params=materialCatalogFilterSchema.safeParse({
       kind:p.get("kind")||undefined,query:p.get("query")||undefined,
       limit:Number(p.get("limit")??30),offset:Number(p.get("offset")??0),
+      includeArchived:p.get("includeArchived")==="true",
     });
     if (!params.success) return NextResponse.json({error:"Invalid material filter"},{status:400});
     return NextResponse.json(await teacherMaterialCatalogList(context.db,context.teacherId,params.data),

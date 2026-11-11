@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {structurallyValidFen,materialCatalogUpdateSchema} from "./learning-materials";
+import {structurallyValidFen,materialCatalogUpdateSchema,materialRelationSchema,materialLifecycleSchema} from "./learning-materials";
 
 const requestId="f1f2f3f4-0000-4000-8000-000000000001";
 const materialId="f1f2f3f4-0000-4000-8000-000000000002";
@@ -20,5 +20,23 @@ describe("canonical typed material correction contract",()=>{
     expect(materialCatalogUpdateSchema.safeParse({...pgn,confirmed:false}).success).toBe(false);
     expect(materialCatalogUpdateSchema.safeParse({...pgn,kind:"puzzle"}).success).toBe(false);
     expect(materialCatalogUpdateSchema.safeParse({...pgn,unknown:"unguarded field"}).success).toBe(false);
+  });
+  it("guards material relation ownership inputs, self-reference and confirmation",()=>{
+    const valid={fromMaterialId:materialId,toMaterialId:requestId,
+      relationType:"derived_from",action:"link",
+      expectedRevision:1,requestId,confirmed:true};
+    expect(materialRelationSchema.safeParse(valid).success).toBe(true);
+    expect(materialRelationSchema.safeParse({...valid,toMaterialId:materialId}).success).toBe(false);
+    expect(materialRelationSchema.safeParse({...valid,confirmed:false}).success).toBe(false);
+    expect(materialRelationSchema.safeParse({...valid,expectedRevision:0}).success).toBe(false);
+    expect(materialRelationSchema.safeParse({...valid,relationType:"teaches"}).success).toBe(false);
+  });
+  it("guards archive/restore with revision, request receipt and approval",()=>{
+    const valid={materialId,expectedRevision:2,action:"archive",requestId,confirmed:true};
+    expect(materialLifecycleSchema.safeParse(valid).success).toBe(true);
+    expect(materialLifecycleSchema.safeParse({...valid,action:"delete"}).success).toBe(false);
+    expect(materialLifecycleSchema.safeParse({...valid,confirmed:false}).success).toBe(false);
+    expect(materialLifecycleSchema.safeParse({...valid,expectedRevision:-1}).success).toBe(false);
+    expect(materialLifecycleSchema.safeParse({...valid,unknown:"column"}).success).toBe(false);
   });
 });

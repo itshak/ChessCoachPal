@@ -75,9 +75,29 @@ export const materialCatalogUpdateSchema = z.discriminatedUnion("kind",[
 ]);
 export type MaterialCatalogUpdate=z.infer<typeof materialCatalogUpdateSchema>;
 
+export const materialRelationSchema=z.object({
+  fromMaterialId:uuid,toMaterialId:uuid,
+  relationType:z.enum(["extracted_from","derived_from","prerequisite"]),
+  action:z.enum(["link","unlink"]),
+  expectedRevision:z.number().int().min(1),
+  requestId:uuid,confirmed:z.literal(true),
+}).strict().refine(x=>x.fromMaterialId!==x.toMaterialId,{
+  message:"A material cannot reference itself",
+});
+export const materialRelationListSchema=z.object({materialId:uuid}).strict();
+export type MaterialRelationChange=z.infer<typeof materialRelationSchema>;
+
+export const materialLifecycleSchema=z.object({
+  materialId:uuid,expectedRevision:z.number().int().min(1),
+  action:z.enum(["archive","restore"]),requestId:uuid,confirmed:z.literal(true),
+}).strict();
+export const materialArchivePreviewSchema=z.object({materialId:uuid}).strict();
+export type MaterialLifecycleChange=z.infer<typeof materialLifecycleSchema>;
+
 export const materialCatalogFilterSchema = z.object({
   kind: z.enum(["game", "puzzle", "drill", "study_chapter", "external_link"]).optional(),
   query: z.string().trim().max(120).optional(),
+  includeArchived:z.boolean().default(false),
   limit: z.number().int().min(1).max(100).default(30),
   offset: z.number().int().min(0).max(100000).default(0),
 }).strict();
@@ -91,7 +111,7 @@ export class MaterialCatalogError extends Error {
   }
 }
 const fail = (status:number, code:string, message:string) => new MaterialCatalogError(status,code,message);
-const select = "id,teacher_id,kind,title,description,source_url,revision,created_at,updated_at,chess_games(pgn,white_player,black_player,result),chess_puzzles(fen,solution,themes),chess_drills(instructions,mode,repetitions),chess_study_chapters(provider,study_id,chapter_id)";
+const select = "id,teacher_id,kind,title,description,source_url,revision,archived_at,created_at,updated_at,chess_games(pgn,white_player,black_player,result),chess_puzzles(fen,solution,themes),chess_drills(instructions,mode,repetitions),chess_study_chapters(provider,study_id,chapter_id)";
 // PostgREST may materialize a composite-FK 1:1 relation as a one-element array.
 // Stabilize the website/MCP contract to one nullable typed payload object.
 function normalizeMaterial(row:Record<string,unknown>) {
@@ -108,6 +128,7 @@ export async function teacherMaterialCatalogList(db: Db, teacherId: string, opti
     .eq("teacher_id",teacherId)
     .order("created_at",{ascending:false}).order("id")
     .range(options.offset,options.offset+options.limit);
+  if (!options.includeArchived) query=query.is("archived_at",null);
   if (options.kind) query=query.eq("kind",options.kind);
   if (options.query) {
     const literal=options.query.replace(/[\\%_]/g,"\\$&");
@@ -178,4 +199,96 @@ export async function teacherMaterialCatalogUpdate(
     throw fail(500,"DATABASE_ERROR","Invalid material update receipt");
   return {material:await teacherMaterialCatalogGet(db,teacherId,data.id),
     replayed:data.replayed===true,resultingRevision:data.revision as number};
+}
+
+/** Relations are evidence links, not a claim that chess material was taught. */
+export async function teacherMaterialRelationsList(db:Db,teacherId:string,materialId:string) {
+  await teacherMaterialCatalogGet(db,teacherId,materialId);
+  const {data,error}=await db.from("learning_material_relations")
+    .select("from_material_id,to_material_id,relation_type,created_at")
+    .eq("teacher_id",teacherId)
+    .or("from_material_id.eq."+materialId+",to_material_id.eq."+materialId)
+    .order("created_at",{ascending:false}).limit(300);
+  if(error)throw fail(500,"DATABASE_ERROR","Material relationships unavailable");
+  return {materialId,relations:data??[]};
+}
+export async function teacherMaterialRelationChange(
+ db:Db,teacherId:string,input:MaterialRelationChange
+) {
+  const {data,error}=await db.rpc("ccp_material_relation_change",{
+    p_from_material_id:input.fromMaterialId,
+    p_to_material_id:input.toMaterialId,
+    p_relation_type:input.relationType,
+    p_action:input.action,
+    p_expected_revision:input.expectedRevision,
+    p_request_id:input.requestId,
+  });
+  if(error){
+    if(/IDEMPOTENCY_CONFLICT/.test(error.message))
+      throw fail(409,"IDEMPOTENCY_CONFLICT","This request ID was used for a different relationship change");
+    if(/STALE_REVISION/.test(error.message))
+      throw fail(409,"STALE_REVISION","Source material changed; reload before editing");
+    if(/RELATION_ALREADY_EXISTS/.test(error.message))
+      throw fail(409,"RELATION_ALREADY_EXISTS","Material relationship already exists");
+    if(/RELATION_NOT_FOUND|NOT_FOUND/.test(error.message))
+      throw fail(404,"NOT_FOUND","Material or relationship unavailable");
+    if(/INVALID_|VALIDATION_ERROR|23514/.test(error.message))
+      throw fail(400,"VALIDATION_ERROR","Invalid material relationship");
+    throw fail(500,"DATABASE_ERROR","Unable to change material relationship");
+  }
+  if(!data || typeof data!=="object"||typeof data.revision!=="number")
+    throw fail(500,"DATABASE_ERROR","Invalid relationship change receipt");
+  // Typed catalog response is the same whether change originated in UI or MCP.
+  const source=await teacherMaterialCatalogGet(db,teacherId,input.fromMaterialId);
+  return {receipt:data,source};
+}
+
+/**
+ * An archive is an explicitly reviewed soft removal from active catalogs,
+ * never an unsafe hard-delete of lesson materials. In-use material remains
+ * accessible and its assignments/relations retain their original identity.
+ */
+export async function teacherMaterialArchivePreview(db:Db,teacherId:string,materialId:string){
+ const material=await teacherMaterialCatalogGet(db,teacherId,materialId);
+ const [assignments,relations]=await Promise.all([
+   db.from("training_assignments").select("id",{count:"exact",head:true})
+    .eq("teacher_id",teacherId).eq("material_id",materialId),
+   db.from("learning_material_relations").select("from_material_id",{count:"exact",head:true})
+    .eq("teacher_id",teacherId)
+    .or("from_material_id.eq."+materialId+",to_material_id.eq."+materialId),
+ ]);
+ if(assignments.error||relations.error)
+   throw fail(503,"PREVIEW_UNAVAILABLE","Unable to verify material history dependencies");
+ const assignmentCount=assignments.count??0,relationshipCount=relations.count??0;
+ return {materialId,title:material.title,kind:material.kind,revision:material.revision,
+   archived:material.archived_at!==null,assignmentCount,relationshipCount,
+   canArchive:assignmentCount===0&&relationshipCount===0,
+   safety:"Archiving hides a material from active search but retains its identity and prior records"};
+}
+export async function teacherMaterialLifecycleChange(
+ db:Db,teacherId:string,input:MaterialLifecycleChange
+){
+ const {data,error}=await db.rpc("ccp_material_lifecycle_change",{
+   p_material_id:input.materialId,p_expected_revision:input.expectedRevision,
+   p_action:input.action,p_request_id:input.requestId,
+ });
+ if(error){
+   if(/IDEMPOTENCY_CONFLICT/.test(error.message))
+     throw fail(409,"IDEMPOTENCY_CONFLICT","Request ID belongs to a different archive action");
+   if(/STALE_REVISION/.test(error.message))
+     throw fail(409,"STALE_REVISION","Material changed; reload before archiving");
+   if(/HISTORY_DEPENDENCIES/.test(error.message))
+     throw fail(409,"HISTORY_DEPENDENCIES",
+       "Remove material relationships and resolve linked assignments before archiving");
+   if(/ALREADY_ARCHIVED|NOT_ARCHIVED/.test(error.message))
+     throw fail(409,"CONFLICT","Material lifecycle already changed");
+   if(/NOT_FOUND/.test(error.message))
+     throw fail(404,"NOT_FOUND","Material not found");
+   if(/VALIDATION_ERROR/.test(error.message))
+     throw fail(400,"VALIDATION_ERROR","Invalid material lifecycle action");
+   throw fail(500,"DATABASE_ERROR","Unable to change material lifecycle");
+ }
+ if(!data||typeof data!=="object"||typeof data.revision!=="number")
+   throw fail(500,"DATABASE_ERROR","Material lifecycle receipt unavailable");
+ return {receipt:data,material:await teacherMaterialCatalogGet(db,teacherId,input.materialId)};
 }

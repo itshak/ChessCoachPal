@@ -103,7 +103,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   // revision-checked transaction in both website and delegated MCP.
   expect(names).toContain("ccp_v1_learning_materials_update");
   const correction={
-    ...gameArguments,title:"MCP corrected Steinitz game "+suffix,
+    ...gameArguments,title:"MCP Steinitz game "+suffix+" corrected",
     materialId:typedGameMaterialId,
     expectedRevision:gameCreated.data.material.revision as number,
     requestId:randomUUID(),confirmed:true,
@@ -148,6 +148,101 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(puzzleMcp.error).toBeUndefined();
   expect(puzzleMcp.data.chess_puzzles.themes).toEqual(["fork"]);
   expect(puzzleMcp.data.chess_games).toBeNull();
+  for (const toolName of ["ccp_v1_learning_material_relations_list",
+    "ccp_v1_learning_material_relation_change"])
+    expect(names).toContain(toolName);
+  const linkInput={
+    fromMaterialId:puzzleId,toMaterialId:typedGameMaterialId,
+    relationType:"extracted_from",action:"link",
+    expectedRevision:puzzleMcp.data.revision as number,
+    requestId:randomUUID(),confirmed:true,
+  };
+  const linkedWeb=await page.request.post("/api/training/materials/relations",{data:linkInput});
+  expect(linkedWeb.status(),await linkedWeb.text()).toBe(200);
+  const linkResult=await linkedWeb.json();
+  expect(linkResult.receipt.replayed).toBe(false);
+  expect(linkResult.source.revision).toBe(linkInput.expectedRevision+1);
+  const relationList=(await mcp("tools/call",{
+    name:"ccp_v1_learning_material_relations_list",
+    arguments:{materialId:puzzleId},
+  })).structuredContent;
+  expect(relationList.error).toBeUndefined();
+  const relationsWeb=await page.request.get("/api/training/materials/relations?"+
+    new URLSearchParams({materialId:puzzleId}));
+  expect(relationsWeb.status(),await relationsWeb.text()).toBe(200);
+  expect(relationList.data).toEqual(await relationsWeb.json());
+  expect(relationList.data.relations).toEqual(expect.arrayContaining([
+    expect.objectContaining({from_material_id:puzzleId,to_material_id:typedGameMaterialId,
+      relation_type:"extracted_from"}),
+  ]));
+  const linkReplay=(await mcp("tools/call",{
+    name:"ccp_v1_learning_material_relation_change",arguments:linkInput,
+  })).structuredContent;
+  expect(linkReplay.error).toBeUndefined();
+  expect(linkReplay.data.receipt.replayed).toBe(true);
+  const linkConflict=(await mcp("tools/call",{
+    name:"ccp_v1_learning_material_relation_change",
+    arguments:{...linkInput,requestId:randomUUID(),expectedRevision:linkInput.expectedRevision},
+  })).structuredContent;
+  expect(linkConflict.error.code).toBe("STALE_REVISION");
+  const unlinkArgs={...linkInput,action:"unlink",
+    expectedRevision:linkResult.source.revision,requestId:randomUUID()};
+  const unlinked=(await mcp("tools/call",{
+    name:"ccp_v1_learning_material_relation_change",arguments:unlinkArgs,
+  })).structuredContent;
+  expect(unlinked.error).toBeUndefined();
+  expect(unlinked.data.receipt.replayed).toBe(false);
+  const emptyRelations=await page.request.get("/api/training/materials/relations?"+
+    new URLSearchParams({materialId:puzzleId}));
+  expect(emptyRelations.status()).toBe(200);
+  expect((await emptyRelations.json()).relations).toEqual([]);
+  // Archive is not destructive: it requires a dependency preview, can be
+  // replayed across clients, and preserves the typed record for restoration.
+  for(const name of ["ccp_v1_learning_material_archive_preview",
+    "ccp_v1_learning_material_lifecycle_change"])
+    expect(names).toContain(name);
+  const archivePreview=(await mcp("tools/call",{
+    name:"ccp_v1_learning_material_archive_preview",
+    arguments:{materialId:puzzleId},
+  })).structuredContent;
+  expect(archivePreview.error).toBeUndefined();
+  expect(archivePreview.data.canArchive).toBe(true);
+  expect(archivePreview.data.assignmentCount).toBe(0);
+  const previewWeb=await page.request.get("/api/training/materials/lifecycle?"+
+    new URLSearchParams({materialId:puzzleId}));
+  expect(previewWeb.status()).toBe(200);
+  expect(archivePreview.data).toEqual(await previewWeb.json());
+  const archiveInput={
+    materialId:puzzleId,expectedRevision:archivePreview.data.revision as number,
+    action:"archive",requestId:randomUUID(),confirmed:true,
+  };
+  const archiveMcp=(await mcp("tools/call",{
+    name:"ccp_v1_learning_material_lifecycle_change",
+    arguments:archiveInput,
+  })).structuredContent;
+  expect(archiveMcp.error).toBeUndefined();
+  expect(archiveMcp.data.receipt.replayed).toBe(false);
+  expect(archiveMcp.data.material.archived_at).not.toBeNull();
+  const archivedReplay=await page.request.post("/api/training/materials/lifecycle",{data:archiveInput});
+  expect(archivedReplay.status(),await archivedReplay.text()).toBe(200);
+  expect((await archivedReplay.json()).receipt.replayed).toBe(true);
+  const archivedList=await page.request.get("/api/training/materials?"+
+    new URLSearchParams({kind:"puzzle",query:"Website fork puzzle "+suffix,limit:"30",offset:"0"}));
+  expect(archivedList.status()).toBe(200);
+  expect((await archivedList.json()).total).toBe(0);
+  const archivedListMcp=(await mcp("tools/call",{
+    name:"ccp_v1_learning_materials_list",
+    arguments:{kind:"puzzle",query:"Website fork puzzle "+suffix,
+      includeArchived:true,limit:30,offset:0},
+  })).structuredContent;
+  expect(archivedListMcp.error).toBeUndefined();
+  expect(archivedListMcp.data.materials.some((m:{id:string})=>m.id===puzzleId)).toBe(true);
+  const restore=await page.request.post("/api/training/materials/lifecycle",{data:{
+    materialId:puzzleId,expectedRevision:archiveMcp.data.material.revision,
+    action:"restore",requestId:randomUUID(),confirmed:true,
+  }});
+  expect(restore.status(),await restore.text()).toBe(200);
+  expect((await restore.json()).material.archived_at).toBeNull();
   const invalidFen=await page.request.post("/api/training/materials",{data:{
     ...puzzleRequest,requestId:randomUUID(),
     details:{...puzzleRequest.details,fen:"not a valid chess FEN"},

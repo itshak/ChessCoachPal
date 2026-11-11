@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 type MaterialKind="game"|"puzzle"|"drill"|"study_chapter"|"external_link";
 type Material={
-  id:string;kind:MaterialKind;title:string;description:string;source_url:string|null;revision:number;
+  id:string;kind:MaterialKind;title:string;description:string;source_url:string|null;revision:number;archived_at:string|null;
   chess_games:{pgn:string;white_player:string;black_player:string;result:string}|null;
   chess_puzzles:{fen:string;solution:string|null;themes:string[]}|null;
   chess_drills:{instructions:string;mode:string;repetitions:number|null}|null;
@@ -21,6 +21,11 @@ const labels:Record<MaterialKind,string>={
 export function LearningMaterialsCatalog(){
   const [items,setItems]=useState<Material[]>([]);
   const [editing,setEditing]=useState<{id:string;revision:number}|null>(null);
+  const [relationSource,setRelationSource]=useState<Material|null>(null);
+  const [targetMaterialId,setTargetMaterialId]=useState("");
+  const [relationType,setRelationType]=useState<"extracted_from"|"derived_from"|"prerequisite">("derived_from");
+  const [relationAction,setRelationAction]=useState<"link"|"unlink">("link");
+  const [relations,setRelations]=useState<Array<{from_material_id:string;to_material_id:string;relation_type:string}>>([]);
   const [total,setTotal]=useState(0);
   const [kind,setKind]=useState<MaterialKind>("game");
   const [title,setTitle]=useState("");
@@ -44,15 +49,20 @@ export function LearningMaterialsCatalog(){
   const [status,setStatus]=useState("");
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState<MaterialKind|"">("");
+  const [showArchived,setShowArchived]=useState(false);
+  const [archivePreview,setArchivePreview]=useState<{
+    materialId:string;title:string;revision:number;archived:boolean;
+    assignmentCount:number;relationshipCount:number;canArchive:boolean;
+  }|null>(null);
   const load=useCallback(async()=>{
-    const params=new URLSearchParams({limit:"100"});
+    const params=new URLSearchParams({limit:"100",includeArchived:showArchived?"true":"false"});
     if(filter)params.set("kind",filter);
     if(search.trim())params.set("query",search.trim());
     const response=await fetch("/api/training/materials?"+params,{cache:"no-store"});
     if(!response.ok)throw new Error("Unable to load the learning materials");
     const data=await response.json() as {materials:Material[];total:number};
     setItems(data.materials);setTotal(data.total);
-  },[filter,search]);
+  },[filter,search,showArchived]);
   useEffect(()=>{let active=true;
     void load().catch(()=>{if(active)setError("Unable to load materials");});
     return()=>{active=false};
@@ -75,6 +85,62 @@ export function LearningMaterialsCatalog(){
     setStudyId(material.chess_study_chapters?.study_id??"");
     setChapterId(material.chess_study_chapters?.chapter_id??"");
     setStatus("");setError("");
+  }
+  async function previewMaterialArchive(material:Material){
+    setArchivePreview(null);setError("");setStatus("");
+    try{
+      const response=await fetch("/api/training/materials/lifecycle?"+
+        new URLSearchParams({materialId:material.id}),{cache:"no-store"});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"Unable to inspect archive impact");
+      setArchivePreview(data);
+    }catch(e){setError(e instanceof Error?e.message:"Archive preview unavailable");}
+  }
+  async function changeMaterialLifecycle(materialId:string,revision:number,action:"archive"|"restore"){
+    setBusy(true);setError("");setStatus("");
+    try{
+      const response=await fetch("/api/training/materials/lifecycle",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({materialId,expectedRevision:revision,action,
+          requestId:crypto.randomUUID(),confirmed:true}),
+      });
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"Unable to change material status");
+      setStatus(action==="archive"?"Material archived without deleting history.":"Material restored to the library.");
+      setArchivePreview(null);await load();
+    }catch(e){setError(e instanceof Error?e.message:"Material lifecycle failed");}
+    finally{setBusy(false);}
+  }
+  async function selectRelationshipSource(material:Material){
+    setRelationSource(material);setTargetMaterialId("");setError("");setStatus("");
+    try{
+      const response=await fetch("/api/training/materials/relations?"+
+        new URLSearchParams({materialId:material.id}),{cache:"no-store"});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"Unable to fetch relations");
+      setRelations(data.relations??[]);
+    }catch(e){setError(e instanceof Error?e.message:"Unable to fetch relations");}
+  }
+  async function changeRelation(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();
+    if(!relationSource)return;
+    setBusy(true);setError("");setStatus("");
+    try{
+      const response=await fetch("/api/training/materials/relations",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          fromMaterialId:relationSource.id,toMaterialId:targetMaterialId,
+          relationType,action:relationAction,expectedRevision:relationSource.revision,
+          requestId:crypto.randomUUID(),confirmed:true,
+        }),
+      });
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"Unable to change relation");
+      setStatus(relationAction==="link"?"Material relationship recorded.":"Material relationship removed.");
+      setRelationSource(null);setRelations([]);setTargetMaterialId("");
+      await load();
+    }catch(e){setError(e instanceof Error?e.message:"Unable to change relationship");}
+    finally{setBusy(false);}
   }
   async function create(event:FormEvent<HTMLFormElement>){
     event.preventDefault();setBusy(true);setError("");setStatus("");
@@ -108,6 +174,44 @@ export function LearningMaterialsCatalog(){
       <h2 className="text-2xl font-semibold">Learning materials library</h2>
       <p className="text-sm text-muted">Games, puzzles, drills and study chapters have separate chess-specific records in one searchable catalog. Saving a resource does not mark it as taught or mastered.</p>
     </div>
+    {archivePreview&&<div className="rounded-xl border border-border p-4 space-y-2" aria-label="Material archive impact">
+      <h3 className="font-semibold">Archive preview: {archivePreview.title}</h3>
+      <p className="text-sm text-muted">Assignments linked: {archivePreview.assignmentCount} · Material relationships: {archivePreview.relationshipCount}. Archiving hides unused material from active search; it never erases stored history.</p>
+      {!archivePreview.canArchive&&<p role="alert" className="text-sm text-red-500">This material is referenced. Resolve the linked records before archiving.</p>}
+      <div className="flex gap-2">
+        <button type="button" className={button} disabled={busy||!archivePreview.canArchive} onClick={()=>{void changeMaterialLifecycle(archivePreview.materialId,archivePreview.revision,"archive");}}>Confirm archive</button>
+        <button type="button" className="rounded-lg border border-border px-3 py-2 text-sm" onClick={()=>setArchivePreview(null)}>Cancel</button>
+      </div>
+    </div>}
+    {relationSource&&<form onSubmit={changeRelation} className="rounded-xl border border-border p-4 space-y-3" aria-label="Edit material relationships">
+      <h3 className="font-semibold">Relationships for {relationSource.title}</h3>
+      <p className="text-xs text-muted">Links describe material provenance or study order; they do not record teaching or mastery. For puzzle extraction, choose a puzzle as the source and game as the target.</p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="text-sm">Operation
+          <select className={field} value={relationAction} onChange={e=>setRelationAction(e.target.value as "link"|"unlink")}>
+            <option value="link">Link</option><option value="unlink">Unlink</option>
+          </select>
+        </label>
+        <label className="text-sm">Relationship
+          <select className={field} value={relationType} onChange={e=>setRelationType(e.target.value as typeof relationType)}>
+            <option value="derived_from">Derived from</option>
+            <option value="extracted_from">Puzzle extracted from game</option>
+            <option value="prerequisite">Prerequisite</option>
+          </select>
+        </label>
+        <label className="text-sm">Target material
+          <select className={field} required value={targetMaterialId} onChange={e=>setTargetMaterialId(e.target.value)}>
+            <option value="">Choose material</option>
+            {items.filter(m=>m.id!==relationSource.id).map(m=><option key={m.id} value={m.id}>{m.kind}: {m.title}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="flex gap-2">
+        <button type="submit" className={button} disabled={busy||!targetMaterialId}>{relationAction==="link"?"Save relationship":"Remove relationship"}</button>
+        <button type="button" className="rounded-lg border border-border px-3 py-2 text-sm" onClick={()=>{setRelationSource(null);setRelations([]);}}>Cancel</button>
+      </div>
+      <p className="text-xs text-muted">Existing source or target relationships: {relations.length}</p>
+    </form>}
     <form onSubmit={create} className="rounded-xl border border-border p-4 space-y-3">
       <h3 className="text-lg font-semibold">{editing?"Correct chess material":"Add chess material"}</h3>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -198,11 +302,18 @@ export function LearningMaterialsCatalog(){
           <option value="">All types</option>{kinds.map(k=><option key={k} value={k}>{labels[k]}</option>)}
         </select>
       </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)}/>Include archived materials
+      </label>
       <p className="text-sm text-muted">Showing {items.length} of {total} stored materials</p>
       {items.map(material=><div key={material.id} className="rounded-lg border border-border p-3 space-y-1">
         <strong className="text-sm">{material.title}</strong>
         <span className="ml-2 text-xs text-muted">{labels[material.kind]}</span>
         <button className="ml-3 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>beginEdit(material)} aria-label={"Correct "+material.title}>Correct material</button>
+        <button className="ml-2 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>{void selectRelationshipSource(material);}} aria-label={"Link "+material.title}>Relationships</button>
+        {material.archived_at
+          ?<button type="button" className="ml-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void changeMaterialLifecycle(material.id,material.revision,"restore");}} aria-label={"Restore "+material.title}>Restore</button>
+          :<button type="button" className="ml-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void previewMaterialArchive(material);}} aria-label={"Preview archive "+material.title}>Preview archive</button>}
         {material.description&&<p className="text-sm">{material.description}</p>}
         {material.chess_games&&<p className="text-xs text-muted">{material.chess_games.white_player} – {material.chess_games.black_player} ({material.chess_games.result})</p>}
         {material.chess_puzzles&&<p className="text-xs font-mono break-all">FEN: {material.chess_puzzles.fen}</p>}

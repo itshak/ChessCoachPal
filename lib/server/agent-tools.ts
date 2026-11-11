@@ -24,7 +24,7 @@ import { chessCategoriesList, chessCategoriesCreate, chessCategoriesUpdate,
   chessResourcesUnlinkImpact, chessResourcesUnlink } from "@/lib/server/chess-learning";
 import { chessUuid, categoryName, observationText, observedAt, resourceLabel, resourceUrl, resourceType, observationInput, resourceInput } from "@/lib/chess-learning";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
-import {materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,MaterialCatalogError} from "@/lib/server/learning-materials";
+import {materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,materialRelationListSchema,materialRelationSchema,materialArchivePreviewSchema,materialLifecycleSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,teacherMaterialRelationsList,teacherMaterialRelationChange,teacherMaterialArchivePreview,teacherMaterialLifecycleChange,MaterialCatalogError} from "@/lib/server/learning-materials";
 import {assignmentListSchema,assignmentCreateSchema,assignmentAttemptSchema,assignmentReviewSchema,teacherAssignmentsList,teacherAssignmentsCreate,teacherAssignmentAttempt,teacherAssignmentReview,AssignmentServiceError} from "@/lib/server/training-assignments";
 import {
  defaultCreateSchema,defaultUpdateSchema,defaultUpdateToolSchema,defaultArchiveSchema,
@@ -1150,6 +1150,26 @@ const catalogue = [
     description:"Correct a teacher-owned typed chess material in one atomic root/subtype transaction. Same kind only; exact revision, confirmation and idempotency UUID required.",
     schema:materialCatalogUpdateSchema,scope:"coach:write",readOnly:false,
   },
+  {
+    name:"ccp_v1_learning_material_relations_list",
+    description:"List typed source-game, derived and prerequisite material relationships. A relationship is not evidence of teaching or mastery.",
+    schema:materialRelationListSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_learning_material_relation_change",
+    description:"Link/unlink two authorized typed chess materials. Require source revision, explicit confirmation and an idempotency request ID; source-game puzzle extraction requires puzzle → game.",
+    schema:materialRelationSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_learning_material_archive_preview",
+    description:"Inspect a material's revision, linked homework and relations before attempting a history-preserving library archive.",
+    schema:materialArchivePreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_learning_material_lifecycle_change",
+    description:"Archive or restore a teacher-owned learning material from active search without erasing history. Requires current revision, request UUID and explicit confirmation; linked materials cannot be archived.",
+    schema:materialLifecycleSchema,scope:"coach:write",readOnly:false,
+  },
 
   {
     name:"ccp_v1_training_assignments_list",
@@ -1260,6 +1280,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherMaterialCatalogCreate(db,teacherId,args as Parameters<typeof teacherMaterialCatalogCreate>[2])};
       case "ccp_v1_learning_materials_update":
         return {data:await teacherMaterialCatalogUpdate(db,teacherId,args as Parameters<typeof teacherMaterialCatalogUpdate>[2])};
+      case "ccp_v1_learning_material_relations_list":
+        return {data:await teacherMaterialRelationsList(db,teacherId,(args as {materialId:string}).materialId)};
+      case "ccp_v1_learning_material_relation_change":
+        return {data:await teacherMaterialRelationChange(db,teacherId,args as Parameters<typeof teacherMaterialRelationChange>[2])};
+      case "ccp_v1_learning_material_archive_preview":
+        return {data:await teacherMaterialArchivePreview(db,teacherId,(args as {materialId:string}).materialId)};
+      case "ccp_v1_learning_material_lifecycle_change":
+        return {data:await teacherMaterialLifecycleChange(db,teacherId,args as Parameters<typeof teacherMaterialLifecycleChange>[2])};
       case "ccp_v1_students_create_full": {
         const a=args as Parameters<typeof createStudentWithOptionalFamily>[2];
         const result=await createStudentWithOptionalFamily(db,teacherId,a);

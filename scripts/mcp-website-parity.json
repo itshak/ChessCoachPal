@@ -974,6 +974,36 @@
       "explanation": "Shared teacher-scoped website/MCP assignment list, confirmed student-specific/batch material assignments, manual attempt evidence and independent teacher reviews. Full goal/plan editing, correction and 93-case verification remain later scope."
     },
     {
+      "path": "app/api/training/materials/lifecycle/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_learning_material_archive_preview",
+        "ccp_v1_learning_material_lifecycle_change"
+      ],
+      "explanation": "Shared explicit material archive impact and history-preserving hide/restore with dependency safeguards and revisioned receipts; both browser and MCP E2E added, final full sign-off pending.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
+    },
+    {
+      "path": "app/api/training/materials/relations/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_learning_material_relations_list",
+        "ccp_v1_learning_material_relation_change"
+      ],
+      "explanation": "Shared owner-scoped typed material relationships with atomic SQL link/unlink, revision and replay receipts; UI link management and delegated OAuth E2E added. Full source/target graph validation and final integrated acceptance pending.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
+    },
+    {
       "path": "app/api/training/materials/route.ts",
       "methods": [
         "GET",
@@ -988,7 +1018,7 @@
         "ccp_v1_learning_materials_create",
         "ccp_v1_learning_materials_update"
       ],
-      "explanation": "Shared teacher-scoped typed chess material catalog including atomic root+typed detail edits, revision-checked corrections, durable idempotent receipts and both website/MCP operations. Typed material relation/collection lifecycle, full PGN legality and complete route-level acceptance still incomplete; do not promote from partial without comprehensive executed tests."
+      "explanation": "Shared material catalog supports typed create/read/list, atomic revisioned correction, active/archive search and same teacher-owned API/tool fields. Typed relations and lifecycle have dedicated routes. Full classification pending integration-wide evidence."
     },
     {
       "path": "app/api/webhooks/stripe/[teacherId]/route.ts",
