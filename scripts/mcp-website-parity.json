@@ -932,11 +932,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "mcp",
+      "parity": "partial",
       "existingTools": [
-        "ccp_v1_lichess_puzzle_preview"
+        "ccp_v1_lichess_puzzle_preview",
+        "ccp_v1_lichess_image_fen_propose"
       ],
-      "explanation": "Website and delegated MCP use exactly the same human-reviewed FEN board/PGN preview with SHA-256 and invalid-FEN rejection. Authenticated cross-transport E2E at d18356c verifies identical previews and no provider publishing during preview; vision extraction from an uploaded image is client-dependent, not an asserted server capability.",
+      "explanation": "Reviewed FEN, board, PGN and SHA-256 preview remain browser/MCP E2E accepted, but the new BYO-vision board-image proposal is only candidate-implemented. Both clients require explicit external-AI sharing approval and reject malformed images. Positive synthetic-provider image recognition, human-correction flow and cross-client persisted outcomes must still pass final E2E; no route-family promotion before those checks.",
       "evidenceTest": "e2e/parity-lichess-puzzle.spec.ts"
     },
     {
