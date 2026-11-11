@@ -113,8 +113,20 @@ export async function importStudioExport(
   // The invoker's auth.uid() is authoritative inside the RPC; never pass a
   // writable teacher_id argument that an MCP or website client could spoof.
   if (!teacherId) return {ok:false,error:"Authenticated teacher is required"};
+  // Strip unknown/deprecated tables and policy credentials before the RPC
+  // request itself; the database separately enforces the same allowlist.
+  const safeTables:StudioDataExport["tables"]={};
+  for (const table of IMPORT_ORDER) {
+    const source=payload.tables[table];
+    if (source===undefined) continue;
+    if (table==="studio_policies" && source && !Array.isArray(source)) {
+      const sanitized={...source};
+      for(const field of POLICY_SECRET_FIELDS) delete sanitized[field];
+      safeTables[table]=sanitized;
+    } else safeTables[table]=source;
+  }
   const { data, error } = await supabase.rpc("ccp_teacher_backup_restore", {
-    p_tables:payload.tables,
+    p_tables:safeTables,
     p_display_name:payload.teacher_profile?.display_name ?? null,
     p_digest:sha256,
   });
