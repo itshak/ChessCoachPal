@@ -28,14 +28,16 @@ export type StudentProfilePatch = {
 };
 /** Bounded, navigable roster. Archived students remain accessible via explicit filter. */
 export async function teacherStudentsRoster(db: Db, teacherId: string,
-  opts: { query?: string; includeArchived?: boolean; offset?: number; limit?: number } = {}) {
+  opts: { query?: string; includeArchived?: boolean; archivedOnly?: boolean;
+    offset?: number; limit?: number } = {}) {
   const limit = Math.min(1000, Math.max(1, opts.limit ?? 1000));
   const offset = Math.min(100000, Math.max(0, opts.offset ?? 0));
   let query = db.from("students")
     .select("*")
     .eq("teacher_id", teacherId).order("name").order("id")
     .range(offset, offset + limit);
-  if (!opts.includeArchived) query = query.is("archived_at", null);
+  if (opts.archivedOnly) query = query.not("archived_at", "is", null);
+  else if (!opts.includeArchived) query = query.is("archived_at", null);
   if (opts.query?.trim()) {
     const literal = opts.query.trim().replace(/[\\%_]/g, "\\$&");
     query = query.ilike("name_search", `%${literal}%`);
