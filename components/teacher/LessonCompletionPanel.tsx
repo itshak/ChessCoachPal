@@ -1,6 +1,6 @@
 "use client";
 
-import {useCallback,useEffect,useState,type FormEvent} from "react";
+import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 
 type Session={id:string;title:string;status:string;starts_at:string};
 type Person={studentId:string;name:string};
@@ -37,8 +37,12 @@ export function LessonCompletionPanel(){
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
+ // A slow roster read must never replace the learner decisions for a newer
+ // selected session. The transaction also verifies all revisions in SQL.
+ const rosterLoad=useRef(0);
 
  const refresh=useCallback(async(id:string)=>{
+  const generation=++rosterLoad.current;
   if(!id){setRoster(null);setDecisions({});return;}
   const [details,register]=await Promise.all([
    fetch("/api/coaching/sessions/"+encodeURIComponent(id)+"/roster",{cache:"no-store"}).then(async response=>{
@@ -47,6 +51,7 @@ export function LessonCompletionPanel(){
    }),
    api<Register[]>("attendance.list",{sessionId:id}),
   ]);
+  if(generation!==rosterLoad.current)return;
   const current=new Map(register.map(x=>[x.student_id,x]));
   setRoster(details);
   setDecisions(Object.fromEntries(details.participants.map(p=>{
@@ -83,7 +88,7 @@ export function LessonCompletionPanel(){
 
  async function submit(e:FormEvent<HTMLFormElement>){
   e.preventDefault();
-  if(!roster||busy||!confirmed)return;
+  if(!roster||roster.sessionId!==sessionId||busy||!confirmed)return;
   if(roster.participants.some(p=>!decisions[p.studentId]?.status||
      !decisions[p.studentId]?.expectedUpdatedAt)){
    setError("Choose an explicit attendance status for each learner.");return;
@@ -97,10 +102,12 @@ export function LessonCompletionPanel(){
    });
    await api("sessions.complete",{
     sessionId:roster.sessionId,expectedUpdatedAt:roster.updatedAt,
-    idempotencyKey:crypto.randomUUID(),attendance,lessonNote,confirmed:true,
+    idempotencyKey:crypto.randomUUID(),attendance,
+    ...(lessonNote.trim()?{lessonNote}:{}),confirmed:true,
    });
    setNotice("Lesson and full frozen-roster attendance committed atomically.");
    setConfirmed(false);
+   setLessonNote("");
    await refresh(roster.sessionId);
    setSessions(old=>old.map(x=>x.id===roster.sessionId?{...x,status:"completed"}:x));
   }catch(e){setError(e instanceof Error?e.message:"Unable to complete lesson");}
@@ -116,7 +123,9 @@ export function LessonCompletionPanel(){
   {notice&&<p role="status" className="text-success">{notice}</p>}
   <label className="block">Lesson
    <select className={select} aria-label="Lesson to complete" value={sessionId}
-     onChange={e=>{setSessionId(e.target.value);setNotice("");setError("");}}>
+     onChange={e=>{rosterLoad.current++;setRoster(null);setDecisions({});
+      setSessionId(e.target.value);setLessonNote("");setConfirmed(false);
+      setNotice("");setError("");}}>
     {!sessions.length&&<option value="">No coaching sessions</option>}
     {sessions.map(s=><option value={s.id} key={s.id}>
      {s.title} · {new Date(s.starts_at).toLocaleDateString()} · {s.status}
@@ -143,7 +152,7 @@ export function LessonCompletionPanel(){
      </label>
     </div>;
    })}
-   <label className="block">Shared coaching lesson note (optional)
+   <label className="block">Shared coaching lesson note (optional; leave blank to retain existing notes)
     <textarea className={select} maxLength={10000} rows={2} value={lessonNote}
      onChange={e=>{setLessonNote(e.target.value);setConfirmed(false);}}/>
    </label>
@@ -152,7 +161,7 @@ export function LessonCompletionPanel(){
      onChange={e=>setConfirmed(e.target.checked)}/>
     I confirm these attendance statuses and lesson completion.
    </label>
-   <button type="submit" disabled={busy||!confirmed||!roster.participants.length||
+   <button type="submit" disabled={busy||!confirmed||roster.sessionId!==sessionId||!roster.participants.length||
       roster.participants.some(p=>!decisions[p.studentId]?.status)}
     className="rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50">
      {busy?"Recording…":"Complete lesson"}

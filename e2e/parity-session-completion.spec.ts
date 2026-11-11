@@ -39,7 +39,7 @@ async function fixture(call:Tool){
   startsAt:new Date(Date.UTC(2058,0,1)+
    (Number.parseInt(randomUUID().slice(0,8),16)%(366*24*3600))*1000).toISOString(),
   durationMinutes:60,
-  lessonNote:"",idempotencyKey:randomUUID(),
+  lessonNote:"Original teacher note stays unless explicitly changed",idempotencyKey:randomUUID(),
  });
  expect(created.error).toBeUndefined();
  const sessionId=created.data.entityId as string;
@@ -133,6 +133,7 @@ test("PARITY:PARITY-sessions-complete-website form requires explicit per-learner
  const details=await call("ccp_v1_sessions_details",{sessionId:ctx.sessionId});
  expect(details.error).toBeUndefined();
  expect(details.data.status).toBe("completed");
+ expect(details.data.lesson_note).toBe("Original teacher note stays unless explicitly changed");
  const attendance=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
  expect(attendance.data.attendance.every((a:{status:string})=>a.status==="present")).toBe(true);
 });
