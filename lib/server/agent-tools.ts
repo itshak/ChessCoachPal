@@ -581,7 +581,7 @@ const catalogue = [
     name:"ccp_v1_calendar_lessons_list",
     description:"List dated private lessons with stable IDs and optional student/date filters. These differ from group teaching_sessions.",
     schema:z.object({studentId:uuid.optional(),from:z.string().date().optional(),
-      to:z.string().date().optional(),offset:z.number().int().min(0).default(0),
+      to:z.string().date().optional(),offset:z.number().int().min(0).max(100000).default(0),
       limit:z.number().int().min(1).max(100).default(50)}).strict(),
     scope:"coach:read",readOnly:true,
   },
