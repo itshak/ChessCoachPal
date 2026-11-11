@@ -1,6 +1,7 @@
 import {describe,expect,it} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {teacherStudentsRoster} from "@/lib/server/student-profile-service";
+import {teacherStudentsRoster,teacherStudentPatch} from "@/lib/server/student-profile-service";
+import {studentUpdateSchema} from "@/lib/server/api-schemas";
 
 type Student={id:string;teacher_id:string;name:string;archived_at:string|null;name_search:string};
 function dbWithRows(source:Student[],reads:Array<[number,number]>) {
@@ -90,5 +91,53 @@ describe("complete owner-scoped student paging",()=>{
    expect(historical.students).toHaveLength(1);
    expect(historical.students[0].id).toBe(source[0].id);
    expect(historical.nextOffset).toBeNull();
+ });
+});
+
+
+describe("teacher student monetary field parity",()=>{
+ function fakeProfileDb(writes:Record<string,unknown>[]){
+  const student={id:"student-one",teacher_id:"teacher-one",name:"Student One",
+   updated_at:"2099-01-01T00:00:00Z",guardian_id:null,archived_at:null};
+  return {from(table:string){
+   expect(table).toBe("students");
+   let patch:Record<string,unknown>|null=null;
+   const q={
+    select(_columns:string){return q;},
+    eq(_column:string,_value:unknown){return q;},
+    update(changes:Record<string,unknown>){patch=changes;writes.push(changes);return q;},
+    async maybeSingle(){return {data:{...student,...(patch??{})},error:null};},
+   };
+   return q;
+  }} as unknown as SupabaseClient;
+ }
+ it("rejects all malformed/negative/fractional/out-of-range website money strings",()=>{
+  for(const value of ["-12","1.5","2e3","banana","Infinity","10000001"]){
+   expect(studentUpdateSchema.safeParse({defaultRateCents:value}).success).toBe(false);
+   expect(studentUpdateSchema.safeParse({travelFeeCents:value}).success).toBe(false);
+  }
+  for(const value of [-1,0.5,10_000_001,Number.POSITIVE_INFINITY])
+   expect(studentUpdateSchema.safeParse({defaultRateCents:value}).success).toBe(false);
+ });
+ it("rejects invalid direct-service monetary values without a database write",async()=>{
+  const writes:Record<string,unknown>[]=[];
+  const db=fakeProfileDb(writes);
+  for(const amount of ["-100","junk","2.9",3.5,10_000_001]){
+   await expect(teacherStudentPatch(db,"teacher-one","student-one",{
+    defaultRateCents:amount,
+   })).rejects.toMatchObject({code:"VALIDATION_ERROR",status:400});
+  }
+  expect(writes).toHaveLength(0);
+ });
+ it("preserves whole-cent values and explicit clearing across website-compatible inputs",async()=>{
+  const writes:Record<string,unknown>[]=[];
+  const db=fakeProfileDb(writes);
+  const edited=await teacherStudentPatch(db,"teacher-one","student-one",{
+   defaultRateCents:"4500",travelFeeCents:"",
+  });
+  expect(writes).toEqual([{default_rate_cents:4500,travel_fee_cents:null}]);
+  expect(edited).toMatchObject({default_rate_cents:4500,travel_fee_cents:null});
+  expect(studentUpdateSchema.safeParse({defaultRateCents:"4500",travelFeeCents:""}).success)
+   .toBe(true);
  });
 });
