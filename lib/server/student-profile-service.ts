@@ -43,7 +43,7 @@ export async function teacherStudentsRoster(db: Db, teacherId: string,
     query = query.ilike("name_search", `%${literal}%`);
   }
   const { data, error, count } = await query;
-  if (error || count === null)
+  if (error || typeof count !== "number")
     throw new StudentProfileError(500,"DATABASE_ERROR","Student roster or pagination count unavailable");
   return {
     students:data??[],
