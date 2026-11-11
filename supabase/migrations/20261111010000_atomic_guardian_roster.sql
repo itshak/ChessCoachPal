@@ -47,7 +47,10 @@ BEGIN
     RAISE EXCEPTION 'GUARDIAN_INVALID_RECIPIENTS' USING ERRCODE='22023';
   END IF;
   -- Serializes concurrent family changes and student capacity reservations.
-  PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+  -- No elevated UPDATE rights on teachers are required here. Existing
+  -- student-capacity triggers serialize inserts on the teacher row, while
+  -- family/event rows and PostgreSQL foreign keys protect their own writes.
+  PERFORM 1 FROM public.teachers WHERE id=v_teacher;
   IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501'; END IF;
 
   -- Validate the complete replacement roster before creating or editing it.

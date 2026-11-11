@@ -37,7 +37,10 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'EVENT_INVALID_ROSTER' USING ERRCODE='22023';
   END IF;
-  PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+  -- No elevated UPDATE rights on teachers are required here. Existing
+  -- student-capacity triggers serialize inserts on the teacher row, while
+  -- family/event rows and PostgreSQL foreign keys protect their own writes.
+  PERFORM 1 FROM public.teachers WHERE id=v_teacher;
   IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501'; END IF;
   IF p_student_ids IS NOT NULL THEN
     SELECT count(*) INTO v_ids FROM public.students

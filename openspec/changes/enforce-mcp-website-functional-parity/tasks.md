@@ -202,3 +202,7 @@ New read-only scoped MCP tools `ccp_v1_account_security_handoff` and `ccp_v1_hos
 ## 2026-11-11 candidate: race-safe guardian deletion (unverified)
 
 The baseline student/guardian FK detaches students on guardian deletion; a new authenticated PostgreSQL BEFORE DELETE trigger now refuses the deletion when an existing student or invoice points at the family, even after a stale website/MCP preview. A real PostgREST synthetic test explicitly attaches a student after a clean preview, asserts SQL 23503 and unchanged student guardian, then detaches and allows deletion. Privileged tenant erasure remains separate. No B5/B8/C signoff until full verification.
+
+### Pre-CI review correction: teacher-role authorization
+
+The new guardian and event SQL mutations no longer request `SELECT ... FOR UPDATE` on the restricted `teachers` row. They validate teacher existence with ordinary SELECT, use owner-scoped resource row locks and foreign-key constraints, and rely on the existing hosted-cap trigger's internal serialization when students are inserted. This avoids requiring broader teacher-table UPDATE privileges for website and OAuth/MCP calls. This is a source review fix, **not a claim of test success**.
