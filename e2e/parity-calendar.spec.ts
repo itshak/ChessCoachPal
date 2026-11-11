@@ -203,3 +203,47 @@ test("PARITY:PARITY-calendar-private-shared-notes preserve teacher privacy and n
  expect(latest.data.body).toBe("Website corrected lesson summary");
  expect(latest.data.private_body).toBe("Updated private feedback");
 });
+
+
+test("PARITY:PARITY-calendar-single-attendance supports review, correction and explicit clearing without email",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const studentId=await student(call);
+ const id=await lesson(call,studentId,"2044-12-14","11:00");
+ const marked=await call("ccp_v1_calendar_attendance_record",{
+   lessonId:id,status:"attended",confirmed:true,
+ });
+ expect(marked.error).toBeUndefined();
+ const browser=await page.request.get("/api/schedule/lessons/"+id+"/attendance");
+ expect(browser.status(),await browser.text()).toBe(200);
+ expect((await browser.json()).status).toBe("attended");
+ const corrected=await page.request.put("/api/schedule/lessons/"+id+"/attendance",{
+   data:{status:"no_show",notifyFamily:false},
+ });
+ expect(corrected.status(),await corrected.text()).toBe(200);
+ const fromMcp=await call("ccp_v1_calendar_attendance_read",{lessonId:id});
+ expect(fromMcp.error).toBeUndefined();
+ expect(fromMcp.data.status).toBe("no_show");
+ const cleared=await call("ccp_v1_calendar_attendance_record",{
+   lessonId:id,status:null,confirmed:true,
+ });
+ expect(cleared.error).toBeUndefined();
+ const empty=await page.request.get("/api/schedule/lessons/"+id+"/attendance");
+ expect(empty.status()).toBe(200);
+ expect(await empty.json()).toBeNull();
+});
+
+test("PARITY:PARITY-calendar-ad-hoc-lesson-delete matches website and MCP without removing recurring history",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const studentId=await student(call);
+ const first=await lesson(call,studentId,"2044-12-15","10:00");
+ const deleted=await call("ccp_v1_calendar_lessons_delete",{
+   lessonId:first,confirmed:true,
+ });
+ expect(deleted.error).toBeUndefined();
+ expect((await page.request.get("/api/schedule/lessons/"+first)).status()).toBe(404);
+ const second=await lesson(call,studentId,"2044-12-16","10:00");
+ const browser=await page.request.delete("/api/schedule/lessons/"+second);
+ expect(browser.status(),await browser.text()).toBe(200);
+ expect((await call("ccp_v1_calendar_lessons_detail",{lessonId:second})).error?.code)
+   .toBe("NOT_FOUND");
+});
