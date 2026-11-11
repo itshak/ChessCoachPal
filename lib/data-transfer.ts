@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * OAuth grants, access tokens, provider secrets, Stripe identifiers and
  * uploaded binary objects are deliberately excluded from portable exports.
  */
-export const DATA_EXPORT_VERSION = 1 as const;
+export const DATA_EXPORT_VERSION = 2 as const;
 export type StudioDataExport = {
   version: number;
   exportedAt: string;
@@ -27,6 +27,13 @@ const IMPORT_ORDER = [
   "attendance", "lesson_notes", "skill_dimensions", "skill_assessments",
   "invoices", "invoice_items", "payments", "events", "event_students",
   "event_rsvps", "credit_packages", "credit_redemptions",
+  // Canonical chess catalog and student-first learning history. Restore order
+  // respects material root/subtypes → relations → homework/reviews → plans.
+  "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
+  "chess_study_chapters", "learning_material_relations",
+  "training_assignments", "assignment_attempts", "assignment_reviews",
+  "learning_material_legacy_links",
+  "student_training_plans", "student_training_plan_revisions",
 ] as const;
 
 const TEACHER_SCOPED = [
@@ -35,6 +42,11 @@ const TEACHER_SCOPED = [
   "session_participants", "session_attendance", "chess_skill_categories",
   "chess_observations", "chess_learning_resources", "lesson_slots", "lessons",
   "skill_dimensions", "invoices", "events", "credit_packages", "credit_redemptions",
+  "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
+  "chess_study_chapters", "learning_material_relations",
+  "training_assignments", "assignment_attempts", "assignment_reviews",
+  "learning_material_legacy_links",
+  "student_training_plans", "student_training_plan_revisions",
 ] as const;
 
 function asRows(data: unknown): Record<string, unknown>[] {
@@ -93,11 +105,20 @@ export async function buildStudioExport(
     tables[table]=await readExportPages(table,async(start,end)=>{
       const query=supabase.from(table).select("*").eq("teacher_id",teacherId);
       // A few roster relations have composite keys rather than an id.
-      const ordered=table==="session_participants"
-        ? query.order("session_id").order("student_id")
-        : table==="group_enrollments"
-          ? query.order("group_id").order("student_id")
-          : query.order("id");
+      // Not every composite-keyed evidence table has an "id" column.
+      // Deterministic key order ensures multi-page exports cannot repeat or
+      // silently skip records after PostgREST's 1000-row limit.
+      const keyOrders:Partial<Record<typeof table,readonly string[]>>={
+        session_participants:["session_id","student_id"],
+        group_enrollments:["group_id","student_id"],
+        chess_games:["material_id"],chess_puzzles:["material_id"],
+        chess_drills:["material_id"],chess_study_chapters:["material_id"],
+        learning_material_relations:["from_material_id","to_material_id","relation_type"],
+        learning_material_legacy_links:["resource_id"],
+        student_training_plan_revisions:["plan_id","revision"],
+      };
+      const orderKeys=keyOrders[table]??["id"];
+      const ordered=orderKeys.reduce((q,key)=>q.order(key),query);
       const {data,error}=await ordered.range(start,end);
       return {data,error};
     });
