@@ -229,3 +229,62 @@ test("PARITY:PARITY-students-skills preserves 1–5 append-only assessment histo
  expect(history.map(x=>x.rating)).toEqual([3,4]);
  for(const row of history) expect(row.assessed_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 });
+
+
+test("PARITY:PARITY-students-full-atomic-family-create shares durable website and MCP receipts",async({page,request})=>{
+ const callTool=await delegatedTool(page,request);
+ const name=unique("Full family student");
+ const contactEmail="parity-"+randomUUID()+"@example.com";
+ const key=randomUUID();
+ const payload={
+   name,level:"Beginner",teacherNotes:"Private first lesson planning",
+   birthdate:"2014-03-04",contactName:"Family "+randomUUID(),
+   contactEmail,idempotencyKey:key,
+ };
+ const model=await callTool("ccp_v1_students_create_full",{
+   ...payload,confirmed:true,
+ });
+ expect(model.error).toBeUndefined();
+ const id=(model.data as {id:string}).id;
+ expect((model.data as Record<string,unknown>).teacher_notes).toBeUndefined();
+ expect((model.data as Record<string,unknown>).contactEmail).toBeUndefined();
+ const browser=await browserProfile(page,id);
+ expect(browser.name).toBe(name);
+ expect(browser.teacher_notes).toBe(payload.teacherNotes);
+ expect(browser.guardian_id).toBeTruthy();
+ const replay=await page.request.post("/api/students",{data:payload});
+ expect(replay.status(),await replay.text()).toBe(201);
+ expect((await replay.json()).id).toBe(id);
+ const family=await page.request.get("/api/guardians/"+browser.guardian_id);
+ expect(family.status(),await family.text()).toBe(200);
+ expect((await family.json()).students.filter((s:{id:string})=>s.id===id)).toHaveLength(1);
+
+ const changed=await page.request.post("/api/students",{data:{
+   ...payload,name:name+" conflicting",
+ }});
+ expect(changed.status(),await changed.text()).toBe(409);
+
+ const websiteKey=randomUUID();
+ const another={
+   name:unique("Browser family student"),contactEmail:"other-"+randomUUID()+"@example.com",
+   contactName:"Another guardian",adultSelf:false,idempotencyKey:websiteKey,
+ };
+ const websiteCreate=await page.request.post("/api/students",{data:another});
+ expect(websiteCreate.status(),await websiteCreate.text()).toBe(201);
+ const siteStudent=await websiteCreate.json();
+ expect(siteStudent.createdFamily).toBe(true);
+ const mcpReplay=await callTool("ccp_v1_students_create_full",{
+   ...another,confirmed:true,
+ });
+ expect(mcpReplay.error).toBeUndefined();
+ expect((mcpReplay.data as {id:string}).id).toBe(siteStudent.id);
+ const originalFamily=await page.request.get("/api/guardians/"+siteStudent.guardian_id);
+ expect(originalFamily.status()).toBe(200);
+ expect((await originalFamily.json()).students).toHaveLength(1);
+
+ const foreignGuardian=await callTool("ccp_v1_students_create_full",{
+   name:unique("Foreign family denied"),guardianId:randomUUID(),
+   idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(foreignGuardian.error?.code).toBe("NOT_FOUND");
+});
