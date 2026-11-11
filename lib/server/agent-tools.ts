@@ -1241,7 +1241,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:teacherSpreadsheetPreview(a)};
       }
       case "ccp_v1_import_spreadsheet_suggest": {
-        const a=args as {headers:string[];sampleRows?:Record<string,string>[];useAi:boolean};
+        const a=args as {headers:string[];sampleRows?:Record<string,string>[];useAi:boolean;confirmedExternal?:boolean};
         return {data:await teacherSpreadsheetSuggest(db,teacherId,a)};
       }
       case "ccp_v1_import_spreadsheet_commit": {
