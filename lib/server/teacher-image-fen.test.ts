@@ -85,7 +85,7 @@ describe("BYO image-to-FEN proposed draft security",()=>{
  });
  it("supports teacher-key Anthropic vision without exposing image or credentials in result",async()=>{
   mocks.getPolicy.mockResolvedValue({ai_provider:"anthropic",ai_api_key:"synthetic-anthropic-key"});
-  const fetchMock=vi.fn(async()=>new Response(JSON.stringify({
+  const fetchMock=vi.fn(async(_url:string,_init:RequestInit)=>new Response(JSON.stringify({
    content:[{type:"text",text:JSON.stringify({fen,notes:"Review manually"})}],
   }),{status:200}));
   vi.stubGlobal("fetch",fetchMock);
