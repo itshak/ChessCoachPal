@@ -13,6 +13,7 @@ export class CalendarError extends Error {
 const failure=(s:number,c:string,m:string)=>new CalendarError(s,c,m);
 const timePattern=/^([01]\d|2[0-3]):[0-5]\d$/;
 const slotTimePattern=/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+const validRate=(value:unknown)=>value===null||(typeof value==="number"&&Number.isSafeInteger(value)&&value>=0);
 const dateOrNull=(d:string|null|undefined)=>!d||isDateString(d);
 export type SlotCreate={
  studentId:string;dayOfWeek:number;startTime:string;durationMinutes?:number;
@@ -76,6 +77,10 @@ export async function calendarSlotCreate(db:Db,teacherId:string,input:SlotCreate
  if(!Number.isInteger(input.dayOfWeek)||input.dayOfWeek<0||input.dayOfWeek>6||
     !timePattern.test(input.startTime)||!dateOrNull(input.startDate)||!dateOrNull(input.endDate))
    throw failure(400,"VALIDATION_ERROR","Valid weekday (0–6), time HH:mm and dates are required");
+ if(input.rateCents!==undefined&&!validRate(input.rateCents))
+  throw failure(400,"VALIDATION_ERROR","Rate must be a nonnegative integer number of cents or null");
+ if(input.isHomeVisit!==undefined&&typeof input.isHomeVisit!=="boolean")
+  throw failure(400,"VALIDATION_ERROR","Home visit must be a boolean");
  await ownedStudent(db,teacherId,input.studentId);
  const policy=await getPolicy(db,teacherId);
  const today=toLocalDateString(new Date(),policy.timezone);
@@ -170,9 +175,18 @@ export async function calendarSlotUpdate(db:Db,teacherId:string,id:string,input:
   if(!dateOrNull(input.endDate))throw failure(400,"VALIDATION_ERROR","Invalid end date");
   update.end_date=input.endDate||null;
  }
- if(input.active!==undefined)update.active=input.active;
- if(input.rateCents!==undefined)update.rate_cents=input.rateCents;
- if(input.isHomeVisit!==undefined)update.is_home_visit=input.isHomeVisit;
+ if(input.active!==undefined){
+  if(typeof input.active!=="boolean")throw failure(400,"VALIDATION_ERROR","Active must be a boolean");
+  update.active=input.active;
+ }
+ if(input.rateCents!==undefined){
+  if(!validRate(input.rateCents))throw failure(400,"VALIDATION_ERROR","Rate must be a nonnegative integer number of cents or null");
+  update.rate_cents=input.rateCents;
+ }
+ if(input.isHomeVisit!==undefined){
+  if(typeof input.isHomeVisit!=="boolean")throw failure(400,"VALIDATION_ERROR","Home visit must be a boolean");
+  update.is_home_visit=input.isHomeVisit;
+ }
  if(!Object.keys(update).length)throw failure(400,"VALIDATION_ERROR","Nothing to update");
  const start=(update.start_date??before.start_date) as string;
  const end=(update.end_date!==undefined?update.end_date:before.end_date) as string|null;
@@ -230,6 +244,8 @@ export async function calendarLessonDetail(db:Db,teacherId:string,id:string){
 export async function calendarLessonCreate(db:Db,teacherId:string,input:LessonCreate){
  if(!isDateString(input.date)||!timePattern.test(input.time))
   throw failure(400,"VALIDATION_ERROR","Date YYYY-MM-DD and time HH:mm required");
+ if(input.isHomeVisit!==undefined&&typeof input.isHomeVisit!=="boolean")
+  throw failure(400,"VALIDATION_ERROR","Home visit must be a boolean");
  await ownedStudent(db,teacherId,input.studentId);
  let duration=input.durationMinutes??30;
  if(!Number.isInteger(duration)||duration<1||duration>480)
@@ -261,6 +277,8 @@ export async function calendarLessonCreate(db:Db,teacherId:string,input:LessonCr
  return data;
 }
 export async function calendarLessonUpdate(db:Db,teacherId:string,id:string,input:LessonPatch){
+ if(input.isHomeVisit!==undefined&&typeof input.isHomeVisit!=="boolean")
+  throw failure(400,"VALIDATION_ERROR","Home visit must be a boolean");
  const lesson=await ownedLesson(db,teacherId,id);
  const update:Record<string,unknown>={};
  const warnings:string[]=[];

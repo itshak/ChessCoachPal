@@ -120,5 +120,14 @@ describe("future recurring-slot mutation safety",()=>{
   await expect(calendarLessonCreate(noDb,"teacher-one",{
    studentId:"student",date:"2099-01-01",time:"24:61",
   })).rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+  await expect(calendarSlotCreate(noDb,"teacher-one",{
+   studentId:"student",dayOfWeek:0,startTime:"13:00",rateCents:-100,
+  })).rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+  await expect(calendarSlotCreate(noDb,"teacher-one",{
+   studentId:"student",dayOfWeek:0,startTime:"13:00",isHomeVisit:"yes" as unknown as boolean,
+  })).rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+  await expect(calendarLessonCreate(noDb,"teacher-one",{
+   studentId:"student",date:"2099-01-01",time:"12:30",isHomeVisit:"yes" as unknown as boolean,
+  })).rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
  });
 });
