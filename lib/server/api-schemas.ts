@@ -52,6 +52,13 @@ const aliases = z.array(z.string().trim().min(1).max(120)).max(20);
 const chessHandle = z.union([z.string().trim().max(30).regex(/^[A-Za-z0-9_-]*$/), z.null()]);
 const chessRating = z.number().int().min(100).max(4000).nullable();
 
+const optionalStudentCents = z.union([
+  z.number().int().min(0).max(10_000_000),
+  z.string().trim().regex(/^\\d{0,8}$/).refine(value =>
+    value==="" || Number(value)<=10_000_000,{message:"Amount must be whole cents at most 10,000,000"}),
+  z.null(),
+]).optional();
+
 export const studentUpdateSchema = z.object({
   nameAliases: aliases.optional(),
   strength: z.number().int().min(1).max(10).nullable().optional(),
@@ -78,12 +85,11 @@ export const studentUpdateSchema = z.object({
   level: optionalText(120),
   birthdate: optionalDate,
   practiceStartDate: optionalDate,
-  defaultRateCents: z
-    .union([z.number().min(0).max(10_000_000), z.string().max(20), z.null()])
-    .optional(),
-  travelFeeCents: z
-    .union([z.number().min(0).max(10_000_000), z.string().max(20), z.null()])
-    .optional(),
+  // The website accepts whole-cent form strings, but never malformed,
+  // negative, fractional, exponential or out-of-range amounts. MCP exposes
+  // the same numeric semantics through its stricter structured schema.
+  defaultRateCents: optionalStudentCents,
+  travelFeeCents: optionalStudentCents,
   archived: z.boolean().optional(),
 });
 
