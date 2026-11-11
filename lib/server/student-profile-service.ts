@@ -60,9 +60,13 @@ export async function teacherStudentProfile(db: Db, teacherId: string, studentId
 /** Append-only, owner-scoped manual chess ratings/strength/goals audit history. */
 export async function teacherStudentChessHistory(db:Db,teacherId:string,studentId:string,
   opts:{offset?:number;limit?:number}={}){
+ // Query-string values from the website must have the same bounded pagination
+ // semantics as MCP's integer schema; never pass NaN or silently clamp.
+ const offset=opts.offset??0,limit=opts.limit??50;
+ if(!Number.isSafeInteger(offset)||offset<0||offset>100000||
+    !Number.isSafeInteger(limit)||limit<1||limit>100)
+   throw new StudentProfileError(400,"VALIDATION_ERROR","Invalid chess history pagination");
  await teacherStudentProfile(db,teacherId,studentId);
- const offset=Math.min(100000,Math.max(0,opts.offset??0));
- const limit=Math.min(100,Math.max(1,opts.limit??50));
  const {data,error}=await db.from("student_chess_profile_history")
   .select("id,field_name,previous_value,next_value,created_at")
   .eq("teacher_id",teacherId).eq("student_id",studentId)
