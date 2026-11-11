@@ -154,3 +154,41 @@ test("PARITY:PARITY-event-cross-client-idempotency rejects conflicting retries a
  const final=(await (await page.request.get("/api/events/"+id)).json()).event;
  expect(final.location).toBe("Reviewed club venue");
 });
+
+
+test("PARITY:PARITY-event-shared-field-validation rejects unknown fields and malformed input on both surfaces",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const title="Event schema parity "+randomUUID();
+ const date="2027-11-10T11:00:00+02:00";
+ const unknownWeb=await page.request.post("/api/events",{data:{
+   title,startsAt:date,secretUnexpected:"cannot mutate",
+ }});
+ expect(unknownWeb.status(),await unknownWeb.text()).toBe(400);
+ const unknownMcp=await call("ccp_v1_events_create",{
+   title,startsAt:date,secretUnexpected:"cannot mutate",confirmed:true,
+ });
+ expect(unknownMcp.error?.code).toBe("VALIDATION_ERROR");
+ const invalidWeb=await page.request.post("/api/events",{data:{
+   title,startsAt:"not-a-date",
+ }});
+ expect(invalidWeb.status(),await invalidWeb.text()).toBe(400);
+ const invalidMcp=await call("ccp_v1_events_create",{
+   title,startsAt:"not-a-date",confirmed:true,
+ });
+ expect(invalidMcp.error?.code).toBe("VALIDATION_ERROR");
+ const good=await page.request.post("/api/events",{data:{
+   title,startsAt:date,idempotencyKey:randomUUID(),
+ }});
+ expect(good.status(),await good.text()).toBe(201);
+ const eventId=(await good.json()).event.id as string;
+ const invalidEdit=await page.request.put("/api/events/"+eventId,{data:{
+   location:"Cannot write",invalidDomainField:"ignored previously",
+ }});
+ expect(invalidEdit.status(),await invalidEdit.text()).toBe(400);
+ const mcpInvalidEdit=await call("ccp_v1_events_update",{
+   eventId,location:"Cannot write",invalidDomainField:"ignored previously",confirmed:true,
+ });
+ expect(mcpInvalidEdit.error?.code).toBe("VALIDATION_ERROR");
+ expect((await (await page.request.get("/api/events/"+eventId)).json()).event.location)
+  .not.toBe("Cannot write");
+});
