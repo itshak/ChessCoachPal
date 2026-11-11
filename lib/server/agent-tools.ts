@@ -138,6 +138,13 @@ const studioPolicyPatch=z.object({
  currency:z.string().trim().min(3).max(3).optional(),
  invoiceCadence:z.enum(["monthly","manual"]).optional(),
  paymentInstructions:z.string().max(2000).optional(),
+ paymentProvider:z.enum(["manual","stripe"]).optional(),
+ // The payment QR is ordinary coach-owned data, not a Stripe credential.
+ // Validate format and 400 KB size in the shared website domain service.
+ paymentQrCode:z.string().max(400_000).nullable().optional(),
+ clearStripeSecretKey:z.literal(true).optional(),
+ clearStripePublishableKey:z.literal(true).optional(),
+ clearStripeWebhookSecret:z.literal(true).optional(),
  notifyInApp:z.boolean().optional(),
  notifyEmailPortalCancel:z.boolean().optional(),
  notifyEmailInvoicePaid:z.boolean().optional(),
@@ -401,12 +408,15 @@ const catalogue = [
   },
   {
     name:"ccp_v1_studio_policy_get",
-    description:"Read the teacher's studio rules, rates, cancellation policies and billing settings. Secrets and payment QR data are redacted.",
-    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+    description:"Read teacher-owned studio rules, rates and billing settings with secrets redacted. Payment QR image bytes require includePaymentQrCode=true and explicit confirmation; Stripe credentials are never returned.",
+    schema:z.object({
+      includePaymentQrCode:z.boolean().default(false),
+      confirmed:z.literal(true).optional(),
+    }).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_v1_studio_policy_update",
-    description:"Edit studio rates, policies and optional AI provider, or clear an existing AI key with explicit confirmation. New API keys and payment secrets remain browser-only secure inputs, never accepted through MCP.",
+    description:"Edit studio rates, payment provider, approved payment QR and optional AI provider, or clear stored credentials with confirmation. New API keys and Stripe secrets remain browser-only secure inputs, never accepted through MCP.",
     schema:z.object({changes:studioPolicyPatch,confirmed:z.literal(true)}).strict()
       .refine(v=>Object.keys(v.changes).length>0,"Changes required"),
     scope:"coach:write",readOnly:false,
@@ -1313,8 +1323,11 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:{...report,format:"csv"}};
       }
       case "ccp_v1_studio_policy_get": {
+        const a=args as {includePaymentQrCode:boolean;confirmed?:boolean};
         const p=await teacherPolicyView(db,teacherId);
-        return {data:{...p,payment_qr_code:null,
+        return {data:{...p,
+          payment_qr_code:a.includePaymentQrCode&&a.confirmed===true
+            ?p.payment_qr_code:null,
           paymentQrCodeConfigured:Boolean(p.payment_qr_code)}};
       }
       case "ccp_v1_studio_policy_update": {
