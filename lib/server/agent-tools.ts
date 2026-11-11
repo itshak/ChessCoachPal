@@ -37,7 +37,8 @@ import { teacherDashboardSummary, teacherNotificationsList, teacherNotifications
   TeacherOverviewError } from "@/lib/server/teacher-overview-service";
 
 import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, teacherStudentChessHistory, teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, StudentProfileError } from "@/lib/server/student-profile-service";
-import { studentUpdateSchema } from "@/lib/server/api-schemas";
+import { studentUpdateSchema,studentCreateSchema } from "@/lib/server/api-schemas";
+import { createStudentWithOptionalFamily } from "@/lib/server/families";
 import { assertWithinHostedLimit } from "@/lib/server/entitlements";
 const safeStudentProfile = (row: Record<string,unknown>) => ({
   id:row.id,name:row.name,name_aliases:row.name_aliases,level:row.level,
@@ -993,8 +994,16 @@ const catalogue = [
   },
   {
     name:"ccp_v1_students_create",
-    description:"Create one teacher-owned learner. Confirm the name and use a fresh idempotency key.",
+    description:"Create a basic teacher-owned learner with name and optional level. For guardian/contact, birthdate, notes, or family-of-one creation use the full shared student create tool.",
     schema:z.object({name:shortName,level:z.string().trim().max(120).nullable().optional(),...mutation}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_students_create_full",
+    description:"Create a teacher-owned learner with optional owned family, guardian contact, birthdate, level and private teacher notes in ONE atomic website/MCP transaction. Requires an idempotency key and approval; output redacts private notes and contact details.",
+    schema:studentCreateSchema.extend({
+      idempotencyKey:uuid,confirmed:z.literal(true),
+    }).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1188,6 +1197,19 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_students_create_full": {
+        const a=args as Parameters<typeof createStudentWithOptionalFamily>[2];
+        const result=await createStudentWithOptionalFamily(db,teacherId,a);
+        if(!result.ok)return {error:{
+          code:result.status===403?"HOSTED_LIMIT_REACHED":
+            result.status===404?"NOT_FOUND":
+            result.status===409?"IDEMPOTENCY_CONFLICT":
+            result.status===400?"VALIDATION_ERROR":"DATABASE_ERROR",
+          message:result.error,
+        }};
+        return {data:{...safeStudentProfile(result.student),
+          createdFamily:result.createdFamily}};
+      }
       case "ccp_v1_billing_generation_preview": {
         const a=args as {periodStart:string;periodEnd:string};
         return await billingActionResponse(await teacherBillingGenerate(db,teacherId,a));
