@@ -8,6 +8,7 @@ function dbWithRows(source:Student[],reads:Array<[number,number]>) {
    from(table:string){
      expect(table).toBe("students");
      let rows=[...source],includeCount=false;
+     let rangeStart=0,rangeEnd=999;
      const sortFields:Array<string>=[];
      const q={
        select(_fields:string,opts?:{count?:string}){
@@ -31,9 +32,13 @@ function dbWithRows(source:Student[],reads:Array<[number,number]>) {
          return q;
        },
        order(k:string){sortFields.push(k);return q;},
+       // PostgREST query builders remain chainable after range(), so the
+       // service can apply is/not/ilike filters before the query is awaited.
        range(start:number,end:number){
-         reads.push([start,end]);
-         rows.sort((a,b)=>{
+         reads.push([start,end]);rangeStart=start;rangeEnd=end;return q;
+       },
+       then<T>(resolve:(result:{data:Student[];count:number|null;error:null})=>T){
+         const ordered=[...rows].sort((a,b)=>{
            for(const key of sortFields){
              const x=String((a as unknown as Record<string,unknown>)[key]);
              const y=String((b as unknown as Record<string,unknown>)[key]);
@@ -41,9 +46,10 @@ function dbWithRows(source:Student[],reads:Array<[number,number]>) {
            }
            return 0;
          });
-         // Model the hard 1000-row PostgREST cap.
-         return Promise.resolve({data:rows.slice(start,Math.min(end+1,start+1000)),
-           count:includeCount?rows.length:null,error:null});
+         // Model the hard 1000-row PostgREST cap after all applied filters.
+         return Promise.resolve(resolve({data:ordered.slice(rangeStart,
+           Math.min(rangeEnd+1,rangeStart+1000)),
+           count:includeCount?ordered.length:null,error:null}));
        },
      };
      return q;
