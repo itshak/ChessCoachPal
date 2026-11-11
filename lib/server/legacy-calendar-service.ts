@@ -58,11 +58,10 @@ export async function calendarSlotsList(db:Db,teacherId:string,opts:{studentId?:
  const pageSize=500,maxRows=20_000;
  for(let offset=0;;offset+=pageSize){
    let query=db.from("lesson_slots").select("*").eq("teacher_id",teacherId)
-     .order("day_of_week").order("start_time").order("id")
-     .range(offset,offset+pageSize-1);
+     .order("day_of_week").order("start_time").order("id");
    if(opts.studentId)query=query.eq("student_id",opts.studentId);
    if(opts.activeOnly)query=query.eq("active",true);
-   const {data,error}=await query;
+   const {data,error}=await query.range(offset,offset+pageSize-1);
    if(error)throw failure(500,"DATABASE_ERROR","Unable to list recurring slots");
    const page=data??[];
    if(rows.length+page.length>maxRows)
