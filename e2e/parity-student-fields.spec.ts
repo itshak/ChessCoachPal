@@ -161,3 +161,27 @@ test("PARITY:PARITY-students-rate-fee corrects money fields bidirectionally with
   expect(privateRead.data.default_rate_cents).toBe(4200);
   expect(privateRead.data.travel_fee_cents).toBe(0);
 });
+
+
+test("PARITY:PARITY-students-invalid-cents reject bad monetary edits on website and MCP without changing stored fields",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const id=await student(call);
+ const before=await profile(page,id);
+ for(const changes of [
+   {defaultRateCents:-100},
+   {defaultRateCents:12.4},
+   {travelFeeCents:"invalid"},
+   {travelFeeCents:10_000_001},
+ ]){
+   const website=await page.request.put("/api/students/"+id,{data:changes});
+   expect(website.status(),await website.text()).toBe(400);
+   const mcp=await call("ccp_v1_students_profile_edit",{
+     studentId:id,changes,expectedUpdatedAt:before.updated_at,confirmed:true,
+   });
+   expect(mcp.error?.code).toBe("VALIDATION_ERROR");
+ }
+ const after=await profile(page,id);
+ expect(after.default_rate_cents).toBe(before.default_rate_cents);
+ expect(after.travel_fee_cents).toBe(before.travel_fee_cents);
+ expect(after.updated_at).toBe(before.updated_at);
+});
