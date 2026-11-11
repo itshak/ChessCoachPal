@@ -1036,6 +1036,22 @@
       "explanation": "Shared material catalog supports typed create/read/list, atomic revisioned correction, active/archive search and same teacher-owned API/tool fields. Typed relations and lifecycle have dedicated routes. Full classification pending integration-wide evidence."
     },
     {
+      "path": "app/api/training/plans/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "partial",
+      "existingTools": [
+        "ccp_v1_training_plans_list",
+        "ccp_v1_training_plans_get",
+        "ccp_v1_training_plans_commit"
+      ],
+      "explanation": "Coach-authored per-student training plans with versioned individual goals, coach-evidence-only achievement, durable idempotent revisions, archive/history and factual next-lesson briefing. Shared teacher-scoped web/MCP service and named OAuth scenario; integrated acceptance pending.",
+      "evidenceTest": "e2e/parity-training-plans.spec.ts"
+    },
+    {
       "path": "app/api/webhooks/stripe/[teacherId]/route.ts",
       "methods": [
         "POST"
@@ -1123,6 +1139,7 @@
     "components/teacher/StudentInfoCard.tsx",
     "components/teacher/StudentLessonNotes.tsx",
     "components/teacher/StudentNotesEditor.tsx",
+    "components/teacher/StudentTrainingPlansPanel.tsx",
     "components/teacher/TeacherNav.tsx",
     "components/teacher/TeacherThemeProvider.tsx",
     "components/teacher/TrainingHomeworkPanel.tsx",

@@ -35,6 +35,7 @@ import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
 import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
 import {legacyMaterialBridgeListSchema,legacyMaterialBridgeChangeSchema,teacherLegacyMaterialBridgeList,teacherLegacyMaterialBridgeChange,LegacyMaterialBridgeError} from "@/lib/server/material-legacy-bridge";
+import {trainingPlanListSchema,trainingPlanGetSchema,trainingPlanCommitSchema,teacherTrainingPlansList,teacherTrainingPlanGet,teacherTrainingPlanCommit,TrainingPlanError} from "@/lib/server/student-training-plans";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
 import {teacherCalendarFeedStatus,teacherCalendarFeedRotate,CalendarFeedTokenError} from "@/lib/server/teacher-calendar-feed-service";
 import {teacherProfileGet,teacherProfileUpdate,TeacherProfileError} from "@/lib/server/teacher-profile-service";
@@ -1193,6 +1194,21 @@ const catalogue = [
     schema:assignmentReviewSchema,scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_training_plans_list",
+    description:"Read a teacher-owned student's explicit training plans, goals and statuses with no inferred skill mastery; paginated and archived-aware.",
+    schema:trainingPlanListSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_training_plans_get",
+    description:"Get one training plan with immutable revision snapshots and manually evidenced goal decisions.",
+    schema:trainingPlanGetSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_training_plans_commit",
+    description:"Create or revision-guard edit a training plan and independent chess goals, requiring teacher confirmation and an idempotency UUID. Achieved goals require explicit coach-written evidence; no inference from homework.",
+    schema:trainingPlanCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_v1_material_legacy_bridge_list",
     description:"List old student/session-specific study resource links with their explicitly confirmed typed catalog identities. Never infer teaching or mastery from a link.",
     schema:legacyMaterialBridgeListSchema,scope:"coach:read",readOnly:true,
@@ -1273,6 +1289,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
+      case "ccp_v1_training_plans_list":
+        return {data:await teacherTrainingPlansList(db,teacherId,args as Parameters<typeof teacherTrainingPlansList>[2])};
+      case "ccp_v1_training_plans_get":
+        return {data:await teacherTrainingPlanGet(db,teacherId,(args as {planId:string}).planId)};
+      case "ccp_v1_training_plans_commit":
+        return {data:await teacherTrainingPlanCommit(db,teacherId,args as Parameters<typeof teacherTrainingPlanCommit>[2])};
       case "ccp_v1_material_legacy_bridge_list":
         return {data:await teacherLegacyMaterialBridgeList(db,teacherId,args as Parameters<typeof teacherLegacyMaterialBridgeList>[2])};
       case "ccp_v1_material_legacy_bridge_change":
@@ -1961,6 +1983,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     }
     return { error: { code: "NOT_FOUND", message: "Unknown tool" } };
   } catch (error) {
+    if (error instanceof TrainingPlanError)
+      return {error:{code:error.code,message:error.message}};
     if (error instanceof LegacyMaterialBridgeError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CoachBriefingError)

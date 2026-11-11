@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { ChessLearningPanel } from "@/components/teacher/ChessLearningPanel";
 import { MaterialHistoryPanel } from "@/components/teacher/MaterialHistoryPanel";
 import { LegacyMaterialBridgePanel } from "@/components/teacher/LegacyMaterialBridgePanel";
+import { StudentTrainingPlansPanel } from "@/components/teacher/StudentTrainingPlansPanel";
 import { ArchiveStudentButton } from "@/components/teacher/ArchiveStudentButton";
 import { RemoveStudentButton } from "@/components/teacher/RemoveStudentButton";
 import { StudentNotesEditor } from "@/components/teacher/StudentNotesEditor";
@@ -163,6 +164,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialNotes={student.teacher_notes ?? ""}
       />
       <StudentLessonNotes notes={lessonNotes} timezone={policy.timezone} />
+      <StudentTrainingPlansPanel studentId={id} />
       <CoachBriefingPanel studentId={id} />
       <div className="mb-8"><UnifiedLessonHistoryPanel fixedStudentId={id}/></div>
       <div className="mb-8"><MaterialHistoryPanel fixedStudentId={id} /></div>

@@ -4,6 +4,7 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import {teacherUnifiedLessonHistory} from "@/lib/server/unified-lesson-service";
 import {teacherMaterialHistory} from "@/lib/server/teacher-material-history";
 import {teacherAssignmentsList} from "@/lib/server/training-assignments";
+import {teacherTrainingPlansList} from "@/lib/server/student-training-plans";
 
 const uuid=z.string().uuid();
 export const coachBriefingSchema=z.object({
@@ -36,7 +37,7 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
   if(studentError)throw fail(500,"DATABASE_ERROR","Student details unavailable");
   if(!student)throw fail(404,"NOT_FOUND","Student not found");
 
-  const [lessons,materials,assignments,observationResult]=await Promise.all([
+  const [lessons,materials,assignments,observationResult,trainingPlans]=await Promise.all([
     teacherUnifiedLessonHistory(db,teacherId,{
       studentId:student.id,from,to,limit:input.limit,offset:0,
     }),
@@ -52,6 +53,9 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
       .eq("teacher_id",teacherId).eq("student_id",student.id)
       .not("verified_at","is",null)
       .order("observed_at",{ascending:false}).limit(input.limit),
+    teacherTrainingPlansList(db,teacherId,{
+      studentId:student.id,includeArchived:false,limit:input.limit,offset:0,
+    }),
   ]);
   if(observationResult.error)
     throw fail(500,"DATABASE_ERROR","Verified observations unavailable");
@@ -79,6 +83,8 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
     unknowns.push("No lessons are recorded in the selected history window.");
   if(!materials.total)
     unknowns.push("No explicitly attested material coverage is recorded in the selected history window.");
+  if(!trainingPlans.total)
+    unknowns.push("No active training plans or explicitly recorded goal decisions.");
   unknowns.push("Assignment completion and independent skill mastery are distinct; no mastery is inferred.");
 
   return {
@@ -101,6 +107,14 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
     homework:{
       entries:assignmentsSummary,total:assignments.total,
       nextOffset:assignments.nextOffset,
+    },
+    trainingPlans:{
+      entries:trainingPlans.plans.map(plan=>({
+        id:plan.id,title:plan.title,status:plan.status,
+        revision:plan.revision,goals:plan.goals,
+      })),
+      total:trainingPlans.total,nextOffset:trainingPlans.nextOffset,
+      truthBasis:"explicit_teacher_goal_decisions_only",
     },
     verifiedObservations:known.map(o=>({
       id:o.id,categoryId:o.category_id,sessionId:o.session_id,

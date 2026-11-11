@@ -14,6 +14,10 @@ type Briefing={
     attempts:Array<{id:string;outcome:string}>;
     reviews:Array<{id:string;verdict:string}>;
   }>;total:number};
+  trainingPlans:{entries:Array<{
+    id:string;title:string;status:string;revision:number;
+    goals:Array<{id:string;title:string;status:string;targetDate:string|null;coachEvidence:string|null}>;
+  }>;total:number};
   verifiedObservations:Array<{id:string;observation:string;observedAt:string}>;
   unknowns:string[];
 };
@@ -77,6 +81,23 @@ export function CoachBriefingPanel({studentId}:{studentId:string}){
               {h.needsCoachReview?" · Coach review needed":h.reviews.length?" · Reviewed":" · Not reviewed"}
               {h.hasRecordedCompletion?" · Completion recorded":" · Completion not evidenced"}
               {h.instructions&&<p className="text-muted">{h.instructions}</p>}
+            </li>)}
+          </ul>}
+      </div>
+      <div>
+        <h3 className="font-semibold">Explicit training plans and goals ({briefing.trainingPlans.total})</h3>
+        {briefing.trainingPlans.entries.length===0?
+          <p className="text-muted">No coach-authored training plan is recorded.</p>:
+          <ul className="list-disc pl-5 space-y-2">
+            {briefing.trainingPlans.entries.map(plan=><li key={plan.id}>
+              {plan.title} · {plan.status} · revision {plan.revision}
+              <ul className="list-disc pl-5">
+                {plan.goals.map(goal=><li key={goal.id}>
+                  {goal.title} · {goal.status}
+                  {goal.targetDate?" · Target "+goal.targetDate:""}
+                  {goal.coachEvidence?" · Coach evidence: "+goal.coachEvidence:" · No achievement evidence recorded"}
+                </li>)}
+              </ul>
             </li>)}
           </ul>}
       </div>
