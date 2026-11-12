@@ -1,7 +1,7 @@
 {
-  "auditedAt": "2026-11-11",
-  "headSha": "d18356c5e0a469c1655b515d62a76eef46dc284d",
-  "policy": "MCP-first business-feature parity. Every website business action needs a tested MCP counterpart or documented secure browser approval; strict release parity remains BLOCKED pending remaining route-family and 93-case acceptance.",
+  "auditedAt": "2026-11-12",
+  "headSha": "155cdb014405d3ad25c86c814ceaac29a1da9764",
+  "policy": "MCP-first parity. 53 of 59 teacher route families have accepted browser/delegated MCP evidence at verified source head 155cdb0; 6 partial routes remain; strict v0.1.0 release gate BLOCKED. Complete fields, canonical history and original 93 scenarios still required.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -162,12 +162,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_generation_preview",
         "ccp_v1_billing_generation_commit"
       ],
-      "explanation": "One shared teacher-owned generation preview/commit now has transactional invoice+credit writes and a durable period-scoped receipt. Website and MCP can supply the same UUID to replay original invoice IDs without double invoice creation; strict website input schema and concurrent cross-client E2E are included as unverified candidates. Canonical completed lesson billing and final acceptance remain open.",
+      "explanation": "Cross-interface invoice generation preview and confirmed commit now use one current-schema database transaction with teacher-period locks, idempotent receipts and rollback-safe credit allocation. Two actual browser/delegated MCP E2E branches verify concurrency, original invoice replay, strict fields, changed-key conflict, tenant-owned lines, plus original period/rate cases. Tested 205 passing E2E at 155cdb0, full CI/security/Compose/restore green. Broader canonical lesson data model cutover is not part of this route's acceptance.",
       "evidenceTest": "e2e/parity-billing-finance-receipts.spec.ts"
     },
     {
@@ -176,11 +176,11 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_invoice_checkout"
       ],
-      "explanation": "An owned invoice Checkout link now requires SQL row-locked revision and payable-balance claim; concurrent website/MCP attempts cannot overwrite a winning session, and a loser attempts to expire its unlinked provider session. Configured synthetic Stripe adversarial race/rollback E2E added; provider uncertainty and final acceptance remain open.",
+      "explanation": "Website and confirmed MCP share configured synthetic Stripe Checkout creation with safe browser handoff, validated owner/current invoice/payable-balance SQL-locked claim, and competing-provider-session expiry or fail-closed handling. Real synthetic Stripe adversarial concurrent website/MCP, same-session retries, privacy and PDF/ledger readback passed at 155cdb0 (205 E2E green). Real external provider credentials/charges not covered by CI; separate prepublication live gate.",
       "evidenceTest": "e2e/parity-configured-stripe.spec.ts"
     },
     {
@@ -228,11 +228,11 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_invoice_regenerate"
       ],
-      "explanation": "One shared regeneration service now uses an atomic invoice-line/credit SQL transaction, an optimistic invoice timestamp and durable website/MCP retry receipts. It refuses active Stripe links and stale edits. Concurrent actual-database replay and stale-race tests are candidates pending exact-head CI/E2E.",
+      "explanation": "Browser and delegated MCP share one owner-scoped regeneration domain service and database transaction with original invoice revision, immutable replay receipt, exact lesson/credit lines, stale revision rollback and no unreconciled Stripe checkout modification. Synthetic actual DB browser↔MCP concurrency and direct SQL negative tests passed at 155cdb0 (205 E2E green); live provider testing separately required.",
       "evidenceTest": "e2e/parity-billing-finance-receipts.spec.ts"
     },
     {
