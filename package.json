@@ -20,44 +20,11 @@
     "mcp:parity:audit": "node scripts/mcp-parity-audit.mjs",
     "mcp:parity:strict": "node scripts/mcp-parity-audit.mjs --strict",
     "schema:canonical:guard": "node scripts/pre1-schema-guard.mjs",
-    "schema:canonical:guard-test": "node --test scripts/pre1-schema-guard.test.mjs",
+    "schema:canonical:guard-test": "node --test scripts/pre1-schema-guard.test.mjs scripts/canonical-cutover-audit.test.mjs",
+    "schema:attendance:inventory": "node scripts/canonical-cutover-audit.mjs",
+    "schema:attendance:strict": "node scripts/canonical-cutover-audit.mjs --strict",
     "schema:canonical:strict": "node scripts/pre1-schema-guard.mjs --strict-materials"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
-    "@supabase/supabase-js": "^2.98.0",
-    "@tiptap/extension-placeholder": "^3.31.3",
-    "@tiptap/pm": "^3.31.3",
-    "@tiptap/react": "^3.31.3",
-    "@tiptap/starter-kit": "^3.31.3",
-    "ics": "^3.12.0",
-    "next": "16.4.1",
-    "papaparse": "^5.5.4",
-    "pdf-lib": "^1.17.1",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "recharts": "^3.9.2",
-    "resend": "^6.17.1",
-    "stripe": "^22.3.1",
-    "web-push": "^3.6.7",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
-    "zod": "^4.6.7"
-  },
-  "devDependencies": {
-    "@playwright/test": "^1.55.0",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/papaparse": "^5.5.2",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@types/web-push": "^3.6.4",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
-    "typescript": "5.9.3",
-    "vitest": "^4.1.11"
-  },
-  "overrides": {
-    "postcss": "^8.5.10"
-  }
-}
+    "@su¶»§q«^
