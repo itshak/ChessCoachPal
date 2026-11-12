@@ -421,14 +421,15 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_events_detail",
         "ccp_v1_events_update",
         "ccp_v1_events_delete_impact",
         "ccp_v1_events_delete"
       ],
-      "explanation": "Candidate atomic event update, roster/RSVP history preservation, one-student repertoire patches, and durable revision-safe cross-client request replay; complete source/test acceptance pending."
+      "explanation": "Accepted current-schema teacher event list/create/detail/update/impact/delete via shared atomic service. Authenticated website ↔ delegated MCP scenarios in parity-families-events plus event-atomic confirm roster/repertoire corrections, stable request replay, rollback and no accidental invitations; 188 passing E2E on verified SHA a3af159. External invite email is independently tracked; broader contact roles are not resolved.",
+      "evidenceTest": "e2e/parity-families-events.spec.ts"
     },
     {
       "path": "app/api/events/route.ts",
@@ -437,12 +438,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_events_list",
         "ccp_v1_events_create"
       ],
-      "explanation": "Atomic event/roster/RSVP transaction and durable request receipts are implemented; website/MCP creation, replay and rollback synthetic tests added but unexecuted. Provider delivery and cross-tenant acceptance remain required."
+      "explanation": "Accepted current-schema teacher event list/create/detail/update/impact/delete via shared atomic service. Authenticated website ↔ delegated MCP scenarios in parity-families-events plus event-atomic confirm roster/repertoire corrections, stable request replay, rollback and no accidental invitations; 188 passing E2E on verified SHA a3af159. External invite email is independently tracked; broader contact roles are not resolved.",
+      "evidenceTest": "e2e/parity-families-events.spec.ts"
     },
     {
       "path": "app/api/feeds/[token]/calendar/route.ts",
@@ -460,11 +462,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_guardians_rotate_portal_token"
       ],
-      "explanation": "Candidate tenant-owned SQL rotation now supports optional UUID request receipts with cross-client replay and secret redaction; new OAuth browser/MCP regression is committed but unexecuted. Route remains unverified until concurrency, tenant scope, real portal and replay acceptance pass."
+      "explanation": "Accepted teacher-owned portal-link rotation in website and delegated MCP. Secret never enters model, repeat request returns stable receipt, changed cross-client request rejects, and prior token invalidation is verified by parity-families-events on green E2E SHA a3af159. Guardian role redesign remains separate.",
+      "evidenceTest": "e2e/parity-families-events.spec.ts"
     },
     {
       "path": "app/api/guardians/[id]/route.ts",
@@ -474,14 +477,15 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_guardians_detail",
         "ccp_v1_guardians_update",
         "ccp_v1_guardians_delete_impact",
         "ccp_v1_guardians_delete"
       ],
-      "explanation": "Atomic family membership replacement, durable request receipts and deletion race restriction are implemented for both transports, with rollback, replay and tenant tests pending final CI. Do not treat tool-name coverage as verified."
+      "explanation": "Accepted current family list/create/detail/contact update/member replacement/deletion-impact and guarded delete via shared tenant and atomic idempotent services. Authenticated parity-families-events and guardian-atomic cover approval, sensitive-data redaction, bulk roster replacement, rollback, changed-key replay and child ownership on verified E2E a3af159. Independent permission roles remain unimplemented.",
+      "evidenceTest": "e2e/parity-families-events.spec.ts"
     },
     {
       "path": "app/api/guardians/route.ts",
@@ -490,12 +494,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_guardians_list",
         "ccp_v1_guardians_create"
       ],
-      "explanation": "Candidate website/MCP family creation shares atomic SQL with full student membership validation, durable request receipts, paginated complete listings and safe model redaction; pending synthetic test execution and cross-tenant acceptance."
+      "explanation": "Accepted current family list/create/detail/contact update/member replacement/deletion-impact and guarded delete via shared tenant and atomic idempotent services. Authenticated parity-families-events and guardian-atomic cover approval, sensitive-data redaction, bulk roster replacement, rollback, changed-key replay and child ownership on verified E2E a3af159. Independent permission roles remain unimplemented.",
+      "evidenceTest": "e2e/parity-families-events.spec.ts"
     },
     {
       "path": "app/api/hosted-billing/checkout/route.ts",
