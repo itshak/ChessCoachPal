@@ -1223,7 +1223,7 @@ CREATE TABLE IF NOT EXISTS "public"."teaching_sessions" (
     "makeup_for_session_id" "uuid",
     "makeup_for_student_id" "uuid",
     CONSTRAINT "teaching_sessions_slot_identity_check" CHECK (
-       ("slot_id" IS NULL) = ("slot_occurrence_date" IS NULL)),
+       "slot_id" IS NULL OR "slot_occurrence_date" IS NOT NULL),
     CONSTRAINT "teaching_sessions_makeup_pair_check" CHECK (
        ("makeup_for_session_id" IS NULL) = ("makeup_for_student_id" IS NULL)),
     CONSTRAINT "teaching_sessions_check" CHECK ((("group_id" IS NULL) <> ("student_id" IS NULL))),
