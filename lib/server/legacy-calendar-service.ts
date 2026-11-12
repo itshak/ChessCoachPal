@@ -101,9 +101,10 @@ export async function calendarSlotCreate(db:Db,teacherId:string,input:SlotCreate
  return data;
 }
 type Upcoming={id:string;lesson_date:string;starts_at:string;duration_minutes:number;
- is_home_visit:boolean;rescheduled_from_date:string|null;
+ is_home_visit:boolean;rescheduled_from_date:string|null;makeup_for:string|null;
  attendance:{id:string}|{id:string}[]|null;
- lesson_notes:{id:string}|{id:string}[]|null};
+ lesson_notes:{id:string}|{id:string}[]|null;
+ invoice_items:{id:string}[]|null;credit_redemptions:{id:string}[]|null};
 async function upcomingSlotLessons(db:Db,slotId:string):Promise<Upcoming[]>{
  // Inspect every ordered page before mutation: a truncated list can erase
  // or leave unexpected future lessons when a recurring slot is corrected.
@@ -112,7 +113,7 @@ async function upcomingSlotLessons(db:Db,slotId:string):Promise<Upcoming[]>{
  const pageSize=500,maxRows=20_000;
  for(let offset=0;;offset+=pageSize){
   const {data,error}=await db.from("lessons").select(
-   "id,lesson_date,starts_at,duration_minutes,is_home_visit,rescheduled_from_date,attendance!lesson_id (id),lesson_notes (id)"
+   "id,lesson_date,starts_at,duration_minutes,is_home_visit,rescheduled_from_date,makeup_for,attendance!lesson_id (id),lesson_notes (id),invoice_items (id),credit_redemptions (id)"
   ).eq("slot_id",slotId).gte("starts_at",cutoff)
    .order("starts_at").order("id").range(offset,offset+pageSize-1);
   if(error)throw failure(500,"DATABASE_ERROR","Unable to inspect upcoming lessons");
@@ -128,7 +129,13 @@ async function syncUpcoming(db:Db,slot:SlotRow,timezone:string,today:string,home
  // Re-read immediately before reconciliation: never rely on the earlier
  // size preflight as an attendance/notes snapshot across concurrent writes.
  const upcoming=await upcomingSlotLessons(db,slot.id);
- const unmarked=upcoming.filter(l=>!oneToOne(l.attendance)&&!l.rescheduled_from_date);
+ // Never automatically rewrite an occurrence with an explicit attendance
+ // decision, teacher note, make-up association, invoice line or redeemed
+ // credit. Those are teaching/financial history, even for future dates.
+ // The older code checked only attendance before changing billed time.
+ const unmarked=upcoming.filter(l=>!oneToOne(l.attendance)&&
+   !oneToOne(l.lesson_notes)&&!l.rescheduled_from_date&&!l.makeup_for&&
+   !(l.invoice_items?.length)&&!(l.credit_redemptions?.length));
  const until=unmarked.reduce((max,l)=>l.lesson_date>max?l.lesson_date:max,addDays(today,56));
  const byDate=new Map(computeOccurrences(slot,today,until,timezone).map(x=>[x.lesson_date,x]));
  for(const lesson of unmarked){
