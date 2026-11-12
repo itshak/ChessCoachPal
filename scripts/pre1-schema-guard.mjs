@@ -19,6 +19,11 @@ export function canonicalSchemaErrors({
  if(!sql.includes("CREATE TABLE public.learning_materials")||
     !sql.includes("CREATE TABLE public.student_training_plans"))
    errors.push("Canonical snapshot is missing required current typed chess tables");
+ // A single-dollar delimiter breaks the fresh Supabase SQL bootstrap but
+ // cannot be caught by TypeScript or ordinary static tool-parity auditing.
+ // PostgreSQL requires $ or a full named $tag$ on BOTH sides of a body.
+ if(/\bAS[ \t]*\$(?:\r?\n|;)/.test(sql)||/\bEND;[ \t\r\n]*\$;/.test(sql))
+   errors.push("SQL function body uses malformed single-dollar delimiter");
  for(const [label,source] of Object.entries({sql,transfer,agent,catalog,studentPage,teacherComponents})){
    if(/learning_material_legacy_links|ccp_legacy_material_bridge_change|material-legacy-bridge|LegacyMaterialBridge|ccp_v1_material_legacy_bridge_/i.test(source))
      errors.push(label+": obsolete material compatibility bridge detected");

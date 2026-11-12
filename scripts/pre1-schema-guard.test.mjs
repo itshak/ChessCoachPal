@@ -41,3 +41,9 @@ test("ADR-0001: reject an independent material URL catalog in the canonical SQL"
  const failures=canonicalSchemaErrors({...clean,sql});
  ok(failures.some(e=>e.includes("Independent URL material catalog")));
 });
+
+test("ADR-0001: malformed single-dollar function delimiters fail before expensive Supabase bootstrap",()=>{
+ const malformed=clean.sql+"\\nCREATE FUNCTION public.demo() RETURNS void LANGUAGE plpgsql AS $\\nBEGIN\\nEND;\\n$;";
+ const errors=canonicalSchemaErrors({...clean,sql:malformed});
+ ok(errors.some(e=>e.includes("single-dollar delimiter")));
+});
