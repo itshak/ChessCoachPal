@@ -50,6 +50,17 @@ test("PARITY:PARITY-bulk-preview-recipient-revision-race requires reviewed fresh
   ids:[id],includeRecipients:true,
  });
  expect(secretWithoutApproval.error?.code).toBe("VALIDATION_ERROR");
+ const anonymousView=await call("ccp_v1_billing_invoices_bulk_preview",{
+  ids:[id],includeRecipients:false,
+ });
+ expect(anonymousView.error).toBeUndefined();
+ expect(anonymousView.data.previewDigest).toBeNull();
+ expect(anonymousView.data.results[0].preview.recipients).toBeUndefined();
+ const noReviewedDigest=await call("ccp_v1_billing_invoices_bulk",{
+  ids:[id],action:"send",confirmed:true,confirmedEmail:true,
+  previewDigest:anonymousView.data.previewDigest,
+ });
+ expect(noReviewedDigest.error?.code).toBe("VALIDATION_ERROR");
  expect((await admin.from("guardians").update({email:finalEmail})
   .eq("id",family.data!.id)).error).toBeNull();
  const stale=await call("ccp_v1_billing_invoices_bulk",{

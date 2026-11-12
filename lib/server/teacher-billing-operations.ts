@@ -490,7 +490,11 @@ export async function teacherBillingBulkPreview(
    .digest("hex");
  const failed=results.filter(x=>!x.ok).length;
  return NextResponse.json({
-  ok:failed===0,ids,previewDigest,readyCount:results.length-failed,
+  ok:failed===0,ids,
+  // A digest is authorization to proceed after reviewing all destinations.
+  // The anonymized preview deliberately cannot mint that authorization.
+  previewDigest:includeRecipients?previewDigest:null,
+  readyCount:results.length-failed,
   failedCount:failed,
   results:results.map(item=>({
    id:item.id,ok:item.ok,
