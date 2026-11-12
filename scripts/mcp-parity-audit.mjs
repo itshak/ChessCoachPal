@@ -141,6 +141,13 @@ const pendingCases=cases.filter(match=>match[1]===" ").length;
 console.log("New canonical parity workflows: "+(nextRows.length-nextRows.filter(x=>/^\|\s*-\s*\[ \]/.test(x)).length)+"/"+nextRows.length+" verified.");
 console.log("Browser ↔ MCP behavioral checklist: "+(cases.length-pendingCases)+"/"+cases.length+
   " verified, "+pendingCases+" not yet checked.");
+if(pendingCases>0){
+  // A route catalogue can be 100% covered and still lack signed-off behavior.
+  // Normal CI validates inventory structure, but must never imply that strict
+  // website/MCP release parity holds before all historical cases pass.
+  console.log("Release BLOCKED: "+pendingCases+
+    " historical website/MCP behavior cases remain unsigned.");
+}
 if (process.argv.includes("--strict")) {
   if (outstanding.length>0)
     errors.push("Strict MCP-first parity gate failed: "+outstanding.length+" teacher-business route surfaces incomplete.");
@@ -151,5 +158,8 @@ if (errors.length) {
   for (const e of errors) console.error("ERROR: "+e);
   process.exitCode=1;
 } else {
-  console.log("Inventory structure and live tool-name references verified"+(outstanding.length?" (NOT functionality parity)":"; strict parity holds for inventoried routes")+".");
+  console.log("Inventory structure and live tool-name references verified"+
+    (outstanding.length||pendingCases
+      ?" (release functionality parity is NOT complete)"
+      :"; strict parity holds for inventoried routes and historical behavior cases")+".");
 }
