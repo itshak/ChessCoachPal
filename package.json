@@ -20,11 +20,9 @@
     "mcp:parity:audit": "node scripts/mcp-parity-audit.mjs",
     "mcp:parity:strict": "node scripts/mcp-parity-audit.mjs --strict",
     "schema:canonical:guard": "node scripts/pre1-schema-guard.mjs",
-    "schema:canonical:guard-test": "node --test scripts/pre1-schema-guard.test.mjs scripts/canonical-cutover-audit.test.mjs",
+    "schema:canonical:guard-test": "node --test scripts/pre1-schema-guard.test.mjs scripts/canonical-cutover-audit.test.mjs scripts/canonical-lessons-guard.test.mjs",
     "schema:attendance:inventory": "node scripts/canonical-cutover-audit.mjs",
     "schema:attendance:strict": "node scripts/canonical-cutover-audit.mjs --strict",
     "schema:canonical:strict": "node scripts/pre1-schema-guard.mjs --strict-materials"
   },
-  "dependencies": {
-    "@supabase/ssr": "^0.9.0",
-    "@su¶»§q«^
+  "dependencies": ¶»§q«^

@@ -1,19 +1,25 @@
-/** Structural release guard: the pre-v1 product has exactly one persisted
- * actual-lesson/attendance model. A common history reader or matching MCP
- * tool names never make two independent writers equivalent.
- *
- * Do not add compatibility views/aliases to bypass this assertion. Remove
- * the former physical occurrence/attendance tables after moving all retained
- * billing, recurring, portal and reporting code to canonical sessions.
+/**
+ * Structural pre-v1 release gate: exactly one actual-lesson model.
+ * Recurrence intent (lesson_slots) is not a second occurrence ledger.
+ * Presence of a unified history reader does not make two writers equivalent.
  */
-export function competingLessonModels(sql){
-  const table = name => new RegExp(
-    'CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:"public"\\.)?"'+name+'"\\s*\\(',
-    'i'
-  ).test(sql);
-  // Detect incomplete cutovers as well as the original full duplication:
-  // leaving even one old physical table silently reintroduces old-model
-  // reads/writes or erases a needed historical association.
-  return (table("lessons") || table("attendance") || table("lesson_notes")) &&
-    (table("teaching_sessions") || table("session_attendance"));
+const oldTables=["lessons","attendance","lesson_notes"];
+const canonicalTables=["teaching_sessions","session_participants","session_attendance"];
+export function hasLessonTable(sql,name){
+ const pattern='\\bCREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?'+
+   '(?:(?:"?public"?\\.)?)"?'+name+'"?(?=\\s*\\()';
+ return new RegExp(pattern,"i").test(sql);
 }
+export function canonicalOccurrenceSchemaErrors(sql){
+ const errors=[];
+ for(const name of canonicalTables)
+  if(!hasLessonTable(sql,name))errors.push("missing canonical physical table: "+name);
+ for(const name of oldTables)
+  if(hasLessonTable(sql,name))errors.push("obsolete physical table: "+name);
+ return errors;
+}
+export function competingLessonModels(sql){
+ return oldTables.some(name=>hasLessonTable(sql,name)) &&
+   canonicalTables.some(name=>hasLessonTable(sql,name));
+}
+
