@@ -7934,3 +7934,167 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_slot_materialize(jsonb)
   FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_materialize(jsonb)
   TO authenticated;
+
+
+-- Durable notification intents. Only the trusted delivery worker with
+-- service-role credentials can read, claim or acknowledge messages. No
+-- family-private teacher notes or access tokens are placed in payload.
+CREATE TABLE public.ccp_delivery_outbox (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  session_id uuid NOT NULL REFERENCES public.teaching_sessions(id) ON DELETE RESTRICT,
+  student_id uuid,
+  event_key text NOT NULL CHECK (char_length(event_key) BETWEEN 12 AND 200),
+  kind text NOT NULL CHECK (kind IN ('session_note_family','session_cancel_family',
+                                     'portal_cancel_teacher')),
+  payload jsonb NOT NULL CHECK (jsonb_typeof(payload)='object'),
+  state text NOT NULL DEFAULT 'pending'
+    CHECK (state IN ('pending','sending','sent','failed')),
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 20),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  claimed_at timestamptz,
+  sent_at timestamptz,
+  UNIQUE (teacher_id,event_key),
+  FOREIGN KEY (session_id,student_id) REFERENCES public.session_participants
+    (session_id,student_id) ON DELETE RESTRICT
+);
+CREATE INDEX ccp_delivery_outbox_pending_idx
+  ON public.ccp_delivery_outbox(state,created_at)
+  WHERE state IN ('pending','failed');
+ALTER TABLE public.ccp_delivery_outbox ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.ccp_delivery_outbox FROM PUBLIC,anon,authenticated;
+GRANT ALL ON TABLE public.ccp_delivery_outbox TO service_role;
+
+-- Note revisions are append-only internal evidence; the guardian portal and
+-- delegated clients must never obtain teacher-private fields from this table.
+CREATE TABLE public.ccp_session_note_audit (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  session_id uuid NOT NULL REFERENCES public.teaching_sessions(id) ON DELETE RESTRICT,
+  note_id uuid NOT NULL REFERENCES public.session_notes(id) ON DELETE RESTRICT,
+  student_id uuid,
+  request_id uuid NOT NULL,
+  before_value jsonb,
+  after_value jsonb NOT NULL,
+  written_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE (teacher_id,request_id)
+);
+ALTER TABLE public.ccp_session_note_audit ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.ccp_session_note_audit FROM PUBLIC,anon,authenticated;
+GRANT ALL ON TABLE public.ccp_session_note_audit TO service_role;
+
+-- Same canonical note command for the website and delegated MCP. The
+-- optimistic revision is checked under the session row lock. Only approved
+-- guardian-shareable fields can become notification intents.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_session_note_save(
+  p_session_id uuid,p_student_id uuid,p_body text,p_private_body text,
+  p_share_with_guardian boolean,p_send_email boolean,
+  p_expected_updated_at timestamptz,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_session_note$
+DECLARE
+  v_teacher uuid := auth.uid();
+  v_session public.teaching_sessions%ROWTYPE;
+  v_note public.session_notes%ROWTYPE;
+  v_saved public.agent_tool_receipts%ROWTYPE;
+  v_before jsonb;
+  v_hash text;
+  v_receipt jsonb;
+  v_event_key text;
+BEGIN
+  IF v_teacher IS NULL THEN
+    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+  END IF;
+  IF p_session_id IS NULL OR p_idempotency_key IS NULL
+    OR p_body IS NULL OR p_private_body IS NULL
+    OR char_length(p_body)>10000 OR char_length(p_private_body)>10000
+    OR p_share_with_guardian IS NULL OR p_send_email IS NULL
+    OR (p_send_email AND (NOT p_share_with_guardian
+                         OR btrim(p_body)=''
+                         OR p_student_id IS NULL)) THEN
+    RAISE EXCEPTION 'SESSION_NOTE_INVALID_REQUEST' USING ERRCODE='22023';
+  END IF;
+  v_hash := md5(jsonb_build_array('session.note.save',
+    p_session_id,p_student_id,p_body,p_private_body,
+    p_share_with_guardian,p_send_email,p_expected_updated_at)::text);
+  INSERT INTO public.agent_tool_receipts(
+    teacher_id,idempotency_key,operation,request_hash,receipt
+  ) VALUES(v_teacher,p_idempotency_key,'session.note.save',v_hash,'{}'::jsonb)
+  ON CONFLICT DO NOTHING;
+  IF NOT FOUND THEN
+    SELECT * INTO v_saved FROM public.agent_tool_receipts
+      WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+    IF NOT FOUND OR v_saved.operation<>'session.note.save'
+       OR v_saved.request_hash<>v_hash THEN
+      RAISE EXCEPTION 'SESSION_NOTE_REPLAY_CONFLICT' USING ERRCODE='23505';
+    END IF;
+    RETURN v_saved.receipt || jsonb_build_object('replayed',true);
+  END IF;
+  SELECT * INTO v_session FROM public.teaching_sessions
+    WHERE id=p_session_id AND teacher_id=v_teacher FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'SESSION_NOTE_NOT_FOUND' USING ERRCODE='42501';
+  END IF;
+  IF p_student_id IS NOT NULL AND NOT EXISTS(
+    SELECT 1 FROM public.session_participants
+      WHERE session_id=p_session_id AND teacher_id=v_teacher
+        AND student_id=p_student_id
+  ) THEN
+    RAISE EXCEPTION 'SESSION_NOTE_PARTICIPANT_NOT_FOUND'
+      USING ERRCODE='42501';
+  END IF;
+  SELECT * INTO v_note FROM public.session_notes
+    WHERE teacher_id=v_teacher AND session_id=p_session_id
+      AND student_id IS NOT DISTINCT FROM p_student_id FOR UPDATE;
+  IF v_note.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RAISE EXCEPTION 'SESSION_NOTE_REVISION_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  v_before := CASE WHEN v_note.id IS NULL THEN NULL ELSE
+    jsonb_build_object('body',v_note.body,'privateBody',v_note.private_body,
+       'sharedWithGuardian',v_note.shared_with_guardian) END;
+  IF v_note.id IS NULL THEN
+    INSERT INTO public.session_notes(
+      teacher_id,session_id,student_id,body,private_body,shared_with_guardian
+    ) VALUES(v_teacher,p_session_id,p_student_id,p_body,p_private_body,
+      p_share_with_guardian) RETURNING * INTO v_note;
+  ELSE
+    UPDATE public.session_notes
+      SET body=p_body,private_body=p_private_body,
+        shared_with_guardian=p_share_with_guardian,updated_at=clock_timestamp()
+      WHERE id=v_note.id RETURNING * INTO v_note;
+  END IF;
+  INSERT INTO public.ccp_session_note_audit(
+    teacher_id,session_id,student_id,note_id,request_id,
+    before_value,after_value
+  ) VALUES(v_teacher,p_session_id,p_student_id,v_note.id,
+    p_idempotency_key,v_before,jsonb_build_object(
+      'body',v_note.body,'privateBody',v_note.private_body,
+      'sharedWithGuardian',v_note.shared_with_guardian
+    ));
+  IF p_send_email THEN
+    v_event_key := 'session-note:' || p_idempotency_key::text;
+    INSERT INTO public.ccp_delivery_outbox(
+      teacher_id,session_id,student_id,event_key,kind,payload
+    ) VALUES(
+      v_teacher,p_session_id,p_student_id,v_event_key,'session_note_family',
+      jsonb_build_object('sessionId',p_session_id,'studentId',p_student_id,
+        'body',p_body,'approvedBy',v_teacher,'requestId',p_idempotency_key)
+    );
+  END IF;
+  v_receipt := jsonb_build_object(
+    'sessionId',p_session_id,'studentId',p_student_id,
+    'noteId',v_note.id,'revision',v_note.updated_at,
+    'sharedWithGuardian',v_note.shared_with_guardian,
+    'emailQueued',p_send_email,'idempotencyKey',p_idempotency_key
+  );
+  UPDATE public.agent_tool_receipts SET receipt=v_receipt
+    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  RETURN v_receipt || jsonb_build_object('replayed',false);
+END;
+$ccp_session_note$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_session_note_save(
+  uuid,uuid,text,text,boolean,boolean,timestamptz,uuid)
+  FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_session_note_save(
+  uuid,uuid,text,text,boolean,boolean,timestamptz,uuid)
+  TO authenticated;
