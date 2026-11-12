@@ -130,7 +130,7 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
 export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId:string,id:string):Promise<NextResponse>{
   const { data: invoice } = await supabase
     .from("invoices")
-    .select("id, status, guardian_id, period_start, period_end, currency")
+    .select("id, status, guardian_id, period_start, period_end, currency, stripe_checkout_session_id, stripe_checkout_url, stripe_payment_intent_id")
     .eq("id", id)
     .eq("teacher_id", teacherId)
     .single();
@@ -143,6 +143,12 @@ export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId
       { error: "Only draft invoices can be regenerated" },
       { status: 400 }
     );
+  }
+  if (invoice.stripe_checkout_session_id || invoice.stripe_checkout_url ||
+      invoice.stripe_payment_intent_id) {
+    return NextResponse.json({
+      error: "Reconcile or expire the existing checkout session before regenerating this invoice",
+    }, { status: 409 });
   }
 
   const { data: creditPackage } = await supabase
