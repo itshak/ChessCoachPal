@@ -11,6 +11,9 @@ export function competingLessonModels(sql){
     'CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:"public"\\.)?"'+name+'"\\s*\\(',
     'i'
   ).test(sql);
-  return table("lessons") && table("attendance") &&
-    table("teaching_sessions") && table("session_attendance");
+  // Detect incomplete cutovers as well as the original full duplication:
+  // leaving even one old physical table silently reintroduces old-model
+  // reads/writes or erases a needed historical association.
+  return (table("lessons") || table("attendance") || table("lesson_notes")) &&
+    (table("teaching_sessions") || table("session_attendance"));
 }
