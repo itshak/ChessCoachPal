@@ -60,8 +60,11 @@ export async function teacherSpreadsheetSuggest(db:SupabaseClient,teacherId:stri
   headers:input.headers,sampleRows:(input.sampleRows??[]).slice(0,8),
  });
  if(result.error&&!Object.keys(result.mapping).length)
-   throw fail(502,"AI_UNAVAILABLE",result.error);
- return {mapping:result.mapping,warning:result.error};
+   throw fail(502,"AI_UNAVAILABLE",
+    "Optional AI mapping unavailable; use the local column suggestions instead");
+ return {mapping:result.mapping,
+  warning:result.error?
+   "AI mapping was incomplete; review every suggested column":null};
 }
 /** Atomic SQL import shared with the website and delegated MCP. One batch
  * either commits its whole student/family/receipt set or rolls it all back.
