@@ -46,7 +46,18 @@ Prefer student_name for the learner; guardian_name/email/phone for the parent.`;
     if (content.error) {
       return { mapping: {}, error: content.error };
     }
-    return { mapping: parseMappingJson(content.text ?? "{}") };
+    // Model-returned header references must point to the exact teacher
+    // supplied columns; invented headers are never accepted into imports.
+    const mapping=parseMappingJson(content.text??"{}");
+    const sourceHeaders=new Set(args.headers);
+    for(const field of Object.keys(mapping) as ImportField[]){
+      const value=mapping[field];
+      if(value!==null&&value!==undefined&&!sourceHeaders.has(value))
+        mapping[field]=null;
+    }
+    if(!Object.values(mapping).some(value=>typeof value==="string"))
+      return {mapping:{},error:"AI returned no matching spreadsheet columns"};
+    return {mapping};
   } catch (err) {
     return {
       mapping: {},
@@ -180,11 +191,21 @@ export function ensureProgressNoteTitle(
   return `${expected}\n\n${trimmed}`;
 }
 
+/** Public API endpoints are fixed. Only a GitHub CI process may redirect
+ * to the hard-coded loopback test server; never honor user-provided URLs. */
+function providerEndpoint(path:"openai"|"anthropic"){
+ const synthetic=process.env.CI==="true"&&
+   process.env.CCP_SYNTHETIC_AI_ORIGIN==="http://127.0.0.1:3996";
+ const host=synthetic?"http://127.0.0.1:3996":
+   path==="openai"?"https://api.openai.com":"https://api.anthropic.com";
+ return host+(path==="openai"?"/v1/chat/completions":"/v1/messages");
+}
+
 async function callOpenAiText(
   apiKey: string,
   args: { system: string; prompt: string; jsonObject: boolean }
 ): Promise<{ text?: string; error?: string }> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetch(providerEndpoint("openai"), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -203,10 +224,8 @@ async function callOpenAiText(
     }),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    return {
-      error: `OpenAI error (${res.status}): ${text.slice(0, 200)}`,
-    };
+    // Never echo upstream bodies: they can contain API keys or submitted samples.
+    return {error:"OpenAI provider is currently unavailable"};
   }
   const data = (await res.json()) as {
     choices?: { message?: { content?: string } }[];
@@ -218,7 +237,7 @@ async function callAnthropicText(
   apiKey: string,
   prompt: string
 ): Promise<{ text?: string; error?: string }> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch(providerEndpoint("anthropic"), {
     method: "POST",
     headers: {
       "x-api-key": apiKey,
@@ -232,10 +251,7 @@ async function callAnthropicText(
     }),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    return {
-      error: `Anthropic error (${res.status}): ${text.slice(0, 200)}`,
-    };
+    return {error:"Anthropic provider is currently unavailable"};
   }
   const data = (await res.json()) as {
     content?: { type: string; text?: string }[];
