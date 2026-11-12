@@ -74,7 +74,7 @@
         "ccp_v1_material_links_unlink_impact",
         "ccp_v1_material_links_unlink"
       ],
-      "explanation": "Exact source c80b85c: 38/38 website gateway actions have independently named authenticated website/delegated MCP evidence. 36 are equivalent owner-scoped MCP operations and two are narrowly approved browser-only teacher-attestation exceptions with negative bearer tests. The action-evidence audit found zero missing; 225 authenticated E2E passed and all five workflow families were green. Legacy calendar vs canonical session double writers and four outstanding historical release cases remain separate blockers.",
+      "explanation": "Exact source c80b85c: 38/38 website gateway actions have independently named authenticated website/delegated MCP evidence. 36 are equivalent owner-scoped MCP operations and two are narrowly approved browser-only teacher-attestation exceptions with negative bearer tests. The action-evidence audit found zero missing; 225 authenticated E2E passed and all five workflow families were green. Legacy calendar vs canonical session double writers and four outstanding historical release cases remain separate blockers. Canonical per-participant cancellation is being implemented through the existing shared session commit, website attendance.record/list and ccp_v1_attendance_record/preview MCP actions. Notice timestamp, initiator and reason are independently checked in e2e/parity-session-completion.spec.ts; these new assertions still require CI confirmation. This is an incremental change only: legacy private-calendar attendance and the unresolved historical parity cases remain strict release blockers.",
       "evidenceTest": "e2e/parity-gateway-action-coverage.spec.ts"
     },
     {
