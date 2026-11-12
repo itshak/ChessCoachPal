@@ -11,7 +11,7 @@ import {teacherLichessPuzzlePreview,teacherLichessPuzzlePublish,LichessPuzzleErr
 import {teacherImageFenPropose,imageFenInputSchema,ImageFenError} from "@/lib/server/teacher-image-fen";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  CoachError, attendanceList, attendanceRecord, groupsList, groupsMembers,
+  CoachError, attendanceList, attendanceRecord, attendanceBulkRecord, groupsList, groupsMembers,
   sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, sessionsComplete, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
 } from "@/lib/server/coach-service";
 
@@ -28,7 +28,7 @@ import {materialLinksList,materialLinksCreate,materialLinksUpdate,
 import { chessUuid, categoryName, observationText, observedAt, observationInput,
  materialLinkListInput,materialLinkCreateInput,materialLinkUpdateInput,materialLinkUnlinkInput,
 } from "@/lib/chess-learning";
-import {lessonCompletionSchema,type LessonCompletionInput} from "@/lib/lesson-completion";
+import {lessonCompletionSchema,attendanceBulkRecordSchema,type LessonCompletionInput} from "@/lib/lesson-completion";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import {materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,materialRelationListSchema,materialRelationSchema,materialArchivePreviewSchema,materialLifecycleSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,teacherMaterialRelationsList,teacherMaterialRelationChange,teacherMaterialArchivePreview,teacherMaterialLifecycleChange,MaterialCatalogError} from "@/lib/server/learning-materials";
 import {assignmentListSchema,assignmentCreateSchema,assignmentAttemptSchema,assignmentReviewSchema,teacherAssignmentsList,teacherAssignmentsCreate,teacherAssignmentAttempt,teacherAssignmentReview,AssignmentServiceError} from "@/lib/server/training-assignments";
@@ -857,6 +857,12 @@ const catalogue = [
       expectedUpdatedAt: z.string().datetime({ offset: true }).nullable(),
       idempotencyKey: uuid,
     }).strict(), scope: "coach:write", readOnly: false,
+  },
+  {
+    name: "ccp_v1_attendance_bulk_record",
+    description: "Atomically mark or correct 1–50 frozen participants without completing the session. Preview attendance first; supply each learner's exact updated_at (null if unmarked), one UUID key for the entire batch and explicit decisions. All changes roll back on a stale/missing participant; retry with the same key and arguments.",
+    schema: attendanceBulkRecordSchema,
+    scope: "coach:write", readOnly: false,
   },
   {
     name: "ccp_v1_sessions_note_update",
@@ -2004,15 +2010,18 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           attendanceList(db, teacherId, sid),
         ]);
         return { data: { sessionId: sid, participants: roster, attendance: register,
-          requiresConfirmation: true, bulkCommitAvailable: false } };
+          requiresConfirmation: true, bulkCommitAvailable: true } };
       }
       case "ccp_v1_attendance_record": {
         const a=args as {sessionId:string;studentId:string;status:string;note:string;
-          expectedUpdatedAt:string;idempotencyKey:string};
+          expectedUpdatedAt:string|null;idempotencyKey:string};
         return {data:await attendanceRecord(db,teacherId,{
           ...a,requestId:a.idempotencyKey,
         })};
       }
+      case "ccp_v1_attendance_bulk_record":
+        return {data:await attendanceBulkRecord(db,teacherId,
+          args as import("@/lib/lesson-completion").AttendanceBulkRecordInput)};
       case "ccp_v1_sessions_note_update": {
         const a=args as {sessionId:string;lessonNote:string;expectedUpdatedAt:string;idempotencyKey:string};
         const updated=await sessionsUpdate(db,teacherId,a.sessionId,{

@@ -31,4 +31,17 @@ export const lessonCompletionSchema=z.object({
  message:"Every learner must appear once",
 });
 
+/** Standalone, all-or-nothing correction of 1–50 frozen learner decisions.
+ * Null attendance revision requires a participant without a decision row.
+ * The session lifecycle does not change; idempotent SQL owns the entire batch.
+ */
+export const attendanceBulkRecordSchema=z.object({
+ sessionId:uuid,
+ idempotencyKey:uuid,
+ attendance:z.array(attendance).min(1).max(50),
+}).strict().refine(v=>new Set(v.attendance.map(row=>row.studentId)).size===v.attendance.length,{
+ message:"A student can only appear once in the attendance batch",
+});
+export type AttendanceBulkRecordInput=z.infer<typeof attendanceBulkRecordSchema>;
+
 export type LessonCompletionInput=z.infer<typeof lessonCompletionSchema>;

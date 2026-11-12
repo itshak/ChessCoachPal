@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {lessonCompletionSchema} from "./lesson-completion";
+import {lessonCompletionSchema,attendanceBulkRecordSchema} from "./lesson-completion";
 
 const a="00000000-0000-4000-8000-000000000001";
 const b="00000000-0000-4000-8000-000000000002";
@@ -25,6 +25,19 @@ describe("explicit frozen-roster session completion contract",()=>{
    {...values.attendance[0],expectedUpdatedAt:null},
   ]}).success).toBe(true);
   expect(lessonCompletionSchema.safeParse({...values,expectedUpdatedAt:null}).success).toBe(false);
+ });
+ it("requires a revisioned atomic batch with unique student IDs",()=>{
+  const input={sessionId:a,idempotencyKey:b,attendance:[
+   {...values.attendance[0],expectedUpdatedAt:null},
+  ]};
+  expect(attendanceBulkRecordSchema.safeParse(input).success).toBe(true);
+  expect(attendanceBulkRecordSchema.safeParse({...input,attendance:[]}).success).toBe(false);
+  expect(attendanceBulkRecordSchema.safeParse({...input,attendance:[
+   input.attendance[0],input.attendance[0],
+  ]}).success).toBe(false);
+  expect(attendanceBulkRecordSchema.safeParse({...input,attendance:[
+   {...input.attendance[0],expectedUpdatedAt:undefined},
+  ]}).success).toBe(false);
  });
  it("does not infer success, mastery or learning from unmarked attendance",()=>{
   expect(lessonCompletionSchema.safeParse({...values,attendance:[

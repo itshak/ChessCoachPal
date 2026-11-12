@@ -93,8 +93,7 @@ export function LessonCompletionPanel(){
   setConfirmed(false);
  }
 
- async function submit(e:FormEvent<HTMLFormElement>){
-  e.preventDefault();
+ async function commit(complete:boolean){
   if(!roster||roster.sessionId!==sessionId||busy||!confirmed)return;
   if(roster.participants.some(p=>!decisions[p.studentId]?.status)){
    setError("Choose an explicit attendance status for each learner.");return;
@@ -106,18 +105,30 @@ export function LessonCompletionPanel(){
     return {studentId:p.studentId,status:d.status,note:d.note,
       expectedUpdatedAt:d.expectedUpdatedAt};
    });
-   await api("sessions.complete",{
-    sessionId:roster.sessionId,expectedUpdatedAt:roster.updatedAt,
-    idempotencyKey:crypto.randomUUID(),attendance,
-    ...(lessonNote.trim()?{lessonNote}:{}),confirmed:true,
-   });
-   setNotice("Lesson and full frozen-roster attendance committed atomically.");
+   if(complete){
+    await api("sessions.complete",{
+     sessionId:roster.sessionId,expectedUpdatedAt:roster.updatedAt,
+     idempotencyKey:crypto.randomUUID(),attendance,
+     ...(lessonNote.trim()?{lessonNote}:{}),confirmed:true,
+    });
+    setSessions(old=>old.map(x=>x.id===roster.sessionId?{...x,status:"completed"}:x));
+   }else{
+    await api("attendance.bulkRecord",{
+     sessionId:roster.sessionId,idempotencyKey:crypto.randomUUID(),attendance,
+    });
+   }
+   setNotice(complete?"Lesson and full frozen-roster attendance committed atomically.":
+    "All attendance decisions saved atomically without completing the lesson.");
    setConfirmed(false);
-   setLessonNote("");
+   if(complete)setLessonNote("");
    await refresh(roster.sessionId);
-   setSessions(old=>old.map(x=>x.id===roster.sessionId?{...x,status:"completed"}:x));
-  }catch(e){setError(e instanceof Error?e.message:"Unable to complete lesson");}
+  }catch(e){setError(e instanceof Error?e.message:"Unable to record attendance");}
   finally{setBusy(false);}
+ }
+
+ async function submit(e:FormEvent<HTMLFormElement>){
+  e.preventDefault();
+  await commit(true);
  }
 
  return <section aria-label="Complete coaching lesson" className="rounded-xl border border-border bg-surface p-5 space-y-4">
@@ -179,6 +190,12 @@ export function LessonCompletionPanel(){
       roster.participants.some(p=>!decisions[p.studentId]?.status)}
     className="rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50">
      {busy?"Recording…":"Complete lesson"}
+   </button>
+   <button type="button" disabled={busy||!confirmed||roster.sessionId!==sessionId||
+      roster.participants.some(p=>!decisions[p.studentId]?.status)}
+    onClick={()=>void commit(false)}
+    className="rounded-lg border border-border px-4 py-2 font-semibold disabled:opacity-50">
+     Save attendance without completing
    </button>
   </form>}
  </section>;

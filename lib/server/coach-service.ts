@@ -324,6 +324,29 @@ export async function attendanceRecord(
  return data;
 }
 
+/** Website and delegated MCP bulk marks use the SAME atomic SQL transaction
+ * as a single attendance correction and confirmed session completion.
+ */
+export async function attendanceBulkRecord(
+ db:Db,teacherId:string,input:import("@/lib/lesson-completion").AttendanceBulkRecordInput
+){
+ void teacherId; // RLS/Auth identity is resolved by the SQL RPC itself.
+ const {data,error}=await db.rpc("ccp_teacher_session_commit",{
+  p_session_id:input.sessionId,p_changes:{},p_attendance:input.attendance,
+  p_expected_updated_at:null,p_idempotency_key:input.idempotencyKey,
+ });
+ if(error){
+  if(error.code==="23505"||/CONFLICT|REVISION/.test(error.message))
+   throw conflict();
+  if(error.code==="42501"||/NOT_FOUND/.test(error.message))
+   throw notFound();
+  if(error.code==="22023")throw new CoachError("VALIDATION_ERROR",400,
+   "Invalid or duplicate frozen participant attendance");
+  throw problem();
+ }
+ return data;
+}
+
 export async function sessionsComplete(
   db:Db,teacherId:string,input:import("@/lib/lesson-completion").LessonCompletionInput
 ){

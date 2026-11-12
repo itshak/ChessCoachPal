@@ -9,7 +9,7 @@ import {validateLegacyActionCoverage,legacyActionTools} from "./mcp-legacy-actio
 const gateway=readFileSync(new URL("../app/api/agent/v1/route.ts",import.meta.url),"utf8");
 const catalogue=readFileSync(new URL("../lib/server/agent-tools.ts",import.meta.url),"utf8");
 test("every current domain action has a registered MCP tool or reviewed teacher browser exception",()=>{
-  assert.equal(Object.keys(legacyActionTools).length,38);
+  assert.equal(Object.keys(legacyActionTools).length,39);
   assert.deepEqual(validateLegacyActionCoverage(gateway,catalogue),[]);
 });
 test("a new website gateway action without MCP coverage cannot pass",()=>{
@@ -30,12 +30,12 @@ test("teacher approval cannot be turned into a non-browser business exception",(
 });
 
 
-test("all 38 gateway actions have real per-action website/delegated MCP E2E evidence",()=>{
+test("all 39 gateway actions have real per-action website/delegated MCP E2E evidence",()=>{
  const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
  const report=validateGatewayActionE2E(root);
- assert.equal(report.actions,38);
+ assert.equal(report.actions,39);
  assert.deepEqual(report.errors,[]);
- assert.equal(report.evidence.size,38);
+ assert.equal(report.evidence.size,39);
  for(const [action,paths] of report.evidence){
   assert.ok(paths.length>0,"Missing named behavioral evidence for "+action);
   assert.ok(paths.every(path=>path.startsWith("e2e/")&&path.includes("#PARITY:PARITY-")));

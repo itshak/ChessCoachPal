@@ -60,6 +60,7 @@
         "ccp_v1_sessions_participants",
         "ccp_v1_attendance_preview",
         "ccp_v1_attendance_record",
+        "ccp_v1_attendance_bulk_record",
         "ccp_v1_chess_categories_list",
         "ccp_v1_chess_categories_create",
         "ccp_v1_chess_categories_update",

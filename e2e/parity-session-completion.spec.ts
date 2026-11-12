@@ -92,6 +92,44 @@ test("SCHEMA: absent attendance row represents an unmarked frozen participant",a
  });
 });
 
+test("PARITY:PARITY-atomic-bulk-attendance website and delegated MCP rollback and replay identically",async({page,request})=>{
+ const call=await delegatedTool(page,request),ctx=await fixture(call);
+ const attendance=ctx.rows.map((row,i)=>({
+  studentId:row.student_id,status:i===0?"present" as const:"late" as const,
+  note:"Bulk decision "+i,expectedUpdatedAt:row.updated_at,
+ }));
+ const wrong=await page.request.post("/api/agent/v1",{data:{
+  action:"attendance.bulkRecord",sessionId:ctx.sessionId,
+  idempotencyKey:randomUUID(),attendance:[
+   attendance[0],{...attendance[1],expectedUpdatedAt:"2000-01-01T00:00:00.000Z"},
+  ],
+ }});
+ expect(wrong.status(),await wrong.text()).toBe(409);
+ const still=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
+ expect(still.error).toBeUndefined();
+ expect(still.data.attendance.every((row:{status:string})=>row.status==="unmarked")).toBe(true);
+ const input={sessionId:ctx.sessionId,idempotencyKey:randomUUID(),attendance};
+ const web=await page.request.post("/api/agent/v1",{
+  data:{action:"attendance.bulkRecord",...input},
+ });
+ expect(web.status(),await web.text()).toBe(200);
+ const receipt=(await web.json()).data;
+ expect(receipt.attendance).toHaveLength(2);
+ const replay=await call("ccp_v1_attendance_bulk_record",input);
+ expect(replay.error).toBeUndefined();
+ expect(replay.data).toEqual(receipt);
+ const fresh=await call("ccp_v1_attendance_bulk_record",{
+  ...input,idempotencyKey:randomUUID(),
+ });
+ expect(fresh.error?.code).toBe("CONFLICT");
+ const details=await call("ccp_v1_sessions_details",{sessionId:ctx.sessionId});
+ expect(details.error).toBeUndefined();
+ expect(details.data.status).toBe("scheduled");
+ const now=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
+ expect(now.data.attendance.map((row:{status:string})=>row.status).sort())
+  .toEqual(["late","present"]);
+});
+
 test("PARITY:PARITY-sessions-complete-atomic rolls back stale roster and replays across website/MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const ctx=await fixture(call);
