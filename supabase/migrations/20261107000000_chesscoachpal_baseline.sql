@@ -1452,6 +1452,9 @@ ALTER TABLE ONLY "public"."lesson_notes"
 ALTER TABLE ONLY "public"."lesson_slots"
     ADD CONSTRAINT "lesson_slots_pkey" PRIMARY KEY ("id");
 
+ALTER TABLE ONLY "public"."lesson_slots"
+    ADD CONSTRAINT "lesson_slots_id_teacher_unique" UNIQUE ("id", "teacher_id");
+
 
 
 ALTER TABLE ONLY "public"."lessons"
@@ -1501,6 +1504,10 @@ ALTER TABLE ONLY "public"."session_attendance"
 
 ALTER TABLE ONLY "public"."session_participants"
     ADD CONSTRAINT "session_participants_pkey" PRIMARY KEY ("session_id", "student_id");
+
+ALTER TABLE ONLY "public"."session_participants"
+    ADD CONSTRAINT "session_participants_scoped_unique"
+    UNIQUE ("session_id", "student_id", "teacher_id");
 
 ALTER TABLE ONLY "public"."session_notes"
     ADD CONSTRAINT "session_notes_pkey" PRIMARY KEY ("id");
@@ -2083,12 +2090,13 @@ ALTER TABLE ONLY "public"."session_notes"
 
 ALTER TABLE ONLY "public"."teaching_sessions"
     ADD CONSTRAINT "teaching_sessions_slot_fkey"
-    FOREIGN KEY ("slot_id") REFERENCES "public"."lesson_slots" ("id") ON DELETE SET NULL;
+    FOREIGN KEY ("slot_id", "teacher_id")
+    REFERENCES "public"."lesson_slots" ("id", "teacher_id") ON DELETE SET NULL ("slot_id");
 
 ALTER TABLE ONLY "public"."teaching_sessions"
     ADD CONSTRAINT "teaching_sessions_makeup_participant_fkey"
-    FOREIGN KEY ("makeup_for_session_id", "makeup_for_student_id")
-    REFERENCES "public"."session_participants" ("session_id", "student_id") ON DELETE RESTRICT;
+    FOREIGN KEY ("makeup_for_session_id", "makeup_for_student_id", "teacher_id")
+    REFERENCES "public"."session_participants" ("session_id", "student_id", "teacher_id") ON DELETE RESTRICT;
 
 ALTER TABLE ONLY "public"."session_participants"
     ADD CONSTRAINT "session_participants_session_id_teacher_id_fkey" FOREIGN KEY ("session_id", "teacher_id") REFERENCES "public"."teaching_sessions"("id", "teacher_id") ON DELETE CASCADE;
