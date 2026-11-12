@@ -813,7 +813,10 @@ const catalogue = [
   {
     name: "ccp_v1_students_search",
     description: "Search only your teacher-owned students. If NEEDS_RESOLUTION is returned ask the teacher which ID they mean before writing.",
-    schema: z.object({ query: searchText }).strict(), scope: "coach:read", readOnly: true,
+    // Unlike ID-directed search inputs, an empty query means an owner-scoped
+    // roster browse. The website's students.search permits this too.
+    schema: z.object({ query: z.string().trim().max(80).default("") }).strict(),
+    scope: "coach:read", readOnly: true,
   },
   {
     name: "ccp_v1_groups_list",

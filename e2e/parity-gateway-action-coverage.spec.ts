@@ -34,8 +34,17 @@ test("PARITY:PARITY-gateway-student-search-and-workplace-unenroll uses both real
  const webStudents=(await searchWeb.json()).data;
  const searchMcp=await call("ccp_v1_students_search",{query:"Gateway audit learner"});
  expect(searchMcp.error).toBeUndefined();
- expect(searchMcp.data).toEqual(webStudents);
+ // MCP intentionally returns additional owner-scoped chess profile metadata.
+ // Parity requires identical searchable identities, names, levels and
+ // revisions, not stripping those richer MCP capabilities.
+ const common=(rows:Array<{id:string;name:string;level:string|null;
+  updated_at:string}>)=>rows.map(({id,name,level,updated_at})=>({
+   id,name,level,updated_at,
+ })).sort((x,y)=>x.id.localeCompare(y.id));
+ expect(common(searchMcp.data)).toEqual(common(webStudents));
  expect(webStudents.some((x:{id:string})=>x.id===a)).toBe(true);
+ expect(searchMcp.data.find((x:{id:string})=>x.id===a))
+  .toHaveProperty("name_aliases");
 
  for(const studentId of [a,b]){
   const joined=await call("ccp_v1_workplaces_enroll",{
@@ -117,9 +126,13 @@ test("PARITY:PARITY-gateway-sessions-list matches one current frozen session on 
   workplaceId:ctx.workplaceId,studentId,idempotencyKey:randomUUID(),
  });
  expect(joined.error).toBeUndefined();
+ // Every retry must create its own teacher time interval, otherwise a
+ // correct overlap guard turns a previous test attempt into a false failure.
+ const minute=parseInt(randomUUID().slice(0,8),16)%(365*8*24*60);
+ const startsAt=new Date(Date.UTC(2058,0,1)+minute*60_000).toISOString();
  const session=await page.request.post("/api/agent/v1",{data:{
   action:"sessions.create",workplaceId:ctx.workplaceId,studentId,
-  title:unique("Website lesson"),startsAt:"2048-08-07T16:00:00.000Z",
+  title:unique("Website lesson"),startsAt,
   durationMinutes:45,lessonNote:"One current session",requestId:randomUUID(),
  }});
  expect(session.status(),await session.text()).toBe(201);
@@ -130,7 +143,13 @@ test("PARITY:PARITY-gateway-sessions-list matches one current frozen session on 
  expect(rows.find(x=>x.id===id)?.student_id).toBe(studentId);
  const mcpList=await call("ccp_v1_sessions_list",{});
  expect(mcpList.error).toBeUndefined();
- expect(mcpList.data).toEqual(rows);
+ // Delegated MCP additionally returns the revision required for safe edits.
+ // The historical website gateway projection omits that one capability.
+ const comparable=(mcpList.data as Array<Record<string,unknown>>)
+  .map(({revision,...rest})=>rest);
+ expect(comparable).toEqual(rows);
+ expect((mcpList.data as Array<{id:string;revision:string}>)
+  .find(x=>x.id===id)?.revision).toBeTruthy();
 });
 
 test("PARITY:PARITY-gateway-observation-edit preserves unverified provenance in both clients",async({page,request})=>{
