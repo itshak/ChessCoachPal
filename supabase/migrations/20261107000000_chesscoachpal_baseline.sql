@@ -3847,7 +3847,7 @@ CREATE TRIGGER ccp_invoice_revision BEFORE UPDATE ON public.invoices
 CREATE OR REPLACE FUNCTION public.ccp_invoice_draft_update(
  p_invoice_id uuid, p_notes text, p_items jsonb,
  p_expected_updated_at timestamptz, p_idempotency_key uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $invoice_draft$
 DECLARE
  v_teacher uuid:=auth.uid();
  v_invoice public.invoices%ROWTYPE;
@@ -3967,7 +3967,7 @@ BEGIN
  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
  RETURN v_receipt;
 END;
-$;
+$invoice_draft$;
 REVOKE ALL ON FUNCTION public.ccp_invoice_draft_update(
  uuid,text,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_draft_update(
