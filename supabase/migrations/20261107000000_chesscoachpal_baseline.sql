@@ -777,6 +777,7 @@ CREATE TABLE IF NOT EXISTS "public"."lesson_slots" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "teacher_id" "uuid" NOT NULL,
     "student_id" "uuid" NOT NULL,
+    "workplace_id" "uuid",
     "day_of_week" integer NOT NULL,
     "start_time" time without time zone NOT NULL,
     "duration_minutes" integer DEFAULT 30 NOT NULL,
@@ -1515,9 +1516,11 @@ ALTER TABLE ONLY "public"."session_notes"
 CREATE UNIQUE INDEX "session_notes_session_student_unique"
   ON "public"."session_notes" ("session_id", "student_id") NULLS NOT DISTINCT;
 
+-- A regular UNIQUE index (NULLs distinct) allows any number of ad hoc
+-- sessions without a slot, while supporting atomic ON CONFLICT DO NOTHING
+-- materialization for a specific slot and local occurrence date.
 CREATE UNIQUE INDEX "teaching_sessions_slot_occurrence_unique"
-  ON "public"."teaching_sessions" ("slot_id", "slot_occurrence_date")
-  WHERE "slot_id" IS NOT NULL;
+  ON "public"."teaching_sessions" ("slot_id", "slot_occurrence_date");
 
 
 
@@ -2012,6 +2015,11 @@ ALTER TABLE ONLY "public"."lesson_notes"
     ADD CONSTRAINT "lesson_notes_lesson_id_fkey" FOREIGN KEY ("lesson_id") REFERENCES "public"."lessons"("id") ON DELETE CASCADE;
 
 
+
+ALTER TABLE ONLY "public"."lesson_slots"
+    ADD CONSTRAINT "lesson_slots_workplace_teacher_fkey"
+    FOREIGN KEY ("workplace_id", "teacher_id")
+    REFERENCES "public"."workplaces" ("id", "teacher_id") ON DELETE RESTRICT;
 
 ALTER TABLE ONLY "public"."lesson_slots"
     ADD CONSTRAINT "lesson_slots_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."students"("id") ON DELETE CASCADE;
