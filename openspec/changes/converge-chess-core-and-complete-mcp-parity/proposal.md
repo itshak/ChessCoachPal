@@ -1,3 +1,5 @@
+> **Execution prerequisite (2026-11-12):** [consolidate-canonical-lessons-and-attendance](../consolidate-canonical-lessons-and-attendance/proposal.md) is the dedicated implementation owner for B5/B6/B10 and C2/C3's lesson/attendance model cutover. Complete it first, then finish the remaining integration/parity tasks here. The prerequisite does not count as full 93-case or merged-main parity acceptance and does not authorize archiving this change.
+
 # Change: converge-chess-core-and-complete-mcp-parity
 
 **Status: PROPOSED — orchestration and acceptance plan only. No implementation, test acceptance, OpenSpec archive, merge of functional branches, production data migration or release is authorized by this documentation PR.**
