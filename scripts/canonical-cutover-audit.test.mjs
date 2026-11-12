@@ -41,15 +41,15 @@ describe("canonical occurrence migration schema checkpoints",()=>{
  it("uses one slot/date identity and preserves the origin after moving a session",()=>{
   assert.match(baseline,/"slot_occurrence_date" "date"/);
   assert.match(baseline,/CREATE UNIQUE INDEX "teaching_sessions_slot_occurrence_unique"/);
-  assert.match(baseline,/"teaching_sessions_slot_fkey"[\\s\\S]*?FOREIGN KEY \\("slot_id", "teacher_id"\\)[\\s\\S]*?ON DELETE SET NULL \\("slot_id"\\)/);
-  assert.match(baseline,/"teaching_sessions_makeup_participant_fkey"[\\s\\S]*?"session_id", "student_id", "teacher_id"/);
+  assert.match(baseline,/"teaching_sessions_slot_fkey"[\s\S]*?FOREIGN KEY \("slot_id", "teacher_id"\)[\s\S]*?ON DELETE SET NULL \("slot_id"\)/);
+  assert.match(baseline,/"teaching_sessions_makeup_participant_fkey"[\s\S]*?"session_id", "student_id", "teacher_id"/);
  });
  it("scopes shared and teacher-private notes to sessions and frozen participants",()=>{
-  assert.match(baseline,/CREATE TABLE IF NOT EXISTS "public"\\."session_notes"/);
+  assert.match(baseline,/CREATE TABLE IF NOT EXISTS "public"\."session_notes"/);
   assert.match(baseline,/"private_body" "text" DEFAULT ''::"text" NOT NULL/);
   assert.match(baseline,/"session_notes_participant_fkey"/);
-  assert.match(baseline,/"session_notes_teacher" ON "public"\\."session_notes"/);
-  assert.match(baseline,/GRANT SELECT ON TABLE "public"\\."session_notes" TO "authenticated"/);
-  assert.doesNotMatch(baseline,/GRANT ALL ON TABLE "public"\\."session_notes" TO "authenticated"/);
+  assert.match(baseline,/"session_notes_teacher" ON "public"\."session_notes"/);
+  assert.match(baseline,/GRANT SELECT ON TABLE "public"\."session_notes" TO "authenticated"/);
+  assert.doesNotMatch(baseline,/GRANT ALL ON TABLE "public"\."session_notes" TO "authenticated"/);
  });
 });
