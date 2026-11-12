@@ -131,3 +131,70 @@ test("PARITY:PARITY-policy-invalid-field-validation rejects coercion equally on 
    "notify_in_app","bill_attended","makeup_credit_expiry_days"])
    expect(final[field]).toEqual(original[field]);
 });
+
+test("PARITY:PARITY-studio-policy-fields-all preserves ordinary profile, rate and nullable clear edits across both clients",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const initial=await page.request.get("/api/settings/policy");
+ expect(initial.status(),await initial.text()).toBe(200);
+ const original=await initial.json() as Record<string,any>;
+ const newWebsite="https://chesscoachpal.example/"+randomUUID().slice(0,8);
+ const changes={
+  studioWebsite:newWebsite,studioContact:"Academy desk "+randomUUID().slice(0,5),
+  studioInfo:"Test coaching studio",lessonLabel:"Chess class",
+  lessonDurationOptions:[30,45,60],
+  travelFeeCents:2100,rateBasis:"per_hour" as const,
+  billNoShow:true,notifyEmailInvoicePaid:false,
+  paymentInstructions:"Please use bank transfer",
+  bccEmail:"coach-parity@example.org",
+ };
+ try{
+  const updated=await call("ccp_v1_studio_policy_update",{changes,confirmed:true});
+  expect(updated.error).toBeUndefined();
+  const site=await page.request.get("/api/settings/policy");
+  expect(site.status(),await site.text()).toBe(200);
+  expect(await site.json()).toMatchObject({
+   studio_website:changes.studioWebsite,studio_contact:changes.studioContact,
+   studio_info:changes.studioInfo,lesson_label:changes.lessonLabel,
+   lesson_duration_options:[30,45,60],
+   travel_fee_cents:2100,rate_basis:"per_hour",bill_no_show:true,
+   notify_email_invoice_paid:false,payment_instructions:changes.paymentInstructions,
+   bcc_email:changes.bccEmail,
+  });
+  const cleared=await page.request.put("/api/settings/policy",{data:{
+   studioWebsite:"https://chesscoachpal.example/edited",
+   studioInfo:"Updated by website",travelFeeCents:null,
+   defaultRateCents:null,makeupCreditExpiryDays:null,bccEmail:null,
+  }});
+  expect(cleared.status(),await cleared.text()).toBe(200);
+  const read=await call("ccp_v1_studio_policy_get",{});
+  expect(read.error).toBeUndefined();
+  expect(read.data).toMatchObject({
+   studio_website:"https://chesscoachpal.example/edited",
+   studio_info:"Updated by website",
+   travel_fee_cents:null,default_rate_cents:null,
+   makeup_credit_expiry_days:null,bcc_email:null,
+  });
+  const bad=await call("ccp_v1_studio_policy_update",{
+   changes:{stripeSecretKey:"sk_live_secret_must_never_reach_mcp"},
+   confirmed:true,
+  });
+  expect(bad.error?.code).toBe("VALIDATION_ERROR");
+ }finally{
+  const back=await page.request.put("/api/settings/policy",{data:{
+   studioWebsite:original.studio_website??"",
+   studioContact:original.studio_contact??"",
+   studioInfo:original.studio_info??"",
+   lessonLabel:original.lesson_label,
+   lessonDurationOptions:original.lesson_duration_options,
+   travelFeeCents:original.travel_fee_cents,
+   defaultRateCents:original.default_rate_cents,
+   makeupCreditExpiryDays:original.makeup_credit_expiry_days,
+   rateBasis:original.rate_basis,
+   billNoShow:original.bill_no_show,
+   notifyEmailInvoicePaid:original.notify_email_invoice_paid,
+   paymentInstructions:original.payment_instructions??"",
+   bccEmail:original.bcc_email??null,
+  }});
+  expect(back.status(),await back.text()).toBe(200);
+ }
+});
