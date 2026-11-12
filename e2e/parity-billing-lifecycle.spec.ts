@@ -317,3 +317,32 @@ test("PARITY:PARITY-billing-manual-payment-foreign-tenant-denial blocks website 
   await admin.auth.admin.deleteUser(teacherId);
  }
 });
+
+test("PARITY:PARITY-billing-manual-payment-reverse-race leaves one ordered ledger correction across website and MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const seeded=await invoice("sent",7700);
+ const record=await call("ccp_v1_billing_manual_payment_record",{
+  invoiceId:seeded.id,amountCents:7700,note:"Duplicate coaching receipt",
+  idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(record.error).toBeUndefined();
+ const paymentId=record.data.paymentId as string;
+ const [website,mcp]=await Promise.all([
+  page.request.delete("/api/billing/invoices/"+seeded.id+"/payments/"+paymentId),
+  call("ccp_v1_billing_manual_payment_delete",{
+   invoiceId:seeded.id,paymentId,confirmed:true,
+  }),
+ ]);
+ const websiteWon=website.status()===200;
+ const mcpWon=mcp.error===undefined;
+ expect(Number(websiteWon)+Number(mcpWon)).toBe(1);
+ if(!websiteWon)expect(website.status()).toBe(404);
+ if(!mcpWon)expect(mcp.error?.code).toBe("NOT_FOUND");
+ const final=await siteInvoice(page,seeded.id);
+ expect(final.status).toBe("sent");
+ expect(final.payments.some((p:{id:string})=>p.id===paymentId)).toBe(false);
+ const after=await call("ccp_v1_billing_invoice_detail",{invoiceId:seeded.id});
+ expect(after.error).toBeUndefined();
+ expect(after.data.status).toBe("sent");
+ expect(after.data.payments).toHaveLength(0);
+});
