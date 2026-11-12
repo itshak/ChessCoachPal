@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {createHash} from "node:crypto";
 import { getPolicy } from "@/lib/server/scheduling";
 import {
  resolveStudentCancelNoticeAt, type StudentCancelNoticeChoice,
@@ -15,7 +16,7 @@ export class LegacyAttendanceError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);}
 }
 const failure=(s:number,c:string,m:string)=>new LegacyAttendanceError(s,c,m);
-type Context={origin:string;teacherEmail?:string|null};
+type Context={origin:string;teacherEmail?:string|null;suppressIndividualEmail?:boolean};
 export type AttendanceInput={
  status:"attended"|"teacher_cancel"|"student_cancel"|"no_show"|null;
  noticeChoice?:StudentCancelNoticeChoice;noticeAt?:string|null;cancelNote?:string;
@@ -28,7 +29,19 @@ export type AttendanceInput={
 export type NotesInput={body?:string;privateBody?:string;sendEmail?:boolean};
 export type BulkAttendanceInput={
  ids:string[];status:"attended"|"no_show"|"teacher_cancel";notifyFamily?:boolean;
+ /** For replay across website/MCP, pair this with a stable request UUID. */
+ idempotencyKey?:string;
+ /** The original marked_at of EACH lesson; null means no prior decision. */
+ expectedMarkedAtByLesson?:Record<string,string|null>;
 };
+/** The root request is never used as a per-lesson receipt key because a bulk
+ * command must be safely replayed after partial per-lesson completion. */
+function bulkChildRequestId(root:string,lessonId:string):string{
+ const h=createHash("sha256").update("ccp-calendar-attendance-bulk\0")
+  .update(root).update("\0").update(lessonId).digest("hex").slice(0,32);
+ return h.slice(0,8)+"-"+h.slice(8,12)+"-4"+h.slice(13,16)+
+  "-8"+h.slice(17,20)+"-"+h.slice(20);
+}
 async function ownedLesson(db:Db,teacherId:string,id:string) {
  const {data,error}=await db.from("lessons").select("id,starts_at,student_id")
   .eq("id",id).eq("teacher_id",teacherId).maybeSingle();
@@ -103,7 +116,8 @@ export async function calendarAttendanceWrite(db:Db,teacherId:string,lessonId:st
  let emailed=false,emailError:string|undefined;
  // The replay is a database read, not a second permission to send email.
  // Email delivery still requires an outbox/receipt for crash-safe exactly-once.
- if(data?.replayed!==true&&input.status==="teacher_cancel"&&input.notifyFamily===true){
+ if(data?.replayed!==true&&input.status==="teacher_cancel"&&input.notifyFamily===true
+    &&!ctx.suppressIndividualEmail){
   const policy=await getPolicy(db,teacherId);
   const result=await emailFamilyTeacherCancel({
    supabase:db,lessonId,teacherId,teacherEmail:ctx.teacherEmail,
@@ -119,37 +133,59 @@ export async function calendarAttendanceBulk(db:Db,teacherId:string,input:BulkAt
   throw failure(400,"VALIDATION_ERROR","Invalid bulk attendance status");
  if(!input.ids.length||input.ids.length>50||new Set(input.ids).size!==input.ids.length)
   throw failure(400,"VALIDATION_ERROR","Provide 1–50 distinct lesson IDs");
- // No partial attendance writes on an invalid notification request.
  if(input.status==="teacher_cancel"&&input.notifyFamily===true&&!ctx.origin)
   throw failure(400,"VALIDATION_ERROR","Trusted origin is required to notify families");
+ const keyed=input.idempotencyKey!==undefined;
+ const revisioned=input.expectedMarkedAtByLesson!==undefined;
+ if(keyed!==revisioned)
+  throw failure(400,"VALIDATION_ERROR",
+   "Bulk replay requires both idempotencyKey and all original lesson revisions");
+ if(keyed){
+  const values=input.expectedMarkedAtByLesson!;
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+   .test(input.idempotencyKey!)||
+   Object.keys(values).length!==input.ids.length||
+   input.ids.some(id=>!Object.prototype.hasOwnProperty.call(values,id)||
+     values[id]!==null&&
+      (typeof values[id]!=="string"||!Number.isFinite(Date.parse(values[id])))))
+   throw failure(400,"VALIDATION_ERROR","Provide a valid request UUID and each original attendance revision");
+ }
  const {data:owned,error:lookup}=await db.from("lessons")
   .select("id").eq("teacher_id",teacherId).in("id",input.ids);
  if(lookup)throw failure(500,"DATABASE_ERROR","Unable to validate lesson ownership");
  const available=new Set((owned??[]).map(x=>x.id));
  const failed:{id:string;error:string}[]=[];
- const cancelled:string[]=[];
+ const newlyCancelled:string[]=[];
  let succeeded=0,emailed=0;
- const now=new Date().toISOString();
  for(const id of input.ids){
   if(!available.has(id)){failed.push({id,error:"Not found"});continue;}
-  const {error}=await db.from("attendance").upsert({
-   lesson_id:id,status:input.status,notice_at:null,marked_at:now,
-  },{onConflict:"lesson_id"});
-  if(error){failed.push({id,error:"Unable to record attendance"});continue;}
-  succeeded++;
-  if(input.status==="teacher_cancel")cancelled.push(id);
+  try{
+   const result=await calendarAttendanceWrite(db,teacherId,id,{
+    status:input.status,notifyFamily:input.notifyFamily===true,
+    ...(keyed?{
+      expectedMarkedAt:input.expectedMarkedAtByLesson![id],
+      idempotencyKey:bulkChildRequestId(input.idempotencyKey!,id),
+    }:{}),
+   },{...ctx,suppressIndividualEmail:true});
+   succeeded++;
+   if(input.status==="teacher_cancel"&&result.replayed!==true)
+    newlyCancelled.push(id);
+  }catch(error){
+   failed.push({id,error:error instanceof LegacyAttendanceError
+    ?error.message:"Unable to record attendance"});
+  }
  }
- if(input.status==="teacher_cancel"&&input.notifyFamily===true&&cancelled.length){
-  if(!ctx.origin)throw failure(400,"VALIDATION_ERROR","Trusted origin is required to notify families");
+ if(input.status==="teacher_cancel"&&input.notifyFamily===true&&newlyCancelled.length){
   const policy=await getPolicy(db,teacherId);
   const result=await emailFamiliesTeacherCancelBulk({
-   supabase:db,lessonIds:cancelled,teacherId,teacherEmail:ctx.teacherEmail,
+   supabase:db,lessonIds:newlyCancelled,teacherId,teacherEmail:ctx.teacherEmail,
    policy,origin:ctx.origin,
   });
   emailed=result.emailed;
  }
  return {ok:failed.length===0,succeeded,emailed,failed};
 }
+
 export async function calendarLessonNoteRead(db:Db,teacherId:string,lessonId:string){
  await ownedLesson(db,teacherId,lessonId);
  const {data,error}=await db.from("lesson_notes")

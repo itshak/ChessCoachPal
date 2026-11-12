@@ -536,11 +536,15 @@ const catalogue = [
   },
   {
     name:"ccp_v1_calendar_attendance_bulk",
-    description:"Bulk record 1–50 private lesson attended/no-show/teacher-cancel outcomes, per-ID failures reported. Email notifications require explicit confirmedEmail=true.",
+    description:"Bulk record 1–50 private lesson outcomes using the same revision-checked SQL writer as individual attendance. Optional idempotencyKey and expectedMarkedAtByLesson (every ID mapped to a timestamp or null) make partial retries safe across website/MCP. Per-lesson errors remain explicit. Bulk email requires confirmedEmail=true and is attempted only for newly committed teacher cancellations.",
     schema:z.object({ids:z.array(uuid).min(1).max(50),status:z.enum(["attended","no_show","teacher_cancel"]),
+      idempotencyKey:uuid.optional(),
+      expectedMarkedAtByLesson:z.record(uuid,z.string().datetime({offset:true}).nullable()).optional(),
       notifyFamily:z.boolean().default(false),confirmedEmail:z.literal(true).optional(),
       confirmed:z.literal(true),
-    }).strict().refine(v=>!v.notifyFamily||v.confirmedEmail===true,"Email requires explicit confirmation"),
+    }).strict().refine(v=>!v.notifyFamily||v.confirmedEmail===true,"Email requires explicit confirmation")
+     .refine(v=>(v.idempotencyKey===undefined)===(v.expectedMarkedAtByLesson===undefined),
+       "Bulk replay requires one original revision for every lesson"),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1565,7 +1569,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         })};
       }
       case "ccp_v1_calendar_attendance_bulk": {
-        const a=args as {ids:string[];status:"attended"|"no_show"|"teacher_cancel";notifyFamily:boolean};
+        const a=args as {ids:string[];status:"attended"|"no_show"|"teacher_cancel";notifyFamily:boolean;
+          idempotencyKey?:string;expectedMarkedAtByLesson?:Record<string,string|null>};
         const user=a.notifyFamily?(await db.auth.getUser()).data.user:null;
         return {data:await calendarAttendanceBulk(db,teacherId,a,{
           origin:a.notifyFamily?oauthOrigin():"",teacherEmail:user?.email,
