@@ -111,3 +111,8 @@ Keep [PR #51](https://github.com/itshak/ChessCoachPal/pull/51) in draft while th
 - After reviewing shared website/MCP event and guardian Zod schemas, tenant and atomic SQL owner paths, and named cases in `e2e/parity-families-events.spec.ts`, `e2e/event-atomic.spec.ts`, `e2e/guardian-atomic.spec.ts`, these five **current-route** families move from `gap` to independently evidenced `mcp`: `events` list/create and detail/update/delete; `guardians` list/create and detail/update/delete; family portal-token rotation.
 - This is **not** an approval of B4's independent adult/guardian/contact/payer roles, all email provider outbox semantics or the old calendar cutover. The events email flow remains a separately tracked secure confirmed tool and family token delivery stays browser-only.
 - Verified teacher route classification is now **28 mcp / 17 partial / 14 gap** of 59. Still NOT strict parity or OpenSpec closure; remaining transactional finance/calendar and provider cases require acceptance.
+
+### 2026-11-12 — spreadsheet mapping local/AI parity (candidate)
+
+- Website `POST /api/import/spreadsheet/suggest` now accepts an explicit `useAi:false` deterministic local heuristic, matching `ccp_v1_import_spreadsheet_suggest`. Omitted `useAi` preserves the website's existing opt-in AI suggestion path, which still strictly requires `confirmedExternal:true` before any student/family samples leave the app.
+- Error responses retain safe `SpreadsheetImportError.code` for validation and unconfigured-provider visibility. Named browser↔delegated MCP E2E `PARITY-spreadsheet-suggest-local-vs-ai-consent` compares mappings and checks both failure/consent boundaries. This does not claim live third-party AI acceptance or provider outage recovery.
