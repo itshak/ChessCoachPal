@@ -4461,7 +4461,8 @@ GRANT SELECT, INSERT, UPDATE ON public.event_email_deliveries TO authenticated;
 -- and delegated MCP call these authenticated, transaction-scoped functions.
 
 CREATE OR REPLACE FUNCTION public.ccp_invoice_generation_commit(
-  p_period_start date,p_period_end date,p_drafts jsonb,p_redemptions jsonb
+  p_period_start date,p_period_end date,p_drafts jsonb,p_redemptions jsonb,
+  p_request_id uuid
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE
   v_teacher uuid:=auth.uid();
@@ -4471,9 +4472,10 @@ DECLARE
   v_kind text;v_description text;v_qty integer;v_unit integer;v_amount integer;
   v_subtotal bigint;v_sort integer;
   v_created jsonb:='[]'::jsonb;v_count integer:=0;v_credits integer:=0;
+  v_hash text;v_prior public.agent_tool_receipts%ROWTYPE;v_receipt jsonb;
 BEGIN
   IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
-  IF p_period_start IS NULL OR p_period_end IS NULL
+  IF p_request_id IS NULL OR p_period_start IS NULL OR p_period_end IS NULL
     OR p_period_end<p_period_start OR p_period_end-p_period_start>367
     OR jsonb_typeof(p_drafts)<>'array'
     OR jsonb_typeof(p_redemptions)<>'array'
@@ -4484,6 +4486,21 @@ BEGIN
   -- browser and AI-agent requests). Lesson and package triggers separately
   -- protect against other concurrent billing/credit operations.
   PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+  v_hash:=md5(jsonb_build_array('billing.generation.commit',
+    p_period_start,p_period_end)::text);
+  INSERT INTO public.agent_tool_receipts(
+    teacher_id,idempotency_key,operation,request_hash,receipt
+  ) VALUES(v_teacher,p_request_id,'billing.generation.commit',v_hash,'{}'::jsonb)
+  ON CONFLICT DO NOTHING;
+  IF NOT FOUND THEN
+    SELECT * INTO v_prior FROM public.agent_tool_receipts
+      WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+    IF NOT FOUND OR v_prior.operation<>'billing.generation.commit' OR
+      v_prior.request_hash<>v_hash THEN
+      RAISE EXCEPTION 'BILLING_GENERATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+    END IF;
+    RETURN v_prior.receipt||jsonb_build_object('replayed',true);
+  END IF;
   SELECT currency INTO v_currency FROM public.studio_policies
     WHERE teacher_id=v_teacher;
   IF v_currency IS NULL THEN
@@ -4554,16 +4571,53 @@ BEGIN
     v_created:=v_created||jsonb_build_array(v_invoice);
     v_count:=v_count+1;
   END LOOP;
-  RETURN jsonb_build_object('created',v_created,'count',v_count,'creditsUsed',v_credits);
+  v_receipt:=jsonb_build_object('created',v_created,'count',v_count,
+    'creditsUsed',v_credits,'periodStart',p_period_start,'periodEnd',p_period_end,
+    'idempotencyKey',p_request_id,'replayed',false);
+  UPDATE public.agent_tool_receipts SET receipt=v_receipt
+    WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+  RETURN v_receipt;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.ccp_invoice_generation_commit(
- date,date,jsonb,jsonb) FROM PUBLIC,anon;
+ date,date,jsonb,jsonb,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_generation_commit(
- date,date,jsonb,jsonb) TO authenticated;
+ date,date,jsonb,jsonb,uuid) TO authenticated;
+
+-- Read-only idempotent replay runs BEFORE re-deriving the changing billing
+-- period. The hashed request identity is period + teacher, not a stale
+-- generated invoice draft. Receipt lookup cannot access other teachers.
+CREATE OR REPLACE FUNCTION public.ccp_invoice_generation_receipt(
+ p_period_start date,p_period_end date,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=public,pg_temp AS $generation_receipt$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_hash text;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_request_id IS NULL OR p_period_start IS NULL OR p_period_end IS NULL THEN
+   RAISE EXCEPTION 'INVALID_BILLING_REQUEST' USING ERRCODE='22023';END IF;
+ SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ IF NOT FOUND THEN RETURN NULL;END IF;
+ v_hash:=md5(jsonb_build_array('billing.generation.commit',p_period_start,p_period_end)::text);
+ IF v_saved.operation<>'billing.generation.commit' OR
+   v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'BILLING_GENERATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+END;
+$generation_receipt$;
+REVOKE ALL ON FUNCTION public.ccp_invoice_generation_receipt(
+ date,date,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_invoice_generation_receipt(
+ date,date,uuid) TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.ccp_invoice_regenerate_atomic(
- p_invoice_id uuid,p_items jsonb,p_redemptions jsonb
+ p_invoice_id uuid,p_items jsonb,p_redemptions jsonb,
+ p_expected_updated_at timestamptz,p_request_id uuid
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE
   v_teacher uuid:=auth.uid();
@@ -4571,15 +4625,36 @@ DECLARE
   v_line jsonb;v_credit jsonb;v_lesson uuid;v_package uuid;
   v_kind text;v_description text;v_qty integer;v_unit integer;v_amount integer;
   v_subtotal bigint:=0;v_sort integer:=0;
+  v_hash text;v_prior public.agent_tool_receipts%ROWTYPE;v_receipt jsonb;
+  v_updated timestamptz;
 BEGIN
   IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
-  IF jsonb_typeof(p_items)<>'array' OR jsonb_typeof(p_redemptions)<>'array'
+  IF p_request_id IS NULL OR p_expected_updated_at IS NULL OR
+    jsonb_typeof(p_items)<>'array' OR jsonb_typeof(p_redemptions)<>'array'
     OR jsonb_array_length(p_items)>2000 OR jsonb_array_length(p_redemptions)>2000
   THEN RAISE EXCEPTION 'INVALID_REGENERATION_INPUT' USING ERRCODE='22023';END IF;
   PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+  v_hash:=md5(jsonb_build_array('billing.invoice.regenerate',
+    p_invoice_id,p_expected_updated_at)::text);
+  INSERT INTO public.agent_tool_receipts(
+    teacher_id,idempotency_key,operation,request_hash,receipt
+  ) VALUES(v_teacher,p_request_id,'billing.invoice.regenerate',v_hash,'{}'::jsonb)
+    ON CONFLICT DO NOTHING;
+  IF NOT FOUND THEN
+    SELECT * INTO v_prior FROM public.agent_tool_receipts
+      WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+    IF NOT FOUND OR v_prior.operation<>'billing.invoice.regenerate' OR
+      v_prior.request_hash<>v_hash THEN
+      RAISE EXCEPTION 'INVOICE_REGENERATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+    END IF;
+    RETURN v_prior.receipt||jsonb_build_object('replayed',true);
+  END IF;
   SELECT * INTO v_invoice FROM public.invoices
     WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+  IF v_invoice.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';
+  END IF;
   IF v_invoice.status<>'draft' OR EXISTS(
     SELECT 1 FROM public.credit_packages WHERE invoice_id=p_invoice_id
   ) OR EXISTS(SELECT 1 FROM public.payments WHERE invoice_id=p_invoice_id)
@@ -4632,15 +4707,50 @@ BEGIN
   IF v_subtotal>2147483647 THEN
     RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';END IF;
   UPDATE public.invoices SET subtotal_cents=v_subtotal::integer
-    WHERE id=p_invoice_id;
-  RETURN jsonb_build_object('ok',true,'itemCount',v_sort,
-    'subtotalCents',v_subtotal::integer);
+    WHERE id=p_invoice_id RETURNING updated_at INTO v_updated;
+  v_receipt:=jsonb_build_object('ok',true,'invoiceId',p_invoice_id,
+    'itemCount',v_sort,'subtotalCents',v_subtotal::integer,
+    'updatedAt',v_updated,'idempotencyKey',p_request_id,'replayed',false);
+  UPDATE public.agent_tool_receipts SET receipt=v_receipt
+    WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+  RETURN v_receipt;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.ccp_invoice_regenerate_atomic(
- uuid,jsonb,jsonb) FROM PUBLIC,anon;
+ uuid,jsonb,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_regenerate_atomic(
- uuid,jsonb,jsonb) TO authenticated;
+ uuid,jsonb,jsonb,timestamptz,uuid) TO authenticated;
+
+-- A repeated model/web request can retrieve its immutable receipt even when
+-- the earlier operation already changed the invoice and invoice totals.
+CREATE OR REPLACE FUNCTION public.ccp_invoice_regeneration_receipt(
+ p_invoice_id uuid,p_expected_updated_at timestamptz,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=public,pg_temp AS $regeneration_receipt$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_hash text;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_request_id IS NULL OR p_invoice_id IS NULL OR p_expected_updated_at IS NULL THEN
+   RAISE EXCEPTION 'INVALID_REGENERATION_REQUEST' USING ERRCODE='22023';END IF;
+ SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ IF NOT FOUND THEN RETURN NULL;END IF;
+ v_hash:=md5(jsonb_build_array('billing.invoice.regenerate',
+   p_invoice_id,p_expected_updated_at)::text);
+ IF v_saved.operation<>'billing.invoice.regenerate' OR
+   v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'INVOICE_REGENERATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+END;
+$regeneration_receipt$;
+REVOKE ALL ON FUNCTION public.ccp_invoice_regeneration_receipt(
+ uuid,timestamptz,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_invoice_regeneration_receipt(
+ uuid,timestamptz,uuid) TO authenticated;
 
 -- Durable coach-attested chess goals, rating snapshots and profile
 -- corrections. Website and MCP both use the same student update service;
@@ -7320,3 +7430,57 @@ END;
 $invoice_void$;
 REVOKE ALL ON FUNCTION public.ccp_invoice_void(uuid,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_void(uuid,uuid) TO authenticated;
+
+
+-- Only the current owner may attach a processor Checkout Session to the
+-- unchanged, still-payable balance. Both website and MCP call this after the
+-- provider has created a session. A session cannot replace another link.
+CREATE OR REPLACE FUNCTION public.ccp_invoice_checkout_claim(
+ p_invoice_id uuid,p_session_id text,p_checkout_url text,
+ p_expected_balance integer,p_expected_updated_at timestamptz
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $checkout_claim$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_invoice public.invoices%ROWTYPE;
+ v_paid bigint;
+BEGIN
+ IF v_teacher IS NULL THEN
+   RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_invoice_id IS NULL OR p_expected_updated_at IS NULL OR
+   p_expected_balance IS NULL OR p_expected_balance<=0 OR
+   p_session_id IS NULL OR length(p_session_id)>255 OR
+   p_session_id NOT LIKE 'cs_%' OR
+   p_checkout_url IS NULL OR length(p_checkout_url)>2048 OR
+   p_checkout_url NOT LIKE 'https://checkout.stripe.com/%' THEN
+   RAISE EXCEPTION 'INVALID_CHECKOUT_LINK' USING ERRCODE='22023';END IF;
+ SELECT * INTO v_invoice FROM public.invoices
+   WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF v_invoice.status NOT IN ('draft','sent') OR
+    v_invoice.stripe_payment_intent_id IS NOT NULL THEN
+   RAISE EXCEPTION 'CHECKOUT_RECONCILIATION_REQUIRED' USING ERRCODE='23514';END IF;
+ IF v_invoice.stripe_checkout_session_id IS NOT NULL OR
+    v_invoice.stripe_checkout_url IS NOT NULL THEN
+   IF v_invoice.stripe_checkout_session_id=p_session_id AND
+      v_invoice.stripe_checkout_url=p_checkout_url THEN
+     RETURN jsonb_build_object('sessionId',p_session_id,'url',p_checkout_url);
+   END IF;
+   RAISE EXCEPTION 'CHECKOUT_ALREADY_LINKED' USING ERRCODE='23505';
+ END IF;
+ IF v_invoice.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+   RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';END IF;
+ SELECT COALESCE(SUM(amount_cents),0) INTO v_paid FROM public.payments
+   WHERE invoice_id=p_invoice_id;
+ IF v_invoice.subtotal_cents-v_paid<>p_expected_balance THEN
+   RAISE EXCEPTION 'CHECKOUT_BALANCE_CHANGED' USING ERRCODE='23505';END IF;
+ UPDATE public.invoices
+   SET stripe_checkout_session_id=p_session_id,stripe_checkout_url=p_checkout_url
+   WHERE id=p_invoice_id AND teacher_id=v_teacher;
+ RETURN jsonb_build_object('sessionId',p_session_id,'url',p_checkout_url);
+END;
+$checkout_claim$;
+REVOKE ALL ON FUNCTION public.ccp_invoice_checkout_claim(
+ uuid,text,text,integer,timestamptz) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_invoice_checkout_claim(
+ uuid,text,text,integer,timestamptz) TO authenticated;

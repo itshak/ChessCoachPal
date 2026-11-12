@@ -1,7 +1,7 @@
 {
-  "auditedAt": "2026-11-11",
-  "headSha": "d18356c5e0a469c1655b515d62a76eef46dc284d",
-  "policy": "MCP-first business-feature parity. Every website business action needs a tested MCP counterpart or documented secure browser approval; strict release parity remains BLOCKED pending remaining route-family and 93-case acceptance.",
+  "auditedAt": "2026-11-12",
+  "headSha": "e2c55a78d6200685e7bfdce511abf89a4e28cb5b",
+  "policy": "MCP-first parity: exact source e2c55a7 passed all five workflows, including 212 authenticated browser/delegated MCP E2E (five skipped, zero failed). 57 of 59 teacher API route families supported with dedicated behavioral evidence; two partial remain. Historical cases 89/93 and new canonical cases 21/23 checked; policy credential handoff, legacy gateway, canonical lesson occurrence cutover, and strict post-merge release remain BLOCKED.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -162,13 +162,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_generation_preview",
         "ccp_v1_billing_generation_commit"
       ],
-      "explanation": "Shared teacher-scoped draft invoice preview and creation via MCP and website; E2E exercises period charges. Concurrent billing, exact-once redemptions and idempotent invoice generation remain unverified.",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "Cross-interface invoice generation preview and confirmed commit now use one current-schema database transaction with teacher-period locks, idempotent receipts and rollback-safe credit allocation. Two actual browser/delegated MCP E2E branches verify concurrency, original invoice replay, strict fields, changed-key conflict, tenant-owned lines, plus original period/rate cases. Tested 205 passing E2E at 155cdb0, full CI/security/Compose/restore green. Broader canonical lesson data model cutover is not part of this route's acceptance.",
+      "evidenceTest": "e2e/parity-billing-finance-receipts.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/checkout/route.ts",
@@ -176,12 +176,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_invoice_checkout"
       ],
-      "explanation": "Both interfaces call the same Stripe checkout creation service, with explicit MCP approval and browser payment handoff. Test covers unconfigured provider guard, not live Stripe/payment state or retries.",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "Website and confirmed MCP share configured synthetic Stripe Checkout creation with safe browser handoff, validated owner/current invoice/payable-balance SQL-locked claim, and competing-provider-session expiry or fail-closed handling. Real synthetic Stripe adversarial concurrent website/MCP, same-session retries, privacy and PDF/ledger readback passed at 155cdb0 (205 E2E green). Real external provider credentials/charges not covered by CI; separate prepublication live gate.",
+      "evidenceTest": "e2e/parity-configured-stripe.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/mark-paid/route.ts",
@@ -215,12 +215,12 @@
         "GET"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_invoice_pdf"
       ],
-      "explanation": "Website and MCP both use the same loadInvoicePdf and owner checks. E2E validates PDF signatures; MCP returns base64 up to 512 KB, larger files use secure browser download. Privacy and size-limit coverage incomplete.",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "Website and explicitly approved MCP PDF export use the same owner-scoped invoice builder and data source. All 150 line items and long notes paginate instead of truncating. Authenticated E2E verifies same page count, a genuinely foreign teacher's invoice denied, no portal-token leak, sent/draft retrieval, and separate 512 KiB MCP inline limit with authenticated browser fallback. Accepted candidate source 3325b0, 207 authenticated E2E passed (5 skipped).",
+      "evidenceTest": "e2e/parity-invoice-pdf-pages.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/regenerate/route.ts",
@@ -228,12 +228,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_invoice_regenerate"
       ],
-      "explanation": "Shared teacher-owned draft regeneration via website and confirmed MCP call, E2E readback. Multi-table invoice line replacement is non-transactional; concurrent edits remain unverified.",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "Browser and delegated MCP share one owner-scoped regeneration domain service and database transaction with original invoice revision, immutable replay receipt, exact lesson/credit lines, stale revision rollback and no unreconciled Stripe checkout modification. Synthetic actual DB browser↔MCP concurrency and direct SQL negative tests passed at 155cdb0 (205 E2E green); live provider testing separately required.",
+      "evidenceTest": "e2e/parity-billing-finance-receipts.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/route.ts",
@@ -286,12 +286,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
+        "ccp_v1_billing_invoices_bulk_preview",
         "ccp_v1_billing_invoices_bulk"
       ],
-      "explanation": "Website and MCP share bulk send/delete/void service and partial-success results. MCP requires explicit email approval for send; exactly-once emails, concurrency and all-recipient confirmation pending.",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "Shared website/MCP bulk invoice preview with owner-scoped actual email recipients, amount, invoice revision and SHA-256 fingerprint. Approved send requires confirmedEmail plus a still-current recipient-visible preview; an anonymized preview cannot mint send permission. Synthetic Mailpit E2E tests changed recipient and competing cross-client send give exactly one delivery, missing owner/duplicate guards, and full readback. Accepted candidate source 3325b0, 207 E2E passed (5 skipped).",
+      "evidenceTest": "e2e/parity-bulk-preview-race.spec.ts"
     },
     {
       "path": "app/api/coaching/briefing/route.ts",
@@ -571,12 +572,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_import_spreadsheet_suggest"
       ],
-      "explanation": "Both transports now parse one strict, local-first source-header and sample-row schema. Offline mapping has identical defaults, external AI requires explicit useAi/confirmedExternal opt-in, and malformed/unknown samples are rejected before data egress. Positive synthetic provider behavior and provider failure recovery still require acceptance before full promotion.",
-      "evidenceTest": "e2e/parity-spreadsheet-suggest.spec.ts"
+      "explanation": "Deterministic no-egress local spreadsheet mapping remains the default in website and MCP. Explicit approved useAi+confirmedExternal is required before transmitting private samples. Shared provider path now rejects invented source columns, sanitizes upstream API errors and keeps BYO keys private. A fixed CI-only loopback OpenAI provider tests positive mapping, 503 failures, non-approved denial, identical browser/MCP output and credential masking. Source 95daf7: 208 authenticated E2E passed, 5 skipped; no live provider credential used.",
+      "evidenceTest": "e2e/parity-spreadsheet-ai-provider.spec.ts"
     },
     {
       "path": "app/api/lichess/callback/route.ts",
@@ -919,16 +920,18 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
-        "ccp_v1_students_update",
         "ccp_v1_students_profile",
         "ccp_v1_students_profile_edit",
-        "ccp_v1_students_archive_preview",
         "ccp_v1_students_delete_impact",
-        "ccp_v1_students_delete"
+        "ccp_v1_students_delete",
+        "ccp_v1_students_archive_preview",
+        "ccp_v1_students_chess_history",
+        "ccp_v1_students_update"
       ],
-      "explanation": "Student profile/archiving plus confirmed, revision-guarded deletion impact and unlinked-profile removal share website/MCP services. Historical dependent lessons, rosters, materials, skills and credits block delete, favoring archive. Serializable deletion, full erasure, atomic hosted cap and full behavioral acceptance remain open."
+      "explanation": "Shared website/MCP student GET/PUT/DELETE and chess history/archive preview retain owner and revision guards. Deletion impact now queries current typed material_links and material_teaching_evidence (not removed legacy tables). Two synthetic authenticated E2E scenarios cover valid empty-profile preview, guarded concurrent website/MCP one-winner deletion, linked historical material preservation, explicit consent, and genuine foreign-tenant denial. Profiles with any historical dependencies are archived rather than erased. Source dd311cb8 passed all five CI workflows and 209 authenticated E2E scenarios, 5 deliberately skipped, zero failed. The new student lifecycle test verifies linked material survival, one-winner empty-profile deletion and genuine foreign teacher denial. Historical records continue to be archived, not erased. The route-family evidence reference now points to the broad student parity suite: profile, safe edits, archive preview, deletion impact/delete, named chess-history read and revision/idempotency update are all executed against authenticated website and delegated MCP. The dedicated material-history and concurrent-deletion E2E remains separately referenced in the new scenario checklist.",
+      "evidenceTest": "e2e/parity-students.spec.ts"
     },
     {
       "path": "app/api/students/[id]/skills/route.ts",

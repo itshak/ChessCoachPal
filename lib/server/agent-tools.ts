@@ -106,8 +106,10 @@ import {
 import type {ColumnMapping} from "@/lib/spreadsheet-import";
 import {
  teacherBillingGenerate,teacherBillingRegenerate,teacherBillingCheckout,teacherBillingBulk,
+ teacherBillingBulkPreview,
 } from "@/lib/server/teacher-billing-operations";
 import {loadInvoicePdf} from "@/lib/server/invoice-pdf-data";
+import {invoicePdfMcpPayload} from "@/lib/server/invoice-pdf-transfer";
 async function billingActionResponse(result:Response){
  const body=await result.json();
  return result.ok?{data:body}:{error:{code:result.status===400?"VALIDATION_ERROR":
@@ -218,14 +220,16 @@ const catalogue = [
   },
   {
     name:"ccp_v1_billing_generation_commit",
-    description:"Generate draft invoices and consume eligible prepaid credits for the specified period. Explicit teacher confirmation required; preview before committing. Do not retry until checking for existing invoices.",
+    description:"Generate draft invoices and consume eligible prepaid credits in one transaction. Explicit confirmation required. Supply and reuse idempotencyKey on website/MCP retries to get the same immutable invoice IDs without recharging credits.",
     schema:z.object({periodStart:z.string().date(),periodEnd:z.string().date(),
-      confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+      confirmed:z.literal(true),idempotencyKey:uuid.optional()}).strict(),scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_billing_invoice_regenerate",
-    description:"Recalculate line items on one identified draft invoice from current attendance, studio policies, rates and available prepaid credits, potentially overwriting edits. Explicit confirmation required.",
-    schema:z.object({invoiceId:uuid,confirmed:z.literal(true)}).strict(),
+    description:"Recalculate a draft invoice from attendance, rates and credits with a database transaction, optimistic revision and immutable retry receipt. Review the current invoice first and reuse expectedUpdatedAt plus idempotencyKey across retries. Explicit confirmation required.",
+    schema:z.object({invoiceId:uuid,confirmed:z.literal(true),
+      expectedUpdatedAt:z.string().datetime({offset:true}).optional(),
+      idempotencyKey:uuid.optional()}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -242,12 +246,24 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_billing_invoices_bulk_preview",
+    description:"Review up to 50 teacher-owned draft invoices with current amounts, email recipients and a revision fingerprint. Requires confirmed=true to reveal family emails. Read-only; no email is sent.",
+    schema:z.object({ids:z.array(uuid).min(1).max(50),
+      includeRecipients:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict()
+      .refine(v=>!v.includeRecipients||v.confirmed===true,
+        "Viewing family recipients requires explicit approval"),
+    scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_v1_billing_invoices_bulk",
-    description:"Perform confirmed invoice send, delete or void on 1–50 teacher-owned invoices. SEND has external email effects and requires separate confirmedEmail=true. Per-invoice failures are returned.",
+    description:"Perform confirmed invoice send, delete or void on up to 50 teacher-owned invoices. For SEND first review the bulk preview of all recipients and totals, then provide its previewDigest plus confirmedEmail=true and confirmed=true. Changed recipients reject sending.",
     schema:z.object({ids:z.array(uuid).min(1).max(50),
       action:z.enum(["send","delete","void"]),
-      confirmed:z.literal(true),confirmedEmail:z.literal(true).optional()}).strict()
-      .refine(v=>v.action!=="send"||v.confirmedEmail===true,"Sending email requires explicit approval"),
+      confirmed:z.literal(true),confirmedEmail:z.literal(true).optional(),
+      previewDigest:z.string().regex(/^[0-9a-f]{64}$/).optional()}).strict()
+      .refine(v=>v.action!=="send"||
+        (v.confirmedEmail===true&&Boolean(v.previewDigest)),
+        "Bulk email requires confirmed recipient preview"),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1327,30 +1343,44 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return await billingActionResponse(await teacherBillingGenerate(db,teacherId,a));
       }
       case "ccp_v1_billing_generation_commit": {
-        const a=args as {periodStart:string;periodEnd:string};
-        return await billingActionResponse(await teacherBillingGenerate(db,teacherId,{...a,commit:true}));
+        const a=args as {periodStart:string;periodEnd:string;idempotencyKey?:string};
+        // The MCP approval marker is transport metadata, never an ordinary
+        // domain edit field; pass only fields accepted by the website service.
+        return await billingActionResponse(await teacherBillingGenerate(db,teacherId,{
+          periodStart:a.periodStart,periodEnd:a.periodEnd,
+          idempotencyKey:a.idempotencyKey,commit:true,
+        }));
       }
       case "ccp_v1_billing_invoice_regenerate": {
-        const a=args as {invoiceId:string};
-        return await billingActionResponse(await teacherBillingRegenerate(db,teacherId,a.invoiceId));
+        const a=args as {invoiceId:string;expectedUpdatedAt?:string;idempotencyKey?:string};
+        return await billingActionResponse(await teacherBillingRegenerate(db,teacherId,a.invoiceId,{
+          expectedUpdatedAt:a.expectedUpdatedAt,idempotencyKey:a.idempotencyKey,
+        }));
       }
       case "ccp_v1_billing_invoice_pdf": {
         const a=args as {invoiceId:string};
         const loaded=await loadInvoicePdf(db,{invoiceId:a.invoiceId,teacherId});
         if(!loaded.ok)return {error:{code:loaded.code.toUpperCase(),message:"Unable to generate invoice PDF"}};
-        if(loaded.data.pdfBytes.byteLength>512*1024)
-          return {error:{code:"PDF_TOO_LARGE",message:"Download the invoice PDF securely from the website"}};
-        return {data:{filename:loaded.data.filename,mimeType:"application/pdf",
-          base64:Buffer.from(loaded.data.pdfBytes).toString("base64")}};
+        return invoicePdfMcpPayload(loaded.data.pdfBytes,loaded.data.filename);
       }
       case "ccp_v1_billing_invoice_checkout": {
         const a=args as {invoiceId:string};
         return await billingActionResponse(await teacherBillingCheckout(db,teacherId,a.invoiceId,oauthOrigin()));
       }
+      case "ccp_v1_billing_invoices_bulk_preview": {
+        const a=args as {ids:string[];includeRecipients:boolean;confirmed?:boolean};
+        return await billingActionResponse(await teacherBillingBulkPreview(
+          db,teacherId,a.ids,a.includeRecipients&&a.confirmed===true));
+      }
       case "ccp_v1_billing_invoices_bulk": {
-        const a=args as {ids:string[];action:"send"|"delete"|"void"};
+        const a=args as {ids:string[];action:"send"|"delete"|"void";
+          confirmedEmail?:boolean;previewDigest?:string};
         const user=(await db.auth.getUser()).data.user;
-        return await billingActionResponse(await teacherBillingBulk(db,teacherId,user?.email,oauthOrigin(),a));
+        return await billingActionResponse(await teacherBillingBulk(
+          db,teacherId,user?.email,oauthOrigin(),{
+            ids:a.ids,action:a.action,confirmedEmail:a.confirmedEmail,
+            previewDigest:a.previewDigest,
+          }));
       }
       case "ccp_v1_import_spreadsheet_parse": {
         const a=args as {filename:string;base64:string};

@@ -1,7 +1,7 @@
 import {NextRequest,NextResponse} from "next/server";
 import {createClient} from "@/lib/supabase/server";
 import {
- teacherBillingGenerate,teacherBillingRegenerate,teacherBillingCheckout,teacherBillingBulk,
+ teacherBillingBulk,teacherBillingBulkPreview,
 } from "@/lib/server/teacher-billing-operations";
 async function teacher(){
  const db=await createClient();const {data:{user}}=await db.auth.getUser();
@@ -15,6 +15,13 @@ export async function POST(req:NextRequest){
  const auth=await teacher();if(!auth)return NextResponse.json({error:"Unauthorized"},{status:401});
  const body=await req.json().catch(()=>null);
  if(!body||typeof body!=="object"||Array.isArray(body))return NextResponse.json({error:"Invalid JSON"},{status:400});
+ if(body.action==="preview"){
+   if(!Array.isArray(body.ids)||Object.keys(body).some(k=>
+     !["action","ids","includeRecipients"].includes(k))||
+     (body.includeRecipients!==undefined&&typeof body.includeRecipients!=="boolean"))
+     return NextResponse.json({error:"Invalid bulk preview"},{status:400});
+   return teacherBillingBulkPreview(auth.db,auth.id,body.ids,body.includeRecipients===true);
+ }
  try{return await teacherBillingBulk(auth.db,auth.id,auth.email,requestOrigin(req),body);}
  catch(error){return failure(error);}
 }

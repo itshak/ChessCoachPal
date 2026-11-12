@@ -84,6 +84,8 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
      quantity:1,unitCents:200,amountCents:200},
    ],
    p_redemptions:[],
+   p_expected_updated_at:before.updated_at,
+   p_request_id:randomUUID(),
  });
  expect(badRegeneration).not.toBeNull();
  const unchanged=await page.request.get("/api/billing/invoices/"+invoiceId);

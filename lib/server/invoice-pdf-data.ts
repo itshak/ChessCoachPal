@@ -29,6 +29,7 @@ export interface InvoicePdfFamilyRow extends FamilyContact {
 export interface InvoicePdfInvoiceRow {
   id: string;
   status: string;
+  updated_at: string;
   currency: string;
   period_start: string;
   period_end: string;

@@ -201,9 +201,12 @@ test("PARITY:PARITY-session-roster-foreign-tenant denies snapshot, confidential 
   }).select("id,updated_at").single();
   expect(session.error).toBeNull();
   const id=session.data!.id as string;
-  expect((await admin.from("session_participants").insert({
-   teacher_id:teacherId,session_id:id,student_id:studentId,
-  })).error).toBeNull();
+  // The current canonical private-session trigger freezes this learner
+  // into the roster at session creation, so a second insert is a duplicate.
+  const frozen=await admin.from("session_participants").select("student_id")
+    .eq("session_id",id);
+  expect(frozen.error).toBeNull();
+  expect(frozen.data?.map(row=>row.student_id)).toEqual([studentId]);
 
   const site=await page.request.get("/api/coaching/sessions/"+id+"/roster");
   expect(site.status(),await site.text()).toBe(404);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ interface LineItem {
 export function InvoiceDetailClient({
   invoiceId,
   status,
+  initialRevision,
   currency,
   initialItems,
   initialNotes,
@@ -49,6 +50,7 @@ export function InvoiceDetailClient({
 }: {
   invoiceId: string;
   status: string;
+  initialRevision: string;
   currency: string;
   initialItems: LineItem[];
   initialNotes: string;
@@ -76,6 +78,9 @@ export function InvoiceDetailClient({
   const [items, setItems] = useState(initialItems);
   const [notes, setNotes] = useState(initialNotes);
   const [busy, setBusy] = useState(false);
+  // Keep the original revision/key across network retries; never treat a
+  // second click as permission to overwrite a newer draft.
+  const regenerationReceipt=useRef<{revision:string;key:string}|null>(null);
   const [flash, setFlash] = useState<{
     text: string;
     tone: "ok" | "error" | "warn";
@@ -137,17 +142,31 @@ export function InvoiceDetailClient({
       confirmLabel: "Regenerate",
     });
     if (!ok) return;
+    regenerationReceipt.current??={revision:initialRevision,key:crypto.randomUUID()};
     setBusy(true);
     setFlash(null);
-    const res = await fetch(`/api/billing/invoices/${invoiceId}/regenerate`, {
-      method: "POST",
-    });
+    let res:Response;
+    try{
+      res=await fetch(`/api/billing/invoices/${invoiceId}/regenerate`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          expectedUpdatedAt:regenerationReceipt.current.revision,
+          idempotencyKey:regenerationReceipt.current.key,
+        }),
+      });
+    }catch{
+      setBusy(false);
+      setFlash({text:"Connection interrupted. Retry to recover the same regeneration result.",tone:"error"});
+      return;
+    }
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
+      if(res.status===409){regenerationReceipt.current=null;router.refresh();}
       setFlash({ text: data.error ?? "Regenerate failed", tone: "error" });
       return;
     }
+    regenerationReceipt.current=null;
     setFlash({
       text:
         data.itemCount === 0

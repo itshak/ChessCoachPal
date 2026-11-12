@@ -71,6 +71,25 @@ describe("buildInvoicePdf", () => {
     expect(long.getPageCount()).toBe(2);
   });
 
+  it("paginates all long invoice line items and notes rather than clipping",async()=>{
+    const {PDFDocument}=await import("pdf-lib");
+    const render=(count:number)=>buildInvoicePdf({
+      studioName:"Synthetic chess studio",
+      familyName:"Knight family",
+      periodStart:"2047-01-01",periodEnd:"2047-01-31",
+      currency:"USD",items:Array.from({length:count},(_,i)=>({
+        description:"Unique lesson index "+String(i+1).padStart(4,"0"),
+        quantity:1,unitCents:500,amountCents:500,
+      })),subtotalCents:count*500,
+      paymentInstructions:"Electronic payment only",
+      notes:"Every line is financially material ".repeat(220),
+    });
+    const short=await PDFDocument.load(await render(2));
+    const long=await PDFDocument.load(await render(165));
+    expect(short.getPageCount()).toBeGreaterThan(1);
+    expect(long.getPageCount()).toBeGreaterThan(short.getPageCount()+2);
+  });
+
   it("ignores an invalid payment QR value", async () => {
     const bytes = await buildInvoicePdf({
       studioName: "Studio",

@@ -131,6 +131,56 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    expect(calls[0].idempotencyKey).toMatch(/^ccp-checkout-v1-/);
    expect(JSON.stringify(viaMcp.data)).not.toContain(secret);
 
+   // Real Stripe coalesces duplicate Idempotency-Key requests. The
+   // deliberately adversarial synthetic processor below instead creates two
+   // distinct sessions for concurrent same-invoice requests. Only one may
+   // become payable; the loser must be expired, never overwrite the winner.
+   const rival=await admin.from("invoices").insert({
+     teacher_id:teacherId,guardian_id:guardian.data!.id,status:"sent",
+     period_start:"2045-05-01",period_end:"2045-05-31",
+     currency:"USD",subtotal_cents:3600,
+   }).select("id").single();
+   expect(rival.error).toBeNull();
+   const rivalId=rival.data!.id as string;
+   expect((await admin.from("invoice_items").insert({
+     invoice_id:rivalId,lesson_id:null,kind:"lesson",
+     description:"Synthetic competing queen endgame",quantity:1,
+     unit_cents:3600,amount_cents:3600,sort_order:0,
+   })).error).toBeNull();
+   const [concurrentWeb,concurrentMcp]=await Promise.all([
+     page.request.post("/api/billing/invoices/"+rivalId+"/checkout"),
+     call("ccp_v1_billing_invoice_checkout",{
+       invoiceId:rivalId,confirmed:true,confirmedExternal:true,
+     }),
+   ]);
+   expect(Number(concurrentWeb.status()===200)+
+     Number(concurrentMcp.error===undefined)).toBe(1);
+   if(concurrentWeb.status()!==200)
+     expect(concurrentWeb.status()).toBe(409);
+   if(concurrentMcp.error)expect(concurrentMcp.error.code).toBe("CONFLICT");
+   const rivalRow=await admin.from("invoices")
+     .select("stripe_checkout_session_id,stripe_checkout_url")
+     .eq("id",rivalId).single();
+   expect(rivalRow.error).toBeNull();
+   const claimedId=rivalRow.data!.stripe_checkout_session_id as string;
+   expect(claimedId).toMatch(/^cs_test_ccp[0-9]{8}$/);
+   expect(rivalRow.data!.stripe_checkout_url)
+     .toBe("https://checkout.stripe.com/c/pay/"+claimedId);
+   expect(calls).toHaveLength(3);
+   const losingIds=["cs_test_ccp00000002","cs_test_ccp00000003"]
+     .filter(value=>value!==claimedId);
+   expect(losingIds).toHaveLength(1);
+   expect(expired.has(losingIds[0])).toBe(true);
+   expect(expired.has(claimedId)).toBe(false);
+   const repeatMcp=await call("ccp_v1_billing_invoice_checkout",{
+     invoiceId:rivalId,confirmed:true,confirmedExternal:true,
+   });
+   expect(repeatMcp.error).toBeUndefined();
+   expect(repeatMcp.data).toEqual({
+     url:rivalRow.data!.stripe_checkout_url,sessionId:claimedId,
+   });
+   expect(calls).toHaveLength(3);
+
    const pdf=await call("ccp_v1_billing_invoice_pdf",{invoiceId,confirmed:true});
    expect(pdf.error).toBeUndefined();
    expect(Buffer.from(pdf.data.base64,"base64").subarray(0,5).toString()).toBe("%PDF-");

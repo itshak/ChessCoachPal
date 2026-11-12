@@ -77,3 +77,32 @@ policy or spreadsheet routes until they pass CI plus authenticated E2E.**
 
 All unverified work remains on the draft implementation branch. No test
 passes or source classifications may be invented to close these gaps.
+ 
+## Coordinated finance parity batch — candidate only
+ 
+A separate implementation branch adds the SQL receipt and website/MCP revisions for **generation, regeneration and configured checkout**, plus the actual billing UI and adversarial synthetic tests. Unlike simple tool-name parity, these implement database-owned identical/replayed writes, exact invoice revisions, and a single checkout link under concurrency. See `e2e/parity-billing-finance-receipts.spec.ts` and `e2e/parity-configured-stripe.spec.ts`.
+ 
+The three entries in `scripts/mcp-website-parity.json` deliberately remain `partial` until successful execution on a stable commit; do not count them as verified now. Unfinished canonical lesson cutover, external delivery semantics, unrelated route families, historical 93-case matrix and final merged-main acceptance remain release blockers.
+
+## 2026-11-12 — three finance route families independently accepted on stable PR #52 candidate
+
+On source commit `155cdb014405d3ad25c86c814ceaac29a1da9764`, [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43238134655), [authenticated website/delegated MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43238134567) (**205 passed, five intentionally skipped, zero failed**), [security audit](https://github.com/itshak/ChessCoachPal/actions/runs/43238134563), [self-host Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43238134918) and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43238134615) all completed successfully.
+
+Real website↔MCP and underlying SQL now establish duplicate-safe invoice generation, revisioned regeneration and provider Checkout linking with same-key replay/changed-key rejection, owner scoping, original invoice/credit preservation and a synthetic configured two-session Stripe race. These represent **three verified teacher route-family promotions** in the exact source inventory: **53 of 59 mcp**, **six partial**, **zero names-only gaps** (not the same as end-to-end complete product parity). Three newly indexed finance/checkout-guard behaviors have independently named accepted cases in `docs/MCP_NEW_PARITY_SCENARIOS.md`; the additional checkout-race row remains unchecked because its passing synthetic test is already used by an earlier historical case. Do not duplicate evidence.
+
+The 93 historical cases are not automatically closed. Incomplete `agent/v1`, invoice PDF, invoice bulk, spreadsheet suggestions, studio policy and student record route families remain, alongside the independent canonical `lessons`/`attendance` cutover, guardian/credit histories and final merged-main gates. **No OpenSpec archive, main merge or release**. Live real Stripe/ChatGPT/Claude connection remains separate prepublication verification.
+
+## 2026-11-12 — three additional route-family candidates and student lifecycle fixes
+
+Finance source `3325b0` passed 207 authenticated E2E checks; synthetic AI source `95daf7` passed 208; student-delete source `dd311c` passed 209 authenticated E2E and all five workflows; combined head `ea1c810` passed 210 authenticated E2E, five skipped. Full combined branch verification and prepublication live-provider checks remain separate.
+
+Private multi-page invoice PDF, consent-bound bulk SMTP and optional AI spreadsheet mapping are now accepted in independent authenticated browser/MCP tests, with explicit owner checks and no real secrets. Student deletion preflight previously referenced removed chess_learning_resources/chess_material_progress tables, preventing safe deletion even for empty profiles; the service now counts the current typed-material tables and awaits new E2E. The proposed technical inventory improves from **53/59 to 57/59**, while **two families remain partial**: `/api/agent/v1` (broad legacy website gateway) and `/api/settings/policy` (raw credential safe handoff).
+
+**Release still blocked:** this route-family count is not completion of the separate 93 historical scenarios, new chess-first integration scenarios, canonical calendar writer/attendance cutover, or live ChatGPT/Claude/Stripe prepublication tests. Keep umbrella OpenSpec active and do not merge to main.
+**Combined-source acceptance, 12 Nov 2026:** [PR #52 source ea1c8108](https://github.com/itshak/ChessCoachPal/commit/ea1c8108e3442837bdad9a64ff05df07ac35d2e2) passed [210 authenticated browser/MCP E2E tests](https://github.com/itshak/ChessCoachPal/actions/runs/43256956577) (five skipped, zero failed), plus [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43256956966), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43256956336), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43256956228) and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43256956412). This verifies the 7-route family source slice, not complete v0.1.0 or live provider behavior.
+
+## 2026-11-12 — evidence-audited parity increment, not main release
+
+**Verified source `e2c55a7` (2026-11-12):** [212 authenticated website/MCP E2E tests passed](https://github.com/itshak/ChessCoachPal/actions/runs/43275932081) (five intentionally skipped, zero failures). [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43275931908), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43275932040), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43275931957), and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43275931913) are green on the identical source.
+
+The student route evidence now points to the broad `e2e/parity-students.spec.ts` suite rather than a deletion-only file. Two newly executed named tests verify chess history and revision/idempotency behavior, while dedicated `e2e/parity-student-delete-lifecycle.spec.ts` independently covers historical material retention and cross-tenant denial. The 57/59 source audit passes without relaxing the matching-tool check. Historical matrix: **89/93** checked, with four truly incomplete cases. New matrix: **21/23** checked, with two independent cases outstanding. Full product parity remains blocked; no merged-main or release claim.

@@ -59,11 +59,24 @@ test("PARITY:PARITY-groups-create-update keeps class rename and revision identic
  const siteEdit=await page.request.post("/api/agent/v1",{data:{
    action:"groups.update",groupId:created.entityId,workplaceId:wp,
    name:label("Browser class name"),
+   expectedUpdatedAt:renamed.data.revision,idempotencyKey:randomUUID(),
  }});
  expect(siteEdit.status()).toBe(200);
+ // An atomic rename returns a revision receipt, not a materialized group.
+ // Compare the persisted group through the website list and delegated MCP.
+ const receipt=(await siteEdit.json()).data as {entityId:string;revision:string};
+ expect(receipt.entityId).toBe(created.entityId);
+ expect(receipt.revision).toBeTruthy();
+ const browserRead=await page.request.post("/api/agent/v1",{
+   data:{action:"groups.list"},
+ });
+ expect(browserRead.status(),await browserRead.text()).toBe(200);
+ const fromBrowser=((await browserRead.json()).data as Array<{id:string;name:string}>)
+   .find(g=>g.id===created.entityId);
+ expect(fromBrowser).toBeTruthy();
  const after=(await callTool("ccp_v1_groups_list",{})).data as Array<{id:string;name:string}>;
- expect(after.find(g=>g.id===created.entityId)?.name)
-   .toBe((await siteEdit.json()).data.name);
+ expect(fromBrowser?.name).toBe(after.find(g=>g.id===created.entityId)?.name);
+ expect(fromBrowser?.name).toMatch(/^Browser class name/);
  const stale=await callTool("ccp_v1_groups_update",{
    groupId:created.entityId,workplaceId:wp,name:"Wrong stale edit",
    expectedUpdatedAt:created.revision,idempotencyKey:randomUUID(),

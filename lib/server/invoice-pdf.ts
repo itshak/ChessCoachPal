@@ -131,11 +131,19 @@ export async function buildInvoicePdf(
   });
   y -= 16;
 
+  // Every invoice line is financially material: never silently omit lines
+  // merely because the first page ran out of room. Repeat column headings.
+  const continuePage = () => {
+    page = doc.addPage([612, 792]);
+    y = height - margin;
+    draw("Invoice (continued)", {font:bold,size:13});
+    y -= 30;
+    draw("Description", {font:bold,size:10});
+    draw("Amount", {font:bold,size:10,x:480});
+    y -= 18;
+  };
   for (const item of input.items) {
-    if (y < 120) {
-      // Keep it simple: one page is enough for typical studio invoices
-      break;
-    }
+    if (y < 110) continuePage();
     const rawDesc = toPdfSafeText(item.description);
     const desc =
       rawDesc.length > 70 ? `${rawDesc.slice(0, 67)}...` : rawDesc;
@@ -147,6 +155,10 @@ export async function buildInvoicePdf(
     y -= 14;
   }
 
+  if(y<110){
+    page=doc.addPage([612,792]);
+    y=height-margin;
+  }
   y -= 8;
   page.drawLine({
     start: { x: margin, y },
@@ -178,12 +190,18 @@ export async function buildInvoicePdf(
     y -= 36;
     draw("Payment instructions", { font: bold, size: 11 });
     const headerY = y;
+    const qrInstructionPage=page;
     y -= 14;
     // Wrap text beside the QR code when there is one.
     for (const line of wrapText(input.paymentInstructions, qrImage ? 64 : 90)) {
+      if(y<60){
+        // Keep QR with its instruction heading, and paginate a large note
+        // rather than discarding instructions after the first sheet.
+        page=doc.addPage([612,792]);
+        y=height-margin;
+      }
       draw(line, { size: 10 });
       y -= 13;
-      if (y < 60) break;
     }
     if (qrImage) {
       const scale = Math.min(QR_SIZE / qrImage.width, QR_SIZE / qrImage.height);
@@ -191,27 +209,36 @@ export async function buildInvoicePdf(
       const h = qrImage.height * scale;
       const x = 612 - margin - w;
       const bottom = headerY + 10 - h;
-      page.drawImage(qrImage, { x, y: bottom, width: w, height: h });
+      qrInstructionPage.drawImage(qrImage, { x, y: bottom, width: w, height: h });
       const caption = "Scan to pay";
-      page.drawText(caption, {
+      qrInstructionPage.drawText(caption, {
         x: x + w / 2 - font.widthOfTextAtSize(caption, 9) / 2,
         y: bottom - 12,
         size: 9,
         font,
         color: rgb(0.4, 0.4, 0.4),
       });
-      y = Math.min(y, bottom - 12);
+      if(page===qrInstructionPage)y = Math.min(y, bottom - 12);
     }
   }
 
   if (input.notes?.trim()) {
+    if(y<100){
+      page=doc.addPage([612,792]);
+      y=height-margin;
+    }
     y -= 20;
     draw("Notes", { font: bold, size: 11 });
     y -= 14;
     for (const line of wrapText(input.notes, 90)) {
+      if(y<60){
+        page=doc.addPage([612,792]);
+        y=height-margin;
+        draw("Notes (continued)",{font:bold,size:11});
+        y-=18;
+      }
       draw(line, { size: 10 });
       y -= 13;
-      if (y < 60) break;
     }
   }
 

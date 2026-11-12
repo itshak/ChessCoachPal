@@ -57,6 +57,7 @@ jobs:
             echo "LICHESS_API_ORIGIN=http://127.0.0.1:3999" # CI-only loopback OAuth provider, never production
             echo "CCP_SYNTHETIC_VISION_ORIGIN=http://127.0.0.1:3998" # fixed loopback AI vision stub
             echo "CCP_SYNTHETIC_STRIPE_ORIGIN=http://127.0.0.1:3997" # fixed loopback Stripe stub
+            echo "CCP_SYNTHETIC_AI_ORIGIN=http://127.0.0.1:3996" # fixed loopback optional AI mapping stub
             echo "EMAIL_PROVIDER=smtp"
             echo "SMTP_HOST=127.0.0.1"
             echo "SMTP_PORT=54325"

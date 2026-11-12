@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,8 @@ export function GenerateInvoicesModal({
   const [periodStart, setPeriodStart] = useState(defaultStart);
   const [periodEnd, setPeriodEnd] = useState(defaultEnd);
   const [busy, setBusy] = useState(false);
+  // A retry of the same confirmed period must reuse its original receipt.
+  const generationKey = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{
     drafts: PreviewDraft[];
@@ -50,6 +52,7 @@ export function GenerateInvoicesModal({
     setBusy(true);
     setError(null);
     setPreview(null);
+    generationKey.current=null;
     const res = await fetch("/api/billing/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -70,13 +73,21 @@ export function GenerateInvoicesModal({
   }
 
   async function commit() {
+    generationKey.current??=crypto.randomUUID();
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/billing/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ periodStart, periodEnd, commit: true }),
-    });
+    let res:Response;
+    try{
+      res = await fetch("/api/billing/generate", {
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({periodStart,periodEnd,commit:true,
+          idempotencyKey:generationKey.current}),
+      });
+    }catch{
+      setBusy(false);
+      setError("Connection interrupted. Retry to recover the same invoice generation result.");
+      return;
+    }
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
@@ -108,7 +119,7 @@ export function GenerateInvoicesModal({
             <input
               type="date"
               value={periodStart}
-              onChange={(e) => setPeriodStart(e.target.value)}
+              onChange={(e) => {setPeriodStart(e.target.value);setPreview(null);generationKey.current=null;}}
               className={`${inputClass} w-full`}
             />
           </label>
@@ -119,7 +130,7 @@ export function GenerateInvoicesModal({
             <input
               type="date"
               value={periodEnd}
-              onChange={(e) => setPeriodEnd(e.target.value)}
+              onChange={(e) => {setPeriodEnd(e.target.value);setPreview(null);generationKey.current=null;}}
               className={`${inputClass} w-full`}
             />
           </label>

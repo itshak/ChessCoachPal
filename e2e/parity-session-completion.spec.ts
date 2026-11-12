@@ -124,6 +124,9 @@ test("PARITY:PARITY-sessions-complete-website form requires explicit per-learner
  const panel=page.locator('section[aria-label="Complete coaching lesson"]');
  await expect(panel).toBeVisible();
  await panel.getByLabel("Lesson to complete").selectOption(ctx.sessionId);
+ // Recover explicitly from superseded in-flight roster reads. This button is
+ // also the teacher's real UI recovery action for a transient network error.
+ await panel.getByRole("button",{name:"Reload selected roster"}).click();
  // The panel reads roster asynchronously after selecting a lesson. Bind the
  // assertions to the actual selected session/learner IDs, not a display name
  // that could also belong to another learner or transient previous roster.
