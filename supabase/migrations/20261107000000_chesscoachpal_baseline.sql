@@ -8098,3 +8098,100 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_session_note_save(
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_session_note_save(
   uuid,uuid,text,text,boolean,boolean,timestamptz,uuid)
   TO authenticated;
+
+
+-- Guardian cancellation of ONE frozen participant. A session can remain
+-- scheduled for the rest of the group; student cancellation does not cancel
+-- the shared teaching occurrence or silently consume a make-up credit.
+-- Token ownership, the session lock, attendance insert and notification
+-- intents all occur inside one transaction, with no teacher impersonation.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_portal_cancel(
+  p_portal_token text,p_session_id uuid,p_student_id uuid,p_cancel_reason text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_portal_cancel$
+DECLARE
+  v_teacher uuid;
+  v_student_name text;
+  v_start timestamptz;
+  v_status text;
+  v_att public.session_attendance%ROWTYPE;
+  v_now timestamptz;
+  v_notify_in_app boolean := true;
+  v_notify_email boolean := false;
+BEGIN
+  IF p_portal_token IS NULL OR length(p_portal_token) NOT BETWEEN 32 AND 256
+     OR p_session_id IS NULL OR p_student_id IS NULL THEN
+    RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+  END IF;
+  IF p_cancel_reason IS NULL OR char_length(p_cancel_reason)>1000 THEN
+    RAISE EXCEPTION 'PORTAL_INVALID_NOTE' USING ERRCODE='22023';
+  END IF;
+  SELECT s.teacher_id,st.name,s.starts_at,s.status
+    INTO v_teacher,v_student_name,v_start,v_status
+    FROM public.teaching_sessions s
+    JOIN public.session_participants sp ON sp.session_id=s.id
+      AND sp.teacher_id=s.teacher_id AND sp.student_id=p_student_id
+    JOIN public.students st ON st.id=sp.student_id
+      AND st.teacher_id=s.teacher_id
+    JOIN public.guardians g ON g.id=st.guardian_id
+      AND g.teacher_id=s.teacher_id
+   WHERE s.id=p_session_id AND g.portal_token=p_portal_token
+   FOR UPDATE OF s,st,g;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+  END IF;
+  SELECT * INTO v_att FROM public.session_attendance
+   WHERE teacher_id=v_teacher AND session_id=p_session_id
+     AND student_id=p_student_id FOR UPDATE;
+  IF v_att.id IS NOT NULL THEN
+    IF v_att.status='student_cancelled' THEN
+      RETURN jsonb_build_object('ok',true,'replayed',true,
+        'noticeAt',v_att.notice_at,'cancelReason',v_att.cancel_reason,
+        'teacherId',v_teacher,'studentName',v_student_name,
+        'startsAt',v_start,'sessionId',p_session_id,
+        'studentId',p_student_id);
+    END IF;
+    RAISE EXCEPTION 'PORTAL_ALREADY_MARKED' USING ERRCODE='23514';
+  END IF;
+  IF v_status <> 'scheduled' OR v_start <= clock_timestamp() THEN
+    RAISE EXCEPTION 'PORTAL_TOO_LATE' USING ERRCODE='22023';
+  END IF;
+  v_now := clock_timestamp();
+  INSERT INTO public.session_attendance(
+    teacher_id,session_id,student_id,status,notice_at,
+    cancelled_by,cancel_reason,marked_at,marked_by,updated_at
+  ) VALUES(v_teacher,p_session_id,p_student_id,'student_cancelled',v_now,
+    'student',p_cancel_reason,v_now,NULL,v_now)
+    RETURNING * INTO v_att;
+  SELECT coalesce(notify_in_app,true),coalesce(notify_email_portal_cancel,false)
+    INTO v_notify_in_app,v_notify_email FROM public.studio_policies
+    WHERE teacher_id=v_teacher;
+  IF v_notify_in_app THEN
+    INSERT INTO public.notifications(teacher_id,type,title,body,href)
+    VALUES(v_teacher,'portal_cancel','Student cancelled a chess lesson',
+      v_student_name||' cancelled the lesson on '||v_start::text,
+      '/schedule');
+  END IF;
+  IF v_notify_email THEN
+    INSERT INTO public.ccp_delivery_outbox(
+      teacher_id,session_id,student_id,event_key,kind,payload
+    ) VALUES(
+      v_teacher,p_session_id,p_student_id,
+      'portal-cancel:'||p_session_id::text||':'||p_student_id::text,
+      'portal_cancel_teacher',
+      jsonb_build_object('sessionId',p_session_id,'studentId',p_student_id,
+        'studentName',v_student_name,'startsAt',v_start,
+        'cancelReason',p_cancel_reason,'noticeAt',v_now)
+    );
+  END IF;
+  RETURN jsonb_build_object('ok',true,'replayed',false,
+    'noticeAt',v_att.notice_at,'cancelReason',v_att.cancel_reason,
+    'teacherId',v_teacher,'studentName',v_student_name,
+    'startsAt',v_start,'sessionId',p_session_id,
+    'studentId',p_student_id);
+END;
+$ccp_portal_cancel$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_portal_cancel(
+ text,uuid,uuid,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_portal_cancel(
+ text,uuid,uuid,text) TO service_role;
