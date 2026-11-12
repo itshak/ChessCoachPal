@@ -443,3 +443,59 @@ test("PARITY:PARITY-billing-invoice-void-credit-guard refuses to orphan issued p
   .eq("id",packageRow.data!.id).single();
  expect(remains.error).toBeNull();
 });
+
+
+test("PARITY:PARITY-billing-regenerate-checkout-reconciliation blocks stale payment links for browser, MCP and SQL",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const seeded=await invoice("draft",5500);
+ const {error:lineError}=await seeded.admin.from("invoice_items").insert({
+   invoice_id:seeded.id,lesson_id:null,kind:"lesson",
+   description:"Original chess lesson invoice",quantity:1,unit_cents:5500,
+   amount_cents:5500,sort_order:0,
+ });
+ expect(lineError).toBeNull();
+ const checkoutId="cs_test_"+randomUUID().replaceAll("-","");
+ const checkoutUrl="https://checkout.stripe.com/c/pay/"+checkoutId;
+ const {error:linkError}=await seeded.admin.from("invoices").update({
+   stripe_checkout_session_id:checkoutId,stripe_checkout_url:checkoutUrl,
+ }).eq("id",seeded.id);
+ expect(linkError).toBeNull();
+ const before=await siteInvoice(page,seeded.id);
+ expect(before.status).toBe("draft");
+ expect(before.invoice_items).toHaveLength(1);
+ expect(before.subtotal_cents).toBe(5500);
+
+ const browser=await page.request.post(
+   "/api/billing/invoices/"+seeded.id+"/regenerate"
+ );
+ expect(browser.status(),await browser.text()).toBe(409);
+ expect((await browser.json()).error).toContain("Reconcile");
+ const model=await call("ccp_v1_billing_invoice_regenerate",{
+   invoiceId:seeded.id,confirmed:true,
+ });
+ expect(model.error?.code).toBe("CONFLICT");
+
+ // Even a direct authenticated RPC may not bypass the shared guard, since
+ // the transaction locks the invoice before deleting any existing line.
+ const auth=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+     auth:{persistSession:false,autoRefreshToken:false},
+   });
+ const signedIn=await auth.auth.signInWithPassword(SEED_TEACHER);
+ expect(signedIn.error).toBeNull();
+ const direct=await auth.rpc("ccp_invoice_regenerate_atomic",{
+   p_invoice_id:seeded.id,p_items:[],p_redemptions:[],
+ });
+ expect(direct.error?.message).toContain("INVOICE_REGENERATION_BLOCKED");
+
+ const after=await siteInvoice(page,seeded.id);
+ expect(after.status).toBe("draft");
+ expect(after.subtotal_cents).toBe(before.subtotal_cents);
+ expect(after.stripe_checkout_session_id).toBe(checkoutId);
+ expect(after.stripe_checkout_url).toBe(checkoutUrl);
+ expect(after.invoice_items.map((x:{description:string;amount_cents:number})=>({
+   description:x.description,amount_cents:x.amount_cents,
+ }))).toEqual(before.invoice_items.map((x:{description:string;amount_cents:number})=>({
+   description:x.description,amount_cents:x.amount_cents,
+ })));
+});
