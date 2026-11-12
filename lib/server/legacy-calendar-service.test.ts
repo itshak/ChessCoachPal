@@ -99,18 +99,37 @@ function future(count:number):Future[]{return Array.from({length:count},(_,i)=>(
  duration_minutes:30,is_home_visit:false,rescheduled_from_date:null,attendance:[],lesson_notes:[],
 }));}
 describe("future recurring-slot mutation safety",()=>{
- it("reads all 1205 future lessons rather than silently stopping at the first 1000",async()=>{
-  const deleted:string[]=[];const pages:number[]=[];
-  await calendarSlotDelete(mockedDeletionDb(future(1205),deleted,pages),"teacher-one","slot-one");
-  expect(deleted).toHaveLength(1205);
-  expect(new Set(deleted).size).toBe(1205);
-  expect(pages).toEqual([0,500,1000]);
+ it("deletes a recurring slot with one owner-scoped SQL transaction and no separate DML",async()=>{
+  const calls:Array<{name:string;input:unknown}>=[];
+  const db={
+    rpc(name:string,input:unknown){
+      calls.push({name,input});
+      return Promise.resolve({data:{ok:true,removed:1205,preserved:4},error:null});
+    },
+    from(){throw new Error("Recurring slot deletion must not issue a second database request");},
+  } as unknown as SupabaseClient;
+  const result=await calendarSlotDelete(db,"teacher-one","slot-one");
+  expect(result).toEqual({ok:true,removed:1205,preserved:4});
+  expect(calls).toEqual([{
+    name:"ccp_calendar_slot_delete",input:{p_slot_id:"slot-one"},
+  }]);
  });
- it("refuses more than 20000 future rows before writing any deletion",async()=>{
-  const deleted:string[]=[];const pages:number[]=[];
-  await expect(calendarSlotDelete(mockedDeletionDb(future(20001),deleted,pages),"teacher-one","slot-one"))
-    .rejects.toMatchObject({status:413,code:"ROSTER_TOO_LARGE"});
-  expect(deleted).toHaveLength(0);
+ it("fails closed on database guard and ownership errors",async()=>{
+  const failing=(message:string,code:string)=>({
+    rpc(){return Promise.resolve({data:null,error:{message,code}});},
+  }) as unknown as SupabaseClient;
+  await expect(calendarSlotDelete(failing("CALENDAR_SLOT_TOO_MANY","22023"),
+    "teacher-one","slot-one")).rejects.toMatchObject({
+    status:413,code:"ROSTER_TOO_LARGE",
+  });
+  await expect(calendarSlotDelete(failing("CALENDAR_SLOT_NOT_FOUND","42501"),
+    "teacher-one","foreign-slot")).rejects.toMatchObject({
+    status:404,code:"NOT_FOUND",
+  });
+  await expect(calendarSlotDelete(failing("Unexpected error","XX000"),
+    "teacher-one","slot-one")).rejects.toMatchObject({
+    status:500,code:"DATABASE_ERROR",
+  });
  });
  it("refuses an oversized recurring-slot update before changing the slot",async()=>{
   const deleted:string[]=[];const pages:number[]=[];

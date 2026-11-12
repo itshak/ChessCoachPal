@@ -335,3 +335,73 @@ test("PARITY:PARITY-calendar-tenant-isolation refuses foreign lessons, slots, no
   await admin.auth.admin.deleteUser(teacherId);
  }
 });
+
+
+test("PARITY:PARITY-calendar-slot-delete-atomic-history preserves notes and attendance across website/MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const studentId=await student(call);
+ // Future Sundays well within the local 56-day materialization window.
+ const d=new Date();
+ const utc=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));
+ const offset=(7-utc.getUTCDay())%7+7;
+ const start=new Date(utc.getTime()+offset*86400000);
+ const last=new Date(start.getTime()+14*86400000);
+ const date=(x:Date)=>x.toISOString().slice(0,10);
+ const created=await call("ccp_v1_calendar_slots_create",{
+  studentId,dayOfWeek:0,startTime:"09:00",durationMinutes:45,
+  startDate:date(start),endDate:date(last),confirmed:true,
+ });
+ expect(created.error).toBeUndefined();
+ const slotId=created.data.id as string;
+ const before=await page.request.get("/api/schedule/lessons?studentId="+studentId+"&limit=50");
+ expect(before.status(),await before.text()).toBe(200);
+ const scheduled=((await before.json()).lessons as Array<{id:string;slot_id:string|null}>)
+  .filter(row=>row.slot_id===slotId);
+ expect(scheduled.length).toBeGreaterThanOrEqual(3);
+ const [withNote,withAttendance,unused]=scheduled;
+ const note=await page.request.put("/api/schedule/lessons/"+withNote.id+"/note",{
+  data:{body:"Preserve this training summary",privateBody:"Teacher revision",sendEmail:false},
+ });
+ expect(note.status(),await note.text()).toBe(200);
+ const marked=await call("ccp_v1_calendar_attendance_record",{
+  lessonId:withAttendance.id,status:"no_show",confirmed:true,
+ });
+ expect(marked.error).toBeUndefined();
+ const removed=await page.request.delete("/api/schedule/slots/"+slotId);
+ expect(removed.status(),await removed.text()).toBe(200);
+ expect(await removed.json()).toMatchObject({ok:true});
+ const slot=await call("ccp_v1_calendar_slots_list",{studentId});
+ expect(slot.error).toBeUndefined();
+ expect(slot.data.some((row:{id:string})=>row.id===slotId)).toBe(false);
+ for(const id of [withNote.id,withAttendance.id]){
+  const detail=await call("ccp_v1_calendar_lessons_detail",{lessonId:id});
+  expect(detail.error).toBeUndefined();
+  expect(detail.data.slot_id).toBeNull();
+ }
+ const noteAfter=await call("ccp_v1_calendar_lesson_note_read",{
+  lessonId:withNote.id,includePrivate:true,confirmed:true,
+ });
+ expect(noteAfter.error).toBeUndefined();
+ expect(noteAfter.data.private_body).toBe("Teacher revision");
+ const attendanceAfter=await page.request.get(
+  "/api/schedule/lessons/"+withAttendance.id+"/attendance");
+ expect(attendanceAfter.status(),await attendanceAfter.text()).toBe(200);
+ expect((await attendanceAfter.json()).status).toBe("no_show");
+ const deleted=await call("ccp_v1_calendar_lessons_detail",{lessonId:unused.id});
+ expect(deleted.error?.code).toBe("NOT_FOUND");
+
+ const second=await call("ccp_v1_calendar_slots_create",{
+  studentId,dayOfWeek:1,startTime:"10:00",durationMinutes:30,
+  startDate:date(start),endDate:date(last),confirmed:true,
+ });
+ expect(second.error).toBeUndefined();
+ const secondId=second.data.id as string;
+ const viaMcp=await call("ccp_v1_calendar_slots_delete",{
+  slotId:secondId,confirmed:true,
+ });
+ expect(viaMcp.error).toBeUndefined();
+ expect(viaMcp.data.ok).toBe(true);
+ const browser=await page.request.get("/api/schedule/slots?studentId="+studentId);
+ expect(browser.status(),await browser.text()).toBe(200);
+ expect((await browser.json() as Array<{id:string}>).some(x=>x.id===secondId)).toBe(false);
+});

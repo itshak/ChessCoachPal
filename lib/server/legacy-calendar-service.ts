@@ -215,21 +215,19 @@ export async function calendarSlotUpdate(db:Db,teacherId:string,id:string,input:
  return data;
 }
 export async function calendarSlotDelete(db:Db,teacherId:string,id:string){
- await ownedSlot(db,teacherId,id);
- const upcoming=await upcomingSlotLessons(db,id);
- const deletable=upcoming.filter(l=>!oneToOne(l.attendance)&&!l.rescheduled_from_date);
- for(const lesson of deletable){
-  if(oneToOne(lesson.lesson_notes)){
-   const {error}=await db.from("lessons").update({slot_id:null}).eq("id",lesson.id);
-   if(error)throw failure(500,"DATABASE_ERROR","Unable to preserve lesson note");
-  }else{
-   const {error}=await db.from("lessons").delete().eq("id",lesson.id);
-   if(error)throw failure(500,"DATABASE_ERROR","Unable to delete upcoming unmarked lesson");
-  }
+ // The RLS user ID is authoritative within SQL. No multi-request loops:
+ // reconciliation of lessons, notes, invoices, credits, and slot deletion
+ // must succeed or roll back as ONE owner-scoped transaction.
+ void teacherId;
+ const {data,error}=await db.rpc("ccp_calendar_slot_delete",{p_slot_id:id});
+ if(error){
+  if(error.message.includes("CALENDAR_SLOT_TOO_MANY"))
+   throw failure(413,"ROSTER_TOO_LARGE","Upcoming recurring lesson inventory exceeds safe mutation size");
+  if(error.message.includes("CALENDAR_SLOT_NOT_FOUND")||error.code==="42501")
+   throw failure(404,"NOT_FOUND","Recurring slot not found");
+  throw failure(500,"DATABASE_ERROR","Unable to remove recurring slot atomically");
  }
- const {error}=await db.from("lesson_slots").delete().eq("id",id).eq("teacher_id",teacherId);
- if(error)throw failure(500,"DATABASE_ERROR","Unable to remove slot");
- return {ok:true};
+ return data as {ok:true;removed:number;preserved:number};
 }
 export async function calendarLessonsList(db:Db,teacherId:string,
  opts:{studentId?:string;from?:string;to?:string;offset?:number;limit?:number}={}){

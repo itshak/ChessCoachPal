@@ -4304,6 +4304,74 @@ REVOKE ALL ON FUNCTION public.ccp_portal_cancel_lesson(text,uuid,text)
 GRANT EXECUTE ON FUNCTION public.ccp_portal_cancel_lesson(text,uuid,text)
  TO service_role;
 
+-- Remove a recurring *intent* without discarding evidence of actual lessons.
+-- One lock/transaction covers the slot, future occurrences and their finance /
+-- attendance references, so a partial sequence cannot erase historical work.
+CREATE OR REPLACE FUNCTION public.ccp_calendar_slot_delete(p_slot_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $calendar_slot_delete$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_now timestamptz:=clock_timestamp();
+ v_slot public.lesson_slots%ROWTYPE;
+ v_count integer;
+ v_removed integer:=0;
+ v_preserved integer:=0;
+BEGIN
+ IF v_teacher IS NULL OR p_slot_id IS NULL THEN
+   RAISE EXCEPTION 'CALENDAR_SLOT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_slot FROM public.lesson_slots
+   WHERE id=p_slot_id AND teacher_id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'CALENDAR_SLOT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ SELECT count(*) INTO v_count FROM public.lessons
+   WHERE teacher_id=v_teacher AND slot_id=p_slot_id AND starts_at>=v_now;
+ IF v_count>20000 THEN
+   RAISE EXCEPTION 'CALENDAR_SLOT_TOO_MANY' USING ERRCODE='22023';
+ END IF;
+ -- Lock all currently linked occurrences before deciding whether one is safe
+ -- to remove. The referenced-row lock also serializes concurrent attendance
+ -- commitments and new billing/credit associations.
+ PERFORM 1 FROM public.lessons
+   WHERE teacher_id=v_teacher AND slot_id=p_slot_id
+   ORDER BY id FOR UPDATE;
+ SELECT count(*) INTO v_count FROM public.lessons
+   WHERE teacher_id=v_teacher AND slot_id=p_slot_id AND starts_at>=v_now;
+ IF v_count>20000 THEN
+   RAISE EXCEPTION 'CALENDAR_SLOT_TOO_MANY' USING ERRCODE='22023';
+ END IF;
+ -- An unmarked future recurrence is disposable ONLY if it is not associated
+ -- with any paid/invoiced lesson, redeemed credit, makeup, teacher note or
+ -- historical reschedule. Earlier occurrences always survive.
+ DELETE FROM public.lessons l
+  WHERE l.teacher_id=v_teacher AND l.slot_id=p_slot_id
+    AND l.starts_at>=v_now
+    AND l.rescheduled_from_date IS NULL
+    AND l.makeup_for IS NULL
+    AND NOT EXISTS(SELECT 1 FROM public.attendance a WHERE a.lesson_id=l.id)
+    AND NOT EXISTS(SELECT 1 FROM public.lesson_notes n WHERE n.lesson_id=l.id)
+    AND NOT EXISTS(SELECT 1 FROM public.invoice_items i WHERE i.lesson_id=l.id)
+    AND NOT EXISTS(SELECT 1 FROM public.credit_redemptions c WHERE c.lesson_id=l.id);
+ GET DIAGNOSTICS v_removed=ROW_COUNT;
+ SELECT count(*) INTO v_preserved FROM public.lessons
+   WHERE teacher_id=v_teacher AND slot_id=p_slot_id;
+ -- The FK's ON DELETE SET NULL intentionally detaches ALL preserved lessons:
+ -- none is lost, but none is still tied to a no-longer-existing recurrence.
+ DELETE FROM public.lesson_slots
+   WHERE id=p_slot_id AND teacher_id=v_teacher;
+ RETURN jsonb_build_object('ok',true,'removed',v_removed,'preserved',v_preserved);
+END;
+$calendar_slot_delete$;
+REVOKE ALL ON FUNCTION public.ccp_calendar_slot_delete(uuid)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_calendar_slot_delete(uuid)
+ TO authenticated;
+-- A raw DELETE would bypass the preservation transaction; only the website
+-- and MCP shared service may invoke it for a teacher.
+REVOKE DELETE ON public.lesson_slots FROM PUBLIC,authenticated;
+
 -- All ordinary teacher attendance writes must go through the optimistic,
 -- receipt-backed ccp_calendar_attendance_commit RPC. The token-authorized
 -- guardian writer above is available ONLY to the server-side service role.
