@@ -4580,6 +4580,11 @@ BEGIN
   IF v_invoice.status<>'draft' OR EXISTS(
     SELECT 1 FROM public.credit_packages WHERE invoice_id=p_invoice_id
   ) OR EXISTS(SELECT 1 FROM public.payments WHERE invoice_id=p_invoice_id)
+    -- Never mutate a draft with a live or unreconciled Stripe checkout link:
+    -- the family might still pay the amount shown in that older link.
+    OR v_invoice.stripe_checkout_session_id IS NOT NULL
+    OR v_invoice.stripe_checkout_url IS NOT NULL
+    OR v_invoice.stripe_payment_intent_id IS NOT NULL
   THEN RAISE EXCEPTION 'INVOICE_REGENERATION_BLOCKED' USING ERRCODE='23514';END IF;
   DELETE FROM public.invoice_items WHERE invoice_id=p_invoice_id;
   FOR v_credit IN SELECT value FROM jsonb_array_elements(p_redemptions) LOOP
