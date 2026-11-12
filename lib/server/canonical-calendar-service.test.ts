@@ -29,7 +29,7 @@ describe("canonical recurring teaching sessions", () => {
     expect(rows.map(row => row.starts_at))
       .toEqual([
         "2027-03-01T21:00:00.000Z",
-        "2027-03-08T20:00:00.000Z",
+        "2027-03-08T21:00:00.000Z",
         "2027-03-15T20:00:00.000Z",
       ]);
     expect(rows.every(row => row.slot_id === slot.id
@@ -43,7 +43,7 @@ describe("canonical recurring teaching sessions", () => {
     const rows = plan([slot, second], "2027-03-08", "2027-03-08");
     expect(rows).toHaveLength(2);
     expect(rows.map(row => row.starts_at))
-      .toEqual(["2027-03-08T20:00:00.000Z", "2027-03-08T16:00:00.000Z"]);
+      .toEqual(["2027-03-08T21:00:00.000Z", "2027-03-08T16:00:00.000Z"]);
     expect(() => plan([{ ...slot, teacher_id: otherWorkplace }]))
       .toThrow("Cross-tenant");
     expect(() => plan([{ ...slot, workplace_id: student }]))
