@@ -198,3 +198,91 @@ test("PARITY:PARITY-studio-policy-fields-all preserves ordinary profile, rate an
   expect(back.status(),await back.text()).toBe(200);
  }
 });
+
+test("PARITY:PARITY-studio-policy-ordinary-fields-roundtrip persists every coach-owned setting through either surface",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const current=await page.request.get("/api/settings/policy");
+ expect(current.status(),await current.text()).toBe(200);
+ const original=await current.json() as Record<string,any>;
+ const mapping=[
+  ["studioName","studio_name"],["studioWebsite","studio_website"],
+  ["studioContact","studio_contact"],["studioInfo","studio_info"],
+  ["lessonLabel","lesson_label"],["lessonDurationOptions","lesson_duration_options"],
+  ["timezone","timezone"],["cancellationWindowHours","cancellation_window_hours"],
+  ["timelyCancelEarnsMakeup","timely_cancel_earns_makeup"],
+  ["lateCancelEarnsMakeup","late_cancel_earns_makeup"],
+  ["noShowEarnsMakeup","no_show_earns_makeup"],
+  ["teacherCancelEarnsMakeup","teacher_cancel_earns_makeup"],
+  ["makeupCreditExpiryDays","makeup_credit_expiry_days"],
+  ["billAttended","bill_attended"],["billNoShow","bill_no_show"],
+  ["billTeacherCancel","bill_teacher_cancel"],
+  ["billTimelyStudentCancel","bill_timely_student_cancel"],
+  ["billLateStudentCancel","bill_late_student_cancel"],
+  ["billMakeup","bill_makeup"],["defaultRateCents","default_rate_cents"],
+  ["travelFeeCents","travel_fee_cents"],["durationRateCents","duration_rate_cents"],
+  ["rateBasis","rate_basis"],["currency","currency"],
+  ["invoiceCadence","invoice_cadence"],["paymentInstructions","payment_instructions"],
+  ["paymentProvider","payment_provider"],["notifyInApp","notify_in_app"],
+  ["notifyEmailPortalCancel","notify_email_portal_cancel"],
+  ["notifyEmailInvoicePaid","notify_email_invoice_paid"],
+  ["bccFamilyEmails","bcc_family_emails"],["bccEmail","bcc_email"],
+  ["aiProvider","ai_provider"],
+ ] as const;
+ const changes={
+  studioName:"Verified chess club "+randomUUID().slice(0,8),
+  studioWebsite:"https://academy.chesscoachpal.example",
+  studioContact:"Coaching front desk",studioInfo:"Teacher reviewed studio description",
+  lessonLabel:"Coaching lesson",lessonDurationOptions:[30,45,60],
+  timezone:"Europe/London",cancellationWindowHours:24,
+  timelyCancelEarnsMakeup:true,lateCancelEarnsMakeup:false,
+  noShowEarnsMakeup:false,teacherCancelEarnsMakeup:true,
+  makeupCreditExpiryDays:60,billAttended:true,billNoShow:true,
+  billTeacherCancel:false,billTimelyStudentCancel:false,
+  billLateStudentCancel:true,billMakeup:false,
+  defaultRateCents:4200,travelFeeCents:500,
+  durationRateCents:{"30":3000,"45":3800},rateBasis:"per_lesson",
+  currency:"USD",invoiceCadence:"manual",
+  paymentInstructions:"Payment instructions confirmed by teacher",
+  paymentProvider:"manual",notifyInApp:false,
+  notifyEmailPortalCancel:false,notifyEmailInvoicePaid:false,
+  bccFamilyEmails:false,bccEmail:null,aiProvider:"none",
+ };
+ const restoration=Object.fromEntries(mapping.map(([client,db])=>{
+  const value=original[db];
+  // Website accepts empty text for fields that are nullable at rest.
+  const emptyText=["studioName","studioWebsite","studioContact","studioInfo",
+   "lessonLabel","paymentInstructions"];
+  return [client,value??(emptyText.includes(client)?"":null)];
+ }));
+ try{
+  const mcpSave=await call("ccp_v1_studio_policy_update",{
+   changes,confirmed:true,
+  });
+  expect(mcpSave.error).toBeUndefined();
+  const browser=await page.request.get("/api/settings/policy");
+  expect(browser.status(),await browser.text()).toBe(200);
+  const saved=await browser.json() as Record<string,any>;
+  for(const [client,db] of mapping){
+   expect(saved[db],client+" was not persisted").toEqual(
+    changes[client as keyof typeof changes]);
+  }
+  const webEdit=await page.request.put("/api/settings/policy",{
+   data:{lessonLabel:"Reviewed website lesson",cancellationWindowHours:12,
+    billTeacherCancel:true,defaultRateCents:null,
+    travelFeeCents:null,bccEmail:null},
+  });
+  expect(webEdit.status(),await webEdit.text()).toBe(200);
+  const mcpRead=await call("ccp_v1_studio_policy_get",{});
+  expect(mcpRead.error).toBeUndefined();
+  expect(mcpRead.data).toMatchObject({
+   lesson_label:"Reviewed website lesson",cancellation_window_hours:12,
+   bill_teacher_cancel:true,default_rate_cents:null,
+   travel_fee_cents:null,bcc_email:null,
+  });
+  expect(mcpRead.data.stripe_secret_key).toBeNull();
+  expect(mcpRead.data.ai_api_key).toBeNull();
+ }finally{
+  const res=await page.request.put("/api/settings/policy",{data:restoration});
+  expect(res.status(),await res.text()).toBe(200);
+ }
+});
