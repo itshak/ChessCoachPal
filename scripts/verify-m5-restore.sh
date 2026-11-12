@@ -133,7 +133,7 @@ import sys
 
 path = Path(sys.argv[1])
 content = path.read_text()
-ports = sorted(set(re.findall(r'(?<!\\d)5432[0-9](?!\\d)', content)))
+ports = sorted(set(re.findall(r'(?<!\d)5432[0-9](?!\d)', content)))
 reserved = []
 mapping = {}
 try:
@@ -142,7 +142,7 @@ try:
         sock.bind(("127.0.0.1", 0))
         reserved.append(sock)
         mapping[port] = str(sock.getsockname()[1])
-    content = re.sub(r'(?<!\\d)5432[0-9](?!\\d)',
+    content = re.sub(r'(?<!\d)5432[0-9](?!\d)',
                      lambda match: mapping[match.group()], content)
     path.write_text(content)
 finally:
