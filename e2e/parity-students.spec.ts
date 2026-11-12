@@ -288,3 +288,58 @@ test("PARITY:PARITY-students-full-atomic-family-create shares durable website an
  });
  expect(foreignGuardian.error?.code).toBe("NOT_FOUND");
 });
+
+/** Route-family audit companion: students/[id] also exposes historical chess
+ * changes and an idempotent revision-based basic update through delegated MCP.
+ * These tests exercise both paths instead of merely mentioning tool names. */
+test("PARITY:PARITY-students-route-chess-history-current-schema matches browser and MCP historical entries",async({page,request})=>{
+ const callTool=await delegatedTool(page,request);
+ const id=await mcpStudent(callTool,unique("Student route chess history"));
+ const changed=await page.request.put("/api/students/"+id,{data:{
+   strength:5,chessGoals:"Review elementary mating nets",
+ }});
+ expect(changed.status(),await changed.text()).toBe(200);
+ const website=await page.request.get("/api/students/"+id+"?chessHistory=true");
+ expect(website.status(),await website.text()).toBe(200);
+ const browserHistory=await website.json();
+ expect(browserHistory.entries.some((e:{field_name:string;next_value:unknown})=>
+   e.field_name==="strength"&&e.next_value===5)).toBe(true);
+ const model=await callTool("ccp_v1_students_chess_history",{studentId:id});
+ expect(model.error).toBeUndefined();
+ expect(model.data).toEqual(browserHistory);
+ const before=await browserProfile(page,id);
+ const revised=await callTool("ccp_v1_students_profile_edit",{
+   studentId:id,expectedUpdatedAt:before.updated_at,
+   changes:{strength:8},confirmed:true,
+ });
+ expect(revised.error).toBeUndefined();
+ const historyAgain=await page.request.get("/api/students/"+id+"?chessHistory=true");
+ expect(historyAgain.status(),await historyAgain.text()).toBe(200);
+ expect((await callTool("ccp_v1_students_chess_history",{studentId:id})).data)
+   .toEqual(await historyAgain.json());
+});
+
+test("PARITY:PARITY-students-route-basic-revision-update shares website and MCP receipt",async({page,request})=>{
+ const callTool=await delegatedTool(page,request);
+ const id=await mcpStudent(callTool,unique("Student route basic update"));
+ const before=await browserProfile(page,id);
+ const idempotencyKey=randomUUID();
+ const args={
+   studentId:id,level:"Synthetic chess endgame course",
+   expectedUpdatedAt:before.updated_at,idempotencyKey,
+ };
+ const model=await callTool("ccp_v1_students_update",args);
+ expect(model.error).toBeUndefined();
+ expect(model.data).toMatchObject({operation:"students.update",entityId:id,idempotencyKey});
+ const website=await page.request.post("/api/agent/v1",{data:{
+   action:"students.update",...args,
+ }});
+ expect(website.status(),await website.text()).toBe(200);
+ expect((await website.json()).data).toEqual(model.data);
+ expect((await browserProfile(page,id)).level).toBe(args.level);
+ const conflicting=await callTool("ccp_v1_students_update",{
+   ...args,level:"Should not overwrite existing receipt",
+ });
+ expect(conflicting.error?.code).toBe("CONFLICT");
+ expect((await browserProfile(page,id)).level).toBe(args.level);
+});
