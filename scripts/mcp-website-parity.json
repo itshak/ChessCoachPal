@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-12",
-  "headSha": "155cdb014405d3ad25c86c814ceaac29a1da9764",
-  "policy": "MCP-first parity. 53 of 59 teacher route families have accepted browser/delegated MCP evidence at verified source head 155cdb0; 6 partial routes remain; strict v0.1.0 release gate BLOCKED. Complete fields, canonical history and original 93 scenarios still required.",
+  "headSha": "ea1c8108e3442837bdad9a64ff05df07ac35d2e2",
+  "policy": "MCP-first website parity accepted on combined exact code source ea1c8108e3442837bdad9a64ff05df07ac35d2e2: 210 real authenticated website/delegated MCP E2E passed (5 intentionally skipped, 0 failed); CI, security, Compose, backup/restore green. 57/59 teacher route families behaviorally accepted; 2 partial remain. Release and all-scenario parity BLOCKED pending canonical lesson cutover, 93 historical/new scenarios, policy credential handoff, legacy gateway, live providers and post-merge main gate.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -215,12 +215,12 @@
         "GET"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_invoice_pdf"
       ],
-      "explanation": "Website and MCP both use the same loadInvoicePdf and owner checks. E2E validates PDF signatures; MCP returns base64 up to 512 KB, larger files use secure browser download. Privacy and size-limit coverage incomplete.",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "Website and explicitly approved MCP PDF export use the same owner-scoped invoice builder and data source. All 150 line items and long notes paginate instead of truncating. Authenticated E2E verifies same page count, a genuinely foreign teacher's invoice denied, no portal-token leak, sent/draft retrieval, and separate 512 KiB MCP inline limit with authenticated browser fallback. Accepted candidate source 3325b0, 207 authenticated E2E passed (5 skipped).",
+      "evidenceTest": "e2e/parity-invoice-pdf-pages.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/regenerate/route.ts",
@@ -286,12 +286,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
+        "ccp_v1_billing_invoices_bulk_preview",
         "ccp_v1_billing_invoices_bulk"
       ],
-      "explanation": "Website and MCP share bulk send/delete/void service and partial-success results. MCP requires explicit email approval for send; exactly-once emails, concurrency and all-recipient confirmation pending.",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "Shared website/MCP bulk invoice preview with owner-scoped actual email recipients, amount, invoice revision and SHA-256 fingerprint. Approved send requires confirmedEmail plus a still-current recipient-visible preview; an anonymized preview cannot mint send permission. Synthetic Mailpit E2E tests changed recipient and competing cross-client send give exactly one delivery, missing owner/duplicate guards, and full readback. Accepted candidate source 3325b0, 207 E2E passed (5 skipped).",
+      "evidenceTest": "e2e/parity-bulk-preview-race.spec.ts"
     },
     {
       "path": "app/api/coaching/briefing/route.ts",
@@ -571,12 +572,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_import_spreadsheet_suggest"
       ],
-      "explanation": "Both transports now parse one strict, local-first source-header and sample-row schema. Offline mapping has identical defaults, external AI requires explicit useAi/confirmedExternal opt-in, and malformed/unknown samples are rejected before data egress. Positive synthetic provider behavior and provider failure recovery still require acceptance before full promotion.",
-      "evidenceTest": "e2e/parity-spreadsheet-suggest.spec.ts"
+      "explanation": "Deterministic no-egress local spreadsheet mapping remains the default in website and MCP. Explicit approved useAi+confirmedExternal is required before transmitting private samples. Shared provider path now rejects invented source columns, sanitizes upstream API errors and keeps BYO keys private. A fixed CI-only loopback OpenAI provider tests positive mapping, 503 failures, non-approved denial, identical browser/MCP output and credential masking. Source 95daf7: 208 authenticated E2E passed, 5 skipped; no live provider credential used.",
+      "evidenceTest": "e2e/parity-spreadsheet-ai-provider.spec.ts"
     },
     {
       "path": "app/api/lichess/callback/route.ts",
@@ -919,16 +920,18 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
-        "ccp_v1_students_update",
         "ccp_v1_students_profile",
         "ccp_v1_students_profile_edit",
-        "ccp_v1_students_archive_preview",
         "ccp_v1_students_delete_impact",
-        "ccp_v1_students_delete"
+        "ccp_v1_students_delete",
+        "ccp_v1_students_archive_preview",
+        "ccp_v1_students_chess_history",
+        "ccp_v1_students_update"
       ],
-      "explanation": "Student profile/archiving plus confirmed, revision-guarded deletion impact and unlinked-profile removal share website/MCP services. Historical dependent lessons, rosters, materials, skills and credits block delete, favoring archive. Serializable deletion, full erasure, atomic hosted cap and full behavioral acceptance remain open."
+      "explanation": "Shared website/MCP student GET/PUT/DELETE and chess history/archive preview retain owner and revision guards. Deletion impact now queries current typed material_links and material_teaching_evidence (not removed legacy tables). Two synthetic authenticated E2E scenarios cover valid empty-profile preview, guarded concurrent website/MCP one-winner deletion, linked historical material preservation, explicit consent, and genuine foreign-tenant denial. Profiles with any historical dependencies are archived rather than erased. Source dd311cb8 passed all five CI workflows and 209 authenticated E2E scenarios, 5 deliberately skipped, zero failed. The new student lifecycle test verifies linked material survival, one-winner empty-profile deletion and genuine foreign teacher denial. Historical records continue to be archived, not erased.",
+      "evidenceTest": "e2e/parity-student-delete-lifecycle.spec.ts"
     },
     {
       "path": "app/api/students/[id]/skills/route.ts",
