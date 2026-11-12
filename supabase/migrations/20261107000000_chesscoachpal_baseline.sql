@@ -7791,3 +7791,111 @@ REVOKE ALL ON FUNCTION public.ccp_invoice_checkout_claim(
  uuid,text,text,integer,timestamptz) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_checkout_claim(
  uuid,text,text,integer,timestamptz) TO authenticated;
+
+
+-- Canonical recurrence materialization: a single owner-validated database
+-- transaction for private lesson occurrences. The unique slot/date index
+-- prevents a rescheduled occurrence from being re-created at its old date.
+-- The database rechecks every planned local time and frozen roster owner.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_materialize(p_rows jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_materialize$
+DECLARE
+  v_teacher uuid := auth.uid();
+  v_row jsonb;
+  v_slot public.lesson_slots%ROWTYPE;
+  v_workplace public.workplaces%ROWTYPE;
+  v_slot_date date;
+  v_starts timestamptz;
+  v_id uuid;
+  v_workplace_id uuid;
+  v_timezone text;
+  v_count integer := 0;
+  v_inserted integer := 0;
+BEGIN
+  IF v_teacher IS NULL THEN
+    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+  END IF;
+  IF jsonb_typeof(p_rows) IS DISTINCT FROM 'array'
+     OR jsonb_array_length(p_rows) > 2000
+     OR pg_column_size(p_rows) > 1500000 THEN
+    RAISE EXCEPTION 'CANONICAL_MATERIALIZE_INVALID_REQUEST'
+      USING ERRCODE='22023';
+  END IF;
+  FOR v_row IN SELECT * FROM jsonb_array_elements(p_rows) LOOP
+    IF jsonb_typeof(v_row) IS DISTINCT FROM 'object'
+       OR v_row->>'slot_id' IS NULL
+       OR v_row->>'slot_occurrence_date' IS NULL
+       OR v_row->>'starts_at' IS NULL
+       OR v_row->>'workplace_id' IS NULL THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_INVALID_ROW'
+        USING ERRCODE='22023';
+    END IF;
+    SELECT * INTO v_slot FROM public.lesson_slots
+     WHERE id=(v_row->>'slot_id')::uuid AND teacher_id=v_teacher
+     FOR KEY SHARE;
+    IF NOT FOUND OR NOT v_slot.active
+      OR v_slot.student_id IS DISTINCT FROM (v_row->>'student_id')::uuid
+      OR v_slot.teacher_id IS DISTINCT FROM (v_row->>'teacher_id')::uuid THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_SLOT_NOT_OWNED'
+        USING ERRCODE='42501';
+    END IF;
+    v_workplace_id := (v_row->>'workplace_id')::uuid;
+    SELECT * INTO v_workplace FROM public.workplaces
+      WHERE id=v_workplace_id AND teacher_id=v_teacher FOR KEY SHARE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_WORKPLACE_NOT_OWNED'
+        USING ERRCODE='42501';
+    END IF;
+    IF v_slot.workplace_id IS NOT NULL THEN
+      IF v_slot.workplace_id <> v_workplace_id THEN
+        RAISE EXCEPTION 'CANONICAL_MATERIALIZE_WRONG_WORKPLACE'
+          USING ERRCODE='22023';
+      END IF;
+      v_timezone := v_workplace.timezone;
+    ELSE
+      SELECT id INTO v_id FROM public.workplaces
+        WHERE teacher_id=v_teacher ORDER BY created_at,id LIMIT 1;
+      IF v_id IS DISTINCT FROM v_workplace_id THEN
+        RAISE EXCEPTION 'CANONICAL_MATERIALIZE_WRONG_PERSONAL_WORKPLACE'
+          USING ERRCODE='22023';
+      END IF;
+      SELECT timezone INTO v_timezone FROM public.studio_policies
+        WHERE teacher_id=v_teacher;
+      v_timezone := coalesce(nullif(v_timezone,''),v_workplace.timezone);
+    END IF;
+    IF v_row->>'slot_occurrence_date' !~ '^\\d{4}-\\d{2}-\\d{2}$' THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_INVALID_DATE'
+        USING ERRCODE='22023';
+    END IF;
+    v_slot_date := (v_row->>'slot_occurrence_date')::date;
+    v_starts := (v_row->>'starts_at')::timestamptz;
+    IF v_slot_date < v_slot.start_date
+       OR (v_slot.end_date IS NOT NULL AND v_slot_date > v_slot.end_date)
+       OR extract(dow from v_slot_date) <> v_slot.day_of_week
+       OR (v_starts AT TIME ZONE v_timezone)::date <> v_slot_date
+       OR (v_starts AT TIME ZONE v_timezone)::time <> v_slot.start_time
+       OR (v_row->>'duration_minutes')::integer <> v_slot.duration_minutes
+       OR (v_row->>'is_home_visit')::boolean IS DISTINCT FROM v_slot.is_home_visit
+       OR (v_row->>'local_timezone') IS DISTINCT FROM v_timezone THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_SLOT_MISMATCH'
+        USING ERRCODE='22023';
+    END IF;
+    INSERT INTO public.teaching_sessions(
+      teacher_id,workplace_id,student_id,title,starts_at,duration_minutes,
+      status,slot_id,slot_occurrence_date,local_timezone,is_home_visit
+    ) VALUES(
+      v_teacher,v_workplace_id,v_slot.student_id,'Private chess lesson',
+      v_starts,v_slot.duration_minutes,'scheduled',v_slot.id,v_slot_date,
+      v_timezone,v_slot.is_home_visit
+    ) ON CONFLICT (slot_id,slot_occurrence_date) DO NOTHING;
+    v_count := v_count+1;
+    IF FOUND THEN v_inserted := v_inserted+1; END IF;
+  END LOOP;
+  RETURN jsonb_build_object('planned',v_count,'inserted',v_inserted);
+END;
+$ccp_materialize$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_materialize(jsonb)
+  FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_materialize(jsonb)
+  TO authenticated;
