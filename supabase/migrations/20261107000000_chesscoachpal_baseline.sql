@@ -7864,7 +7864,42 @@ BEGIN
         WHERE teacher_id=v_teacher;
       v_timezone := coalesce(nullif(v_timezone,''),v_workplace.timezone);
     END IF;
-    IF v_row->>'slot_occurrence_date' !~ '^\\d{4}-\\d{2}-\\d{2}$' THEN
+    IF v_row->>'slot_occurrence_date' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_INVALID_DATE'
+        USING ERRCODE='22023';
+    END IF;
+    v_slot_date := (v_row->>'slot_occurrence_date')::date;
+    v_starts := (v_row->>'starts_at')::timestamptz;
+    IF v_slot_date < v_slot.start_date
+       OR (v_slot.end_date IS NOT NULL AND v_slot_date > v_slot.end_date)
+       OR extract(dow from v_slot_date) <> v_slot.day_of_week
+       OR (v_starts AT TIME ZONE v_timezone)::date <> v_slot_date
+       OR (v_starts AT TIME ZONE v_timezone)::time <> v_slot.start_time
+       OR (v_row->>'duration_minutes')::integer <> v_slot.duration_minutes
+       OR (v_row->>'is_home_visit')::boolean IS DISTINCT FROM v_slot.is_home_visit
+       OR (v_row->>'local_timezone') IS DISTINCT FROM v_timezone THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_SLOT_MISMATCH'
+        USING ERRCODE='22023';
+    END IF;
+    INSERT INTO public.teaching_sessions(
+      teacher_id,workplace_id,student_id,title,starts_at,duration_minutes,
+      status,slot_id,slot_occurrence_date,local_timezone,is_home_visit
+    ) VALUES(
+      v_teacher,v_workplace_id,v_slot.student_id,'Private chess lesson',
+      v_starts,v_slot.duration_minutes,'scheduled',v_slot.id,v_slot_date,
+      v_timezone,v_slot.is_home_visit
+    ) ON CONFLICT (slot_id,slot_occurrence_date) DO NOTHING;
+    v_count := v_count+1;
+    IF FOUND THEN v_inserted := v_inserted+1; END IF;
+  END LOOP;
+  RETURN jsonb_build_object('planned',v_count,'inserted',v_inserted);
+END;
+$ccp_materialize$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_materialize(jsonb)
+  FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_materialize(jsonb)
+  TO authenticated;
+ THEN
       RAISE EXCEPTION 'CANONICAL_MATERIALIZE_INVALID_DATE'
         USING ERRCODE='22023';
     END IF;
