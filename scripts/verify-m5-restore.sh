@@ -19,7 +19,6 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$tmp/backups" "$tmp/source-files" "$tmp/target-files" "$tmp/restore"
-export RESTORE_DATE="$(date -u +%F)"
 echo "==> start primary disposable Supabase"
 supabase start
 supabase db reset --yes
@@ -92,6 +91,21 @@ docker run --rm --network "container:$source_db" \
   -v "$root/docker/supabase/backup.sh:/backup.sh:ro" \
   -v "$tmp/backups:/backups" --entrypoint /bin/bash \
   supabase/postgres:17.6.1.136 /backup.sh
+# The smoke may start before midnight UTC and finish the Docker image pull
+# after midnight. Derive the stamp from the artifact we actually backed up;
+# never assume a date captured before pulling images matches backup.sh's date.
+shopt -s nullglob
+backups=( "$tmp"/backups/db-????-??-??.sql.gz )
+shopt -u nullglob
+if [[ "${#backups[@]}" -ne 1 ]]; then
+  echo "Expected exactly one completed date-stamped synthetic database backup" >&2
+  exit 1
+fi
+RESTORE_DATE="$(basename "${backups[0]}" .sql.gz)"
+RESTORE_DATE="${RESTORE_DATE#db-}"
+[[ "$RESTORE_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] ||
+  { echo "Unexpected synthetic backup date" >&2; exit 1; }
+export RESTORE_DATE
 [[ -s "$tmp/backups/db-$RESTORE_DATE.sql.gz" ]]
 [[ -s "$tmp/backups/data-$RESTORE_DATE.sql.gz" ]]
 [[ -s "$tmp/backups/storage-$RESTORE_DATE.tar.gz" ]]
