@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { validateCheckedParityRow, validateUniqueCheckedParityReferences } from "./parity-evidence.mjs";
 import { validateLegacyActionCoverage } from "./mcp-legacy-actions.mjs";
 import { validateGatewayActionE2E } from "./mcp-gateway-evidence.mjs";
+import { competingLessonModels } from "./canonical-lessons-guard.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const inventory = JSON.parse(readFileSync(join(root, "scripts/mcp-website-parity.json"), "utf8"));
@@ -148,7 +149,17 @@ if(pendingCases>0){
   console.log("Release BLOCKED: "+pendingCases+
     " historical website/MCP behavior cases remain unsigned.");
 }
+// A matching tool and a unified read model are not enough while two
+// independently writable actual-lesson/attendance schemas remain deployed.
+const conflictingModels = competingLessonModels(readFileSync(
+  join(root, "supabase/migrations/20261107000000_chesscoachpal_baseline.sql"),"utf8"
+));
+if(conflictingModels)console.log(
+  "Release BLOCKED: legacy lessons/attendance and canonical sessions/attendance are two persisted occurrence models."
+);
 if (process.argv.includes("--strict")) {
+  if (conflictingModels)
+    errors.push("Strict MCP-first parity gate failed: remove the competing legacy actual-lesson and attendance writers.");
   if (outstanding.length>0)
     errors.push("Strict MCP-first parity gate failed: "+outstanding.length+" teacher-business route surfaces incomplete.");
   if (pendingCases>0)
@@ -159,7 +170,7 @@ if (errors.length) {
   process.exitCode=1;
 } else {
   console.log("Inventory structure and live tool-name references verified"+
-    (outstanding.length||pendingCases
+    (outstanding.length||pendingCases||conflictingModels
       ?" (release functionality parity is NOT complete)"
       :"; strict parity holds for inventoried routes and historical behavior cases")+".");
 }
