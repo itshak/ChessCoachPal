@@ -77,6 +77,8 @@ import {
  calendarAttendanceRead,calendarAttendanceWrite,calendarAttendanceBulk,
  calendarLessonNoteRead,calendarLessonNoteWrite,LegacyAttendanceError,
 } from "@/lib/server/legacy-attendance-service";
+import {sessionNotesList,sessionNoteSave,SessionNoteError,
+ type SaveSessionNoteInput} from "@/lib/server/canonical-session-notes";
 import { oauthOrigin } from "@/lib/server/agent-oauth-core";
 import { teacherPolicyView, teacherPolicyUpdate } from "@/lib/server/teacher-policy-service";
 import {
@@ -557,6 +559,27 @@ const catalogue = [
     }).strict().refine(v=>!v.notifyFamily||v.confirmedEmail===true,"Email requires explicit confirmation")
      .refine(v=>(v.idempotencyKey===undefined)===(v.expectedMarkedAtByLesson===undefined),
        "Bulk replay requires one original revision for every lesson"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_session_notes_list",
+    description:"List canonical shared/private session and participant teaching notes. Teacher-private fields require includePrivate=true and confirmed=true. Frozen participant IDs are canonical student IDs.",
+    schema:z.object({sessionId:uuid,includePrivate:z.boolean().default(false),
+      confirmed:z.literal(true).optional()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_session_notes_save",
+    description:"Write one canonical session or participant note with optimistic revision, idempotency key, and audit. Family email needs explicit confirmedEmail and queues a durable approved intent; not immediate delivery.",
+    schema:z.object({sessionId:uuid,studentId:uuid.nullable().optional(),
+      body:z.string().max(10000),privateBody:z.string().max(10000),
+      sharedWithGuardian:z.boolean(),sendEmail:z.boolean().default(false),
+      confirmedEmail:z.literal(true).optional(),
+      expectedUpdatedAt:z.string().datetime({offset:true}).nullable(),
+      idempotencyKey:uuid,confirmed:z.literal(true),
+    }).strict().refine(x=>!x.sendEmail||
+       (x.confirmedEmail===true&&!!x.studentId&&x.sharedWithGuardian&&!!x.body.trim()),
+        "Email requires explicit confirmation, participant and shared note"),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1630,6 +1653,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           origin:a.notifyFamily?oauthOrigin():"",teacherEmail:user?.email,
         })};
       }
+      case "ccp_v1_session_notes_list": {
+        const a=args as {sessionId:string;includePrivate:boolean;confirmed?:boolean};
+        return {data:await sessionNotesList(db,teacherId,a.sessionId,a)};
+      }
+      case "ccp_v1_session_notes_save": {
+        const a=args as SaveSessionNoteInput&{sessionId:string};
+        return {data:await sessionNoteSave(db,teacherId,a.sessionId,a)};
+      }
       case "ccp_v1_calendar_lesson_note_read": {
         const a=args as {lessonId:string;includePrivate:boolean;confirmed?:boolean};
         const note=await calendarLessonNoteRead(db,teacherId,a.lessonId);
@@ -2069,6 +2100,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CalendarFeedTokenError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherEventError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof SessionNoteError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LegacyAttendanceError)
       return {error:{code:error.code,message:error.message}};
