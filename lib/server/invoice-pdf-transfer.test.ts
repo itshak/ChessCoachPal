@@ -16,6 +16,6 @@ describe("private delegated PDF size boundary",()=>{
    new Uint8Array(MCP_INLINE_PDF_MAX_BYTES),"invoice.pdf");
   expect("data" in exact).toBe(true);
   if(!("data" in exact))throw new Error("Expected an inline PDF payload");
-  expect(exact.data.base64.length).toBeGreaterThan(MCP_INLINE_PDF_MAX_BYTES);
+  expect(exact.data?.base64.length).toBeGreaterThan(MCP_INLINE_PDF_MAX_BYTES);
  });
 });
