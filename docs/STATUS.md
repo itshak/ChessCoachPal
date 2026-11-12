@@ -1,6 +1,12 @@
 # ChessCoachPal development and release status
 
-**Updated:** 2026-11-10 · **Branch of record:** main · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
+**Updated:** 2026-11-12 · **Branch of record:** main (unreleased; parity work in PR #52 / PR #51) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
+
+## 2026-11-12 — verified parity batch, not yet merged to main
+
+**Verified source `e2c55a7` (2026-11-12):** [212 authenticated website/MCP E2E tests passed](https://github.com/itshak/ChessCoachPal/actions/runs/43275932081) (five intentionally skipped, zero failures). [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43275931908), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43275932040), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43275931957), and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43275931913) are green on the identical source.
+
+Source on [PR #52](https://github.com/itshak/ChessCoachPal/pull/52) reaches **57/59** behaviorally evidenced teacher API route families (two partial) and **89/93** historically checked + **21/23** separately indexed new scenarios. The corrected source audit requires real delegated MCP invocations for all seven student-profile route tools; no audit exemption was added. Pending: complete legacy teacher gateway, policy credential secure handoff, one canonical lesson/attendance writer, the remaining case evidence, strict merged-main CI and prepublication live-provider tests. OpenSpec remains active; **no main merge, tag, release or real-data migration.**
 
 ## 2026-11-11 requested verification — active CI evidence and strict-parity counts
 

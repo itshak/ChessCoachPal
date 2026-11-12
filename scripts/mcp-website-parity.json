@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-12",
-  "headSha": "ea1c8108e3442837bdad9a64ff05df07ac35d2e2",
-  "policy": "MCP-first website parity accepted on combined exact code source ea1c8108e3442837bdad9a64ff05df07ac35d2e2: 210 real authenticated website/delegated MCP E2E passed (5 intentionally skipped, 0 failed); CI, security, Compose, backup/restore green. 57/59 teacher route families behaviorally accepted; 2 partial remain. Release and all-scenario parity BLOCKED pending canonical lesson cutover, 93 historical/new scenarios, policy credential handoff, legacy gateway, live providers and post-merge main gate.",
+  "headSha": "e2c55a78d6200685e7bfdce511abf89a4e28cb5b",
+  "policy": "MCP-first parity: exact source e2c55a7 passed all five workflows, including 212 authenticated browser/delegated MCP E2E (five skipped, zero failed). 57 of 59 teacher API route families supported with dedicated behavioral evidence; two partial remain. Historical cases 89/93 and new canonical cases 21/23 checked; policy credential handoff, legacy gateway, canonical lesson occurrence cutover, and strict post-merge release remain BLOCKED.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
