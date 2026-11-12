@@ -223,3 +223,10 @@ The secure credential exception is limited to raw provider-key entry in authenti
 - Replaced a potentially partial sequence of per-lesson DELETE/UPDATE and recurring-slot DELETE requests with one owner-scoped `ccp_calendar_slot_delete` SQL transaction, shared by the website and delegated MCP. Row locks serialize future attendance/finance associations; bounded recheck fails before destructive writes. Future unmarked materialized occurrences are removed only when unreferenced; past/marked/annotated/invoiced/credited/make-up/rescheduled lessons survive with `slot_id=NULL` via the existing FK.
 - Denied direct authenticated PostgREST DELETE on `lesson_slots` so callers cannot circumvent the history-safe transaction. Replaced the old mocked multi-request unit tests with RPC request/receipt/error tests and added end-to-end website/MCP forward/reverse tests preserving attendance and notes.
 - **Not accepted yet:** candidate remains on stacked PR #57 pending all workflow families. The separate calendar slot **edit/reconciliation** path is still multi-request, and a full canonical session/calendar cutover B5/C2 and provider outbox remain open.
+
+### 2026-11-12 — accepted gateway and two calendar parity scenarios
+
+- [Exact source c80b85c](https://github.com/itshak/ChessCoachPal/commit/c80b85c2313b8507e9999e2bb91229ed6f0f996a) passed [225 authenticated E2E (five skipped)](https://github.com/itshak/ChessCoachPal/actions/runs/43294003992), 445 unit tests, CI, security, Compose and backup/restore.
+- Gateway 38/38 independently named action evidence: 36 owner-scoped MCP equivalents, two narrowly justified secure browser teacher-provenance exceptions. Promoted route registry to 59/59 with evidence; **not** overall product parity.
+- Portal cancellation and recurring-slot history-safe deletion now have distinct accepted cross-interface scenarios. A further invoiced-lesson/direct-delete denial assertion is being tested on the next exact head.
+- Historical baseline 89/93 and canonical lesson one-writer B5/C2 remain blocking; keep OpenSpec active and PR draft.

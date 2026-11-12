@@ -2,6 +2,14 @@
 
 **Updated:** 2026-11-12 · **Branch of record:** main (unreleased; parity work in PR #52 / PR #51) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
+## 2026-11-12 — gateway 59/59 route evidence; product parity NOT complete
+
+[Exact source c80b85c](https://github.com/itshak/ChessCoachPal/commit/c80b85c2313b8507e9999e2bb91229ed6f0f996a) passed all five GitHub workflow families: [225 authenticated website/MCP E2E passing (five skipped)](https://github.com/itshak/ChessCoachPal/actions/runs/43294003992), 445 unit tests, CI, security, self-host Compose and backup/restore. The 38-action legacy gateway matrix covers 36 real MCP equivalents and two narrowly scoped secure browser-only teacher-approval exceptions. **59/59 teacher route families are evidence-classified** on the stacked draft PR #57; this does NOT mean complete functional parity.
+
+Implemented atomic guardian portal cancellation and history-safe recurring slot deletion in one owner-scoped SQL transaction each. An additional invoice-linked lesson/direct-database-delete regression is now pending the next exact-head run.
+
+**Release remains blocked:** four original 93-case scenarios (89/93 accepted), independent legacy calendar and canonical coaching occurrence writers B5/C2, strict merged-main acceptance and live ChatGPT/Claude provider checks. Do not merge these stacked drafts, archive active OpenSpecs or publish v0.1.0 until gates pass.
+
 ## 2026-11-12 — 215-pass consolidated finance / secure-policy evidence
 
 [Exact source `d11eaf1` E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43280814476): **215 passed, five intentionally skipped, zero failed**; CI, security, Compose and backup/restore all green. A second independent CI-only checkout race shows a single linked payable session, losing provider-session expiration and idempotent replay. Separately named local spreadsheet test verifies default no-egress behavior and strict malformed-data rejection. The new chess-first matrix is now **24/24 individually accepted**, without reusing earlier test IDs. Route-family parity is **58/59** with the legacy gateway still partial; historical checklist **89/93** and canonical lesson one-writer cutover remain blocking.

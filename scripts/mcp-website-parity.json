@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-12",
-  "headSha": "d11eaf1a3a138f1f6b17f871b42fc4d786ce2acc",
-  "policy": "Candidate 58/59 teacher routes; legacy gateway remains partial while its 38-action browser/MCP E2E audit and fresh authenticated E2E run are pending. Exact current accepted source 432de7: 215 browser/MCP tests passed and 5 skipped. Separate canonical lesson writer, four historical release checklist cases and strict main gates remain open.",
+  "headSha": "c80b85c2313b8507e9999e2bb91229ed6f0f996a",
+  "policy": "Verified c80b85c: 59/59 teacher route families mapped and gateway 38/38 individually evidenced; 225 authenticated website/MCP E2E passed (five skipped); all five workflow families green. Full functional parity is NOT certified: historical checklist 89/93, canonical lesson writer B5/C2, strict merged-main and live-provider gates remain open.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -35,7 +35,7 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_workplaces_list",
         "ccp_v1_workplaces_create",
@@ -74,7 +74,7 @@
         "ccp_v1_material_links_unlink_impact",
         "ccp_v1_material_links_unlink"
       ],
-      "explanation": "Gateway has 38 discriminated website actions, with 36 corresponding owner-scoped MCP tools and two narrowly approved browser-only teacher-observation attestation/approval exceptions. The new source-level E2E gate scans every named authenticated PARITY scenario and rejects any action not paired with its actual delegated MCP tool, a real website action and assertions. New synthetic tests exercise the eight previously under-evidenced actions, explicit bearer rejection for both teacher-provenance exceptions and authenticated GET discovery. Candidate remains PARTIAL until exact-head end-to-end acceptance; existing canonical legacy calendar duplication remains an independent release blocker.",
+      "explanation": "Exact source c80b85c: 38/38 website gateway actions have independently named authenticated website/delegated MCP evidence. 36 are equivalent owner-scoped MCP operations and two are narrowly approved browser-only teacher-attestation exceptions with negative bearer tests. The action-evidence audit found zero missing; 225 authenticated E2E passed and all five workflow families were green. Legacy calendar vs canonical session double writers and four outstanding historical release cases remain separate blockers.",
       "evidenceTest": "e2e/parity-gateway-action-coverage.spec.ts"
     },
     {

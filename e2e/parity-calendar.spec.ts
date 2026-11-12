@@ -1,6 +1,8 @@
 import {randomUUID} from "node:crypto";
 import {expect,test,type Page} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {createClient} from "@supabase/supabase-js";
+import {SEED_TEACHER} from "./helpers/auth";
 type Tool=(name:string,args:Record<string,unknown>)=>Promise<{
  data?:any;error?:{code:string;message:string};
 }>;
@@ -345,7 +347,7 @@ test("PARITY:PARITY-calendar-slot-delete-atomic-history preserves notes and atte
  const utc=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));
  const offset=(7-utc.getUTCDay())%7+7;
  const start=new Date(utc.getTime()+offset*86400000);
- const last=new Date(start.getTime()+14*86400000);
+ const last=new Date(start.getTime()+21*86400000);
  const date=(x:Date)=>x.toISOString().slice(0,10);
  const created=await call("ccp_v1_calendar_slots_create",{
   studentId,dayOfWeek:0,startTime:"09:00",durationMinutes:45,
@@ -357,8 +359,8 @@ test("PARITY:PARITY-calendar-slot-delete-atomic-history preserves notes and atte
  expect(before.status(),await before.text()).toBe(200);
  const scheduled=((await before.json()).lessons as Array<{id:string;slot_id:string|null}>)
   .filter(row=>row.slot_id===slotId);
- expect(scheduled.length).toBeGreaterThanOrEqual(3);
- const [withNote,withAttendance,unused]=scheduled;
+ expect(scheduled.length).toBeGreaterThanOrEqual(4);
+ const [withNote,withAttendance,withInvoice,unused]=scheduled;
  const note=await page.request.put("/api/schedule/lessons/"+withNote.id+"/note",{
   data:{body:"Preserve this training summary",privateBody:"Teacher revision",sendEmail:false},
  });
@@ -367,13 +369,42 @@ test("PARITY:PARITY-calendar-slot-delete-atomic-history preserves notes and atte
   lessonId:withAttendance.id,status:"no_show",confirmed:true,
  });
  expect(marked.error).toBeUndefined();
+ const guardian=await call("ccp_v1_guardians_create",{
+  name:"Invoice guardian "+randomUUID(),studentIds:[studentId],confirmed:true,
+ });
+ expect(guardian.error).toBeUndefined();
+ const direct=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ const login=await direct.auth.signInWithPassword(SEED_TEACHER);
+ expect(login.error).toBeNull();
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ const invoice=await admin.from("invoices").insert({
+  teacher_id:login.data.user!.id,guardian_id:guardian.data.id,
+  period_start:date(start),period_end:date(last),
+  currency:"USD",status:"draft",subtotal_cents:5000,
+ }).select("id").single();
+ expect(invoice.error).toBeNull();
+ const line=await admin.from("invoice_items").insert({
+  invoice_id:invoice.data!.id,lesson_id:withInvoice.id,kind:"lesson",
+  description:"Preserved recurring chess lesson",quantity:1,
+  unit_cents:5000,amount_cents:5000,sort_order:0,
+ }).select("id").single();
+ expect(line.error).toBeNull();
+ // Refuse a raw PostgREST DELETE that bypasses website/MCP SQL history rules.
+ const rawDelete=await direct.from("lesson_slots").delete().eq("id",slotId);
+ expect(rawDelete.error).not.toBeNull();
  const removed=await page.request.delete("/api/schedule/slots/"+slotId);
  expect(removed.status(),await removed.text()).toBe(200);
  expect(await removed.json()).toMatchObject({ok:true});
  const slot=await call("ccp_v1_calendar_slots_list",{studentId});
  expect(slot.error).toBeUndefined();
  expect(slot.data.some((row:{id:string})=>row.id===slotId)).toBe(false);
- for(const id of [withNote.id,withAttendance.id]){
+ for(const id of [withNote.id,withAttendance.id,withInvoice.id]){
   const detail=await call("ccp_v1_calendar_lessons_detail",{lessonId:id});
   expect(detail.error).toBeUndefined();
   expect(detail.data.slot_id).toBeNull();
@@ -387,6 +418,14 @@ test("PARITY:PARITY-calendar-slot-delete-atomic-history preserves notes and atte
   "/api/schedule/lessons/"+withAttendance.id+"/attendance");
  expect(attendanceAfter.status(),await attendanceAfter.text()).toBe(200);
  expect((await attendanceAfter.json()).status).toBe("no_show");
+ const browserInvoice=await page.request.get("/api/billing/invoices/"+invoice.data!.id);
+ expect(browserInvoice.status(),await browserInvoice.text()).toBe(200);
+ const siteInvoice=await browserInvoice.json();
+ expect(siteInvoice.invoice_items.some((x:{lesson_id:string})=>
+  x.lesson_id===withInvoice.id)).toBe(true);
+ const mcpInvoice=await call("ccp_v1_billing_invoice_detail",{invoiceId:invoice.data!.id});
+ expect(mcpInvoice.error).toBeUndefined();
+ expect(mcpInvoice.data.invoice_items).toEqual(siteInvoice.invoice_items);
  const deleted=await call("ccp_v1_calendar_lessons_detail",{lessonId:unused.id});
  expect(deleted.error?.code).toBe("NOT_FOUND");
 
