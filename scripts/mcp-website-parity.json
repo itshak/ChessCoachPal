@@ -299,11 +299,11 @@
         "GET"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_coach_briefing_get"
       ],
-      "explanation": "Shared deterministic student next-lesson briefing reads canonical typed homework, teacher-attested material history, unified lesson history and approved observations. Website student details and delegated MCP share one teacher-scoped service. New OAuth/browser cross-interface test added; complete acceptance and integration tests pending.",
+      "explanation": "Read-only coach briefing uses exactly one deterministic shared teacher-scoped domain service for website and MCP. Authenticated cross-client test compares complete returned student homework, material history, observations, and plan evidence and rejects inferred mastery. B5 canonical calendar history replacement remains separate.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
@@ -621,12 +621,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_lichess_puzzle_preview",
         "ccp_v1_lichess_image_fen_propose"
       ],
-      "explanation": "Reviewed FEN, board, PGN and SHA-256 preview remain browser/MCP E2E accepted, but the new BYO-vision board-image proposal is only candidate-implemented. Both clients require explicit external-AI sharing approval and reject malformed images. Positive synthetic-provider image recognition, human-correction flow and cross-client persisted outcomes must still pass final E2E; no route-family promotion before those checks.",
+      "explanation": "Website/MCP FEN, board and PGN preview plus opt-in AI board-image extraction are covered by one authenticated CI-only synthetic vision provider, returned candidate identity, teacher correction, cross-client PGN preview and reviewed typed Lichess publication. Image input consent and MIME validation are tested; live external Lichess/vision credentials are separately launch-gated.",
       "evidenceTest": "e2e/parity-lichess-puzzle.spec.ts"
     },
     {
@@ -903,12 +903,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_skill_dimensions_list",
         "ccp_v1_skill_dimensions_create"
       ],
-      "explanation": "139-pass delegated OAuth/browser E2E at cf00dff verifies owner-scoped category list and create from both transports, field validation and duplicate-name rejection; further create-retry/idempotency and explicit list foreign-tenant omission remain to certify before full-route promotion.",
+      "explanation": "Browser/MCP list and create share the authenticated teacher-owned skill dimension service and receipt-based SQL. Named E2E tests both-transport create/readback, invalid fields, duplicate names, tenant scope, same-key replays, six concurrent sort allocations and same-key races.",
       "evidenceTest": "e2e/parity-skill-dimensions-lifecycle.spec.ts"
     },
     {
@@ -952,14 +952,15 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_students_search",
         "ccp_v1_students_create",
         "ccp_v1_students_roster",
         "ccp_v1_students_create_full"
       ],
-      "explanation": "Website and MCP offer active/archived/all paginated roster views. New candidate full student+family creation shares one authenticated SQL transaction, tenant-derived quota trigger and cross-client request receipts; browser/MCP E2E and full field/tenant acceptance still require final execution. Do not promote to verified before passing tests."
+      "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes.",
+      "evidenceTest": "e2e/parity-students.spec.ts"
     },
     {
       "path": "app/api/teacher/calendar-token/route.ts",
@@ -983,14 +984,15 @@
         "PATCH"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_training_assignments_list",
         "ccp_v1_training_assignments_create",
         "ccp_v1_training_attempt_record",
         "ccp_v1_training_review_record"
       ],
-      "explanation": "Shared teacher-scoped website/MCP assignment list, confirmed student-specific/batch material assignments, manual attempt evidence and independent teacher reviews. Full goal/plan editing, correction and 93-case verification remain later scope."
+      "explanation": "Website/MCP share assignment list/create, student-specific teacher-approved material review, attempt recording and reviewed feedback services. Authenticated E2E covers assignment idempotent creation, attempt/review lifecycle, teacher-evidence-only progress and cross-client readback. Goals belong to separately evidenced training-plan route.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
       "path": "app/api/training/materials/lifecycle/route.ts",
@@ -999,12 +1001,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_learning_material_archive_preview",
         "ccp_v1_learning_material_lifecycle_change"
       ],
-      "explanation": "Shared explicit material archive impact and history-preserving hide/restore with dependency safeguards and revisioned receipts; both browser and MCP E2E added, final full sign-off pending.",
+      "explanation": "Website/MCP share material dependency preview and revisioned, receipt-safe archive/restore operations. Authenticated browser/MCP test covers preview, archive, changed-key prevention, unchanged material identity and history-safe unarchive; actual typed-history deletion is blocked.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
@@ -1014,12 +1016,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_learning_material_relations_list",
         "ccp_v1_learning_material_relation_change"
       ],
-      "explanation": "Shared owner-scoped typed material relationships with atomic SQL link/unlink, revision and replay receipts; UI link management and delegated OAuth E2E added. Full source/target graph validation and final integrated acceptance pending.",
+      "explanation": "Website/MCP share teacher-scoped typed material relationship list and link/unlink SQL mutation, with source revision and cross-client receipts. Authenticated E2E covers link, readback and changed terms across both surfaces, preserving teacher-owned source and target identities.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
@@ -1030,14 +1032,15 @@
         "PATCH"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_learning_materials_list",
         "ccp_v1_learning_materials_get",
         "ccp_v1_learning_materials_create",
         "ccp_v1_learning_materials_update"
       ],
-      "explanation": "Shared material catalog supports typed create/read/list, atomic revisioned correction, active/archive search and same teacher-owned API/tool fields. Typed relations and lifecycle have dedicated routes. Full classification pending integration-wide evidence."
+      "explanation": "Website/MCP share teacher-scoped canonical typed learning material list/get/create/update, typed game/puzzle/study detail, revision and approved correction. Authenticated E2E creates typed materials, reads both directions, validates content and edits; relation and archive behavior have separately tested routes.",
+      "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
       "path": "app/api/training/plans/route.ts",
@@ -1046,13 +1049,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_training_plans_list",
         "ccp_v1_training_plans_get",
         "ccp_v1_training_plans_commit"
       ],
-      "explanation": "Coach-authored per-student training plans with versioned individual goals, coach-evidence-only achievement, durable idempotent revisions, archive/history and factual next-lesson briefing. Shared teacher-scoped web/MCP service and named OAuth scenario; integrated acceptance pending.",
+      "explanation": "Website/MCP use the same teacher-owned plan list/get/commit service, immutable revisioned snapshots, optimistic revisions and cross-client idempotency receipts. E2E tests real plan goals, teacher-evidence-only achievement, stale/changed request rejection, archive/history and read-only scope denial.",
       "evidenceTest": "e2e/parity-training-plans.spec.ts"
     },
     {
