@@ -68,7 +68,15 @@ test("PARITY:PARITY-gateway-student-search-and-workplace-unenroll uses both real
   workplaceId:ctx.workplaceId,studentId:b,confirmed:true,
  });
  expect(removedMcp.error).toBeUndefined();
- expect(removedMcp.data).toEqual(deletedWeb);
+ // Both transports return the same response schema, but these two
+ // independent removal operations intentionally target DIFFERENT pupils.
+ expect(deletedWeb).toMatchObject({
+  removed:true,workplace_id:ctx.workplaceId,student_id:a,
+ });
+ expect(removedMcp.data).toMatchObject({
+  removed:true,workplace_id:ctx.workplaceId,student_id:b,
+ });
+ expect(Object.keys(removedMcp.data).sort()).toEqual(Object.keys(deletedWeb).sort());
  const webRead=await page.request.post("/api/agent/v1",{
   data:{action:"workplaces.enrollments",workplaceId:ctx.workplaceId},
  });
