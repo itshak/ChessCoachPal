@@ -8,6 +8,13 @@ describe("one canonical actual-lesson source of truth",()=>{
    "lessons","attendance","teaching_sessions","session_attendance"
   ].map(table).join("\n")),true);
  });
+ it("does not allow a partial cutover to leave an old notes or lesson table",()=>{
+  for(const old of ["lessons","attendance","lesson_notes"]){
+   assert.equal(competingLessonModels([
+    "teaching_sessions","session_attendance",old
+   ].map(table).join("\n")),true);
+  }
+ });
  it("accepts a fresh schema with only canonical sessions and roster attendance",()=>{
   assert.equal(competingLessonModels([
    "teaching_sessions","session_attendance","lesson_slots"
