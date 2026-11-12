@@ -7231,3 +7231,84 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.ccp_skill_dimension_create(text,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_skill_dimension_create(text,uuid) TO authenticated;
+
+-- One shared invoice void writer for teacher website and delegated MCP.
+-- Locks the invoice against cash settlement and the associated prepaid
+-- packages against concurrent redemption. Void cannot silently erase money,
+-- credits or an active Stripe checkout. Owner is always auth.uid().
+CREATE OR REPLACE FUNCTION public.ccp_invoice_void(
+ p_invoice_id uuid,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $invoice_void$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_invoice public.invoices%ROWTYPE;
+ v_old public.agent_tool_receipts%ROWTYPE;
+ v_package record;
+ v_hash text;
+ v_receipt jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN
+   RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_invoice_id IS NULL OR p_request_id IS NULL THEN
+   RAISE EXCEPTION 'INVALID_INVOICE_VOID_REQUEST' USING ERRCODE='22023';
+ END IF;
+ v_hash:=md5(jsonb_build_array('billing.invoice.void',p_invoice_id)::text);
+ INSERT INTO public.agent_tool_receipts(
+   teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_request_id,'billing.invoice.void',v_hash,'{}'::jsonb)
+ ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_old FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+   IF NOT FOUND OR v_old.operation<>'billing.invoice.void' OR
+      v_old.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'INVOICE_VOID_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_old.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_invoice FROM public.invoices
+  WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501'; END IF;
+ IF v_invoice.status='paid' THEN
+   RAISE EXCEPTION 'INVOICE_PAID_CANNOT_VOID' USING ERRCODE='23514';
+ END IF;
+ IF v_invoice.status='void' THEN
+   v_receipt:=jsonb_build_object('ok',true,'alreadyVoid',true,
+     'invoiceId',p_invoice_id,'idempotencyKey',p_request_id);
+ ELSE
+   IF EXISTS(SELECT 1 FROM public.payments
+      WHERE invoice_id=p_invoice_id) THEN
+     RAISE EXCEPTION 'INVOICE_HAS_PAYMENTS' USING ERRCODE='23514';
+   END IF;
+   IF v_invoice.stripe_checkout_session_id IS NOT NULL OR
+      v_invoice.stripe_checkout_url IS NOT NULL OR
+      v_invoice.stripe_payment_intent_id IS NOT NULL THEN
+     RAISE EXCEPTION 'CHECKOUT_RECONCILIATION_REQUIRED' USING ERRCODE='23514';
+   END IF;
+   -- A FK INSERT into credit_redemptions needs KEY SHARE on its package.
+   -- FOR UPDATE excludes that competing insert until this transaction ends.
+   FOR v_package IN SELECT id FROM public.credit_packages
+      WHERE invoice_id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE LOOP
+     IF EXISTS(SELECT 1 FROM public.credit_redemptions
+       WHERE package_id=v_package.id AND teacher_id=v_teacher) THEN
+       RAISE EXCEPTION 'CREDITS_USED' USING ERRCODE='23514';
+     END IF;
+     -- Even unused issued credits must first be cancelled/reconciled.
+     RAISE EXCEPTION 'CREDIT_PACKAGE_EXISTS' USING ERRCODE='23514';
+   END LOOP;
+   UPDATE public.invoices SET status='void'
+     WHERE id=p_invoice_id AND teacher_id=v_teacher AND
+       status IN ('draft','sent');
+   IF NOT FOUND THEN RAISE EXCEPTION 'INVOICE_VOID_STATUS_CHANGED' USING ERRCODE='23505'; END IF;
+   v_receipt:=jsonb_build_object('ok',true,'alreadyVoid',false,
+     'invoiceId',p_invoice_id,'idempotencyKey',p_request_id);
+ END IF;
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+   WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$invoice_void$;
+REVOKE ALL ON FUNCTION public.ccp_invoice_void(uuid,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_invoice_void(uuid,uuid) TO authenticated;

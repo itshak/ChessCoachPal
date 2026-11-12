@@ -28,21 +28,34 @@ export async function teacherInvoiceDelete(db:Db,teacherId:string,id:string){
  if(!data)throw fail(409,"CONFLICT","Invoice status changed; reload before deletion");
  return {ok:true};
 }
-export async function teacherInvoiceVoid(db:Db,teacherId:string,id:string){
- const invoice=await ownedInvoice(db,teacherId,id);
- if(invoice.status==="paid")throw fail(409,"CONFLICT","Paid invoices cannot be voided");
- if(invoice.status==="void")return {ok:true,alreadyVoid:true};
- const {data:creditPackage,error:creditError}=await db.from("credit_packages")
-  .select("id,credit_redemptions(id)").eq("invoice_id",id).maybeSingle();
- if(creditError)throw fail(500,"DATABASE_ERROR","Unable to inspect prepaid credits");
- if((creditPackage?.credit_redemptions as unknown[]|null)?.length)
-  throw fail(409,"CREDITS_USED","Return prepaid credits before voiding this invoice");
- const {data,error}=await db.from("invoices").update({status:"void"})
-  .eq("id",id).eq("teacher_id",teacherId).eq("status",invoice.status)
-  .select("id").maybeSingle();
- if(error)throw fail(500,"DATABASE_ERROR","Unable to void invoice");
- if(!data)throw fail(409,"CONFLICT","Invoice status changed; reload before voiding");
- return {ok:true};
+export async function teacherInvoiceVoid(
+ db:Db,teacherId:string,id:string,idempotencyKey?:string
+){
+ // Shared website/MCP SQL serializes the same invoice row as payment commits
+ // and protects related prepaid packages. No client-side check/write race.
+ void teacherId;
+ const key=idempotencyKey??randomUUID();
+ if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key))
+   throw fail(400,"VALIDATION_ERROR","Invoice void idempotency key must be a UUID");
+ const {data,error}=await db.rpc("ccp_invoice_void",{
+   p_invoice_id:id,p_request_id:key,
+ });
+ if(error){
+   if(error.code==="42501"||/NOT_FOUND/.test(error.message))
+     throw fail(404,"NOT_FOUND","Invoice not found");
+   if(error.code==="23505"||/REQUEST_CONFLICT/.test(error.message))
+     throw fail(409,"IDEMPOTENCY_CONFLICT",
+       "Invoice void request ID was reused or the invoice changed");
+   if(/CREDITS_USED|CREDIT_PACKAGE_EXISTS/.test(error.message))
+     throw fail(409,"CREDITS_EXIST",
+       "Cancel or reconcile the prepaid credit package before voiding its invoice");
+   if(/INVOICE_PAID|INVOICE_HAS_PAYMENTS|CHECKOUT_RECONCILIATION_REQUIRED|STATUS_CHANGED/.test(error.message))
+     throw fail(409,"CONFLICT",
+       "Reconcile payments, credits and any open Stripe checkout before voiding this invoice");
+   throw fail(500,"DATABASE_ERROR","Unable to commit invoice void atomically");
+ }
+ return data as {ok:true;alreadyVoid:boolean;invoiceId:string;
+   idempotencyKey:string;replayed:boolean};
 }
 export async function teacherInvoiceDraftUpdate(db:Db,teacherId:string,id:string,input:InvoiceDraftEdit){
   void teacherId; // SQL independently enforces auth.uid() ownership.

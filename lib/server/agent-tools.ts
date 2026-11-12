@@ -350,8 +350,9 @@ const catalogue = [
   },
   {
     name:"ccp_v1_billing_invoice_void",
-    description:"Void a draft or sent invoice after teacher confirms its ID. Paid invoices or already redeemed prepaid credits cannot be voided.",
-    schema:z.object({invoiceId:uuid,confirmed:z.literal(true)}).strict(),
+    description:"Atomically void an owned draft/sent invoice after confirmed teacher review. A request UUID supports cross-client replay; reject paid/partially paid invoices, active Stripe checkout, or issued prepaid credits instead of silently erasing value.",
+    schema:z.object({invoiceId:uuid,idempotencyKey:uuid.optional(),
+      confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1423,8 +1424,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherInvoiceDraftUpdate(db,teacherId,a.invoiceId,a.changes)};
       }
       case "ccp_v1_billing_invoice_void": {
-        const a=args as {invoiceId:string};
-        return {data:await teacherInvoiceVoid(db,teacherId,a.invoiceId)};
+        const a=args as {invoiceId:string;idempotencyKey?:string};
+        return {data:await teacherInvoiceVoid(db,teacherId,a.invoiceId,a.idempotencyKey)};
       }
       case "ccp_v1_billing_invoice_delete": {
         const a=args as {invoiceId:string};
