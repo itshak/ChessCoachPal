@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-12",
-  "headSha": "e2c55a78d6200685e7bfdce511abf89a4e28cb5b",
-  "policy": "MCP-first parity: exact source e2c55a7 passed all five workflows, including 212 authenticated browser/delegated MCP E2E (five skipped, zero failed). 57 of 59 teacher API route families supported with dedicated behavioral evidence; two partial remain. Historical cases 89/93 and new canonical cases 21/23 checked; policy credential handoff, legacy gateway, canonical lesson occurrence cutover, and strict post-merge release remain BLOCKED.",
+  "headSha": "d11eaf1a3a138f1f6b17f871b42fc4d786ce2acc",
+  "policy": "MCP-first route-family parity 58/59 teacher API routes supported with real browser/delegated MCP evidence; only legacy gateway remains partial. Exact d11eaf1 passes 215 authenticated E2E (5 skipped, 0 failures), CI/security/Compose/backup green; 89/93 historical and 24/24 new canonical scenarios independently accepted. Full app parity, canonical lesson writer, account/MFA + hosted handoffs, strict release and main remain BLOCKED.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -872,13 +872,14 @@
         "PUT"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_studio_policy_get",
-        "ccp_v1_studio_policy_update"
+        "ccp_v1_studio_policy_update",
+        "ccp_v1_studio_credentials_handoff"
       ],
-      "explanation": "All 38 ordinary settings fields use the same teacher policy service and schema guard, with website/MCP readback and nullable clear tests. Four raw AI/Stripe credential entry fields intentionally remain authenticated-browser-only; explicit approved exception/safe credential handoff must be addressed before full-route promotion. Secret-clearing controls remain in MCP.",
-      "evidenceTest": "e2e/parity-policy.spec.ts"
+      "explanation": "Ordinary studio policy fields and explicit nullable clears use the same strict website/MCP service. The four sensitive API/Stripe credential-input fields have a narrowly scoped secure-browser exception: explicitly approved MCP handoff returns only the trusted-origin authenticated form URL, never a secret, while the website handles encrypted secret submission. The MCP tool can read masked configured status and clear stored credentials. Authenticated E2E at source 930a596 passed 213 tests, including direct AI/Stripe setup link, browser secret entry, masked MCP readback, model-visible secret rejection and MCP clearing. No card or live provider is used.",
+      "evidenceTest": "e2e/parity-policy-credential-handoff.spec.ts"
     },
     {
       "path": "app/api/skills/dimensions/[id]/route.ts",
