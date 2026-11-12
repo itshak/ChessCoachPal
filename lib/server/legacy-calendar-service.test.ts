@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {calendarSlotsList,calendarSlotDelete,calendarSlotUpdate,calendarSlotCreate,calendarLessonsList,calendarLessonCreate,CalendarError} from "@/lib/server/legacy-calendar-service";
+import {calendarSlotsList,calendarSlotDelete,calendarSlotUpdate,calendarSlotCreate,calendarLessonsList,calendarLessonCreate,CalendarError,canReconcileRecurringOccurrence} from "@/lib/server/legacy-calendar-service";
 
 type Slot={id:string;teacher_id:string;student_id:string;day_of_week:number;start_time:string;active:boolean};
 
@@ -175,6 +175,29 @@ describe("calendar website/MCP pagination and filter validation",()=>{
   ]){
    await expect(calendarLessonsList(noDb,"teacher-one",options))
     .rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+  }
+ });
+});
+
+describe("recurrence corrections never change teaching or financial evidence",()=>{
+ const clean={
+  attendance:[],lesson_notes:[],rescheduled_from_date:null,
+  makeup_for:null,invoice_items:[],credit_redemptions:[],
+ };
+ it("can update only a pristine future occurrence",()=>{
+  expect(canReconcileRecurringOccurrence(clean)).toBe(true);
+ });
+ it("preserves attended, noted, makeup, invoice-linked, redeemed or moved lessons",()=>{
+  const histories=[
+   {attendance:[{id:"attendance"}]},
+   {lesson_notes:[{id:"notes"}]},
+   {rescheduled_from_date:"2099-02-01"},
+   {makeup_for:"credit-id"},
+   {invoice_items:[{id:"invoice-item"}]},
+   {credit_redemptions:[{id:"redemption"}]},
+  ];
+  for(const detail of histories){
+   expect(canReconcileRecurringOccurrence({...clean,...detail})).toBe(false);
   }
  });
 });
