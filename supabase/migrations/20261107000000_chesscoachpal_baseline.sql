@@ -2548,7 +2548,9 @@ GRANT ALL ON TABLE "public"."push_subscriptions" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."session_attendance" TO "authenticated";
+-- Only the audited SECURITY DEFINER domain transaction may change decisions.
+-- Ordinary owner clients retain RLS-scoped SELECT, not direct DML privileges.
+GRANT SELECT ON TABLE "public"."session_attendance" TO "authenticated";
 GRANT ALL ON TABLE "public"."session_attendance" TO "service_role";
 
 
