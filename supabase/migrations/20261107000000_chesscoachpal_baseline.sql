@@ -4578,7 +4578,7 @@ BEGIN
     WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
   RETURN v_receipt;
 END;
-$;
+$$;
 REVOKE ALL ON FUNCTION public.ccp_invoice_generation_commit(
  date,date,jsonb,jsonb,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_generation_commit(
@@ -4715,7 +4715,7 @@ BEGIN
     WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
   RETURN v_receipt;
 END;
-$;
+$$;
 REVOKE ALL ON FUNCTION public.ccp_invoice_regenerate_atomic(
  uuid,jsonb,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_regenerate_atomic(
