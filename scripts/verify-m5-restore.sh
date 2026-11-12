@@ -119,9 +119,37 @@ echo "==> create second independent Supabase project with distinct ports"
 cp -a "$root/supabase" "$tmp/restore/supabase"
 # Restore target must be empty; local CLI would otherwise load synthetic seed.sql.
 sed -i '/^\[db.seed\]/,/^\[db.network_restrictions\]/ s/^enabled = true$/enabled = false/' "$tmp/restore/supabase/config.toml"
-sed -i \
-  -e 's/project_id = "chesscoachpal"/project_id = "chesscoachpal_restore"/' \
-  -e 's/5432/5442/g' "$tmp/restore/supabase/config.toml"
+sed -i 's/project_id = "chesscoachpal"/project_id = "chesscoachpal_restore"/' \
+  "$tmp/restore/supabase/config.toml"
+# A fixed textual substitution (5432 -> 5442) can collide with a port already
+# occupied by the CI runner (observed: Mailpit 54424). Pick independent free
+# loopback ports for every Supabase CLI exposed service in this disposable
+# second stack. The source stack keeps its original configured ports.
+python3 - "$tmp/restore/supabase/config.toml" <<'PY'
+from pathlib import Path
+import re
+import socket
+import sys
+
+path = Path(sys.argv[1])
+content = path.read_text()
+ports = sorted(set(re.findall(r'(?<!\\d)5432[0-9](?!\\d)', content)))
+reserved = []
+mapping = {}
+try:
+    for port in ports:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        reserved.append(sock)
+        mapping[port] = str(sock.getsockname()[1])
+    content = re.sub(r'(?<!\\d)5432[0-9](?!\\d)',
+                     lambda match: mapping[match.group()], content)
+    path.write_text(content)
+finally:
+    for sock in reserved:
+        sock.close()
+print("Disposable target port allocation:", ", ".join(f"{a}->{b}" for a, b in mapping.items()))
+PY
 (cd "$tmp/restore" && supabase start)
 target_db="supabase_db_chesscoachpal_restore"
 target_storage="supabase_storage_chesscoachpal_restore"
