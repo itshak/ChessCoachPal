@@ -3,8 +3,8 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import {materializeLessons} from "./scheduling";
 
 const day = "2027-01-03";
-function fixture(options: {badMovedSecondPage?:boolean;failInsert?:boolean}={}) {
-  const slots = Array.from({length:501},(_,i)=>({
+function fixture(options: {badMovedSecondPage?:boolean;failInsert?:boolean;slotCount?:number}={}) {
+  const slots = Array.from({length:options.slotCount??501},(_,i)=>({
     id:`slot-${i}`,teacher_id:"teacher",student_id:"student",
     active:true,day_of_week:0,start_time:"16:00:00",
     start_date:day,end_date:day,duration_minutes:45,is_home_visit:false,
@@ -72,6 +72,12 @@ describe("recurring calendar materialization is complete or fails closed",()=>{
     const {db,upsert}=fixture({badMovedSecondPage:true});
     await expect(materializeLessons(db,"teacher",day,day))
       .rejects.toThrow("Unable to load all rescheduled lessons");
+    expect(upsert).not.toHaveBeenCalled();
+  });
+  it("does not attempt writes for oversized generated lesson inventories",async()=>{
+    const {db,upsert}=fixture({slotCount:2500});
+    await expect(materializeLessons(db,"teacher",day,"2027-04-01"))
+      .rejects.toThrow("Too many lesson occurrences");
     expect(upsert).not.toHaveBeenCalled();
   });
   it("propagates write failure instead of claiming that materialization succeeded",async()=>{
