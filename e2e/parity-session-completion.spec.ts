@@ -124,11 +124,16 @@ test("PARITY:PARITY-sessions-complete-website form requires explicit per-learner
  const panel=page.locator('section[aria-label="Complete coaching lesson"]');
  await expect(panel).toBeVisible();
  await panel.getByLabel("Lesson to complete").selectOption(ctx.sessionId);
+ // The panel reads roster asynchronously after selecting a lesson. Bind the
+ // assertions to the actual selected session/learner IDs, not a display name
+ // that could also belong to another learner or transient previous roster.
+ const selected=panel.locator('form[data-session-id="'+ctx.sessionId+'"]');
+ await expect(selected).toBeVisible();
  const roster=await page.request.get("/api/coaching/sessions/"+ctx.sessionId+"/roster");
  expect(roster.status()).toBe(200);
  const persons=(await roster.json()).participants as Array<{studentId:string;name:string}>;
  for(const person of persons)
-  await panel.getByLabel("Attendance for "+person.name).selectOption("present");
+  await selected.locator('select[data-student-id="'+person.studentId+'"]').selectOption("present");
  await panel.getByText("I confirm these attendance statuses and lesson completion.").click();
  await panel.getByRole("button",{name:"Complete lesson"}).click();
  await expect(panel.getByRole("status")).toContainText("committed atomically");

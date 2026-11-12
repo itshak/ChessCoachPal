@@ -135,13 +135,13 @@ export function LessonCompletionPanel(){
     </option>)}
    </select>
   </label>
-  {roster&&<form onSubmit={submit} className="space-y-3">
+  {roster&&<form onSubmit={submit} data-session-id={roster.sessionId} className="space-y-3">
    <p className="text-sm font-medium">{roster.participants.length} frozen learner(s) · {roster.status}</p>
    {roster.participants.map(person=>{
     const decision=decisions[person.studentId];
     return <div key={person.studentId} className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-2">
      <label>{person.name}: attendance
-      <select className={select} aria-label={"Attendance for "+person.name}
+      <select className={select} aria-label={"Attendance for "+person.name} data-student-id={person.studentId}
        value={decision?.status??""} required onChange={e=>change(person.studentId,{
          status:e.target.value as Decision["status"],
        })}>
