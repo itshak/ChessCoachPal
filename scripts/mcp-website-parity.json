@@ -189,11 +189,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_manual_payment_record"
       ],
-      "explanation": "Candidate shared owner-scoped SQL transaction now locks invoice, checks outstanding balance and expected retired Stripe session, inserts cash receipt and marks settlement atomically. Browser/MCP race and replay E2E added, unexecuted; configured provider acceptance remains."
+      "explanation": "Shared owner-scoped SQL transaction locks the invoice, enforces outstanding balances and Stripe checkout reconciliation and supports cross-client idempotency. Authenticated browser/MCP cases exercise settlement races, changed-key rejection, foreign-tenant denial, validation and fail-closed unreconciled Stripe; live external Stripe charging remains separately gated.",
+      "evidenceTest": "e2e/parity-billing-lifecycle.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/payments/[paymentId]/route.ts",
@@ -201,11 +202,12 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_manual_payment_delete"
       ],
-      "explanation": "Shared teacher-scoped removal of mistaken manual payments only. Payment trigger reopens underpaid invoices; Stripe refunds remain a secure external-provider operation."
+      "explanation": "Both clients delete only teacher-owned mistaken manual payments through ccp_manual_payment_remove, with invoice settlement recalculation, reverse-race serialization and foreign-tenant denial E2E. Provider Stripe refunds are not an action of this route and require separate authorization.",
+      "evidenceTest": "e2e/parity-billing-lifecycle.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/pdf/route.ts",
@@ -566,11 +568,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "partial",
       "existingTools": [
         "ccp_v1_import_spreadsheet_suggest"
       ],
-      "explanation": "Shared local heuristics and optional configured external AI mapping; MCP requires explicit confirmation before sending samples to external AI. Provider errors and privacy tests outstanding."
+      "explanation": "Both transports now parse one strict, local-first source-header and sample-row schema. Offline mapping has identical defaults, external AI requires explicit useAi/confirmedExternal opt-in, and malformed/unknown samples are rejected before data egress. Positive synthetic provider behavior and provider failure recovery still require acceptance before full promotion.",
+      "evidenceTest": "e2e/parity-spreadsheet-suggest.spec.ts"
     },
     {
       "path": "app/api/lichess/callback/route.ts",
@@ -731,11 +734,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_calendar_attendance_bulk"
       ],
-      "explanation": "Shared owner-scoped bulk attendance updates, per-row partial failures and opt-in family notice, with OAuth E2E; atomic write/retry safeguards remain."
+      "explanation": "Shared per-lesson teacher-locked mutation for website and MCP, with 1–50 owned rows, partial-failure reports, stable child idempotency receipts and cross-client replay/correction acceptance. Family email digest is opt-in and triggered for newly committed teacher cancellations; crash-safe provider exactly-once delivery is still an OpenSpec blocker.",
+      "evidenceTest": "e2e/parity-calendar.spec.ts"
     },
     {
       "path": "app/api/schedule/lessons/[id]/attendance/route.ts",
@@ -744,12 +748,13 @@
         "PUT"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_calendar_attendance_read",
         "ccp_v1_calendar_attendance_record"
       ],
-      "explanation": "Shared scoped private lesson attendance read/edit/clear; MCP requires explicit confirmation for email, no automatic notifications. Retry-safe semantics remain to certify."
+      "explanation": "Both clients read, record, correct, and clear private lesson attendance through the same tenant-scoped teacher-locked SQL writer. Dedicated authenticated transaction tests cover stale revisions, same-key cross-client replay, changed-payload rejection and foreign lesson denial. Provider crash-safe cancellation-email outbox remains a separate open service requirement.",
+      "evidenceTest": "e2e/parity-calendar.spec.ts"
     },
     {
       "path": "app/api/schedule/lessons/[id]/note/route.ts",
@@ -858,12 +863,13 @@
         "PUT"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "partial",
       "existingTools": [
         "ccp_v1_studio_policy_get",
         "ccp_v1_studio_policy_update"
       ],
-      "explanation": "Candidate MCP policy includes ordinary payment-provider edits, confirmed payment QR data reads/updates and explicit Stripe credential clearing, with raw provider secrets excluded. Extensive per-field and tenant-specific security acceptance still pending."
+      "explanation": "All 38 ordinary settings fields use the same teacher policy service and schema guard, with website/MCP readback and nullable clear tests. Four raw AI/Stripe credential entry fields intentionally remain authenticated-browser-only; explicit approved exception/safe credential handoff must be addressed before full-route promotion. Secret-clearing controls remain in MCP.",
+      "evidenceTest": "e2e/parity-policy.spec.ts"
     },
     {
       "path": "app/api/skills/dimensions/[id]/route.ts",

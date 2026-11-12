@@ -45,4 +45,15 @@ test("PARITY:PARITY-spreadsheet-suggest-local-vs-ai-consent enforces identical l
   headers,sampleRows:badRows,useAi:false,
  });
  expect(malformedModel.error?.code).toBe("VALIDATION_ERROR");
+ // Unknown fields must be denied equally, not ignored in the website while
+ // being rejected by the strict MCP tool contract.
+ const unknownWeb=await page.request.post("/api/import/spreadsheet/suggest",{
+  data:{...payload,token:"do-not-ingest"},
+ });
+ expect(unknownWeb.status(),await unknownWeb.text()).toBe(400);
+ expect((await unknownWeb.json()).code).toBe("VALIDATION_ERROR");
+ const unknownMcp=await call("ccp_v1_import_spreadsheet_suggest",{
+  ...payload,token:"do-not-ingest",
+ });
+ expect(unknownMcp.error?.code).toBe("VALIDATION_ERROR");
 });
