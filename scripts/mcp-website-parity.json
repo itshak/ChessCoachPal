@@ -344,13 +344,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "partial",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_sessions_roster_preview",
         "ccp_v1_sessions_roster_correct",
         "ccp_v1_sessions_roster_revisions_list"
       ],
-      "explanation": "Named authenticated website/MCP E2E at b61820b verifies owned frozen roster previews, confirmed revision-checked group/finished-history correction, browser/MCP replay, idempotency conflicts, persisted attendance audit and private-note approval. The dedicated case passed in GitHub run 42882873971 (132 pass). Cross-tenant source-record fixtures, linked historical learning/finance side effects and full route-family review remain unverified; not full-route parity.",
+      "explanation": "Website GET/POST and delegated MCP preview/correct/revision-list all execute the same tenant-authorized frozen-roster and append-only correction services. Authenticated E2E covers completed group attendance history, teacher approval, optimistic session revisions, replay/change conflict, original private attendance retention, explicit private audit consent, foreign student denial and a foreign-teacher session/roster denial in both transports. Linked chess/material safeguards stay enforced in SQL; canonical calendar cutover is tracked under B5.",
       "evidenceTest": "e2e/parity-completed-roster-correction.spec.ts"
     },
     {
