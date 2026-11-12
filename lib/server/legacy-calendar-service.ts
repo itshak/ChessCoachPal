@@ -125,6 +125,15 @@ async function upcomingSlotLessons(db:Db,slotId:string):Promise<Upcoming[]>{
  }
  return rows;
 }
+/** Only unbilled, uncredited, unnoted, non-makeup calendar occurrences
+ * with no recorded attendance may be rescheduled by recurring-slot edits. */
+export function canReconcileRecurringOccurrence(lesson:Pick<Upcoming,
+ "attendance"|"lesson_notes"|"rescheduled_from_date"|"makeup_for"|
+ "invoice_items"|"credit_redemptions">):boolean{
+ return !oneToOne(lesson.attendance)&&!oneToOne(lesson.lesson_notes)&&
+  !lesson.rescheduled_from_date&&!lesson.makeup_for&&
+  !(lesson.invoice_items?.length)&&!(lesson.credit_redemptions?.length);
+}
 async function syncUpcoming(db:Db,slot:SlotRow,timezone:string,today:string,homeVisitChanged:boolean){
  // Re-read immediately before reconciliation: never rely on the earlier
  // size preflight as an attendance/notes snapshot across concurrent writes.
@@ -133,21 +142,14 @@ async function syncUpcoming(db:Db,slot:SlotRow,timezone:string,today:string,home
  // decision, teacher note, make-up association, invoice line or redeemed
  // credit. Those are teaching/financial history, even for future dates.
  // The older code checked only attendance before changing billed time.
- const unmarked=upcoming.filter(l=>!oneToOne(l.attendance)&&
-   !oneToOne(l.lesson_notes)&&!l.rescheduled_from_date&&!l.makeup_for&&
-   !(l.invoice_items?.length)&&!(l.credit_redemptions?.length));
+ const unmarked=upcoming.filter(canReconcileRecurringOccurrence);
  const until=unmarked.reduce((max,l)=>l.lesson_date>max?l.lesson_date:max,addDays(today,56));
  const byDate=new Map(computeOccurrences(slot,today,until,timezone).map(x=>[x.lesson_date,x]));
  for(const lesson of unmarked){
   const next=byDate.get(lesson.lesson_date);
   if(!next) {
-   if(oneToOne(lesson.lesson_notes)){
-    const {error}=await db.from("lessons").update({slot_id:null}).eq("id",lesson.id);
-    if(error)throw failure(500,"DATABASE_ERROR","Unable to preserve a detached lesson note");
-   }else{
-    const {error}=await db.from("lessons").delete().eq("id",lesson.id);
-    if(error)throw failure(500,"DATABASE_ERROR","Unable to remove a superseded lesson");
-   }
+   const {error}=await db.from("lessons").delete().eq("id",lesson.id);
+   if(error)throw failure(500,"DATABASE_ERROR","Unable to remove a superseded lesson");
    continue;
   }
   const patch:Record<string,unknown>={};
