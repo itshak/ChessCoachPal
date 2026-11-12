@@ -100,11 +100,17 @@ export async function materializeLessons(
   );
 
   const skip = rescheduleSkipKeys(moved);
-  const rows = slots
-    .flatMap(slot => computeOccurrences(slot, from, to, policy.timezone))
-    .filter(row => !skip.has(`${row.slot_id}|${row.lesson_date}`));
-  if (rows.length > MAX_ROWS) {
-    throw new Error("Too many lesson occurrences to materialize safely");
+  // Bound memory while generating, not after flatMap allocates an unbounded
+  // full-range inventory from a pathological user-supplied date interval.
+  const rows: ReturnType<typeof computeOccurrences> = [];
+  for (const slot of slots) {
+    for (const row of computeOccurrences(slot, from, to, policy.timezone)) {
+      if (skip.has(`${row.slot_id}|${row.lesson_date}`)) continue;
+      rows.push(row);
+      if (rows.length > MAX_ROWS) {
+        throw new Error("Too many lesson occurrences to materialize safely");
+      }
+    }
   }
   if (rows.length === 0) return;
 
