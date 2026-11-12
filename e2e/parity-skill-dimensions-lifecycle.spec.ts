@@ -186,3 +186,38 @@ test("PARITY:skill-dimension-create-request-replay uses one cross-interface rece
  expect(mcpFromWeb.error).toBeUndefined();
  expect(mcpFromWeb.data).toEqual(await website.json());
 });
+
+test("PARITY:PARITY-skill-dimension-concurrent-sort serializes teacher order and same-key create across website/MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const attempts=Array.from({length:6},(_,i)=>({
+  name:unique("Concurrent chess skill "+i),requestId:randomUUID(),
+ }));
+ const created=await Promise.all(attempts.map(async(input,i)=>{
+  if(i%2===0){
+   const result=await call("ccp_v1_skill_dimensions_create",{...input,confirmed:true});
+   expect(result.error).toBeUndefined();
+   return result.data as {id:string;sort_order:number};
+  }
+  const result=await page.request.post("/api/skills/dimensions",{data:input});
+  expect(result.status(),await result.text()).toBe(200);
+  return await result.json() as {id:string;sort_order:number};
+ }));
+ expect(new Set(created.map(r=>r.id)).size).toBe(6);
+ expect(new Set(created.map(r=>r.sort_order)).size).toBe(6);
+ const site=await page.request.get("/api/skills/dimensions");
+ expect(site.status(),await site.text()).toBe(200);
+ const stored=await site.json() as Array<{id:string;sort_order:number}>;
+ for(const row of created)
+  expect(stored.some(x=>x.id===row.id&&x.sort_order===row.sort_order)).toBe(true);
+ const same={name:unique("One race receipt"),requestId:randomUUID()};
+ const [web,model]=await Promise.all([
+  page.request.post("/api/skills/dimensions",{data:same}),
+  call("ccp_v1_skill_dimensions_create",{...same,confirmed:true}),
+ ]);
+ expect(web.status(),await web.text()).toBe(200);
+ expect(model.error).toBeUndefined();
+ expect((await web.json()).id).toBe(model.data.id);
+ const after=await call("ccp_v1_skill_dimensions_list",{});
+ expect(after.error).toBeUndefined();
+ expect(after.data.filter((r:{id:string})=>r.id===model.data.id)).toHaveLength(1);
+});
