@@ -108,10 +108,12 @@ export async function materializeCanonicalSessions(
   const planned = planCanonicalOccurrences(
     teacherId, slots, workplaces, personal, policy.timezone, from, to,
   );
+  // The owner-scoped SQL command validates all slot dates, workplace
+  // ownership and local times before committing any row. Batches are bounded
+  // to avoid PostgREST row and request-size limits; each batch is atomic.
   for (let i = 0; i < planned.length; i += 100) {
-    const { error } = await db.from("teaching_sessions").upsert(planned.slice(i, i + 100), {
-      onConflict: "slot_id,slot_occurrence_date",
-      ignoreDuplicates: true,
+    const { error } = await db.rpc("ccp_canonical_slot_materialize", {
+      p_rows: planned.slice(i, i + 100),
     });
     if (error) throw new Error("Unable to materialize canonical recurring lessons");
   }
