@@ -369,18 +369,6 @@ export async function studentsCreate(db: Db, teacherId: string, name: string, le
   return data;
 }
 
-export async function studentsUpdate(
-  db: Db, teacherId: string, studentId: string,
-  updates: { name?: string; level?: string | null }
-) {
-  const { data, error } = await db.from("students").update(updates)
-    .eq("teacher_id", teacherId).eq("id", studentId).is("archived_at", null)
-    .select("id,name,level").maybeSingle();
-  if (error) throw problem();
-  if (!data) throw notFound();
-  return data;
-}
-
 export async function workplacesEnroll(
   db: Db, teacherId: string, workplaceId: string, studentId: string
 ) {

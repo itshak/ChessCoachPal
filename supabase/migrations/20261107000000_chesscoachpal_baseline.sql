@@ -3155,7 +3155,10 @@ BEGIN
 
   -- The unique (teacher_id, idempotency_key) row lock serializes racing retries.
   -- The entire transaction rolls back on validation/conflict/permission failures.
-  v_hash := md5(jsonb_build_array(p_operation,p_payload,p_expected_updated_at,p_client_id)::text);
+  -- Browser and delegated MCP use ONE request identity. Client ID is audit
+  -- provenance, not a distinguishing field in the logical business request:
+  -- otherwise a retry of the same approved UUID across surfaces conflicts.
+  v_hash := md5(jsonb_build_array(p_operation,p_payload,p_expected_updated_at)::text);
   INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
   VALUES(v_teacher,p_idempotency_key,p_operation,v_hash,'{}'::jsonb)
   ON CONFLICT DO NOTHING;

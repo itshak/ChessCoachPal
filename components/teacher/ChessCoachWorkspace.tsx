@@ -5,7 +5,7 @@ import Link from "next/link";
 import { workplaceLocalToUtc, utcToWorkplaceLocal } from "@/lib/coaching-time";
 
 type Workplace = { id: string; name: string; timezone: string; currency: string; locale: string; policy: Record<string, unknown> };
-type Student = { id: string; name: string; level: string | null };
+type Student = { id: string; name: string; level: string | null; updated_at:string };
 type Group = { id: string; name: string; workplace_id: string };
 type Session = {
   id: string; title: string; starts_at: string; duration_minutes: number;
@@ -208,8 +208,11 @@ export function ChessCoachWorkspace() {
 
   async function updateStudent(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const selected=students.find(student=>student.id===editStudentId);
+    if(!selected){setError("Select a current learner and reload before editing.");return;}
     await perform(() => operation("students.update", {
       studentId: editStudentId, name: editStudentName.trim(), level: editStudentLevel.trim() || null,
+      expectedUpdatedAt:selected.updated_at,idempotencyKey:crypto.randomUUID(),
     }), "Student saved.");
   }
 

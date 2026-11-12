@@ -8,7 +8,7 @@ import {
   groupsCreate, groupsEnroll, groupsUnenroll, groupsList, groupsMembers,
   sessionsCreate, sessionsAdHocCreate, sessionsList, sessionsParticipants, studentsSearch,
   workplacesCreate, workplacesList, workplacesUpdate, workplacesEnroll, workplacesUnenroll, workplacesEnrollments,
-  studentsCreate, studentsUpdate, groupsUpdate, sessionsUpdate, sessionsComplete, assertTimezone,
+  studentsCreate, groupsUpdate, sessionsUpdate, sessionsComplete, assertTimezone,
 } from "@/lib/server/coach-service";
 
 import {
@@ -45,7 +45,11 @@ const calls = z.discriminatedUnion("action", [
   z.object({ action: z.literal("students.create"), name: shortName,
     level: z.string().trim().max(120).nullable().optional() }),
   z.object({ action: z.literal("students.update"), studentId: uuid,
-    name: shortName.optional(), level: z.string().trim().max(120).nullable().optional() }),
+    name: shortName.optional(), level: z.string().trim().max(120).nullable().optional(),
+    expectedUpdatedAt:z.string().datetime({offset:true}),idempotencyKey:uuid,
+  }).strict().refine(v=>v.name!==undefined||v.level!==undefined,{
+    message:"At least one student field must change",
+  }),
   z.object({ action: z.literal("students.search"),
     query: z.string().trim().max(80).default("") }),
   z.object({ action: z.literal("groups.list") }),
@@ -205,10 +209,36 @@ export async function POST(req: NextRequest) {
         result = await studentsSearch(db, teacherId, call.query); break;
       case "students.create":
         result = await studentsCreate(db, teacherId, call.name, call.level); break;
-      case "students.update":
-        result = await studentsUpdate(db, teacherId, call.studentId, {
-          name: call.name, level: call.level,
-        }); break;
+      case "students.update": {
+        // A single tenant-authorized, revision-checked, idempotent SQL writer
+        // owns the same update for teacher website and delegated MCP. Neither
+        // transport can silently overwrite a newer student's name/level.
+        const payload={
+          studentId:call.studentId,
+          ...(call.name!==undefined?{name:call.name}:{}),
+          ...(call.level!==undefined?{level:call.level}:{}),
+          expectedUpdatedAt:call.expectedUpdatedAt,
+          idempotencyKey:call.idempotencyKey,
+        };
+        const {data,error}=await db.rpc("agent_coaching_mutate",{
+          p_operation:"students.update",p_payload:payload,
+          p_expected_updated_at:call.expectedUpdatedAt,
+          p_idempotency_key:call.idempotencyKey,
+          p_client_id:"teacher-website",
+        });
+        if(error){
+          const message=error.message??"";
+          const conflict=/CONFLICT|23505|23P01/.test(message)||error.code==="23505";
+          const notFound=/NOT_FOUND/.test(message)&&!conflict;
+          return json({error:{
+            code:conflict?"CONFLICT":notFound?"NOT_FOUND":"VALIDATION_ERROR",
+            message:conflict?"Student revision changed or this request ID was reused":
+              notFound?"Student not found":"Student update could not be committed",
+          }},conflict?409:notFound?404:400);
+        }
+        result=data;
+        break;
+      }
       case "groups.list":
         result = await groupsList(db, teacherId); break;
       case "groups.create":
