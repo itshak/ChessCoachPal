@@ -7,6 +7,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateCheckedParityRow, validateUniqueCheckedParityReferences } from "./parity-evidence.mjs";
 import { validateLegacyActionCoverage } from "./mcp-legacy-actions.mjs";
+import { validateGatewayActionE2E } from "./mcp-gateway-evidence.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const inventory = JSON.parse(readFileSync(join(root, "scripts/mcp-website-parity.json"), "utf8"));
@@ -52,6 +53,11 @@ const registeredTools = readFileSync(join(root,"lib/server/agent-tools.ts"),"utf
 const liveNames = new Set([...registeredTools.matchAll(/\bname\s*:\s*["'](ccp_v1_[a-z0-9_]+)["']/g)].map(m=>m[1]));
 errors.push(...validateLegacyActionCoverage(
   readFileSync(join(root,"app/api/agent/v1/route.ts"),"utf8"), registeredTools));
+const gatewayEvidence=validateGatewayActionE2E(root);
+errors.push(...gatewayEvidence.errors);
+console.log("Legacy gateway exact action evidence:",gatewayEvidence.actions,
+  "website actions with direct executable E2E,",
+  gatewayEvidence.evidence.size,"evidenced,",gatewayEvidence.errors.length,"missing");
 for (const route of inventory.apiRoutes) {
   assert(knownKinds.has(route.kind),route.path+": invalid classification");
   assert(knownParities.has(route.parity),route.path+": invalid parity status");
@@ -66,9 +72,19 @@ for (const route of inventory.apiRoutes) {
       route.evidenceTest.endsWith(".spec.ts") && existsSync(join(root,route.evidenceTest)),
       route.path+": marked MCP-complete without executable authenticated E2E reference");
     if (typeof route.evidenceTest==="string" && existsSync(join(root,route.evidenceTest))) {
-      const testSource=readFileSync(join(root,route.evidenceTest),"utf8");
-      for (const toolName of route.existingTools)
-        assert(testSource.includes(toolName),route.path+": E2E reference does not name live tool "+toolName);
+      if(route.path==="app/api/agent/v1/route.ts"){
+        // Unlike a simple endpoint, this gateway multiplexes 36 MCP actions
+        // plus two narrowly reviewed browser provenance approvals. Its proof
+        // is the audited per-action named E2E matrix across multiple files.
+        // Do not demand all tools appear in one single test file: demand
+        // separately paired real website and delegated MCP tests instead.
+        assert(gatewayEvidence.errors.length===0,
+          route.path+": cannot be complete until every action is independently evidenced");
+      }else{
+        const testSource=readFileSync(join(root,route.evidenceTest),"utf8");
+        for (const toolName of route.existingTools)
+          assert(testSource.includes(toolName),route.path+": E2E reference does not name live tool "+toolName);
+      }
     }
   }
   // Every teacher-business route now has an MCP tool counterpart, even if
