@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAuthClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import type {SupabaseClient} from "@supabase/supabase-js";
 import { createClient as createCookieClient } from "@/lib/supabase/server";
 import {
   CoachError,
   attendanceList, attendanceRecord,
   groupsCreate, groupsEnroll, groupsUnenroll, groupsList, groupsMembers,
   sessionsCreate, sessionsAdHocCreate, sessionsList, sessionsParticipants, studentsSearch,
-  workplacesCreate, workplacesList, workplacesUpdate, workplacesEnroll, workplacesUnenroll, workplacesEnrollments,
-  studentsCreate, groupsUpdate, sessionsUpdate, sessionsComplete, assertTimezone,
+  workplacesCreate, workplacesList, workplacesEnroll, workplacesUnenroll, workplacesEnrollments,
+  studentsCreate, sessionsUpdate, sessionsComplete, assertTimezone,
 } from "@/lib/server/coach-service";
 
 import {
@@ -38,7 +39,12 @@ const calls = z.discriminatedUnion("action", [
     name: shortName.optional(), timezone: z.string().trim().min(1).max(80).optional(),
     currency: z.string().regex(/^[A-Z]{3}$/).optional(),
     locale: z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).optional(),
-    policy: z.record(z.string(), z.unknown()).optional() }),
+    policy: z.record(z.string(), z.unknown()).optional(),
+    expectedUpdatedAt:z.string().datetime({offset:true}),idempotencyKey:uuid,
+  }).strict().refine(v=>v.name!==undefined||v.timezone!==undefined||
+    v.currency!==undefined||v.locale!==undefined||v.policy!==undefined,{
+    message:"At least one workplace field must change",
+  }),
   z.object({ action: z.literal("workplaces.enroll"), workplaceId: uuid, studentId: uuid }),
   z.object({ action: z.literal("workplaces.unenroll"), workplaceId: uuid, studentId: uuid, confirmed: z.literal(true) }),
   z.object({ action: z.literal("workplaces.enrollments"), workplaceId: uuid }),
@@ -54,7 +60,8 @@ const calls = z.discriminatedUnion("action", [
     query: z.string().trim().max(80).default("") }),
   z.object({ action: z.literal("groups.list") }),
   z.object({ action: z.literal("groups.create"), workplaceId: uuid, name: shortName }),
-  z.object({ action: z.literal("groups.update"), groupId: uuid, workplaceId: uuid, name: shortName }),
+  z.object({ action: z.literal("groups.update"), groupId: uuid, workplaceId: uuid, name: shortName,
+    expectedUpdatedAt:z.string().datetime({offset:true}),idempotencyKey:uuid }).strict(),
   z.object({ action: z.literal("groups.enroll"), groupId: uuid, studentId: uuid }),
   z.object({ action: z.literal("groups.unenroll"), groupId: uuid, studentId: uuid }),
   z.object({ action: z.literal("groups.members"), groupId: uuid }),
@@ -131,6 +138,30 @@ function json(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
 
+/** Current-schema SQL writer shared with delegated MCP: same owner and
+ * optimistic revision, one durable request receipt and no silent overwrite.
+ */
+async function writeRevisionedCoaching(
+ db:SupabaseClient,operation:"students.update"|"workplaces.update"|"groups.update",
+ payload:Record<string,unknown>,revision:string,requestId:string
+){
+ const {data,error}=await db.rpc("agent_coaching_mutate",{
+  p_operation:operation,p_payload:payload,
+  p_expected_updated_at:revision,
+  p_idempotency_key:requestId,p_client_id:"teacher-website",
+ });
+ if(error){
+  const m=error.message??"";
+  const conflict=error.code==="23505"||/CONFLICT|23505|23P01/.test(m);
+  const missing=/NOT_FOUND/.test(m)&&!conflict;
+  throw new CoachError(conflict?"CONFLICT":missing?"NOT_FOUND":"VALIDATION_ERROR",
+   conflict?409:missing?404:400,conflict?
+   "The record changed or the request key was reused with changed terms":
+   missing?"Record not found":"Reviewed coaching mutation was rejected");
+ }
+ return data;
+}
+
 async function teacherForRequest(req: NextRequest) {
   const authorization = req.headers.get("authorization");
   if (authorization) {
@@ -194,11 +225,19 @@ export async function POST(req: NextRequest) {
         assertTimezone(call.timezone);
         result = await workplacesCreate(db, teacherId, call.name, call.timezone,
           call.currency, call.locale, call.policy); break;
-      case "workplaces.update":
-        result = await workplacesUpdate(db, teacherId, call.workplaceId, {
-          name: call.name, timezone: call.timezone, currency: call.currency,
-          locale: call.locale, policy: call.policy,
-        }); break;
+      case "workplaces.update": {
+        if(call.timezone!==undefined)assertTimezone(call.timezone);
+        result=await writeRevisionedCoaching(db,"workplaces.update",{
+          workplaceId:call.workplaceId,
+          ...(call.name!==undefined?{name:call.name}:{}),
+          ...(call.timezone!==undefined?{timezone:call.timezone}:{}),
+          ...(call.currency!==undefined?{currency:call.currency}:{}),
+          ...(call.locale!==undefined?{locale:call.locale}:{}),
+          ...(call.policy!==undefined?{policy:call.policy}:{}),
+          expectedUpdatedAt:call.expectedUpdatedAt,idempotencyKey:call.idempotencyKey,
+        },call.expectedUpdatedAt,call.idempotencyKey);
+        break;
+      }
       case "workplaces.enroll":
         result = await workplacesEnroll(db, teacherId, call.workplaceId, call.studentId); break;
       case "workplaces.unenroll":
@@ -210,41 +249,25 @@ export async function POST(req: NextRequest) {
       case "students.create":
         result = await studentsCreate(db, teacherId, call.name, call.level); break;
       case "students.update": {
-        // A single tenant-authorized, revision-checked, idempotent SQL writer
-        // owns the same update for teacher website and delegated MCP. Neither
-        // transport can silently overwrite a newer student's name/level.
-        const payload={
+        result=await writeRevisionedCoaching(db,"students.update",{
           studentId:call.studentId,
           ...(call.name!==undefined?{name:call.name}:{}),
           ...(call.level!==undefined?{level:call.level}:{}),
-          expectedUpdatedAt:call.expectedUpdatedAt,
-          idempotencyKey:call.idempotencyKey,
-        };
-        const {data,error}=await db.rpc("agent_coaching_mutate",{
-          p_operation:"students.update",p_payload:payload,
-          p_expected_updated_at:call.expectedUpdatedAt,
-          p_idempotency_key:call.idempotencyKey,
-          p_client_id:"teacher-website",
-        });
-        if(error){
-          const message=error.message??"";
-          const conflict=/CONFLICT|23505|23P01/.test(message)||error.code==="23505";
-          const notFound=/NOT_FOUND/.test(message)&&!conflict;
-          return json({error:{
-            code:conflict?"CONFLICT":notFound?"NOT_FOUND":"VALIDATION_ERROR",
-            message:conflict?"Student revision changed or this request ID was reused":
-              notFound?"Student not found":"Student update could not be committed",
-          }},conflict?409:notFound?404:400);
-        }
-        result=data;
+          expectedUpdatedAt:call.expectedUpdatedAt,idempotencyKey:call.idempotencyKey,
+        },call.expectedUpdatedAt,call.idempotencyKey);
         break;
       }
       case "groups.list":
         result = await groupsList(db, teacherId); break;
       case "groups.create":
         result = await groupsCreate(db, teacherId, call.workplaceId, call.name); break;
-      case "groups.update":
-        result = await groupsUpdate(db, teacherId, call.groupId, call.workplaceId, call.name); break;
+      case "groups.update": {
+        result=await writeRevisionedCoaching(db,"groups.update",{
+          groupId:call.groupId,workplaceId:call.workplaceId,name:call.name,
+          expectedUpdatedAt:call.expectedUpdatedAt,idempotencyKey:call.idempotencyKey,
+        },call.expectedUpdatedAt,call.idempotencyKey);
+        break;
+      }
       case "groups.enroll":
         result = await groupsEnroll(db, teacherId, call.groupId, call.studentId); break;
       case "groups.unenroll":

@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import Link from "next/link";
 import { workplaceLocalToUtc, utcToWorkplaceLocal } from "@/lib/coaching-time";
 
-type Workplace = { id: string; name: string; timezone: string; currency: string; locale: string; policy: Record<string, unknown> };
+type Workplace = { id: string; name: string; timezone: string; currency: string; locale: string; policy: Record<string, unknown>; updated_at:string };
 type Student = { id: string; name: string; level: string | null; updated_at:string };
-type Group = { id: string; name: string; workplace_id: string };
+type Group = { id: string; name: string; workplace_id: string; updated_at:string };
 type Session = {
   id: string; title: string; starts_at: string; duration_minutes: number;
   workplace_id: string; group_id: string | null; student_id: string | null;
@@ -180,6 +180,8 @@ export function ChessCoachWorkspace() {
 
   async function updateWorkplace(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const current=workplaces.find(workplace=>workplace.id===workplaceId);
+    if(!current){setError("Reload the workplace before editing.");return;}
     await perform(async () => {
       let policy: Record<string, unknown>;
       try {
@@ -194,6 +196,7 @@ export function ChessCoachWorkspace() {
       await operation("workplaces.update", {
         workplaceId, name: editWorkplaceName.trim(), timezone: editTimezone,
         currency: editCurrency, locale: editLocale, policy,
+        expectedUpdatedAt:current.updated_at,idempotencyKey:crypto.randomUUID(),
       });
     }, "Workplace saved.");
   }
@@ -251,8 +254,11 @@ export function ChessCoachWorkspace() {
 
   async function updateGroup(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const current=groups.find(group=>group.id===groupId&&group.workplace_id===workplaceId);
+    if(!current){setError("Reload the class group before editing.");return;}
     await perform(() => operation("groups.update", {
       groupId, workplaceId, name: editGroupName.trim(),
+      expectedUpdatedAt:current.updated_at,idempotencyKey:crypto.randomUUID(),
     }), "Class group saved.");
   }
 

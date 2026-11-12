@@ -347,20 +347,6 @@ export function instructorMinutes(
     total + (item.status === "cancelled" ? 0 : item.duration_minutes), 0);
 }
 
-export async function workplacesUpdate(
-  db: Db, teacherId: string, workplaceId: string,
-  updates: { name?: string; timezone?: string; currency?: string; locale?: string; policy?: Record<string, unknown> }
-) {
-  if (updates.timezone) assertTimezone(updates.timezone);
-  const { data, error } = await db.from("workplaces").update(updates)
-    .eq("teacher_id", teacherId).eq("id", workplaceId)
-    .select("id,name,timezone,currency,locale,policy").maybeSingle();
-  if (error?.code === "23505") throw conflict();
-  if (error) throw problem();
-  if (!data) throw notFound();
-  return data;
-}
-
 export async function studentsCreate(db: Db, teacherId: string, name: string, level?: string | null) {
   const { data, error } = await db.from("students")
     .insert({ teacher_id: teacherId, name, level: level ?? null })
@@ -416,18 +402,6 @@ export async function workplacesEnrollments(db: Db, teacherId: string, workplace
   const { data, error } = await db.from("workplace_enrollments")
     .select("student_id").eq("teacher_id", teacherId).eq("workplace_id", workplaceId);
   if (error) throw problem();
-  return data;
-}
-
-export async function groupsUpdate(
-  db: Db, teacherId: string, groupId: string, workplaceId: string, name: string
-) {
-  const { data, error } = await db.from("class_groups").update({ name })
-    .eq("id", groupId).eq("teacher_id", teacherId).eq("workplace_id", workplaceId)
-    .select("id,name,workplace_id").maybeSingle();
-  if (error?.code === "23505") throw conflict();
-  if (error) throw problem();
-  if (!data) throw notFound();
   return data;
 }
 
