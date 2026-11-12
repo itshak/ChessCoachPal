@@ -2,6 +2,12 @@
 
 **Updated:** 2026-11-12 · **Branch of record:** main (unreleased; parity work in PR #52 / PR #51) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
+## 2026-11-12 — 215-pass consolidated finance / secure-policy evidence
+
+[Exact source `d11eaf1` E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43280814476): **215 passed, five intentionally skipped, zero failed**; CI, security, Compose and backup/restore all green. A second independent CI-only checkout race shows a single linked payable session, losing provider-session expiration and idempotent replay. Separately named local spreadsheet test verifies default no-egress behavior and strict malformed-data rejection. The new chess-first matrix is now **24/24 individually accepted**, without reusing earlier test IDs. Route-family parity is **58/59** with the legacy gateway still partial; historical checklist **89/93** and canonical lesson one-writer cutover remain blocking.
+
+The accepted implementation resides on [PR #55](https://github.com/itshak/ChessCoachPal/pull/55) stacked on the in-progress implementation branch, **not `main`**. Browser-entered keys are encrypted and never passed into model-visible tools. Official release remains blocked.
+
 ## 2026-11-12 — secure MCP setup handoff candidate verified on independent source
 
 [Source `930a596` passed 213 authenticated website/MCP E2E tests](https://github.com/itshak/ChessCoachPal/actions/runs/43278869225) (five skipped, zero failed), plus CI, security, self-host Compose and backup/restore. A new consent-gated tool gives an authenticated browser path to actual AI/Stripe credential fields without accepting raw secret values from chat. The website remains the only secret-entry surface, and MCP receives masked setup status and can clear stored credentials. The proposed inventory increases to **58/59** route families; the legacy coach gateway, four historical acceptance rows, canonical lesson cutover and merged-main strict release checks remain open. This candidate is in [draft PR #55](https://github.com/itshak/ChessCoachPal/pull/55), not `main`.

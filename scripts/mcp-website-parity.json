@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-12",
-  "headSha": "930a596c8bbd2f8f1f5f2591d966f11101747abd",
-  "policy": "Accepted technical teacher route-family parity candidate 58/59 (one partial legacy gateway). Policy security exception: MFA, Stripe/AI API key and other raw credentials remain browser-only; MCP initiates authenticated browser handoff and performs safe settings/clear. Source 930a596 had 213 authenticated E2E passed, 5 skipped; new independent spreadsheet-default and checkout-race cases are in-flight. Historical 89/93 and new canonical 21/23 still need final closure before v0.1.0 and main.",
+  "headSha": "d11eaf1a3a138f1f6b17f871b42fc4d786ce2acc",
+  "policy": "MCP-first route-family parity 58/59 teacher API routes supported with real browser/delegated MCP evidence; only legacy gateway remains partial. Exact d11eaf1 passes 215 authenticated E2E (5 skipped, 0 failures), CI/security/Compose/backup green; 89/93 historical and 24/24 new canonical scenarios independently accepted. Full app parity, canonical lesson writer, account/MFA + hosted handoffs, strict release and main remain BLOCKED.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
