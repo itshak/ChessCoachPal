@@ -13,9 +13,9 @@ function fixture(options: {badMovedSecondPage?:boolean;failInsert?:boolean}={}) 
   // PostgREST page would falsely restore a moved slot occurrence.
   const moved = [
     ...Array.from({length:500},(_,i)=>({
-      slot_id:`unused-${i}`,rescheduled_from_date:day,
+      teacher_id:"teacher",slot_id:`unused-${i}`,rescheduled_from_date:day,
     })),
-    {slot_id:"slot-500",rescheduled_from_date:day},
+    {teacher_id:"teacher",slot_id:"slot-500",rescheduled_from_date:day},
   ];
   const upsert=vi.fn(async(rows:unknown[])=>({
     data:null,error:options.failInsert?{message:"write rejected"}:null,
