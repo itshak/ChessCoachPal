@@ -52,8 +52,15 @@ test("PARITY:PARITY-spreadsheet-external-ai-consent prevents unapproved student 
  const call=await delegatedTool(page,request);
  const sample={headers:["Name","Email"],sampleRows:[{Name:"Private student",Email:"private@example.com"}]};
  const website=await page.request.post("/api/import/spreadsheet/suggest",{data:sample});
- expect(website.status(),await website.text()).toBe(400);
- expect(await website.json()).toMatchObject({code:"CONFIRMATION_REQUIRED"});
+ expect(website.status(),await website.text()).toBe(200);
+ const offline=await website.json();
+ expect(offline.mapping).toBeDefined();
+ expect(offline.warning).toBeNull();
+ const deniedWebsite=await page.request.post("/api/import/spreadsheet/suggest",{
+   data:{...sample,useAi:true},
+ });
+ expect(deniedWebsite.status(),await deniedWebsite.text()).toBe(400);
+ expect(await deniedWebsite.json()).toMatchObject({code:"CONFIRMATION_REQUIRED"});
  const model=await call("ccp_v1_import_spreadsheet_suggest",{
    ...sample,useAi:true,
  });
@@ -63,4 +70,5 @@ test("PARITY:PARITY-spreadsheet-external-ai-consent prevents unapproved student 
  });
  expect(permittedHeuristic.error).toBeUndefined();
  expect(permittedHeuristic.data.mapping).toBeDefined();
+ expect(permittedHeuristic.data).toEqual(offline);
 });

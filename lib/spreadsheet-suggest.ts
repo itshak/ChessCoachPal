@@ -9,7 +9,7 @@ export const spreadsheetSuggestInputSchema=z.object({
  headers:z.array(header).min(1).max(150),
  sampleRows:z.array(row).max(8).optional(),
  useAi:z.boolean().default(false),
- confirmedExternal:z.literal(true).optional(),
+ confirmedExternal:z.boolean().optional(),
 }).strict();
 export const spreadsheetSuggestMcpSchema=spreadsheetSuggestInputSchema.refine(
  args=>!args.useAi||args.confirmedExternal===true,
