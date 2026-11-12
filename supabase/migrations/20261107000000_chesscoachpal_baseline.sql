@@ -918,6 +918,29 @@ CREATE TABLE IF NOT EXISTS "public"."session_participants" (
 ALTER TABLE "public"."session_participants" OWNER TO "postgres";
 
 
+-- A note belongs to a canonical session, optionally scoped to one frozen
+-- participant. Shared and teacher-private text have distinct fields. There
+-- is no backwards-compatible lesson_notes view or second occurrence ledger.
+CREATE TABLE IF NOT EXISTS "public"."session_notes" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "teacher_id" "uuid" NOT NULL,
+    "session_id" "uuid" NOT NULL,
+    "student_id" "uuid",
+    "body" "text" DEFAULT ''::"text" NOT NULL,
+    "private_body" "text" DEFAULT ''::"text" NOT NULL,
+    "shared_with_guardian" boolean DEFAULT false NOT NULL,
+    "emailed_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "session_notes_body_check" CHECK ("char_length"("body") <= 10000),
+    CONSTRAINT "session_notes_private_body_check" CHECK ("char_length"("private_body") <= 10000)
+);
+ALTER TABLE "public"."session_notes" OWNER TO "postgres";
+COMMENT ON COLUMN "public"."session_notes"."private_body" IS
+  'Teacher-private coaching notes. Never disclose through guardian token or public calendar.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."skill_assessments" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "dimension_id" "uuid" NOT NULL,
@@ -1189,6 +1212,20 @@ CREATE TABLE IF NOT EXISTS "public"."teaching_sessions" (
     "lesson_note" "text" DEFAULT ''::"text" NOT NULL,
     "request_id" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    -- Recurrence intent and stable original occurrence date are separate from
+    -- the actual scheduled start time; moving a session must not re-materialize
+    -- another occurrence for the vacated slot/date pair.
+    "slot_id" "uuid",
+    "slot_occurrence_date" "date",
+    "local_timezone" "text",
+    "is_home_visit" boolean DEFAULT false NOT NULL,
+    "rescheduled_from_date" "date",
+    "makeup_for_session_id" "uuid",
+    "makeup_for_student_id" "uuid",
+    CONSTRAINT "teaching_sessions_slot_identity_check" CHECK (
+       ("slot_id" IS NULL) = ("slot_occurrence_date" IS NULL)),
+    CONSTRAINT "teaching_sessions_makeup_pair_check" CHECK (
+       ("makeup_for_session_id" IS NULL) = ("makeup_for_student_id" IS NULL)),
     CONSTRAINT "teaching_sessions_check" CHECK ((("group_id" IS NULL) <> ("student_id" IS NULL))),
     CONSTRAINT "teaching_sessions_duration_minutes_check" CHECK ((("duration_minutes" >= 15) AND ("duration_minutes" <= 480))),
     CONSTRAINT "teaching_sessions_lesson_note_check" CHECK (("char_length"("lesson_note") <= 10000)),
@@ -1464,6 +1501,17 @@ ALTER TABLE ONLY "public"."session_attendance"
 
 ALTER TABLE ONLY "public"."session_participants"
     ADD CONSTRAINT "session_participants_pkey" PRIMARY KEY ("session_id", "student_id");
+
+ALTER TABLE ONLY "public"."session_notes"
+    ADD CONSTRAINT "session_notes_pkey" PRIMARY KEY ("id");
+
+CREATE UNIQUE INDEX "session_notes_session_student_unique"
+  ON "public"."session_notes" ("session_id", "student_id") NULLS NOT DISTINCT;
+
+CREATE UNIQUE INDEX "teaching_sessions_slot_occurrence_unique"
+  ON "public"."teaching_sessions" ("slot_id", "slot_occurrence_date")
+  WHERE "slot_id" IS NOT NULL;
+
 
 
 
@@ -1768,6 +1816,9 @@ CREATE OR REPLACE TRIGGER "lesson_notes_updated_at" BEFORE UPDATE ON "public"."l
 
 
 
+CREATE OR REPLACE TRIGGER "session_notes_updated_at" BEFORE UPDATE ON "public"."session_notes"
+  FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+
 CREATE OR REPLACE TRIGGER "payments_reopen_invoice" AFTER DELETE ON "public"."payments" FOR EACH ROW EXECUTE FUNCTION "public"."reopen_underpaid_invoice"();
 
 
@@ -2019,6 +2070,25 @@ ALTER TABLE ONLY "public"."session_attendance"
     ADD CONSTRAINT "session_attendance_teacher_id_fkey" FOREIGN KEY ("teacher_id") REFERENCES "public"."teachers"("id") ON DELETE CASCADE;
 
 
+
+ALTER TABLE ONLY "public"."session_notes"
+    ADD CONSTRAINT "session_notes_session_teacher_fkey"
+    FOREIGN KEY ("session_id", "teacher_id")
+    REFERENCES "public"."teaching_sessions" ("id", "teacher_id") ON DELETE RESTRICT;
+
+ALTER TABLE ONLY "public"."session_notes"
+    ADD CONSTRAINT "session_notes_participant_fkey"
+    FOREIGN KEY ("session_id", "student_id")
+    REFERENCES "public"."session_participants" ("session_id", "student_id") ON DELETE RESTRICT;
+
+ALTER TABLE ONLY "public"."teaching_sessions"
+    ADD CONSTRAINT "teaching_sessions_slot_fkey"
+    FOREIGN KEY ("slot_id") REFERENCES "public"."lesson_slots" ("id") ON DELETE SET NULL;
+
+ALTER TABLE ONLY "public"."teaching_sessions"
+    ADD CONSTRAINT "teaching_sessions_makeup_participant_fkey"
+    FOREIGN KEY ("makeup_for_session_id", "makeup_for_student_id")
+    REFERENCES "public"."session_participants" ("session_id", "student_id") ON DELETE RESTRICT;
 
 ALTER TABLE ONLY "public"."session_participants"
     ADD CONSTRAINT "session_participants_session_id_teacher_id_fkey" FOREIGN KEY ("session_id", "teacher_id") REFERENCES "public"."teaching_sessions"("id", "teacher_id") ON DELETE CASCADE;
@@ -2278,6 +2348,12 @@ CREATE POLICY "session_attendance_teacher" ON "public"."session_attendance" TO "
 
 
 ALTER TABLE "public"."session_participants" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "public"."session_notes" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "session_notes_teacher" ON "public"."session_notes"
+  TO "authenticated"
+  USING (("teacher_id" = "auth"."uid"()))
+  WITH CHECK (("teacher_id" = "auth"."uid"()));
 
 
 CREATE POLICY "session_participants_teacher" ON "public"."session_participants" FOR SELECT TO "authenticated" USING (("teacher_id" = "auth"."uid"()));
@@ -2553,6 +2629,8 @@ GRANT ALL ON TABLE "public"."session_attendance" TO "service_role";
 
 GRANT ALL ON TABLE "public"."session_participants" TO "authenticated";
 GRANT ALL ON TABLE "public"."session_participants" TO "service_role";
+GRANT SELECT ON TABLE "public"."session_notes" TO "authenticated";
+GRANT ALL ON TABLE "public"."session_notes" TO "service_role";
 
 
 
