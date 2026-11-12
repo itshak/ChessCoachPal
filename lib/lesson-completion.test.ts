@@ -20,6 +20,12 @@ describe("explicit frozen-roster session completion contract",()=>{
    {...values.attendance[0],expectedUpdatedAt:undefined},
   ]}).success).toBe(false);
  });
+ it("accepts a null revision only for an unmarked decision not yet stored",()=>{
+  expect(lessonCompletionSchema.safeParse({...values,attendance:[
+   {...values.attendance[0],expectedUpdatedAt:null},
+  ]}).success).toBe(true);
+  expect(lessonCompletionSchema.safeParse({...values,expectedUpdatedAt:null}).success).toBe(false);
+ });
  it("does not infer success, mastery or learning from unmarked attendance",()=>{
   expect(lessonCompletionSchema.safeParse({...values,attendance:[
    {...values.attendance[0],status:"unmarked"},

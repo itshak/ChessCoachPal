@@ -247,11 +247,20 @@ export async function attendanceList(db: Db, teacherId: string, sessionId: strin
   const { data: session } = await db.from("teaching_sessions")
     .select("id").eq("teacher_id", teacherId).eq("id", sessionId).maybeSingle();
   if (!session) throw notFound();
-  const { data, error } = await db.from("session_attendance")
-    .select("student_id,status,note,notice_at,cancelled_by,cancel_reason,marked_at,marked_by,updated_at").eq("teacher_id", teacherId)
-    .eq("session_id", sessionId).limit(100);
-  if (error) throw problem();
-  return data;
+  const [{data:roster,error:rosterError},{data:decisions,error:decisionError}]=await Promise.all([
+    db.from("session_participants").select("student_id")
+      .eq("teacher_id",teacherId).eq("session_id",sessionId).limit(100),
+    db.from("session_attendance")
+      .select("student_id,status,note,notice_at,cancelled_by,cancel_reason,marked_at,marked_by,updated_at")
+      .eq("teacher_id",teacherId).eq("session_id",sessionId).limit(100),
+  ]);
+  if(rosterError||decisionError)throw problem();
+  const indexed=new Map((decisions??[]).map(row=>[row.student_id,row]));
+  return (roster??[]).map(member=>indexed.get(member.student_id)??{
+    student_id:member.student_id,status:"unmarked",note:"",
+    notice_at:null,cancelled_by:null,cancel_reason:"",
+    marked_at:null,marked_by:null,updated_at:null,
+  });
 }
 
 /** One current coaching attendance writer for website and delegated MCP.
@@ -262,7 +271,7 @@ export async function attendanceRecord(
   db: Db, teacherId: string,
   payload:{sessionId:string;studentId:string;status:string;note?:string;
     noticeAt?:string;cancelReason?:string;
-    expectedUpdatedAt?:string;requestId?:string}
+    expectedUpdatedAt?:string|null;requestId?:string}
 ) {
  const cancelled=["student_cancelled","teacher_cancelled"].includes(payload.status);
  if(!["present","absent","late","excused","student_cancelled","teacher_cancelled"].includes(payload.status)||
@@ -273,17 +282,16 @@ export async function attendanceRecord(
     (payload.noticeAt!==undefined&&
        (!/^(?:\d{4}-\d{2}-\d{2}T)/.test(payload.noticeAt)||!Number.isFinite(Date.parse(payload.noticeAt)))))
    throw new CoachError("VALIDATION_ERROR",400,"Invalid attendance status or cancellation evidence");
- if(Boolean(payload.requestId)!==Boolean(payload.expectedUpdatedAt))
+ if((payload.requestId===undefined)!==(payload.expectedUpdatedAt===undefined))
    throw new CoachError("VALIDATION_ERROR",400,
-    "Provide both the attendance revision and idempotency key");
+    "Provide both the revision (null if unmarked) and idempotency key");
  let expected=payload.expectedUpdatedAt;
- if(!expected){
+ if(expected===undefined){
    const {data,error}=await db.from("session_attendance")
     .select("updated_at").eq("teacher_id",teacherId)
     .eq("session_id",payload.sessionId).eq("student_id",payload.studentId).maybeSingle();
    if(error)throw problem();
-   if(!data)throw notFound();
-   expected=data.updated_at;
+   expected=data?.updated_at??null;
  }
  const requestId=payload.requestId??crypto.randomUUID();
  const {data:receipt,error}=await db.rpc("ccp_teacher_session_commit",{

@@ -50,15 +50,13 @@ INSERT INTO public.teaching_sessions
 SELECT teacher_id, workplace_id, id, 'Restore smoke lesson',
 '2027-04-01T16:00:00Z'::timestamptz, 60, gen_random_uuid()
 FROM public.class_groups WHERE name = 'Restore smoke group';
--- Privileged synthetic fixture only: explicitly scope this direct SQL seed
--- to the one session and one transaction. Normal authenticated writers must
--- use the shared revisioned, idempotent session commit RPC instead.
-BEGIN;
-SELECT set_config('ccp.attendance_commit_session', id::text, true)
-FROM public.teaching_sessions WHERE title = 'Restore smoke lesson';
-UPDATE public.session_attendance SET status = 'present'
-WHERE session_id IN (SELECT id FROM public.teaching_sessions WHERE title = 'Restore smoke lesson');
-COMMIT;
+-- Privileged synthetic fixture: an unmarked participant has no attendance
+-- row. Normal authenticated writers use the revisioned session commit RPC.
+INSERT INTO public.session_attendance (teacher_id, session_id, student_id, status)
+SELECT p.teacher_id, p.session_id, p.student_id, 'present'
+FROM public.session_participants p
+JOIN public.teaching_sessions s ON s.id=p.session_id
+WHERE s.title='Restore smoke lesson';
 DO $block$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.session_attendance a

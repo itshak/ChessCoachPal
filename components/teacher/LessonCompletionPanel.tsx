@@ -6,9 +6,9 @@ type Session={id:string;title:string;status:string;starts_at:string};
 type Person={studentId:string;name:string};
 type Roster={sessionId:string;title:string;status:string;updatedAt:string;
  participants:Person[];studentIds:string[]};
-type Register={student_id:string;status:string;note:string;updated_at:string};
+type Register={student_id:string;status:string;note:string;updated_at:string|null};
 type Decision={studentId:string;status:""|"present"|"absent"|"late"|"excused";
- note:string;expectedUpdatedAt:string};
+ note:string;expectedUpdatedAt:string|null};
 const select="w-full rounded-lg border border-border bg-surface px-3 py-2 text-foreground";
 const statuses=[["present","Present"],["absent","Absent"],["late","Late"],["excused","Excused"]] as const;
 
@@ -71,7 +71,7 @@ export function LessonCompletionPanel(){
      status:(r?.status==="present"||r?.status==="absent"||
       r?.status==="late"||r?.status==="excused"?r.status:"") as Decision["status"],
      note:r?.note??"",
-     expectedUpdatedAt:r?.updated_at??"",
+     expectedUpdatedAt:r?.updated_at??null,
     }];
   })));
   setConfirmed(false);
@@ -96,8 +96,7 @@ export function LessonCompletionPanel(){
  async function submit(e:FormEvent<HTMLFormElement>){
   e.preventDefault();
   if(!roster||roster.sessionId!==sessionId||busy||!confirmed)return;
-  if(roster.participants.some(p=>!decisions[p.studentId]?.status||
-     !decisions[p.studentId]?.expectedUpdatedAt)){
+  if(roster.participants.some(p=>!decisions[p.studentId]?.status)){
    setError("Choose an explicit attendance status for each learner.");return;
   }
   setBusy(true);setError("");setNotice("");

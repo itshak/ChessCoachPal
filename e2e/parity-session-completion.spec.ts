@@ -50,12 +50,47 @@ async function fixture(call:Tool){
  const attendance=await call("ccp_v1_attendance_preview",{sessionId});
  expect(attendance.error).toBeUndefined();
  const rows=attendance.data.attendance as Array<{
-  student_id:string;status:string;updated_at:string;
+  student_id:string;status:string;updated_at:string|null;
  }>;
  expect(rows).toHaveLength(2);
  return {workplaceId,studentIds:students,sessionId,
   updatedAt:details.data.updated_at as string,rows};
 }
+
+test("SCHEMA: absent attendance row represents an unmarked frozen participant",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const ctx=await fixture(call);
+ expect(ctx.rows.every(row=>row.status==="unmarked"&&row.updated_at===null)).toBe(true);
+ const client=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const signIn=await client.auth.signInWithPassword(SEED_TEACHER);
+ expect(signIn.error).toBeNull();
+ const {data:physical,error:readError}=await client.from("session_attendance")
+  .select("student_id").eq("session_id",ctx.sessionId);
+ expect(readError).toBeNull();
+ expect(physical).toHaveLength(0);
+ const studentId=ctx.studentIds[0],key=randomUUID();
+ const first={sessionId:ctx.sessionId,studentId,status:"present",
+  note:"First attendance decision",expectedUpdatedAt:null,idempotencyKey:key};
+ const marked=await call("ccp_v1_attendance_record",first);
+ expect(marked.error).toBeUndefined();
+ const replay=await call("ccp_v1_attendance_record",first);
+ expect(replay.error).toBeUndefined();
+ expect(replay.data).toEqual(marked.data);
+ const stale=await call("ccp_v1_attendance_record",{
+  ...first,idempotencyKey:randomUUID(),
+ });
+ expect(stale.error?.code).toBe("CONFLICT");
+ const register=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
+ const rows=register.data.attendance as Array<{student_id:string;status:string;updated_at:string|null}>;
+ expect(rows).toHaveLength(2);
+ expect(rows.find(row=>row.student_id===studentId)?.status).toBe("present");
+ expect(rows.find(row=>row.student_id===ctx.studentIds[1])).toMatchObject({
+  status:"unmarked",updated_at:null,
+ });
+});
 
 test("PARITY:PARITY-sessions-complete-atomic rolls back stale roster and replays across website/MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);

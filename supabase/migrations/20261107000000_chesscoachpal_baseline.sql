@@ -94,11 +94,7 @@ BEGIN
     FROM public.group_enrollments e
     WHERE e.teacher_id = NEW.teacher_id AND e.group_id = NEW.group_id;
   END IF;
-  -- Create one and only one initially unmarked register row per snapshot member.
-  INSERT INTO public.session_attendance(teacher_id, session_id, student_id, status)
-  SELECT NEW.teacher_id, NEW.id, p.student_id, 'unmarked'
-  FROM public.session_participants p
-  WHERE p.teacher_id = NEW.teacher_id AND p.session_id = NEW.id;
+  -- Frozen roster begins with no explicit attendance decisions.
   RETURN NEW;
 END;
 $$;
@@ -890,7 +886,7 @@ CREATE TABLE IF NOT EXISTS "public"."session_attendance" (
     "teacher_id" "uuid" NOT NULL,
     "session_id" "uuid" NOT NULL,
     "student_id" "uuid" NOT NULL,
-    "status" "text" DEFAULT 'unmarked'::"text" NOT NULL,
+    "status" "text" NOT NULL,
     "note" "text" DEFAULT ''::"text" NOT NULL,
     "notice_at" timestamp with time zone,
     "cancelled_by" "text",
@@ -905,7 +901,7 @@ CREATE TABLE IF NOT EXISTS "public"."session_attendance" (
       (status='teacher_cancelled' AND cancelled_by='teacher') OR
       (status NOT IN ('student_cancelled','teacher_cancelled') AND cancelled_by IS NULL AND notice_at IS NULL AND cancel_reason='')
     ),
-    CONSTRAINT "session_attendance_status_check" CHECK (("status" = ANY (ARRAY['unmarked'::"text", 'present'::"text", 'absent'::"text", 'late'::"text", 'excused'::"text", 'student_cancelled'::"text", 'teacher_cancelled'::"text"])))
+    CONSTRAINT "session_attendance_status_check" CHECK (("status" = ANY (ARRAY['present'::"text", 'absent'::"text", 'late'::"text", 'excused'::"text", 'student_cancelled'::"text", 'teacher_cancelled'::"text"])))
 );
 
 
@@ -3830,13 +3826,9 @@ BEGIN
      v_teacher,p_workplace_id,'ad_hoc',btrim(p_title),p_starts_at,
      p_duration_minutes,coalesce(p_lesson_note,''),p_request_id
    ) RETURNING * INTO v_session;
-   -- The standard AFTER INSERT snapshot trigger inserts no members for an
-   -- ad-hoc session; the exact roster and register are populated here.
+   -- Ad-hoc roster begins with no attendance decisions.
    INSERT INTO public.session_participants(teacher_id,session_id,student_id)
      SELECT v_teacher,v_session.id,x FROM unnest(p_student_ids) x;
-   INSERT INTO public.session_attendance(
-     teacher_id,session_id,student_id,status
-   ) SELECT v_teacher,v_session.id,x,'unmarked' FROM unnest(p_student_ids) x;
  END IF;
  RETURN jsonb_build_object(
   'id',v_session.id,'title',v_session.title,'starts_at',v_session.starts_at,
@@ -4050,7 +4042,7 @@ BEGIN
       (v_row - ARRAY['studentId','status','note','expectedUpdatedAt','noticeAt','cancelReason'])<>'{}'::jsonb OR
       jsonb_typeof(v_row->'studentId')<>'string' OR
       jsonb_typeof(v_row->'status')<>'string' OR
-      jsonb_typeof(v_row->'expectedUpdatedAt')<>'string' OR
+      jsonb_typeof(v_row->'expectedUpdatedAt') NOT IN ('string','null') OR
       v_row->>'status' NOT IN ('present','absent','late','excused','student_cancelled','teacher_cancelled') OR
       char_length(coalesce(v_row->>'note',''))>5000 OR
       (v_row ? 'noticeAt' AND jsonb_typeof(v_row->'noticeAt')<>'string') OR
@@ -4121,21 +4113,45 @@ BEGIN
  FOR v_row IN SELECT value FROM jsonb_array_elements(p_attendance) LOOP
    v_student:=(v_row->>'studentId')::uuid;
    v_expected_att:=(v_row->>'expectedUpdatedAt')::timestamptz;
-   UPDATE public.session_attendance
-      SET status=v_row->>'status',
-          note=coalesce(v_row->>'note',''),
-          notice_at=CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
-            THEN (v_row->>'noticeAt')::timestamptz ELSE NULL END,
-          cancelled_by=CASE WHEN v_row->>'status'='student_cancelled' THEN 'student'
-            WHEN v_row->>'status'='teacher_cancelled' THEN 'teacher' ELSE NULL END,
-          cancel_reason=CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
-            THEN coalesce(v_row->>'cancelReason','') ELSE '' END,
-          marked_at=clock_timestamp(),
-          marked_by=v_teacher,
-          updated_at=clock_timestamp()
-    WHERE teacher_id=v_teacher AND session_id=p_session_id
-      AND student_id=v_student AND updated_at=v_expected_att
-    RETURNING * INTO v_att;
+   IF NOT EXISTS (
+     SELECT 1 FROM public.session_participants
+     WHERE teacher_id=v_teacher AND session_id=p_session_id AND student_id=v_student
+   ) THEN
+     RAISE EXCEPTION 'ATTENDANCE_NOT_IN_FROZEN_ROSTER' USING ERRCODE='42501';
+   END IF;
+   -- NULL means no decision existed at preview time. A concurrent first
+   -- decision makes this INSERT conflict; non-NULL requires the exact revision.
+   IF v_expected_att IS NULL THEN
+     INSERT INTO public.session_attendance(
+       teacher_id,session_id,student_id,status,note,notice_at,
+       cancelled_by,cancel_reason,marked_at,marked_by,updated_at
+     ) VALUES (
+       v_teacher,p_session_id,v_student,v_row->>'status',
+       coalesce(v_row->>'note',''),
+       CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
+         THEN (v_row->>'noticeAt')::timestamptz ELSE NULL END,
+       CASE WHEN v_row->>'status'='student_cancelled' THEN 'student'
+         WHEN v_row->>'status'='teacher_cancelled' THEN 'teacher' ELSE NULL END,
+       CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
+         THEN coalesce(v_row->>'cancelReason','') ELSE '' END,
+       clock_timestamp(),v_teacher,clock_timestamp()
+     ) ON CONFLICT (session_id,student_id) DO NOTHING RETURNING * INTO v_att;
+   ELSE
+     UPDATE public.session_attendance
+        SET status=v_row->>'status',
+            note=coalesce(v_row->>'note',''),
+            notice_at=CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
+              THEN (v_row->>'noticeAt')::timestamptz ELSE NULL END,
+            cancelled_by=CASE WHEN v_row->>'status'='student_cancelled' THEN 'student'
+              WHEN v_row->>'status'='teacher_cancelled' THEN 'teacher' ELSE NULL END,
+            cancel_reason=CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
+              THEN coalesce(v_row->>'cancelReason','') ELSE '' END,
+            marked_at=clock_timestamp(),marked_by=v_teacher,
+            updated_at=clock_timestamp()
+      WHERE teacher_id=v_teacher AND session_id=p_session_id
+        AND student_id=v_student AND updated_at=v_expected_att
+      RETURNING * INTO v_att;
+   END IF;
    IF NOT FOUND THEN
      RAISE EXCEPTION 'ATTENDANCE_REVISION_CONFLICT_OR_NOT_FOUND'
        USING ERRCODE='23505';
@@ -5334,8 +5350,7 @@ BEGIN
 
  INSERT INTO public.session_participants(teacher_id,session_id,student_id)
  SELECT v_teacher,p_session_id,x FROM unnest(v_added) AS x;
- INSERT INTO public.session_attendance(teacher_id,session_id,student_id,status)
- SELECT v_teacher,p_session_id,x,'unmarked' FROM unnest(v_added) AS x;
+ -- New members begin without an attendance decision row.
 
  UPDATE public.teaching_sessions SET updated_at=clock_timestamp()
  WHERE id=p_session_id AND teacher_id=v_teacher
