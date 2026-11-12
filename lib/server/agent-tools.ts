@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import {spreadsheetSuggestMcpSchema} from "@/lib/spreadsheet-suggest";
 import {invoiceDraftEditSchema} from "@/lib/server/invoice-draft-schemas";
 import {eventChanges} from "@/lib/server/teacher-event-schemas";
 import {manualPaymentMcpSchema} from "@/lib/server/manual-payment-schemas";
@@ -264,10 +265,7 @@ const catalogue = [
   {
     name:"ccp_v1_import_spreadsheet_suggest",
     description:"Suggest source-header column mapping. Local deterministic heuristic by default; AI provider requires useAi=true and confirmedExternal=true because sample data is shared with the configured external AI.",
-    schema:z.object({headers:z.array(z.string()).min(1).max(150),
-      sampleRows:z.array(z.record(z.string(),z.string())).max(8).optional(),
-      useAi:z.boolean().default(false),confirmedExternal:z.literal(true).optional()}).strict()
-      .refine(x=>!x.useAi||x.confirmedExternal===true,"External AI needs confirmation"),
+    schema:spreadsheetSuggestMcpSchema,
     scope:"coach:read",readOnly:true,
   },
   {

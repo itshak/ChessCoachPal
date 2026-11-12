@@ -16,13 +16,13 @@ test("PARITY:PARITY-spreadsheet-suggest-local-vs-ai-consent enforces identical l
  const model=await call("ccp_v1_import_spreadsheet_suggest",payload);
  expect(model.error).toBeUndefined();
  expect(model.data).toEqual(local);
- // The older website button still requests AI when useAi is omitted,
- // but it must NEVER silently disclose private sample data.
- const unconfirmedWeb=await page.request.post("/api/import/spreadsheet/suggest",{
+ // Omitted mode must now behave identically on website and MCP: offline
+ // deterministic mapping, without sending private learner samples to AI.
+ const defaultWeb=await page.request.post("/api/import/spreadsheet/suggest",{
   data:{headers,sampleRows},
  });
- expect(unconfirmedWeb.status(),await unconfirmedWeb.text()).toBe(400);
- expect((await unconfirmedWeb.json()).code).toBe("CONFIRMATION_REQUIRED");
+ expect(defaultWeb.status(),await defaultWeb.text()).toBe(200);
+ expect(await defaultWeb.json()).toEqual(local);
  const unconfirmedModel=await call("ccp_v1_import_spreadsheet_suggest",{
   headers,sampleRows,useAi:true,
  });

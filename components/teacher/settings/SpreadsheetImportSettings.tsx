@@ -127,6 +127,7 @@ export function SpreadsheetImportSettings({
         body: JSON.stringify({
           headers,
           sampleRows: rows.slice(0, 5),
+          useAi: true,
           confirmedExternal: true,
         }),
       });
