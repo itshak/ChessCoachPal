@@ -77,3 +77,9 @@ policy or spreadsheet routes until they pass CI plus authenticated E2E.**
 
 All unverified work remains on the draft implementation branch. No test
 passes or source classifications may be invented to close these gaps.
+ 
+## Coordinated finance parity batch — candidate only
+ 
+A separate implementation branch adds the SQL receipt and website/MCP revisions for **generation, regeneration and configured checkout**, plus the actual billing UI and adversarial synthetic tests. Unlike simple tool-name parity, these implement database-owned identical/replayed writes, exact invoice revisions, and a single checkout link under concurrency. See `e2e/parity-billing-finance-receipts.spec.ts` and `e2e/parity-configured-stripe.spec.ts`.
+ 
+The three entries in `scripts/mcp-website-parity.json` deliberately remain `partial` until successful execution on a stable commit; do not count them as verified now. Unfinished canonical lesson cutover, external delivery semantics, unrelated route families, historical 93-case matrix and final merged-main acceptance remain release blockers.

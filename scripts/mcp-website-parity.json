@@ -167,8 +167,8 @@
         "ccp_v1_billing_generation_preview",
         "ccp_v1_billing_generation_commit"
       ],
-      "explanation": "Shared teacher-scoped draft invoice preview and creation via MCP and website; E2E exercises period charges. Concurrent billing, exact-once redemptions and idempotent invoice generation remain unverified.",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "One shared teacher-owned generation preview/commit now has transactional invoice+credit writes and a durable period-scoped receipt. Website and MCP can supply the same UUID to replay original invoice IDs without double invoice creation; strict website input schema and concurrent cross-client E2E are included as unverified candidates. Canonical completed lesson billing and final acceptance remain open.",
+      "evidenceTest": "e2e/parity-billing-finance-receipts.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/checkout/route.ts",
@@ -180,8 +180,8 @@
       "existingTools": [
         "ccp_v1_billing_invoice_checkout"
       ],
-      "explanation": "Both interfaces call the same Stripe checkout creation service, with explicit MCP approval and browser payment handoff. Test covers unconfigured provider guard, not live Stripe/payment state or retries.",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "An owned invoice Checkout link now requires SQL row-locked revision and payable-balance claim; concurrent website/MCP attempts cannot overwrite a winning session, and a loser attempts to expire its unlinked provider session. Configured synthetic Stripe adversarial race/rollback E2E added; provider uncertainty and final acceptance remain open.",
+      "evidenceTest": "e2e/parity-configured-stripe.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/mark-paid/route.ts",
@@ -232,8 +232,8 @@
       "existingTools": [
         "ccp_v1_billing_invoice_regenerate"
       ],
-      "explanation": "Shared teacher-owned draft regeneration via website and confirmed MCP call, E2E readback. Multi-table invoice line replacement is non-transactional; concurrent edits remain unverified.",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "One shared regeneration service now uses an atomic invoice-line/credit SQL transaction, an optimistic invoice timestamp and durable website/MCP retry receipts. It refuses active Stripe links and stale edits. Concurrent actual-database replay and stale-race tests are candidates pending exact-head CI/E2E.",
+      "evidenceTest": "e2e/parity-billing-finance-receipts.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/route.ts",

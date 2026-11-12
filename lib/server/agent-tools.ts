@@ -218,14 +218,16 @@ const catalogue = [
   },
   {
     name:"ccp_v1_billing_generation_commit",
-    description:"Generate draft invoices and consume eligible prepaid credits for the specified period. Explicit teacher confirmation required; preview before committing. Do not retry until checking for existing invoices.",
+    description:"Generate draft invoices and consume eligible prepaid credits in one transaction. Explicit confirmation required. Supply and reuse idempotencyKey on website/MCP retries to get the same immutable invoice IDs without recharging credits.",
     schema:z.object({periodStart:z.string().date(),periodEnd:z.string().date(),
-      confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+      confirmed:z.literal(true),idempotencyKey:uuid.optional()}).strict(),scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_billing_invoice_regenerate",
-    description:"Recalculate line items on one identified draft invoice from current attendance, studio policies, rates and available prepaid credits, potentially overwriting edits. Explicit confirmation required.",
-    schema:z.object({invoiceId:uuid,confirmed:z.literal(true)}).strict(),
+    description:"Recalculate a draft invoice from attendance, rates and credits with a database transaction, optimistic revision and immutable retry receipt. Review the current invoice first and reuse expectedUpdatedAt plus idempotencyKey across retries. Explicit confirmation required.",
+    schema:z.object({invoiceId:uuid,confirmed:z.literal(true),
+      expectedUpdatedAt:z.string().datetime({offset:true}).optional(),
+      idempotencyKey:uuid.optional()}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1327,12 +1329,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return await billingActionResponse(await teacherBillingGenerate(db,teacherId,a));
       }
       case "ccp_v1_billing_generation_commit": {
-        const a=args as {periodStart:string;periodEnd:string};
+        const a=args as {periodStart:string;periodEnd:string;idempotencyKey?:string};
         return await billingActionResponse(await teacherBillingGenerate(db,teacherId,{...a,commit:true}));
       }
       case "ccp_v1_billing_invoice_regenerate": {
-        const a=args as {invoiceId:string};
-        return await billingActionResponse(await teacherBillingRegenerate(db,teacherId,a.invoiceId));
+        const a=args as {invoiceId:string;expectedUpdatedAt?:string;idempotencyKey?:string};
+        return await billingActionResponse(await teacherBillingRegenerate(db,teacherId,a.invoiceId,a));
       }
       case "ccp_v1_billing_invoice_pdf": {
         const a=args as {invoiceId:string};

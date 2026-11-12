@@ -1,21 +1,36 @@
 import type {SupabaseClient} from "@supabase/supabase-js";
+import {randomUUID} from "node:crypto";
 import {NextResponse} from "next/server";
 import {getPolicy} from "@/lib/server/scheduling";
 import {derivePeriodItems,getInvoicedLessonIds} from "@/lib/server/billing";
 import {loadCreditInputs} from "@/lib/server/credits";
 import {groupItemsByGuardian,sumAmountCents,summarizePayments} from "@/lib/billing";
-import {createCheckoutSession} from "@/lib/payments";
+import {createCheckoutSession,expireCheckoutSession} from "@/lib/payments";
 import {familyDisplayName,stripeCheckoutPrefillEmail} from "@/lib/guardians";
 import {oneToOne} from "@/lib/schedule";
 import {sendInvoice} from "@/lib/server/invoice-send";
 import {teacherInvoiceDelete,teacherInvoiceVoid} from "@/lib/server/teacher-invoice-actions";
 const DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
+const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export type RegenerateOptions={expectedUpdatedAt?:string;idempotencyKey?:string};
+function billingConflict(error:{message:string}|null){
+  return /23505|23514|REQUEST_CONFLICT|STALE_INVOICE_REVISION|INVOICE_ALREADY_COMMITTED|INVOICE_REGENERATION_BLOCKED/.test(error?.message??"");
+}
+function validRequestId(value:unknown){
+  return value===undefined||(typeof value==="string"&&UUID_RE.test(value));
+}
 
 /** Shared website/delegated MCP financial domain services. */
 export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:string,
- body:{periodStart?:string;periodEnd?:string;commit?:boolean}):Promise<NextResponse>{
-  const periodStart = String(body.periodStart ?? "");
-  const periodEnd = String(body.periodEnd ?? "");
+ body:{periodStart?:string;periodEnd?:string;commit?:boolean;idempotencyKey?:string}):Promise<NextResponse>{
+  if(typeof body!=="object"||body===null||Array.isArray(body)||
+    Object.keys(body).some(key=>!["periodStart","periodEnd","commit","idempotencyKey"].includes(key))||
+    (body.commit!==undefined&&typeof body.commit!=="boolean")||
+    !validRequestId(body.idempotencyKey)){
+    return NextResponse.json({error:"Invalid billing generation request"},{status:400});
+  }
+  const periodStart = typeof body.periodStart==="string"?body.periodStart:"";
+  const periodEnd = typeof body.periodEnd==="string"?body.periodEnd:"";
   if (!DATE_RE.test(periodStart) || !DATE_RE.test(periodEnd)) {
     return NextResponse.json(
       { error: "Choose a start and end date" },
@@ -29,6 +44,21 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
     );
   }
 
+  // Repeated browser/MCP requests must replay BEFORE recalculating lesson
+  // eligibility (the first successful commit consumed those lessons/credits).
+  const requestId=body.commit?(body.idempotencyKey??randomUUID()):null;
+  if(body.commit&&body.idempotencyKey){
+    const {data:prior,error:lookupError}=await supabase.rpc(
+      "ccp_invoice_generation_receipt",{
+        p_period_start:periodStart,p_period_end:periodEnd,
+        p_request_id:body.idempotencyKey,
+      });
+    if(lookupError) return NextResponse.json({
+      error:billingConflict(lookupError)?"Idempotency key used for another billing request":
+        "Unable to check billing generation receipt",
+    },{status:billingConflict(lookupError)?409:500});
+    if(prior) return NextResponse.json(prior);
+  }
   const policy = await getPolicy(supabase, teacherId);
   let result;
   try {
@@ -99,6 +129,19 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
   }
 
   if (drafts.length === 0 && newRedemptions.size === 0) {
+    // Another client may have committed after our initial replay lookup but
+    // before this invoice preview. Recheck the receipt before saying empty.
+    if(body.idempotencyKey){
+      const {data:replayed,error:replayError}=await supabase.rpc(
+        "ccp_invoice_generation_receipt",{
+          p_period_start:periodStart,p_period_end:periodEnd,
+          p_request_id:body.idempotencyKey,
+        });
+      if(replayError) return NextResponse.json({
+        error:"Billing generation request conflicts with an existing receipt",
+      },{status:billingConflict(replayError)?409:500});
+      if(replayed) return NextResponse.json(replayed);
+    }
     return NextResponse.json({
       error: skippedAlreadyInvoiced > 0
         ? "All billable lessons in this period are already on another invoice"
@@ -116,9 +159,10 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
       p_redemptions:[...newRedemptions].map(([lessonId,packageId])=>({
         lessonId,packageId,
       })),
+      p_request_id:requestId,
     });
   if(commitError){
-    const conflict=/INVOICE_ALREADY_COMMITTED|23505/.test(commitError.message);
+    const conflict=billingConflict(commitError);
     return NextResponse.json({
       error:conflict?"Lessons have already been invoiced; refresh the preview":
         "Invoice creation failed and was rolled back",
@@ -127,10 +171,32 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
   return NextResponse.json({...committed,skippedAlreadyInvoiced});
 }
 
-export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId:string,id:string):Promise<NextResponse>{
+export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId:string,id:string,
+ options:RegenerateOptions={}):Promise<NextResponse>{
+  if(Object.keys(options).some(key=>!["expectedUpdatedAt","idempotencyKey"].includes(key))||
+     !validRequestId(options.idempotencyKey)||
+     (options.expectedUpdatedAt!==undefined&&
+       (typeof options.expectedUpdatedAt!=="string"||
+        !Number.isFinite(Date.parse(options.expectedUpdatedAt))))){
+    return NextResponse.json({error:"Invalid regeneration revision or request ID"},{status:400});
+  }
+  // If the caller supplied its original invoice revision, look for the
+  // immutable receipt before reading the now-modified invoice.
+  if(options.idempotencyKey&&options.expectedUpdatedAt){
+    const {data:prior,error:priorError}=await supabase.rpc(
+      "ccp_invoice_regeneration_receipt",{
+        p_invoice_id:id,p_expected_updated_at:options.expectedUpdatedAt,
+        p_request_id:options.idempotencyKey,
+      });
+    if(priorError) return NextResponse.json({
+      error:billingConflict(priorError)?"Idempotency key used for another request":
+        "Unable to check invoice regeneration receipt",
+    },{status:billingConflict(priorError)?409:500});
+    if(prior) return NextResponse.json(prior);
+  }
   const { data: invoice } = await supabase
     .from("invoices")
-    .select("id, status, guardian_id, period_start, period_end, currency, stripe_checkout_session_id, stripe_checkout_url, stripe_payment_intent_id")
+    .select("id, status, guardian_id, period_start, period_end, currency, updated_at, stripe_checkout_session_id, stripe_checkout_url, stripe_payment_intent_id")
     .eq("id", id)
     .eq("teacher_id", teacherId)
     .single();
@@ -138,11 +204,32 @@ export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId
   if (!invoice) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  if(options.idempotencyKey&&options.expectedUpdatedAt&&
+      (invoice.status!=="draft"||
+       Date.parse(options.expectedUpdatedAt)!==Date.parse(invoice.updated_at))){
+    // A concurrent first commit may have completed after our early receipt
+    // lookup. Return its immutable response even if the draft has changed.
+    const {data:late,error:lateError}=await supabase.rpc(
+      "ccp_invoice_regeneration_receipt",{
+        p_invoice_id:id,p_expected_updated_at:options.expectedUpdatedAt,
+        p_request_id:options.idempotencyKey,
+      });
+    if(lateError) return NextResponse.json({
+      error:"Regeneration request conflicts with an existing receipt",
+    },{status:billingConflict(lateError)?409:500});
+    if(late)return NextResponse.json(late);
+  }
   if (invoice.status !== "draft") {
     return NextResponse.json(
       { error: "Only draft invoices can be regenerated" },
       { status: 400 }
     );
+  }
+  if(options.expectedUpdatedAt&&options.expectedUpdatedAt!==invoice.updated_at){
+    // Compare real instants, since serialized Postgres timestamps may differ
+    // in precision/offset from an otherwise equivalent ISO timestamp.
+    if(Date.parse(options.expectedUpdatedAt)!==Date.parse(invoice.updated_at))
+      return NextResponse.json({error:"Invoice was edited; review the latest draft"},{status:409});
   }
   if (invoice.stripe_checkout_session_id || invoice.stripe_checkout_url ||
       invoice.stripe_payment_intent_id) {
@@ -198,10 +285,11 @@ export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId
         p_redemptions:[...newRedemptions].map(([lessonId,packageId])=>({
           lessonId,packageId,
         })),
+        p_expected_updated_at:options.expectedUpdatedAt??invoice.updated_at,
+        p_request_id:options.idempotencyKey??randomUUID(),
       });
     if(regenError){
-      const conflict=/INVOICE_ALREADY_COMMITTED|INVOICE_REGENERATION_BLOCKED|23505|23514/.test(
-        regenError.message);
+      const conflict=billingConflict(regenError);
       return NextResponse.json({
         error:conflict?"Invoice changed or lessons were already billed; refresh first":
           "Invoice regeneration failed; original lines were preserved",
@@ -267,11 +355,14 @@ export async function teacherBillingCheckout(supabase:SupabaseClient,teacherId:s
     );
   }
 
-  if (invoice.stripe_checkout_url && invoice.status === "sent") {
+  if(invoice.stripe_checkout_session_id||invoice.stripe_checkout_url){
+    if(invoice.stripe_checkout_session_id&&invoice.stripe_checkout_url)
+      return NextResponse.json({
+        url:invoice.stripe_checkout_url,sessionId:invoice.stripe_checkout_session_id,
+      });
     return NextResponse.json({
-      url: invoice.stripe_checkout_url,
-      sessionId: invoice.stripe_checkout_session_id,
-    });
+      error:"Checkout link is incomplete; reconcile with the provider before retrying",
+    },{status:409});
   }
 
   const family = oneToOne(
@@ -313,28 +404,42 @@ export async function teacherBillingCheckout(supabase:SupabaseClient,teacherId:s
       customerEmail: stripeCheckoutPrefillEmail(family),
     });
 
-    // Do not tell the browser or MCP that the session is safely linked if
-    // the invoice moved to a nonpayable state or persistence failed. A retry
-    // uses the same Stripe idempotency key for identical Checkout parameters.
-    const { data: persisted, error: persistError } = await supabase
-      .from("invoices")
-      .update({
-        stripe_checkout_session_id: session.sessionId,
-        stripe_checkout_url: session.url,
-      })
-      .eq("id", id)
-      .eq("teacher_id", teacherId)
-      .in("status", ["draft", "sent"])
-      .select("id")
-      .maybeSingle();
+    // A provider-created session is not yet an invoice checkout link. The
+    // database claim atomically rechecks the invoice revision, student-side
+    // balance and competing website/MCP checkout requests under row lock.
+    const {data:claimed,error:claimError}=await supabase.rpc(
+      "ccp_invoice_checkout_claim",{
+        p_invoice_id:id,p_session_id:session.sessionId,
+        p_checkout_url:session.url,p_expected_balance:balanceCents,
+        p_expected_updated_at:invoice.updated_at,
+      });
+    if(!claimError&&claimed) return NextResponse.json(claimed);
 
-    if (persistError || !persisted) {
-      return NextResponse.json(
-        { error: "Checkout session could not be saved; review the invoice before retrying" },
-        { status: 503 }
-      );
+    // Never overwrite a rival client checkout URL. On a losing claim,
+    // inspect the committed link before touching a provider session:
+    // identical Stripe idempotency sessions are safe to return, but a
+    // different, orphaned session must be expired if reconciliation permits.
+    const {data:current,error:readError}=await supabase.from("invoices")
+      .select("stripe_checkout_session_id,stripe_checkout_url")
+      .eq("id",id).eq("teacher_id",teacherId).maybeSingle();
+    if(readError||!current){
+      return NextResponse.json({
+        error:"Checkout claim state unknown; reconcile with Stripe before retrying",
+      },{status:503});
     }
-    return NextResponse.json(session);
+    if(current.stripe_checkout_session_id===session.sessionId&&
+       current.stripe_checkout_url===session.url)
+      return NextResponse.json(session);
+    try {
+      await expireCheckoutSession(policy.stripe_secret_key,session.sessionId);
+    } catch {
+      return NextResponse.json({
+        error:"Unlinked Stripe checkout may still be open; reconcile the provider session",
+      },{status:503});
+    }
+    return NextResponse.json({
+      error:"Invoice changed or another checkout link won the race; refresh before retrying",
+    },{status:409});
   } catch (err) {
     // Provider exception strings are not safe to send to a browser or an AI
     // client: they may contain account identifiers, request internals or URLs.
