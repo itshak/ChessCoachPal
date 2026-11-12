@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {randomUUID} from "node:crypto";
 import { sendInvoice } from "@/lib/server/invoice-send";
 export class InvoiceActionError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);}
@@ -7,7 +8,8 @@ const fail=(status:number,code:string,msg:string)=>new InvoiceActionError(status
 type Db=SupabaseClient;
 type InvoiceLine={id?:string;lessonId?:string|null;description:string;quantity:number;
  unitCents:number;amountCents:number};
-export type InvoiceDraftEdit={notes?:string;items?:InvoiceLine[];expectedUpdatedAt?:string};
+export type InvoiceDraftEdit={notes?:string;items?:InvoiceLine[];expectedUpdatedAt?:string;
+ idempotencyKey?:string};
 async function ownedInvoice(db:Db,teacherId:string,id:string){
  const {data,error}=await db.from("invoices").select("id,status")
    .eq("id",id).eq("teacher_id",teacherId).maybeSingle();
@@ -57,20 +59,25 @@ export async function teacherInvoiceDraftUpdate(db:Db,teacherId:string,id:string
       line.amountCents<0||line.amountCents>100000000))
       throw fail(400,"VALIDATION_ERROR","Invalid invoice line items");
   }
+  const key=input.idempotencyKey??randomUUID();
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key))
+    throw fail(400,"VALIDATION_ERROR","Provide a UUID idempotency key");
   const {data,error}=await db.rpc("ccp_invoice_draft_update",{
     p_invoice_id:id,p_notes:input.notes??null,p_items:input.items??null,
     p_expected_updated_at:input.expectedUpdatedAt??null,
+    p_idempotency_key:key,
   });
   if(error){
     if(error.message.includes("NOT_FOUND"))
       throw fail(404,"NOT_FOUND","Invoice or referenced lesson not found");
-    if(/INVOICE_NOT_DRAFT|PREPAID_INVOICE_IMMUTABLE|STALE_INVOICE_REVISION/.test(error.message))
+    if(/INVOICE_NOT_DRAFT|PREPAID_INVOICE_IMMUTABLE|STALE_INVOICE_REVISION|INVOICE_DRAFT_REQUEST_CONFLICT/.test(error.message)||error.code==="23505")
       throw fail(409,"CONFLICT","Invoice state changed or prepaid lines cannot be edited");
     if(/INVALID|EMPTY|OVERFLOW/.test(error.message))
       throw fail(400,"VALIDATION_ERROR","Invalid draft invoice line items or notes");
     throw fail(500,"DATABASE_ERROR","Draft invoice was not changed");
   }
-  return data as {ok:true};
+  return data as {ok:true;invoiceId:string;updatedAt:string;
+   idempotencyKey:string;replayed:boolean};
 }
 export async function teacherInvoiceSend(db:Db,teacherId:string,id:string,
  teacherEmail:string|undefined,origin:string){

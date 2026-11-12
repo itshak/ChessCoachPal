@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import {invoiceDraftEditSchema} from "@/lib/server/invoice-draft-schemas";
 import {eventChanges} from "@/lib/server/teacher-event-schemas";
 import {manualPaymentMcpSchema} from "@/lib/server/manual-payment-schemas";
 import { lichessConnectionStatus,lichessConnectionHandoff,disconnectLichess,LichessConnectionError } from "@/lib/server/lichess-connections";
@@ -344,19 +345,9 @@ const catalogue = [
   },
   {
     name:"ccp_v1_billing_invoice_draft_update",
-    description:"Atomically replace draft invoice lines and notes, with optional expected revision. A failed line/FK/payment guard rolls back the whole edit. Explicit confirmation required.",
-    schema:z.object({invoiceId:uuid,changes:z.object({
-      notes:z.string().max(2000).optional(),
-      expectedUpdatedAt:instant.optional(),
-      items:z.array(z.object({
-        id:uuid.optional(),lessonId:uuid.nullable().optional(),
-        description:z.string().trim().min(1).max(500),
-        quantity:z.number().int().min(1).max(10000),
-        unitCents:z.number().int().min(0).max(100000000),
-        amountCents:z.number().int().min(0).max(100000000),
-      }).strict()).max(100).optional(),
-    }).strict(),confirmed:z.literal(true)}).strict()
-      .refine(v=>Object.keys(v.changes).length>0,"Changes required"),
+    description:"Atomically edit draft invoice lines and notes through a tenant-locked SQL transaction. Supply optional expectedUpdatedAt and immutable idempotencyKey for safe website↔MCP retries; changed payload or stale revision conflicts. Explicit teacher approval required.",
+    schema:z.object({invoiceId:uuid,changes:invoiceDraftEditSchema,
+      confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
