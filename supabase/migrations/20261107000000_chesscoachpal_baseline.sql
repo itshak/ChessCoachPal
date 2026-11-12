@@ -3846,21 +3846,44 @@ CREATE TRIGGER ccp_invoice_revision BEFORE UPDATE ON public.invoices
 
 CREATE OR REPLACE FUNCTION public.ccp_invoice_draft_update(
  p_invoice_id uuid, p_notes text, p_items jsonb,
- p_expected_updated_at timestamptz DEFAULT NULL
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ p_expected_updated_at timestamptz, p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $
 DECLARE
  v_teacher uuid:=auth.uid();
  v_invoice public.invoices%ROWTYPE;
  v_count integer;v_line jsonb;v_prepared jsonb:='[]'::jsonb;
  v_kind text;v_lesson uuid;v_subtotal bigint:=0;v_number integer:=0;
  v_description text;v_quantity integer;v_unit integer;v_amount integer;
+ v_hash text;
+ v_old public.agent_tool_receipts%ROWTYPE;
+ v_receipt jsonb;
 BEGIN
  IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_idempotency_key IS NULL THEN
+   RAISE EXCEPTION 'INVALID_INVOICE_DRAFT_REQUEST' USING ERRCODE='22023';
+ END IF;
  IF p_notes IS NULL AND p_items IS NULL THEN
    RAISE EXCEPTION 'EMPTY_INVOICE_PATCH' USING ERRCODE='22023';
  END IF;
  IF p_notes IS NOT NULL AND length(p_notes)>2000 THEN
    RAISE EXCEPTION 'INVALID_INVOICE_NOTES' USING ERRCODE='22023';
+ END IF;
+ -- Insert-first serializes concurrent same-key browser/MCP retries.
+ -- A failure below rolls this receipt and every invoice change back.
+ v_hash:=md5(jsonb_build_array('billing.invoice.draft.update',p_invoice_id,
+   p_notes,p_items,p_expected_updated_at)::text);
+ INSERT INTO public.agent_tool_receipts(
+   teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'billing.invoice.draft.update',
+   v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_old FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+   IF NOT FOUND OR v_old.operation<>'billing.invoice.draft.update'
+     OR v_old.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'INVOICE_DRAFT_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_old.receipt||jsonb_build_object('replayed',true);
  END IF;
  SELECT * INTO v_invoice FROM public.invoices
  WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
@@ -3937,13 +3960,18 @@ BEGIN
      notes=coalesce(p_notes,notes)
  WHERE id=p_invoice_id AND teacher_id=v_teacher AND status='draft'
  RETURNING * INTO v_invoice;
- RETURN jsonb_build_object('ok',true);
+ v_receipt:=jsonb_build_object('ok',true,'invoiceId',p_invoice_id,
+   'updatedAt',v_invoice.updated_at,'idempotencyKey',p_idempotency_key,
+   'replayed',false);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+ WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt;
 END;
-$$;
+$;
 REVOKE ALL ON FUNCTION public.ccp_invoice_draft_update(
- uuid,text,jsonb,timestamptz) FROM PUBLIC,anon;
+ uuid,text,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_draft_update(
- uuid,text,jsonb,timestamptz) TO authenticated;
+ uuid,text,jsonb,timestamptz,uuid) TO authenticated;
 
 -- MCP and website use one revision-checked, idempotent session editor.
 -- A teacher may update title, time/duration, shared note and completed/cancelled
