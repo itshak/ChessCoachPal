@@ -99,3 +99,8 @@ Keep [PR #51](https://github.com/itshak/ChessCoachPal/pull/51) in draft while th
 - Website and MCP bulk attendance no longer directly `upsert` the old attendance table. Each owned lesson goes through `calendarAttendanceWrite` and its tenant-scoped revisioned receipt, preserving the existing per-lesson successes and explicit failures. An optional command UUID plus all original `marked_at` revisions derives stable **per-lesson** child receipt IDs for safe retries after a partial batch.
 - A combined teacher-cancellation notification is now limited to **fresh** successful rows; a replayed batch cannot send the same cancellation digest again. This is still an at-most-once application retry safeguard, **not** a crash-safe exactly-once provider outbox.
 - Remaining B5/C2 requirements include replacing these current calendar tables with the one canonical session model, and porting parent cancellation, family notes, finance and credits. The new bulk replay case is unverified until authenticated E2E on the exact commit.
+
+### 2026-11-12 — studio policy source-schema parity guard (candidate)
+
+- Added a CI source guard that compares the actual website policy allowlist against the full MCP `studioPolicyPatch` schema, excluding only four browser-required raw credential inputs. Supported ordinary fields, nullable clears, payment provider/QR data and credential-clearing booleans must all be present; otherwise the parity guard fails before release.
+- Authenticated website/MCP E2E for these policy values is a separate acceptance requirement, not implied by a field-list match. The secure website remains the only channel for entering fresh Stripe and AI API secrets.
