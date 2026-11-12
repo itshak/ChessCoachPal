@@ -34,4 +34,19 @@ describe("explicit frozen-roster session completion contract",()=>{
   ]}).success).toBe(false);
   expect(lessonCompletionSchema.safeParse({...values,sessionChanged:true}).success).toBe(false);
  });
+ it("requires cancellation notice provenance without contaminating presence decisions",()=>{
+  const row=values.attendance[0];
+  expect(lessonCompletionSchema.safeParse({...values,attendance:[
+   {...row,status:"student_cancelled"},
+  ]}).success).toBe(false);
+  expect(lessonCompletionSchema.safeParse({...values,attendance:[
+   {...row,status:"student_cancelled",noticeAt:revision,cancelReason:"Away"},
+  ]}).success).toBe(true);
+  expect(lessonCompletionSchema.safeParse({...values,attendance:[
+   {...row,status:"teacher_cancelled",cancelReason:"Weather"},
+  ]}).success).toBe(true);
+  expect(lessonCompletionSchema.safeParse({...values,attendance:[
+   {...row,status:"present",noticeAt:revision},
+  ]}).success).toBe(false);
+ });
 });

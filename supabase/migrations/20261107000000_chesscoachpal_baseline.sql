@@ -892,9 +892,20 @@ CREATE TABLE IF NOT EXISTS "public"."session_attendance" (
     "student_id" "uuid" NOT NULL,
     "status" "text" DEFAULT 'unmarked'::"text" NOT NULL,
     "note" "text" DEFAULT ''::"text" NOT NULL,
+    "notice_at" timestamp with time zone,
+    "cancelled_by" "text",
+    "cancel_reason" "text" DEFAULT ''::"text" NOT NULL,
+    "marked_at" timestamp with time zone,
+    "marked_by" "uuid",
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "session_attendance_note_check" CHECK (("char_length"("note") <= 5000)),
-    CONSTRAINT "session_attendance_status_check" CHECK (("status" = ANY (ARRAY['unmarked'::"text", 'present'::"text", 'absent'::"text", 'late'::"text", 'excused'::"text"])))
+    CONSTRAINT "session_attendance_cancel_reason_check" CHECK (("char_length"("cancel_reason") <= 1000)),
+    CONSTRAINT "session_attendance_cancellation_metadata_check" CHECK (
+      (status='student_cancelled' AND cancelled_by='student' AND notice_at IS NOT NULL) OR
+      (status='teacher_cancelled' AND cancelled_by='teacher') OR
+      (status NOT IN ('student_cancelled','teacher_cancelled') AND cancelled_by IS NULL AND notice_at IS NULL AND cancel_reason='')
+    ),
+    CONSTRAINT "session_attendance_status_check" CHECK (("status" = ANY (ARRAY['unmarked'::"text", 'present'::"text", 'absent'::"text", 'late'::"text", 'excused'::"text", 'student_cancelled'::"text", 'teacher_cancelled'::"text"])))
 );
 
 
@@ -4034,12 +4045,19 @@ BEGIN
  END IF;
  FOR v_row IN SELECT value FROM jsonb_array_elements(p_attendance) LOOP
    IF jsonb_typeof(v_row)<>'object' OR
-      (v_row - ARRAY['studentId','status','note','expectedUpdatedAt'])<>'{}'::jsonb OR
+      (v_row - ARRAY['studentId','status','note','expectedUpdatedAt','noticeAt','cancelReason'])<>'{}'::jsonb OR
       jsonb_typeof(v_row->'studentId')<>'string' OR
       jsonb_typeof(v_row->'status')<>'string' OR
       jsonb_typeof(v_row->'expectedUpdatedAt')<>'string' OR
-      v_row->>'status' NOT IN ('present','absent','late','excused') OR
-      char_length(coalesce(v_row->>'note',''))>5000 THEN
+      v_row->>'status' NOT IN ('present','absent','late','excused','student_cancelled','teacher_cancelled') OR
+      char_length(coalesce(v_row->>'note',''))>5000 OR
+      (v_row ? 'noticeAt' AND jsonb_typeof(v_row->'noticeAt')<>'string') OR
+      (v_row ? 'cancelReason' AND (jsonb_typeof(v_row->'cancelReason')<>'string'
+        OR char_length(v_row->>'cancelReason')>1000)) OR
+      (v_row->>'status')='student_cancelled' AND
+        (NOT (v_row ? 'noticeAt') OR coalesce(v_row->>'noticeAt','')='') OR
+      (v_row->>'status') NOT IN ('student_cancelled','teacher_cancelled') AND
+        (v_row ? 'noticeAt' OR v_row ? 'cancelReason') THEN
      RAISE EXCEPTION 'INVALID_SESSION_ATTENDANCE' USING ERRCODE='22023';
    END IF;
    v_student:=(v_row->>'studentId')::uuid;
@@ -4101,6 +4119,14 @@ BEGIN
    UPDATE public.session_attendance
       SET status=v_row->>'status',
           note=coalesce(v_row->>'note',''),
+          notice_at=CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
+            THEN (v_row->>'noticeAt')::timestamptz ELSE NULL END,
+          cancelled_by=CASE WHEN v_row->>'status'='student_cancelled' THEN 'student'
+            WHEN v_row->>'status'='teacher_cancelled' THEN 'teacher' ELSE NULL END,
+          cancel_reason=CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
+            THEN coalesce(v_row->>'cancelReason','') ELSE '' END,
+          marked_at=clock_timestamp(),
+          marked_by=v_teacher,
           updated_at=clock_timestamp()
     WHERE teacher_id=v_teacher AND session_id=p_session_id
       AND student_id=v_student AND updated_at=v_expected_att
@@ -4113,6 +4139,8 @@ BEGIN
    v_last_revision:=v_att.updated_at;
    v_changed:=v_changed||jsonb_build_array(jsonb_build_object(
      'studentId',v_att.student_id,'status',v_att.status,'note',v_att.note,
+     'noticeAt',v_att.notice_at,'cancelledBy',v_att.cancelled_by,
+     'cancelReason',v_att.cancel_reason,'markedAt',v_att.marked_at,
      'revision',v_att.updated_at));
  END LOOP;
  v_operation:=CASE WHEN p_changes='{}'::jsonb THEN 'attendance.record'

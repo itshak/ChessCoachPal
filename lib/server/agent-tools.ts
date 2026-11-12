@@ -850,8 +850,10 @@ const catalogue = [
     description: "Record ONE confirmed participant status after preview. Requires the exact session/student IDs, expectedUpdatedAt from preview, and a fresh idempotencyKey. Retries must reuse the same key and arguments. No bulk updates.",
     schema: z.object({
       sessionId: uuid, studentId: uuid,
-      status: z.enum(["present","absent","late","excused"]),
+      status: z.enum(["present","absent","late","excused","student_cancelled","teacher_cancelled"]),
       note: z.string().max(5000).default(""),
+      noticeAt: z.string().datetime({offset:true}).optional(),
+      cancelReason: z.string().max(1000).optional(),
       expectedUpdatedAt: z.string().datetime({ offset: true }),
       idempotencyKey: uuid,
     }).strict(), scope: "coach:write", readOnly: false,

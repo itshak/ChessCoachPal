@@ -178,3 +178,50 @@ test("PARITY:PARITY-completion-cannot-bypass rejects ordinary website/MCP and di
  expect(register.error).toBeUndefined();
  expect(register.data.attendance.every((row:{status:string})=>row.status==="unmarked")).toBe(true);
 });
+
+
+test("PARITY:canonical-participant-cancellation preserves notice across website and MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const ctx=await fixture(call);
+ const participant=ctx.rows[0];
+ const noticeAt="2057-12-21T09:30:00.000Z";
+ const key=randomUUID();
+ const input={
+  sessionId:ctx.sessionId,studentId:participant.student_id,
+  status:"student_cancelled",note:"Guardian communicated a cancellation",
+  noticeAt,cancelReason:"School trip",
+  expectedUpdatedAt:participant.updated_at,idempotencyKey:key,
+ };
+ const cancelled=await call("ccp_v1_attendance_record",input);
+ expect(cancelled.error).toBeUndefined();
+ expect(cancelled.data.attendance).toHaveLength(1);
+ expect(cancelled.data.attendance[0]).toMatchObject({
+  studentId:participant.student_id,status:"student_cancelled",
+  cancelledBy:"student",cancelReason:"School trip",
+ });
+ expect(new Date(cancelled.data.attendance[0].noticeAt as string).toISOString()).toBe(noticeAt);
+ const replay=await call("ccp_v1_attendance_record",input);
+ expect(replay.error).toBeUndefined();
+ expect(replay.data).toEqual(cancelled.data);
+ const read=await page.request.post("/api/agent/v1",{
+  data:{action:"attendance.list",sessionId:ctx.sessionId},
+ });
+ expect(read.status(),await read.text()).toBe(200);
+ const row=(await read.json()).data.find((item:{student_id:string})=>
+   item.student_id===participant.student_id);
+ expect(row).toMatchObject({status:"student_cancelled",cancelled_by:"student",
+   cancel_reason:"School trip"});
+ expect(new Date(row.notice_at).toISOString()).toBe(noticeAt);
+ // A teacher website correction and delegated MCP share a single SQL writer.
+ const corrected=await page.request.post("/api/agent/v1",{
+  data:{action:"attendance.record",sessionId:ctx.sessionId,
+   studentId:participant.student_id,status:"present",note:"Attendance corrected"},
+ });
+ expect(corrected.status(),await corrected.text()).toBe(200);
+ expect((await corrected.json()).data).toMatchObject({status:"present",
+  cancelled_by:null,notice_at:null,cancel_reason:""});
+ const conflict=await call("ccp_v1_attendance_record",{
+  ...input,status:"teacher_cancelled",note:"Different decision",
+ });
+ expect(conflict.error?.code).toBe("CONFLICT");
+});

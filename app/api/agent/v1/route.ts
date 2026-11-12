@@ -115,8 +115,10 @@ const calls = z.discriminatedUnion("action", [
   materialLinkUpdateInput.safeExtend({action:z.literal("materials.links.update")}),
   z.object({ action: z.literal("attendance.record"),
     sessionId: uuid, studentId: uuid,
-    status: z.enum(["present", "absent", "late", "excused"]),
+    status: z.enum(["present", "absent", "late", "excused", "student_cancelled", "teacher_cancelled"]),
     note: z.string().max(5000).default(""),
+    noticeAt: z.string().datetime({offset:true}).optional(),
+    cancelReason: z.string().max(1000).optional(),
   }),
 ]);
 

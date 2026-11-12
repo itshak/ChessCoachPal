@@ -248,7 +248,7 @@ export async function attendanceList(db: Db, teacherId: string, sessionId: strin
     .select("id").eq("teacher_id", teacherId).eq("id", sessionId).maybeSingle();
   if (!session) throw notFound();
   const { data, error } = await db.from("session_attendance")
-    .select("student_id,status,note,updated_at").eq("teacher_id", teacherId)
+    .select("student_id,status,note,notice_at,cancelled_by,cancel_reason,marked_at,marked_by,updated_at").eq("teacher_id", teacherId)
     .eq("session_id", sessionId).limit(100);
   if (error) throw problem();
   return data;
@@ -261,11 +261,18 @@ export async function attendanceList(db: Db, teacherId: string, sessionId: strin
 export async function attendanceRecord(
   db: Db, teacherId: string,
   payload:{sessionId:string;studentId:string;status:string;note?:string;
+    noticeAt?:string;cancelReason?:string;
     expectedUpdatedAt?:string;requestId?:string}
 ) {
- if(!["present","absent","late","excused"].includes(payload.status)||
-    (payload.note??"").length>5000)
-   throw new CoachError("VALIDATION_ERROR",400,"Invalid attendance status or note");
+ const cancelled=["student_cancelled","teacher_cancelled"].includes(payload.status);
+ if(!["present","absent","late","excused","student_cancelled","teacher_cancelled"].includes(payload.status)||
+    (payload.note??"").length>5000||
+    (payload.cancelReason??"").length>1000||
+    (payload.status==="student_cancelled"&&!payload.noticeAt)||
+    (!cancelled&&(payload.noticeAt!==undefined||payload.cancelReason!==undefined))||
+    (payload.noticeAt!==undefined&&
+       (!/^(?:\d{4}-\d{2}-\d{2}T)/.test(payload.noticeAt)||!Number.isFinite(Date.parse(payload.noticeAt)))))
+   throw new CoachError("VALIDATION_ERROR",400,"Invalid attendance status or cancellation evidence");
  if(Boolean(payload.requestId)!==Boolean(payload.expectedUpdatedAt))
    throw new CoachError("VALIDATION_ERROR",400,
     "Provide both the attendance revision and idempotency key");
@@ -284,6 +291,8 @@ export async function attendanceRecord(
    p_attendance:[{
      studentId:payload.studentId,status:payload.status,
      note:payload.note??"",expectedUpdatedAt:expected,
+     ...(payload.noticeAt!==undefined?{noticeAt:payload.noticeAt}:{}),
+     ...(payload.cancelReason!==undefined?{cancelReason:payload.cancelReason}:{}),
    }],
    p_expected_updated_at:null,p_idempotency_key:requestId,
  });
@@ -300,7 +309,7 @@ export async function attendanceRecord(
  // retain the ordinary row shape used by the teaching workspace.
  if(payload.requestId)return receipt;
  const {data,error:readError}=await db.from("session_attendance")
-   .select("student_id,status,note,updated_at").eq("teacher_id",teacherId)
+   .select("student_id,status,note,notice_at,cancelled_by,cancel_reason,marked_at,marked_by,updated_at").eq("teacher_id",teacherId)
    .eq("session_id",payload.sessionId).eq("student_id",payload.studentId).maybeSingle();
  if(readError)throw problem();
  if(!data)throw notFound();
