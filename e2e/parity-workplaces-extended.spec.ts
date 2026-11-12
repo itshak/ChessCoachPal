@@ -81,6 +81,7 @@ test("PARITY:PARITY-workplaces-policy edits timezone locale currency and policy 
     action:"workplaces.update",workplaceId:id,
     timezone:"Asia/Jerusalem",currency:"ILS",locale:"he",
     policy:{cancellationHours:24},
+    expectedUpdatedAt:before.updated_at,idempotencyKey:randomUUID(),
   }});
   expect(browserEdit.status(),await browserEdit.text()).toBe(200);
   const browserRow=await websiteWorkplace(page,id);

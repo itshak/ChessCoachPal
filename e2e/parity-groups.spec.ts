@@ -59,6 +59,7 @@ test("PARITY:PARITY-groups-create-update keeps class rename and revision identic
  const siteEdit=await page.request.post("/api/agent/v1",{data:{
    action:"groups.update",groupId:created.entityId,workplaceId:wp,
    name:label("Browser class name"),
+   expectedUpdatedAt:renamed.data.revision,idempotencyKey:randomUUID(),
  }});
  expect(siteEdit.status()).toBe(200);
  const after=(await callTool("ccp_v1_groups_list",{})).data as Array<{id:string;name:string}>;

@@ -1330,11 +1330,18 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_v1_billing_generation_commit": {
         const a=args as {periodStart:string;periodEnd:string;idempotencyKey?:string};
-        return await billingActionResponse(await teacherBillingGenerate(db,teacherId,{...a,commit:true}));
+        // The MCP approval marker is transport metadata, never an ordinary
+        // domain edit field; pass only fields accepted by the website service.
+        return await billingActionResponse(await teacherBillingGenerate(db,teacherId,{
+          periodStart:a.periodStart,periodEnd:a.periodEnd,
+          idempotencyKey:a.idempotencyKey,commit:true,
+        }));
       }
       case "ccp_v1_billing_invoice_regenerate": {
         const a=args as {invoiceId:string;expectedUpdatedAt?:string;idempotencyKey?:string};
-        return await billingActionResponse(await teacherBillingRegenerate(db,teacherId,a.invoiceId,a));
+        return await billingActionResponse(await teacherBillingRegenerate(db,teacherId,a.invoiceId,{
+          expectedUpdatedAt:a.expectedUpdatedAt,idempotencyKey:a.idempotencyKey,
+        }));
       }
       case "ccp_v1_billing_invoice_pdf": {
         const a=args as {invoiceId:string};

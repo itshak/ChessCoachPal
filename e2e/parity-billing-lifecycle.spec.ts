@@ -485,6 +485,7 @@ test("PARITY:PARITY-billing-regenerate-checkout-reconciliation blocks stale paym
  expect(signedIn.error).toBeNull();
  const direct=await auth.rpc("ccp_invoice_regenerate_atomic",{
    p_invoice_id:seeded.id,p_items:[],p_redemptions:[],
+   p_expected_updated_at:before.updated_at,p_request_id:randomUUID(),
  });
  expect(direct.error?.message).toContain("INVOICE_REGENERATION_BLOCKED");
 
