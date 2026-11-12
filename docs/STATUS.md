@@ -2,6 +2,10 @@
 
 **Updated:** 2026-11-12 · **Branch of record:** main (unreleased; parity work in PR #52 / PR #51) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
+## 2026-11-12 — secure MCP setup handoff candidate verified on independent source
+
+[Source `930a596` passed 213 authenticated website/MCP E2E tests](https://github.com/itshak/ChessCoachPal/actions/runs/43278869225) (five skipped, zero failed), plus CI, security, self-host Compose and backup/restore. A new consent-gated tool gives an authenticated browser path to actual AI/Stripe credential fields without accepting raw secret values from chat. The website remains the only secret-entry surface, and MCP receives masked setup status and can clear stored credentials. The proposed inventory increases to **58/59** route families; the legacy coach gateway, four historical acceptance rows, canonical lesson cutover and merged-main strict release checks remain open. This candidate is in [draft PR #55](https://github.com/itshak/ChessCoachPal/pull/55), not `main`.
+
 ## 2026-11-12 — verified parity batch, not yet merged to main
 
 **Verified source `e2c55a7` (2026-11-12):** [212 authenticated website/MCP E2E tests passed](https://github.com/itshak/ChessCoachPal/actions/runs/43275932081) (five intentionally skipped, zero failures). [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43275931908), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43275932040), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43275931957), and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43275931913) are green on the identical source.
