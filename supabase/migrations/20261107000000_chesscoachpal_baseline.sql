@@ -4237,6 +4237,80 @@ REVOKE ALL ON FUNCTION public.ccp_calendar_attendance_commit(
 GRANT EXECUTE ON FUNCTION public.ccp_calendar_attendance_commit(
  uuid,text,timestamptz,text,timestamptz,uuid,boolean) TO authenticated;
 
+-- Portal cancellations are a separate guardian-originated mutation, not a
+-- privilege to impersonate a teacher's authenticated attendance RPC. The
+-- portal token is checked *inside* the same transaction that locks the lesson,
+-- guardian and student, then records the attendance decision. A duplicate
+-- request returns its original timestamp without generating another notice.
+CREATE OR REPLACE FUNCTION public.ccp_portal_cancel_lesson(
+ p_portal_token text,p_lesson_id uuid,p_cancel_note text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $portal_cancel$
+DECLARE
+ v_teacher uuid;
+ v_student_name text;
+ v_starts_at timestamptz;
+ v_att public.attendance%ROWTYPE;
+ v_now timestamptz;
+BEGIN
+ IF p_portal_token IS NULL OR length(p_portal_token) NOT BETWEEN 32 AND 256
+    OR p_lesson_id IS NULL THEN
+   RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF p_cancel_note IS NULL OR char_length(p_cancel_note)>1000 THEN
+   RAISE EXCEPTION 'PORTAL_INVALID_NOTE' USING ERRCODE='22023';
+ END IF;
+ -- The capability and the affected lesson must have the SAME teacher. Lock
+ -- the underlying rows so portal-token rotation, student reassignment, and
+ -- teacher attendance commits cannot race this decision.
+ SELECT l.teacher_id,s.name,l.starts_at
+  INTO v_teacher,v_student_name,v_starts_at
+ FROM public.lessons l
+ JOIN public.students s ON s.id=l.student_id
+  AND s.teacher_id=l.teacher_id
+ JOIN public.guardians g ON g.id=s.guardian_id
+  AND g.teacher_id=l.teacher_id
+ WHERE l.id=p_lesson_id AND g.portal_token=p_portal_token
+ FOR UPDATE OF l,s,g;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_att FROM public.attendance
+  WHERE lesson_id=p_lesson_id FOR UPDATE;
+ IF v_att.id IS NOT NULL THEN
+   IF v_att.status='student_cancel' THEN
+     RETURN jsonb_build_object('ok',true,'replayed',true,
+       'noticeAt',v_att.notice_at,'cancelNote',v_att.cancel_note,
+       'teacherId',v_teacher,'studentName',v_student_name,
+       'startsAt',v_starts_at);
+   END IF;
+   RAISE EXCEPTION 'PORTAL_ALREADY_MARKED' USING ERRCODE='23514';
+ END IF;
+ IF v_starts_at<=clock_timestamp() THEN
+   RAISE EXCEPTION 'PORTAL_TOO_LATE' USING ERRCODE='22023';
+ END IF;
+ v_now:=clock_timestamp();
+ INSERT INTO public.attendance(lesson_id,status,notice_at,marked_at,cancel_note)
+ VALUES(p_lesson_id,'student_cancel',v_now,v_now,p_cancel_note)
+ RETURNING * INTO v_att;
+ RETURN jsonb_build_object('ok',true,'replayed',false,
+   'noticeAt',v_att.notice_at,'cancelNote',v_att.cancel_note,
+   'teacherId',v_teacher,'studentName',v_student_name,
+   'startsAt',v_starts_at);
+END;
+$portal_cancel$;
+REVOKE ALL ON FUNCTION public.ccp_portal_cancel_lesson(text,uuid,text)
+ FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_portal_cancel_lesson(text,uuid,text)
+ TO service_role;
+
+-- All ordinary teacher attendance writes must go through the optimistic,
+-- receipt-backed ccp_calendar_attendance_commit RPC. The token-authorized
+-- guardian writer above is available ONLY to the server-side service role.
+-- SELECT remains available to teachers through tenant RLS.
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.attendance
+ FROM authenticated,PUBLIC;
+
 -- Historical direct lessons must outlive current workplace enrollment.
 -- Existing FK tied lessons to the *live* membership row, making a safe
 -- unenroll impossible even for completed/past lessons. Keep student and
