@@ -257,3 +257,63 @@ test("PARITY:PARITY-billing-shared-payment-validation rejects unknown fields in 
  expect(replay.error).toBeUndefined();
  expect(replay.data.paymentId).toBe((await valid.json()).paymentId);
 });
+
+test("PARITY:PARITY-billing-manual-payment-foreign-tenant-denial blocks website and MCP record and reversal",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ const email="foreign-payment-"+randomUUID()+"@example.com";
+ const password="SyntheticPaymentTenant-123!";
+ const identity=await admin.auth.admin.createUser({
+  email,password,email_confirm:true,
+ });
+ expect(identity.error).toBeNull();
+ const teacherId=identity.data.user!.id;
+ try{
+  expect((await admin.from("teachers").insert({
+   id:teacherId,email,display_name:"Unrelated finance teacher",
+   hosted_enforced:false,
+  })).error).toBeNull();
+  const guardian=await admin.from("guardians").insert({
+   teacher_id:teacherId,name:"Other studio family",
+   portal_token:randomUUID(),
+  }).select("id").single();
+  expect(guardian.error).toBeNull();
+  const invoice=await admin.from("invoices").insert({
+   teacher_id:teacherId,guardian_id:guardian.data!.id,
+   status:"sent",subtotal_cents:5600,currency:"USD",
+   period_start:"2040-01-01",period_end:"2040-01-31",
+  }).select("id").single();
+  expect(invoice.error).toBeNull();
+  const invoiceId=invoice.data!.id as string;
+  const paid=await admin.from("payments").insert({
+   invoice_id:invoiceId,amount_cents:900,method:"manual",
+   note:"Other studio payment",
+  }).select("id").single();
+  expect(paid.error).toBeNull();
+  const paymentId=paid.data!.id as string;
+  const webRecord=await page.request.post("/api/billing/invoices/"+invoiceId+"/mark-paid",{
+   data:{amountCents:500,idempotencyKey:randomUUID()},
+  });
+  expect(webRecord.status()).toBe(404);
+  const modelRecord=await call("ccp_v1_billing_manual_payment_record",{
+   invoiceId,amountCents:500,idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(modelRecord.error?.code).toBe("NOT_FOUND");
+  const webDelete=await page.request.delete(
+   "/api/billing/invoices/"+invoiceId+"/payments/"+paymentId);
+  expect(webDelete.status()).toBe(404);
+  const modelDelete=await call("ccp_v1_billing_manual_payment_delete",{
+   invoiceId,paymentId,confirmed:true,
+  });
+  expect(modelDelete.error?.code).toBe("NOT_FOUND");
+  const unaffected=await admin.from("payments").select("id,amount_cents")
+   .eq("id",paymentId).single();
+  expect(unaffected.error).toBeNull();
+  expect(unaffected.data?.amount_cents).toBe(900);
+ }finally{
+  await admin.auth.admin.deleteUser(teacherId);
+ }
+});
