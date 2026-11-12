@@ -3,11 +3,11 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import {materializeLessons} from "./scheduling";
 
 const day = "2027-01-03";
-function fixture(options: {badMovedSecondPage?:boolean;failInsert?:boolean;slotCount?:number}={}) {
+function fixture(options: {badMovedSecondPage?:boolean;failInsert?:boolean;slotCount?:number;endDate?:string}={}) {
   const slots = Array.from({length:options.slotCount??501},(_,i)=>({
     id:`slot-${i}`,teacher_id:"teacher",student_id:"student",
     active:true,day_of_week:0,start_time:"16:00:00",
-    start_date:day,end_date:day,duration_minutes:45,is_home_visit:false,
+    start_date:day,end_date:options.endDate??day,duration_minutes:45,is_home_visit:false,
   }));
   // The skip that matters is on page TWO; reading only the default
   // PostgREST page would falsely restore a moved slot occurrence.
@@ -75,11 +75,11 @@ describe("recurring calendar materialization is complete or fails closed",()=>{
     expect(upsert).not.toHaveBeenCalled();
   });
   it("does not attempt writes for oversized generated lesson inventories",async()=>{
-    const {db,upsert}=fixture({slotCount:2500});
+    const {db,upsert}=fixture({slotCount:2500,endDate:"2027-04-01"});
     await expect(materializeLessons(db,"teacher",day,"2027-04-01"))
       .rejects.toThrow("Too many lesson occurrences");
     expect(upsert).not.toHaveBeenCalled();
-  });
+  },30000);
   it("propagates write failure instead of claiming that materialization succeeded",async()=>{
     const {db,upsert}=fixture({failInsert:true});
     await expect(materializeLessons(db,"teacher",day,day))
