@@ -23,4 +23,14 @@ describe("one actual-lesson source of truth",()=>{
   assert.equal(hasLessonTable(table("lesson_slots","unquoted"),"lessons"),false);
   assert.equal(competingLessonModels(["lessons",...required].map(x=>table(x,"unquoted")).join("\n")),true);
  });
- it("fails closed if s¶»§q«^
+ it("fails closed if someone removes the old tables and the canonical schema",()=>{
+  const result=canonicalOccurrenceSchemaErrors("CREATE TABLE public.lesson_slots (id uuid);");
+  assert.equal(result.length,3);
+  for(const name of required)assert(result.some(x=>x.includes(name)));
+ });
+ it("rejects empty SQL, even without duplicate physical models",()=>{
+  assert.equal(competingLessonModels(""),false);
+  assert.equal(canonicalOccurrenceSchemaErrors("").length,3);
+ });
+});
+

@@ -28,4 +28,45 @@ export function directOldSourceReferences(source){
   if(sql.test(source))matches.push("SQL "+table);
  }
  for(const rpc of oldRpcs)
-  if(new RegExp('\¶»§q«^
+  if(new RegExp('\\b'+rpc+'\\b',"i").test(source))matches.push("RPC "+rpc);
+ return matches;
+}
+function walk(dir){
+ const files=[];
+ for(const ent of readdirSync(dir,{withFileTypes:true})){
+  if(ent.name==="node_modules"||ent.name===".git"||ent.name===".next")continue;
+  const full=join(dir,ent.name);
+  if(ent.isDirectory())files.push(...walk(full));
+  else if(ent.isFile()&&sourceExt.test(ent.name))files.push(full);
+ }
+ return files;
+}
+export function inventory(){
+ const sql=readFileSync(join(root,sqlPath),"utf8");
+ const files=[];
+ for(const folder of targets)
+  for(const abs of walk(join(root,folder))){
+   const path=relative(root,abs).replaceAll("\\","/");
+   if(path===sqlPath || path==="scripts/canonical-cutover-audit.mjs" || path==="scripts/canonical-cutover-audit.test.mjs")continue;
+   const references=directOldSourceReferences(readFileSync(abs,"utf8")).filter(x=>path.endsWith(".sql")||!x.startsWith("SQL "));
+   if(references.length)files.push({path,references,kind:/\.(?:test|spec)\.|^e2e\//.test(path)?"test":"runtime"});
+  }
+ files.sort((a,b)=>a.path.localeCompare(b.path));
+ return {physicalTables:physicalLegacyTableDefinitions(sql),sqlPath,
+  sqlReferences:directOldSourceReferences(sql),consumers:files,oldRpcs};
+}
+const invoked=process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url);
+if(invoked){
+ const audit=inventory(),runtime=audit.consumers.filter(x=>x.kind==="runtime");
+ const tests=audit.consumers.filter(x=>x.kind==="test");
+ if(process.argv.includes("--json"))console.log(JSON.stringify(audit,null,2));
+ else{
+  console.log("Canonical attendance cutover: "+audit.physicalTables.length+" old physical tables; "+
+   runtime.length+" source consumers; "+tests.length+" tests/fixtures.");
+  for(const entry of runtime)console.log(" - "+entry.path+": "+entry.references.join(", "));
+ }
+ if(process.argv.includes("--strict")&&
+    (audit.physicalTables.length||audit.sqlReferences.length||audit.consumers.length))
+   process.exitCode=1;
+}
+
