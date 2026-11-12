@@ -103,6 +103,32 @@ describe("legacy calendar external-message consent",()=>{
    .rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
   expect(writes).toHaveLength(0);
  });
+ it("derives stable and independent per-lesson receipts for partial bulk retries",async()=>{
+  const writes:Record<string,unknown>[]=[];
+  const revisions={"lesson-one":null,"lesson-two":null};
+  const payload={
+   ids:["lesson-one","lesson-two"],status:"no_show" as const,
+   idempotencyKey:"00000000-0000-4000-8000-000000000099",
+   expectedMarkedAtByLesson:revisions,
+  };
+  const db=fakeAttendanceDb(writes);
+  expect((await calendarAttendanceBulk(db,"teacher-one",payload,noOrigin)).succeeded).toBe(2);
+  expect((await calendarAttendanceBulk(db,"teacher-one",payload,noOrigin)).succeeded).toBe(2);
+  expect(writes).toHaveLength(4);
+  expect(writes[0].p_idempotency_key).toBe(writes[2].p_idempotency_key);
+  expect(writes[1].p_idempotency_key).toBe(writes[3].p_idempotency_key);
+  expect(writes[0].p_idempotency_key).not.toBe(writes[1].p_idempotency_key);
+  expect(writes.every(w=>w.p_notify_family===false)).toBe(true);
+ });
+ it("rejects a partial bulk retry precondition before writing anything",async()=>{
+  const writes:Record<string,unknown>[]=[];
+  await expect(calendarAttendanceBulk(fakeAttendanceDb(writes),"teacher-one",{
+   ids:["lesson-one","lesson-two"],status:"no_show",
+   idempotencyKey:"00000000-0000-4000-8000-000000000100",
+   expectedMarkedAtByLesson:{"lesson-one":null},
+  },noOrigin)).rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+  expect(writes).toHaveLength(0);
+ });
  it("rejects invalid email origin before saving private or family lesson notes",async()=>{
   const writes:Record<string,unknown>[]=[];
   await expect(calendarLessonNoteWrite(fakeAttendanceDb(writes),"teacher-one",

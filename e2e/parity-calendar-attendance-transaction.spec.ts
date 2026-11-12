@@ -74,3 +74,67 @@ test("PARITY:PARITY-calendar-attendance-atomic-replay enforces cross-client revi
  });
  expect(foreign.error?.code).toBe("NOT_FOUND");
 });
+
+test("PARITY:PARITY-calendar-bulk-replay keeps per-lesson receipts stable across MCP and website",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const learner=await call("ccp_v1_students_create",{
+  name:"Bulk attendance learner "+randomUUID(),idempotencyKey:randomUUID(),
+ });
+ expect(learner.error).toBeUndefined();
+ const studentId=learner.data.entityId as string;
+ const ids:string[]=[];
+ for(const date of ["2056-06-21","2056-06-22"]){
+  const l=await call("ccp_v1_calendar_lessons_create",{
+   studentId,date,time:"11:00",durationMinutes:45,confirmed:true,
+  });
+  expect(l.error).toBeUndefined();
+  ids.push(l.data.id as string);
+ }
+ const revisions=Object.fromEntries(ids.map(id=>[id,null]));
+ const root=randomUUID();
+ const payload={ids,status:"no_show" as const,notifyFamily:false,
+  idempotencyKey:root,expectedMarkedAtByLesson:revisions};
+ const mcp=await call("ccp_v1_calendar_attendance_bulk",{
+  ...payload,confirmed:true,
+ });
+ expect(mcp.error).toBeUndefined();
+ expect(mcp.data).toMatchObject({ok:true,succeeded:2,emailed:0,failed:[]});
+ async function snapshots(){
+  const rows=[];
+  for(const id of ids){
+   const response=await page.request.get("/api/schedule/lessons/"+id+"/attendance");
+   expect(response.status(),await response.text()).toBe(200);
+   rows.push(await response.json() as {status:string;marked_at:string});
+  }
+  return rows;
+ }
+ const first=await snapshots();
+ expect(first.map(r=>r.status)).toEqual(["no_show","no_show"]);
+ const replay=await page.request.post("/api/schedule/attendance/bulk",{data:payload});
+ expect(replay.status(),await replay.text()).toBe(200);
+ expect(await replay.json()).toMatchObject({ok:true,succeeded:2,emailed:0,failed:[]});
+ expect(await snapshots()).toEqual(first);
+ const conflict=await page.request.post("/api/schedule/attendance/bulk",{
+  data:{...payload,status:"attended"},
+ });
+ expect(conflict.status(),await conflict.text()).toBe(200);
+ expect(await conflict.json()).toMatchObject({ok:false,succeeded:0});
+ expect(await snapshots()).toEqual(first);
+ const stale=await call("ccp_v1_calendar_attendance_bulk",{
+  ...payload,idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(stale.error).toBeUndefined();
+ expect(stale.data.succeeded).toBe(0);
+ expect(stale.data.failed).toHaveLength(2);
+ const corrected=await page.request.post("/api/schedule/attendance/bulk",{
+  data:{...payload,status:"attended",idempotencyKey:randomUUID(),
+    expectedMarkedAtByLesson:Object.fromEntries(ids.map((id,i)=>[id,first[i].marked_at]))},
+ });
+ expect(corrected.status(),await corrected.text()).toBe(200);
+ expect(await corrected.json()).toMatchObject({ok:true,succeeded:2,failed:[]});
+ for(const id of ids){
+  const fromMcp=await call("ccp_v1_calendar_attendance_read",{lessonId:id});
+  expect(fromMcp.error).toBeUndefined();
+  expect(fromMcp.data.status).toBe("attended");
+ }
+});
