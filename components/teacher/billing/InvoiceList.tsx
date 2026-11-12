@@ -71,9 +71,41 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
     const n = ids.length;
     const skipped = selected.size - n;
 
+    let previewDigest: string | undefined;
+    let sendRecipients = "";
+    if (action === "send") {
+      setBusy(true);
+      setMessage(null);
+      try {
+        const response = await fetch("/api/billing/invoices/bulk",{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({action:"preview",ids,includeRecipients:true}),
+        });
+        const body=await response.json();
+        if(!response.ok||!body.ok){
+          setMessage("Some invoices are no longer sendable. Refresh and review them.");
+          return;
+        }
+        previewDigest=body.previewDigest;
+        sendRecipients=body.results.map((item:{
+          id:string;preview:{recipientCount:number;recipients:string[];
+            subtotalCents:number;currency:string;};
+        })=>{
+          const invoice=actionable.find(row=>row.id===item.id);
+          return (invoice?.familyName??item.id)+": "+
+            (item.preview.recipients.length?
+              item.preview.recipients.join(", "):"NO EMAIL")+
+            " · "+formatMoney(item.preview.subtotalCents,item.preview.currency);
+        }).join("\n");
+      }catch{
+        setMessage("Unable to load all recipients. No invoices were sent.");
+        return;
+      }finally{setBusy(false);}
+    }
+
     const confirmMsg =
       action === "send"
-        ? `Send ${n} draft invoice${n === 1 ? "" : "s"}? Families will be emailed a PDF.${
+        ? `Send ${n} draft invoice${n === 1 ? "" : "s"}? Review EVERY recipient and exact amount below before confirming:\n\n${sendRecipients}${
             skipped > 0 ? ` (${skipped} non-draft selected will be skipped.)` : ""
           }`
         : action === "delete"
@@ -107,7 +139,8 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
     const res = await fetch("/api/billing/invoices/bulk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, ids }),
+      body: JSON.stringify({ action, ids,
+        ...(action==="send"?{confirmedEmail:true,previewDigest}:{}) }),
     });
     const data = await res.json().catch(() => ({}));
     setBusy(false);

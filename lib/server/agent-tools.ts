@@ -106,8 +106,10 @@ import {
 import type {ColumnMapping} from "@/lib/spreadsheet-import";
 import {
  teacherBillingGenerate,teacherBillingRegenerate,teacherBillingCheckout,teacherBillingBulk,
+ teacherBillingBulkPreview,
 } from "@/lib/server/teacher-billing-operations";
 import {loadInvoicePdf} from "@/lib/server/invoice-pdf-data";
+import {invoicePdfMcpPayload} from "@/lib/server/invoice-pdf-transfer";
 async function billingActionResponse(result:Response){
  const body=await result.json();
  return result.ok?{data:body}:{error:{code:result.status===400?"VALIDATION_ERROR":
@@ -244,12 +246,24 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_billing_invoices_bulk_preview",
+    description:"Review up to 50 teacher-owned draft invoices with current amounts, email recipients and a revision fingerprint. Requires confirmed=true to reveal family emails. Read-only; no email is sent.",
+    schema:z.object({ids:z.array(uuid).min(1).max(50),
+      includeRecipients:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict()
+      .refine(v=>!v.includeRecipients||v.confirmed===true,
+        "Viewing family recipients requires explicit approval"),
+    scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_v1_billing_invoices_bulk",
-    description:"Perform confirmed invoice send, delete or void on 1–50 teacher-owned invoices. SEND has external email effects and requires separate confirmedEmail=true. Per-invoice failures are returned.",
+    description:"Perform confirmed invoice send, delete or void on up to 50 teacher-owned invoices. For SEND first review the bulk preview of all recipients and totals, then provide its previewDigest plus confirmedEmail=true and confirmed=true. Changed recipients reject sending.",
     schema:z.object({ids:z.array(uuid).min(1).max(50),
       action:z.enum(["send","delete","void"]),
-      confirmed:z.literal(true),confirmedEmail:z.literal(true).optional()}).strict()
-      .refine(v=>v.action!=="send"||v.confirmedEmail===true,"Sending email requires explicit approval"),
+      confirmed:z.literal(true),confirmedEmail:z.literal(true).optional(),
+      previewDigest:z.string().regex(/^[0-9a-f]{64}$/).optional()}).strict()
+      .refine(v=>v.action!=="send"||
+        (v.confirmedEmail===true&&Boolean(v.previewDigest)),
+        "Bulk email requires confirmed recipient preview"),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1347,19 +1361,26 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {invoiceId:string};
         const loaded=await loadInvoicePdf(db,{invoiceId:a.invoiceId,teacherId});
         if(!loaded.ok)return {error:{code:loaded.code.toUpperCase(),message:"Unable to generate invoice PDF"}};
-        if(loaded.data.pdfBytes.byteLength>512*1024)
-          return {error:{code:"PDF_TOO_LARGE",message:"Download the invoice PDF securely from the website"}};
-        return {data:{filename:loaded.data.filename,mimeType:"application/pdf",
-          base64:Buffer.from(loaded.data.pdfBytes).toString("base64")}};
+        return invoicePdfMcpPayload(loaded.data.pdfBytes,loaded.data.filename);
       }
       case "ccp_v1_billing_invoice_checkout": {
         const a=args as {invoiceId:string};
         return await billingActionResponse(await teacherBillingCheckout(db,teacherId,a.invoiceId,oauthOrigin()));
       }
+      case "ccp_v1_billing_invoices_bulk_preview": {
+        const a=args as {ids:string[];includeRecipients:boolean;confirmed?:boolean};
+        return await billingActionResponse(await teacherBillingBulkPreview(
+          db,teacherId,a.ids,a.includeRecipients&&a.confirmed===true));
+      }
       case "ccp_v1_billing_invoices_bulk": {
-        const a=args as {ids:string[];action:"send"|"delete"|"void"};
+        const a=args as {ids:string[];action:"send"|"delete"|"void";
+          confirmedEmail?:boolean;previewDigest?:string};
         const user=(await db.auth.getUser()).data.user;
-        return await billingActionResponse(await teacherBillingBulk(db,teacherId,user?.email,oauthOrigin(),a));
+        return await billingActionResponse(await teacherBillingBulk(
+          db,teacherId,user?.email,oauthOrigin(),{
+            ids:a.ids,action:a.action,confirmedEmail:a.confirmedEmail,
+            previewDigest:a.previewDigest,
+          }));
       }
       case "ccp_v1_import_spreadsheet_parse": {
         const a=args as {filename:string;base64:string};

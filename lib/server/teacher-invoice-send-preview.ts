@@ -27,7 +27,8 @@ export async function teacherInvoiceSendPreview(
  const periodLabel=`${invoice.period_start} to ${invoice.period_end}`;
  const studio=policy.studio_name||"your studio";
  return {
-   invoiceId:invoice.id,periodStart:invoice.period_start,periodEnd:invoice.period_end,
+   invoiceId:invoice.id,invoiceRevision:invoice.updated_at,
+   periodStart:invoice.period_start,periodEnd:invoice.period_end,
    currency:invoice.currency,subtotalCents:invoice.subtotal_cents,
    itemCount:items.length,recipientCount:recipients.length,
    deliveryPossible:recipients.length>0,

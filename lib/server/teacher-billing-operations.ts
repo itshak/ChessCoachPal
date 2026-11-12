@@ -1,5 +1,5 @@
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {NextResponse} from "next/server";
 import {getPolicy} from "@/lib/server/scheduling";
 import {derivePeriodItems,getInvoicedLessonIds} from "@/lib/server/billing";
@@ -9,6 +9,7 @@ import {createCheckoutSession,expireCheckoutSession} from "@/lib/payments";
 import {familyDisplayName,stripeCheckoutPrefillEmail} from "@/lib/guardians";
 import {oneToOne} from "@/lib/schedule";
 import {sendInvoice} from "@/lib/server/invoice-send";
+import {teacherInvoiceSendPreview} from "@/lib/server/teacher-invoice-send-preview";
 import {teacherInvoiceDelete,teacherInvoiceVoid} from "@/lib/server/teacher-invoice-actions";
 const DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -453,33 +454,81 @@ export async function teacherBillingCheckout(supabase:SupabaseClient,teacherId:s
 
 const ACTIONS = ["send","delete","void"] as const;
 type BulkAction=(typeof ACTIONS)[number];
+const BULK_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function verifiedBulkIds(ids:unknown):ids is string[]{
+ return Array.isArray(ids)&&ids.length>=1&&ids.length<=50&&
+  ids.every(id=>typeof id==="string"&&BULK_ID.test(id))&&
+  new Set(ids).size===ids.length;
+}
+/** Privacy-safe, nonmutating, owner-scoped preview with exact recipient
+ * fingerprint. Both channels use the same snapshot before external email. */
+export async function teacherBillingBulkPreview(
+ db:SupabaseClient,teacherId:string,ids:unknown,
+ includeRecipients=false,
+):Promise<NextResponse>{
+ if(!verifiedBulkIds(ids))
+  return NextResponse.json({error:"Select 1–50 distinct invoice IDs"},{status:400});
+ const results=[];
+ for(const id of ids){
+  try{
+   const item=await teacherInvoiceSendPreview(db,teacherId,id,true);
+   if(!item.deliveryPossible){
+     results.push({id,ok:false,error:"Family has no email recipients"});
+   }else{
+     results.push({id,ok:true,preview:item});
+   }
+  }catch{
+   // Do not reveal whether an invoice belongs to a different teacher.
+   results.push({id,ok:false,error:"Invoice unavailable or not sendable"});
+  }
+ }
+ const fingerprint=results.map(item=>({
+  id:item.id,ok:item.ok,
+  ...(item.ok?{preview:item.preview}:{}),
+ }));
+ const previewDigest=createHash("sha256").update(JSON.stringify(fingerprint))
+   .digest("hex");
+ const failed=results.filter(x=>!x.ok).length;
+ return NextResponse.json({
+  ok:failed===0,ids,previewDigest,readyCount:results.length-failed,
+  failedCount:failed,
+  results:results.map(item=>({
+   id:item.id,ok:item.ok,
+   ...(item.ok?{preview:includeRecipients?item.preview:{
+    ...item.preview,recipients:undefined,
+   }}:{error:item.error}),
+  })),
+ },{headers:{"Cache-Control":"no-store"}});
+}
+
 export async function teacherBillingBulk(supabase:SupabaseClient,teacherId:string,
- teacherEmail:string|undefined,origin:string,body:{action?:string;ids?:unknown[]}):Promise<NextResponse>{
-  const action = body.action as BulkAction;
-  const ids = Array.isArray(body.ids)
-    ? (body.ids as unknown[]).filter((id): id is string => typeof id === "string")
-    : [];
-
-  if (!ACTIONS.includes(action)) {
-    return NextResponse.json(
-      { error: "action must be send, delete, or void" },
-      { status: 400 }
-    );
-  }
-  if (ids.length === 0) {
-    return NextResponse.json({ error: "No invoices selected" }, { status: 400 });
-  }
-  if (ids.length > 50) {
-    return NextResponse.json(
-      { error: "Select at most 50 invoices at a time" },
-      { status: 400 }
-    );
-  }
-
-  // Prevent duplicate invoices being processed and emailed twice within one
-  // batch request. The model and website must both see the same rejection.
-  if (new Set(ids).size !== ids.length) {
-    return NextResponse.json({ error: "Select each invoice only once" }, { status: 400 });
+ teacherEmail:string|undefined,origin:string,body:{
+  action?:string;ids?:unknown;confirmedEmail?:boolean;previewDigest?:string,
+ }):Promise<NextResponse>{
+  if(!body||typeof body!=="object"||Array.isArray(body)||
+    Object.keys(body).some(k=>!["action","ids","confirmedEmail","previewDigest"].includes(k))||
+    !verifiedBulkIds(body.ids)||!ACTIONS.includes(body.action as BulkAction))
+    return NextResponse.json({error:"Invalid invoice bulk request"},{status:400});
+  const action=body.action as BulkAction;
+  const ids=body.ids;
+  if(action==="send"){
+    if(body.confirmedEmail!==true||
+       typeof body.previewDigest!=="string"||
+       !/^[0-9a-f]{64}$/i.test(body.previewDigest))
+      return NextResponse.json({
+       error:"Review all family email recipients and confirm sending before bulk delivery",
+      },{status:400});
+    const previewResponse=await teacherBillingBulkPreview(
+      supabase,teacherId,ids,true);
+    if(!previewResponse.ok)
+      return NextResponse.json({error:"Unable to verify invoice recipients"},{status:409});
+    const preview=await previewResponse.json() as {
+      ok:boolean;previewDigest:string,
+    };
+    if(!preview.ok||preview.previewDigest!==body.previewDigest)
+      return NextResponse.json({
+       error:"Invoice, amount or recipient list changed; review again before sending",
+      },{status:409});
   }
   const results: { id: string; ok: boolean; error?: string }[] = [];
 

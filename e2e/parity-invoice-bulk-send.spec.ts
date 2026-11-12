@@ -70,16 +70,41 @@ test("PARITY:PARITY-billing-send-bulk-reviewed uses previews and at-most-once we
   expect(duplicate.status()).toBe(400);
   for (const item of invoices) expect(await mailpitMessagesTo(request, item.email)).toHaveLength(0);
 
+  const previewWeb=await page.request.post("/api/billing/invoices/bulk",{
+    data:{action:"preview",ids:ids.slice(0,2),includeRecipients:true},
+  });
+  expect(previewWeb.status(),await previewWeb.text()).toBe(200);
+  const webRead=await previewWeb.json();
+  expect(webRead.ok).toBe(true);
+  expect(webRead.readyCount).toBe(2);
+  expect(webRead.results[0].preview.recipients).toEqual([invoices[0].email]);
+  const previewModel=await call("ccp_v1_billing_invoices_bulk_preview",{
+    ids:ids.slice(0,2),includeRecipients:true,confirmed:true,
+  });
+  expect(previewModel.error).toBeUndefined();
+  expect(previewModel.data).toEqual(webRead);
+  const deniedNoPreview=await page.request.post("/api/billing/invoices/bulk",{
+    data:{action:"send",ids:ids.slice(0,2),confirmedEmail:true},
+  });
+  expect(deniedNoPreview.status()).toBe(400);
+
   const website = await page.request.post("/api/billing/invoices/bulk", {
-    data: {action: "send", ids: ids.slice(0, 2)},
+    data: {action: "send", ids: ids.slice(0, 2),
+      confirmedEmail:true,previewDigest:webRead.previewDigest},
   });
   expect(website.status(), await website.text()).toBe(200);
   const webBody = await website.json();
   expect(webBody).toMatchObject({ok: true, succeeded: 2, failed: []});
   expect(webBody.results.map((x: {id: string}) => x.id)).toEqual(ids.slice(0, 2));
 
+  const mcpPreview=await call("ccp_v1_billing_invoices_bulk_preview",{
+    ids:ids.slice(2),includeRecipients:true,confirmed:true,
+  });
+  expect(mcpPreview.error).toBeUndefined();
+  expect(mcpPreview.data.readyCount).toBe(2);
   const mcp = await call("ccp_v1_billing_invoices_bulk", {
     ids: ids.slice(2), action: "send", confirmed: true, confirmedEmail: true,
+    previewDigest:mcpPreview.data.previewDigest,
   });
   expect(mcp.error).toBeUndefined();
   expect(mcp.data).toMatchObject({ok: true, succeeded: 2, failed: []});
@@ -103,16 +128,13 @@ test("PARITY:PARITY-billing-send-bulk-reviewed uses previews and at-most-once we
   // Retrying on the opposite client must not send duplicate mail.
   const mcpReplay = await call("ccp_v1_billing_invoices_bulk", {
     ids: ids.slice(0, 2), action: "send", confirmed: true, confirmedEmail: true,
+    previewDigest:webRead.previewDigest,
   });
-  expect(mcpReplay.error).toBeUndefined();
-  expect(mcpReplay.data.succeeded).toBe(0);
-  expect(mcpReplay.data.failed).toHaveLength(2);
+  expect(mcpReplay.error?.code).toBe("CONFLICT");
   const webReplay = await page.request.post("/api/billing/invoices/bulk", {
-    data: {action: "send", ids: ids.slice(2)},
+    data: {action: "send", ids: ids.slice(2),
+      confirmedEmail:true,previewDigest:mcpPreview.data.previewDigest},
   });
-  expect(webReplay.status(), await webReplay.text()).toBe(200);
-  const replayBody = await webReplay.json();
-  expect(replayBody.succeeded).toBe(0);
-  expect(replayBody.failed).toHaveLength(2);
+  expect(webReplay.status(), await webReplay.text()).toBe(409);
   for (const item of invoices) expect(await mailpitMessagesTo(request, item.email)).toHaveLength(1);
 });

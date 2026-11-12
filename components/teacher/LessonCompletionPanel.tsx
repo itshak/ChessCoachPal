@@ -44,14 +44,24 @@ export function LessonCompletionPanel(){
  const refresh=useCallback(async(id:string)=>{
   const generation=++rosterLoad.current;
   if(!id){setRoster(null);setDecisions({});return;}
-  const [details,register]=await Promise.all([
-   fetch("/api/coaching/sessions/"+encodeURIComponent(id)+"/roster",{cache:"no-store"}).then(async response=>{
-    if(!response.ok)throw new Error("Cannot read the lesson's frozen roster");
-    return response.json() as Promise<Roster>;
-   }),
-   api<Register[]>("attendance.list",{sessionId:id}),
-  ]);
+  let details:Roster,register:Register[];
+  try{
+   [details,register]=await Promise.all([
+    fetch("/api/coaching/sessions/"+encodeURIComponent(id)+"/roster",{cache:"no-store"}).then(async response=>{
+     if(!response.ok)throw new Error("Cannot read the lesson's frozen roster");
+     return response.json() as Promise<Roster>;
+    }),
+    api<Register[]>("attendance.list",{sessionId:id}),
+   ]);
+  }catch(e){
+   // A superseded request must never blank a newer selected lesson.
+   if(generation===rosterLoad.current){
+    setRoster(null);setError(e instanceof Error?e.message:"Cannot load roster");
+   }
+   return;
+  }
   if(generation!==rosterLoad.current)return;
+  setError("");
   const current=new Map(register.map(x=>[x.student_id,x]));
   setRoster(details);
   setDecisions(Object.fromEntries(details.participants.map(p=>{
@@ -75,9 +85,7 @@ export function LessonCompletionPanel(){
   void refreshSessions().catch(e=>setError(String(e)));
  },[refreshSessions]);
  useEffect(()=>{
-  let mounted=true;
-  void refresh(sessionId).catch(e=>{if(mounted){setRoster(null);setError(String(e));}});
-  return ()=>{mounted=false;};
+  void refresh(sessionId);
  },[sessionId,refresh]);
 
  function change(studentId:string,patch:Partial<Decision>){
@@ -123,6 +131,10 @@ export function LessonCompletionPanel(){
   <button type="button" disabled={busy} className="text-sm underline"
    onClick={()=>void refreshSessions().catch(e=>setError(String(e)))}>
    Refresh lessons
+  </button>
+  <button type="button" disabled={!sessionId||busy} className="text-sm underline"
+   onClick={()=>void refresh(sessionId)}>
+   Reload selected roster
   </button>
   <label className="block">Lesson
    <select className={select} aria-label="Lesson to complete" value={sessionId}
