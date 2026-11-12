@@ -346,3 +346,70 @@ test("PARITY:PARITY-billing-manual-payment-reverse-race leaves one ordered ledge
  expect(after.data.status).toBe("sent");
  expect(after.data.payments).toHaveLength(0);
 });
+
+test("PARITY:PARITY-billing-invoice-void-atomic-replay serializes browser and MCP and rejects changed-key reuse",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const seeded=await invoice("sent",8000);
+ const key=randomUUID();
+ const [website,model]=await Promise.all([
+  page.request.post("/api/billing/invoices/"+seeded.id+"/void",{
+   data:{idempotencyKey:key},
+  }),
+  call("ccp_v1_billing_invoice_void",{
+   invoiceId:seeded.id,idempotencyKey:key,confirmed:true,
+  }),
+ ]);
+ expect(website.status(),await website.text()).toBe(200);
+ expect(model.error).toBeUndefined();
+ const browserReceipt=await website.json() as {ok:boolean;replayed:boolean;
+  invoiceId:string;idempotencyKey:string};
+ expect(browserReceipt).toMatchObject({ok:true,invoiceId:seeded.id,idempotencyKey:key});
+ expect(model.data).toMatchObject({ok:true,invoiceId:seeded.id,idempotencyKey:key});
+ expect(Number(browserReceipt.replayed)+Number(model.data.replayed)).toBe(1);
+ expect((await siteInvoice(page,seeded.id)).status).toBe("void");
+ const other=await invoice("draft",4500);
+ const reused=await call("ccp_v1_billing_invoice_void",{
+  invoiceId:other.id,idempotencyKey:key,confirmed:true,
+ });
+ expect(reused.error?.code).toBe("IDEMPOTENCY_CONFLICT");
+ expect((await siteInvoice(page,other.id)).status).toBe("draft");
+ const invalidWeb=await page.request.post(
+  "/api/billing/invoices/"+other.id+"/void",{data:{
+   idempotencyKey:randomUUID(),forcePaid:true,
+  }});
+ expect(invalidWeb.status(),await invalidWeb.text()).toBe(400);
+ const invalidModel=await call("ccp_v1_billing_invoice_void",{
+  invoiceId:other.id,idempotencyKey:randomUUID(),forcePaid:true,confirmed:true,
+ });
+ expect(invalidModel.error?.code).toBe("VALIDATION_ERROR");
+});
+
+test("PARITY:PARITY-billing-invoice-void-financial-guards refuse paid value and unresolved checkout",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const cash=await invoice("sent",9000);
+ const payment=await cash.admin.from("payments").insert({
+  invoice_id:cash.id,amount_cents:1900,method:"manual",
+  note:"Actual customer funds require reconciliation",
+ });
+ expect(payment.error).toBeNull();
+ const denyWebsite=await page.request.post(
+  "/api/billing/invoices/"+cash.id+"/void",{data:{
+   idempotencyKey:randomUUID(),
+  }});
+ expect(denyWebsite.status(),await denyWebsite.text()).toBe(409);
+ const denyMcp=await call("ccp_v1_billing_invoice_void",{
+  invoiceId:cash.id,idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(denyMcp.error?.code).toBe("CONFLICT");
+ expect((await siteInvoice(page,cash.id)).status).toBe("sent");
+ const checkout=await invoice("sent",6500);
+ const update=await checkout.admin.from("invoices").update({
+  stripe_checkout_session_id:"cs_test_"+randomUUID().replaceAll("-",""),
+ }).eq("id",checkout.id);
+ expect(update.error).toBeNull();
+ const denyCheckout=await call("ccp_v1_billing_invoice_void",{
+  invoiceId:checkout.id,idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(denyCheckout.error?.code).toBe("CONFLICT");
+ expect((await siteInvoice(page,checkout.id)).status).toBe("sent");
+});
