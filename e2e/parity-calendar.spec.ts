@@ -247,3 +247,91 @@ test("PARITY:PARITY-calendar-ad-hoc-lesson-delete matches website and MCP withou
  expect((await call("ccp_v1_calendar_lessons_detail",{lessonId:second})).error?.code)
    .toBe("NOT_FOUND");
 });
+
+test("PARITY:PARITY-calendar-tenant-isolation refuses foreign lessons, slots, notes and attendance through both transports",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const {createClient}=await import("@supabase/supabase-js");
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ const email="foreign-calendar-"+randomUUID()+"@example.com";
+ const made=await admin.auth.admin.createUser({
+  email,password:"SyntheticCalendarTenant-123!",email_confirm:true,
+ });
+ expect(made.error).toBeNull();
+ const teacherId=made.data.user!.id;
+ try{
+  expect((await admin.from("teachers").insert({
+   id:teacherId,email,display_name:"Foreign teacher",hosted_enforced:false,
+  })).error).toBeNull();
+  const pupil=await admin.from("students").insert({
+   teacher_id:teacherId,name:"Foreign learner",
+  }).select("id").single();
+  expect(pupil.error).toBeNull();
+  const studentId=pupil.data!.id as string;
+  const recurring=await admin.from("lesson_slots").insert({
+   teacher_id:teacherId,student_id:studentId,day_of_week:1,
+   start_time:"13:00",duration_minutes:45,start_date:"2049-01-04",
+   end_date:"2049-01-25",
+  }).select("id").single();
+  expect(recurring.error).toBeNull();
+  const slotId=recurring.data!.id as string;
+  const madeLesson=await admin.from("lessons").insert({
+   teacher_id:teacherId,student_id:studentId,slot_id:null,
+   lesson_date:"2049-01-04",starts_at:"2049-01-04T13:00:00Z",
+   duration_minutes:45,
+  }).select("id").single();
+  expect(madeLesson.error).toBeNull();
+  const lessonId=madeLesson.data!.id as string;
+
+  const paths=[
+   "/api/schedule/lessons/"+lessonId,
+   "/api/schedule/lessons/"+lessonId+"/attendance",
+   "/api/schedule/lessons/"+lessonId+"/note",
+  ];
+  for(const path of paths){
+   const response=await page.request.get(path);
+   expect([403,404]).toContain(response.status());
+  }
+  const forbiddenLesson=await call("ccp_v1_calendar_lessons_detail",{lessonId});
+  expect(forbiddenLesson.error).toBeDefined();
+  const forbiddenNotes=await call("ccp_v1_calendar_lesson_note_read",{lessonId});
+  expect(forbiddenNotes.error).toBeDefined();
+  const forbiddenAttendance=await call("ccp_v1_calendar_attendance_read",{lessonId});
+  expect(forbiddenAttendance.error).toBeDefined();
+  const browserEdit=await page.request.put("/api/schedule/lessons/"+lessonId,{
+   data:{durationMinutes:75},
+  });
+  expect([403,404]).toContain(browserEdit.status());
+  const modelEdit=await call("ccp_v1_calendar_lessons_update",{
+   lessonId,changes:{durationMinutes:75},confirmed:true,
+  });
+  expect(modelEdit.error).toBeDefined();
+
+  const slotList=await call("ccp_v1_calendar_slots_list",{studentId});
+  expect(slotList.error).toBeUndefined();
+  expect((slotList.data as Array<{id:string}>).some(x=>x.id===slotId)).toBe(false);
+  const siteSlotList=await page.request.get("/api/schedule/slots?studentId="+studentId);
+  expect(siteSlotList.status(),await siteSlotList.text()).toBe(200);
+  expect((await siteSlotList.json() as Array<{id:string}>)
+   .some(x=>x.id===slotId)).toBe(false);
+  const slotEdit=await call("ccp_v1_calendar_slots_update",{
+   slotId,changes:{active:false},confirmed:true,
+  });
+  expect(slotEdit.error).toBeDefined();
+  const slotDelete=await page.request.delete("/api/schedule/slots/"+slotId);
+  expect([403,404]).toContain(slotDelete.status());
+
+  const untouchedLesson=await admin.from("lessons").select("duration_minutes")
+   .eq("id",lessonId).single();
+  expect(untouchedLesson.error).toBeNull();
+  expect(untouchedLesson.data!.duration_minutes).toBe(45);
+  const untouchedSlot=await admin.from("lesson_slots").select("active")
+   .eq("id",slotId).single();
+  expect(untouchedSlot.error).toBeNull();
+  expect(untouchedSlot.data!.active).toBe(true);
+ }finally{
+  await admin.auth.admin.deleteUser(teacherId);
+ }
+});
