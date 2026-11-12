@@ -116,3 +116,9 @@ Keep [PR #51](https://github.com/itshak/ChessCoachPal/pull/51) in draft while th
 
 - Website `POST /api/import/spreadsheet/suggest` now accepts an explicit `useAi:false` deterministic local heuristic, matching `ccp_v1_import_spreadsheet_suggest`. Omitted `useAi` preserves the website's existing opt-in AI suggestion path, which still strictly requires `confirmedExternal:true` before any student/family samples leave the app.
 - Error responses retain safe `SpreadsheetImportError.code` for validation and unconfigured-provider visibility. Named browser↔delegated MCP E2E `PARITY-spreadsheet-suggest-local-vs-ai-consent` compares mappings and checks both failure/consent boundaries. This does not claim live third-party AI acceptance or provider outage recovery.
+
+### 2026-11-12 — invoice draft update owner/receipt parity (candidate)
+
+- Existing `ccp_invoice_draft_update` replaces all revised lines and metadata in ONE authenticated, tenant-locked SQL transaction. It now takes an explicit current-schema request UUID, saves a canonical payload hash and immutable receipt, checks optimistic invoice `updated_at` when supplied, rejects key reuse with modified terms, and returns the original result for cross-interface replay. No older function overload/alias or historical converter is retained.
+- Website PUT and `ccp_v1_billing_invoice_draft_update` now validate with exactly the same strict `invoiceDraftEditSchema`; arbitrary unknown business fields cannot be silently ignored by the website. Both preserve the existing invoice editor's approved supported inputs. A request without an explicit UUID gets a new one for the same SQL atomic writer.
+- Named new authenticated cases: `PARITY-billing-draft-idempotent-replay` and `PARITY-billing-draft-race-and-field-schema`. Draft invoice line replacement, concurrency, replay, changed-payload conflict, revision denial and shared field validation remain unaccepted until exact-head successful E2E/CI.

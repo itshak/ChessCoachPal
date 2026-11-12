@@ -137,3 +137,84 @@ test("PARITY:PARITY-billing-invoice-detail-delete removes only reviewed drafts f
  const modelAfter=await call("ccp_v1_billing_invoice_detail",{invoiceId:second.id});
  expect(modelAfter.error?.code).toBe("NOT_FOUND");
 });
+
+test("PARITY:PARITY-billing-draft-idempotent-replay preserves one website/MCP revision and rejects changed-key writes",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const {id}=await draftInvoice();
+ const before=await websiteInvoice(page,id);
+ const key=randomUUID();
+ const changes={notes:"Exactly one reviewed invoice edit",expectedUpdatedAt:before.updated_at,
+  idempotencyKey:key};
+ const model=await call("ccp_v1_billing_invoice_draft_update",{
+  invoiceId:id,changes,confirmed:true,
+ });
+ expect(model.error).toBeUndefined();
+ expect(model.data).toMatchObject({ok:true,replayed:false,idempotencyKey:key});
+ const first=await websiteInvoice(page,id);
+ expect(first.notes).toBe(changes.notes);
+ const replay=await page.request.put("/api/billing/invoices/"+id,{data:changes});
+ expect(replay.status(),await replay.text()).toBe(200);
+ expect(await replay.json()).toMatchObject({
+  ok:true,replayed:true,idempotencyKey:key,updatedAt:first.updated_at,
+ });
+ const unchanged=await websiteInvoice(page,id);
+ expect(unchanged.updated_at).toBe(first.updated_at);
+ expect(unchanged.invoice_items).toEqual(first.invoice_items);
+ const conflicting=await page.request.put("/api/billing/invoices/"+id,{
+  data:{...changes,notes:"Different payload with same key"},
+ });
+ expect(conflicting.status(),await conflicting.text()).toBe(409);
+ const stale=await call("ccp_v1_billing_invoice_draft_update",{
+  invoiceId:id,changes:{...changes,idempotencyKey:randomUUID(),
+   notes:"Should not overwrite with stale revision"},confirmed:true,
+ });
+ expect(stale.error?.code).toBe("CONFLICT");
+ const corrected=await page.request.put("/api/billing/invoices/"+id,{data:{
+  notes:"Website corrected reviewed edit",expectedUpdatedAt:first.updated_at,
+  idempotencyKey:randomUUID(),
+ }});
+ expect(corrected.status(),await corrected.text()).toBe(200);
+ const modelRead=await call("ccp_v1_billing_invoice_detail",{invoiceId:id});
+ expect(modelRead.error).toBeUndefined();
+ expect(modelRead.data.notes).toBe("Website corrected reviewed edit");
+});
+
+test("PARITY:PARITY-billing-draft-race-and-field-schema deduplicates concurrent writes and blocks undeclared fields",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const {id}=await draftInvoice();
+ const before=await websiteInvoice(page,id);
+ const changes={
+  notes:"Concurrent invoice review",expectedUpdatedAt:before.updated_at,
+  idempotencyKey:randomUUID(),
+  items:[{description:"Synthetic chess coaching",quantity:2,
+    unitCents:1700,amountCents:3400}],
+ };
+ const [website,agent]=await Promise.all([
+  page.request.put("/api/billing/invoices/"+id,{data:changes}),
+  call("ccp_v1_billing_invoice_draft_update",{
+   invoiceId:id,changes,confirmed:true,
+  }),
+ ]);
+ expect(website.status(),await website.text()).toBe(200);
+ expect(agent.error).toBeUndefined();
+ const webResult=await website.json();
+ expect(webResult.ok).toBe(true);
+ expect(agent.data.ok).toBe(true);
+ expect([webResult.replayed,agent.data.replayed].filter(Boolean)).toHaveLength(1);
+ const saved=await websiteInvoice(page,id);
+ expect(saved.subtotal_cents).toBe(3400);
+ expect(saved.invoice_items).toHaveLength(1);
+ expect(saved.invoice_items[0].description).toBe("Synthetic chess coaching");
+ const badWebsite=await page.request.put("/api/billing/invoices/"+id,{
+  data:{notes:"Unsafe field",providerSecret:"should be rejected"},
+ });
+ expect(badWebsite.status(),await badWebsite.text()).toBe(400);
+ const badModel=await call("ccp_v1_billing_invoice_draft_update",{
+  invoiceId:id,confirmed:true,
+  changes:{notes:"Unsafe field",providerSecret:"should be rejected"},
+ });
+ expect(badModel.error?.code).toBe("VALIDATION_ERROR");
+ const unchanged=await websiteInvoice(page,id);
+ expect(unchanged.updated_at).toBe(saved.updated_at);
+ expect(unchanged.invoice_items).toEqual(saved.invoice_items);
+});
