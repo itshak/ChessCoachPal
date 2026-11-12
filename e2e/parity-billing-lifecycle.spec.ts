@@ -413,3 +413,33 @@ test("PARITY:PARITY-billing-invoice-void-financial-guards refuse paid value and 
  expect(denyCheckout.error?.code).toBe("CONFLICT");
  expect((await siteInvoice(page,checkout.id)).status).toBe("sent");
 });
+
+test("PARITY:PARITY-billing-invoice-void-credit-guard refuses to orphan issued prepaid lessons",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const seeded=await invoice("draft",12000);
+ const row=await seeded.admin.from("invoices").select("teacher_id")
+  .eq("id",seeded.id).single();
+ expect(row.error).toBeNull();
+ const student=await seeded.admin.from("students").insert({
+  teacher_id:row.data!.teacher_id,name:"Prepaid student "+randomUUID(),
+ }).select("id").single();
+ expect(student.error).toBeNull();
+ const packageRow=await seeded.admin.from("credit_packages").insert({
+  teacher_id:row.data!.teacher_id,student_id:student.data!.id,
+  invoice_id:seeded.id,credits:5,duration_minutes:45,
+  price_cents:12000,starts_on:"2049-01-01",
+ }).select("id").single();
+ expect(packageRow.error).toBeNull();
+ const website=await page.request.post("/api/billing/invoices/"+seeded.id+"/void",{
+  data:{idempotencyKey:randomUUID()},
+ });
+ expect(website.status(),await website.text()).toBe(409);
+ const mcp=await call("ccp_v1_billing_invoice_void",{
+  invoiceId:seeded.id,idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(mcp.error?.code).toBe("CREDITS_EXIST");
+ expect((await siteInvoice(page,seeded.id)).status).toBe("draft");
+ const remains=await seeded.admin.from("credit_packages").select("id")
+  .eq("id",packageRow.data!.id).single();
+ expect(remains.error).toBeNull();
+});
