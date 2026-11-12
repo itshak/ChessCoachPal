@@ -161,3 +161,80 @@ test("PARITY:PARITY-calendar-correct-frozen-history completes group roster corre
  const still=await call("ccp_v1_sessions_roster_preview",{sessionId});
  expect(still.data.studentIds.slice().sort()).toEqual([studentA,studentB,studentC].sort());
 });
+
+test("PARITY:PARITY-session-roster-foreign-tenant denies snapshot, confidential audit and corrections in website and MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const {createClient}=await import("@supabase/supabase-js");
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ const email="foreign-roster-"+randomUUID()+"@example.com";
+ const created=await admin.auth.admin.createUser({
+  email,password:"SyntheticRosterTenant-123!",email_confirm:true,
+ });
+ expect(created.error).toBeNull();
+ const teacherId=created.data.user!.id;
+ try{
+  expect((await admin.from("teachers").insert({
+   id:teacherId,email,display_name:"Foreign historical teacher",
+   hosted_enforced:false,
+  })).error).toBeNull();
+  const workplace=await admin.from("workplaces").insert({
+   teacher_id:teacherId,name:"Foreign chess school",timezone:"UTC",
+  }).select("id").single();
+  expect(workplace.error).toBeNull();
+  const pupil=await admin.from("students").insert({
+   teacher_id:teacherId,name:"Unrelated roster learner",
+  }).select("id").single();
+  expect(pupil.error).toBeNull();
+  const studentId=pupil.data!.id as string;
+  const workplaceId=workplace.data!.id as string;
+  expect((await admin.from("workplace_enrollments").insert({
+   teacher_id:teacherId,workplace_id:workplaceId,student_id:studentId,
+  })).error).toBeNull();
+  const session=await admin.from("teaching_sessions").insert({
+   teacher_id:teacherId,workplace_id:workplaceId,student_id:studentId,
+   title:"Other teacher's private history",
+   starts_at:"2054-01-01T12:00:00.000Z",duration_minutes:60,
+   status:"scheduled",
+  }).select("id,updated_at").single();
+  expect(session.error).toBeNull();
+  const id=session.data!.id as string;
+  expect((await admin.from("session_participants").insert({
+   teacher_id:teacherId,session_id:id,student_id:studentId,
+  })).error).toBeNull();
+
+  const site=await page.request.get("/api/coaching/sessions/"+id+"/roster");
+  expect(site.status(),await site.text()).toBe(404);
+  const model=await call("ccp_v1_sessions_roster_preview",{sessionId:id});
+  expect(model.error?.code).toBe("NOT_FOUND");
+  const privateSite=await page.request.get(
+   "/api/coaching/sessions/"+id+"/roster?revisions=true&includePrivate=true&confirmed=true");
+  expect(privateSite.status(),await privateSite.text()).toBe(404);
+  const privateModel=await call("ccp_v1_sessions_roster_revisions_list",{
+   sessionId:id,includePrivate:true,confirmed:true,
+  });
+  expect(privateModel.error?.code).toBe("NOT_FOUND");
+
+  const correction={
+   studentIds:[studentId],expectedUpdatedAt:session.data!.updated_at,
+   idempotencyKey:randomUUID(),reason:"Try to edit another tenant's snapshot",
+   confirmed:true,
+  };
+  const deniedWeb=await page.request.post(
+   "/api/coaching/sessions/"+id+"/roster",{data:correction});
+  expect(deniedWeb.status(),await deniedWeb.text()).toBe(404);
+  const deniedMcp=await call("ccp_v1_sessions_roster_correct",{
+   sessionId:id,...correction,idempotencyKey:randomUUID(),
+  });
+  expect(deniedMcp.error?.code).toBe("NOT_FOUND");
+  const still=await admin.from("teaching_sessions")
+   .select("updated_at,title").eq("id",id).single();
+  expect(still.error).toBeNull();
+  expect(still.data!.updated_at).toBe(session.data!.updated_at);
+  expect(still.data!.title).toBe("Other teacher's private history");
+ }finally{
+  await admin.auth.admin.deleteUser(teacherId);
+ }
+});
