@@ -875,9 +875,10 @@
       "parity": "partial",
       "existingTools": [
         "ccp_v1_studio_policy_get",
-        "ccp_v1_studio_policy_update"
+        "ccp_v1_studio_policy_update",
+        "ccp_v1_studio_credentials_handoff"
       ],
-      "explanation": "All 38 ordinary settings fields use the same teacher policy service and schema guard, with website/MCP readback and nullable clear tests. Four raw AI/Stripe credential entry fields intentionally remain authenticated-browser-only; explicit approved exception/safe credential handoff must be addressed before full-route promotion. Secret-clearing controls remain in MCP.",
+      "explanation": "All ordinary studio policy fields share one website/MCP service and strict schema. Sensitive AI/Stripe credential values are NEVER passed through the model: the new explicit MCP secure setup handoff opens authenticated website entry, masked cross-client readback, and MCP-side clearing. This candidate needs real browser/MCP E2E confirmation before full-route promotion.",
       "evidenceTest": "e2e/parity-policy.spec.ts"
     },
     {

@@ -420,6 +420,12 @@ const catalogue = [
     }).strict(),scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_v1_studio_credentials_handoff",
+    description:"Start secure browser-only AI or Stripe credential entry without submitting any secret through the model. Returns the authenticated setup URL and current configured status; all raw keys must be entered directly into the website. Explicit teacher confirmation required.",
+    schema:z.object({kind:z.enum(["ai","stripe"]),confirmed:z.literal(true)}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_v1_studio_policy_update",
     description:"Edit studio rates, payment provider, approved payment QR and optional AI provider, or clear stored credentials with confirmation. New API keys and Stripe secrets remain browser-only secure inputs, never accepted through MCP.",
     schema:z.object({changes:studioPolicyPatch,confirmed:z.literal(true)}).strict()
@@ -1494,6 +1500,23 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           payment_qr_code:a.includePaymentQrCode&&a.confirmed===true
             ?p.payment_qr_code:null,
           paymentQrCodeConfigured:Boolean(p.payment_qr_code)}};
+      }
+      case "ccp_v1_studio_credentials_handoff": {
+        const a=args as {kind:"ai"|"stripe"};
+        const policy=await teacherPolicyView(db,teacherId);
+        const isAi=a.kind==="ai";
+        const setupPath=isAi
+          ?"/account#optional-ai-credentials"
+          :"/billing?paymentSettings=1";
+        return {data:{
+          kind:a.kind,setupPath,setupUrl:oauthOrigin()+setupPath,
+          configured:isAi?Boolean(policy.ai.apiKey.configured):
+            Boolean(policy.stripe.secretKey.configured&&
+              policy.stripe.publishableKey.configured),
+          requiresAuthenticatedBrowser:true,
+          credentialValuesIncluded:false,
+          instruction:"Open the setup URL in your authenticated browser and enter the credentials there. Never paste API keys into AI chat.",
+        }};
       }
       case "ccp_v1_studio_policy_update": {
         const a=args as {changes:Record<string,unknown>};

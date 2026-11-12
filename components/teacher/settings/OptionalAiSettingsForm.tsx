@@ -54,6 +54,7 @@ export function OptionalAiSettingsForm({
   }
 
   return (
+    <div id="optional-ai-credentials" className="scroll-mt-24">
     <Card padding="sm">
       <h2 className="font-semibold mb-1">Optional AI</h2>
       <p className="text-sm text-muted mb-3">
@@ -138,5 +139,6 @@ export function OptionalAiSettingsForm({
         </div>
       </form>
     </Card>
+    </div>
   );
 }
