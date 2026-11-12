@@ -145,3 +145,9 @@ Keep [PR #51](https://github.com/itshak/ChessCoachPal/pull/51) in draft while th
 
 - Website GET and confirmed POST, MCP `ccp_v1_sessions_roster_preview`, `ccp_v1_sessions_roster_correct` and `ccp_v1_sessions_roster_revisions_list` share domain methods. Existing acceptance covers completed-lesson revisioned correction, replay, historic private attendance, audit and consent; new `PARITY-session-roster-foreign-tenant` exercises real foreign-owner sessions via both clients and confirms no mutation after denial.
 - Proposed route promotion to `mcp` after exact-head E2E, leaving **50 mcp / 9 partial / 0 gaps**. This is NOT B5 canonical calendar convergence or an excuse to weaken historical evidence blockers.
+
+### 2026-11-12 — unresolved Stripe checkout protects invoice regeneration (unverified candidate)
+
+- Draft regeneration now fails closed when a Stripe checkout ID, URL or payment intent is present, both in the shared website/MCP service and the database transaction lock; it will not silently change items while an old family payment link may still be payable.
+- Added an independent cross-interface and authenticated SQL regression `PARITY-billing-regenerate-checkout-reconciliation` to verify 409/CONFLICT and unchanged invoice lines. This is **not** provider-level checkout reconciliation, and it does **not** close finance parity, canonical lesson cutover, or the OpenSpec.
+- **No acceptance sign-off** until exact-head CI, authenticated delegated browser/MCP E2E, security and self-host verification are reviewed. Production database state was not changed.
