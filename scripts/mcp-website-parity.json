@@ -243,13 +243,14 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_invoice_detail",
         "ccp_v1_billing_invoice_draft_update",
         "ccp_v1_billing_invoice_delete"
       ],
-      "explanation": "Shared owner-scoped invoice GET, draft line edits and deletion between website and MCP; financial write atomicity and idempotency still require acceptance tests."
+      "explanation": "Owned invoice GET, strict draft edit and reviewed draft/void deletion share one website/MCP domain service. The SQL draft writer atomically replaces lines with current invoice revision and idempotency receipt; E2E verifies rollback, cross-client replay, changed-key conflict, and deleted readback. Whole billing generation and old calendar occurrence cutover remain separate OpenSpec tasks.",
+      "evidenceTest": "e2e/parity-invoice-draft.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/send/route.ts",
@@ -258,12 +259,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_invoice_send_preview",
         "ccp_v1_billing_invoice_send"
       ],
-      "explanation": "Invoice UI now checks draft-save success, retrieves shared PDF/amount/recipient preview and requires a final external-send confirmation showing recipients and totals. MCP has matching confirmed contact preview and an explicit send tool. Exactly-once delivery receipts/live mail-provider verification still absent, so route remains gap."
+      "explanation": "Identical teacher-scoped PDF, amount and recipient preview plus confirmed invoice delivery in website and MCP. Authenticated Mailpit E2E runs a real synthetic SMTP delivery race, verifies exactly one claimed send across clients, and blocks duplicate retries. Crash-safe provider outbox/live external delivery remain independent C8 release requirements.",
+      "evidenceTest": "e2e/parity-invoice-send-race.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/[id]/void/route.ts",
@@ -271,11 +273,12 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_billing_invoice_void"
       ],
-      "explanation": "Shared invoice void with status preconditions and prepaid-credits guard; confirmed MCP action. Concurrency/retry acceptance remains open."
+      "explanation": "Current-schema ccp_invoice_void SQL serializes teacher-authorized void against payment and prepaid-credit references with shared browser/MCP idempotency receipts. E2E checks same-key cross-client replay, conflicting key reuse, paid/partial-payment refusal, open-checkout refusal and issued credit protections. Provider refund and full canonical calendar billing cutover remain separate.",
+      "evidenceTest": "e2e/parity-billing-lifecycle.spec.ts"
     },
     {
       "path": "app/api/billing/invoices/bulk/route.ts",
@@ -763,12 +766,13 @@
         "PUT"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_calendar_lesson_note_read",
         "ccp_v1_calendar_lesson_note_update"
       ],
-      "explanation": "Shared teacher-private and family lesson notes, with email opt-in, secret redaction and explicit confirmation; replay-safe email still open."
+      "explanation": "Website and MCP share one teacher-owned private/family note read and correction service with explicit optional email approval and no default message. Authenticated shared-note E2E tests field privacy, tenant isolation, and cross-interface persistence. Provider crash-safe email outbox remains separately tracked; this route still references the pre-cutover calendar lesson model.",
+      "evidenceTest": "e2e/parity-calendar.spec.ts"
     },
     {
       "path": "app/api/schedule/lessons/[id]/route.ts",
@@ -778,13 +782,14 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_calendar_lessons_detail",
         "ccp_v1_calendar_lessons_update",
         "ccp_v1_calendar_lessons_delete"
       ],
-      "explanation": "Shared private lesson detail/move/home-visit correction and ad-hoc deletion; broader case matrix still pending."
+      "explanation": "Website/MCP both use the same teacher-scoped lesson detail, private time/home-visit correction, and deliberate deletion service. E2E covers DST invalid wall-time rejection, valid fold timestamp, one-off lesson correction/deletion, and foreign-tenant denial. Canonical teaching_sessions cutover and atomic recurring-slot materialization remain B5 blockers.",
+      "evidenceTest": "e2e/parity-calendar.spec.ts"
     },
     {
       "path": "app/api/schedule/lessons/route.ts",
@@ -793,12 +798,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_calendar_lessons_list",
         "ccp_v1_calendar_lessons_create"
       ],
-      "explanation": "Private lesson list/create and makeup-credit validation shared with MCP; exhaustive acceptance remains partial."
+      "explanation": "Teacher-scoped website/MCP list and one-off/create makeup lesson actions share the calendar service. E2E covers local time DST, created lesson readback, teacher ownership, and immutable prior schedule history. Current calendar lessons are not yet converted into canonical teaching_sessions (B5 open).",
+      "evidenceTest": "e2e/parity-calendar.spec.ts"
     },
     {
       "path": "app/api/schedule/slots/[id]/route.ts",
@@ -807,12 +813,13 @@
         "DELETE"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_calendar_slots_update",
         "ccp_v1_calendar_slots_delete"
       ],
-      "explanation": "Browser/MCP use same history-preserving recurring-slot adjustment/deletion service; atomic idempotency remains to verify."
+      "explanation": "Website/MCP recurrence slot edit, disable and delete invoke the same teacher-scoped history-preserving service. E2E tests exact cross-interface edits, disabled slots, preserved materialized history, and foreign-tenant denial. Slot materialization receipts and final canonical-session transition remain B5 blockers.",
+      "evidenceTest": "e2e/parity-calendar.spec.ts"
     },
     {
       "path": "app/api/schedule/slots/route.ts",
@@ -821,12 +828,13 @@
         "POST"
       ],
       "kind": "teacher",
-      "parity": "gap",
+      "parity": "mcp",
       "existingTools": [
         "ccp_v1_calendar_slots_list",
         "ccp_v1_calendar_slots_create"
       ],
-      "explanation": "Recurring private lesson slot list/create share teacher-scoped service. Replay-safe writes and DST tests remain pending."
+      "explanation": "Website/MCP recurrence slot list/create share the teacher-scoped scheduling service and validate local timezone/DST. Browser/MCP E2E tests matching lists and scheduled slot terms plus tenant filtering. Canonical future-session materialization and request receipts remain separate cutover tasks.",
+      "evidenceTest": "e2e/parity-calendar.spec.ts"
     },
     {
       "path": "app/api/settings/export/route.ts",
