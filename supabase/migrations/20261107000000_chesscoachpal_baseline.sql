@@ -4113,6 +4113,9 @@ BEGIN
     updated_at=clock_timestamp()
    WHERE id=p_session_id AND teacher_id=v_teacher RETURNING * INTO v_session;
  END IF;
+ -- Only the scoped, revision-checked shared transaction may mutate a
+ -- participant decision. The table trigger rejects direct REST updates.
+ PERFORM set_config('ccp.attendance_commit_session',p_session_id::text,true);
  FOR v_row IN SELECT value FROM jsonb_array_elements(p_attendance) LOOP
    v_student:=(v_row->>'studentId')::uuid;
    v_expected_att:=(v_row->>'expectedUpdatedAt')::timestamptz;
@@ -4161,6 +4164,29 @@ REVOKE ALL ON FUNCTION public.ccp_teacher_session_commit(
  uuid,jsonb,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_session_commit(
  uuid,jsonb,jsonb,timestamptz,uuid) TO authenticated;
+
+-- Prevent owner-scoped direct PostgREST UPDATE from bypassing immutable
+-- attendance revisions, confirmation, cancellation provenance and receipts.
+-- Roster correction creates/deletes rows through its own audited RPC; only
+-- an existing participant decision UPDATE requires this session-local proof.
+CREATE OR REPLACE FUNCTION public.ccp_session_attendance_write_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $attendance_guard$
+BEGIN
+ IF current_setting('ccp.attendance_commit_session',true) IS DISTINCT FROM NEW.session_id::text
+    OR NEW.session_id IS DISTINCT FROM OLD.session_id
+    OR NEW.student_id IS DISTINCT FROM OLD.student_id
+    OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+   RAISE EXCEPTION 'ATTENDANCE_UPDATE_REQUIRES_COMMIT'
+     USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END;
+$attendance_guard$;
+REVOKE ALL ON FUNCTION public.ccp_session_attendance_write_guard() FROM PUBLIC,anon;
+CREATE TRIGGER ccp_session_attendance_write_guard
+ BEFORE UPDATE ON public.session_attendance
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_session_attendance_write_guard();
 
 -- Enforce the canonical completed transition at the table boundary, not only
 -- at website/MCP validators. An authenticated direct PostgREST UPDATE cannot
