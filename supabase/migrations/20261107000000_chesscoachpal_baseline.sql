@@ -139,6 +139,13 @@ BEGIN
     RAISE EXCEPTION 'Credit redemptions cannot be edited; remove and re-create instead';
   END IF;
 
+  -- Canonical entries are verified by the scoped new trigger below.
+  -- This intermediate branch still contains old fixtures; only the final
+  -- fresh-install snapshot may eliminate the inherited branch entirely.
+  IF NEW.session_id IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+
   -- Lock the package so concurrent redemptions can't overspend it.
   SELECT * INTO pkg FROM credit_packages WHERE id = NEW.package_id FOR UPDATE;
   IF NOT FOUND THEN
@@ -8411,3 +8418,146 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_attendance_bulk_mutate(
  uuid,jsonb,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_attendance_bulk_mutate(
  uuid,jsonb,uuid) TO authenticated;
+
+
+-- Canonical financial ownership: a group teaching event occurs once, but
+-- each guardian invoice line and credit redemption belongs to exactly one
+-- frozen participant. All mutations serialize on the session row, and a
+-- non-void line and a prepaid redemption can never cover the same student.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_finance_line_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_invoice_line$
+DECLARE
+ v_invoice public.invoices%ROWTYPE;
+ v_session public.teaching_sessions%ROWTYPE;
+ v_guardian uuid;
+ v_student_teacher uuid;
+ v_date date;
+BEGIN
+ IF NEW.session_id IS NULL THEN
+   IF NEW.student_id IS NOT NULL THEN
+     RAISE EXCEPTION 'INVALID_CANONICAL_FINANCE_PAIR' USING ERRCODE='23514';
+   END IF;
+   RETURN NEW;
+ END IF;
+ IF NEW.student_id IS NULL OR NEW.kind NOT IN ('lesson','travel')
+    OR NEW.lesson_id IS NOT NULL THEN
+   RAISE EXCEPTION 'INVALID_CANONICAL_FINANCE_PAIR' USING ERRCODE='23514';
+ END IF;
+ SELECT * INTO v_invoice FROM public.invoices
+    WHERE id=NEW.invoice_id FOR KEY SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'INVOICE_NOT_FOUND' USING ERRCODE='23503';END IF;
+ SELECT * INTO v_session FROM public.teaching_sessions
+    WHERE id=NEW.session_id AND teacher_id=v_invoice.teacher_id
+    FOR NO KEY UPDATE;
+ IF NOT FOUND OR NOT EXISTS(
+   SELECT 1 FROM public.session_participants
+    WHERE session_id=NEW.session_id AND student_id=NEW.student_id
+      AND teacher_id=v_invoice.teacher_id
+ ) THEN
+   RAISE EXCEPTION 'FINANCE_PARTICIPANT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ SELECT guardian_id,teacher_id INTO v_guardian,v_student_teacher
+  FROM public.students WHERE id=NEW.student_id;
+ IF v_guardian IS DISTINCT FROM v_invoice.guardian_id
+    OR v_student_teacher IS DISTINCT FROM v_invoice.teacher_id THEN
+   RAISE EXCEPTION 'FINANCE_WRONG_GUARDIAN' USING ERRCODE='42501';
+ END IF;
+ v_date:=(v_session.starts_at AT TIME ZONE
+  coalesce(nullif(v_session.local_timezone,''),'UTC'))::date;
+ IF v_date NOT BETWEEN v_invoice.period_start AND v_invoice.period_end THEN
+   RAISE EXCEPTION 'FINANCE_OUTSIDE_INVOICE_PERIOD' USING ERRCODE='22023';
+ END IF;
+ IF EXISTS(
+  SELECT 1 FROM public.invoice_items ii
+   JOIN public.invoices i ON i.id=ii.invoice_id
+   WHERE ii.session_id=NEW.session_id AND ii.student_id=NEW.student_id
+     AND ii.kind=NEW.kind AND ii.id<>NEW.id
+     AND i.teacher_id=v_invoice.teacher_id AND i.status<>'void'
+ ) THEN
+  RAISE EXCEPTION 'INVOICE_ALREADY_COMMITTED' USING ERRCODE='23505';
+ END IF;
+ IF NEW.kind='lesson' AND EXISTS(
+   SELECT 1 FROM public.credit_redemptions r
+    WHERE r.session_id=NEW.session_id AND r.student_id=NEW.student_id
+ ) THEN
+   RAISE EXCEPTION 'CANONICAL_LESSON_ALREADY_REDEEMED' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_invoice_line$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_finance_line_guard() FROM PUBLIC,anon;
+CREATE TRIGGER ccp_canonical_finance_line_guard
+ BEFORE INSERT OR UPDATE ON public.invoice_items
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_canonical_finance_line_guard();
+
+CREATE OR REPLACE FUNCTION public.ccp_canonical_redemption_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_credit_guard$
+DECLARE
+ v_package public.credit_packages%ROWTYPE;
+ v_session public.teaching_sessions%ROWTYPE;
+ v_status text;
+ v_used integer;
+ v_date date;
+BEGIN
+ IF NEW.session_id IS NULL THEN
+   IF NEW.student_id IS NOT NULL THEN
+     RAISE EXCEPTION 'INVALID_CANONICAL_CREDIT_PAIR' USING ERRCODE='23514';
+   END IF;
+   RETURN NEW;
+ END IF;
+ IF NEW.student_id IS NULL OR NEW.lesson_id IS NOT NULL THEN
+   RAISE EXCEPTION 'INVALID_CANONICAL_CREDIT_PAIR' USING ERRCODE='23514';
+ END IF;
+ SELECT * INTO v_package FROM public.credit_packages
+   WHERE id=NEW.package_id FOR UPDATE;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'CREDIT_PACKAGE_NOT_FOUND' USING ERRCODE='23503';
+ END IF;
+ SELECT * INTO v_session FROM public.teaching_sessions
+   WHERE id=NEW.session_id AND teacher_id=NEW.teacher_id FOR NO KEY UPDATE;
+ IF NOT FOUND OR v_package.teacher_id<>NEW.teacher_id
+   OR v_package.student_id<>NEW.student_id
+   OR NOT EXISTS(
+     SELECT 1 FROM public.session_participants
+      WHERE session_id=NEW.session_id AND student_id=NEW.student_id
+        AND teacher_id=NEW.teacher_id
+   ) THEN
+   RAISE EXCEPTION 'CREDIT_PARTICIPANT_NOT_OWNED' USING ERRCODE='42501';
+ END IF;
+ IF v_package.duration_minutes<>v_session.duration_minutes THEN
+   RAISE EXCEPTION 'CREDIT_WRONG_DURATION' USING ERRCODE='23514';
+ END IF;
+ v_date:=(v_session.starts_at AT TIME ZONE
+    coalesce(nullif(v_session.local_timezone,''),'UTC'))::date;
+ IF v_date<v_package.starts_on OR
+   (v_package.expires_on IS NOT NULL AND v_date>v_package.expires_on) THEN
+   RAISE EXCEPTION 'CREDIT_OUTSIDE_PACKAGE_DATES' USING ERRCODE='23514';
+ END IF;
+ SELECT status INTO v_status FROM public.invoices
+   WHERE id=v_package.invoice_id;
+ IF v_status NOT IN ('sent','paid') THEN
+   RAISE EXCEPTION 'CREDIT_INVOICE_NOT_ACTIVE' USING ERRCODE='23514';
+ END IF;
+ SELECT count(*) INTO v_used FROM public.credit_redemptions
+   WHERE package_id=v_package.id AND id<>NEW.id;
+ IF v_used>=v_package.credits THEN
+   RAISE EXCEPTION 'CREDIT_PACKAGE_EXHAUSTED' USING ERRCODE='23514';
+ END IF;
+ IF EXISTS(
+  SELECT 1 FROM public.invoice_items ii
+   JOIN public.invoices i ON i.id=ii.invoice_id
+   WHERE ii.session_id=NEW.session_id AND ii.student_id=NEW.student_id
+    AND ii.kind='lesson' AND i.status<>'void'
+ ) THEN
+   RAISE EXCEPTION 'CANONICAL_LESSON_ALREADY_INVOICED'
+      USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_credit_guard$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_redemption_guard() FROM PUBLIC,anon;
+CREATE TRIGGER ccp_canonical_redemption_guard
+ BEFORE INSERT OR UPDATE ON public.credit_redemptions
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_canonical_redemption_guard();
