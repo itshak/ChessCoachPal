@@ -9296,8 +9296,10 @@ BEGIN
   RAISE EXCEPTION 'CANONICAL_SLOT_INVALID_FIELDS' USING ERRCODE='22023';
  END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ -- Stable across later dates/retries: only the approved mutation and
+ -- original revision form the request identity, not its derived plan.
  v_hash:=md5(jsonb_build_array('canonical.slot.update',p_slot_id,p_changes,
-   p_expected_updated_at,p_rows,p_from,p_to)::text);
+   p_expected_updated_at)::text);
  INSERT INTO public.agent_tool_receipts(
   teacher_id,idempotency_key,operation,request_hash,receipt
  ) VALUES(v_teacher,p_idempotency_key,'canonical.slot.update',
