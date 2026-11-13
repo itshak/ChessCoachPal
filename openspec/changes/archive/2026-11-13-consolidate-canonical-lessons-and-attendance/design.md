@@ -2,9 +2,9 @@
 
 ## Ownership and invariants
 
-1. `teaching_sessions` is the sole actual lesson occurrence, with teacher, workplace (nullable), group (nullable), recurrence/slot reference (nullable), local timezone, starts/ends, lifecycle, revision, stable idempotency identity and audited updates. A scheduled occurrence is distinct from its recurring `lesson_slots` intent. The slot does not own a second actual lesson.
+1. `teaching_sessions` is the sole actual lesson occurrence, with teacher, workplace (teacher-owned; implicit personal workplace when none is explicitly selected), group (nullable), recurrence/slot reference (nullable), local timezone, starts/ends, lifecycle, revision, stable idempotency identity and audited updates. A scheduled occurrence is distinct from its recurring `lesson_slots` intent. The slot does not own a second actual lesson.
 2. `session_participants` is the occurrence-time student roster; each row belongs to one session and one teacher-owned student. A student can have one participant row per session. Roster corrections are explicit, revisioned and audited; deleting a student/group/workplace must not silently erase historical rosters.
-3. `session_attendance` has at most one current decision per participant; no row means unmarked. Status is `present | late | absent | student_cancelled | teacher_cancelled`. Use `late` as attended for presence-based metrics but preserve late arrival. Track cancellation initiator, notice timestamp, reason, cancellation policy evaluation, marked_by/at, revision and audit; no hidden default of present. Decide policy for partial group cancellations per participant, not by deleting session.
+3. `session_attendance` has at most one current decision per participant; no row means unmarked. Status is `present | late | absent | excused | student_cancelled | teacher_cancelled`. Use `late` as attended for presence-based metrics but preserve late arrival. Track cancellation initiator, notice timestamp, reason, cancellation policy evaluation, marked_by/at, revision and audit; no hidden default of present. Decide policy for partial group cancellations per participant, not by deleting session.
 4. Session lifecycle is independent: scheduled, completed, cancelled (and rescheduled semantics with stable occurrence identity). A group session counts once for instructor minutes; per-participant attendance and charges count individually. Reconciliation must never double-count duration.
 5. Shared/family-facing and teacher-private notes are canonical session/participant-owned records with explicit sharing/notification flags and safe provenance. Preserve existing useful privacy semantics; do not preserve `lesson_notes` as a physical alias.
 6. Financial references: occurrence ID for teaching event and participant ID for per-student invoice line/credit/redemption. Preserve immutable issued financial evidence, no silent cascade of billed sessions; use explicit authorized correction/void workflows. The invoice/payment model itself remains.
@@ -46,3 +46,7 @@
 - Replay, concurrency, stale revision and portal/teacher race are tested at SQL transaction level.
 - Teacher private notes must never leak to guardian or delegated read-only clients.
 - Explicit operator opt-in and backup required for any existing real data; no silent destructive reset.
+
+## Verified personal-workspace behavior (2026-11-13)
+
+The database requires a non-null teacher-owned `workplace_id` on actual sessions. An omitted private-session workplace resolves to the teacher's implicit personal coaching workplace and creates the learner's enrollment atomically, **only after** the idempotent replay check. Explicitly named workplaces require an already-active membership; the SQL attendance/session enrollment guard still enforces this. Archiving and other cross-tenant protections are unchanged. Automatic holiday exclusions remain a separate parent website/MCP parity requirement.
