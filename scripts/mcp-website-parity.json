@@ -328,6 +328,19 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/calendar/makeup-credits/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_canonical_makeup_credits_list"
+      ],
+      "explanation": "Web and delegated MCP call the same owner-scoped canonical make-up eligibility service; each credit is a frozen session/student pair. The atomic private-session writer independently checks student enrollment, studio policy, expiry and single-use status.",
+      "evidenceTest": "e2e/canonical-makeup-credits-parity.spec.ts"
+    },
+    {
       "path": "app/api/coaching/calendar/private-sessions/route.ts",
       "methods": [
         "POST"
