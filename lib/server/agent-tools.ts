@@ -68,15 +68,6 @@ import { guardiansList, guardianDetail, guardianCreate, guardianUpdate,
  guardianDeleteImpact, guardianDelete, guardianRotatePortalToken, safeGuardian,
  GuardianServiceError,
 } from "@/lib/server/teacher-guardian-service";
-import {
- calendarSlotsList,calendarSlotCreate,calendarSlotUpdate,calendarSlotDelete,
- calendarLessonsList,calendarLessonDetail,calendarLessonCreate,calendarLessonUpdate,
- calendarLessonDelete,CalendarError,
-} from "@/lib/server/legacy-calendar-service";
-import {
- calendarAttendanceRead,calendarAttendanceWrite,calendarAttendanceBulk,
- calendarLessonNoteRead,calendarLessonNoteWrite,LegacyAttendanceError,
-} from "@/lib/server/legacy-attendance-service";
 import {canonicalMakeupCreditsList} from "@/lib/server/canonical-makeup-service";
 import {sessionNotesList,sessionNoteSave,SessionNoteError,
  type SaveSessionNoteInput} from "@/lib/server/canonical-session-notes";
@@ -538,41 +529,6 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_calendar_attendance_read",
-    description:"Read an identified private lesson's recorded attendance and cancellation notice.",
-    schema:z.object({lessonId:uuid}).strict(),scope:"coach:read",readOnly:true,
-  },
-  {
-    name:"ccp_v1_calendar_attendance_record",
-    description:"Write one private-calendar attendance decision through a teacher-locked, revision-checked SQL transaction. For safe cross-interface replay supply expectedMarkedAt (null if unmarked) AND idempotencyKey; changed-payload reuse or stale revisions conflict. Student cancellation replay needs explicit noticeAt. Family notification requires teacher_cancel plus notifyFamily=true and confirmedEmail=true; default is no email.",
-    schema:z.object({lessonId:uuid,
-      status:z.enum(["attended","teacher_cancel","student_cancel","no_show"]).nullable(),
-      noticeChoice:z.enum(["now","timely","late","custom"]).optional(),
-      noticeAt:z.string().datetime({offset:true}).nullable().optional(),
-      cancelNote:z.string().max(1000).optional(),
-      expectedMarkedAt:z.string().datetime({offset:true}).nullable().optional(),
-      idempotencyKey:uuid.optional(),
-      notifyFamily:z.boolean().default(false),confirmedEmail:z.literal(true).optional(),
-      confirmed:z.literal(true),
-    }).strict().refine(v=>!v.notifyFamily||v.confirmedEmail===true,"Email requires explicit confirmation")
-      .refine(v=>(v.idempotencyKey===undefined)===(v.expectedMarkedAt===undefined),
-       "Revision and idempotency key must be supplied together"),
-    scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_v1_calendar_attendance_bulk",
-    description:"Bulk record 1–50 private lesson outcomes using the same revision-checked SQL writer as individual attendance. Optional idempotencyKey and expectedMarkedAtByLesson (every ID mapped to a timestamp or null) make partial retries safe across website/MCP. Per-lesson errors remain explicit. Bulk email requires confirmedEmail=true and is attempted only for newly committed teacher cancellations.",
-    schema:z.object({ids:z.array(uuid).min(1).max(50),status:z.enum(["attended","no_show","teacher_cancel"]),
-      idempotencyKey:uuid.optional(),
-      expectedMarkedAtByLesson:z.record(uuid,z.string().datetime({offset:true}).nullable()).optional(),
-      notifyFamily:z.boolean().default(false),confirmedEmail:z.literal(true).optional(),
-      confirmed:z.literal(true),
-    }).strict().refine(v=>!v.notifyFamily||v.confirmedEmail===true,"Email requires explicit confirmation")
-     .refine(v=>(v.idempotencyKey===undefined)===(v.expectedMarkedAtByLesson===undefined),
-       "Bulk replay requires one original revision for every lesson"),
-    scope:"coach:write",readOnly:false,
-  },
-  {
     name:"ccp_v1_session_attendance_list",
     description:"Read canonical frozen-roster attendance. Unmarked participants are explicit; cancellation notice/initiator and immutable revision are included.",
     schema:z.object({sessionId:uuid}).strict(),
@@ -668,89 +624,6 @@ const catalogue = [
     name:"ccp_v1_recurring_slots_delete",
     description:"Atomically delete only canonical scheduling intent. Future unprotected lessons may be removed; protected teaching records remain. Requires explicit confirmation and idempotency key.",
     schema:canonicalSlotDeleteSchema.extend({slotId:uuid,confirmed:z.literal(true)}).strict(),
-    scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_v1_calendar_lesson_note_read",
-    description:"Read a private lesson's student-facing notes. Teacher-private note is redacted unless includePrivate=true and confirmed=true.",
-    schema:z.object({lessonId:uuid,includePrivate:z.boolean().default(false),
-      confirmed:z.literal(true).optional()}).strict(),scope:"coach:read",readOnly:true,
-  },
-  {
-    name:"ccp_v1_calendar_lesson_note_update",
-    description:"Save one lesson's family-facing and private notes. Email is opt-in, requiring sendEmail=true AND confirmedEmail=true, never a surprise side effect.",
-    schema:z.object({lessonId:uuid,body:z.string().max(10000).optional(),
-      privateBody:z.string().max(10000).optional(),sendEmail:z.boolean().default(false),
-      confirmedEmail:z.literal(true).optional(),confirmed:z.literal(true),
-    }).strict().refine(v=>!v.sendEmail||v.confirmedEmail===true,"Email requires explicit confirmation"),
-    scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_v1_calendar_slots_list",
-    description:"List existing recurring private-lesson time slots for the authenticated teacher.",
-    schema:z.object({studentId:uuid.optional(),activeOnly:z.boolean().optional()}).strict(),
-    scope:"coach:read",readOnly:true,
-  },
-  {
-    name:"ccp_v1_calendar_slots_create",
-    description:"Create a confirmed private recurring lesson slot and materialize upcoming occurrences in the teacher timezone.",
-    schema:z.object({studentId:uuid,dayOfWeek:z.number().int().min(0).max(6),
-      startTime:z.string().regex(/^\d{2}:\d{2}$/),durationMinutes:z.number().int().min(1).max(480).optional(),
-      startDate:z.string().date().optional(),endDate:z.string().date().nullable().optional(),
-      rateCents:z.number().int().min(0).nullable().optional(),isHomeVisit:z.boolean().optional(),
-      confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_v1_calendar_slots_update",
-    description:"Edit a confirmed recurring slot; upcoming unmarked occurrences are synchronized, while marked history and notes are preserved.",
-    schema:z.object({slotId:uuid,changes:z.object({
-      dayOfWeek:z.number().int().min(0).max(6).optional(),
-      startTime:z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
-      durationMinutes:z.number().int().min(1).max(480).optional(),
-      startDate:z.string().date().optional(),endDate:z.string().date().nullable().optional(),
-      rateCents:z.number().int().min(0).nullable().optional(),
-      active:z.boolean().optional(),isHomeVisit:z.boolean().optional(),
-    }).strict(),confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_v1_calendar_slots_delete",
-    description:"Permanently remove one recurring slot after explicit confirmation. Unmarked future occurrences can disappear; marked history is retained.",
-    schema:z.object({slotId:uuid,confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_v1_calendar_lessons_list",
-    description:"List dated private lessons with stable IDs and optional student/date filters. These differ from group teaching_sessions.",
-    schema:z.object({studentId:uuid.optional(),from:z.string().date().optional(),
-      to:z.string().date().optional(),offset:z.number().int().min(0).max(100000).default(0),
-      limit:z.number().int().min(1).max(100).default(50)}).strict(),
-    scope:"coach:read",readOnly:true,
-  },
-  {
-    name:"ccp_v1_calendar_lessons_detail",
-    description:"Read one identified private lesson and whether it is already marked.",
-    schema:z.object({lessonId:uuid}).strict(),scope:"coach:read",readOnly:true,
-  },
-  {
-    name:"ccp_v1_calendar_lessons_create",
-    description:"Create a confirmed private ad-hoc or makeup lesson in the studio timezone, validating makeup credit ownership.",
-    schema:z.object({studentId:uuid,date:z.string().date(),
-      time:z.string().regex(/^\d{2}:\d{2}$/),durationMinutes:z.number().int().min(1).max(480).optional(),
-      makeupFor:uuid.nullable().optional(),isHomeVisit:z.boolean().optional(),
-      confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_v1_calendar_lessons_update",
-    description:"Correct one identified private lesson date, time, duration or home visit after confirmation. Marked lessons cannot be rescheduled.",
-    schema:z.object({lessonId:uuid,changes:z.object({
-      date:z.string().date().optional(),time:z.string().regex(/^\d{2}:\d{2}$/).optional(),
-      durationMinutes:z.number().int().min(1).max(480).optional(),
-      isHomeVisit:z.boolean().optional(),
-    }).strict(),confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_v1_calendar_lessons_delete",
-    description:"Permanently delete a confirmed ad-hoc private lesson. Recurring occurrences must be cancelled instead.",
-    schema:z.object({lessonId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1719,28 +1592,6 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const user=(await db.auth.getUser()).data.user;
         return {data:await teacherEventInviteEmail(db,teacherId,a.eventId,user?.email,oauthOrigin())};
       }
-      case "ccp_v1_calendar_attendance_read": {
-        const a=args as {lessonId:string};
-        return {data:await calendarAttendanceRead(db,teacherId,a.lessonId)};
-      }
-      case "ccp_v1_calendar_attendance_record": {
-        const a=args as {lessonId:string;notifyFamily:boolean;status:"attended"|"teacher_cancel"|"student_cancel"|"no_show"|null;
-          noticeChoice?:"now"|"timely"|"late"|"custom";noticeAt?:string|null;cancelNote?:string;
-          expectedMarkedAt?:string|null;idempotencyKey?:string};
-        const user=a.notifyFamily?(await db.auth.getUser()).data.user:null;
-        return {data:await calendarAttendanceWrite(db,teacherId,a.lessonId,a,{
-          origin:a.notifyFamily?oauthOrigin():"",
-          teacherEmail:user?.email,
-        })};
-      }
-      case "ccp_v1_calendar_attendance_bulk": {
-        const a=args as {ids:string[];status:"attended"|"no_show"|"teacher_cancel";notifyFamily:boolean;
-          idempotencyKey?:string;expectedMarkedAtByLesson?:Record<string,string|null>};
-        const user=a.notifyFamily?(await db.auth.getUser()).data.user:null;
-        return {data:await calendarAttendanceBulk(db,teacherId,a,{
-          origin:a.notifyFamily?oauthOrigin():"",teacherEmail:user?.email,
-        })};
-      }
       case "ccp_v1_session_attendance_list": {
         const a=args as {sessionId:string};
         return {data:await canonicalAttendanceList(db,teacherId,a.sessionId)};
@@ -1796,56 +1647,6 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await canonicalSlotDelete(db,teacherId,a.slotId,{
           idempotencyKey:a.idempotencyKey,
         })};
-      }
-      case "ccp_v1_calendar_lesson_note_read": {
-        const a=args as {lessonId:string;includePrivate:boolean;confirmed?:boolean};
-        const note=await calendarLessonNoteRead(db,teacherId,a.lessonId);
-        if(!note||a.includePrivate&&a.confirmed===true)return {data:note};
-        const {private_body,...safe}=note;
-        return {data:safe};
-      }
-      case "ccp_v1_calendar_lesson_note_update": {
-        const a=args as {lessonId:string;body?:string;privateBody?:string;sendEmail:boolean};
-        const user=a.sendEmail?(await db.auth.getUser()).data.user:null;
-        return {data:await calendarLessonNoteWrite(db,teacherId,a.lessonId,a,{
-          origin:a.sendEmail?oauthOrigin():"",teacherEmail:user?.email,
-        })};
-      }
-      case "ccp_v1_calendar_slots_list": {
-        const a=args as {studentId?:string;activeOnly?:boolean};
-        return {data:await calendarSlotsList(db,teacherId,a)};
-      }
-      case "ccp_v1_calendar_slots_create": {
-        const a=args as Parameters<typeof calendarSlotCreate>[2];
-        return {data:await calendarSlotCreate(db,teacherId,a)};
-      }
-      case "ccp_v1_calendar_slots_update": {
-        const a=args as {slotId:string;changes:Parameters<typeof calendarSlotUpdate>[3]};
-        return {data:await calendarSlotUpdate(db,teacherId,a.slotId,a.changes)};
-      }
-      case "ccp_v1_calendar_slots_delete": {
-        const a=args as {slotId:string};
-        return {data:await calendarSlotDelete(db,teacherId,a.slotId)};
-      }
-      case "ccp_v1_calendar_lessons_list": {
-        const a=args as Parameters<typeof calendarLessonsList>[2];
-        return {data:await calendarLessonsList(db,teacherId,a)};
-      }
-      case "ccp_v1_calendar_lessons_detail": {
-        const a=args as {lessonId:string};
-        return {data:await calendarLessonDetail(db,teacherId,a.lessonId)};
-      }
-      case "ccp_v1_calendar_lessons_create": {
-        const a=args as Parameters<typeof calendarLessonCreate>[2];
-        return {data:await calendarLessonCreate(db,teacherId,a)};
-      }
-      case "ccp_v1_calendar_lessons_update": {
-        const a=args as {lessonId:string;changes:Parameters<typeof calendarLessonUpdate>[3]};
-        return {data:await calendarLessonUpdate(db,teacherId,a.lessonId,a.changes)};
-      }
-      case "ccp_v1_calendar_lessons_delete": {
-        const a=args as {lessonId:string};
-        return {data:await calendarLessonDelete(db,teacherId,a.lessonId)};
       }
       case "ccp_v1_guardians_list": {
         const rows=await guardiansList(db,teacherId);
@@ -2244,10 +2045,6 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CanonicalPrivateSessionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalSlotError)
-      return {error:{code:error.code,message:error.message}};
-    if (error instanceof LegacyAttendanceError)
-      return {error:{code:error.code,message:error.message}};
-    if (error instanceof CalendarError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof GuardianServiceError)
       return {error:{code:error.code,message:error.message}};
