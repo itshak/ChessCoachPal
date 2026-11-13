@@ -10,11 +10,12 @@ import {addDays,toLocalDateString,zonedTimeToUtc} from "@/lib/schedule";
 import type {CanonicalCalendarRow} from "@/lib/server/canonical-calendar-read";
 import type {CanonicalMakeupCredit} from "@/lib/server/canonical-makeup-credit-service";
 
-type Slot={
+export type CanonicalSlotView={
  id:string;student_id:string;workplace_id:string|null;day_of_week:number;
  start_time:string;duration_minutes:number;start_date:string;end_date:string|null;
  active:boolean;rate_cents:number|null;is_home_visit:boolean;updated_at:string;
 };
+type Slot=CanonicalSlotView;
 type Name={id:string;name:string};
 type Workplace={id:string;name:string;timezone:string};
 type Event={id:string;title:string;location:string;starts_at:string;ends_at:string|null};
