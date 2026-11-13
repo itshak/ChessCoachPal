@@ -8299,3 +8299,86 @@ GRANT EXECUTE ON FUNCTION public.ccp_canonical_attendance_mutate(
 -- SECURITY DEFINER RPCs above retain write privileges, but direct
 -- authenticated PostgREST insert/update/delete do not.
 REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.session_attendance FROM authenticated;
+
+
+-- All-or-nothing canonical bulk attendance writer. The whole batch executes
+-- in one Postgres RPC transaction. A stale student row rolls back every other
+-- row and their receipts, rather than partially marking a class.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_attendance_bulk_mutate(
+ p_session_id uuid,p_rows jsonb,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_attendance_bulk$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_row jsonb;
+ v_receipts jsonb:='[]'::jsonb;
+ v_receipt jsonb;
+ v_hash text;
+ v_student uuid;
+ v_child_key uuid;
+ v_seen uuid[]:=ARRAY[]::uuid[];
+BEGIN
+ IF v_teacher IS NULL THEN
+  RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_session_id IS NULL OR p_idempotency_key IS NULL
+   OR jsonb_typeof(p_rows) IS DISTINCT FROM 'array'
+   OR jsonb_array_length(p_rows) NOT BETWEEN 1 AND 50
+   OR pg_column_size(p_rows)>400000 THEN
+  RAISE EXCEPTION 'CANONICAL_ATTENDANCE_BULK_INVALID' USING ERRCODE='22023';
+ END IF;
+ v_hash:=md5(jsonb_build_array('canonical.attendance.bulk',
+  p_session_id,p_rows)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'canonical.attendance.bulk',
+   v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_saved FROM public.agent_tool_receipts
+    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+   IF NOT FOUND OR v_saved.operation<>'canonical.attendance.bulk'
+       OR v_saved.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'CANONICAL_ATTENDANCE_BULK_REPLAY_CONFLICT'
+       USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+  IF jsonb_typeof(v_row) IS DISTINCT FROM 'object'
+     OR (v_row - ARRAY['studentId','status','note','noticeAt',
+       'cancelReason','expectedUpdatedAt','notifyFamily'])<>'{}'::jsonb
+     OR jsonb_typeof(v_row->'studentId')<>'string'
+     OR jsonb_typeof(v_row->'expectedUpdatedAt') NOT IN ('string','null')
+     OR jsonb_typeof(v_row->'notifyFamily')<>'boolean' THEN
+    RAISE EXCEPTION 'CANONICAL_ATTENDANCE_BULK_INVALID'
+      USING ERRCODE='22023';
+  END IF;
+  v_student:=(v_row->>'studentId')::uuid;
+  IF v_student=ANY(v_seen) THEN
+    RAISE EXCEPTION 'CANONICAL_ATTENDANCE_BULK_DUPLICATE_STUDENT'
+      USING ERRCODE='22023';
+  END IF;
+  v_seen:=array_append(v_seen,v_student);
+  v_child_key:=md5(p_idempotency_key::text || ':' || v_student::text)::uuid;
+  SELECT public.ccp_canonical_attendance_mutate(
+    p_session_id,v_student,v_row->>'status',coalesce(v_row->>'note',''),
+    (v_row->>'noticeAt')::timestamptz,coalesce(v_row->>'cancelReason',''),
+    (v_row->>'expectedUpdatedAt')::timestamptz,
+    v_child_key,(v_row->>'notifyFamily')::boolean
+  ) INTO v_receipt;
+  v_receipts:=v_receipts||jsonb_build_array(v_receipt);
+ END LOOP;
+ v_receipt:=jsonb_build_object(
+  'sessionId',p_session_id,'count',jsonb_array_length(v_receipts),
+  'attendance',v_receipts,'idempotencyKey',p_idempotency_key
+ );
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_attendance_bulk$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_attendance_bulk_mutate(
+ uuid,jsonb,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_attendance_bulk_mutate(
+ uuid,jsonb,uuid) TO authenticated;
