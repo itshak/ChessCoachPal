@@ -98,8 +98,8 @@ test("PARITY: canonical recurring edits and deletes are atomic, tenant-scoped an
  expect(after.data).toHaveLength(2);
  expect(after.data![0]).toMatchObject({
   id:protectedId,slot_occurrence_date:firstDate,
-  starts_at:rows[0].starts_at,
  });
+ expect(new Date(after.data![0].starts_at).toISOString()).toBe(new Date(rows[0].starts_at).toISOString());
  expect(after.data![1].id).not.toBe(sessions.data![1].id);
  expect(new Date(after.data![1].starts_at).toISOString())
   .toBe(secondDate+"T06:00:00.000Z");

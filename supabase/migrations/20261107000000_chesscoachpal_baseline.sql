@@ -5705,6 +5705,16 @@ BEGIN
       SELECT 1 FROM public.credit_redemptions r
       JOIN public.lessons l ON l.id=r.lesson_id
       WHERE r.package_id=OLD.id AND l.lesson_date>NEW.expires_on
+    ) OR EXISTS (
+      -- The canonical per-participant redemption is the financial authority.
+      -- Use the same local lesson date calculation as the redemption writer.
+      SELECT 1 FROM public.credit_redemptions r
+      JOIN public.teaching_sessions ts ON ts.id=r.session_id
+      WHERE r.package_id=OLD.id AND
+        (ts.starts_at AT TIME ZONE coalesce(nullif(ts.local_timezone,''),
+          (SELECT w.timezone FROM public.workplaces w
+           WHERE w.id=ts.workplace_id AND w.teacher_id=ts.teacher_id),'UTC'))::date
+         > NEW.expires_on
     )
   ) THEN
     RAISE EXCEPTION 'CREDIT_EXPIRY_HISTORY_CONFLICT'

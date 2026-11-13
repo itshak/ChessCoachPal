@@ -60,7 +60,7 @@ test("PARITY: canonical make-up credits are frozen participant-scoped, listed by
  expect(create.status(),await create.text()).toBe(200);
  const receipt=await create.json();
  expect(receipt).toMatchObject({student_id:studentId,makeup_for_session_id:sourceSessionId});
- const replay=await tool("ccp_v1_private_sessions_create",input);
+ const replay=await tool("ccp_v1_private_sessions_create",{...input,confirmed:true});
  expect(replay.error).toBeUndefined();
  expect(replay.data).toMatchObject({id:receipt.id,replayed:true});
  const after=await page.request.get("/api/coaching/calendar/makeup-credits");
