@@ -597,8 +597,16 @@ CREATE TABLE IF NOT EXISTS "public"."credit_redemptions" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "teacher_id" "uuid" NOT NULL,
     "package_id" "uuid" NOT NULL,
-    "lesson_id" "uuid" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    -- During implementation old test fixtures still use lesson_id; the
+    -- completed cutover removes it and requires the canonical participant.
+    "lesson_id" "uuid",
+    "session_id" "uuid",
+    "student_id" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "credit_redemptions_single_occurrence_check" CHECK (
+      (lesson_id IS NOT NULL AND session_id IS NULL AND student_id IS NULL) OR
+      (lesson_id IS NULL AND session_id IS NOT NULL AND student_id IS NOT NULL)
+    )
 );
 
 
@@ -703,6 +711,8 @@ CREATE TABLE IF NOT EXISTS "public"."invoice_items" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "invoice_id" "uuid" NOT NULL,
     "lesson_id" "uuid",
+    "session_id" "uuid",
+    "student_id" "uuid",
     "description" "text" NOT NULL,
     "quantity" integer DEFAULT 1 NOT NULL,
     "unit_cents" integer NOT NULL,
@@ -1217,6 +1227,7 @@ CREATE TABLE IF NOT EXISTS "public"."teaching_sessions" (
     -- the actual scheduled start time; moving a session must not re-materialize
     -- another occurrence for the vacated slot/date pair.
     "slot_id" "uuid",
+    "slot_rate_cents" integer,
     "slot_occurrence_date" "date",
     "local_timezone" "text",
     "is_home_visit" boolean DEFAULT false NOT NULL,
@@ -1230,6 +1241,8 @@ CREATE TABLE IF NOT EXISTS "public"."teaching_sessions" (
     CONSTRAINT "teaching_sessions_check" CHECK ((("group_id" IS NULL) <> ("student_id" IS NULL))),
     CONSTRAINT "teaching_sessions_duration_minutes_check" CHECK ((("duration_minutes" >= 15) AND ("duration_minutes" <= 480))),
     CONSTRAINT "teaching_sessions_lesson_note_check" CHECK (("char_length"("lesson_note") <= 10000)),
+    CONSTRAINT "teaching_sessions_slot_rate_check" CHECK (
+      "slot_rate_cents" IS NULL OR "slot_rate_cents">=0),
     CONSTRAINT "teaching_sessions_status_check" CHECK (("status" = ANY (ARRAY['scheduled'::"text", 'completed'::"text", 'cancelled'::"text"]))),
     CONSTRAINT "teaching_sessions_title_check" CHECK ((("char_length"("btrim"("title")) >= 1) AND ("char_length"("btrim"("title")) <= 160)))
 );
@@ -1926,6 +1939,16 @@ ALTER TABLE ONLY "public"."credit_packages"
 
 
 
+CREATE UNIQUE INDEX credit_redemptions_canonical_occurrence_unique
+  ON "public"."credit_redemptions" ("session_id","student_id")
+  WHERE "session_id" IS NOT NULL;
+
+ALTER TABLE ONLY "public"."credit_redemptions"
+    ADD CONSTRAINT "credit_redemptions_session_participant_fkey"
+    FOREIGN KEY ("session_id","student_id")
+    REFERENCES "public"."session_participants" ("session_id","student_id")
+    ON DELETE RESTRICT;
+
 ALTER TABLE ONLY "public"."credit_redemptions"
     ADD CONSTRAINT "credit_redemptions_lesson_id_fkey" FOREIGN KEY ("lesson_id") REFERENCES "public"."lessons"("id") ON DELETE CASCADE;
 
@@ -1995,6 +2018,12 @@ ALTER TABLE ONLY "public"."invoice_items"
     ADD CONSTRAINT "invoice_items_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE CASCADE;
 
 
+
+ALTER TABLE ONLY "public"."invoice_items"
+    ADD CONSTRAINT "invoice_items_session_participant_fkey"
+    FOREIGN KEY ("session_id","student_id")
+    REFERENCES "public"."session_participants" ("session_id","student_id")
+    ON DELETE RESTRICT;
 
 ALTER TABLE ONLY "public"."invoice_items"
     ADD CONSTRAINT "invoice_items_lesson_id_fkey" FOREIGN KEY ("lesson_id") REFERENCES "public"."lessons"("id") ON DELETE SET NULL;
