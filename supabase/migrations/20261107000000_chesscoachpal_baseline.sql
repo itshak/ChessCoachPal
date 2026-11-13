@@ -9206,8 +9206,8 @@ BEGIN
     sent_at=CASE WHEN p_outcome='sent' THEN clock_timestamp() ELSE NULL END,
     next_attempt_at=CASE WHEN p_outcome='retry'
       THEN clock_timestamp()+least(
-        make_interval(mins=60),
-        make_interval(secs=(15 * power(2,least(attempts,8)))::integer))
+        make_interval(mins => 60),
+        make_interval(secs => (15 * power(2,least(attempts,8)))::integer))
       ELSE 'infinity'::timestamptz END,
     failure_code=CASE WHEN p_outcome='retry' OR p_outcome='cancelled'
       THEN coalesce(p_failure_code,'delivery_failed') ELSE NULL END,
