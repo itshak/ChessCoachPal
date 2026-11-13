@@ -418,6 +418,11 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const sessionRecord=await postDomain({action:"sessions.create",requestId:randomUUID(),
     workplaceId:workplace.id,groupId:group.id,title:"Agent lesson "+suffix,
     startsAt:"2027-04-12T14:00:00.000Z",durationMinutes:60,lessonNote:"Original"});
+  // The history evidence clock counts observed attendance, not booked time.
+  const recorded=await postDomain({action:"attendance.record",
+    sessionId:sessionRecord.id,studentId:student.id,status:"present",
+    note:"Actual coaching completed"});
+  expect(recorded).toBeTruthy();
   // The website and the delegated MCP grant must return identical scoped report data.
   const reportArgs = { workplaceId: workplace.id, from: "2027-04-12", to: "2027-04-12" };
   expect(names).toContain("ccp_v1_reports_workplace_summary");

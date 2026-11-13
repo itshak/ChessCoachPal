@@ -316,7 +316,7 @@ export function CanonicalScheduleBoard({
     {(byDay.get(date)??[]).map(session=><div key={session.id}
       className="rounded-lg border border-border bg-background p-2 text-xs mb-2 space-y-1">
       <div className="font-medium">{formatLessonTime(session.starts_at,session.local_timezone||timezone)}</div>
-      <div className="text-foreground">{session.participants.map(p=>p.name).join(", ")}</div>
+      <div className="text-foreground break-all">{session.participants.map(p=>p.name).join(", ")}</div>
       <div className="text-muted">{session.duration_minutes} min · {session.status}</div>
       <div className="flex gap-2">
        <button disabled={busy} className="text-primary hover:underline"
@@ -334,7 +334,7 @@ export function CanonicalScheduleBoard({
     className="rounded-xl border border-border bg-surface p-5 space-y-4">
    <div className="flex justify-between gap-2">
     <div>
-     <h2 className="font-semibold">{open.title}</h2>
+     <h2 className="font-semibold break-all">{open.title}</h2>
      <p className="text-sm text-muted">{formatLessonDate(open.starts_at,open.local_timezone||timezone,"long")} · {formatLessonTime(open.starts_at,open.local_timezone||timezone)}</p>
     </div>
     <button className="text-primary hover:underline text-sm" onClick={()=>setOpen(null)}>Close</button>

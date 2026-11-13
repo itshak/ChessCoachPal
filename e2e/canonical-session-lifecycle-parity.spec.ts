@@ -56,8 +56,9 @@ test("PARITY: canonical teaching session move and cancellation use the same webs
  });
  expect(replay.error).toBeUndefined();
  expect(replay.data).toMatchObject({
-  id:sessionId,starts_at:next,duration_minutes:45,
+  id:sessionId,duration_minutes:45,
  });
+ expect(new Date(replay.data.starts_at).toISOString()).toBe(next);
  const stale=await tool("ccp_v1_sessions_edit",{
   sessionId,changes:{title:"Stale title"},
   expectedUpdatedAt:revision.data!.updated_at,

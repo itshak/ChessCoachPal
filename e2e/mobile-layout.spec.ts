@@ -61,7 +61,7 @@ test.describe("mobile layout", () => {
       // Use the canonical private-session form and frozen-roster calendar card.
       await page.goto("/schedule");
       await page.getByRole("button",{name:"+ Private session"}).click();
-      await page.getByLabel("Student",{exact:true}).last().selectOption({label:longName});
+      await page.locator("select").filter({has:page.getByRole("option",{name:longName,exact:true})}).first().selectOption({label:longName});
       await page.getByRole("button",{name:"Create session"}).click();
       const card=page.locator("div.rounded-lg.border.border-border.bg-background")
         .filter({hasText:longName}).first();
@@ -161,7 +161,7 @@ test.describe("mobile layout", () => {
     await expect(page.getByRole("link",{name:new RegExp("^"+name)})).toBeVisible();
     await page.goto("/schedule");
     await page.getByRole("button",{name:"+ Private session"}).click();
-    await page.getByLabel("Student",{exact:true}).last().selectOption({label:name});
+    await page.locator("select").filter({has:page.getByRole("option",{name:name,exact:true})}).first().selectOption({label:name});
     await page.getByRole("button",{name:"Create session"}).click();
     const card=page.locator("div.rounded-lg.border.border-border.bg-background")
       .filter({hasText:name}).first();
