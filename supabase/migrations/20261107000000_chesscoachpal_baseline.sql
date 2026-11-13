@@ -7858,6 +7858,10 @@ BEGIN
     RAISE EXCEPTION 'CANONICAL_MATERIALIZE_INVALID_REQUEST'
       USING ERRCODE='22023';
   END IF;
+  -- Use the same teacher schedule lock as all other session writers.
+  -- Checking identity before INSERT avoids the BEFORE INSERT overlap guard
+  -- rejecting a valid ON CONFLICT DO NOTHING replay.
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
   FOR v_row IN SELECT * FROM jsonb_array_elements(p_rows) LOOP
     IF jsonb_typeof(v_row) IS DISTINCT FROM 'object'
        OR v_row->>'slot_id' IS NULL
@@ -7917,6 +7921,14 @@ BEGIN
        OR (v_row->>'slot_rate_cents')::integer IS DISTINCT FROM v_slot.rate_cents THEN
       RAISE EXCEPTION 'CANONICAL_MATERIALIZE_SLOT_MISMATCH'
         USING ERRCODE='22023';
+    END IF;
+    IF EXISTS(
+      SELECT 1 FROM public.teaching_sessions
+       WHERE teacher_id=v_teacher AND slot_id=v_slot.id
+         AND slot_occurrence_date=v_slot_date
+    ) THEN
+      v_count:=v_count+1;
+      CONTINUE;
     END IF;
     INSERT INTO public.teaching_sessions(
       teacher_id,workplace_id,student_id,title,starts_at,duration_minutes,
