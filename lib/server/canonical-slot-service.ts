@@ -20,6 +20,16 @@ const patch=z.object({
  active:z.boolean().optional(),
  workplaceId:uuid.nullable().optional(),
 }).strict().refine(x=>Object.keys(x).length>0,{message:"No slot changes supplied"});
+export const canonicalSlotCreateSchema=z.object({
+ studentId:uuid,workplaceId:uuid.nullable().optional(),
+ dayOfWeek:z.number().int().min(0).max(6),
+ startTime:time,durationMinutes:z.number().int().min(15).max(480).default(30),
+ startDate:date.optional(),endDate:date.nullable().optional(),
+ rateCents:z.number().int().min(0).max(999999999).nullable().default(null),
+ isHomeVisit:z.boolean().default(false),
+ idempotencyKey:uuid,
+}).strict();
+
 export const canonicalSlotEditSchema=z.object({
  changes:patch,expectedUpdatedAt:z.string().datetime({offset:true}),
  idempotencyKey:uuid,
@@ -52,6 +62,69 @@ export async function canonicalSlotsList(db:Db,teacherId:string,
  }
  return all;
 }
+/** A single SQL transaction creates the recurring rule, snapshots the
+ * upcoming teaching roster, and saves the idempotency receipt. Both browser
+ * and delegated MCP use this exact validator and SQL command.
+ */
+export async function canonicalSlotCreate(
+ db:Db,teacherId:string,input:z.input<typeof canonicalSlotCreateSchema>
+){
+ const parsed=canonicalSlotCreateSchema.safeParse(input);
+ if(!parsed.success)fail(400,"VALIDATION_ERROR","Invalid recurring-slot details");
+ const x=parsed.data;
+ const policy=await getPolicy(db,teacherId);
+ const from=toLocalDateString(new Date(),policy.timezone);
+ const to=addDays(from,56),startDate=x.startDate??from;
+ if(x.endDate&&x.endDate<startDate)
+  fail(400,"VALIDATION_ERROR","End date cannot precede slot start");
+ const workplaces:CalendarWorkplace[]=[];
+ for(let offset=0;;offset+=500){
+  const {data,error}=await db.from("workplaces")
+   .select("id,timezone").eq("teacher_id",teacherId)
+   .order("created_at").order("id").range(offset,offset+499);
+  if(error)fail(500,"DATABASE_ERROR","Unable to load teacher workplaces");
+  workplaces.push(...(data??[]));
+  if(workplaces.length>20000)
+   fail(413,"ROSTER_TOO_LARGE","Workplace inventory too large");
+  if((data?.length??0)<500)break;
+ }
+ if(!workplaces.length)fail(409,"CONFLICT","Personal workplace is unavailable");
+ const slot={
+  id:x.idempotencyKey,teacher_id:teacherId,student_id:x.studentId,
+  workplace_id:x.workplaceId??null,day_of_week:x.dayOfWeek,
+  start_time:x.startTime,duration_minutes:x.durationMinutes,
+  start_date:startDate,end_date:x.endDate??null,
+  rate_cents:x.rateCents,is_home_visit:x.isHomeVisit,active:true,
+ } as CanonicalSlot;
+ let planned;
+ try{
+  planned=planCanonicalOccurrences(teacherId,[slot],workplaces,
+    workplaces[0].id,policy.timezone,from,to);
+ }catch(e){
+  fail(400,"VALIDATION_ERROR",e instanceof Error?e.message:"Invalid recurrence plan");
+ }
+ const {data,error}=await db.rpc("ccp_canonical_slot_create",{
+  p_student_id:x.studentId,p_workplace_id:x.workplaceId??null,
+  p_day_of_week:x.dayOfWeek,p_start_time:x.startTime,
+  p_duration_minutes:x.durationMinutes,
+  p_start_date:startDate,p_end_date:x.endDate??null,
+  p_rate_cents:x.rateCents,p_is_home_visit:x.isHomeVisit,
+  p_rows:planned,p_from:from,p_to:to,
+  p_idempotency_key:x.idempotencyKey,
+ });
+ if(error){
+  if(/CANONICAL_SLOT_CREATE_REPLAY_CONFLICT|SESSION_CONFLICT/.test(error.message)||
+    ["23505","23P01"].includes(error.code))
+   fail(409,"CONFLICT","Recurring slot request conflicts with existing teaching history");
+  if(/CANONICAL_SLOT_(?:STUDENT_NOT_FOUND|ENROLLMENT_REQUIRED)/.test(error.message)||
+    error.code==="42501")fail(404,"NOT_FOUND","Active student or workplace enrollment not found");
+  if(/CANONICAL_SLOT_(?:CREATE_INVALID|INCOMPLETE|PLAN|DUPLICATE)/.test(error.message)||
+    error.code==="22023")fail(400,"VALIDATION_ERROR","Invalid recurring-slot plan");
+  fail(500,"DATABASE_ERROR","Unable to atomically create recurring slot");
+ }
+ return data;
+}
+
 export async function canonicalSlotUpdate(
  db:Db,teacherId:string,slotId:string,
  input:z.input<typeof canonicalSlotEditSchema>
