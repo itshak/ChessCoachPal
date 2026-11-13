@@ -328,6 +328,19 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/calendar/private-sessions/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_private_sessions_create"
+      ],
+      "explanation": "One tenant-authorized canonical SQL transaction for new private lessons and consumed student-specific make-up credits, shared by web and named MCP. Stable client idempotency, workplace timezone, DST and cross-tenant guards.",
+      "evidenceTest": "e2e/canonical-private-sessions-parity.spec.ts"
+    },
+    {
       "path": "app/api/coaching/calendar/slots/[id]/route.ts",
       "methods": [
         "PATCH",
