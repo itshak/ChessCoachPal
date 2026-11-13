@@ -97,3 +97,45 @@ export async function canonicalAttendanceSet(
  }
  return data;
 }
+
+
+export type CanonicalAttendanceBulkInput={
+ idempotencyKey:string;
+ attendance:Omit<CanonicalAttendanceSetInput,"idempotencyKey">[];
+};
+export async function canonicalAttendanceBulkSet(
+ db:Db,teacherId:string,sessionId:string,input:CanonicalAttendanceBulkInput
+){
+ void teacherId;
+ if(!uuid.test(sessionId)||!input||!uuid.test(input.idempotencyKey)||
+   !Array.isArray(input.attendance)||input.attendance.length<1||
+   input.attendance.length>50)
+  fail("VALIDATION_ERROR",400,"Invalid canonical attendance batch");
+ const seen=new Set<string>();
+ const attendance=input.attendance.map(row=>{
+  validateCanonicalAttendance({...row,idempotencyKey:input.idempotencyKey});
+  if(seen.has(row.studentId))fail("VALIDATION_ERROR",400,"Duplicate frozen participant");
+  seen.add(row.studentId);
+  return {
+   studentId:row.studentId,status:row.status,note:row.note,
+   noticeAt:row.noticeAt,cancelReason:row.cancelReason,
+   expectedUpdatedAt:row.expectedUpdatedAt,notifyFamily:row.notifyFamily,
+  };
+ });
+ const {data,error}=await db.rpc("ccp_canonical_attendance_bulk_mutate",{
+  p_session_id:sessionId,p_rows:attendance,p_idempotency_key:input.idempotencyKey,
+ });
+ if(error){
+  if(error.message.includes("CANONICAL_ATTENDANCE_BULK_REPLAY_CONFLICT")||
+     error.message.includes("CANONICAL_ATTENDANCE_REVISION_CONFLICT")||
+     error.code==="23505"||error.code==="23514")
+    fail("CONFLICT",409,"One or more participant decisions are stale or protected");
+  if(error.message.includes("CANONICAL_ATTENDANCE_NOT_FOUND")||
+     error.code==="42501")
+    fail("NOT_FOUND",404,"Session or participant not found");
+  if(error.code==="22023"||error.message.includes("CANONICAL_ATTENDANCE_BULK_INVALID"))
+    fail("VALIDATION_ERROR",400,"Invalid attendance batch");
+  fail("DATABASE_ERROR",500,"Unable to record attendance batch");
+ }
+ return data;
+}
