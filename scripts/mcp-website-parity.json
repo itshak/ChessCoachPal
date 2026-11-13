@@ -433,6 +433,17 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/cron/canonical-outbox/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "system",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Service-role delivery worker with CRON_SECRET bearer check; external scheduler only, not a teacher business or MCP feature. Claims scoped approved outbox intents with leases and retry receipts."
+    },
+    {
       "path": "app/api/cron/event-reminders/route.ts",
       "methods": [
         "GET",
