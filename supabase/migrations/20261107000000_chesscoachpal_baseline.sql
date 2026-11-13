@@ -648,7 +648,6 @@ ALTER TABLE "public"."invoices" OWNER TO "postgres";
 
 
 
-COMMENT ON COLUMN "public"."lesson_notes"."private_body" IS 'Teacher-only notes for this lesson; never shown on the family portal.';
 
 
 
@@ -691,7 +690,6 @@ COMMENT ON COLUMN "public"."lesson_slots"."is_home_visit" IS 'When true, materia
 
 
 
-COMMENT ON COLUMN "public"."lessons"."rescheduled_from_date" IS 'Original slot occurrence date this lesson was moved away from; NULL when never moved. materializeLessons skips the (slot_id, rescheduled_from_date) pair so the vacated occurrence is not re-created.';
 
 
 
