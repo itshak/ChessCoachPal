@@ -6,7 +6,7 @@ export class InvoiceActionError extends Error {
 }
 const fail=(status:number,code:string,msg:string)=>new InvoiceActionError(status,code,msg);
 type Db=SupabaseClient;
-type InvoiceLine={id?:string;lessonId?:string|null;description:string;quantity:number;
+type InvoiceLine={id?:string;sessionId?:string|null;studentId?:string|null;description:string;quantity:number;
  unitCents:number;amountCents:number};
 export type InvoiceDraftEdit={notes?:string;items?:InvoiceLine[];expectedUpdatedAt?:string;
  idempotencyKey?:string};
@@ -66,6 +66,7 @@ export async function teacherInvoiceDraftUpdate(db:Db,teacherId:string,id:string
   if(input.items!==undefined){
     if(!Array.isArray(input.items)||input.items.length>100||input.items.some(line=>
       !line.description?.trim()||line.description.length>500||
+      Boolean(line.sessionId)!==Boolean(line.studentId)||
       ![line.quantity,line.unitCents,line.amountCents].every(Number.isSafeInteger)||
       line.quantity<1||line.quantity>10000||
       line.unitCents<0||line.unitCents>100000000||
