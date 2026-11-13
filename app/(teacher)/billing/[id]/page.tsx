@@ -74,7 +74,8 @@ export default async function InvoiceDetailPage({
   const items = (
     (invoice.invoice_items as {
       id: string;
-      lesson_id: string | null;
+      session_id: string | null;
+      student_id: string | null;
       description: string;
       quantity: number;
       unit_cents: number;
@@ -85,7 +86,8 @@ export default async function InvoiceDetailPage({
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((i) => ({
       id: i.id,
-      lessonId: i.lesson_id,
+      sessionId: i.session_id,
+      studentId: i.student_id,
       description: i.description,
       quantity: i.quantity,
       unitCents: i.unit_cents,
