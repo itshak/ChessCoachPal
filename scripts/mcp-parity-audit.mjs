@@ -139,7 +139,7 @@ for(const [index,row] of nextRows.entries()){
 }
 errors.push(...validateUniqueCheckedParityReferences([...checklistRows,...nextRows]));
 const pendingCases=cases.filter(match=>match[1]===" ").length;
-const pendingNewCases=nextRows.filter(x=>/^\\|\\s*-\\s*\\[ \\]/.test(x)).length;
+const pendingNewCases=nextRows.filter(x=>/^\|\s*-\s*\[ \]/.test(x)).length;
 console.log("New canonical parity workflows: "+(nextRows.length-pendingNewCases)+"/"+nextRows.length+" verified.");
 if(pendingNewCases>0) console.log("Release BLOCKED: "+pendingNewCases+" new website/MCP scenarios still unverified.");
 console.log("Browser ↔ MCP behavioral checklist: "+(cases.length-pendingCases)+"/"+cases.length+
