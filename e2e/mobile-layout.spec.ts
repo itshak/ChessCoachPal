@@ -80,7 +80,9 @@ test.describe("mobile layout", () => {
       await page.goto("/schedule");
       await page.getByRole("button",{name:"+ Private session"}).click();
       await page.locator("select").filter({has:page.getByRole("option",{name:longName,exact:true})}).first().selectOption({label:longName});
-      await page.getByRole("button",{name:"Create session"}).click();
+      await page.getByLabel("Local time",{exact:true}).fill("09:07");
+       await page.getByRole("button",{name:"Create session"}).click();
+       await expect(page.getByText("Private teaching session scheduled")).toBeVisible();
       const card=page.locator("div.rounded-lg.border.border-border.bg-background")
         .filter({hasText:longName}).first();
       await expect(card).toBeVisible();
@@ -184,7 +186,9 @@ test.describe("mobile layout", () => {
     await page.goto("/schedule");
     await page.getByRole("button",{name:"+ Private session"}).click();
     await page.locator("select").filter({has:page.getByRole("option",{name:name,exact:true})}).first().selectOption({label:name});
-    await page.getByRole("button",{name:"Create session"}).click();
+    await page.getByLabel("Local time",{exact:true}).fill("11:13");
+     await page.getByRole("button",{name:"Create session"}).click();
+     await expect(page.getByText("Private teaching session scheduled")).toBeVisible();
     const card=page.locator("div.rounded-lg.border.border-border.bg-background")
       .filter({hasText:name}).first();
     await expect(card).toBeVisible();
