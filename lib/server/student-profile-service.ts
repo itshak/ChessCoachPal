@@ -85,16 +85,22 @@ export async function teacherStudentArchivePreview(db: Db, teacherId: string, st
   const checks = await Promise.all([
     db.from("lesson_slots").select("id", {count:"exact", head:true})
       .eq("teacher_id",teacherId).eq("student_id",studentId).eq("active",true),
-    db.from("lessons").select("id", {count:"exact", head:true})
-      .eq("teacher_id",teacherId).eq("student_id",studentId).gte("starts_at",now),
-    db.from("teaching_sessions").select("id", {count:"exact", head:true})
+    // The slot is scheduling intent, not another physical lesson.
+    db.from("teaching_sessions").select("id",{count:"exact",head:true})
       .eq("teacher_id",teacherId).eq("student_id",studentId)
-      .eq("status","scheduled").gte("starts_at",now),
+      .eq("status","scheduled").gte("starts_at",now)
+      .not("slot_id","is",null),
+    db.from("teaching_sessions").select("id",{count:"exact",head:true})
+      .eq("teacher_id",teacherId).eq("student_id",studentId)
+      .eq("status","scheduled").gte("starts_at",now)
+      .is("slot_id",null),
     db.from("session_participants")
-      .select("session_id,teaching_sessions!session_participants_session_id_teacher_id_fkey!inner(id)", {count:"exact",head:true})
+      .select("session_id,teaching_sessions!session_participants_session_id_teacher_id_fkey!inner(id)",
+       {count:"exact",head:true})
       .eq("teacher_id",teacherId).eq("student_id",studentId)
       .eq("teaching_sessions.status","scheduled")
-      .gte("teaching_sessions.starts_at",now),
+      .gte("teaching_sessions.starts_at",now)
+      .is("teaching_sessions.student_id",null),
     db.from("group_enrollments").select("id", {count:"exact",head:true})
       .eq("teacher_id",teacherId).eq("student_id",studentId),
   ]);
