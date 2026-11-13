@@ -3982,127 +3982,133 @@ DROP TRIGGER IF EXISTS ccp_invoice_revision ON public.invoices;
 CREATE TRIGGER ccp_invoice_revision BEFORE UPDATE ON public.invoices
   FOR EACH ROW EXECUTE FUNCTION public.ccp_touch_revision();
 
+-- Canonical invoice draft editor. Session-backed lines are scoped to frozen
+-- participants; manually entered adjustments have no fabricated session link.
+-- The same transaction handles website and delegated MCP edits/replays.
 CREATE OR REPLACE FUNCTION public.ccp_invoice_draft_update(
- p_invoice_id uuid, p_notes text, p_items jsonb,
- p_expected_updated_at timestamptz, p_idempotency_key uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $invoice_draft$
+ p_invoice_id uuid,p_notes text,p_items jsonb,
+ p_expected_updated_at timestamptz,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $invoice_draft$
 DECLARE
  v_teacher uuid:=auth.uid();
  v_invoice public.invoices%ROWTYPE;
- v_count integer;v_line jsonb;v_prepared jsonb:='[]'::jsonb;
- v_kind text;v_lesson uuid;v_subtotal bigint:=0;v_number integer:=0;
- v_description text;v_quantity integer;v_unit integer;v_amount integer;
- v_hash text;
- v_old public.agent_tool_receipts%ROWTYPE;
- v_receipt jsonb;
+ v_line jsonb;v_prepared jsonb:='[]'::jsonb;
+ v_kind text;v_session uuid;v_student uuid;v_subtotal bigint:=0;v_sort int:=0;
+ v_description text;v_quantity int;v_unit int;v_amount int;
+ v_hash text;v_prior public.agent_tool_receipts%ROWTYPE;v_receipt jsonb;
 BEGIN
- IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
- IF p_idempotency_key IS NULL THEN
-   RAISE EXCEPTION 'INVALID_INVOICE_DRAFT_REQUEST' USING ERRCODE='22023';
+ IF v_teacher IS NULL THEN
+   RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
  END IF;
- IF p_notes IS NULL AND p_items IS NULL THEN
-   RAISE EXCEPTION 'EMPTY_INVOICE_PATCH' USING ERRCODE='22023';
+ IF p_invoice_id IS NULL OR p_idempotency_key IS NULL
+    OR (p_notes IS NULL AND p_items IS NULL)
+    OR (p_notes IS NOT NULL AND length(p_notes)>2000)
+    OR (p_items IS NOT NULL AND (jsonb_typeof(p_items)<>'array'
+      OR jsonb_array_length(p_items)>100 OR pg_column_size(p_items)>150000))
+ THEN RAISE EXCEPTION 'INVALID_INVOICE_DRAFT_REQUEST' USING ERRCODE='22023';
  END IF;
- IF p_notes IS NOT NULL AND length(p_notes)>2000 THEN
-   RAISE EXCEPTION 'INVALID_INVOICE_NOTES' USING ERRCODE='22023';
- END IF;
- -- Insert-first serializes concurrent same-key browser/MCP retries.
- -- A failure below rolls this receipt and every invoice change back.
- v_hash:=md5(jsonb_build_array('billing.invoice.draft.update',p_invoice_id,
-   p_notes,p_items,p_expected_updated_at)::text);
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ v_hash:=md5(jsonb_build_array('billing.invoice.draft.update',
+  p_invoice_id,p_notes,p_items,p_expected_updated_at)::text);
  INSERT INTO public.agent_tool_receipts(
-   teacher_id,idempotency_key,operation,request_hash,receipt
- ) VALUES(v_teacher,p_idempotency_key,'billing.invoice.draft.update',
-   v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'billing.invoice.draft.update',v_hash,'{}'::jsonb)
+   ON CONFLICT DO NOTHING;
  IF NOT FOUND THEN
-   SELECT * INTO v_old FROM public.agent_tool_receipts
+  SELECT * INTO v_prior FROM public.agent_tool_receipts
    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
-   IF NOT FOUND OR v_old.operation<>'billing.invoice.draft.update'
-     OR v_old.request_hash<>v_hash THEN
-     RAISE EXCEPTION 'INVOICE_DRAFT_REQUEST_CONFLICT' USING ERRCODE='23505';
-   END IF;
-   RETURN v_old.receipt||jsonb_build_object('replayed',true);
+  IF NOT FOUND OR v_prior.operation<>'billing.invoice.draft.update'
+     OR v_prior.request_hash<>v_hash THEN
+    RAISE EXCEPTION 'INVOICE_DRAFT_REQUEST_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_prior.receipt||jsonb_build_object('replayed',true);
  END IF;
  SELECT * INTO v_invoice FROM public.invoices
- WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
+  WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
- IF v_invoice.status<>'draft' THEN
-   RAISE EXCEPTION 'INVOICE_NOT_DRAFT' USING ERRCODE='23514';
- END IF;
- IF p_expected_updated_at IS NOT NULL AND
-    v_invoice.updated_at<>p_expected_updated_at THEN
-   RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';
- END IF;
+ IF v_invoice.status<>'draft'
+   OR v_invoice.stripe_checkout_session_id IS NOT NULL
+   OR v_invoice.stripe_checkout_url IS NOT NULL
+   OR v_invoice.stripe_payment_intent_id IS NOT NULL
+   OR EXISTS(SELECT 1 FROM public.payments WHERE invoice_id=p_invoice_id)
+ THEN RAISE EXCEPTION 'INVOICE_NOT_EDITABLE' USING ERRCODE='23514';END IF;
+ IF p_expected_updated_at IS NOT NULL
+   AND v_invoice.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';END IF;
  IF p_items IS NOT NULL THEN
-   IF jsonb_typeof(p_items)<>'array' OR jsonb_array_length(p_items)>100 THEN
-     RAISE EXCEPTION 'INVALID_INVOICE_ITEMS' USING ERRCODE='22023';
-   END IF;
-   IF EXISTS(SELECT 1 FROM public.credit_packages
-      WHERE teacher_id=v_teacher AND invoice_id=p_invoice_id) THEN
-     RAISE EXCEPTION 'PREPAID_INVOICE_IMMUTABLE' USING ERRCODE='23514';
-   END IF;
-   FOR v_line IN SELECT value FROM jsonb_array_elements(p_items) LOOP
-     v_description:=nullif(btrim(v_line->>'description'),'');
-     IF jsonb_typeof(v_line)<>'object' OR v_description IS NULL
-        OR length(v_description)>500 OR
-        NOT (v_line ? 'quantity' AND v_line ? 'unitCents' AND v_line ? 'amountCents')
-        OR coalesce(v_line->>'quantity','') !~ '^[0-9]+$'
-        OR coalesce(v_line->>'unitCents','') !~ '^[0-9]+$'
-        OR coalesce(v_line->>'amountCents','') !~ '^[0-9]+$' THEN
-       RAISE EXCEPTION 'INVALID_INVOICE_LINE' USING ERRCODE='22023';
-     END IF;
-     v_quantity:=(v_line->>'quantity')::integer;
-     v_unit:=(v_line->>'unitCents')::integer;
-     v_amount:=(v_line->>'amountCents')::integer;
-     IF v_quantity NOT BETWEEN 1 AND 10000
-        OR v_unit NOT BETWEEN 0 AND 100000000
-        OR v_amount NOT BETWEEN 0 AND 100000000 THEN
-       RAISE EXCEPTION 'INVALID_INVOICE_LINE' USING ERRCODE='22023';
-     END IF;
-     v_lesson:=nullif(v_line->>'lessonId','')::uuid;
-     IF v_lesson IS NOT NULL THEN
-       PERFORM 1 FROM public.lessons WHERE id=v_lesson AND teacher_id=v_teacher;
-       IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
-     END IF;
-     v_kind:='lesson';
-     IF nullif(v_line->>'id','') IS NOT NULL THEN
-       SELECT kind INTO v_kind FROM public.invoice_items
+  IF EXISTS(SELECT 1 FROM public.credit_packages
+    WHERE teacher_id=v_teacher AND invoice_id=p_invoice_id) THEN
+    RAISE EXCEPTION 'PREPAID_INVOICE_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  FOR v_line IN SELECT value FROM jsonb_array_elements(p_items) LOOP
+    v_description:=nullif(btrim(v_line->>'description'),'');
+    IF jsonb_typeof(v_line)<>'object' OR v_description IS NULL
+      OR length(v_description)>500
+      OR (v_line-ARRAY['id','sessionId','studentId','description',
+          'quantity','unitCents','amountCents']) <> '{}'::jsonb
+      OR coalesce(v_line->>'quantity','') !~ '^[0-9]+$'
+      OR coalesce(v_line->>'unitCents','') !~ '^[0-9]+$'
+      OR coalesce(v_line->>'amountCents','') !~ '^[0-9]+$'
+    THEN RAISE EXCEPTION 'INVALID_INVOICE_LINE' USING ERRCODE='22023';
+    END IF;
+    v_quantity:=(v_line->>'quantity')::int;
+    v_unit:=(v_line->>'unitCents')::int;
+    v_amount:=(v_line->>'amountCents')::int;
+    IF v_quantity NOT BETWEEN 1 AND 10000
+       OR v_unit NOT BETWEEN 0 AND 100000000
+       OR v_amount NOT BETWEEN 0 AND 100000000
+       OR v_quantity::bigint*v_unit<>v_amount THEN
+      RAISE EXCEPTION 'INVALID_INVOICE_LINE' USING ERRCODE='22023';
+    END IF;
+    v_session:=nullif(v_line->>'sessionId','')::uuid;
+    v_student:=nullif(v_line->>'studentId','')::uuid;
+    IF (v_session IS NULL) <> (v_student IS NULL) THEN
+      RAISE EXCEPTION 'INVALID_INVOICE_PARTICIPANT_PAIR'
+        USING ERRCODE='22023';
+    END IF;
+    v_kind:='lesson';
+    IF nullif(v_line->>'id','') IS NOT NULL THEN
+      SELECT kind INTO v_kind FROM public.invoice_items
        WHERE id=(v_line->>'id')::uuid AND invoice_id=p_invoice_id;
-       v_kind:=coalesce(v_kind,'lesson');
-     END IF;
-     v_prepared:=v_prepared||jsonb_build_array(jsonb_build_object(
-       'kind',v_kind,'lessonId',v_lesson,'description',v_description,
-       'quantity',v_quantity,'unitCents',v_unit,'amountCents',v_amount,
-       'sortOrder',v_number
-     ));
-     v_subtotal:=v_subtotal+v_amount;
-     v_number:=v_number+1;
-   END LOOP;
-   IF v_subtotal>2147483647 THEN
-     RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';
-   END IF;
-   -- Once validation succeeds, all writes below run in this transaction.
-   DELETE FROM public.invoice_items WHERE invoice_id=p_invoice_id;
-   FOR v_line IN SELECT value FROM jsonb_array_elements(v_prepared) LOOP
-     INSERT INTO public.invoice_items(
-       invoice_id,lesson_id,kind,description,quantity,unit_cents,amount_cents,sort_order
-     ) VALUES(
-       p_invoice_id,(v_line->>'lessonId')::uuid,v_line->>'kind',v_line->>'description',
-       (v_line->>'quantity')::integer,(v_line->>'unitCents')::integer,
-       (v_line->>'amountCents')::integer,(v_line->>'sortOrder')::integer
-     );
-   END LOOP;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'INVOICE_LINE_NOT_FOUND' USING ERRCODE='42501';
+      END IF;
+    END IF;
+    IF v_kind NOT IN ('lesson','travel') THEN
+      RAISE EXCEPTION 'INVALID_INVOICE_LINE_KIND' USING ERRCODE='22023';
+    END IF;
+    v_prepared:=v_prepared||jsonb_build_array(jsonb_build_object(
+      'kind',v_kind,'sessionId',v_session,'studentId',v_student,
+      'description',v_description,'quantity',v_quantity,
+      'unitCents',v_unit,'amountCents',v_amount,'sortOrder',v_sort));
+    v_sort:=v_sort+1;v_subtotal:=v_subtotal+v_amount;
+  END LOOP;
+  IF v_subtotal>2147483647 THEN
+    RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';END IF;
+  DELETE FROM public.invoice_items WHERE invoice_id=p_invoice_id;
+  FOR v_line IN SELECT value FROM jsonb_array_elements(v_prepared) LOOP
+    INSERT INTO public.invoice_items(
+      invoice_id,session_id,student_id,kind,description,quantity,
+      unit_cents,amount_cents,sort_order
+    ) VALUES(
+      p_invoice_id,(v_line->>'sessionId')::uuid,
+      (v_line->>'studentId')::uuid,v_line->>'kind',
+      v_line->>'description',(v_line->>'quantity')::int,
+      (v_line->>'unitCents')::int,(v_line->>'amountCents')::int,
+      (v_line->>'sortOrder')::int);
+  END LOOP;
  END IF;
- UPDATE public.invoices
- SET subtotal_cents=CASE WHEN p_items IS NULL THEN subtotal_cents ELSE v_subtotal::integer END,
-     notes=coalesce(p_notes,notes)
+ UPDATE public.invoices SET
+   subtotal_cents=CASE WHEN p_items IS NULL THEN subtotal_cents ELSE v_subtotal::int END,
+   notes=coalesce(p_notes,notes)
  WHERE id=p_invoice_id AND teacher_id=v_teacher AND status='draft'
  RETURNING * INTO v_invoice;
  v_receipt:=jsonb_build_object('ok',true,'invoiceId',p_invoice_id,
    'updatedAt',v_invoice.updated_at,'idempotencyKey',p_idempotency_key,
    'replayed',false);
  UPDATE public.agent_tool_receipts SET receipt=v_receipt
- WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
  RETURN v_receipt;
 END;
 $invoice_draft$;
