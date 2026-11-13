@@ -78,7 +78,7 @@ test("PARITY:PARITY-configured-checkout-independent-two-claim-race keeps only on
   expect(invoice.error).toBeNull();
   const invoiceId=invoice.data!.id as string;
   expect((await admin.from("invoice_items").insert({
-   invoice_id:invoiceId,lesson_id:null,kind:"lesson",
+   invoice_id:invoiceId,kind:"lesson",
    description:"Synthetic independent knight endgame",quantity:1,
    unit_cents:6100,amount_cents:6100,sort_order:0,
   })).error).toBeNull();
