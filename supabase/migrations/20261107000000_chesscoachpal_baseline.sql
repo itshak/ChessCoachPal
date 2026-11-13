@@ -8887,3 +8887,152 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_invoice_regenerate_atomic(
  uuid,jsonb,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_invoice_regenerate_atomic(
  uuid,jsonb,jsonb,timestamptz,uuid) TO authenticated;
+
+
+-- Canonical private one-off and make-up occurrence creation. A one-time
+-- recurrence insert/retired attendance record is NOT another actual lesson.
+-- Source cancellation, target workplace enrolment, replay and conflict
+-- verification are inside the same serialized owner-authorized transaction.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_private_session_create(
+ p_student_id uuid,p_date date,p_local_time time,
+ p_duration_minutes integer,p_is_home_visit boolean,
+ p_makeup_for_session_id uuid,p_workplace_id uuid,
+ p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_private_session_create$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_workplace public.workplaces%ROWTYPE;
+ v_timezone text;
+ v_starts timestamptz;
+ v_slot_duration integer;
+ v_source public.teaching_sessions%ROWTYPE;
+ v_att public.session_attendance%ROWTYPE;
+ v_policy public.studio_policies%ROWTYPE;
+ v_valid_makeup boolean:=false;
+ v_session public.teaching_sessions%ROWTYPE;
+ v_previous public.teaching_sessions%ROWTYPE;
+ v_duration integer;
+BEGIN
+ IF v_teacher IS NULL THEN
+  RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_student_id IS NULL OR p_date IS NULL OR p_local_time IS NULL
+  OR p_request_id IS NULL OR p_is_home_visit IS NULL
+  OR p_duration_minutes IS NOT NULL AND p_duration_minutes NOT BETWEEN 15 AND 480 THEN
+  RAISE EXCEPTION 'CANONICAL_PRIVATE_INVALID_REQUEST' USING ERRCODE='22023';
+ END IF;
+ -- Session scheduling is serialized for both website and MCP, including
+ -- another client trying to consume the same make-up source.
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ IF NOT EXISTS(
+   SELECT 1 FROM public.students
+    WHERE teacher_id=v_teacher AND id=p_student_id AND archived_at IS NULL
+ ) THEN
+   RAISE EXCEPTION 'CANONICAL_PRIVATE_STUDENT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF p_workplace_id IS NULL THEN
+   SELECT * INTO v_workplace FROM public.workplaces
+     WHERE teacher_id=v_teacher ORDER BY created_at,id LIMIT 1;
+ ELSE
+   SELECT * INTO v_workplace FROM public.workplaces
+     WHERE teacher_id=v_teacher AND id=p_workplace_id;
+ END IF;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'CANONICAL_PRIVATE_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF NOT EXISTS(
+  SELECT 1 FROM public.workplace_enrollments
+   WHERE teacher_id=v_teacher AND workplace_id=v_workplace.id
+    AND student_id=p_student_id
+ ) THEN
+  RAISE EXCEPTION 'CANONICAL_PRIVATE_ENROLLMENT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_policy FROM public.studio_policies WHERE teacher_id=v_teacher;
+ v_timezone:=CASE WHEN p_workplace_id IS NULL THEN
+    coalesce(nullif(v_policy.timezone,''),v_workplace.timezone)
+  ELSE v_workplace.timezone END;
+ IF v_timezone IS NULL THEN
+  RAISE EXCEPTION 'CANONICAL_PRIVATE_TIMEZONE_UNAVAILABLE' USING ERRCODE='22023';
+ END IF;
+ v_duration:=p_duration_minutes;
+ IF p_makeup_for_session_id IS NOT NULL THEN
+   SELECT * INTO v_source FROM public.teaching_sessions
+    WHERE id=p_makeup_for_session_id AND teacher_id=v_teacher FOR UPDATE;
+   IF NOT FOUND THEN
+     RAISE EXCEPTION 'CANONICAL_MAKEUP_SOURCE_NOT_FOUND' USING ERRCODE='42501';
+   END IF;
+   IF NOT EXISTS(
+      SELECT 1 FROM public.session_participants
+        WHERE teacher_id=v_teacher AND session_id=p_makeup_for_session_id
+         AND student_id=p_student_id
+   ) THEN
+     RAISE EXCEPTION 'CANONICAL_MAKEUP_PARTICIPANT_NOT_FOUND' USING ERRCODE='42501';
+   END IF;
+   SELECT * INTO v_att FROM public.session_attendance
+     WHERE teacher_id=v_teacher AND session_id=p_makeup_for_session_id
+       AND student_id=p_student_id FOR UPDATE;
+   v_valid_makeup:=CASE v_att.status
+      WHEN 'teacher_cancelled' THEN coalesce(v_policy.teacher_cancel_earns_makeup,false)
+      WHEN 'absent' THEN coalesce(v_policy.no_show_earns_makeup,false)
+      WHEN 'student_cancelled' THEN CASE WHEN
+        v_att.notice_at IS NOT NULL AND
+        v_source.starts_at-v_att.notice_at >=
+          coalesce(v_policy.cancellation_window_hours,24)*interval '1 hour'
+        THEN coalesce(v_policy.timely_cancel_earns_makeup,false)
+        ELSE coalesce(v_policy.late_cancel_earns_makeup,false) END
+      ELSE false END;
+   IF NOT v_valid_makeup THEN
+      RAISE EXCEPTION 'CANONICAL_MAKEUP_NOT_ELIGIBLE' USING ERRCODE='23514';
+   END IF;
+   IF EXISTS(SELECT 1 FROM public.teaching_sessions
+      WHERE teacher_id=v_teacher
+        AND makeup_for_session_id=p_makeup_for_session_id
+        AND makeup_for_student_id=p_student_id) THEN
+     RAISE EXCEPTION 'CANONICAL_MAKEUP_ALREADY_USED' USING ERRCODE='23505';
+   END IF;
+   v_duration:=coalesce(v_duration,v_source.duration_minutes);
+ ELSE
+   v_duration:=coalesce(v_duration,30);
+ END IF;
+ IF v_duration NOT BETWEEN 15 AND 480 THEN
+   RAISE EXCEPTION 'CANONICAL_PRIVATE_INVALID_DURATION' USING ERRCODE='22023';
+ END IF;
+ v_starts:=(p_date::timestamp+p_local_time) AT TIME ZONE v_timezone;
+ IF (v_starts AT TIME ZONE v_timezone)::date<>p_date OR
+    (v_starts AT TIME ZONE v_timezone)::time<>p_local_time THEN
+   RAISE EXCEPTION 'CANONICAL_PRIVATE_DST_GAP' USING ERRCODE='22023';
+ END IF;
+ SELECT * INTO v_previous FROM public.teaching_sessions
+  WHERE teacher_id=v_teacher AND request_id=p_request_id;
+ IF FOUND THEN
+   IF v_previous.student_id IS DISTINCT FROM p_student_id OR
+      v_previous.workplace_id IS DISTINCT FROM v_workplace.id OR
+      v_previous.starts_at IS DISTINCT FROM v_starts OR
+      v_previous.duration_minutes IS DISTINCT FROM v_duration OR
+      v_previous.is_home_visit IS DISTINCT FROM p_is_home_visit OR
+      v_previous.makeup_for_session_id IS DISTINCT FROM p_makeup_for_session_id OR
+      v_previous.makeup_for_student_id IS DISTINCT FROM
+        (CASE WHEN p_makeup_for_session_id IS NOT NULL THEN p_student_id ELSE NULL END) THEN
+     RAISE EXCEPTION 'CANONICAL_PRIVATE_REPLAY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN to_jsonb(v_previous)||jsonb_build_object('replayed',true);
+ END IF;
+ INSERT INTO public.teaching_sessions(
+  teacher_id,workplace_id,student_id,title,starts_at,duration_minutes,
+  status,local_timezone,is_home_visit,
+  makeup_for_session_id,makeup_for_student_id,request_id
+ ) VALUES(
+  v_teacher,v_workplace.id,p_student_id,'Private chess lesson',
+  v_starts,v_duration,'scheduled',v_timezone,p_is_home_visit,
+  p_makeup_for_session_id,
+  CASE WHEN p_makeup_for_session_id IS NOT NULL THEN p_student_id ELSE NULL END,
+  p_request_id
+ ) RETURNING * INTO v_session;
+ RETURN to_jsonb(v_session)||jsonb_build_object('replayed',false);
+END;
+$ccp_private_session_create$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_private_session_create(
+ uuid,date,time,integer,boolean,uuid,uuid,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_private_session_create(
+ uuid,date,time,integer,boolean,uuid,uuid,uuid) TO authenticated;
