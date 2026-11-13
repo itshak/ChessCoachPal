@@ -17,6 +17,7 @@ export type PlannedCanonicalOccurrence = {
   slot_occurrence_date: string;
   local_timezone: string;
   is_home_visit: boolean;
+  slot_rate_cents: number|null;
 };
 
 /**
@@ -67,6 +68,7 @@ export function planCanonicalOccurrences(
         slot_occurrence_date: occurrence.lesson_date,
         local_timezone: timezone,
         is_home_visit: occurrence.is_home_visit,
+        slot_rate_cents: slot.rate_cents ?? null,
       });
       if (result.length > 5000) throw new RangeError("Too many occurrences to materialize safely");
     }
