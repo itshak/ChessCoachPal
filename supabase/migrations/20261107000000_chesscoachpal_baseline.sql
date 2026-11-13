@@ -2140,7 +2140,8 @@ ALTER TABLE ONLY "public"."teaching_sessions"
 ALTER TABLE ONLY "public"."teaching_sessions"
     ADD CONSTRAINT "teaching_sessions_makeup_participant_fkey"
     FOREIGN KEY ("makeup_for_session_id", "makeup_for_student_id", "teacher_id")
-    REFERENCES "public"."session_participants" ("session_id", "student_id", "teacher_id") ON DELETE RESTRICT;
+    REFERENCES "public"."session_participants" ("session_id", "student_id", "teacher_id")
+    ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED;
 
 ALTER TABLE ONLY "public"."session_participants"
     ADD CONSTRAINT "session_participants_session_id_teacher_id_fkey" FOREIGN KEY ("session_id", "teacher_id") REFERENCES "public"."teaching_sessions"("id", "teacher_id") ON DELETE CASCADE;
@@ -5809,10 +5810,10 @@ BEGIN
   -- arbitrary JSON table names are ignored, never interpolated into SQL.
   FOREACH v_table IN ARRAY ARRAY[
     'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
-    'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
-    'session_participants', 'session_attendance', 'chess_skill_categories',
-    'chess_observations', 'lesson_slots', 'lessons',
-    'attendance', 'lesson_notes', 'skill_dimensions', 'skill_assessments',
+    'workplace_enrollments', 'group_enrollments', 'lesson_slots',
+    'teaching_sessions', 'session_participants', 'session_attendance',
+    'session_notes', 'chess_skill_categories', 'chess_observations',
+    'skill_dimensions', 'skill_assessments',
     'invoices', 'invoice_items', 'payments', 'events', 'event_students',
     'event_rsvps', 'credit_packages', 'credit_redemptions'
   ] LOOP
@@ -5850,9 +5851,9 @@ BEGIN
       END IF;
       IF v_table = ANY(ARRAY[
         'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
-        'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
-        'session_participants', 'session_attendance', 'chess_skill_categories',
-        'chess_observations', 'lesson_slots', 'lessons',
+        'workplace_enrollments', 'group_enrollments', 'lesson_slots',
+        'teaching_sessions', 'session_participants', 'session_attendance',
+        'session_notes', 'chess_skill_categories', 'chess_observations',
         'skill_dimensions', 'invoices', 'events', 'credit_packages',
         'credit_redemptions'
       ]) THEN
@@ -7535,10 +7536,10 @@ BEGIN
   -- arbitrary JSON table names are ignored, never interpolated into SQL.
   FOREACH v_table IN ARRAY ARRAY[
     'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
-    'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
-    'session_participants', 'session_attendance', 'chess_skill_categories',
-    'chess_observations', 'lesson_slots', 'lessons',
-    'attendance', 'lesson_notes', 'skill_dimensions', 'skill_assessments',
+    'workplace_enrollments', 'group_enrollments', 'lesson_slots',
+    'teaching_sessions', 'session_participants', 'session_attendance',
+    'session_notes', 'chess_skill_categories', 'chess_observations',
+    'skill_dimensions', 'skill_assessments',
     'invoices', 'invoice_items', 'payments', 'events', 'event_students',
     'event_rsvps', 'credit_packages', 'credit_redemptions'
   ] LOOP
@@ -7576,9 +7577,9 @@ BEGIN
       END IF;
       IF v_table = ANY(ARRAY[
         'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
-        'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
-        'session_participants', 'session_attendance', 'chess_skill_categories',
-        'chess_observations', 'lesson_slots', 'lessons',
+        'workplace_enrollments', 'group_enrollments', 'lesson_slots',
+        'teaching_sessions', 'session_participants', 'session_attendance',
+        'session_notes', 'chess_skill_categories', 'chess_observations',
         'skill_dimensions', 'invoices', 'events', 'credit_packages',
         'credit_redemptions'
       ]) THEN
