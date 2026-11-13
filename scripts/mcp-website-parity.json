@@ -419,6 +419,19 @@
       "evidenceTest": "e2e/canonical-session-attendance-parity.spec.ts"
     },
     {
+      "path": "app/api/coaching/sessions/[id]/lifecycle/route.ts",
+      "methods": [
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_sessions_edit"
+      ],
+      "explanation": "Teacher-owned canonical session edit, reschedule and cancel are routed through one revisioned teacher session commit used by website and delegated MCP. Explicit expected revision and idempotency key required.",
+      "evidenceTest": "e2e/canonical-session-lifecycle-parity.spec.ts"
+    },
+    {
       "path": "app/api/coaching/sessions/[id]/notes/route.ts",
       "methods": [
         "GET",
