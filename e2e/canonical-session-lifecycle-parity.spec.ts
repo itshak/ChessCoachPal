@@ -42,21 +42,21 @@ test("PARITY:PARITY-canonical-session-edit canonical teaching session move and c
  const key=randomUUID();
  const web=await page.request.patch(
   "/api/coaching/sessions/"+sessionId+"/lifecycle",{
-   data:{startsAt:next,durationMinutes:45,
+   data:{startsAt:next,durationMinutes:45,isHomeVisit:true,
      expectedUpdatedAt:revision.data!.updated_at,idempotencyKey:key},
   });
  expect(web.status(),await web.text()).toBe(200);
  const webRow=await web.json();
- expect(webRow).toMatchObject({id:sessionId,duration_minutes:45});
+ expect(webRow).toMatchObject({id:sessionId,duration_minutes:45,is_home_visit:true});
  expect(new Date(webRow.starts_at).toISOString()).toBe(next);
  const replay=await tool("ccp_v1_sessions_edit",{
-  sessionId,changes:{startsAt:next,durationMinutes:45},
+  sessionId,changes:{startsAt:next,durationMinutes:45,isHomeVisit:true},
   expectedUpdatedAt:revision.data!.updated_at,
   idempotencyKey:key,confirmed:true,
  });
  expect(replay.error).toBeUndefined();
  expect(replay.data).toMatchObject({
-  id:sessionId,duration_minutes:45,
+  id:sessionId,duration_minutes:45,is_home_visit:true,
  });
  expect(new Date(replay.data.starts_at).toISOString()).toBe(next);
  const stale=await tool("ccp_v1_sessions_edit",{
@@ -79,10 +79,10 @@ test("PARITY:PARITY-canonical-session-edit canonical teaching session move and c
   });
  expect(websiteCancelled.status()).toBe(409);
  const stored=await db.from("teaching_sessions")
-  .select("id,status,starts_at,duration_minutes").eq("id",sessionId).single();
+  .select("id,status,starts_at,duration_minutes,is_home_visit").eq("id",sessionId).single();
  expect(stored.error).toBeNull();
  expect(stored.data).toMatchObject({
-  id:sessionId,status:"cancelled",duration_minutes:45,
+  id:sessionId,status:"cancelled",duration_minutes:45,is_home_visit:true,
  });
  expect(new Date(stored.data!.starts_at).toISOString()).toBe(next);
  const preserved=await db.from("session_participants")

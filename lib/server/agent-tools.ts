@@ -1093,13 +1093,14 @@ const catalogue = [
   },
   {
     name:"ccp_v1_sessions_edit",
-    description:"Confirmed, revision-checked edit of a teaching session's title, shared note, time, duration or scheduled/cancelled status. To mark completed use ccp_v1_sessions_complete with every frozen learner and explicit attendance; status-only completion is prohibited.",
+    description:"Confirmed, revision-checked edit of a teaching session's title, shared note, time, duration, home visit or scheduled/cancelled status. To mark completed use ccp_v1_sessions_complete with every frozen learner and explicit attendance; status-only completion is prohibited.",
     schema:z.object({
       sessionId:uuid,
       changes:z.object({
         title:z.string().trim().min(1).max(160).optional(),
         startsAt:instant.optional(),
         durationMinutes:z.number().int().min(15).max(480).optional(),
+        isHomeVisit:z.boolean().optional(),
         lessonNote:z.string().max(10000).optional(),
         status:z.enum(["scheduled","cancelled"]).optional(),
       }).strict().refine(x=>Object.keys(x).length>0,"At least one change required"),
@@ -1894,7 +1895,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_v1_sessions_edit": {
         const a=args as {sessionId:string;changes:{title?:string;startsAt?:string;
-          durationMinutes?:number;lessonNote?:string;
+          durationMinutes?:number;isHomeVisit?:boolean;lessonNote?:string;
           status?:"scheduled"|"completed"|"cancelled"};
           expectedUpdatedAt:string;idempotencyKey:string};
         const updated=await sessionsUpdate(db,teacherId,a.sessionId,{

@@ -50,6 +50,7 @@ export function CanonicalScheduleBoard({
  const [moveDate,setMoveDate]=useState(today);
  const [moveTime,setMoveTime]=useState("16:00");
  const [moveDuration,setMoveDuration]=useState(60);
+ const [moveHomeVisit,setMoveHomeVisit]=useState(false);
  const [bulkDecision,setBulkDecision]=useState<"present"|"absent"|"teacher_cancelled">("present");
  const [register,setRegister]=useState<AttendanceRow[]>([]);
  const [notes,setNotes]=useState<NoteRow[]>([]);
@@ -119,6 +120,7 @@ export function CanonicalScheduleBoard({
     setMoveTime(new Intl.DateTimeFormat("en-GB",{timeZone:zone,
       hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date(session.starts_at)));
     setMoveDuration(session.duration_minutes);
+    setMoveHomeVisit(session.is_home_visit);
     return;
    }
    const first=session.participants[0]?.studentId??"";
@@ -194,6 +196,7 @@ export function CanonicalScheduleBoard({
    await jsonResponse(await fetch("/api/coaching/sessions/"+open.id+"/lifecycle",{
     method:"PATCH",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({startsAt,durationMinutes:moveDuration,
+      isHomeVisit:moveHomeVisit,
       expectedUpdatedAt:open.updated_at,idempotencyKey:crypto.randomUUID()}),
    }));
    setOpen(null);showToast("Teaching session rescheduled");router.refresh();
@@ -433,10 +436,15 @@ export function CanonicalScheduleBoard({
       <input type="number" className={field} min={15} max={480}
        value={moveDuration} onChange={e=>setMoveDuration(Number(e.target.value))}/></label>
     </div>
+    <label className="flex items-center gap-2 text-sm">
+     <input type="checkbox" checked={moveHomeVisit}
+      onChange={e=>setMoveHomeVisit(e.target.checked)}/>
+     Home visit
+    </label>
     <div className="flex flex-wrap gap-3">
      <button disabled={busy||open.status!=="scheduled"} onClick={saveSchedule}
       className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground">
-      Save new time
+      Save session changes
      </button>
      <button disabled={busy||open.status!=="scheduled"} onClick={cancelTeachingSession}
       className="rounded-lg border border-warning px-4 py-2 text-sm text-warning">

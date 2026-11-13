@@ -449,7 +449,7 @@ export async function sessionsUpdate(
   db: Db, teacherId: string, sessionId: string,
   updates: {
     title?: string; startsAt?: string; durationMinutes?: number;
-    lessonNote?: string; status?: "scheduled" | "completed" | "cancelled";
+    isHomeVisit?: boolean; lessonNote?: string; status?: "scheduled" | "completed" | "cancelled";
     expectedUpdatedAt?: string; requestId?: string;
   }
 ) {
@@ -468,6 +468,7 @@ export async function sessionsUpdate(
   if (updates.title !== undefined) changes.title = updates.title;
   if (updates.startsAt !== undefined) changes.startsAt = updates.startsAt;
   if (updates.durationMinutes !== undefined) changes.durationMinutes = updates.durationMinutes;
+  if (updates.isHomeVisit !== undefined) changes.isHomeVisit = updates.isHomeVisit;
   if (updates.lessonNote !== undefined) changes.lessonNote = updates.lessonNote;
   if (updates.status !== undefined) changes.status = updates.status;
   if (!Object.keys(changes).length)
@@ -476,7 +477,7 @@ export async function sessionsUpdate(
     .select("id,updated_at").eq("teacher_id",teacherId).eq("id",sessionId).maybeSingle();
   if (lookupError) throw problem();
   if (!existing) throw notFound();
-  // Legacy website mutations use a freshly observed revision and new request key.
+  // Ordinary website edits observe a fresh revision and new request key.
   // MCP always supplies both; either transport goes through the SAME SQL transaction.
   const {error}=await db.rpc("ccp_teacher_session_commit",{
     p_session_id:sessionId,p_changes:changes,p_attendance:[],
@@ -490,7 +491,7 @@ export async function sessionsUpdate(
     "Invalid session correction");
   if (error) throw problem();
   const {data, error: readError}=await db.from("teaching_sessions")
-    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id,updated_at")
+    .select("id,title,starts_at,duration_minutes,is_home_visit,lesson_note,status,workplace_id,group_id,student_id,updated_at")
     .eq("teacher_id",teacherId).eq("id",sessionId).maybeSingle();
   if (readError) throw problem();
   if (!data) throw notFound();

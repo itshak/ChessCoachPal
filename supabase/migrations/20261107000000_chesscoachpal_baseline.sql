@@ -3936,7 +3936,7 @@ BEGIN
     (p_changes='{}'::jsonb AND p_attendance='[]'::jsonb) OR
     jsonb_array_length(p_attendance)>50 OR
     (p_changes<>'{}'::jsonb AND p_expected_updated_at IS NULL) OR
-    (p_changes - ARRAY['title','startsAt','durationMinutes','lessonNote','status'])<>'{}'::jsonb THEN
+    (p_changes - ARRAY['title','startsAt','durationMinutes','isHomeVisit','lessonNote','status'])<>'{}'::jsonb THEN
    RAISE EXCEPTION 'INVALID_SESSION_COMMIT' USING ERRCODE='22023';
  END IF;
  IF (p_changes ? 'title' AND (
@@ -3952,6 +3952,8 @@ BEGIN
     OR (p_changes ? 'status' AND (
       jsonb_typeof(p_changes->'status')<>'string' OR
       p_changes->>'status' NOT IN ('scheduled','completed','cancelled')))
+    OR (p_changes ? 'isHomeVisit' AND
+      jsonb_typeof(p_changes->'isHomeVisit')<>'boolean')
     OR (p_changes ? 'startsAt' AND jsonb_typeof(p_changes->'startsAt')<>'string') THEN
    RAISE EXCEPTION 'INVALID_SESSION_COMMIT' USING ERRCODE='22023';
  END IF;
@@ -4020,6 +4022,8 @@ BEGIN
       (p_changes->>'durationMinutes')::integer ELSE duration_minutes END,
     lesson_note=CASE WHEN p_changes ? 'lessonNote' THEN
       p_changes->>'lessonNote' ELSE lesson_note END,
+    is_home_visit=CASE WHEN p_changes ? 'isHomeVisit' THEN
+      (p_changes->>'isHomeVisit')::boolean ELSE is_home_visit END,
     status=CASE WHEN p_changes ? 'status' THEN
       p_changes->>'status' ELSE status END,
     updated_at=clock_timestamp()
