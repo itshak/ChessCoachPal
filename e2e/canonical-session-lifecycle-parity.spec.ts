@@ -82,9 +82,9 @@ test("PARITY:PARITY-canonical-session-edit canonical teaching session move and c
   .select("id,status,starts_at,duration_minutes").eq("id",sessionId).single();
  expect(stored.error).toBeNull();
  expect(stored.data).toMatchObject({
-  id:sessionId,status:"cancelled",
-  starts_at:next,duration_minutes:45,
+  id:sessionId,status:"cancelled",duration_minutes:45,
  });
+ expect(new Date(stored.data!.starts_at).toISOString()).toBe(next);
  const preserved=await db.from("session_participants")
   .select("student_id").eq("session_id",sessionId);
  expect(preserved.error).toBeNull();

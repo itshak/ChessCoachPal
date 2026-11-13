@@ -483,7 +483,7 @@ test("PARITY:PARITY-billing-regenerate-checkout-reconciliation blocks stale paym
    });
  const signedIn=await auth.auth.signInWithPassword(SEED_TEACHER);
  expect(signedIn.error).toBeNull();
- const direct=await auth.rpc("ccp_invoice_regenerate_atomic",{
+ const direct=await auth.rpc("ccp_canonical_invoice_regenerate_atomic",{
    p_invoice_id:seeded.id,p_items:[],p_redemptions:[],
    p_expected_updated_at:before.updated_at,p_request_id:randomUUID(),
  });

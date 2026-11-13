@@ -8320,7 +8320,10 @@ BEGIN
  IF NOT FOUND THEN
    RAISE EXCEPTION 'CANONICAL_PRIVATE_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
  END IF;
- IF NOT EXISTS(
+ -- A null workplace is the teacher's implicit personal-coaching
+ -- workspace. Students need no named-workplace enrollment for a private
+ -- lesson there; explicit named workplaces still require membership.
+ IF p_workplace_id IS NOT NULL AND NOT EXISTS(
   SELECT 1 FROM public.workplace_enrollments
    WHERE teacher_id=v_teacher AND workplace_id=v_workplace.id
     AND student_id=p_student_id
