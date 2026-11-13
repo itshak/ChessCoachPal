@@ -77,6 +77,7 @@ import {
  calendarAttendanceRead,calendarAttendanceWrite,calendarAttendanceBulk,
  calendarLessonNoteRead,calendarLessonNoteWrite,LegacyAttendanceError,
 } from "@/lib/server/legacy-attendance-service";
+import {canonicalMakeupCreditsList} from "@/lib/server/canonical-makeup-service";
 import {sessionNotesList,sessionNoteSave,SessionNoteError,
  type SaveSessionNoteInput} from "@/lib/server/canonical-session-notes";
 
@@ -610,6 +611,12 @@ const catalogue = [
       (r.status==="teacher_cancelled"&&r.confirmedEmail===true)),
       "Every family email requires explicit confirmation"),
     scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_canonical_makeup_credits_list",
+    description:"Read available, unredeemed make-up credits from canonical frozen student attendance, subject to the studio cancellation and expiry policy. A make-up session is created with ccp_v1_canonical_private_session_create and makeupForSessionId.",
+    schema:z.object({}).strict(),
+    scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_v1_session_notes_list",
@@ -1745,6 +1752,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_session_attendance_bulk_set": {
         const a=args as CanonicalAttendanceBulkInput&{sessionId:string};
         return {data:await canonicalAttendanceBulkSet(db,teacherId,a.sessionId,a)};
+      }
+      case "ccp_v1_canonical_makeup_credits_list": {
+        return {data:{credits:await canonicalMakeupCreditsList(db,teacherId)}};
       }
       case "ccp_v1_session_notes_list": {
         const a=args as {sessionId:string;includePrivate:boolean;confirmed?:boolean};
