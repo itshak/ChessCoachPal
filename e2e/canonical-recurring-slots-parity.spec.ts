@@ -6,7 +6,7 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 import {planCanonicalOccurrences,type CanonicalSlot}
  from "../lib/server/canonical-calendar-service";
 
-test("PARITY: canonical recurring edits and deletes are atomic, tenant-scoped and protect attended history",
+test("PARITY:PARITY-canonical-recurring-slots-crud canonical recurring edits and deletes are atomic, tenant-scoped and protect attended history",
  async({page,request})=>{
  const tool=await delegatedTool(page,request);
  const student=await tool("ccp_v1_students_create",{

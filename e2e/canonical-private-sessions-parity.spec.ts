@@ -4,7 +4,7 @@ import {expect,test} from "@playwright/test";
 import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
-test("PARITY: canonical private lesson and verified make-up use one website/MCP SQL writer",
+test("PARITY:PARITY-canonical-private-makeup canonical private lesson and verified make-up use one website/MCP SQL writer",
  async({page,request})=>{
  const call=await delegatedTool(page,request);
  const pupil=await call("ccp_v1_students_create",{

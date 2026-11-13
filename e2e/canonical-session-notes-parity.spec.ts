@@ -2,7 +2,7 @@ import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
-test("PARITY: canonical session notes website/MCP share revision, replay and private redaction",async({page,request})=>{
+test("PARITY:PARITY-canonical-session-private-shared-notes canonical session notes website/MCP share revision, replay and private redaction",async({page,request})=>{
  const tool=await delegatedTool(page,request);
  const learner=await tool("ccp_v1_students_create",{
   name:"Canonical note learner "+randomUUID(),idempotencyKey:randomUUID(),

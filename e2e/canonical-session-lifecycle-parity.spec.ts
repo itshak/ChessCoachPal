@@ -4,7 +4,7 @@ import {expect,test} from "@playwright/test";
 import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
-test("PARITY: canonical teaching session move and cancellation use the same website/MCP SQL writer",async({page,request})=>{
+test("PARITY:PARITY-canonical-session-edit canonical teaching session move and cancellation use the same website/MCP SQL writer",async({page,request})=>{
  const tool=await delegatedTool(page,request);
  const pupil=await tool("ccp_v1_students_create",{
   name:"Lifecycle student "+randomUUID(),idempotencyKey:randomUUID(),
