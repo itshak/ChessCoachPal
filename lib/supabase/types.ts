@@ -11,6 +11,7 @@ export type AttendanceStatus =
   | "teacher_cancel"
   | "student_cancel"
   | "no_show";
+export type SessionAttendanceStatus = "present" | "late" | "absent" | "excused" | "student_cancelled" | "teacher_cancelled";
 export type EmailRecipients = "primary" | "secondary" | "both";
 export type InvoiceStatus = "draft" | "sent" | "paid" | "void";
 export type PaymentMethod = "manual" | "stripe";
@@ -374,7 +375,8 @@ export interface Database {
         Row: {
           id: string;
           invoice_id: string;
-          lesson_id: string | null;
+          session_id: string | null;
+          student_id: string | null;
           kind: InvoiceItemKind;
           description: string;
           quantity: number;
@@ -385,7 +387,8 @@ export interface Database {
         Insert: {
           id?: string;
           invoice_id: string;
-          lesson_id?: string | null;
+          session_id?: string | null;
+          student_id?: string | null;
           kind?: InvoiceItemKind;
           description: string;
           quantity?: number;
@@ -394,7 +397,8 @@ export interface Database {
           sort_order?: number;
         };
         Update: {
-          lesson_id?: string | null;
+          session_id?: string | null;
+          student_id?: string | null;
           description?: string;
           quantity?: number;
           unit_cents?: number;
@@ -435,14 +439,16 @@ export interface Database {
           id: string;
           teacher_id: string;
           package_id: string;
-          lesson_id: string;
+          session_id: string;
+          student_id: string;
           created_at: string;
         };
         Insert: {
           id?: string;
           teacher_id: string;
           package_id: string;
-          lesson_id: string;
+          session_id: string;
+          student_id: string;
         };
         Update: Record<string, never>;
       };
@@ -472,63 +478,81 @@ export interface Database {
           note?: string;
         };
       };
-      lessons: {
+      teaching_sessions: {
         Row: {
-          id: string;
-          teacher_id: string;
-          student_id: string;
-          slot_id: string | null;
-          lesson_date: string;
-          starts_at: string;
-          duration_minutes: number;
-          makeup_for: string | null;
-          is_home_visit: boolean;
-          rescheduled_from_date: string | null;
-          created_at: string;
+          id: string; teacher_id: string; workplace_id: string | null;
+          group_id: string | null; student_id: string | null;
+          title: string; starts_at: string; duration_minutes: number;
+          status: "scheduled" | "completed" | "cancelled";
+          updated_at: string; lesson_note: string; request_id: string | null;
+          created_at: string; slot_id: string | null; slot_rate_cents: number | null;
+          slot_occurrence_date: string | null; local_timezone: string | null;
+          is_home_visit: boolean; rescheduled_from_date: string | null;
+          makeup_for_session_id: string | null; makeup_for_student_id: string | null;
         };
         Insert: {
-          id?: string;
-          teacher_id: string;
-          student_id: string;
-          slot_id?: string | null;
-          lesson_date: string;
-          starts_at: string;
-          duration_minutes: number;
-          makeup_for?: string | null;
-          is_home_visit?: boolean;
-          rescheduled_from_date?: string | null;
+          id?: string; teacher_id: string; workplace_id?: string | null;
+          group_id?: string | null; student_id?: string | null;
+          title: string; starts_at: string; duration_minutes: number;
+          status?: "scheduled" | "completed" | "cancelled";
+          lesson_note?: string; request_id?: string | null;
+          slot_id?: string | null; slot_rate_cents?: number | null;
+          slot_occurrence_date?: string | null; local_timezone?: string | null;
+          is_home_visit?: boolean; rescheduled_from_date?: string | null;
+          makeup_for_session_id?: string | null; makeup_for_student_id?: string | null;
         };
         Update: {
-          lesson_date?: string;
-          starts_at?: string;
-          duration_minutes?: number;
-          makeup_for?: string | null;
-          is_home_visit?: boolean;
+          workplace_id?: string | null; group_id?: string | null;
+          student_id?: string | null; title?: string; starts_at?: string;
+          duration_minutes?: number; status?: "scheduled" | "completed" | "cancelled";
+          lesson_note?: string; slot_id?: string | null;
+          slot_rate_cents?: number | null; slot_occurrence_date?: string | null;
+          local_timezone?: string | null; is_home_visit?: boolean;
           rescheduled_from_date?: string | null;
+          makeup_for_session_id?: string | null; makeup_for_student_id?: string | null;
+          updated_at?: string;
         };
       };
-      attendance: {
+      session_participants: {
+        Row: { teacher_id: string; session_id: string; student_id: string };
+        Insert: { teacher_id: string; session_id: string; student_id: string };
+        Update: Record<string, never>;
+      };
+      session_attendance: {
         Row: {
-          id: string;
-          lesson_id: string;
-          status: AttendanceStatus;
-          notice_at: string | null;
-          cancel_note: string;
-          marked_at: string;
+          id: string; teacher_id: string; session_id: string; student_id: string;
+          status: SessionAttendanceStatus; note: string; notice_at: string | null;
+          cancelled_by: "student" | "teacher" | null; cancel_reason: string;
+          marked_at: string | null; marked_by: string | null; updated_at: string;
         };
         Insert: {
-          id?: string;
-          lesson_id: string;
-          status: AttendanceStatus;
-          notice_at?: string | null;
-          cancel_note?: string;
-          marked_at?: string;
+          id?: string; teacher_id: string; session_id: string; student_id: string;
+          status: SessionAttendanceStatus; note?: string; notice_at?: string | null;
+          cancelled_by?: "student" | "teacher" | null; cancel_reason?: string;
+          marked_at?: string | null; marked_by?: string | null;
         };
         Update: {
-          status?: AttendanceStatus;
-          notice_at?: string | null;
-          cancel_note?: string;
-          marked_at?: string;
+          status?: SessionAttendanceStatus; note?: string; notice_at?: string | null;
+          cancelled_by?: "student" | "teacher" | null; cancel_reason?: string;
+          marked_at?: string | null; marked_by?: string | null;
+          updated_at?: string;
+        };
+      };
+      session_notes: {
+        Row: {
+          id: string; teacher_id: string; session_id: string;
+          student_id: string | null; body: string; private_body: string;
+          shared_with_guardian: boolean; emailed_at: string | null;
+          created_at: string; updated_at: string;
+        };
+        Insert: {
+          id?: string; teacher_id: string; session_id: string;
+          student_id?: string | null; body?: string; private_body?: string;
+          shared_with_guardian?: boolean; emailed_at?: string | null;
+        };
+        Update: {
+          body?: string; private_body?: string; shared_with_guardian?: boolean;
+          emailed_at?: string | null; updated_at?: string;
         };
       };
       notifications: {
@@ -600,32 +624,6 @@ export interface Database {
         };
         Update: {
           email?: string;
-        };
-      };
-      lesson_notes: {
-        Row: {
-          id: string;
-          lesson_id: string;
-          body: string;
-          private_body: string;
-          shared_with_parent: boolean;
-          emailed_at: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          lesson_id: string;
-          body?: string;
-          private_body?: string;
-          shared_with_parent?: boolean;
-          emailed_at?: string | null;
-        };
-        Update: {
-          body?: string;
-          private_body?: string;
-          shared_with_parent?: boolean;
-          emailed_at?: string | null;
         };
       };
       events: {

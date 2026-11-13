@@ -90,7 +90,7 @@ export async function deriveCanonicalPeriodItems(
    lessonId:key,studentId:row.studentId,studentName:row.studentName,
    guardianId:row.guardianId,lessonDate:row.lessonDate,
    startsAt:row.startsAt,durationMinutes:row.durationMinutes,
-   makeupFor:row.makeupForSessionId,attendanceStatus:status,
+   makeupForSessionId:row.makeupForSessionId,attendanceStatus:status,
    noticeAt:row.noticeAt,isHomeVisit:row.isHomeVisit,
    rate:{
     slotRateCents:row.slotRateCents,

@@ -39,7 +39,7 @@ type PortalAttendanceStatus =
   "present"|"late"|"absent"|"excused"|"student_cancelled"|"teacher_cancelled";
 interface PortalLesson {
   id:string;student_id:string;lesson_date:string;
-  starts_at:string;duration_minutes:number;makeup_for:string|null;
+  starts_at:string;duration_minutes:number;makeup_for_session_id:string|null;
   attendance:{status:PortalAttendanceStatus}|null;
 }
 
@@ -81,7 +81,7 @@ function PortalLessonCard({
           </div>
           <div className="text-xs text-muted">
             {lesson.duration_minutes} min
-            {lesson.makeup_for && " · make-up"}
+            {lesson.makeup_for_session_id && " · make-up"}
           </div>
         </div>
         {cancelled && status && (
@@ -195,7 +195,7 @@ export default async function PortalPage({
       lesson_date:toLocalDateString(new Date(session.starts_at),
         session.local_timezone||policy.timezone),
       starts_at:session.starts_at,duration_minutes:session.duration_minutes,
-      makeup_for:session.makeup_for_session_id,
+      makeup_for_session_id:session.makeup_for_session_id,
       attendance:person.attendanceStatus?
         {status:person.attendanceStatus as PortalAttendanceStatus}:null,
     })));
