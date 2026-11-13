@@ -36,19 +36,27 @@ test("PARITY: canonical recurring edits and deletes are atomic, tenant-scoped an
  const firstDate=new Date(startMs).toISOString().slice(0,10);
  const secondDate=new Date(startMs+7*86400000).toISOString().slice(0,10);
  const dayOfWeek=new Date(startMs).getUTCDay();
- const {data:slot,error:slotError}=await db.from("lesson_slots").insert({
-  teacher_id:teacherId,student_id:studentId,workplace_id:workplaceId,
-  day_of_week:dayOfWeek,start_time:"05:00",duration_minutes:60,
-  start_date:firstDate,end_date:secondDate,active:true,
-  rate_cents:6500,is_home_visit:false,
- }).select("*").single();
+ const slotKey=randomUUID();
+ const slotInput={studentId,workplaceId,dayOfWeek,startTime:"05:00",
+  durationMinutes:60,startDate:firstDate,endDate:secondDate,
+  rateCents:6500,isHomeVisit:false,idempotencyKey:slotKey};
+ const created=await page.request.post("/api/coaching/calendar/slots",{
+  data:slotInput,
+ });
+ expect(created.status(),await created.text()).toBe(200);
+ expect(await created.json()).toMatchObject({id:slotKey,replayed:false});
+ const createReplay=await tool("ccp_v1_recurring_slots_create",{
+  ...slotInput,confirmed:true,
+ });
+ expect(createReplay.error).toBeUndefined();
+ expect(createReplay.data).toMatchObject({id:slotKey,replayed:true});
+ const {data:slot,error:slotError}=await db.from("lesson_slots")
+  .select("*").eq("id",slotKey).single();
  expect(slotError).toBeNull();
  const rows=planCanonicalOccurrences(
   teacherId,[slot as CanonicalSlot],[{id:workplaceId,timezone:"UTC"}],
   workplaceId,"UTC",firstDate,secondDate);
  expect(rows).toHaveLength(2);
- const materialized=await db.rpc("ccp_canonical_slot_materialize",{p_rows:rows});
- expect(materialized.error).toBeNull();
  const sessions=await db.from("teaching_sessions")
   .select("id,starts_at,slot_occurrence_date")
   .eq("teacher_id",teacherId).eq("slot_id",slot!.id)
