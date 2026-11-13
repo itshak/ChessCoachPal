@@ -8562,3 +8562,77 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_redemption_guard() FROM PUBLIC,anon;
 CREATE TRIGGER ccp_canonical_redemption_guard
  BEFORE INSERT OR UPDATE ON public.credit_redemptions
  FOR EACH ROW EXECUTE FUNCTION public.ccp_canonical_redemption_guard();
+
+
+-- Once a non-void invoice line or redeemed prepaid package references one
+-- frozen participant, neither attendance nor the underlying teaching time
+-- may be silently rewritten by the calendar, MCP, or a direct REST request.
+CREATE OR REPLACE FUNCTION public.ccp_protect_canonical_financed_session()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_financed_session_guard$
+DECLARE v_id uuid:=OLD.id;
+BEGIN
+ IF EXISTS(
+  SELECT 1 FROM public.invoice_items ii
+  JOIN public.invoices i ON i.id=ii.invoice_id
+  WHERE ii.session_id=v_id AND i.status<>'void'
+ ) OR EXISTS(
+  SELECT 1 FROM public.credit_redemptions WHERE session_id=v_id
+ ) THEN
+  IF TG_OP='DELETE' THEN
+   RAISE EXCEPTION 'CANONICAL_FINANCED_SESSION_IMMUTABLE'
+    USING ERRCODE='23514';
+  END IF;
+  IF (NEW.starts_at,NEW.duration_minutes,NEW.student_id,NEW.group_id,
+      NEW.workplace_id,NEW.is_home_visit,NEW.local_timezone,
+      NEW.slot_rate_cents,NEW.makeup_for_session_id,NEW.makeup_for_student_id)
+     IS DISTINCT FROM
+     (OLD.starts_at,OLD.duration_minutes,OLD.student_id,OLD.group_id,
+      OLD.workplace_id,OLD.is_home_visit,OLD.local_timezone,
+      OLD.slot_rate_cents,OLD.makeup_for_session_id,OLD.makeup_for_student_id) THEN
+    RAISE EXCEPTION 'CANONICAL_FINANCED_SESSION_IMMUTABLE'
+      USING ERRCODE='23514';
+  END IF;
+ END IF;
+ RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+END;
+$ccp_financed_session_guard$;
+REVOKE ALL ON FUNCTION public.ccp_protect_canonical_financed_session()
+ FROM PUBLIC,anon;
+CREATE TRIGGER ccp_protect_canonical_financed_session
+ BEFORE UPDATE OR DELETE ON public.teaching_sessions
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_protect_canonical_financed_session();
+
+CREATE OR REPLACE FUNCTION public.ccp_protect_canonical_financed_attendance()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_financed_attendance_guard$
+DECLARE v_session uuid:=OLD.session_id;v_student uuid:=OLD.student_id;
+BEGIN
+ IF EXISTS(
+   SELECT 1 FROM public.invoice_items ii
+   JOIN public.invoices i ON i.id=ii.invoice_id
+   WHERE ii.session_id=v_session AND ii.student_id=v_student
+     AND i.status<>'void'
+ ) OR EXISTS(
+   SELECT 1 FROM public.credit_redemptions
+    WHERE session_id=v_session AND student_id=v_student
+ ) THEN
+   IF TG_OP='DELETE' THEN
+     RAISE EXCEPTION 'CANONICAL_FINANCED_ATTENDANCE_IMMUTABLE'
+       USING ERRCODE='23514';
+   END IF;
+   IF (NEW.status,NEW.notice_at,NEW.cancelled_by,NEW.cancel_reason)
+      IS DISTINCT FROM
+      (OLD.status,OLD.notice_at,OLD.cancelled_by,OLD.cancel_reason) THEN
+     RAISE EXCEPTION 'CANONICAL_FINANCED_ATTENDANCE_IMMUTABLE'
+       USING ERRCODE='23514';
+   END IF;
+ END IF;
+ RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+END;
+$ccp_financed_attendance_guard$;
+REVOKE ALL ON FUNCTION public.ccp_protect_canonical_financed_attendance()
+ FROM PUBLIC,anon;
+CREATE TRIGGER ccp_protect_canonical_financed_attendance
+ BEFORE UPDATE OR DELETE ON public.session_attendance
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_protect_canonical_financed_attendance();
