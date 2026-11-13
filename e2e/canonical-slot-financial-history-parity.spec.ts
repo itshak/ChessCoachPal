@@ -1,4 +1,4 @@
-import {randomUUID} from "node:crypto";
+import {randomInt,randomUUID} from "node:crypto";
 import {createClient} from "@supabase/supabase-js";
 import {expect,test} from "@playwright/test";
 import {SEED_TEACHER} from "./helpers/auth";
@@ -26,8 +26,10 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
  const today=Date.parse(new Date().toISOString().slice(0,10)+"T00:00:00Z");
- const firstDate=new Date(today+21*86400000).toISOString().slice(0,10);
- const secondDate=new Date(today+28*86400000).toISOString().slice(0,10);
+ // Isolate Playwright retries from prior partially written teaching occurrences.
+ const dayOffset=randomInt(60,300);
+ const firstDate=new Date(today+dayOffset*86400000).toISOString().slice(0,10);
+ const secondDate=new Date(today+(dayOffset+7)*86400000).toISOString().slice(0,10);
  const idempotencyKey=randomUUID();
  const slotInput={
   studentId,workplaceId,dayOfWeek:new Date(firstDate+"T00:00:00Z").getUTCDay(),
@@ -88,7 +90,7 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
  expect(line.error).toBeNull();
  const invoiceB=await admin.from("invoices").insert({
   teacher_id:teacherId,guardian_id:guardianId,period_start:secondDate,
-  period_end:secondDate,status:"draft",subtotal_cents:9000,currency:"USD",
+  period_end:secondDate,status:"sent",subtotal_cents:9000,currency:"USD",
  }).select("id").single();
  expect(invoiceB.error).toBeNull();
  const credits=await admin.from("credit_packages").insert({
