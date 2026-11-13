@@ -43,8 +43,8 @@ jobs:
       - name: Audit MCP-first website and API coverage (baseline; gaps explicitly reported)
         run: npm run mcp:parity:audit
 
-      - name: Report unresolved canonical occurrence consumers (cutover prerequisite)
-        run: node scripts/canonical-cutover-audit.mjs --json
+      - name: Enforce zero legacy attendance and financial source references
+        run: npm run schema:attendance:strict
 
       - name: Validate MCP parity PR guard logic
         run: npm run mcp:parity:guard-test
