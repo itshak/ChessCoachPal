@@ -1,8 +1,8 @@
 # Canonical lesson/attendance cutover — source inventory
 
-**State:** Unresolved implementation inventory for OpenSpec consolidate-canonical-lessons-and-attendance, inspected on 2026-11-12 against PR #58 head 10bbc99a. This is NOT evidence of a completed migration or website/MCP parity.
+**State:** Retrospective source and disposition inventory, completed with the canonical implementation at source `bb498083203a3b82ddbcfe1af10863cb2aea4cf1` on 2026-11-13. Fresh-install-only schema cutover, **not** an existing data migration or overall release parity.
 
-Run npm run schema:attendance:inventory for current source evidence, or npm run schema:attendance:strict for the intentionally failing pre-cutover source gate. The scanner excludes documentation and is NOT a substitute for E2E.
+Run `npm run schema:attendance:inventory` for source details or `npm run schema:attendance:strict` for the **now-passing** no-legacy source gate. This is supported by [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43431098540) and [229 successful authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43431098437) on the identical implementation SHA; source scanning does not substitute for E2E.
 
 ## Physical SQL objects and dependencies
 
@@ -38,5 +38,5 @@ Indirect entry points needing behavior tests even without direct old-table reads
 
 ## Gate ownership
 
-Verify exact-source SHA with types, unit/SQL integration, authenticated website/MCP E2E, security, Compose and backup/restore. Parent strict 93-case parity and merged-main gates remain separate. **No implementation checkboxes are completed by creating this inventory.**
+**Accepted child at `bb498083`:** [CI/type/unit/strict legacy source gate](https://github.com/itshak/ChessCoachPal/actions/runs/43431098540), [229 E2E passed, five skipped](https://github.com/itshak/ChessCoachPal/actions/runs/43431098437), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43431098438), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43431098458), [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43431098490). Parent holiday-specific behavior, remaining 93-case parity, new scenarios and merged-main release gates are separate.
 

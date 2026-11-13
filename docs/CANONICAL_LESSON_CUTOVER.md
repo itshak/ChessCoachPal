@@ -1,11 +1,12 @@
 # Canonical chess lesson occurrence: cutover contract and source disposition
 
-**State: implementation dependency contract, not acceptance.** 2026-11-12.
+**State: canonical attendance cutover implemented and exact-source verified on 2026-11-13.** The historical inventory below is preserved for context; parent holiday/workplace and full website/MCP parity remain separate.
 OpenSpec: `converge-chess-core-and-complete-mcp-parity` tasks B5/C2/C3/C4/C8/C9.
 Use ADR-0001: one current fresh-install snapshot, **no** previous-data
 migration, dual-writer, API alias, or upgrade version. This is NOT permission
-to erase a real database. Do not merge or archive the OpenSpec until all
-consumer rewrites and exact-head checks are green.
+to erase a real database. Child OpenSpec accepted after
+[229 authenticated E2E passed](https://github.com/itshak/ChessCoachPal/actions/runs/43431098437),
+while parent parity and merged-main release checks remain open.
 
 ## Decision: one actual occurrence
 
@@ -85,10 +86,15 @@ current; do not overwrite historic frozen rosters when membership changes.
   checkout/mail/Lichess tests, fresh database/Compose/backup restore. Audit
   actual `main` post merge before archiving. Never reset any real instance.
 
-**Open blockers on this branch:** today's calendar `lessons` plus
-`attendance` are still authoritative for current finance/portal/recurrence,
-and the old `legacy:` history branch is not yet removable. The interim
-`ccp_calendar_attendance_commit` improves the current site's retry
-semantics but is **not** the cutover and must itself disappear when the
-last old occurrence consumer is removed. This document is a dependency
-register, not a claim of B5 or strict parity acceptance.
+**2026-11-13 cutover result:** Old `lessons`, `attendance` and
+`lesson_notes` physical tables, their second writers and the
+synthetic `legacy:` history reconciliation are absent from the
+strict-audited fresh-install/runtime model. Private/group/recurring
+canonical sessions, attendance, portal, billing and backup tests run against
+one canonical source. [CI/strict source audit](https://github.com/itshak/ChessCoachPal/actions/runs/43431098540)
+and [229-passing authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43431098437)
+are verified on the same implementation SHA. Separate parent blockers:
+holiday/workplace schedule coverage, secure credential and subscription
+handoffs, exact field/action closure, independently named new parity
+scenarios and merged-main release tests. Do not assert full parity or
+reset an existing real database.

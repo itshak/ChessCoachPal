@@ -1,19 +1,17 @@
 # ADR-0005: One canonical lesson occurrence, roster and attendance ledger
 
-**Status:** Accepted architectural direction; implementation incomplete (strict MCP parity blocker)
+**Status:** Implemented on the integrated #57 development branch (2026-11-13); separate parent release and MCP parity gates remain open.
 **Date:** 2026-11-12
 
 ## Context
 
 ChessCoachPal is an MCP-first chess coach assistant with a website for visual
 review and corrections. Pre-v1.0.0 changes require no backwards compatibility.
-The inherited private calendar currently writes `lessons`, `attendance`,
-`lesson_notes` and separate invoice/credit references. The chess-first
-coaching workflow independently writes `teaching_sessions`,
-`session_participants`, `session_attendance` and `lesson_note`.
-`/api/coaching/unified-lessons` and its MCP counterpart reconcile reads but
-**do not create one source of truth**. Passing route/tool inventory checks
-cannot certify semantic equality while both are independent writers.
+Before this cutover, the inherited calendar wrote `lessons`, `attendance`,
+`lesson_notes` and separate invoice/credit references while chess coaching
+used independent canonical session and attendance tables. Read-time
+reconciliation could not establish one authoritative writer. The 2026-11-13
+pre-v1 fresh-install cutover removes the legacy model and duplicate writers.
 
 ## Decision
 
@@ -65,15 +63,35 @@ cannot certify semantic equality while both are independent writers.
   complete, correct, cancel, bulk attendance, future recurring edits, group
   attendance, cross-tenant denial, read-only grants, DST/holidays, financial
   history preservation and concurrent stale/replay writes.
-- Require 93/93 historical plus every new chess-first scenario, zero incomplete
-  route families, a strict single-model source audit, and the same strict
-  source/security/Compose/restore/E2E gates on the final PR head and merged main.
+- The **separate parent release/parity gate** still requires 93/93 historical
+  plus every new chess-first scenario, zero incomplete route families, and
+  strict checks on merged main. Accepted attendance cutover is not acceptance
+  of those remaining route, holiday/workplace or consent/handoff cases.
   Provider-live and actual ChatGPT/Claude verification remain distinct
   prepublication checks.
 
-## Current status
+## Implementation acceptance — 2026-11-13
 
-As of 2026-11-12, this decision is **not implemented end to end**:
-legacy calendar and coaching attendance are still independent writers.
-The strict source audit deliberately flags that condition. Keep parity
-OpenSpecs and PRs open; do not assert release readiness.
+The physical canonical lesson/attendance cutover passed on exact source
+`bb498083203a3b82ddbcfe1af10863cb2aea4cf1`:
+[229 authenticated browser↔delegated MCP E2E tests, five intentionally skipped,
+zero failed](https://github.com/itshak/ChessCoachPal/actions/runs/43431098437),
+[CI and strict legacy/schema guards](https://github.com/itshak/ChessCoachPal/actions/runs/43431098540),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/43431098438),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43431098458),
+and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43431098490).
+Implementation [PR #59](https://github.com/itshak/ChessCoachPal/pull/59)
+and spec [PR #58](https://github.com/itshak/ChessCoachPal/pull/58) have been
+merged into open parent [PR #57](https://github.com/itshak/ChessCoachPal/pull/57).
+
+The SQL session table always has a teacher-owned workplace. A private lesson
+without a selected workplace resolves to the seeded personal workspace and
+atomically enrolls its active learner for a **new** lesson; an explicitly named
+workplace still requires prior membership. Replay never recreates membership.
+No existing-database migration or deployed-data reset is implied.
+
+**Remaining parent gates:** the four unaccepted historical cases include
+DST/holiday/workplace schedule semantics, profile/security handoffs,
+subscription portal handoff and complete website/MCP field/action closure.
+Some additional independently named scenarios and merged-main/live-provider
+tests remain open. Do not claim v0.1.0 publication readiness.
