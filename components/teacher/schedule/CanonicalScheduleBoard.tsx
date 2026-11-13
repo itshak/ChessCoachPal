@@ -323,6 +323,9 @@ export function CanonicalScheduleBoard({
         onClick={()=>openSession(session,"attendance")}>Attendance</button>
        <button disabled={busy} className="text-primary hover:underline"
         onClick={()=>openSession(session,"notes")}>Notes</button>
+       {session.status==="scheduled"&&<button disabled={busy}
+        className="text-primary hover:underline"
+        onClick={()=>openSession(session,"schedule")}>Move / cancel</button>}
       </div>
      </div>)}
    </div>)}
@@ -337,18 +340,18 @@ export function CanonicalScheduleBoard({
     <button className="text-primary hover:underline text-sm" onClick={()=>setOpen(null)}>Close</button>
    </div>
    <div className="flex gap-3 border-b border-border">
-    {(["attendance","notes"] as const).map(x=><button key={x}
+    {(["attendance","notes","schedule"] as const).map(x=><button key={x}
       className={"pb-2 capitalize text-sm "+(tab===x?"border-b-2 border-primary text-primary":"text-muted")}
       onClick={()=>openSession(open,x)}>{x}</button>)}
    </div>
-   <label className="block text-sm">Frozen participant
+   {tab!=="schedule"&&<label className="block text-sm">Frozen participant
     <select className={field} value={selectedStudent} onChange={e=>{
      if(tab==="notes")loadNote(e.target.value,notes);
      else loadDecision(e.target.value,register);
     }}>
      {open.participants.map(p=><option key={p.studentId} value={p.studentId}>{p.name}</option>)}
     </select>
-   </label>
+   </label>}
    {tab==="attendance"?<div className="space-y-3">
     <label className="block text-sm">Decision
      <select className={field} value={draftStatus??""}
@@ -381,7 +384,19 @@ export function CanonicalScheduleBoard({
      className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm">
      {busy?"Saving…":"Save attendance"}
     </button>
-   </div>:<div className="space-y-3">
+    {register.length>1&&<div className="mt-4 border-t border-border pt-3 flex flex-wrap items-end gap-3">
+     <label className="text-sm">Entire frozen roster
+      <select className={field} value={bulkDecision} onChange={e=>
+       setBulkDecision(e.target.value as typeof bulkDecision)}>
+       <option value="present">Present</option><option value="absent">Absent</option>
+       <option value="teacher_cancelled">Teacher cancelled</option>
+      </select></label>
+     <button disabled={busy} onClick={bulkAttendance}
+      className="rounded-lg border border-primary px-3 py-2 text-primary text-sm">
+      Apply to all {register.length} participants
+     </button>
+    </div>}
+   </div>:tab==="notes"?<div className="space-y-3">
     <label className="block text-sm">Family-shareable coaching note
      <textarea className={field} rows={3} maxLength={10000} value={body}
       onChange={e=>setBody(e.target.value)}/>
@@ -403,6 +418,31 @@ export function CanonicalScheduleBoard({
      className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm">
      {busy?"Saving…":"Save coaching notes"}
     </button>
+   </div>:<div className="space-y-3">
+    <p className="text-xs text-muted">
+     Rescheduling preserves the original recurring slot and frozen roster history.
+    </p>
+    <div className="grid sm:grid-cols-3 gap-3">
+     <label className="text-sm">Date
+      <input type="date" className={field} value={moveDate}
+       onChange={e=>setMoveDate(e.target.value)}/></label>
+     <label className="text-sm">Local time ({open.local_timezone||timezone})
+      <input type="time" className={field} value={moveTime}
+       onChange={e=>setMoveTime(e.target.value)}/></label>
+     <label className="text-sm">Duration
+      <input type="number" className={field} min={15} max={480}
+       value={moveDuration} onChange={e=>setMoveDuration(Number(e.target.value))}/></label>
+    </div>
+    <div className="flex flex-wrap gap-3">
+     <button disabled={busy||open.status!=="scheduled"} onClick={saveSchedule}
+      className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground">
+      Save new time
+     </button>
+     <button disabled={busy||open.status!=="scheduled"} onClick={cancelTeachingSession}
+      className="rounded-lg border border-warning px-4 py-2 text-sm text-warning">
+      Cancel teaching session
+     </button>
+    </div>
    </div>}
   </div>}
  </div>;
