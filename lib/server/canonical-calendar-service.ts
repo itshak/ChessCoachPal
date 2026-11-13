@@ -83,6 +83,7 @@ export function planCanonicalOccurrences(
  */
 export async function materializeCanonicalSessions(
   db: Db, teacherId: string, from: string, to: string,
+  opts: { trustedServiceRole?: boolean } = {},
 ): Promise<{ planned: number }> {
   const policy = await getPolicy(db, teacherId);
   const workplaces: CalendarWorkplace[] = [];
@@ -116,6 +117,7 @@ export async function materializeCanonicalSessions(
   for (let i = 0; i < planned.length; i += 100) {
     const { error } = await db.rpc("ccp_canonical_slot_materialize", {
       p_rows: planned.slice(i, i + 100),
+      ...(opts.trustedServiceRole ? {p_teacher_id: teacherId} : {}),
     });
     if (error) throw new Error("Unable to materialize canonical recurring lessons");
   }
