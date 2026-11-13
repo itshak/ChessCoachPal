@@ -2,9 +2,9 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import {createHash,randomUUID} from "node:crypto";
 import {NextResponse} from "next/server";
 import {getPolicy} from "@/lib/server/scheduling";
-import {derivePeriodItems,getInvoicedLessonIds} from "@/lib/server/billing";
-import {loadCreditInputs} from "@/lib/server/credits";
-import {groupItemsByGuardian,sumAmountCents,summarizePayments} from "@/lib/billing";
+import {deriveCanonicalPeriodItems,getInvoicedParticipantKeys} from "@/lib/server/canonical-billing";
+import {loadCanonicalCreditInputs} from "@/lib/server/canonical-credits";
+import {sumAmountCents,summarizePayments} from "@/lib/billing";
 import {createCheckoutSession,expireCheckoutSession} from "@/lib/payments";
 import {familyDisplayName,stripeCheckoutPrefillEmail} from "@/lib/guardians";
 import {oneToOne} from "@/lib/schedule";
@@ -63,19 +63,19 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
   const policy = await getPolicy(supabase, teacherId);
   let result;
   try {
-    const [excludeLessonIds, travelInvoicedLessonIds, credits] =
+    const [excludeParticipantKeys, travelInvoicedParticipantKeys, credits] =
       await Promise.all([
-        getInvoicedLessonIds(supabase, teacherId),
-        getInvoicedLessonIds(supabase, teacherId, { kind: "travel" }),
-        loadCreditInputs(supabase, teacherId),
+        getInvoicedParticipantKeys(supabase, teacherId),
+        getInvoicedParticipantKeys(supabase, teacherId, { kind: "travel" }),
+        loadCanonicalCreditInputs(supabase, teacherId, policy.timezone),
       ]);
-    result = await derivePeriodItems(
+    result = await deriveCanonicalPeriodItems(
       supabase,
       teacherId,
       periodStart,
       periodEnd,
       policy,
-      { excludeLessonIds, travelInvoicedLessonIds, credits }
+      { excludeParticipantKeys, travelInvoicedParticipantKeys, credits }
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -84,7 +84,14 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
 
   const { items, skippedAlreadyInvoiced, newRedemptions, creditedByGuardian } =
     result;
-  const groups = groupItemsByGuardian(items);
+  // Charges are per immutable (sessionId,studentId) roster identity.
+  // A group teaching occurrence is never duplicated in the instructor ledger.
+  const groups = new Map<string, typeof items>();
+  for(const item of items){
+    const group=groups.get(item.guardianId)??[];
+    group.push(item);
+    groups.set(item.guardianId,group);
+  }
   const guardianIds = [...groups.keys()];
 
   const { data: guardians } = guardianIds.length
@@ -155,11 +162,12 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
   // Any failure rolls back the complete period rather than leaving partly
   // issued invoices or spent credits visible to the website or MCP.
   const {data:committed,error:commitError}=await supabase.rpc(
-    "ccp_invoice_generation_commit",{
+    "ccp_canonical_invoice_generation_commit",{
       p_period_start:periodStart,p_period_end:periodEnd,p_drafts:drafts,
-      p_redemptions:[...newRedemptions].map(([lessonId,packageId])=>({
-        lessonId,packageId,
-      })),
+      p_redemptions:[...newRedemptions].map(([key,packageId])=>{
+        const [sessionId,studentId]=key.split(":");
+        return {sessionId,studentId,packageId};
+      }),
       p_request_id:requestId,
     });
   if(commitError){
@@ -254,16 +262,16 @@ export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId
   const policy = await getPolicy(supabase, teacherId);
 
   try {
-    const [excludeLessonIds, travelInvoicedLessonIds, credits] =
+    const [excludeParticipantKeys, travelInvoicedParticipantKeys, credits] =
       await Promise.all([
-        getInvoicedLessonIds(supabase, teacherId, { exceptInvoiceId: id }),
-        getInvoicedLessonIds(supabase, teacherId, {
+        getInvoicedParticipantKeys(supabase, teacherId, { exceptInvoiceId: id }),
+        getInvoicedParticipantKeys(supabase, teacherId, {
           exceptInvoiceId: id,
           kind: "travel",
         }),
-        loadCreditInputs(supabase, teacherId),
+        loadCanonicalCreditInputs(supabase, teacherId, policy.timezone),
       ]);
-    const { items, newRedemptions } = await derivePeriodItems(
+    const { items, newRedemptions } = await deriveCanonicalPeriodItems(
       supabase,
       teacherId,
       invoice.period_start,
@@ -271,8 +279,8 @@ export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId
       policy,
       {
         guardianId: invoice.guardian_id,
-        excludeLessonIds,
-        travelInvoicedLessonIds,
+        excludeParticipantKeys,
+        travelInvoicedParticipantKeys,
         credits,
       }
     );
@@ -281,11 +289,12 @@ export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId
     // redemption and subtotal is known to be valid. One RPC gives both MCP
     // and browser the same all-or-nothing transaction.
     const {data:regenerated,error:regenError}=await supabase.rpc(
-      "ccp_invoice_regenerate_atomic",{
+      "ccp_canonical_invoice_regenerate_atomic",{
         p_invoice_id:id,p_items:items,
-        p_redemptions:[...newRedemptions].map(([lessonId,packageId])=>({
-          lessonId,packageId,
-        })),
+        p_redemptions:[...newRedemptions].map(([key,packageId])=>{
+          const [sessionId,studentId]=key.split(":");
+          return {sessionId,studentId,packageId};
+        }),
         p_expected_updated_at:options.expectedUpdatedAt??invoice.updated_at,
         p_request_id:options.idempotencyKey??randomUUID(),
       });
