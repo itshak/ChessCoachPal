@@ -3,7 +3,7 @@ import {toLocalDateString,addDays} from "@/lib/schedule";
 
 type Db=SupabaseClient;
 export type CanonicalCalendarRow={
- id:string;title:string;starts_at:string;duration_minutes:number;
+ id:string;title:string;starts_at:string;duration_minutes:number;updated_at:string;
  status:string;workplace_id:string;local_timezone:string|null;
  slot_id:string|null;slot_occurrence_date:string|null;
  is_home_visit:boolean;makeup_for_session_id:string|null;
@@ -11,7 +11,7 @@ export type CanonicalCalendarRow={
   noticeAt:string|null;updatedAt:string|null;note:string;cancelReason:string}[];
 };
 type Session={
- id:string;title:string;starts_at:string;duration_minutes:number;status:string;
+ id:string;title:string;starts_at:string;duration_minutes:number;updated_at:string;status:string;
  workplace_id:string;local_timezone:string|null;slot_id:string|null;
  slot_occurrence_date:string|null;is_home_visit:boolean;
  makeup_for_session_id:string|null;
@@ -50,7 +50,7 @@ export async function canonicalCalendarWindow(
  const earliest=addDays(from,-2)+"T00:00:00Z";
  const latest=addDays(to,3)+"T00:00:00Z";
  const sessions=await pages<Session>(offset=>db.from("teaching_sessions")
-  .select("id,title,starts_at,duration_minutes,status,workplace_id,local_timezone,slot_id,slot_occurrence_date,is_home_visit,makeup_for_session_id")
+  .select("id,title,starts_at,duration_minutes,updated_at,status,workplace_id,local_timezone,slot_id,slot_occurrence_date,is_home_visit,makeup_for_session_id")
   .eq("teacher_id",teacherId).gte("starts_at",earliest).lt("starts_at",latest)
   .order("starts_at").order("id").range(offset,offset+PAGE-1),
   "canonical calendar sessions");
