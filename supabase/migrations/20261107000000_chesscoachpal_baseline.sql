@@ -7833,11 +7833,13 @@ GRANT EXECUTE ON FUNCTION public.ccp_invoice_checkout_claim(
 -- transaction for private lesson occurrences. The unique slot/date index
 -- prevents a rescheduled occurrence from being re-created at its old date.
 -- The database rechecks every planned local time and frozen roster owner.
-CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_materialize(p_rows jsonb)
+CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_materialize(p_rows jsonb,p_teacher_id uuid DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=public,pg_temp AS $ccp_materialize$
 DECLARE
-  v_teacher uuid := auth.uid();
+  v_actor uuid := auth.uid();
+  v_role text := coalesce(auth.role(),'');
+  v_teacher uuid := coalesce(auth.uid(),p_teacher_id);
   v_row jsonb;
   v_slot public.lesson_slots%ROWTYPE;
   v_workplace public.workplaces%ROWTYPE;
@@ -7849,7 +7851,11 @@ DECLARE
   v_count integer := 0;
   v_inserted integer := 0;
 BEGIN
-  IF v_teacher IS NULL THEN
+  -- Family and teacher .ics feeds may use a trusted server-side service-role
+  -- client only after its bearer token has resolved the teacher identity.
+  -- An ordinary authenticated user may not impersonate another owner.
+  IF v_teacher IS NULL OR (p_teacher_id IS NOT NULL AND
+       (v_role<>'service_role' OR v_actor IS NOT NULL)) THEN
     RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
   END IF;
   IF jsonb_typeof(p_rows) IS DISTINCT FROM 'array'
@@ -7944,10 +7950,10 @@ BEGIN
   RETURN jsonb_build_object('planned',v_count,'inserted',v_inserted);
 END;
 $ccp_materialize$;
-REVOKE ALL ON FUNCTION public.ccp_canonical_slot_materialize(jsonb)
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_materialize(jsonb,uuid)
   FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_materialize(jsonb)
-  TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_materialize(jsonb,uuid)
+  TO authenticated,service_role;
 
 -- Durable notification intents. Only the trusted delivery worker with
 -- service-role credentials can read, claim or acknowledge messages. No
