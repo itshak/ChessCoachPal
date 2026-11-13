@@ -9231,3 +9231,202 @@ GRANT EXECUTE ON FUNCTION public.ccp_outbox_claim(integer)
   TO service_role;
 GRANT EXECUTE ON FUNCTION public.ccp_outbox_ack(uuid,uuid,text,text,text)
   TO service_role;
+
+
+-- Recurrence corrections cannot be a chain of REST UPDATE/DELETE/INSERT
+-- requests: a partial failure would lose or duplicate future teaching.
+-- The teacher-owned slot, all nonprotected future occurrences, and the new
+-- bounded validated plan are changed in ONE database transaction.
+ALTER TABLE public.lesson_slots
+ ADD COLUMN updated_at timestamptz NOT NULL DEFAULT now();
+CREATE TRIGGER ccp_lesson_slots_updated_at
+ BEFORE UPDATE ON public.lesson_slots FOR EACH ROW
+ EXECUTE FUNCTION public.update_updated_at();
+
+CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_update(
+ p_slot_id uuid,p_changes jsonb,p_expected_updated_at timestamptz,
+ p_rows jsonb,p_from date,p_to date,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_slot_update$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_before public.lesson_slots%ROWTYPE;
+ v_after public.lesson_slots%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_session public.teaching_sessions%ROWTYPE;
+ v_hash text;v_receipt jsonb;v_result jsonb;
+ v_oldest date;v_last date;v_n integer;v_mat integer:=0;
+ v_removed integer:=0;v_protected integer:=0;
+ v_row jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN
+  RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_slot_id IS NULL OR p_idempotency_key IS NULL
+   OR p_expected_updated_at IS NULL
+   OR jsonb_typeof(p_changes) IS DISTINCT FROM 'object'
+   OR p_changes='{}'::jsonb OR
+   (p_changes - ARRAY[
+     'dayOfWeek','startTime','durationMinutes','startDate','endDate',
+     'rateCents','isHomeVisit','active','workplaceId'])<>'{}'::jsonb
+   OR jsonb_typeof(p_rows) IS DISTINCT FROM 'array'
+   OR jsonb_array_length(p_rows)>100
+   OR p_from IS NULL OR p_to IS NULL OR p_to<p_from OR p_to-p_from>366
+ THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_INVALID_REQUEST' USING ERRCODE='22023';
+ END IF;
+ IF (p_changes ? 'dayOfWeek' AND
+        (p_changes->>'dayOfWeek') !~ '^[0-6]$')
+   OR (p_changes ? 'startTime' AND
+        (p_changes->>'startTime') !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$')
+   OR (p_changes ? 'durationMinutes' AND
+        ((p_changes->>'durationMinutes') !~ '^[0-9]{1,3}$'
+         OR (p_changes->>'durationMinutes')::integer NOT BETWEEN 15 AND 480))
+   OR (p_changes ? 'startDate' AND
+        (p_changes->>'startDate') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+   OR (p_changes ? 'endDate' AND p_changes->'endDate'<>'null'::jsonb
+        AND (p_changes->>'endDate') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+   OR (p_changes ? 'rateCents' AND p_changes->'rateCents'<>'null'::jsonb
+        AND (p_changes->>'rateCents') !~ '^[0-9]{1,9}$')
+   OR (p_changes ? 'isHomeVisit' AND jsonb_typeof(p_changes->'isHomeVisit')<>'boolean')
+   OR (p_changes ? 'active' AND jsonb_typeof(p_changes->'active')<>'boolean')
+   OR (p_changes ? 'workplaceId' AND p_changes->'workplaceId'<>'null'::jsonb
+        AND jsonb_typeof(p_changes->'workplaceId')<>'string')
+ THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_INVALID_FIELDS' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=md5(jsonb_build_array('canonical.slot.update',p_slot_id,p_changes,
+   p_expected_updated_at,p_rows,p_from,p_to)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'canonical.slot.update',
+    v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF NOT FOUND OR v_saved.operation<>'canonical.slot.update'
+    OR v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_before FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND id=p_slot_id FOR UPDATE;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF v_before.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF p_changes ? 'workplaceId' AND p_changes->'workplaceId'<>'null'::jsonb
+  AND NOT EXISTS(
+   SELECT 1 FROM public.workplaces
+    WHERE teacher_id=v_teacher AND id=(p_changes->>'workplaceId')::uuid
+  ) THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ UPDATE public.lesson_slots SET
+  day_of_week=coalesce((p_changes->>'dayOfWeek')::integer,day_of_week),
+  start_time=coalesce((p_changes->>'startTime')::time,start_time),
+  duration_minutes=coalesce((p_changes->>'durationMinutes')::integer,duration_minutes),
+  start_date=coalesce((p_changes->>'startDate')::date,start_date),
+  end_date=CASE WHEN p_changes ? 'endDate'
+    THEN (p_changes->>'endDate')::date ELSE end_date END,
+  rate_cents=CASE WHEN p_changes ? 'rateCents'
+    THEN (p_changes->>'rateCents')::integer ELSE rate_cents END,
+  is_home_visit=coalesce((p_changes->>'isHomeVisit')::boolean,is_home_visit),
+  active=coalesce((p_changes->>'active')::boolean,active),
+  workplace_id=CASE WHEN p_changes ? 'workplaceId'
+    THEN (p_changes->>'workplaceId')::uuid ELSE workplace_id END
+ WHERE teacher_id=v_teacher AND id=p_slot_id
+ RETURNING * INTO v_after;
+ IF v_after.end_date IS NOT NULL AND v_after.end_date<v_after.start_date THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_INVALID_DATE_RANGE' USING ERRCODE='22023';
+ END IF;
+ -- Exactly the expected slot-local weekday dates, no omitted date and no
+ -- rogue extra date. Each instant and roster is validated by the nested
+ -- canonical materializer before this transaction commits.
+ SELECT count(*) INTO v_n
+ FROM generate_series(p_from,p_to,interval '1 day') d
+ WHERE v_after.active AND d::date>=v_after.start_date
+   AND (v_after.end_date IS NULL OR d::date<=v_after.end_date)
+   AND extract(dow FROM d)=v_after.day_of_week;
+ IF v_n<>jsonb_array_length(p_rows) THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_INCOMPLETE_PLAN' USING ERRCODE='22023';
+ END IF;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+  IF (v_row->>'slot_id')::uuid IS DISTINCT FROM p_slot_id
+     OR (v_row->>'teacher_id')::uuid IS DISTINCT FROM v_teacher
+     OR NOT EXISTS (
+       SELECT 1 FROM generate_series(p_from,p_to,interval '1 day') d
+       WHERE d::date=(v_row->>'slot_occurrence_date')::date
+         AND v_after.active AND d::date>=v_after.start_date
+         AND (v_after.end_date IS NULL OR d::date<=v_after.end_date)
+         AND extract(dow FROM d)=v_after.day_of_week
+     ) THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_PLAN_MISMATCH' USING ERRCODE='22023';
+  END IF;
+ END LOOP;
+ IF (SELECT count(DISTINCT x->>'slot_occurrence_date')
+       FROM jsonb_array_elements(p_rows) x)<>v_n THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_DUPLICATE_DATE' USING ERRCODE='22023';
+ END IF;
+ IF (SELECT count(*) FROM public.teaching_sessions
+      WHERE teacher_id=v_teacher AND slot_id=p_slot_id
+        AND starts_at>=clock_timestamp())>20000 THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_TOO_MANY' USING ERRCODE='22023';
+ END IF;
+ FOR v_session IN
+  SELECT * FROM public.teaching_sessions
+   WHERE teacher_id=v_teacher AND slot_id=p_slot_id
+     AND starts_at>=clock_timestamp()
+   ORDER BY starts_at,id FOR UPDATE
+ LOOP
+  IF v_session.status='scheduled'
+   AND v_session.makeup_for_session_id IS NULL
+   AND v_session.rescheduled_from_date IS NULL
+   AND btrim(coalesce(v_session.lesson_note,''))=''
+   AND v_session.updated_at<=v_session.created_at+interval '1 microsecond'
+   AND NOT EXISTS(SELECT 1 FROM public.session_attendance
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_notes
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.invoice_items
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.credit_redemptions
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.chess_observations
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.material_teaching_evidence
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_roster_corrections
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.teaching_sessions
+      WHERE makeup_for_session_id=v_session.id)
+  THEN
+   DELETE FROM public.teaching_sessions WHERE id=v_session.id;
+   v_removed:=v_removed+1;
+  ELSE
+   -- Preserve stable history and source slot/date provenance, so moving an
+   -- occurrence never recreates a duplicate for its original slot day.
+   v_protected:=v_protected+1;
+  END IF;
+ END LOOP;
+ SELECT public.ccp_canonical_slot_materialize(p_rows,NULL)
+  INTO v_result;
+ v_receipt:=jsonb_build_object('slotId',p_slot_id,
+  'revision',v_after.updated_at,'removedFuture',v_removed,
+  'preservedHistory',v_protected,'materialized',v_result,
+  'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_slot_update$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_update(
+ uuid,jsonb,timestamptz,jsonb,date,date,uuid)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_update(
+ uuid,jsonb,timestamptz,jsonb,date,date,uuid)
+ TO authenticated;
