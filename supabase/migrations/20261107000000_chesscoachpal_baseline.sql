@@ -9131,3 +9131,103 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_slot_delete(uuid,uuid)
  FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_delete(uuid,uuid)
  TO authenticated;
+
+
+-- Delivery worker: only a service-role caller may lease an outbox item.
+-- Row locks prevent two workers from claiming the same message. An expired
+-- lease may be retried with the SAME provider idempotency key; Resend provides
+-- provider-side deduplication, while local SMTP is best-effort at-least-once.
+ALTER TABLE public.ccp_delivery_outbox
+  ADD COLUMN claim_token uuid,
+  ADD COLUMN next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN failure_code text,
+  ADD COLUMN provider_receipt text;
+ALTER TABLE public.ccp_delivery_outbox
+  DROP CONSTRAINT ccp_delivery_outbox_state_check;
+ALTER TABLE public.ccp_delivery_outbox
+  ADD CONSTRAINT ccp_delivery_outbox_state_check
+  CHECK (state IN ('pending','sending','sent','failed','cancelled'));
+CREATE INDEX ccp_delivery_outbox_due_idx
+  ON public.ccp_delivery_outbox(next_attempt_at,created_at)
+  WHERE state IN ('pending','sending','failed');
+
+CREATE OR REPLACE FUNCTION public.ccp_outbox_claim(p_limit integer DEFAULT 10)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $ccp_outbox_claim$
+DECLARE
+  v_rows jsonb;
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'service_role'
+     OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 30 THEN
+    RAISE EXCEPTION 'OUTBOX_ACCESS_DENIED' USING ERRCODE='42501';
+  END IF;
+  WITH due AS (
+    SELECT id FROM public.ccp_delivery_outbox
+    WHERE attempts<20 AND next_attempt_at <= clock_timestamp()
+      AND (
+        state IN ('pending','failed')
+        OR (state='sending'
+          AND claimed_at<clock_timestamp()-interval '15 minutes')
+      )
+    ORDER BY created_at,id
+    LIMIT p_limit FOR UPDATE SKIP LOCKED
+  ), claimed AS (
+    UPDATE public.ccp_delivery_outbox o
+      SET state='sending',attempts=attempts+1,
+          claimed_at=clock_timestamp(),claim_token=gen_random_uuid(),
+          failure_code=NULL
+      FROM due WHERE o.id=due.id
+      RETURNING o.id,o.teacher_id,o.session_id,o.student_id,o.event_key,
+        o.kind,o.payload,o.claim_token,o.attempts
+  )
+  SELECT coalesce(jsonb_agg(to_jsonb(claimed)),'[]'::jsonb)
+    INTO v_rows FROM claimed;
+  RETURN v_rows;
+END;
+$ccp_outbox_claim$;
+
+CREATE OR REPLACE FUNCTION public.ccp_outbox_ack(
+  p_id uuid,p_claim_token uuid,p_outcome text,
+  p_provider_receipt text DEFAULT NULL,p_failure_code text DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_outbox_ack$
+DECLARE
+  v_row public.ccp_delivery_outbox%ROWTYPE;
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'service_role'
+    OR p_id IS NULL OR p_claim_token IS NULL
+    OR p_outcome NOT IN ('sent','retry','cancelled')
+    OR length(coalesce(p_provider_receipt,''))>200
+    OR length(coalesce(p_failure_code,''))>120 THEN
+    RAISE EXCEPTION 'OUTBOX_ACCESS_DENIED' USING ERRCODE='42501';
+  END IF;
+  UPDATE public.ccp_delivery_outbox SET
+    state=CASE WHEN p_outcome='retry' THEN 'failed' ELSE p_outcome END,
+    sent_at=CASE WHEN p_outcome='sent' THEN clock_timestamp() ELSE NULL END,
+    next_attempt_at=CASE WHEN p_outcome='retry'
+      THEN clock_timestamp()+least(
+        make_interval(mins=60),
+        make_interval(secs=(15 * power(2,least(attempts,8)))::integer))
+      ELSE 'infinity'::timestamptz END,
+    failure_code=CASE WHEN p_outcome='retry' OR p_outcome='cancelled'
+      THEN coalesce(p_failure_code,'delivery_failed') ELSE NULL END,
+    provider_receipt=CASE WHEN p_outcome='sent'
+      THEN p_provider_receipt ELSE NULL END,
+    claim_token=NULL
+  WHERE id=p_id AND claim_token=p_claim_token AND state='sending'
+  RETURNING * INTO v_row;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'OUTBOX_LEASE_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN jsonb_build_object('id',v_row.id,'state',v_row.state,
+    'attempts',v_row.attempts,'sentAt',v_row.sent_at);
+END;
+$ccp_outbox_ack$;
+REVOKE ALL ON FUNCTION public.ccp_outbox_claim(integer)
+  FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.ccp_outbox_ack(uuid,uuid,text,text,text)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_outbox_claim(integer)
+  TO service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_outbox_ack(uuid,uuid,text,text,text)
+  TO service_role;
