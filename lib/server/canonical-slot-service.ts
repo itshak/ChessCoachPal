@@ -30,6 +30,7 @@ export const canonicalSlotCreateSchema=z.object({
  idempotencyKey:uuid,
 }).strict();
 
+export type CanonicalSlotCreateInput=z.input<typeof canonicalSlotCreateSchema>;
 export const canonicalSlotEditSchema=z.object({
  changes:patch,expectedUpdatedAt:z.string().datetime({offset:true}),
  idempotencyKey:uuid,
