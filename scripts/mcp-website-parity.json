@@ -328,6 +328,34 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/calendar/slots/[id]/route.ts",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_recurring_slots_update",
+        "ccp_v1_recurring_slots_delete"
+      ],
+      "explanation": "Shared canonical transaction protects attendance/notes/billing and rescheduled sessions while reconciling future slots with stable receipt and expected revision.",
+      "evidenceTest": "e2e/canonical-recurring-slots-parity.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/calendar/slots/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_recurring_slots_list"
+      ],
+      "explanation": "Shared canonical owner-scoped recurrence list with stable pagination and revision, website ↔ delegated MCP.",
+      "evidenceTest": "e2e/canonical-recurring-slots-parity.spec.ts"
+    },
+    {
       "path": "app/api/coaching/materials/route.ts",
       "methods": [
         "GET",
