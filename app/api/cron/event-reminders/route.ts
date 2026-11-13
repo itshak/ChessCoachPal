@@ -8,6 +8,7 @@ import {
 import { requestOrigin } from "@/lib/server/http";
 import { DEFAULT_POLICY, type StudioPolicy } from "@/lib/schedule";
 import { secureCompare } from "@/lib/server/secure-compare";
+import {deliverCanonicalOutbox} from "@/lib/server/canonical-delivery-outbox";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,6 +38,17 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = createServiceClient();
+  // This existing daily cron also drains approved, crash-retryable teaching
+  // notifications on Vercel Hobby (one scheduled trigger per day). Dedicated
+  // /api/cron/canonical-outbox supports more frequent operator scheduling.
+  try { await deliverCanonicalOutbox(supabase,{limit:30}); }
+  catch(e) {
+    // Reminders are independent; never lose those because an outbox lease
+    // worker failed. The unacknowledged message stays due for retry.
+    console.error("Canonical outbox daily drain unavailable",
+      e instanceof Error?e.name:"Error");
+  }
+
   const now = new Date();
   const origin = cronOrigin(req);
 
