@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPolicy } from "@/lib/server/scheduling";
-import { loadCreditBalances, loadCreditPackages } from "@/lib/server/credits";
+import {loadCanonicalCreditBalances,loadCanonicalCreditPackages} from "@/lib/server/canonical-credits";
 import { validateCreditPackage } from "@/lib/credits";
-import { oneToOne,toLocalDateString } from "@/lib/schedule";
+import {toLocalDateString} from "@/lib/schedule";
 type Db=SupabaseClient;
 export class CreditServiceError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);}
@@ -17,9 +17,9 @@ export async function teacherCreditPackagesList(db:Db,teacherId:string,studentId
   const {data,error}=await db.from("students").select("id").eq("id",studentId).eq("teacher_id",teacherId).maybeSingle();
   if(error)throw fail(500,"DATABASE_ERROR","Unable to find student");
   if(!data)throw fail(404,"NOT_FOUND","Student not found");
-  return {packages:await loadCreditBalances(db,teacherId,policy,[studentId],today)};
+  return {packages:await loadCanonicalCreditBalances(db,teacherId,policy,[studentId],today)};
  }
- return {packages:await loadCreditPackages(db,teacherId)};
+ return {packages:await loadCanonicalCreditPackages(db,teacherId,{timezone:policy.timezone})};
 }
 /**
  * Purchase package, invoice and invoice line in ONE authenticated SQL
@@ -60,19 +60,17 @@ export async function teacherCreditPackageCreate(db:Db,teacherId:string,input:Cr
  return data as {packageId:string;invoiceId:string;replayed:boolean};
 }
 export async function teacherCreditPackageExpiry(db:Db,teacherId:string,id:string,expiresOn:string|null){
- const {data:existing,error:lookup}=await db.from("credit_packages")
-  .select("id,starts_on,credit_redemptions(lessons(lesson_date))")
-  .eq("id",id).eq("teacher_id",teacherId).maybeSingle();
- if(lookup)throw fail(500,"DATABASE_ERROR","Unable to load package");
+ const policy=await getPolicy(db,teacherId);
+ const packages=await loadCanonicalCreditPackages(db,teacherId,{
+  timezone:policy.timezone,
+ });
+ const existing=packages.find(p=>p.id===id);
  if(!existing)throw fail(404,"NOT_FOUND","Prepaid package not found");
  if(expiresOn&&!/^\d{4}-\d{2}-\d{2}$/.test(expiresOn))
   throw fail(400,"VALIDATION_ERROR","Expiry date must be YYYY-MM-DD");
- if(expiresOn&&expiresOn<existing.starts_on)
+ if(expiresOn&&expiresOn<existing.startsOn)
   throw fail(400,"VALIDATION_ERROR","Expiry cannot precede package start");
- const usedDates=((existing.credit_redemptions??[]) as {
-  lessons:{lesson_date:string}|{lesson_date:string}[]|null;
- }[]).flatMap(x=>oneToOne(x.lessons)?.lesson_date??[]);
- const latest=usedDates.sort().at(-1);
+ const latest=existing.redemptions.flatMap(x=>x.lessonDate?[x.lessonDate]:[]).sort().at(-1);
  if(expiresOn&&latest&&expiresOn<latest)
   throw fail(409,"CONFLICT",`A credit was used for a lesson on ${latest}`);
  const {error}=await db.from("credit_packages").update({expires_on:expiresOn})
