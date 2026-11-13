@@ -20,7 +20,7 @@ async function draftInvoice(){
  }).select("id,updated_at").single();
  expect(invoiceError).toBeNull();
  const {error:lineError}=await admin.from("invoice_items").insert({
-   invoice_id:invoice!.id,lesson_id:null,kind:"lesson",
+   invoice_id:invoice!.id,session_id:null,student_id:null,kind:"lesson",
    description:"Original line",quantity:1,unit_cents:1400,
    amount_cents:1400,sort_order:0,
  });
@@ -75,7 +75,7 @@ test("PARITY:PARITY-billing-invoice-edit atomically replaces draft line items",a
  expect(mcpRead.data.invoice_items[0].description).toBe("Replaced browser line");
 });
 
-test("PARITY:PARITY-billing-invoice-revision and rollback reject foreign lesson without losing lines",async({page,request})=>{
+test("PARITY:PARITY-billing-invoice-revision and rollback reject foreign frozen participant without losing lines",async({page,request})=>{
  const callTool=await delegatedTool(page,request);
  const {id,updatedAt}=await draftInvoice();
  const before=await websiteInvoice(page,id);
@@ -83,7 +83,7 @@ test("PARITY:PARITY-billing-invoice-revision and rollback reject foreign lesson 
    data:{notes:"Must not persist",items:[
      {description:"Valid preliminary line",quantity:1,unitCents:100,
       amountCents:100},
-     {lessonId:randomUUID(),description:"Unowned lesson",
+     {sessionId:randomUUID(),studentId:randomUUID(),description:"Unowned participant",
       quantity:1,unitCents:200,amountCents:200},
    ]},
  });

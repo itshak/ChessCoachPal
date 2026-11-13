@@ -1,89 +1,95 @@
 import {describe,expect,it,vi} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {materializeLessons} from "./scheduling";
+import {materializeCanonicalSessions} from "./canonical-calendar-service";
 
-const day = "2027-01-03";
-function fixture(options: {badMovedSecondPage?:boolean;failInsert?:boolean;slotCount?:number}={}) {
-  const slots = Array.from({length:options.slotCount??501},(_,i)=>({
-    id:`slot-${i}`,teacher_id:"teacher",student_id:"student",
-    active:true,day_of_week:0,start_time:"16:00:00",
-    start_date:day,end_date:day,duration_minutes:45,is_home_visit:false,
+vi.mock("./scheduling",()=>({
+  getPolicy:vi.fn(async()=>({timezone:"UTC"})),
+}));
+
+const day="2027-01-03";
+const teacher="00000000-0000-0000-0000-000000000001";
+const personal="00000000-0000-0000-0000-000000000002";
+
+function fixture(options:{
+  slotCount?:number;failSlotPage?:boolean;failWorkplacePage?:boolean;
+  failRpc?:boolean;endDate?:string;
+}={}){
+  const slots=Array.from({length:options.slotCount??501},(_,i)=>({
+    id:`slot-${i}`,teacher_id:teacher,student_id:"student",
+    workplace_id:personal,active:true,day_of_week:0,start_time:"16:00:00",
+    start_date:day,end_date:options.endDate??day,duration_minutes:45,
+    is_home_visit:false,rate_cents:null,
   }));
-  // The skip that matters is on page TWO; reading only the default
-  // PostgREST page would falsely restore a moved slot occurrence.
-  const moved = [
-    ...Array.from({length:500},(_,i)=>({
-      teacher_id:"teacher",slot_id:`unused-${i}`,rescheduled_from_date:day,
-    })),
-    {teacher_id:"teacher",slot_id:"slot-500",rescheduled_from_date:day},
-  ];
-  const upsert=vi.fn(async(rows:unknown[])=>({
-    data:null,error:options.failInsert?{message:"write rejected"}:null,
+  const workplaces=Array.from({length:501},(_,i)=>({
+    id:i===0?personal:`workplace-${i}`,timezone:"UTC",teacher_id:teacher,
   }));
-  const counts:Record<string,number[]>={lesson_slots:[],lessons:[]};
+  const pages:Record<string,number[]>={lesson_slots:[],workplaces:[]};
+  const rpc=vi.fn(async(_name:string,_args:unknown)=>({
+    data:null,error:options.failRpc?{message:"write rejected"}:null,
+  }));
   const db={
-    from(name:string) {
-      const state:{eq:Record<string,unknown>;not:Set<string>}={
-        eq:{},not:new Set<string>(),
-      };
+    from(name:string){
+      const eq:Record<string,unknown>={};
       const query={
-        select(_cols:string){return query;},
-        eq(col:string,value:unknown){state.eq[col]=value;return query;},
-        not(col:string){state.not.add(col);return query;},
-        order(_col:string){return query;},
+        select(_columns:string){return query;},
+        eq(column:string,value:unknown){eq[column]=value;return query;},
+        order(_column:string){return query;},
         async range(start:number,end:number){
-          counts[name]?.push(start);
-          if(name==="lessons"&&start===500&&options.badMovedSecondPage)
-            return {data:null,error:{message:"page 2 unavailable"}};
-          const source=name==="lesson_slots"?slots:moved;
-          const filtered=source.filter(row=>{
-            for(const [k,v] of Object.entries(state.eq)){
-              if((row as Record<string,unknown>)[k]!==v)return false;
-            }
-            for(const key of state.not){
-              if((row as Record<string,unknown>)[key]===null)return false;
-            }
-            return true;
-          });
-          return {data:filtered.slice(start,end+1),error:null};
+          pages[name]?.push(start);
+          if(name==="lesson_slots"&&start===500&&options.failSlotPage)
+            return {data:null,error:{message:"second page unavailable"}};
+          if(name==="workplaces"&&start===500&&options.failWorkplacePage)
+            return {data:null,error:{message:"second workplace page unavailable"}};
+          const rows=name==="lesson_slots"?slots:workplaces;
+          const selected=rows.filter(row=>Object.entries(eq).every(
+            ([column,value])=>(row as Record<string,unknown>)[column]===value));
+          return {data:selected.slice(start,end+1),error:null};
         },
-        async maybeSingle(){return {data:null,error:null};},
-        upsert,
       };
       return query;
     },
+    rpc,
   };
-  return {db:db as unknown as SupabaseClient,upsert,counts};
+  return {db:db as unknown as SupabaseClient,rpc,pages};
 }
 
-describe("recurring calendar materialization is complete or fails closed",()=>{
-  it("pages every slot and moved-lesson row before inserting anything",async()=>{
-    const {db,upsert,counts}=fixture();
-    await materializeLessons(db,"teacher",day,day);
-    expect(counts.lesson_slots).toEqual([0,500]);
-    expect(counts.lessons).toEqual([0,500]);
-    expect(upsert).toHaveBeenCalledTimes(1);
-    const inserted=upsert.mock.calls[0][0] as {slot_id:string}[];
-    expect(inserted).toHaveLength(500);
-    expect(inserted.some(x=>x.slot_id==="slot-500")).toBe(false);
-    expect(inserted.some(x=>x.slot_id==="slot-499")).toBe(true);
+describe("canonical recurring materialization reads all pages and fails closed",()=>{
+  it("reads every workplace and slot before sending occurrence transactions",async()=>{
+    const {db,rpc,pages}=fixture();
+    await expect(materializeCanonicalSessions(db,teacher,day,day))
+      .resolves.toEqual({planned:501});
+    expect(pages.workplaces).toEqual([0,500]);
+    expect(pages.lesson_slots).toEqual([0,500]);
+    expect(rpc).toHaveBeenCalledTimes(6);
+    const rows=rpc.mock.calls.flatMap(call=>
+      (call[1] as {p_rows:{slot_id:string}[]}).p_rows);
+    expect(rows).toHaveLength(501);
+    expect(new Set(rows.map(row=>row.slot_id)).size).toBe(501);
+    expect(rpc.mock.calls.every(call=>call[0]==="ccp_canonical_slot_materialize"))
+      .toBe(true);
   });
-  it("does not write if the second moved-lesson page is unavailable",async()=>{
-    const {db,upsert}=fixture({badMovedSecondPage:true});
-    await expect(materializeLessons(db,"teacher",day,day))
-      .rejects.toThrow("Unable to load all rescheduled lessons");
-    expect(upsert).not.toHaveBeenCalled();
+  it("does not write if a later slot page fails",async()=>{
+    const {db,rpc}=fixture({failSlotPage:true});
+    await expect(materializeCanonicalSessions(db,teacher,day,day))
+      .rejects.toThrow("Unable to read recurring slots");
+    expect(rpc).not.toHaveBeenCalled();
   });
-  it("does not attempt writes for oversized generated lesson inventories",async()=>{
-    const {db,upsert}=fixture({slotCount:2500});
-    await expect(materializeLessons(db,"teacher",day,"2027-04-01"))
-      .rejects.toThrow("Too many lesson occurrences");
-    expect(upsert).not.toHaveBeenCalled();
+  it("does not write if a later workplace page fails",async()=>{
+    const {db,rpc}=fixture({failWorkplacePage:true});
+    await expect(materializeCanonicalSessions(db,teacher,day,day))
+      .rejects.toThrow("Unable to read teacher workplaces");
+    expect(rpc).not.toHaveBeenCalled();
   });
-  it("propagates write failure instead of claiming that materialization succeeded",async()=>{
-    const {db,upsert}=fixture({failInsert:true});
-    await expect(materializeLessons(db,"teacher",day,day))
-      .rejects.toThrow("Unable to materialize lessons");
-    expect(upsert).toHaveBeenCalledTimes(1);
+  it("rejects oversized plans before invoking the canonical RPC",async()=>{
+    const {db,rpc}=fixture({slotCount:2501,endDate:"2027-04-01"});
+    await expect(materializeCanonicalSessions(db,teacher,day,"2027-04-01"))
+      .rejects.toThrow("Too many occurrences");
+    expect(rpc).not.toHaveBeenCalled();
+  },30000);
+  it("propagates failed canonical writes without claiming success",async()=>{
+    const {db,rpc}=fixture({failRpc:true});
+    await expect(materializeCanonicalSessions(db,teacher,day,day))
+      .rejects.toThrow("Unable to materialize canonical recurring lessons");
+    expect(rpc).toHaveBeenCalledTimes(1);
   });
 });

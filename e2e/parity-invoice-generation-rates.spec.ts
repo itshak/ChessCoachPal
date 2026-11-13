@@ -18,15 +18,27 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
    data:{defaultRateCents:6000},
  });
  expect(rate.status(),await rate.text()).toBe(200);
- const day="2042-10-15";
- const lesson=await call("ccp_v1_calendar_lessons_create",{
-   studentId,date:day,time:"13:00",durationMinutes:60,
-   confirmed:true,
+ const workplace=await call("ccp_v1_workplaces_create",{
+  name:"Invoice-rate studio "+randomUUID(),timezone:"UTC",currency:"USD",
+  locale:"en",policy:{},idempotencyKey:randomUUID(),
+ });
+ expect(workplace.error).toBeUndefined();
+ const workplaceId=workplace.data.entityId as string;
+ const enrolled=await call("ccp_v1_workplaces_enroll",{
+  workplaceId,studentId,idempotencyKey:randomUUID(),
+ });
+ expect(enrolled.error).toBeUndefined();
+ const lesson=await call("ccp_v1_sessions_create",{
+   workplaceId,studentId,title:"Rate-driven individual lesson",
+   startsAt:"2042-10-15T13:00:00Z",durationMinutes:60,
+   lessonNote:"",idempotencyKey:randomUUID(),
  });
  expect(lesson.error).toBeUndefined();
- const lessonId=lesson.data.id as string;
- const attended=await call("ccp_v1_calendar_attendance_record",{
-   lessonId,status:"attended",notifyFamily:false,confirmed:true,
+ const sessionId=lesson.data.entityId as string;
+ const attended=await call("ccp_v1_session_attendance_set",{
+   sessionId,studentId,status:"present",note:"",
+   noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
+   notifyFamily:false,idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(attended.error).toBeUndefined();
  const period={periodStart:"2042-10-01",periodEnd:"2042-10-31"};
@@ -55,7 +67,9 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
  let site=await browser.json();
  expect(site.subtotal_cents).toBe(6000);
  expect(site.invoice_items).toHaveLength(1);
- expect(site.invoice_items[0].lesson_id).toBe(lessonId);
+ expect(site.invoice_items[0]).toMatchObject({
+  session_id:sessionId,student_id:studentId,
+ });
  const mcp=await call("ccp_v1_billing_invoice_detail",{invoiceId});
  expect(mcp.error).toBeUndefined();
  expect(mcp.data.subtotal_cents).toBe(site.subtotal_cents);

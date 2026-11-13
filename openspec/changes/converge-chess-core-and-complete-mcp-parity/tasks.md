@@ -1,3 +1,5 @@
+> **Dependency order:** First complete [consolidate-canonical-lessons-and-attendance](../consolidate-canonical-lessons-and-attendance/tasks.md) for the B5/B6/B10 and C2/C3 lesson/attendance cutover; then complete the remaining tasks and the single integrated acceptance campaign. Do not archive this parent upon child completion.
+
 # One-agent implementation checklist — INTEGRATE → COMPLETE → TEST → ACCEPT
 
 **All tasks are proposed and unchecked.** The agent must execute the entire implementation backlog as **one coordinated batch**, not repeatedly stop after a small fix and launch complete CI. Author tests while coding if useful, but perform the comprehensive synthetic validation **only after** the integrated source and route/action map are complete. Check a box only after verified execution and link its evidence; an implementation attempt is not acceptance.

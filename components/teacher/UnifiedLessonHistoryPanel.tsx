@@ -1,13 +1,12 @@
 "use client";
 import {useCallback,useEffect,useState,type FormEvent} from "react";
 type Workplace={id:string;name:string};
-type Row={id:string;kind:"legacy"|"coaching";startsAt:string;durationMinutes:number;
+type Row={id:string;kind:"coaching";startsAt:string;durationMinutes:number;
  status:string;studentIds:string[];workplaceId:string|null;
- possibleDuplicateOf?:string;booked:boolean;delivered:boolean};
+ booked:boolean;delivered:boolean};
 type Response={entries:Row[];total:number;nextOffset:number|null;summary:{
  bookedInstructorMinutes:number;evidencedInstructorMinutes:number;
- possibleCrossModelDuplicates:number;coachingSessionCount:number;
- unattributedLegacyLessonCount:number};
+ canonicalSessionCount:number;participantAttendanceDecisions:number};
  warnings:string[];filter:{timezone:string}};
 const classes="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground";
 function dateLocal(daysAgo:number){
@@ -50,9 +49,9 @@ export function UnifiedLessonHistoryPanel({fixedStudentId}:{fixedStudentId?:stri
   try{await fetchHistory();}catch(e){setError(e instanceof Error?e.message:"History unavailable");}
   finally{setBusy(false);}
  }
- return <section aria-label="Unified private and coaching lesson history" className="rounded-xl border border-border bg-surface p-4 space-y-3">
+ return <section aria-label="Canonical teaching session history" className="rounded-xl border border-border bg-surface p-4 space-y-3">
   <h2 className="text-lg font-semibold">Complete teaching history</h2>
-  <p className="text-sm text-muted">Shows private legacy lessons alongside group/coaching sessions. Exact duplicates are flagged, not deleted. Booked and evidenced teaching minutes are separately calculated without double counting overlapping time.</p>
+  <p className="text-sm text-muted">Shows private and group chess lessons in one canonical history. Booked time and evidenced teaching time are calculated without multiplying group sessions by the number of students.</p>
   <form onSubmit={submit} className="flex flex-wrap gap-3 items-end">
    <label className="text-sm">From <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className={"block "+classes} required/></label>
    <label className="text-sm">To <input type="date" value={to} onChange={e=>setTo(e.target.value)} className={"block "+classes} required/></label>
@@ -69,15 +68,14 @@ export function UnifiedLessonHistoryPanel({fixedStudentId}:{fixedStudentId?:stri
    <div className="grid gap-2 sm:grid-cols-3">
     <div className="border border-border rounded-lg p-3"><div className="text-xs text-muted">Booked instructor minutes</div><div className="font-bold">{result.summary.bookedInstructorMinutes}</div></div>
     <div className="border border-border rounded-lg p-3"><div className="text-xs text-muted">Evidenced teaching minutes</div><div className="font-bold">{result.summary.evidencedInstructorMinutes}</div></div>
-    <div className="border border-border rounded-lg p-3"><div className="text-xs text-muted">Possible duplicate records</div><div className="font-bold">{result.summary.possibleCrossModelDuplicates}</div></div>
+    <div className="border border-border rounded-lg p-3"><div className="text-xs text-muted">Attendance decisions</div><div className="font-bold">{result.summary.participantAttendanceDecisions}</div></div>
    </div>
    {result.warnings.map((warning,i)=><p className="text-xs text-muted" key={i}>{warning}</p>)}
    <p className="text-xs text-muted">{result.total} history records. Timezone: {result.filter.timezone}</p>
    <ul className="space-y-2">
     {rows.map(row=><li className="border border-border rounded-lg p-3 text-sm" key={row.id}>
-     <span className="font-medium">{row.kind==="coaching"?"Coaching/group":"Private legacy"}</span>
+     <span className="font-medium">{row.studentIds.length>1?"Group chess lesson":"Private chess lesson"}</span>
      <span className="text-muted"> · {new Date(row.startsAt).toLocaleString()} · {row.durationMinutes} min · {row.status}</span>
-     {row.possibleDuplicateOf&&<p className="text-error">Possible duplicate of {row.possibleDuplicateOf} — review before changing records</p>}
      <p className="text-xs text-muted">{row.studentIds.length} learner(s) · {row.delivered?"Teaching evidenced":row.booked?"Booked; not confirmed taught":"Cancelled"}</p>
     </li>)}
    </ul>

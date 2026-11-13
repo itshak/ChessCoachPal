@@ -45,18 +45,34 @@ export async function workplaceTeachingReport(
       if ((query.data?.length ?? 0) < 500) break;
       if (sessions.length >= 5000) throw new ReportServiceError(413, "Range too large to report");
     }
+    // The attendance ledger contains decisions only; derive "unmarked"
+    // for each frozen participant without storing a fake attendance row.
     const attendance: ReportAttendance[] = [];
     for (let i = 0; i < sessions.length; i += 30) {
       const ids = sessions.slice(i, i + 30).map(s => s.id);
+      const decisions = new Map<string,string>();
       for (let offset = 0; ; offset += 500) {
         const query = await db.from("session_attendance")
-          .select("session_id,status").eq("teacher_id", teacherId)
+          .select("session_id,student_id,status").eq("teacher_id", teacherId)
           .in("session_id", ids).order("session_id").order("student_id")
           .range(offset, offset + 499);
         if (query.error) throw new ReportServiceError(500, "Report unavailable");
-        attendance.push(...(query.data ?? []));
+        for (const row of query.data ?? [])
+          decisions.set(row.session_id+":"+row.student_id,row.status);
         if ((query.data?.length ?? 0) < 500) break;
-        if (attendance.length >= 30000) throw new ReportServiceError(413, "Range too large to report");
+        if (decisions.size > 30000) throw new ReportServiceError(413, "Range too large to report");
+      }
+      for (let offset = 0; ; offset += 500) {
+        const query = await db.from("session_participants")
+          .select("session_id,student_id").eq("teacher_id", teacherId)
+          .in("session_id", ids).order("session_id").order("student_id")
+          .range(offset, offset + 499);
+        if (query.error) throw new ReportServiceError(500, "Report unavailable");
+        for (const row of query.data ?? [])
+          attendance.push({session_id:row.session_id,
+            status:decisions.get(row.session_id+":"+row.student_id)??"unmarked"});
+        if (attendance.length > 30000) throw new ReportServiceError(413, "Range too large to report");
+        if ((query.data?.length ?? 0) < 500) break;
       }
     }
     return {

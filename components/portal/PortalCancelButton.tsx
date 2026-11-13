@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 export function PortalCancelButton({
   token,
   lessonId,
+  studentId,
   windowHours,
 }: {
   token: string;
   lessonId: string;
+  studentId: string;
   windowHours: number;
 }) {
   const router = useRouter();
@@ -23,7 +25,7 @@ export function PortalCancelButton({
   async function submit() {
     setBusy(true);
     setError(null);
-    const res = await fetch(`/api/portal/${token}/lessons/${lessonId}/cancel`, {
+    const res = await fetch(`/api/portal/${encodeURIComponent(token)}/sessions/${lessonId}/students/${studentId}/cancel`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ note }),

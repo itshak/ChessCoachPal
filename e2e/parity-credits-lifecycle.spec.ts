@@ -99,13 +99,26 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
    .eq("teacher_id",signed.data.user!.id);
  expect(countAfter.error).toBeNull();
  expect(countAfter.count).toBe(countBefore.count);
- const lesson=await call("ccp_v1_calendar_lessons_create",{
-   studentId,date:"2042-07-10",time:"10:00",durationMinutes:45,confirmed:true,
+ const workplace=await call("ccp_v1_workplaces_create",{
+   name:"Prepaid package workplace "+randomUUID(),timezone:"UTC",
+   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
+ });
+ expect(workplace.error).toBeUndefined();
+ const workplaceId=workplace.data.entityId as string;
+ expect((await call("ccp_v1_workplaces_enroll",{
+   workplaceId,studentId,idempotencyKey:randomUUID(),
+ })).error).toBeUndefined();
+ const lesson=await call("ccp_v1_sessions_create",{
+   workplaceId,studentId,title:"Prepaid private coaching",
+   startsAt:"2042-07-10T10:00:00Z",durationMinutes:45,
+   lessonNote:"",idempotencyKey:randomUUID(),
  });
  expect(lesson.error).toBeUndefined();
- const lessonId=lesson.data.id as string;
- const attended=await call("ccp_v1_calendar_attendance_record",{
-   lessonId,status:"attended",notifyFamily:false,confirmed:true,
+ const sessionId=lesson.data.entityId as string;
+ const attended=await call("ccp_v1_session_attendance_set",{
+   sessionId,studentId,status:"present",note:"",
+   noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
+   notifyFamily:false,idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(attended.error).toBeUndefined();
  const preview=await page.request.post("/api/billing/generate",{

@@ -247,11 +247,20 @@ export async function attendanceList(db: Db, teacherId: string, sessionId: strin
   const { data: session } = await db.from("teaching_sessions")
     .select("id").eq("teacher_id", teacherId).eq("id", sessionId).maybeSingle();
   if (!session) throw notFound();
-  const { data, error } = await db.from("session_attendance")
-    .select("student_id,status,note,updated_at").eq("teacher_id", teacherId)
-    .eq("session_id", sessionId).limit(100);
-  if (error) throw problem();
-  return data;
+  const [{data:roster,error:rosterError},{data:decisions,error:decisionError}]=await Promise.all([
+    db.from("session_participants").select("student_id")
+      .eq("teacher_id",teacherId).eq("session_id",sessionId).limit(100),
+    db.from("session_attendance")
+      .select("student_id,status,note,notice_at,cancelled_by,cancel_reason,marked_at,marked_by,updated_at")
+      .eq("teacher_id",teacherId).eq("session_id",sessionId).limit(100),
+  ]);
+  if(rosterError||decisionError)throw problem();
+  const indexed=new Map((decisions??[]).map(row=>[row.student_id,row]));
+  return (roster??[]).map(member=>indexed.get(member.student_id)??{
+    student_id:member.student_id,status:"unmarked",note:"",
+    notice_at:null,cancelled_by:null,cancel_reason:"",
+    marked_at:null,marked_by:null,updated_at:null,
+  });
 }
 
 /** One current coaching attendance writer for website and delegated MCP.
@@ -261,22 +270,28 @@ export async function attendanceList(db: Db, teacherId: string, sessionId: strin
 export async function attendanceRecord(
   db: Db, teacherId: string,
   payload:{sessionId:string;studentId:string;status:string;note?:string;
-    expectedUpdatedAt?:string;requestId?:string}
+    noticeAt?:string;cancelReason?:string;
+    expectedUpdatedAt?:string|null;requestId?:string}
 ) {
- if(!["present","absent","late","excused"].includes(payload.status)||
-    (payload.note??"").length>5000)
-   throw new CoachError("VALIDATION_ERROR",400,"Invalid attendance status or note");
- if(Boolean(payload.requestId)!==Boolean(payload.expectedUpdatedAt))
+ const cancelled=["student_cancelled","teacher_cancelled"].includes(payload.status);
+ if(!["present","absent","late","excused","student_cancelled","teacher_cancelled"].includes(payload.status)||
+    (payload.note??"").length>5000||
+    (payload.cancelReason??"").length>1000||
+    (payload.status==="student_cancelled"&&!payload.noticeAt)||
+    (!cancelled&&(payload.noticeAt!==undefined||payload.cancelReason!==undefined))||
+    (payload.noticeAt!==undefined&&
+       (!/^(?:\d{4}-\d{2}-\d{2}T)/.test(payload.noticeAt)||!Number.isFinite(Date.parse(payload.noticeAt)))))
+   throw new CoachError("VALIDATION_ERROR",400,"Invalid attendance status or cancellation evidence");
+ if((payload.requestId===undefined)!==(payload.expectedUpdatedAt===undefined))
    throw new CoachError("VALIDATION_ERROR",400,
-    "Provide both the attendance revision and idempotency key");
+    "Provide both the revision (null if unmarked) and idempotency key");
  let expected=payload.expectedUpdatedAt;
- if(!expected){
+ if(expected===undefined){
    const {data,error}=await db.from("session_attendance")
     .select("updated_at").eq("teacher_id",teacherId)
     .eq("session_id",payload.sessionId).eq("student_id",payload.studentId).maybeSingle();
    if(error)throw problem();
-   if(!data)throw notFound();
-   expected=data.updated_at;
+   expected=data?.updated_at??null;
  }
  const requestId=payload.requestId??crypto.randomUUID();
  const {data:receipt,error}=await db.rpc("ccp_teacher_session_commit",{
@@ -284,6 +299,8 @@ export async function attendanceRecord(
    p_attendance:[{
      studentId:payload.studentId,status:payload.status,
      note:payload.note??"",expectedUpdatedAt:expected,
+     ...(payload.noticeAt!==undefined?{noticeAt:payload.noticeAt}:{}),
+     ...(payload.cancelReason!==undefined?{cancelReason:payload.cancelReason}:{}),
    }],
    p_expected_updated_at:null,p_idempotency_key:requestId,
  });
@@ -300,10 +317,33 @@ export async function attendanceRecord(
  // retain the ordinary row shape used by the teaching workspace.
  if(payload.requestId)return receipt;
  const {data,error:readError}=await db.from("session_attendance")
-   .select("student_id,status,note,updated_at").eq("teacher_id",teacherId)
+   .select("student_id,status,note,notice_at,cancelled_by,cancel_reason,marked_at,marked_by,updated_at").eq("teacher_id",teacherId)
    .eq("session_id",payload.sessionId).eq("student_id",payload.studentId).maybeSingle();
  if(readError)throw problem();
  if(!data)throw notFound();
+ return data;
+}
+
+/** Website and delegated MCP bulk marks use the SAME atomic SQL transaction
+ * as a single attendance correction and confirmed session completion.
+ */
+export async function attendanceBulkRecord(
+ db:Db,teacherId:string,input:import("@/lib/lesson-completion").AttendanceBulkRecordInput
+){
+ void teacherId; // RLS/Auth identity is resolved by the SQL RPC itself.
+ const {data,error}=await db.rpc("ccp_teacher_session_commit",{
+  p_session_id:input.sessionId,p_changes:{},p_attendance:input.attendance,
+  p_expected_updated_at:null,p_idempotency_key:input.idempotencyKey,
+ });
+ if(error){
+  if(error.code==="23505"||/CONFLICT|REVISION/.test(error.message))
+   throw conflict();
+  if(error.code==="42501"||/NOT_FOUND/.test(error.message))
+   throw notFound();
+  if(error.code==="22023")throw new CoachError("VALIDATION_ERROR",400,
+   "Invalid or duplicate frozen participant attendance");
+  throw problem();
+ }
  return data;
 }
 
@@ -409,7 +449,7 @@ export async function sessionsUpdate(
   db: Db, teacherId: string, sessionId: string,
   updates: {
     title?: string; startsAt?: string; durationMinutes?: number;
-    lessonNote?: string; status?: "scheduled" | "completed" | "cancelled";
+    isHomeVisit?: boolean; lessonNote?: string; status?: "scheduled" | "completed" | "cancelled";
     expectedUpdatedAt?: string; requestId?: string;
   }
 ) {
@@ -428,6 +468,7 @@ export async function sessionsUpdate(
   if (updates.title !== undefined) changes.title = updates.title;
   if (updates.startsAt !== undefined) changes.startsAt = updates.startsAt;
   if (updates.durationMinutes !== undefined) changes.durationMinutes = updates.durationMinutes;
+  if (updates.isHomeVisit !== undefined) changes.isHomeVisit = updates.isHomeVisit;
   if (updates.lessonNote !== undefined) changes.lessonNote = updates.lessonNote;
   if (updates.status !== undefined) changes.status = updates.status;
   if (!Object.keys(changes).length)
@@ -436,7 +477,7 @@ export async function sessionsUpdate(
     .select("id,updated_at").eq("teacher_id",teacherId).eq("id",sessionId).maybeSingle();
   if (lookupError) throw problem();
   if (!existing) throw notFound();
-  // Legacy website mutations use a freshly observed revision and new request key.
+  // Ordinary website edits observe a fresh revision and new request key.
   // MCP always supplies both; either transport goes through the SAME SQL transaction.
   const {error}=await db.rpc("ccp_teacher_session_commit",{
     p_session_id:sessionId,p_changes:changes,p_attendance:[],
@@ -450,7 +491,7 @@ export async function sessionsUpdate(
     "Invalid session correction");
   if (error) throw problem();
   const {data, error: readError}=await db.from("teaching_sessions")
-    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id,updated_at")
+    .select("id,title,starts_at,duration_minutes,is_home_visit,lesson_note,status,workplace_id,group_id,student_id,updated_at")
     .eq("teacher_id",teacherId).eq("id",sessionId).maybeSingle();
   if (readError) throw problem();
   if (!data) throw notFound();

@@ -1,5 +1,5 @@
 {
-  "auditedAt": "2026-11-12",
+  "auditedAt": "2026-11-13",
   "headSha": "c80b85c2313b8507e9999e2bb91229ed6f0f996a",
   "policy": "Verified c80b85c: 59/59 teacher route families mapped and gateway 38/38 individually evidenced; 225 authenticated website/MCP E2E passed (five skipped); all five workflow families green. Full functional parity is NOT certified: historical checklist 89/93, canonical lesson writer B5/C2, strict merged-main and live-provider gates remain open.",
   "apiRoutes": [
@@ -60,6 +60,7 @@
         "ccp_v1_sessions_participants",
         "ccp_v1_attendance_preview",
         "ccp_v1_attendance_record",
+        "ccp_v1_attendance_bulk_record",
         "ccp_v1_chess_categories_list",
         "ccp_v1_chess_categories_create",
         "ccp_v1_chess_categories_update",
@@ -74,7 +75,7 @@
         "ccp_v1_material_links_unlink_impact",
         "ccp_v1_material_links_unlink"
       ],
-      "explanation": "Exact source c80b85c: 38/38 website gateway actions have independently named authenticated website/delegated MCP evidence. 36 are equivalent owner-scoped MCP operations and two are narrowly approved browser-only teacher-attestation exceptions with negative bearer tests. The action-evidence audit found zero missing; 225 authenticated E2E passed and all five workflow families were green. Legacy calendar vs canonical session double writers and four outstanding historical release cases remain separate blockers.",
+      "explanation": "Exact source c80b85c: 38/38 website gateway actions have independently named authenticated website/delegated MCP evidence. 36 are equivalent owner-scoped MCP operations and two are narrowly approved browser-only teacher-attestation exceptions with negative bearer tests. The action-evidence audit found zero missing; 225 authenticated E2E passed and all five workflow families were green. Legacy calendar vs canonical session double writers and four outstanding historical release cases remain separate blockers. Canonical per-participant cancellation is being implemented through the existing shared session commit, website attendance.record/list and ccp_v1_attendance_record/preview MCP actions. Notice timestamp, initiator and reason are independently checked in e2e/parity-session-completion.spec.ts; these new assertions still require CI confirmation. This is an incremental change only: legacy private-calendar attendance and the unresolved historical parity cases remain strict release blockers.",
       "evidenceTest": "e2e/parity-gateway-action-coverage.spec.ts"
     },
     {
@@ -327,6 +328,62 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/calendar/makeup-credits/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_canonical_makeup_credits_list"
+      ],
+      "explanation": "Web and delegated MCP call the same owner-scoped canonical make-up eligibility service; each credit is a frozen session/student pair. The atomic private-session writer independently checks student enrollment, studio policy, expiry and single-use status.",
+      "evidenceTest": "e2e/canonical-makeup-credits-parity.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/calendar/private-sessions/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_private_sessions_create"
+      ],
+      "explanation": "One tenant-authorized canonical SQL transaction for new private lessons and consumed student-specific make-up credits, shared by web and named MCP. Stable client idempotency, workplace timezone, DST and cross-tenant guards.",
+      "evidenceTest": "e2e/canonical-private-sessions-parity.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/calendar/slots/[id]/route.ts",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_recurring_slots_update",
+        "ccp_v1_recurring_slots_delete"
+      ],
+      "explanation": "Shared canonical transaction protects attendance/notes/billing and rescheduled sessions while reconciling future slots with stable receipt and expected revision.",
+      "evidenceTest": "e2e/canonical-recurring-slots-parity.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/calendar/slots/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_recurring_slots_list",
+        "ccp_v1_recurring_slots_create"
+      ],
+      "explanation": "Shared canonical recurring intent list and atomic create RPC, with a stable caller-provided idempotency key, frozen participant, owned workplace enrollment and materialized horizon. Authenticated cross-interface E2E.",
+      "evidenceTest": "e2e/canonical-recurring-slots-parity.spec.ts"
+    },
+    {
       "path": "app/api/coaching/materials/route.ts",
       "methods": [
         "GET",
@@ -356,6 +413,51 @@
       ],
       "explanation": "Read-only MCP summary and CSV/text exports reuse the same teacher-scoped report service as website GET; authenticated cross-interface/tenant E2E in e2e/agent-mcp.spec.ts",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/sessions/[id]/attendance/route.ts",
+      "methods": [
+        "GET",
+        "PUT",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_session_attendance_list",
+        "ccp_v1_session_attendance_set",
+        "ccp_v1_session_attendance_bulk_set"
+      ],
+      "explanation": "Canonical participant attendance read, revision-checked mark/correct/clear and atomic batch use identical website/MCP domain service and SQL transaction; no attendance rows represent unmarked frozen participants. Family notifications use teacher-approved deduplicated outbox intents.",
+      "evidenceTest": "e2e/canonical-session-attendance-parity.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/sessions/[id]/lifecycle/route.ts",
+      "methods": [
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_sessions_edit"
+      ],
+      "explanation": "Teacher-owned canonical session edit, reschedule and cancel are routed through one revisioned teacher session commit used by website and delegated MCP. Explicit expected revision and idempotency key required.",
+      "evidenceTest": "e2e/canonical-session-lifecycle-parity.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/sessions/[id]/notes/route.ts",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_session_notes_list",
+        "ccp_v1_session_notes_save"
+      ],
+      "explanation": "Shared teacher-only canonical session and frozen-participant notes service. Optimistic revision and idempotent SQL writer, audit, explicit guardian-email opt-in; private fields redacted by default.",
+      "evidenceTest": "e2e/canonical-session-notes-parity.spec.ts"
     },
     {
       "path": "app/api/coaching/sessions/[id]/roster/route.ts",
@@ -398,6 +500,17 @@
       ],
       "explanation": "Shared teacher-scoped, date-bounded read of both teaching_sessions and legacy lessons; preserves old records, flags exact cross-model duplicates, distinguishes booked vs evidenced teaching minutes, sums teacher interval union once. Delegated OAuth/website E2E checks same filtered persisted history, group overlap and foreign tenant denial.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
+    },
+    {
+      "path": "app/api/cron/canonical-outbox/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "system",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Service-role delivery worker with CRON_SECRET bearer check; external scheduler only, not a teacher business or MCP feature. Claims scoped approved outbox intents with leases and retry receipts."
     },
     {
       "path": "app/api/cron/event-reminders/route.ts",
@@ -721,14 +834,14 @@
       "explanation": "Guardian RSVP, cannot impersonate guardian through teacher token"
     },
     {
-      "path": "app/api/portal/[token]/lessons/[id]/cancel/route.ts",
+      "path": "app/api/portal/[token]/sessions/[id]/students/[studentId]/cancel/route.ts",
       "methods": [
         "POST"
       ],
       "kind": "external",
       "parity": "not-applicable",
       "existingTools": [],
-      "explanation": "Guardian cancellation, cannot impersonate guardian through teacher token"
+      "explanation": "Guardian token authorizes one canonical session participant cancellation; a coach MCP token cannot impersonate a guardian. SQL validates token and frozen roster inside one transaction; repeat requests are idempotent."
     },
     {
       "path": "app/api/push/config/route.ts",
@@ -750,111 +863,6 @@
       "parity": "not-applicable",
       "existingTools": [],
       "explanation": "Browser/device push subscription control"
-    },
-    {
-      "path": "app/api/schedule/attendance/bulk/route.ts",
-      "methods": [
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_v1_calendar_attendance_bulk"
-      ],
-      "explanation": "Shared per-lesson teacher-locked mutation for website and MCP, with 1–50 owned rows, partial-failure reports, stable child idempotency receipts and cross-client replay/correction acceptance. Family email digest is opt-in and triggered for newly committed teacher cancellations; crash-safe provider exactly-once delivery is still an OpenSpec blocker.",
-      "evidenceTest": "e2e/parity-calendar.spec.ts"
-    },
-    {
-      "path": "app/api/schedule/lessons/[id]/attendance/route.ts",
-      "methods": [
-        "GET",
-        "PUT"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_v1_calendar_attendance_read",
-        "ccp_v1_calendar_attendance_record"
-      ],
-      "explanation": "Both clients read, record, correct, and clear private lesson attendance through the same tenant-scoped teacher-locked SQL writer. Dedicated authenticated transaction tests cover stale revisions, same-key cross-client replay, changed-payload rejection and foreign lesson denial. Provider crash-safe cancellation-email outbox remains a separate open service requirement.",
-      "evidenceTest": "e2e/parity-calendar.spec.ts"
-    },
-    {
-      "path": "app/api/schedule/lessons/[id]/note/route.ts",
-      "methods": [
-        "GET",
-        "PUT"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_v1_calendar_lesson_note_read",
-        "ccp_v1_calendar_lesson_note_update"
-      ],
-      "explanation": "Website and MCP share one teacher-owned private/family note read and correction service with explicit optional email approval and no default message. Authenticated shared-note E2E tests field privacy, tenant isolation, and cross-interface persistence. Provider crash-safe email outbox remains separately tracked; this route still references the pre-cutover calendar lesson model.",
-      "evidenceTest": "e2e/parity-calendar.spec.ts"
-    },
-    {
-      "path": "app/api/schedule/lessons/[id]/route.ts",
-      "methods": [
-        "GET",
-        "PUT",
-        "DELETE"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_v1_calendar_lessons_detail",
-        "ccp_v1_calendar_lessons_update",
-        "ccp_v1_calendar_lessons_delete"
-      ],
-      "explanation": "Website/MCP both use the same teacher-scoped lesson detail, private time/home-visit correction, and deliberate deletion service. E2E covers DST invalid wall-time rejection, valid fold timestamp, one-off lesson correction/deletion, and foreign-tenant denial. Canonical teaching_sessions cutover and atomic recurring-slot materialization remain B5 blockers.",
-      "evidenceTest": "e2e/parity-calendar.spec.ts"
-    },
-    {
-      "path": "app/api/schedule/lessons/route.ts",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_v1_calendar_lessons_list",
-        "ccp_v1_calendar_lessons_create"
-      ],
-      "explanation": "Teacher-scoped website/MCP list and one-off/create makeup lesson actions share the calendar service. E2E covers local time DST, created lesson readback, teacher ownership, and immutable prior schedule history. Current calendar lessons are not yet converted into canonical teaching_sessions (B5 open).",
-      "evidenceTest": "e2e/parity-calendar.spec.ts"
-    },
-    {
-      "path": "app/api/schedule/slots/[id]/route.ts",
-      "methods": [
-        "PUT",
-        "DELETE"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_v1_calendar_slots_update",
-        "ccp_v1_calendar_slots_delete"
-      ],
-      "explanation": "Website/MCP recurrence slot edit, disable and delete invoke the same teacher-scoped history-preserving service. E2E tests exact cross-interface edits, disabled slots, preserved materialized history, and foreign-tenant denial. Slot materialization receipts and final canonical-session transition remain B5 blockers.",
-      "evidenceTest": "e2e/parity-calendar.spec.ts"
-    },
-    {
-      "path": "app/api/schedule/slots/route.ts",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_v1_calendar_slots_list",
-        "ccp_v1_calendar_slots_create"
-      ],
-      "explanation": "Website/MCP recurrence slot list/create share the teacher-scoped scheduling service and validate local timezone/DST. Browser/MCP E2E tests matching lists and scheduled slot terms plus tenant filtering. Canonical future-session materialization and request receipts remain separate cutover tasks.",
-      "evidenceTest": "e2e/parity-calendar.spec.ts"
     },
     {
       "path": "app/api/settings/export/route.ts",
@@ -1156,11 +1164,10 @@
     "components/teacher/events/EventDetailClient.tsx",
     "components/teacher/events/EventForm.tsx",
     "components/teacher/events/NewEventForm.tsx",
-    "components/teacher/schedule/BulkAttendancePanel.tsx",
-    "components/teacher/schedule/MakeupPanel.tsx",
+    "components/teacher/schedule/CanonicalMakeupPanel.tsx",
+    "components/teacher/schedule/CanonicalScheduleBoard.tsx",
+    "components/teacher/schedule/CanonicalSlotManager.tsx",
     "components/teacher/schedule/PolicySettings.tsx",
-    "components/teacher/schedule/SlotManager.tsx",
-    "components/teacher/schedule/WeekView.tsx",
     "components/teacher/settings/BillingSettingsForm.tsx",
     "components/teacher/settings/DataTransferSettings.tsx",
     "components/teacher/settings/HostingSettingsForm.tsx",

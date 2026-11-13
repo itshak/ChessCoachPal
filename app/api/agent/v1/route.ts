@@ -5,7 +5,7 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import { createClient as createCookieClient } from "@/lib/supabase/server";
 import {
   CoachError,
-  attendanceList, attendanceRecord,
+  attendanceList, attendanceRecord, attendanceBulkRecord,
   groupsCreate, groupsEnroll, groupsUnenroll, groupsList, groupsMembers,
   sessionsCreate, sessionsAdHocCreate, sessionsList, sessionsParticipants, studentsSearch,
   workplacesCreate, workplacesList, workplacesEnroll, workplacesUnenroll, workplacesEnrollments,
@@ -22,7 +22,7 @@ import { chessUuid, categoryName, observationText, observationInput, observedAt,
 } from "@/lib/chess-learning";
 import {materialLinksList,materialLinksCreate,materialLinksUpdate,
  materialLinksUnlinkImpact,materialLinksUnlink} from "@/lib/server/material-links";
-import {lessonCompletionSchema} from "@/lib/lesson-completion";
+import {lessonCompletionSchema,attendanceBulkRecordSchema} from "@/lib/lesson-completion";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +91,7 @@ const calls = z.discriminatedUnion("action", [
   lessonCompletionSchema.safeExtend({action:z.literal("sessions.complete")}),
   z.object({ action: z.literal("sessions.participants"), sessionId: uuid }),
   z.object({ action: z.literal("attendance.list"), sessionId: uuid }),
+  attendanceBulkRecordSchema.safeExtend({action:z.literal("attendance.bulkRecord")}),
   z.object({ action: z.literal("chess.categories.list") }),
   z.object({ action: z.literal("chess.categories.create"), name:categoryName,
     description:z.string().max(500).optional(), sortOrder:z.number().int().min(0).max(10000).optional() }),
@@ -115,8 +116,10 @@ const calls = z.discriminatedUnion("action", [
   materialLinkUpdateInput.safeExtend({action:z.literal("materials.links.update")}),
   z.object({ action: z.literal("attendance.record"),
     sessionId: uuid, studentId: uuid,
-    status: z.enum(["present", "absent", "late", "excused"]),
+    status: z.enum(["present", "absent", "late", "excused", "student_cancelled", "teacher_cancelled"]),
     note: z.string().max(5000).default(""),
+    noticeAt: z.string().datetime({offset:true}).optional(),
+    cancelReason: z.string().max(1000).optional(),
   }),
 ]);
 
@@ -125,7 +128,7 @@ const toolNames = [
   "students.search", "students.create", "students.update",
   "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
   "sessions.list", "sessions.create", "sessions.createAdHoc", "sessions.update", "sessions.complete", "sessions.participants",
-  "attendance.list", "attendance.record",
+  "attendance.list", "attendance.record", "attendance.bulkRecord",
   "chess.categories.list","chess.categories.create","chess.categories.update",
   "chess.categories.deleteImpact","chess.categories.delete",
   "chess.observations.list","chess.observations.create","chess.observations.propose",
@@ -290,6 +293,8 @@ export async function POST(req: NextRequest) {
         result = await attendanceList(db, teacherId, call.sessionId); break;
       case "attendance.record":
         result = await attendanceRecord(db, teacherId, call); break;
+      case "attendance.bulkRecord":
+        result = await attendanceBulkRecord(db, teacherId, call); break;
       case "chess.categories.list":
         result = await chessCategoriesList(db,teacherId); break;
       case "chess.categories.create":

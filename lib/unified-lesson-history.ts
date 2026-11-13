@@ -1,11 +1,10 @@
-/** Pure reconciliation across the two pre-1.0 lesson histories.
- * Exact teacher time is an interval union, not a sum of participant rows.
- * A detected duplicate is flagged, never silently deleted or rewritten.
+/** Exact instructor time is an interval union across canonical sessions.
+ * Group roster size never multiplies a teacher's actual minutes.
  */
 export type LessonTimelineItem={
- id:string;kind:"coaching"|"legacy";startsAt:string;durationMinutes:number;
+ id:string;kind:"coaching";startsAt:string;durationMinutes:number;
  status:string;studentIds:string[];workplaceId:string|null;
- delivered:boolean;booked:boolean;possibleDuplicateOf?:string;
+ delivered:boolean;booked:boolean;
 };
 export function unionMinutes(input:LessonTimelineItem[],flag:"booked"|"delivered"){
  const intervals=input.filter(item=>item[flag]).map(item=>{
@@ -23,19 +22,4 @@ export function unionMinutes(input:LessonTimelineItem[],flag:"booked"|"delivered
  }
  if(lastStart!==null)minutes+=(lastEnd-lastStart)/60_000;
  return Math.round(minutes);
-}
-export function reconcileLessons<T extends LessonTimelineItem>(items:T[]){
- const coaching=items.filter(x=>x.kind==="coaching");
- const reconciled=items.map(x=>{
-  if(x.kind!=="legacy")return x;
-  const counterpart=coaching.find(s=>s.startsAt===x.startsAt&&
-   s.durationMinutes===x.durationMinutes&&
-   x.studentIds.some(id=>s.studentIds.includes(id)));
-  return counterpart?{...x,possibleDuplicateOf:counterpart.id}:x;
- });
- return {entries:reconciled,
-  possibleCrossModelDuplicates:reconciled.filter(x=>x.possibleDuplicateOf).length,
-  bookedInstructorMinutes:unionMinutes(reconciled,"booked"),
-  evidencedInstructorMinutes:unionMinutes(reconciled,"delivered"),
- };
 }

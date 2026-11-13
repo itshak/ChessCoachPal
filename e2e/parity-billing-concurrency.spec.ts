@@ -19,15 +19,28 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
  expect((await page.request.put("/api/students/"+studentId,{
    data:{defaultRateCents:6200},
  })).status()).toBe(200);
- const lesson=await call("ccp_v1_calendar_lessons_create",{
-   studentId,date:"2043-03-19",time:"15:00",durationMinutes:60,confirmed:true,
+ const workplace=await call("ccp_v1_workplaces_create",{
+   name:"Concurrent invoice workplace "+randomUUID(),timezone:"UTC",
+   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
+ });
+ expect(workplace.error).toBeUndefined();
+ const workplaceId=workplace.data.entityId as string;
+ expect((await call("ccp_v1_workplaces_enroll",{
+   workplaceId,studentId,idempotencyKey:randomUUID(),
+ })).error).toBeUndefined();
+ const lesson=await call("ccp_v1_sessions_create",{
+   workplaceId,studentId,title:"Concurrent invoice lesson",
+   startsAt:"2043-03-19T15:00:00Z",durationMinutes:60,
+   lessonNote:"",idempotencyKey:randomUUID(),
  });
  expect(lesson.error).toBeUndefined();
- const lessonId=lesson.data.id as string;
- const attendance=await page.request.put("/api/schedule/lessons/"+lessonId+"/attendance",{
-   data:{status:"attended",notifyFamily:false},
+ const sessionId=lesson.data.entityId as string;
+ const attendance=await call("ccp_v1_session_attendance_set",{
+   sessionId,studentId,status:"present",note:"",
+   noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
+   notifyFamily:false,idempotencyKey:randomUUID(),confirmed:true,
  });
- expect(attendance.status(),await attendance.text()).toBe(200);
+ expect(attendance.error).toBeUndefined();
  const period={periodStart:"2043-03-01",periodEnd:"2043-03-31"};
  const sitePreview=await page.request.post("/api/billing/generate",{
    data:{...period,commit:false},
@@ -57,11 +70,12 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
     auth:{persistSession:false,autoRefreshToken:false},
    });
  const {data:lines,error:lineError}=await admin.from("invoice_items")
-   .select("invoice_id,lesson_id,amount_cents").eq("lesson_id",lessonId);
+   .select("invoice_id,session_id,student_id,amount_cents")
+   .eq("session_id",sessionId).eq("student_id",studentId);
  expect(lineError).toBeNull();
  expect(lines).toHaveLength(1);
  expect(lines![0]).toMatchObject({
-   invoice_id:invoiceId,lesson_id:lessonId,amount_cents:6200,
+   invoice_id:invoiceId,session_id:sessionId,student_id:studentId,amount_cents:6200,
  });
  const detail=await page.request.get("/api/billing/invoices/"+invoiceId);
  expect(detail.status()).toBe(200);
@@ -75,12 +89,12 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
     auth:{persistSession:false,autoRefreshToken:false},
    });
  expect((await auth.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
- const {error:badRegeneration}=await auth.rpc("ccp_invoice_regenerate_atomic",{
+ const {error:badRegeneration}=await auth.rpc("ccp_canonical_invoice_regenerate_atomic",{
    p_invoice_id:invoiceId,
    p_items:[
-    {lessonId,kind:"lesson",description:"Valid first row",
+    {sessionId,studentId,kind:"lesson",description:"Valid first row",
      quantity:1,unitCents:6700,amountCents:6700},
-    {lessonId:randomUUID(),kind:"lesson",description:"Unowned second row",
+    {sessionId:randomUUID(),studentId:randomUUID(),kind:"lesson",description:"Unowned second row",
      quantity:1,unitCents:200,amountCents:200},
    ],
    p_redemptions:[],
@@ -93,7 +107,9 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
  const still=await unchanged.json();
  expect(still.subtotal_cents).toBe(6200);
  expect(still.invoice_items).toHaveLength(1);
- expect(still.invoice_items[0].lesson_id).toBe(lessonId);
+ expect(still.invoice_items[0]).toMatchObject({
+   session_id:sessionId,student_id:studentId,
+ });
  expect(still.invoice_items[0].amount_cents).toBe(6200);
  const modelAfter=await call("ccp_v1_billing_invoice_detail",{invoiceId});
  expect(modelAfter.error).toBeUndefined();

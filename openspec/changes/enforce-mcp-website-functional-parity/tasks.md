@@ -1,3 +1,5 @@
+> **Blocked on canonical cutover:** Complete [consolidate-canonical-lessons-and-attendance](../consolidate-canonical-lessons-and-attendance/tasks.md) before signing off B3/B5/B6 and C1–C3. Its verified child evidence can be reused, but all 93 historical plus new scenarios and merged-main strict gate remain required here.
+
 # Checklist — full website ↔ MCP equality
 
 **Status:** Active. Do not archive until every item and the [93 acceptance scenarios](../../../docs/MCP_WEBSITE_PARITY_CHECKLIST.md) pass against merged main.

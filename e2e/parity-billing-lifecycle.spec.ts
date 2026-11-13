@@ -449,7 +449,7 @@ test("PARITY:PARITY-billing-regenerate-checkout-reconciliation blocks stale paym
  const call=await delegatedTool(page,request);
  const seeded=await invoice("draft",5500);
  const {error:lineError}=await seeded.admin.from("invoice_items").insert({
-   invoice_id:seeded.id,lesson_id:null,kind:"lesson",
+   invoice_id:seeded.id,session_id:null,student_id:null,kind:"lesson",
    description:"Original chess lesson invoice",quantity:1,unit_cents:5500,
    amount_cents:5500,sort_order:0,
  });
@@ -483,7 +483,7 @@ test("PARITY:PARITY-billing-regenerate-checkout-reconciliation blocks stale paym
    });
  const signedIn=await auth.auth.signInWithPassword(SEED_TEACHER);
  expect(signedIn.error).toBeNull();
- const direct=await auth.rpc("ccp_invoice_regenerate_atomic",{
+ const direct=await auth.rpc("ccp_canonical_invoice_regenerate_atomic",{
    p_invoice_id:seeded.id,p_items:[],p_redemptions:[],
    p_expected_updated_at:before.updated_at,p_request_id:randomUUID(),
  });

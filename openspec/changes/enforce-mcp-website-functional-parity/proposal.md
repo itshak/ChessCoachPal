@@ -1,3 +1,5 @@
+> **Dependency gate (2026-11-12):** Implement [consolidate-canonical-lessons-and-attendance](../consolidate-canonical-lessons-and-attendance/proposal.md) first. This prerequisite owns removal of duplicate lesson/attendance physical models and transfer of all calendar, finance, portal, notes and reporting consumers. Resume this parity change after cutover; it retains ownership of all 93 historical and new scenarios, strict merged-main parity and final archive. Do not mark B3/B5/B6 or C1–C3 complete based solely on the cutover.
+
 # Change: enforce-mcp-website-functional-parity
 
 **Status:** ACTIVE; PHASE A ACCEPTED, FULL PARITY NOT ACCEPTED. Dedicated owner of website↔MCP functional equality; separate from the [chess-specific narrative lesson/Lichess change](../support-conversational-lesson-and-lichess-workflows/proposal.md).

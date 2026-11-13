@@ -94,11 +94,7 @@ BEGIN
     FROM public.group_enrollments e
     WHERE e.teacher_id = NEW.teacher_id AND e.group_id = NEW.group_id;
   END IF;
-  -- Create one and only one initially unmarked register row per snapshot member.
-  INSERT INTO public.session_attendance(teacher_id, session_id, student_id, status)
-  SELECT NEW.teacher_id, NEW.id, p.student_id, 'unmarked'
-  FROM public.session_participants p
-  WHERE p.teacher_id = NEW.teacher_id AND p.session_id = NEW.id;
+  -- Frozen roster begins with no explicit attendance decisions.
   RETURN NEW;
 END;
 $$;
@@ -127,80 +123,9 @@ $$;
 ALTER FUNCTION "public"."enforce_credit_package_immutability"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."enforce_credit_redemption_rules"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    AS $$
-DECLARE
-  pkg     credit_packages%ROWTYPE;
-  inv_status text;
-  lsn     record;
-  used    int;
-BEGIN
-  IF TG_OP = 'UPDATE' THEN
-    IF NEW IS NOT DISTINCT FROM OLD THEN
-      RETURN NEW;
-    END IF;
-    RAISE EXCEPTION 'Credit redemptions cannot be edited; remove and re-create instead';
-  END IF;
-
-  -- Lock the package so concurrent redemptions can't overspend it.
-  SELECT * INTO pkg FROM credit_packages WHERE id = NEW.package_id FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Credit package % not found', NEW.package_id;
-  END IF;
-
-  -- Lock the lesson so an invoice line and a redemption can't race past
-  -- each other's check.
-  SELECT id, teacher_id, student_id, lesson_date, duration_minutes INTO lsn
-    FROM lessons WHERE id = NEW.lesson_id FOR NO KEY UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Lesson % not found', NEW.lesson_id;
-  END IF;
-
-  IF NEW.teacher_id <> pkg.teacher_id OR lsn.teacher_id <> pkg.teacher_id THEN
-    RAISE EXCEPTION 'Credit package and lesson belong to different teachers';
-  END IF;
-  IF lsn.student_id <> pkg.student_id THEN
-    RAISE EXCEPTION 'Credit package % is for a different student', pkg.id;
-  END IF;
-  IF lsn.duration_minutes <> pkg.duration_minutes THEN
-    RAISE EXCEPTION 'Credit package % covers % min lessons, not % min',
-      pkg.id, pkg.duration_minutes, lsn.duration_minutes;
-  END IF;
-  IF lsn.lesson_date < pkg.starts_on
-     OR (pkg.expires_on IS NOT NULL AND lsn.lesson_date > pkg.expires_on) THEN
-    RAISE EXCEPTION 'Lesson on % is outside credit package % dates', lsn.lesson_date, pkg.id;
-  END IF;
-
-  SELECT status INTO inv_status FROM invoices WHERE id = pkg.invoice_id;
-  IF inv_status IS DISTINCT FROM 'sent' AND inv_status IS DISTINCT FROM 'paid' THEN
-    RAISE EXCEPTION 'Credit package % can be used once its invoice is sent or paid', pkg.id;
-  END IF;
-
-  -- Excluding NEW.id lets a studio import re-upsert an existing row.
-  SELECT count(*) INTO used FROM credit_redemptions
-   WHERE package_id = pkg.id AND id <> NEW.id;
-  IF used >= pkg.credits THEN
-    RAISE EXCEPTION 'Credit package % has no credits left', pkg.id;
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-      FROM invoice_items ii
-      JOIN invoices i ON i.id = ii.invoice_id
-     WHERE ii.lesson_id = NEW.lesson_id
-       AND ii.kind = 'lesson'
-       AND i.status <> 'void'
-  ) THEN
-    RAISE EXCEPTION 'Lesson % is already invoiced; it cannot also use a credit', NEW.lesson_id;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
 
 
-ALTER FUNCTION "public"."enforce_credit_redemption_rules"() OWNER TO "postgres";
+
 
 
 CREATE OR REPLACE FUNCTION "public"."enforce_invoice_delete_rules"() RETURNS "trigger"
@@ -274,19 +199,6 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- Deleting a lesson cascades ON DELETE SET NULL onto invoice_items.
-  -- That reference cleanup is fine on frozen invoices as long as nothing
-  -- else about the line changes.
-  IF TG_OP = 'UPDATE'
-    AND OLD.lesson_id IS NOT NULL
-    AND NEW.lesson_id IS NULL
-    AND (NEW.invoice_id, NEW.description, NEW.quantity, NEW.unit_cents, NEW.amount_cents, NEW.sort_order)
-        IS NOT DISTINCT FROM
-        (OLD.invoice_id, OLD.description, OLD.quantity, OLD.unit_cents, OLD.amount_cents, OLD.sort_order)
-  THEN
-    RETURN NEW;
-  END IF;
-
   SELECT status INTO parent_status FROM invoices WHERE id = OLD.invoice_id;
 
   IF parent_status IN ('sent', 'paid') THEN
@@ -304,30 +216,9 @@ $$;
 ALTER FUNCTION "public"."enforce_invoice_item_freeze"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."enforce_invoice_item_not_redeemed"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    AS $$
-BEGIN
-  IF NEW.lesson_id IS NULL OR NEW.kind <> 'lesson' THEN
-    RETURN NEW;
-  END IF;
-  IF TG_OP = 'UPDATE'
-     AND NEW.lesson_id IS NOT DISTINCT FROM OLD.lesson_id
-     AND NEW.kind IS NOT DISTINCT FROM OLD.kind THEN
-    RETURN NEW;
-  END IF;
-
-  PERFORM 1 FROM lessons WHERE id = NEW.lesson_id FOR NO KEY UPDATE;
-
-  IF EXISTS (SELECT 1 FROM credit_redemptions WHERE lesson_id = NEW.lesson_id) THEN
-    RAISE EXCEPTION 'Lesson % was paid with a prepaid credit; it cannot also be invoiced', NEW.lesson_id;
-  END IF;
-  RETURN NEW;
-END;
-$$;
 
 
-ALTER FUNCTION "public"."enforce_invoice_item_not_redeemed"() OWNER TO "postgres";
+
 
 
 CREATE OR REPLACE FUNCTION "public"."enforce_package_invoice_void"() RETURNS "trigger"
@@ -499,21 +390,11 @@ CREATE TABLE IF NOT EXISTS "public"."agent_tool_receipts" (
 ALTER TABLE "public"."agent_tool_receipts" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."attendance" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "lesson_id" "uuid" NOT NULL,
-    "status" "text" NOT NULL,
-    "notice_at" timestamp with time zone,
-    "marked_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "cancel_note" "text" DEFAULT ''::"text" NOT NULL,
-    CONSTRAINT "attendance_status_check" CHECK (("status" = ANY (ARRAY['attended'::"text", 'teacher_cancel'::"text", 'student_cancel'::"text", 'no_show'::"text"])))
-);
 
 
-ALTER TABLE "public"."attendance" OWNER TO "postgres";
 
 
-COMMENT ON COLUMN "public"."attendance"."cancel_note" IS 'Optional note from family (portal) or teacher when marking student_cancel.';
+
 
 
 
@@ -601,15 +482,19 @@ CREATE TABLE IF NOT EXISTS "public"."credit_redemptions" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "teacher_id" "uuid" NOT NULL,
     "package_id" "uuid" NOT NULL,
-    "lesson_id" "uuid" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "session_id" "uuid" NOT NULL,
+    "student_id" "uuid" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "credit_redemptions_single_occurrence_check" CHECK (
+      session_id IS NOT NULL AND student_id IS NOT NULL
+    )
 );
 
 
 ALTER TABLE "public"."credit_redemptions" OWNER TO "postgres";
 
 
-COMMENT ON TABLE "public"."credit_redemptions" IS 'Ledger: lesson_id was paid by one credit of package_id instead of being invoiced.';
+COMMENT ON TABLE "public"."credit_redemptions" IS 'One frozen session participant paid by one prepaid credit; never also charged by an invoice line.';
 
 
 
@@ -706,7 +591,8 @@ COMMENT ON COLUMN "public"."guardians"."email_recipients" IS 'Which guardian(s) 
 CREATE TABLE IF NOT EXISTS "public"."invoice_items" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "invoice_id" "uuid" NOT NULL,
-    "lesson_id" "uuid",
+    "session_id" "uuid",
+    "student_id" "uuid",
     "description" "text" NOT NULL,
     "quantity" integer DEFAULT 1 NOT NULL,
     "unit_cents" integer NOT NULL,
@@ -754,26 +640,14 @@ CREATE TABLE IF NOT EXISTS "public"."invoices" (
 ALTER TABLE "public"."invoices" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."lesson_notes" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "lesson_id" "uuid" NOT NULL,
-    "body" "text" NOT NULL,
-    "shared_with_parent" boolean DEFAULT false NOT NULL,
-    "emailed_at" timestamp with time zone,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "private_body" "text" DEFAULT ''::"text" NOT NULL
-);
-
-
-ALTER TABLE "public"."lesson_notes" OWNER TO "postgres";
-
-
-COMMENT ON COLUMN "public"."lesson_notes"."body" IS 'Notes shared with the family (portal + email when sent).';
 
 
 
-COMMENT ON COLUMN "public"."lesson_notes"."private_body" IS 'Teacher-only notes for this lesson; never shown on the family portal.';
+
+
+
+
+
 
 
 
@@ -781,6 +655,7 @@ CREATE TABLE IF NOT EXISTS "public"."lesson_slots" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "teacher_id" "uuid" NOT NULL,
     "student_id" "uuid" NOT NULL,
+    "workplace_id" "uuid",
     "day_of_week" integer NOT NULL,
     "start_time" time without time zone NOT NULL,
     "duration_minutes" integer DEFAULT 30 NOT NULL,
@@ -807,30 +682,14 @@ COMMENT ON COLUMN "public"."lesson_slots"."is_home_visit" IS 'When true, materia
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."lessons" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "teacher_id" "uuid" NOT NULL,
-    "student_id" "uuid" NOT NULL,
-    "slot_id" "uuid",
-    "lesson_date" "date" NOT NULL,
-    "starts_at" timestamp with time zone NOT NULL,
-    "duration_minutes" integer NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "makeup_for" "uuid",
-    "is_home_visit" boolean DEFAULT false NOT NULL,
-    "rescheduled_from_date" "date",
-    CONSTRAINT "lessons_duration_minutes_check" CHECK (("duration_minutes" > 0))
-);
-
-
-ALTER TABLE "public"."lessons" OWNER TO "postgres";
-
-
-COMMENT ON COLUMN "public"."lessons"."is_home_visit" IS 'Home visit flag for travel fee billing (copied from slot or set on one-offs).';
 
 
 
-COMMENT ON COLUMN "public"."lessons"."rescheduled_from_date" IS 'Original slot occurrence date this lesson was moved away from; NULL when never moved. materializeLessons skips the (slot_id, rescheduled_from_date) pair so the vacated occurrence is not re-created.';
+
+
+
+
+
 
 
 
@@ -890,11 +749,22 @@ CREATE TABLE IF NOT EXISTS "public"."session_attendance" (
     "teacher_id" "uuid" NOT NULL,
     "session_id" "uuid" NOT NULL,
     "student_id" "uuid" NOT NULL,
-    "status" "text" DEFAULT 'unmarked'::"text" NOT NULL,
+    "status" "text" NOT NULL,
     "note" "text" DEFAULT ''::"text" NOT NULL,
+    "notice_at" timestamp with time zone,
+    "cancelled_by" "text",
+    "cancel_reason" "text" DEFAULT ''::"text" NOT NULL,
+    "marked_at" timestamp with time zone,
+    "marked_by" "uuid",
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "session_attendance_note_check" CHECK (("char_length"("note") <= 5000)),
-    CONSTRAINT "session_attendance_status_check" CHECK (("status" = ANY (ARRAY['unmarked'::"text", 'present'::"text", 'absent'::"text", 'late'::"text", 'excused'::"text"])))
+    CONSTRAINT "session_attendance_cancel_reason_check" CHECK (("char_length"("cancel_reason") <= 1000)),
+    CONSTRAINT "session_attendance_cancellation_metadata_check" CHECK (
+      (status='student_cancelled' AND cancelled_by='student' AND notice_at IS NOT NULL) OR
+      (status='teacher_cancelled' AND cancelled_by='teacher') OR
+      (status NOT IN ('student_cancelled','teacher_cancelled') AND cancelled_by IS NULL AND notice_at IS NULL AND cancel_reason='')
+    ),
+    CONSTRAINT "session_attendance_status_check" CHECK (("status" = ANY (ARRAY['present'::"text", 'absent'::"text", 'late'::"text", 'excused'::"text", 'student_cancelled'::"text", 'teacher_cancelled'::"text"])))
 );
 
 
@@ -909,6 +779,29 @@ CREATE TABLE IF NOT EXISTS "public"."session_participants" (
 
 
 ALTER TABLE "public"."session_participants" OWNER TO "postgres";
+
+
+-- A note belongs to a canonical session, optionally scoped to one frozen
+-- participant. Shared and teacher-private text have distinct fields. There
+-- is no backwards-compatible lesson_notes view or second occurrence ledger.
+CREATE TABLE IF NOT EXISTS "public"."session_notes" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "teacher_id" "uuid" NOT NULL,
+    "session_id" "uuid" NOT NULL,
+    "student_id" "uuid",
+    "body" "text" DEFAULT ''::"text" NOT NULL,
+    "private_body" "text" DEFAULT ''::"text" NOT NULL,
+    "shared_with_guardian" boolean DEFAULT false NOT NULL,
+    "emailed_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "session_notes_body_check" CHECK ("char_length"("body") <= 10000),
+    CONSTRAINT "session_notes_private_body_check" CHECK ("char_length"("private_body") <= 10000)
+);
+ALTER TABLE "public"."session_notes" OWNER TO "postgres";
+COMMENT ON COLUMN "public"."session_notes"."private_body" IS
+  'Teacher-private coaching notes. Never disclose through guardian token or public calendar.';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."skill_assessments" (
@@ -1182,9 +1075,26 @@ CREATE TABLE IF NOT EXISTS "public"."teaching_sessions" (
     "lesson_note" "text" DEFAULT ''::"text" NOT NULL,
     "request_id" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    -- Recurrence intent and stable original occurrence date are separate from
+    -- the actual scheduled start time; moving a session must not re-materialize
+    -- another occurrence for the vacated slot/date pair.
+    "slot_id" "uuid",
+    "slot_rate_cents" integer,
+    "slot_occurrence_date" "date",
+    "local_timezone" "text",
+    "is_home_visit" boolean DEFAULT false NOT NULL,
+    "rescheduled_from_date" "date",
+    "makeup_for_session_id" "uuid",
+    "makeup_for_student_id" "uuid",
+    CONSTRAINT "teaching_sessions_slot_identity_check" CHECK (
+       "slot_id" IS NULL OR "slot_occurrence_date" IS NOT NULL),
+    CONSTRAINT "teaching_sessions_makeup_pair_check" CHECK (
+       ("makeup_for_session_id" IS NULL) = ("makeup_for_student_id" IS NULL)),
     CONSTRAINT "teaching_sessions_check" CHECK ((("group_id" IS NULL) <> ("student_id" IS NULL))),
     CONSTRAINT "teaching_sessions_duration_minutes_check" CHECK ((("duration_minutes" >= 15) AND ("duration_minutes" <= 480))),
     CONSTRAINT "teaching_sessions_lesson_note_check" CHECK (("char_length"("lesson_note") <= 10000)),
+    CONSTRAINT "teaching_sessions_slot_rate_check" CHECK (
+      "slot_rate_cents" IS NULL OR "slot_rate_cents">=0),
     CONSTRAINT "teaching_sessions_status_check" CHECK (("status" = ANY (ARRAY['scheduled'::"text", 'completed'::"text", 'cancelled'::"text"]))),
     CONSTRAINT "teaching_sessions_title_check" CHECK ((("char_length"("btrim"("title")) >= 1) AND ("char_length"("btrim"("title")) <= 160)))
 );
@@ -1265,13 +1175,9 @@ ALTER TABLE ONLY "public"."agent_tool_receipts"
 
 
 
-ALTER TABLE ONLY "public"."attendance"
-    ADD CONSTRAINT "attendance_lesson_id_key" UNIQUE ("lesson_id");
 
 
 
-ALTER TABLE ONLY "public"."attendance"
-    ADD CONSTRAINT "attendance_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1330,8 +1236,6 @@ ALTER TABLE ONLY "public"."credit_packages"
 
 
 
-ALTER TABLE ONLY "public"."credit_redemptions"
-    ADD CONSTRAINT "credit_redemptions_lesson_id_key" UNIQUE ("lesson_id");
 
 
 
@@ -1395,33 +1299,26 @@ ALTER TABLE ONLY "public"."invoices"
 
 
 
-ALTER TABLE ONLY "public"."lesson_notes"
-    ADD CONSTRAINT "lesson_notes_lesson_id_key" UNIQUE ("lesson_id");
 
 
 
-ALTER TABLE ONLY "public"."lesson_notes"
-    ADD CONSTRAINT "lesson_notes_pkey" PRIMARY KEY ("id");
 
 
 
 ALTER TABLE ONLY "public"."lesson_slots"
     ADD CONSTRAINT "lesson_slots_pkey" PRIMARY KEY ("id");
 
-
-
-ALTER TABLE ONLY "public"."lessons"
-    ADD CONSTRAINT "lessons_makeup_for_key" UNIQUE ("makeup_for");
-
-
-
-ALTER TABLE ONLY "public"."lessons"
-    ADD CONSTRAINT "lessons_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."lesson_slots"
+    ADD CONSTRAINT "lesson_slots_id_teacher_unique" UNIQUE ("id", "teacher_id");
 
 
 
-ALTER TABLE ONLY "public"."lessons"
-    ADD CONSTRAINT "lessons_slot_id_lesson_date_key" UNIQUE ("slot_id", "lesson_date");
+
+
+
+
+
+
 
 
 
@@ -1457,6 +1354,23 @@ ALTER TABLE ONLY "public"."session_attendance"
 
 ALTER TABLE ONLY "public"."session_participants"
     ADD CONSTRAINT "session_participants_pkey" PRIMARY KEY ("session_id", "student_id");
+
+ALTER TABLE ONLY "public"."session_participants"
+    ADD CONSTRAINT "session_participants_scoped_unique"
+    UNIQUE ("session_id", "student_id", "teacher_id");
+
+ALTER TABLE ONLY "public"."session_notes"
+    ADD CONSTRAINT "session_notes_pkey" PRIMARY KEY ("id");
+
+CREATE UNIQUE INDEX "session_notes_session_student_unique"
+  ON "public"."session_notes" ("session_id", "student_id") NULLS NOT DISTINCT;
+
+-- A regular UNIQUE index (NULLs distinct) allows any number of ad hoc
+-- sessions without a slot, while supporting atomic ON CONFLICT DO NOTHING
+-- materialization for a specific slot and local occurrence date.
+CREATE UNIQUE INDEX "teaching_sessions_slot_occurrence_unique"
+  ON "public"."teaching_sessions" ("slot_id", "slot_occurrence_date");
+
 
 
 
@@ -1633,15 +1547,12 @@ CREATE INDEX "idx_lesson_slots_teacher" ON "public"."lesson_slots" USING "btree"
 
 
 
-CREATE INDEX "idx_lessons_rescheduled" ON "public"."lessons" USING "btree" ("teacher_id") WHERE ("rescheduled_from_date" IS NOT NULL);
 
 
 
-CREATE INDEX "idx_lessons_student" ON "public"."lessons" USING "btree" ("student_id");
 
 
 
-CREATE INDEX "idx_lessons_teacher_date" ON "public"."lessons" USING "btree" ("teacher_id", "lesson_date");
 
 
 
@@ -1733,7 +1644,6 @@ CREATE OR REPLACE TRIGGER "credit_packages_immutability" BEFORE UPDATE ON "publi
 
 
 
-CREATE OR REPLACE TRIGGER "credit_redemptions_rules" BEFORE INSERT OR UPDATE ON "public"."credit_redemptions" FOR EACH ROW EXECUTE FUNCTION "public"."enforce_credit_redemption_rules"();
 
 
 
@@ -1741,7 +1651,6 @@ CREATE OR REPLACE TRIGGER "invoice_items_freeze" BEFORE DELETE OR UPDATE ON "pub
 
 
 
-CREATE OR REPLACE TRIGGER "invoice_items_not_redeemed" BEFORE INSERT OR UPDATE ON "public"."invoice_items" FOR EACH ROW EXECUTE FUNCTION "public"."enforce_invoice_item_not_redeemed"();
 
 
 
@@ -1757,9 +1666,11 @@ CREATE OR REPLACE TRIGGER "invoices_package_void" BEFORE UPDATE ON "public"."inv
 
 
 
-CREATE OR REPLACE TRIGGER "lesson_notes_updated_at" BEFORE UPDATE ON "public"."lesson_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 
 
+
+CREATE OR REPLACE TRIGGER "session_notes_updated_at" BEFORE UPDATE ON "public"."session_notes"
+  FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 
 CREATE OR REPLACE TRIGGER "payments_reopen_invoice" AFTER DELETE ON "public"."payments" FOR EACH ROW EXECUTE FUNCTION "public"."reopen_underpaid_invoice"();
 
@@ -1798,8 +1709,6 @@ ALTER TABLE ONLY "public"."agent_tool_receipts"
 
 
 
-ALTER TABLE ONLY "public"."attendance"
-    ADD CONSTRAINT "attendance_lesson_id_fkey" FOREIGN KEY ("lesson_id") REFERENCES "public"."lessons"("id") ON DELETE CASCADE;
 
 
 
@@ -1858,8 +1767,16 @@ ALTER TABLE ONLY "public"."credit_packages"
 
 
 
+CREATE UNIQUE INDEX credit_redemptions_canonical_occurrence_unique
+  ON "public"."credit_redemptions" ("session_id","student_id")
+  WHERE "session_id" IS NOT NULL;
+
 ALTER TABLE ONLY "public"."credit_redemptions"
-    ADD CONSTRAINT "credit_redemptions_lesson_id_fkey" FOREIGN KEY ("lesson_id") REFERENCES "public"."lessons"("id") ON DELETE CASCADE;
+    ADD CONSTRAINT "credit_redemptions_session_participant_fkey"
+    FOREIGN KEY ("session_id","student_id")
+    REFERENCES "public"."session_participants" ("session_id","student_id")
+    ON DELETE RESTRICT;
+
 
 
 
@@ -1929,7 +1846,11 @@ ALTER TABLE ONLY "public"."invoice_items"
 
 
 ALTER TABLE ONLY "public"."invoice_items"
-    ADD CONSTRAINT "invoice_items_lesson_id_fkey" FOREIGN KEY ("lesson_id") REFERENCES "public"."lessons"("id") ON DELETE SET NULL;
+    ADD CONSTRAINT "invoice_items_session_participant_fkey"
+    FOREIGN KEY ("session_id","student_id")
+    REFERENCES "public"."session_participants" ("session_id","student_id")
+    ON DELETE RESTRICT;
+
 
 
 
@@ -1943,10 +1864,13 @@ ALTER TABLE ONLY "public"."invoices"
 
 
 
-ALTER TABLE ONLY "public"."lesson_notes"
-    ADD CONSTRAINT "lesson_notes_lesson_id_fkey" FOREIGN KEY ("lesson_id") REFERENCES "public"."lessons"("id") ON DELETE CASCADE;
 
 
+
+ALTER TABLE ONLY "public"."lesson_slots"
+    ADD CONSTRAINT "lesson_slots_workplace_teacher_fkey"
+    FOREIGN KEY ("workplace_id", "teacher_id")
+    REFERENCES "public"."workplaces" ("id", "teacher_id") ON DELETE RESTRICT;
 
 ALTER TABLE ONLY "public"."lesson_slots"
     ADD CONSTRAINT "lesson_slots_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."students"("id") ON DELETE CASCADE;
@@ -1958,23 +1882,15 @@ ALTER TABLE ONLY "public"."lesson_slots"
 
 
 
-ALTER TABLE ONLY "public"."lessons"
-    ADD CONSTRAINT "lessons_makeup_for_fkey" FOREIGN KEY ("makeup_for") REFERENCES "public"."attendance"("id") ON DELETE SET NULL;
 
 
 
-ALTER TABLE ONLY "public"."lessons"
-    ADD CONSTRAINT "lessons_slot_id_fkey" FOREIGN KEY ("slot_id") REFERENCES "public"."lesson_slots"("id") ON DELETE SET NULL;
 
 
 
-ALTER TABLE ONLY "public"."lessons"
-    ADD CONSTRAINT "lessons_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."students"("id") ON DELETE CASCADE;
 
 
 
-ALTER TABLE ONLY "public"."lessons"
-    ADD CONSTRAINT "lessons_teacher_id_fkey" FOREIGN KEY ("teacher_id") REFERENCES "public"."teachers"("id") ON DELETE CASCADE;
 
 
 
@@ -2012,6 +1928,27 @@ ALTER TABLE ONLY "public"."session_attendance"
     ADD CONSTRAINT "session_attendance_teacher_id_fkey" FOREIGN KEY ("teacher_id") REFERENCES "public"."teachers"("id") ON DELETE CASCADE;
 
 
+
+ALTER TABLE ONLY "public"."session_notes"
+    ADD CONSTRAINT "session_notes_session_teacher_fkey"
+    FOREIGN KEY ("session_id", "teacher_id")
+    REFERENCES "public"."teaching_sessions" ("id", "teacher_id") ON DELETE RESTRICT;
+
+ALTER TABLE ONLY "public"."session_notes"
+    ADD CONSTRAINT "session_notes_participant_fkey"
+    FOREIGN KEY ("session_id", "student_id")
+    REFERENCES "public"."session_participants" ("session_id", "student_id") ON DELETE RESTRICT;
+
+ALTER TABLE ONLY "public"."teaching_sessions"
+    ADD CONSTRAINT "teaching_sessions_slot_fkey"
+    FOREIGN KEY ("slot_id", "teacher_id")
+    REFERENCES "public"."lesson_slots" ("id", "teacher_id") ON DELETE SET NULL ("slot_id");
+
+ALTER TABLE ONLY "public"."teaching_sessions"
+    ADD CONSTRAINT "teaching_sessions_makeup_participant_fkey"
+    FOREIGN KEY ("makeup_for_session_id", "makeup_for_student_id", "teacher_id")
+    REFERENCES "public"."session_participants" ("session_id", "student_id", "teacher_id")
+    ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED;
 
 ALTER TABLE ONLY "public"."session_participants"
     ADD CONSTRAINT "session_participants_session_id_teacher_id_fkey" FOREIGN KEY ("session_id", "teacher_id") REFERENCES "public"."teaching_sessions"("id", "teacher_id") ON DELETE CASCADE;
@@ -2110,12 +2047,8 @@ ALTER TABLE "public"."agent_oauth_grants" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."agent_tool_receipts" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."attendance" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "attendance_teacher" ON "public"."attendance" USING (("lesson_id" IN ( SELECT "lessons"."id"
-   FROM "public"."lessons"
-  WHERE ("lessons"."teacher_id" = "auth"."uid"()))));
 
 
 
@@ -2217,12 +2150,8 @@ CREATE POLICY "invoices_teacher" ON "public"."invoices" USING (("teacher_id" = "
 
 
 
-ALTER TABLE "public"."lesson_notes" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "lesson_notes_teacher" ON "public"."lesson_notes" USING (("lesson_id" IN ( SELECT "lessons"."id"
-   FROM "public"."lessons"
-  WHERE ("lessons"."teacher_id" = "auth"."uid"()))));
 
 
 
@@ -2233,10 +2162,8 @@ CREATE POLICY "lesson_slots_teacher" ON "public"."lesson_slots" USING (("teacher
 
 
 
-ALTER TABLE "public"."lessons" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "lessons_teacher" ON "public"."lessons" USING (("teacher_id" = "auth"."uid"()));
 
 
 
@@ -2271,6 +2198,12 @@ CREATE POLICY "session_attendance_teacher" ON "public"."session_attendance" TO "
 
 
 ALTER TABLE "public"."session_participants" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "public"."session_notes" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "session_notes_teacher" ON "public"."session_notes"
+  TO "authenticated"
+  USING (("teacher_id" = "auth"."uid"()))
+  WITH CHECK (("teacher_id" = "auth"."uid"()));
 
 
 CREATE POLICY "session_participants_teacher" ON "public"."session_participants" FOR SELECT TO "authenticated" USING (("teacher_id" = "auth"."uid"()));
@@ -2369,9 +2302,6 @@ GRANT ALL ON FUNCTION "public"."enforce_credit_package_immutability"() TO "servi
 
 
 
-GRANT ALL ON FUNCTION "public"."enforce_credit_redemption_rules"() TO "anon";
-GRANT ALL ON FUNCTION "public"."enforce_credit_redemption_rules"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."enforce_credit_redemption_rules"() TO "service_role";
 
 
 
@@ -2393,9 +2323,6 @@ GRANT ALL ON FUNCTION "public"."enforce_invoice_item_freeze"() TO "service_role"
 
 
 
-GRANT ALL ON FUNCTION "public"."enforce_invoice_item_not_redeemed"() TO "anon";
-GRANT ALL ON FUNCTION "public"."enforce_invoice_item_not_redeemed"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."enforce_invoice_item_not_redeemed"() TO "service_role";
 
 
 
@@ -2439,8 +2366,6 @@ GRANT ALL ON TABLE "public"."agent_tool_receipts" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."attendance" TO "authenticated";
-GRANT ALL ON TABLE "public"."attendance" TO "service_role";
 
 
 
@@ -2506,8 +2431,6 @@ GRANT ALL ON TABLE "public"."invoices" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."lesson_notes" TO "authenticated";
-GRANT ALL ON TABLE "public"."lesson_notes" TO "service_role";
 
 
 
@@ -2516,8 +2439,6 @@ GRANT ALL ON TABLE "public"."lesson_slots" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."lessons" TO "authenticated";
-GRANT ALL ON TABLE "public"."lessons" TO "service_role";
 
 
 
@@ -2537,13 +2458,17 @@ GRANT ALL ON TABLE "public"."push_subscriptions" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."session_attendance" TO "authenticated";
+-- Only the audited SECURITY DEFINER domain transaction may change decisions.
+-- Ordinary owner clients retain RLS-scoped SELECT, not direct DML privileges.
+GRANT SELECT ON TABLE "public"."session_attendance" TO "authenticated";
 GRANT ALL ON TABLE "public"."session_attendance" TO "service_role";
 
 
 
 GRANT ALL ON TABLE "public"."session_participants" TO "authenticated";
 GRANT ALL ON TABLE "public"."session_participants" TO "service_role";
+GRANT SELECT ON TABLE "public"."session_notes" TO "authenticated";
+GRANT ALL ON TABLE "public"."session_notes" TO "service_role";
 
 
 
@@ -3412,8 +3337,7 @@ BEGIN
   END IF;
 
   IF EXISTS (
-    SELECT 1 FROM public.lessons WHERE student_id = OLD.id
-    UNION ALL SELECT 1 FROM public.lesson_slots WHERE student_id = OLD.id
+    SELECT 1 FROM public.lesson_slots WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.teaching_sessions WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.session_participants WHERE student_id = OLD.id
     UNION ALL SELECT 1 FROM public.group_enrollments WHERE student_id = OLD.id
@@ -3521,9 +3445,6 @@ BEGIN
      v_delta:=-1;
      IF EXISTS(SELECT 1 FROM public.lesson_slots
                WHERE teacher_id=v_teacher AND student_id=NEW.id AND active)
-       OR EXISTS(SELECT 1 FROM public.lessons
-               WHERE teacher_id=v_teacher AND student_id=NEW.id
-                 AND starts_at>=clock_timestamp())
        OR EXISTS(SELECT 1 FROM public.teaching_sessions
                WHERE teacher_id=v_teacher AND student_id=NEW.id
                  AND status='scheduled' AND starts_at>=clock_timestamp())
@@ -3817,13 +3738,9 @@ BEGIN
      v_teacher,p_workplace_id,'ad_hoc',btrim(p_title),p_starts_at,
      p_duration_minutes,coalesce(p_lesson_note,''),p_request_id
    ) RETURNING * INTO v_session;
-   -- The standard AFTER INSERT snapshot trigger inserts no members for an
-   -- ad-hoc session; the exact roster and register are populated here.
+   -- Ad-hoc roster begins with no attendance decisions.
    INSERT INTO public.session_participants(teacher_id,session_id,student_id)
      SELECT v_teacher,v_session.id,x FROM unnest(p_student_ids) x;
-   INSERT INTO public.session_attendance(
-     teacher_id,session_id,student_id,status
-   ) SELECT v_teacher,v_session.id,x,'unmarked' FROM unnest(p_student_ids) x;
  END IF;
  RETURN jsonb_build_object(
   'id',v_session.id,'title',v_session.title,'starts_at',v_session.starts_at,
@@ -3847,127 +3764,133 @@ DROP TRIGGER IF EXISTS ccp_invoice_revision ON public.invoices;
 CREATE TRIGGER ccp_invoice_revision BEFORE UPDATE ON public.invoices
   FOR EACH ROW EXECUTE FUNCTION public.ccp_touch_revision();
 
+-- Canonical invoice draft editor. Session-backed lines are scoped to frozen
+-- participants; manually entered adjustments have no fabricated session link.
+-- The same transaction handles website and delegated MCP edits/replays.
 CREATE OR REPLACE FUNCTION public.ccp_invoice_draft_update(
- p_invoice_id uuid, p_notes text, p_items jsonb,
- p_expected_updated_at timestamptz, p_idempotency_key uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $invoice_draft$
+ p_invoice_id uuid,p_notes text,p_items jsonb,
+ p_expected_updated_at timestamptz,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $invoice_draft$
 DECLARE
  v_teacher uuid:=auth.uid();
  v_invoice public.invoices%ROWTYPE;
- v_count integer;v_line jsonb;v_prepared jsonb:='[]'::jsonb;
- v_kind text;v_lesson uuid;v_subtotal bigint:=0;v_number integer:=0;
- v_description text;v_quantity integer;v_unit integer;v_amount integer;
- v_hash text;
- v_old public.agent_tool_receipts%ROWTYPE;
- v_receipt jsonb;
+ v_line jsonb;v_prepared jsonb:='[]'::jsonb;
+ v_kind text;v_session uuid;v_student uuid;v_subtotal bigint:=0;v_sort int:=0;
+ v_description text;v_quantity int;v_unit int;v_amount int;
+ v_hash text;v_prior public.agent_tool_receipts%ROWTYPE;v_receipt jsonb;
 BEGIN
- IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
- IF p_idempotency_key IS NULL THEN
-   RAISE EXCEPTION 'INVALID_INVOICE_DRAFT_REQUEST' USING ERRCODE='22023';
+ IF v_teacher IS NULL THEN
+   RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
  END IF;
- IF p_notes IS NULL AND p_items IS NULL THEN
-   RAISE EXCEPTION 'EMPTY_INVOICE_PATCH' USING ERRCODE='22023';
+ IF p_invoice_id IS NULL OR p_idempotency_key IS NULL
+    OR (p_notes IS NULL AND p_items IS NULL)
+    OR (p_notes IS NOT NULL AND length(p_notes)>2000)
+    OR (p_items IS NOT NULL AND (jsonb_typeof(p_items)<>'array'
+      OR jsonb_array_length(p_items)>100 OR pg_column_size(p_items)>150000))
+ THEN RAISE EXCEPTION 'INVALID_INVOICE_DRAFT_REQUEST' USING ERRCODE='22023';
  END IF;
- IF p_notes IS NOT NULL AND length(p_notes)>2000 THEN
-   RAISE EXCEPTION 'INVALID_INVOICE_NOTES' USING ERRCODE='22023';
- END IF;
- -- Insert-first serializes concurrent same-key browser/MCP retries.
- -- A failure below rolls this receipt and every invoice change back.
- v_hash:=md5(jsonb_build_array('billing.invoice.draft.update',p_invoice_id,
-   p_notes,p_items,p_expected_updated_at)::text);
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ v_hash:=md5(jsonb_build_array('billing.invoice.draft.update',
+  p_invoice_id,p_notes,p_items,p_expected_updated_at)::text);
  INSERT INTO public.agent_tool_receipts(
-   teacher_id,idempotency_key,operation,request_hash,receipt
- ) VALUES(v_teacher,p_idempotency_key,'billing.invoice.draft.update',
-   v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'billing.invoice.draft.update',v_hash,'{}'::jsonb)
+   ON CONFLICT DO NOTHING;
  IF NOT FOUND THEN
-   SELECT * INTO v_old FROM public.agent_tool_receipts
+  SELECT * INTO v_prior FROM public.agent_tool_receipts
    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
-   IF NOT FOUND OR v_old.operation<>'billing.invoice.draft.update'
-     OR v_old.request_hash<>v_hash THEN
-     RAISE EXCEPTION 'INVOICE_DRAFT_REQUEST_CONFLICT' USING ERRCODE='23505';
-   END IF;
-   RETURN v_old.receipt||jsonb_build_object('replayed',true);
+  IF NOT FOUND OR v_prior.operation<>'billing.invoice.draft.update'
+     OR v_prior.request_hash<>v_hash THEN
+    RAISE EXCEPTION 'INVOICE_DRAFT_REQUEST_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_prior.receipt||jsonb_build_object('replayed',true);
  END IF;
  SELECT * INTO v_invoice FROM public.invoices
- WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
+  WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
- IF v_invoice.status<>'draft' THEN
-   RAISE EXCEPTION 'INVOICE_NOT_DRAFT' USING ERRCODE='23514';
- END IF;
- IF p_expected_updated_at IS NOT NULL AND
-    v_invoice.updated_at<>p_expected_updated_at THEN
-   RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';
- END IF;
+ IF v_invoice.status<>'draft'
+   OR v_invoice.stripe_checkout_session_id IS NOT NULL
+   OR v_invoice.stripe_checkout_url IS NOT NULL
+   OR v_invoice.stripe_payment_intent_id IS NOT NULL
+   OR EXISTS(SELECT 1 FROM public.payments WHERE invoice_id=p_invoice_id)
+ THEN RAISE EXCEPTION 'INVOICE_NOT_EDITABLE' USING ERRCODE='23514';END IF;
+ IF p_expected_updated_at IS NOT NULL
+   AND v_invoice.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';END IF;
  IF p_items IS NOT NULL THEN
-   IF jsonb_typeof(p_items)<>'array' OR jsonb_array_length(p_items)>100 THEN
-     RAISE EXCEPTION 'INVALID_INVOICE_ITEMS' USING ERRCODE='22023';
-   END IF;
-   IF EXISTS(SELECT 1 FROM public.credit_packages
-      WHERE teacher_id=v_teacher AND invoice_id=p_invoice_id) THEN
-     RAISE EXCEPTION 'PREPAID_INVOICE_IMMUTABLE' USING ERRCODE='23514';
-   END IF;
-   FOR v_line IN SELECT value FROM jsonb_array_elements(p_items) LOOP
-     v_description:=nullif(btrim(v_line->>'description'),'');
-     IF jsonb_typeof(v_line)<>'object' OR v_description IS NULL
-        OR length(v_description)>500 OR
-        NOT (v_line ? 'quantity' AND v_line ? 'unitCents' AND v_line ? 'amountCents')
-        OR coalesce(v_line->>'quantity','') !~ '^[0-9]+$'
-        OR coalesce(v_line->>'unitCents','') !~ '^[0-9]+$'
-        OR coalesce(v_line->>'amountCents','') !~ '^[0-9]+$' THEN
-       RAISE EXCEPTION 'INVALID_INVOICE_LINE' USING ERRCODE='22023';
-     END IF;
-     v_quantity:=(v_line->>'quantity')::integer;
-     v_unit:=(v_line->>'unitCents')::integer;
-     v_amount:=(v_line->>'amountCents')::integer;
-     IF v_quantity NOT BETWEEN 1 AND 10000
-        OR v_unit NOT BETWEEN 0 AND 100000000
-        OR v_amount NOT BETWEEN 0 AND 100000000 THEN
-       RAISE EXCEPTION 'INVALID_INVOICE_LINE' USING ERRCODE='22023';
-     END IF;
-     v_lesson:=nullif(v_line->>'lessonId','')::uuid;
-     IF v_lesson IS NOT NULL THEN
-       PERFORM 1 FROM public.lessons WHERE id=v_lesson AND teacher_id=v_teacher;
-       IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
-     END IF;
-     v_kind:='lesson';
-     IF nullif(v_line->>'id','') IS NOT NULL THEN
-       SELECT kind INTO v_kind FROM public.invoice_items
+  IF EXISTS(SELECT 1 FROM public.credit_packages
+    WHERE teacher_id=v_teacher AND invoice_id=p_invoice_id) THEN
+    RAISE EXCEPTION 'PREPAID_INVOICE_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  FOR v_line IN SELECT value FROM jsonb_array_elements(p_items) LOOP
+    v_description:=nullif(btrim(v_line->>'description'),'');
+    IF jsonb_typeof(v_line)<>'object' OR v_description IS NULL
+      OR length(v_description)>500
+      OR (v_line-ARRAY['id','sessionId','studentId','description',
+          'quantity','unitCents','amountCents']) <> '{}'::jsonb
+      OR coalesce(v_line->>'quantity','') !~ '^[0-9]+$'
+      OR coalesce(v_line->>'unitCents','') !~ '^[0-9]+$'
+      OR coalesce(v_line->>'amountCents','') !~ '^[0-9]+$'
+    THEN RAISE EXCEPTION 'INVALID_INVOICE_LINE' USING ERRCODE='22023';
+    END IF;
+    v_quantity:=(v_line->>'quantity')::int;
+    v_unit:=(v_line->>'unitCents')::int;
+    v_amount:=(v_line->>'amountCents')::int;
+    IF v_quantity NOT BETWEEN 1 AND 10000
+       OR v_unit NOT BETWEEN 0 AND 100000000
+       OR v_amount NOT BETWEEN 0 AND 100000000
+       OR v_quantity::bigint*v_unit<>v_amount THEN
+      RAISE EXCEPTION 'INVALID_INVOICE_LINE' USING ERRCODE='22023';
+    END IF;
+    v_session:=nullif(v_line->>'sessionId','')::uuid;
+    v_student:=nullif(v_line->>'studentId','')::uuid;
+    IF (v_session IS NULL) <> (v_student IS NULL) THEN
+      RAISE EXCEPTION 'INVALID_INVOICE_PARTICIPANT_PAIR'
+        USING ERRCODE='22023';
+    END IF;
+    v_kind:='lesson';
+    IF nullif(v_line->>'id','') IS NOT NULL THEN
+      SELECT kind INTO v_kind FROM public.invoice_items
        WHERE id=(v_line->>'id')::uuid AND invoice_id=p_invoice_id;
-       v_kind:=coalesce(v_kind,'lesson');
-     END IF;
-     v_prepared:=v_prepared||jsonb_build_array(jsonb_build_object(
-       'kind',v_kind,'lessonId',v_lesson,'description',v_description,
-       'quantity',v_quantity,'unitCents',v_unit,'amountCents',v_amount,
-       'sortOrder',v_number
-     ));
-     v_subtotal:=v_subtotal+v_amount;
-     v_number:=v_number+1;
-   END LOOP;
-   IF v_subtotal>2147483647 THEN
-     RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';
-   END IF;
-   -- Once validation succeeds, all writes below run in this transaction.
-   DELETE FROM public.invoice_items WHERE invoice_id=p_invoice_id;
-   FOR v_line IN SELECT value FROM jsonb_array_elements(v_prepared) LOOP
-     INSERT INTO public.invoice_items(
-       invoice_id,lesson_id,kind,description,quantity,unit_cents,amount_cents,sort_order
-     ) VALUES(
-       p_invoice_id,(v_line->>'lessonId')::uuid,v_line->>'kind',v_line->>'description',
-       (v_line->>'quantity')::integer,(v_line->>'unitCents')::integer,
-       (v_line->>'amountCents')::integer,(v_line->>'sortOrder')::integer
-     );
-   END LOOP;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'INVOICE_LINE_NOT_FOUND' USING ERRCODE='42501';
+      END IF;
+    END IF;
+    IF v_kind NOT IN ('lesson','travel') THEN
+      RAISE EXCEPTION 'INVALID_INVOICE_LINE_KIND' USING ERRCODE='22023';
+    END IF;
+    v_prepared:=v_prepared||jsonb_build_array(jsonb_build_object(
+      'kind',v_kind,'sessionId',v_session,'studentId',v_student,
+      'description',v_description,'quantity',v_quantity,
+      'unitCents',v_unit,'amountCents',v_amount,'sortOrder',v_sort));
+    v_sort:=v_sort+1;v_subtotal:=v_subtotal+v_amount;
+  END LOOP;
+  IF v_subtotal>2147483647 THEN
+    RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';END IF;
+  DELETE FROM public.invoice_items WHERE invoice_id=p_invoice_id;
+  FOR v_line IN SELECT value FROM jsonb_array_elements(v_prepared) LOOP
+    INSERT INTO public.invoice_items(
+      invoice_id,session_id,student_id,kind,description,quantity,
+      unit_cents,amount_cents,sort_order
+    ) VALUES(
+      p_invoice_id,(v_line->>'sessionId')::uuid,
+      (v_line->>'studentId')::uuid,v_line->>'kind',
+      v_line->>'description',(v_line->>'quantity')::int,
+      (v_line->>'unitCents')::int,(v_line->>'amountCents')::int,
+      (v_line->>'sortOrder')::int);
+  END LOOP;
  END IF;
- UPDATE public.invoices
- SET subtotal_cents=CASE WHEN p_items IS NULL THEN subtotal_cents ELSE v_subtotal::integer END,
-     notes=coalesce(p_notes,notes)
+ UPDATE public.invoices SET
+   subtotal_cents=CASE WHEN p_items IS NULL THEN subtotal_cents ELSE v_subtotal::int END,
+   notes=coalesce(p_notes,notes)
  WHERE id=p_invoice_id AND teacher_id=v_teacher AND status='draft'
  RETURNING * INTO v_invoice;
  v_receipt:=jsonb_build_object('ok',true,'invoiceId',p_invoice_id,
    'updatedAt',v_invoice.updated_at,'idempotencyKey',p_idempotency_key,
    'replayed',false);
  UPDATE public.agent_tool_receipts SET receipt=v_receipt
- WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
  RETURN v_receipt;
 END;
 $invoice_draft$;
@@ -4013,7 +3936,7 @@ BEGIN
     (p_changes='{}'::jsonb AND p_attendance='[]'::jsonb) OR
     jsonb_array_length(p_attendance)>50 OR
     (p_changes<>'{}'::jsonb AND p_expected_updated_at IS NULL) OR
-    (p_changes - ARRAY['title','startsAt','durationMinutes','lessonNote','status'])<>'{}'::jsonb THEN
+    (p_changes - ARRAY['title','startsAt','durationMinutes','isHomeVisit','lessonNote','status'])<>'{}'::jsonb THEN
    RAISE EXCEPTION 'INVALID_SESSION_COMMIT' USING ERRCODE='22023';
  END IF;
  IF (p_changes ? 'title' AND (
@@ -4029,17 +3952,26 @@ BEGIN
     OR (p_changes ? 'status' AND (
       jsonb_typeof(p_changes->'status')<>'string' OR
       p_changes->>'status' NOT IN ('scheduled','completed','cancelled')))
+    OR (p_changes ? 'isHomeVisit' AND
+      jsonb_typeof(p_changes->'isHomeVisit')<>'boolean')
     OR (p_changes ? 'startsAt' AND jsonb_typeof(p_changes->'startsAt')<>'string') THEN
    RAISE EXCEPTION 'INVALID_SESSION_COMMIT' USING ERRCODE='22023';
  END IF;
  FOR v_row IN SELECT value FROM jsonb_array_elements(p_attendance) LOOP
    IF jsonb_typeof(v_row)<>'object' OR
-      (v_row - ARRAY['studentId','status','note','expectedUpdatedAt'])<>'{}'::jsonb OR
+      (v_row - ARRAY['studentId','status','note','expectedUpdatedAt','noticeAt','cancelReason'])<>'{}'::jsonb OR
       jsonb_typeof(v_row->'studentId')<>'string' OR
       jsonb_typeof(v_row->'status')<>'string' OR
-      jsonb_typeof(v_row->'expectedUpdatedAt')<>'string' OR
-      v_row->>'status' NOT IN ('present','absent','late','excused') OR
-      char_length(coalesce(v_row->>'note',''))>5000 THEN
+      jsonb_typeof(v_row->'expectedUpdatedAt') NOT IN ('string','null') OR
+      v_row->>'status' NOT IN ('present','absent','late','excused','student_cancelled','teacher_cancelled') OR
+      char_length(coalesce(v_row->>'note',''))>5000 OR
+      (v_row ? 'noticeAt' AND jsonb_typeof(v_row->'noticeAt')<>'string') OR
+      (v_row ? 'cancelReason' AND (jsonb_typeof(v_row->'cancelReason')<>'string'
+        OR char_length(v_row->>'cancelReason')>1000)) OR
+      (v_row->>'status')='student_cancelled' AND
+        (NOT (v_row ? 'noticeAt') OR coalesce(v_row->>'noticeAt','')='') OR
+      (v_row->>'status') NOT IN ('student_cancelled','teacher_cancelled') AND
+        (v_row ? 'noticeAt' OR v_row ? 'cancelReason') THEN
      RAISE EXCEPTION 'INVALID_SESSION_ATTENDANCE' USING ERRCODE='22023';
    END IF;
    v_student:=(v_row->>'studentId')::uuid;
@@ -4090,21 +4022,58 @@ BEGIN
       (p_changes->>'durationMinutes')::integer ELSE duration_minutes END,
     lesson_note=CASE WHEN p_changes ? 'lessonNote' THEN
       p_changes->>'lessonNote' ELSE lesson_note END,
+    is_home_visit=CASE WHEN p_changes ? 'isHomeVisit' THEN
+      (p_changes->>'isHomeVisit')::boolean ELSE is_home_visit END,
     status=CASE WHEN p_changes ? 'status' THEN
       p_changes->>'status' ELSE status END,
     updated_at=clock_timestamp()
    WHERE id=p_session_id AND teacher_id=v_teacher RETURNING * INTO v_session;
  END IF;
+ -- Only the scoped, revision-checked shared transaction may mutate a
+ -- participant decision. The table trigger rejects direct REST updates.
+ PERFORM set_config('ccp.attendance_commit_session',p_session_id::text,true);
  FOR v_row IN SELECT value FROM jsonb_array_elements(p_attendance) LOOP
    v_student:=(v_row->>'studentId')::uuid;
    v_expected_att:=(v_row->>'expectedUpdatedAt')::timestamptz;
-   UPDATE public.session_attendance
-      SET status=v_row->>'status',
-          note=coalesce(v_row->>'note',''),
-          updated_at=clock_timestamp()
-    WHERE teacher_id=v_teacher AND session_id=p_session_id
-      AND student_id=v_student AND updated_at=v_expected_att
-    RETURNING * INTO v_att;
+   IF NOT EXISTS (
+     SELECT 1 FROM public.session_participants
+     WHERE teacher_id=v_teacher AND session_id=p_session_id AND student_id=v_student
+   ) THEN
+     RAISE EXCEPTION 'ATTENDANCE_NOT_IN_FROZEN_ROSTER' USING ERRCODE='42501';
+   END IF;
+   -- NULL means no decision existed at preview time. A concurrent first
+   -- decision makes this INSERT conflict; non-NULL requires the exact revision.
+   IF v_expected_att IS NULL THEN
+     INSERT INTO public.session_attendance(
+       teacher_id,session_id,student_id,status,note,notice_at,
+       cancelled_by,cancel_reason,marked_at,marked_by,updated_at
+     ) VALUES (
+       v_teacher,p_session_id,v_student,v_row->>'status',
+       coalesce(v_row->>'note',''),
+       CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
+         THEN (v_row->>'noticeAt')::timestamptz ELSE NULL END,
+       CASE WHEN v_row->>'status'='student_cancelled' THEN 'student'
+         WHEN v_row->>'status'='teacher_cancelled' THEN 'teacher' ELSE NULL END,
+       CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
+         THEN coalesce(v_row->>'cancelReason','') ELSE '' END,
+       clock_timestamp(),v_teacher,clock_timestamp()
+     ) ON CONFLICT (session_id,student_id) DO NOTHING RETURNING * INTO v_att;
+   ELSE
+     UPDATE public.session_attendance
+        SET status=v_row->>'status',
+            note=coalesce(v_row->>'note',''),
+            notice_at=CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
+              THEN (v_row->>'noticeAt')::timestamptz ELSE NULL END,
+            cancelled_by=CASE WHEN v_row->>'status'='student_cancelled' THEN 'student'
+              WHEN v_row->>'status'='teacher_cancelled' THEN 'teacher' ELSE NULL END,
+            cancel_reason=CASE WHEN v_row->>'status' IN ('student_cancelled','teacher_cancelled')
+              THEN coalesce(v_row->>'cancelReason','') ELSE '' END,
+            marked_at=clock_timestamp(),marked_by=v_teacher,
+            updated_at=clock_timestamp()
+      WHERE teacher_id=v_teacher AND session_id=p_session_id
+        AND student_id=v_student AND updated_at=v_expected_att
+      RETURNING * INTO v_att;
+   END IF;
    IF NOT FOUND THEN
      RAISE EXCEPTION 'ATTENDANCE_REVISION_CONFLICT_OR_NOT_FOUND'
        USING ERRCODE='23505';
@@ -4113,6 +4082,8 @@ BEGIN
    v_last_revision:=v_att.updated_at;
    v_changed:=v_changed||jsonb_build_array(jsonb_build_object(
      'studentId',v_att.student_id,'status',v_att.status,'note',v_att.note,
+     'noticeAt',v_att.notice_at,'cancelledBy',v_att.cancelled_by,
+     'cancelReason',v_att.cancel_reason,'markedAt',v_att.marked_at,
      'revision',v_att.updated_at));
  END LOOP;
  v_operation:=CASE WHEN p_changes='{}'::jsonb THEN 'attendance.record'
@@ -4133,6 +4104,29 @@ REVOKE ALL ON FUNCTION public.ccp_teacher_session_commit(
  uuid,jsonb,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_session_commit(
  uuid,jsonb,jsonb,timestamptz,uuid) TO authenticated;
+
+-- Prevent owner-scoped direct PostgREST UPDATE from bypassing immutable
+-- attendance revisions, confirmation, cancellation provenance and receipts.
+-- Roster correction creates/deletes rows through its own audited RPC; only
+-- an existing participant decision UPDATE requires this session-local proof.
+CREATE OR REPLACE FUNCTION public.ccp_session_attendance_write_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $attendance_guard$
+BEGIN
+ IF current_setting('ccp.attendance_commit_session',true) IS DISTINCT FROM NEW.session_id::text
+    OR NEW.session_id IS DISTINCT FROM OLD.session_id
+    OR NEW.student_id IS DISTINCT FROM OLD.student_id
+    OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+   RAISE EXCEPTION 'ATTENDANCE_UPDATE_REQUIRES_COMMIT'
+     USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END;
+$attendance_guard$;
+REVOKE ALL ON FUNCTION public.ccp_session_attendance_write_guard() FROM PUBLIC,anon;
+CREATE TRIGGER ccp_session_attendance_write_guard
+ BEFORE UPDATE ON public.session_attendance
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_session_attendance_write_guard();
 
 -- Enforce the canonical completed transition at the table boundary, not only
 -- at website/MCP validators. An authenticated direct PostgREST UPDATE cannot
@@ -4160,224 +4154,27 @@ CREATE TRIGGER ccp_completed_session_guard_trg
 -- still-supported private lesson workflows. Website and MCP share the same
 -- tenant-authenticated mutation while the full occurrence cutover is pending.
 -- Serialize on the lesson row even when attendance has not yet been inserted.
-CREATE OR REPLACE FUNCTION public.ccp_calendar_attendance_commit(
- p_lesson_id uuid,p_status text,p_notice_at timestamptz,
- p_cancel_note text,p_expected_marked_at timestamptz,p_idempotency_key uuid,
- p_notify_family boolean
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=public,pg_temp AS $calendar_attendance$
-DECLARE
- v_teacher uuid:=auth.uid();
- v_lesson public.lessons%ROWTYPE;
- v_att public.attendance%ROWTYPE;
- v_saved public.agent_tool_receipts%ROWTYPE;
- v_hash text;v_saved_receipt jsonb;v_receipt jsonb;
-BEGIN
- IF v_teacher IS NULL THEN
-   RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
- END IF;
- IF p_lesson_id IS NULL OR p_idempotency_key IS NULL OR
-   (p_status IS NOT NULL AND p_status NOT IN
-    ('attended','teacher_cancel','student_cancel','no_show')) OR
-    char_length(coalesce(p_cancel_note,''))>1000 OR
-    p_notify_family IS NULL OR
-    (p_notify_family AND p_status IS DISTINCT FROM 'teacher_cancel') OR
-    (p_status IS DISTINCT FROM 'student_cancel' AND p_notice_at IS NOT NULL) THEN
-   RAISE EXCEPTION 'INVALID_CALENDAR_ATTENDANCE' USING ERRCODE='22023';
- END IF;
- v_hash:=md5(jsonb_build_array('calendar.attendance.commit',
-   p_lesson_id,p_status,p_notice_at,p_cancel_note,p_expected_marked_at,
-   p_notify_family)::text);
- INSERT INTO public.agent_tool_receipts(
-   teacher_id,idempotency_key,operation,request_hash,receipt
- ) VALUES(v_teacher,p_idempotency_key,'calendar.attendance.commit',
-   v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
- IF NOT FOUND THEN
-   SELECT * INTO v_saved FROM public.agent_tool_receipts
-    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
-   IF NOT FOUND OR v_saved.operation<>'calendar.attendance.commit'
-      OR v_saved.request_hash<>v_hash THEN
-     RAISE EXCEPTION 'CALENDAR_ATTENDANCE_REPLAY_CONFLICT' USING ERRCODE='23505';
-   END IF;
-   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
- END IF;
- SELECT * INTO v_lesson FROM public.lessons
-  WHERE teacher_id=v_teacher AND id=p_lesson_id FOR UPDATE;
- IF NOT FOUND THEN RAISE EXCEPTION 'CALENDAR_LESSON_NOT_FOUND' USING ERRCODE='42501'; END IF;
- SELECT * INTO v_att FROM public.attendance
-  WHERE lesson_id=p_lesson_id FOR UPDATE;
- IF v_att.marked_at IS DISTINCT FROM p_expected_marked_at THEN
-   RAISE EXCEPTION 'CALENDAR_ATTENDANCE_REVISION_CONFLICT' USING ERRCODE='23505';
- END IF;
- IF p_status IS NULL THEN
-   DELETE FROM public.attendance WHERE lesson_id=p_lesson_id;
-   v_receipt:=jsonb_build_object('ok',true,'cleared',true,
-     'lessonId',p_lesson_id,'idempotencyKey',p_idempotency_key);
- ELSIF v_att.id IS NULL THEN
-   INSERT INTO public.attendance(lesson_id,status,notice_at,cancel_note,marked_at)
-    VALUES(p_lesson_id,p_status,p_notice_at,coalesce(p_cancel_note,''),
-      clock_timestamp()) RETURNING * INTO v_att;
-   v_receipt:=to_jsonb(v_att)||
-     jsonb_build_object('idempotencyKey',p_idempotency_key);
- ELSE
-   UPDATE public.attendance SET
-    status=p_status,notice_at=p_notice_at,
-    cancel_note=coalesce(p_cancel_note,''),marked_at=clock_timestamp()
-    WHERE id=v_att.id RETURNING * INTO v_att;
-   v_receipt:=to_jsonb(v_att)||
-     jsonb_build_object('idempotencyKey',p_idempotency_key);
- END IF;
- UPDATE public.agent_tool_receipts SET receipt=v_receipt
-  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
- RETURN v_receipt||jsonb_build_object('replayed',false);
-END;
-$calendar_attendance$;
-REVOKE ALL ON FUNCTION public.ccp_calendar_attendance_commit(
- uuid,text,timestamptz,text,timestamptz,uuid,boolean) FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_calendar_attendance_commit(
- uuid,text,timestamptz,text,timestamptz,uuid,boolean) TO authenticated;
+
 
 -- Portal cancellations are a separate guardian-originated mutation, not a
 -- privilege to impersonate a teacher's authenticated attendance RPC. The
 -- portal token is checked *inside* the same transaction that locks the lesson,
 -- guardian and student, then records the attendance decision. A duplicate
 -- request returns its original timestamp without generating another notice.
-CREATE OR REPLACE FUNCTION public.ccp_portal_cancel_lesson(
- p_portal_token text,p_lesson_id uuid,p_cancel_note text
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=public,pg_temp AS $portal_cancel$
-DECLARE
- v_teacher uuid;
- v_student_name text;
- v_starts_at timestamptz;
- v_att public.attendance%ROWTYPE;
- v_now timestamptz;
-BEGIN
- IF p_portal_token IS NULL OR length(p_portal_token) NOT BETWEEN 32 AND 256
-    OR p_lesson_id IS NULL THEN
-   RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
- END IF;
- IF p_cancel_note IS NULL OR char_length(p_cancel_note)>1000 THEN
-   RAISE EXCEPTION 'PORTAL_INVALID_NOTE' USING ERRCODE='22023';
- END IF;
- -- The capability and the affected lesson must have the SAME teacher. Lock
- -- the underlying rows so portal-token rotation, student reassignment, and
- -- teacher attendance commits cannot race this decision.
- SELECT l.teacher_id,s.name,l.starts_at
-  INTO v_teacher,v_student_name,v_starts_at
- FROM public.lessons l
- JOIN public.students s ON s.id=l.student_id
-  AND s.teacher_id=l.teacher_id
- JOIN public.guardians g ON g.id=s.guardian_id
-  AND g.teacher_id=l.teacher_id
- WHERE l.id=p_lesson_id AND g.portal_token=p_portal_token
- FOR UPDATE OF l,s,g;
- IF NOT FOUND THEN
-   RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
- END IF;
- SELECT * INTO v_att FROM public.attendance
-  WHERE lesson_id=p_lesson_id FOR UPDATE;
- IF v_att.id IS NOT NULL THEN
-   IF v_att.status='student_cancel' THEN
-     RETURN jsonb_build_object('ok',true,'replayed',true,
-       'noticeAt',v_att.notice_at,'cancelNote',v_att.cancel_note,
-       'teacherId',v_teacher,'studentName',v_student_name,
-       'startsAt',v_starts_at);
-   END IF;
-   RAISE EXCEPTION 'PORTAL_ALREADY_MARKED' USING ERRCODE='23514';
- END IF;
- IF v_starts_at<=clock_timestamp() THEN
-   RAISE EXCEPTION 'PORTAL_TOO_LATE' USING ERRCODE='22023';
- END IF;
- v_now:=clock_timestamp();
- INSERT INTO public.attendance(lesson_id,status,notice_at,marked_at,cancel_note)
- VALUES(p_lesson_id,'student_cancel',v_now,v_now,p_cancel_note)
- RETURNING * INTO v_att;
- RETURN jsonb_build_object('ok',true,'replayed',false,
-   'noticeAt',v_att.notice_at,'cancelNote',v_att.cancel_note,
-   'teacherId',v_teacher,'studentName',v_student_name,
-   'startsAt',v_starts_at);
-END;
-$portal_cancel$;
-REVOKE ALL ON FUNCTION public.ccp_portal_cancel_lesson(text,uuid,text)
- FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.ccp_portal_cancel_lesson(text,uuid,text)
- TO service_role;
+
 
 -- Remove a recurring *intent* without discarding evidence of actual lessons.
 -- One lock/transaction covers the slot, future occurrences and their finance /
 -- attendance references, so a partial sequence cannot erase historical work.
-CREATE OR REPLACE FUNCTION public.ccp_calendar_slot_delete(p_slot_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=public,pg_temp AS $calendar_slot_delete$
-DECLARE
- v_teacher uuid:=auth.uid();
- v_now timestamptz:=clock_timestamp();
- v_slot public.lesson_slots%ROWTYPE;
- v_count integer;
- v_removed integer:=0;
- v_preserved integer:=0;
-BEGIN
- IF v_teacher IS NULL OR p_slot_id IS NULL THEN
-   RAISE EXCEPTION 'CALENDAR_SLOT_NOT_FOUND' USING ERRCODE='42501';
- END IF;
- SELECT * INTO v_slot FROM public.lesson_slots
-   WHERE id=p_slot_id AND teacher_id=v_teacher FOR UPDATE;
- IF NOT FOUND THEN
-   RAISE EXCEPTION 'CALENDAR_SLOT_NOT_FOUND' USING ERRCODE='42501';
- END IF;
- SELECT count(*) INTO v_count FROM public.lessons
-   WHERE teacher_id=v_teacher AND slot_id=p_slot_id AND starts_at>=v_now;
- IF v_count>20000 THEN
-   RAISE EXCEPTION 'CALENDAR_SLOT_TOO_MANY' USING ERRCODE='22023';
- END IF;
- -- Lock all currently linked occurrences before deciding whether one is safe
- -- to remove. The referenced-row lock also serializes concurrent attendance
- -- commitments and new billing/credit associations.
- PERFORM 1 FROM public.lessons
-   WHERE teacher_id=v_teacher AND slot_id=p_slot_id
-   ORDER BY id FOR UPDATE;
- SELECT count(*) INTO v_count FROM public.lessons
-   WHERE teacher_id=v_teacher AND slot_id=p_slot_id AND starts_at>=v_now;
- IF v_count>20000 THEN
-   RAISE EXCEPTION 'CALENDAR_SLOT_TOO_MANY' USING ERRCODE='22023';
- END IF;
- -- An unmarked future recurrence is disposable ONLY if it is not associated
- -- with any paid/invoiced lesson, redeemed credit, makeup, teacher note or
- -- historical reschedule. Earlier occurrences always survive.
- DELETE FROM public.lessons l
-  WHERE l.teacher_id=v_teacher AND l.slot_id=p_slot_id
-    AND l.starts_at>=v_now
-    AND l.rescheduled_from_date IS NULL
-    AND l.makeup_for IS NULL
-    AND NOT EXISTS(SELECT 1 FROM public.attendance a WHERE a.lesson_id=l.id)
-    AND NOT EXISTS(SELECT 1 FROM public.lesson_notes n WHERE n.lesson_id=l.id)
-    AND NOT EXISTS(SELECT 1 FROM public.invoice_items i WHERE i.lesson_id=l.id)
-    AND NOT EXISTS(SELECT 1 FROM public.credit_redemptions c WHERE c.lesson_id=l.id);
- GET DIAGNOSTICS v_removed=ROW_COUNT;
- SELECT count(*) INTO v_preserved FROM public.lessons
-   WHERE teacher_id=v_teacher AND slot_id=p_slot_id;
- -- The FK's ON DELETE SET NULL intentionally detaches ALL preserved lessons:
- -- none is lost, but none is still tied to a no-longer-existing recurrence.
- DELETE FROM public.lesson_slots
-   WHERE id=p_slot_id AND teacher_id=v_teacher;
- RETURN jsonb_build_object('ok',true,'removed',v_removed,'preserved',v_preserved);
-END;
-$calendar_slot_delete$;
-REVOKE ALL ON FUNCTION public.ccp_calendar_slot_delete(uuid)
- FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_calendar_slot_delete(uuid)
- TO authenticated;
+
 -- A raw DELETE would bypass the preservation transaction; only the website
 -- and MCP shared service may invoke it for a teacher.
 REVOKE DELETE ON public.lesson_slots FROM PUBLIC,authenticated;
 
 -- All ordinary teacher attendance writes must go through the optimistic,
--- receipt-backed ccp_calendar_attendance_commit RPC. The token-authorized
+-- receipt-backed canonical attendance RPC. The token-authorized
 -- guardian writer above is available ONLY to the server-side service role.
 -- SELECT remains available to teachers through tenant RLS.
-REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.attendance
- FROM authenticated,PUBLIC;
 
 -- Historical direct lessons must outlive current workplace enrollment.
 -- Existing FK tied lessons to the *live* membership row, making a safe
@@ -4538,10 +4335,10 @@ BEGIN
   ) RETURNING id INTO v_invoice_id;
 
   INSERT INTO public.invoice_items (
-    invoice_id,lesson_id,kind,description,quantity,
+    invoice_id,kind,description,quantity,
     unit_cents,amount_cents,sort_order
   ) VALUES (
-    v_invoice_id,NULL,'credit_package',v_description,1,
+    v_invoice_id,'credit_package',v_description,1,
     p_price_cents,p_price_cents,0
   );
 
@@ -4602,129 +4399,7 @@ GRANT SELECT, INSERT, UPDATE ON public.event_email_deliveries TO authenticated;
 -- when any write, validation or concurrent request fails. Both the website
 -- and delegated MCP call these authenticated, transaction-scoped functions.
 
-CREATE OR REPLACE FUNCTION public.ccp_invoice_generation_commit(
-  p_period_start date,p_period_end date,p_drafts jsonb,p_redemptions jsonb,
-  p_request_id uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE
-  v_teacher uuid:=auth.uid();
-  v_currency text;
-  v_draft jsonb;v_line jsonb;v_credit jsonb;
-  v_invoice uuid;v_lesson uuid;v_guardian uuid;v_package uuid;
-  v_kind text;v_description text;v_qty integer;v_unit integer;v_amount integer;
-  v_subtotal bigint;v_sort integer;
-  v_created jsonb:='[]'::jsonb;v_count integer:=0;v_credits integer:=0;
-  v_hash text;v_prior public.agent_tool_receipts%ROWTYPE;v_receipt jsonb;
-BEGIN
-  IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
-  IF p_request_id IS NULL OR p_period_start IS NULL OR p_period_end IS NULL
-    OR p_period_end<p_period_start OR p_period_end-p_period_start>367
-    OR jsonb_typeof(p_drafts)<>'array'
-    OR jsonb_typeof(p_redemptions)<>'array'
-    OR jsonb_array_length(p_drafts)>200
-    OR jsonb_array_length(p_redemptions)>2000
-  THEN RAISE EXCEPTION 'INVALID_BILLING_BATCH' USING ERRCODE='22023';END IF;
-  -- One teacher-period commit in flight at a time (including independent
-  -- browser and AI-agent requests). Lesson and package triggers separately
-  -- protect against other concurrent billing/credit operations.
-  PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
-  v_hash:=md5(jsonb_build_array('billing.generation.commit',
-    p_period_start,p_period_end)::text);
-  INSERT INTO public.agent_tool_receipts(
-    teacher_id,idempotency_key,operation,request_hash,receipt
-  ) VALUES(v_teacher,p_request_id,'billing.generation.commit',v_hash,'{}'::jsonb)
-  ON CONFLICT DO NOTHING;
-  IF NOT FOUND THEN
-    SELECT * INTO v_prior FROM public.agent_tool_receipts
-      WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
-    IF NOT FOUND OR v_prior.operation<>'billing.generation.commit' OR
-      v_prior.request_hash<>v_hash THEN
-      RAISE EXCEPTION 'BILLING_GENERATION_REQUEST_CONFLICT' USING ERRCODE='23505';
-    END IF;
-    RETURN v_prior.receipt||jsonb_build_object('replayed',true);
-  END IF;
-  SELECT currency INTO v_currency FROM public.studio_policies
-    WHERE teacher_id=v_teacher;
-  IF v_currency IS NULL THEN
-    RAISE EXCEPTION 'STUDIO_POLICY_NOT_FOUND' USING ERRCODE='42501';
-  END IF;
 
-  FOR v_credit IN SELECT value FROM jsonb_array_elements(p_redemptions) LOOP
-    v_lesson:=(v_credit->>'lessonId')::uuid;
-    v_package:=(v_credit->>'packageId')::uuid;
-    IF v_lesson IS NULL OR v_package IS NULL THEN
-      RAISE EXCEPTION 'INVALID_CREDIT_ALLOCATION' USING ERRCODE='22023';
-    END IF;
-    INSERT INTO public.credit_redemptions(teacher_id,lesson_id,package_id)
-      VALUES(v_teacher,v_lesson,v_package);
-    v_credits:=v_credits+1;
-  END LOOP;
-
-  FOR v_draft IN SELECT value FROM jsonb_array_elements(p_drafts) LOOP
-    v_guardian:=(v_draft->>'guardianId')::uuid;
-    IF v_guardian IS NULL OR NOT EXISTS(
-      SELECT 1 FROM public.guardians WHERE id=v_guardian AND teacher_id=v_teacher
-    ) OR jsonb_typeof(v_draft->'items')<>'array'
-      OR jsonb_array_length(v_draft->'items')=0
-      OR jsonb_array_length(v_draft->'items')>2000
-    THEN RAISE EXCEPTION 'INVALID_BILLING_FAMILY' USING ERRCODE='22023';END IF;
-    INSERT INTO public.invoices(teacher_id,guardian_id,period_start,period_end,
-      status,subtotal_cents,currency)
-      VALUES(v_teacher,v_guardian,p_period_start,p_period_end,'draft',0,v_currency)
-      RETURNING id INTO v_invoice;
-    v_subtotal:=0;v_sort:=0;
-    FOR v_line IN SELECT value FROM jsonb_array_elements(v_draft->'items') LOOP
-      v_lesson:=(v_line->>'lessonId')::uuid;
-      v_kind:=v_line->>'kind';
-      v_description:=nullif(btrim(v_line->>'description'),'');
-      v_qty:=(v_line->>'quantity')::integer;
-      v_unit:=(v_line->>'unitCents')::integer;
-      v_amount:=(v_line->>'amountCents')::integer;
-      IF v_lesson IS NULL OR v_kind NOT IN ('lesson','travel') OR
-        v_description IS NULL OR length(v_description)>500 OR
-        v_qty NOT BETWEEN 1 AND 10000 OR v_unit NOT BETWEEN 0 AND 100000000 OR
-        v_amount NOT BETWEEN 0 AND 100000000 OR
-        v_qty::bigint*v_unit<>v_amount
-      THEN RAISE EXCEPTION 'INVALID_BILLING_LINE' USING ERRCODE='22023';END IF;
-      PERFORM 1 FROM public.lessons l JOIN public.students s
-        ON s.id=l.student_id AND s.teacher_id=v_teacher
-        WHERE l.id=v_lesson AND l.teacher_id=v_teacher
-          AND s.guardian_id=v_guardian
-          AND l.lesson_date BETWEEN p_period_start AND p_period_end
-        FOR NO KEY UPDATE OF l;
-      IF NOT FOUND THEN RAISE EXCEPTION 'LESSON_OR_FAMILY_NOT_FOUND'
-        USING ERRCODE='42501';END IF;
-      IF EXISTS(SELECT 1 FROM public.invoice_items ii
-        JOIN public.invoices i ON i.id=ii.invoice_id
-        WHERE ii.lesson_id=v_lesson AND ii.kind=v_kind
-          AND i.teacher_id=v_teacher AND i.status<>'void') THEN
-        RAISE EXCEPTION 'INVOICE_ALREADY_COMMITTED' USING ERRCODE='23505';
-      END IF;
-      INSERT INTO public.invoice_items(invoice_id,lesson_id,kind,description,
-        quantity,unit_cents,amount_cents,sort_order)
-        VALUES(v_invoice,v_lesson,v_kind,v_description,v_qty,v_unit,v_amount,v_sort);
-      v_subtotal:=v_subtotal+v_amount;
-      v_sort:=v_sort+1;
-    END LOOP;
-    IF v_subtotal>2147483647 THEN
-      RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';
-    END IF;
-    UPDATE public.invoices SET subtotal_cents=v_subtotal::integer WHERE id=v_invoice;
-    v_created:=v_created||jsonb_build_array(v_invoice);
-    v_count:=v_count+1;
-  END LOOP;
-  v_receipt:=jsonb_build_object('created',v_created,'count',v_count,
-    'creditsUsed',v_credits,'periodStart',p_period_start,'periodEnd',p_period_end,
-    'idempotencyKey',p_request_id,'replayed',false);
-  UPDATE public.agent_tool_receipts SET receipt=v_receipt
-    WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
-  RETURN v_receipt;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_invoice_generation_commit(
- date,date,jsonb,jsonb,uuid) FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_invoice_generation_commit(
- date,date,jsonb,jsonb,uuid) TO authenticated;
 
 -- Read-only idempotent replay runs BEFORE re-deriving the changing billing
 -- period. The hashed request identity is period + teacher, not a stale
@@ -4757,111 +4432,7 @@ REVOKE ALL ON FUNCTION public.ccp_invoice_generation_receipt(
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_generation_receipt(
  date,date,uuid) TO authenticated;
 
-CREATE OR REPLACE FUNCTION public.ccp_invoice_regenerate_atomic(
- p_invoice_id uuid,p_items jsonb,p_redemptions jsonb,
- p_expected_updated_at timestamptz,p_request_id uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE
-  v_teacher uuid:=auth.uid();
-  v_invoice public.invoices%ROWTYPE;
-  v_line jsonb;v_credit jsonb;v_lesson uuid;v_package uuid;
-  v_kind text;v_description text;v_qty integer;v_unit integer;v_amount integer;
-  v_subtotal bigint:=0;v_sort integer:=0;
-  v_hash text;v_prior public.agent_tool_receipts%ROWTYPE;v_receipt jsonb;
-  v_updated timestamptz;
-BEGIN
-  IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
-  IF p_request_id IS NULL OR p_expected_updated_at IS NULL OR
-    jsonb_typeof(p_items)<>'array' OR jsonb_typeof(p_redemptions)<>'array'
-    OR jsonb_array_length(p_items)>2000 OR jsonb_array_length(p_redemptions)>2000
-  THEN RAISE EXCEPTION 'INVALID_REGENERATION_INPUT' USING ERRCODE='22023';END IF;
-  PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
-  v_hash:=md5(jsonb_build_array('billing.invoice.regenerate',
-    p_invoice_id,p_expected_updated_at)::text);
-  INSERT INTO public.agent_tool_receipts(
-    teacher_id,idempotency_key,operation,request_hash,receipt
-  ) VALUES(v_teacher,p_request_id,'billing.invoice.regenerate',v_hash,'{}'::jsonb)
-    ON CONFLICT DO NOTHING;
-  IF NOT FOUND THEN
-    SELECT * INTO v_prior FROM public.agent_tool_receipts
-      WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
-    IF NOT FOUND OR v_prior.operation<>'billing.invoice.regenerate' OR
-      v_prior.request_hash<>v_hash THEN
-      RAISE EXCEPTION 'INVOICE_REGENERATION_REQUEST_CONFLICT' USING ERRCODE='23505';
-    END IF;
-    RETURN v_prior.receipt||jsonb_build_object('replayed',true);
-  END IF;
-  SELECT * INTO v_invoice FROM public.invoices
-    WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
-  IF v_invoice.updated_at IS DISTINCT FROM p_expected_updated_at THEN
-    RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';
-  END IF;
-  IF v_invoice.status<>'draft' OR EXISTS(
-    SELECT 1 FROM public.credit_packages WHERE invoice_id=p_invoice_id
-  ) OR EXISTS(SELECT 1 FROM public.payments WHERE invoice_id=p_invoice_id)
-    -- Never mutate a draft with a live or unreconciled Stripe checkout link:
-    -- the family might still pay the amount shown in that older link.
-    OR v_invoice.stripe_checkout_session_id IS NOT NULL
-    OR v_invoice.stripe_checkout_url IS NOT NULL
-    OR v_invoice.stripe_payment_intent_id IS NOT NULL
-  THEN RAISE EXCEPTION 'INVOICE_REGENERATION_BLOCKED' USING ERRCODE='23514';END IF;
-  DELETE FROM public.invoice_items WHERE invoice_id=p_invoice_id;
-  FOR v_credit IN SELECT value FROM jsonb_array_elements(p_redemptions) LOOP
-    v_lesson:=(v_credit->>'lessonId')::uuid;
-    v_package:=(v_credit->>'packageId')::uuid;
-    IF v_lesson IS NULL OR v_package IS NULL THEN
-      RAISE EXCEPTION 'INVALID_CREDIT_ALLOCATION' USING ERRCODE='22023';END IF;
-    INSERT INTO public.credit_redemptions(teacher_id,lesson_id,package_id)
-      VALUES(v_teacher,v_lesson,v_package);
-  END LOOP;
-  FOR v_line IN SELECT value FROM jsonb_array_elements(p_items) LOOP
-    v_lesson:=(v_line->>'lessonId')::uuid;
-    v_kind:=v_line->>'kind';
-    v_description:=nullif(btrim(v_line->>'description'),'');
-    v_qty:=(v_line->>'quantity')::integer;
-    v_unit:=(v_line->>'unitCents')::integer;
-    v_amount:=(v_line->>'amountCents')::integer;
-    IF v_lesson IS NULL OR v_kind NOT IN ('lesson','travel') OR
-      v_description IS NULL OR length(v_description)>500 OR
-      v_qty NOT BETWEEN 1 AND 10000 OR v_unit NOT BETWEEN 0 AND 100000000
-      OR v_amount NOT BETWEEN 0 AND 100000000 OR v_qty::bigint*v_unit<>v_amount
-    THEN RAISE EXCEPTION 'INVALID_REGENERATION_LINE' USING ERRCODE='22023';END IF;
-    PERFORM 1 FROM public.lessons l JOIN public.students s
-      ON s.id=l.student_id AND s.teacher_id=v_teacher
-      WHERE l.id=v_lesson AND l.teacher_id=v_teacher
-        AND s.guardian_id=v_invoice.guardian_id
-        AND l.lesson_date BETWEEN v_invoice.period_start AND v_invoice.period_end
-      FOR NO KEY UPDATE OF l;
-    IF NOT FOUND THEN RAISE EXCEPTION 'LESSON_OR_FAMILY_NOT_FOUND'
-      USING ERRCODE='42501';END IF;
-    IF EXISTS(SELECT 1 FROM public.invoice_items ii
-      JOIN public.invoices i ON i.id=ii.invoice_id
-      WHERE ii.lesson_id=v_lesson AND ii.kind=v_kind
-        AND i.teacher_id=v_teacher AND i.status<>'void') THEN
-      RAISE EXCEPTION 'INVOICE_ALREADY_COMMITTED' USING ERRCODE='23505';
-    END IF;
-    INSERT INTO public.invoice_items(invoice_id,lesson_id,kind,description,
-      quantity,unit_cents,amount_cents,sort_order)
-      VALUES(p_invoice_id,v_lesson,v_kind,v_description,v_qty,v_unit,v_amount,v_sort);
-    v_subtotal:=v_subtotal+v_amount;v_sort:=v_sort+1;
-  END LOOP;
-  IF v_subtotal>2147483647 THEN
-    RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';END IF;
-  UPDATE public.invoices SET subtotal_cents=v_subtotal::integer
-    WHERE id=p_invoice_id RETURNING updated_at INTO v_updated;
-  v_receipt:=jsonb_build_object('ok',true,'invoiceId',p_invoice_id,
-    'itemCount',v_sort,'subtotalCents',v_subtotal::integer,
-    'updatedAt',v_updated,'idempotencyKey',p_request_id,'replayed',false);
-  UPDATE public.agent_tool_receipts SET receipt=v_receipt
-    WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
-  RETURN v_receipt;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_invoice_regenerate_atomic(
- uuid,jsonb,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_invoice_regenerate_atomic(
- uuid,jsonb,jsonb,timestamptz,uuid) TO authenticated;
+
 
 -- A repeated model/web request can retrieve its immutable receipt even when
 -- the earlier operation already changed the invoice and invoice totals.
@@ -5278,8 +4849,7 @@ BEGIN
 
  INSERT INTO public.session_participants(teacher_id,session_id,student_id)
  SELECT v_teacher,p_session_id,x FROM unnest(v_added) AS x;
- INSERT INTO public.session_attendance(teacher_id,session_id,student_id,status)
- SELECT v_teacher,p_session_id,x,'unmarked' FROM unnest(v_added) AS x;
+ -- New members begin without an attendance decision row.
 
  UPDATE public.teaching_sessions SET updated_at=clock_timestamp()
  WHERE id=p_session_id AND teacher_id=v_teacher
@@ -5481,10 +5051,9 @@ CREATE INDEX IF NOT EXISTS ccp_lichess_events_teacher_time
 ALTER TABLE public.teacher_lichess_connection_events ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.teacher_lichess_connection_events FROM PUBLIC,anon,authenticated;
 
--- A prepaid package expiry change must never invalidate a lesson that already
--- consumed one of its credits. The package UPDATE row lock serializes with
--- enforce_credit_redemption_rules(), which locks the same package FOR UPDATE
--- before adding any new redemption. Protects direct SQL and both UI/MCP paths.
+-- Prepaid expiry updates must not invalidate canonical participant redemptions.
+-- The package UPDATE row lock serializes with the canonical credit guard's
+-- package FOR UPDATE lock. Applies to direct SQL and both UI/MCP paths.
 CREATE OR REPLACE FUNCTION public.ccp_protect_credit_expiry_history()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=public,pg_temp AS $$
@@ -5494,9 +5063,15 @@ BEGIN
   END IF;
   IF NEW.expires_on IS NOT NULL AND (
     NEW.expires_on < NEW.starts_on OR EXISTS (
+      -- The canonical per-participant redemption is the financial authority.
+      -- Use the same local lesson date calculation as the redemption writer.
       SELECT 1 FROM public.credit_redemptions r
-      JOIN public.lessons l ON l.id=r.lesson_id
-      WHERE r.package_id=OLD.id AND l.lesson_date>NEW.expires_on
+      JOIN public.teaching_sessions ts ON ts.id=r.session_id
+      WHERE r.package_id=OLD.id AND
+        (ts.starts_at AT TIME ZONE coalesce(nullif(ts.local_timezone,''),
+          (SELECT w.timezone FROM public.workplaces w
+           WHERE w.id=ts.workplace_id AND w.teacher_id=ts.teacher_id),'UTC'))::date
+         > NEW.expires_on
     )
   ) THEN
     RAISE EXCEPTION 'CREDIT_EXPIRY_HISTORY_CONFLICT'
@@ -5587,6 +5162,7 @@ BEGIN
   -- Independent backups for the same teacher cannot interleave; the receipt
   -- insert also serializes concurrent retries of an identical approved digest.
   PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text, 0));
+  PERFORM set_config('ccp.backup_import_teacher',v_teacher::text,true);
   INSERT INTO public.teacher_backup_import_receipts (teacher_id, digest, result)
   VALUES (v_teacher, p_digest, '{}'::jsonb) ON CONFLICT DO NOTHING;
   IF NOT FOUND THEN
@@ -5602,10 +5178,10 @@ BEGIN
   -- arbitrary JSON table names are ignored, never interpolated into SQL.
   FOREACH v_table IN ARRAY ARRAY[
     'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
-    'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
-    'session_participants', 'session_attendance', 'chess_skill_categories',
-    'chess_observations', 'lesson_slots', 'lessons',
-    'attendance', 'lesson_notes', 'skill_dimensions', 'skill_assessments',
+    'workplace_enrollments', 'group_enrollments', 'lesson_slots',
+    'teaching_sessions', 'session_participants', 'session_attendance',
+    'session_notes', 'chess_skill_categories', 'chess_observations',
+    'skill_dimensions', 'skill_assessments',
     'invoices', 'invoice_items', 'payments', 'events', 'event_students',
     'event_rsvps', 'credit_packages', 'credit_redemptions'
   ] LOOP
@@ -5643,9 +5219,9 @@ BEGIN
       END IF;
       IF v_table = ANY(ARRAY[
         'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
-        'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
-        'session_participants', 'session_attendance', 'chess_skill_categories',
-        'chess_observations', 'lesson_slots', 'lessons',
+        'workplace_enrollments', 'group_enrollments', 'lesson_slots',
+        'teaching_sessions', 'session_participants', 'session_attendance',
+        'session_notes', 'chess_skill_categories', 'chess_observations',
         'skill_dimensions', 'invoices', 'events', 'credit_packages',
         'credit_redemptions'
       ]) THEN
@@ -5672,10 +5248,14 @@ BEGIN
       IF v_columns IS NULL THEN
         RAISE EXCEPTION 'IMPORT_EMPTY_ROW:%', v_table USING ERRCODE='22023';
       END IF;
+      IF v_table IN ('session_attendance','session_notes') THEN
+        PERFORM public.ccp_backup_upsert_protected(v_table,v_row);
+      ELSE
       EXECUTE format(
         'INSERT INTO public.%I (%s) SELECT %s FROM jsonb_populate_record(NULL::public.%I, $1) ON CONFLICT (%s) DO UPDATE SET %s',
         v_table, v_columns, v_columns, v_table, v_pkeys, v_updates
       ) USING v_row;
+      END IF;
       v_count := v_count + 1;
     END LOOP;
     v_counts := jsonb_set(v_counts, ARRAY[v_table], to_jsonb(v_count), true);
@@ -7313,6 +6893,7 @@ BEGIN
   -- Independent backups for the same teacher cannot interleave; the receipt
   -- insert also serializes concurrent retries of an identical approved digest.
   PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text, 0));
+  PERFORM set_config('ccp.backup_import_teacher',v_teacher::text,true);
   INSERT INTO public.teacher_backup_import_receipts (teacher_id, digest, result)
   VALUES (v_teacher, p_digest, '{}'::jsonb) ON CONFLICT DO NOTHING;
   IF NOT FOUND THEN
@@ -7328,10 +6909,10 @@ BEGIN
   -- arbitrary JSON table names are ignored, never interpolated into SQL.
   FOREACH v_table IN ARRAY ARRAY[
     'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
-    'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
-    'session_participants', 'session_attendance', 'chess_skill_categories',
-    'chess_observations', 'lesson_slots', 'lessons',
-    'attendance', 'lesson_notes', 'skill_dimensions', 'skill_assessments',
+    'workplace_enrollments', 'group_enrollments', 'lesson_slots',
+    'teaching_sessions', 'session_participants', 'session_attendance',
+    'session_notes', 'chess_skill_categories', 'chess_observations',
+    'skill_dimensions', 'skill_assessments',
     'invoices', 'invoice_items', 'payments', 'events', 'event_students',
     'event_rsvps', 'credit_packages', 'credit_redemptions'
   ] LOOP
@@ -7369,9 +6950,9 @@ BEGIN
       END IF;
       IF v_table = ANY(ARRAY[
         'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
-        'workplace_enrollments', 'group_enrollments', 'teaching_sessions',
-        'session_participants', 'session_attendance', 'chess_skill_categories',
-        'chess_observations', 'lesson_slots', 'lessons',
+        'workplace_enrollments', 'group_enrollments', 'lesson_slots',
+        'teaching_sessions', 'session_participants', 'session_attendance',
+        'session_notes', 'chess_skill_categories', 'chess_observations',
         'skill_dimensions', 'invoices', 'events', 'credit_packages',
         'credit_redemptions'
       ]) THEN
@@ -7398,10 +6979,14 @@ BEGIN
       IF v_columns IS NULL THEN
         RAISE EXCEPTION 'IMPORT_EMPTY_ROW:%', v_table USING ERRCODE='22023';
       END IF;
+      IF v_table IN ('session_attendance','session_notes') THEN
+        PERFORM public.ccp_backup_upsert_protected(v_table,v_row);
+      ELSE
       EXECUTE format(
         'INSERT INTO public.%I (%s) SELECT %s FROM jsonb_populate_record(NULL::public.%I, $1) ON CONFLICT (%s) DO UPDATE SET %s',
         v_table, v_columns, v_columns, v_table, v_pkeys, v_updates
       ) USING v_row;
+      END IF;
       v_count := v_count + 1;
     END LOOP;
     v_counts := jsonb_set(v_counts, ARRAY[v_table], to_jsonb(v_count), true);
@@ -7626,3 +7211,1900 @@ REVOKE ALL ON FUNCTION public.ccp_invoice_checkout_claim(
  uuid,text,text,integer,timestamptz) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_checkout_claim(
  uuid,text,text,integer,timestamptz) TO authenticated;
+
+
+-- Canonical recurrence materialization: a single owner-validated database
+-- transaction for private lesson occurrences. The unique slot/date index
+-- prevents a rescheduled occurrence from being re-created at its old date.
+-- The database rechecks every planned local time and frozen roster owner.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_materialize(p_rows jsonb,p_teacher_id uuid DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_materialize$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_role text := coalesce(auth.role(),'');
+  v_teacher uuid := coalesce(auth.uid(),p_teacher_id);
+  v_row jsonb;
+  v_slot public.lesson_slots%ROWTYPE;
+  v_workplace public.workplaces%ROWTYPE;
+  v_slot_date date;
+  v_starts timestamptz;
+  v_id uuid;
+  v_workplace_id uuid;
+  v_timezone text;
+  v_count integer := 0;
+  v_inserted integer := 0;
+BEGIN
+  -- Family and teacher .ics feeds may use a trusted server-side service-role
+  -- client only after its bearer token has resolved the teacher identity.
+  -- An ordinary authenticated user may not impersonate another owner.
+  IF v_teacher IS NULL OR (p_teacher_id IS NOT NULL AND
+       (v_role<>'service_role' OR v_actor IS NOT NULL)) THEN
+    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+  END IF;
+  IF jsonb_typeof(p_rows) IS DISTINCT FROM 'array'
+     OR jsonb_array_length(p_rows) > 2000
+     OR pg_column_size(p_rows) > 1500000 THEN
+    RAISE EXCEPTION 'CANONICAL_MATERIALIZE_INVALID_REQUEST'
+      USING ERRCODE='22023';
+  END IF;
+  -- Use the same teacher schedule lock as all other session writers.
+  -- Checking identity before INSERT avoids the BEFORE INSERT overlap guard
+  -- rejecting a valid ON CONFLICT DO NOTHING replay.
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+  FOR v_row IN SELECT * FROM jsonb_array_elements(p_rows) LOOP
+    IF jsonb_typeof(v_row) IS DISTINCT FROM 'object'
+       OR v_row->>'slot_id' IS NULL
+       OR v_row->>'slot_occurrence_date' IS NULL
+       OR v_row->>'starts_at' IS NULL
+       OR v_row->>'workplace_id' IS NULL THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_INVALID_ROW'
+        USING ERRCODE='22023';
+    END IF;
+    SELECT * INTO v_slot FROM public.lesson_slots
+     WHERE id=(v_row->>'slot_id')::uuid AND teacher_id=v_teacher
+     FOR KEY SHARE;
+    IF NOT FOUND OR NOT v_slot.active
+      OR v_slot.student_id IS DISTINCT FROM (v_row->>'student_id')::uuid
+      OR v_slot.teacher_id IS DISTINCT FROM (v_row->>'teacher_id')::uuid THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_SLOT_NOT_OWNED'
+        USING ERRCODE='42501';
+    END IF;
+    v_workplace_id := (v_row->>'workplace_id')::uuid;
+    SELECT * INTO v_workplace FROM public.workplaces
+      WHERE id=v_workplace_id AND teacher_id=v_teacher FOR KEY SHARE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_WORKPLACE_NOT_OWNED'
+        USING ERRCODE='42501';
+    END IF;
+    IF v_slot.workplace_id IS NOT NULL THEN
+      IF v_slot.workplace_id <> v_workplace_id THEN
+        RAISE EXCEPTION 'CANONICAL_MATERIALIZE_WRONG_WORKPLACE'
+          USING ERRCODE='22023';
+      END IF;
+      v_timezone := v_workplace.timezone;
+    ELSE
+      SELECT id INTO v_id FROM public.workplaces
+        WHERE teacher_id=v_teacher ORDER BY created_at,id LIMIT 1;
+      IF v_id IS DISTINCT FROM v_workplace_id THEN
+        RAISE EXCEPTION 'CANONICAL_MATERIALIZE_WRONG_PERSONAL_WORKPLACE'
+          USING ERRCODE='22023';
+      END IF;
+      SELECT timezone INTO v_timezone FROM public.studio_policies
+        WHERE teacher_id=v_teacher;
+      v_timezone := coalesce(nullif(v_timezone,''),v_workplace.timezone);
+    END IF;
+    IF v_row->>'slot_occurrence_date' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_INVALID_DATE'
+        USING ERRCODE='22023';
+    END IF;
+    v_slot_date := (v_row->>'slot_occurrence_date')::date;
+    v_starts := (v_row->>'starts_at')::timestamptz;
+    IF v_slot_date < v_slot.start_date
+       OR (v_slot.end_date IS NOT NULL AND v_slot_date > v_slot.end_date)
+       OR extract(dow from v_slot_date) <> v_slot.day_of_week
+       OR (v_starts AT TIME ZONE v_timezone)::date <> v_slot_date
+       OR (v_starts AT TIME ZONE v_timezone)::time <> v_slot.start_time
+       OR (v_row->>'duration_minutes')::integer <> v_slot.duration_minutes
+       OR (v_row->>'is_home_visit')::boolean IS DISTINCT FROM v_slot.is_home_visit
+       OR (v_row->>'local_timezone') IS DISTINCT FROM v_timezone
+       OR (v_row->>'slot_rate_cents')::integer IS DISTINCT FROM v_slot.rate_cents THEN
+      RAISE EXCEPTION 'CANONICAL_MATERIALIZE_SLOT_MISMATCH'
+        USING ERRCODE='22023';
+    END IF;
+    IF EXISTS(
+      SELECT 1 FROM public.teaching_sessions
+       WHERE teacher_id=v_teacher AND slot_id=v_slot.id
+         AND slot_occurrence_date=v_slot_date
+    ) THEN
+      v_count:=v_count+1;
+      CONTINUE;
+    END IF;
+    INSERT INTO public.teaching_sessions(
+      teacher_id,workplace_id,student_id,title,starts_at,duration_minutes,
+      status,slot_id,slot_occurrence_date,local_timezone,is_home_visit,slot_rate_cents
+    ) VALUES(
+      v_teacher,v_workplace_id,v_slot.student_id,'Private chess lesson',
+      v_starts,v_slot.duration_minutes,'scheduled',v_slot.id,v_slot_date,
+      v_timezone,v_slot.is_home_visit,v_slot.rate_cents
+    ) ON CONFLICT (slot_id,slot_occurrence_date) DO NOTHING;
+    v_count := v_count+1;
+    IF FOUND THEN v_inserted := v_inserted+1; END IF;
+  END LOOP;
+  RETURN jsonb_build_object('planned',v_count,'inserted',v_inserted);
+END;
+$ccp_materialize$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_materialize(jsonb,uuid)
+  FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_materialize(jsonb,uuid)
+  TO authenticated,service_role;
+
+-- Durable notification intents. Only the trusted delivery worker with
+-- service-role credentials can read, claim or acknowledge messages. No
+-- family-private teacher notes or access tokens are placed in payload.
+CREATE TABLE public.ccp_delivery_outbox (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  session_id uuid NOT NULL REFERENCES public.teaching_sessions(id) ON DELETE RESTRICT,
+  student_id uuid,
+  event_key text NOT NULL CHECK (char_length(event_key) BETWEEN 12 AND 200),
+  kind text NOT NULL CHECK (kind IN ('session_note_family','session_cancel_family',
+                                     'portal_cancel_teacher')),
+  payload jsonb NOT NULL CHECK (jsonb_typeof(payload)='object'),
+  state text NOT NULL DEFAULT 'pending'
+    CHECK (state IN ('pending','sending','sent','failed')),
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 20),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  claimed_at timestamptz,
+  sent_at timestamptz,
+  UNIQUE (teacher_id,event_key),
+  FOREIGN KEY (session_id,student_id) REFERENCES public.session_participants
+    (session_id,student_id) ON DELETE RESTRICT
+);
+CREATE INDEX ccp_delivery_outbox_pending_idx
+  ON public.ccp_delivery_outbox(state,created_at)
+  WHERE state IN ('pending','failed');
+ALTER TABLE public.ccp_delivery_outbox ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.ccp_delivery_outbox FROM PUBLIC,anon,authenticated;
+GRANT ALL ON TABLE public.ccp_delivery_outbox TO service_role;
+
+-- Note revisions are append-only internal evidence; the guardian portal and
+-- delegated clients must never obtain teacher-private fields from this table.
+CREATE TABLE public.ccp_session_note_audit (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  session_id uuid NOT NULL REFERENCES public.teaching_sessions(id) ON DELETE RESTRICT,
+  note_id uuid NOT NULL REFERENCES public.session_notes(id) ON DELETE RESTRICT,
+  student_id uuid,
+  request_id uuid NOT NULL,
+  before_value jsonb,
+  after_value jsonb NOT NULL,
+  written_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE (teacher_id,request_id)
+);
+ALTER TABLE public.ccp_session_note_audit ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.ccp_session_note_audit FROM PUBLIC,anon,authenticated;
+GRANT ALL ON TABLE public.ccp_session_note_audit TO service_role;
+
+-- Same canonical note command for the website and delegated MCP. The
+-- optimistic revision is checked under the session row lock. Only approved
+-- guardian-shareable fields can become notification intents.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_session_note_save(
+  p_session_id uuid,p_student_id uuid,p_body text,p_private_body text,
+  p_share_with_guardian boolean,p_send_email boolean,
+  p_expected_updated_at timestamptz,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_session_note$
+DECLARE
+  v_teacher uuid := auth.uid();
+  v_session public.teaching_sessions%ROWTYPE;
+  v_note public.session_notes%ROWTYPE;
+  v_saved public.agent_tool_receipts%ROWTYPE;
+  v_before jsonb;
+  v_hash text;
+  v_receipt jsonb;
+  v_event_key text;
+BEGIN
+  IF v_teacher IS NULL THEN
+    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+  END IF;
+  IF p_session_id IS NULL OR p_idempotency_key IS NULL
+    OR p_body IS NULL OR p_private_body IS NULL
+    OR char_length(p_body)>10000 OR char_length(p_private_body)>10000
+    OR p_share_with_guardian IS NULL OR p_send_email IS NULL
+    OR (p_send_email AND (NOT p_share_with_guardian
+                         OR btrim(p_body)=''
+                         OR p_student_id IS NULL)) THEN
+    RAISE EXCEPTION 'SESSION_NOTE_INVALID_REQUEST' USING ERRCODE='22023';
+  END IF;
+  v_hash := md5(jsonb_build_array('session.note.save',
+    p_session_id,p_student_id,p_body,p_private_body,
+    p_share_with_guardian,p_send_email,p_expected_updated_at)::text);
+  INSERT INTO public.agent_tool_receipts(
+    teacher_id,idempotency_key,operation,request_hash,receipt
+  ) VALUES(v_teacher,p_idempotency_key,'session.note.save',v_hash,'{}'::jsonb)
+  ON CONFLICT DO NOTHING;
+  IF NOT FOUND THEN
+    SELECT * INTO v_saved FROM public.agent_tool_receipts
+      WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+    IF NOT FOUND OR v_saved.operation<>'session.note.save'
+       OR v_saved.request_hash<>v_hash THEN
+      RAISE EXCEPTION 'SESSION_NOTE_REPLAY_CONFLICT' USING ERRCODE='23505';
+    END IF;
+    RETURN v_saved.receipt || jsonb_build_object('replayed',true);
+  END IF;
+  SELECT * INTO v_session FROM public.teaching_sessions
+    WHERE id=p_session_id AND teacher_id=v_teacher FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'SESSION_NOTE_NOT_FOUND' USING ERRCODE='42501';
+  END IF;
+  IF p_student_id IS NOT NULL AND NOT EXISTS(
+    SELECT 1 FROM public.session_participants
+      WHERE session_id=p_session_id AND teacher_id=v_teacher
+        AND student_id=p_student_id
+  ) THEN
+    RAISE EXCEPTION 'SESSION_NOTE_PARTICIPANT_NOT_FOUND'
+      USING ERRCODE='42501';
+  END IF;
+  SELECT * INTO v_note FROM public.session_notes
+    WHERE teacher_id=v_teacher AND session_id=p_session_id
+      AND student_id IS NOT DISTINCT FROM p_student_id FOR UPDATE;
+  IF v_note.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RAISE EXCEPTION 'SESSION_NOTE_REVISION_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  v_before := CASE WHEN v_note.id IS NULL THEN NULL ELSE
+    jsonb_build_object('body',v_note.body,'privateBody',v_note.private_body,
+       'sharedWithGuardian',v_note.shared_with_guardian) END;
+  IF v_note.id IS NULL THEN
+    INSERT INTO public.session_notes(
+      teacher_id,session_id,student_id,body,private_body,shared_with_guardian
+    ) VALUES(v_teacher,p_session_id,p_student_id,p_body,p_private_body,
+      p_share_with_guardian) RETURNING * INTO v_note;
+  ELSE
+    UPDATE public.session_notes
+      SET body=p_body,private_body=p_private_body,
+        shared_with_guardian=p_share_with_guardian,updated_at=clock_timestamp()
+      WHERE id=v_note.id RETURNING * INTO v_note;
+  END IF;
+  INSERT INTO public.ccp_session_note_audit(
+    teacher_id,session_id,student_id,note_id,request_id,
+    before_value,after_value
+  ) VALUES(v_teacher,p_session_id,p_student_id,v_note.id,
+    p_idempotency_key,v_before,jsonb_build_object(
+      'body',v_note.body,'privateBody',v_note.private_body,
+      'sharedWithGuardian',v_note.shared_with_guardian
+    ));
+  IF p_send_email THEN
+    v_event_key := 'session-note:' || p_idempotency_key::text;
+    INSERT INTO public.ccp_delivery_outbox(
+      teacher_id,session_id,student_id,event_key,kind,payload
+    ) VALUES(
+      v_teacher,p_session_id,p_student_id,v_event_key,'session_note_family',
+      jsonb_build_object('sessionId',p_session_id,'studentId',p_student_id,
+        'body',p_body,'approvedBy',v_teacher,'requestId',p_idempotency_key)
+    );
+  END IF;
+  v_receipt := jsonb_build_object(
+    'sessionId',p_session_id,'studentId',p_student_id,
+    'noteId',v_note.id,'revision',v_note.updated_at,
+    'sharedWithGuardian',v_note.shared_with_guardian,
+    'emailQueued',p_send_email,'idempotencyKey',p_idempotency_key
+  );
+  UPDATE public.agent_tool_receipts SET receipt=v_receipt
+    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  RETURN v_receipt || jsonb_build_object('replayed',false);
+END;
+$ccp_session_note$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_session_note_save(
+  uuid,uuid,text,text,boolean,boolean,timestamptz,uuid)
+  FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_session_note_save(
+  uuid,uuid,text,text,boolean,boolean,timestamptz,uuid)
+  TO authenticated;
+
+
+-- Guardian cancellation of ONE frozen participant. A session can remain
+-- scheduled for the rest of the group; student cancellation does not cancel
+-- the shared teaching occurrence or silently consume a make-up credit.
+-- Token ownership, the session lock, attendance insert and notification
+-- intents all occur inside one transaction, with no teacher impersonation.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_portal_cancel(
+  p_portal_token text,p_session_id uuid,p_student_id uuid,p_cancel_reason text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_portal_cancel$
+DECLARE
+  v_teacher uuid;
+  v_student_name text;
+  v_start timestamptz;
+  v_status text;
+  v_att public.session_attendance%ROWTYPE;
+  v_now timestamptz;
+  v_notify_in_app boolean := true;
+  v_notify_email boolean := false;
+BEGIN
+  IF p_portal_token IS NULL OR length(p_portal_token) NOT BETWEEN 32 AND 256
+     OR p_session_id IS NULL OR p_student_id IS NULL THEN
+    RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+  END IF;
+  IF p_cancel_reason IS NULL OR char_length(p_cancel_reason)>1000 THEN
+    RAISE EXCEPTION 'PORTAL_INVALID_NOTE' USING ERRCODE='22023';
+  END IF;
+  SELECT s.teacher_id,st.name,s.starts_at,s.status
+    INTO v_teacher,v_student_name,v_start,v_status
+    FROM public.teaching_sessions s
+    JOIN public.session_participants sp ON sp.session_id=s.id
+      AND sp.teacher_id=s.teacher_id AND sp.student_id=p_student_id
+    JOIN public.students st ON st.id=sp.student_id
+      AND st.teacher_id=s.teacher_id
+    JOIN public.guardians g ON g.id=st.guardian_id
+      AND g.teacher_id=s.teacher_id
+   WHERE s.id=p_session_id AND g.portal_token=p_portal_token
+   FOR UPDATE OF s,st,g;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+  END IF;
+  SELECT * INTO v_att FROM public.session_attendance
+   WHERE teacher_id=v_teacher AND session_id=p_session_id
+     AND student_id=p_student_id FOR UPDATE;
+  IF v_att.id IS NOT NULL THEN
+    IF v_att.status='student_cancelled' THEN
+      RETURN jsonb_build_object('ok',true,'replayed',true,
+        'noticeAt',v_att.notice_at,'cancelReason',v_att.cancel_reason,
+        'teacherId',v_teacher,'studentName',v_student_name,
+        'startsAt',v_start,'sessionId',p_session_id,
+        'studentId',p_student_id);
+    END IF;
+    RAISE EXCEPTION 'PORTAL_ALREADY_MARKED' USING ERRCODE='23514';
+  END IF;
+  IF v_status <> 'scheduled' OR v_start <= clock_timestamp() THEN
+    RAISE EXCEPTION 'PORTAL_TOO_LATE' USING ERRCODE='22023';
+  END IF;
+  v_now := clock_timestamp();
+  INSERT INTO public.session_attendance(
+    teacher_id,session_id,student_id,status,notice_at,
+    cancelled_by,cancel_reason,marked_at,marked_by,updated_at
+  ) VALUES(v_teacher,p_session_id,p_student_id,'student_cancelled',v_now,
+    'student',p_cancel_reason,v_now,NULL,v_now)
+    RETURNING * INTO v_att;
+  SELECT coalesce(notify_in_app,true),coalesce(notify_email_portal_cancel,false)
+    INTO v_notify_in_app,v_notify_email FROM public.studio_policies
+    WHERE teacher_id=v_teacher;
+  IF v_notify_in_app THEN
+    INSERT INTO public.notifications(teacher_id,type,title,body,href)
+    VALUES(v_teacher,'portal_cancel','Student cancelled a chess lesson',
+      v_student_name||' cancelled the lesson on '||v_start::text,
+      '/schedule');
+  END IF;
+  IF v_notify_email THEN
+    INSERT INTO public.ccp_delivery_outbox(
+      teacher_id,session_id,student_id,event_key,kind,payload
+    ) VALUES(
+      v_teacher,p_session_id,p_student_id,
+      'portal-cancel:'||p_session_id::text||':'||p_student_id::text,
+      'portal_cancel_teacher',
+      jsonb_build_object('sessionId',p_session_id,'studentId',p_student_id,
+        'studentName',v_student_name,'startsAt',v_start,
+        'cancelReason',p_cancel_reason,'noticeAt',v_now)
+    );
+  END IF;
+  RETURN jsonb_build_object('ok',true,'replayed',false,
+    'noticeAt',v_att.notice_at,'cancelReason',v_att.cancel_reason,
+    'teacherId',v_teacher,'studentName',v_student_name,
+    'startsAt',v_start,'sessionId',p_session_id,
+    'studentId',p_student_id);
+END;
+$ccp_portal_cancel$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_portal_cancel(
+ text,uuid,uuid,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_portal_cancel(
+ text,uuid,uuid,text) TO service_role;
+
+
+-- Canonical participant-attendance correction and clear. The session row
+-- serializes web, delegated MCP, and guardian-originated decisions. The
+-- idempotency receipt and every mutation commit (or roll back) together.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_attendance_mutate(
+  p_session_id uuid,p_student_id uuid,p_status text,p_note text,
+  p_notice_at timestamptz,p_cancel_reason text,
+  p_expected_updated_at timestamptz,p_idempotency_key uuid,
+  p_notify_family boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_attendance_mutate$
+DECLARE
+  v_teacher uuid:=auth.uid();
+  v_session public.teaching_sessions%ROWTYPE;
+  v_att public.session_attendance%ROWTYPE;
+  v_receipt jsonb;
+  v_hash text;
+  v_saved public.agent_tool_receipts%ROWTYPE;
+  v_cancelled_by text;
+BEGIN
+  IF v_teacher IS NULL THEN
+    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+  END IF;
+  IF p_session_id IS NULL OR p_student_id IS NULL OR p_idempotency_key IS NULL
+    OR p_note IS NULL OR length(p_note)>5000
+    OR p_cancel_reason IS NULL OR length(p_cancel_reason)>1000
+    OR p_notify_family IS NULL
+    OR (p_status IS NOT NULL AND p_status NOT IN
+       ('present','late','absent','excused','student_cancelled','teacher_cancelled'))
+    OR (p_status='student_cancelled' AND p_notice_at IS NULL)
+    OR (p_status NOT IN ('student_cancelled','teacher_cancelled') OR p_status IS NULL)
+       AND (p_notice_at IS NOT NULL OR p_cancel_reason<>'')
+    OR (p_status<>'teacher_cancelled' OR p_status IS NULL) AND p_notify_family THEN
+      RAISE EXCEPTION 'CANONICAL_ATTENDANCE_INVALID_REQUEST'
+        USING ERRCODE='22023';
+  END IF;
+  v_hash:=md5(jsonb_build_array('canonical.attendance.mutate',
+    p_session_id,p_student_id,p_status,p_note,p_notice_at,p_cancel_reason,
+    p_expected_updated_at,p_notify_family)::text);
+  INSERT INTO public.agent_tool_receipts(
+    teacher_id,idempotency_key,operation,request_hash,receipt
+  ) VALUES(v_teacher,p_idempotency_key,'canonical.attendance.mutate',
+    v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+  IF NOT FOUND THEN
+    SELECT * INTO v_saved FROM public.agent_tool_receipts
+      WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+    IF NOT FOUND OR v_saved.operation<>'canonical.attendance.mutate'
+       OR v_saved.request_hash<>v_hash THEN
+      RAISE EXCEPTION 'CANONICAL_ATTENDANCE_REPLAY_CONFLICT'
+        USING ERRCODE='23505';
+    END IF;
+    RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+  END IF;
+  SELECT * INTO v_session FROM public.teaching_sessions
+    WHERE id=p_session_id AND teacher_id=v_teacher FOR UPDATE;
+  IF NOT FOUND OR NOT EXISTS(
+    SELECT 1 FROM public.session_participants
+     WHERE teacher_id=v_teacher AND session_id=p_session_id
+       AND student_id=p_student_id
+  ) THEN
+    RAISE EXCEPTION 'CANONICAL_ATTENDANCE_NOT_FOUND'
+      USING ERRCODE='42501';
+  END IF;
+  SELECT * INTO v_att FROM public.session_attendance
+    WHERE teacher_id=v_teacher AND session_id=p_session_id
+      AND student_id=p_student_id FOR UPDATE;
+  IF v_att.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RAISE EXCEPTION 'CANONICAL_ATTENDANCE_REVISION_CONFLICT'
+      USING ERRCODE='23505';
+  END IF;
+  IF p_status IS NULL THEN
+    -- Do not silently revoke a cancellation that has a linked makeup.
+    IF EXISTS(
+      SELECT 1 FROM public.teaching_sessions
+       WHERE teacher_id=v_teacher AND makeup_for_session_id=p_session_id
+         AND makeup_for_student_id=p_student_id
+    ) THEN
+      RAISE EXCEPTION 'CANONICAL_ATTENDANCE_HAS_MAKEUP'
+        USING ERRCODE='23514';
+    END IF;
+    DELETE FROM public.session_attendance
+      WHERE teacher_id=v_teacher AND session_id=p_session_id
+        AND student_id=p_student_id;
+    v_receipt:=jsonb_build_object(
+      'sessionId',p_session_id,'studentId',p_student_id,'cleared',true,
+      'status',null,'revision',null,'idempotencyKey',p_idempotency_key);
+  ELSE
+    v_cancelled_by:=CASE WHEN p_status='student_cancelled' THEN 'student'
+      WHEN p_status='teacher_cancelled' THEN 'teacher' ELSE NULL END;
+    PERFORM set_config('ccp.attendance_commit_session',p_session_id::text,true);
+    IF v_att.id IS NULL THEN
+      INSERT INTO public.session_attendance(
+        teacher_id,session_id,student_id,status,note,notice_at,
+        cancelled_by,cancel_reason,marked_at,marked_by,updated_at
+      ) VALUES(
+        v_teacher,p_session_id,p_student_id,p_status,p_note,p_notice_at,
+        v_cancelled_by,p_cancel_reason,clock_timestamp(),v_teacher,clock_timestamp()
+      ) RETURNING * INTO v_att;
+    ELSE
+      UPDATE public.session_attendance SET
+        status=p_status,note=p_note,notice_at=p_notice_at,
+        cancelled_by=v_cancelled_by,cancel_reason=p_cancel_reason,
+        marked_at=clock_timestamp(),marked_by=v_teacher,
+        updated_at=clock_timestamp()
+      WHERE id=v_att.id RETURNING * INTO v_att;
+    END IF;
+    v_receipt:=jsonb_build_object(
+      'sessionId',p_session_id,'studentId',p_student_id,'cleared',false,
+      'status',v_att.status,'note',v_att.note,'noticeAt',v_att.notice_at,
+      'cancelReason',v_att.cancel_reason,'cancelledBy',v_att.cancelled_by,
+      'markedAt',v_att.marked_at,'revision',v_att.updated_at,
+      'idempotencyKey',p_idempotency_key);
+  END IF;
+  IF p_notify_family THEN
+    INSERT INTO public.ccp_delivery_outbox(
+      teacher_id,session_id,student_id,event_key,kind,payload
+    ) VALUES(v_teacher,p_session_id,p_student_id,
+      'session-cancel:'||p_idempotency_key::text,
+      'session_cancel_family',
+      jsonb_build_object('sessionId',p_session_id,
+        'studentId',p_student_id,'markedAt',v_att.marked_at,
+        'cancelReason',p_cancel_reason,'requestId',p_idempotency_key));
+  END IF;
+  UPDATE public.agent_tool_receipts SET receipt=v_receipt
+    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_attendance_mutate$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_attendance_mutate(
+  uuid,uuid,text,text,timestamptz,text,timestamptz,uuid,boolean
+) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_attendance_mutate(
+  uuid,uuid,text,text,timestamptz,text,timestamptz,uuid,boolean
+) TO authenticated;
+
+-- Authoritative attendance writes must not bypass the shared transaction.
+-- SECURITY DEFINER RPCs above retain write privileges, but direct
+-- authenticated PostgREST insert/update/delete do not.
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.session_attendance FROM authenticated;
+
+
+-- All-or-nothing canonical bulk attendance writer. The whole batch executes
+-- in one Postgres RPC transaction. A stale student row rolls back every other
+-- row and their receipts, rather than partially marking a class.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_attendance_bulk_mutate(
+ p_session_id uuid,p_rows jsonb,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_attendance_bulk$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_row jsonb;
+ v_receipts jsonb:='[]'::jsonb;
+ v_receipt jsonb;
+ v_hash text;
+ v_student uuid;
+ v_child_key uuid;
+ v_seen uuid[]:=ARRAY[]::uuid[];
+BEGIN
+ IF v_teacher IS NULL THEN
+  RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_session_id IS NULL OR p_idempotency_key IS NULL
+   OR jsonb_typeof(p_rows) IS DISTINCT FROM 'array'
+   OR jsonb_array_length(p_rows) NOT BETWEEN 1 AND 50
+   OR pg_column_size(p_rows)>400000 THEN
+  RAISE EXCEPTION 'CANONICAL_ATTENDANCE_BULK_INVALID' USING ERRCODE='22023';
+ END IF;
+ v_hash:=md5(jsonb_build_array('canonical.attendance.bulk',
+  p_session_id,p_rows)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'canonical.attendance.bulk',
+   v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_saved FROM public.agent_tool_receipts
+    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+   IF NOT FOUND OR v_saved.operation<>'canonical.attendance.bulk'
+       OR v_saved.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'CANONICAL_ATTENDANCE_BULK_REPLAY_CONFLICT'
+       USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+  IF jsonb_typeof(v_row) IS DISTINCT FROM 'object'
+     OR (v_row - ARRAY['studentId','status','note','noticeAt',
+       'cancelReason','expectedUpdatedAt','notifyFamily'])<>'{}'::jsonb
+     OR jsonb_typeof(v_row->'studentId')<>'string'
+     OR jsonb_typeof(v_row->'expectedUpdatedAt') NOT IN ('string','null')
+     OR jsonb_typeof(v_row->'notifyFamily')<>'boolean' THEN
+    RAISE EXCEPTION 'CANONICAL_ATTENDANCE_BULK_INVALID'
+      USING ERRCODE='22023';
+  END IF;
+  v_student:=(v_row->>'studentId')::uuid;
+  IF v_student=ANY(v_seen) THEN
+    RAISE EXCEPTION 'CANONICAL_ATTENDANCE_BULK_DUPLICATE_STUDENT'
+      USING ERRCODE='22023';
+  END IF;
+  v_seen:=array_append(v_seen,v_student);
+  v_child_key:=md5(p_idempotency_key::text || ':' || v_student::text)::uuid;
+  SELECT public.ccp_canonical_attendance_mutate(
+    p_session_id,v_student,v_row->>'status',coalesce(v_row->>'note',''),
+    (v_row->>'noticeAt')::timestamptz,coalesce(v_row->>'cancelReason',''),
+    (v_row->>'expectedUpdatedAt')::timestamptz,
+    v_child_key,(v_row->>'notifyFamily')::boolean
+  ) INTO v_receipt;
+  v_receipts:=v_receipts||jsonb_build_array(v_receipt);
+ END LOOP;
+ v_receipt:=jsonb_build_object(
+  'sessionId',p_session_id,'count',jsonb_array_length(v_receipts),
+  'attendance',v_receipts,'idempotencyKey',p_idempotency_key
+ );
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_attendance_bulk$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_attendance_bulk_mutate(
+ uuid,jsonb,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_attendance_bulk_mutate(
+ uuid,jsonb,uuid) TO authenticated;
+
+
+-- Canonical financial ownership: a group teaching event occurs once, but
+-- each guardian invoice line and credit redemption belongs to exactly one
+-- frozen participant. All mutations serialize on the session row, and a
+-- non-void line and a prepaid redemption can never cover the same student.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_finance_line_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_invoice_line$
+DECLARE
+ v_invoice public.invoices%ROWTYPE;
+ v_session public.teaching_sessions%ROWTYPE;
+ v_guardian uuid;
+ v_student_teacher uuid;
+ v_date date;
+BEGIN
+ IF NEW.session_id IS NULL THEN
+   IF NEW.student_id IS NOT NULL THEN
+     RAISE EXCEPTION 'INVALID_CANONICAL_FINANCE_PAIR' USING ERRCODE='23514';
+   END IF;
+   RETURN NEW;
+ END IF;
+ IF NEW.student_id IS NULL OR NEW.kind NOT IN ('lesson','travel') THEN
+   RAISE EXCEPTION 'INVALID_CANONICAL_FINANCE_PAIR' USING ERRCODE='23514';
+ END IF;
+ SELECT * INTO v_invoice FROM public.invoices
+    WHERE id=NEW.invoice_id FOR KEY SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'INVOICE_NOT_FOUND' USING ERRCODE='23503';END IF;
+ SELECT * INTO v_session FROM public.teaching_sessions
+    WHERE id=NEW.session_id AND teacher_id=v_invoice.teacher_id
+    FOR NO KEY UPDATE;
+ IF NOT FOUND OR NOT EXISTS(
+   SELECT 1 FROM public.session_participants
+    WHERE session_id=NEW.session_id AND student_id=NEW.student_id
+      AND teacher_id=v_invoice.teacher_id
+ ) THEN
+   RAISE EXCEPTION 'FINANCE_PARTICIPANT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ SELECT guardian_id,teacher_id INTO v_guardian,v_student_teacher
+  FROM public.students WHERE id=NEW.student_id;
+ IF v_guardian IS DISTINCT FROM v_invoice.guardian_id
+    OR v_student_teacher IS DISTINCT FROM v_invoice.teacher_id THEN
+   RAISE EXCEPTION 'FINANCE_WRONG_GUARDIAN' USING ERRCODE='42501';
+ END IF;
+ v_date:=(v_session.starts_at AT TIME ZONE
+  coalesce(nullif(v_session.local_timezone,''),
+    (SELECT w.timezone FROM public.workplaces w
+      WHERE w.id=v_session.workplace_id
+        AND w.teacher_id=v_session.teacher_id),'UTC'))::date;
+ IF v_date NOT BETWEEN v_invoice.period_start AND v_invoice.period_end THEN
+   RAISE EXCEPTION 'FINANCE_OUTSIDE_INVOICE_PERIOD' USING ERRCODE='22023';
+ END IF;
+ IF EXISTS(
+  SELECT 1 FROM public.invoice_items ii
+   JOIN public.invoices i ON i.id=ii.invoice_id
+   WHERE ii.session_id=NEW.session_id AND ii.student_id=NEW.student_id
+     AND ii.kind=NEW.kind AND ii.id<>NEW.id
+     AND i.teacher_id=v_invoice.teacher_id AND i.status<>'void'
+ ) THEN
+  RAISE EXCEPTION 'INVOICE_ALREADY_COMMITTED' USING ERRCODE='23505';
+ END IF;
+ IF NEW.kind='lesson' AND EXISTS(
+   SELECT 1 FROM public.credit_redemptions r
+    WHERE r.session_id=NEW.session_id AND r.student_id=NEW.student_id
+ ) THEN
+   RAISE EXCEPTION 'CANONICAL_LESSON_ALREADY_REDEEMED' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_invoice_line$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_finance_line_guard() FROM PUBLIC,anon;
+CREATE TRIGGER ccp_canonical_finance_line_guard
+ BEFORE INSERT OR UPDATE ON public.invoice_items
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_canonical_finance_line_guard();
+
+CREATE OR REPLACE FUNCTION public.ccp_canonical_redemption_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_credit_guard$
+DECLARE
+ v_package public.credit_packages%ROWTYPE;
+ v_session public.teaching_sessions%ROWTYPE;
+ v_status text;
+ v_used integer;
+ v_date date;
+BEGIN
+ IF NEW.session_id IS NULL THEN
+   IF NEW.student_id IS NOT NULL THEN
+     RAISE EXCEPTION 'INVALID_CANONICAL_CREDIT_PAIR' USING ERRCODE='23514';
+   END IF;
+   RETURN NEW;
+ END IF;
+ IF NEW.student_id IS NULL THEN
+   RAISE EXCEPTION 'INVALID_CANONICAL_CREDIT_PAIR' USING ERRCODE='23514';
+ END IF;
+ SELECT * INTO v_package FROM public.credit_packages
+   WHERE id=NEW.package_id FOR UPDATE;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'CREDIT_PACKAGE_NOT_FOUND' USING ERRCODE='23503';
+ END IF;
+ SELECT * INTO v_session FROM public.teaching_sessions
+   WHERE id=NEW.session_id AND teacher_id=NEW.teacher_id FOR NO KEY UPDATE;
+ IF NOT FOUND OR v_package.teacher_id<>NEW.teacher_id
+   OR v_package.student_id<>NEW.student_id
+   OR NOT EXISTS(
+     SELECT 1 FROM public.session_participants
+      WHERE session_id=NEW.session_id AND student_id=NEW.student_id
+        AND teacher_id=NEW.teacher_id
+   ) THEN
+   RAISE EXCEPTION 'CREDIT_PARTICIPANT_NOT_OWNED' USING ERRCODE='42501';
+ END IF;
+ IF v_package.duration_minutes<>v_session.duration_minutes THEN
+   RAISE EXCEPTION 'CREDIT_WRONG_DURATION' USING ERRCODE='23514';
+ END IF;
+ v_date:=(v_session.starts_at AT TIME ZONE
+    coalesce(nullif(v_session.local_timezone,''),
+    (SELECT w.timezone FROM public.workplaces w
+      WHERE w.id=v_session.workplace_id
+        AND w.teacher_id=v_session.teacher_id),'UTC'))::date;
+ IF v_date<v_package.starts_on OR
+   (v_package.expires_on IS NOT NULL AND v_date>v_package.expires_on) THEN
+   RAISE EXCEPTION 'CREDIT_OUTSIDE_PACKAGE_DATES' USING ERRCODE='23514';
+ END IF;
+ SELECT status INTO v_status FROM public.invoices
+   WHERE id=v_package.invoice_id;
+ IF v_status NOT IN ('sent','paid') THEN
+   RAISE EXCEPTION 'CREDIT_INVOICE_NOT_ACTIVE' USING ERRCODE='23514';
+ END IF;
+ SELECT count(*) INTO v_used FROM public.credit_redemptions
+   WHERE package_id=v_package.id AND id<>NEW.id;
+ IF v_used>=v_package.credits THEN
+   RAISE EXCEPTION 'CREDIT_PACKAGE_EXHAUSTED' USING ERRCODE='23514';
+ END IF;
+ IF EXISTS(
+  SELECT 1 FROM public.invoice_items ii
+   JOIN public.invoices i ON i.id=ii.invoice_id
+   WHERE ii.session_id=NEW.session_id AND ii.student_id=NEW.student_id
+    AND ii.kind='lesson' AND i.status<>'void'
+ ) THEN
+   RAISE EXCEPTION 'CANONICAL_LESSON_ALREADY_INVOICED'
+      USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_credit_guard$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_redemption_guard() FROM PUBLIC,anon;
+CREATE TRIGGER ccp_canonical_redemption_guard
+ BEFORE INSERT OR UPDATE ON public.credit_redemptions
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_canonical_redemption_guard();
+
+
+-- Once a non-void invoice line or redeemed prepaid package references one
+-- frozen participant, neither attendance nor the underlying teaching time
+-- may be silently rewritten by the calendar, MCP, or a direct REST request.
+CREATE OR REPLACE FUNCTION public.ccp_protect_canonical_financed_session()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_financed_session_guard$
+DECLARE v_id uuid:=OLD.id;
+BEGIN
+ IF EXISTS(
+  SELECT 1 FROM public.invoice_items ii
+  JOIN public.invoices i ON i.id=ii.invoice_id
+  WHERE ii.session_id=v_id AND i.status<>'void'
+ ) OR EXISTS(
+  SELECT 1 FROM public.credit_redemptions WHERE session_id=v_id
+ ) THEN
+  IF TG_OP='DELETE' THEN
+   RAISE EXCEPTION 'CANONICAL_FINANCED_SESSION_IMMUTABLE'
+    USING ERRCODE='23514';
+  END IF;
+  IF (NEW.starts_at,NEW.duration_minutes,NEW.student_id,NEW.group_id,
+      NEW.workplace_id,NEW.is_home_visit,NEW.local_timezone,
+      NEW.slot_rate_cents,NEW.makeup_for_session_id,NEW.makeup_for_student_id)
+     IS DISTINCT FROM
+     (OLD.starts_at,OLD.duration_minutes,OLD.student_id,OLD.group_id,
+      OLD.workplace_id,OLD.is_home_visit,OLD.local_timezone,
+      OLD.slot_rate_cents,OLD.makeup_for_session_id,OLD.makeup_for_student_id) THEN
+    RAISE EXCEPTION 'CANONICAL_FINANCED_SESSION_IMMUTABLE'
+      USING ERRCODE='23514';
+  END IF;
+ END IF;
+ RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+END;
+$ccp_financed_session_guard$;
+REVOKE ALL ON FUNCTION public.ccp_protect_canonical_financed_session()
+ FROM PUBLIC,anon;
+CREATE TRIGGER ccp_protect_canonical_financed_session
+ BEFORE UPDATE OR DELETE ON public.teaching_sessions
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_protect_canonical_financed_session();
+
+CREATE OR REPLACE FUNCTION public.ccp_protect_canonical_financed_attendance()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_financed_attendance_guard$
+DECLARE v_session uuid:=OLD.session_id;v_student uuid:=OLD.student_id;
+BEGIN
+ IF EXISTS(
+   SELECT 1 FROM public.invoice_items ii
+   JOIN public.invoices i ON i.id=ii.invoice_id
+   WHERE ii.session_id=v_session AND ii.student_id=v_student
+     AND i.status<>'void'
+ ) OR EXISTS(
+   SELECT 1 FROM public.credit_redemptions
+    WHERE session_id=v_session AND student_id=v_student
+ ) THEN
+   IF TG_OP='DELETE' THEN
+     RAISE EXCEPTION 'CANONICAL_FINANCED_ATTENDANCE_IMMUTABLE'
+       USING ERRCODE='23514';
+   END IF;
+   IF (NEW.status,NEW.notice_at,NEW.cancelled_by,NEW.cancel_reason)
+      IS DISTINCT FROM
+      (OLD.status,OLD.notice_at,OLD.cancelled_by,OLD.cancel_reason) THEN
+     RAISE EXCEPTION 'CANONICAL_FINANCED_ATTENDANCE_IMMUTABLE'
+       USING ERRCODE='23514';
+   END IF;
+ END IF;
+ RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+END;
+$ccp_financed_attendance_guard$;
+REVOKE ALL ON FUNCTION public.ccp_protect_canonical_financed_attendance()
+ FROM PUBLIC,anon;
+CREATE TRIGGER ccp_protect_canonical_financed_attendance
+ BEFORE UPDATE OR DELETE ON public.session_attendance
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_protect_canonical_financed_attendance();
+
+
+-- Financial cutover: the only new allocation identity is the pair
+-- (session_id, student_id). An instructor's group session is not copied for
+-- each pupil; a separate invoice line per participant carries the charge.
+-- The receipt hash intentionally preserves the existing website/MCP billing
+-- operation identity, so a replay is transport independent.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_invoice_generation_commit(
+ p_period_start date,p_period_end date,p_drafts jsonb,
+ p_redemptions jsonb,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_canonical_invoice_generate$
+DECLARE
+ v_teacher uuid:=auth.uid();v_currency text;
+ v_draft jsonb;v_line jsonb;v_credit jsonb;
+ v_invoice uuid;v_session uuid;v_student uuid;v_guardian uuid;
+ v_package uuid;v_kind text;v_description text;
+ v_quantity integer;v_unit integer;v_amount integer;
+ v_subtotal bigint;v_sort integer;
+ v_created jsonb:='[]'::jsonb;v_count integer:=0;v_credits integer:=0;
+ v_hash text;v_prior public.agent_tool_receipts%ROWTYPE;v_receipt jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501'; END IF;
+ IF p_request_id IS NULL OR p_period_start IS NULL OR p_period_end IS NULL
+    OR p_period_end<p_period_start OR p_period_end-p_period_start>367
+    OR jsonb_typeof(p_drafts) IS DISTINCT FROM 'array'
+    OR jsonb_typeof(p_redemptions) IS DISTINCT FROM 'array'
+    OR jsonb_array_length(p_drafts)>200
+    OR jsonb_array_length(p_redemptions)>2000
+    OR pg_column_size(p_drafts)>2000000 OR pg_column_size(p_redemptions)>150000
+ THEN
+   RAISE EXCEPTION 'INVALID_BILLING_BATCH' USING ERRCODE='22023';
+ END IF;
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ v_hash:=md5(jsonb_build_array('billing.generation.commit',
+     p_period_start,p_period_end)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_request_id,'billing.generation.commit',v_hash,'{}'::jsonb)
+ ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_prior FROM public.agent_tool_receipts
+     WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+   IF NOT FOUND OR v_prior.operation<>'billing.generation.commit'
+      OR v_prior.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'BILLING_GENERATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_prior.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT currency INTO v_currency FROM public.studio_policies
+  WHERE teacher_id=v_teacher;
+ IF v_currency IS NULL THEN RAISE EXCEPTION 'STUDIO_POLICY_NOT_FOUND' USING ERRCODE='42501'; END IF;
+ FOR v_credit IN SELECT value FROM jsonb_array_elements(p_redemptions) LOOP
+   v_session:=(v_credit->>'sessionId')::uuid;
+   v_student:=(v_credit->>'studentId')::uuid;
+   v_package:=(v_credit->>'packageId')::uuid;
+   IF v_session IS NULL OR v_student IS NULL OR v_package IS NULL THEN
+    RAISE EXCEPTION 'INVALID_CREDIT_ALLOCATION' USING ERRCODE='22023';
+   END IF;
+   INSERT INTO public.credit_redemptions(
+    teacher_id,session_id,student_id,package_id
+   ) VALUES(v_teacher,v_session,v_student,v_package);
+   v_credits:=v_credits+1;
+ END LOOP;
+ FOR v_draft IN SELECT value FROM jsonb_array_elements(p_drafts) LOOP
+   v_guardian:=(v_draft->>'guardianId')::uuid;
+   IF v_guardian IS NULL OR NOT EXISTS(
+     SELECT 1 FROM public.guardians WHERE id=v_guardian AND teacher_id=v_teacher
+   ) OR jsonb_typeof(v_draft->'items') IS DISTINCT FROM 'array'
+     OR jsonb_array_length(v_draft->'items') NOT BETWEEN 1 AND 2000
+   THEN RAISE EXCEPTION 'INVALID_BILLING_FAMILY' USING ERRCODE='22023'; END IF;
+   INSERT INTO public.invoices(
+    teacher_id,guardian_id,period_start,period_end,status,
+    subtotal_cents,currency
+   ) VALUES(v_teacher,v_guardian,p_period_start,p_period_end,'draft',0,v_currency)
+   RETURNING id INTO v_invoice;
+   v_subtotal:=0;v_sort:=0;
+   FOR v_line IN SELECT value FROM jsonb_array_elements(v_draft->'items') LOOP
+     v_session:=(v_line->>'sessionId')::uuid;
+     v_student:=(v_line->>'studentId')::uuid;
+     v_kind:=v_line->>'kind';
+     v_description:=nullif(btrim(v_line->>'description'),'');
+     v_quantity:=(v_line->>'quantity')::integer;
+     v_unit:=(v_line->>'unitCents')::integer;
+     v_amount:=(v_line->>'amountCents')::integer;
+     IF v_session IS NULL OR v_student IS NULL
+       OR v_kind NOT IN ('lesson','travel') OR
+       v_description IS NULL OR length(v_description)>500 OR
+       v_quantity NOT BETWEEN 1 AND 10000 OR
+       v_unit NOT BETWEEN 0 AND 100000000 OR
+       v_amount NOT BETWEEN 0 AND 100000000 OR
+       v_quantity::bigint*v_unit<>v_amount THEN
+       RAISE EXCEPTION 'INVALID_BILLING_LINE' USING ERRCODE='22023';
+     END IF;
+     INSERT INTO public.invoice_items(
+       invoice_id,session_id,student_id,kind,description,
+       quantity,unit_cents,amount_cents,sort_order
+     ) VALUES(v_invoice,v_session,v_student,v_kind,v_description,
+       v_quantity,v_unit,v_amount,v_sort);
+     v_subtotal:=v_subtotal+v_amount;
+     v_sort:=v_sort+1;
+   END LOOP;
+   IF v_subtotal>2147483647 THEN
+      RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';
+   END IF;
+   UPDATE public.invoices SET subtotal_cents=v_subtotal::integer
+      WHERE id=v_invoice;
+   v_created:=v_created||jsonb_build_array(v_invoice);
+   v_count:=v_count+1;
+ END LOOP;
+ v_receipt:=jsonb_build_object('created',v_created,'count',v_count,
+  'creditsUsed',v_credits,'periodStart',p_period_start,'periodEnd',p_period_end,
+  'idempotencyKey',p_request_id,'replayed',false);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+   WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ RETURN v_receipt;
+END;
+$ccp_canonical_invoice_generate$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_invoice_generation_commit(
+ date,date,jsonb,jsonb,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_invoice_generation_commit(
+ date,date,jsonb,jsonb,uuid) TO authenticated;
+
+-- Draft regeneration never mutates a paid/sent invoice or an invoice with a
+-- live checkout, payment, or prepaid package sale. The replacement is one
+-- transaction, with its original revision and receipt.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_invoice_regenerate_atomic(
+ p_invoice_id uuid,p_items jsonb,p_redemptions jsonb,
+ p_expected_updated_at timestamptz,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_canonical_invoice_regenerate$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_invoice public.invoices%ROWTYPE;
+ v_credit jsonb;v_line jsonb;v_session uuid;v_student uuid;v_package uuid;
+ v_kind text;v_description text;v_quantity integer;v_unit integer;v_amount integer;
+ v_subtotal bigint:=0;v_sort integer:=0;v_hash text;
+ v_prior public.agent_tool_receipts%ROWTYPE;v_receipt jsonb;v_updated timestamptz;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_invoice_id IS NULL OR p_request_id IS NULL OR p_expected_updated_at IS NULL OR
+   jsonb_typeof(p_items) IS DISTINCT FROM 'array' OR
+   jsonb_typeof(p_redemptions) IS DISTINCT FROM 'array' OR
+   jsonb_array_length(p_items)>2000 OR jsonb_array_length(p_redemptions)>2000
+ THEN RAISE EXCEPTION 'INVALID_REGENERATION_INPUT' USING ERRCODE='22023';END IF;
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ v_hash:=md5(jsonb_build_array('billing.invoice.regenerate',
+    p_invoice_id,p_expected_updated_at)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_request_id,'billing.invoice.regenerate',v_hash,'{}'::jsonb)
+ ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_prior FROM public.agent_tool_receipts
+    WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+   IF NOT FOUND OR v_prior.operation<>'billing.invoice.regenerate'
+      OR v_prior.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'INVOICE_REGENERATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_prior.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_invoice FROM public.invoices
+   WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF v_invoice.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+   RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';
+ END IF;
+ IF v_invoice.status<>'draft'
+   OR EXISTS(SELECT 1 FROM public.credit_packages WHERE invoice_id=p_invoice_id)
+   OR EXISTS(SELECT 1 FROM public.payments WHERE invoice_id=p_invoice_id)
+   OR v_invoice.stripe_checkout_session_id IS NOT NULL
+   OR v_invoice.stripe_checkout_url IS NOT NULL
+   OR v_invoice.stripe_payment_intent_id IS NOT NULL THEN
+   RAISE EXCEPTION 'INVOICE_REGENERATION_BLOCKED' USING ERRCODE='23514';
+ END IF;
+ DELETE FROM public.invoice_items WHERE invoice_id=p_invoice_id;
+ FOR v_credit IN SELECT value FROM jsonb_array_elements(p_redemptions) LOOP
+   v_session:=(v_credit->>'sessionId')::uuid;
+   v_student:=(v_credit->>'studentId')::uuid;
+   v_package:=(v_credit->>'packageId')::uuid;
+   IF v_session IS NULL OR v_student IS NULL OR v_package IS NULL THEN
+    RAISE EXCEPTION 'INVALID_CREDIT_ALLOCATION' USING ERRCODE='22023';END IF;
+   INSERT INTO public.credit_redemptions(
+    teacher_id,session_id,student_id,package_id
+   ) VALUES(v_teacher,v_session,v_student,v_package);
+ END LOOP;
+ FOR v_line IN SELECT value FROM jsonb_array_elements(p_items) LOOP
+   v_session:=(v_line->>'sessionId')::uuid;
+   v_student:=(v_line->>'studentId')::uuid;
+   v_kind:=v_line->>'kind';
+   v_description:=nullif(btrim(v_line->>'description'),'');
+   v_quantity:=(v_line->>'quantity')::integer;
+   v_unit:=(v_line->>'unitCents')::integer;
+   v_amount:=(v_line->>'amountCents')::integer;
+   IF v_session IS NULL OR v_student IS NULL
+    OR v_kind NOT IN ('lesson','travel')
+    OR v_description IS NULL OR length(v_description)>500
+    OR v_quantity NOT BETWEEN 1 AND 10000
+    OR v_unit NOT BETWEEN 0 AND 100000000
+    OR v_amount NOT BETWEEN 0 AND 100000000
+    OR v_quantity::bigint*v_unit<>v_amount THEN
+    RAISE EXCEPTION 'INVALID_REGENERATION_LINE' USING ERRCODE='22023';
+   END IF;
+   INSERT INTO public.invoice_items(
+     invoice_id,session_id,student_id,kind,description,
+     quantity,unit_cents,amount_cents,sort_order
+   ) VALUES(p_invoice_id,v_session,v_student,v_kind,v_description,
+      v_quantity,v_unit,v_amount,v_sort);
+   v_subtotal:=v_subtotal+v_amount;v_sort:=v_sort+1;
+ END LOOP;
+ IF v_subtotal>2147483647 THEN
+   RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';
+ END IF;
+ UPDATE public.invoices SET subtotal_cents=v_subtotal::integer
+   WHERE id=p_invoice_id RETURNING updated_at INTO v_updated;
+ v_receipt:=jsonb_build_object('ok',true,'invoiceId',p_invoice_id,
+  'itemCount',v_sort,'subtotalCents',v_subtotal::integer,
+  'updatedAt',v_updated,'idempotencyKey',p_request_id,'replayed',false);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+   WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ RETURN v_receipt;
+END;
+$ccp_canonical_invoice_regenerate$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_invoice_regenerate_atomic(
+ uuid,jsonb,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_invoice_regenerate_atomic(
+ uuid,jsonb,jsonb,timestamptz,uuid) TO authenticated;
+
+
+-- Canonical private one-off and make-up occurrence creation. A one-time
+-- recurrence insert/retired attendance record is NOT another actual lesson.
+-- Source cancellation, target workplace enrolment, replay and conflict
+-- verification are inside the same serialized owner-authorized transaction.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_private_session_create(
+ p_student_id uuid,p_date date,p_local_time time,
+ p_duration_minutes integer,p_is_home_visit boolean,
+ p_makeup_for_session_id uuid,p_workplace_id uuid,
+ p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_private_session_create$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_workplace public.workplaces%ROWTYPE;
+ v_timezone text;
+ v_starts timestamptz;
+ v_slot_duration integer;
+ v_source public.teaching_sessions%ROWTYPE;
+ v_att public.session_attendance%ROWTYPE;
+ v_policy public.studio_policies%ROWTYPE;
+ v_valid_makeup boolean:=false;
+ v_session public.teaching_sessions%ROWTYPE;
+ v_previous public.teaching_sessions%ROWTYPE;
+ v_duration integer;
+BEGIN
+ IF v_teacher IS NULL THEN
+  RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_student_id IS NULL OR p_date IS NULL OR p_local_time IS NULL
+  OR p_request_id IS NULL OR p_is_home_visit IS NULL
+  OR p_duration_minutes IS NOT NULL AND p_duration_minutes NOT BETWEEN 15 AND 480 THEN
+  RAISE EXCEPTION 'CANONICAL_PRIVATE_INVALID_REQUEST' USING ERRCODE='22023';
+ END IF;
+ -- Session scheduling is serialized for both website and MCP, including
+ -- another client trying to consume the same make-up source.
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ IF NOT EXISTS(
+   SELECT 1 FROM public.students
+    WHERE teacher_id=v_teacher AND id=p_student_id AND archived_at IS NULL
+ ) THEN
+   RAISE EXCEPTION 'CANONICAL_PRIVATE_STUDENT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF p_workplace_id IS NULL THEN
+   SELECT * INTO v_workplace FROM public.workplaces
+     WHERE teacher_id=v_teacher ORDER BY created_at,id LIMIT 1;
+ ELSE
+   SELECT * INTO v_workplace FROM public.workplaces
+     WHERE teacher_id=v_teacher AND id=p_workplace_id;
+ END IF;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'CANONICAL_PRIVATE_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_policy FROM public.studio_policies WHERE teacher_id=v_teacher;
+ v_timezone:=CASE WHEN p_workplace_id IS NULL THEN
+    coalesce(nullif(v_policy.timezone,''),v_workplace.timezone)
+  ELSE v_workplace.timezone END;
+ IF v_timezone IS NULL THEN
+  RAISE EXCEPTION 'CANONICAL_PRIVATE_TIMEZONE_UNAVAILABLE' USING ERRCODE='22023';
+ END IF;
+ v_duration:=p_duration_minutes;
+ IF p_makeup_for_session_id IS NOT NULL THEN
+   SELECT * INTO v_source FROM public.teaching_sessions
+    WHERE id=p_makeup_for_session_id AND teacher_id=v_teacher FOR UPDATE;
+   IF NOT FOUND THEN
+     RAISE EXCEPTION 'CANONICAL_MAKEUP_SOURCE_NOT_FOUND' USING ERRCODE='42501';
+   END IF;
+   IF NOT EXISTS(
+      SELECT 1 FROM public.session_participants
+        WHERE teacher_id=v_teacher AND session_id=p_makeup_for_session_id
+         AND student_id=p_student_id
+   ) THEN
+     RAISE EXCEPTION 'CANONICAL_MAKEUP_PARTICIPANT_NOT_FOUND' USING ERRCODE='42501';
+   END IF;
+   SELECT * INTO v_att FROM public.session_attendance
+     WHERE teacher_id=v_teacher AND session_id=p_makeup_for_session_id
+       AND student_id=p_student_id FOR UPDATE;
+   v_valid_makeup:=CASE v_att.status
+      WHEN 'teacher_cancelled' THEN coalesce(v_policy.teacher_cancel_earns_makeup,false)
+      WHEN 'absent' THEN coalesce(v_policy.no_show_earns_makeup,false)
+      WHEN 'student_cancelled' THEN CASE WHEN
+        v_att.notice_at IS NOT NULL AND
+        v_source.starts_at-v_att.notice_at >=
+          coalesce(v_policy.cancellation_window_hours,24)*interval '1 hour'
+        THEN coalesce(v_policy.timely_cancel_earns_makeup,false)
+        ELSE coalesce(v_policy.late_cancel_earns_makeup,false) END
+      ELSE false END;
+   IF NOT v_valid_makeup THEN
+      RAISE EXCEPTION 'CANONICAL_MAKEUP_NOT_ELIGIBLE' USING ERRCODE='23514';
+   END IF;
+   IF EXISTS(SELECT 1 FROM public.teaching_sessions
+      WHERE teacher_id=v_teacher
+        AND makeup_for_session_id=p_makeup_for_session_id
+        AND makeup_for_student_id=p_student_id
+        AND request_id IS DISTINCT FROM p_request_id) THEN
+     RAISE EXCEPTION 'CANONICAL_MAKEUP_ALREADY_USED' USING ERRCODE='23505';
+   END IF;
+   v_duration:=coalesce(v_duration,v_source.duration_minutes);
+ ELSE
+   v_duration:=coalesce(v_duration,30);
+ END IF;
+ IF v_duration NOT BETWEEN 15 AND 480 THEN
+   RAISE EXCEPTION 'CANONICAL_PRIVATE_INVALID_DURATION' USING ERRCODE='22023';
+ END IF;
+ v_starts:=(p_date::timestamp+p_local_time) AT TIME ZONE v_timezone;
+ IF (v_starts AT TIME ZONE v_timezone)::date<>p_date OR
+    (v_starts AT TIME ZONE v_timezone)::time<>p_local_time THEN
+   RAISE EXCEPTION 'CANONICAL_PRIVATE_DST_GAP' USING ERRCODE='22023';
+ END IF;
+ SELECT * INTO v_previous FROM public.teaching_sessions
+  WHERE teacher_id=v_teacher AND request_id=p_request_id;
+ IF FOUND THEN
+   IF v_previous.student_id IS DISTINCT FROM p_student_id OR
+      v_previous.workplace_id IS DISTINCT FROM v_workplace.id OR
+      v_previous.starts_at IS DISTINCT FROM v_starts OR
+      v_previous.duration_minutes IS DISTINCT FROM v_duration OR
+      v_previous.is_home_visit IS DISTINCT FROM p_is_home_visit OR
+      v_previous.makeup_for_session_id IS DISTINCT FROM p_makeup_for_session_id OR
+      v_previous.makeup_for_student_id IS DISTINCT FROM
+        (CASE WHEN p_makeup_for_session_id IS NOT NULL THEN p_student_id ELSE NULL END) THEN
+     RAISE EXCEPTION 'CANONICAL_PRIVATE_REPLAY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN to_jsonb(v_previous)||jsonb_build_object('replayed',true);
+ END IF;
+ -- The default teacher-owned workplace represents implicit personal lessons.
+ -- Provision the learner's membership only for a NEW personal lesson. A
+ -- replay never silently restores a membership the teacher removed later,
+ -- and explicitly selected named workplaces still demand prior enrollment.
+ -- This keeps the direct-session trigger as the final security guard.
+ IF p_workplace_id IS NULL THEN
+  INSERT INTO public.workplace_enrollments(
+   teacher_id,workplace_id,student_id
+  ) VALUES(v_teacher,v_workplace.id,p_student_id)
+  ON CONFLICT (teacher_id,workplace_id,student_id) DO NOTHING;
+ END IF;
+ IF NOT EXISTS(
+   SELECT 1 FROM public.workplace_enrollments
+    WHERE teacher_id=v_teacher AND workplace_id=v_workplace.id
+      AND student_id=p_student_id
+ ) THEN
+  RAISE EXCEPTION 'CANONICAL_PRIVATE_ENROLLMENT_NOT_FOUND'
+   USING ERRCODE='42501';
+ END IF;
+ INSERT INTO public.teaching_sessions(
+  teacher_id,workplace_id,student_id,title,starts_at,duration_minutes,
+  status,local_timezone,is_home_visit,
+  makeup_for_session_id,makeup_for_student_id,request_id
+ ) VALUES(
+  v_teacher,v_workplace.id,p_student_id,'Private chess lesson',
+  v_starts,v_duration,'scheduled',v_timezone,p_is_home_visit,
+  p_makeup_for_session_id,
+  CASE WHEN p_makeup_for_session_id IS NOT NULL THEN p_student_id ELSE NULL END,
+  p_request_id
+ ) RETURNING * INTO v_session;
+ RETURN to_jsonb(v_session)||jsonb_build_object('replayed',false);
+END;
+$ccp_private_session_create$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_private_session_create(
+ uuid,date,time,integer,boolean,uuid,uuid,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_private_session_create(
+ uuid,date,time,integer,boolean,uuid,uuid,uuid) TO authenticated;
+
+
+-- Delete only scheduling INTENT. Historical and financially protected
+-- canonical occurrences retain stable IDs, snapshot roster, notes and
+-- participant charges. Unmarked unprotected future sessions may be removed
+-- atomically; all remaining sessions are detached from the deleted slot.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_delete(
+ p_slot_id uuid,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_canonical_slot_delete$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_slot public.lesson_slots%ROWTYPE;
+ v_session record;v_now timestamptz:=clock_timestamp();
+ v_removed integer:=0;v_preserved integer:=0;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_hash text;v_receipt jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_slot_id IS NULL OR p_idempotency_key IS NULL THEN
+   RAISE EXCEPTION 'INVALID_CANONICAL_SLOT_DELETE' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=md5(jsonb_build_array('canonical.slot.delete',p_slot_id)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'canonical.slot.delete',
+  v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_saved FROM public.agent_tool_receipts
+    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+   IF NOT FOUND OR v_saved.operation<>'canonical.slot.delete' OR
+      v_saved.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'CANONICAL_SLOT_REPLAY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_slot FROM public.lesson_slots
+   WHERE teacher_id=v_teacher AND id=p_slot_id FOR UPDATE;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF (SELECT count(*) FROM public.teaching_sessions
+      WHERE teacher_id=v_teacher AND slot_id=p_slot_id)>20000 THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_TOO_MANY' USING ERRCODE='22023';
+ END IF;
+ FOR v_session IN
+  SELECT id,starts_at,status FROM public.teaching_sessions
+   WHERE teacher_id=v_teacher AND slot_id=p_slot_id
+   ORDER BY starts_at,id FOR UPDATE
+ LOOP
+   IF v_session.starts_at>=v_now AND v_session.status='scheduled'
+      AND NOT EXISTS(
+        SELECT 1 FROM public.session_attendance WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
+        SELECT 1 FROM public.ccp_session_attendance_audit WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
+        SELECT 1 FROM public.session_notes WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
+        SELECT 1 FROM public.chess_observations WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
+        SELECT 1 FROM public.invoice_items WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
+        SELECT 1 FROM public.credit_redemptions WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
+        SELECT 1 FROM public.session_roster_corrections
+          WHERE session_id=v_session.id
+      ) THEN
+     DELETE FROM public.teaching_sessions WHERE id=v_session.id;
+     v_removed:=v_removed+1;
+   ELSE
+     -- Retain historical provenance even when the scheduling template is gone.
+     UPDATE public.teaching_sessions SET slot_id=NULL,
+       updated_at=clock_timestamp() WHERE id=v_session.id;
+     v_preserved:=v_preserved+1;
+   END IF;
+ END LOOP;
+ DELETE FROM public.lesson_slots
+   WHERE teacher_id=v_teacher AND id=p_slot_id;
+ v_receipt:=jsonb_build_object('ok',true,'removed',v_removed,
+   'preserved',v_preserved,'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_canonical_slot_delete$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_delete(uuid,uuid)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_delete(uuid,uuid)
+ TO authenticated;
+
+
+-- Delivery worker: only a service-role caller may lease an outbox item.
+-- Row locks prevent two workers from claiming the same message. An expired
+-- lease may be retried with the SAME provider idempotency key; Resend provides
+-- provider-side deduplication, while local SMTP is best-effort at-least-once.
+ALTER TABLE public.ccp_delivery_outbox
+  ADD COLUMN claim_token uuid,
+  ADD COLUMN next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN failure_code text,
+  ADD COLUMN provider_receipt text;
+ALTER TABLE public.ccp_delivery_outbox
+  DROP CONSTRAINT ccp_delivery_outbox_state_check;
+ALTER TABLE public.ccp_delivery_outbox
+  ADD CONSTRAINT ccp_delivery_outbox_state_check
+  CHECK (state IN ('pending','sending','sent','failed','cancelled'));
+CREATE INDEX ccp_delivery_outbox_due_idx
+  ON public.ccp_delivery_outbox(next_attempt_at,created_at)
+  WHERE state IN ('pending','sending','failed');
+
+CREATE OR REPLACE FUNCTION public.ccp_outbox_claim(p_limit integer DEFAULT 10)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $ccp_outbox_claim$
+DECLARE
+  v_rows jsonb;
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'service_role'
+     OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 30 THEN
+    RAISE EXCEPTION 'OUTBOX_ACCESS_DENIED' USING ERRCODE='42501';
+  END IF;
+  WITH due AS (
+    SELECT id FROM public.ccp_delivery_outbox
+    WHERE attempts<20 AND next_attempt_at <= clock_timestamp()
+      AND (
+        state IN ('pending','failed')
+        OR (state='sending'
+          AND claimed_at<clock_timestamp()-interval '15 minutes')
+      )
+    ORDER BY created_at,id
+    LIMIT p_limit FOR UPDATE SKIP LOCKED
+  ), claimed AS (
+    UPDATE public.ccp_delivery_outbox o
+      SET state='sending',attempts=attempts+1,
+          claimed_at=clock_timestamp(),claim_token=gen_random_uuid(),
+          failure_code=NULL
+      FROM due WHERE o.id=due.id
+      RETURNING o.id,o.teacher_id,o.session_id,o.student_id,o.event_key,
+        o.kind,o.payload,o.claim_token,o.attempts
+  )
+  SELECT coalesce(jsonb_agg(to_jsonb(claimed)),'[]'::jsonb)
+    INTO v_rows FROM claimed;
+  RETURN v_rows;
+END;
+$ccp_outbox_claim$;
+
+CREATE OR REPLACE FUNCTION public.ccp_outbox_ack(
+  p_id uuid,p_claim_token uuid,p_outcome text,
+  p_provider_receipt text DEFAULT NULL,p_failure_code text DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_outbox_ack$
+DECLARE
+  v_row public.ccp_delivery_outbox%ROWTYPE;
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'service_role'
+    OR p_id IS NULL OR p_claim_token IS NULL
+    OR p_outcome NOT IN ('sent','retry','cancelled')
+    OR length(coalesce(p_provider_receipt,''))>200
+    OR length(coalesce(p_failure_code,''))>120 THEN
+    RAISE EXCEPTION 'OUTBOX_ACCESS_DENIED' USING ERRCODE='42501';
+  END IF;
+  UPDATE public.ccp_delivery_outbox SET
+    state=CASE WHEN p_outcome='retry' THEN 'failed' ELSE p_outcome END,
+    sent_at=CASE WHEN p_outcome='sent' THEN clock_timestamp() ELSE NULL END,
+    next_attempt_at=CASE WHEN p_outcome='retry'
+      THEN clock_timestamp()+least(
+        make_interval(mins => 60),
+        make_interval(secs => (15 * power(2,least(attempts,8)))::integer))
+      ELSE 'infinity'::timestamptz END,
+    failure_code=CASE WHEN p_outcome='retry' OR p_outcome='cancelled'
+      THEN coalesce(p_failure_code,'delivery_failed') ELSE NULL END,
+    provider_receipt=CASE WHEN p_outcome='sent'
+      THEN p_provider_receipt ELSE NULL END,
+    claim_token=NULL
+  WHERE id=p_id AND claim_token=p_claim_token AND state='sending'
+  RETURNING * INTO v_row;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'OUTBOX_LEASE_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN jsonb_build_object('id',v_row.id,'state',v_row.state,
+    'attempts',v_row.attempts,'sentAt',v_row.sent_at);
+END;
+$ccp_outbox_ack$;
+REVOKE ALL ON FUNCTION public.ccp_outbox_claim(integer)
+  FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.ccp_outbox_ack(uuid,uuid,text,text,text)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_outbox_claim(integer)
+  TO service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_outbox_ack(uuid,uuid,text,text,text)
+  TO service_role;
+
+
+-- Recurrence corrections cannot be a chain of REST UPDATE/DELETE/INSERT
+-- requests: a partial failure would lose or duplicate future teaching.
+-- The teacher-owned slot, all nonprotected future occurrences, and the new
+-- bounded validated plan are changed in ONE database transaction.
+ALTER TABLE public.lesson_slots
+ ADD COLUMN updated_at timestamptz NOT NULL DEFAULT now();
+CREATE TRIGGER ccp_lesson_slots_updated_at
+ BEFORE UPDATE ON public.lesson_slots FOR EACH ROW
+ EXECUTE FUNCTION public.update_updated_at();
+
+CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_update(
+ p_slot_id uuid,p_changes jsonb,p_expected_updated_at timestamptz,
+ p_rows jsonb,p_from date,p_to date,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_slot_update$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_before public.lesson_slots%ROWTYPE;
+ v_after public.lesson_slots%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_session public.teaching_sessions%ROWTYPE;
+ v_hash text;v_receipt jsonb;v_result jsonb;
+ v_oldest date;v_last date;v_n integer;v_mat integer:=0;
+ v_removed integer:=0;v_protected integer:=0;
+ v_row jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN
+  RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_slot_id IS NULL OR p_idempotency_key IS NULL
+   OR p_expected_updated_at IS NULL
+   OR jsonb_typeof(p_changes) IS DISTINCT FROM 'object'
+   OR p_changes='{}'::jsonb OR
+   (p_changes - ARRAY[
+     'dayOfWeek','startTime','durationMinutes','startDate','endDate',
+     'rateCents','isHomeVisit','active','workplaceId'])<>'{}'::jsonb
+   OR jsonb_typeof(p_rows) IS DISTINCT FROM 'array'
+   OR jsonb_array_length(p_rows)>100
+   OR p_from IS NULL OR p_to IS NULL OR p_to<p_from OR p_to-p_from>366
+ THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_INVALID_REQUEST' USING ERRCODE='22023';
+ END IF;
+ IF (p_changes ? 'dayOfWeek' AND
+        (p_changes->>'dayOfWeek') !~ '^[0-6]$')
+   OR (p_changes ? 'startTime' AND
+        (p_changes->>'startTime') !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$')
+   OR (p_changes ? 'durationMinutes' AND
+        ((p_changes->>'durationMinutes') !~ '^[0-9]{1,3}$'
+         OR (p_changes->>'durationMinutes')::integer NOT BETWEEN 15 AND 480))
+   OR (p_changes ? 'startDate' AND
+        (p_changes->>'startDate') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+   OR (p_changes ? 'endDate' AND p_changes->'endDate'<>'null'::jsonb
+        AND (p_changes->>'endDate') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+   OR (p_changes ? 'rateCents' AND p_changes->'rateCents'<>'null'::jsonb
+        AND (p_changes->>'rateCents') !~ '^[0-9]{1,9}$')
+   OR (p_changes ? 'isHomeVisit' AND jsonb_typeof(p_changes->'isHomeVisit')<>'boolean')
+   OR (p_changes ? 'active' AND jsonb_typeof(p_changes->'active')<>'boolean')
+   OR (p_changes ? 'workplaceId' AND p_changes->'workplaceId'<>'null'::jsonb
+        AND jsonb_typeof(p_changes->'workplaceId')<>'string')
+ THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_INVALID_FIELDS' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ -- Stable across later dates/retries: only the approved mutation and
+ -- original revision form the request identity, not its derived plan.
+ v_hash:=md5(jsonb_build_array('canonical.slot.update',p_slot_id,p_changes,
+   p_expected_updated_at)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'canonical.slot.update',
+    v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF NOT FOUND OR v_saved.operation<>'canonical.slot.update'
+    OR v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_before FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND id=p_slot_id FOR UPDATE;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF v_before.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF p_changes ? 'workplaceId' AND p_changes->'workplaceId'<>'null'::jsonb
+  AND NOT EXISTS(
+   SELECT 1 FROM public.workplaces
+    WHERE teacher_id=v_teacher AND id=(p_changes->>'workplaceId')::uuid
+  ) THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ UPDATE public.lesson_slots SET
+  day_of_week=coalesce((p_changes->>'dayOfWeek')::integer,day_of_week),
+  start_time=coalesce((p_changes->>'startTime')::time,start_time),
+  duration_minutes=coalesce((p_changes->>'durationMinutes')::integer,duration_minutes),
+  start_date=coalesce((p_changes->>'startDate')::date,start_date),
+  end_date=CASE WHEN p_changes ? 'endDate'
+    THEN (p_changes->>'endDate')::date ELSE end_date END,
+  rate_cents=CASE WHEN p_changes ? 'rateCents'
+    THEN (p_changes->>'rateCents')::integer ELSE rate_cents END,
+  is_home_visit=coalesce((p_changes->>'isHomeVisit')::boolean,is_home_visit),
+  active=coalesce((p_changes->>'active')::boolean,active),
+  workplace_id=CASE WHEN p_changes ? 'workplaceId'
+    THEN (p_changes->>'workplaceId')::uuid ELSE workplace_id END
+ WHERE teacher_id=v_teacher AND id=p_slot_id
+ RETURNING * INTO v_after;
+ IF v_after.end_date IS NOT NULL AND v_after.end_date<v_after.start_date THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_INVALID_DATE_RANGE' USING ERRCODE='22023';
+ END IF;
+ -- Exactly the expected slot-local weekday dates, no omitted date and no
+ -- rogue extra date. Each instant and roster is validated by the nested
+ -- canonical materializer before this transaction commits.
+ SELECT count(*) INTO v_n
+ FROM generate_series(p_from,p_to,interval '1 day') d
+ WHERE v_after.active AND d::date>=v_after.start_date
+   AND (v_after.end_date IS NULL OR d::date<=v_after.end_date)
+   AND extract(dow FROM d)=v_after.day_of_week;
+ IF v_n<>jsonb_array_length(p_rows) THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_INCOMPLETE_PLAN' USING ERRCODE='22023';
+ END IF;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+  IF (v_row->>'slot_id')::uuid IS DISTINCT FROM p_slot_id
+     OR (v_row->>'teacher_id')::uuid IS DISTINCT FROM v_teacher
+     OR NOT EXISTS (
+       SELECT 1 FROM generate_series(p_from,p_to,interval '1 day') d
+       WHERE d::date=(v_row->>'slot_occurrence_date')::date
+         AND v_after.active AND d::date>=v_after.start_date
+         AND (v_after.end_date IS NULL OR d::date<=v_after.end_date)
+         AND extract(dow FROM d)=v_after.day_of_week
+     ) THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_PLAN_MISMATCH' USING ERRCODE='22023';
+  END IF;
+ END LOOP;
+ IF (SELECT count(DISTINCT x->>'slot_occurrence_date')
+       FROM jsonb_array_elements(p_rows) x)<>v_n THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_DUPLICATE_DATE' USING ERRCODE='22023';
+ END IF;
+ IF (SELECT count(*) FROM public.teaching_sessions
+      WHERE teacher_id=v_teacher AND slot_id=p_slot_id
+        AND starts_at>=clock_timestamp())>20000 THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_TOO_MANY' USING ERRCODE='22023';
+ END IF;
+ FOR v_session IN
+  SELECT * FROM public.teaching_sessions
+   WHERE teacher_id=v_teacher AND slot_id=p_slot_id
+     AND starts_at>=clock_timestamp()
+   ORDER BY starts_at,id FOR UPDATE
+ LOOP
+  IF v_session.status='scheduled'
+   AND v_session.makeup_for_session_id IS NULL
+   AND v_session.rescheduled_from_date IS NULL
+   AND btrim(coalesce(v_session.lesson_note,''))=''
+   AND v_session.updated_at<=v_session.created_at+interval '1 microsecond'
+   AND NOT EXISTS(SELECT 1 FROM public.session_attendance
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.ccp_session_attendance_audit
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_notes
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.invoice_items
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.credit_redemptions
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.chess_observations
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.material_teaching_evidence
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_roster_corrections
+      WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.teaching_sessions
+      WHERE makeup_for_session_id=v_session.id)
+  THEN
+   DELETE FROM public.teaching_sessions WHERE id=v_session.id;
+   v_removed:=v_removed+1;
+  ELSE
+   -- Preserve stable history and source slot/date provenance, so moving an
+   -- occurrence never recreates a duplicate for its original slot day.
+   v_protected:=v_protected+1;
+  END IF;
+ END LOOP;
+ SELECT public.ccp_canonical_slot_materialize(p_rows,NULL)
+  INTO v_result;
+ v_receipt:=jsonb_build_object('slotId',p_slot_id,
+  'revision',v_after.updated_at,'removedFuture',v_removed,
+  'preservedHistory',v_protected,'materialized',v_result,
+  'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_slot_update$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_update(
+ uuid,jsonb,timestamptz,jsonb,date,date,uuid)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_update(
+ uuid,jsonb,timestamptz,jsonb,date,date,uuid)
+ TO authenticated;
+
+
+-- Create recurrence intent and its initial horizon atomically. The stable
+-- idempotency UUID is also the slot ID, allowing either browser or MCP to
+-- deterministically replay without generating a different slot UUID.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_create(
+ p_student_id uuid,p_workplace_id uuid,p_day_of_week integer,
+ p_start_time time,p_duration_minutes integer,p_start_date date,
+ p_end_date date,p_rate_cents integer,p_is_home_visit boolean,
+ p_rows jsonb,p_from date,p_to date,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_slot_create$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_slot public.lesson_slots%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_receipt jsonb;v_result jsonb;v_hash text;
+ v_expect integer;v_row jsonb;
+ v_workplace_id uuid;
+BEGIN
+ IF v_teacher IS NULL THEN
+  RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_student_id IS NULL OR p_day_of_week NOT BETWEEN 0 AND 6
+  OR p_start_time IS NULL OR p_duration_minutes NOT BETWEEN 15 AND 480
+  OR p_start_date IS NULL OR p_is_home_visit IS NULL OR
+     p_idempotency_key IS NULL OR
+     p_rate_cents < 0 OR (p_end_date IS NOT NULL AND p_end_date<p_start_date)
+  OR jsonb_typeof(p_rows) IS DISTINCT FROM 'array'
+  OR jsonb_array_length(p_rows)>100
+  OR p_from IS NULL OR p_to IS NULL OR p_to<p_from OR p_to-p_from>366 THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_CREATE_INVALID' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=md5(jsonb_build_array('canonical.slot.create',p_student_id,
+   p_workplace_id,p_day_of_week,p_start_time,p_duration_minutes,p_start_date,
+   p_end_date,p_rate_cents,p_is_home_visit)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'canonical.slot.create',
+  v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF NOT FOUND OR v_saved.operation<>'canonical.slot.create' OR
+     v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_CREATE_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.students
+    WHERE teacher_id=v_teacher AND id=p_student_id AND archived_at IS NULL)
+ THEN RAISE EXCEPTION 'CANONICAL_SLOT_STUDENT_NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF p_workplace_id IS NULL THEN
+  SELECT id INTO v_workplace_id FROM public.workplaces
+   WHERE teacher_id=v_teacher ORDER BY created_at,id LIMIT 1;
+ ELSE
+  SELECT id INTO v_workplace_id FROM public.workplaces
+   WHERE teacher_id=v_teacher AND id=p_workplace_id;
+ END IF;
+ IF v_workplace_id IS NULL OR NOT EXISTS(
+   SELECT 1 FROM public.workplace_enrollments
+    WHERE teacher_id=v_teacher AND workplace_id=v_workplace_id
+      AND student_id=p_student_id
+ ) THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ SELECT count(*) INTO v_expect
+  FROM generate_series(p_from::timestamp,p_to::timestamp,interval '1 day') d
+  WHERE d::date>=p_start_date
+   AND (p_end_date IS NULL OR d::date<=p_end_date)
+   AND extract(dow FROM d)=p_day_of_week;
+ IF v_expect<>jsonb_array_length(p_rows) THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_INCOMPLETE_PLAN' USING ERRCODE='22023';
+ END IF;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+  IF (v_row->>'slot_id')::uuid IS DISTINCT FROM p_idempotency_key
+     OR (v_row->>'teacher_id')::uuid IS DISTINCT FROM v_teacher
+     OR NOT EXISTS(
+       SELECT 1 FROM generate_series(p_from::timestamp,p_to::timestamp,
+                                      interval '1 day') d
+       WHERE d::date=(v_row->>'slot_occurrence_date')::date
+         AND d::date>=p_start_date
+         AND (p_end_date IS NULL OR d::date<=p_end_date)
+         AND extract(dow FROM d)=p_day_of_week
+     ) THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_PLAN_MISMATCH' USING ERRCODE='22023';
+  END IF;
+ END LOOP;
+ IF (SELECT count(DISTINCT x->>'slot_occurrence_date')
+     FROM jsonb_array_elements(p_rows) x)<>v_expect THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_DUPLICATE_DATE' USING ERRCODE='22023';
+ END IF;
+ INSERT INTO public.lesson_slots(
+  id,teacher_id,student_id,workplace_id,day_of_week,start_time,
+  duration_minutes,start_date,end_date,rate_cents,is_home_visit,active
+ ) VALUES(
+  p_idempotency_key,v_teacher,p_student_id,p_workplace_id,p_day_of_week,
+  p_start_time,p_duration_minutes,p_start_date,p_end_date,
+  p_rate_cents,p_is_home_visit,true
+ ) RETURNING * INTO v_slot;
+ SELECT public.ccp_canonical_slot_materialize(p_rows,NULL) INTO v_result;
+ v_receipt:=jsonb_build_object('id',v_slot.id,
+   'revision',v_slot.updated_at,'materialized',v_result,
+   'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_slot_create$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_create(
+ uuid,uuid,integer,time,integer,date,date,integer,boolean,jsonb,date,date,uuid)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_create(
+ uuid,uuid,integer,time,integer,date,date,integer,boolean,jsonb,date,date,uuid)
+ TO authenticated;
+
+
+-- Portable teacher backup can restore protected canonical history without
+-- exposing direct PostgREST update privileges. The transaction-local marker
+-- is set only by the receipt-checked ccp_teacher_backup_restore invocation.
+CREATE OR REPLACE FUNCTION public.ccp_backup_upsert_protected(
+ p_table text,p_source jsonb
+) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $backup_protected$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_session uuid;
+ v_student uuid;
+ v_att public.session_attendance%ROWTYPE;
+ v_note public.session_notes%ROWTYPE;
+BEGIN
+ IF v_teacher IS NULL OR
+   current_setting('ccp.backup_import_teacher',true) IS DISTINCT FROM v_teacher::text
+   OR p_table NOT IN ('session_attendance','session_notes')
+   OR jsonb_typeof(p_source) IS DISTINCT FROM 'object'
+   OR pg_column_size(p_source)>65536 THEN
+  RAISE EXCEPTION 'BACKUP_PROTECTED_WRITE_DENIED' USING ERRCODE='42501';
+ END IF;
+ v_session:=nullif(p_source->>'session_id','')::uuid;
+ v_student:=nullif(p_source->>'student_id','')::uuid;
+ IF v_session IS NULL OR NOT EXISTS(
+  SELECT 1 FROM public.teaching_sessions
+   WHERE id=v_session AND teacher_id=v_teacher
+ ) OR (v_student IS NOT NULL AND NOT EXISTS(
+  SELECT 1 FROM public.session_participants
+   WHERE session_id=v_session AND student_id=v_student
+     AND teacher_id=v_teacher
+ )) THEN RAISE EXCEPTION 'BACKUP_PARTICIPANT_NOT_OWNED' USING ERRCODE='42501';END IF;
+ IF p_table='session_attendance' THEN
+  IF v_student IS NULL THEN
+   RAISE EXCEPTION 'BACKUP_PARTICIPANT_REQUIRED' USING ERRCODE='22023';
+  END IF;
+  SELECT * INTO v_att FROM jsonb_populate_record(
+   NULL::public.session_attendance,p_source);
+  PERFORM set_config('ccp.attendance_commit_session',v_session::text,true);
+  INSERT INTO public.session_attendance(
+    id,teacher_id,session_id,student_id,status,note,notice_at,
+    cancelled_by,cancel_reason,marked_at,marked_by,updated_at
+  ) VALUES(
+    coalesce(v_att.id,gen_random_uuid()),v_teacher,v_session,v_student,
+    v_att.status,coalesce(v_att.note,''),v_att.notice_at,
+    v_att.cancelled_by,coalesce(v_att.cancel_reason,''),
+    coalesce(v_att.marked_at,now()),
+    CASE WHEN v_att.marked_by IS NULL THEN NULL ELSE v_teacher END,
+    coalesce(v_att.updated_at,now())
+  ) ON CONFLICT (id) DO UPDATE SET
+    status=EXCLUDED.status,note=EXCLUDED.note,
+    notice_at=EXCLUDED.notice_at,cancelled_by=EXCLUDED.cancelled_by,
+    cancel_reason=EXCLUDED.cancel_reason,marked_at=EXCLUDED.marked_at,
+    marked_by=EXCLUDED.marked_by,updated_at=EXCLUDED.updated_at
+  WHERE public.session_attendance.teacher_id=v_teacher
+    AND public.session_attendance.session_id=v_session
+    AND public.session_attendance.student_id=v_student;
+  IF NOT FOUND THEN
+   RAISE EXCEPTION 'BACKUP_ATTENDANCE_ID_CONFLICT' USING ERRCODE='23505';
+  END IF;
+ ELSE
+  SELECT * INTO v_note FROM jsonb_populate_record(
+   NULL::public.session_notes,p_source);
+  INSERT INTO public.session_notes(
+    id,teacher_id,session_id,student_id,body,private_body,
+    shared_with_guardian,emailed_at,created_at,updated_at
+  ) VALUES(
+    coalesce(v_note.id,gen_random_uuid()),v_teacher,v_session,v_student,
+    coalesce(v_note.body,''),coalesce(v_note.private_body,''),
+    coalesce(v_note.shared_with_guardian,false),v_note.emailed_at,
+    coalesce(v_note.created_at,now()),coalesce(v_note.updated_at,now())
+  ) ON CONFLICT (id) DO UPDATE SET
+    body=EXCLUDED.body,private_body=EXCLUDED.private_body,
+    shared_with_guardian=EXCLUDED.shared_with_guardian,
+    emailed_at=EXCLUDED.emailed_at,updated_at=EXCLUDED.updated_at
+  WHERE public.session_notes.teacher_id=v_teacher
+    AND public.session_notes.session_id=v_session
+    AND public.session_notes.student_id IS NOT DISTINCT FROM v_student;
+  IF NOT FOUND THEN
+   RAISE EXCEPTION 'BACKUP_SESSION_NOTE_ID_CONFLICT' USING ERRCODE='23505';
+  END IF;
+ END IF;
+END;
+$backup_protected$;
+REVOKE ALL ON FUNCTION public.ccp_backup_upsert_protected(text,jsonb)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_backup_upsert_protected(text,jsonb)
+ TO authenticated;
+
+
+-- Append-only canonical attendance revision evidence. Guarded owner-scoped
+-- SQL commands (teacher, delegated MCP, guardian portal and roster correction)
+-- all trigger this audit in their mutation transaction. A cleared attendance
+-- decision must remain reviewable; its historical session cannot disappear
+-- simply because the current attendance row no longer exists.
+CREATE TABLE public.ccp_session_attendance_audit (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  session_id uuid NOT NULL REFERENCES public.teaching_sessions(id)
+    ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
+  student_id uuid NOT NULL,
+  action text NOT NULL CHECK (action IN ('insert','update','delete')),
+  actor_role text NOT NULL CHECK (actor_role IN
+    ('authenticated','service_role','system')),
+  actor_id uuid,
+  before_value jsonb,
+  after_value jsonb,
+  recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  CONSTRAINT ccp_attendance_audit_valid_transition CHECK(
+    (action='insert' AND before_value IS NULL AND after_value IS NOT NULL) OR
+    (action='update' AND before_value IS NOT NULL AND after_value IS NOT NULL) OR
+    (action='delete' AND before_value IS NOT NULL AND after_value IS NULL)
+  )
+);
+CREATE INDEX ccp_attendance_audit_teacher_session_idx
+  ON public.ccp_session_attendance_audit
+  (teacher_id,session_id,student_id,recorded_at DESC,id);
+ALTER TABLE public.ccp_session_attendance_audit ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ccp_attendance_audit_teacher_read
+ ON public.ccp_session_attendance_audit FOR SELECT TO authenticated
+ USING (teacher_id=auth.uid());
+REVOKE ALL ON TABLE public.ccp_session_attendance_audit
+ FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON TABLE public.ccp_session_attendance_audit TO authenticated;
+GRANT ALL ON TABLE public.ccp_session_attendance_audit TO service_role;
+
+CREATE OR REPLACE FUNCTION public.ccp_audit_canonical_attendance()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $ccp_attendance_audit$
+DECLARE
+ v_old jsonb;
+ v_new jsonb;
+ v_actor_role text:=coalesce(auth.role(),'system');
+ v_row public.session_attendance%ROWTYPE;
+BEGIN
+ v_row:=CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+ IF v_actor_role NOT IN ('authenticated','service_role') THEN
+  v_actor_role:='system';
+ END IF;
+ IF TG_OP<>'INSERT' THEN
+  v_old:=jsonb_build_object(
+   'status',OLD.status,'note',OLD.note,
+   'noticeAt',OLD.notice_at,'cancelledBy',OLD.cancelled_by,
+   'cancelReason',OLD.cancel_reason,'markedAt',OLD.marked_at,
+   'markedBy',OLD.marked_by,'revision',OLD.updated_at);
+ END IF;
+ IF TG_OP<>'DELETE' THEN
+  v_new:=jsonb_build_object(
+   'status',NEW.status,'note',NEW.note,
+   'noticeAt',NEW.notice_at,'cancelledBy',NEW.cancelled_by,
+   'cancelReason',NEW.cancel_reason,'markedAt',NEW.marked_at,
+   'markedBy',NEW.marked_by,'revision',NEW.updated_at);
+ END IF;
+ INSERT INTO public.ccp_session_attendance_audit(
+   teacher_id,session_id,student_id,action,actor_role,actor_id,
+   before_value,after_value
+ ) VALUES(v_row.teacher_id,v_row.session_id,v_row.student_id,
+   lower(TG_OP),v_actor_role,auth.uid(),v_old,v_new);
+ RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+END;
+$ccp_attendance_audit$;
+REVOKE ALL ON FUNCTION public.ccp_audit_canonical_attendance()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_canonical_attendance_audit
+ AFTER INSERT OR UPDATE OR DELETE ON public.session_attendance
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_audit_canonical_attendance();

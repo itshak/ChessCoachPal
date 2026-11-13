@@ -19,10 +19,10 @@ const POLICY_SECRET_FIELDS = [
 /** Order respects FK dependencies when imported into a different teacher. */
 const IMPORT_ORDER = [
   "studio_policies", "guardians", "students", "workplaces", "class_groups",
-  "workplace_enrollments", "group_enrollments", "teaching_sessions",
-  "session_participants", "session_attendance", "chess_skill_categories",
-  "chess_observations", "lesson_slots", "lessons",
-  "attendance", "lesson_notes", "skill_dimensions", "skill_assessments",
+  "workplace_enrollments", "group_enrollments", "lesson_slots",
+  "teaching_sessions", "session_participants", "session_attendance",
+  "session_notes", "chess_skill_categories", "chess_observations",
+  "skill_dimensions", "skill_assessments",
   "invoices", "invoice_items", "payments", "events", "event_students",
   "event_rsvps", "credit_packages", "credit_redemptions",
   // Canonical chess catalog and student-first learning history. Restore order
@@ -35,9 +35,9 @@ const IMPORT_ORDER = [
 
 const TEACHER_SCOPED = [
   "guardians", "students", "workplaces", "class_groups",
-  "workplace_enrollments", "group_enrollments", "teaching_sessions",
-  "session_participants", "session_attendance", "chess_skill_categories",
-  "chess_observations", "lesson_slots", "lessons",
+  "workplace_enrollments", "group_enrollments", "lesson_slots",
+  "teaching_sessions", "session_participants", "session_attendance",
+  "session_notes", "chess_skill_categories", "chess_observations",
   "skill_dimensions", "invoices", "events", "credit_packages", "credit_redemptions",
   "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
   "chess_study_chapters", "learning_material_relations",
@@ -136,8 +136,6 @@ export async function buildStudioExport(
     tables[table] = rows;
   }
 
-  await children("attendance", "lesson_id", ids(asRows(tables.lessons)));
-  await children("lesson_notes", "lesson_id", ids(asRows(tables.lessons)));
   await children("skill_assessments", "student_id", ids(asRows(tables.students)));
   await children("invoice_items", "invoice_id", ids(asRows(tables.invoices)));
   await children("payments", "invoice_id", ids(asRows(tables.invoices)));

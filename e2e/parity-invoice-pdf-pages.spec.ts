@@ -32,7 +32,7 @@ test("PARITY:PARITY-invoice-pdf-multipage-private-export preserves 150 line item
  expect(inv.error).toBeNull();
  const id=inv.data!.id as string;
  const items=Array.from({length:150},(_,index)=>({
-  invoice_id:id,kind:"lesson",lesson_id:null,
+  invoice_id:id,kind:"lesson",session_id:null,student_id:null,
   description:"Unique chess lesson "+String(index+1).padStart(3,"0"),
   quantity:1,unit_cents:100,amount_cents:100,sort_order:index,
  }));
@@ -81,7 +81,7 @@ test("PARITY:PARITY-invoice-pdf-multipage-private-export preserves 150 line item
   expect(otherInvoice.error).toBeNull();
   const foreignId=otherInvoice.data!.id as string;
   expect((await admin.from("invoice_items").insert({
-   invoice_id:foreignId,kind:"lesson",lesson_id:null,
+   invoice_id:foreignId,kind:"lesson",session_id:null,student_id:null,
    description:"Other customer's data",quantity:1,unit_cents:200,
    amount_cents:200,sort_order:0,
   })).error).toBeNull();

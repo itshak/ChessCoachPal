@@ -28,7 +28,7 @@ const baseLesson: BillableLessonInput = {
   lessonDate: "2026-06-15",
   startsAt: "2026-06-15T21:00:00.000Z", // 4 PM CDT
   durationMinutes: 30,
-  makeupFor: null,
+  makeupForSessionId: null,
   attendanceStatus: "attended",
   noticeAt: null,
   rate: {
@@ -115,14 +115,14 @@ describe("isBillable", () => {
   it("skips make-up lessons when bill_makeup is false", () => {
     expect(
       isBillable(
-        { ...baseLesson, makeupFor: "att-1", attendanceStatus: "attended" },
+        { ...baseLesson, makeupForSessionId: "att-1", attendanceStatus: "attended" },
         DEFAULT_POLICY
       )
     ).toBe(false);
     const policy: StudioPolicy = { ...DEFAULT_POLICY, bill_makeup: true };
     expect(
       isBillable(
-        { ...baseLesson, makeupFor: "att-1", attendanceStatus: "attended" },
+        { ...baseLesson, makeupForSessionId: "att-1", attendanceStatus: "attended" },
         policy
       )
     ).toBe(true);
@@ -298,7 +298,7 @@ describe("deriveInvoiceItems", () => {
       amountCents: 500,
       missingRate: false,
     });
-    // Same lesson_id on both lines is intentional; invoice insert allows it
+    // Same session_id + student_id on both lines is intentional; invoice insert allows it
     // and double-billing exclusion keys off the lesson once.
     expect(items[0].lessonId).toBe(items[1].lessonId);
     expect(sumAmountCents(items)).toBe(2500);

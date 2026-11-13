@@ -26,6 +26,7 @@ export const legacyActionTools=Object.freeze({
   "sessions.participants":"ccp_v1_sessions_participants",
   "attendance.list":"ccp_v1_attendance_preview",
   "attendance.record":"ccp_v1_attendance_record",
+  "attendance.bulkRecord":"ccp_v1_attendance_bulk_record",
   "chess.categories.list":"ccp_v1_chess_categories_list",
   "chess.categories.create":"ccp_v1_chess_categories_create",
   "chess.categories.update":"ccp_v1_chess_categories_update",

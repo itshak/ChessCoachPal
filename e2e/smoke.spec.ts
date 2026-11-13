@@ -38,7 +38,7 @@ test.describe("ChessCoachPal core browser flows", () => {
     await signInAsTeacher(page);
     await page.goto("/schedule");
     await expect(page.getByRole("heading",{name:"Schedule"})).toBeVisible();
-    await expect(page.getByRole("button",{name:"Add One-off Lesson"})).toBeVisible();
+    await expect(page.getByRole("button",{name:"+ Private session"})).toBeVisible();
     await page.goto("/learning");
     await expect(page.getByRole("heading",{name:"Chess learning"})).toBeVisible();
   });

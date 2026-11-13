@@ -50,12 +50,85 @@ async function fixture(call:Tool){
  const attendance=await call("ccp_v1_attendance_preview",{sessionId});
  expect(attendance.error).toBeUndefined();
  const rows=attendance.data.attendance as Array<{
-  student_id:string;status:string;updated_at:string;
+  student_id:string;status:string;updated_at:string|null;
  }>;
  expect(rows).toHaveLength(2);
  return {workplaceId,studentIds:students,sessionId,
   updatedAt:details.data.updated_at as string,rows};
 }
+
+test("SCHEMA: absent attendance row represents an unmarked frozen participant",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const ctx=await fixture(call);
+ expect(ctx.rows.every(row=>row.status==="unmarked"&&row.updated_at===null)).toBe(true);
+ const client=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const signIn=await client.auth.signInWithPassword(SEED_TEACHER);
+ expect(signIn.error).toBeNull();
+ const {data:physical,error:readError}=await client.from("session_attendance")
+  .select("student_id").eq("session_id",ctx.sessionId);
+ expect(readError).toBeNull();
+ expect(physical).toHaveLength(0);
+ const studentId=ctx.studentIds[0],key=randomUUID();
+ const first={sessionId:ctx.sessionId,studentId,status:"present",
+  note:"First attendance decision",expectedUpdatedAt:null,idempotencyKey:key};
+ const marked=await call("ccp_v1_attendance_record",first);
+ expect(marked.error).toBeUndefined();
+ const replay=await call("ccp_v1_attendance_record",first);
+ expect(replay.error).toBeUndefined();
+ expect(replay.data).toEqual(marked.data);
+ const stale=await call("ccp_v1_attendance_record",{
+  ...first,idempotencyKey:randomUUID(),
+ });
+ expect(stale.error?.code).toBe("CONFLICT");
+ const register=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
+ const rows=register.data.attendance as Array<{student_id:string;status:string;updated_at:string|null}>;
+ expect(rows).toHaveLength(2);
+ expect(rows.find(row=>row.student_id===studentId)?.status).toBe("present");
+ expect(rows.find(row=>row.student_id===ctx.studentIds[1])).toMatchObject({
+  status:"unmarked",updated_at:null,
+ });
+});
+
+test("PARITY:PARITY-atomic-bulk-attendance website and delegated MCP rollback and replay identically",async({page,request})=>{
+ const call=await delegatedTool(page,request),ctx=await fixture(call);
+ const attendance=ctx.rows.map((row,i)=>({
+  studentId:row.student_id,status:i===0?"present" as const:"late" as const,
+  note:"Bulk decision "+i,expectedUpdatedAt:row.updated_at,
+ }));
+ const wrong=await page.request.post("/api/agent/v1",{data:{
+  action:"attendance.bulkRecord",sessionId:ctx.sessionId,
+  idempotencyKey:randomUUID(),attendance:[
+   attendance[0],{...attendance[1],expectedUpdatedAt:"2000-01-01T00:00:00.000Z"},
+  ],
+ }});
+ expect(wrong.status(),await wrong.text()).toBe(409);
+ const still=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
+ expect(still.error).toBeUndefined();
+ expect(still.data.attendance.every((row:{status:string})=>row.status==="unmarked")).toBe(true);
+ const input={sessionId:ctx.sessionId,idempotencyKey:randomUUID(),attendance};
+ const web=await page.request.post("/api/agent/v1",{
+  data:{action:"attendance.bulkRecord",...input},
+ });
+ expect(web.status(),await web.text()).toBe(200);
+ const receipt=(await web.json()).data;
+ expect(receipt.attendance).toHaveLength(2);
+ const replay=await call("ccp_v1_attendance_bulk_record",input);
+ expect(replay.error).toBeUndefined();
+ expect(replay.data).toEqual(receipt);
+ const fresh=await call("ccp_v1_attendance_bulk_record",{
+  ...input,idempotencyKey:randomUUID(),
+ });
+ expect(fresh.error?.code).toBe("CONFLICT");
+ const details=await call("ccp_v1_sessions_details",{sessionId:ctx.sessionId});
+ expect(details.error).toBeUndefined();
+ expect(details.data.status).toBe("scheduled");
+ const now=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
+ expect(now.data.attendance.map((row:{status:string})=>row.status).sort())
+  .toEqual(["late","present"]);
+});
 
 test("PARITY:PARITY-sessions-complete-atomic rolls back stale roster and replays across website/MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);
@@ -177,4 +250,51 @@ test("PARITY:PARITY-completion-cannot-bypass rejects ordinary website/MCP and di
  const register=await call("ccp_v1_attendance_preview",{sessionId:ctx.sessionId});
  expect(register.error).toBeUndefined();
  expect(register.data.attendance.every((row:{status:string})=>row.status==="unmarked")).toBe(true);
+});
+
+
+test("PARITY:canonical-participant-cancellation preserves notice across website and MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const ctx=await fixture(call);
+ const participant=ctx.rows[0];
+ const noticeAt="2057-12-21T09:30:00.000Z";
+ const key=randomUUID();
+ const input={
+  sessionId:ctx.sessionId,studentId:participant.student_id,
+  status:"student_cancelled",note:"Guardian communicated a cancellation",
+  noticeAt,cancelReason:"School trip",
+  expectedUpdatedAt:participant.updated_at,idempotencyKey:key,
+ };
+ const cancelled=await call("ccp_v1_attendance_record",input);
+ expect(cancelled.error).toBeUndefined();
+ expect(cancelled.data.attendance).toHaveLength(1);
+ expect(cancelled.data.attendance[0]).toMatchObject({
+  studentId:participant.student_id,status:"student_cancelled",
+  cancelledBy:"student",cancelReason:"School trip",
+ });
+ expect(new Date(cancelled.data.attendance[0].noticeAt as string).toISOString()).toBe(noticeAt);
+ const replay=await call("ccp_v1_attendance_record",input);
+ expect(replay.error).toBeUndefined();
+ expect(replay.data).toEqual(cancelled.data);
+ const read=await page.request.post("/api/agent/v1",{
+  data:{action:"attendance.list",sessionId:ctx.sessionId},
+ });
+ expect(read.status(),await read.text()).toBe(200);
+ const row=(await read.json()).data.find((item:{student_id:string})=>
+   item.student_id===participant.student_id);
+ expect(row).toMatchObject({status:"student_cancelled",cancelled_by:"student",
+   cancel_reason:"School trip"});
+ expect(new Date(row.notice_at).toISOString()).toBe(noticeAt);
+ // A teacher website correction and delegated MCP share a single SQL writer.
+ const corrected=await page.request.post("/api/agent/v1",{
+  data:{action:"attendance.record",sessionId:ctx.sessionId,
+   studentId:participant.student_id,status:"present",note:"Attendance corrected"},
+ });
+ expect(corrected.status(),await corrected.text()).toBe(200);
+ expect((await corrected.json()).data).toMatchObject({status:"present",
+  cancelled_by:null,notice_at:null,cancel_reason:""});
+ const conflict=await call("ccp_v1_attendance_record",{
+  ...input,status:"teacher_cancelled",note:"Different decision",
+ });
+ expect(conflict.error?.code).toBe("CONFLICT");
 });
