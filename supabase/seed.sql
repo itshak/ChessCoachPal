@@ -89,20 +89,51 @@ INSERT INTO public.lesson_slots (
 ('60000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000003',4,'17:00',45,CURRENT_DATE - 14,5000),
 ('60000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000004',3,'18:00',45,CURRENT_DATE - 14,6000);
 
-INSERT INTO public.lessons (
-  id, teacher_id, student_id, slot_id, lesson_date, starts_at, duration_minutes
-) VALUES (
-  '70000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001',
-  '10000000-0000-0000-0000-000000000001','60000000-0000-0000-0000-000000000001',
-  CURRENT_DATE - 7,
-  ((CURRENT_DATE - 7) + time '16:00') AT TIME ZONE 'America/Chicago',30
+-- Synthetic students belong to the teacher's initial private-coaching
+-- workplace. Canonical private sessions validate frozen roster and enrollment.
+INSERT INTO public.workplace_enrollments (teacher_id,workplace_id,student_id)
+SELECT s.teacher_id,w.id,s.id
+FROM public.students s
+JOIN LATERAL (
+ SELECT id FROM public.workplaces w
+ WHERE w.teacher_id=s.teacher_id ORDER BY w.created_at,w.id LIMIT 1
+) w ON true
+WHERE s.teacher_id='00000000-0000-0000-0000-000000000001'
+ON CONFLICT DO NOTHING;
+
+-- The one synthetic completed private lesson exists ONLY as a canonical
+-- teaching_session; the INSERT trigger freezes its student participant.
+INSERT INTO public.teaching_sessions (
+ id,teacher_id,workplace_id,student_id,title,
+ slot_id,slot_occurrence_date,starts_at,duration_minutes,
+ local_timezone,status,is_home_visit,slot_rate_cents
+) SELECT
+ '70000000-0000-0000-0000-000000000001',
+ '00000000-0000-0000-0000-000000000001',w.id,
+ '10000000-0000-0000-0000-000000000001','Private chess lesson',
+ '60000000-0000-0000-0000-000000000001',
+ (date_trunc('week',current_date)::date - 6),
+ ((date_trunc('week',current_date)::date - 6)+time '16:00')
+   AT TIME ZONE 'America/Chicago',
+ 30,'America/Chicago','completed',false,NULL
+ FROM public.workplaces w
+ WHERE w.teacher_id='00000000-0000-0000-0000-000000000001'
+ ORDER BY w.created_at,w.id LIMIT 1;
+INSERT INTO public.session_attendance (
+ teacher_id,session_id,student_id,status,marked_at,updated_at
+) VALUES(
+ '00000000-0000-0000-0000-000000000001',
+ '70000000-0000-0000-0000-000000000001',
+ '10000000-0000-0000-0000-000000000001','present',now(),now()
 );
-INSERT INTO public.attendance (id, lesson_id, status) VALUES
-('80000000-0000-0000-0000-000000000001','70000000-0000-0000-0000-000000000001','attended');
-INSERT INTO public.lesson_notes (lesson_id, body, private_body, shared_with_parent) VALUES (
-  '70000000-0000-0000-0000-000000000001',
-  'Emma spotted a fork and practiced king-and-pawn endings.',
-  'Next: introduce queen-and-rook checkmate.', true
+INSERT INTO public.session_notes (
+ teacher_id,session_id,student_id,body,private_body,shared_with_guardian
+) VALUES (
+ '00000000-0000-0000-0000-000000000001',
+ '70000000-0000-0000-0000-000000000001',
+ '10000000-0000-0000-0000-000000000001',
+ 'Emma spotted a fork and practiced king-and-pawn endings.',
+ 'Next: introduce queen-and-rook checkmate.',true
 );
 
 INSERT INTO public.skill_dimensions (id, teacher_id, name, sort_order) VALUES
