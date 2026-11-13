@@ -24,13 +24,18 @@ export function validateCheckedParityRow(row, ordinal, exists, read) {
     }
     const next = lines.findIndex((line, i) => i > testIndex && /^\s*(test|it)\s*\(/.test(line));
     const body = lines.slice(testIndex, next < 0 ? testIndex + 250 : next).join("\n");
+    // Canonical E2E tests name their real OAuth/MCP helper "tool".
+    // Require both initialization and a named authenticated MCP call.
+    const delegatedMcp = /\bconst\s+tool\s*=\s*await\s+delegatedTool\s*\(/.test(body)
+      && /\btool\s*\(\s*["']ccp_v1_[a-z0-9_]+["']/.test(body);
     const checks = [
       [/tools\/call|\bcall\s*\(|\bcallTool\s*\(/, "MCP invocation"],
       [/page\.request\.|\brequest\.(get|post|put|patch|delete)\s*\(\s*["']\/api\//, "website API request"],
       [/\bexpect\s*\(/, "assertion"],
     ];
     for (const [pattern, name] of checks) {
-      if (!pattern.test(body)) errors.push("Checked parity scenario " + ordinal +
+      if (!pattern.test(body) && !(name === "MCP invocation" && delegatedMcp))
+        errors.push("Checked parity scenario " + ordinal +
         " named test PARITY:" + id + " lacks " + name);
     }
   }

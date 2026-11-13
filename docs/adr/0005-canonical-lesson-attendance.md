@@ -1,6 +1,6 @@
 # ADR-0005: One canonical lesson occurrence, roster and attendance ledger
 
-**Status:** Accepted architectural direction; implementation incomplete (strict MCP parity blocker)
+**Status:** Physical source cutover verified on stacked branch; overall parity and merged-main acceptance pending
 **Date:** 2026-11-12
 
 ## Context
@@ -73,7 +73,6 @@ cannot certify semantic equality while both are independent writers.
 
 ## Current status
 
-As of 2026-11-12, this decision is **not implemented end to end**:
-legacy calendar and coaching attendance are still independent writers.
-The strict source audit deliberately flags that condition. Keep parity
-OpenSpecs and PRs open; do not assert release readiness.
+**2026-11-13 stacked source `bb498083`**: the strict source audit found zero old physical tables, legacy-runtime consumers or old financial ID fields. [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43431098540), [229-pass authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43431098437), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43431098438), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43431098458) and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43431098490) passed on this exact head, with five intentional E2E skips.
+
+Physical single-model cutover on this branch does **not** certify behavioral or merged-main parity. The historical matrix is 89/93 and new canonical matrix 21/26, with exact strict gates still blocked. No automatic reset or prior-data compatibility layer.

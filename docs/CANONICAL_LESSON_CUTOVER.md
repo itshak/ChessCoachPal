@@ -1,3 +1,5 @@
+> **2026-11-13 physical cutover progress:** `bb498083` passed the strict no-legacy source guard and [229 authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43431098437). The 2026-11-12 blocker description below records the historical pre-cutover state; the old physical writer is absent from this stacked implementation branch. Four original and five new behavioral sign-offs remain, as do main integration gates.
+
 # Canonical chess lesson occurrence: cutover contract and source disposition
 
 **State: implementation dependency contract, not acceptance.** 2026-11-12.

@@ -1,8 +1,8 @@
 # Canonical lesson/attendance cutover — source inventory
 
-**State:** Unresolved implementation inventory for OpenSpec consolidate-canonical-lessons-and-attendance, inspected on 2026-11-12 against PR #58 head 10bbc99a. This is NOT evidence of a completed migration or website/MCP parity.
+**State:** 2026-11-13 verified physical cutover at `bb498083`; descriptions below are historical cutover inventory, not unresolved physical dependencies. Behavioral/merged-main parity remains open.
 
-Run npm run schema:attendance:inventory for current source evidence, or npm run schema:attendance:strict for the intentionally failing pre-cutover source gate. The scanner excludes documentation and is NOT a substitute for E2E.
+Run npm run schema:attendance:inventory for current source evidence, or npm run schema:attendance:strict for the now-passing enforced zero-legacy source gate. The scanner excludes documentation and is NOT a substitute for E2E.
 
 ## Physical SQL objects and dependencies
 
@@ -40,3 +40,7 @@ Indirect entry points needing behavior tests even without direct old-table reads
 
 Verify exact-source SHA with types, unit/SQL integration, authenticated website/MCP E2E, security, Compose and backup/restore. Parent strict 93-case parity and merged-main gates remain separate. **No implementation checkboxes are completed by creating this inventory.**
 
+
+## Verified cutover checkpoint (2026-11-13)
+
+At source `bb498083`, [CI and source guard](https://github.com/itshak/ChessCoachPal/actions/runs/43431098540), [229-pass authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43431098437), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43431098438), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43431098458) and [restore](https://github.com/itshak/ChessCoachPal/actions/runs/43431098490) all succeeded. Audit: zero removed physical tables, old-table consumers, old financial fields. Independent holiday/financial-protection and new canonical parity sign-offs plus main integration remain open. No populated database reset is authorized.
