@@ -5,7 +5,7 @@ import Link from "next/link";
 import {useRouter} from "next/navigation";
 import {useToast} from "@/components/ui/toast";
 import type {CanonicalCalendarRow} from "@/lib/server/canonical-calendar-read";
-import {addDays,toLocalDateString,formatLessonDate,formatLessonTime} from "@/lib/schedule";
+import {addDays,toLocalDateString,formatLessonDate,formatLessonTime,zonedTimeToUtc} from "@/lib/schedule";
 
 type Student={id:string;name:string};
 type Workplace={id:string;name:string};
@@ -46,7 +46,11 @@ export function CanonicalScheduleBoard({
 }){
  const router=useRouter(),{showToast}=useToast();
  const [open,setOpen]=useState<CanonicalCalendarRow|null>(null);
- const [tab,setTab]=useState<"attendance"|"notes">("attendance");
+ const [tab,setTab]=useState<"attendance"|"notes"|"schedule">("attendance");
+ const [moveDate,setMoveDate]=useState(today);
+ const [moveTime,setMoveTime]=useState("16:00");
+ const [moveDuration,setMoveDuration]=useState(60);
+ const [bulkDecision,setBulkDecision]=useState<"present"|"absent"|"teacher_cancelled">("present");
  const [register,setRegister]=useState<AttendanceRow[]>([]);
  const [notes,setNotes]=useState<NoteRow[]>([]);
  const [selectedStudent,setSelectedStudent]=useState("");
@@ -97,7 +101,7 @@ export function CanonicalScheduleBoard({
   setShareWithGuardian(item?.shared_with_guardian??false);
   setEmailGuardian(false);
  }
- async function openSession(session:CanonicalCalendarRow,section:"attendance"|"notes"){
+ async function openSession(session:CanonicalCalendarRow,section:"attendance"|"notes"|"schedule"){
   setBusy(true);
   try{
    const path="/api/coaching/sessions/"+session.id;
@@ -105,9 +109,18 @@ export function CanonicalScheduleBoard({
    // click on the notes editor, never in the initial roster/calendar payload.
    const endpoint=section==="notes"?
     path+"/notes?includePrivate=true&confirmed=true":path+"/attendance";
-   const rows=await jsonResponse(await fetch(endpoint,{cache:"no-store"}));
+   const rows=section==="schedule"?[]:
+    await jsonResponse(await fetch(endpoint,{cache:"no-store"}));
    if(!Array.isArray(rows))throw new Error("Invalid session register");
    setOpen(session);setTab(section);
+   if(section==="schedule"){
+    const zone=session.local_timezone||timezone;
+    setMoveDate(toLocalDateString(new Date(session.starts_at),zone));
+    setMoveTime(new Intl.DateTimeFormat("en-GB",{timeZone:zone,
+      hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date(session.starts_at)));
+    setMoveDuration(session.duration_minutes);
+    return;
+   }
    const first=session.participants[0]?.studentId??"";
    if(section==="notes"){
     setNotes(rows as NoteRow[]);loadNote(first,rows as NoteRow[]);
@@ -166,6 +179,64 @@ export function CanonicalScheduleBoard({
    setNotes(fresh);loadNote(selectedStudent,fresh);
    showToast(result.emailQueued?"Notes saved; approved family email queued":"Notes saved");
    router.refresh();
+  }catch(e){showToast(errText(e),"error")}
+  finally{setBusy(false)}
+ }
+
+ async function saveSchedule(){
+  if(!open)return;
+  let startsAt:string;
+  try{
+   startsAt=zonedTimeToUtc(moveDate,moveTime,open.local_timezone||timezone,"reject").toISOString();
+  }catch{showToast("Selected local time does not exist in this timezone","error");return;}
+  setBusy(true);
+  try{
+   await jsonResponse(await fetch("/api/coaching/sessions/"+open.id+"/lifecycle",{
+    method:"PATCH",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({startsAt,durationMinutes:moveDuration,
+      expectedUpdatedAt:open.updated_at,idempotencyKey:crypto.randomUUID()}),
+   }));
+   setOpen(null);showToast("Teaching session rescheduled");router.refresh();
+  }catch(e){showToast(errText(e),"error")}
+  finally{setBusy(false)}
+ }
+ async function cancelTeachingSession(){
+  if(!open)return;
+  if(!window.confirm("Cancel this session for every frozen participant? Attendance and billing evidence will be preserved."))return;
+  setBusy(true);
+  try{
+   await jsonResponse(await fetch("/api/coaching/sessions/"+open.id+"/lifecycle",{
+    method:"PATCH",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({status:"cancelled",
+      expectedUpdatedAt:open.updated_at,idempotencyKey:crypto.randomUUID()}),
+   }));
+   setOpen(null);showToast("Session cancelled, historical evidence retained");router.refresh();
+  }catch(e){showToast(errText(e),"error")}
+  finally{setBusy(false)}
+ }
+ async function bulkAttendance(){
+  if(!open||!register.length)return;
+  if(bulkDecision==="teacher_cancelled"&&notifyFamily&&
+    !window.confirm("Queue teacher-approved cancellation emails for each family?"))return;
+  setBusy(true);
+  try{
+   await jsonResponse(await fetch("/api/coaching/sessions/"+open.id+"/attendance",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+     idempotencyKey:crypto.randomUUID(),
+     attendance:register.map(row=>({
+      studentId:row.studentId,status:bulkDecision,note:row.note??"",
+      noticeAt:null,cancelReason:bulkDecision==="teacher_cancelled"?cancelReason:"",
+      expectedUpdatedAt:row.updatedAt??null,
+      notifyFamily:bulkDecision==="teacher_cancelled"&&notifyFamily,
+      confirmed:true,confirmedEmail:bulkDecision==="teacher_cancelled"&&notifyFamily,
+     })),
+    }),
+   }));
+   const fresh=await jsonResponse(await fetch(
+    "/api/coaching/sessions/"+open.id+"/attendance",{cache:"no-store"}));
+   setRegister(fresh);loadDecision(selectedStudent,fresh);
+   showToast("Attendance updated for the full frozen roster");router.refresh();
   }catch(e){showToast(errText(e),"error")}
   finally{setBusy(false)}
  }
