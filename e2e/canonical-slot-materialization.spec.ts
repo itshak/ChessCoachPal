@@ -31,6 +31,10 @@ test("SCHEMA: one canonical session per recurrence identity, no teacher-owned du
  const timezone=policy?.timezone ?? "UTC";
  const date="2058-06-25";
  const day=new Date(date+"T00:00:00.000Z").getUTCDay();
+ const enrolled=await tool("ccp_v1_workplaces_enroll",{
+  workplaceId:workplaces![0].id,studentId,idempotencyKey:randomUUID(),
+ });
+ expect(enrolled.error).toBeUndefined();
  const {data:slot,error:slotError}=await db.from("lesson_slots").insert({
    teacher_id:teacher,student_id:studentId,
    workplace_id:workplaces![0].id,day_of_week:day,
