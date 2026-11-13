@@ -22,3 +22,26 @@ test("strict release gate rejects incomplete teacher parity and unsigned cases",
   assert.match(result.stderr, /Strict MCP-first parity gate failed/);
   assert.match(result.stderr, /unchecked browser\/MCP behavior scenarios/);
 });
+
+
+import {teacherDomainParityErrors} from "./mcp-parity-domain-guard.mjs";
+
+test("shared domain contract rejects an MCP-invisible new website operation",()=>{
+  const web='import {teacherStudentsList,teacherStudentsUnsafeEdit} from "@/lib/server/student-profile-service";';
+  const mcp='import {teacherStudentsList} from "@/lib/server/student-profile-service";';
+  const errors=teacherDomainParityErrors("app/api/students/route.ts",web,mcp);
+  assert.match(errors.join("\n"),/teacherStudentsUnsafeEdit.*lacks matching MCP import/);
+});
+
+test("shared domain contract accepts matching actions, but rejects a route with no shared service",()=>{
+  const web='import {teacherStudentsList} from "@/lib/server/student-profile-service";';
+  const mcp='import {teacherStudentsList} from "@/lib/server/student-profile-service";';
+  assert.deepEqual(teacherDomainParityErrors("app/api/students/route.ts",web,mcp),[]);
+  assert.match(teacherDomainParityErrors("app/api/students/route.ts",web,"").join("\n"),/lacks a shared/);
+});
+
+test("model-safe teacher export is a reviewed narrow privacy exception",()=>{
+  const web='import {teacherExport} from "@/lib/server/teacher-transfer-service";';
+  const mcp='import {teacherSafeExport} from "@/lib/server/teacher-transfer-service";';
+  assert.deepEqual(teacherDomainParityErrors("app/api/settings/export/route.ts",web,mcp),[]);
+});

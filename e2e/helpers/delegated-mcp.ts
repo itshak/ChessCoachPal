@@ -53,6 +53,19 @@ export async function delegatedTool(page: Page, request: APIRequestContext, scop
   };
   // Stable client identity lets acceptance tests target only their own OAuth
   // grant for revocation instead of touching parallel/seeded connections.
-  return Object.assign(invoke,{clientId});
+  // Scoped OAuth discovery; never expose bearer credentials to test cases.
+  // The full live catalogue is checked against the reviewed teacher-route inventory.
+  const listTools=async ()=>{
+    const reply=await request.post("/mcp",{headers:{
+      Authorization:"Bearer "+token,"MCP-Protocol-Version":"2025-06-18",
+    },data:{jsonrpc:"2.0",id:randomUUID(),method:"tools/list",params:{}}});
+    expect(reply.status(),await reply.text()).toBe(200);
+    const result=await reply.json() as {result?:{tools?:Array<{
+      name:string;inputSchema?:Record<string,any>;
+    }>};error?:unknown};
+    expect(result.error).toBeUndefined();
+    return result.result?.tools??[];
+  };
+  return Object.assign(invoke,{clientId,listTools});
 }
 

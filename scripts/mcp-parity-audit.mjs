@@ -9,6 +9,7 @@ import { validateCheckedParityRow, validateUniqueCheckedParityReferences } from 
 import { validateLegacyActionCoverage } from "./mcp-legacy-actions.mjs";
 import { validateGatewayActionE2E } from "./mcp-gateway-evidence.mjs";
 import { canonicalOccurrenceSchemaErrors } from "./canonical-lessons-guard.mjs";
+import { teacherDomainParityErrors } from "./mcp-parity-domain-guard.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const inventory = JSON.parse(readFileSync(join(root, "scripts/mcp-website-parity.json"), "utf8"));
@@ -64,6 +65,7 @@ for (const route of inventory.apiRoutes) {
   assert(knownParities.has(route.parity),route.path+": invalid parity status");
   assert(route.explanation && route.explanation.length>12,route.path+": missing justification");
   const source = readFileSync(join(root,route.path),"utf8");
+  if(route.kind==="teacher") errors.push(...teacherDomainParityErrors(route.path,source,registeredTools));
   const methods = [...source.matchAll(/export\s+(?:async\s+)?(?:function|const)\s+(GET|POST|PUT|PATCH|DELETE)\b/g)].map(m=>m[1]);
   assert(same(methods,route.methods),route.path+": HTTP methods changed; actual="+methods.join(",")+" expected="+route.methods.join(","));
   for (const t of route.existingTools) assert(liveNames.has(t),route.path+": claimed MCP tool does not exist: "+t);
