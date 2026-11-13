@@ -9109,6 +9109,8 @@ BEGIN
       AND NOT EXISTS(
         SELECT 1 FROM public.session_attendance WHERE session_id=v_session.id
       ) AND NOT EXISTS(
+        SELECT 1 FROM public.ccp_session_attendance_audit WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
         SELECT 1 FROM public.session_notes WHERE session_id=v_session.id
       ) AND NOT EXISTS(
         SELECT 1 FROM public.chess_observations WHERE session_id=v_session.id
@@ -9403,6 +9405,8 @@ BEGIN
    AND v_session.updated_at<=v_session.created_at+interval '1 microsecond'
    AND NOT EXISTS(SELECT 1 FROM public.session_attendance
       WHERE session_id=v_session.id)
+   AND NOT EXISTS(SELECT 1 FROM public.ccp_session_attendance_audit
+      WHERE session_id=v_session.id)
    AND NOT EXISTS(SELECT 1 FROM public.session_notes
       WHERE session_id=v_session.id)
    AND NOT EXISTS(SELECT 1 FROM public.invoice_items
@@ -9648,3 +9652,80 @@ REVOKE ALL ON FUNCTION public.ccp_backup_upsert_protected(text,jsonb)
  FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_backup_upsert_protected(text,jsonb)
  TO authenticated;
+
+
+-- Append-only canonical attendance revision evidence. Guarded owner-scoped
+-- SQL commands (teacher, delegated MCP, guardian portal and roster correction)
+-- all trigger this audit in their mutation transaction. A cleared attendance
+-- decision must remain reviewable; its historical session cannot disappear
+-- simply because the current attendance row no longer exists.
+CREATE TABLE public.ccp_session_attendance_audit (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  session_id uuid NOT NULL REFERENCES public.teaching_sessions(id) ON DELETE RESTRICT,
+  student_id uuid NOT NULL,
+  action text NOT NULL CHECK (action IN ('insert','update','delete')),
+  actor_role text NOT NULL CHECK (actor_role IN
+    ('authenticated','service_role','system')),
+  actor_id uuid,
+  before_value jsonb,
+  after_value jsonb,
+  recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  CONSTRAINT ccp_attendance_audit_valid_transition CHECK(
+    (action='insert' AND before_value IS NULL AND after_value IS NOT NULL) OR
+    (action='update' AND before_value IS NOT NULL AND after_value IS NOT NULL) OR
+    (action='delete' AND before_value IS NOT NULL AND after_value IS NULL)
+  )
+);
+CREATE INDEX ccp_attendance_audit_teacher_session_idx
+  ON public.ccp_session_attendance_audit
+  (teacher_id,session_id,student_id,recorded_at DESC,id);
+ALTER TABLE public.ccp_session_attendance_audit ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ccp_attendance_audit_teacher_read
+ ON public.ccp_session_attendance_audit FOR SELECT TO authenticated
+ USING (teacher_id=auth.uid());
+REVOKE ALL ON TABLE public.ccp_session_attendance_audit
+ FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON TABLE public.ccp_session_attendance_audit TO authenticated;
+GRANT ALL ON TABLE public.ccp_session_attendance_audit TO service_role;
+
+CREATE OR REPLACE FUNCTION public.ccp_audit_canonical_attendance()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $ccp_attendance_audit$
+DECLARE
+ v_old jsonb;
+ v_new jsonb;
+ v_actor_role text:=coalesce(auth.role(),'system');
+ v_row public.session_attendance%ROWTYPE;
+BEGIN
+ v_row:=CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+ IF v_actor_role NOT IN ('authenticated','service_role') THEN
+  v_actor_role:='system';
+ END IF;
+ IF TG_OP<>'INSERT' THEN
+  v_old:=jsonb_build_object(
+   'status',OLD.status,'note',OLD.note,
+   'noticeAt',OLD.notice_at,'cancelledBy',OLD.cancelled_by,
+   'cancelReason',OLD.cancel_reason,'markedAt',OLD.marked_at,
+   'markedBy',OLD.marked_by,'revision',OLD.updated_at);
+ END IF;
+ IF TG_OP<>'DELETE' THEN
+  v_new:=jsonb_build_object(
+   'status',NEW.status,'note',NEW.note,
+   'noticeAt',NEW.notice_at,'cancelledBy',NEW.cancelled_by,
+   'cancelReason',NEW.cancel_reason,'markedAt',NEW.marked_at,
+   'markedBy',NEW.marked_by,'revision',NEW.updated_at);
+ END IF;
+ INSERT INTO public.ccp_session_attendance_audit(
+   teacher_id,session_id,student_id,action,actor_role,actor_id,
+   before_value,after_value
+ ) VALUES(v_row.teacher_id,v_row.session_id,v_row.student_id,
+   lower(TG_OP),v_actor_role,auth.uid(),v_old,v_new);
+ RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+END;
+$ccp_attendance_audit$;
+REVOKE ALL ON FUNCTION public.ccp_audit_canonical_attendance()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_canonical_attendance_audit
+ AFTER INSERT OR UPDATE OR DELETE ON public.session_attendance
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_audit_canonical_attendance();
