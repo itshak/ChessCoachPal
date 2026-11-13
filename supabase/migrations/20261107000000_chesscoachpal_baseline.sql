@@ -8489,7 +8489,10 @@ BEGIN
    RAISE EXCEPTION 'FINANCE_WRONG_GUARDIAN' USING ERRCODE='42501';
  END IF;
  v_date:=(v_session.starts_at AT TIME ZONE
-  coalesce(nullif(v_session.local_timezone,''),'UTC'))::date;
+  coalesce(nullif(v_session.local_timezone,''),
+    (SELECT w.timezone FROM public.workplaces w
+      WHERE w.id=v_session.workplace_id
+        AND w.teacher_id=v_session.teacher_id),'UTC'))::date;
  IF v_date NOT BETWEEN v_invoice.period_start AND v_invoice.period_end THEN
    RAISE EXCEPTION 'FINANCE_OUTSIDE_INVOICE_PERIOD' USING ERRCODE='22023';
  END IF;
@@ -8555,7 +8558,10 @@ BEGIN
    RAISE EXCEPTION 'CREDIT_WRONG_DURATION' USING ERRCODE='23514';
  END IF;
  v_date:=(v_session.starts_at AT TIME ZONE
-    coalesce(nullif(v_session.local_timezone,''),'UTC'))::date;
+    coalesce(nullif(v_session.local_timezone,''),
+    (SELECT w.timezone FROM public.workplaces w
+      WHERE w.id=v_session.workplace_id
+        AND w.teacher_id=v_session.teacher_id),'UTC'))::date;
  IF v_date<v_package.starts_on OR
    (v_package.expires_on IS NOT NULL AND v_date>v_package.expires_on) THEN
    RAISE EXCEPTION 'CREDIT_OUTSIDE_PACKAGE_DATES' USING ERRCODE='23514';
