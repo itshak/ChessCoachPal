@@ -1,17 +1,18 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/server";
-import { materializeLessons, getPolicy } from "@/lib/server/scheduling";
+import { getPolicy } from "@/lib/server/scheduling";
+import { materializeCanonicalSessions } from "@/lib/server/canonical-calendar-service";
+import { canonicalCalendarWindow } from "@/lib/server/canonical-calendar-read";
 import {
   addDays,
   toLocalDateString,
   formatLessonTime,
   formatLessonDate,
   formatShortDate,
-  ATTENDANCE_LABELS,
   oneToOne,
 } from "@/lib/schedule";
-import type { AttendanceStatus, RsvpStatus } from "@/lib/supabase/types";
+import type { RsvpStatus } from "@/lib/supabase/types";
 import { Card } from "@/components/ui/card";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { familyDisplayName } from "@/lib/guardians";
@@ -22,9 +23,9 @@ import {
 } from "@/lib/billing";
 import { describeCreditPackage } from "@/lib/credits";
 import {
-  loadCreditBalances,
-  type CreditPackageWithBalance,
-} from "@/lib/server/credits";
+  loadCanonicalCreditBalances,
+  type CanonicalPackageWithBalance,
+} from "@/lib/server/canonical-credits";
 import { isValidPaymentQrDataUrl } from "@/lib/payment-qr";
 import { formatEventWhen } from "@/lib/events";
 import { PortalCancelButton } from "@/components/portal/PortalCancelButton";
@@ -34,25 +35,23 @@ import { StudioPoliciesSection } from "@/components/portal/StudioPoliciesSection
 
 export const metadata: Metadata = { title: "Family Portal" };
 
+type PortalAttendanceStatus =
+  "present"|"late"|"absent"|"excused"|"student_cancelled"|"teacher_cancelled";
 interface PortalLesson {
-  id: string;
-  student_id: string;
-  lesson_date: string;
-  starts_at: string;
-  duration_minutes: number;
-  makeup_for: string | null;
-  attendance: { status: AttendanceStatus }[] | { status: AttendanceStatus } | null;
+  id:string;student_id:string;lesson_date:string;
+  starts_at:string;duration_minutes:number;makeup_for:string|null;
+  attendance:{status:PortalAttendanceStatus}|null;
 }
 
 function lessonIsUpcoming(
   lesson: PortalLesson,
-  status: AttendanceStatus | undefined,
+  status: PortalAttendanceStatus | undefined,
   cancelled: boolean
 ) {
   return (
     !cancelled &&
-    status !== "attended" &&
-    status !== "no_show" &&
+    status !== "present" &&
+    status !== "late" && status !== "absent" &&
     new Date(lesson.starts_at).getTime() > Date.now()
   );
 }
@@ -69,7 +68,7 @@ function PortalLessonCard({
   windowHours: number;
 }) {
   const status = oneToOne(lesson.attendance)?.status;
-  const cancelled = status === "teacher_cancel" || status === "student_cancel";
+  const cancelled = status === "teacher_cancelled" || status === "student_cancelled";
   const upcoming = lessonIsUpcoming(lesson, status, cancelled);
 
   return (
@@ -87,13 +86,14 @@ function PortalLessonCard({
         </div>
         {cancelled && status && (
           <span className="text-xs text-error font-medium">
-            {ATTENDANCE_LABELS[status]}
+            {status==="student_cancelled"?"Student cancelled":"Teacher cancelled"}
           </span>
         )}
         {upcoming && (
           <PortalCancelButton
             token={token}
             lessonId={lesson.id}
+            studentId={lesson.student_id}
             windowHours={windowHours}
           />
         )}
@@ -155,7 +155,7 @@ export default async function PortalPage({
       note: string;
     } | null;
   }[] = [];
-  let creditPackages: CreditPackageWithBalance[] = [];
+  let creditPackages: CanonicalPackageWithBalance[] = [];
 
   const invoicesRes = await supabase
     .from("invoices")
@@ -177,46 +177,56 @@ export default async function PortalPage({
       : null;
 
   if (studentIds.length > 0) {
-    await materializeLessons(supabase, guardian.teacher_id, today, addDays(today, 28));
-
-    const [lessonsRes, notesRes, eventsRes] = await Promise.all([
-      supabase
-        .from("lessons")
-        .select(
-          "id, student_id, lesson_date, starts_at, duration_minutes, makeup_for, attendance!lesson_id ( status )"
-        )
-        .in("student_id", studentIds)
-        .gte("lesson_date", today)
-        .lte("lesson_date", addDays(today, 28))
-        .order("starts_at"),
-      supabase
-        .from("lesson_notes")
-        .select("id, body, lessons!inner ( lesson_date, student_id )")
-        .eq("shared_with_parent", true)
-        .in("lessons.student_id", studentIds)
-        .order("updated_at", { ascending: false })
-        .limit(6),
-      supabase
-        .from("events")
-        .select(
-          `
-          id, title, description, location, starts_at, ends_at,
-          event_students!inner (
-            student_id, repertoire, sort_order,
-            students ( id, name )
-          ),
-          event_rsvps (
-            id, status, party_size, note, guardian_id
-          )
-        `
-        )
-        .eq("teacher_id", guardian.teacher_id)
-        .gte("starts_at", new Date().toISOString())
-        .in("event_students.student_id", studentIds)
-        .order("starts_at"),
+    await materializeCanonicalSessions(supabase,guardian.teacher_id,today,
+      addDays(today,28),{trustedServiceRole:true});
+    const [sessionRows,eventsRes]=await Promise.all([
+      canonicalCalendarWindow(supabase,guardian.teacher_id,today,
+        addDays(today,28),policy.timezone,studentIds),
+      supabase.from("events").select(
+        `id,title,description,location,starts_at,ends_at,
+         event_students!inner(student_id,repertoire,sort_order,students(id,name)),
+         event_rsvps(id,status,party_size,note,guardian_id)`
+      ).eq("teacher_id",guardian.teacher_id)
+       .gte("starts_at",new Date().toISOString())
+       .in("event_students.student_id",studentIds).order("starts_at"),
     ]);
-    lessons = (lessonsRes.data ?? []) as unknown as PortalLesson[];
-    sharedNotes = (notesRes.data ?? []) as unknown as typeof sharedNotes;
+    lessons=sessionRows.flatMap(session=>session.participants.map(person=>({
+      id:session.id,student_id:person.studentId,
+      lesson_date:toLocalDateString(new Date(session.starts_at),
+        session.local_timezone||policy.timezone),
+      starts_at:session.starts_at,duration_minutes:session.duration_minutes,
+      makeup_for:session.makeup_for_session_id,
+      attendance:person.attendanceStatus?
+        {status:person.attendanceStatus as PortalAttendanceStatus}:null,
+    })));
+    const visibleSessions=[...new Set(sessionRows.map(s=>s.id))];
+    if(visibleSessions.length){
+      const noteRows:{id:string;body:string;session_id:string;student_id:string|null}[]=[];
+      for(let i=0;i<visibleSessions.length;i+=75){
+        const {data,error}=await supabase.from("session_notes")
+          .select("id,body,session_id,student_id").eq("teacher_id",guardian.teacher_id)
+          .eq("shared_with_guardian",true)
+          .in("session_id",visibleSessions.slice(i,i+75))
+          .order("updated_at",{ascending:false}).limit(100);
+        if(error)throw new Error("Family lesson notes unavailable");
+        noteRows.push(...(data??[]));
+      }
+      const visibleIds=new Set(studentIds);
+      const sessionsById=new Map(sessionRows.map(row=>[row.id,row]));
+      sharedNotes=noteRows.filter(note=>note.student_id===null||
+          visibleIds.has(note.student_id))
+        .map(note=>{
+          const session=sessionsById.get(note.session_id)!;
+          const person=note.student_id?
+            session.participants.find(x=>x.studentId===note.student_id):
+            session.participants[0];
+          return {id:note.id,body:note.body,lessons:person?{
+            lesson_date:toLocalDateString(new Date(session.starts_at),
+              session.local_timezone||policy.timezone),
+            student_id:person.studentId,
+          }:null};
+        }).slice(0,6);
+    }
 
     const studentIdSet = new Set(studentIds);
     portalEvents = ((eventsRes.data ?? []) as {
@@ -280,7 +290,7 @@ export default async function PortalPage({
 
     // Only packages the family can still use; used-up and expired ones drop off.
     creditPackages = (
-      await loadCreditBalances(
+      await loadCanonicalCreditBalances(
         supabase,
         guardian.teacher_id,
         policy,
