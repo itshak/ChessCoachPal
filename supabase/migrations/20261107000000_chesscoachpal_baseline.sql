@@ -8648,3 +8648,230 @@ REVOKE ALL ON FUNCTION public.ccp_protect_canonical_financed_attendance()
 CREATE TRIGGER ccp_protect_canonical_financed_attendance
  BEFORE UPDATE OR DELETE ON public.session_attendance
  FOR EACH ROW EXECUTE FUNCTION public.ccp_protect_canonical_financed_attendance();
+
+
+-- Financial cutover: the only new allocation identity is the pair
+-- (session_id, student_id). An instructor's group session is not copied for
+-- each pupil; a separate invoice line per participant carries the charge.
+-- The receipt hash intentionally preserves the existing website/MCP billing
+-- operation identity, so a replay is transport independent.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_invoice_generation_commit(
+ p_period_start date,p_period_end date,p_drafts jsonb,
+ p_redemptions jsonb,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_canonical_invoice_generate$
+DECLARE
+ v_teacher uuid:=auth.uid();v_currency text;
+ v_draft jsonb;v_line jsonb;v_credit jsonb;
+ v_invoice uuid;v_session uuid;v_student uuid;v_guardian uuid;
+ v_package uuid;v_kind text;v_description text;
+ v_quantity integer;v_unit integer;v_amount integer;
+ v_subtotal bigint;v_sort integer;
+ v_created jsonb:='[]'::jsonb;v_count integer:=0;v_credits integer:=0;
+ v_hash text;v_prior public.agent_tool_receipts%ROWTYPE;v_receipt jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501'; END IF;
+ IF p_request_id IS NULL OR p_period_start IS NULL OR p_period_end IS NULL
+    OR p_period_end<p_period_start OR p_period_end-p_period_start>367
+    OR jsonb_typeof(p_drafts) IS DISTINCT FROM 'array'
+    OR jsonb_typeof(p_redemptions) IS DISTINCT FROM 'array'
+    OR jsonb_array_length(p_drafts)>200
+    OR jsonb_array_length(p_redemptions)>2000
+    OR pg_column_size(p_drafts)>2000000 OR pg_column_size(p_redemptions)>150000
+ THEN
+   RAISE EXCEPTION 'INVALID_BILLING_BATCH' USING ERRCODE='22023';
+ END IF;
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ v_hash:=md5(jsonb_build_array('billing.generation.commit',
+     p_period_start,p_period_end)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_request_id,'billing.generation.commit',v_hash,'{}'::jsonb)
+ ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_prior FROM public.agent_tool_receipts
+     WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+   IF NOT FOUND OR v_prior.operation<>'billing.generation.commit'
+      OR v_prior.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'BILLING_GENERATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_prior.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT currency INTO v_currency FROM public.studio_policies
+  WHERE teacher_id=v_teacher;
+ IF v_currency IS NULL THEN RAISE EXCEPTION 'STUDIO_POLICY_NOT_FOUND' USING ERRCODE='42501'; END IF;
+ FOR v_credit IN SELECT value FROM jsonb_array_elements(p_redemptions) LOOP
+   v_session:=(v_credit->>'sessionId')::uuid;
+   v_student:=(v_credit->>'studentId')::uuid;
+   v_package:=(v_credit->>'packageId')::uuid;
+   IF v_session IS NULL OR v_student IS NULL OR v_package IS NULL THEN
+    RAISE EXCEPTION 'INVALID_CREDIT_ALLOCATION' USING ERRCODE='22023';
+   END IF;
+   INSERT INTO public.credit_redemptions(
+    teacher_id,session_id,student_id,package_id
+   ) VALUES(v_teacher,v_session,v_student,v_package);
+   v_credits:=v_credits+1;
+ END LOOP;
+ FOR v_draft IN SELECT value FROM jsonb_array_elements(p_drafts) LOOP
+   v_guardian:=(v_draft->>'guardianId')::uuid;
+   IF v_guardian IS NULL OR NOT EXISTS(
+     SELECT 1 FROM public.guardians WHERE id=v_guardian AND teacher_id=v_teacher
+   ) OR jsonb_typeof(v_draft->'items') IS DISTINCT FROM 'array'
+     OR jsonb_array_length(v_draft->'items') NOT BETWEEN 1 AND 2000
+   THEN RAISE EXCEPTION 'INVALID_BILLING_FAMILY' USING ERRCODE='22023'; END IF;
+   INSERT INTO public.invoices(
+    teacher_id,guardian_id,period_start,period_end,status,
+    subtotal_cents,currency
+   ) VALUES(v_teacher,v_guardian,p_period_start,p_period_end,'draft',0,v_currency)
+   RETURNING id INTO v_invoice;
+   v_subtotal:=0;v_sort:=0;
+   FOR v_line IN SELECT value FROM jsonb_array_elements(v_draft->'items') LOOP
+     v_session:=(v_line->>'sessionId')::uuid;
+     v_student:=(v_line->>'studentId')::uuid;
+     v_kind:=v_line->>'kind';
+     v_description:=nullif(btrim(v_line->>'description'),'');
+     v_quantity:=(v_line->>'quantity')::integer;
+     v_unit:=(v_line->>'unitCents')::integer;
+     v_amount:=(v_line->>'amountCents')::integer;
+     IF v_session IS NULL OR v_student IS NULL
+       OR v_kind NOT IN ('lesson','travel') OR
+       v_description IS NULL OR length(v_description)>500 OR
+       v_quantity NOT BETWEEN 1 AND 10000 OR
+       v_unit NOT BETWEEN 0 AND 100000000 OR
+       v_amount NOT BETWEEN 0 AND 100000000 OR
+       v_quantity::bigint*v_unit<>v_amount THEN
+       RAISE EXCEPTION 'INVALID_BILLING_LINE' USING ERRCODE='22023';
+     END IF;
+     INSERT INTO public.invoice_items(
+       invoice_id,session_id,student_id,kind,description,
+       quantity,unit_cents,amount_cents,sort_order
+     ) VALUES(v_invoice,v_session,v_student,v_kind,v_description,
+       v_quantity,v_unit,v_amount,v_sort);
+     v_subtotal:=v_subtotal+v_amount;
+     v_sort:=v_sort+1;
+   END LOOP;
+   IF v_subtotal>2147483647 THEN
+      RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';
+   END IF;
+   UPDATE public.invoices SET subtotal_cents=v_subtotal::integer
+      WHERE id=v_invoice;
+   v_created:=v_created||jsonb_build_array(v_invoice);
+   v_count:=v_count+1;
+ END LOOP;
+ v_receipt:=jsonb_build_object('created',v_created,'count',v_count,
+  'creditsUsed',v_credits,'periodStart',p_period_start,'periodEnd',p_period_end,
+  'idempotencyKey',p_request_id,'replayed',false);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+   WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ RETURN v_receipt;
+END;
+$ccp_canonical_invoice_generate$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_invoice_generation_commit(
+ date,date,jsonb,jsonb,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_invoice_generation_commit(
+ date,date,jsonb,jsonb,uuid) TO authenticated;
+
+-- Draft regeneration never mutates a paid/sent invoice or an invoice with a
+-- live checkout, payment, or prepaid package sale. The replacement is one
+-- transaction, with its original revision and receipt.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_invoice_regenerate_atomic(
+ p_invoice_id uuid,p_items jsonb,p_redemptions jsonb,
+ p_expected_updated_at timestamptz,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_canonical_invoice_regenerate$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_invoice public.invoices%ROWTYPE;
+ v_credit jsonb;v_line jsonb;v_session uuid;v_student uuid;v_package uuid;
+ v_kind text;v_description text;v_quantity integer;v_unit integer;v_amount integer;
+ v_subtotal bigint:=0;v_sort integer:=0;v_hash text;
+ v_prior public.agent_tool_receipts%ROWTYPE;v_receipt jsonb;v_updated timestamptz;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_invoice_id IS NULL OR p_request_id IS NULL OR p_expected_updated_at IS NULL OR
+   jsonb_typeof(p_items) IS DISTINCT FROM 'array' OR
+   jsonb_typeof(p_redemptions) IS DISTINCT FROM 'array' OR
+   jsonb_array_length(p_items)>2000 OR jsonb_array_length(p_redemptions)>2000
+ THEN RAISE EXCEPTION 'INVALID_REGENERATION_INPUT' USING ERRCODE='22023';END IF;
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ v_hash:=md5(jsonb_build_array('billing.invoice.regenerate',
+    p_invoice_id,p_expected_updated_at)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_request_id,'billing.invoice.regenerate',v_hash,'{}'::jsonb)
+ ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_prior FROM public.agent_tool_receipts
+    WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+   IF NOT FOUND OR v_prior.operation<>'billing.invoice.regenerate'
+      OR v_prior.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'INVOICE_REGENERATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_prior.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_invoice FROM public.invoices
+   WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF v_invoice.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+   RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';
+ END IF;
+ IF v_invoice.status<>'draft'
+   OR EXISTS(SELECT 1 FROM public.credit_packages WHERE invoice_id=p_invoice_id)
+   OR EXISTS(SELECT 1 FROM public.payments WHERE invoice_id=p_invoice_id)
+   OR v_invoice.stripe_checkout_session_id IS NOT NULL
+   OR v_invoice.stripe_checkout_url IS NOT NULL
+   OR v_invoice.stripe_payment_intent_id IS NOT NULL THEN
+   RAISE EXCEPTION 'INVOICE_REGENERATION_BLOCKED' USING ERRCODE='23514';
+ END IF;
+ DELETE FROM public.invoice_items WHERE invoice_id=p_invoice_id;
+ FOR v_credit IN SELECT value FROM jsonb_array_elements(p_redemptions) LOOP
+   v_session:=(v_credit->>'sessionId')::uuid;
+   v_student:=(v_credit->>'studentId')::uuid;
+   v_package:=(v_credit->>'packageId')::uuid;
+   IF v_session IS NULL OR v_student IS NULL OR v_package IS NULL THEN
+    RAISE EXCEPTION 'INVALID_CREDIT_ALLOCATION' USING ERRCODE='22023';END IF;
+   INSERT INTO public.credit_redemptions(
+    teacher_id,session_id,student_id,package_id
+   ) VALUES(v_teacher,v_session,v_student,v_package);
+ END LOOP;
+ FOR v_line IN SELECT value FROM jsonb_array_elements(p_items) LOOP
+   v_session:=(v_line->>'sessionId')::uuid;
+   v_student:=(v_line->>'studentId')::uuid;
+   v_kind:=v_line->>'kind';
+   v_description:=nullif(btrim(v_line->>'description'),'');
+   v_quantity:=(v_line->>'quantity')::integer;
+   v_unit:=(v_line->>'unitCents')::integer;
+   v_amount:=(v_line->>'amountCents')::integer;
+   IF v_session IS NULL OR v_student IS NULL
+    OR v_kind NOT IN ('lesson','travel')
+    OR v_description IS NULL OR length(v_description)>500
+    OR v_quantity NOT BETWEEN 1 AND 10000
+    OR v_unit NOT BETWEEN 0 AND 100000000
+    OR v_amount NOT BETWEEN 0 AND 100000000
+    OR v_quantity::bigint*v_unit<>v_amount THEN
+    RAISE EXCEPTION 'INVALID_REGENERATION_LINE' USING ERRCODE='22023';
+   END IF;
+   INSERT INTO public.invoice_items(
+     invoice_id,session_id,student_id,kind,description,
+     quantity,unit_cents,amount_cents,sort_order
+   ) VALUES(p_invoice_id,v_session,v_student,v_kind,v_description,
+      v_quantity,v_unit,v_amount,v_sort);
+   v_subtotal:=v_subtotal+v_amount;v_sort:=v_sort+1;
+ END LOOP;
+ IF v_subtotal>2147483647 THEN
+   RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';
+ END IF;
+ UPDATE public.invoices SET subtotal_cents=v_subtotal::integer
+   WHERE id=p_invoice_id RETURNING updated_at INTO v_updated;
+ v_receipt:=jsonb_build_object('ok',true,'invoiceId',p_invoice_id,
+  'itemCount',v_sort,'subtotalCents',v_subtotal::integer,
+  'updatedAt',v_updated,'idempotencyKey',p_request_id,'replayed',false);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+   WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ RETURN v_receipt;
+END;
+$ccp_canonical_invoice_regenerate$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_invoice_regenerate_atomic(
+ uuid,jsonb,jsonb,timestamptz,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_invoice_regenerate_atomic(
+ uuid,jsonb,jsonb,timestamptz,uuid) TO authenticated;
