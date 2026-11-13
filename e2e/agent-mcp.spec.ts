@@ -577,20 +577,8 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   // The delegated MCP bearer MUST NOT expose a second teacher's records.
   const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!, {auth:{persistSession:false,autoRefreshToken:false}});
-  // Two non-equivalent lesson tables can contain the same real lesson.
-  // Preserve both audit rows and count the instructor's clock time only once.
+  // Only one canonical historical occurrence is persisted and counted.
   expect(names).toContain("ccp_v1_lessons_history_unified");
-  const {data:legacyTwin,error:legacyTwinError}=await admin.from("lessons").insert({
-    teacher_id:session!.user.id,student_id:student.id,slot_id:null,
-    lesson_date:"2027-04-12",starts_at:"2027-04-12T14:00:00.000Z",
-    duration_minutes:60,
-  }).select("id").single();
-  expect(legacyTwinError).toBeNull();
-  const {error:legacyTwinAttendanceError}=await admin.from("attendance").insert({
-    lesson_id:legacyTwin!.id,status:"attended",
-    marked_at:new Date().toISOString(),
-  });
-  expect(legacyTwinAttendanceError).toBeNull();
   const historyArgs={from:"2027-04-12",to:"2027-04-12",studentId:student.id};
   const unifiedMcp=(await mcp("tools/call",{
     name:"ccp_v1_lessons_history_unified",arguments:historyArgs,
@@ -600,21 +588,19 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     new URLSearchParams(historyArgs));
   expect(unifiedSite.status(),await unifiedSite.text()).toBe(200);
   expect(unifiedMcp.data).toEqual(await unifiedSite.json());
-  expect(unifiedMcp.data.total).toBe(2);
-  expect(unifiedMcp.data.summary.coachingSessionCount).toBe(1);
-  expect(unifiedMcp.data.summary.unattributedLegacyLessonCount).toBe(1);
-  expect(unifiedMcp.data.summary.possibleCrossModelDuplicates).toBe(1);
+  expect(unifiedMcp.data.total).toBe(1);
+  expect(unifiedMcp.data.summary.canonicalSessionCount).toBe(1);
   expect(unifiedMcp.data.summary.bookedInstructorMinutes).toBe(60);
   expect(unifiedMcp.data.summary.evidencedInstructorMinutes).toBe(60);
-  expect(unifiedMcp.data.entries.some((x:{kind:string;possibleDuplicateOf?:string})=>
-    x.kind==="legacy"&&x.possibleDuplicateOf==="coaching:"+sessionRecord.id)).toBe(true);
+  expect(unifiedMcp.data.entries).toHaveLength(1);
+  expect(unifiedMcp.data.entries[0]).toMatchObject({
+    kind:"coaching",id:sessionRecord.id,
+  });
   const focusedWorkplace=(await mcp("tools/call",{
     name:"ccp_v1_lessons_history_unified",
     arguments:{from:"2027-04-12",to:"2027-04-12",workplaceId:workplace.id},
   })).structuredContent.data;
-  expect(focusedWorkplace.summary.coachingSessionCount).toBe(1);
-  expect(focusedWorkplace.summary.unattributedLegacyLessonCount).toBe(0);
-  expect(focusedWorkplace.warnings.join(" ")).toContain("Legacy lessons lack a workplace ID");
+  expect(focusedWorkplace.summary.canonicalSessionCount).toBe(1);
   const invalidHistory=(await mcp("tools/call",{
     name:"ccp_v1_lessons_history_unified",
     arguments:{from:"2027-04-13",to:"2027-04-12"},
