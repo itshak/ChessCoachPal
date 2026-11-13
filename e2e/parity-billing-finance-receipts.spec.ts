@@ -18,23 +18,37 @@ async function billableLesson(page:import("@playwright/test").Page,call:Call,mon
     data:{defaultRateCents:6200},
   });
   expect(rate.status(),await rate.text()).toBe(200);
-  const lesson=await call("ccp_v1_calendar_lessons_create",{
-    studentId,date:month+"-15",time:"13:15",durationMinutes:60,confirmed:true,
+  const workplace=await call("ccp_v1_workplaces_create",{
+    name:"Finance parity workplace "+randomUUID(),timezone:"UTC",
+    currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
+  });
+  expect(workplace.error).toBeUndefined();
+  const workplaceId=workplace.data.entityId as string;
+  const enrolled=await call("ccp_v1_workplaces_enroll",{
+    workplaceId,studentId,idempotencyKey:randomUUID(),
+  });
+  expect(enrolled.error).toBeUndefined();
+  const lesson=await call("ccp_v1_sessions_create",{
+    workplaceId,studentId,title:"Finance parity lesson",
+    startsAt:month+"-15T13:15:00Z",durationMinutes:60,
+    lessonNote:"",idempotencyKey:randomUUID(),
   });
   expect(lesson.error).toBeUndefined();
-  const lessonId=lesson.data.id as string;
-  const attendance=await call("ccp_v1_calendar_attendance_record",{
-    lessonId,status:"attended",notifyFamily:false,confirmed:true,
+  const sessionId=lesson.data.entityId as string;
+  const attendance=await call("ccp_v1_session_attendance_set",{
+    sessionId,studentId,status:"present",note:"",
+    noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
+    notifyFamily:false,idempotencyKey:randomUUID(),confirmed:true,
   });
   expect(attendance.error).toBeUndefined();
-  return {studentId,lessonId,period:{
+  return {studentId,sessionId,period:{
     periodStart:month+"-01",periodEnd:month+"-28",
   }};
 }
 
 test("PARITY:PARITY-billing-generation-receipt-replay creates one invoice under simultaneous website and MCP commit",async({page,request})=>{
   const call=await delegatedTool(page,request);
-  const {period,lessonId}=await billableLesson(page,call,"2057-04");
+  const {period,sessionId,studentId}=await billableLesson(page,call,"2057-04");
   const previewSite=await page.request.post("/api/billing/generate",{
     data:{...period,commit:false},
   });
@@ -67,7 +81,9 @@ test("PARITY:PARITY-billing-generation-receipt-replay creates one invoice under 
   expect(invoiceSite.status(),await invoiceSite.text()).toBe(200);
   const invoice=await invoiceSite.json();
   expect(invoice.invoice_items).toHaveLength(1);
-  expect(invoice.invoice_items[0].lesson_id).toBe(lessonId);
+  expect(invoice.invoice_items[0]).toMatchObject({
+    session_id:sessionId,student_id:studentId,lesson_id:null,
+  });
 
   const retry=await call("ccp_v1_billing_generation_commit",{
     ...period,idempotencyKey:key,confirmed:true,
@@ -88,10 +104,10 @@ test("PARITY:PARITY-billing-generation-receipt-replay creates one invoice under 
     process.env.SUPABASE_SERVICE_ROLE_KEY!,{
       auth:{persistSession:false,autoRefreshToken:false},
     });
-  const lines=await admin.from("invoice_items").select("invoice_id,lesson_id")
-    .eq("lesson_id",lessonId);
+  const lines=await admin.from("invoice_items").select("invoice_id,session_id,student_id")
+    .eq("session_id",sessionId).eq("student_id",studentId);
   expect(lines.error).toBeNull();
-  expect(lines.data).toEqual([{invoice_id:invoiceId,lesson_id:lessonId}]);
+  expect(lines.data).toEqual([{invoice_id:invoiceId,session_id:sessionId,student_id:studentId}]);
   const malformed=await page.request.post("/api/billing/generate",{
     data:{...period,commit:"true",idempotencyKey:randomUUID()},
   });
@@ -100,7 +116,7 @@ test("PARITY:PARITY-billing-generation-receipt-replay creates one invoice under 
 
 test("PARITY:PARITY-billing-regeneration-receipt-revision is transactional and replayable across both clients",async({page,request})=>{
   const call=await delegatedTool(page,request);
-  const {period,studentId,lessonId}=await billableLesson(page,call,"2058-04");
+  const {period,studentId,sessionId}=await billableLesson(page,call,"2058-04");
   const generated=await page.request.post("/api/billing/generate",{
     data:{...period,commit:true,idempotencyKey:randomUUID()},
   });
@@ -136,7 +152,9 @@ test("PARITY:PARITY-billing-regeneration-receipt-revision is transactional and r
   const saved=await get();
   expect(saved.subtotal_cents).toBe(8800);
   expect(saved.invoice_items).toHaveLength(1);
-  expect(saved.invoice_items[0].lesson_id).toBe(lessonId);
+  expect(saved.invoice_items[0]).toMatchObject({
+    session_id:sessionId,student_id:studentId,lesson_id:null,
+  });
 
   expect((await page.request.put("/api/students/"+studentId,{
     data:{defaultRateCents:9900},
