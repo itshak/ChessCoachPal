@@ -29,7 +29,10 @@ test("SCHEMA: one canonical session per recurrence identity, no teacher-owned du
   .select("timezone").eq("teacher_id",teacher).maybeSingle();
  expect(policyError).toBeNull();
  const timezone=policy?.timezone ?? "UTC";
- const date="2058-06-25";
+ // Isolate this fixture from parallel tests and retries, while still
+ // asserting idempotency for one stable slot/date inside the test.
+ const date=new Date(Date.UTC(2080,0,1)+
+  (Number.parseInt(randomUUID().slice(0,8),16)%1200)*86400000).toISOString().slice(0,10);
  const day=new Date(date+"T00:00:00.000Z").getUTCDay();
  const enrolled=await tool("ccp_v1_workplaces_enroll",{
   workplaceId:workplaces![0].id,studentId,idempotencyKey:randomUUID(),
