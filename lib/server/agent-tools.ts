@@ -83,6 +83,9 @@ import {sessionNotesList,sessionNoteSave,SessionNoteError,
 import {canonicalAttendanceList,canonicalAttendanceSet,canonicalAttendanceBulkSet,
  CanonicalAttendanceError,type CanonicalAttendanceSetInput,
  type CanonicalAttendanceBulkInput} from "@/lib/server/canonical-session-attendance";
+import {canonicalSlotsList,canonicalSlotUpdate,canonicalSlotDelete,
+ canonicalSlotEditSchema,canonicalSlotDeleteSchema,CanonicalSlotError}
+ from "@/lib/server/canonical-slot-service";
 import { oauthOrigin } from "@/lib/server/agent-oauth-core";
 import { teacherPolicyView, teacherPolicyUpdate } from "@/lib/server/teacher-policy-service";
 import {
@@ -624,6 +627,24 @@ const catalogue = [
     }).strict().refine(x=>!x.sendEmail||
        (x.confirmedEmail===true&&!!x.studentId&&x.sharedWithGuardian&&!!x.body.trim()),
         "Email requires explicit confirmation, participant and shared note"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_recurring_slots_list",
+    description:"List owned canonical private recurring scheduling intentions, optionally filtered by active state or student. Includes revision updated_at.",
+    schema:z.object({studentId:uuid.optional(),activeOnly:z.boolean().optional()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_recurring_slots_update",
+    description:"Atomically correct a canonical recurrence rule, preserving billed/attended/noted/moved history and reconciling future unprotected sessions. Requires exact updatedAt and idempotency key; never erase history.",
+    schema:canonicalSlotEditSchema.extend({slotId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_recurring_slots_delete",
+    description:"Atomically delete only canonical scheduling intent. Future unprotected lessons may be removed; protected teaching records remain. Requires explicit confirmation and idempotency key.",
+    schema:canonicalSlotDeleteSchema.extend({slotId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1717,6 +1738,23 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as SaveSessionNoteInput&{sessionId:string};
         return {data:await sessionNoteSave(db,teacherId,a.sessionId,a)};
       }
+      case "ccp_v1_recurring_slots_list": {
+        const a=args as {studentId?:string;activeOnly?:boolean};
+        return {data:await canonicalSlotsList(db,teacherId,a)};
+      }
+      case "ccp_v1_recurring_slots_update": {
+        const a=args as {slotId:string;changes:unknown;expectedUpdatedAt:string;idempotencyKey:string};
+        return {data:await canonicalSlotUpdate(db,teacherId,a.slotId,{
+          changes:a.changes as Record<string,never>,
+          expectedUpdatedAt:a.expectedUpdatedAt,idempotencyKey:a.idempotencyKey,
+        })};
+      }
+      case "ccp_v1_recurring_slots_delete": {
+        const a=args as {slotId:string;idempotencyKey:string};
+        return {data:await canonicalSlotDelete(db,teacherId,a.slotId,{
+          idempotencyKey:a.idempotencyKey,
+        })};
+      }
       case "ccp_v1_calendar_lesson_note_read": {
         const a=args as {lessonId:string;includePrivate:boolean;confirmed?:boolean};
         const note=await calendarLessonNoteRead(db,teacherId,a.lessonId);
@@ -2160,6 +2198,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CanonicalAttendanceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof SessionNoteError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof CanonicalSlotError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LegacyAttendanceError)
       return {error:{code:error.code,message:error.message}};
