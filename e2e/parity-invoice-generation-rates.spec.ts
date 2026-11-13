@@ -68,7 +68,7 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
  expect(site.subtotal_cents).toBe(6000);
  expect(site.invoice_items).toHaveLength(1);
  expect(site.invoice_items[0]).toMatchObject({
-  session_id:sessionId,student_id:studentId,lesson_id:null,
+  session_id:sessionId,student_id:studentId,
  });
  const mcp=await call("ccp_v1_billing_invoice_detail",{invoiceId});
  expect(mcp.error).toBeUndefined();

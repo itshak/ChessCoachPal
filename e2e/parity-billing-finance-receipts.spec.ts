@@ -82,7 +82,7 @@ test("PARITY:PARITY-billing-generation-receipt-replay creates one invoice under 
   const invoice=await invoiceSite.json();
   expect(invoice.invoice_items).toHaveLength(1);
   expect(invoice.invoice_items[0]).toMatchObject({
-    session_id:sessionId,student_id:studentId,lesson_id:null,
+    session_id:sessionId,student_id:studentId,
   });
 
   const retry=await call("ccp_v1_billing_generation_commit",{
@@ -153,7 +153,7 @@ test("PARITY:PARITY-billing-regeneration-receipt-revision is transactional and r
   expect(saved.subtotal_cents).toBe(8800);
   expect(saved.invoice_items).toHaveLength(1);
   expect(saved.invoice_items[0]).toMatchObject({
-    session_id:sessionId,student_id:studentId,lesson_id:null,
+    session_id:sessionId,student_id:studentId,
   });
 
   expect((await page.request.put("/api/students/"+studentId,{

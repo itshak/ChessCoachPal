@@ -108,7 +108,7 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
  expect(still.subtotal_cents).toBe(6200);
  expect(still.invoice_items).toHaveLength(1);
  expect(still.invoice_items[0]).toMatchObject({
-   session_id:sessionId,student_id:studentId,lesson_id:null,
+   session_id:sessionId,student_id:studentId,
  });
  expect(still.invoice_items[0].amount_cents).toBe(6200);
  const modelAfter=await call("ccp_v1_billing_invoice_detail",{invoiceId});

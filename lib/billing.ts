@@ -9,7 +9,7 @@ import type { StudioPolicy } from "@/lib/schedule";
  *
  * Attendance → invoice items is a pure function of (attendance, policy, rates).
  * Policy is an input, never baked into attendance rows. Make-up lessons that
- * redeem a credit (makeup_for set) are non-billable by default so the
+ * redeem a credit (makeup_for_session_id set) are non-billable by default so the
  * original cancellation and the make-up never both bill. Lessons covered by
  * a prepaid credit (lib/credits.ts) skip the lesson line but still bill any
  * travel fee.
@@ -36,7 +36,7 @@ export interface BillableLessonInput {
   lessonDate: string;
   startsAt: string;
   durationMinutes: number;
-  makeupFor: string | null;
+  makeupForSessionId: string | null;
   attendanceStatus: AttendanceStatus;
   noticeAt: string | null;
   rate: RateSources;
@@ -183,11 +183,11 @@ export function resolveLessonCharge(
 export function isBillable(
   lesson: Pick<
     BillableLessonInput,
-    "attendanceStatus" | "noticeAt" | "startsAt" | "makeupFor"
+    "attendanceStatus" | "noticeAt" | "startsAt" | "makeupForSessionId"
   >,
   policy: StudioPolicy
 ): boolean {
-  if (lesson.makeupFor && !policy.bill_makeup) {
+  if (lesson.makeupForSessionId && !policy.bill_makeup) {
     return false;
   }
 
@@ -320,7 +320,7 @@ function lessonItem(
     policy.rate_basis
   );
   const label = statusLabel(lesson.attendanceStatus);
-  const makeup = lesson.makeupFor ? " (make-up)" : "";
+  const makeup = lesson.makeupForSessionId ? " (make-up)" : "";
   const rateNote =
     !charge.missingRate &&
     !charge.usedDurationFlat &&

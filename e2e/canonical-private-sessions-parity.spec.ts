@@ -4,7 +4,7 @@ import {expect,test} from "@playwright/test";
 import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
-test("PARITY: canonical private lesson and verified make-up use one website/MCP SQL writer",
+test("PARITY:PARITY-canonical-private-makeup canonical private lesson and verified make-up use one website/MCP SQL writer",
  async({page,request})=>{
  const call=await delegatedTool(page,request);
  const pupil=await call("ccp_v1_students_create",{
@@ -104,4 +104,63 @@ test("PARITY: canonical private lesson and verified make-up use one website/MCP 
    durationMinutes:45,idempotencyKey:randomUUID(),
   }});
  expect(invalidDST.status(),await invalidDST.text()).toBe(400);
+});
+
+test("PARITY:PARITY-canonical-personal-private-lesson accepts an unassigned student in implicit personal coaching",async({page,request})=>{
+ const tool=await delegatedTool(page,request);
+ const student=await tool("ccp_v1_students_create",{
+  name:"Unassigned personal lesson learner "+randomUUID(),idempotencyKey:randomUUID(),
+ });
+ expect(student.error).toBeUndefined();
+ const studentId=student.data.entityId as string;
+ // Explicit club/school selection must not silently enroll a learner.
+ // This is distinct from using the teacher's implicit personal workspace.
+ const school=await tool("ccp_v1_workplaces_create",{
+  name:"Unenrolled named school "+randomUUID(),timezone:"UTC",
+  currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
+ });
+ expect(school.error).toBeUndefined();
+ const deniedInput={studentId,workplaceId:school.data.entityId as string,
+  date:"2081-05-11",time:"10:00",durationMinutes:45,
+  isHomeVisit:false,idempotencyKey:randomUUID()};
+ const denied=await page.request.post("/api/coaching/calendar/private-sessions",{
+  data:deniedInput,
+ });
+ expect(denied.status(),await denied.text()).toBe(404);
+ expect((await tool("ccp_v1_private_sessions_create",{
+  ...deniedInput,idempotencyKey:randomUUID(),confirmed:true,
+ })).error?.code).toBe("NOT_FOUND");
+ // No workplace enrollment: personal/private lessons must work for a
+ // newly created student, while explicit school workplaces remain scoped.
+ const key=randomUUID();
+ const input={studentId,workplaceId:null,date:"2081-05-12",
+  time:"10:00",durationMinutes:45,isHomeVisit:false,idempotencyKey:key};
+ const browser=await page.request.post("/api/coaching/calendar/private-sessions",{data:input});
+ expect(browser.status(),await browser.text()).toBe(200);
+ const created=await browser.json();
+ expect(created).toMatchObject({student_id:studentId,replayed:false});
+ const replay=await tool("ccp_v1_private_sessions_create",{...input,confirmed:true});
+ expect(replay.error).toBeUndefined();
+ expect(replay.data).toMatchObject({id:created.id,replayed:true});
+ const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ expect((await db.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
+ const person=await db.from("session_participants").select("student_id")
+  .eq("session_id",created.id).single();
+ expect(person.error).toBeNull();
+ expect(person.data?.student_id).toBe(studentId);
+ const personalMembership=await db.from("workplace_enrollments")
+  .select("student_id,workplace_id").eq("student_id",studentId)
+  .eq("workplace_id",created.workplace_id);
+ expect(personalMembership.error).toBeNull();
+ expect(personalMembership.data).toEqual([{
+  student_id:studentId,workplace_id:created.workplace_id,
+ }]);
+ const schoolMembership=await db.from("workplace_enrollments")
+  .select("id").eq("student_id",studentId)
+  .eq("workplace_id",school.data.entityId as string);
+ expect(schoolMembership.error).toBeNull();
+ expect(schoolMembership.data).toEqual([]);
 });

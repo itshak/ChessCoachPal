@@ -40,7 +40,7 @@ test("PARITY:PARITY-billing-pdf-ledger-checkout-preflight compares real browser 
  expect(invoice.error).toBeNull();
  const invoiceId=invoice.data!.id as string;
  const line=await admin.from("invoice_items").insert({
-   invoice_id:invoiceId,lesson_id:null,kind:"lesson",
+   invoice_id:invoiceId,kind:"lesson",
    description:"Synthetic bishop endgame lesson",quantity:1,
    unit_cents:6300,amount_cents:6300,sort_order:0,
  });

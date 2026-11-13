@@ -4,7 +4,7 @@ import {expect,test} from "@playwright/test";
 import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
-test("PARITY: guardian cancels one frozen canonical participant, with atomic replay and no teacher impersonation",async({page,request})=>{
+test("PARITY:PARITY-canonical-portal-atomic-replay guardian cancels one frozen canonical participant, with atomic replay and no teacher impersonation",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const student=await call("ccp_v1_students_create",{
   name:"Guardian canonical cancellation "+randomUUID(),idempotencyKey:randomUUID(),

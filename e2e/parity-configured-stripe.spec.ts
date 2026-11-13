@@ -104,7 +104,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    expect(invoice.error).toBeNull();
    const invoiceId=invoice.data!.id as string;
    const line=await admin.from("invoice_items").insert({
-     invoice_id:invoiceId,lesson_id:null,kind:"lesson",
+     invoice_id:invoiceId,kind:"lesson",
      description:"Synthetic knight training session",quantity:1,
      unit_cents:4800,amount_cents:4800,sort_order:0,
    });
@@ -143,7 +143,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    expect(rival.error).toBeNull();
    const rivalId=rival.data!.id as string;
    expect((await admin.from("invoice_items").insert({
-     invoice_id:rivalId,lesson_id:null,kind:"lesson",
+     invoice_id:rivalId,kind:"lesson",
      description:"Synthetic competing queen endgame",quantity:1,
      unit_cents:3600,amount_cents:3600,sort_order:0,
    })).error).toBeNull();

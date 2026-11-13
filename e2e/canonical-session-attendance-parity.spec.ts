@@ -2,7 +2,7 @@ import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
-test("PARITY: canonical session attendance set, clear and atomic bulk website/MCP replay and revision",async({page,request})=>{
+test("PARITY:PARITY-canonical-attendance-bulk canonical session attendance set, clear and atomic bulk website/MCP replay and revision",async({page,request})=>{
  const tool=await delegatedTool(page,request);
  const workplace=await tool("ccp_v1_workplaces_create",{
   name:"Canonical attendance "+randomUUID(),timezone:"UTC",currency:"USD",

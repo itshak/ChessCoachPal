@@ -8,12 +8,13 @@ const schema=z.object({
  title:z.string().min(1).max(160).optional(),
  startsAt:z.string().datetime({offset:true}).optional(),
  durationMinutes:z.number().int().min(15).max(480).optional(),
+ isHomeVisit:z.boolean().optional(),
  lessonNote:z.string().max(10000).optional(),
  status:z.enum(["scheduled","cancelled"]).optional(),
  expectedUpdatedAt:z.string().datetime({offset:true}),
  idempotencyKey:uuid,
 }).strict().refine(x=>x.title!==undefined||x.startsAt!==undefined||
- x.durationMinutes!==undefined||x.lessonNote!==undefined||x.status!==undefined,
+ x.durationMinutes!==undefined||x.isHomeVisit!==undefined||x.lessonNote!==undefined||x.status!==undefined,
  {message:"Supply one session change"});
 type Context={params:Promise<{id:string}>};
 export async function PATCH(req:NextRequest,{params}:Context){

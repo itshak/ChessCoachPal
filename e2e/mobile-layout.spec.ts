@@ -10,6 +10,22 @@ function overflowOf(page: Page) {
   });
 }
 
+/** Private canonical sessions require current workplace enrollment.
+ * Seed that owned relationship through the same teacher website gateway
+ * before testing the mobile lesson/attendance presentation. */
+async function enrollForCalendar(page: Page, studentId: string) {
+  const listed = await page.request.post("/api/agent/v1", {
+    data: { action: "workplaces.list" },
+  });
+  expect(listed.status(), await listed.text()).toBe(200);
+  const workplaces = (await listed.json()).data as Array<{ id: string }>;
+  expect(workplaces.length).toBeGreaterThan(0);
+  const enrolled = await page.request.post("/api/agent/v1", {
+    data: { action: "workplaces.enroll", workplaceId: workplaces[0].id, studentId },
+  });
+  expect(enrolled.status(), await enrolled.text()).toBe(200);
+}
+
 test.describe("mobile layout", () => {
   test("schedule has no horizontal overflow across mobile widths", async ({
     page,
@@ -57,12 +73,16 @@ test.describe("mobile layout", () => {
         ?.split("/")
         .filter(Boolean)
         .pop() ?? null;
+      expect(studentId).toBeTruthy();
+      await enrollForCalendar(page, studentId!);
 
       // Use the canonical private-session form and frozen-roster calendar card.
       await page.goto("/schedule");
       await page.getByRole("button",{name:"+ Private session"}).click();
       await page.locator("select").filter({has:page.getByRole("option",{name:longName,exact:true})}).first().selectOption({label:longName});
-      await page.getByRole("button",{name:"Create session"}).click();
+      await page.getByLabel("Local time",{exact:true}).fill("09:07");
+       await page.getByRole("button",{name:"Create session"}).click();
+       await expect(page.getByText("Private teaching session scheduled")).toBeVisible();
       const card=page.locator("div.rounded-lg.border.border-border.bg-background")
         .filter({hasText:longName}).first();
       await expect(card).toBeVisible();
@@ -158,11 +178,17 @@ test.describe("mobile layout", () => {
     await page.goto("/students");
     await page.getByPlaceholder("Student name").fill(name);
     await page.getByRole("button",{name:"Add Student"}).click();
-    await expect(page.getByRole("link",{name:new RegExp("^"+name)})).toBeVisible();
+    const studentLink=page.getByRole("link",{name:new RegExp("^"+name)});
+    await expect(studentLink).toBeVisible();
+    const studentId=(await studentLink.getAttribute("href"))?.split("/").filter(Boolean).pop();
+    expect(studentId).toBeTruthy();
+    await enrollForCalendar(page,studentId!);
     await page.goto("/schedule");
     await page.getByRole("button",{name:"+ Private session"}).click();
     await page.locator("select").filter({has:page.getByRole("option",{name:name,exact:true})}).first().selectOption({label:name});
-    await page.getByRole("button",{name:"Create session"}).click();
+    await page.getByLabel("Local time",{exact:true}).fill("11:13");
+     await page.getByRole("button",{name:"Create session"}).click();
+     await expect(page.getByText("Private teaching session scheduled")).toBeVisible();
     const card=page.locator("div.rounded-lg.border.border-border.bg-background")
       .filter({hasText:name}).first();
     await expect(card).toBeVisible();

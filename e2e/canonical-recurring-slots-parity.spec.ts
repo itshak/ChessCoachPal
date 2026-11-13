@@ -6,7 +6,7 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 import {planCanonicalOccurrences,type CanonicalSlot}
  from "../lib/server/canonical-calendar-service";
 
-test("PARITY: canonical recurring edits and deletes are atomic, tenant-scoped and protect attended history",
+test("PARITY:PARITY-canonical-recurring-slots-crud canonical recurring edits and deletes are atomic, tenant-scoped and protect attended history",
  async({page,request})=>{
  const tool=await delegatedTool(page,request);
  const student=await tool("ccp_v1_students_create",{
@@ -109,6 +109,28 @@ test("PARITY: canonical recurring edits and deletes are atomic, tenant-scoped an
   confirmed:true,
  });
  expect(stale.error?.code).toBe("CONFLICT");
+ // Disabling a recurrence is revisioned, and attended history must survive.
+ const revisionForDisable=await db.from("lesson_slots").select("updated_at")
+  .eq("id",slot!.id).single();
+ expect(revisionForDisable.error).toBeNull();
+ const disabledRequest={changes:{active:false},
+  expectedUpdatedAt:revisionForDisable.data!.updated_at,idempotencyKey:randomUUID()};
+ const disabled=await page.request.patch(
+  "/api/coaching/calendar/slots/"+slot!.id,{data:disabledRequest});
+ expect(disabled.status(),await disabled.text()).toBe(200);
+ const disableReplay=await tool("ccp_v1_recurring_slots_update",{
+  slotId:slot!.id,...disabledRequest,confirmed:true,
+ });
+ expect(disableReplay.error).toBeUndefined();
+ expect(disableReplay.data.replayed).toBe(true);
+ const afterDisable=await db.from("lesson_slots").select("active")
+  .eq("id",slot!.id).single();
+ expect(afterDisable.error).toBeNull();
+ expect(afterDisable.data?.active).toBe(false);
+ const stillProtected=await db.from("teaching_sessions").select("id")
+  .eq("id",protectedId).maybeSingle();
+ expect(stillProtected.error).toBeNull();
+ expect(stillProtected.data?.id).toBe(protectedId);
  const delKey=randomUUID();
  const deleted=await tool("ccp_v1_recurring_slots_delete",{
   slotId:slot!.id,idempotencyKey:delKey,confirmed:true,

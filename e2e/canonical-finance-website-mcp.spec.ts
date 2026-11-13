@@ -103,13 +103,12 @@ test("PARITY: group charge generation uses one canonical occurrence, two frozen 
   });
  expect((await db.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
  const {data:lines,error}=await db.from("invoice_items")
-  .select("invoice_id,session_id,student_id,kind,lesson_id")
+  .select("invoice_id,session_id,student_id,kind")
   .eq("session_id",sessionId).eq("kind","lesson");
  expect(error).toBeNull();
  expect(lines).toHaveLength(2);
  expect(new Set(lines!.map(x=>x.student_id))).toEqual(new Set(studentIds));
  expect(new Set(lines!.map(x=>x.invoice_id)).size).toBe(2);
- expect(lines!.every(x=>x.lesson_id===null)).toBe(true);
  const details=await call("ccp_v1_sessions_details",{sessionId});
  expect(details.error).toBeUndefined();
  expect(details.data.status).toBe("scheduled");
