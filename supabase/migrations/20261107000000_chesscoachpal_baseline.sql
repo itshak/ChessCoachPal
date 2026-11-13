@@ -8988,7 +8988,8 @@ BEGIN
    IF EXISTS(SELECT 1 FROM public.teaching_sessions
       WHERE teacher_id=v_teacher
         AND makeup_for_session_id=p_makeup_for_session_id
-        AND makeup_for_student_id=p_student_id) THEN
+        AND makeup_for_student_id=p_student_id
+        AND request_id IS DISTINCT FROM p_request_id) THEN
      RAISE EXCEPTION 'CANONICAL_MAKEUP_ALREADY_USED' USING ERRCODE='23505';
    END IF;
    v_duration:=coalesce(v_duration,v_source.duration_minutes);
