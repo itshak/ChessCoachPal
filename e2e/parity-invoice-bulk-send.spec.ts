@@ -36,7 +36,7 @@ test("PARITY:PARITY-billing-send-bulk-reviewed uses previews and at-most-once we
     expect(invoice.error).toBeNull();
     const invoiceId = invoice.data!.id as string;
     const line = await admin.from("invoice_items").insert({
-      invoice_id: invoiceId, lesson_id: null, kind: "lesson",
+      invoice_id: invoiceId, session_id:null,student_id:null, kind: "lesson",
       description: "Reviewed chess lesson charge",
       quantity: 1, unit_cents: cents, amount_cents: cents, sort_order: 0,
     });
