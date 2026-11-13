@@ -94,18 +94,9 @@ export async function loadCanonicalBillingParticipants(
   if(error)throw new Error("Unable to load workplace timezones");
   workplaces.push(...(data??[]));
  }
- const slotIds=[...new Set(sessions.flatMap(s=>s.slot_id?[s.slot_id]:[]))],
-  slots:{id:string;rate_cents:number|null}[]=[];
- for(const group of chunks(slotIds,100)){
-  const {data,error}=await db.from("lesson_slots").select("id,rate_cents")
-   .eq("teacher_id",teacherId).in("id",group);
-  if(error)throw new Error("Unable to load rate snapshot sources");
-  slots.push(...(data??[]));
- }
  const studentById=new Map(students.map(x=>[x.id,x])),
   sessionById=new Map(sessions.map(x=>[x.id,x])),
   workplaceById=new Map(workplaces.map(x=>[x.id,x])),
-  slotById=new Map(slots.map(x=>[x.id,x])),
   attByKey=new Map(attendance.map(x=>[participantBillingKey(x.session_id,x.student_id),x]));
  const filter=opts.studentIds?new Set(opts.studentIds):null;
  const seen=new Set<string>(),result:CanonicalBillingParticipant[]=[];
@@ -126,8 +117,9 @@ export async function loadCanonicalBillingParticipants(
    startsAt:session.starts_at,durationMinutes:session.duration_minutes,
    status:session.status,makeupForSessionId:session.makeup_for_session_id,
    isHomeVisit:Boolean(session.is_home_visit),
-   slotRateCents:session.slot_rate_cents??(session.slot_id?
-    slotById.get(session.slot_id)?.rate_cents??null:null),
+   // The actual occurrence owns its own rate snapshot. Changing a weekly
+   // template later must never alter a prior invoice preview or credit.
+   slotRateCents:session.slot_rate_cents,
    studentDefaultRateCents:student.default_rate_cents,
    studentTravelFeeCents:student.travel_fee_cents,
    attendanceStatus:att?.status??null,noticeAt:att?.notice_at??null,
