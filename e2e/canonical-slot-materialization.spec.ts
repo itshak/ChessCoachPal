@@ -60,8 +60,9 @@ test("SCHEMA: one canonical session per recurrence identity, no teacher-owned du
  expect(sessions.error).toBeNull();
  expect(sessions.data).toHaveLength(1);
  expect(sessions.data![0]).toMatchObject({
-  student_id:studentId,slot_occurrence_date:date,starts_at:rows[0].starts_at,
+  student_id:studentId,slot_occurrence_date:date,
  });
+ expect(new Date(sessions.data![0].starts_at).toISOString()).toBe(rows[0].starts_at);
  const roster=await db.from("session_participants").select("student_id")
   .eq("session_id",sessions.data![0].id);
  expect(roster.error).toBeNull();
