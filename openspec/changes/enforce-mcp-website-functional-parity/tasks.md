@@ -1,8 +1,8 @@
-> **Blocked on canonical cutover:** Complete [consolidate-canonical-lessons-and-attendance](../consolidate-canonical-lessons-and-attendance/tasks.md) before signing off B3/B5/B6 and C1–C3. Its verified child evidence can be reused, but all 93 historical plus new scenarios and merged-main strict gate remain required here.
+> **Canonical dependency resolved on development branch:** [archived accepted cutover](../archive/2026-11-13-consolidate-canonical-lessons-and-attendance/tasks.md), including independent attendance and financial reacceptance. Final 93/93 and 26/26 candidate proof now exists. Strict merged-main acceptance and OpenSpec archival remain outstanding.
 
 # Checklist — full website ↔ MCP equality
 
-**Status:** Active. Do not archive until every item and the [93 acceptance scenarios](../../../docs/MCP_WEBSITE_PARITY_CHECKLIST.md) pass against merged main.
+**Status:** Active — B1–B8/C1–C2 independently candidate-accepted on 2026-11-13; C3 merged-main strict verification and C4 archival are NOT complete. Do not archive before exact merged-main acceptance.
 
 ## A. Foundation and first slice
 - [x] A1. Accept ADR-0003; cross-reference OpenSpec, contribution policy and current baseline.
@@ -11,22 +11,22 @@
 - [x] A4. GitHub synthetic OAuth/website E2E: same report results, group teacher minutes once, invalid ranges and cross-teacher denial; merge on green CI and record SHA/runs.
 
 ## B. Remaining parity gaps
-- [ ] B1. Workplaces: full policies, membership lifecycle, historical projections, material preferences.
-- [ ] B2. Students: full roster pagination, profile, notes, aliases, strength 1–10, ratings, skills, family and edit/clear/archive actions.
-- [ ] B3. Schedule: recurring slots, makeup and ad-hoc lessons, frozen roster, history/corrections, DST, bulk attendance.
-- [ ] B4. Chess materials: student and workplace full learned/assigned/linked history and source context.
-- [ ] B5. Families, events, notifications, parent approvals and calendar/communication workflows.
-- [ ] B6. Billing/invoices/credits/payments, scoped approvals and safe redaction.
-- [ ] B7. Settings/policies, data transfer, spreadsheet imports and reviewed exports.
-- [ ] B8. Zero missing or partial teacher-business route/field/operation; documented narrow exceptions only.
+- [x] B1. Workplaces: full policies, membership lifecycle, historical projections, material preferences.
+- [x] B2. Students: full roster pagination, profile, notes, aliases, strength 1–10, ratings, skills, family and edit/clear/archive actions.
+- [x] B3. Schedule: recurring slots, makeup and ad-hoc lessons, frozen roster, history/corrections, DST, bulk attendance.
+- [x] B4. Chess materials: student and workplace full learned/assigned/linked history and source context.
+- [x] B5. Families, events, notifications, parent approvals and calendar/communication workflows.
+- [x] B6. Billing/invoices/credits/payments, scoped approvals and safe redaction.
+- [x] B7. Settings/policies, data transfer, spreadsheet imports and reviewed exports.
+- [x] B8. Zero missing or partial teacher-business route/field/operation; documented narrow exceptions only.
 
 ## C. Acceptance
-- [ ] C1. All 93 detailed browser↔MCP behavior/security cases verified and checked individually with automated evidence.
-- [ ] C2. Fresh synthetic CI, full E2E, typecheck/unit and relevant security/Compose checks green.
+- [x] C1. All 93 detailed browser↔MCP behavior/security cases verified and checked individually with automated evidence.
+- [x] C2. Fresh synthetic CI, full E2E, typecheck/unit and relevant security/Compose checks green.
 - [ ] C3. Strict parity gate passes on merged main; status records exact SHA and Actions links.
 - [ ] C4. Archive only after B/C; retain separate real-client v0.1.0 final manual release sign-off.
 
-A1–A4 are accepted against merged main; B/C and the 93 detailed behavior scenarios remain open. **Phase A evidence (merged main):** [PR #20](https://github.com/itshak/ChessCoachPal/pull/20), commit [759f104](https://github.com/itshak/ChessCoachPal/commit/759f1042c351efba1fc7293bf0da48e71612bb23); [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42481967664) passed source audit, PR-guard tests, TypeScript, 342 unit tests, Docker and Compose; [fresh synthetic E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42481967709) passed (26 browser tests); [restore](https://github.com/itshak/ChessCoachPal/actions/runs/42481967696), [self-host](https://github.com/itshak/ChessCoachPal/actions/runs/42481967682), and [security](https://github.com/itshak/ChessCoachPal/actions/runs/42481967641) passed.
+A1–A4 were previously accepted against merged main; B1–B8 and C1–C2 have accepted branch-level source/E2E evidence. **C3 merged-main strict proof and C4 archive remain OPEN.** **Phase A evidence (merged main):** [PR #20](https://github.com/itshak/ChessCoachPal/pull/20), commit [759f104](https://github.com/itshak/ChessCoachPal/commit/759f1042c351efba1fc7293bf0da48e71612bb23); [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42481967664) passed source audit, PR-guard tests, TypeScript, 342 unit tests, Docker and Compose; [fresh synthetic E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42481967709) passed (26 browser tests); [restore](https://github.com/itshak/ChessCoachPal/actions/runs/42481967696), [self-host](https://github.com/itshak/ChessCoachPal/actions/runs/42481967682), and [security](https://github.com/itshak/ChessCoachPal/actions/runs/42481967641) passed.
 
 ## Phase B partial delivery (not B1–B8 acceptance)
 
@@ -210,3 +210,12 @@ The baseline student/guardian FK detaches students on guardian deletion; a new a
 The new guardian and event SQL mutations no longer request `SELECT ... FOR UPDATE` on the restricted `teachers` row. They validate teacher existence with ordinary SELECT, use owner-scoped resource row locks and foreign-key constraints, and rely on the existing hosted-cap trigger's internal serialization when students are inserted. This avoids requiring broader teacher-table UPDATE privileges for website and OAuth/MCP calls. This is a source review fix, **not a claim of test success**.
 
 A further pre-CI SQL review added a post-write affected-row count check to guardian roster replacement. If an owned student disappears between preflight and the transaction's reassignment, the function now aborts and rolls back rather than returning success with incomplete membership.
+
+
+## 2026-11-13 integrated parity candidate evidence (B1–B8, C1–C2)
+
+On source `d8845cacc6ba06698397d304314a6138be656728` ([236 authenticated website/MCP E2E tests passed, five intentional skips](https://github.com/itshak/ChessCoachPal/actions/runs/43445246524), [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43445246195), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43445246383), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43445246152), [restore](https://github.com/itshak/ChessCoachPal/actions/runs/43445246310)), the 59/59 teacher API route inventory and 93/93 original plus 26/26 new independently named browser/MCP scenarios passed. The new source-domain guard checks a matching imported teacher business operation for each website route and rejects website-only additions; the multiplexed 39 gateway actions retain separate per-action evidence, while the full teacher backup has a documented model-safe export privacy exception. `tools/list` was queried using a real delegated-OAuth client and every mapped tool was advertised; chess handles, ratings, aliases and strength round-tripped website → MCP → website.
+
+B1 workplace membership/policy/history: `e2e/parity-workplaces-extended.spec.ts`, `e2e/parity-gateway-workplace-groups.spec.ts`. B2 student identity/profile/archive: `e2e/parity-chess-profile-history.spec.ts`, `e2e/parity-student-fields.spec.ts`, `e2e/parity-student-delete-lifecycle.spec.ts`. B3 calendar/session/attendance: `e2e/canonical-local-dates-holiday-parity.spec.ts`, `e2e/canonical-attendance-reacceptance.spec.ts`, `e2e/canonical-slot-financial-history-parity.spec.ts`. B4 materials: `e2e/parity-material-coverage.spec.ts`, `e2e/parity-learning.spec.ts`. B5 guardians/events/notifications: `e2e/parity-families-events.spec.ts`, `e2e/canonical-portal-cancellation.spec.ts`. B6 finance: `e2e/parity-billing-lifecycle.spec.ts`, `e2e/parity-credits-lifecycle.spec.ts`, `e2e/parity-configured-stripe.spec.ts`. B7 policy/spreadsheet/export: `e2e/parity-policy.spec.ts`, `e2e/parity-spreadsheet-commit.spec.ts`, `e2e/parity-teacher-export.spec.ts`. B8 exact tool and field/action runtime contract: `e2e/parity-all-teacher-surfaces.spec.ts` and `scripts/mcp-parity-domain-guard.mjs` with negative unit tests. All relevant authenticated tests are part of the full 236-pass run. Browser-only secret/identity/hosted-payment entries remain narrow reviewed exceptions, NOT missing teacher CRUD.
+
+**Next immutable gate:** require strict parity in CI on exact final candidate, consolidate the stacked implementation without bypassing tests, run all five workflows and `mcp:parity:strict` on *merged main*, then mark C3 and archive THIS parity OpenSpec (C4). Real live ChatGPT/Claude client checks remain the separately approved prepublication signoff; no official release or real-data migration is authorized here.

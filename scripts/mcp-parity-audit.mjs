@@ -175,7 +175,7 @@ if (errors.length) {
   process.exitCode=1;
 } else {
   console.log("Inventory structure and live tool-name references verified"+
-    (outstanding.length||pendingCases||occurrenceErrors.length
+    (outstanding.length||pendingCases||pendingNewCases||occurrenceErrors.length
       ?" (release functionality parity is NOT complete)"
       :"; strict parity holds for inventoried routes and historical behavior cases")+".");
 }

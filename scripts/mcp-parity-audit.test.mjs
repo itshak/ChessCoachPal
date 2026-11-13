@@ -9,18 +9,20 @@ const run = (...args) => spawnSync(process.execPath, ["scripts/mcp-parity-audit.
   cwd: root, encoding: "utf8", timeout: 30000,
 });
 
-test("ordinary source inventory is valid but does not certify parity", () => {
+test("ordinary inventory keeps its structural floor alongside complete behavior acceptance", () => {
   const result = run();
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /NOT equivalent to verified behavior/);
-  assert.match(result.stdout, /Release BLOCKED:/);
+  assert.match(result.stdout, /93\/93 verified, 0 not yet checked/);
+  assert.match(result.stdout, /New canonical parity workflows: 26\/26 verified/);
+  assert.doesNotMatch(result.stdout, /Release BLOCKED:/);
 });
 
-test("strict release gate rejects incomplete teacher parity and unsigned cases", () => {
+test("strict release gate accepts all evidenced teacher surfaces, not only tool names", () => {
   const result = run("--strict");
-  assert.equal(result.status, 1, result.stdout + result.stderr);
-  assert.match(result.stderr, /Strict MCP-first parity gate failed/);
-  assert.match(result.stderr, /unchecked browser\/MCP behavior scenarios/);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /strict parity holds for inventoried routes and historical behavior cases/);
+  assert.doesNotMatch(result.stderr, /Strict MCP-first parity gate failed/);
 });
 
 
