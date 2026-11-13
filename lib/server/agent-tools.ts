@@ -86,6 +86,9 @@ import {canonicalAttendanceList,canonicalAttendanceSet,canonicalAttendanceBulkSe
 import {canonicalSlotsList,canonicalSlotCreate,canonicalSlotUpdate,canonicalSlotDelete,
  canonicalSlotCreateSchema,canonicalSlotEditSchema,canonicalSlotDeleteSchema,CanonicalSlotError}
  from "@/lib/server/canonical-slot-service";
+import {canonicalPrivateSessionCreate,canonicalPrivateSessionCreateSchema,
+ CanonicalPrivateSessionError,type CanonicalPrivateSessionCreateInput}
+ from "@/lib/server/canonical-private-session-service";
 import { oauthOrigin } from "@/lib/server/agent-oauth-core";
 import { teacherPolicyView, teacherPolicyUpdate } from "@/lib/server/teacher-policy-service";
 import {
@@ -628,6 +631,13 @@ const catalogue = [
        (x.confirmedEmail===true&&!!x.studentId&&x.sharedWithGuardian&&!!x.body.trim()),
         "Email requires explicit confirmation, participant and shared note"),
     scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_private_sessions_create",
+    description:"Atomically schedule one canonical private/ad-hoc chess lesson or verified make-up for a frozen original participant. Local timezone and DST are validated inside SQL; teacher, active student and workplace enrollment are enforced. Replays return the original session.",
+    schema:canonicalPrivateSessionCreateSchema.extend({
+      confirmed:z.literal(true),
+    }).strict(),scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_recurring_slots_list",
@@ -1744,6 +1754,15 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as SaveSessionNoteInput&{sessionId:string};
         return {data:await sessionNoteSave(db,teacherId,a.sessionId,a)};
       }
+      case "ccp_v1_private_sessions_create": {
+        const a=args as CanonicalPrivateSessionCreateInput&{confirmed:boolean};
+        return {data:await canonicalPrivateSessionCreate(db,teacherId,{
+          studentId:a.studentId,workplaceId:a.workplaceId,
+          date:a.date,time:a.time,durationMinutes:a.durationMinutes,
+          isHomeVisit:a.isHomeVisit,makeupForSessionId:a.makeupForSessionId,
+          idempotencyKey:a.idempotencyKey,
+        })};
+      }
       case "ccp_v1_recurring_slots_list": {
         const a=args as {studentId?:string;activeOnly?:boolean};
         return {data:await canonicalSlotsList(db,teacherId,a)};
@@ -2211,6 +2230,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CanonicalAttendanceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof SessionNoteError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof CanonicalPrivateSessionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalSlotError)
       return {error:{code:error.code,message:error.message}};
