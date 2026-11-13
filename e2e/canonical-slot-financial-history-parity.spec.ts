@@ -27,13 +27,17 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
  })).error).toBeUndefined();
  const today=Date.parse(new Date().toISOString().slice(0,10)+"T00:00:00Z");
  // Isolate Playwright retries from prior partially written teaching occurrences.
- const dayOffset=randomInt(60,300);
+ const dayOffset=randomInt(14,22);
+ // The slot materializer only creates upcoming occurrences; vary the time
+ // to avoid collisions when Playwright retries after partially writing data.
+ const randomMinute=randomInt(360,1080);
+ const startTime=String(Math.floor(randomMinute/60)).padStart(2,"0")+":"+String(randomMinute%60).padStart(2,"0");
  const firstDate=new Date(today+dayOffset*86400000).toISOString().slice(0,10);
  const secondDate=new Date(today+(dayOffset+7)*86400000).toISOString().slice(0,10);
  const idempotencyKey=randomUUID();
  const slotInput={
   studentId,workplaceId,dayOfWeek:new Date(firstDate+"T00:00:00Z").getUTCDay(),
-  startTime:"06:00",durationMinutes:60,startDate:firstDate,endDate:secondDate,
+  startTime,durationMinutes:60,startDate:firstDate,endDate:secondDate,
   rateCents:7000,isHomeVisit:false,idempotencyKey,
  };
  const created=await page.request.post("/api/coaching/calendar/slots",{data:slotInput});
