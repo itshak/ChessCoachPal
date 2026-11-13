@@ -83,8 +83,8 @@ import {sessionNotesList,sessionNoteSave,SessionNoteError,
 import {canonicalAttendanceList,canonicalAttendanceSet,canonicalAttendanceBulkSet,
  CanonicalAttendanceError,type CanonicalAttendanceSetInput,
  type CanonicalAttendanceBulkInput} from "@/lib/server/canonical-session-attendance";
-import {canonicalSlotsList,canonicalSlotUpdate,canonicalSlotDelete,
- canonicalSlotEditSchema,canonicalSlotDeleteSchema,CanonicalSlotError}
+import {canonicalSlotsList,canonicalSlotCreate,canonicalSlotUpdate,canonicalSlotDelete,
+ canonicalSlotCreateSchema,canonicalSlotEditSchema,canonicalSlotDeleteSchema,CanonicalSlotError}
  from "@/lib/server/canonical-slot-service";
 import { oauthOrigin } from "@/lib/server/agent-oauth-core";
 import { teacherPolicyView, teacherPolicyUpdate } from "@/lib/server/teacher-policy-service";
@@ -634,6 +634,12 @@ const catalogue = [
     description:"List owned canonical private recurring scheduling intentions, optionally filtered by active state or student. Includes revision updated_at.",
     schema:z.object({studentId:uuid.optional(),activeOnly:z.boolean().optional()}).strict(),
     scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_recurring_slots_create",
+    description:"Create one recurring canonical private lesson slot and materialize the next 56 studio-local days atomically. The supplied idempotencyKey is also the stable slot ID for exact website/MCP replay. Teacher-owned student and workplace enrollment required.",
+    schema:canonicalSlotCreateSchema.extend({confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_recurring_slots_update",
@@ -1741,6 +1747,13 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_recurring_slots_list": {
         const a=args as {studentId?:string;activeOnly?:boolean};
         return {data:await canonicalSlotsList(db,teacherId,a)};
+      }
+      case "ccp_v1_recurring_slots_create": {
+        const a=args as Record<string,unknown>;
+        const {confirmed,...input}=a;
+        void confirmed;
+        return {data:await canonicalSlotCreate(db,teacherId,
+          input as import("@/lib/server/canonical-slot-service").CanonicalSlotCreateInput)};
       }
       case "ccp_v1_recurring_slots_update": {
         const a=args as {slotId:string;changes:unknown;expectedUpdatedAt:string;idempotencyKey:string};
