@@ -9,7 +9,7 @@
 
 ## B. Canonical schema and atomic service
 - [x] B1. Replace old tables, FKs, triggers, RLS and RPCs in the single baseline SQL; add canonical constraints, indexes, tenant policies, audit, revision and idempotency receipts. No migration/backfill/compatibility layer.
-- [x] B2. Implement canonical occurrence creation, reschedule, completion, cancellation, slot materialization/edit/delete with stable IDs, DST/holiday and protected historical references.
+- [ ] B2. Implement canonical occurrence creation, reschedule, completion, cancellation, slot materialization/edit/delete with stable IDs, DST/holiday and protected historical references.
 - [x] B3. Implement roster correction and attendance mark/clear/correct/bulk including present/late/absent/student_cancelled/teacher_cancelled and independent session completion.
 - [x] B4. Implement canonical shared/private notes, guardian cancellation and approved durable outbox/receipt notifications with atomic tenant-authorized commands.
 - [x] B5. Share one domain service and authorization/transaction layer across website and named MCP tools, including read-only scope, plan gates, revisions and replay protection.
@@ -33,3 +33,5 @@
 ## Source-branch verification evidence
 
 Exact source `bb498083`: [CI, 441 unit tests and no-legacy strict audit](https://github.com/itshak/ChessCoachPal/actions/runs/43431098540), [229 authenticated website/MCP E2E passing, five skipped](https://github.com/itshak/ChessCoachPal/actions/runs/43431098437), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43431098438), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43431098458), [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43431098490). Unchecked D3 requires independent holiday, financial/credit/history protection coverage; D5 requires merged implementation, evidence update and archival. Parent remains 89/93 old + 21/26 new, strict release blocked.
+
+**B2 remaining:** DST/timezone and occurrence identity are tested, but an explicit holiday exclusion/change contract and authenticated holiday acceptance remain unresolved. Do not mark B2 accepted until holiday behavior is specified and tested; unrelated green CI does not establish it.
