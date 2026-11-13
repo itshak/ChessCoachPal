@@ -345,14 +345,16 @@
     {
       "path": "app/api/coaching/calendar/slots/route.ts",
       "methods": [
-        "GET"
+        "GET",
+        "POST"
       ],
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_recurring_slots_list"
+        "ccp_v1_recurring_slots_list",
+        "ccp_v1_recurring_slots_create"
       ],
-      "explanation": "Shared canonical owner-scoped recurrence list with stable pagination and revision, website ↔ delegated MCP.",
+      "explanation": "Shared canonical recurring intent list and atomic create RPC, with a stable caller-provided idempotency key, frozen participant, owned workplace enrollment and materialized horizon. Authenticated cross-interface E2E.",
       "evidenceTest": "e2e/canonical-recurring-slots-parity.spec.ts"
     },
     {
