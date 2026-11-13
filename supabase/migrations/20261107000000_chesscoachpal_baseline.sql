@@ -7913,17 +7913,18 @@ BEGIN
        OR (v_starts AT TIME ZONE v_timezone)::time <> v_slot.start_time
        OR (v_row->>'duration_minutes')::integer <> v_slot.duration_minutes
        OR (v_row->>'is_home_visit')::boolean IS DISTINCT FROM v_slot.is_home_visit
-       OR (v_row->>'local_timezone') IS DISTINCT FROM v_timezone THEN
+       OR (v_row->>'local_timezone') IS DISTINCT FROM v_timezone
+       OR (v_row->>'slot_rate_cents')::integer IS DISTINCT FROM v_slot.rate_cents THEN
       RAISE EXCEPTION 'CANONICAL_MATERIALIZE_SLOT_MISMATCH'
         USING ERRCODE='22023';
     END IF;
     INSERT INTO public.teaching_sessions(
       teacher_id,workplace_id,student_id,title,starts_at,duration_minutes,
-      status,slot_id,slot_occurrence_date,local_timezone,is_home_visit
+      status,slot_id,slot_occurrence_date,local_timezone,is_home_visit,slot_rate_cents
     ) VALUES(
       v_teacher,v_workplace_id,v_slot.student_id,'Private chess lesson',
       v_starts,v_slot.duration_minutes,'scheduled',v_slot.id,v_slot_date,
-      v_timezone,v_slot.is_home_visit
+      v_timezone,v_slot.is_home_visit,v_slot.rate_cents
     ) ON CONFLICT (slot_id,slot_occurrence_date) DO NOTHING;
     v_count := v_count+1;
     IF FOUND THEN v_inserted := v_inserted+1; END IF;
