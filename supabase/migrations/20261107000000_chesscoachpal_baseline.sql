@@ -9662,7 +9662,8 @@ GRANT EXECUTE ON FUNCTION public.ccp_backup_upsert_protected(text,jsonb)
 CREATE TABLE public.ccp_session_attendance_audit (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
-  session_id uuid NOT NULL REFERENCES public.teaching_sessions(id) ON DELETE RESTRICT,
+  session_id uuid NOT NULL REFERENCES public.teaching_sessions(id)
+    ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
   student_id uuid NOT NULL,
   action text NOT NULL CHECK (action IN ('insert','update','delete')),
   actor_role text NOT NULL CHECK (actor_role IN
