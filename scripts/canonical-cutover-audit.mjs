@@ -18,6 +18,17 @@ export function physicalLegacyTableDefinitions(sql){
   'CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:(?:"?public"?\\.)?)"?'+table+'"?(?:\\s|\\n)*\\(',"i"
  ).test(sql));
 }
+export function legacyFinancialFieldReferences(source){
+ const matches=[];
+ for(const [name,re] of [
+  ["lesson_id",/\blesson_id\b/],
+  ["makeup_for",/\bmakeup_for\b/],
+  ["makeupFor",/\bmakeupFor\b/],
+ ]){
+   if(re.test(source))matches.push(name);
+ }
+ return matches;
+}
 export function directOldSourceReferences(source){
  const matches=[];
  for(const table of oldTables){
@@ -44,16 +55,23 @@ function walk(dir){
 export function inventory(){
  const sql=readFileSync(join(root,sqlPath),"utf8");
  const files=[];
+ const financialFieldConsumers=[];
  for(const folder of targets)
   for(const abs of walk(join(root,folder))){
    const path=relative(root,abs).replaceAll("\\","/");
    if(path===sqlPath || path==="scripts/canonical-cutover-audit.mjs" || path==="scripts/canonical-cutover-audit.test.mjs")continue;
    const references=directOldSourceReferences(readFileSync(abs,"utf8")).filter(x=>path.endsWith(".sql")||!x.startsWith("SQL "));
    if(references.length)files.push({path,references,kind:/\.(?:test|spec)\.|^e2e\//.test(path)?"test":"runtime"});
+   if(!/\.(?:test|spec)\.|^e2e\//.test(path)){
+    const financialFields=legacyFinancialFieldReferences(readFileSync(abs,"utf8"));
+    if(financialFields.length)financialFieldConsumers.push({path,fields:financialFields});
+   }
   }
  files.sort((a,b)=>a.path.localeCompare(b.path));
+ financialFieldConsumers.sort((a,b)=>a.path.localeCompare(b.path));
  return {physicalTables:physicalLegacyTableDefinitions(sql),sqlPath,
-  sqlReferences:directOldSourceReferences(sql),consumers:files,oldRpcs};
+  sqlReferences:directOldSourceReferences(sql),consumers:files,
+  financialFieldConsumers,oldRpcs};
 }
 const invoked=process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url);
 if(invoked){
@@ -66,7 +84,8 @@ if(invoked){
   for(const entry of runtime)console.log(" - "+entry.path+": "+entry.references.join(", "));
  }
  if(process.argv.includes("--strict")&&
-    (audit.physicalTables.length||audit.sqlReferences.length||audit.consumers.length))
+    (audit.physicalTables.length||audit.sqlReferences.length||
+     audit.consumers.length||audit.financialFieldConsumers.length))
    process.exitCode=1;
 }
 
