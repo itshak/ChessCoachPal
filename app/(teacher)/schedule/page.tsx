@@ -1,226 +1,86 @@
-import { createClient } from "@/lib/supabase/server";
-import { materializeLessons, getPolicy } from "@/lib/server/scheduling";
-import {
-  addDays,
-  startOfWeek,
-  toLocalDateString,
-  earnsMakeupCredit,
-  creditIsValid,
-  oneToOne,
-} from "@/lib/schedule";
-import type { AttendanceStatus } from "@/lib/supabase/types";
-import { WeekView, type WeekLesson } from "@/components/teacher/schedule/WeekView";
-import { BulkAttendancePanel } from "@/components/teacher/schedule/BulkAttendancePanel";
-import { SlotManager } from "@/components/teacher/schedule/SlotManager";
-import { MakeupPanel, type MakeupCredit } from "@/components/teacher/schedule/MakeupPanel";
-import { formatEventDateKey } from "@/lib/events";
+import {createClient} from "@/lib/supabase/server";
+import {getPolicy} from "@/lib/server/scheduling";
+import {addDays,startOfWeek,toLocalDateString} from "@/lib/schedule";
+import {formatEventDateKey} from "@/lib/events";
+import {materializeCanonicalSessions} from "@/lib/server/canonical-calendar-service";
+import {canonicalCalendarWindow} from "@/lib/server/canonical-calendar-read";
+import {canonicalSlotsList} from "@/lib/server/canonical-slot-service";
+import {canonicalMakeupCreditsList} from "@/lib/server/canonical-makeup-service";
+import {CanonicalScheduleBoard} from "@/components/teacher/schedule/CanonicalScheduleBoard";
+import {CanonicalSlotManager,type Slot} from "@/components/teacher/schedule/CanonicalSlotManager";
+import {CanonicalMakeupPanel} from "@/components/teacher/schedule/CanonicalMakeupPanel";
 import Link from "next/link";
 
-export const metadata = { title: "Schedule" };
+export const metadata={title:"Schedule"};
 
 export default async function SchedulePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ week?: string }>;
-}) {
-  const { week } = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+ searchParams,
+}:{searchParams:Promise<{week?:string}>}){
+ const db=await createClient(),{data:{user}}=await db.auth.getUser();
+ if(!user)return null;
+ const {week}=await searchParams;
+ const policy=await getPolicy(db,user.id);
+ const today=toLocalDateString(new Date(),policy.timezone);
+ const weekStart=startOfWeek(week&&/^\d{4}-\d{2}-\d{2}$/.test(week)?week:today);
+ const weekEnd=addDays(weekStart,6);
 
-  if (!user) return null;
+ // Materialize the normal near-term horizon and separately the requested
+ // week. This avoids one unbounded window when a teacher looks far back or
+ // forward in history. Existing marked, noted, moved or paid occurrence IDs
+ // are never overwritten by recurrence materialization.
+ const normalEnd=addDays(today,56);
+ await materializeCanonicalSessions(db,user.id,today,normalEnd);
+ if(weekStart<today||weekEnd>normalEnd)
+  await materializeCanonicalSessions(db,user.id,weekStart,weekEnd);
 
-  const policy = await getPolicy(supabase, user.id);
-  const today = toLocalDateString(new Date(), policy.timezone);
-  const weekStart = startOfWeek(
-    week && /^\d{4}-\d{2}-\d{2}$/.test(week) ? week : today
-  );
-  const weekEnd = addDays(weekStart, 6);
+ const [calendar,slots,makeup,studentsRes,workplacesRes,eventsRes]=
+  await Promise.all([
+   canonicalCalendarWindow(db,user.id,weekStart,weekEnd,policy.timezone),
+   canonicalSlotsList(db,user.id),
+   canonicalMakeupCreditsList(db,user.id),
+   db.from("students").select("id,name")
+    .eq("teacher_id",user.id).order("name"),
+   db.from("workplaces").select("id,name")
+    .eq("teacher_id",user.id).order("created_at").order("id"),
+   db.from("events").select("id,title,starts_at")
+    .eq("teacher_id",user.id)
+    .gte("starts_at",addDays(weekStart,-2)+"T00:00:00Z")
+    .lt("starts_at",addDays(weekEnd,3)+"T00:00:00Z")
+    .order("starts_at"),
+  ]);
+ if(studentsRes.error||workplacesRes.error||eventsRes.error)
+  throw new Error("Unable to load the canonical teaching schedule");
 
-  // Materialize the visible week plus the standard forward horizon
-  const matFrom = weekStart < today ? weekStart : today;
-  const matTo = weekEnd > addDays(today, 56) ? weekEnd : addDays(today, 56);
-  await materializeLessons(supabase, user.id, matFrom, matTo);
+ const students=studentsRes.data??[],workplaces=workplacesRes.data??[];
+ const events=(eventsRes.data??[]).map(event=>({
+  id:event.id,title:event.title,startsAt:event.starts_at,
+  localDate:formatEventDateKey(event.starts_at,policy.timezone),
+ })).filter(event=>event.localDate>=weekStart&&event.localDate<=weekEnd);
 
-  const [lessonsRes, slotsRes, studentsRes, attendanceRes, redeemedRes, eventsRes] =
-    await Promise.all([
-      supabase
-        .from("lessons")
-        .select(
-          `id, student_id, slot_id, lesson_date, starts_at, duration_minutes, makeup_for, is_home_visit, rescheduled_from_date,
-           students ( name ),
-           attendance!lesson_id ( id, status, notice_at ),
-           lesson_notes ( body, private_body, shared_with_parent, emailed_at )`
-        )
-        .eq("teacher_id", user.id)
-        .gte("lesson_date", weekStart)
-        .lte("lesson_date", weekEnd)
-        .order("starts_at"),
-      supabase
-        .from("lesson_slots")
-        .select("*, students ( name )")
-        .eq("teacher_id", user.id)
-        .order("day_of_week")
-        .order("start_time"),
-      supabase
-        .from("students")
-        .select("id, name")
-        .eq("teacher_id", user.id)
-        .order("name"),
-      // All non-attended attendance rows — make-up credit candidates
-      supabase
-        .from("attendance")
-        .select(
-          "id, status, notice_at, marked_at, lessons!lesson_id ( id, student_id, starts_at, duration_minutes, teacher_id, students ( name ) )"
-        )
-        .neq("status", "attended"),
-      // Which credits are already redeemed by a make-up lesson
-      supabase
-        .from("lessons")
-        .select("makeup_for")
-        .eq("teacher_id", user.id)
-        .not("makeup_for", "is", null),
-      supabase
-        .from("events")
-        .select("id, title, location, starts_at, ends_at")
-        .eq("teacher_id", user.id)
-        .gte("starts_at", `${addDays(weekStart, -1)}T00:00:00.000Z`)
-        .lte("starts_at", `${addDays(weekEnd, 2)}T00:00:00.000Z`)
-        .order("starts_at"),
-    ]);
-
-  const weekLessons: WeekLesson[] = (lessonsRes.data ?? []).map((l) => {
-    const att = oneToOne(l.attendance as { id: string; status: AttendanceStatus; notice_at: string | null }[] | null);
-    const note = oneToOne(
-      l.lesson_notes as {
-        body: string;
-        private_body: string;
-        shared_with_parent: boolean;
-        emailed_at: string | null;
-      }[] | null
-    );
-    return {
-      id: l.id,
-      studentId: l.student_id,
-      studentName: (oneToOne(l.students as { name: string }[] | null))?.name ?? "Student",
-      isAdHoc: !l.slot_id,
-      isMakeup: !!l.makeup_for,
-      isHomeVisit: Boolean(l.is_home_visit),
-      rescheduledFromDate: l.rescheduled_from_date,
-      lessonDate: l.lesson_date,
-      startsAt: l.starts_at,
-      durationMinutes: l.duration_minutes,
-      attendance: att ? { status: att.status, noticeAt: att.notice_at } : null,
-      note: note
-        ? {
-            body: note.body,
-            privateBody: note.private_body ?? "",
-            sharedWithParent: note.shared_with_parent,
-            emailedAt: note.emailed_at,
-          }
-        : null,
-    };
-  });
-
-  const weekEvents = (eventsRes.data ?? [])
-    .map((e) => ({
-      id: e.id,
-      title: e.title,
-      location: e.location ?? "",
-      startsAt: e.starts_at,
-      endsAt: e.ends_at as string | null,
-      localDate: formatEventDateKey(e.starts_at, policy.timezone),
-    }))
-    .filter((e) => e.localDate >= weekStart && e.localDate <= weekEnd);
-
-  const redeemed = new Set(
-    (redeemedRes.data ?? []).map((l) => l.makeup_for as string)
-  );
-  const credits: MakeupCredit[] = (attendanceRes.data ?? [])
-    .map((a) => ({
-      ...a,
-      lesson: oneToOne(
-        a.lessons as unknown as
-          | {
-              id: string;
-              student_id: string;
-              starts_at: string;
-              duration_minutes: number;
-              teacher_id: string;
-              students: { name: string } | { name: string }[] | null;
-            }[]
-          | null
-      ),
-    }))
-    .filter(
-      (a) =>
-        a.lesson &&
-        a.lesson.teacher_id === user.id &&
-        !redeemed.has(a.id) &&
-        earnsMakeupCredit(
-          a.status as AttendanceStatus,
-          a.notice_at,
-          a.lesson.starts_at,
-          policy
-        ) &&
-        creditIsValid(a.marked_at, policy)
-    )
-    .map((a) => ({
-      attendanceId: a.id,
-      status: a.status as AttendanceStatus,
-      studentId: a.lesson!.student_id,
-      studentName: oneToOne(a.lesson!.students as { name: string }[] | null)?.name ?? "Student",
-      missedAt: a.lesson!.starts_at,
-      durationMinutes: a.lesson!.duration_minutes,
-    }));
-
-  return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Schedule</h1>
-        <p className="text-muted text-sm mt-1">
-          Tap a lesson to mark attendance and jot a note for the family. Weekly
-          lessons come from the recurring slots below.
-        </p>
-      </div>
-
-      <WeekView
-        weekStart={weekStart}
-        today={today}
-        timezone={policy.timezone}
-        lessons={weekLessons}
-        events={weekEvents}
-        students={studentsRes.data ?? []}
-        durationOptions={policy.lesson_duration_options}
-        cancellationWindowHours={policy.cancellation_window_hours}
-      />
-
-      <BulkAttendancePanel lessons={weekLessons} timezone={policy.timezone} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-        <div className="space-y-6">
-          <SlotManager
-            slots={(slotsRes.data ?? []).map((s) => ({
-              ...s,
-              studentName: oneToOne(s.students as { name: string }[] | null)?.name ?? "Student",
-            }))}
-            students={studentsRes.data ?? []}
-            durationOptions={policy.lesson_duration_options}
-            today={today}
-          />
-        </div>
-        <div className="space-y-6">
-          <MakeupPanel credits={credits} timezone={policy.timezone} />
-          <p className="text-sm text-muted">
-            Cancellation window, make-up rules, and time blocks live in{" "}
-            <Link href="/studio" className="text-primary hover:underline">
-              Studio
-            </Link>
-            .
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+ return <main className="space-y-6">
+  <header>
+   <h1 className="font-bold text-2xl">Teaching schedule</h1>
+   <p className="text-muted text-sm mt-1">
+    Every class is one canonical teaching session. Group attendance, make-up
+    decisions and notes belong to its frozen student roster.
+   </p>
+  </header>
+  <CanonicalScheduleBoard
+   weekStart={weekStart} today={today} timezone={policy.timezone}
+   sessions={calendar} events={events} students={students}
+   workplaces={workplaces} durationOptions={policy.lesson_duration_options}/>
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+   <CanonicalSlotManager slots={slots as Slot[]}
+    students={students} workplaces={workplaces}
+    today={today} durationOptions={policy.lesson_duration_options}/>
+   <div className="space-y-4">
+    <CanonicalMakeupPanel credits={makeup} timezone={policy.timezone}
+     today={today} workplaces={workplaces}/>
+    <p className="text-muted text-sm">
+     Cancellation windows, make-up eligibility and teaching rates are configured in{" "}
+     <Link className="text-primary hover:underline" href="/studio">Studio settings</Link>.
+    </p>
+   </div>
+  </div>
+ </main>;
 }
