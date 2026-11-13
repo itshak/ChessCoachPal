@@ -5,7 +5,7 @@ import Link from "next/link";
 import {useRouter} from "next/navigation";
 import {useToast} from "@/components/ui/toast";
 import type {CanonicalCalendarRow} from "@/lib/server/canonical-calendar-read";
-import {addDays,formatLessonDate,formatLessonTime} from "@/lib/schedule";
+import {addDays,toLocalDateString,formatLessonDate,formatLessonTime} from "@/lib/schedule";
 
 type Student={id:string;name:string};
 type Workplace={id:string;name:string};
@@ -71,9 +71,7 @@ export function CanonicalScheduleBoard({
  const byDay=useMemo(()=>{
   const daysMap=new Map<string,CanonicalCalendarRow[]>();
   for(const session of sessions){
-   const date=new Intl.DateTimeFormat("en-CA",{
-    timeZone:session.local_timezone||timezone,year:"numeric",month:"2-digit",day:"2-digit",
-   }).format(new Date(session.starts_at));
+   const date=toLocalDateString(new Date(session.starts_at),session.local_timezone||timezone);
    const arr=daysMap.get(date)??[];arr.push(session);daysMap.set(date,arr);
   }
   for(const arr of daysMap.values())arr.sort((a,b)=>a.starts_at.localeCompare(b.starts_at));
@@ -300,8 +298,9 @@ export function CanonicalScheduleBoard({
     {draftStatus==="student_cancelled"&&<label className="block text-sm">
      Verified notice time
      <input type="datetime-local" className={field} value={noticeAt?
-      (new Date(noticeAt).toISOString().slice(0,16)):""} onChange={e=>setNoticeAt(
-       e.target.value?new Date(e.target.value).toISOString():"")}/>
+      new Date(new Date(noticeAt).getTime()-
+       new Date(noticeAt).getTimezoneOffset()*60_000).toISOString().slice(0,16):""}
+      onChange={e=>setNoticeAt(e.target.value?new Date(e.target.value).toISOString():"")}/>
     </label>}
     {draftStatus==="teacher_cancelled"&&<label className="flex items-center gap-2 text-sm">
      <input type="checkbox" checked={notifyFamily} onChange={e=>setNotifyFamily(e.target.checked)}/>
