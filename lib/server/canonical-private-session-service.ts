@@ -32,7 +32,7 @@ export async function canonicalPrivateSessionCreate(
  void teacherId; // SQL auth.uid() controls the mutation.
  const parsed=canonicalPrivateSessionCreateSchema.safeParse(raw);
  if(!parsed.success)fail(400,"VALIDATION_ERROR","Invalid private session date, time or participant");
- const x=parsed.data;
+ const x=parsed.data!;
  const {data,error}=await db.rpc("ccp_canonical_private_session_create",{
   p_student_id:x.studentId,p_workplace_id:x.workplaceId??null,
   p_date:x.date,p_local_time:x.time,
