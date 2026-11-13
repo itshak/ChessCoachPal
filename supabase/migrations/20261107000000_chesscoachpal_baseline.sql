@@ -9037,3 +9037,91 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_private_session_create(
  uuid,date,time,integer,boolean,uuid,uuid,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_private_session_create(
  uuid,date,time,integer,boolean,uuid,uuid,uuid) TO authenticated;
+
+
+-- Delete only scheduling INTENT. Historical and financially protected
+-- canonical occurrences retain stable IDs, snapshot roster, notes and
+-- participant charges. Unmarked unprotected future sessions may be removed
+-- atomically; all remaining sessions are detached from the deleted slot.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_delete(
+ p_slot_id uuid,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_canonical_slot_delete$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_slot public.lesson_slots%ROWTYPE;
+ v_session record;v_now timestamptz:=clock_timestamp();
+ v_removed integer:=0;v_preserved integer:=0;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_hash text;v_receipt jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_slot_id IS NULL OR p_idempotency_key IS NULL THEN
+   RAISE EXCEPTION 'INVALID_CANONICAL_SLOT_DELETE' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=md5(jsonb_build_array('canonical.slot.delete',p_slot_id)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'canonical.slot.delete',
+  v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_saved FROM public.agent_tool_receipts
+    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+   IF NOT FOUND OR v_saved.operation<>'canonical.slot.delete' OR
+      v_saved.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'CANONICAL_SLOT_REPLAY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_slot FROM public.lesson_slots
+   WHERE teacher_id=v_teacher AND id=p_slot_id FOR UPDATE;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF (SELECT count(*) FROM public.teaching_sessions
+      WHERE teacher_id=v_teacher AND slot_id=p_slot_id)>20000 THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_TOO_MANY' USING ERRCODE='22023';
+ END IF;
+ FOR v_session IN
+  SELECT id,starts_at,status FROM public.teaching_sessions
+   WHERE teacher_id=v_teacher AND slot_id=p_slot_id
+   ORDER BY starts_at,id FOR UPDATE
+ LOOP
+   IF v_session.starts_at>=v_now AND v_session.status='scheduled'
+      AND NOT EXISTS(
+        SELECT 1 FROM public.session_attendance WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
+        SELECT 1 FROM public.session_notes WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
+        SELECT 1 FROM public.chess_observations WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
+        SELECT 1 FROM public.invoice_items WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
+        SELECT 1 FROM public.credit_redemptions WHERE session_id=v_session.id
+      ) AND NOT EXISTS(
+        SELECT 1 FROM public.session_roster_corrections
+          WHERE session_id=v_session.id
+      ) THEN
+     DELETE FROM public.teaching_sessions WHERE id=v_session.id;
+     v_removed:=v_removed+1;
+   ELSE
+     -- Retain historical provenance even when the scheduling template is gone.
+     UPDATE public.teaching_sessions SET slot_id=NULL,
+       updated_at=clock_timestamp() WHERE id=v_session.id;
+     v_preserved:=v_preserved+1;
+   END IF;
+ END LOOP;
+ DELETE FROM public.lesson_slots
+   WHERE teacher_id=v_teacher AND id=p_slot_id;
+ v_receipt:=jsonb_build_object('ok',true,'removed',v_removed,
+   'preserved',v_preserved,'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_canonical_slot_delete$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_delete(uuid,uuid)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_delete(uuid,uuid)
+ TO authenticated;
