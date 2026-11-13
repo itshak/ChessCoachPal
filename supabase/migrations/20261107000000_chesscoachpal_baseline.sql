@@ -8159,3 +8159,143 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_portal_cancel(
  text,uuid,uuid,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_portal_cancel(
  text,uuid,uuid,text) TO service_role;
+
+
+-- Canonical participant-attendance correction and clear. The session row
+-- serializes web, delegated MCP, and guardian-originated decisions. The
+-- idempotency receipt and every mutation commit (or roll back) together.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_attendance_mutate(
+  p_session_id uuid,p_student_id uuid,p_status text,p_note text,
+  p_notice_at timestamptz,p_cancel_reason text,
+  p_expected_updated_at timestamptz,p_idempotency_key uuid,
+  p_notify_family boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_attendance_mutate$
+DECLARE
+  v_teacher uuid:=auth.uid();
+  v_session public.teaching_sessions%ROWTYPE;
+  v_att public.session_attendance%ROWTYPE;
+  v_receipt jsonb;
+  v_hash text;
+  v_saved public.agent_tool_receipts%ROWTYPE;
+  v_cancelled_by text;
+BEGIN
+  IF v_teacher IS NULL THEN
+    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+  END IF;
+  IF p_session_id IS NULL OR p_student_id IS NULL OR p_idempotency_key IS NULL
+    OR p_note IS NULL OR length(p_note)>5000
+    OR p_cancel_reason IS NULL OR length(p_cancel_reason)>1000
+    OR p_notify_family IS NULL
+    OR (p_status IS NOT NULL AND p_status NOT IN
+       ('present','late','absent','excused','student_cancelled','teacher_cancelled'))
+    OR (p_status='student_cancelled' AND p_notice_at IS NULL)
+    OR (p_status NOT IN ('student_cancelled','teacher_cancelled') OR p_status IS NULL)
+       AND (p_notice_at IS NOT NULL OR p_cancel_reason<>'')
+    OR (p_status<>'teacher_cancelled' OR p_status IS NULL) AND p_notify_family THEN
+      RAISE EXCEPTION 'CANONICAL_ATTENDANCE_INVALID_REQUEST'
+        USING ERRCODE='22023';
+  END IF;
+  v_hash:=md5(jsonb_build_array('canonical.attendance.mutate',
+    p_session_id,p_student_id,p_status,p_note,p_notice_at,p_cancel_reason,
+    p_expected_updated_at,p_notify_family)::text);
+  INSERT INTO public.agent_tool_receipts(
+    teacher_id,idempotency_key,operation,request_hash,receipt
+  ) VALUES(v_teacher,p_idempotency_key,'canonical.attendance.mutate',
+    v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+  IF NOT FOUND THEN
+    SELECT * INTO v_saved FROM public.agent_tool_receipts
+      WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+    IF NOT FOUND OR v_saved.operation<>'canonical.attendance.mutate'
+       OR v_saved.request_hash<>v_hash THEN
+      RAISE EXCEPTION 'CANONICAL_ATTENDANCE_REPLAY_CONFLICT'
+        USING ERRCODE='23505';
+    END IF;
+    RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+  END IF;
+  SELECT * INTO v_session FROM public.teaching_sessions
+    WHERE id=p_session_id AND teacher_id=v_teacher FOR UPDATE;
+  IF NOT FOUND OR NOT EXISTS(
+    SELECT 1 FROM public.session_participants
+     WHERE teacher_id=v_teacher AND session_id=p_session_id
+       AND student_id=p_student_id
+  ) THEN
+    RAISE EXCEPTION 'CANONICAL_ATTENDANCE_NOT_FOUND'
+      USING ERRCODE='42501';
+  END IF;
+  SELECT * INTO v_att FROM public.session_attendance
+    WHERE teacher_id=v_teacher AND session_id=p_session_id
+      AND student_id=p_student_id FOR UPDATE;
+  IF v_att.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RAISE EXCEPTION 'CANONICAL_ATTENDANCE_REVISION_CONFLICT'
+      USING ERRCODE='23505';
+  END IF;
+  IF p_status IS NULL THEN
+    -- Do not silently revoke a cancellation that has a linked makeup.
+    IF EXISTS(
+      SELECT 1 FROM public.teaching_sessions
+       WHERE teacher_id=v_teacher AND makeup_for_session_id=p_session_id
+         AND makeup_for_student_id=p_student_id
+    ) THEN
+      RAISE EXCEPTION 'CANONICAL_ATTENDANCE_HAS_MAKEUP'
+        USING ERRCODE='23514';
+    END IF;
+    DELETE FROM public.session_attendance
+      WHERE teacher_id=v_teacher AND session_id=p_session_id
+        AND student_id=p_student_id;
+    v_receipt:=jsonb_build_object(
+      'sessionId',p_session_id,'studentId',p_student_id,'cleared',true,
+      'status',null,'revision',null,'idempotencyKey',p_idempotency_key);
+  ELSE
+    v_cancelled_by:=CASE WHEN p_status='student_cancelled' THEN 'student'
+      WHEN p_status='teacher_cancelled' THEN 'teacher' ELSE NULL END;
+    PERFORM set_config('ccp.attendance_commit_session',p_session_id::text,true);
+    IF v_att.id IS NULL THEN
+      INSERT INTO public.session_attendance(
+        teacher_id,session_id,student_id,status,note,notice_at,
+        cancelled_by,cancel_reason,marked_at,marked_by,updated_at
+      ) VALUES(
+        v_teacher,p_session_id,p_student_id,p_status,p_note,p_notice_at,
+        v_cancelled_by,p_cancel_reason,clock_timestamp(),v_teacher,clock_timestamp()
+      ) RETURNING * INTO v_att;
+    ELSE
+      UPDATE public.session_attendance SET
+        status=p_status,note=p_note,notice_at=p_notice_at,
+        cancelled_by=v_cancelled_by,cancel_reason=p_cancel_reason,
+        marked_at=clock_timestamp(),marked_by=v_teacher,
+        updated_at=clock_timestamp()
+      WHERE id=v_att.id RETURNING * INTO v_att;
+    END IF;
+    v_receipt:=jsonb_build_object(
+      'sessionId',p_session_id,'studentId',p_student_id,'cleared',false,
+      'status',v_att.status,'note',v_att.note,'noticeAt',v_att.notice_at,
+      'cancelReason',v_att.cancel_reason,'cancelledBy',v_att.cancelled_by,
+      'markedAt',v_att.marked_at,'revision',v_att.updated_at,
+      'idempotencyKey',p_idempotency_key);
+  END IF;
+  IF p_notify_family THEN
+    INSERT INTO public.ccp_delivery_outbox(
+      teacher_id,session_id,student_id,event_key,kind,payload
+    ) VALUES(v_teacher,p_session_id,p_student_id,
+      'session-cancel:'||p_idempotency_key::text,
+      'session_cancel_family',
+      jsonb_build_object('sessionId',p_session_id,
+        'studentId',p_student_id,'markedAt',v_att.marked_at,
+        'cancelReason',p_cancel_reason,'requestId',p_idempotency_key));
+  END IF;
+  UPDATE public.agent_tool_receipts SET receipt=v_receipt
+    WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_attendance_mutate$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_attendance_mutate(
+  uuid,uuid,text,text,timestamptz,text,timestamptz,uuid,boolean
+) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_attendance_mutate(
+  uuid,uuid,text,text,timestamptz,text,timestamptz,uuid,boolean
+) TO authenticated;
+
+-- Authoritative attendance writes must not bypass the shared transaction.
+-- SECURITY DEFINER RPCs above retain write privileges, but direct
+-- authenticated PostgREST insert/update/delete do not.
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.session_attendance FROM authenticated;
