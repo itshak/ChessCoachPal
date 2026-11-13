@@ -30,14 +30,15 @@ test("PARITY: canonical recurring edits and deletes are atomic, tenant-scoped an
  const login=await db.auth.signInWithPassword(SEED_TEACHER);
  expect(login.error).toBeNull();
  const teacherId=login.data.user!.id;
- const offset=Number.parseInt(randomUUID().slice(0,8),16)%1800;
- const startMs=Date.UTC(2080,0,1)+offset*86400000;
+ const offset=14+Number.parseInt(randomUUID().slice(0,8),16)%20;
+ const todayUtc=Date.parse(new Date().toISOString().slice(0,10)+"T00:00:00Z");
+ const startMs=todayUtc+offset*86400000;
  const firstDate=new Date(startMs).toISOString().slice(0,10);
  const secondDate=new Date(startMs+7*86400000).toISOString().slice(0,10);
  const dayOfWeek=new Date(startMs).getUTCDay();
  const {data:slot,error:slotError}=await db.from("lesson_slots").insert({
   teacher_id:teacherId,student_id:studentId,workplace_id:workplaceId,
-  day_of_week:dayOfWeek,start_time:"14:00",duration_minutes:60,
+  day_of_week:dayOfWeek,start_time:"05:00",duration_minutes:60,
   start_date:firstDate,end_date:secondDate,active:true,
   rate_cents:6500,is_home_visit:false,
  }).select("*").single();
@@ -70,7 +71,7 @@ test("PARITY: canonical recurring edits and deletes are atomic, tenant-scoped an
     notifyFamily:false,idempotencyKey:randomUUID()},
   });
  expect(attended.status(),await attended.text()).toBe(200);
- const change={changes:{startTime:"15:00"},
+ const change={changes:{startTime:"06:00"},
   expectedUpdatedAt:slot!.updated_at,idempotencyKey:randomUUID()};
  const changed=await page.request.patch(
   "/api/coaching/calendar/slots/"+slot!.id,{data:change});
@@ -93,9 +94,9 @@ test("PARITY: canonical recurring edits and deletes are atomic, tenant-scoped an
  });
  expect(after.data![1].id).not.toBe(sessions.data![1].id);
  expect(new Date(after.data![1].starts_at).toISOString())
-  .toBe(secondDate+"T15:00:00.000Z");
+  .toBe(secondDate+"T06:00:00.000Z");
  const stale=await tool("ccp_v1_recurring_slots_update",{
-  slotId:slot!.id,changes:{startTime:"16:00"},
+  slotId:slot!.id,changes:{startTime:"07:00"},
   expectedUpdatedAt:slot!.updated_at,idempotencyKey:randomUUID(),
   confirmed:true,
  });
@@ -122,7 +123,7 @@ test("PARITY: canonical recurring edits and deletes are atomic, tenant-scoped an
  expect(removed.error).toBeNull();
  expect(removed.data).toBeNull();
  const foreign=await tool("ccp_v1_recurring_slots_update",{
-  slotId:randomUUID(),changes:{startTime:"17:00"},
+  slotId:randomUUID(),changes:{startTime:"08:00"},
   expectedUpdatedAt:slot!.updated_at,idempotencyKey:randomUUID(),
   confirmed:true,
  });
