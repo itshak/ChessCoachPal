@@ -72,7 +72,7 @@ export async function canonicalSlotCreate(
 ){
  const parsed=canonicalSlotCreateSchema.safeParse(input);
  if(!parsed.success)fail(400,"VALIDATION_ERROR","Invalid recurring-slot details");
- const x=parsed.data;
+ const x=parsed.data!;
  const policy=await getPolicy(db,teacherId);
  const from=toLocalDateString(new Date(),policy.timezone);
  const to=addDays(from,56),startDate=x.startDate??from;
@@ -151,7 +151,7 @@ export async function canonicalSlotUpdate(
   if((data?.length??0)<500)break;
  }
  if(!workplaces.length)fail(409,"CONFLICT","Personal workplace is unavailable");
- const changes=parsed.data.changes;
+ const changes=parsed.data!.changes;
  const updated:CanonicalSlot={...(slot as CanonicalSlot),
   ...(changes.dayOfWeek!==undefined?{day_of_week:changes.dayOfWeek}:{}),
   ...(changes.startTime!==undefined?{start_time:changes.startTime}:{}),
@@ -176,9 +176,9 @@ export async function canonicalSlotUpdate(
  }
  const {data,error}=await db.rpc("ccp_canonical_slot_update",{
   p_slot_id:slotId,p_changes:changes,
-  p_expected_updated_at:parsed.data.expectedUpdatedAt,
+  p_expected_updated_at:parsed.data!.expectedUpdatedAt,
   p_rows:planned,p_from:from,p_to:to,
-  p_idempotency_key:parsed.data.idempotencyKey,
+  p_idempotency_key:parsed.data!.idempotencyKey,
  });
  if(error){
   if(/CANONICAL_SLOT_(?:REPLAY|REVISION)_CONFLICT|SESSION_CONFLICT/.test(error.message)||
