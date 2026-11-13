@@ -8320,16 +8320,6 @@ BEGIN
  IF NOT FOUND THEN
    RAISE EXCEPTION 'CANONICAL_PRIVATE_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
  END IF;
- -- A null workplace is the teacher's implicit personal-coaching
- -- workspace. Students need no named-workplace enrollment for a private
- -- lesson there; explicit named workplaces still require membership.
- IF p_workplace_id IS NOT NULL AND NOT EXISTS(
-  SELECT 1 FROM public.workplace_enrollments
-   WHERE teacher_id=v_teacher AND workplace_id=v_workplace.id
-    AND student_id=p_student_id
- ) THEN
-  RAISE EXCEPTION 'CANONICAL_PRIVATE_ENROLLMENT_NOT_FOUND' USING ERRCODE='42501';
- END IF;
  SELECT * INTO v_policy FROM public.studio_policies WHERE teacher_id=v_teacher;
  v_timezone:=CASE WHEN p_workplace_id IS NULL THEN
     coalesce(nullif(v_policy.timezone,''),v_workplace.timezone)
@@ -8400,6 +8390,25 @@ BEGIN
      RAISE EXCEPTION 'CANONICAL_PRIVATE_REPLAY_CONFLICT' USING ERRCODE='23505';
    END IF;
    RETURN to_jsonb(v_previous)||jsonb_build_object('replayed',true);
+ END IF;
+ -- The default teacher-owned workplace represents implicit personal lessons.
+ -- Provision the learner's membership only for a NEW personal lesson. A
+ -- replay never silently restores a membership the teacher removed later,
+ -- and explicitly selected named workplaces still demand prior enrollment.
+ -- This keeps the direct-session trigger as the final security guard.
+ IF p_workplace_id IS NULL THEN
+  INSERT INTO public.workplace_enrollments(
+   teacher_id,workplace_id,student_id
+  ) VALUES(v_teacher,v_workplace.id,p_student_id)
+  ON CONFLICT (teacher_id,workplace_id,student_id) DO NOTHING;
+ END IF;
+ IF NOT EXISTS(
+   SELECT 1 FROM public.workplace_enrollments
+    WHERE teacher_id=v_teacher AND workplace_id=v_workplace.id
+      AND student_id=p_student_id
+ ) THEN
+  RAISE EXCEPTION 'CANONICAL_PRIVATE_ENROLLMENT_NOT_FOUND'
+   USING ERRCODE='42501';
  END IF;
  INSERT INTO public.teaching_sessions(
   teacher_id,workplace_id,student_id,title,starts_at,duration_minutes,
