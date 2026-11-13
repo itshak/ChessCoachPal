@@ -5795,6 +5795,7 @@ BEGIN
   -- Independent backups for the same teacher cannot interleave; the receipt
   -- insert also serializes concurrent retries of an identical approved digest.
   PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text, 0));
+  PERFORM set_config('ccp.backup_import_teacher',v_teacher::text,true);
   INSERT INTO public.teacher_backup_import_receipts (teacher_id, digest, result)
   VALUES (v_teacher, p_digest, '{}'::jsonb) ON CONFLICT DO NOTHING;
   IF NOT FOUND THEN
@@ -5880,10 +5881,14 @@ BEGIN
       IF v_columns IS NULL THEN
         RAISE EXCEPTION 'IMPORT_EMPTY_ROW:%', v_table USING ERRCODE='22023';
       END IF;
+      IF v_table IN ('session_attendance','session_notes') THEN
+        PERFORM public.ccp_backup_upsert_protected(v_table,v_row);
+      ELSE
       EXECUTE format(
         'INSERT INTO public.%I (%s) SELECT %s FROM jsonb_populate_record(NULL::public.%I, $1) ON CONFLICT (%s) DO UPDATE SET %s',
         v_table, v_columns, v_columns, v_table, v_pkeys, v_updates
       ) USING v_row;
+      END IF;
       v_count := v_count + 1;
     END LOOP;
     v_counts := jsonb_set(v_counts, ARRAY[v_table], to_jsonb(v_count), true);
@@ -7521,6 +7526,7 @@ BEGIN
   -- Independent backups for the same teacher cannot interleave; the receipt
   -- insert also serializes concurrent retries of an identical approved digest.
   PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text, 0));
+  PERFORM set_config('ccp.backup_import_teacher',v_teacher::text,true);
   INSERT INTO public.teacher_backup_import_receipts (teacher_id, digest, result)
   VALUES (v_teacher, p_digest, '{}'::jsonb) ON CONFLICT DO NOTHING;
   IF NOT FOUND THEN
@@ -7606,10 +7612,14 @@ BEGIN
       IF v_columns IS NULL THEN
         RAISE EXCEPTION 'IMPORT_EMPTY_ROW:%', v_table USING ERRCODE='22023';
       END IF;
+      IF v_table IN ('session_attendance','session_notes') THEN
+        PERFORM public.ccp_backup_upsert_protected(v_table,v_row);
+      ELSE
       EXECUTE format(
         'INSERT INTO public.%I (%s) SELECT %s FROM jsonb_populate_record(NULL::public.%I, $1) ON CONFLICT (%s) DO UPDATE SET %s',
         v_table, v_columns, v_columns, v_table, v_pkeys, v_updates
       ) USING v_row;
+      END IF;
       v_count := v_count + 1;
     END LOOP;
     v_counts := jsonb_set(v_counts, ARRAY[v_table], to_jsonb(v_count), true);
@@ -9548,4 +9558,93 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_slot_create(
  FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_create(
  uuid,uuid,integer,time,integer,date,date,integer,boolean,jsonb,date,date,uuid)
+ TO authenticated;
+
+
+-- Portable teacher backup can restore protected canonical history without
+-- exposing direct PostgREST update privileges. The transaction-local marker
+-- is set only by the receipt-checked ccp_teacher_backup_restore invocation.
+CREATE OR REPLACE FUNCTION public.ccp_backup_upsert_protected(
+ p_table text,p_source jsonb
+) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $backup_protected$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_session uuid;
+ v_student uuid;
+ v_att public.session_attendance%ROWTYPE;
+ v_note public.session_notes%ROWTYPE;
+BEGIN
+ IF v_teacher IS NULL OR
+   current_setting('ccp.backup_import_teacher',true) IS DISTINCT FROM v_teacher::text
+   OR p_table NOT IN ('session_attendance','session_notes')
+   OR jsonb_typeof(p_source) IS DISTINCT FROM 'object'
+   OR pg_column_size(p_source)>65536 THEN
+  RAISE EXCEPTION 'BACKUP_PROTECTED_WRITE_DENIED' USING ERRCODE='42501';
+ END IF;
+ v_session:=nullif(p_source->>'session_id','')::uuid;
+ v_student:=nullif(p_source->>'student_id','')::uuid;
+ IF v_session IS NULL OR NOT EXISTS(
+  SELECT 1 FROM public.teaching_sessions
+   WHERE id=v_session AND teacher_id=v_teacher
+ ) OR (v_student IS NOT NULL AND NOT EXISTS(
+  SELECT 1 FROM public.session_participants
+   WHERE session_id=v_session AND student_id=v_student
+     AND teacher_id=v_teacher
+ )) THEN RAISE EXCEPTION 'BACKUP_PARTICIPANT_NOT_OWNED' USING ERRCODE='42501';END IF;
+ IF p_table='session_attendance' THEN
+  IF v_student IS NULL THEN
+   RAISE EXCEPTION 'BACKUP_PARTICIPANT_REQUIRED' USING ERRCODE='22023';
+  END IF;
+  SELECT * INTO v_att FROM jsonb_populate_record(
+   NULL::public.session_attendance,p_source);
+  PERFORM set_config('ccp.attendance_commit_session',v_session::text,true);
+  INSERT INTO public.session_attendance(
+    id,teacher_id,session_id,student_id,status,note,notice_at,
+    cancelled_by,cancel_reason,marked_at,marked_by,updated_at
+  ) VALUES(
+    coalesce(v_att.id,gen_random_uuid()),v_teacher,v_session,v_student,
+    v_att.status,coalesce(v_att.note,''),v_att.notice_at,
+    v_att.cancelled_by,coalesce(v_att.cancel_reason,''),
+    coalesce(v_att.marked_at,now()),
+    CASE WHEN v_att.marked_by IS NULL THEN NULL ELSE v_teacher END,
+    coalesce(v_att.updated_at,now())
+  ) ON CONFLICT (id) DO UPDATE SET
+    status=EXCLUDED.status,note=EXCLUDED.note,
+    notice_at=EXCLUDED.notice_at,cancelled_by=EXCLUDED.cancelled_by,
+    cancel_reason=EXCLUDED.cancel_reason,marked_at=EXCLUDED.marked_at,
+    marked_by=EXCLUDED.marked_by,updated_at=EXCLUDED.updated_at
+  WHERE public.session_attendance.teacher_id=v_teacher
+    AND public.session_attendance.session_id=v_session
+    AND public.session_attendance.student_id=v_student;
+  IF NOT FOUND THEN
+   RAISE EXCEPTION 'BACKUP_ATTENDANCE_ID_CONFLICT' USING ERRCODE='23505';
+  END IF;
+ ELSE
+  SELECT * INTO v_note FROM jsonb_populate_record(
+   NULL::public.session_notes,p_source);
+  INSERT INTO public.session_notes(
+    id,teacher_id,session_id,student_id,body,private_body,
+    shared_with_guardian,emailed_at,created_at,updated_at
+  ) VALUES(
+    coalesce(v_note.id,gen_random_uuid()),v_teacher,v_session,v_student,
+    coalesce(v_note.body,''),coalesce(v_note.private_body,''),
+    coalesce(v_note.shared_with_guardian,false),v_note.emailed_at,
+    coalesce(v_note.created_at,now()),coalesce(v_note.updated_at,now())
+  ) ON CONFLICT (id) DO UPDATE SET
+    body=EXCLUDED.body,private_body=EXCLUDED.private_body,
+    shared_with_guardian=EXCLUDED.shared_with_guardian,
+    emailed_at=EXCLUDED.emailed_at,updated_at=EXCLUDED.updated_at
+  WHERE public.session_notes.teacher_id=v_teacher
+    AND public.session_notes.session_id=v_session
+    AND public.session_notes.student_id IS NOT DISTINCT FROM v_student;
+  IF NOT FOUND THEN
+   RAISE EXCEPTION 'BACKUP_SESSION_NOTE_ID_CONFLICT' USING ERRCODE='23505';
+  END IF;
+ END IF;
+END;
+$backup_protected$;
+REVOKE ALL ON FUNCTION public.ccp_backup_upsert_protected(text,jsonb)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_backup_upsert_protected(text,jsonb)
  TO authenticated;
