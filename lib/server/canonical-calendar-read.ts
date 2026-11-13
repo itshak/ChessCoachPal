@@ -8,7 +8,7 @@ export type CanonicalCalendarRow={
  slot_id:string|null;slot_occurrence_date:string|null;
  is_home_visit:boolean;makeup_for_session_id:string|null;
  participants:{studentId:string;name:string;attendanceStatus:string|null;
-  noticeAt:string|null}[];
+  noticeAt:string|null;updatedAt:string|null;note:string;cancelReason:string}[];
 };
 type Session={
  id:string;title:string;starts_at:string;duration_minutes:number;status:string;
@@ -17,7 +17,7 @@ type Session={
  makeup_for_session_id:string|null;
 };
 type Person={session_id:string;student_id:string};
-type Mark={session_id:string;student_id:string;status:string;notice_at:string|null};
+type Mark={session_id:string;student_id:string;status:string;notice_at:string|null;updated_at:string;note:string;cancel_reason:string};
 const PAGE=500;
 async function pages<T>(
  fn:(offset:number)=>PromiseLike<{data:T[]|null;error:{message:string}|null}>,
@@ -65,7 +65,7 @@ export async function canonicalCalendarWindow(
     .in("session_id",chunk).order("session_id").order("student_id")
     .range(offset,offset+PAGE-1),"canonical calendar frozen roster"),
    pages<Mark>(offset=>db.from("session_attendance")
-    .select("session_id,student_id,status,notice_at")
+    .select("session_id,student_id,status,notice_at,updated_at,note,cancel_reason")
     .eq("teacher_id",teacherId).in("session_id",chunk)
     .order("session_id").order("student_id").range(offset,offset+PAGE-1),
     "canonical attendance calendar"),
@@ -91,7 +91,8 @@ export async function canonicalCalendarWindow(
   const x=marksByKey.get(p.session_id+":"+p.student_id);
   const group=peopleBySession.get(p.session_id)??[];
   group.push({studentId:p.student_id,name:names.get(p.student_id)??"Student",
-   attendanceStatus:x?.status??null,noticeAt:x?.notice_at??null});
+   attendanceStatus:x?.status??null,noticeAt:x?.notice_at??null,
+   updatedAt:x?.updated_at??null,note:x?.note??"",cancelReason:x?.cancel_reason??""});
   peopleBySession.set(p.session_id,group);
  }
  return sessions.filter(s=>{
