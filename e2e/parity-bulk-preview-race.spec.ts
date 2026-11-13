@@ -31,7 +31,7 @@ test("PARITY:PARITY-bulk-preview-recipient-revision-race requires reviewed fresh
  expect(row.error).toBeNull();
  const id=row.data!.id as string;
  expect((await admin.from("invoice_items").insert({
-  invoice_id:id,kind:"lesson",lesson_id:null,
+  invoice_id:id,kind:"lesson",
   description:"Synthetic bishop training",quantity:1,unit_cents:5000,
   amount_cents:5000,sort_order:0,
  })).error).toBeNull();

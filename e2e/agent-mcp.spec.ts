@@ -1169,124 +1169,14 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(foreignFamily.error.code).toBe("NOT_FOUND");
 
-  // Private legacy calendar differs from group teaching_sessions, but
-  // website and delegated MCP now use the same tenant-scoped calendar service.
-  for(const toolName of ["ccp_v1_calendar_slots_list","ccp_v1_calendar_slots_create",
-    "ccp_v1_calendar_slots_update","ccp_v1_calendar_slots_delete",
-    "ccp_v1_calendar_lessons_list","ccp_v1_calendar_lessons_detail",
-    "ccp_v1_calendar_lessons_create","ccp_v1_calendar_lessons_update",
-    "ccp_v1_calendar_lessons_delete"])expect(names).toContain(toolName);
-  const slotMade=(await call("ccp_v1_calendar_slots_create",{
-    studentId:profileId,dayOfWeek:0,startTime:"17:00",durationMinutes:45,
-    startDate:"2026-11-15",endDate:"2026-12-06",confirmed:true,
-  })).structuredContent;
-  expect(slotMade.error).toBeUndefined();
-  const slotId=slotMade.data.id as string;
-  const browserSlot=await page.request.get("/api/schedule/slots?studentId="+profileId);
-  expect(browserSlot.status(),await browserSlot.text()).toBe(200);
-  expect((await browserSlot.json()).some((x:{id:string})=>x.id===slotId)).toBe(true);
-  const slotUpdated=await page.request.put("/api/schedule/slots/"+slotId,{
-    data:{rateCents:2300},
-  });
-  expect(slotUpdated.status(),await slotUpdated.text()).toBe(200);
-  const listedSlots=(await call("ccp_v1_calendar_slots_list",{
-    studentId:profileId,
-  })).structuredContent.data;
-  expect(listedSlots.find((x:{id:string})=>x.id===slotId).rate_cents).toBe(2300);
-  const deletedSlot=(await call("ccp_v1_calendar_slots_delete",{
-    slotId,confirmed:true,
-  })).structuredContent;
-  expect(deletedSlot.error).toBeUndefined();
-  const afterSlotDelete=await page.request.get("/api/schedule/slots?studentId="+profileId);
-  expect((await afterSlotDelete.json()).some((x:{id:string})=>x.id===slotId)).toBe(false);
-  const madeLegacy=(await call("ccp_v1_calendar_lessons_create",{
-    studentId:profileId,date:"2026-11-18",time:"17:30",durationMinutes:45,
-    confirmed:true,
-  })).structuredContent;
-  expect(madeLegacy.error).toBeUndefined();
-  const legacyId=madeLegacy.data.id as string;
-  const browserLegacy=await page.request.get("/api/schedule/lessons/"+legacyId);
-  expect(browserLegacy.status()).toBe(200);
-  expect((await browserLegacy.json()).student_id).toBe(profileId);
-  const updatedLegacy=await page.request.put("/api/schedule/lessons/"+legacyId,{
-    data:{isHomeVisit:true},
-  });
-  expect(updatedLegacy.status(),await updatedLegacy.text()).toBe(200);
-  const fromMcp=(await call("ccp_v1_calendar_lessons_detail",{
-    lessonId:legacyId,
-  })).structuredContent.data;
-  expect(fromMcp.is_home_visit).toBe(true);
-  const legacyListed=(await call("ccp_v1_calendar_lessons_list",{
-    studentId:profileId,limit:100,offset:0,
-  })).structuredContent.data;
-  expect(legacyListed.lessons.some((x:{id:string})=>x.id===legacyId)).toBe(true);
-  const foreignCalendar=(await call("ccp_v1_calendar_lessons_create",{
-    studentId:foreignStudent!.id,date:"2026-11-20",time:"16:00",
-    confirmed:true,
-  })).structuredContent;
-  expect(foreignCalendar.error.code).toBe("NOT_FOUND");
-  const removedLegacy=(await call("ccp_v1_calendar_lessons_delete",{
-    lessonId:legacyId,confirmed:true,
-  })).structuredContent;
-  expect(removedLegacy.error).toBeUndefined();
-  const noLesson=await page.request.get("/api/schedule/lessons/"+legacyId);
-  expect(noLesson.status()).toBe(404);
-
-  // Teacher-scoped one-on-one attendance, notes and bulk corrections.
-  // Explicit email flags default false: synthetic tests must send no family email.
-  for(const toolName of ["ccp_v1_calendar_attendance_read","ccp_v1_calendar_attendance_record",
-    "ccp_v1_calendar_attendance_bulk","ccp_v1_calendar_lesson_note_read",
-    "ccp_v1_calendar_lesson_note_update"])expect(names).toContain(toolName);
-  const attendanceLesson=(await call("ccp_v1_calendar_lessons_create",{
-    studentId:profileId,date:"2026-11-24",time:"18:00",durationMinutes:50,
-    confirmed:true,
-  })).structuredContent;
-  expect(attendanceLesson.error).toBeUndefined();
-  const attendanceLessonId=attendanceLesson.data.id as string;
-  const recordAttendance=(await call("ccp_v1_calendar_attendance_record",{
-    lessonId:attendanceLessonId,status:"attended",notifyFamily:false,
-    confirmed:true,
-  })).structuredContent;
-  expect(recordAttendance.error).toBeUndefined();
-  expect(recordAttendance.data.status).toBe("attended");
-  const attendanceSite=await page.request.get("/api/schedule/lessons/"+attendanceLessonId+"/attendance");
-  expect(attendanceSite.status()).toBe(200);
-  expect((await attendanceSite.json()).status).toBe("attended");
-  const noteFromTool=(await call("ccp_v1_calendar_lesson_note_update",{
-    lessonId:attendanceLessonId,body:"Studied opposition in king-and-pawn endings",
-    privateBody:"Teacher-only: calculate slower",sendEmail:false,confirmed:true,
-  })).structuredContent;
-  expect(noteFromTool.error).toBeUndefined();
-  expect(noteFromTool.data.emailed).toBe(false);
-  const noteSite=await page.request.get("/api/schedule/lessons/"+attendanceLessonId+"/note");
-  expect(noteSite.status()).toBe(200);
-  expect((await noteSite.json()).private_body).toBe("Teacher-only: calculate slower");
-  const maskedNote=(await call("ccp_v1_calendar_lesson_note_read",{
-    lessonId:attendanceLessonId,
-  })).structuredContent.data;
-  expect(maskedNote.private_body).toBeUndefined();
-  const fullNote=(await call("ccp_v1_calendar_lesson_note_read",{
-    lessonId:attendanceLessonId,includePrivate:true,confirmed:true,
-  })).structuredContent.data;
-  expect(fullNote.private_body).toBe("Teacher-only: calculate slower");
-  const otherLesson=(await page.request.post("/api/schedule/lessons",{
-    data:{studentId:profileId,date:"2026-11-25",time:"18:00",durationMinutes:40},
-  }));
-  expect(otherLesson.status(),await otherLesson.text()).toBe(200);
-  const otherLessonId=(await otherLesson.json()).id as string;
-  const bulk=(await call("ccp_v1_calendar_attendance_bulk",{
-    ids:[otherLessonId,randomUUID()],status:"no_show",notifyFamily:false,
-    confirmed:true,
-  })).structuredContent;
-  expect(bulk.error).toBeUndefined();
-  expect(bulk.data.succeeded).toBe(1);
-  expect(bulk.data.failed).toHaveLength(1);
-  const bulkSite=await page.request.get("/api/schedule/lessons/"+otherLessonId+"/attendance");
-  expect((await bulkSite.json()).status).toBe("no_show");
-  const forbiddenAttendance=(await call("ccp_v1_calendar_attendance_read",{
-    lessonId:foreignStudent!.id,
-  })).structuredContent;
-  expect(forbiddenAttendance.error.code).toBe("NOT_FOUND");
+  // Canonical calendar operations are independently exercised by the
+  // named authenticated parity suites. Never re-introduce legacy actions.
+  for(const toolName of [
+    "ccp_v1_recurring_slots_list","ccp_v1_recurring_slots_create",
+    "ccp_v1_recurring_slots_update","ccp_v1_recurring_slots_delete",
+    "ccp_v1_private_sessions_create","ccp_v1_session_attendance_set",
+    "ccp_v1_session_attendance_bulk_set","ccp_v1_session_notes_save",
+  ])expect(names).toContain(toolName);
 
   // Teacher-scoped events share website/MCP domain service. No emails sent in synthetic test.
   for(const toolName of ["ccp_v1_events_list","ccp_v1_events_detail",
@@ -1591,15 +1481,17 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     "ccp_v1_billing_invoice_regenerate","ccp_v1_billing_invoice_pdf",
     "ccp_v1_billing_invoice_checkout","ccp_v1_billing_invoices_bulk",
   ])expect(names).toContain(toolName);
-  const generationLesson=(await call("ccp_v1_calendar_lessons_create",{
-    studentId:profileId,date:"2027-08-18",time:"16:00",durationMinutes:50,
-    confirmed:true,
+  const generationLesson=(await call("ccp_v1_sessions_create",{
+    workplaceId:madeWorkplace.entityId,studentId:profileId,
+    title:"Generated invoice teaching session",startsAt:"2027-08-18T16:00:00Z",
+    durationMinutes:50,lessonNote:"",idempotencyKey:randomUUID(),
   })).structuredContent;
   expect(generationLesson.error).toBeUndefined();
-  const generationLessonId=generationLesson.data.id as string;
-  const genAttendance=(await call("ccp_v1_calendar_attendance_record",{
-    lessonId:generationLessonId,status:"attended",confirmed:true,
-    notifyFamily:false,
+  const generationLessonId=generationLesson.data.entityId as string;
+  const genAttendance=(await call("ccp_v1_session_attendance_set",{
+    sessionId:generationLessonId,studentId:profileId,status:"present",
+    note:"",noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
+    idempotencyKey:randomUUID(),confirmed:true,notifyFamily:false,
   })).structuredContent;
   expect(genAttendance.error).toBeUndefined();
   const configuredGenRate=(await call("ccp_v1_studio_policy_update",{

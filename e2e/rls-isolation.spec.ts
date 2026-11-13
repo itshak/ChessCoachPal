@@ -71,7 +71,6 @@ test.describe("RLS tenant isolation", () => {
       "workplaces",
       "class_groups",
       "teaching_sessions",
-      "lessons",
       "invoices",
       "studio_policies",
     ]) {
