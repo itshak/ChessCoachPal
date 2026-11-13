@@ -30,7 +30,7 @@ test("PARITY:PARITY-billing-send-concurrent-claim rejects duplicate website/MCP 
  expect(invoice.error).toBeNull();
  const invoiceId=invoice.data!.id as string;
  const item=await admin.from("invoice_items").insert({
-   invoice_id:invoiceId,lesson_id:null,kind:"lesson",
+   invoice_id:invoiceId,session_id:null,student_id:null,kind:"lesson",
    description:"Chess lesson package",quantity:1,unit_cents:12000,
    amount_cents:12000,sort_order:0,
  });
