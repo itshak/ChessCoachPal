@@ -34,3 +34,19 @@ test("each checked requirement needs distinct named executable evidence", () => 
   assert.match(validateUniqueCheckedParityReferences([row, row])[0], /reuses evidence/);
   assert.deepEqual(validateUniqueCheckedParityReferences([row, row.replace("[x]", "[ ]")]), []);
 });
+
+test("accepts real bound delegated OAuth/MCP tool calls but rejects unbound tool() mocks",()=>{
+ const source=[
+  'test("PARITY:PARITY-student-archive secure",async({page,request})=>{',
+  'const tool=await delegatedTool(page,request);',
+  'const result=await tool("ccp_v1_students_archive_preview",{studentId:"id"});',
+  'const web=await page.request.get("/api/students/id");',
+  'expect(result).toEqual(await web.json());',
+  '});',
+ ].join("\n");
+ assert.deepEqual(check(source),[]);
+ assert.match(check(source.replace("const tool=await delegatedTool(page,request);",
+  "const tool=async()=>({data:null});"))[0],/MCP invocation/);
+ assert.match(check(source.replace('tool("ccp_v1_students_archive_preview"',
+  'tool("fake_tool"'))[0],/MCP invocation/);
+});

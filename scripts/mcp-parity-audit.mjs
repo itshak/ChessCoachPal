@@ -139,7 +139,9 @@ for(const [index,row] of nextRows.entries()){
 }
 errors.push(...validateUniqueCheckedParityReferences([...checklistRows,...nextRows]));
 const pendingCases=cases.filter(match=>match[1]===" ").length;
-console.log("New canonical parity workflows: "+(nextRows.length-nextRows.filter(x=>/^\|\s*-\s*\[ \]/.test(x)).length)+"/"+nextRows.length+" verified.");
+const pendingNewCases=nextRows.filter(x=>/^\\|\\s*-\\s*\\[ \\]/.test(x)).length;
+console.log("New canonical parity workflows: "+(nextRows.length-pendingNewCases)+"/"+nextRows.length+" verified.");
+if(pendingNewCases>0) console.log("Release BLOCKED: "+pendingNewCases+" new website/MCP scenarios still unverified.");
 console.log("Browser ↔ MCP behavioral checklist: "+(cases.length-pendingCases)+"/"+cases.length+
   " verified, "+pendingCases+" not yet checked.");
 if(pendingCases>0){
@@ -163,6 +165,8 @@ if (process.argv.includes("--strict")) {
     errors.push("Strict MCP-first parity gate failed: "+outstanding.length+" teacher-business route surfaces incomplete.");
   if (pendingCases>0)
     errors.push("Strict MCP-first parity gate failed: "+pendingCases+" unchecked browser/MCP behavior scenarios.");
+  if (pendingNewCases>0)
+    errors.push("Strict MCP-first parity gate failed: "+pendingNewCases+" unchecked new website/MCP scenarios.");
 }
 if (errors.length) {
   for (const e of errors) console.error("ERROR: "+e);

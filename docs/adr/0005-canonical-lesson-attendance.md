@@ -95,3 +95,8 @@ DST/holiday/workplace schedule semantics, profile/security handoffs,
 subscription portal handoff and complete website/MCP field/action closure.
 Some additional independently named scenarios and merged-main/live-provider
 tests remain open. Do not claim v0.1.0 publication readiness.
+
+
+### Post-archive independent acceptance extension (2026-11-13)
+
+Child [PR #60](https://github.com/itshak/ChessCoachPal/pull/60) subsequently passed [235 delegated-OAuth/browser E2E tests](https://github.com/itshak/ChessCoachPal/actions/runs/43441151638) with five intentional skips at source `ac250e596cbc3fbf29441fbc65175eed7292b772`. It confirms replay/revision boundaries, foreign-owner denial, guardian cancellation guard, financial-history preservation and teacher-approved single-occurrence holiday cancellation across DST. A jurisdiction-specific automatic holiday calendar is intentionally **not** inferred. Final parent integration, 93-case strict release gate and merged-main verification remain separate.

@@ -7,7 +7,7 @@ import {signInAsTeacher} from "./auth";
  * real OAuth PKCE MCP client. These are individual acceptance evidence tests,
  * not synthetic list-of-tool-name assertions.
  */
-export async function delegatedTool(page: Page, request: APIRequestContext, scope = "coach:read coach:write") {
+export async function delegatedTool(page: Page, request: APIRequestContext, scope = "coach:read coach:write", credentials?:{email:string;password:string}) {
   const origin = "http://localhost:3000";
   const callback = origin + "/oauth/synthetic-callback";
   const verifier = "p".repeat(64);
@@ -18,7 +18,13 @@ export async function delegatedTool(page: Page, request: APIRequestContext, scop
   }});
   expect(registration.status(),await registration.text()).toBe(201);
   const clientId = (await registration.json()).client_id as string;
-  await signInAsTeacher(page);
+  if(credentials){
+    await page.goto("/login");
+    await page.getByPlaceholder("Email").fill(credentials.email);
+    await page.getByPlaceholder("Password").fill(credentials.password);
+    await page.getByRole("button",{name:"Sign In"}).click();
+    await page.waitForURL("**/dashboard",{timeout:20000});
+  }else await signInAsTeacher(page);
   const qs = new URLSearchParams({
     client_id:clientId,redirect_uri:callback,response_type:"code",
     resource:origin+"/mcp",code_challenge_method:"S256",code_challenge:challenge,
