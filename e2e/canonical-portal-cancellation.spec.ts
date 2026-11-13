@@ -75,3 +75,67 @@ test("PARITY:PARITY-canonical-portal-atomic-replay guardian cancels one frozen c
  expect(details.error).toBeUndefined();
  expect(details.data.status).toBe("scheduled");
 });
+
+
+test("PARITY:PARITY-canonical-portal-marked-and-past-guard denies a guardian overwrite or retroactive cancellation",async({page,request})=>{
+ const tool=await delegatedTool(page,request);
+ const learner=await tool("ccp_v1_students_create",{
+  name:"Portal conflict learner "+randomUUID(),idempotencyKey:randomUUID(),
+ });
+ expect(learner.error).toBeUndefined();
+ const studentId=learner.data.entityId as string;
+ const family=await tool("ccp_v1_guardians_create",{
+  name:"Portal conflict family "+randomUUID(),studentIds:[studentId],confirmed:true,
+ });
+ expect(family.error).toBeUndefined();
+ const guardian=await page.request.get("/api/guardians/"+family.data.id);
+ expect(guardian.status()).toBe(200);
+ const token=(await guardian.json()).portal_token as string;
+ expect(token.length).toBeGreaterThanOrEqual(32);
+ const work=await tool("ccp_v1_workplaces_create",{
+  name:"Portal historical classroom "+randomUUID(),timezone:"UTC",currency:"USD",
+  locale:"en",policy:{},idempotencyKey:randomUUID(),
+ });
+ expect(work.error).toBeUndefined();
+ const workplaceId=work.data.entityId as string;
+ expect((await tool("ccp_v1_workplaces_enroll",{
+  workplaceId,studentId,idempotencyKey:randomUUID(),
+ })).error).toBeUndefined();
+ const create=async (startsAt:string,title:string)=>{
+  const created=await tool("ccp_v1_sessions_create",{
+   workplaceId,studentId,startsAt,title,durationMinutes:45,
+   lessonNote:"",idempotencyKey:randomUUID(),
+  });
+  expect(created.error).toBeUndefined();
+  return created.data.entityId as string;
+ };
+ const future=await create("2090-06-19T13:00:00Z","Portal locked after teacher marking");
+ const past=await create("2020-05-19T13:00:00Z","Past session cannot be cancelled");
+ const marked=await tool("ccp_v1_session_attendance_set",{
+  sessionId:future,studentId,status:"present",note:"Lesson already marked",
+  noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
+  idempotencyKey:randomUUID(),notifyFamily:false,confirmed:true,
+ });
+ expect(marked.error).toBeUndefined();
+ const portal=(sessionId:string)=>"/api/portal/"+encodeURIComponent(token)+
+  "/sessions/"+sessionId+"/students/"+studentId+"/cancel";
+ const deniedMarked=await page.request.post(portal(future),{
+  data:{note:"Please change today's result"},
+ });
+ expect(deniedMarked.status(),await deniedMarked.text()).toBe(409);
+ const deniedPast=await page.request.post(portal(past),{
+  data:{note:"Too late to cancel"},
+ });
+ expect(deniedPast.status(),await deniedPast.text()).toBe(400);
+ const teacherFuture=await tool("ccp_v1_session_attendance_list",{sessionId:future});
+ expect(teacherFuture.error).toBeUndefined();
+ expect(teacherFuture.data).toHaveLength(1);
+ expect(teacherFuture.data[0].status).toBe("present");
+ expect(teacherFuture.data[0].noticeAt).toBeNull();
+ const teacherPast=await page.request.get(
+  "/api/coaching/sessions/"+past+"/attendance");
+ expect(teacherPast.status(),await teacherPast.text()).toBe(200);
+ expect(await teacherPast.json()).toMatchObject([
+  {studentId,status:"unmarked",noticeAt:null},
+ ]);
+});

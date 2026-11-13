@@ -1,6 +1,10 @@
 # ChessCoachPal development and release status
 
-**Updated:** 2026-11-12 · **Branch of record:** main (unreleased; parity work in PR #52 / PR #51) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
+**Updated:** 2026-11-13 · **Branch of record:** main (unreleased; parity work in PR #52 / PR #51) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
+
+## 2026-11-13 — canonical independent acceptance passes, parent parity still open
+
+[Attendance extension source `ac250e5`](https://github.com/itshak/ChessCoachPal/commit/ac250e596cbc3fbf29441fbc65175eed7292b772) passed [235 browser/MCP E2E tests, five skips](https://github.com/itshak/ChessCoachPal/actions/runs/43441151638), [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43441151541), security, Compose and backup/restore. [PR #60](https://github.com/itshak/ChessCoachPal/pull/60) is merged into the canonical spec branch; parent #57 already archived the core attendance cutover. The independent acceptance additions are being integrated on a parent-based review branch preserving that archive. Historical parity moves to a **92/93 acceptance candidate**, new scenarios to **26/26** once ported and checked on integrated source. Final field/action protocol, strict merged-main gate and provider-live prepublication acceptance remain blocked. No real-database reset, release or main merge is authorized by this child acceptance.
 
 ## 2026-11-12 — gateway 59/59 route evidence; product parity NOT complete
 
