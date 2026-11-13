@@ -58,8 +58,8 @@ describe("canonical recurring materialization reads all pages and fails closed",
     const {db,rpc,pages}=fixture();
     await expect(materializeCanonicalSessions(db,teacher,day,day))
       .resolves.toEqual({planned:501});
-    expect(pages.workplaces).toEqual([0,500,1000]);
-    expect(pages.lesson_slots).toEqual([0,500,1000]);
+    expect(pages.workplaces).toEqual([0,500]);
+    expect(pages.lesson_slots).toEqual([0,500]);
     expect(rpc).toHaveBeenCalledTimes(6);
     const rows=rpc.mock.calls.flatMap(call=>
       (call[1] as {p_rows:{slot_id:string}[]}).p_rows);
