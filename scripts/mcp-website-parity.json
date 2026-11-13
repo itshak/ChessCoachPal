@@ -359,6 +359,23 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/sessions/[id]/attendance/route.ts",
+      "methods": [
+        "GET",
+        "PUT",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_session_attendance_list",
+        "ccp_v1_session_attendance_set",
+        "ccp_v1_session_attendance_bulk_set"
+      ],
+      "explanation": "Canonical participant attendance read, revision-checked mark/correct/clear and atomic batch use identical website/MCP domain service and SQL transaction; no attendance rows represent unmarked frozen participants. Family notifications use teacher-approved deduplicated outbox intents.",
+      "evidenceTest": "e2e/canonical-session-attendance-parity.spec.ts"
+    },
+    {
       "path": "app/api/coaching/sessions/[id]/notes/route.ts",
       "methods": [
         "GET",
