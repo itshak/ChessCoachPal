@@ -5,25 +5,25 @@ import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-canonical-session-edit canonical teaching session move and cancellation use the same website/MCP SQL writer",async({page,request})=>{
- const tool=await delegatedTool(page,request);
- const pupil=await tool("ccp_v1_students_create",{
+ const call=await delegatedTool(page,request);
+ const pupil=await call("ccp_v1_students_create",{
   name:"Lifecycle student "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(pupil.error).toBeUndefined();
  const studentId=pupil.data.entityId as string;
- const workplace=await tool("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_v1_workplaces_create",{
   name:"Lifecycle workplace "+randomUUID(),timezone:"UTC",
   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await tool("ccp_v1_workplaces_enroll",{
+ expect((await call("ccp_v1_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
  const first=new Date(Date.UTC(2088,0,1)+
    (Number.parseInt(randomUUID().slice(0,8),16)%365)*86400000)
     .toISOString().slice(0,10)+"T08:00:00.000Z";
- const created=await tool("ccp_v1_sessions_create",{
+ const created=await call("ccp_v1_sessions_create",{
   workplaceId,studentId,title:"Lifecycle coaching",
   startsAt:first,durationMinutes:60,
   lessonNote:"Original title",idempotencyKey:randomUUID(),
@@ -49,7 +49,7 @@ test("PARITY:PARITY-canonical-session-edit canonical teaching session move and c
  const webRow=await web.json();
  expect(webRow).toMatchObject({id:sessionId,duration_minutes:45,is_home_visit:true});
  expect(new Date(webRow.starts_at).toISOString()).toBe(next);
- const replay=await tool("ccp_v1_sessions_edit",{
+ const replay=await call("ccp_v1_sessions_edit",{
   sessionId,changes:{startsAt:next,durationMinutes:45,isHomeVisit:true},
   expectedUpdatedAt:revision.data!.updated_at,
   idempotencyKey:key,confirmed:true,
@@ -59,13 +59,13 @@ test("PARITY:PARITY-canonical-session-edit canonical teaching session move and c
   id:sessionId,duration_minutes:45,is_home_visit:true,
  });
  expect(new Date(replay.data.starts_at).toISOString()).toBe(next);
- const stale=await tool("ccp_v1_sessions_edit",{
+ const stale=await call("ccp_v1_sessions_edit",{
   sessionId,changes:{title:"Stale title"},
   expectedUpdatedAt:revision.data!.updated_at,
   idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(stale.error?.code).toBe("CONFLICT");
- const cancel=await tool("ccp_v1_sessions_edit",{
+ const cancel=await call("ccp_v1_sessions_edit",{
   sessionId,changes:{status:"cancelled"},
   expectedUpdatedAt:webRow.updated_at,
   idempotencyKey:randomUUID(),confirmed:true,

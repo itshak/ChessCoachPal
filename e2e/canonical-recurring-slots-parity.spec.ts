@@ -8,19 +8,19 @@ import {planCanonicalOccurrences,type CanonicalSlot}
 
 test("PARITY:PARITY-canonical-recurring-slots-crud canonical recurring edits and deletes are atomic, tenant-scoped and protect attended history",
  async({page,request})=>{
- const tool=await delegatedTool(page,request);
- const student=await tool("ccp_v1_students_create",{
+ const call=await delegatedTool(page,request);
+ const student=await call("ccp_v1_students_create",{
   name:"Recurring pupil "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const workplace=await tool("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_v1_workplaces_create",{
   name:"Recurring workplace "+randomUUID(),timezone:"UTC",
   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await tool("ccp_v1_workplaces_enroll",{
+ expect((await call("ccp_v1_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
  const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,7 +45,7 @@ test("PARITY:PARITY-canonical-recurring-slots-crud canonical recurring edits and
  });
  expect(created.status(),await created.text()).toBe(200);
  expect(await created.json()).toMatchObject({id:slotKey,replayed:false});
- const createReplay=await tool("ccp_v1_recurring_slots_create",{
+ const createReplay=await call("ccp_v1_recurring_slots_create",{
   ...slotInput,confirmed:true,
  });
  expect(createReplay.error).toBeUndefined();
@@ -69,7 +69,7 @@ test("PARITY:PARITY-canonical-recurring-slots-crud canonical recurring edits and
  expect(initial.status(),await initial.text()).toBe(200);
  const initialList=await initial.json();
  expect(initialList.some((r:{id:string})=>r.id===slot!.id)).toBe(true);
- const modelList=await tool("ccp_v1_recurring_slots_list",{studentId});
+ const modelList=await call("ccp_v1_recurring_slots_list",{studentId});
  expect(modelList.error).toBeUndefined();
  expect(modelList.data).toEqual(initialList);
  const attended=await page.request.put(
@@ -85,7 +85,7 @@ test("PARITY:PARITY-canonical-recurring-slots-crud canonical recurring edits and
   "/api/coaching/calendar/slots/"+slot!.id,{data:change});
  expect(changed.status(),await changed.text()).toBe(200);
  expect((await changed.json()).replayed).toBe(false);
- const duplicate=await tool("ccp_v1_recurring_slots_update",{
+ const duplicate=await call("ccp_v1_recurring_slots_update",{
   slotId:slot!.id,...change,confirmed:true,
  });
  expect(duplicate.error).toBeUndefined();
@@ -103,7 +103,7 @@ test("PARITY:PARITY-canonical-recurring-slots-crud canonical recurring edits and
  expect(after.data![1].id).not.toBe(sessions.data![1].id);
  expect(new Date(after.data![1].starts_at).toISOString())
   .toBe(secondDate+"T06:00:00.000Z");
- const stale=await tool("ccp_v1_recurring_slots_update",{
+ const stale=await call("ccp_v1_recurring_slots_update",{
   slotId:slot!.id,changes:{startTime:"07:00"},
   expectedUpdatedAt:slot!.updated_at,idempotencyKey:randomUUID(),
   confirmed:true,
@@ -118,7 +118,7 @@ test("PARITY:PARITY-canonical-recurring-slots-crud canonical recurring edits and
  const disabled=await page.request.patch(
   "/api/coaching/calendar/slots/"+slot!.id,{data:disabledRequest});
  expect(disabled.status(),await disabled.text()).toBe(200);
- const disableReplay=await tool("ccp_v1_recurring_slots_update",{
+ const disableReplay=await call("ccp_v1_recurring_slots_update",{
   slotId:slot!.id,...disabledRequest,confirmed:true,
  });
  expect(disableReplay.error).toBeUndefined();
@@ -132,7 +132,7 @@ test("PARITY:PARITY-canonical-recurring-slots-crud canonical recurring edits and
  expect(stillProtected.error).toBeNull();
  expect(stillProtected.data?.id).toBe(protectedId);
  const delKey=randomUUID();
- const deleted=await tool("ccp_v1_recurring_slots_delete",{
+ const deleted=await call("ccp_v1_recurring_slots_delete",{
   slotId:slot!.id,idempotencyKey:delKey,confirmed:true,
  });
  expect(deleted.error).toBeUndefined();
@@ -152,7 +152,7 @@ test("PARITY:PARITY-canonical-recurring-slots-crud canonical recurring edits and
   .select("id").eq("id",after.data![1].id).maybeSingle();
  expect(removed.error).toBeNull();
  expect(removed.data).toBeNull();
- const foreign=await tool("ccp_v1_recurring_slots_update",{
+ const foreign=await call("ccp_v1_recurring_slots_update",{
   slotId:randomUUID(),changes:{startTime:"08:00"},
   expectedUpdatedAt:slot!.updated_at,idempotencyKey:randomUUID(),
   confirmed:true,
