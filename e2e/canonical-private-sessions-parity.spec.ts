@@ -113,6 +113,23 @@ test("PARITY:PARITY-canonical-personal-private-lesson accepts an unassigned stud
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
+ // Explicit club/school selection must not silently enroll a learner.
+ // This is distinct from using the teacher's implicit personal workspace.
+ const school=await tool("ccp_v1_workplaces_create",{
+  name:"Unenrolled named school "+randomUUID(),timezone:"UTC",
+  currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
+ });
+ expect(school.error).toBeUndefined();
+ const deniedInput={studentId,workplaceId:school.data.entityId as string,
+  date:"2081-05-11",time:"10:00",durationMinutes:45,
+  isHomeVisit:false,idempotencyKey:randomUUID()};
+ const denied=await page.request.post("/api/coaching/calendar/private-sessions",{
+  data:deniedInput,
+ });
+ expect(denied.status(),await denied.text()).toBe(404);
+ expect((await tool("ccp_v1_private_sessions_create",{
+  ...deniedInput,idempotencyKey:randomUUID(),confirmed:true,
+ })).error?.code).toBe("NOT_FOUND");
  // No workplace enrollment: personal/private lessons must work for a
  // newly created student, while explicit school workplaces remain scoped.
  const key=randomUUID();
@@ -134,4 +151,16 @@ test("PARITY:PARITY-canonical-personal-private-lesson accepts an unassigned stud
   .eq("session_id",created.id).single();
  expect(person.error).toBeNull();
  expect(person.data?.student_id).toBe(studentId);
+ const personalMembership=await db.from("workplace_enrollments")
+  .select("student_id,workplace_id").eq("student_id",studentId)
+  .eq("workplace_id",created.workplace_id);
+ expect(personalMembership.error).toBeNull();
+ expect(personalMembership.data).toEqual([{
+  student_id:studentId,workplace_id:created.workplace_id,
+ }]);
+ const schoolMembership=await db.from("workplace_enrollments")
+  .select("id").eq("student_id",studentId)
+  .eq("workplace_id",school.data.entityId as string);
+ expect(schoolMembership.error).toBeNull();
+ expect(schoolMembership.data).toEqual([]);
 });
