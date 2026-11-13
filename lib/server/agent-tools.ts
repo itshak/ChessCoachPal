@@ -79,6 +79,10 @@ import {
 } from "@/lib/server/legacy-attendance-service";
 import {sessionNotesList,sessionNoteSave,SessionNoteError,
  type SaveSessionNoteInput} from "@/lib/server/canonical-session-notes";
+
+import {canonicalAttendanceList,canonicalAttendanceSet,canonicalAttendanceBulkSet,
+ CanonicalAttendanceError,type CanonicalAttendanceSetInput,
+ type CanonicalAttendanceBulkInput} from "@/lib/server/canonical-session-attendance";
 import { oauthOrigin } from "@/lib/server/agent-oauth-core";
 import { teacherPolicyView, teacherPolicyUpdate } from "@/lib/server/teacher-policy-service";
 import {
@@ -559,6 +563,46 @@ const catalogue = [
     }).strict().refine(v=>!v.notifyFamily||v.confirmedEmail===true,"Email requires explicit confirmation")
      .refine(v=>(v.idempotencyKey===undefined)===(v.expectedMarkedAtByLesson===undefined),
        "Bulk replay requires one original revision for every lesson"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_session_attendance_list",
+    description:"Read canonical frozen-roster attendance. Unmarked participants are explicit; cancellation notice/initiator and immutable revision are included.",
+    schema:z.object({sessionId:uuid}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_session_attendance_set",
+    description:"Confirmed canonical per-student attendance mark, correction or clear. Owner-scoped frozen roster, expected revision and idempotency key are mandatory; family notification requires separately confirmed consent.",
+    schema:z.object({sessionId:uuid,studentId:uuid,
+      status:z.enum(["present","late","absent","excused","student_cancelled","teacher_cancelled"]).nullable(),
+      note:z.string().max(5000).default(""),
+      noticeAt:z.string().datetime({offset:true}).nullable(),
+      cancelReason:z.string().max(1000).default(""),
+      expectedUpdatedAt:z.string().datetime({offset:true}).nullable(),
+      idempotencyKey:uuid,notifyFamily:z.boolean().default(false),
+      confirmedEmail:z.literal(true).optional(),confirmed:z.literal(true),
+    }).strict().refine(x=>!x.notifyFamily||
+      (x.status==="teacher_cancelled"&&x.confirmedEmail===true),
+      "Family email requires explicit confirmation"),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_session_attendance_bulk_set",
+    description:"Commit 1-50 canonical participant attendance changes atomically. Any stale row rolls back the entire group and all notifications and replay receipts.",
+    schema:z.object({sessionId:uuid,idempotencyKey:uuid,
+      attendance:z.array(z.object({studentId:uuid,
+        status:z.enum(["present","late","absent","excused","student_cancelled","teacher_cancelled"]).nullable(),
+        note:z.string().max(5000).default(""),
+        noticeAt:z.string().datetime({offset:true}).nullable(),
+        cancelReason:z.string().max(1000).default(""),
+        expectedUpdatedAt:z.string().datetime({offset:true}).nullable(),
+        notifyFamily:z.boolean().default(false),
+        confirmedEmail:z.literal(true).optional(),confirmed:z.literal(true),
+      }).strict()).min(1).max(50),confirmed:z.literal(true),
+    }).strict().refine(x=>x.attendance.every(r=>!r.notifyFamily||
+      (r.status==="teacher_cancelled"&&r.confirmedEmail===true)),
+      "Every family email requires explicit confirmation"),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1653,6 +1697,18 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           origin:a.notifyFamily?oauthOrigin():"",teacherEmail:user?.email,
         })};
       }
+      case "ccp_v1_session_attendance_list": {
+        const a=args as {sessionId:string};
+        return {data:await canonicalAttendanceList(db,teacherId,a.sessionId)};
+      }
+      case "ccp_v1_session_attendance_set": {
+        const a=args as CanonicalAttendanceSetInput&{sessionId:string};
+        return {data:await canonicalAttendanceSet(db,teacherId,a.sessionId,a)};
+      }
+      case "ccp_v1_session_attendance_bulk_set": {
+        const a=args as CanonicalAttendanceBulkInput&{sessionId:string};
+        return {data:await canonicalAttendanceBulkSet(db,teacherId,a.sessionId,a)};
+      }
       case "ccp_v1_session_notes_list": {
         const a=args as {sessionId:string;includePrivate:boolean;confirmed?:boolean};
         return {data:await sessionNotesList(db,teacherId,a.sessionId,a)};
@@ -2100,6 +2156,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CalendarFeedTokenError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof TeacherEventError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof CanonicalAttendanceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof SessionNoteError)
       return {error:{code:error.code,message:error.message}};
