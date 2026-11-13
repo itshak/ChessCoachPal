@@ -35,7 +35,7 @@ test.describe("mobile layout", () => {
     await signInAsTeacher(page);
     await page.goto("/schedule");
 
-    await page.getByRole("button", { name: "Add One-off Lesson" }).click();
+    await page.getByRole("button", { name: "+ Private session" }).click();
     await expect(page.getByLabel("Date")).toBeVisible();
   });
 
@@ -58,44 +58,22 @@ test.describe("mobile layout", () => {
         .filter(Boolean)
         .pop() ?? null;
 
-      // Match the studio's weekday, not the browser's: the slot's start_date
-      // is the studio-timezone today, so a wrong weekday can schedule the
-      // lesson next week and the card never appears.
-      const policy = await (
-        await page.request.get("/api/settings/policy")
-      ).json();
-      const todayLabel = new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        timeZone: policy.timezone ?? "America/Chicago",
-      }).format(new Date());
-
+      // Use the canonical private-session form and frozen-roster calendar card.
       await page.goto("/schedule");
-      await page.getByRole("button", { name: "Add Slot" }).click();
-      const form = page
-        .locator("form")
-        .filter({ has: page.getByRole("button", { name: "Add Slot" }) });
-      await form.locator("select").nth(0).selectOption({ label: longName });
-      await form.locator("select").nth(1).selectOption({ label: todayLabel });
-      await page.getByRole("button", { name: "Add Slot" }).last().click();
-
-      // Wait for the refreshed schedule (slot row + lesson card) before
-      // measuring, otherwise the row under test has not rendered yet.
-      const lessonButton = page
-        .getByRole("button", { name: new RegExp(longName) })
-        .first();
-      await expect(lessonButton).toBeVisible();
-
-      const overflow = await overflowOf(page);
-      expect(overflow, "slot row overflow").toBeLessThanOrEqual(1);
-
-      // The lesson modal must keep the long name inside the viewport.
-      await lessonButton.click();
-      const heading = page.getByRole("heading", { level: 3, name: longName });
-      await expect(heading).toBeVisible();
-      const box = await heading.boundingBox();
-      if (!box) throw new Error("lesson heading has no layout box");
+      await page.getByRole("button",{name:"+ Private session"}).click();
+      await page.getByLabel("Student",{exact:true}).last().selectOption({label:longName});
+      await page.getByRole("button",{name:"Create session"}).click();
+      const card=page.locator("div.rounded-lg.border.border-border.bg-background")
+        .filter({hasText:longName}).first();
+      await expect(card).toBeVisible();
+      const overflow=await overflowOf(page);
+      expect(overflow,"canonical private-session card overflow").toBeLessThanOrEqual(1);
+      const text=card.getByText(longName,{exact:true});
+      const box=await text.boundingBox();
+      if(!box)throw new Error("student roster label has no layout box");
       expect(box.x).toBeGreaterThanOrEqual(-1);
-      expect(box.x + box.width).toBeLessThanOrEqual(360 + 1);
+      expect(box.x+box.width).toBeLessThanOrEqual(361);
+
     } finally {
       if (studentId) {
         await page.request
@@ -173,91 +151,29 @@ test.describe("mobile layout", () => {
     }
   });
 
-  test("attendance buttons share one size in the lesson modal", async ({
-    page,
-  }) => {
-    const name = `AttendanceSize${Date.now()}`;
-    let studentId: string | null = null;
-    await page.setViewportSize({ width: 360, height: 812 });
+  test("canonical attendance decisions remain usable on mobile", async ({page})=>{
+    const name="MobileAttendance"+Date.now();
+    await page.setViewportSize({width:360,height:812});
     await signInAsTeacher(page);
-
-    try {
-      await page.goto("/students");
-      await page.getByPlaceholder("Student name").fill(name);
-      await page.getByRole("button", { name: "Add Student" }).click();
-      const studentLink = page.getByRole("link", {
-        name: new RegExp(`^${name}\\b`),
-      });
-      await expect(studentLink).toBeVisible();
-      studentId =
-        (await studentLink.getAttribute("href"))
-          ?.split("/")
-          .filter(Boolean)
-          .pop() ?? null;
-
-      // Match the studio's weekday, not the browser's: the slot's start_date
-      // is the studio-timezone today, so a wrong weekday can schedule the
-      // lesson next week and the card never appears.
-      const policy = await (
-        await page.request.get("/api/settings/policy")
-      ).json();
-      const todayLabel = new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        timeZone: policy.timezone ?? "America/Chicago",
-      }).format(new Date());
-
-      await page.goto("/schedule");
-      await page.getByRole("button", { name: "Add Slot" }).click();
-      const form = page
-        .locator("form")
-        .filter({ has: page.getByRole("button", { name: "Add Slot" }) });
-      await form.locator("select").nth(0).selectOption({ label: name });
-      await form.locator("select").nth(1).selectOption({ label: todayLabel });
-      await page.getByRole("button", { name: "Add Slot" }).last().click();
-
-      const lessonButton = page
-        .getByRole("button", { name: new RegExp(name) })
-        .first();
-      await expect(lessonButton).toBeVisible();
-      await lessonButton.click();
-
-      const modal = page
-        .locator("div.fixed.inset-0")
-        .filter({ has: page.getByText("Attendance", { exact: true }) });
-
-      // "Attended" and "No-show" are single-line; the two "cancelled" labels
-      // wrap to two lines. The grid gave the four buttons equal widths, but the
-      // shared Button's self-start stopped them stretching to a common height.
-      const sizes: { width: number; height: number }[] = [];
-      for (const label of [
-        "Attended",
-        "Teacher cancelled",
-        "Student cancelled",
-        "No-show",
-      ]) {
-        const box = await modal
-          .getByRole("button", { name: label, exact: true })
-          .boundingBox();
-        if (!box) throw new Error(`attendance button "${label}" has no box`);
-        sizes.push({ width: box.width, height: box.height });
-      }
-
-      const heights = sizes.map((s) => s.height);
-      const widths = sizes.map((s) => s.width);
-      expect(
-        Math.max(...heights) - Math.min(...heights),
-        `heights ${heights.join(", ")}`
-      ).toBeLessThanOrEqual(1);
-      expect(
-        Math.max(...widths) - Math.min(...widths),
-        `widths ${widths.join(", ")}`
-      ).toBeLessThanOrEqual(1);
-    } finally {
-      if (studentId) {
-        await page.request
-          .delete(`/api/students/${studentId}`)
-          .catch(() => undefined);
-      }
+    await page.goto("/students");
+    await page.getByPlaceholder("Student name").fill(name);
+    await page.getByRole("button",{name:"Add Student"}).click();
+    await expect(page.getByRole("link",{name:new RegExp("^"+name)})).toBeVisible();
+    await page.goto("/schedule");
+    await page.getByRole("button",{name:"+ Private session"}).click();
+    await page.getByLabel("Student",{exact:true}).last().selectOption({label:name});
+    await page.getByRole("button",{name:"Create session"}).click();
+    const card=page.locator("div.rounded-lg.border.border-border.bg-background")
+      .filter({hasText:name}).first();
+    await expect(card).toBeVisible();
+    await card.getByRole("button",{name:"Attendance"}).click();
+    const dialog=page.getByRole("dialog",{name:"Teaching session details"});
+    await expect(dialog.getByLabel("Decision")).toBeVisible();
+    for(const decision of ["Present","Arrived late","Absent / no-show",
+       "Student cancelled","Teacher cancelled"]){
+      await dialog.getByLabel("Decision").selectOption({label:decision});
+      expect(await overflowOf(page),decision+" mobile overflow").toBeLessThanOrEqual(1);
     }
+    await expect(dialog.getByRole("button",{name:"Save attendance"})).toBeVisible();
   });
 });
