@@ -22,7 +22,8 @@ const amountInputClass =
 
 interface LineItem {
   id?: string;
-  lessonId?: string | null;
+  sessionId?: string | null;
+  studentId?: string | null;
   description: string;
   quantity: number;
   unitCents: number;
