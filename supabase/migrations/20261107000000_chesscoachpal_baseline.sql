@@ -9433,3 +9433,119 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_slot_update(
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_update(
  uuid,jsonb,timestamptz,jsonb,date,date,uuid)
  TO authenticated;
+
+
+-- Create recurrence intent and its initial horizon atomically. The stable
+-- idempotency UUID is also the slot ID, allowing either browser or MCP to
+-- deterministically replay without generating a different slot UUID.
+CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_create(
+ p_student_id uuid,p_workplace_id uuid,p_day_of_week integer,
+ p_start_time time,p_duration_minutes integer,p_start_date date,
+ p_end_date date,p_rate_cents integer,p_is_home_visit boolean,
+ p_rows jsonb,p_from date,p_to date,p_idempotency_key uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_slot_create$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_slot public.lesson_slots%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_receipt jsonb;v_result jsonb;v_hash text;
+ v_expect integer;v_row jsonb;
+ v_workplace_id uuid;
+BEGIN
+ IF v_teacher IS NULL THEN
+  RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_student_id IS NULL OR p_day_of_week NOT BETWEEN 0 AND 6
+  OR p_start_time IS NULL OR p_duration_minutes NOT BETWEEN 15 AND 480
+  OR p_start_date IS NULL OR p_is_home_visit IS NULL OR
+     p_idempotency_key IS NULL OR
+     p_rate_cents < 0 OR (p_end_date IS NOT NULL AND p_end_date<p_start_date)
+  OR jsonb_typeof(p_rows) IS DISTINCT FROM 'array'
+  OR jsonb_array_length(p_rows)>100
+  OR p_from IS NULL OR p_to IS NULL OR p_to<p_from OR p_to-p_from>366 THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_CREATE_INVALID' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=md5(jsonb_build_array('canonical.slot.create',p_student_id,
+   p_workplace_id,p_day_of_week,p_start_time,p_duration_minutes,p_start_date,
+   p_end_date,p_rate_cents,p_is_home_visit)::text);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_idempotency_key,'canonical.slot.create',
+  v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF NOT FOUND OR v_saved.operation<>'canonical.slot.create' OR
+     v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_CREATE_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.students
+    WHERE teacher_id=v_teacher AND id=p_student_id AND archived_at IS NULL)
+ THEN RAISE EXCEPTION 'CANONICAL_SLOT_STUDENT_NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF p_workplace_id IS NULL THEN
+  SELECT id INTO v_workplace_id FROM public.workplaces
+   WHERE teacher_id=v_teacher ORDER BY created_at,id LIMIT 1;
+ ELSE
+  SELECT id INTO v_workplace_id FROM public.workplaces
+   WHERE teacher_id=v_teacher AND id=p_workplace_id;
+ END IF;
+ IF v_workplace_id IS NULL OR NOT EXISTS(
+   SELECT 1 FROM public.workplace_enrollments
+    WHERE teacher_id=v_teacher AND workplace_id=v_workplace_id
+      AND student_id=p_student_id
+ ) THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ SELECT count(*) INTO v_expect
+  FROM generate_series(p_from::timestamp,p_to::timestamp,interval '1 day') d
+  WHERE d::date>=p_start_date
+   AND (p_end_date IS NULL OR d::date<=p_end_date)
+   AND extract(dow FROM d)=p_day_of_week;
+ IF v_expect<>jsonb_array_length(p_rows) THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_INCOMPLETE_PLAN' USING ERRCODE='22023';
+ END IF;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+  IF (v_row->>'slot_id')::uuid IS DISTINCT FROM p_idempotency_key
+     OR (v_row->>'teacher_id')::uuid IS DISTINCT FROM v_teacher
+     OR NOT EXISTS(
+       SELECT 1 FROM generate_series(p_from::timestamp,p_to::timestamp,
+                                      interval '1 day') d
+       WHERE d::date=(v_row->>'slot_occurrence_date')::date
+         AND d::date>=p_start_date
+         AND (p_end_date IS NULL OR d::date<=p_end_date)
+         AND extract(dow FROM d)=p_day_of_week
+     ) THEN
+   RAISE EXCEPTION 'CANONICAL_SLOT_PLAN_MISMATCH' USING ERRCODE='22023';
+  END IF;
+ END LOOP;
+ IF (SELECT count(DISTINCT x->>'slot_occurrence_date')
+     FROM jsonb_array_elements(p_rows) x)<>v_expect THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_DUPLICATE_DATE' USING ERRCODE='22023';
+ END IF;
+ INSERT INTO public.lesson_slots(
+  id,teacher_id,student_id,workplace_id,day_of_week,start_time,
+  duration_minutes,start_date,end_date,rate_cents,is_home_visit,active
+ ) VALUES(
+  p_idempotency_key,v_teacher,p_student_id,p_workplace_id,p_day_of_week,
+  p_start_time,p_duration_minutes,p_start_date,p_end_date,
+  p_rate_cents,p_is_home_visit,true
+ ) RETURNING * INTO v_slot;
+ SELECT public.ccp_canonical_slot_materialize(p_rows,NULL) INTO v_result;
+ v_receipt:=jsonb_build_object('id',v_slot.id,
+   'revision',v_slot.updated_at,'materialized',v_result,
+   'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_slot_create$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_create(
+ uuid,uuid,integer,time,integer,date,date,integer,boolean,jsonb,date,date,uuid)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_create(
+ uuid,uuid,integer,time,integer,date,date,integer,boolean,jsonb,date,date,uuid)
+ TO authenticated;
