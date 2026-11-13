@@ -1,5 +1,5 @@
 {
-  "auditedAt": "2026-11-12",
+  "auditedAt": "2026-11-13",
   "headSha": "c80b85c2313b8507e9999e2bb91229ed6f0f996a",
   "policy": "Verified c80b85c: 59/59 teacher route families mapped and gateway 38/38 individually evidenced; 225 authenticated website/MCP E2E passed (five skipped); all five workflow families green. Full functional parity is NOT certified: historical checklist 89/93, canonical lesson writer B5/C2, strict merged-main and live-provider gates remain open.",
   "apiRoutes": [
@@ -357,6 +357,21 @@
       ],
       "explanation": "Read-only MCP summary and CSV/text exports reuse the same teacher-scoped report service as website GET; authenticated cross-interface/tenant E2E in e2e/agent-mcp.spec.ts",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/sessions/[id]/notes/route.ts",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_session_notes_list",
+        "ccp_v1_session_notes_save"
+      ],
+      "explanation": "Shared teacher-only canonical session and frozen-participant notes service. Optimistic revision and idempotent SQL writer, audit, explicit guardian-email opt-in; private fields redacted by default.",
+      "evidenceTest": "e2e/canonical-session-notes-parity.spec.ts"
     },
     {
       "path": "app/api/coaching/sessions/[id]/roster/route.ts",
@@ -730,6 +745,16 @@
       "parity": "not-applicable",
       "existingTools": [],
       "explanation": "Guardian cancellation, cannot impersonate guardian through teacher token"
+    },
+    {
+      "path": "app/api/portal/[token]/sessions/[id]/students/[studentId]/cancel/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "external",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Guardian token authorizes one canonical session participant cancellation; a coach MCP token cannot impersonate a guardian. SQL validates token and frozen roster inside one transaction; repeat requests are idempotent."
     },
     {
       "path": "app/api/push/config/route.ts",
