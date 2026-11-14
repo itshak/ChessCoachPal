@@ -29,6 +29,7 @@ import { chessUuid, categoryName, observationText, observedAt, observationInput,
  materialLinkListInput,materialLinkCreateInput,materialLinkUpdateInput,materialLinkUnlinkInput,
 } from "@/lib/chess-learning";
 import {lessonCompletionSchema,attendanceBulkRecordSchema,type LessonCompletionInput} from "@/lib/lesson-completion";
+import {lessonCapturePreviewSchema,teacherLessonCapturePreview,LessonCapturePreviewError} from "@/lib/server/lesson-capture-preview";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import {materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,materialRelationListSchema,materialRelationSchema,materialArchivePreviewSchema,materialLifecycleSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,teacherMaterialRelationsList,teacherMaterialRelationChange,teacherMaterialArchivePreview,teacherMaterialLifecycleChange,MaterialCatalogError} from "@/lib/server/learning-materials";
 import {assignmentListSchema,assignmentCreateSchema,assignmentAttemptSchema,assignmentReviewSchema,teacherAssignmentsList,teacherAssignmentsCreate,teacherAssignmentAttempt,teacherAssignmentReview,AssignmentServiceError} from "@/lib/server/training-assignments";
@@ -1067,6 +1068,11 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_lessons_capture_preview",
+    description:"Read-only teacher-owned multi-student capture preview: exact full names or Hebrew/English aliases, ambiguity detection, shared workplace enrollment, explicit offset and frozen roster. No guessed names, inferred attendance, session write or mastery. Review before confirmed ccp_v1_sessions_ad_hoc_create.",
+    schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_v1_sessions_ad_hoc_create",
     description:"Schedule a single one-off lesson for 2–50 already enrolled students without a permanent class. Freeze roster and unmarked attendance atomically. Confirm approved participants and time.",
     schema:z.object({workplaceId:uuid,studentIds:z.array(uuid).min(2).max(50),
@@ -1886,6 +1892,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {workplaceId:string;studentId:string};
         return {data:await workplacesUnenroll(db,teacherId,a.workplaceId,a.studentId)};
       }
+      case "ccp_v1_lessons_capture_preview":
+        return {data:await teacherLessonCapturePreview(db,teacherId,
+          args as Parameters<typeof teacherLessonCapturePreview>[2])};
       case "ccp_v1_sessions_ad_hoc_create": {
         const a=args as {workplaceId:string;studentIds:string[];title:string;
           startsAt:string;durationMinutes:number;lessonNote:string;idempotencyKey:string};
@@ -2012,6 +2021,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof MaterialDefaultError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof AssignmentServiceError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof LessonCapturePreviewError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof MaterialCatalogError)
       return {error:{code:error.code,message:error.message}};
