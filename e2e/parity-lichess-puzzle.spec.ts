@@ -47,6 +47,17 @@ async function startProvider(){
   if(req.method==="DELETE"&&url.pathname==="/api/token"){
    res.writeHead(204);res.end();return;
   }
+  // Safe provider capacity probe introduced by the integrated Puzzles-series
+  // workflow; the original publishing tests have a one-chapter destination.
+  if(req.method==="GET"&&url.pathname==="/api/study/StUd1234.pgn"){
+   const token=(req.headers.authorization??"").replace(/^Bearer /,"");
+   if(!tokens.get(token)?.includes("study:read")){res.writeHead(403);res.end();return;}
+   res.writeHead(200,{"Content-Type":"application/x-chess-pgn"});
+   res.end('[Event "Synthetic Puzzles starter"]\n'+
+    '[StudyName "Puzzles"]\n[ChapterName "Starter"]\n'+
+    '[ChapterURL "https://lichess.org/study/StUd1234/Ch000001"]\n\n*');
+   return;
+  }
   if(req.method==="POST"&&url.pathname==="/api/study/StUd1234/import-pgn"){
    const token=(req.headers.authorization??"").replace(/^Bearer /,"");
    if(!tokens.get(token)?.includes("study:write")){

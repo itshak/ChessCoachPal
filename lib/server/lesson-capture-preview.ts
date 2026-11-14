@@ -2,6 +2,9 @@ import "server-only";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertSessionSchedule } from "@/lib/server/coach-service";
+import { isDateString } from "@/lib/schedule";
+import {teacherStudyIndexSearch} from "@/lib/server/teacher-study-index";
+import { inferOwnedWeeklyLessonTime,lessonIntervalConflicts,type LessonTiming } from "@/lib/server/lesson-schedule-inference";
 
 /**
  * This is a read-only, deterministic capture PREVIEW, not an AI guess or a
@@ -13,10 +16,21 @@ export const lessonCapturePreviewSchema = z.object({
   names: z.array(z.string().trim().min(1).max(120)).min(2).max(50),
   workplaceId: uuid.optional(),
   title: z.string().trim().min(1).max(160),
-  startsAt: z.string().datetime({ offset: true }),
-  durationMinutes: z.number().int().min(15).max(480),
+  startsAt: z.string().datetime({ offset: true }).optional(),
+  durationMinutes: z.number().int().min(15).max(480).optional(),
+  localDate: z.string().refine(isDateString,"Date must be a real YYYY-MM-DD local calendar date").optional(),
   lessonNote: z.string().max(10000).default(""),
-}).strict();
+  chapterSelection:z.object({
+    studyId:z.string().regex(/^[A-Za-z0-9]{8}$/).optional(),
+    studyName:z.string().trim().min(1).max(160).optional(),
+    chapterNumber:z.number().int().min(1).max(64),
+    expectedPlayers:z.string().trim().max(120).optional(),
+  }).strict().refine(x=>Boolean(x.studyId)!==Boolean(x.studyName),
+    "Supply one exact study name OR provider study ID, never both").optional(),
+}).strict().refine(x=>
+  (x.startsAt!==undefined&&x.durationMinutes!==undefined&&x.localDate===undefined) ||
+  (x.startsAt===undefined&&x.durationMinutes===undefined&&x.localDate!==undefined),
+  "Supply an explicit start and duration, OR one local date for unique slot inference");
 
 export type LessonCapturePreviewInput = z.infer<typeof lessonCapturePreviewSchema>;
 
@@ -37,7 +51,9 @@ type Workplace = { id: string; name: string; timezone: string };
 type ResolutionIssue = {
   code: "NOT_FOUND" | "AMBIGUOUS_STUDENT" | "DUPLICATE_STUDENT" |
     "NO_COMMON_WORKPLACE" | "AMBIGUOUS_WORKPLACE" | "WORKPLACE_NOT_FOUND" |
-    "STUDENT_NOT_ENROLLED";
+    "STUDENT_NOT_ENROLLED"|"MISSING_SCHEDULE"|"TIME_AMBIGUOUS"|
+    "DST_UNRESOLVED"|"SCHEDULE_CONFLICT"|"CHAPTER_NOT_FOUND"|
+    "CHAPTER_AMBIGUOUS"|"CHAPTER_STALE"|"CHAPTER_PLAYERS_MISMATCH";
   message: string;
   input?: string;
   candidates?: Array<{ id: string; name: string }>;
@@ -64,11 +80,19 @@ async function activeStudents(db: SupabaseClient, teacherId: string) {
   throw fail("ROSTER_LIMIT", "Too many students for safe unambiguous name resolution");
 }
 
-/** Match only active learners within this teacher, then find their common workplace. */
-export async function teacherLessonCapturePreview(
-  db: SupabaseClient, teacherId: string, input: LessonCapturePreviewInput,
-) {
-  assertSessionSchedule(input.startsAt, input.durationMinutes);
+
+export const studentNamesResolveSchema=z.object({
+ names:z.array(z.string().trim().min(1).max(120)).min(1).max(100),
+}).strict();
+
+/** Exact owner-owned report-name and alias resolver shared by all capture flows.
+ * No fuzzy guesses, archived learners, guardian contact or provider credentials.
+ */
+export async function teacherStudentNamesResolve(
+ db:SupabaseClient,teacherId:string,names:string[],
+){
+ const parsed=studentNamesResolveSchema.parse({names});
+ const input=parsed;
   const students = await activeStudents(db, teacherId);
   const lookup = new Map<string, StudentIdentity[]>();
   for (const student of students) {
@@ -103,6 +127,21 @@ export async function teacherLessonCapturePreview(
     issues.push({ code: "DUPLICATE_STUDENT",
       message: "The same learner appears more than once in the proposed roster" });
   }
+
+ return {resolutions,issues,allResolved:issues.length===0,
+  studentIds:issues.length===0?ids:[],
+  explanation:"Name and stored aliases are compared with exact Unicode normalization; archived students and partial names cannot be auto-selected."};
+}
+
+/** Match only active learners within this teacher, then find their common workplace. */
+export async function teacherLessonCapturePreview(
+  db: SupabaseClient, teacherId: string, input: LessonCapturePreviewInput,
+) {
+  if(input.startsAt!==undefined&&input.durationMinutes!==undefined)
+    assertSessionSchedule(input.startsAt,input.durationMinutes);
+  const identity=await teacherStudentNamesResolve(db,teacherId,input.names);
+  const {resolutions,issues}=identity;
+  const ids=resolutions.map(r=>r.studentId).filter((id):id is string=>id!==null);
 
   let selectedWorkplace: Workplace | null = null;
   const enrolledByStudent = new Map<string, Set<string>>();
@@ -167,25 +206,103 @@ export async function teacherLessonCapturePreview(
     }
   }
 
-  const canCommit = issues.length === 0 && selectedWorkplace !== null;
+  let timing:LessonTiming|null=input.startsAt!==undefined&&
+    input.durationMinutes!==undefined ? {
+      startsAt:input.startsAt,durationMinutes:input.durationMinutes,
+      timeSource:"explicit",slotIds:[],
+    }:null;
+  if(selectedWorkplace&&issues.length===0&&ids.length===input.names.length){
+    if(input.localDate){
+      const inferred=await inferOwnedWeeklyLessonTime(
+        db,teacherId,selectedWorkplace,input.localDate,ids);
+      timing=inferred.timing;
+      issues.push(...inferred.issues);
+    }
+    if(timing&&issues.length===0)
+      issues.push(...await lessonIntervalConflicts(db,teacherId,timing));
+  }
+  // A numbered game is an authentic chapter of the teacher's indexed,
+  // authorized Lichess study, never an LLM-invented "game number".
+  // A stale or missing index requires explicit browser OAuth sync/review.
+  let selectedChapter:null|{studyId:string;chapterId:string;
+    chapterNumber:number;chapterName:string;studyName:string;
+    white:string|null;black:string|null;verifiedAt:string;chapterUrl:string;
+    source:"AUTHORIZED_LICHESS_PGN_CACHE";attached:false}=null;
+  if(input.chapterSelection&&issues.length===0){
+    const choice=input.chapterSelection;
+    const found=await teacherStudyIndexSearch(db,teacherId,{
+      ...(choice.studyId?{studyId:choice.studyId}:{}),
+      ...(choice.studyName?{query:choice.studyName}:{}),
+      chapterNumber:choice.chapterNumber,limit:100,
+    });
+    // The index supports substring discovery, but a *capture* must use one
+    // exact title or provider ID; an approximate match is never accepted.
+    const candidates=(found.matches as Array<Record<string,unknown>&{
+      stale:boolean;chapterUrl:string;
+    }>).filter(c=>choice.studyId?
+      c.study_id===choice.studyId:
+      normalizeStudentIdentity(c.study_name as string)===
+        normalizeStudentIdentity(choice.studyName!));
+    if(found.truncated||candidates.length>1){
+      issues.push({code:"CHAPTER_AMBIGUOUS",
+        message:"Multiple cached chapters may match; use an exact study name or provider ID"});
+    }else if(candidates.length===0){
+      issues.push({code:"CHAPTER_NOT_FOUND",
+        message:"No exact authorized indexed Lichess study/chapter number; sync with study:read first"});
+    }else{
+      const c=candidates[0];
+      if(c.stale)issues.push({code:"CHAPTER_STALE",
+        message:"Chapter metadata is older than 24 hours; re-sync the authorized study before capture"});
+      if(choice.expectedPlayers){
+        // E.g. "Steinitz–Chigorin" matches PGN "Wilhelm Steinitz"
+        // versus "Mikhail Chigorin"; the intervening first name must not
+        // trigger a false mismatch. Every requested name token is required.
+        const tokens=normalizeStudentIdentity(choice.expectedPlayers)
+          .split(/[\s\p{P}\p{S}]+/gu).filter(Boolean);
+        const actual=normalizeStudentIdentity(
+          [c.white_player,c.black_player].filter(Boolean).join(" "))
+          .split(/[\s\p{P}\p{S}]+/gu).filter(Boolean);
+        if(!tokens.length||tokens.some(t=>!actual.includes(t))){
+          issues.push({code:"CHAPTER_PLAYERS_MISMATCH",
+            message:"The indexed chapter players do not match the requested names; confirm actual chapter identity"});
+        }
+      }
+      if(!issues.some(issue=>issue.code.startsWith("CHAPTER_"))){
+        selectedChapter={
+          studyId:c.study_id as string,chapterId:c.chapter_id as string,
+          chapterNumber:c.chapter_number as number,
+          chapterName:c.chapter_name as string,studyName:c.study_name as string,
+          white:c.white_player as string|null,black:c.black_player as string|null,
+          verifiedAt:c.verified_at as string,chapterUrl:c.chapterUrl,
+          source:"AUTHORIZED_LICHESS_PGN_CACHE",attached:false,
+        };
+      }
+    }
+  }
+  const canCommit=issues.length===0&&selectedWorkplace!==null&&timing!==null;
   return {
-    canCommit,
-    resolutions,
-    issues,
-    workplace: selectedWorkplace,
-    proposedSession: canCommit ? {
-      workplaceId: selectedWorkplace!.id, studentIds: ids,
-      title: input.title, startsAt: input.startsAt,
-      durationMinutes: input.durationMinutes, lessonNote: input.lessonNote,
-    } : null,
-    review: {
-      creates: "One scheduled lesson with a frozen roster and unmarked attendance",
-      instructorMinutes: input.durationMinutes,
-      studentCount: ids.length,
-      attendance: "unmarked",
-      inferredComprehension: false,
-      writesPerformed: false,
-      nextStep: "After teacher approval, use ccp_v1_sessions_ad_hoc_create with the exact preview IDs, a new idempotencyKey and confirmed=true. Record attendance/completion separately.",
+    canCommit,resolutions,issues,workplace:selectedWorkplace,
+    selectedChapter,
+    proposedSession:canCommit ? {
+      workplaceId:selectedWorkplace!.id,studentIds:ids,
+      title:input.title,startsAt:timing!.startsAt,
+      durationMinutes:timing!.durationMinutes,lessonNote:input.lessonNote,
+    }:null,
+    review:{
+      creates:"One scheduled lesson with a frozen roster and unmarked attendance",
+      instructorMinutes:timing?.durationMinutes??null,
+      studentCount:ids.length,
+      attendance:"unmarked",
+      timeSource:timing?.timeSource??(input.localDate?"weekly_slot":"explicit"),
+      slotIds:timing?.slotIds??[],
+      localDate:input.localDate??null,
+      timezone:selectedWorkplace?.timezone??null,
+      inferredComprehension:false,writesPerformed:false,
+      materialAssociation:"not_written",
+      materialNextStep:selectedChapter?
+        "After creating the lesson, optionally assign the exact chapter using a separate materials_link_preview and confirmed materials_link_commit; mark it taught only after explicit lesson completion. Never equate a linked chapter with mastery.":
+        "No verified study chapter selected. Do not invent material history.",
+      nextStep:"After teacher approval, use ccp_v1_sessions_ad_hoc_create with the exact preview IDs, a new idempotencyKey and confirmed=true. Record attendance/completion separately.",
     },
   };
 }

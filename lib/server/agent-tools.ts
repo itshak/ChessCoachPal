@@ -1,5 +1,22 @@
 import "server-only";
 import { z } from "zod";
+import {ratingRecordSchema,ratingFetchSchema,ratingListSchema} from "@/lib/chess-public-ratings";
+import {ratingRefreshCommitSchema,teacherStudentRatingHistory,
+ teacherStudentRatingRecord,teacherStudentRatingRefreshPreview,
+ teacherStudentRatingRefreshCommit,StudentRatingError} from "@/lib/server/student-rating-snapshots";
+import {studyIndexSearchSchema,studyIndexGetSchema,studyIndexSyncSchema,
+ teacherStudyIndexSearch,teacherStudyIndexGet,teacherStudyIndexSync,
+ StudyIndexError} from "@/lib/server/teacher-study-index";
+import {lessonChapterPreviewSchema,lessonChapterCommitSchema,
+ teacherLessonChapterPreview,teacherLessonChapterCommit,
+ ChapterEvidenceError} from "@/lib/server/lesson-chapter-evidence";
+import {puzzleSeriesCreateSchema,puzzleSeriesReconcileSchema,puzzleCapacitySchema,
+ teacherPuzzleSeriesList,teacherPuzzleStudyCapacity,teacherPuzzleSeriesCreate,
+ teacherPuzzleSeriesReconcile,PuzzleSeriesError} from "@/lib/server/puzzle-study-series";
+import {PuzzleReviewError} from "@/lib/lichess-puzzles";
+import {teacherFenValidate} from "@/lib/server/fen-validation";
+import {teacherContextGet} from "@/lib/server/teacher-context";
+
 import {spreadsheetSuggestMcpSchema} from "@/lib/spreadsheet-suggest";
 import {invoiceDraftEditSchema} from "@/lib/server/invoice-draft-schemas";
 import {eventChanges} from "@/lib/server/teacher-event-schemas";
@@ -29,7 +46,8 @@ import { chessUuid, categoryName, observationText, observedAt, observationInput,
  materialLinkListInput,materialLinkCreateInput,materialLinkUpdateInput,materialLinkUnlinkInput,
 } from "@/lib/chess-learning";
 import {lessonCompletionSchema,attendanceBulkRecordSchema,type LessonCompletionInput} from "@/lib/lesson-completion";
-import {lessonCapturePreviewSchema,teacherLessonCapturePreview,LessonCapturePreviewError} from "@/lib/server/lesson-capture-preview";
+import {lessonCapturePreviewSchema,teacherLessonCapturePreview,studentNamesResolveSchema,teacherStudentNamesResolve,LessonCapturePreviewError} from "@/lib/server/lesson-capture-preview";
+import {LessonTimingError,scheduleDayPreviewSchema,teacherScheduleDayPreview} from "@/lib/server/lesson-schedule-inference";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import {materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,materialRelationListSchema,materialRelationSchema,materialArchivePreviewSchema,materialLifecycleSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,teacherMaterialRelationsList,teacherMaterialRelationChange,teacherMaterialArchivePreview,teacherMaterialLifecycleChange,MaterialCatalogError} from "@/lib/server/learning-materials";
 import {assignmentListSchema,assignmentCreateSchema,assignmentAttemptSchema,assignmentReviewSchema,teacherAssignmentsList,teacherAssignmentsCreate,teacherAssignmentAttempt,teacherAssignmentReview,AssignmentServiceError} from "@/lib/server/training-assignments";
@@ -694,6 +712,83 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_teacher_context_get",
+    description:"Trusted local teacher date, configured IANA timezone and owned workplaces. Read-only scheduling context; never assume the model clock determines today.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_student_ratings_list",
+    description:"Read append-only separately sourced chess platform rating snapshots (including time control, provisional status and fetch time). No values alter the teacher 1–10 strength.",
+    schema:ratingListSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_student_ratings_record",
+    description:"Teacher-confirmed append-only manual platform/time-control rating observation, idempotent by UUID. Does not infer account ownership or change teacher strength.",
+    schema:ratingRecordSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_student_ratings_refresh_preview",
+    description:"With confirmedExternal=true, send only the selected saved public chess username to the fixed Lichess or Chess.com API and show per-time-control provider observations. NO local write; public account ownership is unverified.",
+    schema:ratingFetchSchema,scope:"coach:read",readOnly:false,
+  },
+  {
+    name:"ccp_v1_student_ratings_refresh_commit",
+    description:"Explicitly confirm external public chess rating snapshot import. Refetch and compare exact preview digest; record a provider-sourced append-only batch with one UUID receipt, never change teacher strength.",
+    schema:ratingRefreshCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_materials_chapters_search",
+    description:"Read tenant-owned cached Lichess study/chapter index by study, exact chapter ordinal or verified PGN tags White/Black/Event. Returns source freshness; cached chapters are not automatic teaching evidence.",
+    schema:studyIndexSearchSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_materials_chapters_get",
+    description:"Read one exact teacher-authorized Lichess study/chapter metadata pair, cached verification time and source URL. No raw private PGN or OAuth token.",
+    schema:studyIndexGetSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_materials_chapters_sync",
+    description:"With explicit external read permission, validate all chapter IDs from authorized Lichess study PGN then atomically replace a metadata-only tenant index. Requires study:read browser grant; no raw PGN persisted.",
+    schema:studyIndexSyncSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_materials_link_preview",
+    description:"Preview one exact fresh Lichess chapter linked to a canonical lesson's frozen roster: one instructor lesson, N separate student coverages. No write or inferred mastery.",
+    schema:lessonChapterPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_materials_link_commit",
+    description:"Teacher-confirmed atomic lesson chapter link and per-student material evidence, bound to cached chapter revision, frozen roster hash and request UUID. Only completed lessons may be marked taught.",
+    schema:lessonChapterCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_chess_fen_validate",
+    description:"Read-only 6-field standard chess FEN structural/static legality validation, 8×8 board and explicit unknown image state; not a full move-engine certification or publishing action.",
+    schema:z.object({fen:z.string().min(10).max(120),
+      source:z.enum(["manual","image"]).default("manual")}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_puzzles_study_series_list",
+    description:"List authorized named Puzzles series and pending local creation receipts, identify next private Puzzles N destination and explain Lichess's 30/day limit. Read only.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_puzzles_study_capacity",
+    description:"Live authorize/read chapter count in one Lichess study, including the starter chapter. Refuse 64/64 capacity before external PGN writes.",
+    schema:puzzleCapacitySchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_puzzles_study_create",
+    description:"Explicit teacher-approved creation of a new private Puzzles/Puzzles N study with study:write grant, 30/day local budget, unique reserved suffix and never automatically retried provider intent.",
+    schema:puzzleSeriesCreateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_puzzles_study_reconcile",
+    description:"Read live provider studies to reconcile an ambiguous private Puzzles N creation by original UUID; never make a second remote POST.",
+    schema:puzzleSeriesReconcileSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_v1_lichess_connection_status",
     description:"Read teacher Lichess account username, study scopes and connection status. No provider credentials are accessible.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
@@ -1068,8 +1163,18 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_schedule_day_preview",
+    description:"Review one teacher-owned workplace-local calendar date for 1–50 explicit active student IDs. Check every enrollment and exactly shared active recurring start/duration, DST safety and occupied canonical lesson intervals. Never writes or silently enrolls students.",
+    schema:scheduleDayPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_students_resolve",
+    description:"Resolve up to 100 exact teacher-owned active student full names and Hebrew/English aliases to stable IDs. Return ambiguity candidates or missing-name issues without guessing, fuzzy search, archived students or private contacts. Read-only.",
+    schema:studentNamesResolveSchema,scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_v1_lessons_capture_preview",
-    description:"Read-only teacher-owned multi-student capture preview: exact full names or Hebrew/English aliases, ambiguity detection, shared workplace enrollment, explicit offset and frozen roster. No guessed names, inferred attendance, session write or mastery. Review before confirmed ccp_v1_sessions_ad_hoc_create.",
+    description:"Read-only multi-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. Confirm separately via ccp_v1_sessions_ad_hoc_create.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -1706,6 +1811,50 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {dimensionId:string;expectedAssessmentCount:number};
         return {data:await skillDimensionsDelete(db,teacherId,a.dimensionId,a.expectedAssessmentCount)};
       }
+      case "ccp_v1_teacher_context_get":
+        return {data:await teacherContextGet(db,teacherId)};
+      case "ccp_v1_student_ratings_list":
+        return {data:await teacherStudentRatingHistory(db,teacherId,
+          args as Parameters<typeof teacherStudentRatingHistory>[2])};
+      case "ccp_v1_student_ratings_record":
+        return {data:await teacherStudentRatingRecord(db,teacherId,
+          args as Parameters<typeof teacherStudentRatingRecord>[2])};
+      case "ccp_v1_student_ratings_refresh_preview":
+        return {data:await teacherStudentRatingRefreshPreview(db,teacherId,
+          args as Parameters<typeof teacherStudentRatingRefreshPreview>[2])};
+      case "ccp_v1_student_ratings_refresh_commit":
+        return {data:await teacherStudentRatingRefreshCommit(db,teacherId,
+          args as Parameters<typeof teacherStudentRatingRefreshCommit>[2])};
+      case "ccp_v1_materials_chapters_search":
+        return {data:await teacherStudyIndexSearch(db,teacherId,
+          args as Parameters<typeof teacherStudyIndexSearch>[2])};
+      case "ccp_v1_materials_chapters_get":
+        return {data:await teacherStudyIndexGet(db,teacherId,
+          args as Parameters<typeof teacherStudyIndexGet>[2])};
+      case "ccp_v1_materials_chapters_sync":
+        return {data:await teacherStudyIndexSync(db,teacherId,
+          args as Parameters<typeof teacherStudyIndexSync>[2])};
+      case "ccp_v1_materials_link_preview":
+        return {data:await teacherLessonChapterPreview(db,teacherId,
+          args as Parameters<typeof teacherLessonChapterPreview>[2])};
+      case "ccp_v1_materials_link_commit":
+        return {data:await teacherLessonChapterCommit(db,teacherId,
+          args as Parameters<typeof teacherLessonChapterCommit>[2])};
+      case "ccp_v1_chess_fen_validate": {
+        const a=args as {fen:string;source:"manual"|"image"};
+        return {data:teacherFenValidate(a.fen,a.source)};
+      }
+      case "ccp_v1_puzzles_study_series_list":
+        return {data:await teacherPuzzleSeriesList(db,teacherId)};
+      case "ccp_v1_puzzles_study_capacity":
+        return {data:await teacherPuzzleStudyCapacity(teacherId,
+          args as Parameters<typeof teacherPuzzleStudyCapacity>[1])};
+      case "ccp_v1_puzzles_study_create":
+        return {data:await teacherPuzzleSeriesCreate(db,teacherId,
+          args as Parameters<typeof teacherPuzzleSeriesCreate>[2])};
+      case "ccp_v1_puzzles_study_reconcile":
+        return {data:await teacherPuzzleSeriesReconcile(db,teacherId,
+          args as Parameters<typeof teacherPuzzleSeriesReconcile>[2])};
       case "ccp_v1_lichess_connection_status": {
         return {data:await lichessConnectionStatus(teacherId)};
       }
@@ -1892,6 +2041,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {workplaceId:string;studentId:string};
         return {data:await workplacesUnenroll(db,teacherId,a.workplaceId,a.studentId)};
       }
+      case "ccp_v1_schedule_day_preview":
+        return {data:await teacherScheduleDayPreview(db,teacherId,
+          args as Parameters<typeof teacherScheduleDayPreview>[2])};
+      case "ccp_v1_students_resolve":
+        return {data:await teacherStudentNamesResolve(db,teacherId,
+          (args as {names:string[]}).names)};
       case "ccp_v1_lessons_capture_preview":
         return {data:await teacherLessonCapturePreview(db,teacherId,
           args as Parameters<typeof teacherLessonCapturePreview>[2])};
@@ -2021,6 +2176,13 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof MaterialDefaultError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof AssignmentServiceError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof StudentRatingError||error instanceof StudyIndexError||
+        error instanceof ChapterEvidenceError||error instanceof PuzzleSeriesError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof PuzzleReviewError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof LessonTimingError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LessonCapturePreviewError)
       return {error:{code:error.code,message:error.message}};

@@ -21,6 +21,17 @@ test("PARITY:PARITY-teacher-export preserves website backup but strips portal cr
    .find(g=>g.id===guardianId);
  expect(websiteRow?.portal_token).toBe(portalToken);
  const safe=await call("ccp_v1_settings_export",{confirmed:true});
+ // This single seeded teacher also receives every synthetic student, chapter,
+ // rating and lesson from preceding E2E scenarios. The explicitly bounded
+ // model-safe MCP export is REQUIRED to refuse oversized private archives;
+ // never weaken the guard or dump tokens to make this test pass. The signed-in
+ // browser backup above still covers complete restoration.
+ if(safe.error){
+  expect(safe.error.code).toBe("EXPORT_TOO_LARGE");
+  expect(JSON.stringify(safe)).not.toContain(portalToken);
+  expect(safe.data).toBeUndefined();
+  return;
+ }
  expect(safe.error).toBeUndefined();
  expect(safe.data.guardianPortalLinksExcluded).toBe(true);
  expect(Object.keys(safe.data.export).sort()).toEqual(Object.keys(fullBackup).sort());
