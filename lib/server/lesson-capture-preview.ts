@@ -237,7 +237,9 @@ export async function teacherLessonCapturePreview(
     });
     // The index supports substring discovery, but a *capture* must use one
     // exact title or provider ID; an approximate match is never accepted.
-    const candidates=found.matches.filter(c=>choice.studyId?
+    const candidates=(found.matches as Array<Record<string,unknown>&{
+      stale:boolean;chapterUrl:string;
+    }>).filter(c=>choice.studyId?
       c.study_id===choice.studyId:
       normalizeStudentIdentity(c.study_name as string)===
         normalizeStudentIdentity(choice.studyName!));
