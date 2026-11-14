@@ -1,4 +1,5 @@
 import "server-only";
+import {z} from "zod";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {dayOfWeek,isDateString} from "@/lib/schedule";
 import {workplaceLocalToUtc} from "@/lib/coaching-time";
@@ -116,4 +117,55 @@ export async function lessonIntervalConflicts(db:Db,teacherId:string,
   message:"A canonical teaching session already occupies this interval; review that existing lesson instead of creating a duplicate",
   candidates:conflicts.map(x=>({id:x.id,name:x.title})),
  }];
+}
+
+/**
+ * Standalone day/timetable preflight for agents and website.
+ * Explicit student UUIDs avoid fuzzy roster guessing. The teacher must have
+ * all three domains: students, chosen workplace, and current enrollment.
+ */
+export const scheduleDayPreviewSchema=z.object({
+ workplaceId:z.uuid(),localDate:z.string().refine(isDateString),
+ studentIds:z.array(z.uuid()).min(1).max(50),
+}).strict();
+
+export async function teacherScheduleDayPreview(db:Db,teacherId:string,
+ input:z.infer<typeof scheduleDayPreviewSchema>){
+ const args=scheduleDayPreviewSchema.parse(input);
+ if(new Set(args.studentIds).size!==args.studentIds.length)
+  throw new LessonTimingError("DUPLICATE_STUDENT",
+   "A requested student must appear only once");
+ const {data:workplace,error:we}=await db.from("workplaces")
+  .select("id,timezone,name").eq("id",args.workplaceId)
+  .eq("teacher_id",teacherId).maybeSingle();
+ if(we)throw new LessonTimingError("WORKPLACE_UNAVAILABLE",
+  "Cannot verify requested workplace");
+ if(!workplace)throw new LessonTimingError("NOT_FOUND",
+  "Requested workplace not found");
+ const [{data:students,error:se},{data:enrollments,error:ee}]=await Promise.all([
+  db.from("students").select("id").eq("teacher_id",teacherId)
+   .is("archived_at",null).in("id",args.studentIds).limit(51),
+  db.from("workplace_enrollments").select("student_id")
+   .eq("teacher_id",teacherId).eq("workplace_id",args.workplaceId)
+   .in("student_id",args.studentIds).limit(51),
+ ]);
+ if(se||ee||!students||!enrollments)
+  throw new LessonTimingError("ENROLLMENT_UNAVAILABLE",
+   "Cannot verify all selected students and enrollments");
+ if(students.length!==args.studentIds.length||
+    new Set(enrollments.map(x=>x.student_id)).size!==args.studentIds.length)
+  return {canUse:false,workplace:{id:workplace.id,name:workplace.name,
+    timezone:workplace.timezone},localDate:args.localDate,
+    studentIds:args.studentIds,timing:null,issues:[{
+      code:"STUDENT_NOT_ENROLLED",message:"One or more learners are not active and enrolled in the selected workplace",
+    }],writesPerformed:false};
+ const result=await inferOwnedWeeklyLessonTime(db,teacherId,workplace,
+   args.localDate,args.studentIds);
+ const issues:LessonTimingIssue[]=[...result.issues];
+ if(result.timing)issues.push(...await lessonIntervalConflicts(
+   db,teacherId,result.timing));
+ return {canUse:result.timing!==null&&issues.length===0,
+  workplace:{id:workplace.id,name:workplace.name,timezone:workplace.timezone},
+  localDate:args.localDate,studentIds:args.studentIds,timing:result.timing,
+  issues,writesPerformed:false};
 }
