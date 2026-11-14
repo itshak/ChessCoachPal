@@ -2,6 +2,12 @@
 
 **Updated:** 2026-11-14 · **Branch of record:** main (parity implementation merged and accepted; v0.1.0 unreleased) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
+## 2026-11-15 — rating cross-interface replay hotfix for PR #65 (awaiting CI)
+
+The full PR #65 run at `a1afe9c` passed **249 authenticated E2E cases**, skipped five intentionally and failed exactly one: `PARITY-public-lichess-and-chesscom-rating-sources-are-independent`. The MCP provider-refresh commit succeeded, but the matching browser replay returned HTTP 400 because the strict browser action schema rejected the same `studentId` present in the MCP receipt. This is a web adapter validation mismatch, not a provider-fetch issue. The shared server-side receipt validator and account/provider digest checks remain unchanged.
+
+The revised browser schema accepts the optional **matching** student ID for MCP-shaped action payloads, rejects a mismatched URL/body ID before any business write, and retains the existing path-based authorization. The independent Playwright case now tests both a cross-interface exact replay and path/body mismatch rejection. This hotfix has **not yet passed final exact-head CI**; do not merge or issue release certification until the PR head and merged-main verification are green.
+
 ## 2026-11-15 — consolidated conversational chess workflow batch ready for acceptance (PR #65)
 
 Candidate branch [PR #65](https://github.com/itshak/ChessCoachPal/pull/65) now contains integrated student name/alias resolution, safe workplace-local one-day recurring slot inference, exact PGN metadata-backed study/chapter selection during multi-student lesson preview, separately teacher-approved one-session creation and one-roster chapter assignment, alongside the provider rating, FEN and Lichess puzzle safety features developed on this branch. Both ordinary website APIs and delegated MCP have matched typed operations, owner checks and named cross-interface acceptance cases. Direct authenticated Lichess index forgery is denied; metadata insertion requires the trusted server after authorized provider read.
