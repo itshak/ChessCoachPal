@@ -16,9 +16,10 @@ async function newTeacherStudents(call:Awaited<ReturnType<typeof delegatedTool>>
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- const ids:string[]=[];
+ const ids:string[]=[],names:string[]=[];
  for(let i=0;i<3;i++){
   const name=randomName("Integrated learner "+i);
+  names.push(name);
   const created=await call("ccp_v1_students_create",{name,idempotencyKey:uuid()});
   expect(created.error).toBeUndefined();
   const studentId=created.data.entityId as string;
@@ -27,7 +28,7 @@ async function newTeacherStudents(call:Awaited<ReturnType<typeof delegatedTool>>
   })).error).toBeUndefined();
   ids.push(studentId);
  }
- return {workplaceId,ids};
+ return {workplaceId,ids,names};
 }
 async function ratingProvider(){
  const app=createServer(async(req,res)=>{
@@ -240,7 +241,7 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
  const provider=await lichessStudyProvider();
  try{
   const call=await delegatedTool(page,request);
-  const {workplaceId,ids}=await newTeacherStudents(call);
+  const {workplaceId,ids,names}=await newTeacherStudents(call);
   await page.goto("/api/lichess/connect?mode=read");
   await page.waitForURL(u=>u.pathname==="/learning"&&u.searchParams.get("lichess")==="connected");
   const sync=await page.request.post("/api/lichess/chapter-index",{
@@ -274,9 +275,30 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
   expect(one.status(),await one.text()).toBe(200);
   expect(await one.json()).toEqual(chapter.data);
   const startsAt="2090-07-08T13:00:00.000Z";
-  const session=await call("ccp_v1_sessions_ad_hoc_create",{
-   workplaceId,studentIds:ids,title:randomName("Classic study lesson"),
+  const capture={
+   names,workplaceId,title:randomName("Classic study lesson"),
    startsAt,durationMinutes:90,lessonNote:"Teaching not yet confirmed",
+   chapterSelection:{studyName:"Classic Games 2",chapterNumber:32,
+    expectedPlayers:"Steinitz–Chigorin"},
+  };
+  const proposed=await page.request.post("/api/coaching/lesson-capture/preview",{
+   data:capture,
+  });
+  expect(proposed.status(),await proposed.text()).toBe(200);
+  const reviewed=await proposed.json();
+  const delegated=await call("ccp_v1_lessons_capture_preview",capture);
+  expect(delegated.error).toBeUndefined();
+  expect(delegated.data).toEqual(reviewed);
+  expect(reviewed.canCommit).toBe(true);
+  expect(reviewed.selectedChapter).toMatchObject({
+   studyId:"StUd1234",chapterId:"Ch000032",chapterNumber:32,
+   studyName:"Classic Games 2",white:"Steinitz",black:"Chigorin",
+   attached:false,
+  });
+  expect(reviewed.review.materialAssociation).toBe("not_written");
+  expect(reviewed.proposedSession.studentIds).toEqual(ids);
+  const session=await call("ccp_v1_sessions_ad_hoc_create",{
+   ...reviewed.proposedSession,
    idempotencyKey:uuid(),confirmed:true,
   });
   expect(session.error).toBeUndefined();
