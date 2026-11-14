@@ -47,7 +47,7 @@ import { chessUuid, categoryName, observationText, observedAt, observationInput,
 } from "@/lib/chess-learning";
 import {lessonCompletionSchema,attendanceBulkRecordSchema,type LessonCompletionInput} from "@/lib/lesson-completion";
 import {lessonCapturePreviewSchema,teacherLessonCapturePreview,studentNamesResolveSchema,teacherStudentNamesResolve,LessonCapturePreviewError} from "@/lib/server/lesson-capture-preview";
-import {LessonTimingError} from "@/lib/server/lesson-schedule-inference";
+import {LessonTimingError,scheduleDayPreviewSchema,teacherScheduleDayPreview} from "@/lib/server/lesson-schedule-inference";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import {materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,materialRelationListSchema,materialRelationSchema,materialArchivePreviewSchema,materialLifecycleSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,teacherMaterialRelationsList,teacherMaterialRelationChange,teacherMaterialArchivePreview,teacherMaterialLifecycleChange,MaterialCatalogError} from "@/lib/server/learning-materials";
 import {assignmentListSchema,assignmentCreateSchema,assignmentAttemptSchema,assignmentReviewSchema,teacherAssignmentsList,teacherAssignmentsCreate,teacherAssignmentAttempt,teacherAssignmentReview,AssignmentServiceError} from "@/lib/server/training-assignments";
@@ -1163,6 +1163,11 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_schedule_day_preview",
+    description:"Review one teacher-owned workplace-local calendar date for 1–50 explicit active student IDs. Check every enrollment and exactly shared active recurring start/duration, DST safety and occupied canonical lesson intervals. Never writes or silently enrolls students.",
+    schema:scheduleDayPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_v1_students_resolve",
     description:"Resolve up to 100 exact teacher-owned active student full names and Hebrew/English aliases to stable IDs. Return ambiguity candidates or missing-name issues without guessing, fuzzy search, archived students or private contacts. Read-only.",
     schema:studentNamesResolveSchema,scope:"coach:read",readOnly:true,
@@ -2036,6 +2041,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {workplaceId:string;studentId:string};
         return {data:await workplacesUnenroll(db,teacherId,a.workplaceId,a.studentId)};
       }
+      case "ccp_v1_schedule_day_preview":
+        return {data:await teacherScheduleDayPreview(db,teacherId,
+          args as Parameters<typeof teacherScheduleDayPreview>[2])};
       case "ccp_v1_students_resolve":
         return {data:await teacherStudentNamesResolve(db,teacherId,
           (args as {names:string[]}).names)};
