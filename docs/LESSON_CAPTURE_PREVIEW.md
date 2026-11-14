@@ -20,6 +20,6 @@ The teacher's **Coaching** page now contains **Capture a lesson from student nam
 
 ## Intentional limits and follow-up work
 
-The current preview **requires a concrete start instant and duration**. It does not automatically infer a session date from prose, resolve omitted hours from recurring slots, identify an exact Lichess chapter, attach material teaching evidence, or retroactively mark the session completed. Those are follow-on OpenSpec requirements and must have their own preview/confirmation, shared website/MCP services and real cross-interface tests. No provider credentials, real student data or API keys belong in the repo.
+The current preview **requires a concrete start instant and duration**. The alias and workplace lookup pages every owned active student and relevant workplace membership; if the tenant data exceeds its explicit safe scan limit, the preview fails rather than presenting a potentially incomplete identity decision. It does not automatically infer a session date from prose, resolve omitted hours from recurring slots, identify an exact Lichess chapter, attach material teaching evidence, or retroactively mark the session completed. Those are follow-on OpenSpec requirements and must have their own preview/confirmation, shared website/MCP services and real cross-interface tests. No provider credentials, real student data or API keys belong in the repo.
 
 No production data is migrated or reset. This is part of pre-v1.0 feature development and does not waive the separate live ChatGPT/Claude acceptance gate for publishing v0.1.0.
