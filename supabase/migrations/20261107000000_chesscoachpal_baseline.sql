@@ -9205,15 +9205,20 @@ GRANT ALL ON public.teacher_study_chapter_index TO service_role;
 -- One transaction removes stale chapter ordinals and writes exactly the
 -- provider-confirmed list. No partial cache is visible on validation failure.
 CREATE OR REPLACE FUNCTION public.ccp_teacher_study_index_replace(
- p_study_id text,p_chapters jsonb
+ p_teacher_id uuid,p_study_id text,p_chapters jsonb
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
  SET search_path=public,pg_temp AS $index_replace$
 DECLARE
- v_teacher uuid:=auth.uid();
+ v_teacher uuid:=p_teacher_id;
  v_chapter jsonb;v_count integer:=0;v_now timestamptz:=clock_timestamp();
 BEGIN
- IF v_teacher IS NULL THEN
-   RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ -- Never allow a public OAuth/browser/MCP caller to manufacture a
+ -- verified provider study. The trusted server has already fetched PGN
+ -- through an authorized study:read Lichess connection.
+ IF auth.role() IS DISTINCT FROM 'service_role' OR v_teacher IS NULL THEN
+   RAISE EXCEPTION 'PROVIDER_INDEX_TRUSTED_WRITER_REQUIRED'
+     USING ERRCODE='42501';
+ END IF;
  IF p_study_id IS NULL OR p_study_id !~ '^[A-Za-z0-9]{8}$'
    OR p_chapters IS NULL OR jsonb_typeof(p_chapters)<>'array'
    OR jsonb_array_length(p_chapters) NOT BETWEEN 1 AND 64
@@ -9259,8 +9264,10 @@ BEGIN
   'verifiedAt',v_now,'pgDataStored',false);
 END;
 $index_replace$;
-REVOKE ALL ON FUNCTION public.ccp_teacher_study_index_replace(text,jsonb) FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_teacher_study_index_replace(text,jsonb) TO authenticated;
+REVOKE ALL ON FUNCTION public.ccp_teacher_study_index_replace(uuid,text,jsonb)
+ FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_teacher_study_index_replace(uuid,text,jsonb)
+ TO service_role;
 
 
 
