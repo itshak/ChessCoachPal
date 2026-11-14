@@ -9,6 +9,15 @@ type Resolution = {
   input:string; status:"resolved"|"ambiguous"|"not_found";
   studentId:string|null; name:string|null; candidates:Candidate[];
 };
+type ChapterLinkPreview={
+ canCommit:boolean;issues:string[];selectedStudentIds:string[];
+ studentCoverageCount:number;uniqueWorkplaceLessonCount:number;
+ proposedCommit:null|{
+  sessionId:string;studyId:string;chapterId:string;
+  stage:"assigned";note:string;expectedVerifiedAt:string;expectedRosterHash:string;
+ };
+};
+type ChapterLinkState={sessionId:string;chapter:NonNullable<Preview["selectedChapter"]>};
 type Preview = {
   canCommit:boolean; resolutions:Resolution[];
   issues:Array<{ code:string; message:string; input?:string; candidates?:Candidate[] }>;
@@ -49,6 +58,11 @@ export function LessonCapturePreviewPanel() {
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
   const [receipt,setReceipt] = useState("");
+  const [pendingLink,setPendingLink] = useState<ChapterLinkState|null>(null);
+  const [linkReview,setLinkReview] = useState<ChapterLinkPreview|null>(null);
+  const [linkApproved,setLinkApproved] = useState(false);
+  const [linkedReceipt,setLinkedReceipt] = useState("");
+  const linkKeyRef = useRef<string|null>(null);
   const requestRef = useRef<{signature:string;requestId:string}|null>(null);
 
   useEffect(() => {
@@ -64,7 +78,9 @@ export function LessonCapturePreviewPanel() {
     return () => {active=false;};
   }, []);
 
-  const invalidate = () => {setPreview(null);setApproved(false);setReceipt("");};
+  const invalidate = () => {setPreview(null);setApproved(false);setReceipt("");
+    setPendingLink(null);setLinkReview(null);setLinkApproved(false);setLinkedReceipt("");
+    linkKeyRef.current=null;};
 
   async function check(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -117,10 +133,58 @@ export function LessonCapturePreviewPanel() {
       const result=await response.json() as {ok?:boolean;error?:{message?:string;code?:string};data?:{id?:string}};
       if(!response.ok || !result.ok)
         throw new Error(result.error?.message??result.error?.code??"Lesson creation failed");
-      setReceipt("One session created. Attendance remains unmarked; review the session to complete it.");
+      const sessionId=result.data?.id;
+      if(!sessionId)throw new Error("Session write returned no confirmed ID; verify session history before retry");
+      setReceipt("One session created: "+sessionId+". Attendance remains unmarked.");
+      setPendingLink(preview.selectedChapter?{sessionId,chapter:preview.selectedChapter}:null);
+      setLinkReview(null);setLinkApproved(false);setLinkedReceipt("");
+      linkKeyRef.current=null;
       setPreview(null);setApproved(false);
       requestRef.current=null;
     }catch(e){setError(e instanceof Error?e.message:"Lesson creation failed");}
+    finally{setBusy(false);}
+  }
+
+
+  async function reviewChapterAssignment(){
+    if(!pendingLink)return;
+    setError("");setLinkReview(null);setLinkApproved(false);setBusy(true);
+    try{
+      const response=await fetch("/api/coaching/chapter-evidence",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          action:"preview",sessionId:pendingLink.sessionId,
+          studyId:pendingLink.chapter.studyId,chapterId:pendingLink.chapter.chapterId,
+          stage:"assigned",note:"Chapter assigned; no assumption of teaching or mastery",
+        }),cache:"no-store",
+      });
+      const data=await response.json() as ChapterLinkPreview&{error?:string};
+      if(!response.ok)throw new Error(data.error??"Chapter evidence preview unavailable");
+      setLinkReview(data);
+    }catch(e){setError(e instanceof Error?e.message:"Could not review chapter");}
+    finally{setBusy(false);}
+  }
+  async function commitChapterAssignment(){
+    if(!linkReview?.canCommit||!linkReview.proposedCommit||!linkApproved)return;
+    if(!linkKeyRef.current)linkKeyRef.current=crypto.randomUUID();
+    setBusy(true);setError("");
+    try{
+      const response=await fetch("/api/coaching/chapter-evidence",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          action:"commit",...linkReview.proposedCommit,
+          requestId:linkKeyRef.current,confirmed:true,
+        }),cache:"no-store",
+      });
+      const data=await response.json() as {
+        participantCoverages?:number;replayed?:boolean;error?:string;
+      };
+      if(!response.ok)throw new Error(data.error??"Could not assign exact chapter");
+      setLinkedReceipt("Verified chapter assigned to "+data.participantCoverages+
+        " learners. Attendance and mastery are unchanged.");
+      setPendingLink(null);setLinkReview(null);setLinkApproved(false);
+      linkKeyRef.current=null;
+    }catch(e){setError(e instanceof Error?e.message:"Chapter assignment failed");}
     finally{setBusy(false);}
   }
 
@@ -198,6 +262,30 @@ export function LessonCapturePreviewPanel() {
     </form>
     {error&&<p role="alert" className="text-red-500">{error}</p>}
     {receipt&&<p role="status">{receipt}</p>}
+    {linkedReceipt&&<p role="status">{linkedReceipt}</p>}
+    {pendingLink&&<div className="space-y-3 rounded-lg border border-border p-3">
+      <h3 className="font-semibold">Optional second approval: assign selected chapter</h3>
+      <p className="text-sm">Session {pendingLink.sessionId} exists. Chapter
+        {" "+pendingLink.chapter.studyName+" #"+pendingLink.chapter.chapterNumber}
+        {" ("+pendingLink.chapter.chapterId+")"} is not attached yet.
+        This separate action records an assignment for the frozen roster,
+        never attendance, lesson completion or mastery.</p>
+      <button type="button" className={button} disabled={busy}
+        onClick={()=>void reviewChapterAssignment()}>Review chapter assignment</button>
+      {linkReview&&<>
+        <p className="text-sm">Eligible learners: {linkReview.studentCoverageCount}.
+          One workplace lesson. {linkReview.canCommit?"Ready for teacher approval.":"Cannot assign: "+linkReview.issues.join(", ")}</p>
+        {linkReview.canCommit&&<>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={linkApproved}
+              onChange={e=>setLinkApproved(e.target.checked)} />
+            I approve assigning this exact indexed chapter to all frozen learners.
+          </label>
+          <button type="button" className={button} disabled={busy||!linkApproved}
+            onClick={()=>void commitChapterAssignment()}>Assign reviewed chapter</button>
+        </>}
+      </>}
+    </div>}
     {preview&&<div className="space-y-3 border-t border-border pt-4" aria-live="polite">
       <h3 className="font-semibold">Identity and enrollment review</h3>
       <ul className="list-disc pl-5 text-sm">
