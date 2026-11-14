@@ -107,17 +107,28 @@ export async function teacherLessonCapturePreview(
   let selectedWorkplace: Workplace | null = null;
   const enrolledByStudent = new Map<string, Set<string>>();
   if (ids.length > 0) {
-    const { data, error } = await db.from("workplace_enrollments")
-      .select("student_id,workplace_id")
-      .eq("teacher_id", teacherId).in("student_id", [...new Set(ids)])
-      .range(0, 4999);
-    if (error || !data || data.length === 5000)
-      throw fail("ENROLLMENTS_UNAVAILABLE", "Cannot verify all workplace enrollments safely");
-    for (const row of data) {
-      const values = enrolledByStudent.get(row.student_id) ?? new Set<string>();
-      values.add(row.workplace_id);
-      enrolledByStudent.set(row.student_id, values);
+    // PostgREST installations commonly cap responses at 1,000 rows even when
+    // the requested range is larger. Page deterministically: a truncated
+    // enrollment query could falsely exclude a valid second workplace.
+    const batch = 250;
+    let exhausted = false;
+    for (let offset = 0; offset < 20000; offset += batch) {
+      const { data, error } = await db.from("workplace_enrollments")
+        .select("student_id,workplace_id")
+        .eq("teacher_id", teacherId).in("student_id", [...new Set(ids)])
+        .order("student_id").order("workplace_id")
+        .range(offset, offset + batch - 1);
+      if (error || !data)
+        throw fail("ENROLLMENTS_UNAVAILABLE", "Cannot verify workplace enrollment safely");
+      for (const row of data) {
+        const values = enrolledByStudent.get(row.student_id) ?? new Set<string>();
+        values.add(row.workplace_id);
+        enrolledByStudent.set(row.student_id, values);
+      }
+      if (data.length < batch) { exhausted = true; break; }
     }
+    if (!exhausted)
+      throw fail("ENROLLMENTS_LIMIT", "Too many enrollments for an unambiguous preview");
   }
 
   if (input.workplaceId) {
