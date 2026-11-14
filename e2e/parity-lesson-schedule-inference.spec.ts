@@ -222,3 +222,38 @@ test("PARITY:PARITY-standalone-day-lookup-uses-identical-tenant-scoped-schedule"
  const mcpDenied=await call("ccp_v1_schedule_day_preview",unauthorized);
  expect(mcpDenied.error?.code).toBe("NOT_FOUND");
 });
+
+test("PARITY:PARITY-exact-chapter-selection-rejects-unknown-ordinal-without-fiction",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const {workplaceId,names}=await setup(call);
+ const payload={
+  names,workplaceId,title:unique("Indexed classic game"),
+  lessonNote:"Comprehension not assessed",
+  startsAt:"2064-01-20T12:00:00+02:00",durationMinutes:90,
+  chapterSelection:{studyId:"ab12CD34",chapterNumber:32,expectedPlayers:"Steinitz Chigorin"},
+ };
+ const browser=await page.request.post("/api/coaching/lesson-capture/preview",{
+  data:payload,
+ });
+ expect(browser.status(),await browser.text()).toBe(200);
+ const web=await browser.json();
+ const mcp=await call("ccp_v1_lessons_capture_preview",payload);
+ expect(mcp.error).toBeUndefined();
+ expect(mcp.data).toEqual(web);
+ expect(web.canCommit).toBe(false);
+ expect(web.selectedChapter).toBeNull();
+ expect(web.proposedSession).toBeNull();
+ expect(web.issues.map((x:{code:string})=>x.code)).toContain("CHAPTER_NOT_FOUND");
+ // No convenient "32nd classic game" fallback: an index needs authentic
+ // provider study and chapter IDs before any coaching evidence can be linked.
+ const plain={...payload};
+ delete (plain as {chapterSelection?:unknown}).chapterSelection;
+ const noChapter=await page.request.post("/api/coaching/lesson-capture/preview",{
+  data:plain,
+ });
+ expect(noChapter.status(),await noChapter.text()).toBe(200);
+ const withoutChapter=await noChapter.json();
+ expect(withoutChapter.canCommit).toBe(true);
+ expect(withoutChapter.selectedChapter).toBeNull();
+ expect(withoutChapter.review.materialAssociation).toBe("not_written");
+});
