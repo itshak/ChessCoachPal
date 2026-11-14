@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-14",
   "headSha": "acea0c2178ceb35e6d24055ad1e2aa6ee17ff196",
-  "policy": "Active integrated OpenSpec feature candidate: read-only weekly-slot inference and broad student ratings, authenticated Lichess chapter indexing and session evidence, FEN checking and private puzzle series creation. Each website teacher operation has named tools through the same MCP route and independent delegated OAuth/website tests. All features remain candidate until exact-head CI, authenticated E2E, security, Compose, restore and merged-main acceptance; no live ChatGPT/Claude certification.",
+  "policy": "Active feature-branch batch: shared teacher student exact alias resolver, week-date canonical slot inference, day preview, optional verified PGN chapter choice, website + MCP. No acceptance claim before exact final-head CI/E2E/security/Compose/restore. Original 93 historic and all independent expanded scenarios remain strict and must not be weakened.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -398,6 +398,19 @@
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {
+      "path": "app/api/coaching/lesson-capture/day/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_schedule_day_preview"
+      ],
+      "explanation": "Authenticated read-only teacher-owned weekday schedule lookup: exact student UUIDs, workplace, local date, active and enrolled canonical slots, DST-safe common start/duration, existing interval conflict; shared service with delegated MCP. No silent write or enrollment.",
+      "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
+    },
+    {
       "path": "app/api/coaching/lesson-capture/preview/route.ts",
       "methods": [
         "POST"
@@ -407,7 +420,7 @@
       "existingTools": [
         "ccp_v1_lessons_capture_preview"
       ],
-      "explanation": "One owner-scoped read-only website/MCP preview now accepts either an explicit offset start+duration OR a date-only localDate for exactly one common active workplace-scoped weekly slot across 2–50 unambiguously resolved active students. It refuses missing/multiple slot times, date/DST gaps/folds, foreign enrollments and existing canonical lesson intervals. Browser panel shows inferred time and requires confirmation; existing atomic ad-hoc writer remains the only commit authority. Independently named web/delegated OAuth E2E proves week-slot inference, strict input modes, negative cases, DST and retry behavior.",
+      "explanation": "One owner-scoped read-only website/MCP preview now accepts either an explicit offset start+duration OR a date-only localDate for exactly one common active workplace-scoped weekly slot across 2–50 unambiguously resolved active students. It refuses missing/multiple slot times, date/DST gaps/folds, foreign enrollments and existing canonical lesson intervals. Browser panel shows inferred time and requires confirmation; existing atomic ad-hoc writer remains the only commit authority. Independently named web/delegated OAuth E2E proves week-slot inference, strict input modes, negative cases, DST and retry behavior. Optional chapterSelection study ID and ordinal (1–64) resolve an exact fresh, authorized Lichess PGN metadata chapter including verified PGN players, without claiming that chapter was taught, assigned or even attached; this remains a separate confirmed material-evidence operation after session creation.",
       "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
     },
     {
@@ -1065,6 +1078,19 @@
       ],
       "explanation": "Delegated website/MCP 139-pass E2E at cf00dff verifies teacher-owned atomic 1–5 assessment POST with cross-transport idempotent replay, changed-payload 409, append-only history, GET pagination and cross-tenant student/dimension denial. Named tools and both transports independently verified.",
       "evidenceTest": "e2e/parity-skill-assessment-receipts.spec.ts"
+    },
+    {
+      "path": "app/api/students/resolve/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_students_resolve"
+      ],
+      "explanation": "Authenticated website and delegated OAuth/MCP resolve 1–100 exact Unicode full names and stored aliases for active teacher-owned students through the same paginated resolver, without guessing. Missing, duplicate and ambiguous IDs fail closed, no mutations or guardian contact fields.",
+      "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
     },
     {
       "path": "app/api/students/route.ts",
