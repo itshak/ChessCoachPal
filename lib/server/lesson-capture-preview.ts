@@ -258,10 +258,10 @@ export async function teacherLessonCapturePreview(
         // versus "Mikhail Chigorin"; the intervening first name must not
         // trigger a false mismatch. Every requested name token is required.
         const tokens=normalizeStudentIdentity(choice.expectedPlayers)
-          .split(/[\\s\\p{P}\\p{S}]+/gu).filter(Boolean);
+          .split(/[\s\p{P}\p{S}]+/gu).filter(Boolean);
         const actual=normalizeStudentIdentity(
           [c.white_player,c.black_player].filter(Boolean).join(" "))
-          .split(/[\\s\\p{P}\\p{S}]+/gu).filter(Boolean);
+          .split(/[\s\p{P}\p{S}]+/gu).filter(Boolean);
         if(!tokens.length||tokens.some(t=>!actual.includes(t))){
           issues.push({code:"CHAPTER_PLAYERS_MISMATCH",
             message:"The indexed chapter players do not match the requested names; confirm actual chapter identity"});
