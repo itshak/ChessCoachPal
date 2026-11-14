@@ -99,15 +99,19 @@ test("PARITY:PARITY-weekly-slot-unique-time-and-existing-session-denial",async({
 test("PARITY:PARITY-weekly-slot-missing-conflicting-and-ambiguous-time-denial",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const {workplaceId,students,names}=await setup(call);
+ // Different local calendar date from the preceding test's committed
+ // teacher-wide session: canonical scheduling intentionally blocks overlaps
+ // even when the learners and workplace belong to different fixtures.
+ const date="2060-01-13";
  for(const studentId of students.slice(0,2))
-  await createSlot(call,workplaceId,studentId,"13:00");
- const input={names,workplaceId,localDate,title:unique("Uncertain weekday"),lessonNote:""};
+  await createSlot(call,workplaceId,studentId,"13:00",date);
+ const input={names,workplaceId,localDate:date,title:unique("Uncertain weekday"),lessonNote:""};
  const missing=await previewWebsite(page,input);
  expect(missing.canCommit).toBe(false);
  expect(missing.issues.map((x:{code:string})=>x.code)).toContain("MISSING_SCHEDULE");
  const missingMcp=await call("ccp_v1_lessons_capture_preview",input);
  expect(missingMcp.data).toEqual(missing);
- await createSlot(call,workplaceId,students[2],"15:00");
+ await createSlot(call,workplaceId,students[2],"15:00",date);
  const conflicting=await previewWebsite(page,input);
  expect(conflicting.canCommit).toBe(false);
  expect(conflicting.issues.map((x:{code:string})=>x.code)).toContain("TIME_AMBIGUOUS");
@@ -115,13 +119,13 @@ test("PARITY:PARITY-weekly-slot-missing-conflicting-and-ambiguous-time-denial",a
  expect(conflictingMcp.data).toEqual(conflicting);
  // Adding a common 13:00 slot resolves one exact candidate, while a second
  // matching time on every learner must become ambiguous again.
- await createSlot(call,workplaceId,students[2],"13:00");
+ await createSlot(call,workplaceId,students[2],"13:00",date);
  const uniqueWeb=await previewWebsite(page,input);
  expect(uniqueWeb.canCommit).toBe(true);
  const uniqueMcp=await call("ccp_v1_lessons_capture_preview",input);
  expect(uniqueMcp.data).toEqual(uniqueWeb);
  for(const studentId of students.slice(0,2))
-  await createSlot(call,workplaceId,studentId,"15:00");
+  await createSlot(call,workplaceId,studentId,"15:00",date);
  const ambiguous=await previewWebsite(page,input);
  const ambiguousMcp=await call("ccp_v1_lessons_capture_preview",input);
  expect(ambiguousMcp.data).toEqual(ambiguous);
@@ -129,11 +133,11 @@ test("PARITY:PARITY-weekly-slot-missing-conflicting-and-ambiguous-time-denial",a
  expect(ambiguous.issues.map((x:{code:string})=>x.code)).toContain("TIME_AMBIGUOUS");
  // Date-only and explicit clock cannot be combined or partially supplied.
  const malformed=await page.request.post("/api/coaching/lesson-capture/preview",{
-  data:{...input,startsAt:"2060-01-06T11:00:00Z",durationMinutes:90},
+  data:{...input,startsAt:"2060-01-13T11:00:00Z",durationMinutes:90},
  });
  expect(malformed.status()).toBe(400);
  const invalidMcp=await call("ccp_v1_lessons_capture_preview",{
-  ...input,startsAt:"2060-01-06T11:00:00Z",durationMinutes:90,
+  ...input,startsAt:"2060-01-13T11:00:00Z",durationMinutes:90,
  });
  expect(invalidMcp.error).toBeDefined();
 });
