@@ -220,6 +220,13 @@ test("PARITY:PARITY-public-lichess-and-chesscom-rating-sources-are-independent",
    });
    expect(replay.status(),await replay.text()).toBe(200);
    expect((await replay.json()).replayed).toBe(true);
+   // The website accepts the same signed-off payload as MCP, but it must not
+   // allow a body student ID to override the authenticated URL's student.
+   const mismatched=await page.request.post("/api/students/"+studentId+"/ratings",{
+    data:{action:"refreshCommit",...approval,studentId:uuid()},
+   });
+   expect(mismatched.status(),await mismatched.text()).toBe(400);
+   expect((await mismatched.json()).error).toMatch(/student ID does not match URL/);
    const altered=await call("ccp_v1_student_ratings_refresh_commit",{
     ...approval,expectedDigest:"0".repeat(64),
    });
