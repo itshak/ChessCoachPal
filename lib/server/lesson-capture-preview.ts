@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertSessionSchedule } from "@/lib/server/coach-service";
 import { isDateString } from "@/lib/schedule";
+import {teacherStudyIndexSearch} from "@/lib/server/teacher-study-index";
 import { inferOwnedWeeklyLessonTime,lessonIntervalConflicts,type LessonTiming } from "@/lib/server/lesson-schedule-inference";
 
 /**
@@ -19,6 +20,11 @@ export const lessonCapturePreviewSchema = z.object({
   durationMinutes: z.number().int().min(15).max(480).optional(),
   localDate: z.string().refine(isDateString,"Date must be a real YYYY-MM-DD local calendar date").optional(),
   lessonNote: z.string().max(10000).default(""),
+  chapterSelection:z.object({
+    studyId:z.string().regex(/^[A-Za-z0-9]{8}$/),
+    chapterNumber:z.number().int().min(1).max(64),
+    expectedPlayers:z.string().trim().max(120).optional(),
+  }).strict().optional(),
 }).strict().refine(x=>
   (x.startsAt!==undefined&&x.durationMinutes!==undefined&&x.localDate===undefined) ||
   (x.startsAt===undefined&&x.durationMinutes===undefined&&x.localDate!==undefined),
@@ -44,7 +50,8 @@ type ResolutionIssue = {
   code: "NOT_FOUND" | "AMBIGUOUS_STUDENT" | "DUPLICATE_STUDENT" |
     "NO_COMMON_WORKPLACE" | "AMBIGUOUS_WORKPLACE" | "WORKPLACE_NOT_FOUND" |
     "STUDENT_NOT_ENROLLED"|"MISSING_SCHEDULE"|"TIME_AMBIGUOUS"|
-    "DST_UNRESOLVED"|"SCHEDULE_CONFLICT";
+    "DST_UNRESOLVED"|"SCHEDULE_CONFLICT"|"CHAPTER_NOT_FOUND"|
+    "CHAPTER_AMBIGUOUS"|"CHAPTER_STALE"|"CHAPTER_PLAYERS_MISMATCH";
   message: string;
   input?: string;
   candidates?: Array<{ id: string; name: string }>;
@@ -190,9 +197,52 @@ export async function teacherLessonCapturePreview(
     if(timing&&issues.length===0)
       issues.push(...await lessonIntervalConflicts(db,teacherId,timing));
   }
+  // A numbered game is an authentic chapter of the teacher's indexed,
+  // authorized Lichess study, never an LLM-invented "game number".
+  // A stale or missing index requires explicit browser OAuth sync/review.
+  let selectedChapter:null|{studyId:string;chapterId:string;
+    chapterNumber:number;chapterName:string;studyName:string;
+    white:string|null;black:string|null;verifiedAt:string;chapterUrl:string;
+    source:"AUTHORIZED_LICHESS_PGN_CACHE";attached:false}=null;
+  if(input.chapterSelection&&issues.length===0){
+    const choice=input.chapterSelection;
+    const found=await teacherStudyIndexSearch(db,teacherId,{
+      studyId:choice.studyId,chapterNumber:choice.chapterNumber,limit:100,
+    });
+    if(found.truncated||found.total>1){
+      issues.push({code:"CHAPTER_AMBIGUOUS",
+        message:"More than one or too many cached chapter records match; select an exact chapter ID"});
+    }else if(found.total===0){
+      issues.push({code:"CHAPTER_NOT_FOUND",
+        message:"No authorized indexed Lichess chapter matches this study and number; sync it with study:read first"});
+    }else{
+      const c=found.matches[0];
+      if(c.stale)issues.push({code:"CHAPTER_STALE",
+        message:"Chapter metadata is older than 24 hours; re-sync the authorized study before capture"});
+      if(choice.expectedPlayers){
+        const expected=normalizeStudentIdentity(choice.expectedPlayers);
+        const full=normalizeStudentIdentity([c.white_player,c.black_player].filter(Boolean).join(" "));
+        if(!full.includes(expected)){
+          issues.push({code:"CHAPTER_PLAYERS_MISMATCH",
+            message:"The indexed chapter players do not match the requested names; confirm actual chapter identity"});
+        }
+      }
+      if(!issues.some(issue=>issue.code.startsWith("CHAPTER_"))){
+        selectedChapter={
+          studyId:c.study_id as string,chapterId:c.chapter_id as string,
+          chapterNumber:c.chapter_number as number,
+          chapterName:c.chapter_name as string,studyName:c.study_name as string,
+          white:c.white_player as string|null,black:c.black_player as string|null,
+          verifiedAt:c.verified_at as string,chapterUrl:c.chapterUrl,
+          source:"AUTHORIZED_LICHESS_PGN_CACHE",attached:false,
+        };
+      }
+    }
+  }
   const canCommit=issues.length===0&&selectedWorkplace!==null&&timing!==null;
   return {
     canCommit,resolutions,issues,workplace:selectedWorkplace,
+    selectedChapter,
     proposedSession:canCommit ? {
       workplaceId:selectedWorkplace!.id,studentIds:ids,
       title:input.title,startsAt:timing!.startsAt,
@@ -208,6 +258,10 @@ export async function teacherLessonCapturePreview(
       localDate:input.localDate??null,
       timezone:selectedWorkplace?.timezone??null,
       inferredComprehension:false,writesPerformed:false,
+      materialAssociation:"not_written",
+      materialNextStep:selectedChapter?
+        "After creating and completing the lesson, use materials_link_preview and confirmed materials_link_commit with the exact chapter IDs. Never equate a linked chapter with mastery.":
+        "No verified study chapter selected. Do not invent material history.",
       nextStep:"After teacher approval, use ccp_v1_sessions_ad_hoc_create with the exact preview IDs, a new idempotencyKey and confirmed=true. Record attendance/completion separately.",
     },
   };
