@@ -9108,3 +9108,341 @@ REVOKE ALL ON FUNCTION public.ccp_audit_canonical_attendance()
 CREATE TRIGGER ccp_canonical_attendance_audit
  AFTER INSERT OR UPDATE OR DELETE ON public.session_attendance
  FOR EACH ROW EXECUTE FUNCTION public.ccp_audit_canonical_attendance();
+
+
+-- Chess-first integrated OpenSpec (pre-v1, fresh-install canonical snapshot)
+-- Pre-1.0 additive canonical student chess rating history.
+-- Manual observations are direct authenticated owner writes; public-provider
+-- observations only originate from trusted server-side service-role fetch.
+CREATE TABLE IF NOT EXISTS public.student_rating_snapshots (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  student_id uuid NOT NULL,
+  provider text NOT NULL CHECK (provider IN ('lichess','chesscom')),
+  time_control text NOT NULL CHECK (time_control IN (
+    'bullet','blitz','rapid','classical','daily','puzzle')),
+  rating integer NOT NULL CHECK (rating BETWEEN 100 AND 4000),
+  rating_deviation integer CHECK (rating_deviation BETWEEN 0 AND 1000),
+  provisional boolean,
+  games integer CHECK (games BETWEEN 0 AND 10000000),
+  source text NOT NULL CHECK (source IN ('teacher_manual','provider_api')),
+  observed_at timestamptz NOT NULL,
+  fetched_at timestamptz,
+  request_id uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT ccp_snapshot_student_owner FOREIGN KEY(student_id,teacher_id)
+    REFERENCES public.students(id,teacher_id) ON DELETE RESTRICT,
+  CONSTRAINT ccp_snapshot_source_time CHECK (
+    (source='teacher_manual' AND fetched_at IS NULL) OR
+    (source='provider_api' AND fetched_at IS NOT NULL)),
+  CONSTRAINT ccp_snapshot_category_check CHECK (
+    (provider='lichess' AND time_control<>'daily') OR
+    (provider='chesscom' AND time_control<>'classical')),
+  UNIQUE(teacher_id,request_id,time_control)
+);
+CREATE INDEX ccp_rating_snapshot_recent ON public.student_rating_snapshots
+ (teacher_id,student_id,provider,time_control,observed_at DESC,id DESC);
+ALTER TABLE public.student_rating_snapshots ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS ccp_rating_snapshot_read ON public.student_rating_snapshots;
+CREATE POLICY ccp_rating_snapshot_read ON public.student_rating_snapshots
+  FOR SELECT TO authenticated USING (teacher_id=auth.uid());
+DROP POLICY IF EXISTS ccp_rating_snapshot_manual ON public.student_rating_snapshots;
+CREATE POLICY ccp_rating_snapshot_manual ON public.student_rating_snapshots
+  FOR INSERT TO authenticated WITH CHECK (
+    teacher_id=auth.uid() AND source='teacher_manual' AND fetched_at IS NULL);
+REVOKE ALL ON public.student_rating_snapshots FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT ON public.student_rating_snapshots TO authenticated;
+GRANT ALL ON public.student_rating_snapshots TO service_role;
+-- Immutable evidence: no authenticated UPDATE or DELETE privileges.
+
+-- Retain the exact reviewed digest and the saved account handle for verified
+-- provider batch replays. An identical request key with a changed digest or
+-- account must fail; a teacher's manual key must be unique across controls.
+ALTER TABLE public.student_rating_snapshots
+ ADD COLUMN preview_digest text CHECK(preview_digest IS NULL OR preview_digest ~ '^[a-f0-9]{64}$'),
+ ADD COLUMN source_username text CHECK(source_username IS NULL OR char_length(source_username) BETWEEN 2 AND 30);
+ALTER TABLE public.student_rating_snapshots
+ ADD CONSTRAINT ccp_rating_snapshot_provenance CHECK(
+   (source='teacher_manual' AND preview_digest IS NULL AND source_username IS NULL)
+   OR
+   (source='provider_api' AND preview_digest IS NOT NULL AND source_username IS NOT NULL));
+CREATE UNIQUE INDEX ccp_manual_rating_request_unique
+ ON public.student_rating_snapshots(teacher_id,request_id)
+ WHERE source='teacher_manual';
+
+
+
+-- Chess-first integrated OpenSpec (pre-v1, fresh-install canonical snapshot)
+-- Tenant-scoped, sanitized provider study/chapter metadata (no raw PGN/tokens).
+CREATE TABLE IF NOT EXISTS public.teacher_study_chapter_index (
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ study_id text NOT NULL CHECK(study_id ~ '^[A-Za-z0-9]{8}$'),
+ chapter_id text NOT NULL CHECK(chapter_id ~ '^[A-Za-z0-9]{8}$'),
+ chapter_number integer NOT NULL CHECK(chapter_number BETWEEN 1 AND 64),
+ study_name text NOT NULL CHECK(length(study_name) BETWEEN 1 AND 300),
+ chapter_name text NOT NULL CHECK(length(chapter_name) BETWEEN 1 AND 300),
+ white_player text CHECK(white_player IS NULL OR length(white_player)<=200),
+ black_player text CHECK(black_player IS NULL OR length(black_player)<=200),
+ event_name text CHECK(event_name IS NULL OR length(event_name)<=300),
+ game_date text CHECK(game_date IS NULL OR length(game_date)<=30),
+ eco text CHECK(eco IS NULL OR length(eco)<=30),
+ opening text CHECK(opening IS NULL OR length(opening)<=300),
+ fen text CHECK(fen IS NULL OR length(fen)<=120),
+ verified_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(teacher_id,study_id,chapter_id),
+ UNIQUE(teacher_id,study_id,chapter_number)
+);
+CREATE INDEX ccp_study_index_search ON public.teacher_study_chapter_index
+ (teacher_id,study_id,chapter_number);
+ALTER TABLE public.teacher_study_chapter_index ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS ccp_study_index_owner ON public.teacher_study_chapter_index;
+CREATE POLICY ccp_study_index_owner ON public.teacher_study_chapter_index
+ FOR SELECT TO authenticated USING(teacher_id=auth.uid());
+REVOKE ALL ON public.teacher_study_chapter_index FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.teacher_study_chapter_index TO authenticated;
+GRANT ALL ON public.teacher_study_chapter_index TO service_role;
+
+-- One transaction removes stale chapter ordinals and writes exactly the
+-- provider-confirmed list. No partial cache is visible on validation failure.
+CREATE OR REPLACE FUNCTION public.ccp_teacher_study_index_replace(
+ p_study_id text,p_chapters jsonb
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $index_replace$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_chapter jsonb;v_count integer:=0;v_now timestamptz:=clock_timestamp();
+BEGIN
+ IF v_teacher IS NULL THEN
+   RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_study_id IS NULL OR p_study_id !~ '^[A-Za-z0-9]{8}$'
+   OR p_chapters IS NULL OR jsonb_typeof(p_chapters)<>'array'
+   OR jsonb_array_length(p_chapters) NOT BETWEEN 1 AND 64
+   OR pg_column_size(p_chapters)>150000 THEN
+   RAISE EXCEPTION 'STUDY_INDEX_INVALID' USING ERRCODE='22023';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(
+  v_teacher::text||':'||p_study_id,0));
+ -- Never delete existing index until all incoming records have passed
+ -- provider identity/type/length validation.
+ FOR v_chapter IN SELECT value FROM jsonb_array_elements(p_chapters) LOOP
+   IF jsonb_typeof(v_chapter)<>'object'
+     OR v_chapter-'studyName'-'chapterId'-'chapterNumber'-'chapterName'
+       -'white'-'black'-'event'-'date'-'eco'-'opening'-'fen'<>'{}'::jsonb
+     OR coalesce(v_chapter->>'chapterId','') !~ '^[A-Za-z0-9]{8}$'
+     OR coalesce(v_chapter->>'chapterNumber','') !~ '^[0-9]+$'
+     OR (v_chapter->>'chapterNumber')::integer NOT BETWEEN 1 AND 64
+     OR length(btrim(coalesce(v_chapter->>'studyName',''))) NOT BETWEEN 1 AND 300
+     OR length(btrim(coalesce(v_chapter->>'chapterName',''))) NOT BETWEEN 1 AND 300
+     OR length(coalesce(v_chapter->>'white',''))>200
+     OR length(coalesce(v_chapter->>'black',''))>200
+     OR length(coalesce(v_chapter->>'event',''))>300
+     OR length(coalesce(v_chapter->>'date',''))>30
+     OR length(coalesce(v_chapter->>'eco',''))>30
+     OR length(coalesce(v_chapter->>'opening',''))>300
+     OR length(coalesce(v_chapter->>'fen',''))>120 THEN
+     RAISE EXCEPTION 'STUDY_INDEX_INVALID' USING ERRCODE='22023';END IF;
+ END LOOP;
+ DELETE FROM public.teacher_study_chapter_index
+  WHERE teacher_id=v_teacher AND study_id=p_study_id;
+ FOR v_chapter IN SELECT value FROM jsonb_array_elements(p_chapters) LOOP
+   INSERT INTO public.teacher_study_chapter_index(
+    teacher_id,study_id,chapter_id,chapter_number,study_name,chapter_name,
+    white_player,black_player,event_name,game_date,eco,opening,fen,verified_at
+   )VALUES(v_teacher,p_study_id,v_chapter->>'chapterId',
+    (v_chapter->>'chapterNumber')::integer,
+    v_chapter->>'studyName',v_chapter->>'chapterName',
+    v_chapter->>'white',v_chapter->>'black',v_chapter->>'event',
+    v_chapter->>'date',v_chapter->>'eco',v_chapter->>'opening',
+    v_chapter->>'fen',v_now);
+   v_count:=v_count+1;
+ END LOOP;
+ RETURN jsonb_build_object('studyId',p_study_id,'chapterCount',v_count,
+  'verifiedAt',v_now,'pgDataStored',false);
+END;
+$index_replace$;
+REVOKE ALL ON FUNCTION public.ccp_teacher_study_index_replace(text,jsonb) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_teacher_study_index_replace(text,jsonb) TO authenticated;
+
+
+
+-- Chess-first integrated OpenSpec (pre-v1, fresh-install canonical snapshot)
+-- Canonical, single-transaction multi-student chapter/material evidence.
+-- Links are not mastery; 'taught' is a teacher attestation after completion.
+CREATE OR REPLACE FUNCTION public.ccp_session_chapter_evidence_commit(
+ p_session_id uuid,p_study_id text,p_chapter_id text,p_stage text,
+ p_note text,p_expected_verified_at timestamptz,
+ p_expected_roster_hash text,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $chapter_evidence$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_session public.teaching_sessions%ROWTYPE;
+ v_chapter public.teacher_study_chapter_index%ROWTYPE;
+ v_prior public.agent_tool_receipts%ROWTYPE;
+ v_receipt jsonb;v_hash text;v_roster_hash text;
+ v_material_id uuid;v_link_id uuid;v_count integer:=0;
+ v_student uuid;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_session_id IS NULL OR p_request_id IS NULL OR
+    p_study_id !~ '^[A-Za-z0-9]{8}$' OR
+    p_chapter_id !~ '^[A-Za-z0-9]{8}$' OR
+    p_stage NOT IN ('assigned','taught') OR
+    char_length(coalesce(p_note,''))>2000 OR
+    p_expected_verified_at IS NULL OR
+    coalesce(p_expected_roster_hash,'') !~ '^[a-f0-9]{32}$'
+ THEN RAISE EXCEPTION 'CHAPTER_EVIDENCE_INVALID' USING ERRCODE='22023';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=md5(jsonb_build_array(p_session_id,p_study_id,p_chapter_id,
+  p_stage,coalesce(p_note,''),p_expected_verified_at,p_expected_roster_hash)::text);
+ INSERT INTO public.agent_tool_receipts(
+   teacher_id,idempotency_key,operation,request_hash,receipt
+ ) VALUES(v_teacher,p_request_id,'chapter.evidence.commit',v_hash,'{}'::jsonb)
+ ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_prior FROM public.agent_tool_receipts
+    WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+   IF NOT FOUND OR v_prior.operation<>'chapter.evidence.commit' OR
+     v_prior.request_hash<>v_hash OR v_prior.receipt='{}'::jsonb
+   THEN RAISE EXCEPTION 'CHAPTER_EVIDENCE_REPLAY_CONFLICT' USING ERRCODE='23505';END IF;
+   RETURN v_prior.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_session FROM public.teaching_sessions
+   WHERE teacher_id=v_teacher AND id=p_session_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'CHAPTER_EVIDENCE_SESSION_NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF v_session.status='cancelled' OR
+    (p_stage='taught' AND v_session.status<>'completed') THEN
+   RAISE EXCEPTION 'CHAPTER_EVIDENCE_SESSION_STATUS' USING ERRCODE='23514';END IF;
+ SELECT * INTO v_chapter FROM public.teacher_study_chapter_index
+   WHERE teacher_id=v_teacher AND study_id=p_study_id AND chapter_id=p_chapter_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'CHAPTER_EVIDENCE_NOT_INDEXED' USING ERRCODE='42501';END IF;
+ IF v_chapter.verified_at IS DISTINCT FROM p_expected_verified_at OR
+   v_chapter.verified_at<clock_timestamp()-interval '24 hours' THEN
+   RAISE EXCEPTION 'CHAPTER_EVIDENCE_STALE' USING ERRCODE='23505';END IF;
+ SELECT md5(coalesce(string_agg(student_id::text,',' ORDER BY student_id),''))
+   INTO v_roster_hash FROM public.session_participants
+   WHERE teacher_id=v_teacher AND session_id=p_session_id;
+ SELECT count(*) INTO v_count FROM public.session_participants
+   WHERE teacher_id=v_teacher AND session_id=p_session_id;
+ IF v_count NOT BETWEEN 1 AND 100 OR
+   v_roster_hash IS DISTINCT FROM p_expected_roster_hash THEN
+   RAISE EXCEPTION 'CHAPTER_EVIDENCE_ROSTER_CHANGED' USING ERRCODE='23505';END IF;
+ SELECT m.id INTO v_material_id
+ FROM public.chess_study_chapters ch
+ JOIN public.learning_materials m
+  ON m.teacher_id=ch.teacher_id AND m.id=ch.material_id
+ WHERE ch.teacher_id=v_teacher AND ch.provider='lichess' AND
+   ch.study_id=p_study_id AND ch.chapter_id=p_chapter_id AND m.archived_at IS NULL
+ ORDER BY m.created_at,m.id LIMIT 1;
+ IF v_material_id IS NULL THEN
+   INSERT INTO public.learning_materials(
+     teacher_id,kind,title,description,source_url,request_id,request_hash
+   ) VALUES(v_teacher,'study_chapter',
+     left(v_chapter.chapter_name,160),
+     'Teacher-selected, cached authorized Lichess study chapter',
+     'https://lichess.org/study/'||p_study_id||'/'||p_chapter_id,
+     gen_random_uuid(),md5(p_study_id||':'||p_chapter_id))
+   RETURNING id INTO v_material_id;
+   INSERT INTO public.chess_study_chapters(
+     material_id,teacher_id,provider,study_id,chapter_id
+   ) VALUES(v_material_id,v_teacher,'lichess',p_study_id,p_chapter_id);
+ END IF;
+ SELECT id INTO v_link_id FROM public.material_links
+  WHERE teacher_id=v_teacher AND session_id=p_session_id
+    AND student_id IS NULL AND material_id=v_material_id
+  ORDER BY created_at,id LIMIT 1;
+ IF v_link_id IS NULL THEN
+   INSERT INTO public.material_links(
+     teacher_id,material_id,session_id,request_id
+   ) VALUES(v_teacher,v_material_id,p_session_id,gen_random_uuid())
+   RETURNING id INTO v_link_id;
+ END IF;
+ FOR v_student IN SELECT student_id FROM public.session_participants
+   WHERE teacher_id=v_teacher AND session_id=p_session_id ORDER BY student_id LOOP
+   INSERT INTO public.material_teaching_evidence(
+     teacher_id,student_id,workplace_id,session_id,material_id,stage,
+     occurred_on,note,request_id
+   ) VALUES(v_teacher,v_student,v_session.workplace_id,p_session_id,
+     v_material_id,p_stage,
+     (v_session.starts_at AT TIME ZONE coalesce(v_session.local_timezone,'UTC'))::date,
+     coalesce(p_note,''),gen_random_uuid());
+ END LOOP;
+ v_receipt:=jsonb_build_object('sessionId',p_session_id,
+    'materialId',v_material_id,'linkId',v_link_id,'studyId',p_study_id,
+    'chapterId',p_chapter_id,'stage',p_stage,'participantCoverages',v_count,
+    'uniqueWorkplaceLessonCount',1,'inferredMastery',false,
+    'source','AUTHORIZED_LICHESS_PGN_CACHE');
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+   WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$chapter_evidence$;
+REVOKE ALL ON FUNCTION public.ccp_session_chapter_evidence_commit(
+ uuid,text,text,text,text,timestamptz,text,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_session_chapter_evidence_commit(
+ uuid,text,text,text,text,timestamptz,text,uuid) TO authenticated;
+
+
+
+-- Chess-first integrated OpenSpec (pre-v1, fresh-install canonical snapshot)
+-- Private Puzzles, Puzzles 2, ... remote study creation receipts. An
+-- attempted remote write is NEVER retried automatically after a timeout.
+CREATE TABLE IF NOT EXISTS public.lichess_puzzle_series (
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ request_id uuid NOT NULL,
+ suffix integer NOT NULL CHECK(suffix BETWEEN 1 AND 1000000),
+ name text NOT NULL CHECK(length(name) BETWEEN 2 AND 50),
+ study_id text CHECK(study_id IS NULL OR study_id ~ '^[A-Za-z0-9]{8}$'),
+ state text NOT NULL CHECK(state IN ('attempted','created','failed')),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ confirmed_at timestamptz,
+ PRIMARY KEY(teacher_id,request_id),
+ UNIQUE(teacher_id,suffix),
+ CONSTRAINT ccp_puzzle_series_receipt_state CHECK (
+  (state='created' AND study_id IS NOT NULL AND confirmed_at IS NOT NULL) OR
+  (state<>'created' AND study_id IS NULL AND confirmed_at IS NULL))
+);
+CREATE INDEX ccp_puzzle_series_recent ON public.lichess_puzzle_series
+ (teacher_id,created_at DESC);
+ALTER TABLE public.lichess_puzzle_series ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS ccp_puzzle_series_owner ON public.lichess_puzzle_series;
+CREATE POLICY ccp_puzzle_series_owner ON public.lichess_puzzle_series
+ FOR ALL TO authenticated USING(teacher_id=auth.uid())
+ WITH CHECK(teacher_id=auth.uid());
+REVOKE ALL ON public.lichess_puzzle_series FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.lichess_puzzle_series TO authenticated;
+-- Only the server after a validated provider response may finalize a receipt.
+GRANT ALL ON public.lichess_puzzle_series TO service_role;
+CREATE OR REPLACE FUNCTION public.ccp_puzzle_series_claim(
+ p_suffix integer,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $puzzle_claim$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_name text;v_prior public.lichess_puzzle_series%ROWTYPE;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_request_id IS NULL OR p_suffix NOT BETWEEN 1 AND 1000000 THEN
+  RAISE EXCEPTION 'INVALID_SERIES' USING ERRCODE='22023';END IF;
+ v_name:=CASE WHEN p_suffix=1 THEN 'Puzzles' ELSE 'Puzzles '||p_suffix END;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ SELECT * INTO v_prior FROM public.lichess_puzzle_series
+  WHERE teacher_id=v_teacher AND request_id=p_request_id;
+ IF FOUND THEN
+   IF v_prior.suffix<>p_suffix THEN
+    RAISE EXCEPTION 'SERIES_REPLAY_CONFLICT' USING ERRCODE='23505';END IF;
+   RETURN jsonb_build_object('name',v_prior.name,'suffix',v_prior.suffix,
+    'studyId',v_prior.study_id,'state',v_prior.state,'replayed',true);
+ END IF;
+ IF(SELECT count(*) FROM public.lichess_puzzle_series
+    WHERE teacher_id=v_teacher AND
+      created_at>clock_timestamp()-interval '24 hours' AND state<>'failed')>=30
+ THEN RAISE EXCEPTION 'SERIES_DAILY_LIMIT' USING ERRCODE='23514';END IF;
+ INSERT INTO public.lichess_puzzle_series(teacher_id,request_id,suffix,name,state)
+  VALUES(v_teacher,p_request_id,p_suffix,v_name,'attempted');
+ RETURN jsonb_build_object('name',v_name,'suffix',p_suffix,
+  'studyId',NULL,'state','attempted','replayed',false);
+END;
+$puzzle_claim$;
+REVOKE ALL ON FUNCTION public.ccp_puzzle_series_claim(integer,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_puzzle_series_claim(integer,uuid) TO authenticated;
+
