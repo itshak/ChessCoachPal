@@ -1,5 +1,6 @@
 import {createHash} from "node:crypto";
 import {z} from "zod";
+import {fenStaticValidation} from "@/lib/fen-legality";
 
 export const puzzleDraftSchema=z.object({
  studyId:z.string().regex(/^[A-Za-z0-9]{8}$/),
@@ -63,6 +64,8 @@ export function fenBoard(fen:string){
   if(!/^(0|[1-9]\d{0,3})$/.test(halfmove)||
      !/^[1-9]\d{0,3}$/.test(fullmove))
     invalid("Invalid FEN move counters");
+  try{fenStaticValidation(board,turn,castling,ep);}
+  catch(error){invalid(error instanceof Error?error.message:"Impossible chess position");}
   return {board,sideToMove:turn==="w"?"white" as const:"black" as const,
     canonical:parts.join(" ")};
 }
@@ -107,4 +110,19 @@ export function buildPuzzlePreview(input:PuzzleDraft):PuzzlePreview{
     studyId:input.studyId,chapterName,fen:canonical,moves:body,
     orientation,pgn,sha256,board,sideToMove,
   };
+}
+
+/** Chess position review: no automatic proof of how a photo was reached. */
+export function validateFenPosition(fen:string,source:"manual"|"image"="manual"){
+ const parsed=fenBoard(fen);
+ return {...parsed,source,
+  consistency:"structurally_and_statically_valid" as const,
+  requiresTeacherConfirmation:true,
+  unknownGameState:source==="image"?
+   ["sideToMove","castlingRights","enPassant","halfmoveClock","fullmoveNumber"]:[],
+  continuationMovesVerified:false,
+  warning:source==="image"?
+   "Verify every square and all unknown game-state fields; the image cannot establish castling or turn.":
+   "Static checks passed, but full SAN continuation legality and the position origin remain unverified.",
+ };
 }

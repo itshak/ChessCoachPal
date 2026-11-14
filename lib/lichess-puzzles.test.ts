@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {buildPuzzlePreview,fenBoard} from "@/lib/lichess-puzzles";
+import {buildPuzzlePreview,fenBoard,validateFenPosition} from "@/lib/lichess-puzzles";
 
 const start="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const draft={studyId:"StUd1234",chapterName:"Reviewed e4 puzzle",fen:start,
@@ -38,6 +38,21 @@ describe("human-reviewed FEN puzzle preview",()=>{
    "7k/8/8/8/8/8/7K/8 w - a5 0 1",
  ])("rejects malformed or implausible FEN %s",fen=>{
    expect(()=>buildPuzzlePreview({...draft,fen})).toThrow();
+ });
+ it.each([
+  "4k3/8/8/8/8/8/4K3/4K3 w - - 0 1",
+  "4k3/8/8/8/8/8/4K3/3R4 w K - 0 1",
+  "4k3/8/8/8/8/8/PPPPPPPP/3QK2P w - - 0 1",
+  "4k3/8/8/8/8/8/4K3/8 b - a6 0 1",
+  "4k3/8/8/8/8/8/8/4R2K w - - 0 1",
+ ])("rejects statically impossible FEN %s",fen=>{
+  expect(()=>fenBoard(fen)).toThrow();
+ });
+ it("marks image-derived game state as unknown rather than certified",()=>{
+  const proposal=validateFenPosition(start,"image");
+  expect(proposal.requiresTeacherConfirmation).toBe(true);
+  expect(proposal.unknownGameState).toContain("castlingRights");
+  expect(proposal.continuationMovesVerified).toBe(false);
  });
  it("blocks injected PGN tags, comments, and control characters",()=>{
    expect(()=>buildPuzzlePreview({...draft,moves:'1. e4\n[FEN "another"]'}))

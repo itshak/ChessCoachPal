@@ -17,8 +17,10 @@ const fail=(status:number,code:string,message:string)=>
   new LichessConnectionError(status,code,message);
 type StudySummary={id:string;name:string;createdAt:number|null;updatedAt:number|null};
 type ChapterMatch={
-  studyId:string;studyName:string;chapterNumber:number;chapterName:string;
-  chapterUrl:string;eco:string|null;opening:string|null;fen:string|null;
+  studyId:string;studyName:string;chapterNumber:number;chapterId:string|null;
+  chapterName:string;chapterUrl:string;eco:string|null;opening:string|null;
+  fen:string|null;white:string|null;black:string|null;event:string|null;
+  date:string|null;
 };
 function normalized(input:StudySearchInput){
   if(input.studyId!==undefined&&!studyIdPattern.test(input.studyId))
@@ -136,15 +138,19 @@ export function searchPgnStudy(studyId:string,pgn:string,options:{
     const opening=tags.get("Opening")??null;
     const eco=tags.get("ECO")??null;
     const fen=tags.get("FEN")??null;
+    const white=tags.get("White")??null;
+    const black=tags.get("Black")??null;
+    const event=tags.get("Event")??null;
+    const date=tags.get("Date")??null;
     if(options.chapterNumber!==undefined&&options.chapterNumber!==i+1)continue;
-    if(query&&![chapterName,studyName,opening,eco,tags.get("Event"),fen]
+    if(query&&![chapterName,studyName,opening,eco,event,white,black,date,fen]
       .some(x=>x?.toLocaleLowerCase().includes(query)))continue;
     if(matches.length>=limit){truncated=true;break;}
     matches.push({
-      studyId,studyName,chapterNumber:i+1,chapterName,
+      studyId,studyName,chapterNumber:i+1,chapterName,chapterId:safeChapterId,
       chapterUrl:safeChapterId?`https://lichess.org/study/${studyId}/${safeChapterId}`:
         `https://lichess.org/study/${studyId}`,
-      eco,opening,fen,
+      eco,opening,fen,white,black,event,date,
     });
   }
   return {matches,chapterCount:starts.length,truncated};

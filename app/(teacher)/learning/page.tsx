@@ -5,11 +5,14 @@ import { LichessConnectionPanel } from "@/components/teacher/LichessConnectionPa
 import { LichessStudyExplorer } from "@/components/teacher/LichessStudyExplorer";
 import { LichessPuzzlePublisher } from "@/components/teacher/LichessPuzzlePublisher";
 import { MaterialHistoryPanel } from "@/components/teacher/MaterialHistoryPanel";
+import { StudyChapterEvidencePanel } from "@/components/teacher/StudyChapterEvidencePanel";
+import { PuzzleSeriesPanel } from "@/components/teacher/PuzzleSeriesPanel";
+import { FenReviewPanel } from "@/components/teacher/FenReviewPanel";
 
 export const metadata = { title: "Training & materials" };
 
 export default function LearningPage() {
   return <main className="max-w-6xl mx-auto px-4 py-8">
-    <div className="space-y-8"><LearningMaterialsCatalog /><TrainingHomeworkPanel /><LichessConnectionPanel /><LichessStudyExplorer /><LichessPuzzlePublisher /><ChessLearningPanel /><MaterialHistoryPanel /></div>
+    <div className="space-y-8"><LearningMaterialsCatalog /><TrainingHomeworkPanel /><LichessConnectionPanel /><LichessStudyExplorer /><StudyChapterEvidencePanel /><PuzzleSeriesPanel /><FenReviewPanel /><LichessPuzzlePublisher /><ChessLearningPanel /><MaterialHistoryPanel /></div>
   </main>;
 }

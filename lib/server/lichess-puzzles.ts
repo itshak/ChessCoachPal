@@ -3,6 +3,7 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import {buildPuzzlePreview,PuzzleReviewError,type PuzzleDraft} from "@/lib/lichess-puzzles";
 import {authorizedLichessToken,lichessOrigin} from "@/lib/server/lichess-connections";
 import {teacherMaterialCatalogCreate} from "@/lib/server/learning-materials";
+import {teacherPuzzleStudyCapacity} from "@/lib/server/puzzle-study-series";
 
 export class LichessPuzzleError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);}
@@ -89,6 +90,13 @@ export async function teacherLichessPuzzlePublish(
  const prior=await existingPublication(db,teacherId,
   preview.studyId,input.idempotencyKey,preview.sha256);
  if(prior)return handleExisting(db,teacherId,prior);
+ // Verify the live provider chapter count before reserving the external write
+ // intent. A full destination requires a separately approved new private
+ // Puzzles N study; never delete unrelated study chapters to make space.
+ const capacity=await teacherPuzzleStudyCapacity(teacherId,{studyId:preview.studyId});
+ if(!capacity.canPublish)
+   throw fail(409,"CAPACITY_REACHED",
+    "Lichess study already contains 64 chapters (including starter); review a new private Puzzles series destination");
  // Database unique constraints are the cross-client at-most-once provider claim.
  const {data:receipt,error:claimError}=await db.from("lichess_puzzle_publications")
   .insert({

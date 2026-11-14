@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-14",
   "headSha": "acea0c2178ceb35e6d24055ad1e2aa6ee17ff196",
-  "policy": "The original website/MCP acceptance gates remain mandatory. Added date-only canonical weekly-slot inference changes an existing web/MCP tool pair and has independent provider-free authenticated behavioral E2E; acceptance only after exact-head green tests. Do not claim generic free-form date parsing or Lichess study resolution. Original 93 historical scenarios and all separately enumerated new cases remain enforced by strict parity.",
+  "policy": "Active integrated OpenSpec feature candidate: read-only weekly-slot inference and broad student ratings, authenticated Lichess chapter indexing and session evidence, FEN checking and private puzzle series creation. Each website teacher operation has named tools through the same MCP route and independent delegated OAuth/website tests. All features remain candidate until exact-head CI, authenticated E2E, security, Compose, restore and merged-main acceptance; no live ChatGPT/Claude certification.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -384,6 +384,20 @@
       "evidenceTest": "e2e/canonical-recurring-slots-parity.spec.ts"
     },
     {
+      "path": "app/api/coaching/chapter-evidence/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_materials_link_preview",
+        "ccp_v1_materials_link_commit"
+      ],
+      "explanation": "Tenant-owned read-only frozen-roster preview and one atomic teacher-confirmed 1-session/N-student chapter evidence transaction, exact provider IDs and revision, deduplicated workplace teaching minutes.",
+      "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
+    },
+    {
       "path": "app/api/coaching/lesson-capture/preview/route.ts",
       "methods": [
         "POST"
@@ -735,6 +749,22 @@
       "explanation": "Lichess OAuth callback binds encrypted verifier/state to authenticated teacher and never exposes access tokens through MCP or website."
     },
     {
+      "path": "app/api/lichess/chapter-index/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_materials_chapters_search",
+        "ccp_v1_materials_chapters_get",
+        "ccp_v1_materials_chapters_sync"
+      ],
+      "explanation": "Browser/MCP share authorized metadata-only Lichess study/chapter index, exact chapter IDs and White/Black/Event tags, 24-hour freshness, revocable provider read consent and atomic all-chapter replacement.",
+      "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
+    },
+    {
       "path": "app/api/lichess/connect/route.ts",
       "methods": [
         "GET"
@@ -760,6 +790,36 @@
       ],
       "explanation": "Delegated OAuth/browser PKCE study:read/write grant E2E at cf00dff (139 pass) verifies website and MCP status equality, scope elevation, explicit revoke approval, provider-revocation failure disclosure, secret/token redaction, repeated disconnect and cross-tenant isolation. Browser-only /connect and /callback protect provider credentials.",
       "evidenceTest": "e2e/parity-lichess-oauth.spec.ts"
+    },
+    {
+      "path": "app/api/lichess/fen-validate/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_chess_fen_validate"
+      ],
+      "explanation": "Read-only standard chess FEN static consistency validation, image game-state unknowns and teacher review, no external publishing or inferred full legal move sequence.",
+      "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
+    },
+    {
+      "path": "app/api/lichess/puzzle-series/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_puzzles_study_series_list",
+        "ccp_v1_puzzles_study_capacity",
+        "ccp_v1_puzzles_study_create",
+        "ccp_v1_puzzles_study_reconcile"
+      ],
+      "explanation": "Shared live provider capacity check counts starter chapter toward 64 cap and explicitly approved, retry-safe private Puzzles N creation and reconciliation, scoped write and daily budget.",
+      "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {
       "path": "app/api/lichess/puzzles/preview/route.ts",
@@ -954,6 +1014,23 @@
       "evidenceTest": "e2e/parity-skill-dimensions-lifecycle.spec.ts"
     },
     {
+      "path": "app/api/students/[id]/ratings/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_student_ratings_list",
+        "ccp_v1_student_ratings_record",
+        "ccp_v1_student_ratings_refresh_preview",
+        "ccp_v1_student_ratings_refresh_commit"
+      ],
+      "explanation": "Authenticated teacher-owned source-tagged append-only provider/time-control rating history, explicit public lookup preview and reviewed batch commit; manual write is idempotent; no 1-10 strength mutation.",
+      "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
+    },
+    {
       "path": "app/api/students/[id]/route.ts",
       "methods": [
         "GET",
@@ -1019,6 +1096,19 @@
       ],
       "explanation": "Confirmed MCP rotates/revokes calendar bearer secret without exposing it, website returns new token to signed-in owner, invalidated old feed confirmed by authenticated cross-surface E2E at bf7c205.",
       "evidenceTest": "e2e/parity-calendar-token.spec.ts"
+    },
+    {
+      "path": "app/api/teacher/context/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_teacher_context_get"
+      ],
+      "explanation": "Website/MCP share signed-in teacher server clock, configured local date, day-of-week, IANA timezone and owner-filtered workplaces without model date assumptions.",
+      "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {
       "path": "app/api/training/assignments/route.ts",
@@ -1148,6 +1238,7 @@
     "components/teacher/FamiliesManager.tsx",
     "components/teacher/FamilyDetailActions.tsx",
     "components/teacher/FamilyForm.tsx",
+    "components/teacher/FenReviewPanel.tsx",
     "components/teacher/HostedLimitBanner.tsx",
     "components/teacher/LearningMaterialsCatalog.tsx",
     "components/teacher/LessonCapturePreviewPanel.tsx",
@@ -1159,13 +1250,16 @@
     "components/teacher/NotificationBell.tsx",
     "components/teacher/OnboardingTour.tsx",
     "components/teacher/PushOwnership.tsx",
+    "components/teacher/PuzzleSeriesPanel.tsx",
     "components/teacher/RemoveStudentButton.tsx",
     "components/teacher/StartTourLink.tsx",
     "components/teacher/StudentChessProfileEditor.tsx",
     "components/teacher/StudentInfoCard.tsx",
     "components/teacher/StudentLessonNotes.tsx",
     "components/teacher/StudentNotesEditor.tsx",
+    "components/teacher/StudentRatingHistoryPanel.tsx",
     "components/teacher/StudentTrainingPlansPanel.tsx",
+    "components/teacher/StudyChapterEvidencePanel.tsx",
     "components/teacher/TeacherNav.tsx",
     "components/teacher/TeacherThemeProvider.tsx",
     "components/teacher/TrainingHomeworkPanel.tsx",
