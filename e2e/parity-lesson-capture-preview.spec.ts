@@ -60,6 +60,10 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
   const fromMcp=await call("ccp_v1_lessons_capture_preview",payload);
   expect(fromMcp.error).toBeUndefined();
   expect(fromMcp.data).toEqual(preview);
+  const beforeCommit=await call("ccp_v1_sessions_list",{query:payload.title,workplaceId});
+  expect(beforeCommit.error).toBeUndefined();
+  expect((beforeCommit.data as Array<{title:string}>)
+    .filter(row=>row.title===payload.title)).toHaveLength(0);
 
   // Preview did not persist anything. Confirm through the existing one-session
   // transaction and read the frozen roster using the other transport.
@@ -92,6 +96,10 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
   });
   expect(replay.status(),await replay.text()).toBe(200);
   expect((await replay.json()).data.id).toBe(sessionId);
+  const afterReplay=await call("ccp_v1_sessions_list",{query:payload.title,workplaceId});
+  expect(afterReplay.error).toBeUndefined();
+  expect((afterReplay.data as Array<{id:string;title:string}>)
+    .filter(row=>row.id===sessionId)).toHaveLength(1);
   const changedReplay=await call("ccp_v1_sessions_ad_hoc_create",{
     ...preview.proposedSession,title:"Different lesson",idempotencyKey,confirmed:true,
   });
