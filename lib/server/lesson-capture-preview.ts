@@ -298,7 +298,7 @@ export async function teacherLessonCapturePreview(
       inferredComprehension:false,writesPerformed:false,
       materialAssociation:"not_written",
       materialNextStep:selectedChapter?
-        "After creating and completing the lesson, use materials_link_preview and confirmed materials_link_commit with the exact chapter IDs. Never equate a linked chapter with mastery.":
+        "After creating the lesson, optionally assign the exact chapter using a separate materials_link_preview and confirmed materials_link_commit; mark it taught only after explicit lesson completion. Never equate a linked chapter with mastery.":
         "No verified study chapter selected. Do not invent material history.",
       nextStep:"After teacher approval, use ccp_v1_sessions_ad_hoc_create with the exact preview IDs, a new idempotencyKey and confirmed=true. Record attendance/completion separately.",
     },
