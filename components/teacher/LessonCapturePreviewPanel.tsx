@@ -41,6 +41,7 @@ export function LessonCapturePreviewPanel() {
   const [duration,setDuration] = useState(60);
   const [lessonNote,setLessonNote] = useState("");
   const [studyId,setStudyId] = useState("");
+  const [studyName,setStudyName] = useState("");
   const [chapterNumber,setChapterNumber] = useState("");
   const [expectedPlayers,setExpectedPlayers] = useState("");
   const [preview,setPreview] = useState<Preview|null>(null);
@@ -86,8 +87,9 @@ export function LessonCapturePreviewPanel() {
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({names:studentNames,workplaceId,title:title.trim(),
           ...timing,lessonNote,
-          ...(studyId.trim()?{chapterSelection:{
-            studyId:studyId.trim(),chapterNumber:Number(chapterNumber),
+          ...(studyId.trim()||studyName.trim()?{chapterSelection:{
+            ...(studyId.trim()?{studyId:studyId.trim()}:{studyName:studyName.trim()}),
+            chapterNumber:Number(chapterNumber),
             ...(expectedPlayers.trim()?{expectedPlayers:expectedPlayers.trim()}:{}),
           }}:{})}),cache:"no-store",
       });
@@ -170,12 +172,19 @@ export function LessonCapturePreviewPanel() {
         <input className={field} value={lessonNote} maxLength={10000}
           onChange={e=>{setLessonNote(e.target.value);invalidate();}} />
       </label>
-      <label className="block text-sm">Lichess study ID (optional, exact 8 characters)
+      <label className="block text-sm">Lichess study title (optional, exact cached name)
+        <input className={field} value={studyName} maxLength={160}
+          disabled={Boolean(studyId.trim())}
+          placeholder="e.g. Classic Games 2"
+          onChange={e=>{setStudyName(e.target.value);invalidate();}} />
+      </label>
+      <label className="block text-sm">Lichess study ID (alternative to title)
         <input className={field} value={studyId} minLength={8} maxLength={8}
-          placeholder="Study ID after /study/" pattern="[A-Za-z0-9]{8}"
+          disabled={Boolean(studyName.trim())}
+          placeholder="8 characters from /study/" pattern="[A-Za-z0-9]{8}"
           onChange={e=>{setStudyId(e.target.value);invalidate();}} />
       </label>
-      {studyId.trim()&&<>
+      {(studyId.trim()||studyName.trim())&&<>
         <label className="block text-sm">Chapter number in that study (1–64)
           <input className={field} type="number" min={1} max={64} required
             value={chapterNumber} onChange={e=>{setChapterNumber(e.target.value);invalidate();}} />
