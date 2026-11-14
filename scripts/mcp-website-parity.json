@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-14",
   "headSha": "acea0c2178ceb35e6d24055ad1e2aa6ee17ff196",
-  "policy": "Merged-main website/MCP strict parity accepted 2026-11-14 at acea0c2. New conversational lesson preview is a feature-branch candidate until its authenticated browser/MCP E2E and required workflows pass; existing confirmed ad-hoc session writer is unchanged. Do not infer full conversational historical lesson capture or provider-client acceptance from this incremental addition.",
+  "policy": "The original website/MCP acceptance gates remain mandatory. Added date-only canonical weekly-slot inference changes an existing web/MCP tool pair and has independent provider-free authenticated behavioral E2E; acceptance only after exact-head green tests. Do not claim generic free-form date parsing or Lichess study resolution. Original 93 historical scenarios and all separately enumerated new cases remain enforced by strict parity.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -393,8 +393,8 @@
       "existingTools": [
         "ccp_v1_lessons_capture_preview"
       ],
-      "explanation": "Teacher website and delegated OAuth MCP use one read-only bounded exact Unicode alias resolver, validate owned workplace memberships, refuse ambiguous or duplicate identities, and return the same time/roster preview. Confirmed creation uses the existing atomic ad-hoc session writer; named authenticated cross-transport E2E checks no preview write, replay and changed-request denial.",
-      "evidenceTest": "e2e/parity-lesson-capture-preview.spec.ts"
+      "explanation": "One owner-scoped read-only website/MCP preview now accepts either an explicit offset start+duration OR a date-only localDate for exactly one common active workplace-scoped weekly slot across 2–50 unambiguously resolved active students. It refuses missing/multiple slot times, date/DST gaps/folds, foreign enrollments and existing canonical lesson intervals. Browser panel shows inferred time and requires confirmation; existing atomic ad-hoc writer remains the only commit authority. Independently named web/delegated OAuth E2E proves week-slot inference, strict input modes, negative cases, DST and retry behavior.",
+      "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
     },
     {
       "path": "app/api/coaching/materials/route.ts",
