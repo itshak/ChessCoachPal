@@ -92,6 +92,13 @@ test("PARITY:PARITY-lichess-oauth-provider-consent authenticates browser PKCE an
   const provider=await startMockLichess();
   try {
     const call=await delegatedTool(page,request);
+    // The seeded account is reused across tests. Clean a previous synthetic
+    // connection before measuring this test's own connect/revoke events.
+    const cleared=await page.request.delete("/api/lichess/connection",{
+      data:{confirmed:true},
+    });
+    expect(cleared.status(),await cleared.text()).toBe(200);
+    const revokedBefore=provider.revoked.size;
     const initial=await page.request.get("/api/lichess/connection");
     expect(initial.status()).toBe(200);
     const status=await call("ccp_v1_lichess_connection_status",{});
@@ -129,7 +136,7 @@ test("PARITY:PARITY-lichess-oauth-provider-consent authenticates browser PKCE an
     expect(elevated.data).toMatchObject({
       connected:true,scopes:["study:read","study:write"],canPublish:true,
     });
-    expect(provider.revoked.size).toBe(1);
+    expect(provider.revoked.size-revokedBefore).toBe(1);
     expect(elevated.data.previousRevokeFailed).toBe(false);
     provider.setFailRevoke(true);
     const disconnected=await call("ccp_v1_lichess_connection_disconnect",{confirmed:true});
@@ -150,13 +157,23 @@ test("PARITY:PARITY-lichess-oauth-provider-consent authenticates browser PKCE an
     const {data:events,error:eventsError}=await admin.from("teacher_lichess_connection_events")
       .select("action,provider_revoked").order("created_at");
     expect(eventsError).toBeNull();
-    expect(events?.map(e=>e.action)).toEqual(["connected","reconnected","disconnected"]);
-    expect(events?.[2]?.provider_revoked).toBe(false);
-  }finally{await close(provider.server);}
+    expect(events?.slice(-3).map(e=>e.action)).toEqual(["connected","reconnected","disconnected"]);
+    expect(events?.at(-1)?.provider_revoked).toBe(false);
+  }finally{
+    await page.request.delete("/api/lichess/connection",{
+      data:{confirmed:true},
+    }).catch(()=>{});
+    await close(provider.server);
+  }
 });
 
 test("PARITY:PARITY-lichess-tenant-security never returns another coach's provider connection",async({page,request})=>{
   const call=await delegatedTool(page,request);
+  // Verify tenant isolation against an account with no existing personal
+  // provider connection, even after earlier scenarios used this seed user.
+  expect((await page.request.delete("/api/lichess/connection",{
+    data:{confirmed:true},
+  })).status()).toBe(200);
   const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});
   const email="foreign-lichess-"+randomUUID()+"@example.com";
@@ -193,6 +210,9 @@ test("PARITY:PARITY-lichess-study-chapter-32 searches actual OAuth-authorized PG
   const provider=await startMockLichess();
   try{
     const call=await delegatedTool(page,request);
+    expect((await page.request.delete("/api/lichess/connection",{
+      data:{confirmed:true},
+    })).status()).toBe(200);
     const disconnected=await page.request.get("/api/lichess/studies");
     expect(disconnected.status()).toBe(409);
     const modelDisconnected=await call("ccp_v1_lichess_studies_search",{});
@@ -249,5 +269,10 @@ test("PARITY:PARITY-lichess-study-chapter-32 searches actual OAuth-authorized PG
     expect((await call("ccp_v1_lichess_studies_search",{
       studyId:"StUd1234",chapterNumber:32,
     })).error).toBeDefined();
-  }finally{await close(provider.server);}
+  }finally{
+    await page.request.delete("/api/lichess/connection",{
+      data:{confirmed:true},
+    }).catch(()=>{});
+    await close(provider.server);
+  }
 });
