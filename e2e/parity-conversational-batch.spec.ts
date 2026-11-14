@@ -248,6 +248,11 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
   });
   expect(sync.status(),await sync.text()).toBe(200);
   expect((await sync.json()).chapterCount).toBe(64);
+  const mcpSync=await call("ccp_v1_materials_chapters_sync",{
+   studyId:"StUd1234",confirmedExternal:true,
+  });
+  expect(mcpSync.error).toBeUndefined();
+  expect(mcpSync.data.chapterCount).toBe(64);
   const query="?studyId=StUd1234&chapterNumber=32&query=Steinitz";
   const web=await page.request.get("/api/lichess/chapter-index"+query);
   expect(web.status(),await web.text()).toBe(200);

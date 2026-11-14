@@ -13,7 +13,8 @@ import {lessonChapterPreviewSchema,lessonChapterCommitSchema,
 import {puzzleSeriesCreateSchema,puzzleSeriesReconcileSchema,puzzleCapacitySchema,
  teacherPuzzleSeriesList,teacherPuzzleStudyCapacity,teacherPuzzleSeriesCreate,
  teacherPuzzleSeriesReconcile,PuzzleSeriesError} from "@/lib/server/puzzle-study-series";
-import {validateFenPosition,PuzzleReviewError} from "@/lib/lichess-puzzles";
+import {PuzzleReviewError} from "@/lib/lichess-puzzles";
+import {teacherFenValidate} from "@/lib/server/fen-validation";
 import {teacherContextGet} from "@/lib/server/teacher-context";
 
 import {spreadsheetSuggestMcpSchema} from "@/lib/spreadsheet-suggest";
@@ -1831,7 +1832,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           args as Parameters<typeof teacherLessonChapterCommit>[2])};
       case "ccp_v1_chess_fen_validate": {
         const a=args as {fen:string;source:"manual"|"image"};
-        return {data:validateFenPosition(a.fen,a.source)};
+        return {data:teacherFenValidate(a.fen,a.source)};
       }
       case "ccp_v1_puzzles_study_series_list":
         return {data:await teacherPuzzleSeriesList(db,teacherId)};
