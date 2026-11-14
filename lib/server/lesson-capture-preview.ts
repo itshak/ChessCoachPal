@@ -2,6 +2,8 @@ import "server-only";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertSessionSchedule } from "@/lib/server/coach-service";
+import { isDateString } from "@/lib/schedule";
+import { inferOwnedWeeklyLessonTime,lessonIntervalConflicts,type LessonTiming } from "@/lib/server/lesson-schedule-inference";
 
 /**
  * This is a read-only, deterministic capture PREVIEW, not an AI guess or a
@@ -13,10 +15,14 @@ export const lessonCapturePreviewSchema = z.object({
   names: z.array(z.string().trim().min(1).max(120)).min(2).max(50),
   workplaceId: uuid.optional(),
   title: z.string().trim().min(1).max(160),
-  startsAt: z.string().datetime({ offset: true }),
-  durationMinutes: z.number().int().min(15).max(480),
+  startsAt: z.string().datetime({ offset: true }).optional(),
+  durationMinutes: z.number().int().min(15).max(480).optional(),
+  localDate: z.string().refine(isDateString,"Date must be a real YYYY-MM-DD local calendar date").optional(),
   lessonNote: z.string().max(10000).default(""),
-}).strict();
+}).strict().refine(x=>
+  (x.startsAt!==undefined&&x.durationMinutes!==undefined&&x.localDate===undefined) ||
+  (x.startsAt===undefined&&x.durationMinutes===undefined&&x.localDate!==undefined),
+  "Supply an explicit start and duration, OR one local date for unique slot inference");
 
 export type LessonCapturePreviewInput = z.infer<typeof lessonCapturePreviewSchema>;
 
@@ -37,7 +43,8 @@ type Workplace = { id: string; name: string; timezone: string };
 type ResolutionIssue = {
   code: "NOT_FOUND" | "AMBIGUOUS_STUDENT" | "DUPLICATE_STUDENT" |
     "NO_COMMON_WORKPLACE" | "AMBIGUOUS_WORKPLACE" | "WORKPLACE_NOT_FOUND" |
-    "STUDENT_NOT_ENROLLED";
+    "STUDENT_NOT_ENROLLED"|"MISSING_SCHEDULE"|"TIME_AMBIGUOUS"|
+    "DST_UNRESOLVED"|"SCHEDULE_CONFLICT";
   message: string;
   input?: string;
   candidates?: Array<{ id: string; name: string }>;
@@ -68,7 +75,8 @@ async function activeStudents(db: SupabaseClient, teacherId: string) {
 export async function teacherLessonCapturePreview(
   db: SupabaseClient, teacherId: string, input: LessonCapturePreviewInput,
 ) {
-  assertSessionSchedule(input.startsAt, input.durationMinutes);
+  if(input.startsAt!==undefined&&input.durationMinutes!==undefined)
+    assertSessionSchedule(input.startsAt,input.durationMinutes);
   const students = await activeStudents(db, teacherId);
   const lookup = new Map<string, StudentIdentity[]>();
   for (const student of students) {
@@ -167,25 +175,40 @@ export async function teacherLessonCapturePreview(
     }
   }
 
-  const canCommit = issues.length === 0 && selectedWorkplace !== null;
+  let timing:LessonTiming|null=input.startsAt!==undefined&&
+    input.durationMinutes!==undefined ? {
+      startsAt:input.startsAt,durationMinutes:input.durationMinutes,
+      timeSource:"explicit",slotIds:[],
+    }:null;
+  if(selectedWorkplace&&issues.length===0&&ids.length===input.names.length){
+    if(input.localDate){
+      const inferred=await inferOwnedWeeklyLessonTime(
+        db,teacherId,selectedWorkplace,input.localDate,ids);
+      timing=inferred.timing;
+      issues.push(...inferred.issues);
+    }
+    if(timing&&issues.length===0)
+      issues.push(...await lessonIntervalConflicts(db,teacherId,timing));
+  }
+  const canCommit=issues.length===0&&selectedWorkplace!==null&&timing!==null;
   return {
-    canCommit,
-    resolutions,
-    issues,
-    workplace: selectedWorkplace,
-    proposedSession: canCommit ? {
-      workplaceId: selectedWorkplace!.id, studentIds: ids,
-      title: input.title, startsAt: input.startsAt,
-      durationMinutes: input.durationMinutes, lessonNote: input.lessonNote,
-    } : null,
-    review: {
-      creates: "One scheduled lesson with a frozen roster and unmarked attendance",
-      instructorMinutes: input.durationMinutes,
-      studentCount: ids.length,
-      attendance: "unmarked",
-      inferredComprehension: false,
-      writesPerformed: false,
-      nextStep: "After teacher approval, use ccp_v1_sessions_ad_hoc_create with the exact preview IDs, a new idempotencyKey and confirmed=true. Record attendance/completion separately.",
+    canCommit,resolutions,issues,workplace:selectedWorkplace,
+    proposedSession:canCommit ? {
+      workplaceId:selectedWorkplace!.id,studentIds:ids,
+      title:input.title,startsAt:timing!.startsAt,
+      durationMinutes:timing!.durationMinutes,lessonNote:input.lessonNote,
+    }:null,
+    review:{
+      creates:"One scheduled lesson with a frozen roster and unmarked attendance",
+      instructorMinutes:timing?.durationMinutes??null,
+      studentCount:ids.length,
+      attendance:"unmarked",
+      timeSource:timing?.timeSource??(input.localDate?"weekly_slot":"explicit"),
+      slotIds:timing?.slotIds??[],
+      localDate:input.localDate??null,
+      timezone:selectedWorkplace?.timezone??null,
+      inferredComprehension:false,writesPerformed:false,
+      nextStep:"After teacher approval, use ccp_v1_sessions_ad_hoc_create with the exact preview IDs, a new idempotencyKey and confirmed=true. Record attendance/completion separately.",
     },
   };
 }
