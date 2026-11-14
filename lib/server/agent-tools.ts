@@ -30,6 +30,7 @@ import { chessUuid, categoryName, observationText, observedAt, observationInput,
 } from "@/lib/chess-learning";
 import {lessonCompletionSchema,attendanceBulkRecordSchema,type LessonCompletionInput} from "@/lib/lesson-completion";
 import {lessonCapturePreviewSchema,teacherLessonCapturePreview,LessonCapturePreviewError} from "@/lib/server/lesson-capture-preview";
+import {LessonTimingError} from "@/lib/server/lesson-schedule-inference";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import {materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,materialRelationListSchema,materialRelationSchema,materialArchivePreviewSchema,materialLifecycleSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,teacherMaterialRelationsList,teacherMaterialRelationChange,teacherMaterialArchivePreview,teacherMaterialLifecycleChange,MaterialCatalogError} from "@/lib/server/learning-materials";
 import {assignmentListSchema,assignmentCreateSchema,assignmentAttemptSchema,assignmentReviewSchema,teacherAssignmentsList,teacherAssignmentsCreate,teacherAssignmentAttempt,teacherAssignmentReview,AssignmentServiceError} from "@/lib/server/training-assignments";
@@ -1069,7 +1070,7 @@ const catalogue = [
   },
   {
     name:"ccp_v1_lessons_capture_preview",
-    description:"Read-only teacher-owned multi-student capture preview: exact full names or Hebrew/English aliases, ambiguity detection, shared workplace enrollment, explicit offset and frozen roster. No guessed names, inferred attendance, session write or mastery. Review before confirmed ccp_v1_sessions_ad_hoc_create.",
+    description:"Read-only multi-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. Confirm separately via ccp_v1_sessions_ad_hoc_create.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -2021,6 +2022,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof MaterialDefaultError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof AssignmentServiceError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof LessonTimingError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LessonCapturePreviewError)
       return {error:{code:error.code,message:error.message}};
