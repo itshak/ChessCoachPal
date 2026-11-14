@@ -343,7 +343,15 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
    studyId:"StUd1234",chapterId:"Ch123456",
   });
   expect(foreign.error?.code).toBe("NOT_FOUND");
- }finally{await close(provider.server);}
+ }finally{
+  // All Playwright specs authenticate the same seeded teacher. Never leave
+  // a synthetic OAuth grant attached to a defunct mock Lichess server:
+  // it poisons subsequent credential isolation and revoke assertions.
+  await page.request.delete("/api/lichess/connection",{
+   data:{confirmed:true},
+  }).catch(()=>{});
+  await close(provider.server);
+ }
 });
 test("PARITY:PARITY-puzzles-study-capacity-and-private-numbered-series",async({page,request})=>{
  const provider=await lichessStudyProvider();
@@ -398,5 +406,13 @@ test("PARITY:PARITY-puzzles-study-capacity-and-private-numbered-series",async({p
   expect(reconcile.error).toBeUndefined();
   expect(reconcile.data.studyId).toBe("PuzZ0003");
   expect(provider.getCreates()).toBe(1);
- }finally{await close(provider.server);}
+ }finally{
+  // All Playwright specs authenticate the same seeded teacher. Never leave
+  // a synthetic OAuth grant attached to a defunct mock Lichess server:
+  // it poisons subsequent credential isolation and revoke assertions.
+  await page.request.delete("/api/lichess/connection",{
+   data:{confirmed:true},
+  }).catch(()=>{});
+  await close(provider.server);
+ }
 });
