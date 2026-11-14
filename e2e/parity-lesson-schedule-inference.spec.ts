@@ -163,3 +163,62 @@ test("PARITY:PARITY-weekly-slot-DST-gap-and-fold-rejected",async({page,request})
  expect(webFall.canCommit).toBe(false);
  expect(webFall.issues.map((x:{code:string})=>x.code)).toContain("DST_UNRESOLVED");
 });
+
+test("PARITY:PARITY-bulk-exact-student-alias-resolution-web-MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const {students,names}=await setup(call);
+ const alias=unique("English nickname");
+ const updated=await page.request.put("/api/students/"+students[0],{
+  data:{nameAliases:[alias]},
+ });
+ expect(updated.status(),await updated.text()).toBe(200);
+ const input={names:[alias,names[1],"Not a real enrolled learner"]};
+ const web=await page.request.post("/api/students/resolve",{data:input});
+ expect(web.status(),await web.text()).toBe(200);
+ const result=await web.json();
+ const mcp=await call("ccp_v1_students_resolve",input);
+ expect(mcp.error).toBeUndefined();
+ expect(mcp.data).toEqual(result);
+ expect(result.allResolved).toBe(false);
+ expect(result.studentIds).toEqual([]);
+ expect(result.resolutions.map((x:{status:string})=>x.status))
+  .toEqual(["resolved","resolved","not_found"]);
+ expect(result.resolutions[0].studentId).toBe(students[0]);
+ expect(result.issues.map((x:{code:string})=>x.code)).toContain("NOT_FOUND");
+ const duplicate={names:[alias,names[0]]};
+ const dupWeb=await page.request.post("/api/students/resolve",{data:duplicate});
+ expect(dupWeb.status()).toBe(200);
+ const dupResult=await dupWeb.json();
+ expect(dupResult.issues.map((x:{code:string})=>x.code)).toContain("DUPLICATE_STUDENT");
+ expect((await call("ccp_v1_students_resolve",duplicate)).data).toEqual(dupResult);
+});
+
+test("PARITY:PARITY-standalone-day-lookup-uses-identical-tenant-scoped-schedule",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const {workplaceId,students}=await setup(call);
+ const date="2062-01-06";
+ const payload={localDate:date,workplaceId,studentIds:students};
+ for(const studentId of students)
+  await createSlot(call,workplaceId,studentId,"11:00",date,45);
+ const web=await page.request.post("/api/coaching/lesson-capture/day",{data:payload});
+ expect(web.status(),await web.text()).toBe(200);
+ const result=await web.json();
+ const mcp=await call("ccp_v1_schedule_day_preview",payload);
+ expect(mcp.error).toBeUndefined();
+ expect(mcp.data).toEqual(result);
+ expect(result.canUse).toBe(true);
+ expect(result.timing).toMatchObject({
+  startsAt:"2062-01-06T09:00:00.000Z",durationMinutes:45,
+  timeSource:"weekly_slot",
+ });
+ expect(result.timing.slotIds).toHaveLength(3);
+ expect(result.writesPerformed).toBe(false);
+ const unauthorized={...payload,workplaceId:randomUUID()};
+ const negative=await page.request.post("/api/coaching/lesson-capture/day",{
+  data:unauthorized,
+ });
+ expect(negative.status()).toBe(503);
+ expect((await negative.json()).code).toBe("NOT_FOUND");
+ const mcpDenied=await call("ccp_v1_schedule_day_preview",unauthorized);
+ expect(mcpDenied.error?.code).toBe("NOT_FOUND");
+});
