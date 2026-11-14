@@ -46,7 +46,7 @@ import { chessUuid, categoryName, observationText, observedAt, observationInput,
  materialLinkListInput,materialLinkCreateInput,materialLinkUpdateInput,materialLinkUnlinkInput,
 } from "@/lib/chess-learning";
 import {lessonCompletionSchema,attendanceBulkRecordSchema,type LessonCompletionInput} from "@/lib/lesson-completion";
-import {lessonCapturePreviewSchema,teacherLessonCapturePreview,LessonCapturePreviewError} from "@/lib/server/lesson-capture-preview";
+import {lessonCapturePreviewSchema,teacherLessonCapturePreview,studentNamesResolveSchema,teacherStudentNamesResolve,LessonCapturePreviewError} from "@/lib/server/lesson-capture-preview";
 import {LessonTimingError} from "@/lib/server/lesson-schedule-inference";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import {materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,materialRelationListSchema,materialRelationSchema,materialArchivePreviewSchema,materialLifecycleSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,teacherMaterialRelationsList,teacherMaterialRelationChange,teacherMaterialArchivePreview,teacherMaterialLifecycleChange,MaterialCatalogError} from "@/lib/server/learning-materials";
@@ -1163,6 +1163,11 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_v1_students_resolve",
+    description:"Resolve up to 100 exact teacher-owned active student full names and Hebrew/English aliases to stable IDs. Return ambiguity candidates or missing-name issues without guessing, fuzzy search, archived students or private contacts. Read-only.",
+    schema:studentNamesResolveSchema,scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_v1_lessons_capture_preview",
     description:"Read-only multi-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. Confirm separately via ccp_v1_sessions_ad_hoc_create.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
@@ -2031,6 +2036,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {workplaceId:string;studentId:string};
         return {data:await workplacesUnenroll(db,teacherId,a.workplaceId,a.studentId)};
       }
+      case "ccp_v1_students_resolve":
+        return {data:await teacherStudentNamesResolve(db,teacherId,
+          (args as {names:string[]}).names)};
       case "ccp_v1_lessons_capture_preview":
         return {data:await teacherLessonCapturePreview(db,teacherId,
           args as Parameters<typeof teacherLessonCapturePreview>[2])};
