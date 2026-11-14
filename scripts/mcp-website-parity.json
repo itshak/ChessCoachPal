@@ -1,7 +1,7 @@
 {
-  "auditedAt": "2026-11-13",
-  "headSha": "c80b85c2313b8507e9999e2bb91229ed6f0f996a",
-  "policy": "Verified c80b85c: 59/59 teacher route families mapped and gateway 38/38 individually evidenced; 225 authenticated website/MCP E2E passed (five skipped); all five workflow families green. Full functional parity is NOT certified: historical checklist 89/93, canonical lesson writer B5/C2, strict merged-main and live-provider gates remain open.",
+  "auditedAt": "2026-11-14",
+  "headSha": "acea0c2178ceb35e6d24055ad1e2aa6ee17ff196",
+  "policy": "Merged-main website/MCP strict parity accepted 2026-11-14 at acea0c2. New conversational lesson preview is a feature-branch candidate until its authenticated browser/MCP E2E and required workflows pass; existing confirmed ad-hoc session writer is unchanged. Do not infer full conversational historical lesson capture or provider-client acceptance from this incremental addition.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -382,6 +382,19 @@
       ],
       "explanation": "Shared canonical recurring intent list and atomic create RPC, with a stable caller-provided idempotency key, frozen participant, owned workplace enrollment and materialized horizon. Authenticated cross-interface E2E.",
       "evidenceTest": "e2e/canonical-recurring-slots-parity.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/lesson-capture/preview/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_lessons_capture_preview"
+      ],
+      "explanation": "Teacher website and delegated OAuth MCP use one read-only bounded exact Unicode alias resolver, validate owned workplace memberships, refuse ambiguous or duplicate identities, and return the same time/roster preview. Confirmed creation uses the existing atomic ad-hoc session writer; named authenticated cross-transport E2E checks no preview write, replay and changed-request denial.",
+      "evidenceTest": "e2e/parity-lesson-capture-preview.spec.ts"
     },
     {
       "path": "app/api/coaching/materials/route.ts",
@@ -1137,6 +1150,7 @@
     "components/teacher/FamilyForm.tsx",
     "components/teacher/HostedLimitBanner.tsx",
     "components/teacher/LearningMaterialsCatalog.tsx",
+    "components/teacher/LessonCapturePreviewPanel.tsx",
     "components/teacher/LessonCompletionPanel.tsx",
     "components/teacher/LichessConnectionPanel.tsx",
     "components/teacher/LichessPuzzlePublisher.tsx",

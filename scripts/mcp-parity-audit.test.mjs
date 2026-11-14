@@ -14,7 +14,13 @@ test("ordinary inventory keeps its structural floor alongside complete behavior 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /NOT equivalent to verified behavior/);
   assert.match(result.stdout, /93\/93 verified, 0 not yet checked/);
-  assert.match(result.stdout, /New canonical parity workflows: 26\/26 verified/);
+  // Additional independently tested workflows grow this matrix over time.
+  // Never pin acceptance to a historical count or weaken the all-checked gate.
+  // The original floor is retained while new cases must still be 100% signed off.
+  const cases = /New canonical parity workflows: ([0-9]+)[/]([0-9]+) verified/.exec(result.stdout);
+  assert.ok(cases, "canonical scenario acceptance summary must be present");
+  assert.equal(cases[1], cases[2], "every enumerated scenario must be independently accepted");
+  assert.ok(Number(cases[1]) >= 26, "the original canonical acceptance floor must remain");
   assert.doesNotMatch(result.stdout, /Release BLOCKED:/);
 });
 
