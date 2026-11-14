@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Full remote Actions-log/archive review is expensive and GitHub API-rate-limited.
+  # Keep it scheduled + available on demand, while the full reachable Git blob
+  # secret scan continues on every commit/PR.
+  schedule:
+    - cron: "23 3 * * 1"
 permissions:
   contents: read
   pull-requests: read
@@ -32,7 +37,12 @@ jobs:
           if-no-files-found: warn
 
   actions-history:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.head_ref == 'docs/archive-m4-security'
+    # Scanning *every* historical Actions ZIP on every main push exhausts the
+    # GitHub Actions REST token quota during rapid prelaunch development. This
+    # exhaustive remote audit remains mandatory weekly and manually runnable;
+    # never mark inaccessible ZIPs as clean. The independent reachable-history
+    # scan still runs on every PR and main push.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.head_ref == 'docs/archive-m4-security'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
