@@ -36,10 +36,11 @@ async function fixture(call:Tool){
   })).error).toBeUndefined();
  const created=await call("ccp_v1_sessions_create",{
   workplaceId,groupId,title:name("Endgame session"),
-  // Never re-use a teacher-wide scheduled interval across test retries. One
-  // failed assertion must not make every retry conflict with an earlier fixture.
-  startsAt:new Date(Date.UTC(2058,0,1)+
-   (Number.parseInt(randomUUID().slice(0,8),16)%(366*24*3600))*1000).toISOString(),
+  // A large dedicated synthetic time horizon avoids collisions with
+  // hundreds of other teacher fixtures, including a retry after an assertion
+  // failure. The old single-year pool intermittently hit the SQL overlap guard.
+  startsAt:new Date(Date.UTC(2200,0,1)+
+   (Number.parseInt(randomUUID().slice(0,12),16)%(100*365*24*60))*60_000).toISOString(),
   durationMinutes:60,
   lessonNote:"Original teacher note stays unless explicitly changed",idempotencyKey:randomUUID(),
  });
