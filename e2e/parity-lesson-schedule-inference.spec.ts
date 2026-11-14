@@ -331,3 +331,39 @@ test("PARITY:PARITY-classic-games-32-exact-study-title-and-PGN-names",async({pag
  expect(next.error).toBeUndefined();
  expect(next.data.chapter_number).toBe(32);
 });
+
+test("PARITY:PARITY-website-reviewer-date-only-form-commits-matching-roster",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const {workplaceId,students,names}=await setup(call);
+ const date="2066-01-06";
+ for(const studentId of students)
+  await createSlot(call,workplaceId,studentId,"16:00",date,60);
+ await page.goto("/coaching");
+ await expect(page.getByRole("heading",{
+  name:"Capture a lesson from student names",
+ })).toBeVisible();
+ await page.getByLabel("Student names, one per line (2–50)")
+  .fill(names.join("\n"));
+ await page.getByLabel("Workplace / time zone").selectOption(workplaceId);
+ await page.getByLabel("Lesson title").fill(unique("Verified weekly UI session"));
+ await page.getByLabel("How to determine lesson time").selectOption("weekly");
+ await page.getByLabel("Lesson date in workplace time zone").fill(date);
+ await page.getByRole("button",{name:"Preview only"}).click();
+ await expect(page.getByRole("heading",{
+  name:"Identity and enrollment review",
+ })).toBeVisible();
+ await expect(page.getByText("Time inferred from matching active weekly slots.",{
+  exact:false,
+ })).toBeVisible();
+ const checkbox=page.getByLabel("I checked every learner, the workplace, date and time");
+ await checkbox.check();
+ await page.getByRole("button",{name:"Confirm and create one lesson"}).click();
+ await expect(page.getByRole("status").filter({hasText:"One session created:"}))
+  .toBeVisible();
+ const created=await call("ccp_v1_sessions_list",{
+  workplaceId,query:"Verified weekly UI session",
+ });
+ expect(created.error).toBeUndefined();
+ expect(created.data.filter((x:{title:string})=>
+  x.title.startsWith("Verified weekly UI session"))).toHaveLength(1);
+});
