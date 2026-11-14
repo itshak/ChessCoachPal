@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import Link from "next/link";
 import { workplaceLocalToUtc, utcToWorkplaceLocal } from "@/lib/coaching-time";
 
-type Workplace = { id: string; name: string; timezone: string; currency: string; locale: string; policy: Record<string, unknown> };
-type Student = { id: string; name: string; level: string | null };
-type Group = { id: string; name: string; workplace_id: string };
+type Workplace = { id: string; name: string; timezone: string; currency: string; locale: string; policy: Record<string, unknown>; updated_at:string };
+type Student = { id: string; name: string; level: string | null; updated_at:string };
+type Group = { id: string; name: string; workplace_id: string; updated_at:string };
 type Session = {
   id: string; title: string; starts_at: string; duration_minutes: number;
   workplace_id: string; group_id: string | null; student_id: string | null;
@@ -16,6 +16,13 @@ type Roster = { student_id: string; students: { name: string } | { name: string 
 type Attendance = {
   student_id: string; status: "unmarked" | "present" | "absent" | "late" | "excused";
   note: string;
+};
+type RosterPreview = {
+  sessionId:string;updatedAt:string;studentIds:string[];
+};
+type RosterAudit = {
+  id:string;createdAt:string;reason:string;
+  previousStudentIds:string[];correctedStudentIds:string[];removedAttendanceCount:number;
 };
 type Result<T> = { ok?: boolean; data?: T; error?: { code: string; message?: string } };
 type AttendanceStatus = Exclude<Attendance["status"], "unmarked">;
@@ -74,7 +81,8 @@ export function ChessCoachWorkspace() {
   const [workplaceId, setWorkplaceId] = useState("");
   const [groupId, setGroupId] = useState("");
   const [studentId, setStudentId] = useState("");
-  const [mode, setMode] = useState<"group" | "private">("group");
+  const [mode, setMode] = useState<"group" | "private" | "ad_hoc">("group");
+  const [adHocIds,setAdHocIds]=useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [start, setStart] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
@@ -88,6 +96,13 @@ export function ChessCoachWorkspace() {
   const requestRef = useRef<{ signature: string; id: string } | null>(null);
   const [roster, setRoster] = useState<Roster[]>([]);
   const [rosterSessionId, setRosterSessionId] = useState("");
+  const [rosterCandidates,setRosterCandidates]=useState<Student[]>([]);
+  const [rosterEditIds,setRosterEditIds]=useState<string[]>([]);
+  const [rosterRevision,setRosterRevision]=useState("");
+  const [rosterReason,setRosterReason]=useState("");
+  const [rosterSearch,setRosterSearch]=useState("");
+  const [rosterConfirmed,setRosterConfirmed]=useState(false);
+  const [rosterAudit,setRosterAudit]=useState<RosterAudit[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -113,17 +128,31 @@ export function ChessCoachWorkspace() {
     setRoster([]);
     setAttendance([]);
     setRosterSessionId("");
+    setRosterEditIds([]);setRosterRevision("");setRosterReason("");
+    setRosterConfirmed(false);setRosterAudit([]);
     if (selectedSessionId) {
       void Promise.all([
         operation<Roster[]>("sessions.participants", { sessionId: selectedSessionId }),
         operation<Attendance[]>("attendance.list", { sessionId: selectedSessionId }),
-      ]).then(([people, marks]) => {
-        if (active) {
-          setRoster(people);
-          setAttendance(marks);
+        fetch("/api/coaching/sessions/"+encodeURIComponent(selectedSessionId)+"/roster",
+          {cache:"no-store"}).then(async response=>{
+          if(!response.ok)throw new Error("Unable to read frozen roster");
+          return await response.json() as RosterPreview;
+        }),
+        fetch("/api/students?limit=1000",{cache:"no-store"}).then(async response=>{
+          if(!response.ok)throw new Error("Unable to load teacher student roster");
+          const result=await response.json() as {students:Student[]};
+          return result.students;
+        }),
+      ]).then(([people,marks,preview,candidates])=>{
+        if(active){
+          setRoster(people);setAttendance(marks);
           setRosterSessionId(selectedSessionId);
+          setRosterEditIds(preview.studentIds);
+          setRosterRevision(preview.updatedAt);
+          setRosterCandidates(candidates);
         }
-      }).catch(e => { if (active) setError(String(e)); });
+      }).catch(e=>{if(active)setError(String(e));});
     }
     return () => { active = false; };
   }, [selectedSessionId]);
@@ -151,6 +180,8 @@ export function ChessCoachWorkspace() {
 
   async function updateWorkplace(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const current=workplaces.find(workplace=>workplace.id===workplaceId);
+    if(!current){setError("Reload the workplace before editing.");return;}
     await perform(async () => {
       let policy: Record<string, unknown>;
       try {
@@ -165,6 +196,7 @@ export function ChessCoachWorkspace() {
       await operation("workplaces.update", {
         workplaceId, name: editWorkplaceName.trim(), timezone: editTimezone,
         currency: editCurrency, locale: editLocale, policy,
+        expectedUpdatedAt:current.updated_at,idempotencyKey:crypto.randomUUID(),
       });
     }, "Workplace saved.");
   }
@@ -179,8 +211,11 @@ export function ChessCoachWorkspace() {
 
   async function updateStudent(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const selected=students.find(student=>student.id===editStudentId);
+    if(!selected){setError("Select a current learner and reload before editing.");return;}
     await perform(() => operation("students.update", {
       studentId: editStudentId, name: editStudentName.trim(), level: editStudentLevel.trim() || null,
+      expectedUpdatedAt:selected.updated_at,idempotencyKey:crypto.randomUUID(),
     }), "Student saved.");
   }
 
@@ -219,8 +254,11 @@ export function ChessCoachWorkspace() {
 
   async function updateGroup(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const current=groups.find(group=>group.id===groupId&&group.workplace_id===workplaceId);
+    if(!current){setError("Reload the class group before editing.");return;}
     await perform(() => operation("groups.update", {
       groupId, workplaceId, name: editGroupName.trim(),
+      expectedUpdatedAt:current.updated_at,idempotencyKey:crypto.randomUUID(),
     }), "Class group saved.");
   }
 
@@ -243,7 +281,7 @@ export function ChessCoachWorkspace() {
 
   async function schedule(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!start || (mode === "group" ? !groupId : !studentId)) {
+    if (!start || (mode === "group" ? !groupId : mode === "private" ? !studentId : adHocIds.length<2)) {
       setError("Choose a time and a class group or student."); return;
     }
     const zone = workplaces.find(w => w.id === workplaceId)?.timezone ?? "UTC";
@@ -253,6 +291,7 @@ export function ChessCoachWorkspace() {
     const payload = {
       workplaceId, groupId: mode === "group" ? groupId : undefined,
       studentId: mode === "private" ? studentId : undefined,
+      studentIds: mode === "ad_hoc" ? [...adHocIds].sort() : undefined,
       title: title.trim(), startsAt, durationMinutes, lessonNote,
     };
     const signature = JSON.stringify(payload);
@@ -260,10 +299,11 @@ export function ChessCoachWorkspace() {
       requestRef.current = { signature, id: crypto.randomUUID() };
     }
     await perform(async () => {
-      const created = await operation<Session>("sessions.create", { ...payload, requestId: requestRef.current!.id });
+      const created = await operation<Session>(mode==="ad_hoc"?"sessions.createAdHoc":"sessions.create",
+        { ...payload, requestId: requestRef.current!.id });
       requestRef.current = null;
       setSelectedSessionId(created.id);
-      setTitle(""); setLessonNote(""); setStart("");
+      setTitle(""); setLessonNote(""); setStart(""); setAdHocIds([]);
     }, "Lesson session created with a frozen attendance roster.");
   }
 
@@ -276,8 +316,51 @@ export function ChessCoachWorkspace() {
     catch (e) { setError(e instanceof Error ? e.message : "Invalid lesson time"); return; }
     await perform(() => operation("sessions.update", {
       sessionId: selectedSessionId, title: editSessionTitle.trim(), startsAt,
-      durationMinutes: editDuration, lessonNote: editSessionNote, status: editStatus,
+      durationMinutes: editDuration, lessonNote: editSessionNote,
+      ...(editStatus==="completed"?{}:{status:editStatus}),
     }), "Session changes saved.");
+  }
+
+  async function correctHistoricalRoster(e:FormEvent<HTMLFormElement>){
+    e.preventDefault();
+    if(!selectedSessionId||!rosterRevision||!rosterConfirmed)return;
+    const url="/api/coaching/sessions/"+encodeURIComponent(selectedSessionId)+"/roster";
+    await perform(async()=>{
+      const response=await fetch(url,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          studentIds:rosterEditIds,expectedUpdatedAt:rosterRevision,
+          reason:rosterReason.trim(),idempotencyKey:crypto.randomUUID(),
+          confirmed:true,
+        }),
+      });
+      const outcome=await response.json() as {error?:string};
+      if(!response.ok)throw new Error(outcome.error??"Roster correction failed");
+      const [preview,people,marks]=await Promise.all([
+        fetch(url,{cache:"no-store"}).then(async r=>{
+          if(!r.ok)throw new Error("Unable to reload corrected roster");
+          return await r.json() as RosterPreview;
+        }),
+        operation<Roster[]>("sessions.participants",{sessionId:selectedSessionId}),
+        operation<Attendance[]>("attendance.list",{sessionId:selectedSessionId}),
+      ]);
+      setRosterEditIds(preview.studentIds);setRosterRevision(preview.updatedAt);
+      setRoster(people);setAttendance(marks);setRosterSessionId(selectedSessionId);
+      setRosterReason("");setRosterConfirmed(false);setRosterAudit([]);
+    },"Historical roster corrected; removed attendance is retained in the audit log.");
+  }
+
+  async function loadRosterAudit(){
+    if(!selectedSessionId)return;
+    setError("");
+    try{
+      const response=await fetch("/api/coaching/sessions/"+
+        encodeURIComponent(selectedSessionId)+"/roster?revisions=true",
+        {cache:"no-store"});
+      if(!response.ok)throw new Error("Unable to load correction history");
+      const body=await response.json() as {corrections:RosterAudit[]};
+      setRosterAudit(body.corrections);
+    }catch(e){setError(e instanceof Error?e.message:"Unable to load correction history");}
   }
 
   async function record(student: string, status: AttendanceStatus, note: string) {
@@ -520,8 +603,9 @@ export function ChessCoachWorkspace() {
           <h2 className="text-lg font-semibold">Schedule a lesson</h2>
           <form className="space-y-2" onSubmit={schedule}>
             <label className="block text-sm">Lesson type
-              <select className={field} value={mode} onChange={e => setMode(e.target.value as "group" | "private")}>
+              <select className={field} value={mode} onChange={e => setMode(e.target.value as "group" | "private" | "ad_hoc")}>
                 <option value="group">Group</option><option value="private">Private student</option>
+                <option value="ad_hoc">Ad-hoc multi-student</option>
               </select>
             </label>
             {mode === "group" ?
@@ -530,7 +614,17 @@ export function ChessCoachWorkspace() {
                   <option value="">Select group</option>
                   {localGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
-              </label> :
+              </label> : mode==="ad_hoc" ?
+              <fieldset className="space-y-1 rounded-lg border border-border p-3">
+                <legend className="text-sm font-medium">Choose 2–50 students from this workplace</legend>
+                {students.filter(st=>enrolledIds.includes(st.id)).map(st=><label key={st.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={adHocIds.includes(st.id)}
+                    onChange={e=>setAdHocIds(old=>e.target.checked ?
+                      [...new Set([...old,st.id])].slice(0,50) : old.filter(id=>id!==st.id))} />
+                  {st.name}
+                </label>)}
+                <p className="text-xs text-muted">{adHocIds.length} selected. Attendance is frozen at creation.</p>
+              </fieldset> :
               <label className="block text-sm">Private student
                 <select className={field} value={studentId} onChange={e => setStudentId(e.target.value)} required>
                   <option value="">Select student</option>
@@ -589,11 +683,64 @@ export function ChessCoachWorkspace() {
             </label>
             <label className="block text-sm">Session status
               <select className={field} value={editStatus} onChange={e => setEditStatus(e.target.value as Session["status"])}>
-                <option value="scheduled">Scheduled</option><option value="completed">Completed</option>
+                <option value="scheduled">Scheduled</option>
+                {editStatus==="completed"&&<option value="completed" disabled>Completed (recorded with full attendance)</option>}
                 <option value="cancelled">Cancelled</option>
               </select>
             </label>
+            <p className="text-xs text-muted">To finish a lesson, use “Complete a coaching lesson” below and confirm the full frozen attendance roster.</p>
             <button className={button} disabled={busy}>Save session changes</button>
+          </form>}
+          {session && rosterRevision && <form onSubmit={correctHistoricalRoster}
+            className="space-y-3 border-y border-border py-4">
+            <h3 className="font-semibold">Correct frozen lesson roster</h3>
+            <p className="text-xs text-muted">Changes only this lesson's historical
+              participants, not current class enrollment. Removed attendance
+              is preserved in the audit. Linked chess observations and materials
+              must be addressed before removing a learner.</p>
+            <label className="block text-sm">Find learner
+              <input className={field} value={rosterSearch}
+                placeholder="Search by name" onChange={e=>setRosterSearch(e.target.value)}/>
+            </label>
+            <div className="max-h-44 overflow-y-auto rounded-lg border border-border p-2 space-y-1"
+              role="group" aria-label="Correct historical lesson participants">
+              {rosterCandidates.filter(s=>rosterEditIds.includes(s.id)||
+                s.name.toLocaleLowerCase().includes(rosterSearch.toLocaleLowerCase()))
+                .slice(0,80).map(s=><label key={s.id}
+                className="flex items-center gap-2 text-sm px-1 py-1">
+                <input type="checkbox" checked={rosterEditIds.includes(s.id)}
+                  onChange={e=>setRosterEditIds(current=>e.target.checked
+                    ? [...current,s.id] : current.filter(id=>id!==s.id))}/>
+                <span>{s.name}</span>
+              </label>)}
+            </div>
+            <p className="text-xs text-muted">{rosterEditIds.length}
+              learner(s) selected. At most 80 matching learners displayed.</p>
+            <label className="block text-sm">Reason for correction
+              <textarea className={field} value={rosterReason}
+                onChange={e=>setRosterReason(e.target.value)}
+                placeholder="Explain the required historical attendance correction"
+                minLength={8} maxLength={1000} required rows={2}/>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" checked={rosterConfirmed}
+                onChange={e=>setRosterConfirmed(e.target.checked)}/>
+              <span>I have reviewed this historical correction and understand
+                removed attendance is retained in the audit.</span>
+            </label>
+            <button className={button} disabled={busy||!rosterRevision||
+              !rosterConfirmed||rosterReason.trim().length<8||rosterEditIds.length===0}>
+              Confirm historical correction
+            </button>
+            <div>
+              <button type="button" className="text-sm text-primary underline"
+                onClick={()=>void loadRosterAudit()}>View correction history</button>
+              {rosterAudit.map(entry=><p key={entry.id} className="text-xs text-muted mt-1">
+                {new Date(entry.createdAt).toLocaleString()} — {entry.reason}
+                {" · "}{entry.previousStudentIds.length} to {entry.correctedStudentIds.length}
+                {" · "}{entry.removedAttendanceCount} removed attendance row(s) audited
+              </p>)}
+            </div>
           </form>}
           {session && roster.length === 0 &&
             <p className="text-sm text-muted">No participants were enrolled when this session was created.</p>}

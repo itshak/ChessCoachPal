@@ -40,3 +40,25 @@ export function createPlatformStripe(
   if (!key) return null;
   return new Stripe(key);
 }
+
+
+/** Resolve a trusted return origin for hosted Checkout and customer portal.
+ * The incoming request Host header is not an authority for a payment callback.
+ * A production hosted deployment without an explicit public URL fails closed.
+ */
+export function hostedBillingReturnOrigin(
+  env:Record<string,string|undefined>=process.env
+):string|null{
+  const raw=env.NEXT_PUBLIC_SITE_URL?.trim()||
+    (env.VERCEL_URL?.trim()?"https://"+env.VERCEL_URL.trim():null);
+  if(!raw)return env.NODE_ENV==="production"?null:"http://localhost:3000";
+  try{
+    const url=new URL(raw);
+    if(url.username||url.password||url.search||url.hash||
+       (url.pathname!=="/"&&url.pathname!==""))return null;
+    if(url.protocol!=="https:" && !(
+      url.protocol==="http:"&&["localhost","127.0.0.1"].includes(url.hostname)
+    ))return null;
+    return url.origin;
+  }catch{return null;}
+}

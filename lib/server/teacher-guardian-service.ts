@@ -1,7 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { insertGuardian, retireEmptyGuardians } from "@/lib/server/families";
 import { assertWithinHostedLimit, limitReachedResponse } from "@/lib/server/entitlements";
-import { generateShortToken } from "@/lib/token";
 
 type Db = SupabaseClient;
 type MemberInput={name:string;birthdate?:string|null};
@@ -10,6 +8,7 @@ export type GuardianChange={
   secondaryName?:string|null;secondaryEmail?:string|null;secondaryPhone?:string|null;
   emailRecipients?:"primary"|"secondary"|"both";
   studentIds?:string[];newStudents?:MemberInput[];
+  idempotencyKey?:string;
 };
 export class GuardianServiceError extends Error {
   constructor(public status:number,public code:string,message:string){super(message);}
@@ -18,10 +17,21 @@ const failure=(status:number,code:string,message:string)=>new GuardianServiceErr
 const fields="id,name,family_name,email,phone,secondary_name,secondary_email,secondary_phone,email_recipients,portal_token,created_at,students ( id, name )";
 /** Same teacher-scoped query as the website family list. Never leak portal_token to MCP. */
 export async function guardiansList(db:Db,teacherId:string) {
-  const {data,error}=await db.from("guardians").select(fields)
-    .eq("teacher_id",teacherId).order("name").limit(1000);
-  if(error)throw failure(500,"DATABASE_ERROR","Unable to list families");
-  return data??[];
+  const rows:Record<string,unknown>[]=[];
+  const size=500,maxRows=20_000;
+  for(let offset=0;;offset+=size){
+    // Stable tie-breaker avoids silently omitting names at the page boundary.
+    const {data,error}=await db.from("guardians").select(fields)
+      .eq("teacher_id",teacherId).order("name").order("id")
+      .range(offset,offset+size-1);
+    if(error)throw failure(500,"DATABASE_ERROR","Unable to list families");
+    const page=data??[];
+    if(rows.length+page.length>maxRows)
+      throw failure(413,"ROSTER_TOO_LARGE","Family roster exceeds safe listing size");
+    rows.push(...page);
+    if(page.length<size)break;
+  }
+  return rows;
 }
 export async function guardianDetail(db:Db,teacherId:string,id:string) {
   const {data,error}=await db.from("guardians").select(fields)
@@ -46,11 +56,16 @@ async function verifyStudents(db:Db,teacherId:string,ids:string[]) {
   if(data?.length!==distinct.length)throw failure(404,"NOT_FOUND","A student is not owned by this teacher");
   return data;
 }
-async function checkNewStudents(db:Db,teacherId:string,input:GuardianChange) {
+async function checkNewStudents(
+  db:Db,teacherId:string,input:GuardianChange,skipCapacityPreflight=false
+) {
   const rows=(input.newStudents??[]).filter(x=>x.name.trim()).map(x=>({
     teacher_id:teacherId,name:x.name.trim(),birthdate:x.birthdate||null,
   }));
-  if(rows.length>0) {
+  // A key-replayed request must not fail because its original successful
+  // student insert filled the quota. The database independently checks
+  // capacity inside the actual transaction for NEW requests.
+  if(rows.length>0&&!skipCapacityPreflight) {
     const check=await assertWithinHostedLimit(db,teacherId,"students",rows.length);
     if(!check.allowed){
       const result=limitReachedResponse(check);
@@ -60,72 +75,61 @@ async function checkNewStudents(db:Db,teacherId:string,input:GuardianChange) {
   return rows;
 }
 function clean(v:string|null|undefined){return v?.trim()||null;}
-export async function guardianCreate(db:Db,teacherId:string,input:GuardianChange){
-  const name=input.name?.trim();
-  if(!name)throw failure(400,"VALIDATION_ERROR","Family name required");
-  const studentIds=input.studentIds??[];
-  const members=await verifyStudents(db,teacherId,studentIds);
-  const newRows=await checkNewStudents(db,teacherId,input);
-  const {data:guardian,error}=await insertGuardian(db,teacherId,{
-    name,familyName:input.familyName,email:input.email,phone:input.phone,
-    secondaryName:input.secondaryName,secondaryEmail:input.secondaryEmail,
-    secondaryPhone:input.secondaryPhone,emailRecipients:input.emailRecipients,
+/** Shared tenant-locked transactional mutation for website and delegated MCP. */
+function guardianFields(input:GuardianChange):Record<string,unknown>{
+  const result:Record<string,unknown>={};
+  if(input.name!==undefined)result.name=input.name.trim();
+  if(input.familyName!==undefined)result.family_name=clean(input.familyName);
+  if(input.email!==undefined)result.email=clean(input.email);
+  if(input.phone!==undefined)result.phone=clean(input.phone);
+  if(input.secondaryName!==undefined)result.secondary_name=clean(input.secondaryName);
+  if(input.secondaryEmail!==undefined)result.secondary_email=clean(input.secondaryEmail);
+  if(input.secondaryPhone!==undefined)result.secondary_phone=clean(input.secondaryPhone);
+  if(input.emailRecipients!==undefined)result.email_recipients=input.emailRecipients;
+  return result;
+}
+async function writeGuardian(
+  db:Db,teacherId:string,guardianId:string|null,input:GuardianChange,
+){
+  const existing=input.studentIds??[];
+  // Helpful early errors; the database independently repeats the ownership
+  // and quota checks while locked, before committing any roster mutation.
+  if(input.studentIds!==undefined)await verifyStudents(db,teacherId,existing);
+  const newRows=await checkNewStudents(db,teacherId,input,
+    input.idempotencyKey!==undefined);
+  if(input.idempotencyKey!==undefined&&
+     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.idempotencyKey))
+    throw failure(400,"VALIDATION_ERROR","Family idempotencyKey must be a UUID");
+  const {data,error}=await db.rpc("ccp_guardian_save_replay",{
+    p_guardian_id:guardianId,p_fields:guardianFields(input),
+    p_student_ids:existing,p_replace_members:input.studentIds!==undefined,
+    p_new_students:newRows.map(x=>({name:x.name,birthdate:x.birthdate})),
+    p_request_id:input.idempotencyKey??null,
   });
-  if(error||!guardian)throw failure(500,"DATABASE_ERROR","Unable to create family");
-  // Child creation and assignment follow the existing website semantics.
-  // Failure is visible instead of pretending that partial writes succeeded.
-  if(studentIds.length){
-    const {error:assignError}=await db.from("students").update({guardian_id:guardian.id})
-      .eq("teacher_id",teacherId).in("id",studentIds);
-    if(assignError)throw failure(500,"DATABASE_ERROR","Unable to assign family students");
+  if(error){
+    if(error.code==="23505"||error.message.includes("GUARDIAN_REQUEST_CONFLICT"))
+      throw failure(409,"IDEMPOTENCY_CONFLICT",
+        "Family idempotencyKey was already used with different details");
+    if(error.code==="23514"&&error.message.includes("GUARDIAN_ALREADY_DELETED"))
+      throw failure(409,"CONFLICT","Family was deleted after the recorded request");
+    if(error.message.includes("HOSTED_LIMIT_REACHED"))
+      throw failure(403,"HOSTED_LIMIT_REACHED","Active-student capacity reached");
+    if(error.message.includes("NOT_FOUND"))
+      throw failure(404,"NOT_FOUND","Family or student not found");
+    if(error.code==="22023"||error.code==="23514")
+      throw failure(400,"VALIDATION_ERROR","Invalid family or student details");
+    throw failure(500,"DATABASE_ERROR","Unable to save family and student roster");
   }
-  if(newRows.length){
-    const {error:childrenError}=await db.from("students").insert(newRows.map(x=>({...x,guardian_id:guardian.id})));
-    if(childrenError)throw failure(500,"DATABASE_ERROR","Unable to create family students");
-  }
-  await retireEmptyGuardians(db,teacherId,members.map(x=>x.guardian_id)
-    .filter((v):v is string=>typeof v==="string"&&v!==guardian.id));
-  return guardian;
+  if(!data||typeof data!=="object"||Array.isArray(data))
+    throw failure(500,"DATABASE_ERROR","Family transaction returned an invalid receipt");
+  return data as Record<string,unknown>;
+}
+export async function guardianCreate(db:Db,teacherId:string,input:GuardianChange){
+  if(!input.name?.trim())throw failure(400,"VALIDATION_ERROR","Family name required");
+  return writeGuardian(db,teacherId,null,input);
 }
 export async function guardianUpdate(db:Db,teacherId:string,id:string,input:GuardianChange){
-  await guardianDetail(db,teacherId,id);
-  const changeStudents=input.studentIds!==undefined;
-  const members=changeStudents?await verifyStudents(db,teacherId,input.studentIds??[]):[];
-  const newRows=await checkNewStudents(db,teacherId,input);
-  const update:Record<string,unknown>={};
-  if(input.name!==undefined)update.name=input.name.trim();
-  if(input.familyName!==undefined)update.family_name=clean(input.familyName);
-  if(input.email!==undefined)update.email=clean(input.email);
-  if(input.phone!==undefined)update.phone=clean(input.phone);
-  if(input.secondaryName!==undefined)update.secondary_name=clean(input.secondaryName);
-  if(input.secondaryEmail!==undefined)update.secondary_email=clean(input.secondaryEmail);
-  if(input.secondaryPhone!==undefined)update.secondary_phone=clean(input.secondaryPhone);
-  if(input.emailRecipients!==undefined)update.email_recipients=input.emailRecipients;
-  let guardian:Record<string,unknown>;
-  if(Object.keys(update).length){
-    const {data,error}=await db.from("guardians").update(update)
-      .eq("id",id).eq("teacher_id",teacherId).select().maybeSingle();
-    if(error)throw failure(500,"DATABASE_ERROR","Unable to edit family");
-    if(!data)throw failure(404,"NOT_FOUND","Family not found");
-    guardian=data;
-  }else guardian=await guardianDetail(db,teacherId,id);
-  if(changeStudents){
-    const {error:detachError}=await db.from("students").update({guardian_id:null})
-      .eq("teacher_id",teacherId).eq("guardian_id",id);
-    if(detachError)throw failure(500,"DATABASE_ERROR","Unable to update family members");
-    if(members.length){
-      const {error:assignError}=await db.from("students").update({guardian_id:id})
-        .eq("teacher_id",teacherId).in("id",members.map(x=>x.id));
-      if(assignError)throw failure(500,"DATABASE_ERROR","Unable to assign family members");
-    }
-    await retireEmptyGuardians(db,teacherId,members.map(x=>x.guardian_id)
-      .filter((v):v is string=>typeof v==="string"&&v!==id));
-  }
-  if(newRows.length){
-    const {error}=await db.from("students").insert(newRows.map(x=>({...x,guardian_id:id})));
-    if(error)throw failure(500,"DATABASE_ERROR","Unable to create family students");
-  }
-  return guardian;
+  return writeGuardian(db,teacherId,id,input);
 }
 export async function guardianDeleteImpact(db:Db,teacherId:string,id:string){
   await guardianDetail(db,teacherId,id);
@@ -146,13 +150,26 @@ export async function guardianDelete(db:Db,teacherId:string,id:string){
   if(error)throw failure(500,"DATABASE_ERROR","Unable to delete family");
   return {ok:true};
 }
-/** Website can display the new portal credential; MCP MUST redact it. */
-export async function guardianRotatePortalToken(db:Db,teacherId:string,id:string){
-  const {data,error}=await db.from("guardians")
-    .update({portal_token:generateShortToken()})
-    .eq("teacher_id",teacherId).eq("id",id)
-    .select("id,portal_token").maybeSingle();
-  if(error)throw failure(500,"DATABASE_ERROR","Unable to rotate family portal link");
-  if(!data)throw failure(404,"NOT_FOUND","Family not found");
-  return data;
+/** Website can display the new portal credential; MCP MUST redact it.
+ * Optional requestId makes an approved retry return the same rotation receipt.
+ * The SQL transaction validates the authenticated tenant independently.
+ */
+export async function guardianRotatePortalToken(
+  db:Db,teacherId:string,id:string,requestId?:string
+){
+  if(requestId!==undefined&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId))
+    throw failure(400,"VALIDATION_ERROR","Rotation requestId must be a UUID");
+  const {data,error}=await db.rpc("ccp_guardian_rotate_portal_token",{
+    p_guardian_id:id,p_request_id:requestId??null,
+  });
+  void teacherId;
+  if(error){
+    if(error.code==="23505")throw failure(409,"IDEMPOTENCY_CONFLICT",
+      "This rotation requestId was used for a different family");
+    if(error.code==="42501")throw failure(404,"NOT_FOUND","Family not found");
+    throw failure(500,"DATABASE_ERROR","Unable to rotate family portal link");
+  }
+  if(!data||typeof data!=="object"||Array.isArray(data))
+    throw failure(500,"DATABASE_ERROR","Portal rotation returned an invalid receipt");
+  return data as {id:string;portal_token:string;replayed:boolean};
 }

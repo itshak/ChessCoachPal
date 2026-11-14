@@ -1,7 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CoachError } from "@/lib/server/coach-service";
-import { normalizeLearningLink } from "@/lib/chess-learning";
 
 type Db = SupabaseClient;
 const missing = () => new CoachError("NOT_FOUND", 404, "Record not found");
@@ -12,10 +11,7 @@ type ObservationInput = {
   studentId: string; categoryId: string; sessionId?: string;
   observation: string; observedAt?: string; requestId?: string;
 };
-type ResourceInput = {
-  studentId?: string; sessionId?: string; label: string; url: string;
-  resourceType: "lichess_study" | "external"; requestId?: string;
-};
+
 
 async function checkContext(db: Db, teacherId: string, studentId?: string, sessionId?: string) {
   if (studentId) {
@@ -70,6 +66,32 @@ export async function chessCategoriesUpdate(db: Db, teacherId: string,
   if (error) throw failed();
   if (!data) throw missing();
   return data;
+}
+
+/** Deleting a skill category must never cascade teacher-attested chess observations. */
+export async function chessCategoriesDeleteImpact(db:Db,teacherId:string,categoryId:string) {
+  const {data:category,error:lookupError}=await db.from("chess_skill_categories")
+    .select("id,name").eq("teacher_id",teacherId).eq("id",categoryId).maybeSingle();
+  if(lookupError)throw failed();
+  if(!category)throw missing();
+  const {count,error}=await db.from("chess_observations")
+    .select("id",{count:"exact",head:true})
+    .eq("teacher_id",teacherId).eq("category_id",categoryId);
+  if(error)throw failed();
+  return {categoryId,name:category.name,observationCount:count??0,
+    canDelete:(count??0)===0};
+}
+export async function chessCategoriesDelete(db:Db,teacherId:string,categoryId:string){
+  const impact=await chessCategoriesDeleteImpact(db,teacherId,categoryId);
+  if(!impact.canDelete)throw conflict();
+  // The observation FK is RESTRICT/NO ACTION: concurrent history insertion
+  // cannot be silently cascaded between preview and DELETE.
+  const {data,error}=await db.from("chess_skill_categories").delete()
+    .eq("teacher_id",teacherId).eq("id",categoryId).select("id").maybeSingle();
+  if(error?.code==="23503")throw conflict();
+  if(error)throw failed();
+  if(!data)throw missing();
+  return {deleted:true,categoryId};
 }
 
 export async function chessObservationsList(db: Db, teacherId: string,
@@ -152,67 +174,3 @@ export async function chessObservationsApprove(db:Db,teacherId:string,id:string)
   return data;
 }
 
-export async function chessResourcesList(db:Db,teacherId:string,
-  input:{studentId?:string;sessionId?:string}) {
-  if (!input.studentId && !input.sessionId)
-    throw new CoachError("VALIDATION_ERROR",400,"Choose a student or session");
-  await checkContext(db,teacherId,input.studentId,input.sessionId);
-  let query=db.from("chess_learning_resources")
-    .select("id,student_id,session_id,label,url,resource_type,provider_study_id,provider_chapter_id,created_at,updated_at")
-    .eq("teacher_id",teacherId).order("created_at",{ascending:false}).limit(200);
-  if (input.studentId && input.sessionId) {
-    query=query.or("student_id.eq."+input.studentId+",session_id.eq."+input.sessionId);
-  } else if (input.studentId) query=query.eq("student_id",input.studentId);
-  else query=query.eq("session_id",input.sessionId!);
-  const {data,error}=await query;
-  if (error) throw failed();
-  return data;
-}
-
-export async function chessResourcesCreate(db:Db,teacherId:string,input:ResourceInput) {
-  if (!input.studentId && !input.sessionId)
-    throw new CoachError("VALIDATION_ERROR",400,"Choose a student or session");
-  await checkContext(db,teacherId,input.studentId,input.sessionId);
-  let normalized:ReturnType<typeof normalizeLearningLink>;
-  try {normalized=normalizeLearningLink(input.url,input.resourceType);}
-  catch(error) {throw new CoachError("VALIDATION_ERROR",400,error instanceof Error?error.message:"Invalid learning link");}
-  const row={
-    teacher_id:teacherId,student_id:input.studentId??null,session_id:input.sessionId??null,
-    label:input.label,url:normalized.url,resource_type:normalized.resourceType,
-    provider_study_id:normalized.providerStudyId,provider_chapter_id:normalized.providerChapterId,
-    request_id:input.requestId??null,
-  };
-  const fields="id,student_id,session_id,label,url,resource_type,provider_study_id,provider_chapter_id";
-  const {data,error}=await db.from("chess_learning_resources").insert(row).select(fields).single();
-  if (error?.code==="23505" && input.requestId) {
-    const {data:old}=await db.from("chess_learning_resources").select(fields)
-      .eq("teacher_id",teacherId).eq("request_id",input.requestId).maybeSingle();
-    if (old && old.student_id===row.student_id && old.session_id===row.session_id &&
-        old.label===row.label && old.url===row.url &&
-        old.resource_type===row.resource_type) return old;
-    throw conflict();
-  }
-  if (error?.code==="23503" || error?.code==="23514") throw missing();
-  if (error) throw failed();
-  return data;
-}
-
-export async function chessResourcesUpdate(db:Db,teacherId:string,id:string,
-  input:{label?:string;url?:string;resourceType?:"lichess_study"|"external"}) {
-  const {data:old,error:readError}=await db.from("chess_learning_resources")
-    .select("label,url,resource_type").eq("teacher_id",teacherId).eq("id",id).maybeSingle();
-  if (readError) throw failed();
-  if (!old) throw missing();
-  let normalized:ReturnType<typeof normalizeLearningLink>;
-  try {normalized=normalizeLearningLink(input.url??old.url,input.resourceType??old.resource_type);}
-  catch(error) {throw new CoachError("VALIDATION_ERROR",400,error instanceof Error?error.message:"Invalid learning link");}
-  const {data,error}=await db.from("chess_learning_resources").update({
-    label:input.label??old.label,url:normalized.url,resource_type:normalized.resourceType,
-    provider_study_id:normalized.providerStudyId,provider_chapter_id:normalized.providerChapterId,
-    updated_at:new Date().toISOString(),
-  }).eq("teacher_id",teacherId).eq("id",id)
-    .select("id,student_id,session_id,label,url,resource_type,provider_study_id,provider_chapter_id").maybeSingle();
-  if (error) throw failed();
-  if (!data) throw missing();
-  return data;
-}

@@ -67,3 +67,25 @@ A separate [OpenSpec proposal](openspec/changes/support-conversational-lesson-an
 ## MCP-first complete feature parity — REQUIRED, not achieved
 
 All teacher-business website features and ordinary editable fields, including material history and **reports**, must be accessible through the existing authenticated **/mcp** connector. Changing a website form without providing the corresponding MCP operation/tests is incomplete. Sensitive actions require scoped approvals and may hand off to secure web consent, but cannot be silently omitted. The [93-scenario website/MCP checklist](docs/MCP_WEBSITE_PARITY_CHECKLIST.md) and [automated source inventory](scripts/mcp-website-parity.json) document today's 40 missing + 3 partial teacher-business API route parity gaps (of 43; 61 API routes/17 teacher pages/49 components). The normal CI inventory audit is green only when coverage claims match code; the release's **strict** parity command intentionally fails until the gaps and real website↔MCP behavioral tests are resolved. Existing live Codex student/workplace creation is a successful subset, not full parity.
+
+## Database schema (prelaunch fresh installs)
+
+ChessCoachPal uses **one current PostgreSQL installation snapshot**:
+`supabase/migrations/20261107000000_chesscoachpal_baseline.sql`.
+The project does not support previous database schemas, conversion scripts,
+material-ID mapping bridges or a version-negotiated teacher backup format.
+Start each disposable development database from a **fresh schema and seed**.
+Do not run an upgrade chain. `npm run schema:canonical:guard` enforces this
+rule automatically in CI. The additional `npm run schema:canonical:strict`
+release check must stay blocked until every source and material-evidence
+write references the single typed material catalog instead of a separate
+resource model.
+
+**Important:** A development reset is destructive. Do not reset any instance
+that may contain actual teacher/student records unless its operator has
+explicitly authorized deletion after reviewing and exporting the data.
+
+The canonical catalog is `learning_materials` with typed game, puzzle,
+drill, study-chapter and link records. The separate resource-link/teaching
+evidence service is being consolidated to the same material IDs and is
+not accepted as finished until the strict MCP parity campaign passes.

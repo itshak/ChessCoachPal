@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { EventAttributes } from "ics";
 import { createServiceClient } from "@/lib/supabase/server";
-import { materializeLessons, getPolicy } from "@/lib/server/scheduling";
-import { addDays, toLocalDateString, oneToOne } from "@/lib/schedule";
+import { getPolicy } from "@/lib/server/scheduling";
+import {materializeCanonicalSessions} from "@/lib/server/canonical-calendar-service";
+import {canonicalCalendarWindow} from "@/lib/server/canonical-calendar-read";
+import { addDays, toLocalDateString } from "@/lib/schedule";
 import { formatEventDateKey } from "@/lib/events";
 import {
   lessonEvent,
@@ -48,49 +50,28 @@ export async function GET(
   const today = toLocalDateString(new Date(), policy.timezone);
   const from = addDays(today, -7);
   const to = addDays(today, 84);
-  await materializeLessons(supabase, teacher.id, from, to);
-
-  const [lessonsRes, eventsRes] = await Promise.all([
-    supabase
-      .from("lessons")
-      .select(
-        "id, starts_at, duration_minutes, students ( name ), attendance!lesson_id ( status )"
-      )
-      .eq("teacher_id", teacher.id)
-      .gte("lesson_date", from)
-      .lte("lesson_date", to)
-      .order("starts_at"),
-    supabase
-      .from("events")
-      .select("id, title, location, starts_at, ends_at")
-      .eq("teacher_id", teacher.id)
-      .gte("starts_at", `${addDays(from, -1)}T00:00:00.000Z`)
-      .lte("starts_at", `${addDays(to, 2)}T00:00:00.000Z`)
+  await materializeCanonicalSessions(supabase,teacher.id,from,to,
+    {trustedServiceRole:true});
+  const [lessons,eventsRes]=await Promise.all([
+    canonicalCalendarWindow(supabase,teacher.id,from,to,policy.timezone),
+    supabase.from("events")
+      .select("id,title,location,starts_at,ends_at")
+      .eq("teacher_id",teacher.id)
+      .gte("starts_at",`${addDays(from,-1)}T00:00:00.000Z`)
+      .lte("starts_at",`${addDays(to,2)}T00:00:00.000Z`)
       .order("starts_at"),
   ]);
 
   const calName = policy.studio_name || "Lessons";
 
-  const lessonEvents: EventAttributes[] = (lessonsRes.data ?? [])
-    .filter((l) => {
-      const status = oneToOne(
-        l.attendance as { status: string }[] | { status: string } | null
-      )?.status;
-      return status !== "teacher_cancel" && status !== "student_cancel";
-    })
-    .map((l) =>
-      lessonEvent(
-        {
-          id: l.id,
-          starts_at: l.starts_at,
-          duration_minutes: l.duration_minutes,
-          studentName:
-            oneToOne(l.students as { name: string }[] | null)?.name ?? "Student",
-        },
-        calName,
-        policy.lesson_label
-      )
-    );
+  const lessonEvents:EventAttributes[]=lessons.filter(l=>
+    l.status!=="cancelled"&&l.participants.some(p=>
+      p.attendanceStatus!=="student_cancelled"&&
+      p.attendanceStatus!=="teacher_cancelled")
+  ).map(l=>lessonEvent({
+    id:l.id,starts_at:l.starts_at,duration_minutes:l.duration_minutes,
+    studentName:l.participants.map(p=>p.name).join(", "),
+  },calName,policy.lesson_label));
 
   // The events window is padded by a day either side because starts_at is a
   // timestamp while `from`/`to` are studio-local dates; filter on the local

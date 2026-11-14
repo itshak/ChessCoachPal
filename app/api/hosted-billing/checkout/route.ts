@@ -5,6 +5,7 @@ import {
   createPlatformStripe,
   getProMonthlyPriceId,
   isHostedCheckoutConfigured,
+  hostedBillingReturnOrigin,
 } from "@/lib/hosted-billing/stripe";
 
 /**
@@ -64,25 +65,26 @@ export async function POST() {
     );
   }
 
+  const origin=hostedBillingReturnOrigin();
+  if(!origin)return NextResponse.json({
+    error:"Hosted payment return URL is not safely configured",
+  },{status:503});
+
   let customerId = teacher.stripe_customer_id;
   if (!customerId) {
     const customer = await stripe.customers.create({
       email: teacher.email || user.email,
       metadata: { teacher_id: user.id },
-    });
+    },{idempotencyKey:"ccp-hosted-customer-"+user.id});
     customerId = customer.id;
-    await service
+    const {error:saveError}=await service
       .from("teachers")
       .update({ stripe_customer_id: customerId })
       .eq("id", user.id);
+    if(saveError)return NextResponse.json({
+      error:"Unable to save hosted billing customer; no checkout was started",
+    },{status:503});
   }
-
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  const origin =
-    siteUrl ||
-    (process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000");
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
@@ -97,5 +99,7 @@ export async function POST() {
     },
   });
 
+  if(!session.url||!session.url.startsWith("https://"))
+    return NextResponse.json({error:"Checkout URL is unavailable"},{status:503});
   return NextResponse.json({ url: session.url });
 }

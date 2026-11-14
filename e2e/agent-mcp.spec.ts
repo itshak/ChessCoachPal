@@ -77,7 +77,206 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     expect(r.status(),await r.text()).toBeLessThan(300);
     return (await r.json()).data;
   };
-  const suffix=Date.now().toString(36);
+  const suffix=randomUUID().slice(0,10);
+  // Typed reusable chess materials: website and MCP share one teacher-owned
+  // domain service. Game and puzzle must have distinct typed records.
+  for (const toolName of ["ccp_v1_learning_materials_list",
+    "ccp_v1_learning_materials_get","ccp_v1_learning_materials_create"])
+    expect(names).toContain(toolName);
+  const gameRequestId=randomUUID();
+  const gameArguments={
+    kind:"game",title:"MCP Steinitz game "+suffix,description:"Annotated source game",
+    sourceUrl:null,requestId:gameRequestId,
+    details:{pgn:"1. e4 e5 2. Nf3 Nc6 *",whitePlayer:"White",blackPlayer:"Black",result:"*"},
+  };
+  const gameCreated=(await mcp("tools/call",{name:"ccp_v1_learning_materials_create",
+    arguments:gameArguments})).structuredContent;
+  expect(gameCreated.error).toBeUndefined();
+  expect(gameCreated.data.replayed).toBe(false);
+  const typedGameMaterialId=gameCreated.data.material.id as string;
+  const websiteGame=await page.request.get("/api/training/materials?id="+typedGameMaterialId);
+  expect(websiteGame.status(),await websiteGame.text()).toBe(200);
+  expect(gameCreated.data.material).toEqual(await websiteGame.json());
+  expect(gameCreated.data.material.chess_games.pgn).toContain("Nf3");
+  expect(gameCreated.data.material.chess_puzzles).toBeNull();
+  // Canonical typed-material correction now uses one atomic root+subtype
+  // revision-checked transaction in both website and delegated MCP.
+  expect(names).toContain("ccp_v1_learning_materials_update");
+  const correction={
+    ...gameArguments,title:"MCP Steinitz game "+suffix+" corrected",
+    materialId:typedGameMaterialId,
+    expectedRevision:gameCreated.data.material.revision as number,
+    requestId:randomUUID(),confirmed:true,
+  };
+  const correctedWeb=await page.request.patch("/api/training/materials",{data:correction});
+  expect(correctedWeb.status(),await correctedWeb.text()).toBe(200);
+  const correctedMaterial=(await correctedWeb.json()).material;
+  expect(correctedMaterial.revision).toBe(correction.expectedRevision+1);
+  expect(correctedMaterial.title).toBe(correction.title);
+  const correctedMcp=(await mcp("tools/call",{name:"ccp_v1_learning_materials_get",
+    arguments:{materialId:typedGameMaterialId}})).structuredContent;
+  expect(correctedMcp.data).toEqual(correctedMaterial);
+  const correctedReplay=(await mcp("tools/call",{name:"ccp_v1_learning_materials_update",
+    arguments:correction})).structuredContent;
+  expect(correctedReplay.error).toBeUndefined();
+  expect(correctedReplay.data.replayed).toBe(true);
+  expect(correctedReplay.data.resultingRevision).toBe(correctedMaterial.revision);
+  const correctionConflict=(await mcp("tools/call",{name:"ccp_v1_learning_materials_update",
+    arguments:{...correction,title:"Different correction using same key"}})).structuredContent;
+  expect(correctionConflict.error.code).toBe("IDEMPOTENCY_CONFLICT");
+  const correctionStale=(await mcp("tools/call",{name:"ccp_v1_learning_materials_update",
+    arguments:{...correction,requestId:randomUUID()}})).structuredContent;
+  expect(correctionStale.error.code).toBe("STALE_REVISION");
+  const concurrentCorrection={
+    ...correction,requestId:randomUUID(),
+    expectedRevision:correctedMaterial.revision as number,
+    title:"MCP Steinitz game "+suffix+" concurrently revised",
+  };
+  const [parallelWeb,parallelMcp]=await Promise.all([
+    page.request.patch("/api/training/materials",{data:concurrentCorrection}),
+    mcp("tools/call",{name:"ccp_v1_learning_materials_update",
+      arguments:concurrentCorrection}),
+  ]);
+  expect(parallelWeb.status(),await parallelWeb.text()).toBe(200);
+  expect(parallelMcp.structuredContent.error).toBeUndefined();
+  const webParallel=await parallelWeb.json();
+  const modelParallel=parallelMcp.structuredContent.data;
+  expect(webParallel.resultingRevision).toBe(correctedMaterial.revision+1);
+  expect(modelParallel.resultingRevision).toBe(webParallel.resultingRevision);
+  expect(webParallel.material.id).toBe(typedGameMaterialId);
+  expect(modelParallel.material.id).toBe(typedGameMaterialId);
+  expect([webParallel.replayed,modelParallel.replayed].sort()).toEqual([false,true]);
+  const gameReplay=(await mcp("tools/call",{name:"ccp_v1_learning_materials_create",
+    arguments:gameArguments})).structuredContent;
+  expect(gameReplay.data.replayed).toBe(true);
+  expect(gameReplay.data.material.id).toBe(typedGameMaterialId);
+  const gameConflict=(await mcp("tools/call",{name:"ccp_v1_learning_materials_create",
+    arguments:{...gameArguments,title:"Changed title with same request ID"}})).structuredContent;
+  expect(gameConflict.error.code).toBe("IDEMPOTENCY_CONFLICT");
+
+  const puzzleRequest={
+    kind:"puzzle",title:"Website fork puzzle "+suffix,description:"Synthetic position",sourceUrl:null,
+    requestId:randomUUID(),
+    details:{fen:"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",solution:null,themes:["fork"]},
+  };
+  const puzzleWeb=await page.request.post("/api/training/materials",{data:puzzleRequest});
+  expect(puzzleWeb.status(),await puzzleWeb.text()).toBe(201);
+  const puzzleId=(await puzzleWeb.json()).material.id as string;
+  const puzzleMcp=(await mcp("tools/call",{name:"ccp_v1_learning_materials_get",
+    arguments:{materialId:puzzleId}})).structuredContent;
+  expect(puzzleMcp.error).toBeUndefined();
+  expect(puzzleMcp.data.chess_puzzles.themes).toEqual(["fork"]);
+  expect(puzzleMcp.data.chess_games).toBeNull();
+  for (const toolName of ["ccp_v1_learning_material_relations_list",
+    "ccp_v1_learning_material_relation_change"])
+    expect(names).toContain(toolName);
+  const linkInput={
+    fromMaterialId:puzzleId,toMaterialId:typedGameMaterialId,
+    relationType:"extracted_from",action:"link",
+    expectedRevision:puzzleMcp.data.revision as number,
+    requestId:randomUUID(),confirmed:true,
+  };
+  const linkedWeb=await page.request.post("/api/training/materials/relations",{data:linkInput});
+  expect(linkedWeb.status(),await linkedWeb.text()).toBe(200);
+  const linkResult=await linkedWeb.json();
+  expect(linkResult.receipt.replayed).toBe(false);
+  expect(linkResult.source.revision).toBe(linkInput.expectedRevision+1);
+  const relationList=(await mcp("tools/call",{
+    name:"ccp_v1_learning_material_relations_list",
+    arguments:{materialId:puzzleId},
+  })).structuredContent;
+  expect(relationList.error).toBeUndefined();
+  const relationsWeb=await page.request.get("/api/training/materials/relations?"+
+    new URLSearchParams({materialId:puzzleId}));
+  expect(relationsWeb.status(),await relationsWeb.text()).toBe(200);
+  expect(relationList.data).toEqual(await relationsWeb.json());
+  expect(relationList.data.relations).toEqual(expect.arrayContaining([
+    expect.objectContaining({from_material_id:puzzleId,to_material_id:typedGameMaterialId,
+      relation_type:"extracted_from"}),
+  ]));
+  const linkReplay=(await mcp("tools/call",{
+    name:"ccp_v1_learning_material_relation_change",arguments:linkInput,
+  })).structuredContent;
+  expect(linkReplay.error).toBeUndefined();
+  expect(linkReplay.data.receipt.replayed).toBe(true);
+  const linkConflict=(await mcp("tools/call",{
+    name:"ccp_v1_learning_material_relation_change",
+    arguments:{...linkInput,requestId:randomUUID(),expectedRevision:linkInput.expectedRevision},
+  })).structuredContent;
+  expect(linkConflict.error.code).toBe("STALE_REVISION");
+  const unlinkArgs={...linkInput,action:"unlink",
+    expectedRevision:linkResult.source.revision,requestId:randomUUID()};
+  const unlinked=(await mcp("tools/call",{
+    name:"ccp_v1_learning_material_relation_change",arguments:unlinkArgs,
+  })).structuredContent;
+  expect(unlinked.error).toBeUndefined();
+  expect(unlinked.data.receipt.replayed).toBe(false);
+  const emptyRelations=await page.request.get("/api/training/materials/relations?"+
+    new URLSearchParams({materialId:puzzleId}));
+  expect(emptyRelations.status()).toBe(200);
+  expect((await emptyRelations.json()).relations).toEqual([]);
+  // Archive is not destructive: it requires a dependency preview, can be
+  // replayed across clients, and preserves the typed record for restoration.
+  for(const name of ["ccp_v1_learning_material_archive_preview",
+    "ccp_v1_learning_material_lifecycle_change"])
+    expect(names).toContain(name);
+  const archivePreview=(await mcp("tools/call",{
+    name:"ccp_v1_learning_material_archive_preview",
+    arguments:{materialId:puzzleId},
+  })).structuredContent;
+  expect(archivePreview.error).toBeUndefined();
+  expect(archivePreview.data.canArchive).toBe(true);
+  expect(archivePreview.data.assignmentCount).toBe(0);
+  const materialArchivePreviewWeb=await page.request.get("/api/training/materials/lifecycle?"+
+    new URLSearchParams({materialId:puzzleId}));
+  expect(materialArchivePreviewWeb.status()).toBe(200);
+  expect(archivePreview.data).toEqual(await materialArchivePreviewWeb.json());
+  const archiveInput={
+    materialId:puzzleId,expectedRevision:archivePreview.data.revision as number,
+    action:"archive",requestId:randomUUID(),confirmed:true,
+  };
+  const [archiveBrowser,archiveModel]=await Promise.all([
+    page.request.post("/api/training/materials/lifecycle",{data:archiveInput}),
+    mcp("tools/call",{name:"ccp_v1_learning_material_lifecycle_change",
+      arguments:archiveInput}),
+  ]);
+  expect(archiveBrowser.status(),await archiveBrowser.text()).toBe(200);
+  expect(archiveModel.structuredContent.error).toBeUndefined();
+  const archiveWeb=await archiveBrowser.json();
+  const archiveMcp=archiveModel.structuredContent;
+  expect(archiveMcp.data.material.archived_at).not.toBeNull();
+  expect(archiveMcp.data.receipt.revision).toBe(archiveWeb.receipt.revision);
+  expect([archiveWeb.receipt.replayed,archiveMcp.data.receipt.replayed].sort()).toEqual([false,true]);
+  const archivedList=await page.request.get("/api/training/materials?"+
+    new URLSearchParams({kind:"puzzle",query:"Website fork puzzle "+suffix,limit:"30",offset:"0"}));
+  expect(archivedList.status()).toBe(200);
+  expect((await archivedList.json()).total).toBe(0);
+  const archivedListMcp=(await mcp("tools/call",{
+    name:"ccp_v1_learning_materials_list",
+    arguments:{kind:"puzzle",query:"Website fork puzzle "+suffix,
+      includeArchived:true,limit:30,offset:0},
+  })).structuredContent;
+  expect(archivedListMcp.error).toBeUndefined();
+  expect(archivedListMcp.data.materials.some((m:{id:string})=>m.id===puzzleId)).toBe(true);
+  const materialRestore=await page.request.post("/api/training/materials/lifecycle",{data:{
+    materialId:puzzleId,expectedRevision:archiveMcp.data.material.revision,
+    action:"restore",requestId:randomUUID(),confirmed:true,
+  }});
+  expect(materialRestore.status(),await materialRestore.text()).toBe(200);
+  expect((await materialRestore.json()).material.archived_at).toBeNull();
+  const invalidFen=await page.request.post("/api/training/materials",{data:{
+    ...puzzleRequest,requestId:randomUUID(),
+    details:{...puzzleRequest.details,fen:"not a valid chess FEN"},
+  }});
+  expect(invalidFen.status()).toBe(400);
+  const catalogList=(await mcp("tools/call",{name:"ccp_v1_learning_materials_list",
+    arguments:{kind:"game",query:"MCP Steinitz game "+suffix,limit:30,offset:0}})).structuredContent;
+  expect(catalogList.error).toBeUndefined();
+  const websiteCatalog=await page.request.get("/api/training/materials?"+
+    new URLSearchParams({kind:"game",query:"MCP Steinitz game "+suffix,limit:"30",offset:"0"}));
+  expect(websiteCatalog.status()).toBe(200);
+  expect(catalogList.data).toEqual(await websiteCatalog.json());
+  expect(catalogList.data.total).toBe(1);
   // Dashboard and notifications share the exact same tenant-scoped service.
   expect(names).toContain("ccp_v1_dashboard_summary");
   const dashboard = (await mcp("tools/call", {
@@ -127,11 +326,103 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
 
   const workplace=await postDomain({action:"workplaces.create",name:"Agent test "+suffix,timezone:"UTC"});
   const student=await postDomain({action:"students.create",name:"Agent synthetic learner "+suffix});
+
+  // Instructor-assigned homework has its own lifecycle, distinct from the
+  // typed chess material and independently reviewed skill assessments.
+  for(const toolName of ["ccp_v1_training_assignments_list",
+    "ccp_v1_training_assignments_create","ccp_v1_training_attempt_record",
+    "ccp_v1_training_review_record"])
+    expect(names).toContain(toolName);
+  const homeworkInput={
+    studentIds:[student.id],materialId:typedGameMaterialId,
+    instructions:"Annotate two alternative moves",dueOn:null,
+    requestId:randomUUID(),confirmed:true,
+  };
+  const assigned=(await mcp("tools/call",{
+    name:"ccp_v1_training_assignments_create",arguments:homeworkInput,
+  })).structuredContent;
+  expect(assigned.error).toBeUndefined();
+  expect(assigned.data.studentCount).toBe(1);
+  expect(assigned.data.replayed).toBe(false);
+  const homeworkId=assigned.data.assignmentIds[0] as string;
+  const replayedHomework=(await mcp("tools/call",{
+    name:"ccp_v1_training_assignments_create",arguments:homeworkInput,
+  })).structuredContent;
+  expect(replayedHomework.data.assignmentIds[0]).toBe(homeworkId);
+  expect(replayedHomework.data.replayed).toBe(true);
+  const homeworkRange=new URLSearchParams({studentId:student.id,limit:"30",offset:"0"});
+  const homeworkWeb=await page.request.get("/api/training/assignments?"+homeworkRange);
+  expect(homeworkWeb.status(),await homeworkWeb.text()).toBe(200);
+  const homeworkMcp=(await mcp("tools/call",{
+    name:"ccp_v1_training_assignments_list",
+    arguments:{studentId:student.id,limit:30,offset:0},
+  })).structuredContent;
+  expect(homeworkMcp.error).toBeUndefined();
+  expect(homeworkMcp.data).toEqual(await homeworkWeb.json());
+  expect(homeworkMcp.data.assignments[0].learning_materials.kind).toBe("game");
+  const attemptArgs={
+    assignmentId:homeworkId,outcome:"completed",note:"Coach observed homework completed",
+    requestId:randomUUID(),confirmed:true,
+  };
+  const attemptResult=(await mcp("tools/call",{
+    name:"ccp_v1_training_attempt_record",arguments:attemptArgs,
+  })).structuredContent;
+  expect(attemptResult.error).toBeUndefined();
+  const completedAttemptId=attemptResult.data.attemptId as string;
+  const attemptRepeat=(await mcp("tools/call",{
+    name:"ccp_v1_training_attempt_record",arguments:attemptArgs,
+  })).structuredContent;
+  expect(attemptRepeat.data.attemptId).toBe(completedAttemptId);
+  expect(attemptRepeat.data.replayed).toBe(true);
+  const review=await page.request.patch("/api/training/assignments",{data:{
+    action:"review",assignmentId:homeworkId,attemptId:completedAttemptId,
+    verdict:"needs_work",feedback:"Explain the missed candidate move",
+    requestId:randomUUID(),confirmed:true,
+  }});
+  expect(review.status(),await review.text()).toBe(200);
+  const reviewedHomework=(await mcp("tools/call",{
+    name:"ccp_v1_training_assignments_list",
+    arguments:{studentId:student.id,limit:30,offset:0},
+  })).structuredContent;
+  expect(reviewedHomework.error).toBeUndefined();
+  expect(reviewedHomework.data.assignments[0].assignment_attempts[0].outcome).toBe("completed");
+  expect(reviewedHomework.data.assignments[0].assignment_reviews[0].verdict).toBe("needs_work");
+  const reviewedWeb=await page.request.get("/api/training/assignments?"+homeworkRange);
+  expect(reviewedHomework.data).toEqual(await reviewedWeb.json());
+  // The student-focused next-lesson briefing is deterministic, offline-ready
+  // and identical when read via authenticated website or delegated MCP.
+  expect(names).toContain("ccp_v1_coach_briefing_get");
+  const briefingTo=new Date().toISOString().slice(0,10);
+  const briefingFrom=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  const briefingInput={studentId:student.id,from:briefingFrom,to:briefingTo,limit:20};
+  const briefingMcp=(await mcp("tools/call",{
+    name:"ccp_v1_coach_briefing_get",arguments:briefingInput,
+  })).structuredContent;
+  expect(briefingMcp.error).toBeUndefined();
+  const briefingWeb=await page.request.get("/api/coaching/briefing?"+
+    new URLSearchParams({studentId:student.id,from:briefingFrom,to:briefingTo,limit:"20"}));
+  expect(briefingWeb.status(),await briefingWeb.text()).toBe(200);
+  expect(briefingMcp.data).toEqual(await briefingWeb.json());
+  expect(briefingMcp.data.student.name).toBe(student.name);
+  expect(briefingMcp.data.homework.entries.some(
+    (entry:{id:string})=>entry.id===homeworkId)).toBe(true);
+  expect(briefingMcp.data.basis).toBe("stored_teacher_owned_records_no_inferred_mastery");
+  const invalidHomework=(await mcp("tools/call",{
+    name:"ccp_v1_training_assignments_create",
+    arguments:{...homeworkInput,requestId:randomUUID(),materialId:randomUUID()},
+  })).structuredContent;
+  expect(invalidHomework.error.code).toBe("NOT_FOUND");
+
   const group=await postDomain({action:"groups.create",workplaceId:workplace.id,name:"Class "+suffix});
   await postDomain({action:"groups.enroll",groupId:group.id,studentId:student.id});
   const sessionRecord=await postDomain({action:"sessions.create",requestId:randomUUID(),
     workplaceId:workplace.id,groupId:group.id,title:"Agent lesson "+suffix,
     startsAt:"2027-04-12T14:00:00.000Z",durationMinutes:60,lessonNote:"Original"});
+  // The history evidence clock counts observed attendance, not booked time.
+  const recorded=await postDomain({action:"attendance.record",
+    sessionId:sessionRecord.id,studentId:student.id,status:"present",
+    note:"Actual coaching completed"});
+  expect(recorded).toBeTruthy();
   // The website and the delegated MCP grant must return identical scoped report data.
   const reportArgs = { workplaceId: workplace.id, from: "2027-04-12", to: "2027-04-12" };
   expect(names).toContain("ccp_v1_reports_workplace_summary");
@@ -159,7 +450,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
 
   // Chess learning tool contract: agents can propose and link, but cannot approve.
   for (const name of ["ccp_v1_chess_categories_list","ccp_v1_chess_observations_propose",
-    "ccp_v1_chess_resources_link","ccp_v1_chess_observations_list","ccp_v1_chess_resources_list"]) {
+    "ccp_v1_material_links_create","ccp_v1_chess_observations_list","ccp_v1_material_links_list"]) {
     expect(names).toContain(name);
   }
   expect(names).not.toContain("ccp_v1_chess_observations_approve");
@@ -176,28 +467,36 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(proposed.data.source).toBe("agent");
   expect(proposed.data.verified_at).toBeNull();
-  const linked=(await mcp("tools/call",{
-    name:"ccp_v1_chess_resources_link",arguments:{
-      studentId:student.id,sessionId:sessionRecord.id,
-      label:"Synthetic Lichess opposition study",
-      url:"https://lichess.org/study/Ab12Cd34",resourceType:"lichess_study",
+  const typedMaterial=(await mcp("tools/call",{
+    name:"ccp_v1_learning_materials_create",arguments:{
+      kind:"study_chapter",title:"Synthetic study of opposition "+suffix,
+      description:"",sourceUrl:"https://lichess.org/study/Ab12Cd34",
+      details:{provider:"lichess",studyId:"Ab12Cd34",chapterId:null},
       requestId:randomUUID(),
     },
   })).structuredContent;
-  expect(linked.data.provider_study_id).toBe("Ab12Cd34");
+  expect(typedMaterial.error).toBeUndefined();
+  const canonicalMaterialId=typedMaterial.data.material.id as string;
+  const linked=(await mcp("tools/call",{
+    name:"ccp_v1_material_links_create",arguments:{
+      studentId:student.id,sessionId:sessionRecord.id,
+      materialId:canonicalMaterialId,requestId:randomUUID(),confirmed:true,
+    },
+  })).structuredContent;
+  expect(linked.data.link.material_id).toBe(canonicalMaterialId);
   const observations=(await mcp("tools/call",{
     name:"ccp_v1_chess_observations_list",arguments:{studentId:student.id},
   })).structuredContent.data;
   expect(observations.some((v:{id:string})=>v.id===proposed.data.id)).toBe(true);
-  const resources=(await mcp("tools/call",{
-    name:"ccp_v1_chess_resources_list",arguments:{studentId:student.id},
-  })).structuredContent.data;
-  expect(resources.some((v:{id:string})=>v.id===linked.data.id)).toBe(true);
+  const associations=(await mcp("tools/call",{
+    name:"ccp_v1_material_links_list",arguments:{studentId:student.id},
+  })).structuredContent.data.links;
+  expect(associations.some((v:{id:string})=>v.id===linked.data.link.id)).toBe(true);
   // Explicit material evidence is different from a resource URL being linked.
   // Teacher-confirmed stage, workplace, session roster and page summaries must
   // match between the website and the delegated OAuth client.
   for(const toolName of ["ccp_v1_materials_history_list",
-    "ccp_v1_materials_history_record","ccp_v1_materials_history_void"])
+    "ccp_v1_materials_history_record","ccp_v1_materials_history_void","ccp_v1_materials_aggregate"])
     expect(names).toContain(toolName);
   const emptyMaterial=(await mcp("tools/call",{name:"ccp_v1_materials_history_list",
     arguments:{studentId:student.id,workplaceId:workplace.id},
@@ -207,7 +506,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const materialClaimKey=randomUUID();
   const materialClaimArgs={
     studentId:student.id,workplaceId:workplace.id,sessionId:sessionRecord.id,
-    resourceId:linked.data.id,stage:"taught",occurredOn:"2027-04-12",
+    materialId:canonicalMaterialId,stage:"taught",occurredOn:"2027-04-12",
     note:"Opposition and corresponding squares",requestId:materialClaimKey,confirmed:true,
   };
   const materialWritten=(await mcp("tools/call",{name:"ccp_v1_materials_history_record",
@@ -239,6 +538,15 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(materialMcp.data.entries[0].id).toBe(materialId);
   expect(materialMcp.data.pageSummary.uniqueSessionMaterialCount).toBe(1);
   expect(materialMcp.data.truthBasis).toBe("explicit_teacher_record_only");
+  const fullAggregate=(await mcp("tools/call",{name:"ccp_v1_materials_aggregate",
+    arguments:{studentId:student.id,workplaceId:workplace.id,from:"2027-04-12",to:"2027-04-12"},
+  })).structuredContent;
+  const webAggregate=await page.request.get("/api/coaching/materials?"+materialRange+"&aggregate=true");
+  expect(webAggregate.status(),await webAggregate.text()).toBe(200);
+  expect(fullAggregate.data).toEqual(await webAggregate.json());
+  expect(fullAggregate.data.summaryScope).toBe("entire_filtered_history");
+  expect(fullAggregate.data.stages.taught).toBe(1);
+  expect(fullAggregate.data.stages.completed).toBe(0);
   const materialVoided=await page.request.patch("/api/coaching/materials",{
     data:{entryId:materialId,expectedUpdatedAt:materialWritten.data.updated_at,
       reason:"Synthetic correction: the study was not actually taught",confirmed:true},
@@ -248,6 +556,10 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     arguments:{studentId:student.id},
   })).structuredContent;
   expect(materialGone.data.entries.some((row:{id:string})=>row.id===materialId)).toBe(false);
+  const afterVoidAggregate=(await mcp("tools/call",{name:"ccp_v1_materials_aggregate",
+    arguments:{studentId:student.id,workplaceId:workplace.id},
+  })).structuredContent;
+  expect(afterVoidAggregate.data.evidenceClaims).toBe(0);
   const materialAudit=(await mcp("tools/call",{name:"ccp_v1_materials_history_list",
     arguments:{studentId:student.id,includeVoided:true},
   })).structuredContent;
@@ -270,20 +582,8 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   // The delegated MCP bearer MUST NOT expose a second teacher's records.
   const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!, {auth:{persistSession:false,autoRefreshToken:false}});
-  // Two non-equivalent lesson tables can contain the same real lesson.
-  // Preserve both audit rows and count the instructor's clock time only once.
+  // Only one canonical historical occurrence is persisted and counted.
   expect(names).toContain("ccp_v1_lessons_history_unified");
-  const {data:legacyTwin,error:legacyTwinError}=await admin.from("lessons").insert({
-    teacher_id:session!.user.id,student_id:student.id,slot_id:null,
-    lesson_date:"2027-04-12",starts_at:"2027-04-12T14:00:00.000Z",
-    duration_minutes:60,
-  }).select("id").single();
-  expect(legacyTwinError).toBeNull();
-  const {error:legacyTwinAttendanceError}=await admin.from("attendance").insert({
-    lesson_id:legacyTwin!.id,status:"attended",
-    marked_at:new Date().toISOString(),
-  });
-  expect(legacyTwinAttendanceError).toBeNull();
   const historyArgs={from:"2027-04-12",to:"2027-04-12",studentId:student.id};
   const unifiedMcp=(await mcp("tools/call",{
     name:"ccp_v1_lessons_history_unified",arguments:historyArgs,
@@ -293,21 +593,19 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     new URLSearchParams(historyArgs));
   expect(unifiedSite.status(),await unifiedSite.text()).toBe(200);
   expect(unifiedMcp.data).toEqual(await unifiedSite.json());
-  expect(unifiedMcp.data.total).toBe(2);
-  expect(unifiedMcp.data.summary.coachingSessionCount).toBe(1);
-  expect(unifiedMcp.data.summary.unattributedLegacyLessonCount).toBe(1);
-  expect(unifiedMcp.data.summary.possibleCrossModelDuplicates).toBe(1);
+  expect(unifiedMcp.data.total).toBe(1);
+  expect(unifiedMcp.data.summary.canonicalSessionCount).toBe(1);
   expect(unifiedMcp.data.summary.bookedInstructorMinutes).toBe(60);
   expect(unifiedMcp.data.summary.evidencedInstructorMinutes).toBe(60);
-  expect(unifiedMcp.data.entries.some((x:{kind:string;possibleDuplicateOf?:string})=>
-    x.kind==="legacy"&&x.possibleDuplicateOf==="coaching:"+sessionRecord.id)).toBe(true);
+  expect(unifiedMcp.data.entries).toHaveLength(1);
+  expect(unifiedMcp.data.entries[0]).toMatchObject({
+    kind:"coaching",id:sessionRecord.id,
+  });
   const focusedWorkplace=(await mcp("tools/call",{
     name:"ccp_v1_lessons_history_unified",
     arguments:{from:"2027-04-12",to:"2027-04-12",workplaceId:workplace.id},
   })).structuredContent.data;
-  expect(focusedWorkplace.summary.coachingSessionCount).toBe(1);
-  expect(focusedWorkplace.summary.unattributedLegacyLessonCount).toBe(0);
-  expect(focusedWorkplace.warnings.join(" ")).toContain("Legacy lessons lack a workplace ID");
+  expect(focusedWorkplace.summary.canonicalSessionCount).toBe(1);
   const invalidHistory=(await mcp("tools/call",{
     name:"ccp_v1_lessons_history_unified",
     arguments:{from:"2027-04-13",to:"2027-04-12"},
@@ -370,7 +668,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(foreignMaterial.error.code).toBe("NOT_FOUND");
   const foreignMaterialWrite=(await mcp("tools/call",{
     name:"ccp_v1_materials_history_record",arguments:{
-      studentId:foreignStudent!.id,resourceId:linked.data.id,
+      studentId:foreignStudent!.id,materialId:canonicalMaterialId,
       stage:"taught",occurredOn:"2027-04-12",requestId:randomUUID(),confirmed:true,
     },
   })).structuredContent;
@@ -557,6 +855,61 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect((await call("ccp_v1_sessions_details",{sessionId:scheduled.entityId}))
     .structuredContent.data.participants).toHaveLength(1);
 
+
+  // Current workplace membership removal is symmetric across the browser and
+  // delegated MCP. The database must not silently cascade a group enrollment.
+  expect(names).toContain("ccp_v1_workplaces_unenroll");
+  const membershipStudent=(await call("ccp_v1_students_create",{
+    name:"Workplace lifecycle "+suffix,idempotencyKey:randomUUID(),
+  })).structuredContent.data.entityId as string;
+  await postDomain({action:"workplaces.enroll",
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent});
+  const removeMcp=(await call("ccp_v1_workplaces_unenroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
+  })).structuredContent.data;
+  expect(removeMcp).toEqual({workplace_id:madeWorkplace.entityId,
+    student_id:membershipStudent,removed:true});
+  const siteRoster=await postDomain({action:"workplaces.enrollments",
+    workplaceId:madeWorkplace.entityId});
+  expect(siteRoster.some((r:{student_id:string})=>r.student_id===membershipStudent)).toBe(false);
+  const removedAgain=(await call("ccp_v1_workplaces_unenroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
+  })).structuredContent.data;
+  expect(removedAgain.removed).toBe(false);
+  await call("ccp_v1_workplaces_enroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
+  });
+  const removeSite=await postDomain({action:"workplaces.unenroll",
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true});
+  expect(removeSite).toEqual(removeMcp);
+  expect((await call("ccp_v1_workplaces_enrollments",{
+    workplaceId:madeWorkplace.entityId,
+  })).structuredContent.data.some((r:{student_id:string})=>r.student_id===membershipStudent)).toBe(false);
+  await call("ccp_v1_groups_enroll",{
+    groupId:madeGroup.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
+  });
+  const groupBlocked=await call("ccp_v1_workplaces_unenroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
+  });
+  expect(groupBlocked.structuredContent.error.code).toBe("CONFLICT");
+  const siteBlocked=await page.request.post("/api/agent/v1",{data:{
+    action:"workplaces.unenroll",workplaceId:madeWorkplace.entityId,
+    studentId:membershipStudent,confirmed:true,
+  },headers:{Authorization:"Bearer "+session!.access_token}});
+  expect(siteBlocked.status()).toBe(409);
+  expect((await call("ccp_v1_groups_members",{groupId:madeGroup.entityId}))
+    .structuredContent.data.some((r:{student_id:string})=>r.student_id===membershipStudent)).toBe(true);
+  await call("ccp_v1_groups_unenroll",{
+    groupId:madeGroup.entityId,studentId:membershipStudent,
+    idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect((await call("ccp_v1_workplaces_unenroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
+  })).structuredContent.data.removed).toBe(true);
+  expect((await call("ccp_v1_workplaces_unenroll",{
+    workplaceId:foreignWorkplace!.id,studentId:membershipStudent,confirmed:true,
+  })).structuredContent.error.code).toBe("NOT_FOUND");
+
   const blockedTenant=await call("ccp_v1_groups_create",{
     workplaceId:foreignWorkplace!.id,name:"Cross-tenant attempt",
     idempotencyKey:randomUUID(),
@@ -572,7 +925,8 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
 
   // Browser/MCP student profile parity: chess fields, notes, aliases, archived records.
   for (const toolName of ["ccp_v1_students_roster","ccp_v1_students_profile",
-    "ccp_v1_students_profile_edit"]) expect(names).toContain(toolName);
+    "ccp_v1_students_profile_edit","ccp_v1_students_archive_preview",
+    "ccp_v1_students_delete_impact","ccp_v1_students_delete"]) expect(names).toContain(toolName);
   const profileId=madeStudent.entityId;
   const oldProfile=(await call("ccp_v1_students_profile",{studentId:profileId})).structuredContent.data;
   const oldSite=await page.request.get("/api/students/"+profileId);
@@ -616,6 +970,17 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     studentId:foreignStudent!.id,
   })).structuredContent;
   expect(forbiddenProfile.error.code).toBe("NOT_FOUND");
+  const previewMcp=(await call("ccp_v1_students_archive_preview",{
+    studentId:profileId,
+  })).structuredContent.data;
+  const previewWeb=await page.request.get("/api/students/"+profileId+"?archivePreview=true");
+  expect(previewWeb.status()).toBe(200);
+  expect(previewMcp).toEqual(await previewWeb.json());
+  expect(previewMcp.canArchive).toBe(true);
+  const foreignPreview=(await call("ccp_v1_students_archive_preview",{
+    studentId:foreignStudent!.id,
+  })).structuredContent;
+  expect(foreignPreview.error.code).toBe("NOT_FOUND");
   const archive=(await call("ccp_v1_students_profile_edit",{
     studentId:profileId,expectedUpdatedAt:actualProfile.updated_at,confirmed:true,
     changes:{archived:true},
@@ -633,6 +998,58 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   }));
   expect(restore.status(),await restore.text()).toBe(200);
   expect((await restore.json()).archived_at).toBeNull();
+
+  const historicalImpact=(await call("ccp_v1_students_delete_impact",{
+    studentId:profileId,
+  })).structuredContent.data;
+  expect(historicalImpact.canDelete).toBe(false);
+  expect(historicalImpact.blockers.sessionParticipants).toBeGreaterThan(0);
+  const blockedDelete=(await call("ccp_v1_students_delete",{
+    studentId:profileId,expectedUpdatedAt:historicalImpact.updatedAt,confirmed:true,
+  })).structuredContent;
+  expect(blockedDelete.error.code).toBe("HISTORY_DEPENDENCIES");
+  const empty=(await call("ccp_v1_students_create",{
+    name:"Unlinked deletion test "+suffix,idempotencyKey:randomUUID(),
+  })).structuredContent.data;
+  const studentDeleteImpact=(await call("ccp_v1_students_delete_impact",{
+    studentId:empty.entityId,
+  })).structuredContent.data;
+  const impactWeb=await page.request.get("/api/students/"+empty.entityId+"?deletePreview=true");
+  expect(impactWeb.status()).toBe(200);
+  expect(studentDeleteImpact).toEqual(await impactWeb.json());
+  expect(studentDeleteImpact.canDelete).toBe(true);
+  expect((await call("ccp_v1_students_delete_impact",{
+    studentId:foreignStudent!.id,
+  })).structuredContent.error.code).toBe("NOT_FOUND");
+  expect((await page.request.delete("/api/students/"+empty.entityId)).status()).toBe(400);
+  // A linked row added *after* an empty preview must make even a raw
+  // authenticated SQL DELETE fail, not cascade teaching/workplace history.
+  const addedMembership=await postDomain({action:"workplaces.enroll",
+    workplaceId:madeWorkplace.entityId,studentId:empty.entityId});
+  expect(addedMembership.student_id).toBe(empty.entityId);
+  const rawDelete=await userClient.from("students").delete()
+    .eq("teacher_id",session!.user.id).eq("id",empty.entityId);
+  expect(rawDelete.error?.code).toBe("23503");
+  expect(rawDelete.error?.message).toContain("HISTORY_DEPENDENCIES");
+  const staleMcpDelete=(await call("ccp_v1_students_delete",{
+    studentId:empty.entityId,expectedUpdatedAt:studentDeleteImpact.updatedAt,confirmed:true,
+  })).structuredContent;
+  expect(staleMcpDelete.error.code).toBe("HISTORY_DEPENDENCIES");
+  const staleWebsiteDelete=await page.request.delete("/api/students/"+empty.entityId,{
+    data:{confirmed:true,expectedUpdatedAt:studentDeleteImpact.updatedAt},
+  });
+  expect(staleWebsiteDelete.status()).toBe(409);
+  expect((await staleWebsiteDelete.json()).code).toBe("HISTORY_DEPENDENCIES");
+  const {error:membershipRemovalError}=await userClient.from("workplace_enrollments")
+    .delete().eq("teacher_id",session!.user.id)
+    .eq("workplace_id",madeWorkplace.entityId).eq("student_id",empty.entityId);
+  expect(membershipRemovalError).toBeNull();
+  const removedStudent=(await call("ccp_v1_students_delete",{
+    studentId:empty.entityId,expectedUpdatedAt:studentDeleteImpact.updatedAt,confirmed:true,
+  })).structuredContent;
+  expect(removedStudent.error).toBeUndefined();
+  expect(removedStudent.data.deleted).toBe(true);
+  expect((await page.request.get("/api/students/"+empty.entityId)).status()).toBe(404);
 
   // Skill dimensions and append-only assessments use the same scoped
   // website/MCP service. Never delete seed dimensions or another coach's data.
@@ -681,13 +1098,17 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     dimensionId:dimId,expectedAssessmentCount:0,confirmed:true,
   })).structuredContent;
   expect(rejectWrongCount.error.code).toBe("CONFLICT");
-  const deletedSkill=(await call("ccp_v1_skill_dimensions_delete",{
+  const refusedHistoryLoss=(await call("ccp_v1_skill_dimensions_delete",{
     dimensionId:dimId,expectedAssessmentCount:1,confirmed:true,
   })).structuredContent;
-  expect(deletedSkill.error).toBeUndefined();
-  expect(deletedSkill.data.deletedAssessmentCount).toBe(1);
-  const afterDeletion=await page.request.get("/api/students/"+profileId+"/skills");
-  expect((await afterDeletion.json()).some((x:{id:string})=>x.id===assessmentId)).toBe(false);
+  expect(refusedHistoryLoss.error.code).toBe("CONFLICT");
+  const afterRefusal=await page.request.get("/api/students/"+profileId+"/skills");
+  expect(afterRefusal.status()).toBe(200);
+  expect((await afterRefusal.json()).some((x:{id:string})=>x.id===assessmentId)).toBe(true);
+  const intactDimension=(await call("ccp_v1_skill_dimensions_delete_impact",{
+    dimensionId:dimId,
+  })).structuredContent.data;
+  expect(intactDimension).toMatchObject({assessmentCount:1,canDelete:false});
 
   // Guardian/contact lifecycle parity with secret redaction and cross-tenant denial.
   for(const toolName of ["ccp_v1_guardians_list","ccp_v1_guardians_detail",
@@ -748,124 +1169,14 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(foreignFamily.error.code).toBe("NOT_FOUND");
 
-  // Private legacy calendar differs from group teaching_sessions, but
-  // website and delegated MCP now use the same tenant-scoped calendar service.
-  for(const toolName of ["ccp_v1_calendar_slots_list","ccp_v1_calendar_slots_create",
-    "ccp_v1_calendar_slots_update","ccp_v1_calendar_slots_delete",
-    "ccp_v1_calendar_lessons_list","ccp_v1_calendar_lessons_detail",
-    "ccp_v1_calendar_lessons_create","ccp_v1_calendar_lessons_update",
-    "ccp_v1_calendar_lessons_delete"])expect(names).toContain(toolName);
-  const slotMade=(await call("ccp_v1_calendar_slots_create",{
-    studentId:profileId,dayOfWeek:0,startTime:"17:00",durationMinutes:45,
-    startDate:"2026-11-15",endDate:"2026-12-06",confirmed:true,
-  })).structuredContent;
-  expect(slotMade.error).toBeUndefined();
-  const slotId=slotMade.data.id as string;
-  const browserSlot=await page.request.get("/api/schedule/slots?studentId="+profileId);
-  expect(browserSlot.status(),await browserSlot.text()).toBe(200);
-  expect((await browserSlot.json()).some((x:{id:string})=>x.id===slotId)).toBe(true);
-  const slotUpdated=await page.request.put("/api/schedule/slots/"+slotId,{
-    data:{rateCents:2300},
-  });
-  expect(slotUpdated.status(),await slotUpdated.text()).toBe(200);
-  const listedSlots=(await call("ccp_v1_calendar_slots_list",{
-    studentId:profileId,
-  })).structuredContent.data;
-  expect(listedSlots.find((x:{id:string})=>x.id===slotId).rate_cents).toBe(2300);
-  const deletedSlot=(await call("ccp_v1_calendar_slots_delete",{
-    slotId,confirmed:true,
-  })).structuredContent;
-  expect(deletedSlot.error).toBeUndefined();
-  const afterSlotDelete=await page.request.get("/api/schedule/slots?studentId="+profileId);
-  expect((await afterSlotDelete.json()).some((x:{id:string})=>x.id===slotId)).toBe(false);
-  const madeLegacy=(await call("ccp_v1_calendar_lessons_create",{
-    studentId:profileId,date:"2026-11-18",time:"17:30",durationMinutes:45,
-    confirmed:true,
-  })).structuredContent;
-  expect(madeLegacy.error).toBeUndefined();
-  const legacyId=madeLegacy.data.id as string;
-  const browserLegacy=await page.request.get("/api/schedule/lessons/"+legacyId);
-  expect(browserLegacy.status()).toBe(200);
-  expect((await browserLegacy.json()).student_id).toBe(profileId);
-  const updatedLegacy=await page.request.put("/api/schedule/lessons/"+legacyId,{
-    data:{isHomeVisit:true},
-  });
-  expect(updatedLegacy.status(),await updatedLegacy.text()).toBe(200);
-  const fromMcp=(await call("ccp_v1_calendar_lessons_detail",{
-    lessonId:legacyId,
-  })).structuredContent.data;
-  expect(fromMcp.is_home_visit).toBe(true);
-  const legacyListed=(await call("ccp_v1_calendar_lessons_list",{
-    studentId:profileId,limit:100,offset:0,
-  })).structuredContent.data;
-  expect(legacyListed.lessons.some((x:{id:string})=>x.id===legacyId)).toBe(true);
-  const foreignCalendar=(await call("ccp_v1_calendar_lessons_create",{
-    studentId:foreignStudent!.id,date:"2026-11-20",time:"16:00",
-    confirmed:true,
-  })).structuredContent;
-  expect(foreignCalendar.error.code).toBe("NOT_FOUND");
-  const removedLegacy=(await call("ccp_v1_calendar_lessons_delete",{
-    lessonId:legacyId,confirmed:true,
-  })).structuredContent;
-  expect(removedLegacy.error).toBeUndefined();
-  const noLesson=await page.request.get("/api/schedule/lessons/"+legacyId);
-  expect(noLesson.status()).toBe(404);
-
-  // Teacher-scoped one-on-one attendance, notes and bulk corrections.
-  // Explicit email flags default false: synthetic tests must send no family email.
-  for(const toolName of ["ccp_v1_calendar_attendance_read","ccp_v1_calendar_attendance_record",
-    "ccp_v1_calendar_attendance_bulk","ccp_v1_calendar_lesson_note_read",
-    "ccp_v1_calendar_lesson_note_update"])expect(names).toContain(toolName);
-  const attendanceLesson=(await call("ccp_v1_calendar_lessons_create",{
-    studentId:profileId,date:"2026-11-24",time:"18:00",durationMinutes:50,
-    confirmed:true,
-  })).structuredContent;
-  expect(attendanceLesson.error).toBeUndefined();
-  const attendanceLessonId=attendanceLesson.data.id as string;
-  const recordAttendance=(await call("ccp_v1_calendar_attendance_record",{
-    lessonId:attendanceLessonId,status:"attended",notifyFamily:false,
-    confirmed:true,
-  })).structuredContent;
-  expect(recordAttendance.error).toBeUndefined();
-  expect(recordAttendance.data.status).toBe("attended");
-  const attendanceSite=await page.request.get("/api/schedule/lessons/"+attendanceLessonId+"/attendance");
-  expect(attendanceSite.status()).toBe(200);
-  expect((await attendanceSite.json()).status).toBe("attended");
-  const noteFromTool=(await call("ccp_v1_calendar_lesson_note_update",{
-    lessonId:attendanceLessonId,body:"Studied opposition in king-and-pawn endings",
-    privateBody:"Teacher-only: calculate slower",sendEmail:false,confirmed:true,
-  })).structuredContent;
-  expect(noteFromTool.error).toBeUndefined();
-  expect(noteFromTool.data.emailed).toBe(false);
-  const noteSite=await page.request.get("/api/schedule/lessons/"+attendanceLessonId+"/note");
-  expect(noteSite.status()).toBe(200);
-  expect((await noteSite.json()).private_body).toBe("Teacher-only: calculate slower");
-  const maskedNote=(await call("ccp_v1_calendar_lesson_note_read",{
-    lessonId:attendanceLessonId,
-  })).structuredContent.data;
-  expect(maskedNote.private_body).toBeUndefined();
-  const fullNote=(await call("ccp_v1_calendar_lesson_note_read",{
-    lessonId:attendanceLessonId,includePrivate:true,confirmed:true,
-  })).structuredContent.data;
-  expect(fullNote.private_body).toBe("Teacher-only: calculate slower");
-  const otherLesson=(await page.request.post("/api/schedule/lessons",{
-    data:{studentId:profileId,date:"2026-11-25",time:"18:00",durationMinutes:40},
-  }));
-  expect(otherLesson.status(),await otherLesson.text()).toBe(200);
-  const otherLessonId=(await otherLesson.json()).id as string;
-  const bulk=(await call("ccp_v1_calendar_attendance_bulk",{
-    ids:[otherLessonId,randomUUID()],status:"no_show",notifyFamily:false,
-    confirmed:true,
-  })).structuredContent;
-  expect(bulk.error).toBeUndefined();
-  expect(bulk.data.succeeded).toBe(1);
-  expect(bulk.data.failed).toHaveLength(1);
-  const bulkSite=await page.request.get("/api/schedule/lessons/"+otherLessonId+"/attendance");
-  expect((await bulkSite.json()).status).toBe("no_show");
-  const forbiddenAttendance=(await call("ccp_v1_calendar_attendance_read",{
-    lessonId:foreignStudent!.id,
-  })).structuredContent;
-  expect(forbiddenAttendance.error.code).toBe("NOT_FOUND");
+  // Canonical calendar operations are independently exercised by the
+  // named authenticated parity suites. Never re-introduce legacy actions.
+  for(const toolName of [
+    "ccp_v1_recurring_slots_list","ccp_v1_recurring_slots_create",
+    "ccp_v1_recurring_slots_update","ccp_v1_recurring_slots_delete",
+    "ccp_v1_private_sessions_create","ccp_v1_session_attendance_set",
+    "ccp_v1_session_attendance_bulk_set","ccp_v1_session_notes_save",
+  ])expect(names).toContain(toolName);
 
   // Teacher-scoped events share website/MCP domain service. No emails sent in synthetic test.
   for(const toolName of ["ccp_v1_events_list","ccp_v1_events_detail",
@@ -1093,7 +1404,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(safeBackup.tables.guardians.every((g:{portal_token?:string})=>g.portal_token===undefined)).toBe(true);
   const importedId=randomUUID();
   const importPayload={
-    version:1,exportedAt:"2026-11-08T00:00:00.000Z",teacherId:session!.user.id,
+    exportedAt:"2026-11-08T00:00:00.000Z",teacherId:session!.user.id,
     tables:{students:[{id:importedId,name:"Imported synthetic chess student "+suffix}]},
   };
   const importPreview=(await call("ccp_v1_settings_import_preview",{
@@ -1156,6 +1467,12 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const importedRoster=await page.request.get("/api/students?query="+encodeURIComponent(csvStudent));
   expect(importedRoster.status(),await importedRoster.text()).toBe(200);
   expect((await importedRoster.json()).students.some((s:{name:string})=>s.name===csvStudent)).toBe(true);
+  const importReplay=await page.request.post("/api/import/spreadsheet/commit",{
+    data:{rows:parsedFile.data.rows,mapping:parsedFile.data.mapping},
+  });
+  expect(importReplay.status(),await importReplay.text()).toBe(200);
+  expect(await importReplay.json()).toEqual(csvCommitted.data);
+  expect(JSON.stringify(csvCommitted.data)).not.toContain("portal_token");
 
   // Last five teacher-business route families: invoice generation, refresh,
   // PDF, Stripe-link guard and bulk invoice actions use the same domain service.
@@ -1164,15 +1481,17 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     "ccp_v1_billing_invoice_regenerate","ccp_v1_billing_invoice_pdf",
     "ccp_v1_billing_invoice_checkout","ccp_v1_billing_invoices_bulk",
   ])expect(names).toContain(toolName);
-  const generationLesson=(await call("ccp_v1_calendar_lessons_create",{
-    studentId:profileId,date:"2027-08-18",time:"16:00",durationMinutes:50,
-    confirmed:true,
+  const generationLesson=(await call("ccp_v1_sessions_create",{
+    workplaceId:madeWorkplace.entityId,studentId:profileId,
+    title:"Generated invoice teaching session",startsAt:"2027-08-18T16:00:00Z",
+    durationMinutes:50,lessonNote:"",idempotencyKey:randomUUID(),
   })).structuredContent;
   expect(generationLesson.error).toBeUndefined();
-  const generationLessonId=generationLesson.data.id as string;
-  const genAttendance=(await call("ccp_v1_calendar_attendance_record",{
-    lessonId:generationLessonId,status:"attended",confirmed:true,
-    notifyFamily:false,
+  const generationLessonId=generationLesson.data.entityId as string;
+  const genAttendance=(await call("ccp_v1_session_attendance_set",{
+    sessionId:generationLessonId,studentId:profileId,status:"present",
+    note:"",noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
+    idempotencyKey:randomUUID(),confirmed:true,notifyFamily:false,
   })).structuredContent;
   expect(genAttendance.error).toBeUndefined();
   const configuredGenRate=(await call("ccp_v1_studio_policy_update",{
@@ -1252,7 +1571,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   // delegated MCP category/observation/resource correction and approval.
   for(const toolName of ["ccp_v1_chess_categories_create",
     "ccp_v1_chess_categories_update","ccp_v1_chess_observations_update",
-    "ccp_v1_chess_resources_update"])
+    "ccp_v1_material_links_update"])
     expect(names).toContain(toolName);
   const madeCategory=(await call("ccp_v1_chess_categories_create",{
     name:"Chess endgames "+suffix,description:"Synthetic tests",
@@ -1293,6 +1612,12 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect((await observationFromWeb.json()).data.find(
     (x:{id:string})=>x.id===observationId).observation)
     .toBe("Student understands opposition and key squares");
+  const deniedBearerApproval=await request.post("/api/agent/v1",{
+    data:{action:"chess.observations.approve",observationId},
+    headers:{Authorization:"Bearer "+session!.access_token},
+  });
+  expect(deniedBearerApproval.status()).toBe(403);
+  expect((await deniedBearerApproval.json()).error.code).toBe("BROWSER_APPROVAL_REQUIRED");
   const approvedInBrowser=await page.request.post("/api/agent/v1",{
     data:{action:"chess.observations.approve",observationId},
   });
@@ -1307,22 +1632,37 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   });
   expect((await afterApprovalSite.json()).data.find(
     (x:{id:string})=>x.id===observationId).verified_at).toBeTruthy();
-  const linkCreated=(await call("ccp_v1_chess_resources_link",{
-    studentId:profileId,label:"Synthetic Lichess study",
-    url:"https://lichess.org/study/abcdefgh",
-    resourceType:"lichess_study",requestId:randomUUID(),
+  const study=(await call("ccp_v1_learning_materials_create",{
+    kind:"study_chapter",title:"Synthetic linked endgame study "+suffix,
+    description:"",sourceUrl:"https://lichess.org/study/abcdefgh",
+    details:{provider:"lichess",studyId:"abcdefgh",chapterId:null},
+    requestId:randomUUID(),
+  })).structuredContent;
+  expect(study.error).toBeUndefined();
+  const firstMaterialId=study.data.material.id as string;
+  const linkCreated=(await call("ccp_v1_material_links_create",{
+    studentId:profileId,materialId:firstMaterialId,
+    requestId:randomUUID(),confirmed:true,
   })).structuredContent;
   expect(linkCreated.error).toBeUndefined();
-  const resourceId=linkCreated.data.id as string;
+  const linkId=linkCreated.data.link.id as string;
+  const alternative=(await call("ccp_v1_learning_materials_create",{
+    kind:"external_link",title:"Alternative training study "+suffix,
+    description:"",sourceUrl:"https://example.org/endgame",
+    details:{},requestId:randomUUID(),
+  })).structuredContent;
+  expect(alternative.error).toBeUndefined();
   const linkEdited=await page.request.post("/api/agent/v1",{
-    data:{action:"chess.resources.update",resourceId,label:"Updated Lichess study"},
+    data:{action:"materials.links.update",linkId,
+      materialId:alternative.data.material.id,
+      expectedRevision:linkCreated.data.link.revision,confirmed:true},
   });
   expect(linkEdited.status(),await linkEdited.text()).toBe(200);
-  const resourceRead=(await call("ccp_v1_chess_resources_list",{
+  const materialRead=(await call("ccp_v1_material_links_list",{
     studentId:profileId,
   })).structuredContent.data;
-  expect(resourceRead.find((x:{id:string})=>x.id===resourceId).label)
-    .toBe("Updated Lichess study");
+  expect(materialRead.links.find((x:{id:string})=>x.id===linkId).material_id)
+    .toBe(alternative.data.material.id);
 
   // A delegated read-only OAuth grant must neither list nor invoke any write
   // tool, even if the client guesses a valid, versioned tool name.

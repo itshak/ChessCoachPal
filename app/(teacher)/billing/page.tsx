@@ -15,7 +15,12 @@ import { PaymentSettingsButton } from "@/components/teacher/billing/PaymentSetti
 
 export const metadata = { title: "Billing" };
 
-export default async function BillingPage() {
+export default async function BillingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ paymentSettings?: string }>;
+}) {
+  const showPaymentCredentials=(await searchParams).paymentSettings==="1";
   const supabase = await createClient();
   const {
     data: { user },
@@ -79,6 +84,7 @@ export default async function BillingPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <PaymentSettingsButton
+            initiallyOpen={showPaymentCredentials}
             policy={clientPolicy}
             teacherId={user.id}
             stripeStatus={stripeStatusFromPolicy(policy)}

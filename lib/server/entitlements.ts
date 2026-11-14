@@ -40,10 +40,8 @@ export async function persistDemotionIfNeeded(
 ): Promise<void> {
   if (!demotedFrom || !stored) return;
   if (stored.hosted_plan === "free") return;
-  const { error } = await supabase
-    .from("teachers")
-    .update({ hosted_plan: "free" })
-    .eq("id", teacherId);
+  const { error } = await supabase.rpc("ccp_demote_expired_hosted_plan");
+  void teacherId;
   if (error) {
     console.error("persistDemotionIfNeeded:", error);
   }
@@ -61,7 +59,7 @@ export async function countActiveStudents(
 
   if (error) {
     console.error("countActiveStudents:", error);
-    return 0;
+    throw new Error("Unable to verify active-student capacity");
   }
   return count ?? 0;
 }

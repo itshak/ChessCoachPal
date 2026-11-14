@@ -112,6 +112,12 @@ export function SpreadsheetImportSettings({
   }
 
   async function suggestWithAi() {
+    const approved = await confirm({
+      title: "Share spreadsheet samples with external AI?",
+      message: "ChessCoachPal will send your column headers and up to five sample rows to your configured external AI provider to suggest a mapping. These rows may contain student or family personal information. You can instead map columns locally without sharing them.",
+      confirmLabel: "Share sample rows",
+    });
+    if (!approved) return;
     setBusy(true);
     setError(null);
     try {
@@ -121,6 +127,8 @@ export function SpreadsheetImportSettings({
         body: JSON.stringify({
           headers,
           sampleRows: rows.slice(0, 5),
+          useAi: true,
+          confirmedExternal: true,
         }),
       });
       const data = await res.json().catch(() => ({}));

@@ -1,14 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {generateShortToken} from "@/lib/token";
 
 /**
- * ChessCoachPal pre-1.0 backup format. No CogNote/music import compatibility.
- * OAuth grants, access tokens, provider secrets, Stripe identifiers and
- * uploaded binary objects are deliberately excluded from portable exports.
+ * Only one current ChessCoachPal teacher-data backup shape; no prior-format
+ * adapters or version negotiation. OAuth credentials, payment secrets and
+ * binary objects are excluded from portable exports.
  */
-export const DATA_EXPORT_VERSION = 1 as const;
 export type StudioDataExport = {
-  version: number;
   exportedAt: string;
   teacherId: string;
   teacher_profile?: { display_name?: string } | null;
@@ -22,28 +19,65 @@ const POLICY_SECRET_FIELDS = [
 /** Order respects FK dependencies when imported into a different teacher. */
 const IMPORT_ORDER = [
   "studio_policies", "guardians", "students", "workplaces", "class_groups",
-  "workplace_enrollments", "group_enrollments", "teaching_sessions",
-  "session_participants", "session_attendance", "chess_skill_categories",
-  "chess_observations", "chess_learning_resources", "lesson_slots", "lessons",
-  "attendance", "lesson_notes", "skill_dimensions", "skill_assessments",
+  "workplace_enrollments", "group_enrollments", "lesson_slots",
+  "teaching_sessions", "session_participants", "session_attendance",
+  "session_notes", "chess_skill_categories", "chess_observations",
+  "skill_dimensions", "skill_assessments",
   "invoices", "invoice_items", "payments", "events", "event_students",
   "event_rsvps", "credit_packages", "credit_redemptions",
+  // Canonical chess catalog and student-first learning history. Restore order
+  // respects material root/subtypes → relations → homework/reviews → plans.
+  "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
+  "chess_study_chapters", "learning_material_relations",
+  "material_links", "material_teaching_evidence", "training_assignments", "assignment_attempts", "assignment_reviews",
+  "student_training_plans", "student_training_plan_revisions",
 ] as const;
 
 const TEACHER_SCOPED = [
   "guardians", "students", "workplaces", "class_groups",
-  "workplace_enrollments", "group_enrollments", "teaching_sessions",
-  "session_participants", "session_attendance", "chess_skill_categories",
-  "chess_observations", "chess_learning_resources", "lesson_slots", "lessons",
+  "workplace_enrollments", "group_enrollments", "lesson_slots",
+  "teaching_sessions", "session_participants", "session_attendance",
+  "session_notes", "chess_skill_categories", "chess_observations",
   "skill_dimensions", "invoices", "events", "credit_packages", "credit_redemptions",
+  "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
+  "chess_study_chapters", "learning_material_relations",
+  "material_links", "material_teaching_evidence", "training_assignments", "assignment_attempts", "assignment_reviews",
+  "student_training_plans", "student_training_plan_revisions",
 ] as const;
-const TEACHER_SCOPED_SET = new Set<string>(TEACHER_SCOPED);
 
 function asRows(data: unknown): Record<string, unknown>[] {
   return (data as Record<string, unknown>[] | null) ?? [];
 }
 function ids(rows: Record<string, unknown>[]): string[] {
   return rows.map(row => row.id).filter((id): id is string => typeof id === "string");
+}
+/**
+ * PostgREST ordinarily caps query results to 1000 rows. Backups must not
+ * silently truncate later students, history or financial records.
+ * A bounded deterministic scan returns all pages, or fails explicitly rather
+ * than offering a deceptively "successful" incomplete backup.
+ */
+export const EXPORT_PAGE_SIZE=500;
+export const EXPORT_MAX_ROWS_PER_TABLE=20_000;
+type ExportPage={data:unknown;error:{message:string}|null};
+async function readExportPages(
+  label:string,fetchPage:(start:number,end:number)=>Promise<ExportPage>
+):Promise<Record<string,unknown>[]> {
+  const all:Record<string,unknown>[]=[];
+  for(let offset=0;;offset+=EXPORT_PAGE_SIZE){
+    const {data,error}=await fetchPage(offset,offset+EXPORT_PAGE_SIZE-1);
+    if(error)throw new Error(`Export ${label}: ${error.message}`);
+    if(data!==null&&!Array.isArray(data))
+      throw new Error(`Export ${label}: unexpected database response`);
+    const batch=asRows(data);
+    if(batch.length>EXPORT_PAGE_SIZE)
+      throw new Error(`Export ${label}: invalid page size`);
+    if(all.length+batch.length>EXPORT_MAX_ROWS_PER_TABLE)
+      throw new Error(`Export ${label}: exceeds safe export row limit; contact support for a dedicated backup`);
+    all.push(...batch);
+    if(batch.length<EXPORT_PAGE_SIZE)break;
+  }
+  return all;
 }
 function policyWithoutSecrets(
   policy: Record<string, unknown> | null
@@ -64,24 +98,44 @@ export async function buildStudioExport(
   tables.studio_policies = policyWithoutSecrets(policy.data as Record<string, unknown> | null);
 
   for (const table of TEACHER_SCOPED) {
-    const { data, error } = await supabase.from(table).select("*").eq("teacher_id", teacherId);
-    if (error) throw new Error(`Export ${table}: ${error.message}`);
-    tables[table] = asRows(data);
+    tables[table]=await readExportPages(table,async(start,end)=>{
+      const query=supabase.from(table).select("*").eq("teacher_id",teacherId);
+      // A few roster relations have composite keys rather than an id.
+      // Not every composite-keyed evidence table has an "id" column.
+      // Deterministic key order ensures multi-page exports cannot repeat or
+      // silently skip records after PostgREST's 1000-row limit.
+      const keyOrders:Partial<Record<typeof table,readonly string[]>>={
+        session_participants:["session_id","student_id"],
+        group_enrollments:["group_id","student_id"],
+        chess_games:["material_id"],chess_puzzles:["material_id"],
+        chess_drills:["material_id"],chess_study_chapters:["material_id"],
+        learning_material_relations:["from_material_id","to_material_id","relation_type"],
+        student_training_plan_revisions:["plan_id","revision"],
+      };
+      const orderKeys=keyOrders[table]??["id"];
+      const ordered=orderKeys.reduce((q,key)=>q.order(key),query);
+      const {data,error}=await ordered.range(start,end);
+      return {data,error};
+    });
   }
 
   async function children(table: string, fk: string, parents: string[]) {
     if (!parents.length) { tables[table] = []; return; }
     const rows: Record<string, unknown>[] = [];
     for (let start = 0; start < parents.length; start += 200) {
-      const { data, error } = await supabase.from(table).select("*").in(fk, parents.slice(start, start + 200));
-      if (error) throw new Error(`Export ${table}: ${error.message}`);
-      rows.push(...asRows(data));
+      const parentIds=parents.slice(start,start+200);
+      const page=await readExportPages(table,async(from,to)=>{
+        const {data,error}=await supabase.from(table).select("*")
+          .in(fk,parentIds).order("id").range(from,to);
+        return {data,error};
+      });
+      if(rows.length+page.length>EXPORT_MAX_ROWS_PER_TABLE)
+        throw new Error(`Export ${table}: exceeds safe export row limit; contact support for a dedicated backup`);
+      rows.push(...page);
     }
     tables[table] = rows;
   }
 
-  await children("attendance", "lesson_id", ids(asRows(tables.lessons)));
-  await children("lesson_notes", "lesson_id", ids(asRows(tables.lessons)));
   await children("skill_assessments", "student_id", ids(asRows(tables.students)));
   await children("invoice_items", "invoice_id", ids(asRows(tables.invoices)));
   await children("payments", "invoice_id", ids(asRows(tables.invoices)));
@@ -93,7 +147,6 @@ export async function buildStudioExport(
   if (profileError) throw new Error(`Export profile: ${profileError.message}`);
 
   return {
-    version: DATA_EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     teacherId,
     teacher_profile: profile ? { display_name: profile.display_name ?? "" } : null,
@@ -101,73 +154,69 @@ export async function buildStudioExport(
   };
 }
 
-function withTeacherId(rows: Record<string, unknown>[], teacherId: string) {
-  return rows.map(row => ({ ...row, teacher_id: teacherId }));
-}
-
-async function upsertAll(
-  supabase: SupabaseClient, table: string, rows: Record<string, unknown>[]
-): Promise<string | null> {
-  for (let i = 0; i < rows.length; i += 200) {
-    const { error } = await supabase.from(table).upsert(rows.slice(i, i + 200));
-    if (error) return `${table}: ${error.message}`;
-  }
-  return null;
-}
-
 /**
- * Only restores the explicitly allowed chess/teacher tables; unknown tables
- * cannot be injected by a malicious export. Cross-owner IDs remain subject
- * to RLS and tenant-ownership foreign-key constraints.
+ * A reviewed backup is applied by a single authenticated Postgres function.
+ * One failure must never leave half of a student's teaching history restored.
+ * The SQL function enforces RLS, tenant-scoped owners, FK order, hosted quotas,
+ * and an atomic SHA-256 keyed replay receipt for cross-client retries.
  */
 export async function importStudioExport(
-  supabase: SupabaseClient, teacherId: string, payload: StudioDataExport
+  supabase: SupabaseClient, teacherId: string, payload: StudioDataExport, sha256: string
 ): Promise<{ ok: true; counts: Record<string, number> } | { ok: false; error: string }> {
-  if (!payload || payload.version !== DATA_EXPORT_VERSION || !payload.tables || typeof payload.tables !== "object") {
-    return { ok: false, error: "Unsupported ChessCoachPal export format" };
-  }
-  const counts: Record<string, number> = {};
+  if (!parseExportPayload(payload))
+    return {ok:false,error:"Unsupported ChessCoachPal export format or invalid table shape"};
+  // The invoker's auth.uid() is authoritative inside the RPC; never pass a
+  // writable teacher_id argument that an MCP or website client could spoof.
+  if (!teacherId) return {ok:false,error:"Authenticated teacher is required"};
+  // Validate the exact current table allowlist before any database writes.
+  const safeTables:StudioDataExport["tables"]={};
   for (const table of IMPORT_ORDER) {
-    const source = payload.tables[table];
-    const rows = table === "studio_policies"
-      ? source && !Array.isArray(source) ? [source as Record<string, unknown>] : []
-      : asRows(source);
-    const safe = TEACHER_SCOPED_SET.has(table) || table === "studio_policies"
-      ? withTeacherId(rows, teacherId)
-      : rows;
-    if (table === "studio_policies") {
-      for (const row of safe) for (const field of POLICY_SECRET_FIELDS) delete (row as Record<string, unknown>)[field];
-    }
-    // A model-visible portable export deliberately omits portal credentials.
-    // On import, generate fresh random links for guardians whose tokens were
-    // withheld rather than writing NULL or accepting a predictable placeholder.
-    if (table === "guardians") {
-      for (const original of safe) {
-        const row = original as Record<string, unknown>;
-        if (typeof row.portal_token !== "string" || !row.portal_token.trim())
-          row.portal_token = generateShortToken();
-      }
-    }
-    const error = await upsertAll(supabase, table, safe);
-    if (error) return { ok: false, error };
-    counts[table] = rows.length;
+    const source=payload.tables[table];
+    if (source===undefined) continue;
+    if (table==="studio_policies" && source && !Array.isArray(source)) {
+      const sanitized={...source};
+      for(const field of POLICY_SECRET_FIELDS) delete sanitized[field];
+      safeTables[table]=sanitized;
+    } else safeTables[table]=source;
   }
-
-  const importedName = payload.teacher_profile?.display_name?.trim();
-  if (importedName) {
-    const { data: profile } = await supabase.from("teachers").select("display_name").eq("id", teacherId).maybeSingle();
-    if (profile && !profile.display_name?.trim()) {
-      const { error } = await supabase.from("teachers").update({ display_name: importedName }).eq("id", teacherId);
-      if (error) return { ok: false, error: `teacher_profile: ${error.message}` };
-      counts.teacher_profile = 1;
-    }
-  }
-  return { ok: true, counts };
+  const { data, error } = await supabase.rpc("ccp_teacher_backup_restore", {
+    p_tables:safeTables,
+    p_display_name:payload.teacher_profile?.display_name ?? null,
+    p_digest:sha256,
+  });
+  if (error) return {ok:false,error:error.message};
+  const counts=(data as {counts?:Record<string,number>}|null)?.counts;
+  if (!counts || typeof counts!=="object" || Array.isArray(counts))
+    return {ok:false,error:"Restore completed without a valid transaction receipt"};
+  return {ok:true,counts};
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** Accept the current schema only; a foreign table or unknown top-level
+ * property is a validation failure, not an excuse for translation. */
 export function parseExportPayload(raw: unknown): StudioDataExport | null {
-  if (!raw || typeof raw !== "object") return null;
-  const obj = raw as StudioDataExport;
-  if (obj.version !== DATA_EXPORT_VERSION || !obj.tables || typeof obj.tables !== "object" || Array.isArray(obj.tables)) return null;
-  return obj;
+  if (!isRecord(raw) || !isRecord(raw.tables) ||
+      typeof raw.exportedAt !== "string" || !Number.isFinite(Date.parse(raw.exportedAt)) ||
+      typeof raw.teacherId !== "string" || raw.teacherId.length===0) return null;
+  const rootKeys=new Set(["exportedAt","teacherId","teacher_profile","tables"]);
+  if(Object.keys(raw).some(key=>!rootKeys.has(key))) return null;
+  const tables=raw.tables;
+  const allowedTables=new Set<string>(IMPORT_ORDER);
+  if(Object.keys(tables).some(table=>!allowedTables.has(table))) return null;
+  for (const table of IMPORT_ORDER) {
+    const source = tables[table];
+    if (source === undefined) continue;
+    if (table === "studio_policies") {
+      if (source !== null && !isRecord(source)) return null;
+    } else if (!Array.isArray(source) || !source.every(isRecord)) {
+      return null;
+    }
+  }
+  if (raw.teacher_profile != null &&
+      (!isRecord(raw.teacher_profile) ||
+       (raw.teacher_profile.display_name !== undefined &&
+        typeof raw.teacher_profile.display_name !== "string"))) return null;
+  return raw as StudioDataExport;
 }

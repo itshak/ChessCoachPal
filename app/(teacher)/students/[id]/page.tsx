@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { ChessLearningPanel } from "@/components/teacher/ChessLearningPanel";
 import { MaterialHistoryPanel } from "@/components/teacher/MaterialHistoryPanel";
+import { StudentTrainingPlansPanel } from "@/components/teacher/StudentTrainingPlansPanel";
 import { ArchiveStudentButton } from "@/components/teacher/ArchiveStudentButton";
 import { RemoveStudentButton } from "@/components/teacher/RemoveStudentButton";
 import { StudentNotesEditor } from "@/components/teacher/StudentNotesEditor";
@@ -12,12 +13,13 @@ import { StudentLessonNotes } from "@/components/teacher/StudentLessonNotes";
 import { StudentInfoCard } from "@/components/teacher/StudentInfoCard";
 import { StudentChessProfileEditor } from "@/components/teacher/StudentChessProfileEditor";
 import { UnifiedLessonHistoryPanel } from "@/components/teacher/UnifiedLessonHistoryPanel";
+import { CoachBriefingPanel } from "@/components/teacher/CoachBriefingPanel";
 import { EditableStudentName } from "@/components/teacher/EditableStudentName";
 import { SkillsPanel } from "@/components/teacher/skills/SkillsPanel";
 import { CreditPackagesCard } from "@/components/teacher/billing/CreditPackagesCard";
 import { getOrSeedDimensions } from "@/lib/server/skills";
 import { getPolicy } from "@/lib/server/scheduling";
-import { loadCreditBalances } from "@/lib/server/credits";
+import {loadCanonicalCreditBalances} from "@/lib/server/canonical-credits";
 import { familyDisplayName } from "@/lib/guardians";
 import { oneToOne, toLocalDateString } from "@/lib/schedule";
 
@@ -49,41 +51,42 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
     getOrSeedDimensions(supabase, user.id),
     supabase.from("skill_assessments").select("id, dimension_id, rating, assessed_on, created_at")
       .eq("student_id", id).order("assessed_on").order("created_at"),
-    supabase.from("lessons").select("id, lesson_date, attendance!lesson_id ( status )")
-      .eq("student_id", id).order("lesson_date", { ascending: false }),
-    supabase.from("lesson_notes")
-      .select("id, body, private_body, shared_with_parent, emailed_at, updated_at, lessons!inner ( lesson_date, student_id )")
-      .eq("lessons.student_id", id).order("updated_at", { ascending: false }),
+    supabase.from("session_attendance").select("status,session_id")
+      .eq("teacher_id",user.id).eq("student_id",id)
+      .order("marked_at",{ascending:false}).limit(500),
+    supabase.from("session_notes").select(
+      "id,body,private_body,shared_with_guardian,emailed_at,updated_at,teaching_sessions!session_notes_session_teacher_fkey(starts_at,local_timezone)"
+    ).eq("teacher_id",user.id).eq("student_id",id)
+     .order("updated_at",{ascending:false}).limit(100),
     getPolicy(supabase, user.id),
   ]);
   if (!student) notFound();
 
   const attendanceCounts: Record<string, number> = {};
-  for (const row of attendedLessons ?? []) {
-    const status = oneToOne(row.attendance)?.status;
-    if (status) attendanceCounts[status] = (attendanceCounts[status] ?? 0) + 1;
+  for(const row of attendedLessons??[]){
+    const status=row.status;
+    if(status)attendanceCounts[status]=(attendanceCounts[status]??0)+1;
   }
-  const markedLessons = Object.values(attendanceCounts).reduce((a,b) => a + b, 0);
-  const attendanceRate = markedLessons ? Math.round(100 * (attendanceCounts.attended ?? 0) / markedLessons) : null;
+  const markedLessons=Object.values(attendanceCounts).reduce((a,b)=>a+b,0);
+  const attendanceRate=markedLessons?Math.round(100*
+    ((attendanceCounts.present??0)+(attendanceCounts.late??0))/markedLessons):null;
 
-  const lessonNotes = (lessonNoteRows ?? []).flatMap((row) => {
-    const lesson = oneToOne(row.lessons as
-      | { lesson_date: string; student_id: string }
-      | { lesson_date: string; student_id: string }[] | null);
-    if (!lesson || !(row.body?.trim() || row.private_body?.trim())) return [];
+  const lessonNotes=(lessonNoteRows??[]).flatMap(row=>{
+    const session=oneToOne(row.teaching_sessions as
+      {starts_at:string;local_timezone:string|null}|
+      {starts_at:string;local_timezone:string|null}[]|null);
+    if(!session||!(row.body?.trim()||row.private_body?.trim()))return [];
     return [{
-      id: row.id,
-      body: row.body ?? "",
-      privateBody: row.private_body ?? "",
-      sharedWithParent: row.shared_with_parent,
-      emailedAt: row.emailed_at,
-      lessonDate: lesson.lesson_date,
-      updatedAt: row.updated_at,
+      id:row.id,body:row.body??"",privateBody:row.private_body??"",
+      sharedWithParent:row.shared_with_guardian,emailedAt:row.emailed_at,
+      lessonDate:toLocalDateString(new Date(session.starts_at),
+        session.local_timezone||policy.timezone),
+      updatedAt:row.updated_at,
     }];
   });
 
   const [creditPackages, { data: activeSlot }] = await Promise.all([
-    loadCreditBalances(supabase, user.id, policy, [id], toLocalDateString(new Date(), policy.timezone)),
+    loadCanonicalCreditBalances(supabase, user.id, policy, [id], toLocalDateString(new Date(), policy.timezone)),
     supabase.from("lesson_slots").select("duration_minutes, rate_cents")
       .eq("student_id", id).eq("active", true).order("start_date", { ascending: false }).limit(1).maybeSingle(),
   ]);
@@ -130,6 +133,8 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialChesscomUsername={student.chesscom_username ?? null}
         initialLichessRating={student.lichess_rating ?? null}
         initialChesscomRating={student.chesscom_rating ?? null}
+        initialGoals={student.chess_goals ?? ""}
+        initialRatings={student.chess_ratings ?? {}}
       />
       <CreditPackagesCard
         studentId={id}
@@ -159,6 +164,8 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialNotes={student.teacher_notes ?? ""}
       />
       <StudentLessonNotes notes={lessonNotes} timezone={policy.timezone} />
+      <StudentTrainingPlansPanel studentId={id} />
+      <CoachBriefingPanel studentId={id} />
       <div className="mb-8"><UnifiedLessonHistoryPanel fixedStudentId={id}/></div>
       <div className="mb-8"><MaterialHistoryPanel fixedStudentId={id} /></div>
 

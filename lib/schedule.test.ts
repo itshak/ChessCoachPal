@@ -59,6 +59,29 @@ describe("zonedTimeToUtc", () => {
       "2026-11-01T22:00:00.000Z"
     );
   });
+
+  it("resolves DST folds deterministically and never moves recurring gap times backwards", () => {
+    // The first 01:30 during fall-back, not the repeated second occurrence.
+    expect(zonedTimeToUtc("2026-11-01", "01:30", CHICAGO).toISOString()).toBe(
+      "2026-11-01T06:30:00.000Z"
+    );
+    // 02:30 never exists in Chicago on the spring-forward Sunday.
+    // Recurring slots advance through the missing hour to 03:30 local.
+    expect(zonedTimeToUtc("2026-03-08", "02:30", CHICAGO).toISOString()).toBe(
+      "2026-03-08T08:30:00.000Z"
+    );
+    // Explicit lesson creation/rescheduling must not silently change the time.
+    expect(() => zonedTimeToUtc("2026-03-08", "02:30", CHICAGO, "reject"))
+      .toThrow(/does not exist/);
+  });
+
+  it("preserves nonzero seconds and rejects invalid local clock values", () => {
+    expect(zonedTimeToUtc("2026-01-13", "16:00:45", CHICAGO).toISOString()).toBe(
+      "2026-01-13T22:00:45.000Z"
+    );
+    expect(() => zonedTimeToUtc("2026-07-07", "25:70", CHICAGO)).toThrow();
+    expect(() => zonedTimeToUtc("2026-02-30", "16:00", CHICAGO)).toThrow();
+  });
 });
 
 describe("toLocalDateString", () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { normalizeLearningLink, resourceInput } from "./chess-learning";
+import { normalizeLearningLink,materialLinkListInput,materialLinkCreateInput,
+ materialLinkUpdateInput,materialLinkUnlinkInput } from "./chess-learning";
 
 describe("chess resource references", () => {
   it("retains stable Lichess study/chapter IDs without fetching", () => {
@@ -26,10 +27,17 @@ describe("chess resource references", () => {
       expect(() => normalizeLearningLink(url, "external")).toThrow();
     }
   });
-  it("requires a student or session and rejects unknown fields", () => {
-    const basics = { label:"King opposition", url:"https://example.org/study", resourceType:"external" };
-    expect(resourceInput.safeParse(basics).success).toBe(false);
-    expect(resourceInput.safeParse({ ...basics, studentId:"00000000-0000-4000-8000-000000000001" }).success).toBe(true);
-    expect(resourceInput.safeParse({ ...basics, studentId:"00000000-0000-4000-8000-000000000001", verified:true }).success).toBe(false);
+  it("requires canonical material identity, scope, request receipts and confirmation",()=>{
+    const uuid="00000000-0000-4000-8000-000000000001";
+    const data={materialId:uuid,studentId:uuid,requestId:uuid,confirmed:true};
+    expect(materialLinkCreateInput.safeParse(data).success).toBe(true);
+    expect(materialLinkCreateInput.safeParse({...data,studentId:undefined}).success).toBe(false);
+    expect(materialLinkCreateInput.safeParse({...data,confirmed:false}).success).toBe(false);
+    expect(materialLinkCreateInput.safeParse({...data,url:"https://example.com"}).success).toBe(false);
+    expect(materialLinkListInput.safeParse({studentId:uuid}).success).toBe(true);
+    expect(materialLinkListInput.safeParse({}).success).toBe(false);
+    expect(materialLinkUpdateInput.safeParse({linkId:uuid,materialId:uuid,expectedRevision:1,confirmed:true}).success).toBe(true);
+    expect(materialLinkUpdateInput.safeParse({linkId:uuid,materialId:uuid,expectedRevision:0,confirmed:true}).success).toBe(false);
+    expect(materialLinkUnlinkInput.safeParse({linkId:uuid,expectedRevision:1,confirmed:true}).success).toBe(true);
   });
 });

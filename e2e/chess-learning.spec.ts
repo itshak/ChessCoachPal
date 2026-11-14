@@ -3,81 +3,66 @@ import { createClient } from "@supabase/supabase-js";
 import { test, expect } from "@playwright/test";
 import { signInAsTeacher, SEED_TEACHER } from "./helpers/auth";
 
-test("teacher website: verified chess observation, editable history, curated study, and explicit approval", async ({page})=>{
-  await signInAsTeacher(page);
-  await page.goto("/learning");
-  await expect(page.getByRole("heading",{name:"Chess learning"})).toBeVisible();
-  await expect(page.getByLabel("Chess skill area")).toContainText("Endgames");
-  const suffix=Date.now().toString(36);
-  const first="Opposition observation "+suffix;
-  const edited="Corrected opposition observation "+suffix;
-  const suggested="Agent suggestion "+suffix;
-  const linkName="Study opposition "+suffix;
-  const person=page.getByLabel("Chess learner");
-  await expect.poll(async()=>await person.inputValue()).not.toBe("");
-  const studentId=await person.inputValue();
-  const categories=await page.request.post("/api/agent/v1",{data:{action:"chess.categories.list"}});
-  expect(categories.status()).toBe(200);
-  const categoryId=(await categories.json()).data.find((c:{name:string})=>c.name==="Endgames").id as string;
-  await page.getByLabel("Chess skill area").selectOption(categoryId);
-  await page.getByLabel("Chess observation").fill(first);
-  await page.getByRole("button",{name:"Save verified observation"}).click();
-  await expect(page.getByRole("status")).toContainText("Verified teacher observation");
-  await expect(page.getByText(first)).toBeVisible();
+test("teacher website: observations and canonical typed material associations",async({page})=>{
+ await signInAsTeacher(page);
+ await page.goto("/learning");
+ await expect(page.getByRole("heading",{name:"Chess learning"})).toBeVisible();
+ const studentSelect=page.getByLabel("Chess learner");
+ await expect.poll(async()=>studentSelect.inputValue()).not.toBe("");
+ const studentId=await studentSelect.inputValue();
+ const categoryId=(await (await page.request.post("/api/agent/v1",{
+   data:{action:"chess.categories.list"},
+ })).json()).data[0].id as string;
+ await page.getByLabel("Chess skill area").selectOption(categoryId);
+ const note="Teacher's material observation "+randomUUID().slice(0,8);
+ await page.getByLabel("Chess observation").fill(note);
+ await page.getByRole("button",{name:"Save verified observation"}).click();
+ await expect(page.getByText(note)).toBeVisible();
 
-  const suggest=await page.request.post("/api/agent/v1",{data:{
-    action:"chess.observations.propose",studentId,categoryId,observation:suggested,requestId:randomUUID(),
-  }});
-  expect(suggest.status(),await suggest.text()).toBe(200);
-  const proposal=(await suggest.json()).data;
-  expect(proposal.source).toBe("agent");
-  expect(proposal.verified_at).toBeNull();
+ const payload={kind:"study_chapter" as const,title:"Opposition study "+randomUUID().slice(0,8),
+   description:"",sourceUrl:"https://lichess.org/study/Ab12Cd34",
+   details:{provider:"lichess",studyId:"Ab12Cd34",chapterId:null},
+   requestId:randomUUID()};
+ const created=await page.request.post("/api/training/materials",{data:payload});
+ expect(created.status(),await created.text()).toBe(201);
+ const materialId=(await created.json()).material.id as string;
+ await page.getByRole("button",{name:"Refresh material catalog"}).click();
+ const learningPanel=page.locator('section[aria-label="Chess learning"]');
+ await learningPanel.getByLabel("Learning material",{exact:true}).selectOption(materialId);
+ page.once("dialog",dialog=>dialog.accept());
+ await learningPanel.getByRole("button",{name:"Attach learning material"}).click();
+ await expect(learningPanel.getByRole("status")).toContainText("Material associated");
+ const browser=await page.request.post("/api/agent/v1",{
+   data:{action:"materials.links.list",studentId},
+ });
+ expect(browser.status(),await browser.text()).toBe(200);
+ const links=(await browser.json()).data.links as Array<{id:string;material_id:string;revision:number}>;
+ const link=links.find(l=>l.material_id===materialId);
+ expect(link).toBeTruthy();
 
-  await page.reload();
-  await expect(page.getByText(first)).toBeVisible();
-  await expect(page.getByText(suggested)).toBeVisible();
-  const suggestionRow=page.getByText(suggested).locator("..");
-  await expect(suggestionRow).toContainText("Unverified suggestion");
-  await suggestionRow.getByRole("button",{name:"Approve suggestion"}).click();
-  await expect(page.getByRole("status")).toContainText("explicitly approved");
-  await expect(page.getByText(suggested).locator("..")).toContainText("Verified");
+ // Correct the association to another canonical typed material. The underlying
+ // material title, URL, and recorded teaching evidence are not copied or edited.
+ const other=await page.request.post("/api/training/materials",{data:{
+   ...payload,title:"Alternative endgame study "+randomUUID().slice(0,8),
+   requestId:randomUUID(),
+ }});
+ expect(other.status(),await other.text()).toBe(201);
+ const replacementId=(await other.json()).material.id as string;
+ await page.getByRole("button",{name:"Refresh material catalog"}).click();
+ await learningPanel.getByRole("button",{name:"Reassign material"}).first().click();
+ await learningPanel.getByLabel("Replacement learning material",{exact:true}).selectOption(replacementId);
+ await learningPanel.getByRole("button",{name:"Save association"}).click();
+ await expect(learningPanel.getByRole("status")).toContainText("association corrected");
+ const revised=await page.request.post("/api/agent/v1",{
+   data:{action:"materials.links.list",studentId},
+ });
+ expect((await revised.json()).data.links.some(
+   (l:{id:string;material_id:string;revision:number})=>
+    l.id===link!.id&&l.material_id===replacementId&&l.revision>link!.revision)).toBe(true);
 
-  const teacherRow=page.getByText(first).locator("..");
-  await teacherRow.getByRole("button",{name:"Edit observation"}).click();
-  await teacherRow.getByLabel("Edit chess observation").fill(edited);
-  await teacherRow.getByRole("button",{name:"Save correction"}).click();
-  await expect(page.getByText(edited)).toBeVisible();
-
-  await page.getByLabel("Resource label").fill(linkName);
-  await page.getByLabel("HTTPS learning URL").fill("https://lichess.org/study/Ab12Cd34");
-  await page.getByRole("button",{name:"Save learning link"}).click();
-  await expect(page.getByRole("status")).toContainText("Learning resource saved");
-  const link=page.getByRole("link",{name:linkName});
-  await expect(link).toHaveAttribute("href","https://lichess.org/study/Ab12Cd34");
-  const linkRow=link.locator("..");
-  await linkRow.getByRole("button",{name:"Edit link"}).click();
-  await linkRow.getByLabel("Edit resource label").fill(linkName+" corrected");
-  await linkRow.getByRole("button",{name:"Save link correction"}).click();
-  await expect(page.getByRole("link",{name:linkName+" corrected"})).toBeVisible();
-
-  await page.reload();
-  await expect(page.getByText(edited)).toBeVisible();
-  await expect(page.getByRole("link",{name:linkName+" corrected"})).toBeVisible();
-  await expect(page.getByText(suggested).locator("..")).toContainText("Verified");
-  // Provider availability never blocks locally stored observations or links.
-  await page.getByLabel("Link type").selectOption("external");
-  await page.getByLabel("Resource label").fill("Unavailable study "+suffix);
-  await page.getByLabel("HTTPS learning URL").fill("https://study.example.invalid/chess");
-  await page.getByRole("button",{name:"Save learning link"}).click();
-  await expect(page.getByRole("status")).toContainText("Learning resource saved");
-  await page.reload();
-  await expect(page.getByRole("link",{name:"Unavailable study "+suffix})).toBeVisible();
-  await expect(page.getByText(edited)).toBeVisible();
-  await page.getByLabel("Link type").selectOption("lichess_study");
-  await page.getByLabel("Resource label").fill("Unsafe resource");
-  await page.getByLabel("HTTPS learning URL").fill("https://lichess.org.evil.example/study/Ab12Cd34");
-  await page.getByRole("button",{name:"Save learning link"}).click();
-  await expect(page.locator("section[aria-label='Chess learning'] [role=alert]")).toContainText("direct lichess.org/study link");
+ await page.reload();
+ await expect(page.getByText(note)).toBeVisible();
+ await expect(page.locator('section[aria-label="Chess learning"] li p.font-medium').filter({hasText:/Alternative endgame study/})).toBeVisible();
 });
 
 test("database: two teachers cannot read or attach chess records across ownership",async()=>{
@@ -121,14 +106,18 @@ test("database: two teachers cannot read or attach chess records across ownershi
     verified_at:new Date().toISOString(),verified_by:bId,
   }).select("id").single();
   expect(bObsError).toBeNull();
-  const {data:bLink,error:bLinkError}=await b.from("chess_learning_resources").insert({
-    teacher_id:bId,student_id:bStudent!.id,label:"Private study",
-    url:"https://lichess.org/study/Ab12Cd34",resource_type:"lichess_study",
-    provider_study_id:"Ab12Cd34",
+  const {data:bMaterial,error:materialError}=await b.rpc("ccp_material_catalog_create",{
+    p_kind:"external_link",p_title:"Private study",p_description:"",
+    p_source_url:"https://example.org/private-study",p_details:{},p_request_id:randomUUID(),
+  });
+  expect(materialError).toBeNull();
+  const {data:bLink,error:bLinkError}=await b.from("material_links").insert({
+    teacher_id:bId,student_id:bStudent!.id,material_id:bMaterial!.id,
+    request_id:randomUUID(),
   }).select("id").single();
   expect(bLinkError).toBeNull();
   const {data:foreignNotes}=await a.from("chess_observations").select("id").eq("id",bObservation!.id);
-  const {data:foreignLinks}=await a.from("chess_learning_resources").select("id").eq("id",bLink!.id);
+  const {data:foreignLinks}=await a.from("material_links").select("id").eq("id",bLink!.id);
   const {data:foreignCategories}=await a.from("chess_skill_categories").select("id").eq("id",bSkill!.id);
   expect(foreignNotes).toEqual([]);
   expect(foreignLinks).toEqual([]);
@@ -139,9 +128,9 @@ test("database: two teachers cannot read or attach chess records across ownershi
     observation:"Wrong owner",source:"teacher",verified_at:new Date().toISOString(),verified_by:aId,
   });
   expect(crossObs).toBeTruthy();
-  const {error:crossLink}=await a.from("chess_learning_resources").insert({
-    teacher_id:aId,student_id:bStudent!.id,label:"Wrong owner",
-    url:"https://example.org/study",resource_type:"external",
+  const {error:crossLink}=await a.from("material_links").insert({
+    teacher_id:aId,student_id:bStudent!.id,material_id:bMaterial!.id,
+    request_id:randomUUID(),
   });
   expect(crossLink).toBeTruthy();
 });

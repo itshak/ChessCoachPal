@@ -1,13 +1,14 @@
 import "server-only";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { summarizeMaterialClaims, type MaterialSummaryRow } from "@/lib/material-aggregate";
 
 type Db=SupabaseClient;
 const uuid=z.string().uuid();
 const date=z.string().date();
 export const materialsHistoryFilter=z.object({
  studentId:uuid.optional(),workplaceId:uuid.optional(),sessionId:uuid.optional(),
- resourceId:uuid.optional(),
+ materialId:uuid.optional(),
  stage:z.enum(["assigned","taught","completed"]).optional(),
  from:date.optional(),to:date.optional(),
  includeVoided:z.boolean().default(false),
@@ -17,7 +18,7 @@ export const materialsHistoryFilter=z.object({
  message:"Filter by student, workplace, or session to avoid unbounded student disclosure",
 }).refine(v=>!v.from||!v.to||v.from<=v.to,{message:"End date precedes start date"});
 export const materialsHistoryRecord=z.object({
- studentId:uuid,resourceId:uuid,workplaceId:uuid.optional(),sessionId:uuid.optional(),
+ studentId:uuid,materialId:uuid,workplaceId:uuid.optional(),sessionId:uuid.optional(),
  stage:z.enum(["assigned","taught","completed"]),occurredOn:date,
  note:z.string().trim().max(2000).default(""),
  requestId:uuid,confirmed:z.literal(true),
@@ -37,8 +38,8 @@ type MaterialFilter=z.infer<typeof materialsHistoryFilter>;
 async function validateDependencies(db:Db,teacherId:string,input:MaterialRecord){
  const [student,resource,workplace,session]=await Promise.all([
    db.from("students").select("id").eq("teacher_id",teacherId).eq("id",input.studentId).maybeSingle(),
-   db.from("chess_learning_resources").select("id,student_id,session_id")
-     .eq("teacher_id",teacherId).eq("id",input.resourceId).maybeSingle(),
+   db.from("learning_materials").select("id,archived_at")
+     .eq("teacher_id",teacherId).eq("id",input.materialId).maybeSingle(),
    input.workplaceId?db.from("workplaces").select("id")
      .eq("teacher_id",teacherId).eq("id",input.workplaceId).maybeSingle():Promise.resolve({data:null,error:null}),
    input.sessionId?db.from("teaching_sessions").select("id,workplace_id")
@@ -48,15 +49,13 @@ async function validateDependencies(db:Db,teacherId:string,input:MaterialRecord)
    throw failure(500,"DATABASE_ERROR","Unable to validate material history ownership");
  if(!student.data||!resource.data||(input.workplaceId&&!workplace.data)||
     (input.sessionId&&!session.data)) throw failure(404,"NOT_FOUND","One or more selected records are unavailable");
- if(resource.data.student_id && resource.data.student_id!==input.studentId)
-   throw failure(409,"CONFLICT","Material link belongs to a different student");
- if(resource.data.session_id && resource.data.session_id!==input.sessionId)
-   throw failure(409,"CONFLICT","Material link belongs to a different session");
+ if(resource.data.archived_at)
+   throw failure(409,"CONFLICT","Restore an archived material before adding new teaching evidence");
  if(session.data&&session.data.workplace_id!==input.workplaceId)
    throw failure(409,"CONFLICT","Session and workplace must match");
  // Database trigger independently validates frozen session membership / active enrollment.
 }
-const selectFields="id,teacher_id,student_id,workplace_id,session_id,resource_id,stage,occurred_on,note,request_id,created_at,updated_at,voided_at,void_reason";
+const selectFields="id,teacher_id,student_id,workplace_id,session_id,material_id,stage,occurred_on,note,request_id,created_at,updated_at,voided_at,void_reason";
 export async function teacherMaterialHistory(db:Db,teacherId:string,filter:MaterialFilter){
  if(!filter.studentId&&!filter.workplaceId&&!filter.sessionId)
    throw failure(400,"VALIDATION_ERROR","Select a student, workplace, or session");
@@ -68,6 +67,7 @@ export async function teacherMaterialHistory(db:Db,teacherId:string,filter:Mater
   ["students",filter.studentId],
   ["workplaces",filter.workplaceId],
   ["teaching_sessions",filter.sessionId],
+  ["learning_materials",filter.materialId],
  ] as const){
   if(!id)continue;
   const {data:owned,error:ownedError}=await db.from(table).select("id")
@@ -78,8 +78,8 @@ export async function teacherMaterialHistory(db:Db,teacherId:string,filter:Mater
 
  const limit=Math.min(100,Math.max(1,filter.limit??50));
  const offset=Math.min(100000,Math.max(0,filter.offset??0));
- let query=db.from("chess_material_progress").select(
-  selectFields+",students(name),chess_learning_resources(label,url,resource_type,provider_study_id,provider_chapter_id)",
+ let query=db.from("material_teaching_evidence").select(
+  selectFields+",students(name),learning_materials(title,source_url,kind)",
   {count:"exact"}
  ).eq("teacher_id",teacherId).order("occurred_on",{ascending:false})
   .order("created_at",{ascending:false}).order("id")
@@ -87,7 +87,7 @@ export async function teacherMaterialHistory(db:Db,teacherId:string,filter:Mater
  if(filter.studentId)query=query.eq("student_id",filter.studentId);
  if(filter.workplaceId)query=query.eq("workplace_id",filter.workplaceId);
  if(filter.sessionId)query=query.eq("session_id",filter.sessionId);
- if(filter.resourceId)query=query.eq("resource_id",filter.resourceId);
+ if(filter.materialId)query=query.eq("material_id",filter.materialId);
  if(filter.stage)query=query.eq("stage",filter.stage);
  if(filter.from)query=query.gte("occurred_on",filter.from);
  if(filter.to)query=query.lte("occurred_on",filter.to);
@@ -95,9 +95,9 @@ export async function teacherMaterialHistory(db:Db,teacherId:string,filter:Mater
  const {data,error,count}=await query;
  if(error)throw failure(500,"DATABASE_ERROR","Material history unavailable");
  const rows=((data??[]) as unknown as Array<{
-  id:string;student_id:string;session_id:string|null;resource_id:string;stage:string;
+  id:string;student_id:string;session_id:string|null;material_id:string;stage:string;
   workplace_id:string|null;occurred_on:string;updated_at:string;
-  chess_learning_resources:{label:string;url:string;resource_type:string}|null;
+  learning_materials:{title:string;source_url:string|null;kind:string}|null;
   students:{name:string}|null;
  }>).slice(0,limit);
  return {entries:rows,total:count??0,nextOffset:(data?.length??0)>limit?offset+limit:null,
@@ -106,24 +106,53 @@ export async function teacherMaterialHistory(db:Db,teacherId:string,filter:Mater
    studentCount:new Set(rows.map(x=>x.student_id)).size,
    // Distinct session/resource claims avoid counting a group lesson per student.
    uniqueSessionMaterialCount:new Set(rows.filter(x=>x.session_id)
-     .map(x=>x.session_id+"|"+x.resource_id+"|"+x.stage)).size,
+     .map(x=>x.session_id+"|"+x.material_id+"|"+x.stage)).size,
   },summaryScope:"current_page",truthBasis:"explicit_teacher_record_only"};
+}
+/** Complete (not page-scoped) aggregates for one identified student/workplace/session.
+ * Refuse a truncated result rather than showing incomplete teacher-learning history.
+ * Page-wise read consistency is checked by both total and record ID uniqueness.
+ */
+export async function teacherMaterialAggregate(db:Db,teacherId:string,filter:MaterialFilter){
+  const first=await teacherMaterialHistory(db,teacherId,{...filter,offset:0,limit:1});
+  const expected=first.total;
+  if(expected>5000)
+    throw failure(413,"TOO_MANY_RECORDS","Reduce the material history date range (maximum 5000 claims)");
+  const rows:MaterialSummaryRow[]=[];
+  const ids=new Set<string>();
+  for(let offset=0;offset<expected;offset+=100){
+    const page=await teacherMaterialHistory(db,teacherId,{...filter,offset,limit:100});
+    if(page.total!==expected)
+      throw failure(409,"HISTORY_CHANGED","Material history changed while summarizing; retry the request");
+    for(const item of page.entries){
+      if(ids.has(item.id))
+        throw failure(409,"HISTORY_CHANGED","Material history changed while summarizing; retry the request");
+      ids.add(item.id);
+      rows.push({id:item.id,studentId:item.student_id,sessionId:item.session_id,
+        materialId:item.material_id,stage:item.stage as MaterialSummaryRow["stage"],
+        label:item.learning_materials?.title??null});
+    }
+  }
+  if(rows.length!==expected)
+    throw failure(409,"HISTORY_CHANGED","Material history changed while summarizing; retry the request");
+  return {...summarizeMaterialClaims(rows),summaryScope:"entire_filtered_history",
+    truthBasis:"explicit_teacher_record_only",maxClaims:5000};
 }
 export async function teacherMaterialRecord(db:Db,teacherId:string,input:MaterialRecord){
  await validateDependencies(db,teacherId,input);
  const toInsert={
   teacher_id:teacherId,student_id:input.studentId,workplace_id:input.workplaceId??null,
-  session_id:input.sessionId??null,resource_id:input.resourceId,stage:input.stage,
+  session_id:input.sessionId??null,material_id:input.materialId,stage:input.stage,
   occurred_on:input.occurredOn,note:input.note,request_id:input.requestId,
  };
- const {data,error}=await db.from("chess_material_progress").insert(toInsert)
+ const {data,error}=await db.from("material_teaching_evidence").insert(toInsert)
    .select(selectFields).single();
  if(error?.code==="23505"){
-  const {data:old, error:readError}=await db.from("chess_material_progress")
+  const {data:old, error:readError}=await db.from("material_teaching_evidence")
     .select(selectFields).eq("teacher_id",teacherId).eq("request_id",input.requestId).maybeSingle();
   if(readError)throw failure(500,"DATABASE_ERROR","Cannot reconcile material history idempotency");
   if(old&&old.student_id===toInsert.student_id&&old.workplace_id===toInsert.workplace_id&&
-    old.session_id===toInsert.session_id&&old.resource_id===toInsert.resource_id&&
+    old.session_id===toInsert.session_id&&old.material_id===toInsert.material_id&&
     old.stage===toInsert.stage&&old.occurred_on===toInsert.occurred_on&&
     old.note===toInsert.note) return {...old,replayed:true};
   throw failure(409,"IDEMPOTENCY_CONFLICT","Request ID already belongs to a different material claim");
@@ -133,14 +162,14 @@ export async function teacherMaterialRecord(db:Db,teacherId:string,input:Materia
 }
 export async function teacherMaterialVoid(db:Db,teacherId:string,
  input:z.infer<typeof materialsHistoryVoid>){
- const {data,error}=await db.from("chess_material_progress").update({
+ const {data,error}=await db.from("material_teaching_evidence").update({
   voided_at:new Date().toISOString(),void_reason:input.reason,
  }).eq("id",input.entryId).eq("teacher_id",teacherId)
   .eq("updated_at",input.expectedUpdatedAt).is("voided_at",null)
   .select(selectFields).maybeSingle();
  if(error)throw failure(500,"DATABASE_ERROR","Could not correct material claim");
  if(!data){
-  const {data:existing}=await db.from("chess_material_progress")
+  const {data:existing}=await db.from("material_teaching_evidence")
     .select("id").eq("id",input.entryId).eq("teacher_id",teacherId).maybeSingle();
   throw existing?failure(409,"CONFLICT","Material claim changed, already voided or stale; reload history"):
     failure(404,"NOT_FOUND","Material claim not found");

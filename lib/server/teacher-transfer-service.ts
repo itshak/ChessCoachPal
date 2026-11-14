@@ -35,7 +35,7 @@ export type TransferPreview={payload:StudioDataExport;sha256:string;counts:Recor
  bytes:number;warnings:string[]};
 export function teacherImportPreview(raw:unknown,maxBytes=MAX_MCP_IMPORT_BYTES):TransferPreview {
  const payload=parseExportPayload(raw);
- if(!payload)throw fail(400,"VALIDATION_ERROR","Unrecognized export format or missing tables");
+ if(!payload)throw fail(400,"VALIDATION_ERROR","Backup payload does not match the current teacher-data schema");
  const serialized=JSON.stringify(payload);
  const bytes=Buffer.byteLength(serialized,"utf8");
  if(bytes>maxBytes)throw fail(413,"IMPORT_TOO_LARGE","Export is too large for a single import request");
@@ -46,17 +46,19 @@ export function teacherImportPreview(raw:unknown,maxBytes=MAX_MCP_IMPORT_BYTES):
  const guardians=payload.tables.guardians;
  const missingToken=Array.isArray(guardians)&&guardians.some(x=>!x.portal_token);
  const warnings=[
-  "Import upserts by existing IDs and may update current student/family and financial data. It is not a dry-run transaction.",
+  "Preview changes no records. Applying the exact approved SHA-256 runs as one transaction: any invalid or unauthorized record rolls back the entire import. Matching IDs may still update existing teaching and financial data.",
   ...(missingToken?["Imported guardians without portal links receive freshly generated links. Existing portal links for those records will be invalidated."]:[]),
  ];
  return {payload,sha256:createHash("sha256").update(serialized).digest("hex"),counts,bytes,warnings};
 }
-export async function teacherImportApply(db:Db,teacherId:string,raw:unknown,expectedSha256?:string){
+export async function teacherImportApply(db:Db,teacherId:string,raw:unknown,expectedSha256:string){
  const preview=teacherImportPreview(raw);
- if(expectedSha256&&preview.sha256!==expectedSha256)
+ if(!/^[a-f0-9]{64}$/.test(expectedSha256))
+  throw fail(400,"PREVIEW_REQUIRED","An explicitly reviewed SHA-256 digest is required");
+ if(preview.sha256!==expectedSha256)
   throw fail(409,"PREVIEW_CHANGED","The import payload differs from the previously reviewed preview");
  // Domain import contains table allowlisting and writes only as this tenant.
- const result=await importStudioExport(db,teacherId,preview.payload);
+ const result=await importStudioExport(db,teacherId,preview.payload,preview.sha256);
  if(!result.ok)throw fail(500,"IMPORT_FAILED",result.error);
  return {ok:true,counts:result.counts,
   message:"Import complete. Matching IDs were updated; new IDs were inserted.",

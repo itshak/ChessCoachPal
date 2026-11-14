@@ -12,12 +12,14 @@ export function PaymentSettingsButton({
   policy,
   teacherId,
   stripeStatus,
+  initiallyOpen=false,
 }: {
   policy: StudioPolicy;
   teacherId: string;
   stripeStatus: StripeKeyStatus;
+  initiallyOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
 
   return (
     <>

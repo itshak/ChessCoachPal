@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { generateShortToken } from "@/lib/token";
+import {teacherCalendarFeedRotate,CalendarFeedTokenError} from "@/lib/server/teacher-calendar-feed-service";
 
 /**
  * Rotate the teacher's calendar-feed token. The old feed URL stops working
@@ -16,15 +16,13 @@ export async function POST(_req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data, error } = await supabase
-    .from("teachers")
-    .update({ calendar_token: generateShortToken() })
-    .eq("id", user.id)
-    .select("id, calendar_token")
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try{
+    return NextResponse.json(await teacherCalendarFeedRotate(supabase,user.id,true),{
+      headers:{"Cache-Control":"no-store"},
+    });
+  }catch(error){
+    return NextResponse.json({error:"Calendar token rotation unavailable"},{
+      status:error instanceof CalendarFeedTokenError?error.status:500,
+    });
   }
-  return NextResponse.json(data);
 }

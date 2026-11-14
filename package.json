@@ -16,9 +16,14 @@
     "release:prepare": "node scripts/release.mjs prepare",
     "release:validate": "node scripts/release.mjs validate",
     "release:check": "node --test scripts/release-check.mjs",
-    "mcp:parity:guard-test": "node --test scripts/mcp-parity-pr-guard.test.mjs",
+    "mcp:parity:guard-test": "node --test scripts/coach-gateway-rpc-parity.test.mjs scripts/policy-mcp-fields.test.mjs scripts/mcp-parity-pr-guard.test.mjs scripts/mcp-parity-audit.test.mjs scripts/parity-evidence.test.mjs scripts/mcp-legacy-actions.test.mjs",
     "mcp:parity:audit": "node scripts/mcp-parity-audit.mjs",
-    "mcp:parity:strict": "node scripts/mcp-parity-audit.mjs --strict"
+    "mcp:parity:strict": "node scripts/mcp-parity-audit.mjs --strict",
+    "schema:canonical:guard": "node scripts/pre1-schema-guard.mjs",
+    "schema:canonical:guard-test": "node --test scripts/pre1-schema-guard.test.mjs scripts/canonical-cutover-audit.test.mjs scripts/canonical-lessons-guard.test.mjs",
+    "schema:attendance:inventory": "node scripts/canonical-cutover-audit.mjs",
+    "schema:attendance:strict": "node scripts/canonical-cutover-audit.mjs --strict",
+    "schema:canonical:strict": "node scripts/pre1-schema-guard.mjs --strict-materials"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

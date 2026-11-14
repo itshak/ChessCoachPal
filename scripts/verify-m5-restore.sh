@@ -19,7 +19,6 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$tmp/backups" "$tmp/source-files" "$tmp/target-files" "$tmp/restore"
-export RESTORE_DATE="$(date -u +%F)"
 echo "==> start primary disposable Supabase"
 supabase start
 supabase db reset --yes
@@ -51,8 +50,13 @@ INSERT INTO public.teaching_sessions
 SELECT teacher_id, workplace_id, id, 'Restore smoke lesson',
 '2027-04-01T16:00:00Z'::timestamptz, 60, gen_random_uuid()
 FROM public.class_groups WHERE name = 'Restore smoke group';
-UPDATE public.session_attendance SET status = 'present'
-WHERE session_id IN (SELECT id FROM public.teaching_sessions WHERE title = 'Restore smoke lesson');
+-- Privileged synthetic fixture: an unmarked participant has no attendance
+-- row. Normal authenticated writers use the revisioned session commit RPC.
+INSERT INTO public.session_attendance (teacher_id, session_id, student_id, status)
+SELECT p.teacher_id, p.session_id, p.student_id, 'present'
+FROM public.session_participants p
+JOIN public.teaching_sessions s ON s.id=p.session_id
+WHERE s.title='Restore smoke lesson';
 DO $block$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.session_attendance a
@@ -92,6 +96,21 @@ docker run --rm --network "container:$source_db" \
   -v "$root/docker/supabase/backup.sh:/backup.sh:ro" \
   -v "$tmp/backups:/backups" --entrypoint /bin/bash \
   supabase/postgres:17.6.1.136 /backup.sh
+# The smoke may start before midnight UTC and finish the Docker image pull
+# after midnight. Derive the stamp from the artifact we actually backed up;
+# never assume a date captured before pulling images matches backup.sh's date.
+shopt -s nullglob
+backups=( "$tmp"/backups/db-????-??-??.sql.gz )
+shopt -u nullglob
+if [[ "${#backups[@]}" -ne 1 ]]; then
+  echo "Expected exactly one completed date-stamped synthetic database backup" >&2
+  exit 1
+fi
+RESTORE_DATE="$(basename "${backups[0]}" .sql.gz)"
+RESTORE_DATE="${RESTORE_DATE#db-}"
+[[ "$RESTORE_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] ||
+  { echo "Unexpected synthetic backup date" >&2; exit 1; }
+export RESTORE_DATE
 [[ -s "$tmp/backups/db-$RESTORE_DATE.sql.gz" ]]
 [[ -s "$tmp/backups/data-$RESTORE_DATE.sql.gz" ]]
 [[ -s "$tmp/backups/storage-$RESTORE_DATE.tar.gz" ]]
@@ -100,9 +119,37 @@ echo "==> create second independent Supabase project with distinct ports"
 cp -a "$root/supabase" "$tmp/restore/supabase"
 # Restore target must be empty; local CLI would otherwise load synthetic seed.sql.
 sed -i '/^\[db.seed\]/,/^\[db.network_restrictions\]/ s/^enabled = true$/enabled = false/' "$tmp/restore/supabase/config.toml"
-sed -i \
-  -e 's/project_id = "chesscoachpal"/project_id = "chesscoachpal_restore"/' \
-  -e 's/5432/5442/g' "$tmp/restore/supabase/config.toml"
+sed -i 's/project_id = "chesscoachpal"/project_id = "chesscoachpal_restore"/' \
+  "$tmp/restore/supabase/config.toml"
+# A fixed textual substitution (5432 -> 5442) can collide with a port already
+# occupied by the CI runner (observed: Mailpit 54424). Pick independent free
+# loopback ports for every Supabase CLI exposed service in this disposable
+# second stack. The source stack keeps its original configured ports.
+python3 - "$tmp/restore/supabase/config.toml" <<'PY'
+from pathlib import Path
+import re
+import socket
+import sys
+
+path = Path(sys.argv[1])
+content = path.read_text()
+ports = sorted(set(re.findall(r'(?<!\d)5432[0-9](?!\d)', content)))
+reserved = []
+mapping = {}
+try:
+    for port in ports:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        reserved.append(sock)
+        mapping[port] = str(sock.getsockname()[1])
+    content = re.sub(r'(?<!\d)5432[0-9](?!\d)',
+                     lambda match: mapping[match.group()], content)
+    path.write_text(content)
+finally:
+    for sock in reserved:
+        sock.close()
+print("Disposable target port allocation:", ", ".join(f"{a}->{b}" for a, b in mapping.items()))
+PY
 (cd "$tmp/restore" && supabase start)
 target_db="supabase_db_chesscoachpal_restore"
 target_storage="supabase_storage_chesscoachpal_restore"

@@ -53,6 +53,8 @@ export interface CreateStudentInput {
   contactName?: string | null;
   /** Family named after the student; contact is the student. */
   adultSelf?: boolean;
+  /** Optional cross-client durable create receipt. */
+  idempotencyKey?: string;
 }
 
 /**
@@ -67,96 +69,48 @@ export async function createStudentWithOptionalFamily(
   | { ok: true; student: Record<string, unknown>; createdFamily: boolean }
   | { ok: false; error: string; status: number }
 > {
-  const name = input.name?.trim();
-  if (!name) {
-    return { ok: false, error: "Name is required", status: 400 };
+  const name=input.name?.trim();
+  if(!name)return {ok:false,error:"Name is required",status:400};
+  if(input.idempotencyKey!==undefined&&
+     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.idempotencyKey))
+    return {ok:false,error:"idempotencyKey must be a UUID",status:400};
+  // The legacy two-POST create could leave a portal family without its
+  // student when a later quota/FK/validation check failed. A single SQL
+  // transaction now owns both rows and a durable replay receipt; the
+  // hosted active-student trigger protects quota at insert time.
+  const {data,error}=await supabase.rpc("ccp_student_create_full",{
+    p_name:name,
+    p_birthdate:input.birthdate||null,
+    p_level:input.level??null,
+    p_teacher_notes:input.teacherNotes??null,
+    p_guardian_id:input.guardianId||null,
+    p_contact_email:input.contactEmail??null,
+    p_contact_phone:input.contactPhone??null,
+    p_contact_name:input.contactName??null,
+    p_adult_self:Boolean(input.adultSelf),
+    p_request_id:input.idempotencyKey??null,
+  });
+  void teacherId;
+  if(error){
+    const message=error.message??"Student creation failed";
+    if(message.includes("HOSTED_LIMIT_REACHED"))
+      return {ok:false,error:"Active-student capacity reached",status:403};
+    if(message.includes("STUDENT_REQUEST_CONFLICT")||error.code==="23505")
+      return {ok:false,error:"Student creation requestId was already used with different details",status:409};
+    if(message.includes("STUDENT_ALREADY_DELETED"))
+      return {ok:false,error:"Student from this request was permanently deleted",status:409};
+    if(message.includes("GUARDIAN_NOT_FOUND"))
+      return {ok:false,error:"Family not found",status:404};
+    if(/STUDENT_INVALID_INPUT|GUARDIAN_NAME_REQUIRED|GUARDIAN_CONTACT_CHANNEL_REQUIRED/.test(message)||
+       ["22023","22007","22008"].includes(error.code??""))
+      return {ok:false,error:"Invalid student or family contact details",status:400};
+    return {ok:false,error:"Student and optional family could not be created",status:500};
   }
-
-  let guardianId = input.guardianId?.trim() || null;
-  let createdFamily = false;
-
-  // Linking a foreign family would surface this student on another
-  // teacher's portal, so the guardian must belong to this teacher.
-  if (guardianId) {
-    const { data: owned } = await supabase
-      .from("guardians")
-      .select("id")
-      .eq("id", guardianId)
-      .eq("teacher_id", teacherId)
-      .maybeSingle();
-    if (!owned) {
-      return { ok: false, error: "Family not found", status: 404 };
-    }
-  }
-
-  if (!guardianId) {
-    const email = input.contactEmail?.trim() || null;
-    const phone = input.contactPhone?.trim() || null;
-    const adultSelf = Boolean(input.adultSelf);
-    const contactName = input.contactName?.trim() || null;
-
-    // Practice-only: no adult flag and no contact channels.
-    // Portal family-of-one: Adult student, OR parent name + email/phone.
-    if (email || phone || adultSelf) {
-      if (!adultSelf && !contactName) {
-        return {
-          ok: false,
-          error:
-            "Parent / guardian name is required unless Adult student is checked",
-          status: 400,
-        };
-      }
-      const { data: guardian, error: gErr } = await insertGuardian(
-        supabase,
-        teacherId,
-        {
-          name: contactName || name,
-          familyName: adultSelf ? name : null,
-          email,
-          phone,
-        }
-      );
-      if (gErr || !guardian) {
-        return {
-          ok: false,
-          error: gErr?.message ?? "Failed to create family",
-          status: 500,
-        };
-      }
-      guardianId = guardian.id;
-      createdFamily = true;
-    } else if (contactName) {
-      return {
-        ok: false,
-        error:
-          "Add an email or phone for the parent, or check Adult student, or clear the parent name for a student without family contact",
-        status: 400,
-      };
-    }
-  }
-
-  const { data: student, error } = await supabase
-    .from("students")
-    .insert({
-      teacher_id: teacherId,
-      name,
-      guardian_id: guardianId,
-      birthdate: input.birthdate || null,
-      level: input.level?.trim() || null,
-      teacher_notes: input.teacherNotes?.trim() || "",
-    })
-    .select()
-    .single();
-
-  if (error || !student) {
-    return {
-      ok: false,
-      error: error?.message ?? "Failed to create student",
-      status: 500,
-    };
-  }
-
-  return { ok: true, student, createdFamily };
+  if(!data||typeof data!=="object"||Array.isArray(data)||
+     !data.student||typeof data.student!=="object")
+    return {ok:false,error:"Student transaction returned invalid data",status:500};
+  return {ok:true,student:data.student as Record<string,unknown>,
+    createdFamily:Boolean(data.createdFamily)};
 }
 
 /**

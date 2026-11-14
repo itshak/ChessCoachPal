@@ -55,11 +55,11 @@ test("teacher isolation, scoped IDs, roster snapshots and idempotent session ret
 
   const payload = {
     action: "sessions.create", workplaceId: wA.id, groupId: grp.id,
-    title: `Confidential note ${suffix}`, startsAt: "2027-04-01T14:00:00.000Z",
+    title: `Confidential note ${suffix}`, startsAt: "2047-09-11T14:00:00.000Z",
     durationMinutes: 60, lessonNote: `Private teaching detail ${suffix}`,
     requestId: crypto.randomUUID(),
   };
-  expect((await post(a, { ...payload, startsAt: "2027-04-01T14:00:00", requestId: crypto.randomUUID() })).status).toBe(400);
+  expect((await post(a, { ...payload, startsAt: "2047-09-11T14:00:00", requestId: crypto.randomUUID() })).status).toBe(400);
   expect((await post(a, { ...payload, durationMinutes: 481, requestId: crypto.randomUUID() })).status).toBe(400);
   const first = await asA(payload);
   const replay = await asA(payload);

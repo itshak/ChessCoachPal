@@ -44,6 +44,8 @@ export interface SendEmailArgs {
   portalUrl?: string;
   /** Optional file attachments (e.g. invoice PDF). */
   attachments?: EmailAttachment[];
+  /** Provider-level duplicate suppression for a single reviewed message. */
+  idempotencyKey?: string;
 }
 
 export interface SendEmailResult {
@@ -153,6 +155,7 @@ async function sendWithResend({
   replyTo,
   fromName,
   attachments,
+  idempotencyKey,
 }: SendEmailArgs): Promise<SendEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -178,7 +181,7 @@ async function sendWithResend({
           })),
         }
       : {}),
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
 
   if (error) {
     console.error(`Resend send failed: ${error.name}: ${error.message}`);

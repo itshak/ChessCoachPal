@@ -77,6 +77,95 @@ export async function teacherPolicyUpdate(
   const supabase=db;
   const user={id:teacherId,email:teacherEmail};
 
+  // Reject misspelled/unsupported fields instead of reporting a successful
+  // save while silently discarding them. Website-only provider credentials
+  // are individually allowlisted but never permitted in the MCP schema.
+  const allowed=new Set([
+    "studioName","studioWebsite","studioContact","studioInfo","lessonLabel",
+    "lessonDurationOptions","timezone","cancellationWindowHours",
+    "timelyCancelEarnsMakeup","lateCancelEarnsMakeup","noShowEarnsMakeup",
+    "teacherCancelEarnsMakeup","makeupCreditExpiryDays","billAttended",
+    "billNoShow","billTeacherCancel","billTimelyStudentCancel",
+    "billLateStudentCancel","billMakeup","defaultRateCents",
+    "durationRateCents","travelFeeCents","rateBasis","currency",
+    "invoiceCadence","paymentInstructions","paymentQrCode","paymentProvider",
+    "notifyInApp","notifyEmailPortalCancel","notifyEmailInvoicePaid",
+    "bccFamilyEmails","bccEmail","aiProvider","aiApiKey",
+    "clearAiApiKey","stripeSecretKey","stripePublishableKey",
+    "stripeWebhookSecret","clearStripeSecretKey",
+    "clearStripePublishableKey","clearStripeWebhookSecret",
+  ]);
+  for(const key of Object.keys(body)){
+    if(!allowed.has(key))
+      return NextResponse.json({error:"Unsupported policy field: "+key},{status:400});
+  }
+  const textFields:[string,number][]=[
+    ["studioName",120],["studioWebsite",300],["studioContact",300],
+    ["studioInfo",5000],["lessonLabel",60],["paymentInstructions",2000],
+  ];
+  for(const [key,max] of textFields){
+    if(body[key]!==undefined&&(typeof body[key]!=="string" ||
+      (body[key] as string).length>max))
+      return NextResponse.json({error:key+" must be text of at most "+max+" characters"},{status:400});
+  }
+
+  // Website and MCP must reject malformed settings before persistence. In
+  // particular Boolean("false") is true, and rounding cents changes intent.
+  const booleanFields=[
+    "timelyCancelEarnsMakeup","lateCancelEarnsMakeup","noShowEarnsMakeup",
+    "teacherCancelEarnsMakeup","billAttended","billNoShow",
+    "billTeacherCancel","billTimelyStudentCancel","billLateStudentCancel",
+    "billMakeup","notifyInApp","notifyEmailPortalCancel",
+    "notifyEmailInvoicePaid","bccFamilyEmails",
+  ];
+  for(const key of booleanFields){
+    if(body[key]!==undefined&&typeof body[key]!=="boolean")
+      return NextResponse.json({error:key+" must be a boolean"},{status:400});
+  }
+  for(const key of ["clearStripeSecretKey","clearStripePublishableKey",
+    "clearStripeWebhookSecret","clearAiApiKey"]){
+    if(body[key]!==undefined&&body[key]!==true)
+      return NextResponse.json({error:key+" must be true when present"},{status:400});
+  }
+  const wholeCents=(value:unknown):number|null|undefined=>{
+    if(value===null||value==="")return null;
+    if(typeof value==="string"){
+      const normalized=value.trim();
+      if(normalized==="")return null;
+      if(!/^[0-9]{1,8}$/.test(normalized))return undefined;
+      value=Number(normalized);
+    }
+    return typeof value==="number"&&Number.isSafeInteger(value)&&
+      value>=0&&value<=10_000_000?value:undefined;
+  };
+  const defaultRate=body.defaultRateCents===undefined?undefined:wholeCents(body.defaultRateCents);
+  const travelRate=body.travelFeeCents===undefined?undefined:wholeCents(body.travelFeeCents);
+  if(body.defaultRateCents!==undefined&&defaultRate===undefined ||
+     body.travelFeeCents!==undefined&&travelRate===undefined)
+    return NextResponse.json({error:"Rates and travel fees must be 0–10,000,000 whole cents"},{status:400});
+  if(body.cancellationWindowHours!==undefined&&(
+    typeof body.cancellationWindowHours!=="number"||
+    !Number.isFinite(body.cancellationWindowHours)||
+    body.cancellationWindowHours<0||body.cancellationWindowHours>8760))
+    return NextResponse.json({error:"Invalid cancellation window hours"},{status:400});
+  if(body.makeupCreditExpiryDays!==undefined&&body.makeupCreditExpiryDays!==null&&(
+    typeof body.makeupCreditExpiryDays!=="number"||
+    !Number.isSafeInteger(body.makeupCreditExpiryDays)||
+    body.makeupCreditExpiryDays<0||body.makeupCreditExpiryDays>3650))
+    return NextResponse.json({error:"Invalid makeup credit expiry days"},{status:400});
+  if(body.durationRateCents!==undefined){
+    const rates=body.durationRateCents;
+    if(!rates||typeof rates!=="object"||Array.isArray(rates)||
+      Object.entries(rates).some(([minutes,cents])=>
+        !/^[0-9]{1,3}$/.test(minutes)||Number(minutes)<5||Number(minutes)>240||
+        typeof cents!=="number"||!Number.isSafeInteger(cents)||
+        cents<0||cents>10_000_000))
+      return NextResponse.json({error:"Duration rates must map 5–240 minutes to whole cents"},{status:400});
+  }
+  if(body.currency!==undefined&&(
+    typeof body.currency!=="string"||!/^[a-zA-Z]{3}$/.test(body.currency.trim())))
+    return NextResponse.json({error:"Currency must be a three-letter code"},{status:400});
+
   if (body.timezone !== undefined) {
     const { isValidTimezone } = await import("@/lib/timezones");
     if (typeof body.timezone !== "string" || !isValidTimezone(body.timezone)) {
@@ -92,10 +181,11 @@ export async function teacherPolicyUpdate(
         { status: 400 }
       );
     }
-    const cleaned = (body.lessonDurationOptions as unknown[])
-      .map((v) => Number(v))
-      .filter((v) => Number.isInteger(v) && v >= 5 && v <= 240);
-    durationOptions = [...new Set(cleaned)].sort((a, b) => a - b);
+    if(body.lessonDurationOptions.length===0||body.lessonDurationOptions.length>20||
+      body.lessonDurationOptions.some(v=>typeof v!=="number"||
+        !Number.isInteger(v)||v<5||v>240))
+      return NextResponse.json({error:"Provide 1–20 valid integer time blocks (5–240 minutes)"},{status:400});
+    durationOptions = [...new Set(body.lessonDurationOptions)].sort((a, b) => a - b);
     if (durationOptions.length === 0) {
       return NextResponse.json(
         { error: "At least one time block between 5 and 240 minutes is required" },
@@ -217,9 +307,7 @@ export async function teacherPolicyUpdate(
       teacher_cancel_earns_makeup: Boolean(body.teacherCancelEarnsMakeup),
     }),
     ...(body.makeupCreditExpiryDays !== undefined && {
-      makeup_credit_expiry_days: body.makeupCreditExpiryDays
-        ? Number(body.makeupCreditExpiryDays)
-        : null,
+      makeup_credit_expiry_days: body.makeupCreditExpiryDays === null ? null : body.makeupCreditExpiryDays,
     }),
     // Billing
     ...(body.billAttended !== undefined && {
@@ -242,9 +330,7 @@ export async function teacherPolicyUpdate(
     }),
     ...(body.defaultRateCents !== undefined && {
       default_rate_cents:
-        body.defaultRateCents === null || body.defaultRateCents === ""
-          ? null
-          : Math.max(0, Math.round(Number(body.defaultRateCents))),
+        defaultRate,
     }),
     ...(body.durationRateCents !== undefined && {
       duration_rate_cents: serializeDurationRates(
@@ -253,13 +339,11 @@ export async function teacherPolicyUpdate(
     }),
     ...(body.travelFeeCents !== undefined && {
       travel_fee_cents:
-        body.travelFeeCents === null || body.travelFeeCents === ""
-          ? null
-          : Math.max(0, Math.round(Number(body.travelFeeCents))),
+        travelRate,
     }),
     ...(rateBasis !== undefined && { rate_basis: rateBasis }),
     ...(body.currency !== undefined && {
-      currency: String(body.currency).trim().toUpperCase().slice(0, 3) || "USD",
+      currency: (body.currency as string).trim().toUpperCase(),
     }),
     ...(cadence !== undefined && { invoice_cadence: cadence }),
     ...(body.paymentInstructions !== undefined && {

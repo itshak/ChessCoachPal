@@ -1,14 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { sumAmountCents } from "@/lib/billing";
+import {randomUUID} from "node:crypto";
 import { sendInvoice } from "@/lib/server/invoice-send";
 export class InvoiceActionError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);}
 }
 const fail=(status:number,code:string,msg:string)=>new InvoiceActionError(status,code,msg);
 type Db=SupabaseClient;
-type InvoiceLine={id?:string;lessonId?:string|null;description:string;quantity:number;
+type InvoiceLine={id?:string;sessionId?:string|null;studentId?:string|null;description:string;quantity:number;
  unitCents:number;amountCents:number};
-export type InvoiceDraftEdit={notes?:string;items?:InvoiceLine[]};
+export type InvoiceDraftEdit={notes?:string;items?:InvoiceLine[];expectedUpdatedAt?:string;
+ idempotencyKey?:string};
 async function ownedInvoice(db:Db,teacherId:string,id:string){
  const {data,error}=await db.from("invoices").select("id,status")
    .eq("id",id).eq("teacher_id",teacherId).maybeSingle();
@@ -27,76 +28,70 @@ export async function teacherInvoiceDelete(db:Db,teacherId:string,id:string){
  if(!data)throw fail(409,"CONFLICT","Invoice status changed; reload before deletion");
  return {ok:true};
 }
-export async function teacherInvoiceVoid(db:Db,teacherId:string,id:string){
- const invoice=await ownedInvoice(db,teacherId,id);
- if(invoice.status==="paid")throw fail(409,"CONFLICT","Paid invoices cannot be voided");
- if(invoice.status==="void")return {ok:true,alreadyVoid:true};
- const {data:creditPackage,error:creditError}=await db.from("credit_packages")
-  .select("id,credit_redemptions(id)").eq("invoice_id",id).maybeSingle();
- if(creditError)throw fail(500,"DATABASE_ERROR","Unable to inspect prepaid credits");
- if((creditPackage?.credit_redemptions as unknown[]|null)?.length)
-  throw fail(409,"CREDITS_USED","Return prepaid credits before voiding this invoice");
- const {data,error}=await db.from("invoices").update({status:"void"})
-  .eq("id",id).eq("teacher_id",teacherId).eq("status",invoice.status)
-  .select("id").maybeSingle();
- if(error)throw fail(500,"DATABASE_ERROR","Unable to void invoice");
- if(!data)throw fail(409,"CONFLICT","Invoice status changed; reload before voiding");
- return {ok:true};
+export async function teacherInvoiceVoid(
+ db:Db,teacherId:string,id:string,idempotencyKey?:string
+){
+ // Shared website/MCP SQL serializes the same invoice row as payment commits
+ // and protects related prepaid packages. No client-side check/write race.
+ void teacherId;
+ const key=idempotencyKey??randomUUID();
+ if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key))
+   throw fail(400,"VALIDATION_ERROR","Invoice void idempotency key must be a UUID");
+ const {data,error}=await db.rpc("ccp_invoice_void",{
+   p_invoice_id:id,p_request_id:key,
+ });
+ if(error){
+   if(error.code==="42501"||/NOT_FOUND/.test(error.message))
+     throw fail(404,"NOT_FOUND","Invoice not found");
+   if(error.code==="23505"||/REQUEST_CONFLICT/.test(error.message))
+     throw fail(409,"IDEMPOTENCY_CONFLICT",
+       "Invoice void request ID was reused or the invoice changed");
+   if(/CREDITS_USED|CREDIT_PACKAGE_EXISTS/.test(error.message))
+     throw fail(409,"CREDITS_EXIST",
+       "Cancel or reconcile the prepaid credit package before voiding its invoice");
+   if(/INVOICE_PAID|INVOICE_HAS_PAYMENTS|CHECKOUT_RECONCILIATION_REQUIRED|STATUS_CHANGED/.test(error.message))
+     throw fail(409,"CONFLICT",
+       "Reconcile payments, credits and any open Stripe checkout before voiding this invoice");
+   throw fail(500,"DATABASE_ERROR","Unable to commit invoice void atomically");
+ }
+ return data as {ok:true;alreadyVoid:boolean;invoiceId:string;
+   idempotencyKey:string;replayed:boolean};
 }
 export async function teacherInvoiceDraftUpdate(db:Db,teacherId:string,id:string,input:InvoiceDraftEdit){
- const existing=await ownedInvoice(db,teacherId,id);
- if(existing.status!=="draft")throw fail(409,"CONFLICT","Only draft invoices can be edited");
- if(input.notes===undefined&&input.items===undefined)
-  throw fail(400,"VALIDATION_ERROR","No invoice changes");
- if(input.notes!==undefined&&(typeof input.notes!=="string"||input.notes.length>2000))
-  throw fail(400,"VALIDATION_ERROR","Invoice notes must be at most 2,000 characters");
- const {data:creditPackage,error:cpError}=await db.from("credit_packages").select("id")
-  .eq("invoice_id",id).maybeSingle();
- if(cpError)throw fail(500,"DATABASE_ERROR","Prepaid package unavailable");
- if(input.items!==undefined){
-  if(!Array.isArray(input.items))throw fail(400,"VALIDATION_ERROR","Invoice items must be an array");
-  if(creditPackage)throw fail(409,"CONFLICT","Prepaid-package invoice lines cannot be edited");
-  if(input.items.length>100||input.items.some(line=>
-    !line.description?.trim()||line.description.length>500||
-    ![line.quantity,line.unitCents,line.amountCents].every(Number.isSafeInteger)||
-    line.quantity<1||line.quantity>10000||line.unitCents<0||line.amountCents<0))
-    throw fail(400,"VALIDATION_ERROR","Invalid invoice line items");
-  const lessonIds=[...new Set(input.items.map(x=>x.lessonId).filter((v):v is string=>typeof v==="string"&&v.length>0))];
-  if(lessonIds.length){
-   const {data:owned,error}=await db.from("lessons").select("id")
-    .eq("teacher_id",teacherId).in("id",lessonIds);
-   if(error)throw fail(500,"DATABASE_ERROR","Unable to validate invoice lesson references");
-   if(owned?.length!==lessonIds.length)throw fail(404,"NOT_FOUND","Referenced lesson belongs to another teacher or does not exist");
+  void teacherId; // SQL independently enforces auth.uid() ownership.
+  if(input.notes===undefined&&input.items===undefined)
+    throw fail(400,"VALIDATION_ERROR","No invoice changes");
+  if(input.notes!==undefined&&(typeof input.notes!=="string"||input.notes.length>2000))
+    throw fail(400,"VALIDATION_ERROR","Invoice notes must be at most 2,000 characters");
+  if(input.items!==undefined){
+    if(!Array.isArray(input.items)||input.items.length>100||input.items.some(line=>
+      !line.description?.trim()||line.description.length>500||
+      Boolean(line.sessionId)!==Boolean(line.studentId)||
+      ![line.quantity,line.unitCents,line.amountCents].every(Number.isSafeInteger)||
+      line.quantity<1||line.quantity>10000||
+      line.unitCents<0||line.unitCents>100000000||
+      line.amountCents<0||line.amountCents>100000000))
+      throw fail(400,"VALIDATION_ERROR","Invalid invoice line items");
   }
-  const {data:originalLines,error:linesError}=await db.from("invoice_items")
-    .select("id,kind").eq("invoice_id",id);
-  if(linesError)throw fail(500,"DATABASE_ERROR","Unable to load invoice lines");
-  const kindById=new Map((originalLines??[]).map(row=>[row.id as string,row.kind as string]));
-  // Existing website semantics: replace all draft lines; preflight validates the
-  // entire request before deletion to reduce partial-write risk.
-  const {error:deleteError}=await db.from("invoice_items").delete().eq("invoice_id",id);
-  if(deleteError)throw fail(500,"DATABASE_ERROR","Unable to replace invoice lines");
-  if(input.items.length){
-   const {error:insertError}=await db.from("invoice_items").insert(input.items.map((line,index)=>({
-    invoice_id:id,lesson_id:line.lessonId??null,
-    kind:line.id&&kindById.get(line.id)==="travel"?"travel":"lesson",
-    description:line.description,quantity:line.quantity,unit_cents:line.unitCents,
-    amount_cents:line.amountCents,sort_order:index,
-   })));
-   if(insertError)throw fail(500,"DATABASE_ERROR",
-     "Invoice lines could not be saved. Reopen the draft and reconcile before retrying.");
+  const key=input.idempotencyKey??randomUUID();
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key))
+    throw fail(400,"VALIDATION_ERROR","Provide a UUID idempotency key");
+  const {data,error}=await db.rpc("ccp_invoice_draft_update",{
+    p_invoice_id:id,p_notes:input.notes??null,p_items:input.items??null,
+    p_expected_updated_at:input.expectedUpdatedAt??null,
+    p_idempotency_key:key,
+  });
+  if(error){
+    if(error.message.includes("NOT_FOUND"))
+      throw fail(404,"NOT_FOUND","Invoice or referenced lesson not found");
+    if(/INVOICE_NOT_DRAFT|PREPAID_INVOICE_IMMUTABLE|STALE_INVOICE_REVISION|INVOICE_DRAFT_REQUEST_CONFLICT/.test(error.message)||error.code==="23505")
+      throw fail(409,"CONFLICT","Invoice state changed or prepaid lines cannot be edited");
+    if(/INVALID|EMPTY|OVERFLOW/.test(error.message))
+      throw fail(400,"VALIDATION_ERROR","Invalid draft invoice line items or notes");
+    throw fail(500,"DATABASE_ERROR","Draft invoice was not changed");
   }
-  const subtotal=sumAmountCents(input.items.map(line=>({amountCents:line.amountCents})));
-  const {error}=await db.from("invoices").update({
-    subtotal_cents:subtotal,...(input.notes!==undefined?{notes:input.notes}:{}),
-  }).eq("id",id).eq("teacher_id",teacherId).eq("status","draft");
-  if(error)throw fail(500,"DATABASE_ERROR","Invoice subtotal update failed");
- } else {
-  const {error}=await db.from("invoices").update({notes:input.notes})
-   .eq("id",id).eq("teacher_id",teacherId).eq("status","draft");
-  if(error)throw fail(500,"DATABASE_ERROR","Invoice notes update failed");
- }
- return {ok:true};
+  return data as {ok:true;invoiceId:string;updatedAt:string;
+   idempotencyKey:string;replayed:boolean};
 }
 export async function teacherInvoiceSend(db:Db,teacherId:string,id:string,
  teacherEmail:string|undefined,origin:string){

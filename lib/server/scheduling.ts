@@ -1,17 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_POLICY,
-  computeOccurrences,
   normalizeDurationRates,
   type StudioPolicy,
-  type SlotRow,
 } from "@/lib/schedule";
-import { rescheduleSkipKeys } from "@/lib/reschedule";
 
 /**
  * Server-side scheduling operations, shared by the teacher schedule page,
  * the parent portal, and the .ics feed. Works with either an RLS-scoped
  * client (teacher pages) or the service-role client (portal/token access).
+ * Canonical slot materialization is implemented in canonical-slot-service.
  */
 
 export async function getPolicy(
@@ -37,47 +35,3 @@ export async function getPolicy(
   return policy;
 }
 
-/**
- * Idempotently materialize lesson occurrences from active slots for
- * [from, to] (inclusive "YYYY-MM-DD" local dates). Existing rows are left
- * untouched via ON CONFLICT (slot_id, lesson_date) DO NOTHING, so manual
- * edits and attendance on already-materialized lessons are never clobbered.
- */
-export async function materializeLessons(
-  supabase: SupabaseClient,
-  teacherId: string,
-  from: string,
-  to: string
-): Promise<void> {
-  const [policy, { data: slots }, { data: moved }] = await Promise.all([
-    getPolicy(supabase, teacherId),
-    supabase
-      .from("lesson_slots")
-      .select("*")
-      .eq("teacher_id", teacherId)
-      .eq("active", true),
-    // Lessons the teacher moved away from their slot occurrence.
-    supabase
-      .from("lessons")
-      .select("slot_id, rescheduled_from_date")
-      .eq("teacher_id", teacherId)
-      .not("rescheduled_from_date", "is", null),
-  ]);
-
-  const skip = rescheduleSkipKeys(
-    (moved ?? []) as { slot_id: string | null; rescheduled_from_date: string | null }[]
-  );
-
-  const rows = ((slots ?? []) as SlotRow[])
-    .flatMap((slot) => computeOccurrences(slot, from, to, policy.timezone))
-    .filter((row) => !skip.has(`${row.slot_id}|${row.lesson_date}`));
-  if (rows.length === 0) return;
-
-  const { error } = await supabase.from("lessons").upsert(rows, {
-    onConflict: "slot_id,lesson_date",
-    ignoreDuplicates: true,
-  });
-  if (error) {
-    console.error("materializeLessons upsert failed:", error.message);
-  }
-}

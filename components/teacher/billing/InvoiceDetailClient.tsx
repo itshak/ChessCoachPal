@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,8 @@ const amountInputClass =
 
 interface LineItem {
   id?: string;
-  lessonId?: string | null;
+  sessionId?: string | null;
+  studentId?: string | null;
   description: string;
   quantity: number;
   unitCents: number;
@@ -32,6 +33,7 @@ interface LineItem {
 export function InvoiceDetailClient({
   invoiceId,
   status,
+  initialRevision,
   currency,
   initialItems,
   initialNotes,
@@ -49,6 +51,7 @@ export function InvoiceDetailClient({
 }: {
   invoiceId: string;
   status: string;
+  initialRevision: string;
   currency: string;
   initialItems: LineItem[];
   initialNotes: string;
@@ -76,6 +79,9 @@ export function InvoiceDetailClient({
   const [items, setItems] = useState(initialItems);
   const [notes, setNotes] = useState(initialNotes);
   const [busy, setBusy] = useState(false);
+  // Keep the original revision/key across network retries; never treat a
+  // second click as permission to overwrite a newer draft.
+  const regenerationReceipt=useRef<{revision:string;key:string}|null>(null);
   const [flash, setFlash] = useState<{
     text: string;
     tone: "ok" | "error" | "warn";
@@ -137,17 +143,31 @@ export function InvoiceDetailClient({
       confirmLabel: "Regenerate",
     });
     if (!ok) return;
+    regenerationReceipt.current??={revision:initialRevision,key:crypto.randomUUID()};
     setBusy(true);
     setFlash(null);
-    const res = await fetch(`/api/billing/invoices/${invoiceId}/regenerate`, {
-      method: "POST",
-    });
+    let res:Response;
+    try{
+      res=await fetch(`/api/billing/invoices/${invoiceId}/regenerate`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          expectedUpdatedAt:regenerationReceipt.current.revision,
+          idempotencyKey:regenerationReceipt.current.key,
+        }),
+      });
+    }catch{
+      setBusy(false);
+      setFlash({text:"Connection interrupted. Retry to recover the same regeneration result.",tone:"error"});
+      return;
+    }
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
+      if(res.status===409){regenerationReceipt.current=null;router.refresh();}
       setFlash({ text: data.error ?? "Regenerate failed", tone: "error" });
       return;
     }
+    regenerationReceipt.current=null;
     setFlash({
       text:
         data.itemCount === 0
@@ -159,44 +179,76 @@ export function InvoiceDetailClient({
   }
 
   async function send() {
-    const ok = await confirm({
-      title: "Send invoice?",
-      message:
-        "Line items will be frozen and the family will be emailed a PDF.",
-      confirmLabel: "Send",
-    });
-    if (!ok) return;
     setBusy(true);
     setFlash(null);
-    if (isDraft) {
-      await fetch(`/api/billing/invoices/${invoiceId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items, notes }),
+    try {
+      // A failed draft save must never fall through to an external email.
+      if (isDraft) {
+        const saved = await fetch("/api/billing/invoices/" + invoiceId, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items, notes }),
+        });
+        if (!saved.ok) {
+          const failure = await saved.json().catch(() => ({}));
+          throw new Error(failure.error ?? "Could not save draft before sending");
+        }
+      }
+      const response = await fetch(
+        "/api/billing/invoices/" + invoiceId + "/send?includeRecipients=true",
+        { cache: "no-store" }
+      );
+      if (!response.ok) {
+        const failure = await response.json().catch(() => ({}));
+        throw new Error(failure.error ?? "Could not preview invoice before sending");
+      }
+      const preview = await response.json() as {
+        messageSubject: string; messagePreview: string; subtotalCents: number;
+        currency: string; recipientCount: number; recipients?: string[];
+        pdfReady: boolean;
+      };
+      if (!preview.pdfReady) throw new Error("Invoice PDF is not ready");
+      const recipients = preview.recipients?.length
+        ? preview.recipients.join(", ")
+        : "No email address on file (portal-only status update)";
+      const approved = await confirm({
+        title: "Review invoice before sending",
+        message: [
+          "Amount: " + formatMoney(preview.subtotalCents, preview.currency),
+          "Recipients: " + preview.recipientCount + " (" + recipients + ")",
+          "Subject: " + preview.messageSubject,
+          "",
+          preview.messagePreview,
+          "",
+          "Sending freezes the line items. Confirm this external email action?",
+        ].join("\n"),
+        confirmLabel: "Send invoice",
       });
+      if (!approved) return;
+      const res = await fetch("/api/billing/invoices/" + invoiceId + "/send", {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Send failed");
+      const base = data.emailed
+        ? "Sent and emailed"
+        : data.emailError
+          ? "Sent (" + data.emailError + ")"
+          : "Sent";
+      const text = data.checkoutError ? base + ". " + data.checkoutError : base;
+      setFlash({
+        text,
+        tone: data.emailError || data.checkoutError ? "warn" : "ok",
+      });
+      router.refresh();
+    } catch (error) {
+      setFlash({
+        text: error instanceof Error ? error.message : "Send failed",
+        tone: "error",
+      });
+    } finally {
+      setBusy(false);
     }
-    const res = await fetch(`/api/billing/invoices/${invoiceId}/send`, {
-      method: "POST",
-    });
-    const data = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!res.ok) {
-      setFlash({ text: data.error ?? "Send failed", tone: "error" });
-      return;
-    }
-    const base = data.emailed
-      ? "Sent and emailed"
-      : data.emailError
-        ? `Sent (${data.emailError})`
-        : "Sent";
-    const text = data.checkoutError
-      ? `${base}. ${data.checkoutError}`
-      : base;
-    setFlash({
-      text,
-      tone: data.emailError || data.checkoutError ? "warn" : "ok",
-    });
-    router.refresh();
   }
 
   async function markPaid() {

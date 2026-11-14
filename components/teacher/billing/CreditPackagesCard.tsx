@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -307,6 +307,9 @@ function SellPackageForm({
   onCancel: () => void;
 }) {
   const router = useRouter();
+  // Keep the same request ID for transport retries; server-side RPC returns
+  // the original invoice instead of selling duplicate prepaid lessons.
+  const requestId = useRef<string | null>(null);
 
   function suggestedPrice(credits: number, durationMinutes: number): string {
     const charge = resolveLessonCharge(
@@ -352,6 +355,7 @@ function SellPackageForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         studentId,
+        requestId: requestId.current ?? (requestId.current = crypto.randomUUID()),
         credits: Number(credits),
         durationMinutes: Number(duration),
         priceCents,
