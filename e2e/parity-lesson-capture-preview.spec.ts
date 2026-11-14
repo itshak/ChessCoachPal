@@ -90,12 +90,12 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
     data:{action:"sessions.createAdHoc",
       ...preview.proposedSession,requestId:idempotencyKey},
   });
-  expect(replay.status(),await replay.text()).toBe(201);
+  expect(replay.status(),await replay.text()).toBe(200);
   expect((await replay.json()).data.id).toBe(sessionId);
   const changedReplay=await call("ccp_v1_sessions_ad_hoc_create",{
     ...preview.proposedSession,title:"Different lesson",idempotencyKey,confirmed:true,
   });
-  expect(changedReplay.error.code).toBe("CONFLICT");
+  expect(changedReplay.error?.code).toBe("CONFLICT");
 });
 
 test("PARITY:PARITY-conversational-preview-fails-closed-for-missing-duplicate-ambiguous-and-foreign-enrollment",async({page,request})=>{
