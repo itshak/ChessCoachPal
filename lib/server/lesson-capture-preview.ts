@@ -21,10 +21,12 @@ export const lessonCapturePreviewSchema = z.object({
   localDate: z.string().refine(isDateString,"Date must be a real YYYY-MM-DD local calendar date").optional(),
   lessonNote: z.string().max(10000).default(""),
   chapterSelection:z.object({
-    studyId:z.string().regex(/^[A-Za-z0-9]{8}$/),
+    studyId:z.string().regex(/^[A-Za-z0-9]{8}$/).optional(),
+    studyName:z.string().trim().min(1).max(160).optional(),
     chapterNumber:z.number().int().min(1).max(64),
     expectedPlayers:z.string().trim().max(120).optional(),
-  }).strict().optional(),
+  }).strict().refine(x=>Boolean(x.studyId)!==Boolean(x.studyName),
+    "Supply one exact study name OR provider study ID, never both").optional(),
 }).strict().refine(x=>
   (x.startsAt!==undefined&&x.durationMinutes!==undefined&&x.localDate===undefined) ||
   (x.startsAt===undefined&&x.durationMinutes===undefined&&x.localDate!==undefined),
@@ -229,22 +231,36 @@ export async function teacherLessonCapturePreview(
   if(input.chapterSelection&&issues.length===0){
     const choice=input.chapterSelection;
     const found=await teacherStudyIndexSearch(db,teacherId,{
-      studyId:choice.studyId,chapterNumber:choice.chapterNumber,limit:100,
+      ...(choice.studyId?{studyId:choice.studyId}:{}),
+      ...(choice.studyName?{query:choice.studyName}:{}),
+      chapterNumber:choice.chapterNumber,limit:100,
     });
-    if(found.truncated||found.total>1){
+    // The index supports substring discovery, but a *capture* must use one
+    // exact title or provider ID; an approximate match is never accepted.
+    const candidates=found.matches.filter(c=>choice.studyId?
+      c.study_id===choice.studyId:
+      normalizeStudentIdentity(c.study_name as string)===
+        normalizeStudentIdentity(choice.studyName!));
+    if(found.truncated||candidates.length>1){
       issues.push({code:"CHAPTER_AMBIGUOUS",
-        message:"More than one or too many cached chapter records match; select an exact chapter ID"});
-    }else if(found.total===0){
+        message:"Multiple cached chapters may match; use an exact study name or provider ID"});
+    }else if(candidates.length===0){
       issues.push({code:"CHAPTER_NOT_FOUND",
-        message:"No authorized indexed Lichess chapter matches this study and number; sync it with study:read first"});
+        message:"No exact authorized indexed Lichess study/chapter number; sync with study:read first"});
     }else{
-      const c=found.matches[0];
+      const c=candidates[0];
       if(c.stale)issues.push({code:"CHAPTER_STALE",
         message:"Chapter metadata is older than 24 hours; re-sync the authorized study before capture"});
       if(choice.expectedPlayers){
-        const expected=normalizeStudentIdentity(choice.expectedPlayers);
-        const full=normalizeStudentIdentity([c.white_player,c.black_player].filter(Boolean).join(" "));
-        if(!full.includes(expected)){
+        // E.g. "Steinitz–Chigorin" matches PGN "Wilhelm Steinitz"
+        // versus "Mikhail Chigorin"; the intervening first name must not
+        // trigger a false mismatch. Every requested name token is required.
+        const tokens=normalizeStudentIdentity(choice.expectedPlayers)
+          .split(/[\\s\\p{P}\\p{S}]+/gu).filter(Boolean);
+        const actual=normalizeStudentIdentity(
+          [c.white_player,c.black_player].filter(Boolean).join(" "))
+          .split(/[\\s\\p{P}\\p{S}]+/gu).filter(Boolean);
+        if(!tokens.length||tokens.some(t=>!actual.includes(t))){
           issues.push({code:"CHAPTER_PLAYERS_MISMATCH",
             message:"The indexed chapter players do not match the requested names; confirm actual chapter identity"});
         }
