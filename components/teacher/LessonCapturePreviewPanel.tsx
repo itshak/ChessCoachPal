@@ -17,6 +17,9 @@ type Preview = {
     workplaceId:string;studentIds:string[];title:string;startsAt:string;
     durationMinutes:number;lessonNote:string;
   }|null;
+  selectedChapter:null|{studyId:string;chapterId:string;chapterNumber:number;
+    studyName:string;chapterName:string;white:string|null;black:string|null;
+    verifiedAt:string;chapterUrl:string;attached:false};
   review:{ creates:string;instructorMinutes:number|null; attendance:string; writesPerformed:boolean; timeSource:"explicit"|"weekly_slot";slotIds:string[];localDate:string|null;timezone:string|null };
 };
 
@@ -37,6 +40,9 @@ export function LessonCapturePreviewPanel() {
   const [localDate,setLocalDate] = useState("");
   const [duration,setDuration] = useState(60);
   const [lessonNote,setLessonNote] = useState("");
+  const [studyId,setStudyId] = useState("");
+  const [chapterNumber,setChapterNumber] = useState("");
+  const [expectedPlayers,setExpectedPlayers] = useState("");
   const [preview,setPreview] = useState<Preview|null>(null);
   const [approved,setApproved] = useState(false);
   const [busy,setBusy] = useState(false);
@@ -79,7 +85,11 @@ export function LessonCapturePreviewPanel() {
       const response=await fetch("/api/coaching/lesson-capture/preview",{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({names:studentNames,workplaceId,title:title.trim(),
-          ...timing,lessonNote}),cache:"no-store",
+          ...timing,lessonNote,
+          ...(studyId.trim()?{chapterSelection:{
+            studyId:studyId.trim(),chapterNumber:Number(chapterNumber),
+            ...(expectedPlayers.trim()?{expectedPlayers:expectedPlayers.trim()}:{}),
+          }}:{})}),cache:"no-store",
       });
       const result=await response.json() as Preview&{error?:string};
       if(!response.ok)throw new Error(result.error??"Unable to preview lesson");
@@ -160,6 +170,21 @@ export function LessonCapturePreviewPanel() {
         <input className={field} value={lessonNote} maxLength={10000}
           onChange={e=>{setLessonNote(e.target.value);invalidate();}} />
       </label>
+      <label className="block text-sm">Lichess study ID (optional, exact 8 characters)
+        <input className={field} value={studyId} minLength={8} maxLength={8}
+          placeholder="Study ID after /study/" pattern="[A-Za-z0-9]{8}"
+          onChange={e=>{setStudyId(e.target.value);invalidate();}} />
+      </label>
+      {studyId.trim()&&<>
+        <label className="block text-sm">Chapter number in that study (1–64)
+          <input className={field} type="number" min={1} max={64} required
+            value={chapterNumber} onChange={e=>{setChapterNumber(e.target.value);invalidate();}} />
+        </label>
+        <label className="block text-sm">Expected PGN players (optional, for identity check)
+          <input className={field} value={expectedPlayers} maxLength={120}
+            onChange={e=>{setExpectedPlayers(e.target.value);invalidate();}} />
+        </label>
+      </>}
       <div><button className={button} type="submit" disabled={busy}>Preview only</button></div>
     </form>
     {error&&<p role="alert" className="text-red-500">{error}</p>}
@@ -176,6 +201,16 @@ export function LessonCapturePreviewPanel() {
         {issue.code}: {issue.message}{issue.candidates?.length?
           " — "+issue.candidates.map(c=>c.name+" ["+c.id+"]").join(", "):""}
       </p>)}
+      {preview.selectedChapter&&<div className="rounded-lg border border-border p-3 text-sm">
+        <p className="font-semibold">Verified indexed chapter — not yet linked</p>
+        <p>{preview.selectedChapter.studyName} · #{preview.selectedChapter.chapterNumber} ·
+          {" "+preview.selectedChapter.chapterName}</p>
+        <p>{preview.selectedChapter.white??"Unknown white"} – {preview.selectedChapter.black??"Unknown black"}</p>
+        <p>Source: authorized cached Lichess metadata ({preview.selectedChapter.verifiedAt}). 
+          Session material and student mastery are not recorded during this preview.</p>
+        <a href={preview.selectedChapter.chapterUrl} target="_blank" rel="noopener noreferrer"
+          className="underline">Open verified Lichess chapter</a>
+      </div>}
       {preview.canCommit&&preview.proposedSession&&<>
         <p className="text-sm">One {preview.proposedSession.durationMinutes}-minute teacher session,
           {preview.proposedSession.studentIds.length} learners, starting at
