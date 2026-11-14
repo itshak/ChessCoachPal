@@ -39,7 +39,7 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
 
   const day=new Date(Date.UTC(2058,1,1)+(parseInt(tag,16)%(365*24*60))*60_000)
     .toISOString();
-  const payload={names:[alias,names[1]],workplaceId,
+  const payload={names:[alias,names[1],names[2]],workplaceId,
     title:"Chess endgames "+tag,startsAt:day,durationMinutes:90,
     lessonNote:"Lucena chapter — comprehension unknown"};
   const fromWeb=await page.request.post("/api/coaching/lesson-capture/preview",{
@@ -50,9 +50,9 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
   expect(preview.canCommit).toBe(true);
   expect(preview.issues).toEqual([]);
   expect(preview.resolutions.map((r:{studentId:string})=>r.studentId))
-    .toEqual([ids[0],ids[1]]);
+    .toEqual(ids);
   expect(preview.proposedSession).toMatchObject({
-    workplaceId,studentIds:[ids[0],ids[1]],durationMinutes:90,
+    workplaceId,studentIds:ids,durationMinutes:90,
     lessonNote:payload.lessonNote,
   });
   expect(preview.review.writesPerformed).toBe(false);
@@ -60,6 +60,19 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
   const fromMcp=await call("ccp_v1_lessons_capture_preview",payload);
   expect(fromMcp.error).toBeUndefined();
   expect(fromMcp.data).toEqual(preview);
+  // The agent may omit a workplace only when the same three learners have
+  // exactly one common current enrollment; both adapters must agree.
+  const {workplaceId:omitted,...withoutWorkplace}=payload;
+  void omitted;
+  const inferredWeb=await page.request.post("/api/coaching/lesson-capture/preview",{
+    data:withoutWorkplace,
+  });
+  expect(inferredWeb.status(),await inferredWeb.text()).toBe(200);
+  const inferredMcp=await call("ccp_v1_lessons_capture_preview",withoutWorkplace);
+  expect(inferredMcp.error).toBeUndefined();
+  expect(inferredMcp.data).toEqual(await inferredWeb.json());
+  expect(inferredMcp.data.canCommit).toBe(true);
+  expect(inferredMcp.data.workplace.id).toBe(workplaceId);
   const beforeCommit=await call("ccp_v1_sessions_list",{query:payload.title,workplaceId});
   expect(beforeCommit.error).toBeUndefined();
   expect((beforeCommit.data as Array<{title:string}>)
@@ -82,11 +95,11 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
   });
   expect(roster.status(),await roster.text()).toBe(200);
   expect((await roster.json()).data.map((r:{student_id:string})=>r.student_id).sort())
-    .toEqual([...ids.slice(0,2)].sort());
+    .toEqual([...ids].sort());
 
   const attendance=await call("ccp_v1_attendance_preview",{sessionId});
   expect(attendance.error).toBeUndefined();
-  expect(attendance.data.attendance).toHaveLength(2);
+  expect(attendance.data.attendance).toHaveLength(3);
   expect(attendance.data.attendance.every((r:{status:string})=>r.status==="unmarked"))
     .toBe(true);
 
