@@ -17,7 +17,7 @@ type Preview = {
     workplaceId:string;studentIds:string[];title:string;startsAt:string;
     durationMinutes:number;lessonNote:string;
   }|null;
-  review:{ creates:string;instructorMinutes:number; attendance:string; writesPerformed:boolean };
+  review:{ creates:string;instructorMinutes:number|null; attendance:string; writesPerformed:boolean; timeSource:"explicit"|"weekly_slot";slotIds:string[];localDate:string|null;timezone:string|null };
 };
 
 const field = "w-full rounded-lg border border-border bg-surface p-2 text-foreground";
@@ -32,7 +32,9 @@ export function LessonCapturePreviewPanel() {
   const [workplaceId,setWorkplaceId] = useState("");
   const [names,setNames] = useState("");
   const [title,setTitle] = useState("");
+  const [timingMode,setTimingMode] = useState<"explicit"|"weekly">("explicit");
   const [localStart,setLocalStart] = useState("");
+  const [localDate,setLocalDate] = useState("");
   const [duration,setDuration] = useState(60);
   const [lessonNote,setLessonNote] = useState("");
   const [preview,setPreview] = useState<Preview|null>(null);
@@ -62,16 +64,22 @@ export function LessonCapturePreviewPanel() {
     setError("");setReceipt("");setPreview(null);setApproved(false);
     const workplace=workplaces.find(item=>item.id===workplaceId);
     if(!workplace){setError("Choose a workplace and its time zone");return;}
-    let startsAt:string;
-    try {startsAt=workplaceLocalToUtc(localStart,workplace.timezone);}
-    catch(e){setError(e instanceof Error?e.message:"Invalid local date or time");return;}
     const studentNames=names.split(/\r?\n/).map(n=>n.trim()).filter(Boolean);
+    let timing:{startsAt:string;durationMinutes:number}|{localDate:string};
+    if(timingMode==="explicit"){
+      try {timing={startsAt:workplaceLocalToUtc(localStart,workplace.timezone),
+        durationMinutes:duration};}
+      catch(e){setError(e instanceof Error?e.message:"Invalid local date or time");return;}
+    }else{
+      if(!localDate){setError("Choose a real date for weekly schedule inference");return;}
+      timing={localDate};
+    }
     setBusy(true);
     try {
       const response=await fetch("/api/coaching/lesson-capture/preview",{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({names:studentNames,workplaceId,title:title.trim(),
-          startsAt,durationMinutes:duration,lessonNote}),cache:"no-store",
+          ...timing,lessonNote}),cache:"no-store",
       });
       const result=await response.json() as Preview&{error?:string};
       if(!response.ok)throw new Error(result.error??"Unable to preview lesson");
@@ -128,14 +136,26 @@ export function LessonCapturePreviewPanel() {
         <input className={field} value={title} required maxLength={160}
           onChange={e=>{setTitle(e.target.value);invalidate();}} />
       </label>
-      <label className="block text-sm">Start time in workplace time zone
-        <input className={field} type="datetime-local" required value={localStart}
-          onChange={e=>{setLocalStart(e.target.value);invalidate();}} />
+      <label className="block text-sm">How to determine lesson time
+        <select className={field} value={timingMode} onChange={e=>{
+          setTimingMode(e.target.value as "explicit"|"weekly");invalidate();}}>
+          <option value="explicit">I know the exact start and duration</option>
+          <option value="weekly">Use a unique matching weekly slot (date only)</option>
+        </select>
       </label>
-      <label className="block text-sm">Instructor minutes (15–480)
-        <input className={field} type="number" min={15} max={480} required value={duration}
-          onChange={e=>{setDuration(Number(e.target.value));invalidate();}} />
-      </label>
+      {timingMode==="explicit"?<>
+        <label className="block text-sm">Start time in workplace time zone
+          <input className={field} type="datetime-local" required value={localStart}
+            onChange={e=>{setLocalStart(e.target.value);invalidate();}} />
+        </label>
+        <label className="block text-sm">Instructor minutes (15–480)
+          <input className={field} type="number" min={15} max={480} required value={duration}
+            onChange={e=>{setDuration(Number(e.target.value));invalidate();}} />
+        </label>
+      </>:<label className="block text-sm">Lesson date in workplace time zone
+        <input className={field} type="date" required value={localDate}
+          onChange={e=>{setLocalDate(e.target.value);invalidate();}} />
+      </label>}
       <label className="block text-sm">Shared note (optional)
         <input className={field} value={lessonNote} maxLength={10000}
           onChange={e=>{setLessonNote(e.target.value);invalidate();}} />
@@ -158,8 +178,12 @@ export function LessonCapturePreviewPanel() {
       </p>)}
       {preview.canCommit&&preview.proposedSession&&<>
         <p className="text-sm">One {preview.proposedSession.durationMinutes}-minute teacher session,
-          {preview.proposedSession.studentIds.length} learners. Attendance: unmarked.
-          Comprehension: unknown. No changes have been saved yet.</p>
+          {preview.proposedSession.studentIds.length} learners, starting at
+          {" "+new Date(preview.proposedSession.startsAt).toLocaleString("en-GB",{
+            timeZone:preview.workplace?.timezone??"UTC",dateStyle:"medium",timeStyle:"short"})}
+          {" ("+(preview.workplace?.timezone??"UTC")+")"}.
+          {preview.review.timeSource==="weekly_slot"?" Time inferred from matching active weekly slots.":" Explicit start time."}
+          {" "}Attendance: unmarked. Comprehension: unknown. No changes have been saved yet.</p>
         <label className="flex gap-2 items-start text-sm">
           <input type="checkbox" checked={approved} onChange={e=>setApproved(e.target.checked)} />
           I checked every learner, the workplace, date and time and approve creating this session.
