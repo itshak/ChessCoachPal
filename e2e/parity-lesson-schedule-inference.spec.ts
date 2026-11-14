@@ -260,80 +260,40 @@ test("PARITY:PARITY-exact-chapter-selection-rejects-unknown-ordinal-without-fict
  expect(withoutChapter.review.materialAssociation).toBe("not_written");
 });
 
-test("PARITY:PARITY-classic-games-32-exact-study-title-and-PGN-names",async({page,request})=>{
+test("PARITY:PARITY-lichess-index-cannot-be-forged-by-browser-or-delegated-MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const {workplaceId,names}=await setup(call);
- // Synthetic teacher-index fixture. No private PGN is stored, and the
- // authenticated teacher-only RPC is the same atomic metadata-index writer
- // used by the real read-authorized Lichess sync.
+ // An authenticated teacher must not be able to bypass the server's
+ // external study:read authorization and forge verified PGN chapter records.
  const client=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
-   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
-    auth:{persistSession:false,autoRefreshToken:false},
-   });
- const signed=await client.auth.signInWithPassword(SEED_TEACHER);
- expect(signed.error).toBeNull();
- const studyId="CLAS"+randomUUID().replace(/-/g,"").slice(0,4).toUpperCase();
- // The seeded teacher may retain cached metadata from the other synthetic
- // Lichess integration scenario. Use an exact *unique* title here so this
- // test proves title matching without conflating two authorized studies.
- const studyName="Classic Games 2 — synthetic "+randomUUID().slice(0,8);
- const chapters=Array.from({length:32},(_,i)=>({
-  studyName,
-  chapterId:String(i+1).padStart(8,"0"),
-  chapterNumber:i+1,
-  chapterName:i===31?"Steinitz versus Chigorin":"Historical game "+(i+1),
-  white:i===31?"Wilhelm Steinitz":"White Player",
-  black:i===31?"Mikhail Chigorin":"Black Player",
-  event:"Synthetic chess study",date:"1892.01.01",eco:"C50",
-  opening:"Italian Game",fen:null,
- }));
- const indexed=await client.rpc("ccp_teacher_study_index_replace",{
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ const login=await client.auth.signInWithPassword(SEED_TEACHER);
+ expect(login.error).toBeNull();
+ expect(login.data.user?.id).toBeTruthy();
+ const studyId="FAKE"+randomUUID().replaceAll("-","").slice(0,4).toUpperCase();
+ const chapters=[{
+  studyName:"Forged study",chapterId:"FORG0001",chapterNumber:1,
+  chapterName:"Invented game",white:"Steinitz",black:"Chigorin",
+  event:"Not an authorized source",date:"1892.01.01",eco:null,
+  opening:null,fen:null,
+ }];
+ const blocked=await client.rpc("ccp_teacher_study_index_replace",{
+  p_teacher_id:login.data.user!.id,p_study_id:studyId,p_chapters:chapters,
+ });
+ expect(blocked.error).not.toBeNull();
+ const oldContract=await client.rpc("ccp_teacher_study_index_replace",{
   p_study_id:studyId,p_chapters:chapters,
  });
- expect(indexed.error,indexed.error?.message).toBeNull();
- const base={
-  names,workplaceId,title:unique("Historical classics 32"),
-  startsAt:"2065-02-01T14:00:00+02:00",durationMinutes:90,
-  lessonNote:"Teaching note; no inferred comprehension",
- };
- const selection={studyName,chapterNumber:32,
-  expectedPlayers:"Steinitz–Chigorin"};
- const payload={...base,chapterSelection:selection};
- const webResp=await page.request.post("/api/coaching/lesson-capture/preview",{
-  data:payload,
+ expect(oldContract.error).not.toBeNull();
+ const web=await page.request.get(
+  "/api/lichess/chapter-index?studyId="+studyId+"&chapterId=FORG0001",
+ );
+ expect(web.status()).toBe(404);
+ const mcp=await call("ccp_v1_materials_chapters_get",{
+  studyId,chapterId:"FORG0001",
  });
- expect(webResp.status(),await webResp.text()).toBe(200);
- const web=await webResp.json();
- const fromMcp=await call("ccp_v1_lessons_capture_preview",payload);
- expect(fromMcp.error).toBeUndefined();
- expect(fromMcp.data).toEqual(web);
- expect(web.canCommit).toBe(true);
- expect(web.selectedChapter).toMatchObject({
-  studyId,chapterId:"00000032",studyName,
-  chapterNumber:32,white:"Wilhelm Steinitz",black:"Mikhail Chigorin",
-  attached:false,
- });
- expect(web.proposedSession.durationMinutes).toBe(90);
- expect(web.review.materialAssociation).toBe("not_written");
- const mismatched={...base,chapterSelection:{
-  ...selection,expectedPlayers:"Steinitz–Kasparov",
- }};
- const mismatchWeb=await page.request.post("/api/coaching/lesson-capture/preview",{
-  data:mismatched,
- });
- expect(mismatchWeb.status()).toBe(200);
- const mismatch=await mismatchWeb.json();
- expect((await call("ccp_v1_lessons_capture_preview",mismatched)).data)
-  .toEqual(mismatch);
- expect(mismatch.canCommit).toBe(false);
- expect(mismatch.issues.map((x:{code:string})=>x.code))
-  .toContain("CHAPTER_PLAYERS_MISMATCH");
- // No guessed material teaching evidence or automatic chapter attachment.
- const next=await call("ccp_v1_materials_chapters_get",{
-  studyId,chapterId:"00000032",
- });
- expect(next.error).toBeUndefined();
- expect(next.data.chapter_number).toBe(32);
+ expect(mcp.error?.code).toBe("NOT_FOUND");
 });
 
 test("PARITY:PARITY-website-reviewer-date-only-form-commits-matching-roster",async({page,request})=>{
