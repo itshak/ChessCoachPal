@@ -96,10 +96,10 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
   });
   expect(replay.status(),await replay.text()).toBe(200);
   expect((await replay.json()).data.id).toBe(sessionId);
-  const afterReplay=await call("ccp_v1_sessions_list",{query:payload.title,workplaceId});
+  const afterReplay=await call("ccp_v1_sessions_details",{sessionId});
   expect(afterReplay.error).toBeUndefined();
-  expect((afterReplay.data as Array<{id:string;title:string}>)
-    .filter(row=>row.id===sessionId)).toHaveLength(1);
+  expect(afterReplay.data.id).toBe(sessionId);
+  expect(afterReplay.data.duration_minutes).toBe(90);
   const changedReplay=await call("ccp_v1_sessions_ad_hoc_create",{
     ...preview.proposedSession,title:"Different lesson",idempotencyKey,confirmed:true,
   });
