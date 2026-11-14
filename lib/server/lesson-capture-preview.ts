@@ -78,12 +78,19 @@ async function activeStudents(db: SupabaseClient, teacherId: string) {
   throw fail("ROSTER_LIMIT", "Too many students for safe unambiguous name resolution");
 }
 
-/** Match only active learners within this teacher, then find their common workplace. */
-export async function teacherLessonCapturePreview(
-  db: SupabaseClient, teacherId: string, input: LessonCapturePreviewInput,
-) {
-  if(input.startsAt!==undefined&&input.durationMinutes!==undefined)
-    assertSessionSchedule(input.startsAt,input.durationMinutes);
+
+export const studentNamesResolveSchema=z.object({
+ names:z.array(z.string().trim().min(1).max(120)).min(1).max(100),
+}).strict();
+
+/** Exact owner-owned report-name and alias resolver shared by all capture flows.
+ * No fuzzy guesses, archived learners, guardian contact or provider credentials.
+ */
+export async function teacherStudentNamesResolve(
+ db:SupabaseClient,teacherId:string,names:string[],
+){
+ const parsed=studentNamesResolveSchema.parse({names});
+ const input=parsed;
   const students = await activeStudents(db, teacherId);
   const lookup = new Map<string, StudentIdentity[]>();
   for (const student of students) {
@@ -118,6 +125,21 @@ export async function teacherLessonCapturePreview(
     issues.push({ code: "DUPLICATE_STUDENT",
       message: "The same learner appears more than once in the proposed roster" });
   }
+
+ return {resolutions,issues,allResolved:issues.length===0,
+  studentIds:issues.length===0?ids:[],
+  explanation:"Name and stored aliases are compared with exact Unicode normalization; archived students and partial names cannot be auto-selected."};
+}
+
+/** Match only active learners within this teacher, then find their common workplace. */
+export async function teacherLessonCapturePreview(
+  db: SupabaseClient, teacherId: string, input: LessonCapturePreviewInput,
+) {
+  if(input.startsAt!==undefined&&input.durationMinutes!==undefined)
+    assertSessionSchedule(input.startsAt,input.durationMinutes);
+  const identity=await teacherStudentNamesResolve(db,teacherId,input.names);
+  const {resolutions,issues}=identity;
+  const ids=resolutions.map(r=>r.studentId).filter((id):id is string=>id!==null);
 
   let selectedWorkplace: Workplace | null = null;
   const enrolledByStudent = new Map<string, Set<string>>();
