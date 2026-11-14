@@ -2,6 +2,7 @@ import "server-only";
 import {z} from "zod";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {teacherLichessStudiesSearch} from "@/lib/server/lichess-studies";
+import {createServiceClient} from "@/lib/supabase/server";
 export const studyIndexSyncSchema=z.object({
  studyId:z.string().regex(/^[A-Za-z0-9]{8}$/),
  confirmedExternal:z.literal(true),
@@ -39,8 +40,12 @@ export async function teacherStudyIndexSync(db:Db,teacherId:string,
    white:x.white,black:x.black,event:x.event,date:x.date,eco:x.eco,
    opening:x.opening,fen:x.fen};
  });
- const {data,error}=await db.rpc("ccp_teacher_study_index_replace",{
-  p_study_id:a.studyId,p_chapters:chapters,
+ // The authenticated caller may READ the sanitized index, but must not
+ // directly write invented "verified" PGN metadata via PostgREST. Only the
+ // trusted server may persist a complete authorized provider fetch, with its
+ // known tenant identity. The SQL RPC is granted to service_role only.
+ const {data,error}=await createServiceClient().rpc("ccp_teacher_study_index_replace",{
+  p_teacher_id:teacherId,p_study_id:a.studyId,p_chapters:chapters,
  });
  if(error)throw fail(503,"INDEX_UNAVAILABLE","Cannot atomically save authorized chapter metadata");
  return {...data,tokenExposed:false,rawPgnStored:false};
