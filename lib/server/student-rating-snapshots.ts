@@ -62,7 +62,7 @@ export async function teacherStudentRatingRecord(db:Db,teacherId:string,
   if(lookupError)throw fail(503,"RATINGS_UNAVAILABLE","Rating replay could not be verified");
   if(prior&&prior.student_id===a.studentId&&prior.provider===a.provider&&
     prior.time_control===a.timeControl&&prior.rating===a.rating&&
-    prior.observed_at===a.observedAt&&prior.rating_deviation===a.ratingDeviation&&
+    Date.parse(prior.observed_at)===Date.parse(a.observedAt)&&prior.rating_deviation===a.ratingDeviation&&
     prior.provisional===a.provisional&&prior.games===a.games&&prior.source==="teacher_manual")
     return {snapshot:prior,replayed:true};
   throw fail(409,"IDEMPOTENCY_CONFLICT","Request ID belongs to another rating observation");
@@ -140,7 +140,12 @@ export async function teacherStudentRatingRefreshCommit(db:Db,teacherId:string,
   return {studentId:x.studentId,snapshots:previous,replayed:true,
     provider:x.provider,teacherStrengthChanged:false};
  }
- const preview=await teacherStudentRatingRefreshPreview(db,teacherId,x);
+ // The reviewed commit adds receipt and digest fields; the read-only
+ // provider-preview schema is deliberately strict and must receive only
+ // its own whitelisted inputs.
+ const preview=await teacherStudentRatingRefreshPreview(db,teacherId,{
+   studentId:x.studentId,provider:x.provider,confirmedExternal:true,
+ });
  if(preview.expectedDigest!==x.expectedDigest)
   throw fail(409,"STALE_RATING_PREVIEW","Public rating data changed; review again");
  const admin=createServiceClient();
