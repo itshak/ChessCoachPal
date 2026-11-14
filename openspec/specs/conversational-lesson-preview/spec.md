@@ -2,6 +2,20 @@
 
 **Scope:** The exact-name/alias capture preview and human-confirmed ad-hoc session writer, delivered as one incremental slice of the active `support-conversational-lesson-and-lichess-workflows` OpenSpec. This includes date-only missing-hour inference when a single shared active weekday slot is verified. It does **not** complete free-form natural-language date parsing, exact Lichess study-chapter selection, full historical correction or provider writes.
 
+## Requirement: Reusable exact student identity and day lookup SHALL match website and MCP
+
+Website `POST /api/students/resolve` and `ccp_v1_students_resolve` SHALL call the same paginated active learner/alias resolver as lesson preview. They SHALL return stable authorized IDs, explicit missing/duplicate/ambiguous cases and no unrelated guardian contacts. Website `POST /api/coaching/lesson-capture/day` and `ccp_v1_schedule_day_preview` SHALL use the same read-only canonical recurring-slot + enrollment + IANA date + occupied-interval service.
+
+### Scenario: Agent resolves student names before scheduling
+
+- **WHEN** Hebrew report names, English short aliases or a missing learner are supplied
+- **THEN** the two interfaces return identical owner-scoped resolution and no fabricated matching record.
+
+### Scenario: Agent previews a known date
+
+- **WHEN** exact student UUIDs and a local date are supplied
+- **THEN** the two interfaces return the same single eligible common slot only after teacher/workplace/enrollment verification; foreign workplaces and ambiguous or occupied intervals fail closed.
+
 ## Requirement: Lesson identity preview SHALL be tenant-owned and read-only
 
 An authorized teacher MAY propose a single session for two to fifty active learners using exact report names or stored aliases. Website and delegated MCP SHALL reuse the same typed input and shared domain service. Normalization MAY fold Unicode compatibility, case and surrounding/repeated whitespace but SHALL NOT invent transliteration, substring matches or a best-guess identity. The resolver SHALL page tenant-owned active learners rather than silently truncating a roster; it SHALL fail closed when the safe scan limit is reached or its data cannot be verified.
@@ -53,6 +67,22 @@ The browser SHALL require an affirmative checkbox after preview; a delegated age
 
 - **WHEN** a client retries a committed request UUID with a materially different title, time or participant set
 - **THEN** the transaction SHALL reject the request and SHALL NOT mutate the original session.
+
+## Requirement: An exact indexed Lichess chapter MAY be reviewed during lesson capture
+
+A capture preview MAY select one teacher-owned authorized cached study by **exact** study title or eight-character Lichess study ID and the **1-based actual chapter ordinal** (1–64), with optional expected PGN player names. Search SHALL NOT turn partial study names or historical guesses into a selection. Stale metadata (older than 24 hours), missing or multiple matching chapters, and mismatch between supplied player tokens and indexed PGN White/Black tags SHALL block a commit-ready preview.
+
+A selected chapter SHALL include its actual provider study/chapter IDs, title, verified timestamp, URL and explicit `attached:false`; it SHALL NOT automatically write teaching evidence, mark assignment/comprehension, or publish to Lichess. After confirming the one canonical session and eventually completing the lesson, the teacher MAY call the existing separately confirmed `materials_link_preview/commit` operations to write per-student evidence under atomic roster and source-version guards.
+
+### Scenario: Exact Classic Games chapter 32
+
+- **WHEN** an authorized, fresh indexed study named "Classic Games 2" contains a 32nd chapter with PGN White/Black tags matching "Steinitz–Chigorin"
+- **THEN** the preview returns only the exact provider study/chapter IDs and preserves the unverified status of all student comprehension until explicitly recorded.
+
+### Scenario: Unknown or stale requested game
+
+- **WHEN** chapter 32 is missing, has stale metadata, the study name is only a substring, or expected players differ
+- **THEN** preview rejects chapter selection without synthesizing another game, and does not create a lesson or any student-material association.
 
 ## Requirement: Website and MCP SHALL have independently tested behavioral parity
 
