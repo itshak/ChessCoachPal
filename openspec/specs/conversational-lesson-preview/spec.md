@@ -70,6 +70,13 @@ The browser SHALL require an affirmative checkbox after preview; a delegated age
 
 ## Requirement: An exact indexed Lichess chapter MAY be reviewed during lesson capture
 
+The Lichess chapter metadata index SHALL be written **only** by the trusted service-role server after a completed, teacher-authorized Lichess `study:read` fetch. Direct authenticated browser or delegated MCP requests SHALL NOT execute the database index-replacement function, impersonate the trusted role, or invent provider-verified chapter metadata.
+
+### Scenario: Untrusted teacher attempts to forge an indexed game
+
+- **WHEN** a teacher's ordinary authenticated browser database connection invokes the index-replacement RPC, whether with the old two-argument signature or an explicit teacher ID
+- **THEN** the call SHALL be denied and neither website chapter lookup nor delegated MCP lookup SHALL reveal a fabricated chapter as verified.
+
 A capture preview MAY select one teacher-owned authorized cached study by **exact** study title or eight-character Lichess study ID and the **1-based actual chapter ordinal** (1–64), with optional expected PGN player names. Search SHALL NOT turn partial study names or historical guesses into a selection. Stale metadata (older than 24 hours), missing or multiple matching chapters, and mismatch between supplied player tokens and indexed PGN White/Black tags SHALL block a commit-ready preview.
 
 A selected chapter SHALL include its actual provider study/chapter IDs, title, verified timestamp, URL and explicit `attached:false`; it SHALL NOT automatically write teaching evidence, mark assignment/comprehension, or publish to Lichess. After confirming the one canonical session and eventually completing the lesson, the teacher MAY call the existing separately confirmed `materials_link_preview/commit` operations to write per-student evidence under atomic roster and source-version guards.
