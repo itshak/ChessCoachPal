@@ -7,9 +7,9 @@ import {ratingRefreshCommitSchema,teacherStudentRatingHistory,
  teacherStudentRatingRefreshCommit,StudentRatingError} from "@/lib/server/student-rating-snapshots";
 import {StudentProfileError} from "@/lib/server/student-profile-service";
 const actions=z.discriminatedUnion("action",[
- ratingRecordSchema.omit({studentId:true}).extend({action:z.literal("manual")}),
- ratingFetchSchema.omit({studentId:true}).extend({action:z.literal("refreshPreview")}),
- ratingRefreshCommitSchema.omit({studentId:true}).extend({action:z.literal("refreshCommit")}),
+ ratingRecordSchema.omit({studentId:true}).extend({studentId:z.uuid().optional(),action:z.literal("manual")}),
+ ratingFetchSchema.omit({studentId:true}).extend({studentId:z.uuid().optional(),action:z.literal("refreshPreview")}),
+ ratingRefreshCommitSchema.omit({studentId:true}).extend({studentId:z.uuid().optional(),action:z.literal("refreshCommit")}),
 ]);
 const errorResponse=(caught:unknown)=>NextResponse.json({
  error:caught instanceof StudentRatingError||caught instanceof StudentProfileError?
@@ -42,6 +42,10 @@ export async function POST(req:NextRequest,{params}:{params:Promise<{id:string}>
  if(!user)return NextResponse.json({error:"Unauthorized"},{status:401});
  const parsed=actions.safeParse(await req.json().catch(()=>null));
  if(!parsed.success)return NextResponse.json({error:"Invalid or unconfirmed rating action"},{status:400});
+ // MCP payloads may include the canonical student ID; accept that same ID
+ // on the website for cross-interface replay, but never permit path/payload mismatch.
+ if(parsed.data.studentId&&parsed.data.studentId!==id)
+  return NextResponse.json({error:"Rating student ID does not match URL"},{status:400});
  try{
   const {action,...rest}=parsed.data;
   const input={...rest,studentId:id};
