@@ -1,6 +1,8 @@
 # Implementation checklist — conversational workflows and chess student profiles
 
-**All unchecked: proposal only.** Development acceptance requires reviewed PRs, merged main SHA and green synthetic GitHub Actions; never interpret this task list as implemented.
+**Status: Active parent OpenSpec.** The checkboxes below require the **entire** conversational-and-Lichess workflow, not merely an accepted subfeature. Earlier canonical attendance, student profile fields, typed materials and MCP parity are separately applied; do not infer they are missing because this broader parent still has unchecked boxes. Release acceptance requires reviewed PRs, merged-main CI/E2E/security/Compose/restore evidence, and live provider gates separately.
+
+**Partial implementation evidence — 2026-11-14, PR #64:** The read-only `ccp_v1_lessons_capture_preview` and `POST /api/coaching/lesson-capture/preview` use the same exact-name/Unicode-alias and workplace enrollment resolver; human-confirmed sessions use the existing idempotent `ccp_v1_sessions_ad_hoc_create`/website `sessions.createAdHoc` atomic writer. Independent three-student browser/delegated-MCP E2E cases are recorded in [the extra parity matrix](../../../docs/MCP_NEW_PARITY_SCENARIOS.md) and [the usage guide](../../../docs/LESSON_CAPTURE_PREVIEW.md). **B3/B4/F2/F3 remain unchecked** until omitted-hour fallback, exact chapter matching, comprehensive historical correction and other full story cases are delivered; do not archive this parent yet.
 
 ## A. Student identity and chess progress
 - [ ] A1: Add tenant-keyed `student_aliases`, optional short-display alias, normalized Unicode/RTL match logic, ambiguity/duplicate safeguards, report-name stability and safe pagination.
