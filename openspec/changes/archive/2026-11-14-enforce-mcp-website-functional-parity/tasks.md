@@ -1,8 +1,8 @@
-> **Canonical dependency resolved on development branch:** [archived accepted cutover](../archive/2026-11-13-consolidate-canonical-lessons-and-attendance/tasks.md), including independent attendance and financial reacceptance. Final 93/93 and 26/26 candidate proof now exists. Strict merged-main acceptance and OpenSpec archival remain outstanding.
+> **Canonical dependency resolved on development branch:** [archived accepted cutover](../2026-11-13-consolidate-canonical-lessons-and-attendance/tasks.md), including independent attendance and financial reacceptance. Final 93/93 and 26/26 proof passed strict merged-main acceptance on 2026-11-14; the parity OpenSpec is archived.
 
 # Checklist — full website ↔ MCP equality
 
-**Status:** Active — B1–B8/C1–C2 independently candidate-accepted on 2026-11-13; C3 merged-main strict verification and C4 archival are NOT complete. Do not archive before exact merged-main acceptance.
+**Status:** Archived — B1–B8 and C1–C4 accepted after strict merged-main five-workflow verification on 2026-11-14.
 
 ## A. Foundation and first slice
 - [x] A1. Accept ADR-0003; cross-reference OpenSpec, contribution policy and current baseline.
@@ -23,10 +23,10 @@
 ## C. Acceptance
 - [x] C1. All 93 detailed browser↔MCP behavior/security cases verified and checked individually with automated evidence.
 - [x] C2. Fresh synthetic CI, full E2E, typecheck/unit and relevant security/Compose checks green.
-- [ ] C3. Strict parity gate passes on merged main; status records exact SHA and Actions links.
-- [ ] C4. Archive only after B/C; retain separate real-client v0.1.0 final manual release sign-off.
+- [x] C3. Strict parity gate passes on merged main; status records exact SHA and Actions links.
+- [x] C4. Archive only after B/C; retain separate real-client v0.1.0 final manual release sign-off.
 
-A1–A4 were previously accepted against merged main; B1–B8 and C1–C2 have accepted branch-level source/E2E evidence. **C3 merged-main strict proof and C4 archive remain OPEN.** **Phase A evidence (merged main):** [PR #20](https://github.com/itshak/ChessCoachPal/pull/20), commit [759f104](https://github.com/itshak/ChessCoachPal/commit/759f1042c351efba1fc7293bf0da48e71612bb23); [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42481967664) passed source audit, PR-guard tests, TypeScript, 342 unit tests, Docker and Compose; [fresh synthetic E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42481967709) passed (26 browser tests); [restore](https://github.com/itshak/ChessCoachPal/actions/runs/42481967696), [self-host](https://github.com/itshak/ChessCoachPal/actions/runs/42481967682), and [security](https://github.com/itshak/ChessCoachPal/actions/runs/42481967641) passed.
+A1–A4 were previously accepted against merged main; B1–B8 and C1–C2 have accepted branch-level source/E2E evidence. **C3 merged-main strict proof and C4 archive were completed on 2026-11-14.** **Phase A evidence (merged main):** [PR #20](https://github.com/itshak/ChessCoachPal/pull/20), commit [759f104](https://github.com/itshak/ChessCoachPal/commit/759f1042c351efba1fc7293bf0da48e71612bb23); [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42481967664) passed source audit, PR-guard tests, TypeScript, 342 unit tests, Docker and Compose; [fresh synthetic E2E](https://github.com/itshak/ChessCoachPal/actions/runs/42481967709) passed (26 browser tests); [restore](https://github.com/itshak/ChessCoachPal/actions/runs/42481967696), [self-host](https://github.com/itshak/ChessCoachPal/actions/runs/42481967682), and [security](https://github.com/itshak/ChessCoachPal/actions/runs/42481967641) passed.
 
 ## Phase B partial delivery (not B1–B8 acceptance)
 
@@ -154,7 +154,7 @@ Reviewed the browser/MCP Playwright suites already present on the PR branch and 
 
 ## Phase T: independently verified OAuth grant administration (PR #44)
 
-A new [individually named delegated OAuth/browser test](../../../e2e/parity-connections.spec.ts) checks website and MCP grant listings, identity-safe revocation of its own synthetic client and omission of token secrets. The pre-existing agent E2E also tests browser-side grant revocation, read-only restrictions and immediate invalidation. The [99-pass E2E run](https://github.com/itshak/ChessCoachPal/actions/runs/42704750635), [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42704750400), security, Compose and backup/restore succeeded at `3fce603`. Candidate route classification: **6 verified / 8 partial / 31 gaps**, and **60/93** behavioral evidence with **33 still unchecked**. The updated docs/inventory themselves require fresh CI. **Do not mark B/C complete, archive the OpenSpec change, or merge PR #44:** strict parity and merged-main verification remain open.
+A new [individually named delegated OAuth/browser test](../../../../e2e/parity-connections.spec.ts) checks website and MCP grant listings, identity-safe revocation of its own synthetic client and omission of token secrets. The pre-existing agent E2E also tests browser-side grant revocation, read-only restrictions and immediate invalidation. The [99-pass E2E run](https://github.com/itshak/ChessCoachPal/actions/runs/42704750635), [CI](https://github.com/itshak/ChessCoachPal/actions/runs/42704750400), security, Compose and backup/restore succeeded at `3fce603`. Candidate route classification: **6 verified / 8 partial / 31 gaps**, and **60/93** behavioral evidence with **33 still unchecked**. The updated docs/inventory themselves require fresh CI. **Do not mark B/C complete, archive the OpenSpec change, or merge PR #44:** strict parity and merged-main verification remain open.
 
 ## Phase U: five more verified parity scenarios and three fully inventoried routes (PR #44)
 
@@ -219,3 +219,10 @@ On source `d8845cacc6ba06698397d304314a6138be656728` ([236 authenticated website
 B1 workplace membership/policy/history: `e2e/parity-workplaces-extended.spec.ts`, `e2e/parity-gateway-workplace-groups.spec.ts`. B2 student identity/profile/archive: `e2e/parity-chess-profile-history.spec.ts`, `e2e/parity-student-fields.spec.ts`, `e2e/parity-student-delete-lifecycle.spec.ts`. B3 calendar/session/attendance: `e2e/canonical-local-dates-holiday-parity.spec.ts`, `e2e/canonical-attendance-reacceptance.spec.ts`, `e2e/canonical-slot-financial-history-parity.spec.ts`. B4 materials: `e2e/parity-material-coverage.spec.ts`, `e2e/parity-learning.spec.ts`. B5 guardians/events/notifications: `e2e/parity-families-events.spec.ts`, `e2e/canonical-portal-cancellation.spec.ts`. B6 finance: `e2e/parity-billing-lifecycle.spec.ts`, `e2e/parity-credits-lifecycle.spec.ts`, `e2e/parity-configured-stripe.spec.ts`. B7 policy/spreadsheet/export: `e2e/parity-policy.spec.ts`, `e2e/parity-spreadsheet-commit.spec.ts`, `e2e/parity-teacher-export.spec.ts`. B8 exact tool and field/action runtime contract: `e2e/parity-all-teacher-surfaces.spec.ts` and `scripts/mcp-parity-domain-guard.mjs` with negative unit tests. All relevant authenticated tests are part of the full 236-pass run. Browser-only secret/identity/hosted-payment entries remain narrow reviewed exceptions, NOT missing teacher CRUD.
 
 **Next immutable gate:** require strict parity in CI on exact final candidate, consolidate the stacked implementation without bypassing tests, run all five workflows and `mcp:parity:strict` on *merged main*, then mark C3 and archive THIS parity OpenSpec (C4). Real live ChatGPT/Claude client checks remain the separately approved prepublication signoff; no official release or real-data migration is authorized here.
+
+
+## Final merged-main acceptance and archive — 2026-11-14
+
+Source [merged-main `07ebb4d2e1ea92aca72fb0c231b5bf9092aea5e0`](https://github.com/itshak/ChessCoachPal/commit/07ebb4d2e1ea92aca72fb0c231b5bf9092aea5e0): [strict CI](https://github.com/itshak/ChessCoachPal/actions/runs/43617008893), [authenticated browser/delegated MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43617008841) (**235 passed, 5 intentionally skipped, zero failed**), [security history audit](https://github.com/itshak/ChessCoachPal/actions/runs/43617008878), [self-host Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43617008758), and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43617008870), all successful. The branch-source acceptance also passed [236 browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43616266395) and [strict CI](https://github.com/itshak/ChessCoachPal/actions/runs/43616266397).
+
+C3 and C4 are satisfied, with the original 93-case and additional 26-case registries fully checked and protected by strict CI. The independently archived canonical attendance dependency is integrated in the same main ancestry. **No v0.1.0 tag or real-client acceptance is implied**; those remain under the separate publication OpenSpec.

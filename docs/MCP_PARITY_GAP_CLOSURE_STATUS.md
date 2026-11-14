@@ -1,5 +1,11 @@
 # MCP↔website parity closure: evidence-based implementation ledger
 
+## 2026-11-14 — implemented and archived after merged-main acceptance
+
+Source [merged-main `07ebb4d2e1ea92aca72fb0c231b5bf9092aea5e0`](https://github.com/itshak/ChessCoachPal/commit/07ebb4d2e1ea92aca72fb0c231b5bf9092aea5e0): [strict CI](https://github.com/itshak/ChessCoachPal/actions/runs/43617008893), [authenticated browser/delegated MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43617008841) (**235 passed, 5 intentionally skipped, zero failed**), [security history audit](https://github.com/itshak/ChessCoachPal/actions/runs/43617008878), [self-host Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43617008758), and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43617008870), all successful. The branch-source acceptance also passed [236 browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43616266395) and [strict CI](https://github.com/itshak/ChessCoachPal/actions/runs/43616266397).
+
+**Final scope:** 59/59 authenticated teacher route families, 93/93 original cases, 26/26 new cases; CI now requires strict equality and shared imported service-operation evidence. The previous candidate-only and release-blocked entries below are historical checkpoints, **not current parity status**. Separate real ChatGPT/Claude prepublication testing and unrelated OpenSpec release gates remain active.
+
 **Candidate stage:** 2026-11-12, PR #51 (draft, deliberately unmerged).
 This document distinguishes **verified runtime behavior** from **newly coded,
 not-yet-run** test obligations. It does not replace the original

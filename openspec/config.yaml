@@ -34,7 +34,8 @@ rules:
 # complete-v0-1-0-release-gates separate, and defer public SaaS/Plugin Directory
 # to an explicitly reviewed hosted production launch (target v1.0.0 or beta).
 
-# ADR-0003 requires every teacher website business feature to ship its MCP
-# counterpart, registry delta, and E2E in the same PR. Dedicated active owner:
-# openspec/changes/enforce-mcp-website-functional-parity (Phase A accepted,
-# remaining parity blockers active until all 93 scenarios are verified).
+# ADR-0003 requires every new teacher website business feature to ship its MCP
+# counterpart, registry delta, and E2E in the same PR. The parity implementation
+# was accepted on merged main and archived 2026-11-14 under
+# openspec/changes/archive/2026-11-14-enforce-mcp-website-functional-parity.
+# Strict parity CI remains mandatory. Real client publication checks remain separate.
