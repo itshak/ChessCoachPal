@@ -1,8 +1,8 @@
-> **Dependency gate (2026-11-12):** Implement [consolidate-canonical-lessons-and-attendance](../consolidate-canonical-lessons-and-attendance/proposal.md) first. This prerequisite owns removal of duplicate lesson/attendance physical models and transfer of all calendar, finance, portal, notes and reporting consumers. Resume this parity change after cutover; it retains ownership of all 93 historical and new scenarios, strict merged-main parity and final archive. Do not mark B3/B5/B6 or C1–C3 complete based solely on the cutover.
+> **Dependency gate (2026-11-12):** Implement [consolidate-canonical-lessons-and-attendance](../archive/2026-11-13-consolidate-canonical-lessons-and-attendance/proposal.md) first. This prerequisite owns removal of duplicate lesson/attendance physical models and transfer of all calendar, finance, portal, notes and reporting consumers. Resume this parity change after cutover; it retains ownership of all 93 historical and new scenarios, strict merged-main parity and final archive. Do not mark B3/B5/B6 or C1–C3 complete based solely on the cutover.
 
 # Change: enforce-mcp-website-functional-parity
 
-**Status:** ACTIVE; PHASE A ACCEPTED, FULL PARITY NOT ACCEPTED. Dedicated owner of website↔MCP functional equality; separate from the [chess-specific narrative lesson/Lichess change](../support-conversational-lesson-and-lichess-workflows/proposal.md).
+**Status:** ACTIVE — all 59 teacher route families, 93 original cases and 26 additional chess/canonical scenarios accepted on the integrated development candidate. Merged-main strict acceptance and OpenSpec archival remain open (2026-11-14). Dedicated owner of website↔MCP functional equality; separate from the [chess-specific narrative lesson/Lichess change](../support-conversational-lesson-and-lichess-workflows/proposal.md).
 
 ## Why
 Teacher workflows in ChessCoachPal must be controllable from ChatGPT, Claude, Codex or another delegated MCP client. An optional website cannot offer unique teacher-owned business data/actions. The audited baseline has **43 teacher-business routes: 40 gaps, 3 partial, 0 fully verified**. The [93-case checklist](../../../docs/MCP_WEBSITE_PARITY_CHECKLIST.md) remains unchecked. Existing 28 MCP tools are a useful subset, not full parity.
@@ -24,7 +24,7 @@ Teacher workflows in ChessCoachPal must be controllable from ChatGPT, Claude, Co
 
 **Boundaries:** No generic SQL, unbounded exports, cross-teacher queries, false "browser-only" waivers or unverified tool claims. Pre-1.0 schema changes follow ADR-0001, with no backward compatibility requirement. **Phase A needs no database reset.** Live ChatGPT/Claude acceptance is deferred to final local prepublication sign-off, not development CI.
 
-**Acceptance:** OpenSpec remains active until every task, complete registry and all 93 cases are verified on merged main; green normal CI is insufficient.
+**Acceptance:** OpenSpec remains active until every task, complete registry and all 93 original plus 26 new cases are verified on merged main; green normal CI is insufficient. The complete development candidate is tested on GitHub Actions, but does not replace exact merged-main proof. Live real-client publication checks remain separate.
 
 ## Accepted slice and outstanding work
 
