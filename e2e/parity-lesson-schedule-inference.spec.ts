@@ -273,8 +273,12 @@ test("PARITY:PARITY-classic-games-32-exact-study-title-and-PGN-names",async({pag
  const signed=await client.auth.signInWithPassword(SEED_TEACHER);
  expect(signed.error).toBeNull();
  const studyId="CLAS"+randomUUID().replace(/-/g,"").slice(0,4).toUpperCase();
+ // The seeded teacher may retain cached metadata from the other synthetic
+ // Lichess integration scenario. Use an exact *unique* title here so this
+ // test proves title matching without conflating two authorized studies.
+ const studyName="Classic Games 2 — synthetic "+randomUUID().slice(0,8);
  const chapters=Array.from({length:32},(_,i)=>({
-  studyName:"Classic Games 2",
+  studyName,
   chapterId:String(i+1).padStart(8,"0"),
   chapterNumber:i+1,
   chapterName:i===31?"Steinitz versus Chigorin":"Historical game "+(i+1),
@@ -292,7 +296,7 @@ test("PARITY:PARITY-classic-games-32-exact-study-title-and-PGN-names",async({pag
   startsAt:"2065-02-01T14:00:00+02:00",durationMinutes:90,
   lessonNote:"Teaching note; no inferred comprehension",
  };
- const selection={studyName:"Classic Games 2",chapterNumber:32,
+ const selection={studyName,chapterNumber:32,
   expectedPlayers:"Steinitz–Chigorin"};
  const payload={...base,chapterSelection:selection};
  const webResp=await page.request.post("/api/coaching/lesson-capture/preview",{
@@ -305,7 +309,7 @@ test("PARITY:PARITY-classic-games-32-exact-study-title-and-PGN-names",async({pag
  expect(fromMcp.data).toEqual(web);
  expect(web.canCommit).toBe(true);
  expect(web.selectedChapter).toMatchObject({
-  studyId,chapterId:"00000032",studyName:"Classic Games 2",
+  studyId,chapterId:"00000032",studyName,
   chapterNumber:32,white:"Wilhelm Steinitz",black:"Mikhail Chigorin",
   attached:false,
  });
