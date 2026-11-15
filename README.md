@@ -2,7 +2,7 @@
 
 **MCP tool naming for v0.1.2:** Current tools use `ccp_<domain>_<action>` (not `ccp_v1_*`). This is a breaking tool-name cleanup with no backward aliases before v1.0.0. The HTTPS connector remains `/mcp`; existing clients may need to refresh or reconnect. See [ADR-0006](docs/adr/0006-unversioned-mcp-tool-names.md).
 
-**Release status (2026-11-15):** [v0.1.0 published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.0); [production deployment succeeded](https://github.com/itshak/ChessCoachPal/actions/runs/43664411336). Historical 0.0.0/unreleased passages below are superseded. **Still pending:** full independent real ChatGPT MCP acceptance, untested Claude OAuth/revocation scenarios, historical privacy and licensing sign-off, and GitHub Homepage correction. **Actual Claude Desktop successfully exercised synthetic material create/get/link/evidence/void after PR #79; see the live-client evidence and bounded limitations below.** Only active OpenSpec proposal: [selective CogNote post-fork fixes](openspec/changes/selectively-adopt-cognote-post-fork-fixes/proposal.md).
+**Release status (2026-11-15):** [v0.1.0 published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.0); [production deployment succeeded](https://github.com/itshak/ChessCoachPal/actions/runs/43664411336). Historical 0.0.0/unreleased passages below are superseded. **Still pending:** full independent real ChatGPT MCP acceptance, untested Claude OAuth/revocation scenarios, historical privacy and licensing sign-off, and GitHub Homepage correction. **Actual Claude Desktop successfully exercised synthetic material create/get/link/evidence/void after PR #79; see the live-client evidence and bounded limitations below.** The selective CogNote post-fork fixes have been completed and archived; the historic development entries below should not be mistaken for active OpenSpec implementation work.
 
 
 **Your friendly chess-coaching assistant.**
@@ -41,9 +41,9 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 - [Archived chess learning basics](openspec/changes/archive/2026-11-07-add-chess-learning-basics/proposal.md)
 - [Archived Milestone 4 chess-only security implementation](openspec/changes/archive/2026-11-08-remove-cognote-legacy-and-secure-data/proposal.md)
 - [Archived Milestone 5 verified self-hosting and recovery implementation](openspec/changes/archive/2026-11-08-verify-self-hosting-and-release-v0-1-0/proposal.md)
-- [Active final v0.1.0 publication gates](openspec/changes/complete-v0-1-0-release-gates/proposal.md)
-- [Proposed full natural-language lessons, bilingual student profiles and Lichess materials/puzzles](openspec/changes/support-conversational-lesson-and-lichess-workflows/proposal.md)
-- [All current and proposed MCP commands](openspec/changes/support-conversational-lesson-and-lichess-workflows/tool-catalog.md)
+- [Active final v0.1.0 publication gates](openspec/changes/archive/2026-11-15-complete-v0-1-0-release-gates/proposal.md)
+- [Proposed full natural-language lessons, bilingual student profiles and Lichess materials/puzzles](openspec/changes/archive/2026-11-15-support-conversational-lesson-and-lichess-workflows/proposal.md)
+- [All current and proposed MCP commands](openspec/changes/archive/2026-11-15-support-conversational-lesson-and-lichess-workflows/tool-catalog.md)
 - [MCP trainer workflow and student model roadmap](docs/MCP_WORKFLOW_ROADMAP.md)
 - [Official ChatGPT plugin roadmap (target after public SaaS)](docs/PUBLIC_PLUGIN_SUBMISSION.md)
 - [Archived, incomplete original plan](openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md)
@@ -68,7 +68,7 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 
 ## Planned full chess-trainer experience — NOT implemented
 
-A separate [OpenSpec proposal](openspec/changes/support-conversational-lesson-and-lichess-workflows/proposal.md) covers “Today I taught Armond, Shushana and David Zaruk 13:00–14:30; we studied Classic Games 2, chapter 32”: resolve Hebrew/English student aliases, use scheduled hours only when explicit hours are absent, create **one** historical multi-student lesson and verified per-student study links without inventing comprehension assessments. It also plans website Lichess Study selection and reviewed image→FEN→PGN puzzle publishing with safe chapter rollover. Student profiles will gain Hebrew report names, English aliases, teacher strength 1–10, Lichess/Chess.com accounts and separate provider/time-control rating snapshots. Public official ChatGPT Plugin Directory listing is tentatively deferred until a hosted multi-teacher SaaS is launched at/after v1.0.0; semantic version is not a technical gate and an earlier security-reviewed beta is possible. See [strategy](docs/PUBLIC_PLUGIN_SUBMISSION.md).
+A separate [OpenSpec proposal](openspec/changes/archive/2026-11-15-support-conversational-lesson-and-lichess-workflows/proposal.md) covers “Today I taught Armond, Shushana and David Zaruk 13:00–14:30; we studied Classic Games 2, chapter 32”: resolve Hebrew/English student aliases, use scheduled hours only when explicit hours are absent, create **one** historical multi-student lesson and verified per-student study links without inventing comprehension assessments. It also plans website Lichess Study selection and reviewed image→FEN→PGN puzzle publishing with safe chapter rollover. Student profiles will gain Hebrew report names, English aliases, teacher strength 1–10, Lichess/Chess.com accounts and separate provider/time-control rating snapshots. Public official ChatGPT Plugin Directory listing is tentatively deferred until a hosted multi-teacher SaaS is launched at/after v1.0.0; semantic version is not a technical gate and an earlier security-reviewed beta is possible. See [strategy](docs/PUBLIC_PLUGIN_SUBMISSION.md).
 
 
 ## MCP-first complete feature parity — REQUIRED, not achieved
