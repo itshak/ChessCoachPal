@@ -69,3 +69,7 @@ This active parent covers several **already implemented foundation features** (c
 - [ ] F6: Run fresh CI/typecheck/Playwright/Supabase RLS, Compose and DB/file backup-restore green **on merged main**; cite SHA/runs; update applied specs/AI_CONNECTORS with implemented tools and archive only after full acceptance.
 
 **Unchanged:** `complete-v0-1-0-release-gates` remains open; no v0.1.0 tag, v1.0.0 promise or official public ChatGPT plugin is authorized by this change.
+
+## 2026-11-15 GigaChess native rules candidate — PR #66 (unverified)
+
+A concentrated correctness increment replaces puzzle SAN regex-only acceptance with legal continuation replay through the native `gigachess@0.5.0` engine. It also validates typed game PGN mainline/variation legality via GigaChess and adds teacher-edited FEN square corrections requiring a fresh review. Browser/API and MCP share the validation domain, and unit/authenticated cross-surface E2E are included. GigaChess already exposes native `Board.fromFen`, `parseSan`, `makeMove`, `parsePgn`; no upstream library changes or chess.js runtime package were necessary. Node runtime floor is 22.5+. This is **not accepted** until PR and postmerge exact-SHA CI/E2E/security/Compose/restore pass. The broader C2/C3 preference, B3 combined atomic transaction, distributed provider rate limits, and live-client gates stay open.

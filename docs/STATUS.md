@@ -2,6 +2,14 @@
 
 **Updated:** 2026-11-14 · **Branch of record:** main (parity implementation merged and accepted; v0.1.0 unreleased) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
+## 2026-11-15 — native GigaChess chess-rules acceptance candidate (PR #66)
+
+[PR #66](https://github.com/itshak/ChessCoachPal/pull/66) adds the **first-party GigaChess v0.5.0 native rules engine** (Node >=22.5; CI/E2E Node 24) without depending on chess.js. Instead of merely checking PGN text characters, website and MCP puzzle previews now reject illegal/ambiguous SAN moves from the exact reviewed FEN before assigning a digest or contacting Lichess. Typed game material creation and corrections validate GigaChess PGN mainlines and variations. The website also offers square-by-square FEN corrections, clearing previous verification so edits require revalidation. All source paths share the same domain services; there are no model-visible chess credentials.
+
+**Not yet accepted:** This candidate requires exact-head unit/typecheck/build/strict MCP parity, authenticated browser+delegated MCP Playwright cases, security, Compose and backup/restore. Do not merge before those gates. This change does not assert that historical game metadata is independently authentic, that an image establishes chess state, or that new chess functions are available from real ChatGPT/Claude accounts.
+
+**Other product/release gaps remain open:** persistent teacher/workplace/student study preference precedence, a combined session+chapter one-transaction commit, resilient provider rate budgets, comprehensive lesson correction/provider outage workflows, final historical privacy/licensing audit, and the mandatory real ChatGPT+Claude prepublication client exercise. Keep the release manifest at `0.0.0`, do not mark v0.1.0 ready or archive the parent OpenSpec without concrete acceptance.
+
 ## 2026-11-15 — rating cross-interface replay hotfix for PR #65 (awaiting CI)
 
 The full PR #65 run at `a1afe9c` passed **249 authenticated E2E cases**, skipped five intentionally and failed exactly one: `PARITY-public-lichess-and-chesscom-rating-sources-are-independent`. The MCP provider-refresh commit succeeded, but the matching browser replay returned HTTP 400 because the strict browser action schema rejected the same `studentId` present in the MCP receipt. This is a web adapter validation mismatch, not a provider-fetch issue. The shared server-side receipt validator and account/provider digest checks remain unchanged.
