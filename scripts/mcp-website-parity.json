@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-14",
   "headSha": "acea0c2178ceb35e6d24055ad1e2aa6ee17ff196",
-  "policy": "Native GigaChess legal SAN/FEN/PGN and atomic combined lesson+chapter approval use common website/MCP domain operations. Original 93 historical and all extra named cases, strict parity and manual real-client prepublication acceptance remain mandatory.",
+  "policy": "Native GigaChess legality, atomic lesson+material commit and teacher-owned purpose-specific Lichess study preferences share website/MCP domain source and independent tests; 93 historical and new release acceptance cases plus final manual live provider tests remain binding.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -773,6 +773,22 @@
       "parity": "browser-only",
       "existingTools": [],
       "explanation": "Lichess OAuth callback binds encrypted verifier/state to authenticated teacher and never exposes access tokens through MCP or website."
+    },
+    {
+      "path": "app/api/lichess/study-preferences/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_materials_preferences_list",
+        "ccp_v1_materials_preferences_resolve",
+        "ccp_v1_materials_preferences_set"
+      ],
+      "explanation": "Website and authenticated MCP share exact typed teacher/workplace/student Lichess purpose-specific study preference CRUD, deterministic student>workplace>teacher selection, independent versioned SQL receipt writes and tenant checks. Explicit null clearing preserves history; anonymous/direct unauthorized writes are denied. Provider index freshness is checked server-side; no token or child data leaked. Independent positive/replay/foreign acceptance: e2e/parity-conversational-batch.spec.ts.",
+      "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {
       "path": "app/api/lichess/chapter-index/route.ts",

@@ -4,6 +4,9 @@ import {ratingRecordSchema,ratingFetchSchema,ratingListSchema} from "@/lib/chess
 import {ratingRefreshCommitSchema,teacherStudentRatingHistory,
  teacherStudentRatingRecord,teacherStudentRatingRefreshPreview,
  teacherStudentRatingRefreshCommit,StudentRatingError} from "@/lib/server/student-rating-snapshots";
+import {studyPreferenceListSchema,studyPreferenceResolveSchema,studyPreferenceSetSchema,
+ teacherStudyPreferencesList,teacherStudyPreferenceResolve,teacherStudyPreferenceSet,
+ StudyPreferenceError} from "@/lib/server/teacher-study-preferences";
 import {studyIndexSearchSchema,studyIndexGetSchema,studyIndexSyncSchema,
  teacherStudyIndexSearch,teacherStudyIndexGet,teacherStudyIndexSync,
  StudyIndexError} from "@/lib/server/teacher-study-index";
@@ -737,6 +740,21 @@ const catalogue = [
     name:"ccp_v1_student_ratings_refresh_commit",
     description:"Explicitly confirm external public chess rating snapshot import. Refetch and compare exact preview digest; record a provider-sourced append-only batch with one UUID receipt, never change teacher strength.",
     schema:ratingRefreshCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_v1_materials_preferences_list",
+    description:"List teacher-owned saved Lichess study preferences with exact teacher/workplace/student scope and revision. A study link is not teaching evidence and never implies mastery; no OAuth token is exposed.",
+    schema:studyPreferenceListSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_materials_preferences_resolve",
+    description:"Resolve one saved Lichess study with deterministic student > workplace > teacher precedence and owner/enrollment checks, including cached index freshness. Explicit study overrides may still be selected in lesson preview; never guess an absent preference.",
+    schema:studyPreferenceResolveSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_v1_materials_preferences_set",
+    description:"After explicit teacher approval, set or clear one Lichess lesson/puzzle study preference for an owned teacher/workplace/active student. Verify the indexed provider study for non-null edits, exact revision and UUID receipt; stale/foreign/replayed modified inputs fail closed. No provider write or inferred teaching evidence.",
+    schema:studyPreferenceSetSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_materials_chapters_search",
@@ -1832,6 +1850,15 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_student_ratings_refresh_commit":
         return {data:await teacherStudentRatingRefreshCommit(db,teacherId,
           args as Parameters<typeof teacherStudentRatingRefreshCommit>[2])};
+      case "ccp_v1_materials_preferences_list":
+        return {data:await teacherStudyPreferencesList(db,teacherId,
+          args as Parameters<typeof teacherStudyPreferencesList>[2])};
+      case "ccp_v1_materials_preferences_resolve":
+        return {data:await teacherStudyPreferenceResolve(db,teacherId,
+          args as Parameters<typeof teacherStudyPreferenceResolve>[2])};
+      case "ccp_v1_materials_preferences_set":
+        return {data:await teacherStudyPreferenceSet(db,teacherId,
+          args as Parameters<typeof teacherStudyPreferenceSet>[2])};
       case "ccp_v1_materials_chapters_search":
         return {data:await teacherStudyIndexSearch(db,teacherId,
           args as Parameters<typeof teacherStudyIndexSearch>[2])};
@@ -2186,6 +2213,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof MaterialDefaultError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof AssignmentServiceError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof StudyPreferenceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof StudentRatingError||error instanceof StudyIndexError||
         error instanceof ChapterEvidenceError||error instanceof PuzzleSeriesError)
