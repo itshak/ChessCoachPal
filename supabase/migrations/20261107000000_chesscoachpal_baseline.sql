@@ -8217,10 +8217,6 @@ BEGIN
    IF v_subtotal>2147483647 THEN
       RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';
    END IF;
-  IF v_subtotal < (SELECT COALESCE(SUM(amount_cents),0)
-    FROM public.payments WHERE invoice_id=p_invoice_id) THEN
-    RAISE EXCEPTION 'INVOICE_TOTAL_BELOW_PAID' USING ERRCODE='23514';
-  END IF;
    UPDATE public.invoices SET subtotal_cents=v_subtotal::integer
       WHERE id=v_invoice;
    v_created:=v_created||jsonb_build_array(v_invoice);
@@ -8327,6 +8323,10 @@ BEGIN
  END LOOP;
  IF v_subtotal>2147483647 THEN
    RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';
+ END IF;
+ IF v_subtotal < (SELECT COALESCE(SUM(amount_cents),0)
+                  FROM public.payments WHERE invoice_id=p_invoice_id) THEN
+   RAISE EXCEPTION 'INVOICE_TOTAL_BELOW_PAID' USING ERRCODE='23514';
  END IF;
  UPDATE public.invoices SET subtotal_cents=v_subtotal::integer
    WHERE id=p_invoice_id RETURNING updated_at INTO v_updated;
