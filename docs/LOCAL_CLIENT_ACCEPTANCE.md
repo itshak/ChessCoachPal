@@ -1,33 +1,44 @@
-# Real ChatGPT + Claude acceptance — post-v0.1.0 procedure
+# Real Claude and ChatGPT MCP acceptance — independent client checks
 
-> **Maintainer policy update (2026-11-15):** Real ChatGPT and Claude acceptance is explicitly deferred until after v0.1.0 publication. This procedure remains required follow-up, **NOT EXECUTED**, and its results must not be inferred from synthetic CI. Older instructions below describing a prepublication prerequisite are superseded by this update.\n\n**Status:** NOT EXECUTED. This is a procedure/template, **not** evidence that the providers work. It is the only required manual live-provider test in the v0.1.0 roadmap, and must be carried out **on the maintainer's machine immediately before actually publishing `v0.1.0`**. Do not run it just to archive an OpenSpec development change. Development CI, OAuth/MCP integration, RLS, privacy, backup and contract checks run automatically on GitHub with **synthetic** students and teachers.
+**Updated 2026-11-15.** This is a **living acceptance procedure**, not a claim of complete external-client certification. The earlier statement “neither client has ever been tested” is superseded: **Claude Desktop has successfully performed a synthetic end-to-end material workflow on the deployed website**. **ChatGPT has not been confirmed through an equivalent real-client test.** A passing synthetic browser/delegated OAuth test also does not establish real-client behavior.
 
-## Preconditions
+The original v0.1.0 GitHub release was already published before this exercise. Do not describe these tests as a prerequisite that is still blocking an already-published tag; treat missing external-client evidence as a separately tracked post-release acceptance gap.
 
-1. Milestones 1, 2 foundation, 2b, 3 and 4 are archived based on *merged* GitHub Actions evidence in docs/STATUS.md, and remaining non-provider release-readiness checks must be completed before this manual test. Keep package version **0.0.0** until this local test passes.
-2. From the maintainer's own computer, test against a fresh, disposable ChessCoachPal self-hosted or dedicated Vercel + Supabase staging instance and **synthetic students, sessions and teachers only**. Do not reset an existing database with real students. For hosted staging use [the detailed staging MCP runbook](STAGING_MCP_ACCEPTANCE.md); do not confuse it with a public GitHub Release. Enable MCP credentials only for this test; use a dedicated random `MCP_SESSION_ENCRYPTION_KEY` and nonproduction Supabase keys. Never commit credentials.
-3. Real remote ChatGPT/Claude clients cannot directly reach an arbitrary `localhost` server. Expose **only the temporary test instance** via a secure HTTPS domain (including a disposable hosted staging deployment) or vetted HTTPS tunnel from the local machine; set `MCP_PUBLIC_ORIGIN` to its exact reachable HTTPS origin. Disable the exposure and revoke test grants afterward. Protect the public registration endpoint with rate limits and avoid logging tokens/prompts/student details.
-4. Use supported account/plan options with custom **write-capable** MCP connectors for both vendors, if available. Current provider UI/access may change; verify the actual supported client and version rather than assuming an account is eligible. Follow [AI_CONNECTORS.md](AI_CONNECTORS.md).
+## Completed Claude Desktop observations (2026-11-15)
 
-## Test matrix — manually complete each row directly before the release PR
+The operator's Claude connector settings displayed **88 readonly + 95 write tools**. An earlier chat's deferred ToolSearch could **not** find `ccp_learning_materials_create` although it was listed in settings. [PR #79](https://github.com/itshak/ChessCoachPal/pull/79) changed the canonical material root input JSON Schema; after the corrected deployment, the user reported that Claude successfully loaded `ccp_learning_materials_create` and `ccp_learning_materials_get` and completed these **synthetic** operations:
 
-| Check | ChatGPT | Claude |
+- Create and read back drill `MCP Test – Knight Forks`.
+- Link drill to existing test student and independently to completed tactics session. The two material link rows were later read back by direct owner-context database checks.
+- Record approved `assigned` and `taught` synthetic evidence; history/aggregate/progress initially showed both stages.
+- Void `assigned` with its prior `updated_at` and reason. Auditable history retained 2 rows with voided included; default active aggregates/report showed 0 assigned and 1 taught. No mastery was claimed.
+
+Earlier Claude runs also verified student strength, aliases, lesson completion, attendance and ratings. These observations prove those **specific** workflows, not every tool, token-rotation flow, foreign-tenant denial, or live ChatGPT behavior. Retain only synthetic identifiers in documentation; never paste children’s contact details or OAuth tokens.
+
+## Before each new real-client check
+
+1. Identify the intended **current merged commit**, Vercel deployment/hostname and dedicated synthetic Supabase project, or verified isolated HTTPS self-host instance. Don't test in an old cached client session or against an unknown deployment.
+2. Never reset a database with real student records; use only teacher-approved synthetic accounts and safe test data. If a reset is required, get explicit operator authorization and back up first.
+3. Verify `/mcp` and OAuth discovery/authorization endpoints, the scopes to be approved, new client version/plan, and **write-capable** custom connector support. Browser login/consent handles credentials; do not reveal tokens in chat.
+4. Run independent non-default field roundtrips (especially assessedOn, time control, note replacement, duration, aliases, revision) and website read-back.
+5. Revoke the actual provider's grant in the website and verify the now-invalid tool call fails. This is separate from synthetic OAuth unit tests.
+6. Record a sanitized status per client: endpoint host, commit, date, exact tool names, read/write scopes, input schema, persisted read-back, denial/revocation and issues. Do not mark unexecuted rows passed.
+
+## Required remaining manual acceptance matrix
+
+| Check | Claude Desktop | ChatGPT |
 | --- | --- | --- |
-| Record client product/plan and version, date, and temporary endpoint hostname (no tokens) | Not tested | Not tested |
-| Register/connect MCP endpoint; authorize synthetic teacher through OAuth PKCE with expected scopes | Not tested | Not tested |
-| Discover a known session and student by stable IDs; verify no foreign teacher data appears | Not tested | Not tested |
-| Write a **single student's** confirmed attendance and/or lesson topic using the supported tool; capture a privacy-safe receipt | Not tested | Not tested |
-| Open ChessCoachPal website on the same data and correct the record; check tool read-back reflects correction | Not tested | Not tested |
-| Revoke client authorization in website; verify subsequent tool calls are denied | Not tested | Not tested |
-| Confirm no secrets, real student names, private prompts or unsafe URL appear in saved evidence | Not tested | Not tested |
+| Actual client HTTPS /mcp + OAuth consent and selected scoped tool list | Connected to test teacher; exact scope/refresh/revocation not exhaustively certified | Not yet verified |
+| Exact `ccp_learning_materials_create` discovery with root input schema in new conversation | **Passed after PR #79** | Not yet verified |
+| Create, independent read-back, student/session links, evidence and audited void | **Passed** (synthetic data) | Not yet verified |
+| `ccp_student_skill_assessments_record` **explicit historical `assessedOn`** roundtrip | Needs retest after PR #81 deployment | Not yet verified |
+| Snapshot-driven progress report, trends and timezone provenance | Needs retest after PR #81 deployment | Not yet verified |
+| Conflict/replay rejection, scope downgrade and expired/revoked token denial | Not comprehensively verified in actual client | Not yet verified |
+| Real-app website correction reflected in a subsequent provider read | Partially verified through independent reads; complete checklist outstanding | Not yet verified |
+| No raw keys, private names or unrelated tenant data in evidence | Use synthetic-only and redact | Use synthetic-only and redact |
 
-The expanded tools are implemented: **both** live clients must exercise at least one authorized create and one revision-checked edit (using a fresh UUID idempotency key for each intentional mutation), then demonstrate website readback/correction and revocation. Do not substitute synthetic MCP calls for either provider. **Do not accept a simulated HTTP client as a substitute** for both real platforms.
+## Failure diagnosis and sign-off
 
-## Pass/fail and release sign-off
+If a tool is visible in settings but not loadable in conversation-level ToolSearch, compare deployed SHA, exact `tools/list`/JSON Schema and a **new** actual client conversation. Don't speculate that it is definitely cache or silently substitute another tool. If a call succeeds but read-back differs, trace the optional field through MCP schema → dispatch → domain service → database function → returned data, not just the tool schema. For the complete list of observed failures and solutions, see [MCP/Supabase playbook](MCP_SUPABASE_RELIABILITY_PLAYBOOK.md).
 
-- **Fail or plan restriction:** Do not publish. Leave docs/RELEASING.md's manual third checkbox unchecked and package at 0.0.0. Fix server/client constraints via PR and GitHub Actions, and repeat this final local check when a releasable candidate exists.
-- **Pass:** Record the tested main SHA, date, hostname (safe), both vendor product/client versions, approved scopes, basic call outcome/receipt IDs (redact private contents), website correction, revocation and relevant screenshots/transcript excerpts **without** access tokens, codes, refresh credentials, secrets, student data or full model prompts. Link this sign-off in docs/STATUS.md.
-- Only the maintainer who actually performed the local test may mark the third readiness checkbox in [RELEASING.md](RELEASING.md). Fill all other readiness checkboxes from GitHub automated evidence first. Then open/merge the reviewed `0.1.0` package/lock/changelog PR. GitHub Actions **automatically** runs release checks and publishes the tag and source archives if all gates pass. No manual upload/tag action is required.
-- Revoke test grants, stop the HTTPS tunnel/temporary exposure, dispose of the synthetic test data safely, and retain only sanitized evidence.
-
-**No real-client validation is claimed yet.** This document assigns the gate to actual v0.1.0 publication, not to pre-release development.
+A passed manual row is valid only for the tested client, tool, timestamp and deployment. Merged-main CI, self-host, backup/restore and security audits are still required separately. Live ChatGPT interoperability cannot be inferred from Claude or Codex.
