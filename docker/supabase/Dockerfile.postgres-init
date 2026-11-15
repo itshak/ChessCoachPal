@@ -1,0 +1,8 @@
+FROM supabase/postgres:17.6.1.136
+
+# Coolify stages Compose outside the repository. Bundle initialization and
+# migration assets rather than relying on relative host bind mounts.
+COPY docker/supabase/volumes/db/roles.sql /docker-entrypoint-initdb.d/init-scripts/99-roles.sql
+COPY docker/supabase/volumes/db/jwt.sql /docker-entrypoint-initdb.d/init-scripts/99-jwt.sql
+COPY docker/supabase/migrate.sh /migrate.sh
+COPY supabase/migrations /migrations
