@@ -91,6 +91,22 @@ async function close(server:Server){
  await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
 }
 
+test("PARITY:PARITY-lichess-fen-visual-correction-requires-revalidation-before-sharing",async({page,request})=>{
+ await delegatedTool(page,request); // authenticated teacher website
+ await page.goto("/learning");
+ const panel=page.locator('section[aria-label="FEN position validation"]');
+ const fenInput=panel.getByRole("textbox",{name:"Reviewed six-field FEN"});
+ await fenInput.fill(sampleFen);
+ await panel.getByRole("button",{name:"Validate and review (no provider write)"}).click();
+ await expect(panel.getByRole("button",{name:"Edit e2"})).toBeVisible();
+ await panel.getByRole("combobox",{name:"Piece to place"}).selectOption(".");
+ await panel.getByRole("button",{name:"Edit e2"}).click();
+ await expect(fenInput).toHaveValue(sampleFen.replace("/PPPPPPPP/","/PPPP1PPP/"));
+ await expect(panel.getByRole("button",{name:"Edit e2"})).toHaveCount(0);
+ await panel.getByRole("button",{name:"Validate and review (no provider write)"}).click();
+ await expect(panel.getByRole("button",{name:"Edit e2"})).toBeVisible();
+});
+
 test("PARITY:PARITY-lichess-image-fen-human-review makes identical website and MCP board proposals without publishing",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const website=await page.request.post("/api/lichess/puzzles/preview",{data:draft});
