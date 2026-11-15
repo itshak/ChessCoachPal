@@ -1,8 +1,14 @@
 # v0.1.0 prepublication handoff — automated preparation vs manual release authority
 
-**Prepared:** 2026-11-08 · **target:** v0.1.0 · **current package version:** `0.0.0` (unreleased) · **publication:** BLOCKED
+**Prepared:** 2026-11-15 · **target:** v0.1.0 · **current package version:** `0.0.0` (unreleased) · **publication:** BLOCKED
 
 This report is a **handoff**, not a sign-off. Do not set `0.1.0`, create `v0.1.0`, publish a GitHub Release, or check the six readiness boxes on the strength of synthetic tests alone. The last real-client check must be done by the maintainer on their own computer with **both** ChatGPT and Claude, immediately before the release PR. See [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md).
+
+## Latest merged implementation evidence (2026-11-15)
+
+The consolidated lesson/chapter + Lichess preferences implementation [PR #68](https://github.com/itshak/ChessCoachPal/pull/68) merged at `d825d81` after its exact-head CI, authenticated browser/MCP E2E, security, Compose and backup/restore checks passed. Main CI/security/Compose/restore are also green; the [merged-main E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43661136501) was still pending when this note was authored. This changes **automated implementation evidence only**, not publication authority. See [STATUS.md](STATUS.md).
+
+The seven release criteria remain unchecked until each has evidence; the manual ChatGPT **and** Claude exercise and privacy/license disposition cannot be inferred from synthetic CI. Confirm the GitHub Actions repository-level `VERCEL_TOKEN` before the reviewed version bump. The GitHub Homepage must be corrected in repository settings, which the connected GitHub tool cannot edit.
 
 ## Automated milestone implementation
 
