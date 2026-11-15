@@ -1,5 +1,8 @@
 # ChessCoachPal development and release status
 
+**CURRENT RELEASE STATUS — 2026-11-15:** v0.1.0 [published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.0); [publication and production deployment passed](https://github.com/itshak/ChessCoachPal/actions/runs/43664411336). This document's older 0.0.0 / unreleased passages are a historical development diary, not current status. **Not completed:** live ChatGPT and Claude OAuth/MCP acceptance, historical privacy/secrets and third-party licensing review, GitHub Homepage metadata correction. Four former active OpenSpec plans are archived as superseded/partially fulfilled, **not fully accepted**. The sole active proposal is [selectively-adopt-cognote-post-fork-fixes](../openspec/changes/selectively-adopt-cognote-post-fork-fixes/proposal.md), unimplemented.
+
+
 **Updated:** 2026-11-15 · **Branch of record:** main (consolidated coaching features merged; v0.1.0 unreleased) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
 ## 2026-11-15 — consolidated coaching batch merged and validated; publication handoff
