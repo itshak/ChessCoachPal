@@ -49,6 +49,7 @@ test("PARITY:PARITY-progress-student-summary unifies strength, skill history and
  const tactics=site.skills.find((x:{dimensionId:string})=>x.dimensionId===dimensionId);
  expect(tactics.latestRating).toBe(4);
  expect(tactics.observations).toBe(1);
+ expect(tactics.trend).toMatchObject([{rating:4}]);
  expect(site.materials.evidenceClaims).toBe(1);
  expect(site.materials.stages.taught).toBe(1);
  expect(site.truthBasis).toBe("teacher_attested_only");
@@ -57,4 +58,41 @@ test("PARITY:PARITY-progress-student-summary unifies strength, skill history and
  expect(denied.error?.code).toBe("NOT_FOUND");
  const websiteDenied=await page.request.get("/api/coaching/student-progress?studentId="+foreignId);
  expect(websiteDenied.status()).toBe(404);
+});
+
+test("PARITY:progress report reflects backfilled ratings with source and time control",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const made=await call("ccp_students_create",{
+   name:"Snapshot progress "+randomUUID(),idempotencyKey:randomUUID(),
+ });
+ expect(made.error).toBeUndefined();
+ const studentId=made.data.entityId as string;
+ const history=[
+   {rating:1200,observedAt:"2020-01-01T12:00:00+00:00"},
+   {rating:1350,observedAt:"2021-01-01T12:00:00+00:00"},
+ ];
+ for(const row of history){
+   const saved=await call("ccp_student_ratings_record",{
+     studentId,provider:"lichess",timeControl:"rapid",
+     rating:row.rating,observedAt:row.observedAt,
+     requestId:randomUUID(),confirmed:true,
+   });
+   expect(saved.error).toBeUndefined();
+ }
+ const web=await page.request.get("/api/coaching/student-progress?studentId="+studentId);
+ expect(web.status(),await web.text()).toBe(200);
+ const report=await web.json();
+ const mcp=await call("ccp_reports_student_progress",{studentId});
+ expect(mcp.error).toBeUndefined();
+ expect(mcp.data).toEqual(report);
+ expect(report.student.lichessRating).toBe(1350);
+ expect(report.student.ratingSources.lichessRating).toBe("latest_rapid_snapshot");
+ expect(report.student.chessRatings.lichess.rapid).toBe(1350);
+ expect(report.student.strength).toBeNull();
+ expect(report.latestPlatformRatings).toEqual([
+   expect.objectContaining({
+     provider:"lichess",timeControl:"rapid",rating:1350,
+     source:"teacher_manual",observedAt:"2021-01-01T12:00:00+00:00",
+   }),
+ ]);
 });
