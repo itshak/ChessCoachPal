@@ -6,6 +6,8 @@
 
 A separate current-schema release-gap branch now implements **one authenticated PostgreSQL RPC** wrapping the existing canonical multi-student session writer and exact Lichess chapter-evidence writer. Both child calls execute within the same database transaction: stale provider index, modified roster, overlap, replay conflict, unauthorized workplace or missing chapter cause a complete rollback, never a lesson left partially linked. Read-only website and MCP previews return matching `proposedAtomicCommit`; the teacher UI requires a separate approved chapter checkbox before the new combined commit. Website `POST /api/coaching/lesson-capture/commit` and MCP `ccp_v1_lessons_capture_commit_with_chapter` use the same service, along with independently named cross-surface synthetic rollback/replay acceptance tests. The existing separately approved path remains available.
 
+**Final implementation candidate assembled:** database transaction/RLS, browser/MCP schema and common domain service, independent two-UUID replay, website chapter approval, exact preview and a rollback/no-ghost-session test are present. This commit intentionally does not claim acceptance before all five workflows pass on this head and merged main. If the other GigaChess branch merges first, compare and reconcile source ancestry before the atomic PR is merged.
+
 **Status: candidate, NOT accepted.** Exact-head CI, authenticated E2E, security, self-host Compose and restore are still required, followed by merged-main recheck. No real provider/customer data was modified, and no release or live-client acceptance is claimed. Broader preference/provider and publication gates remain open.
 
 ## 2026-11-15 — rating cross-interface replay hotfix for PR #65 (awaiting CI)
