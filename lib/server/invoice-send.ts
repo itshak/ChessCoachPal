@@ -2,8 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
 import { loadInvoicePdf } from "@/lib/server/invoice-pdf-data";
 import { isValidPaymentQrDataUrl } from "@/lib/payment-qr";
-import { formatMoney } from "@/lib/billing";
-import { createCheckoutSession } from "@/lib/payments";
+import { formatMoney, summarizePayments } from "@/lib/billing";
+import { createCheckoutSession, expireCheckoutSession } from "@/lib/payments";
 import {
   familyEmailRecipients,
   familyDisplayName,
@@ -64,6 +64,8 @@ export async function sendInvoice(
   }
 
   const { invoice, family, policy, pdfBytes } = loaded.data;
+  const {paidCents,balanceCents} = summarizePayments(invoice.subtotal_cents,
+    (invoice.payments ?? []).map(payment => ({amountCents:payment.amount_cents})));
   // One request must claim this draft BEFORE creating any Stripe checkout
   // or delivering any email. A losing concurrent website/MCP/bulk caller is
   // rejected rather than replaying external side effects on an already-sent
@@ -72,7 +74,8 @@ export async function sendInvoice(
   const {data:claimed,error:claimError}=await supabase.from("invoices").update({
     status:"sent",sent_at:new Date().toISOString(),
   }).eq("id",id).eq("teacher_id",teacherId).eq("status","draft")
-    .select("id").maybeSingle();
+    .eq("updated_at",invoice.updated_at)
+    .select("id,updated_at").maybeSingle();
   if(claimError)return {ok:false,error:"Unable to claim invoice send"};
   if(!claimed)return {ok:false,
     error:"Invoice already sent or being processed; check delivery status before retrying"};
@@ -84,7 +87,7 @@ export async function sendInvoice(
   if (
     policy.payment_provider === "stripe" &&
     policy.stripe_secret_key &&
-    invoice.subtotal_cents > 0 &&
+    balanceCents > 0 &&
     !checkoutUrl
   ) {
     try {
@@ -92,7 +95,7 @@ export async function sendInvoice(
         secretKey: policy.stripe_secret_key,
         invoiceId: id,
         teacherId,
-        amountCents: invoice.subtotal_cents,
+        amountCents: balanceCents,
         currency: invoice.currency,
         familyName,
         studioName: policy.studio_name,
@@ -101,15 +104,19 @@ export async function sendInvoice(
         cancelUrl: `${origin}/portal/${family.portal_token}`,
         customerEmail: stripeCheckoutPrefillEmail(family),
       });
+      // Claim exactly the unchanged outstanding balance. This serializes
+      // against fresh payments and editing even after the send claim.
+      const {data:link,error:linkError}=await supabase.rpc("ccp_invoice_checkout_claim",{
+        p_invoice_id:id,p_session_id:session.sessionId,
+        p_checkout_url:session.url,p_expected_balance:balanceCents,
+        p_expected_updated_at:claimed.updated_at,
+      });
+      if(linkError || !link) {
+        try { await expireCheckoutSession(policy.stripe_secret_key,session.sessionId); }
+        catch { throw new Error("STRIPE_CHECKOUT_RECONCILIATION_REQUIRED"); }
+        throw new Error("INVOICE_CHANGED_AFTER_SEND");
+      }
       checkoutUrl = session.url;
-      await supabase
-        .from("invoices")
-        .update({
-          stripe_checkout_session_id: session.sessionId,
-          stripe_checkout_url: session.url,
-        })
-        .eq("id", id)
-        .eq("teacher_id", teacherId);
     } catch (err) {
       console.error(
         "Stripe checkout on send failed:",
@@ -131,6 +138,14 @@ export async function sendInvoice(
     const periodLabel = `${invoice.period_start} to ${invoice.period_end}`;
     const studio = policy.studio_name || "your studio";
     const total = formatMoney(invoice.subtotal_cents, invoice.currency);
+    const paid = formatMoney(paidCents, invoice.currency);
+    const balance = formatMoney(balanceCents, invoice.currency);
+    const balanceSummary = paidCents > 0
+      ? `Total: ${total}\nPaid: ${paid}\nBalance due: ${balance}`
+      : `Total due: ${balance}`;
+    const balanceHtml = paidCents > 0
+      ? `<p>Total: ${escapeHtml(total)}<br/>Paid: ${escapeHtml(paid)}<br/><strong>Balance due: ${escapeHtml(balance)}</strong></p>`
+      : `<p><strong>Total due: ${escapeHtml(balance)}</strong></p>`;
     const greeting = familyGreetingNames(family);
 
     const qrNote =
@@ -152,12 +167,12 @@ export async function sendInvoice(
         ? `<p><strong>Payment instructions</strong></p><p style="white-space:pre-wrap;">${escapeHtml(policy.payment_instructions.trim())}</p>${qrNote ? `<p>${qrNote}</p>` : ""}`
         : `<p>${qrNote || "See your family portal for payment details."}</p>`;
 
-    const text = `Hi ${greeting},\n\nPlease find attached your invoice for ${periodLabel}.\n\nTotal due: ${total}\n\n${payText}\n\n— ${studio} (sent via ChessCoachPal Studio)`;
+    const text = `Hi ${greeting},\n\nPlease find attached your invoice for ${periodLabel}.\n\n${balanceSummary}\n\n${payText}\n\n— ${studio} (sent via ChessCoachPal Studio)`;
 
     const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.5;color:#222;">
 <p>Hi ${escapeHtml(greeting)},</p>
 <p>Please find attached your invoice for ${escapeHtml(periodLabel)}.</p>
-<p><strong>Total due: ${escapeHtml(total)}</strong></p>
+${balanceHtml}
 ${payHtml}
 <p>— ${escapeHtml(studio)} (sent via ChessCoachPal Studio)</p>
 </div>`;

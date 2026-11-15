@@ -40,6 +40,7 @@ export interface InvoicePdfInvoiceRow {
   sent_at: string | null;
   guardians: InvoicePdfFamilyRow | InvoicePdfFamilyRow[] | null;
   invoice_items: InvoicePdfItemRow[] | null;
+  payments: { amount_cents: number }[] | null;
 }
 
 export interface InvoicePdfBundle {
@@ -110,7 +111,8 @@ export async function loadInvoicePdf(
         id, name, family_name, email, secondary_name, secondary_email,
         email_recipients, portal_token
       ),
-      invoice_items ( * )
+      invoice_items ( * ),
+      payments ( amount_cents )
     `
     )
     .eq("id", invoiceId)
@@ -153,6 +155,7 @@ export async function loadInvoicePdf(
         amountCents: i.amount_cents,
       })),
       subtotalCents: invoice.subtotal_cents,
+      paidCents: (invoice.payments ?? []).reduce((sum,p) => sum + p.amount_cents, 0),
       paymentInstructions: policy.payment_instructions,
       paymentQrCode:
         policy.payment_provider === "manual" ? policy.payment_qr_code : null,
