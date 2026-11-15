@@ -42,6 +42,8 @@ assert services["app"]["build"]["args"]["NEXT_PUBLIC_SUPABASE_URL"] == (
     "https://supabase-beta.example.invalid"
 )
 assert services["app"]["environment"]["MCP_PUBLIC_ORIGIN"] == "https://beta.example.invalid"
+assert services["app"]["build"]["args"]["NEXT_PUBLIC_BETA_ONLY"] == "false"
+assert services["app"]["environment"]["NEXT_PUBLIC_BETA_ONLY"] == "false"
 assert services["app"]["environment"]["TOKEN_ENCRYPTION_KEY"], "Token encryption secret missing"
 assert services["app"]["environment"]["MCP_SESSION_ENCRYPTION_KEY"], "Delegated session key missing"
 print("COOLIFY_COMPOSE_PREFLIGHT_OK: 7 default services, 0 host ports, isolated private DB, "
