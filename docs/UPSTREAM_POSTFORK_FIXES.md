@@ -19,8 +19,12 @@ These upstream changes were reviewed against ChessCoachPal's current canonical s
 - To grant a hosted founding entitlement, first run `node --env-file=.env.local scripts/grant-founding.mjs <email-or-teacher-id>` and review the matching customer and billable subscriptions. Re-run with `--apply` only after authorization. Verify subscription cancellation in Stripe, preserve audit logs and assess any existing charges separately. Do not print credentials.
 - Database migrations are destructive on a fresh-install pre-v1.0 schema. CI synthetic local reset must never be repointed at hosted production. If introducing `supabase db push`, explicitly select `--local` or validated `--remote` with `SUPABASE_PROJECT_REF`; the CI guard will reject unscoped commands.
 
-## Verification status
+## Verification status — accepted on 2026-11-15
 
-Implementation and automated test cases are committed on a feature branch. Their execution results, exact GitHub Actions run links and merge SHA belong in the OpenSpec archive and status report **only after the tests have actually passed**. No claim of live external Stripe or ChatGPT/Claude acceptance is made by synthetic tests.
+- [PR #75](https://github.com/itshak/ChessCoachPal/pull/75) merged as [`394592c`](https://github.com/itshak/ChessCoachPal/commit/394592c446e23767459b79ca226d0101d3c4dc3c); the identical source passed all five required workflows both before and after merge.
+- [Merged-main CI](https://github.com/itshak/ChessCoachPal/actions/runs/43683559454) — 458 unit tests passing in 56 files, typecheck/lint passing, 93/93 strict MCP parity checklist and explicit migration-target guards passing.
+- [Merged-main browser/delegated MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43683559483) — 258 passed, 5 intentionally skipped, 0 failed (including draft partial payment, paid floor, replay, privacy, correction, and paid-before-send delivery).
+- [Security-history audit](https://github.com/itshak/ChessCoachPal/actions/runs/43683559491), [self-host Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43683559463), and [database+file backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43683559488) all succeeded.
+- Release pipeline checked existing `v0.1.0` and did not reissue it: [release workflow](https://github.com/itshak/ChessCoachPal/actions/runs/43683559530).
 
-A fully paid draft remains private until the teacher explicitly sends its paid invoice. Delivery retains status `paid`, stamps `sent_at`, never requests another payment/Checkout, and rejects duplicate sends.
+Synthetic tests do not imply live external Stripe billing/refund, real ChatGPT/Claude client verification, or further production release approval; those remain separate safeguards.
