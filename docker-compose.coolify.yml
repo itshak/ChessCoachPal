@@ -1,12 +1,5 @@
-# ChessCoachPal for a Git-based Coolify Docker Compose Application.
-# Source of truth for staged deployment; see docs/COOLIFY_DEPLOYMENT.md.
-# No host ports are published. Coolify routes:
-#   app internal :3000 -> website and /mcp, /oauth/*
-#   gateway internal :8000 -> /auth/v1, /rest/v1, /storage/v1
-# Only app and gateway join the shared coolify reverse-proxy network.
-# Do not admit real teacher data until backup/restore, RLS and OAuth tests pass.
-# Local backup/restore profiles excluded: they require a separate secrets file
-# and tested off-machine recovery configuration.
+# Git-based Coolify Compose: bundle all Git assets inside Docker images.
+# Never use relative file bind mounts: generated Compose lives outside Git.
 x-logging: &id001
   driver: json-file
   options:
@@ -15,7 +8,7 @@ x-logging: &id001
 services:
   db:
     logging: *id001
-    image: supabase/postgres:17.6.1.136
+    image: chesscoachpal-staging-postgres-init:17.6.1.136
     restart: unless-stopped
     environment:
       POSTGRES_HOST: /var/run/postgresql
@@ -27,8 +20,6 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:?}
       JWT_EXP: ${JWT_EXPIRY:-3600}
     volumes:
-    - ./docker/supabase/volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
-    - ./docker/supabase/volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
     - db-data:/var/lib/postgresql/data
     - db-config:/etc/postgresql-custom
     healthcheck:
@@ -43,6 +34,9 @@ services:
       timeout: 5s
       retries: 10
       start_period: 90s
+    build: &id002
+      context: .
+      dockerfile: docker/supabase/Dockerfile.postgres-init
   auth:
     logging: *id001
     image: supabase/gotrue:v2.197.0
@@ -157,7 +151,7 @@ services:
       start_period: 10s
   gateway:
     logging: *id001
-    image: nginx:1.30.6-alpine
+    image: chesscoachpal-staging-gateway:1.30.6
     restart: unless-stopped
     depends_on:
     - auth
@@ -165,14 +159,15 @@ services:
     - storage
     environment:
       APP_URL: ${APP_URL:?}
-    volumes:
-    - ./docker/supabase/volumes/api/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
     networks:
     - default
     - coolify
+    build:
+      context: .
+      dockerfile: docker/supabase/Dockerfile.gateway
   migrate:
     logging: *id001
-    image: supabase/postgres:17.6.1.136
+    image: chesscoachpal-staging-postgres-init:17.6.1.136
     entrypoint:
     - /bin/bash
     - /migrate.sh
@@ -186,9 +181,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       DB_HOST: db
       MIGRATIONS_DIR: /migrations
-    volumes:
-    - ./supabase/migrations:/migrations:ro
-    - ./docker/supabase/migrate.sh:/migrate.sh:ro
+    build: *id002
   app:
     logging: *id001
     build:
@@ -216,7 +209,8 @@ services:
       AUTH_SMTP_PASS: ''
       MCP_PUBLIC_ORIGIN: ${APP_URL:?}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?Generate a unique 32-byte encryption key}
-      MCP_SESSION_ENCRYPTION_KEY: ${MCP_SESSION_ENCRYPTION_KEY:?Generate a separate 32-byte encryption key}
+      MCP_SESSION_ENCRYPTION_KEY: ${MCP_SESSION_ENCRYPTION_KEY:?Generate a separate 32-byte encryption
+        key}
       CRON_SECRET: ${CRON_SECRET:-}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-none}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
