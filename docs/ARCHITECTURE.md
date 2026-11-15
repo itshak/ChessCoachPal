@@ -1,5 +1,7 @@
 # ChessCoachPal — current architecture
 
+**Hosting decision (accepted 2026-11-15, not yet deployed):** Retain the existing trimmed Supabase stack (GoTrue, PostgreSQL/RLS, PostgREST and Storage), with a controlled future Coolify hosting cutover for the Next.js website and `/mcp`. Vercel/managed Supabase remain in use while security, recovery and capacity gates are verified. See [hosting architecture](HOSTING_ARCHITECTURE.md) and [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md). Do not introduce a second PostgreSQL or SuperTokens without a new evidence-backed decision.
+
 **As of 2026-11-15:** ChessCoachPal is a pre-v1.0.0 **MCP-first, self-hostable chess coaching workspace**. The released v0.1.x line is not a stable v1 data/API contract. The website is optional for business management; provider credentials, passwords, MFA and some high-risk approvals remain in secure browser-only workflows.
 
 > For durable engineering decisions and lessons: [ADR-0001](adr/0001-pre1-breaking-changes.md), [ADR-0003](adr/0003-mcp-website-business-parity.md), [ADR-0006](adr/0006-unversioned-mcp-tool-names.md), [ADR-0007](adr/0007-mcp-supabase-contract-and-release-evidence.md) and [the reusable reliability playbook](MCP_SUPABASE_RELIABILITY_PLAYBOOK.md).

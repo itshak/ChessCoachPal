@@ -4,6 +4,10 @@ Current pre-1.0 fresh-install schema only (ADR-0001). A teacher can use the webs
 
 **Licensing:** The following instructions describe a deployment mechanism, not a license to reproduce or operate the proprietary ChessCoachPal portions. New deployments of proprietary code require authorization from the relevant copyright holder. The MIT rights of CogNote and historical ChessCoachPal releases remain intact; see [LICENSE](../LICENSE), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) and [ADR-0002](adr/0002-proprietary-licensing.md).
 
+## Coolify hosting target, not a completed cutover
+
+[ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md) selects the trimmed existing Supabase Compose stack as the future Coolify-managed backend, with Next.js website and `/mcp` sharing the same services. See [HOSTING_ARCHITECTURE.md](HOSTING_ARCHITECTURE.md) for alternatives, disk estimates and rollout gates. This does not imply the managed backend or Vercel has already migrated. Before a real cutover: isolate database/Auth/Storage and service-role credentials from public ports, configure HTTPS and Google OAuth/SMTP where applicable, measure real image/volume capacity, verify RLS and delegated MCP consent/refresh/revocation, and restore off-host encrypted backups into a second empty installation.
+
 ## Initial setup (new empty installation)
 
 Install Docker Engine, Compose v2 and Buildx. Make ports 3000 (app) and 8000 (API gateway) available. Clone the ChessCoachPal repository, then run:
