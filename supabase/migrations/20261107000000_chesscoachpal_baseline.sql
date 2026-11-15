@@ -2551,7 +2551,8 @@ GRANT ALL ON TABLE "public"."teaching_sessions" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."waitlist" TO "authenticated";
+-- Public waitlist writes use the rate-limited service role, not direct client table access.
+REVOKE ALL ON TABLE public.waitlist FROM authenticated, anon;
 GRANT ALL ON TABLE "public"."waitlist" TO "service_role";
 
 
