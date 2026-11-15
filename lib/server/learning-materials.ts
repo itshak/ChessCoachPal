@@ -14,67 +14,65 @@ export function structurallyValidFen(value: string): boolean {
   try { fenBoard(value); return true; } catch { return false; }
 }
 
+// A single root-object input contract is used by both website and MCP.
+// The material-specific payload stays nested, not as a top-level JSON Schema
+// union: MCP/Claude tool discovery requires tool arguments to be an object.
 const uuid = z.string().uuid();
-const base = z.object({
-  title: z.string().trim().min(1).max(160),
-  description: z.string().max(4000).default(""),
-  sourceUrl: z.url().startsWith("https://").max(2048).nullable().default(null),
-  requestId: uuid,
-});
-const game = base.extend({
-  kind: z.literal("game"),
-  details: z.object({
-    pgn: z.string().trim().min(1).max(150000).refine(validGamePgn,
-      "PGN must contain a complete legal GigaChess mainline and variations"),
-    whitePlayer: z.string().max(120).default(""),
-    blackPlayer: z.string().max(120).default(""),
-    result: z.enum(["1-0", "0-1", "1/2-1/2", "*"]).default("*"),
-  }).strict(),
+const gameDetails = z.object({
+  pgn: z.string().trim().min(1).max(150000).refine(validGamePgn,
+    "PGN must contain a complete legal GigaChess mainline and variations"),
+  whitePlayer: z.string().max(120).default(""),
+  blackPlayer: z.string().max(120).default(""),
+  result: z.enum(["1-0", "0-1", "1/2-1/2", "*"]).default("*"),
 }).strict();
-const puzzle = base.extend({
-  kind: z.literal("puzzle"),
-  details: z.object({
-    fen: z.string().trim().refine(structurallyValidFen, "FEN must have eight complete ranks and six structurally valid fields"),
-    solution: z.string().max(5000).nullable().default(null),
-    themes: z.array(z.string().trim().min(1).max(32)).max(20).default([]),
-  }).strict(),
+const puzzleDetails = z.object({
+  fen: z.string().trim().refine(structurallyValidFen,
+    "FEN must have eight complete ranks and six structurally valid fields"),
+  solution: z.string().max(5000).nullable().default(null),
+  themes: z.array(z.string().trim().min(1).max(32)).max(20).default([]),
 }).strict();
-const drill = base.extend({
-  kind: z.literal("drill"),
-  details: z.object({
-    instructions: z.string().trim().min(1).max(5000),
-    mode: z.enum(["calculation", "repetition", "endgame", "opening", "other"]).default("other"),
-    repetitions: z.number().int().min(1).max(10000).nullable().default(null),
-  }).strict(),
+const drillDetails = z.object({
+  instructions: z.string().trim().min(1).max(5000),
+  mode: z.enum(["calculation", "repetition", "endgame", "opening", "other"]).default("other"),
+  repetitions: z.number().int().min(1).max(10000).nullable().default(null),
 }).strict();
-const study = base.extend({
-  kind: z.literal("study_chapter"),
-  sourceUrl: z.url().startsWith("https://").max(2048),
-  details: z.object({
-    provider: z.enum(["lichess", "other"]).default("lichess"),
-    studyId: z.string().trim().min(1).max(128),
-    chapterId: z.string().trim().min(1).max(128).nullable().default(null),
-  }).strict(),
+const studyDetails = z.object({
+  provider: z.enum(["lichess", "other"]).default("lichess"),
+  studyId: z.string().trim().min(1).max(128),
+  chapterId: z.string().trim().min(1).max(128).nullable().default(null),
 }).strict();
-const link = base.extend({
-  kind: z.literal("external_link"),
-  sourceUrl: z.url().startsWith("https://").max(2048),
-  details: z.object({}).strict(),
+const linkDetails = z.object({}).strict();
+const materialDetailsByKind = {
+  game:gameDetails,puzzle:puzzleDetails,drill:drillDetails,
+  study_chapter:studyDetails,external_link:linkDetails,
+} as const;
+
+// Every published material creation/update input begins with a JSON object.
+// Specific details remain validated against the selected kind in the same
+// canonical schema; neither website nor MCP has a separate adapter/contract.
+const materialInput = z.object({
+  kind:z.enum(["game","puzzle","drill","study_chapter","external_link"]),
+  title:z.string().trim().min(1).max(160),
+  description:z.string().max(4000).default(""),
+  sourceUrl:z.url().startsWith("https://").max(2048).nullable().default(null),
+  requestId:uuid,
+  details:z.union([gameDetails,puzzleDetails,drillDetails,studyDetails,linkDetails]),
 }).strict();
-export const materialCatalogCreateSchema = z.discriminatedUnion("kind", [
-  game, puzzle, drill, study, link,
-]);
+function verifyMaterialKind(input:z.output<typeof materialInput>,ctx:z.RefinementCtx) {
+  if(!materialDetailsByKind[input.kind].safeParse(input.details).success)
+    ctx.addIssue({code:"custom",path:["details"],
+      message:"Material details must match the selected kind"});
+  if((input.kind==="study_chapter"||input.kind==="external_link")&&!input.sourceUrl)
+    ctx.addIssue({code:"custom",path:["sourceUrl"],
+      message:"Study chapters and external links require an HTTPS URL"});
+}
+export const materialCatalogCreateSchema=materialInput.superRefine(verifyMaterialKind);
 const materialUpdateFields={
-  materialId: uuid,expectedRevision:z.number().int().min(1),
+  materialId:uuid,expectedRevision:z.number().int().min(1),
   confirmed:z.literal(true),
 };
-export const materialCatalogUpdateSchema = z.discriminatedUnion("kind",[
-  game.extend(materialUpdateFields),
-  puzzle.extend(materialUpdateFields),
-  drill.extend(materialUpdateFields),
-  study.extend(materialUpdateFields),
-  link.extend(materialUpdateFields),
-]);
+export const materialCatalogUpdateSchema=materialInput
+  .extend(materialUpdateFields).superRefine(verifyMaterialKind);
 export type MaterialCatalogUpdate=z.infer<typeof materialCatalogUpdateSchema>;
 
 export const materialRelationSchema=z.object({

@@ -61,7 +61,25 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   };
   expect((await mcp("initialize",{protocolVersion:"2025-06-18",capabilities:{},clientInfo:{name:"synthetic",version:"1"}})).serverInfo.name)
     .toBe("ChessCoachPal");
-  const names = (await mcp("tools/list")).tools.map((tool:{name:string})=>tool.name);
+  const listedTools = (await mcp("tools/list")).tools as Array<{
+    name:string;inputSchema:Record<string,unknown>;
+  }>;
+  const names = listedTools.map(tool=>tool.name);
+  // Clients such as Claude Desktop can display a union-schema tool in
+  // connector settings yet silently omit it from deferred tool discovery.
+  // MCP tool input schemas MUST have a root object, without root combinators.
+  for(const tool of listedTools){
+    expect(tool.inputSchema?.type,tool.name+" inputSchema root").toBe("object");
+    expect(tool.inputSchema?.anyOf,tool.name+" root anyOf").toBeUndefined();
+    expect(tool.inputSchema?.oneOf,tool.name+" root oneOf").toBeUndefined();
+    expect(tool.inputSchema?.allOf,tool.name+" root allOf").toBeUndefined();
+  }
+  for(const name of ["ccp_learning_materials_create","ccp_learning_materials_update"]){
+    const schema=listedTools.find(tool=>tool.name===name)?.inputSchema;
+    expect(schema,name+" must be discoverable").toBeDefined();
+    expect(schema?.properties).toHaveProperty("kind");
+    expect(schema?.properties).toHaveProperty("details");
+  }
   expect(names).toContain("ccp_attendance_record");
   // Pre-1.0 policy: expose only current unversioned names, never legacy aliases.
   expect(names.every((name:string) => /^ccp_(?!v\d+_)[a-z][a-z0-9_]*$/.test(name))).toBe(true);
