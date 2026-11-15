@@ -10,25 +10,25 @@ import {delegatedTool} from "./helpers/delegated-mcp";
  */
 test("SECURITY: canonical note approval queues deduplicated private-safe delivery, not direct email",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=(await call("ccp_v1_students_create",{
+ const student=(await call("ccp_students_create",{
   name:"Outbox learner "+randomUUID(),idempotencyKey:randomUUID(),
  }));
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const guardian=await call("ccp_v1_guardians_create",{
+ const guardian=await call("ccp_guardians_create",{
   name:"Outbox guardian "+randomUUID(),studentIds:[studentId],confirmed:true,
  });
  expect(guardian.error).toBeUndefined();
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
   name:"Outbox workplace "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await call("ccp_v1_workplaces_enroll",{
+ expect((await call("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
- const session=await call("ccp_v1_sessions_create",{
+ const session=await call("ccp_sessions_create",{
   workplaceId,studentId,title:"Approved teaching notes",
   startsAt:"2061-10-02T11:00:00Z",durationMinutes:30,
   lessonNote:"",idempotencyKey:randomUUID(),
@@ -46,7 +46,7 @@ test("SECURITY: canonical note approval queues deduplicated private-safe deliver
  });
  expect(site.status(),await site.text()).toBe(200);
  expect(await site.json()).toMatchObject({emailQueued:true,replayed:false});
- const replay=await call("ccp_v1_session_notes_save",input);
+ const replay=await call("ccp_session_notes_save",input);
  expect(replay.error).toBeUndefined();
  expect(replay.data).toMatchObject({emailQueued:true,replayed:true});
  const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -75,7 +75,7 @@ test("SECURITY: canonical note approval queues deduplicated private-safe deliver
  const serialized=JSON.stringify(queued![0].payload);
  expect(serialized).toContain("Practised rook endings");
  expect(serialized).not.toContain(secret);
- const reader=await call("ccp_v1_session_notes_list",{sessionId});
+ const reader=await call("ccp_session_notes_list",{sessionId});
  expect(reader.error).toBeUndefined();
  expect(reader.data[0]).not.toHaveProperty("private_body");
 });

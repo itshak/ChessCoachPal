@@ -118,7 +118,7 @@ test("PARITY:PARITY-lichess-image-fen-human-review makes identical website and M
  expect(reviewed.sideToMove).toBe("white");
  expect(reviewed.sha256).toMatch(/^[a-f0-9]{64}$/);
  expect(reviewed).toMatchObject({rulesEngine:"GigaChess",continuationMovesVerified:true,legalPlyCount:4});
- const model=await call("ccp_v1_lichess_puzzle_preview",draft);
+ const model=await call("ccp_lichess_puzzle_preview",draft);
  expect(model.error).toBeUndefined();
  expect(model.data).toEqual(reviewed);
  expect(JSON.stringify(model.data)).not.toContain("Bearer");
@@ -126,7 +126,7 @@ test("PARITY:PARITY-lichess-image-fen-human-review makes identical website and M
  expect((await page.request.post("/api/lichess/puzzles/preview",{
   data:malformed,
  })).status()).toBe(400);
- expect((await call("ccp_v1_lichess_puzzle_preview",malformed)).error?.code)
+ expect((await call("ccp_lichess_puzzle_preview",malformed)).error?.code)
   .toBe("VALIDATION_ERROR");
  // The browser and delegated MCP must reject syntactically valid but
  // chess-illegal continuations before any Lichess provider write.
@@ -134,13 +134,13 @@ test("PARITY:PARITY-lichess-image-fen-human-review makes identical website and M
   const illegal={...draft,moves};
   const web=await page.request.post("/api/lichess/puzzles/preview",{data:illegal});
   expect(web.status(),await web.text()).toBe(400);
-  expect((await call("ccp_v1_lichess_puzzle_preview",illegal)).error?.code).toBe("VALIDATION_ERROR");
+  expect((await call("ccp_lichess_puzzle_preview",illegal)).error?.code).toBe("VALIDATION_ERROR");
  }
  const unsafe={...draft,moves:'1. e4\\n[FEN "unreviewed"]'};
  expect((await page.request.post("/api/lichess/puzzles/preview",{
   data:unsafe,
  })).status()).toBe(400);
- expect((await call("ccp_v1_lichess_puzzle_preview",unsafe)).error?.code)
+ expect((await call("ccp_lichess_puzzle_preview",unsafe)).error?.code)
   .toBe("VALIDATION_ERROR");
 });
 
@@ -162,7 +162,7 @@ test("PARITY:PARITY-lichess-approved-puzzle-provider-import requires write scope
   expect((await page.request.post("/api/lichess/puzzles",{
     data:approved,
   })).status()).toBe(403);
-  expect((await call("ccp_v1_lichess_puzzle_publish",approved)).error?.code)
+  expect((await call("ccp_lichess_puzzle_publish",approved)).error?.code)
     .toBe("SCOPE_DENIED");
   expect(provider.imports).toHaveLength(0);
 
@@ -171,12 +171,12 @@ test("PARITY:PARITY-lichess-approved-puzzle-provider-import requires write scope
   expect((await page.request.post("/api/lichess/puzzles",{
    data:{...approved,confirmedExternal:false},
   })).status()).toBe(400);
-  expect((await call("ccp_v1_lichess_puzzle_publish",{
+  expect((await call("ccp_lichess_puzzle_publish",{
    ...approved,confirmedExternal:false,
   })).error?.code).toBe("VALIDATION_ERROR");
   expect(provider.imports).toHaveLength(0);
 
-  const first=await call("ccp_v1_lichess_puzzle_publish",approved);
+  const first=await call("ccp_lichess_puzzle_publish",approved);
   expect(first.error).toBeUndefined();
   expect(first.data).toMatchObject({
    ok:true,replayed:false,studyId:"StUd1234",
@@ -193,7 +193,7 @@ test("PARITY:PARITY-lichess-approved-puzzle-provider-import requires write scope
    provider:"lichess",study_id:draft.studyId,chapter_id:"PuZz0001",
   });
   expect(catalogChapter.source_url).toBe(first.data.chapterUrl);
-  const typedMcp=await call("ccp_v1_learning_materials_get",{materialId:first.data.materialId});
+  const typedMcp=await call("ccp_learning_materials_get",{materialId:first.data.materialId});
   expect(typedMcp.error).toBeUndefined();
   expect(typedMcp.data).toEqual(catalogChapter);
   const replayWebsite=await page.request.post("/api/lichess/puzzles",{
@@ -206,7 +206,7 @@ test("PARITY:PARITY-lichess-approved-puzzle-provider-import requires write scope
   expect(provider.imports).toHaveLength(1);
 
   const changedDraft={...draft,chapterName:"A second reviewed puzzle"};
-  const secondPreview=await call("ccp_v1_lichess_puzzle_preview",changedDraft);
+  const secondPreview=await call("ccp_lichess_puzzle_preview",changedDraft);
   expect(secondPreview.error).toBeUndefined();
   const secondApproved={...changedDraft,expectedSha256:secondPreview.data.sha256,
    idempotencyKey:randomUUID(),confirmed:true,confirmedExternal:true};
@@ -217,11 +217,11 @@ test("PARITY:PARITY-lichess-approved-puzzle-provider-import requires write scope
   expect(await second.json()).toMatchObject({
    ok:true,replayed:false,chapterId:"PuZz0002",
   });
-  const replayMcp=await call("ccp_v1_lichess_puzzle_publish",secondApproved);
+  const replayMcp=await call("ccp_lichess_puzzle_publish",secondApproved);
   expect(replayMcp.error).toBeUndefined();
   expect(replayMcp.data).toMatchObject({ok:true,replayed:true,chapterId:"PuZz0002"});
   expect(provider.imports).toHaveLength(2);
-  const misuse=await call("ccp_v1_lichess_puzzle_publish",{
+  const misuse=await call("ccp_lichess_puzzle_publish",{
    ...secondApproved,idempotencyKey:firstKey,
   });
   expect(misuse.error?.code).toBe("IDEMPOTENCY_CONFLICT");
@@ -231,7 +231,7 @@ test("PARITY:PARITY-lichess-approved-puzzle-provider-import requires write scope
   // Neither interface automatically retries the same content after it.
   provider.setFailImport(true);
   const third={...draft,chapterName:"Ambiguous provider receipt"};
-  const thirdPreview=await call("ccp_v1_lichess_puzzle_preview",third);
+  const thirdPreview=await call("ccp_lichess_puzzle_preview",third);
   expect(thirdPreview.error).toBeUndefined();
   const attempt={...third,expectedSha256:thirdPreview.data.sha256,
    idempotencyKey:randomUUID(),confirmed:true,confirmedExternal:true};
@@ -239,7 +239,7 @@ test("PARITY:PARITY-lichess-approved-puzzle-provider-import requires write scope
   expect(ambiguous.status()).toBe(503);
   expect((await ambiguous.json()).code).toBe("PROVIDER_RECONCILIATION_REQUIRED");
   expect(provider.imports).toHaveLength(3);
-  const noDuplicate=await call("ccp_v1_lichess_puzzle_publish",attempt);
+  const noDuplicate=await call("ccp_lichess_puzzle_publish",attempt);
   expect(noDuplicate.error?.code).toBe("PROVIDER_RECONCILIATION_REQUIRED");
   expect(provider.imports).toHaveLength(3);
   const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -264,7 +264,7 @@ test("PARITY:PARITY-lichess-image-extraction-consent rejects unsafe uploads equa
   data:{kind:"image",imageBase64:png,mediaType:"image/png"},
  });
  expect(missingConsent.status(),await missingConsent.text()).toBe(400);
- const mcpNoApproval=await call("ccp_v1_lichess_image_fen_propose",{
+ const mcpNoApproval=await call("ccp_lichess_image_fen_propose",{
   imageBase64:png,mediaType:"image/png",confirmed:true,
  });
  expect(mcpNoApproval.error?.code).toBe("VALIDATION_ERROR");
@@ -275,7 +275,7 @@ test("PARITY:PARITY-lichess-image-extraction-consent rejects unsafe uploads equa
  });
  expect(website.status(),await website.text()).toBe(400);
  expect((await website.json()).code).toBe("VALIDATION_ERROR");
- const mcp=await call("ccp_v1_lichess_image_fen_propose",{
+ const mcp=await call("ccp_lichess_image_fen_propose",{
   imageBase64:png,mediaType:"image/jpeg",confirmedExternal:true,confirmed:true,
  });
  expect(mcp.error?.code).toBe("VALIDATION_ERROR");
@@ -341,7 +341,7 @@ test("PARITY:PARITY-image-photo-vision-to-reviewed-FEN-to-published-typed-study 
     });
     expect(web.status(),await web.text()).toBe(200);
     const candidate=await web.json();
-    const mcp=await call("ccp_v1_lichess_image_fen_propose",{...payload,confirmed:true});
+    const mcp=await call("ccp_lichess_image_fen_propose",{...payload,confirmed:true});
     expect(mcp.error).toBeUndefined();
     expect(mcp.data).toEqual(candidate);
     expect(candidate.proposedFen).toBe(expectedPlacement+" w - - 0 1");
@@ -359,7 +359,7 @@ test("PARITY:PARITY-image-photo-vision-to-reviewed-FEN-to-published-typed-study 
     const previewWeb=await page.request.post("/api/lichess/puzzles/preview",{data:reviewedDraft});
     expect(previewWeb.status(),await previewWeb.text()).toBe(200);
     const preview=await previewWeb.json();
-    const previewMcp=await call("ccp_v1_lichess_puzzle_preview",reviewedDraft);
+    const previewMcp=await call("ccp_lichess_puzzle_preview",reviewedDraft);
     expect(previewMcp.error).toBeUndefined();
     expect(previewMcp.data).toEqual(preview);
     expect(preview.pgn).toContain('[SetUp "1"]');
@@ -369,7 +369,7 @@ test("PARITY:PARITY-image-photo-vision-to-reviewed-FEN-to-published-typed-study 
     await page.waitForURL(u=>u.pathname==="/learning"&&u.searchParams.get("lichess")==="connected");
     const approved={...reviewedDraft,expectedSha256:preview.sha256,
       idempotencyKey:randomUUID(),confirmed:true,confirmedExternal:true};
-    const published=await call("ccp_v1_lichess_puzzle_publish",approved);
+    const published=await call("ccp_lichess_puzzle_publish",approved);
     expect(published.error).toBeUndefined();
     expect(published.data.ok).toBe(true);
     expect(provider.imports).toHaveLength(1);

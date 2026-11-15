@@ -28,7 +28,7 @@ test("PARITY:PARITY-import-rollback rejects a later invalid row without persisti
   const reviewed=await browserPreview.json();
   expect(reviewed.counts).toMatchObject({guardians:1,students:1});
   expect(reviewed.sha256).toMatch(/^[a-f0-9]{64}$/);
-  const modelPreview=await call("ccp_v1_settings_import_preview",{payload});
+  const modelPreview=await call("ccp_settings_import_preview",{payload});
   expect(modelPreview.error).toBeUndefined();
   expect(modelPreview.data.sha256).toBe(reviewed.sha256);
 
@@ -42,7 +42,7 @@ test("PARITY:PARITY-import-rollback rejects a later invalid row without persisti
 
   // An unsuccessful transaction must not leave a replay receipt claiming
   // success or any partial family/student data after a different client retry.
-  const modelFailure=await call("ccp_v1_settings_import_apply",{
+  const modelFailure=await call("ccp_settings_import_apply",{
     payload,expectedSha256:reviewed.sha256,confirmed:true,
   });
   expect(modelFailure.error).toBeDefined();

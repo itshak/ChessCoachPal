@@ -41,7 +41,7 @@ test("PARITY:PARITY-billing-invoice-edit atomically replaces draft line items",a
  const {id}=await draftInvoice();
  const prior=await websiteInvoice(page,id);
  expect(prior.invoice_items).toHaveLength(1);
- const made=await callTool("ccp_v1_billing_invoice_draft_update",{
+ const made=await callTool("ccp_billing_invoice_draft_update",{
    invoiceId:id,confirmed:true,changes:{
      notes:"Revised by MCP",expectedUpdatedAt:prior.updated_at,
      items:[{description:"First chess lesson",quantity:2,unitCents:700,
@@ -65,7 +65,7 @@ test("PARITY:PARITY-billing-invoice-edit atomically replaces draft line items",a
    ]},
  });
  expect(updated.status(),await updated.text()).toBe(200);
- const mcpRead=await callTool("ccp_v1_billing_invoice_detail",{
+ const mcpRead=await callTool("ccp_billing_invoice_detail",{
    invoiceId:id,includePrivate:false,
  });
  expect(mcpRead.error).toBeUndefined();
@@ -99,14 +99,14 @@ test("PARITY:PARITY-billing-invoice-revision and rollback reject foreign frozen 
  expect(good.status(),await good.text()).toBe(200);
  const now=await websiteInvoice(page,id);
  expect(now.updated_at).not.toBe(updatedAt);
- const stale=await callTool("ccp_v1_billing_invoice_draft_update",{
+ const stale=await callTool("ccp_billing_invoice_draft_update",{
    invoiceId:id,confirmed:true,changes:{
      notes:"Stale model overwrite",expectedUpdatedAt:updatedAt,
    },
  });
  expect(stale.error?.code).toBe("CONFLICT");
  expect((await websiteInvoice(page,id)).notes).toBe("Actual revision");
- const unknown=await callTool("ccp_v1_billing_invoice_draft_update",{
+ const unknown=await callTool("ccp_billing_invoice_draft_update",{
    invoiceId:randomUUID(),confirmed:true,changes:{notes:"Forbidden"},
  });
  expect(unknown.error?.code).toBe("NOT_FOUND");
@@ -122,10 +122,10 @@ test("PARITY:PARITY-billing-invoice-detail-delete removes only reviewed drafts f
  const first=await draftInvoice();
  const before=await websiteInvoice(page,first.id);
  expect(before.status).toBe("draft");
- const fromMcp=await call("ccp_v1_billing_invoice_detail",{invoiceId:first.id});
+ const fromMcp=await call("ccp_billing_invoice_detail",{invoiceId:first.id});
  expect(fromMcp.error).toBeUndefined();
  expect(fromMcp.data.id).toBe(first.id);
- const removed=await call("ccp_v1_billing_invoice_delete",{
+ const removed=await call("ccp_billing_invoice_delete",{
    invoiceId:first.id,confirmed:true,
  });
  expect(removed.error).toBeUndefined();
@@ -134,7 +134,7 @@ test("PARITY:PARITY-billing-invoice-detail-delete removes only reviewed drafts f
  const second=await draftInvoice();
  const deleted=await page.request.delete("/api/billing/invoices/"+second.id);
  expect(deleted.status(),await deleted.text()).toBe(200);
- const modelAfter=await call("ccp_v1_billing_invoice_detail",{invoiceId:second.id});
+ const modelAfter=await call("ccp_billing_invoice_detail",{invoiceId:second.id});
  expect(modelAfter.error?.code).toBe("NOT_FOUND");
 });
 
@@ -145,7 +145,7 @@ test("PARITY:PARITY-billing-draft-idempotent-replay preserves one website/MCP re
  const key=randomUUID();
  const changes={notes:"Exactly one reviewed invoice edit",expectedUpdatedAt:before.updated_at,
   idempotencyKey:key};
- const model=await call("ccp_v1_billing_invoice_draft_update",{
+ const model=await call("ccp_billing_invoice_draft_update",{
   invoiceId:id,changes,confirmed:true,
  });
  expect(model.error).toBeUndefined();
@@ -164,7 +164,7 @@ test("PARITY:PARITY-billing-draft-idempotent-replay preserves one website/MCP re
   data:{...changes,notes:"Different payload with same key"},
  });
  expect(conflicting.status(),await conflicting.text()).toBe(409);
- const stale=await call("ccp_v1_billing_invoice_draft_update",{
+ const stale=await call("ccp_billing_invoice_draft_update",{
   invoiceId:id,changes:{...changes,idempotencyKey:randomUUID(),
    notes:"Should not overwrite with stale revision"},confirmed:true,
  });
@@ -174,7 +174,7 @@ test("PARITY:PARITY-billing-draft-idempotent-replay preserves one website/MCP re
   idempotencyKey:randomUUID(),
  }});
  expect(corrected.status(),await corrected.text()).toBe(200);
- const modelRead=await call("ccp_v1_billing_invoice_detail",{invoiceId:id});
+ const modelRead=await call("ccp_billing_invoice_detail",{invoiceId:id});
  expect(modelRead.error).toBeUndefined();
  expect(modelRead.data.notes).toBe("Website corrected reviewed edit");
 });
@@ -191,7 +191,7 @@ test("PARITY:PARITY-billing-draft-race-and-field-schema deduplicates concurrent 
  };
  const [website,agent]=await Promise.all([
   page.request.put("/api/billing/invoices/"+id,{data:changes}),
-  call("ccp_v1_billing_invoice_draft_update",{
+  call("ccp_billing_invoice_draft_update",{
    invoiceId:id,changes,confirmed:true,
   }),
  ]);
@@ -209,7 +209,7 @@ test("PARITY:PARITY-billing-draft-race-and-field-schema deduplicates concurrent 
   data:{notes:"Unsafe field",providerSecret:"should be rejected"},
  });
  expect(badWebsite.status(),await badWebsite.text()).toBe(400);
- const badModel=await call("ccp_v1_billing_invoice_draft_update",{
+ const badModel=await call("ccp_billing_invoice_draft_update",{
   invoiceId:id,confirmed:true,
   changes:{notes:"Unsafe field",providerSecret:"should be rejected"},
  });

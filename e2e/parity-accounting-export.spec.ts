@@ -33,9 +33,9 @@ test("PARITY:PARITY-billing-export-escaped-ledger compares CSV and prevents form
    note:"=2+2 "+marker,external_id:"manual-"+marker,
  });
  expect(payment.error).toBeNull();
- const missingApproval=await call("ccp_v1_billing_payments_export",{});
+ const missingApproval=await call("ccp_billing_payments_export",{});
  expect(missingApproval.error?.code).toBe("VALIDATION_ERROR");
- const mcp=await call("ccp_v1_billing_payments_export",{confirmed:true});
+ const mcp=await call("ccp_billing_payments_export",{confirmed:true});
  expect(mcp.error).toBeUndefined();
  const browser=await page.request.get("/api/billing/export");
  expect(browser.status(),await browser.text()).toBe(200);

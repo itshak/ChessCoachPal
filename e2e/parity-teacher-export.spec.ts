@@ -4,7 +4,7 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-teacher-export preserves website backup but strips portal credentials from MCP",async({page,request})=>{
  const call=await delegatedTool(page,request,"coach:read coach:write");
- const created=await call("ccp_v1_guardians_create",{
+ const created=await call("ccp_guardians_create",{
    name:"Private portal test "+randomUUID(),confirmed:true,
  });
  expect(created.error).toBeUndefined();
@@ -20,7 +20,7 @@ test("PARITY:PARITY-teacher-export preserves website backup but strips portal cr
  const websiteRow=(fullBackup.tables.guardians as Array<{id:string;portal_token:string}>)
    .find(g=>g.id===guardianId);
  expect(websiteRow?.portal_token).toBe(portalToken);
- const safe=await call("ccp_v1_settings_export",{confirmed:true});
+ const safe=await call("ccp_settings_export",{confirmed:true});
  // This single seeded teacher also receives every synthetic student, chapter,
  // rating and lesson from preceding E2E scenarios. The explicitly bounded
  // model-safe MCP export is REQUIRED to refuse oversized private archives;

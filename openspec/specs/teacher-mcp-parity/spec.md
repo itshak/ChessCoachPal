@@ -29,7 +29,7 @@ Private, group, calendar and other actual teaching occurrences SHALL use canonic
 
 ## Requirement: Website and MCP workplace reports SHALL be identical
 
-`/api/coaching/report` and `ccp_v1_reports_workplace_summary` SHALL use the same bounded teacher-scoped calculations and sanitized JSON, CSV and text formatters, including validated workplace-local inclusive date ranges.
+`/api/coaching/report` and `ccp_reports_workplace_summary` SHALL use the same bounded teacher-scoped calculations and sanitized JSON, CSV and text formatters, including validated workplace-local inclusive date ranges.
 
 ### Scenarios
 - **WHEN** the teacher requests the same workplace/date interval from either interface **THEN** lesson counts, teaching minutes, attendance and student totals SHALL be identical.

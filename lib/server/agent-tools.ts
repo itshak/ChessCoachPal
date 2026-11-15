@@ -201,22 +201,22 @@ const currency = z.string().regex(/^[A-Z]{3}$/);
 
 const catalogue = [
   {
-    name: "ccp_v1_workplaces_list",
+    name: "ccp_workplaces_list",
     description: "List the connected teacher's workplaces. Use workplace IDs, never invent names.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
   },
   {
-    name: "ccp_v1_dashboard_summary",
+    name: "ccp_dashboard_summary",
     description: "Read the same teacher-owned student/workplace/group and last-seven-day session totals as the website dashboard.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
   },
   {
-    name: "ccp_v1_notifications_list",
+    name: "ccp_notifications_list",
     description: "Read the 30 most recent teacher notifications and unread count, exactly as on the website.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
   },
   {
-    name: "ccp_v1_notifications_mark_read",
+    name: "ccp_notifications_mark_read",
     description: "Mark a specific notification ID or all of the teacher's unread notifications as read. Confirm before modifying notification state.",
     schema: z.object({
       id: uuid.optional(), all: z.literal(true).optional(),
@@ -224,13 +224,13 @@ const catalogue = [
     scope: "coach:write", readOnly: false,
   },
   {
-    name:"ccp_v1_lessons_history_unified",
+    name:"ccp_lessons_history_unified",
     description:"Read one bounded calendar period across historic private lessons and current coaching/group sessions. Preserves both sources, flags exact overlaps, and computes instructor booked vs actually evidenced minutes as interval unions (groups count once); legacy workplace attribution is unknown rather than guessed. Optional student/workplace filters.",
     schema:unifiedLessonFilter,
     scope:"coach:read",readOnly:true,
   },
   {
-    name: "ccp_v1_reports_workplace_summary",
+    name: "ccp_reports_workplace_summary",
     description: "Read a teacher-owned workplace's date-range sessions and attendance totals, with optional CSV or text export. The same server calculation powers the website. Instructor minutes count each group lesson once. No student names or notes in this aggregate.",
     schema: z.object({
       workplaceId: uuid,
@@ -241,19 +241,19 @@ const catalogue = [
     scope: "coach:read", readOnly: true,
   },
   {
-    name:"ccp_v1_billing_generation_preview",
+    name:"ccp_billing_generation_preview",
     description:"Preview billable lesson charges, travel fees and prepaid-credit impact for one date period without creating invoices. Review totals and missing-rate warnings before commit.",
     schema:z.object({periodStart:z.string().date(),periodEnd:z.string().date()}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_billing_generation_commit",
+    name:"ccp_billing_generation_commit",
     description:"Generate draft invoices and consume eligible prepaid credits in one transaction. Explicit confirmation required. Supply and reuse idempotencyKey on website/MCP retries to get the same immutable invoice IDs without recharging credits.",
     schema:z.object({periodStart:z.string().date(),periodEnd:z.string().date(),
       confirmed:z.literal(true),idempotencyKey:uuid.optional()}).strict(),scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_billing_invoice_regenerate",
+    name:"ccp_billing_invoice_regenerate",
     description:"Recalculate a draft invoice from attendance, rates and credits with a database transaction, optimistic revision and immutable retry receipt. Review the current invoice first and reuse expectedUpdatedAt plus idempotencyKey across retries. Explicit confirmation required.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true),
       expectedUpdatedAt:z.string().datetime({offset:true}).optional(),
@@ -261,20 +261,20 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_billing_invoice_pdf",
+    name:"ccp_billing_invoice_pdf",
     description:"Generate an owned invoice PDF in base64 without sending it. Requires teacher confirmation because invoice PDFs can contain family personal information. For large files use secure website download.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_billing_invoice_checkout",
+    name:"ccp_billing_invoice_checkout",
     description:"After explicit teacher approval, initiate a Stripe checkout link for the remaining balance on one invoice. Never charge a card directly; the family completes payment securely in Stripe's browser checkout.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true),
       confirmedExternal:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_billing_invoices_bulk_preview",
+    name:"ccp_billing_invoices_bulk_preview",
     description:"Review up to 50 teacher-owned draft invoices with current amounts, email recipients and a revision fingerprint. Requires confirmed=true to reveal family emails. Read-only; no email is sent.",
     schema:z.object({ids:z.array(uuid).min(1).max(50),
       includeRecipients:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict()
@@ -283,7 +283,7 @@ const catalogue = [
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_billing_invoices_bulk",
+    name:"ccp_billing_invoices_bulk",
     description:"Perform confirmed invoice send, delete or void on up to 50 teacher-owned invoices. For SEND first review the bulk preview of all recipients and totals, then provide its previewDigest plus confirmedEmail=true and confirmed=true. Changed recipients reject sending.",
     schema:z.object({ids:z.array(uuid).min(1).max(50),
       action:z.enum(["send","delete","void"]),
@@ -295,25 +295,25 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_import_spreadsheet_parse",
+    name:"ccp_import_spreadsheet_parse",
     description:"Parse a teacher-supplied CSV/XLSX spreadsheet provided as base64 without writing data. Return proposed mapping and a preview. Max file size 2 MB.",
     schema:z.object({filename:z.string().trim().min(1).max(120),
       base64:z.string().min(1).max(3000000)}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_import_spreadsheet_preview",
+    name:"ccp_import_spreadsheet_preview",
     description:"Preview normalized student/family import rows using a selected column mapping before any database mutations.",
     schema:z.object({rows:z.array(z.record(z.string(),z.string())).max(500),
       mapping:z.record(z.string(),z.string().nullable())}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_import_spreadsheet_suggest",
+    name:"ccp_import_spreadsheet_suggest",
     description:"Suggest source-header column mapping. Local deterministic heuristic by default; AI provider requires useAi=true and confirmedExternal=true because sample data is shared with the configured external AI.",
     schema:spreadsheetSuggestMcpSchema,
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_import_spreadsheet_commit",
+    name:"ccp_import_spreadsheet_commit",
     description:"Atomically import up to 500 reviewed student/family rows with explicit approval and idempotent receipts. A failed batch rolls back all student and family writes. Archived names are deduplicated.",
     schema:z.object({rows:z.array(z.record(z.string(),z.string())).min(1).max(500),
       mapping:z.record(z.string(),z.string().nullable()),confirmed:z.literal(true),
@@ -321,92 +321,92 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_settings_export",
+    name:"ccp_settings_export",
     description:"Export teacher-owned chess academy data as portable JSON after explicit approval. Guardian portal credentials and provider secrets are NOT returned. Large backups require a secure browser download.",
     schema:z.object({confirmed:z.literal(true)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_settings_import_preview",
+    name:"ccp_settings_import_preview",
     description:"Preview a ChessCoachPal export without writing any data. Returns SHA-256, table counts, size and warnings. Review before any import.",
     schema:z.object({payload:z.unknown()}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_settings_import_apply",
+    name:"ccp_settings_import_apply",
     description:"High-impact merge import into the teacher account. Require explicit confirmation and the exact SHA-256 digest from a reviewed preview. Existing records with matching IDs may be modified and some guardian portal links rotated.",
     schema:z.object({payload:z.unknown(),
       expectedSha256:z.string().regex(/^[a-f0-9]{64}$/),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_billing_manual_payment_record",
+    name:"ccp_billing_manual_payment_record",
     description:"Record an actual full or partial manual payment on a saved draft or sent invoice. Draft payments never send email or publish to the family portal. Save on-screen draft edits first, check the balance, and confirm. Use one idempotencyKey per actual payment, reusing it only on retries.",
     schema:manualPaymentMcpSchema.extend({invoiceId:uuid}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_billing_manual_payment_delete",
+    name:"ccp_billing_manual_payment_delete",
     description:"Correct one mistaken manual payment after confirmation. A paid never-sent invoice reopens privately as draft, while a previously sent invoice reopens as sent. Used prepaid credits must be reconciled first; Stripe payments need provider refunds.",
     schema:z.object({invoiceId:uuid,paymentId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_credits_packages_list",
+    name:"ccp_credits_packages_list",
     description:"Read prepaid packages, redeemed/pending balances, invoice status and expiration for an identified student or all coach-owned students.",
     schema:z.object({studentId:uuid.optional()}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_credits_package_create",
+    name:"ccp_credits_package_create",
     description:"Sell a confirmed set of prepaid lesson credits by creating a draft invoice linked to an owned student and family. No payment or email is sent by this tool.",
     schema:creditPackageCreateSchema.extend({confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_credits_package_expiry",
+    name:"ccp_credits_package_expiry",
     description:"Change or clear the expiry of an owned prepaid package, never before its start or dates of already redeemed lessons.",
     schema:z.object({packageId:uuid,expiresOn:z.string().date().nullable(),
       confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_credits_redemption_return",
+    name:"ccp_credits_redemption_return",
     description:"Return one identified used lesson credit to its prepaid package; changes what can be billed next. Teacher confirmation required.",
     schema:z.object({redemptionId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_connections_list",
+    name:"ccp_connections_list",
     description:"List active authorized AI connector grants (client ID, scopes and timestamp only). Never reveal OAuth tokens or stored provider secrets.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_connections_revoke",
+    name:"ccp_connections_revoke",
     description:"After explicit confirmation, immediately revoke one identified OAuth grant, possibly this very connection. The grant loses access to all MCP tools and token refresh.",
     schema:z.object({connectionId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_billing_invoice_draft_update",
+    name:"ccp_billing_invoice_draft_update",
     description:"Atomically edit draft invoice lines and notes through a tenant-locked SQL transaction. Supply optional expectedUpdatedAt and immutable idempotencyKey for safe website↔MCP retries; changed payload or stale revision conflicts. Explicit teacher approval required.",
     schema:z.object({invoiceId:uuid,changes:invoiceDraftEditSchema,
       confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_billing_invoice_void",
+    name:"ccp_billing_invoice_void",
     description:"Atomically void an owned draft/sent invoice after confirmed teacher review. A request UUID supports cross-client replay; reject paid/partially paid invoices, active Stripe checkout, or issued prepaid credits instead of silently erasing value.",
     schema:z.object({invoiceId:uuid,idempotencyKey:uuid.optional(),
       confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_billing_invoice_delete",
+    name:"ccp_billing_invoice_delete",
     description:"Permanently delete a draft or void invoice only after confirmation and reconciliation of existing payments and issued credit packages. Never silently erase received funds.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_billing_invoice_send_preview",
+    name:"ccp_billing_invoice_send_preview",
     description:"Non-mutating invoice send preview for unsent drafts or never-sent paid invoices: PDF readiness, total, paid, outstanding balance and recipient summary. includeRecipients=true requires confirmed=true; never reveal portal tokens or Stripe URLs.",
     schema:z.object({invoiceId:uuid,includeRecipients:z.boolean().default(false),
       confirmed:z.literal(true).optional()}).strict()
@@ -414,13 +414,13 @@ const catalogue = [
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_billing_invoice_send",
+    name:"ccp_billing_invoice_send",
     description:"Explicitly send an unsent saved draft or a fully paid never-sent invoice PDF. An already-paid invoice stays paid; no further payment is requested. Partial invoices offer only the outstanding Stripe balance. Teacher email confirmation is required; never retry without checking delivery.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true),confirmedEmail:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_billing_invoices_list",
+    name:"ccp_billing_invoices_list",
     description:"List scoped invoices and their balances for this teacher, paginated. No portal tokens, checkout URLs or family email addresses.",
     schema:z.object({status:z.enum(["draft","sent","paid","void"]).optional(),
       offset:z.number().int().min(0).max(100000).default(0),
@@ -428,19 +428,19 @@ const catalogue = [
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_billing_invoice_detail",
+    name:"ccp_billing_invoice_detail",
     description:"Read one owned invoice with item and payment history. Family contacts and payment notes require includePrivate=true plus confirmation; portal tokens and Stripe secrets never returned.",
     schema:z.object({invoiceId:uuid,includePrivate:z.boolean().default(false),
       confirmed:z.literal(true).optional()}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_billing_payments_export",
+    name:"ccp_billing_payments_export",
     description:"Export accountant-facing CSV of teacher-owned payments in an optional YYYY-MM-DD period, including family names and payment notes. Requires explicit teacher confirmation; safely escapes CSV formulas.",
     schema:z.object({from:z.string().date().optional(),to:z.string().date().optional(),
       confirmed:z.literal(true)}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_studio_policy_get",
+    name:"ccp_studio_policy_get",
     description:"Read teacher-owned studio rules, rates and billing settings with secrets redacted. Payment QR image bytes require includePaymentQrCode=true and explicit confirmation; Stripe credentials are never returned.",
     schema:z.object({
       includePaymentQrCode:z.boolean().default(false),
@@ -448,77 +448,77 @@ const catalogue = [
     }).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_studio_credentials_handoff",
+    name:"ccp_studio_credentials_handoff",
     description:"Start secure browser-only AI or Stripe credential entry without submitting any secret through the model. Returns the authenticated setup URL and current configured status; all raw keys must be entered directly into the website. Explicit teacher confirmation required.",
     schema:z.object({kind:z.enum(["ai","stripe"]),confirmed:z.literal(true)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_studio_policy_update",
+    name:"ccp_studio_policy_update",
     description:"Edit studio rates, payment provider, approved payment QR and optional AI provider, or clear stored credentials with confirmation. New API keys and Stripe secrets remain browser-only secure inputs, never accepted through MCP.",
     schema:z.object({changes:studioPolicyPatch,confirmed:z.literal(true)}).strict()
       .refine(v=>Object.keys(v.changes).length>0,"Changes required"),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_events_list",
+    name:"ccp_events_list",
     description:"List teacher-owned class events and RSVP aggregates without exposing family contact details or tokens.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_events_detail",
+    name:"ccp_events_detail",
     description:"Read an identified event and student roster; family RSVP notes require includeRsvps=true and explicit confirmation.",
     schema:z.object({eventId:uuid,includeRsvps:z.boolean().default(false),
       confirmed:z.literal(true).optional()}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_events_create",
+    name:"ccp_events_create",
     description:"Create an event for named students, with optional student repertoires, pending RSVPs and atomic idempotencyKey replay across website/MCP. DOES NOT email without a separate confirmed send tool.",
     schema:eventChanges.extend({title:z.string().trim().min(1).max(200),
       startsAt:z.string().datetime({offset:true}),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_events_update",
+    name:"ccp_events_update",
     description:"Edit an event and optionally REPLACE the whole student roster. Get the current event first, then explicitly confirm changed students and dates.",
     schema:eventChanges.extend({eventId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_events_delete_impact",
+    name:"ccp_events_delete_impact",
     description:"Preview an event's student roster and RSVPs before permanent deletion.",
     schema:z.object({eventId:uuid}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_events_delete",
+    name:"ccp_events_delete",
     description:"Permanently delete an event and associated RSVP records only after explicit teacher confirmation.",
     schema:z.object({eventId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_reports_student_progress",
+    name:"ccp_reports_student_progress",
     description:"Read factual teacher-attested student progress: 1–10 strength, optional chess platform ratings, latest skill assessments with assessment counts, and full non-voided material evidence coverage. No inferred mastery or guardian/private notes.",
     schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_account_security_handoff",
+    name:"ccp_account_security_handoff",
     description:"Open the signed-in website to change login email, password or multi-factor authentication using provider-secured reauthentication. MCP never sees credentials, recovery codes or MFA secrets.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_hosted_subscription_handoff",
+    name:"ccp_hosted_subscription_handoff",
     description:"Open the signed-in Account page to review hosting plan, start subscription Checkout or enter Stripe billing portal securely in the browser. MCP cannot collect card data or create a Stripe session without the required browser confirmation.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_teacher_profile_get",
+    name:"ccp_teacher_profile_get",
     description:"Read this coach's display name and public avatar reference without authentication credentials or account email.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_teacher_profile_update",
+    name:"ccp_teacher_profile_update",
     description:"Update the coach's display name or their own approved avatar URL after explicit confirmation. Password, login email and MFA are website-only secured account operations.",
     schema:z.object({
       displayName:z.string().trim().min(1).max(200).optional(),
@@ -528,17 +528,17 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_calendar_feed_status",
+    name:"ccp_calendar_feed_status",
     description:"Check whether this teacher has an active calendar feed. Never returns the bearer link or token.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_calendar_feed_rotate",
+    name:"ccp_calendar_feed_rotate",
     description:"After explicit teacher confirmation, revoke the old calendar feed and generate a new link. The old link immediately stops working. The new secret is only available to the signed-in website, never to MCP.",
     schema:z.object({confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_events_email_preview",
+    name:"ccp_events_email_preview",
     description:"Preview exactly the event invitation subject/body and intended recipient counts, with no email sent. Add includeRecipients=true plus confirmed=true to reveal addresses. Never returns family portal tokens or URLs.",
     schema:z.object({eventId:uuid,includeRecipients:z.boolean().default(false),
       confirmed:z.literal(true).optional()}).strict()
@@ -547,19 +547,19 @@ const catalogue = [
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_events_email_invites",
+    name:"ccp_events_email_invites",
     description:"Explicit external action: email event invitations to participating families. Requires confirmation; no automatic emails on create or edit.",
     schema:z.object({eventId:uuid,confirmed:z.literal(true),confirmedEmail:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_session_attendance_list",
+    name:"ccp_session_attendance_list",
     description:"Read canonical frozen-roster attendance. Unmarked participants are explicit; cancellation notice/initiator and immutable revision are included.",
     schema:z.object({sessionId:uuid}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_session_attendance_set",
+    name:"ccp_session_attendance_set",
     description:"Confirmed canonical per-student attendance mark, correction or clear. Owner-scoped frozen roster, expected revision and idempotency key are mandatory; family notification requires separately confirmed consent.",
     schema:z.object({sessionId:uuid,studentId:uuid,
       status:z.enum(["present","late","absent","excused","student_cancelled","teacher_cancelled"]).nullable(),
@@ -575,7 +575,7 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_session_attendance_bulk_set",
+    name:"ccp_session_attendance_bulk_set",
     description:"Commit 1-50 canonical participant attendance changes atomically. Any stale row rolls back the entire group and all notifications and replay receipts.",
     schema:z.object({sessionId:uuid,idempotencyKey:uuid,
       attendance:z.array(z.object({studentId:uuid,
@@ -593,20 +593,20 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_canonical_makeup_credits_list",
-    description:"Read available, unredeemed make-up credits from canonical frozen student attendance, subject to the studio cancellation and expiry policy. A make-up session is created with ccp_v1_canonical_private_session_create and makeupForSessionId.",
+    name:"ccp_canonical_makeup_credits_list",
+    description:"Read available, unredeemed make-up credits from canonical frozen student attendance, subject to the studio cancellation and expiry policy. A make-up session is created with ccp_canonical_private_session_create and makeupForSessionId.",
     schema:z.object({}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_session_notes_list",
+    name:"ccp_session_notes_list",
     description:"List canonical shared/private session and participant teaching notes. Teacher-private fields require includePrivate=true and confirmed=true. Frozen participant IDs are canonical student IDs.",
     schema:z.object({sessionId:uuid,includePrivate:z.boolean().default(false),
       confirmed:z.literal(true).optional()}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_session_notes_save",
+    name:"ccp_session_notes_save",
     description:"Write one canonical session or participant note with optimistic revision, idempotency key, and audit. Family email needs explicit confirmedEmail and queues a durable approved intent; not immediate delivery.",
     schema:z.object({sessionId:uuid,studentId:uuid.nullable().optional(),
       body:z.string().max(10000),privateBody:z.string().max(10000),
@@ -620,217 +620,217 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_private_sessions_create",
+    name:"ccp_private_sessions_create",
     description:"Atomically schedule one canonical private/ad-hoc chess lesson or verified make-up for a frozen original participant. Local timezone and DST are validated inside SQL; teacher, active student and workplace enrollment are enforced. Replays return the original session.",
     schema:canonicalPrivateSessionCreateSchema.extend({
       confirmed:z.literal(true),
     }).strict(),scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_recurring_slots_list",
+    name:"ccp_recurring_slots_list",
     description:"List owned canonical private recurring scheduling intentions, optionally filtered by active state or student. Includes revision updated_at.",
     schema:z.object({studentId:uuid.optional(),activeOnly:z.boolean().optional()}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_recurring_slots_create",
+    name:"ccp_recurring_slots_create",
     description:"Create one recurring canonical private lesson slot and materialize the next 56 studio-local days atomically. The supplied idempotencyKey is also the stable slot ID for exact website/MCP replay. Teacher-owned student and workplace enrollment required.",
     schema:canonicalSlotCreateSchema.extend({confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_recurring_slots_update",
+    name:"ccp_recurring_slots_update",
     description:"Atomically correct a canonical recurrence rule, preserving billed/attended/noted/moved history and reconciling future unprotected sessions. Requires exact updatedAt and idempotency key; never erase history.",
     schema:canonicalSlotEditSchema.extend({slotId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_recurring_slots_delete",
+    name:"ccp_recurring_slots_delete",
     description:"Atomically delete only canonical scheduling intent. Future unprotected lessons may be removed; protected teaching records remain. Requires explicit confirmation and idempotency key.",
     schema:canonicalSlotDeleteSchema.extend({slotId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_guardians_list",
+    name:"ccp_guardians_list",
     description:"List teacher-owned families with student names. Contact details and portal credentials are redacted; use an identified detail read and explicit confirmation for contact data.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_guardians_detail",
+    name:"ccp_guardians_detail",
     description:"Read one identified family. Contact details require includeContacts=true plus confirmed=true; never disclose the portal token.",
     schema:z.object({guardianId:uuid,includeContacts:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_guardians_create",
+    name:"ccp_guardians_create",
     description:"Create a family, optionally linking existing students or creating named children. Requires explicit teacher confirmation; never return family portal tokens or contact info to the model.",
     schema:guardianCreateSchema.extend({confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_guardians_update",
+    name:"ccp_guardians_update",
     description:"Update family contacts, recipient preferences and exact current roster; changing studentIds replaces membership. Require teacher confirmation.",
     schema:guardianUpdateSchema.extend({guardianId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_guardians_delete_impact",
+    name:"ccp_guardians_delete_impact",
     description:"Preview student and invoice obligations that block family deletion.",
     schema:z.object({guardianId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_guardians_delete",
+    name:"ccp_guardians_delete",
     description:"Permanently remove an empty family only with explicit approval; student or invoice dependencies block deletion.",
     schema:z.object({guardianId:uuid,confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_guardians_rotate_portal_token",
+    name:"ccp_guardians_rotate_portal_token",
     description:"Invalidate an existing family-portal link and create a fresh one. Optional requestId safely replays a confirmed rotation across website/MCP retries. New secret is NEVER returned to the model; view the URL securely on the website.",
     schema:z.object({guardianId:uuid,requestId:uuid.optional(),confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_skill_dimensions_list",
+    name:"ccp_skill_dimensions_list",
     description:"List teacher-owned 1–5 assessment dimensions; the website uses the same chess-specific dimensions.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_skill_dimensions_create",
+    name:"ccp_skill_dimensions_create",
     description:"Create a teacher-owned skill dimension after teacher approval; avoid duplicates.",
     schema:z.object({name:z.string().trim().min(1).max(120),requestId:uuid.optional(),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_skill_dimensions_update",
+    name:"ccp_skill_dimensions_update",
     description:"Rename one teacher-owned skill dimension while preserving assessments; confirm the name.",
     schema:z.object({dimensionId:uuid,name:z.string().trim().min(1).max(120),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_skill_dimensions_delete_impact",
+    name:"ccp_skill_dimensions_delete_impact",
     description:"Preview whether a skill dimension is unused and may be removed. Preserve all historic ratings.",
     schema:z.object({dimensionId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_skill_dimensions_delete",
+    name:"ccp_skill_dimensions_delete",
     description:"Delete only an unused dimension with teacher approval and zero-assessment preview; rename used dimensions instead.",
     schema:z.object({dimensionId:uuid,expectedAssessmentCount:z.number().int().min(0),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_teacher_context_get",
+    name:"ccp_teacher_context_get",
     description:"Trusted local teacher date, configured IANA timezone and owned workplaces. Read-only scheduling context; never assume the model clock determines today.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_student_ratings_list",
+    name:"ccp_student_ratings_list",
     description:"Read append-only separately sourced chess platform rating snapshots (including time control, provisional status and fetch time). No values alter the teacher 1–10 strength.",
     schema:ratingListSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_student_ratings_record",
+    name:"ccp_student_ratings_record",
     description:"Teacher-confirmed append-only manual platform/time-control rating observation, idempotent by UUID. Does not infer account ownership or change teacher strength.",
     schema:ratingRecordSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_student_ratings_refresh_preview",
+    name:"ccp_student_ratings_refresh_preview",
     description:"With confirmedExternal=true, send only the selected saved public chess username to the fixed Lichess or Chess.com API and show per-time-control provider observations. NO local write; public account ownership is unverified.",
     schema:ratingFetchSchema,scope:"coach:read",readOnly:false,
   },
   {
-    name:"ccp_v1_student_ratings_refresh_commit",
+    name:"ccp_student_ratings_refresh_commit",
     description:"Explicitly confirm external public chess rating snapshot import. Refetch and compare exact preview digest; record a provider-sourced append-only batch with one UUID receipt, never change teacher strength.",
     schema:ratingRefreshCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_materials_preferences_list",
+    name:"ccp_materials_preferences_list",
     description:"List teacher-owned saved Lichess study preferences with exact teacher/workplace/student scope and revision. A study link is not teaching evidence and never implies mastery; no OAuth token is exposed.",
     schema:studyPreferenceListSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_materials_preferences_resolve",
+    name:"ccp_materials_preferences_resolve",
     description:"Resolve one saved Lichess study with deterministic student > workplace > teacher precedence and owner/enrollment checks, including cached index freshness. Explicit study overrides may still be selected in lesson preview; never guess an absent preference.",
     schema:studyPreferenceResolveSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_materials_preferences_set",
+    name:"ccp_materials_preferences_set",
     description:"After explicit teacher approval, set or clear one Lichess lesson/puzzle study preference for an owned teacher/workplace/active student. Verify the indexed provider study for non-null edits, exact revision and UUID receipt; stale/foreign/replayed modified inputs fail closed. No provider write or inferred teaching evidence.",
     schema:studyPreferenceSetSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_materials_chapters_search",
+    name:"ccp_materials_chapters_search",
     description:"Read tenant-owned cached Lichess study/chapter index by study, exact chapter ordinal or verified PGN tags White/Black/Event. Returns source freshness; cached chapters are not automatic teaching evidence.",
     schema:studyIndexSearchSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_materials_chapters_get",
+    name:"ccp_materials_chapters_get",
     description:"Read one exact teacher-authorized Lichess study/chapter metadata pair, cached verification time and source URL. No raw private PGN or OAuth token.",
     schema:studyIndexGetSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_materials_chapters_sync",
+    name:"ccp_materials_chapters_sync",
     description:"With explicit external read permission, validate all chapter IDs from authorized Lichess study PGN then atomically replace a metadata-only tenant index. Requires study:read browser grant; no raw PGN persisted.",
     schema:studyIndexSyncSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_materials_link_preview",
+    name:"ccp_materials_link_preview",
     description:"Preview one exact fresh Lichess chapter linked to a canonical lesson's frozen roster: one instructor lesson, N separate student coverages. No write or inferred mastery.",
     schema:lessonChapterPreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_materials_link_commit",
+    name:"ccp_materials_link_commit",
     description:"Teacher-confirmed atomic lesson chapter link and per-student material evidence, bound to cached chapter revision, frozen roster hash and request UUID. Only completed lessons may be marked taught.",
     schema:lessonChapterCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_chess_fen_validate",
+    name:"ccp_chess_fen_validate",
     description:"Read-only 6-field standard chess FEN structural/static legality validation, 8×8 board and explicit unknown image state; not a full move-engine certification or publishing action.",
     schema:z.object({fen:z.string().min(10).max(120),
       source:z.enum(["manual","image"]).default("manual")}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_puzzles_study_series_list",
+    name:"ccp_puzzles_study_series_list",
     description:"List authorized named Puzzles series and pending local creation receipts, identify next private Puzzles N destination and explain Lichess's 30/day limit. Read only.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_puzzles_study_capacity",
+    name:"ccp_puzzles_study_capacity",
     description:"Live authorize/read chapter count in one Lichess study, including the starter chapter. Refuse 64/64 capacity before external PGN writes.",
     schema:puzzleCapacitySchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_puzzles_study_create",
+    name:"ccp_puzzles_study_create",
     description:"Explicit teacher-approved creation of a new private Puzzles/Puzzles N study with study:write grant, 30/day local budget, unique reserved suffix and never automatically retried provider intent.",
     schema:puzzleSeriesCreateSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_puzzles_study_reconcile",
+    name:"ccp_puzzles_study_reconcile",
     description:"Read live provider studies to reconcile an ambiguous private Puzzles N creation by original UUID; never make a second remote POST.",
     schema:puzzleSeriesReconcileSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_lichess_connection_status",
+    name:"ccp_lichess_connection_status",
     description:"Read teacher Lichess account username, study scopes and connection status. No provider credentials are accessible.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_lichess_image_fen_propose",
+    name:"ccp_lichess_image_fen_propose",
     description:"With explicit teacher consent, send a chessboard photo (PNG/JPEG/WebP, at most 2MB) to a teacher-configured external AI to PROPOSE a FEN. Images may contain personal information. This is an unverified draft, not a factual reconstruction or a publishing action. All 64 squares and game-state placeholders must be reviewed and corrected before a separate PGN preview and Lichess publication approval.",
     schema:imageFenInputSchema.extend({confirmed:z.literal(true)}).strict(),
     scope:"coach:read",readOnly:false,
   },
   {
-    name:"ccp_v1_lichess_puzzle_preview",
+    name:"ccp_lichess_puzzle_preview",
     description:"Review a teacher-supplied FEN and every solution SAN move with native GigaChess legality before returning an 8x8 board, a verified move-by-move continuation, and a SHA-256 Lichess import preview. Reject impossible/ambiguous continuations. NEVER publish; a photograph cannot prove its position or unknown game-state fields.",
     schema:puzzleDraftSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_lichess_puzzle_publish",
+    name:"ccp_lichess_puzzle_publish",
     description:"Publish one explicitly approved GigaChess-legality-validated puzzle continuation to Lichess. Requires separate study:write browser grant, unchanged preview SHA-256, new UUID receipt and external-write confirmation. Native SAN legality cannot be bypassed; provider timeouts are ambiguous and must be reconciled, not automatically retried.",
     schema:puzzlePublishSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_lichess_studies_search",
+    name:"ccp_lichess_studies_search",
     description:"Discover your connected Lichess studies by name, then search a selected 8-character study ID by PGN chapter metadata, opening, ECO or exact chapter number (including chapter 32). Requires study:read browser consent; returns only sanitized chapter metadata, never PGN text or access tokens.",
     schema:z.object({
       studyId:z.string().regex(/^[A-Za-z0-9]{8}$/).optional(),
@@ -842,23 +842,23 @@ const catalogue = [
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_lichess_connect_handoff",
+    name:"ccp_lichess_connect_handoff",
     description:"Return a secure signed-in browser URL to grant Lichess study:read or separately approve study:write using OAuth PKCE; MCP never receives secrets.",
     schema:z.object({mode:z.enum(["read","write"]).default("read")}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_lichess_connection_disconnect",
+    name:"ccp_lichess_connection_disconnect",
     description:"Disconnect/revoke the teacher's Lichess token only with explicit approval. Report provider revocation failures and manual action truthfully.",
     schema:z.object({confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_student_skill_assessments_list",
+    name:"ccp_student_skill_assessments_list",
     description:"Page through complete timestamped 1–5 skill history for an owned student, including archived learners.",
     schema:z.object({studentId:uuid,limit:z.number().int().min(1).max(1000).default(1000),offset:z.number().int().min(0).max(1000000).default(0)}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_student_skill_assessments_record",
+    name:"ccp_student_skill_assessments_record",
     description:"Append teacher-approved 1–5 skill assessments atomically. Supply the same idempotencyKey UUID on retries; one retry key cannot be reused for changed ratings.",
     schema:z.object({studentId:uuid,ratings:z.array(z.object({
       dimensionId:uuid,rating:z.number().int().min(1).max(5),note:z.string().max(2000).optional(),
@@ -866,7 +866,7 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name: "ccp_v1_students_roster",
+    name: "ccp_students_roster",
     description: "Page through active learners by default, all learners with includeArchived=true, or only former pupils with archivedOnly=true. Includes chess profiles and revisions; excludes private notes and guardian contacts.",
     schema: z.object({query:z.string().trim().max(80).optional(),
       includeArchived:z.boolean().default(false),archivedOnly:z.boolean().default(false),
@@ -874,13 +874,13 @@ const catalogue = [
     scope:"coach:read",readOnly:true,
   },
   {
-    name: "ccp_v1_students_profile",
+    name: "ccp_students_profile",
     description: "Read an identified student's profile. Private teacher notes and family/contact fields are excluded unless includePrivate=true AND confirmed=true. Avoid exposing children's information unnecessarily.",
     schema:z.object({studentId:uuid,includePrivate:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_students_chess_history",
+    name:"ccp_students_chess_history",
     description:"Read teacher-entered 1-10 strength, goals, handles and provider/time-control rating changes; timestamps and old/new values are recorded, but no provider verification is implied.",
     schema:z.object({studentId:uuid,
       offset:z.number().int().min(0).max(100000).default(0),
@@ -888,30 +888,30 @@ const catalogue = [
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_students_delete_impact",
+    name:"ccp_students_delete_impact",
     description:"Read owner-scoped teaching, roster, material, progress and credit dependencies before permanent deletion. Prefer archive for historical students.",
     schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_students_delete",
+    name:"ccp_students_delete",
     description:"Permanently remove an unlinked student profile only with the reviewed revision and explicit teacher confirmation. Historical linked records block this action; archive instead.",
     schema:z.object({studentId:uuid,expectedUpdatedAt:instant,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name: "ccp_v1_students_archive_preview",
+    name: "ccp_students_archive_preview",
     description: "Read the teacher-owned student's archival blockers (recurring slots, future private/group lessons, current group memberships) before requesting archival. No private notes or contacts are exposed.",
     schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name: "ccp_v1_students_profile_edit",
+    name: "ccp_students_profile_edit",
     description: "Edit one student's chess handles, aliases, strength (1-10), teacher-entered ratings, lesson rates, private notes, birthdate, family, or archive state. Use the latest updated_at revision and confirm any privacy-sensitive change; reconcile future commitments before archiving. Reload after conflicts; do not automatically retry a mutation.",
     schema:z.object({studentId:uuid,expectedUpdatedAt:instant,changes:studentUpdateSchema,
       confirmed:z.literal(true)}).strict().refine(v=>Object.keys(v.changes).length>0,"Changes required"),
     scope:"coach:write",readOnly:false,
   },
   {
-    name: "ccp_v1_students_search",
+    name: "ccp_students_search",
     description: "Search only your teacher-owned students. If NEEDS_RESOLUTION is returned ask the teacher which ID they mean before writing.",
     // Unlike ID-directed search inputs, an empty query means an owner-scoped
     // roster browse. The website's students.search permits this too.
@@ -919,34 +919,34 @@ const catalogue = [
     scope: "coach:read", readOnly: true,
   },
   {
-    name: "ccp_v1_groups_list",
+    name: "ccp_groups_list",
     description: "List teacher-owned class groups and their workplace IDs.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
   },
   {
-    name: "ccp_v1_groups_members",
+    name: "ccp_groups_members",
     description: "Get the current group members; for past lessons prefer the frozen session participant roster.",
     schema: z.object({ groupId: uuid }).strict(), scope: "coach:read", readOnly: true,
   },
   {
-    name: "ccp_v1_sessions_list",
+    name: "ccp_sessions_list",
     description: "Find sessions, their revision timestamp and their existing topic note. Omit query for recent sessions; ambiguity returns NEEDS_RESOLUTION.",
     schema: z.object({
       query: searchText.optional(), workplaceId: uuid.optional(),
     }).strict(), scope: "coach:read", readOnly: true,
   },
   {
-    name: "ccp_v1_sessions_participants",
+    name: "ccp_sessions_participants",
     description: "List a session's frozen participant roster and student IDs, even after group membership changes.",
     schema: sessionId, scope: "coach:read", readOnly: true,
   },
   {
-    name: "ccp_v1_attendance_preview",
+    name: "ccp_attendance_preview",
     description: "Read current attendance of each frozen participant, including nullable updated_at revision (null if unmarked). For each student, obtain explicit confirmation before calling attendance_record; this is not a bulk-write tool.",
     schema: sessionId, scope: "coach:read", readOnly: true,
   },
   {
-    name: "ccp_v1_attendance_record",
+    name: "ccp_attendance_record",
     description: "Record ONE confirmed participant status after preview. Requires the exact session/student IDs, expectedUpdatedAt from preview (null if unmarked), and a fresh idempotencyKey. Retries must reuse the same key and arguments. No bulk updates.",
     schema: z.object({
       sessionId: uuid, studentId: uuid,
@@ -959,13 +959,13 @@ const catalogue = [
     }).strict(), scope: "coach:write", readOnly: false,
   },
   {
-    name: "ccp_v1_attendance_bulk_record",
+    name: "ccp_attendance_bulk_record",
     description: "Atomically mark or correct 1–50 frozen participants without completing the session. Preview attendance first; supply each learner's exact updated_at (null if unmarked), one UUID key for the entire batch and explicit decisions. All changes roll back on a stale/missing participant; retry with the same key and arguments.",
     schema: attendanceBulkRecordSchema,
     scope: "coach:write", readOnly: false,
   },
   {
-    name: "ccp_v1_sessions_note_update",
+    name: "ccp_sessions_note_update",
     description: "Set a confirmed shared lesson topic/note on an identified session with an expected revision from sessions_list. Rejects stale edits; retry using the original idempotencyKey and arguments.",
     schema: z.object({
       sessionId: uuid, lessonNote: z.string().max(10000),
@@ -974,14 +974,14 @@ const catalogue = [
     }).strict(), scope: "coach:write", readOnly: false,
   },
   {
-    name:"ccp_v1_chess_categories_create",
+    name:"ccp_chess_categories_create",
     description:"Create a teacher-owned chess skill category. Confirm its label before adding to progress history.",
     schema:z.object({name:categoryName,description:z.string().max(500).optional(),
       sortOrder:z.number().int().min(0).max(10000).optional(),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_chess_categories_update",
+    name:"ccp_chess_categories_update",
     description:"Rename, describe or reorder an existing chess skill category without rewriting observations. Explicit confirmation required.",
     schema:z.object({categoryId:chessUuid,name:categoryName.optional(),
       description:z.string().max(500).optional(),
@@ -991,29 +991,29 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_material_links_unlink_impact",
+    name:"ccp_material_links_unlink_impact",
     description:"Preview removal of one canonical material association; learning material and attested evidence remain intact.",
     schema:z.object({linkId:chessUuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_material_links_unlink",
+    name:"ccp_material_links_unlink",
     description:"Remove one current material/student or material/session association with expected revision and explicit approval. History is preserved.",
     schema:materialLinkUnlinkInput,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_chess_categories_delete_impact",
+    name:"ccp_chess_categories_delete_impact",
     description:"Preview whether a teacher-owned chess skill category has historical observations. Used before a confirmed deletion.",
     schema:z.object({categoryId:chessUuid}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_chess_categories_delete",
+    name:"ccp_chess_categories_delete",
     description:"Delete only an unused teacher-owned chess skill category after explicit confirmation. Never erase recorded chess observations.",
     schema:z.object({categoryId:chessUuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_chess_observations_update",
+    name:"ccp_chess_observations_update",
     description:"Correct a teacher-owned existing chess observation, skill category or observation date. Do not silently alter confirmed history; teacher approval required.",
     schema:z.object({observationId:chessUuid,observation:observationText.optional(),
       categoryId:chessUuid.optional(),observedAt:observedAt.optional(),
@@ -1022,88 +1022,88 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_material_links_update",
+    name:"ccp_material_links_update",
     description:"Reassign one identified student/session material link to another canonical typed material; revision check and confirmation required. Edit content via learning_materials_update.",
     schema:materialLinkUpdateInput,scope:"coach:write",readOnly:false,
   },
   {
-    name: "ccp_v1_chess_categories_list",
+    name: "ccp_chess_categories_list",
     description: "Read configurable teacher-owned chess skills. Select stable category IDs before proposing an observation.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
   },
   {
-    name: "ccp_v1_chess_observations_list",
+    name: "ccp_chess_observations_list",
     description: "Read student chess observation history including source and verification. Never treat agent suggestions as approved.",
     schema: z.object({studentId:chessUuid,sessionId:chessUuid.optional()}).strict(),
     scope: "coach:read", readOnly: true,
   },
   {
-    name: "ccp_v1_chess_observations_propose",
+    name: "ccp_chess_observations_propose",
     description: "PROPOSE an unverified AI-authored observation for one identified student. This never approves or overrides teacher assessments.",
     schema: observationInput, scope: "coach:write", readOnly: false,
   },
   {
-    name:"ccp_v1_materials_history_list",
+    name:"ccp_materials_history_list",
     description:"List **explicitly recorded** study/material stages for a teacher-owned student, workplace or session. Stages distinguish assigned, actually taught, and teacher-attested completed; mere study links are never counted. Workplace results deduplicate sessions in page summary.",
     schema:materialsHistoryFilter,
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_materials_aggregate",
+    name:"ccp_materials_aggregate",
     description:"Summarize the entire filtered student/workplace/session material evidence ledger (not merely the current page). Counts assigned/taught/completed separately and deduplicates group sessions. Explicit teacher evidence only, not inferred mastery; up to 5000 claims.",
     schema:materialsHistoryFilter,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_material_defaults_list",
+    name:"ccp_material_defaults_list",
     description:"Read teacher-owned default Lichess studies for one workplace and optional group, including versioned change history. Defaults do not imply taught or completed.",
     schema:z.object({workplaceId:uuid,groupId:uuid.optional(),
       includeArchived:z.boolean().default(false)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_material_default_create",
+    name:"ccp_material_default_create",
     description:"Attach one explicitly confirmed official Lichess study/chapter default to a workplace or group. Idempotent request ID and owner validation; does not claim any student learned it.",
     schema:defaultCreateSchema.omit({operation:true}),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_material_default_update",
+    name:"ccp_material_default_update",
     description:"Correct a study default label/link/notes with latest revision and explicit confirmation, retaining the prior values in the audit trail.",
     schema:defaultUpdateToolSchema,
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_material_default_archive",
+    name:"ccp_material_default_archive",
     description:"Archive a study default with revision and confirmation, retaining historical audits and teaching evidence.",
     schema:defaultArchiveSchema.omit({operation:true}),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_materials_history_record",
+    name:"ccp_materials_history_record",
     description:"After explicit teacher confirmation, append an assigned/taught/completed claim for a canonical typed material ID and identified learner, optionally tied to workplace/session. requestId makes repeats idempotent; a model must never infer completed from merely opening a study.",
     schema:materialsHistoryRecord,
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_materials_history_void",
+    name:"ccp_materials_history_void",
     description:"Correct mistaken teaching/learning evidence. Requires exact updatedAt revision, reason and explicit confirmation. Retains original claim in the audit trail; does not silently delete history.",
     schema:materialsHistoryVoid,
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_material_links_list",
+    name:"ccp_material_links_list",
     description:"List canonical typed material associations for one teacher-owned student or lesson, including catalog title and source URL.",
     schema:materialLinkListInput,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_material_links_create",
+    name:"ccp_material_links_create",
     description:"Attach an existing typed learning material to a student or coaching session, with explicit approval and an idempotent request UUID. Does not imply mastery.",
     schema:materialLinkCreateInput,scope:"coach:write",readOnly:false,
   },
   // All new writes are routed through the single transactional teacher-owned SQL
   // operation. The receipt is replay-safe and contains only IDs and audit metadata.
   {
-    name: "ccp_v1_workplaces_create",
+    name: "ccp_workplaces_create",
     description: "Create a teacher-owned workplace. Confirm its name, IANA time zone and currency.",
     schema: z.object({name:shortName, timezone:z.string().min(1).max(80),
       currency:currency.default("USD"),locale:locale.default("en"),
@@ -1111,7 +1111,7 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_workplaces_update",
+    name:"ccp_workplaces_update",
     description:"Edit an identified workplace using its latest revision from workplaces_list. No silent overwrite.",
     schema:z.object({workplaceId:uuid,name:shortName.optional(),timezone:z.string().min(1).max(80).optional(),
       currency:currency.optional(),locale:locale.optional(),policy:resourcePolicy.optional(),...revision}).strict()
@@ -1120,13 +1120,13 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_students_create",
+    name:"ccp_students_create",
     description:"Create a basic teacher-owned learner with name and optional level. For guardian/contact, birthdate, notes, or family-of-one creation use the full shared student create tool.",
     schema:z.object({name:shortName,level:z.string().trim().max(120).nullable().optional(),...mutation}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_students_create_full",
+    name:"ccp_students_create_full",
     description:"Create a teacher-owned learner with optional owned family, guardian contact, birthdate, level and private teacher notes in ONE atomic website/MCP transaction. Requires an idempotency key and approval; output redacts private notes and contact details.",
     schema:studentCreateSchema.extend({
       idempotencyKey:uuid,confirmed:z.literal(true),
@@ -1134,7 +1134,7 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_students_update",
+    name:"ccp_students_update",
     description:"Edit a specific student ID, never an ambiguous name. Requires revision from students_search.",
     schema:z.object({studentId:uuid,name:shortName.optional(),
       level:z.string().trim().max(120).nullable().optional(),...revision}).strict()
@@ -1142,68 +1142,68 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_workplaces_enroll",
+    name:"ccp_workplaces_enroll",
     description:"Enroll an identified student in an identified workplace. Single-member only.",
     schema:z.object({workplaceId:uuid,studentId:uuid,...mutation}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_workplaces_unenroll",
+    name:"ccp_workplaces_unenroll",
     description:"Explicitly remove one current workplace enrollment. Group memberships and future direct lessons must be cleared first; historic frozen rosters remain untouched.",
     schema:z.object({workplaceId:uuid,studentId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_workplaces_enrollments",
+    name:"ccp_workplaces_enrollments",
     description:"List members of an identified teacher-owned workplace.",
     schema:z.object({workplaceId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_groups_create",
+    name:"ccp_groups_create",
     description:"Create a class group inside one identified authorized workplace.",
     schema:z.object({workplaceId:uuid,name:shortName,...mutation}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_groups_update",
+    name:"ccp_groups_update",
     description:"Rename an identified group within its workplace, with revision and retry key.",
     schema:z.object({groupId:uuid,workplaceId:uuid,name:shortName,...revision}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_groups_enroll",
+    name:"ccp_groups_enroll",
     description:"Add one identified student to one identified group; the workplace enrollment is included atomically.",
     schema:z.object({groupId:uuid,studentId:uuid,...mutation}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_groups_unenroll",
+    name:"ccp_groups_unenroll",
     description:"Remove one explicitly confirmed current group membership. Historical frozen lesson rosters remain unchanged.",
     schema:z.object({groupId:uuid,studentId:uuid,...mutation,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_schedule_day_preview",
+    name:"ccp_schedule_day_preview",
     description:"Review one teacher-owned workplace-local calendar date for 1–50 explicit active student IDs. Check every enrollment and exactly shared active recurring start/duration, DST safety and occupied canonical lesson intervals. Never writes or silently enrolls students.",
     schema:scheduleDayPreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_students_resolve",
+    name:"ccp_students_resolve",
     description:"Resolve up to 100 exact teacher-owned active student full names and Hebrew/English aliases to stable IDs. Return ambiguity candidates or missing-name issues without guessing, fuzzy search, archived students or private contacts. Read-only.",
     schema:studentNamesResolveSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_lessons_capture_commit_with_chapter",
+    name:"ccp_lessons_capture_commit_with_chapter",
     description:"After a read-only reviewed lesson-capture preview with an exact authorized study/chapter, atomically create ONE multi-student session and its assigned chapter evidence inside the SAME SQL transaction. Confirm stable roster, source verified timestamp and roster hash; use two distinct UUID receipts and confirmed=true. Never infer attendance, lesson completion or mastery; failed chapter writes roll back the lesson.",
     schema:atomicLessonChapterCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_lessons_capture_preview",
-    description:"Read-only multi-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. Confirm separately via ccp_v1_sessions_ad_hoc_create.",
+    name:"ccp_lessons_capture_preview",
+    description:"Read-only multi-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. Confirm separately via ccp_sessions_ad_hoc_create.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_sessions_ad_hoc_create",
+    name:"ccp_sessions_ad_hoc_create",
     description:"Schedule a single one-off lesson for 2–50 already enrolled students without a permanent class. Freeze roster and unmarked attendance atomically. Confirm approved participants and time.",
     schema:z.object({workplaceId:uuid,studentIds:z.array(uuid).min(2).max(50),
       title:z.string().trim().min(1).max(160),startsAt:instant,
@@ -1213,12 +1213,12 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_sessions_details",
+    name:"ccp_sessions_details",
     description:"Read one identified lesson, including its current revision and frozen roster.",
     schema:sessionId,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_sessions_create",
+    name:"ccp_sessions_create",
     description:"Schedule one identified workplace/group or student lesson at an ISO instant WITH offset; conflicts are rejected. Frozen participants at creation.",
     schema:z.object({workplaceId:uuid,groupId:uuid.optional(),studentId:uuid.optional(),
       title:z.string().trim().min(1).max(160),startsAt:instant,
@@ -1228,8 +1228,8 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_sessions_edit",
-    description:"Confirmed, revision-checked edit of a teaching session's title, shared note, time, duration, home visit or scheduled/cancelled status. To mark completed use ccp_v1_sessions_complete with every frozen learner and explicit attendance; status-only completion is prohibited.",
+    name:"ccp_sessions_edit",
+    description:"Confirmed, revision-checked edit of a teaching session's title, shared note, time, duration, home visit or scheduled/cancelled status. To mark completed use ccp_sessions_complete with every frozen learner and explicit attendance; status-only completion is prohibited.",
     schema:z.object({
       sessionId:uuid,
       changes:z.object({
@@ -1245,24 +1245,24 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_sessions_complete",
+    name:"ccp_sessions_complete",
     description:"Atomically record the complete frozen student roster and mark one coaching lesson completed. Requires one explicit present/absent/late/excused status and current attendance revision per student, current lesson revision, one idempotency UUID and confirmation. No material mastery inferred.",
     schema:lessonCompletionSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_sessions_reschedule",
+    name:"ccp_sessions_reschedule",
     description:"Reschedule an identified scheduled lesson; requires its latest revision, explicit offset and confirmation.",
     schema:z.object({sessionId:uuid,startsAt:instant,
       durationMinutes:z.number().int().min(15).max(480),...revision,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_sessions_roster_preview",
+    name:"ccp_sessions_roster_preview",
     description:"Read the exact frozen roster and revision of one owned session; group enrollments are unaffected.",
     schema:z.object({sessionId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_sessions_roster_correct",
+    name:"ccp_sessions_roster_correct",
     description:"Confirm one revision-checked correction to a session's FROZEN historical roster, not group membership. Provide all desired owned student IDs, reason and idempotency key; removed attendance is audited. Removing linked chess evidence is blocked.",
     schema:z.object({sessionId:uuid,studentIds:z.array(uuid).min(1).max(100),
       expectedUpdatedAt:instant,idempotencyKey:uuid,
@@ -1270,7 +1270,7 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_sessions_roster_revisions_list",
+    name:"ccp_sessions_roster_revisions_list",
     description:"Read append-only historical roster corrections, redacting removed attendance notes unless includePrivate=true and confirmed=true.",
     schema:z.object({sessionId:uuid,includePrivate:z.boolean().default(false),
       confirmed:z.literal(true).optional()}).strict()
@@ -1278,90 +1278,90 @@ const catalogue = [
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_sessions_cancel",
+    name:"ccp_sessions_cancel",
     description:"Cancel ONE identified scheduled lesson after confirmation. Does not delete history.",
     schema:z.object({sessionId:uuid,...revision,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
 
   {
-    name:"ccp_v1_learning_materials_list",
+    name:"ccp_learning_materials_list",
     description:"Search/list teacher-owned chess learning materials by type and title; games, puzzles, drills and studies share a catalog but have different typed details.",
     schema:materialCatalogFilterSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_learning_materials_get",
+    name:"ccp_learning_materials_get",
     description:"Fetch one specific teacher-owned typed chess learning material and its details. A link alone is not proof of teaching.",
     schema:z.object({materialId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_learning_materials_create",
+    name:"ccp_learning_materials_create",
     description:"Create a typed game, puzzle, drill, study chapter or HTTPS link. For games, GigaChess checks all PGN mainline and variation moves against their starting FEN; invalid moves are refused. Do not infer player identity, mastery or lesson attendance. Require an idempotency UUID.",
     schema:materialCatalogCreateSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_learning_materials_update",
+    name:"ccp_learning_materials_update",
     description:"Correct a teacher-owned typed chess material using the shared atomic root/subtype service, with GigaChess legality validation for revised game PGN mainlines and variations. Same kind, current revision, explicit confirmation and idempotency UUID required.",
     schema:materialCatalogUpdateSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_learning_material_relations_list",
+    name:"ccp_learning_material_relations_list",
     description:"List typed source-game, derived and prerequisite material relationships. A relationship is not evidence of teaching or mastery.",
     schema:materialRelationListSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_learning_material_relation_change",
+    name:"ccp_learning_material_relation_change",
     description:"Link/unlink two authorized typed chess materials. Require source revision, explicit confirmation and an idempotency request ID; source-game puzzle extraction requires puzzle → game.",
     schema:materialRelationSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_learning_material_archive_preview",
+    name:"ccp_learning_material_archive_preview",
     description:"Inspect a material's revision, linked homework and relations before attempting a history-preserving library archive.",
     schema:materialArchivePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_learning_material_lifecycle_change",
+    name:"ccp_learning_material_lifecycle_change",
     description:"Archive or restore a teacher-owned learning material from active search without erasing history. Requires current revision, request UUID and explicit confirmation; linked materials cannot be archived.",
     schema:materialLifecycleSchema,scope:"coach:write",readOnly:false,
   },
 
   {
-    name:"ccp_v1_training_assignments_list",
+    name:"ccp_training_assignments_list",
     description:"List a teacher's student-specific chess homework, linked materials, documented attempts and reviews. A completed item is not a verified skill assessment.",
     schema:assignmentListSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_training_assignments_create",
+    name:"ccp_training_assignments_create",
     description:"Assign one existing game/puzzle/drill/study material to 1-100 active students, with independent assignment IDs. Explicit confirmation and retry-safe request UUID required.",
     schema:assignmentCreateSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_training_attempt_record",
+    name:"ccp_training_attempt_record",
     description:"Record instructor-entered homework attempt/completion evidence without claiming mastery; explicit confirmed idempotent write.",
     schema:assignmentAttemptSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_training_review_record",
+    name:"ccp_training_review_record",
     description:"Record separate teacher feedback on one homework assignment or attempt; does not alter a teacher-verified student skill grade.",
     schema:assignmentReviewSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_training_plans_list",
+    name:"ccp_training_plans_list",
     description:"Read a teacher-owned student's explicit training plans, goals and statuses with no inferred skill mastery; paginated and archived-aware.",
     schema:trainingPlanListSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_training_plans_get",
+    name:"ccp_training_plans_get",
     description:"Get one training plan with immutable revision snapshots and manually evidenced goal decisions.",
     schema:trainingPlanGetSchema,scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_v1_training_plans_commit",
+    name:"ccp_training_plans_commit",
     description:"Create or revision-guard edit a training plan and independent chess goals, requiring teacher confirmation and an idempotency UUID. Achieved goals require explicit coach-written evidence; no inference from homework.",
     schema:trainingPlanCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_v1_coach_briefing_get",
+    name:"ccp_coach_briefing_get",
     description:"Prepare a fact-based teacher-owned student briefing: recent lesson history, explicitly attested material, assigned homework, coach reviews and approved chess observations. Each item has stored source IDs, with unknowns marked. No AI-inferred mastery.",
     schema:coachBriefingSchema,scope:"coach:read",readOnly:true,
   },
@@ -1395,13 +1395,13 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     // Scoped SQL RPC uses the end-user's JWT and RLS, not the service role.
     // It checks expected revision and stores the receipt and domain write in the same transaction.
     const operations: Record<string,string> = {
-      ccp_v1_workplaces_create:"workplaces.create",ccp_v1_workplaces_update:"workplaces.update",
-      ccp_v1_workplaces_enroll:"workplaces.enroll",
-      ccp_v1_students_create:"students.create",ccp_v1_students_update:"students.update",
-      ccp_v1_groups_create:"groups.create",ccp_v1_groups_update:"groups.update",
-      ccp_v1_groups_enroll:"groups.enroll",ccp_v1_groups_unenroll:"groups.unenroll",
-      ccp_v1_sessions_create:"sessions.create",ccp_v1_sessions_reschedule:"sessions.reschedule",
-      ccp_v1_sessions_cancel:"sessions.cancel",
+      ccp_workplaces_create:"workplaces.create",ccp_workplaces_update:"workplaces.update",
+      ccp_workplaces_enroll:"workplaces.enroll",
+      ccp_students_create:"students.create",ccp_students_update:"students.update",
+      ccp_groups_create:"groups.create",ccp_groups_update:"groups.update",
+      ccp_groups_enroll:"groups.enroll",ccp_groups_unenroll:"groups.unenroll",
+      ccp_sessions_create:"sessions.create",ccp_sessions_reschedule:"sessions.reschedule",
+      ccp_sessions_cancel:"sessions.cancel",
     };
     if (name in operations) {
       // A repeated student-create idempotency key must be able to replay
@@ -1431,39 +1431,39 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {data};
     }
     switch (name) {
-      case "ccp_v1_training_plans_list":
+      case "ccp_training_plans_list":
         return {data:await teacherTrainingPlansList(db,teacherId,args as Parameters<typeof teacherTrainingPlansList>[2])};
-      case "ccp_v1_training_plans_get":
+      case "ccp_training_plans_get":
         return {data:await teacherTrainingPlanGet(db,teacherId,(args as {planId:string}).planId)};
-      case "ccp_v1_training_plans_commit":
+      case "ccp_training_plans_commit":
         return {data:await teacherTrainingPlanCommit(db,teacherId,args as Parameters<typeof teacherTrainingPlanCommit>[2])};
-      case "ccp_v1_coach_briefing_get":
+      case "ccp_coach_briefing_get":
         return {data:await teacherCoachBriefing(db,teacherId,args as Parameters<typeof teacherCoachBriefing>[2])};
-      case "ccp_v1_training_assignments_list":
+      case "ccp_training_assignments_list":
         return {data:await teacherAssignmentsList(db,teacherId,args as Parameters<typeof teacherAssignmentsList>[2])};
-      case "ccp_v1_training_assignments_create":
+      case "ccp_training_assignments_create":
         return {data:await teacherAssignmentsCreate(db,teacherId,args as Parameters<typeof teacherAssignmentsCreate>[2])};
-      case "ccp_v1_training_attempt_record":
+      case "ccp_training_attempt_record":
         return {data:await teacherAssignmentAttempt(db,teacherId,args as Parameters<typeof teacherAssignmentAttempt>[2])};
-      case "ccp_v1_training_review_record":
+      case "ccp_training_review_record":
         return {data:await teacherAssignmentReview(db,teacherId,args as Parameters<typeof teacherAssignmentReview>[2])};
-      case "ccp_v1_learning_materials_list":
+      case "ccp_learning_materials_list":
         return {data:await teacherMaterialCatalogList(db,teacherId,args as Parameters<typeof teacherMaterialCatalogList>[2])};
-      case "ccp_v1_learning_materials_get":
+      case "ccp_learning_materials_get":
         return {data:await teacherMaterialCatalogGet(db,teacherId,(args as {materialId:string}).materialId)};
-      case "ccp_v1_learning_materials_create":
+      case "ccp_learning_materials_create":
         return {data:await teacherMaterialCatalogCreate(db,teacherId,args as Parameters<typeof teacherMaterialCatalogCreate>[2])};
-      case "ccp_v1_learning_materials_update":
+      case "ccp_learning_materials_update":
         return {data:await teacherMaterialCatalogUpdate(db,teacherId,args as Parameters<typeof teacherMaterialCatalogUpdate>[2])};
-      case "ccp_v1_learning_material_relations_list":
+      case "ccp_learning_material_relations_list":
         return {data:await teacherMaterialRelationsList(db,teacherId,(args as {materialId:string}).materialId)};
-      case "ccp_v1_learning_material_relation_change":
+      case "ccp_learning_material_relation_change":
         return {data:await teacherMaterialRelationChange(db,teacherId,args as Parameters<typeof teacherMaterialRelationChange>[2])};
-      case "ccp_v1_learning_material_archive_preview":
+      case "ccp_learning_material_archive_preview":
         return {data:await teacherMaterialArchivePreview(db,teacherId,(args as {materialId:string}).materialId)};
-      case "ccp_v1_learning_material_lifecycle_change":
+      case "ccp_learning_material_lifecycle_change":
         return {data:await teacherMaterialLifecycleChange(db,teacherId,args as Parameters<typeof teacherMaterialLifecycleChange>[2])};
-      case "ccp_v1_students_create_full": {
+      case "ccp_students_create_full": {
         const a=args as Parameters<typeof createStudentWithOptionalFamily>[2];
         const result=await createStudentWithOptionalFamily(db,teacherId,a);
         if(!result.ok)return {error:{
@@ -1476,11 +1476,11 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:{...safeStudentProfile(result.student),
           createdFamily:result.createdFamily}};
       }
-      case "ccp_v1_billing_generation_preview": {
+      case "ccp_billing_generation_preview": {
         const a=args as {periodStart:string;periodEnd:string};
         return await billingActionResponse(await teacherBillingGenerate(db,teacherId,a));
       }
-      case "ccp_v1_billing_generation_commit": {
+      case "ccp_billing_generation_commit": {
         const a=args as {periodStart:string;periodEnd:string;idempotencyKey?:string};
         // The MCP approval marker is transport metadata, never an ordinary
         // domain edit field; pass only fields accepted by the website service.
@@ -1489,28 +1489,28 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           idempotencyKey:a.idempotencyKey,commit:true,
         }));
       }
-      case "ccp_v1_billing_invoice_regenerate": {
+      case "ccp_billing_invoice_regenerate": {
         const a=args as {invoiceId:string;expectedUpdatedAt?:string;idempotencyKey?:string};
         return await billingActionResponse(await teacherBillingRegenerate(db,teacherId,a.invoiceId,{
           expectedUpdatedAt:a.expectedUpdatedAt,idempotencyKey:a.idempotencyKey,
         }));
       }
-      case "ccp_v1_billing_invoice_pdf": {
+      case "ccp_billing_invoice_pdf": {
         const a=args as {invoiceId:string};
         const loaded=await loadInvoicePdf(db,{invoiceId:a.invoiceId,teacherId});
         if(!loaded.ok)return {error:{code:loaded.code.toUpperCase(),message:"Unable to generate invoice PDF"}};
         return invoicePdfMcpPayload(loaded.data.pdfBytes,loaded.data.filename);
       }
-      case "ccp_v1_billing_invoice_checkout": {
+      case "ccp_billing_invoice_checkout": {
         const a=args as {invoiceId:string};
         return await billingActionResponse(await teacherBillingCheckout(db,teacherId,a.invoiceId,oauthOrigin()));
       }
-      case "ccp_v1_billing_invoices_bulk_preview": {
+      case "ccp_billing_invoices_bulk_preview": {
         const a=args as {ids:string[];includeRecipients:boolean;confirmed?:boolean};
         return await billingActionResponse(await teacherBillingBulkPreview(
           db,teacherId,a.ids,a.includeRecipients&&a.confirmed===true));
       }
-      case "ccp_v1_billing_invoices_bulk": {
+      case "ccp_billing_invoices_bulk": {
         const a=args as {ids:string[];action:"send"|"delete"|"void";
           confirmedEmail?:boolean;previewDigest?:string};
         const user=(await db.auth.getUser()).data.user;
@@ -1520,7 +1520,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
             previewDigest:a.previewDigest,
           }));
       }
-      case "ccp_v1_import_spreadsheet_parse": {
+      case "ccp_import_spreadsheet_parse": {
         const a=args as {filename:string;base64:string};
         const bytes=Buffer.from(a.base64,"base64");
         if(bytes.length>MAX_SPREADSHEET_BYTES)
@@ -1528,15 +1528,15 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const arrayBuffer=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;
         return {data:teacherSpreadsheetParse(a.filename,arrayBuffer)};
       }
-      case "ccp_v1_import_spreadsheet_preview": {
+      case "ccp_import_spreadsheet_preview": {
         const a=args as {rows:Record<string,string>[];mapping:ColumnMapping};
         return {data:teacherSpreadsheetPreview(a)};
       }
-      case "ccp_v1_import_spreadsheet_suggest": {
+      case "ccp_import_spreadsheet_suggest": {
         const a=args as {headers:string[];sampleRows?:Record<string,string>[];useAi:boolean;confirmedExternal?:boolean};
         return {data:await teacherSpreadsheetSuggest(db,teacherId,a)};
       }
-      case "ccp_v1_import_spreadsheet_commit": {
+      case "ccp_import_spreadsheet_commit": {
         const a=args as {rows:Record<string,string>[];mapping:ColumnMapping;idempotencyKey?:string};
         const response=await teacherSpreadsheetCommit(db,teacherId,a);
         const data=await response.json();
@@ -1546,86 +1546,86 @@ export async function runTool(db: SupabaseClient, teacherId: string,
             message:data.error??"Spreadsheet import failed"}};
         return {data};
       }
-      case "ccp_v1_settings_export":
+      case "ccp_settings_export":
         return {data:await teacherSafeExport(db,teacherId)};
-      case "ccp_v1_settings_import_preview": {
+      case "ccp_settings_import_preview": {
         const a=args as {payload:unknown};
         const {payload,...preview}=teacherImportPreview(a.payload);
         return {data:preview};
       }
-      case "ccp_v1_settings_import_apply": {
+      case "ccp_settings_import_apply": {
         const a=args as {payload:unknown;expectedSha256:string};
         return {data:await teacherImportApply(db,teacherId,a.payload,a.expectedSha256)};
       }
-      case "ccp_v1_billing_manual_payment_record": {
+      case "ccp_billing_manual_payment_record": {
         const a=args as {invoiceId:string;amountCents?:number;note?:string;idempotencyKey:string};
         return {data:await teacherManualPaymentRecord(db,teacherId,a.invoiceId,a)};
       }
-      case "ccp_v1_billing_manual_payment_delete": {
+      case "ccp_billing_manual_payment_delete": {
         const a=args as {invoiceId:string;paymentId:string};
         return {data:await teacherManualPaymentDelete(db,teacherId,a.invoiceId,a.paymentId)};
       }
-      case "ccp_v1_credits_packages_list": {
+      case "ccp_credits_packages_list": {
         const a=args as {studentId?:string};
         return {data:await teacherCreditPackagesList(db,teacherId,a.studentId)};
       }
-      case "ccp_v1_credits_package_create": {
+      case "ccp_credits_package_create": {
         const a=args as Parameters<typeof teacherCreditPackageCreate>[2];
         return {data:await teacherCreditPackageCreate(db,teacherId,a)};
       }
-      case "ccp_v1_credits_package_expiry": {
+      case "ccp_credits_package_expiry": {
         const a=args as {packageId:string;expiresOn:string|null};
         return {data:await teacherCreditPackageExpiry(db,teacherId,a.packageId,a.expiresOn)};
       }
-      case "ccp_v1_credits_redemption_return": {
+      case "ccp_credits_redemption_return": {
         const a=args as {redemptionId:string};
         return {data:await teacherCreditRedemptionReturn(db,teacherId,a.redemptionId)};
       }
-      case "ccp_v1_connections_list":
+      case "ccp_connections_list":
         return {data:await teacherConnectionsList(teacherId)};
-      case "ccp_v1_connections_revoke": {
+      case "ccp_connections_revoke": {
         const a=args as {connectionId:string};
         return {data:await teacherConnectionRevoke(teacherId,a.connectionId)};
       }
-      case "ccp_v1_billing_invoice_draft_update": {
+      case "ccp_billing_invoice_draft_update": {
         const a=args as {invoiceId:string;changes:Parameters<typeof teacherInvoiceDraftUpdate>[3]};
         return {data:await teacherInvoiceDraftUpdate(db,teacherId,a.invoiceId,a.changes)};
       }
-      case "ccp_v1_billing_invoice_void": {
+      case "ccp_billing_invoice_void": {
         const a=args as {invoiceId:string;idempotencyKey?:string};
         return {data:await teacherInvoiceVoid(db,teacherId,a.invoiceId,a.idempotencyKey)};
       }
-      case "ccp_v1_billing_invoice_delete": {
+      case "ccp_billing_invoice_delete": {
         const a=args as {invoiceId:string};
         return {data:await teacherInvoiceDelete(db,teacherId,a.invoiceId)};
       }
-      case "ccp_v1_billing_invoice_send_preview": {
+      case "ccp_billing_invoice_send_preview": {
         const a=args as {invoiceId:string;includeRecipients:boolean;confirmed?:boolean};
         return {data:await teacherInvoiceSendPreview(
           db,teacherId,a.invoiceId,a.includeRecipients&&a.confirmed===true)};
       }
-      case "ccp_v1_billing_invoice_send": {
+      case "ccp_billing_invoice_send": {
         const a=args as {invoiceId:string};
         const user=(await db.auth.getUser()).data.user;
         const result=await teacherInvoiceSend(db,teacherId,a.invoiceId,user?.email,oauthOrigin());
         const {checkoutUrl,...safe}=result;
         return {data:{...safe,checkoutCreated:Boolean(checkoutUrl)}};
       }
-      case "ccp_v1_billing_invoices_list": {
+      case "ccp_billing_invoices_list": {
         const a=args as Parameters<typeof teacherInvoicesList>[2];
         return {data:await teacherInvoicesList(db,teacherId,a)};
       }
-      case "ccp_v1_billing_invoice_detail": {
+      case "ccp_billing_invoice_detail": {
         const a=args as {invoiceId:string;includePrivate:boolean;confirmed?:boolean};
         const invoice=await teacherInvoiceDetail(db,teacherId,a.invoiceId);
         return {data:safeInvoice(invoice,a.includePrivate&&a.confirmed===true)};
       }
-      case "ccp_v1_billing_payments_export": {
+      case "ccp_billing_payments_export": {
         const a=args as {from?:string;to?:string};
         const report=await teacherPaymentsExport(db,teacherId,a);
         return {data:{...report,format:"csv"}};
       }
-      case "ccp_v1_studio_policy_get": {
+      case "ccp_studio_policy_get": {
         const a=args as {includePaymentQrCode:boolean;confirmed?:boolean};
         const p=await teacherPolicyView(db,teacherId);
         return {data:{...p,
@@ -1633,7 +1633,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
             ?p.payment_qr_code:null,
           paymentQrCodeConfigured:Boolean(p.payment_qr_code)}};
       }
-      case "ccp_v1_studio_credentials_handoff": {
+      case "ccp_studio_credentials_handoff": {
         const a=args as {kind:"ai"|"stripe"};
         const policy=await teacherPolicyView(db,teacherId);
         const isAi=a.kind==="ai";
@@ -1650,7 +1650,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           instruction:"Open the setup URL in your authenticated browser and enter the credentials there. Never paste API keys into AI chat.",
         }};
       }
-      case "ccp_v1_studio_policy_update": {
+      case "ccp_studio_policy_update": {
         const a=args as {changes:Record<string,unknown>};
         const user=(await db.auth.getUser()).data.user;
         const response=await teacherPolicyUpdate(db,teacherId,user?.email,a.changes);
@@ -1662,9 +1662,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:{...body,payment_qr_code:null,
           paymentQrCodeConfigured:Boolean(body.payment_qr_code)}};
       }
-      case "ccp_v1_events_list":
+      case "ccp_events_list":
         return {data:await teacherEventsList(db,teacherId)};
-      case "ccp_v1_events_detail": {
+      case "ccp_events_detail": {
         const a=args as {eventId:string;includeRsvps:boolean;confirmed?:boolean};
         const result=await teacherEventDetail(db,teacherId,a.eventId);
         return {data:{event:{
@@ -1672,42 +1672,42 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           rsvps:a.includeRsvps&&a.confirmed===true?result.event.rsvps:[],
         }}};
       }
-      case "ccp_v1_events_create": {
+      case "ccp_events_create": {
         const a=args as Parameters<typeof teacherEventCreate>[2];
         return {data:await teacherEventCreate(db,teacherId,a)};
       }
-      case "ccp_v1_events_update": {
+      case "ccp_events_update": {
         const a=args as Parameters<typeof teacherEventUpdate>[3]&{eventId:string};
         return {data:await teacherEventUpdate(db,teacherId,a.eventId,a)};
       }
-      case "ccp_v1_events_delete_impact": {
+      case "ccp_events_delete_impact": {
         const a=args as {eventId:string};
         return {data:await teacherEventDeleteImpact(db,teacherId,a.eventId)};
       }
-      case "ccp_v1_events_delete": {
+      case "ccp_events_delete": {
         const a=args as {eventId:string};
         return {data:await teacherEventDelete(db,teacherId,a.eventId)};
       }
-      case "ccp_v1_reports_student_progress":
+      case "ccp_reports_student_progress":
         return {data:await teacherStudentProgressReport(
           db,teacherId,(args as {studentId:string}).studentId)};
-      case "ccp_v1_account_security_handoff":
+      case "ccp_account_security_handoff":
         return {data:{
           url:oauthOrigin()+"/account",
           browserOnly:true,
           action:"account-security",
           explanation:"Open the signed-in Account page and complete any required reauthentication. Email, password, MFA keys and recovery codes must never be submitted to a model.",
         }};
-      case "ccp_v1_hosted_subscription_handoff":
+      case "ccp_hosted_subscription_handoff":
         return {data:{
           url:oauthOrigin()+"/account",
           browserOnly:true,
           action:"hosted-billing",
           explanation:"On hosted deployments, review the plan and choose Upgrade or Manage billing in your signed-in browser. Payment-card entry and Stripe sessions remain in secure website/provider flows.",
         }};
-      case "ccp_v1_teacher_profile_get":
+      case "ccp_teacher_profile_get":
         return {data:await teacherProfileGet(db,teacherId)};
-      case "ccp_v1_teacher_profile_update": {
+      case "ccp_teacher_profile_update": {
         const a=args as {displayName?:string;avatarUrl?:string|null;confirmed:true};
         // Approval is an MCP transport control, never an editable profile field.
         // Pass only the same domain fields accepted by the website.
@@ -1715,44 +1715,44 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           displayName:a.displayName,avatarUrl:a.avatarUrl,
         })};
       }
-      case "ccp_v1_calendar_feed_status":
+      case "ccp_calendar_feed_status":
         return {data:await teacherCalendarFeedStatus(db,teacherId)};
-      case "ccp_v1_calendar_feed_rotate":
+      case "ccp_calendar_feed_rotate":
         return {data:await teacherCalendarFeedRotate(db,teacherId)};
-      case "ccp_v1_events_email_preview": {
+      case "ccp_events_email_preview": {
         const a=args as {eventId:string;includeRecipients:boolean;confirmed?:boolean};
         return {data:await teacherEventInvitePreview(
           db,teacherId,a.eventId,a.includeRecipients&&a.confirmed===true)};
       }
-      case "ccp_v1_events_email_invites": {
+      case "ccp_events_email_invites": {
         const a=args as {eventId:string};
         const user=(await db.auth.getUser()).data.user;
         return {data:await teacherEventInviteEmail(db,teacherId,a.eventId,user?.email,oauthOrigin())};
       }
-      case "ccp_v1_session_attendance_list": {
+      case "ccp_session_attendance_list": {
         const a=args as {sessionId:string};
         return {data:await canonicalAttendanceList(db,teacherId,a.sessionId)};
       }
-      case "ccp_v1_session_attendance_set": {
+      case "ccp_session_attendance_set": {
         const a=args as CanonicalAttendanceSetInput&{sessionId:string};
         return {data:await canonicalAttendanceSet(db,teacherId,a.sessionId,a)};
       }
-      case "ccp_v1_session_attendance_bulk_set": {
+      case "ccp_session_attendance_bulk_set": {
         const a=args as CanonicalAttendanceBulkInput&{sessionId:string};
         return {data:await canonicalAttendanceBulkSet(db,teacherId,a.sessionId,a)};
       }
-      case "ccp_v1_canonical_makeup_credits_list": {
+      case "ccp_canonical_makeup_credits_list": {
         return {data:{credits:await canonicalMakeupCreditsList(db,teacherId)}};
       }
-      case "ccp_v1_session_notes_list": {
+      case "ccp_session_notes_list": {
         const a=args as {sessionId:string;includePrivate:boolean;confirmed?:boolean};
         return {data:await sessionNotesList(db,teacherId,a.sessionId,a)};
       }
-      case "ccp_v1_session_notes_save": {
+      case "ccp_session_notes_save": {
         const a=args as SaveSessionNoteInput&{sessionId:string};
         return {data:await sessionNoteSave(db,teacherId,a.sessionId,a)};
       }
-      case "ccp_v1_private_sessions_create": {
+      case "ccp_private_sessions_create": {
         const a=args as CanonicalPrivateSessionCreateInput&{confirmed:boolean};
         return {data:await canonicalPrivateSessionCreate(db,teacherId,{
           studentId:a.studentId,workplaceId:a.workplaceId,
@@ -1761,202 +1761,202 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           idempotencyKey:a.idempotencyKey,
         })};
       }
-      case "ccp_v1_recurring_slots_list": {
+      case "ccp_recurring_slots_list": {
         const a=args as {studentId?:string;activeOnly?:boolean};
         return {data:await canonicalSlotsList(db,teacherId,a)};
       }
-      case "ccp_v1_recurring_slots_create": {
+      case "ccp_recurring_slots_create": {
         const a=args as Record<string,unknown>;
         const {confirmed,...input}=a;
         void confirmed;
         return {data:await canonicalSlotCreate(db,teacherId,
           input as import("@/lib/server/canonical-slot-service").CanonicalSlotCreateInput)};
       }
-      case "ccp_v1_recurring_slots_update": {
+      case "ccp_recurring_slots_update": {
         const a=args as {slotId:string;changes:unknown;expectedUpdatedAt:string;idempotencyKey:string};
         return {data:await canonicalSlotUpdate(db,teacherId,a.slotId,{
           changes:a.changes as Record<string,never>,
           expectedUpdatedAt:a.expectedUpdatedAt,idempotencyKey:a.idempotencyKey,
         })};
       }
-      case "ccp_v1_recurring_slots_delete": {
+      case "ccp_recurring_slots_delete": {
         const a=args as {slotId:string;idempotencyKey:string};
         return {data:await canonicalSlotDelete(db,teacherId,a.slotId,{
           idempotencyKey:a.idempotencyKey,
         })};
       }
-      case "ccp_v1_guardians_list": {
+      case "ccp_guardians_list": {
         const rows=await guardiansList(db,teacherId);
         return {data:rows.map(row=>safeGuardian(row))};
       }
-      case "ccp_v1_guardians_detail": {
+      case "ccp_guardians_detail": {
         const a=args as {guardianId:string;includeContacts:boolean;confirmed?:boolean};
         const row=await guardianDetail(db,teacherId,a.guardianId);
         return {data:safeGuardian(row,a.includeContacts&&a.confirmed===true)};
       }
-      case "ccp_v1_guardians_create": {
+      case "ccp_guardians_create": {
         const a=args as Parameters<typeof guardianCreate>[2];
         const row=await guardianCreate(db,teacherId,a);
         return {data:safeGuardian(row)};
       }
-      case "ccp_v1_guardians_update": {
+      case "ccp_guardians_update": {
         const a=args as Parameters<typeof guardianUpdate>[3] & {guardianId:string};
         const row=await guardianUpdate(db,teacherId,a.guardianId,a);
         return {data:safeGuardian(row)};
       }
-      case "ccp_v1_guardians_delete_impact": {
+      case "ccp_guardians_delete_impact": {
         const a=args as {guardianId:string};
         return {data:await guardianDeleteImpact(db,teacherId,a.guardianId)};
       }
-      case "ccp_v1_guardians_delete": {
+      case "ccp_guardians_delete": {
         const a=args as {guardianId:string};
         return {data:await guardianDelete(db,teacherId,a.guardianId)};
       }
-      case "ccp_v1_guardians_rotate_portal_token": {
+      case "ccp_guardians_rotate_portal_token": {
         const a=args as {guardianId:string;requestId?:string};
         const rotated=await guardianRotatePortalToken(db,teacherId,a.guardianId,a.requestId);
         return {data:{ok:true,id:rotated.id,replayed:rotated.replayed,
           secretNotReturned:true}};
       }
-      case "ccp_v1_skill_dimensions_list":
+      case "ccp_skill_dimensions_list":
         return {data:await skillDimensionsList(db,teacherId)};
-      case "ccp_v1_skill_dimensions_create": {
+      case "ccp_skill_dimensions_create": {
         const a=args as {name:string;requestId?:string};
         return {data:await skillDimensionsCreate(db,teacherId,a.name,a.requestId)};
       }
-      case "ccp_v1_skill_dimensions_update": {
+      case "ccp_skill_dimensions_update": {
         const a=args as {dimensionId:string;name:string};
         return {data:await skillDimensionsUpdate(db,teacherId,a.dimensionId,a.name)};
       }
-      case "ccp_v1_skill_dimensions_delete_impact": {
+      case "ccp_skill_dimensions_delete_impact": {
         const a=args as {dimensionId:string};
         return {data:await skillDimensionsDeleteImpact(db,teacherId,a.dimensionId)};
       }
-      case "ccp_v1_skill_dimensions_delete": {
+      case "ccp_skill_dimensions_delete": {
         const a=args as {dimensionId:string;expectedAssessmentCount:number};
         return {data:await skillDimensionsDelete(db,teacherId,a.dimensionId,a.expectedAssessmentCount)};
       }
-      case "ccp_v1_teacher_context_get":
+      case "ccp_teacher_context_get":
         return {data:await teacherContextGet(db,teacherId)};
-      case "ccp_v1_student_ratings_list":
+      case "ccp_student_ratings_list":
         return {data:await teacherStudentRatingHistory(db,teacherId,
           args as Parameters<typeof teacherStudentRatingHistory>[2])};
-      case "ccp_v1_student_ratings_record":
+      case "ccp_student_ratings_record":
         return {data:await teacherStudentRatingRecord(db,teacherId,
           args as Parameters<typeof teacherStudentRatingRecord>[2])};
-      case "ccp_v1_student_ratings_refresh_preview":
+      case "ccp_student_ratings_refresh_preview":
         return {data:await teacherStudentRatingRefreshPreview(db,teacherId,
           args as Parameters<typeof teacherStudentRatingRefreshPreview>[2])};
-      case "ccp_v1_student_ratings_refresh_commit":
+      case "ccp_student_ratings_refresh_commit":
         return {data:await teacherStudentRatingRefreshCommit(db,teacherId,
           args as Parameters<typeof teacherStudentRatingRefreshCommit>[2])};
-      case "ccp_v1_materials_preferences_list":
+      case "ccp_materials_preferences_list":
         return {data:await teacherStudyPreferencesList(db,teacherId,
           args as Parameters<typeof teacherStudyPreferencesList>[2])};
-      case "ccp_v1_materials_preferences_resolve":
+      case "ccp_materials_preferences_resolve":
         return {data:await teacherStudyPreferenceResolve(db,teacherId,
           args as Parameters<typeof teacherStudyPreferenceResolve>[2])};
-      case "ccp_v1_materials_preferences_set":
+      case "ccp_materials_preferences_set":
         return {data:await teacherStudyPreferenceSet(db,teacherId,
           args as Parameters<typeof teacherStudyPreferenceSet>[2])};
-      case "ccp_v1_materials_chapters_search":
+      case "ccp_materials_chapters_search":
         return {data:await teacherStudyIndexSearch(db,teacherId,
           args as Parameters<typeof teacherStudyIndexSearch>[2])};
-      case "ccp_v1_materials_chapters_get":
+      case "ccp_materials_chapters_get":
         return {data:await teacherStudyIndexGet(db,teacherId,
           args as Parameters<typeof teacherStudyIndexGet>[2])};
-      case "ccp_v1_materials_chapters_sync":
+      case "ccp_materials_chapters_sync":
         return {data:await teacherStudyIndexSync(db,teacherId,
           args as Parameters<typeof teacherStudyIndexSync>[2])};
-      case "ccp_v1_materials_link_preview":
+      case "ccp_materials_link_preview":
         return {data:await teacherLessonChapterPreview(db,teacherId,
           args as Parameters<typeof teacherLessonChapterPreview>[2])};
-      case "ccp_v1_materials_link_commit":
+      case "ccp_materials_link_commit":
         return {data:await teacherLessonChapterCommit(db,teacherId,
           args as Parameters<typeof teacherLessonChapterCommit>[2])};
-      case "ccp_v1_chess_fen_validate": {
+      case "ccp_chess_fen_validate": {
         const a=args as {fen:string;source:"manual"|"image"};
         return {data:teacherFenValidate(a.fen,a.source)};
       }
-      case "ccp_v1_puzzles_study_series_list":
+      case "ccp_puzzles_study_series_list":
         return {data:await teacherPuzzleSeriesList(db,teacherId)};
-      case "ccp_v1_puzzles_study_capacity":
+      case "ccp_puzzles_study_capacity":
         return {data:await teacherPuzzleStudyCapacity(teacherId,
           args as Parameters<typeof teacherPuzzleStudyCapacity>[1])};
-      case "ccp_v1_puzzles_study_create":
+      case "ccp_puzzles_study_create":
         return {data:await teacherPuzzleSeriesCreate(db,teacherId,
           args as Parameters<typeof teacherPuzzleSeriesCreate>[2])};
-      case "ccp_v1_puzzles_study_reconcile":
+      case "ccp_puzzles_study_reconcile":
         return {data:await teacherPuzzleSeriesReconcile(db,teacherId,
           args as Parameters<typeof teacherPuzzleSeriesReconcile>[2])};
-      case "ccp_v1_lichess_connection_status": {
+      case "ccp_lichess_connection_status": {
         return {data:await lichessConnectionStatus(teacherId)};
       }
-      case "ccp_v1_lichess_image_fen_propose": {
+      case "ccp_lichess_image_fen_propose": {
         const input=args as Parameters<typeof teacherImageFenPropose>[2];
         return {data:await teacherImageFenPropose(db,teacherId,input)};
       }
-      case "ccp_v1_lichess_puzzle_preview": {
+      case "ccp_lichess_puzzle_preview": {
         return {data:teacherLichessPuzzlePreview(args as Parameters<typeof teacherLichessPuzzlePreview>[0])};
       }
-      case "ccp_v1_lichess_puzzle_publish": {
+      case "ccp_lichess_puzzle_publish": {
         return {data:await teacherLichessPuzzlePublish(
           db,teacherId,args as Parameters<typeof teacherLichessPuzzlePublish>[2])};
       }
-      case "ccp_v1_lichess_studies_search": {
+      case "ccp_lichess_studies_search": {
         const a=args as {studyId?:string;query?:string;chapterNumber?:number;limit:number};
         return {data:await teacherLichessStudiesSearch(teacherId,a)};
       }
-      case "ccp_v1_lichess_connect_handoff": {
+      case "ccp_lichess_connect_handoff": {
         const a=args as {mode:"read"|"write"};
         return {data:lichessConnectionHandoff(a.mode)};
       }
-      case "ccp_v1_lichess_connection_disconnect": {
+      case "ccp_lichess_connection_disconnect": {
         return {data:await disconnectLichess(teacherId)};
       }
-      case "ccp_v1_student_skill_assessments_list": {
+      case "ccp_student_skill_assessments_list": {
         const a=args as {studentId:string;limit:number;offset:number};
         return {data:await studentSkillAssessmentsList(db,teacherId,a.studentId,{limit:a.limit,offset:a.offset})};
       }
-      case "ccp_v1_student_skill_assessments_record": {
+      case "ccp_student_skill_assessments_record": {
         const a=args as {studentId:string;ratings:Parameters<typeof studentSkillAssessmentsRecord>[3];idempotencyKey?:string};
         return {data:await studentSkillAssessmentsRecord(db,teacherId,a.studentId,a.ratings,a.idempotencyKey)};
       }
-      case "ccp_v1_students_roster": {
+      case "ccp_students_roster": {
         const a=args as {query?:string;includeArchived:boolean;archivedOnly:boolean;offset:number;limit:number};
         const result=await teacherStudentsRoster(db,teacherId,a);
         return {data:{students:result.students.map(safeStudentProfile),nextOffset:result.nextOffset}};
       }
-      case "ccp_v1_students_profile": {
+      case "ccp_students_profile": {
         const a=args as {studentId:string;includePrivate:boolean;confirmed?:boolean};
         const profile=await teacherStudentProfile(db,teacherId,a.studentId);
         return {data:a.includePrivate && a.confirmed ? profile : safeStudentProfile(profile)};
       }
-      case "ccp_v1_students_chess_history": {
+      case "ccp_students_chess_history": {
         const a=args as {studentId:string;offset:number;limit:number};
         return {data:await teacherStudentChessHistory(db,teacherId,a.studentId,a)};
       }
-      case "ccp_v1_students_delete_impact": {
+      case "ccp_students_delete_impact": {
         const a=args as {studentId:string};
         return {data:await teacherStudentDeleteImpact(db,teacherId,a.studentId)};
       }
-      case "ccp_v1_students_delete": {
+      case "ccp_students_delete": {
         const a=args as {studentId:string;expectedUpdatedAt:string};
         return {data:await teacherStudentDelete(db,teacherId,a.studentId,a.expectedUpdatedAt)};
       }
-      case "ccp_v1_students_archive_preview": {
+      case "ccp_students_archive_preview": {
         const arg=args as {studentId:string};
         return {data:await teacherStudentArchivePreview(db,teacherId,arg.studentId)};
       }
-      case "ccp_v1_students_profile_edit": {
+      case "ccp_students_profile_edit": {
         const a=args as {studentId:string;expectedUpdatedAt:string;changes:Parameters<typeof teacherStudentPatch>[3]};
         return {data:await teacherStudentPatch(db,teacherId,a.studentId,a.changes,a.expectedUpdatedAt)};
       }
-      case "ccp_v1_dashboard_summary":
+      case "ccp_dashboard_summary":
         return { data: await teacherDashboardSummary(db, teacherId) };
-      case "ccp_v1_notifications_list":
+      case "ccp_notifications_list":
         return { data: await teacherNotificationsList(db, teacherId) };
-      case "ccp_v1_notifications_mark_read": {
+      case "ccp_notifications_mark_read": {
         const a = args as { id?: string; all?: boolean };
         try {
           return { data: await teacherNotificationsMarkRead(db, teacherId, a) };
@@ -1968,11 +1968,11 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           throw error;
         }
       }
-      case "ccp_v1_lessons_history_unified": {
+      case "ccp_lessons_history_unified": {
         const a=args as Parameters<typeof teacherUnifiedLessonHistory>[2];
         return {data:await teacherUnifiedLessonHistory(db,teacherId,a)};
       }
-      case "ccp_v1_reports_workplace_summary": {
+      case "ccp_reports_workplace_summary": {
         const a = args as { workplaceId: string; from: string; to: string; format: "json" | "csv" | "text" };
         try {
           const result = await workplaceTeachingReport(db, teacherId, a.workplaceId, a.from, a.to);
@@ -1988,113 +1988,113 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           throw error;
         }
       }
-      case "ccp_v1_chess_categories_create": {
+      case "ccp_chess_categories_create": {
         const a=args as {name:string;description?:string;sortOrder?:number};
         return {data:await chessCategoriesCreate(db,teacherId,a)};
       }
-      case "ccp_v1_chess_categories_update": {
+      case "ccp_chess_categories_update": {
         const a=args as {categoryId:string;name?:string;description?:string;sortOrder?:number};
         return {data:await chessCategoriesUpdate(db,teacherId,a.categoryId,a)};
       }
-      case "ccp_v1_chess_categories_delete_impact": {
+      case "ccp_chess_categories_delete_impact": {
         const a=args as {categoryId:string};
         return {data:await chessCategoriesDeleteImpact(db,teacherId,a.categoryId)};
       }
-      case "ccp_v1_chess_categories_delete": {
+      case "ccp_chess_categories_delete": {
         const a=args as {categoryId:string;confirmed:true};
         return {data:await chessCategoriesDelete(db,teacherId,a.categoryId)};
       }
-      case "ccp_v1_chess_observations_update": {
+      case "ccp_chess_observations_update": {
         const a=args as {observationId:string;observation?:string;categoryId?:string;observedAt?:string};
         return {data:await chessObservationsUpdate(db,teacherId,a.observationId,a)};
       }
-      case "ccp_v1_material_links_unlink_impact": {
+      case "ccp_material_links_unlink_impact": {
         const a=args as {linkId:string};
         return {data:await materialLinksUnlinkImpact(db,teacherId,a.linkId)};
       }
-      case "ccp_v1_material_links_unlink": {
+      case "ccp_material_links_unlink": {
         const a=args as Parameters<typeof materialLinksUnlink>[2];
         return {data:await materialLinksUnlink(db,teacherId,a)};
       }
-      case "ccp_v1_material_links_update": {
+      case "ccp_material_links_update": {
         const a=args as Parameters<typeof materialLinksUpdate>[2];
         return {data:await materialLinksUpdate(db,teacherId,a)};
       }
-      case "ccp_v1_chess_categories_list":
+      case "ccp_chess_categories_list":
         return { data: await chessCategoriesList(db,teacherId) };
-      case "ccp_v1_chess_observations_list": {
+      case "ccp_chess_observations_list": {
         const a=args as {studentId:string;sessionId?:string};
         return { data: await chessObservationsList(db,teacherId,a.studentId,a.sessionId) };
       }
-      case "ccp_v1_chess_observations_propose": {
+      case "ccp_chess_observations_propose": {
         const a=args as Parameters<typeof chessObservationsCreate>[2];
         return { data: await chessObservationsCreate(db,teacherId,a,"agent") };
       }
-      case "ccp_v1_materials_history_list": {
+      case "ccp_materials_history_list": {
         const a=args as Parameters<typeof teacherMaterialHistory>[2];
         return {data:await teacherMaterialHistory(db,teacherId,a)};
       }
-      case "ccp_v1_materials_aggregate": {
+      case "ccp_materials_aggregate": {
         return {data:await teacherMaterialAggregate(db,teacherId,args as Parameters<typeof teacherMaterialAggregate>[2])};
       }
-      case "ccp_v1_material_defaults_list": {
+      case "ccp_material_defaults_list": {
         const a=args as Parameters<typeof teacherMaterialDefaultsList>[2];
         return {data:await teacherMaterialDefaultsList(db,teacherId,a)};
       }
-      case "ccp_v1_material_default_create": {
+      case "ccp_material_default_create": {
         return {data:await teacherMaterialDefaultCreate(db,teacherId,
           defaultCreateSchema.parse({...args,operation:"default.create"}))};
       }
-      case "ccp_v1_material_default_update": {
+      case "ccp_material_default_update": {
         return {data:await teacherMaterialDefaultUpdate(db,teacherId,
           defaultUpdateSchema.parse({...args,operation:"default.update"}))};
       }
-      case "ccp_v1_material_default_archive": {
+      case "ccp_material_default_archive": {
         return {data:await teacherMaterialDefaultArchive(db,teacherId,
           defaultArchiveSchema.parse({...args,operation:"default.archive"}))};
       }
-      case "ccp_v1_materials_history_record": {
+      case "ccp_materials_history_record": {
         const a=args as Parameters<typeof teacherMaterialRecord>[2];
         return {data:await teacherMaterialRecord(db,teacherId,a)};
       }
-      case "ccp_v1_materials_history_void": {
+      case "ccp_materials_history_void": {
         const a=args as Parameters<typeof teacherMaterialVoid>[2];
         return {data:await teacherMaterialVoid(db,teacherId,a)};
       }
-      case "ccp_v1_material_links_list": {
+      case "ccp_material_links_list": {
         const a=args as Parameters<typeof materialLinksList>[2];
         return {data:await materialLinksList(db,teacherId,a)};
       }
-      case "ccp_v1_material_links_create": {
+      case "ccp_material_links_create": {
         const a=args as Parameters<typeof materialLinksCreate>[2];
         return {data:await materialLinksCreate(db,teacherId,a)};
       }
-      case "ccp_v1_workplaces_enrollments":
+      case "ccp_workplaces_enrollments":
         return {data:await workplacesEnrollments(db,teacherId,(args as {workplaceId:string}).workplaceId)};
-      case "ccp_v1_workplaces_unenroll": {
+      case "ccp_workplaces_unenroll": {
         const a=args as {workplaceId:string;studentId:string};
         return {data:await workplacesUnenroll(db,teacherId,a.workplaceId,a.studentId)};
       }
-      case "ccp_v1_schedule_day_preview":
+      case "ccp_schedule_day_preview":
         return {data:await teacherScheduleDayPreview(db,teacherId,
           args as Parameters<typeof teacherScheduleDayPreview>[2])};
-      case "ccp_v1_students_resolve":
+      case "ccp_students_resolve":
         return {data:await teacherStudentNamesResolve(db,teacherId,
           (args as {names:string[]}).names)};
-      case "ccp_v1_lessons_capture_commit_with_chapter":
+      case "ccp_lessons_capture_commit_with_chapter":
         return {data:await teacherAtomicLessonChapterCommit(db,teacherId,
           args as Parameters<typeof teacherAtomicLessonChapterCommit>[2])};
-      case "ccp_v1_lessons_capture_preview":
+      case "ccp_lessons_capture_preview":
         return {data:await teacherLessonCapturePreview(db,teacherId,
           args as Parameters<typeof teacherLessonCapturePreview>[2])};
-      case "ccp_v1_sessions_ad_hoc_create": {
+      case "ccp_sessions_ad_hoc_create": {
         const a=args as {workplaceId:string;studentIds:string[];title:string;
           startsAt:string;durationMinutes:number;lessonNote:string;idempotencyKey:string};
         return {data:await sessionsAdHocCreate(db,teacherId,{
           ...a,requestId:a.idempotencyKey,
         })};
       }
-      case "ccp_v1_sessions_edit": {
+      case "ccp_sessions_edit": {
         const a=args as {sessionId:string;changes:{title?:string;startsAt?:string;
           durationMinutes?:number;isHomeVisit?:boolean;lessonNote?:string;
           status?:"scheduled"|"completed"|"cancelled"};
@@ -2104,24 +2104,24 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         });
         return {data:updated};
       }
-      case "ccp_v1_sessions_complete": {
+      case "ccp_sessions_complete": {
         return {data:await sessionsComplete(db,teacherId,args as LessonCompletionInput)};
       }
-      case "ccp_v1_sessions_roster_preview": {
+      case "ccp_sessions_roster_preview": {
          const a=args as {sessionId:string};
          return {data:await teacherSessionRosterPreview(db,teacherId,a.sessionId)};
        }
-       case "ccp_v1_sessions_roster_correct": {
+       case "ccp_sessions_roster_correct": {
          const a=args as {sessionId:string;studentIds:string[];
            expectedUpdatedAt:string;idempotencyKey:string;reason:string};
          return {data:await teacherSessionRosterCorrect(db,teacherId,a.sessionId,a)};
        }
-       case "ccp_v1_sessions_roster_revisions_list": {
+       case "ccp_sessions_roster_revisions_list": {
          const a=args as {sessionId:string;includePrivate:boolean;confirmed?:boolean};
          return {data:await teacherSessionRosterAudit(db,teacherId,a.sessionId,
            a.includePrivate&&a.confirmed===true)};
        }
-       case "ccp_v1_sessions_details": {
+       case "ccp_sessions_details": {
         const id=(args as {sessionId:string}).sessionId;
         const {data,error}=await db.from("teaching_sessions")
           .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id,updated_at")
@@ -2130,9 +2130,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         if (!data) return {error:{code:"NOT_FOUND",message:"Lesson not found"}};
         return {data:{...data,participants:await sessionsParticipants(db,teacherId,id)}};
       }
-      case "ccp_v1_workplaces_list":
+      case "ccp_workplaces_list":
         return { data: await workplacesList(db, teacherId) };
-      case "ccp_v1_students_search": {
+      case "ccp_students_search": {
         const a = args as {query:string};
         const result = await teacherStudentsRoster(db,teacherId,{query:a.query,includeArchived:true,limit:100});
         const rows = result.students;
@@ -2144,11 +2144,11 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           candidates:exact.map(row=>({id:row.id,name:row.name}))}};
         return {data:rows.map(safeStudentProfile)};
       }
-      case "ccp_v1_groups_list":
+      case "ccp_groups_list":
         return { data: await groupsList(db, teacherId) };
-      case "ccp_v1_groups_members":
+      case "ccp_groups_members":
         return { data: await groupsMembers(db, teacherId, (args as {groupId:string}).groupId) };
-      case "ccp_v1_sessions_list": {
+      case "ccp_sessions_list": {
         const a = args as {query?:string;workplaceId?:string};
         const sessions = await sessionsList(db, teacherId);
         const filtered = sessions?.filter((s: {title:string;workplace_id:string}) =>
@@ -2171,9 +2171,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const revisionById = new Map((revisions ?? []).map((r: {id:string;updated_at:string}) => [r.id,r.updated_at]));
         return { data: filtered.map((s: {id:string}) => ({ ...s, revision: revisionById.get(s.id) })) };
       }
-      case "ccp_v1_sessions_participants":
+      case "ccp_sessions_participants":
         return { data: await sessionsParticipants(db, teacherId, (args as {sessionId:string}).sessionId) };
-      case "ccp_v1_attendance_preview": {
+      case "ccp_attendance_preview": {
         const sid = (args as {sessionId:string}).sessionId;
         const [roster, register] = await Promise.all([
           sessionsParticipants(db, teacherId, sid),
@@ -2182,17 +2182,17 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return { data: { sessionId: sid, participants: roster, attendance: register,
           requiresConfirmation: true, bulkCommitAvailable: true } };
       }
-      case "ccp_v1_attendance_record": {
+      case "ccp_attendance_record": {
         const a=args as {sessionId:string;studentId:string;status:string;note:string;
           expectedUpdatedAt:string|null;idempotencyKey:string};
         return {data:await attendanceRecord(db,teacherId,{
           ...a,requestId:a.idempotencyKey,
         })};
       }
-      case "ccp_v1_attendance_bulk_record":
+      case "ccp_attendance_bulk_record":
         return {data:await attendanceBulkRecord(db,teacherId,
           args as import("@/lib/lesson-completion").AttendanceBulkRecordInput)};
-      case "ccp_v1_sessions_note_update": {
+      case "ccp_sessions_note_update": {
         const a=args as {sessionId:string;lessonNote:string;expectedUpdatedAt:string;idempotencyKey:string};
         const updated=await sessionsUpdate(db,teacherId,a.sessionId,{
           lessonNote:a.lessonNote,expectedUpdatedAt:a.expectedUpdatedAt,

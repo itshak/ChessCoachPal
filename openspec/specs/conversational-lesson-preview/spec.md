@@ -4,7 +4,7 @@
 
 ## Requirement: Reusable exact student identity and day lookup SHALL match website and MCP
 
-Website `POST /api/students/resolve` and `ccp_v1_students_resolve` SHALL call the same paginated active learner/alias resolver as lesson preview. They SHALL return stable authorized IDs, explicit missing/duplicate/ambiguous cases and no unrelated guardian contacts. Website `POST /api/coaching/lesson-capture/day` and `ccp_v1_schedule_day_preview` SHALL use the same read-only canonical recurring-slot + enrollment + IANA date + occupied-interval service.
+Website `POST /api/students/resolve` and `ccp_students_resolve` SHALL call the same paginated active learner/alias resolver as lesson preview. They SHALL return stable authorized IDs, explicit missing/duplicate/ambiguous cases and no unrelated guardian contacts. Website `POST /api/coaching/lesson-capture/day` and `ccp_schedule_day_preview` SHALL use the same read-only canonical recurring-slot + enrollment + IANA date + occupied-interval service.
 
 ### Scenario: Agent resolves student names before scheduling
 
@@ -56,7 +56,7 @@ The preview SHALL require **either** (a) an absolute start instant with an offse
 
 ## Requirement: Session creation SHALL require a reviewed, idempotent operation
 
-The browser SHALL require an affirmative checkbox after preview; a delegated agent SHALL call the existing confirmed `ccp_v1_sessions_ad_hoc_create` tool using the exact stable IDs and a request UUID. Both SHALL use the existing `ccp_teacher_ad_hoc_session_create` SQL transaction, which revalidates teacher ownership, active enrollment, duplicates, schedule overlap and request replay. Teacher time SHALL be recorded once. All participants start with **unmarked** attendance; comprehension, material mastery and verified notes SHALL NOT be inferred.
+The browser SHALL require an affirmative checkbox after preview; a delegated agent SHALL call the existing confirmed `ccp_sessions_ad_hoc_create` tool using the exact stable IDs and a request UUID. Both SHALL use the existing `ccp_teacher_ad_hoc_session_create` SQL transaction, which revalidates teacher ownership, active enrollment, duplicates, schedule overlap and request replay. Teacher time SHALL be recorded once. All participants start with **unmarked** attendance; comprehension, material mastery and verified notes SHALL NOT be inferred.
 
 ### Scenario: Cross-interface retry
 
@@ -93,7 +93,7 @@ A selected chapter SHALL include its actual provider study/chapter IDs, title, v
 
 ## Requirement: Website and MCP SHALL have independently tested behavioral parity
 
-The authenticated website `POST /api/coaching/lesson-capture/preview` and delegated `ccp_v1_lessons_capture_preview` (`coach:read`, read-only) SHALL return identical business outputs and invoke the same owner-scoped service. A confirmed write remains separate (`coach:write`) through existing canonical session tools. The route, MCP tool, coaching-page component and independent cross-interface E2E evidence SHALL be registered and enforced by the strict parity check.
+The authenticated website `POST /api/coaching/lesson-capture/preview` and delegated `ccp_lessons_capture_preview` (`coach:read`, read-only) SHALL return identical business outputs and invoke the same owner-scoped service. A confirmed write remains separate (`coach:write`) through existing canonical session tools. The route, MCP tool, coaching-page component and independent cross-interface E2E evidence SHALL be registered and enforced by the strict parity check.
 
 ### Scenario: Acceptance
 

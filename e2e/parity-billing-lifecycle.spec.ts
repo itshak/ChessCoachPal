@@ -50,13 +50,13 @@ test("PARITY:PARITY-billing-invoice-read-list mirrors owned totals and masks fam
  const website=await siteInvoice(page,seeded.id);
  expect(website.id).toBe(seeded.id);
  expect(website.subtotal_cents).toBe(16500);
- const detail=await call("ccp_v1_billing_invoice_detail",{invoiceId:seeded.id});
+ const detail=await call("ccp_billing_invoice_detail",{invoiceId:seeded.id});
  expect(detail.error).toBeUndefined();
  expect(detail.data.id).toBe(website.id);
  expect(detail.data.subtotal_cents).toBe(website.subtotal_cents);
  expect(detail.data.guardians.portal_token).toBeUndefined();
  expect(detail.data.guardians.email).toBeUndefined();
- const list=await call("ccp_v1_billing_invoices_list",{status:"sent",limit:100,offset:0});
+ const list=await call("ccp_billing_invoices_list",{status:"sent",limit:100,offset:0});
  expect(list.error).toBeUndefined();
  expect(list.data.invoices.some((x:{id:string;subtotal_cents:number})=>
    x.id===seeded.id&&x.subtotal_cents===16500)).toBe(true);
@@ -66,13 +66,13 @@ test("PARITY:PARITY-billing-manual-payment record reverse and replay match websi
  const call=await delegatedTool(page,request);
  const seeded=await invoice("sent",12000);
  const idempotencyKey=randomUUID();
- const first=await call("ccp_v1_billing_manual_payment_record",{
+ const first=await call("ccp_billing_manual_payment_record",{
    invoiceId:seeded.id,amountCents:3000,note:"Cash collected",
    idempotencyKey,confirmed:true,
  });
  expect(first.error).toBeUndefined();
  expect(first.data.amountCents).toBe(3000);
- const replay=await call("ccp_v1_billing_manual_payment_record",{
+ const replay=await call("ccp_billing_manual_payment_record",{
    invoiceId:seeded.id,amountCents:3000,note:"Cash collected",
    idempotencyKey,confirmed:true,
  });
@@ -85,11 +85,11 @@ test("PARITY:PARITY-billing-manual-payment record reverse and replay match websi
    data:{amountCents:2500,note:"Second check"},
  });
  expect(viaBrowser.status(),await viaBrowser.text()).toBe(200);
- const detail=await call("ccp_v1_billing_invoice_detail",{invoiceId:seeded.id});
+ const detail=await call("ccp_billing_invoice_detail",{invoiceId:seeded.id});
  expect(detail.error).toBeUndefined();
  expect(detail.data.payments.some((x:{amount_cents:number})=>x.amount_cents===2500))
    .toBe(true);
- const reversed=await call("ccp_v1_billing_manual_payment_delete",{
+ const reversed=await call("ccp_billing_manual_payment_delete",{
    invoiceId:seeded.id,paymentId:first.data.paymentId,confirmed:true,
  });
  expect(reversed.error).toBeUndefined();
@@ -104,7 +104,7 @@ test("PARITY:PARITY-billing-void-delete refuses silent paid erasure and preserve
  const draft=await invoice("draft",7500);
  const initial=await siteInvoice(page,draft.id);
  expect(initial.status).toBe("draft");
- const voided=await call("ccp_v1_billing_invoice_void",{
+ const voided=await call("ccp_billing_invoice_void",{
    invoiceId:draft.id,confirmed:true,
  });
  expect(voided.error).toBeUndefined();
@@ -112,10 +112,10 @@ test("PARITY:PARITY-billing-void-delete refuses silent paid erasure and preserve
  expect(website.status).toBe("void");
  const websiteDelete=await page.request.delete("/api/billing/invoices/"+draft.id);
  expect(websiteDelete.status(),await websiteDelete.text()).toBe(200);
- const gone=await call("ccp_v1_billing_invoice_detail",{invoiceId:draft.id});
+ const gone=await call("ccp_billing_invoice_detail",{invoiceId:draft.id});
  expect(gone.error?.code).toBe("NOT_FOUND");
  const another=await invoice("draft",8300);
- const deleted=await call("ccp_v1_billing_invoice_delete",{
+ const deleted=await call("ccp_billing_invoice_delete",{
    invoiceId:another.id,confirmed:true,
  });
  expect(deleted.error).toBeUndefined();
@@ -142,7 +142,7 @@ test("PARITY:PARITY-billing-manual-payment-open-checkout-fails-closed in browser
  });
  expect(web.status(),await web.text()).toBe(409);
  expect((await web.json()).error).toContain("Reconnect Stripe");
- const mcp=await call("ccp_v1_billing_manual_payment_record",{
+ const mcp=await call("ccp_billing_manual_payment_record",{
    invoiceId:seeded.id,amountCents:2000,note:"Never record while Stripe link cannot be retired",
    idempotencyKey:randomUUID(),confirmed:true,
  });
@@ -165,7 +165,7 @@ test("PARITY:PARITY-billing-atomic-manual-payment-settlement serializes browser 
  const payload={amountCents:3000,note:"Cash exactly once",idempotencyKey:key};
  const [browser,agent]=await Promise.all([
    page.request.post(url,{data:payload}),
-   call("ccp_v1_billing_manual_payment_record",{
+   call("ccp_billing_manual_payment_record",{
      invoiceId:seeded.id,...payload,confirmed:true,
    }),
  ]);
@@ -185,13 +185,13 @@ test("PARITY:PARITY-billing-atomic-manual-payment-settlement serializes browser 
  }});
  expect(settled.status(),await settled.text()).toBe(200);
  expect((await settled.json()).paid).toBe(true);
- const paid=await call("ccp_v1_billing_invoice_detail",{invoiceId:seeded.id});
+ const paid=await call("ccp_billing_invoice_detail",{invoiceId:seeded.id});
  expect(paid.error).toBeUndefined();
  expect(paid.data.status).toBe("paid");
  expect(paid.data.payments.reduce((sum:number,p:{amount_cents:number})=>
    sum+p.amount_cents,0)).toBe(10000);
 
- const delayedRetry=await call("ccp_v1_billing_manual_payment_record",{
+ const delayedRetry=await call("ccp_billing_manual_payment_record",{
    invoiceId:seeded.id,...payload,confirmed:true,
  });
  expect(delayedRetry.error).toBeUndefined();
@@ -210,7 +210,7 @@ test("PARITY:PARITY-billing-atomic-manual-payment-settlement serializes browser 
 test("PARITY:PARITY-billing-atomic-payment-correction reopens settled invoice from MCP and website",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const seeded=await invoice("sent",5000);
- const paid=await call("ccp_v1_billing_manual_payment_record",{
+ const paid=await call("ccp_billing_manual_payment_record",{
    invoiceId:seeded.id,amountCents:5000,note:"Mistaken paid entry",
    idempotencyKey:randomUUID(),confirmed:true,
  });
@@ -228,7 +228,7 @@ test("PARITY:PARITY-billing-atomic-payment-correction reopens settled invoice fr
  });
  expect(second.status(),await second.text()).toBe(200);
  const secondPayment=(await second.json()).paymentId as string;
- const removed=await call("ccp_v1_billing_manual_payment_delete",{
+ const removed=await call("ccp_billing_manual_payment_delete",{
    invoiceId:seeded.id,paymentId:secondPayment,confirmed:true,
  });
  expect(removed.error).toBeUndefined();
@@ -248,7 +248,7 @@ test("PARITY:PARITY-billing-shared-payment-validation rejects unknown fields in 
     data:{...payload,stripeToken:"must never accept"},
   });
  expect(invalidWeb.status(),await invalidWeb.text()).toBe(400);
- const invalidModel=await call("ccp_v1_billing_manual_payment_record",{
+ const invalidModel=await call("ccp_billing_manual_payment_record",{
    invoiceId:seeded.id,...payload,stripeToken:"must never accept",confirmed:true,
  });
  expect(invalidModel.error?.code).toBe("VALIDATION_ERROR");
@@ -257,7 +257,7 @@ test("PARITY:PARITY-billing-shared-payment-validation rejects unknown fields in 
  const valid=await page.request.post(
   "/api/billing/invoices/"+seeded.id+"/mark-paid",{data:payload});
  expect(valid.status(),await valid.text()).toBe(200);
- const replay=await call("ccp_v1_billing_manual_payment_record",{
+ const replay=await call("ccp_billing_manual_payment_record",{
    invoiceId:seeded.id,...payload,confirmed:true,
  });
  expect(replay.error).toBeUndefined();
@@ -304,14 +304,14 @@ test("PARITY:PARITY-billing-manual-payment-foreign-tenant-denial blocks website 
    data:{amountCents:500,idempotencyKey:randomUUID()},
   });
   expect(webRecord.status()).toBe(404);
-  const modelRecord=await call("ccp_v1_billing_manual_payment_record",{
+  const modelRecord=await call("ccp_billing_manual_payment_record",{
    invoiceId,amountCents:500,idempotencyKey:randomUUID(),confirmed:true,
   });
   expect(modelRecord.error?.code).toBe("NOT_FOUND");
   const webDelete=await page.request.delete(
    "/api/billing/invoices/"+invoiceId+"/payments/"+paymentId);
   expect(webDelete.status()).toBe(404);
-  const modelDelete=await call("ccp_v1_billing_manual_payment_delete",{
+  const modelDelete=await call("ccp_billing_manual_payment_delete",{
    invoiceId,paymentId,confirmed:true,
   });
   expect(modelDelete.error?.code).toBe("NOT_FOUND");
@@ -327,7 +327,7 @@ test("PARITY:PARITY-billing-manual-payment-foreign-tenant-denial blocks website 
 test("PARITY:PARITY-billing-manual-payment-reverse-race leaves one ordered ledger correction across website and MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const seeded=await invoice("sent",7700);
- const record=await call("ccp_v1_billing_manual_payment_record",{
+ const record=await call("ccp_billing_manual_payment_record",{
   invoiceId:seeded.id,amountCents:7700,note:"Duplicate coaching receipt",
   idempotencyKey:randomUUID(),confirmed:true,
  });
@@ -335,7 +335,7 @@ test("PARITY:PARITY-billing-manual-payment-reverse-race leaves one ordered ledge
  const paymentId=record.data.paymentId as string;
  const [website,mcp]=await Promise.all([
   page.request.delete("/api/billing/invoices/"+seeded.id+"/payments/"+paymentId),
-  call("ccp_v1_billing_manual_payment_delete",{
+  call("ccp_billing_manual_payment_delete",{
    invoiceId:seeded.id,paymentId,confirmed:true,
   }),
  ]);
@@ -347,7 +347,7 @@ test("PARITY:PARITY-billing-manual-payment-reverse-race leaves one ordered ledge
  const final=await siteInvoice(page,seeded.id);
  expect(final.status).toBe("sent");
  expect(final.payments.some((p:{id:string})=>p.id===paymentId)).toBe(false);
- const after=await call("ccp_v1_billing_invoice_detail",{invoiceId:seeded.id});
+ const after=await call("ccp_billing_invoice_detail",{invoiceId:seeded.id});
  expect(after.error).toBeUndefined();
  expect(after.data.status).toBe("sent");
  expect(after.data.payments).toHaveLength(0);
@@ -361,7 +361,7 @@ test("PARITY:PARITY-billing-invoice-void-atomic-replay serializes browser and MC
   page.request.post("/api/billing/invoices/"+seeded.id+"/void",{
    data:{idempotencyKey:key},
   }),
-  call("ccp_v1_billing_invoice_void",{
+  call("ccp_billing_invoice_void",{
    invoiceId:seeded.id,idempotencyKey:key,confirmed:true,
   }),
  ]);
@@ -374,7 +374,7 @@ test("PARITY:PARITY-billing-invoice-void-atomic-replay serializes browser and MC
  expect(Number(browserReceipt.replayed)+Number(model.data.replayed)).toBe(1);
  expect((await siteInvoice(page,seeded.id)).status).toBe("void");
  const other=await invoice("draft",4500);
- const reused=await call("ccp_v1_billing_invoice_void",{
+ const reused=await call("ccp_billing_invoice_void",{
   invoiceId:other.id,idempotencyKey:key,confirmed:true,
  });
  expect(reused.error?.code).toBe("IDEMPOTENCY_CONFLICT");
@@ -384,7 +384,7 @@ test("PARITY:PARITY-billing-invoice-void-atomic-replay serializes browser and MC
    idempotencyKey:randomUUID(),forcePaid:true,
   }});
  expect(invalidWeb.status(),await invalidWeb.text()).toBe(400);
- const invalidModel=await call("ccp_v1_billing_invoice_void",{
+ const invalidModel=await call("ccp_billing_invoice_void",{
   invoiceId:other.id,idempotencyKey:randomUUID(),forcePaid:true,confirmed:true,
  });
  expect(invalidModel.error?.code).toBe("VALIDATION_ERROR");
@@ -403,7 +403,7 @@ test("PARITY:PARITY-billing-invoice-void-financial-guards refuse paid value and 
    idempotencyKey:randomUUID(),
   }});
  expect(denyWebsite.status(),await denyWebsite.text()).toBe(409);
- const denyMcp=await call("ccp_v1_billing_invoice_void",{
+ const denyMcp=await call("ccp_billing_invoice_void",{
   invoiceId:cash.id,idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(denyMcp.error?.code).toBe("CONFLICT");
@@ -413,7 +413,7 @@ test("PARITY:PARITY-billing-invoice-void-financial-guards refuse paid value and 
   stripe_checkout_session_id:"cs_test_"+randomUUID().replaceAll("-",""),
  }).eq("id",checkout.id);
  expect(update.error).toBeNull();
- const denyCheckout=await call("ccp_v1_billing_invoice_void",{
+ const denyCheckout=await call("ccp_billing_invoice_void",{
   invoiceId:checkout.id,idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(denyCheckout.error?.code).toBe("CONFLICT");
@@ -440,7 +440,7 @@ test("PARITY:PARITY-billing-invoice-void-credit-guard refuses to orphan issued p
   data:{idempotencyKey:randomUUID()},
  });
  expect(website.status(),await website.text()).toBe(409);
- const mcp=await call("ccp_v1_billing_invoice_void",{
+ const mcp=await call("ccp_billing_invoice_void",{
   invoiceId:seeded.id,idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(mcp.error?.code).toBe("CREDITS_EXIST");
@@ -476,7 +476,7 @@ test("PARITY:PARITY-billing-regenerate-checkout-reconciliation blocks stale paym
  );
  expect(browser.status(),await browser.text()).toBe(409);
  expect((await browser.json()).error).toContain("Reconcile");
- const model=await call("ccp_v1_billing_invoice_regenerate",{
+ const model=await call("ccp_billing_invoice_regenerate",{
    invoiceId:seeded.id,confirmed:true,
  });
  expect(model.error?.code).toBe("CONFLICT");
@@ -520,7 +520,7 @@ test("PARITY:PARITY-billing-draft-partial-payment stays private and reopens to d
  const url="/api/billing/invoices/"+created.id;
  const [browser,model]=await Promise.all([
   page.request.post(url+"/mark-paid",{data}),
-  call("ccp_v1_billing_manual_payment_record",{invoiceId:created.id,...data,confirmed:true}),
+  call("ccp_billing_manual_payment_record",{invoiceId:created.id,...data,confirmed:true}),
  ]);
  expect(browser.status(),await browser.text()).toBe(200);
  expect(model.error).toBeUndefined();
@@ -539,13 +539,13 @@ test("PARITY:PARITY-billing-draft-partial-payment stays private and reopens to d
  expect((await siteInvoice(page,created.id)).subtotal_cents).toBe(9000);
  const deletion=await page.request.delete(url);
  expect(deletion.status(),await deletion.text()).toBe(409);
- const mcpDelete=await call("ccp_v1_billing_invoice_delete",{
+ const mcpDelete=await call("ccp_billing_invoice_delete",{
   invoiceId:created.id,confirmed:true,
  });
  expect(mcpDelete.error?.code).toBe("CONFLICT");
  const pdf=await page.request.get(url+"/pdf");
  expect(pdf.status(),await pdf.text()).toBe(200);
- const final=await call("ccp_v1_billing_manual_payment_record",{
+ const final=await call("ccp_billing_manual_payment_record",{
   invoiceId:created.id,amountCents:5800,note:"Remaining cash",
   idempotencyKey:randomUUID(),confirmed:true,
  });
@@ -588,7 +588,7 @@ test("PARITY:PARITY-billing-regenerate-draft-with-payments protects the received
  expect(after.status).toBe("draft");
  expect(after.subtotal_cents).toBe(6500);
  expect(after.invoice_items).toHaveLength(1);
- const mcp=await call("ccp_v1_billing_invoice_detail",{invoiceId:created.id});
+ const mcp=await call("ccp_billing_invoice_detail",{invoiceId:created.id});
  expect(mcp.error).toBeUndefined();
  expect(mcp.data.status).toBe("draft");
  expect(mcp.data.subtotal_cents).toBe(6500);
@@ -603,7 +603,7 @@ test("PARITY:PARITY-billing-send-claim rejects stale payment snapshots before em
  });
  expect(item.error).toBeNull();
  const before=await siteInvoice(page,created.id);
- const deposit=await call("ccp_v1_billing_manual_payment_record",{
+ const deposit=await call("ccp_billing_manual_payment_record",{
   invoiceId:created.id,amountCents:1800,note:"Already collected",
   idempotencyKey:randomUUID(),confirmed:true,
  });
@@ -624,7 +624,7 @@ test("PARITY:PARITY-billing-send-claim rejects stale payment snapshots before em
  expect(current.payments).toHaveLength(1);
  const hidden=await page.request.get("/portal/"+created.portalToken);
  expect(await hidden.text()).toContain("No invoices yet.");
- const preview=await call("ccp_v1_billing_invoice_send_preview",{invoiceId:created.id});
+ const preview=await call("ccp_billing_invoice_send_preview",{invoiceId:created.id});
  expect(preview.error).toBeUndefined();
  expect(preview.data.balanceCents).toBe(5200);
 });
@@ -648,7 +648,7 @@ test("PARITY:PARITY-billing-paid-before-send remains private until deliberate de
  expect(before.sent_at).toBeNull();
  const portalBefore=await page.request.get("/portal/"+created.portalToken);
  expect(await portalBefore.text()).toContain("No invoices yet.");
- const preview=await call("ccp_v1_billing_invoice_send_preview",{
+ const preview=await call("ccp_billing_invoice_send_preview",{
   invoiceId:created.id,confirmed:true,
  });
  expect(preview.error).toBeUndefined();
@@ -661,7 +661,7 @@ test("PARITY:PARITY-billing-paid-before-send remains private until deliberate de
  expect(delivered.sent_at).not.toBeNull();
  const portalAfter=await page.request.get("/portal/"+created.portalToken);
  expect(await portalAfter.text()).not.toContain("No invoices yet.");
- const duplicate=await call("ccp_v1_billing_invoice_send",{
+ const duplicate=await call("ccp_billing_invoice_send",{
   invoiceId:created.id,confirmed:true,confirmedEmail:true,
  });
  expect(duplicate.error?.code).toBe("CONFLICT");

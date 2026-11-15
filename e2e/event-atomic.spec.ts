@@ -44,13 +44,13 @@ test("event creation rolls back the master record when late roster update fails"
 });
 test("PARITY:PARITY-events-transaction-roundtrip preserves RSVP roster across website/MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const made=await call("ccp_v1_students_create",{
+ const made=await call("ccp_students_create",{
    name:"Atomic event pupil "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(made.error).toBeUndefined();
  const studentId=made.data.entityId as string;
  const title="Atomic workshop "+randomUUID();
- const created=await call("ccp_v1_events_create",{
+ const created=await call("ccp_events_create",{
    title,startsAt:"2027-05-01T10:00:00+03:00",
    studentIds:[studentId],confirmed:true,
  });
@@ -66,13 +66,13 @@ test("PARITY:PARITY-events-transaction-roundtrip preserves RSVP roster across we
    repertoireByStudent:{[studentId]:"Coach reviewed rook endgame"},
  }});
  expect(webRepertoire.status(),await webRepertoire.text()).toBe(200);
- const afterWeb=await call("ccp_v1_events_detail",{eventId:id});
+ const afterWeb=await call("ccp_events_detail",{eventId:id});
  expect(afterWeb.error).toBeUndefined();
  expect(afterWeb.data.event.students).toMatchObject([{
    studentId,repertoire:"Coach reviewed rook endgame",
  }]);
  // MCP can then correct that same field without sending studentIds.
- const modelRepertoire=await call("ccp_v1_events_update",{
+ const modelRepertoire=await call("ccp_events_update",{
    eventId:id,repertoireByStudent:{[studentId]:"Knight forks reviewed"},
    confirmed:true,
  });
@@ -87,20 +87,20 @@ test("PARITY:PARITY-events-transaction-roundtrip preserves RSVP roster across we
    studentIds:[studentId],title:title+" preserved",
  }});
  expect(preserve.status(),await preserve.text()).toBe(200);
- const preserved=await call("ccp_v1_events_detail",{eventId:id});
+ const preserved=await call("ccp_events_detail",{eventId:id});
  expect(preserved.data.event.students[0].repertoire).toBe("Knight forks reviewed");
  // An unknown student ID must reject atomically, not silently discard notes.
  const unknown=await page.request.put("/api/events/"+id,{data:{
    repertoireByStudent:{[randomUUID()]:"Must not be recorded"},
  }});
  expect(unknown.status(),await unknown.text()).toBe(400);
- const unchanged=await call("ccp_v1_events_detail",{eventId:id});
+ const unchanged=await call("ccp_events_detail",{eventId:id});
  expect(unchanged.data.event.students[0].repertoire).toBe("Knight forks reviewed");
  const edited=await page.request.put("/api/events/"+id,{data:{
    title:title+" reviewed",studentIds:[],
  }});
  expect(edited.status(),await edited.text()).toBe(200);
- const model=await call("ccp_v1_events_detail",{eventId:id});
+ const model=await call("ccp_events_detail",{eventId:id});
  expect(model.error).toBeUndefined();
  expect(model.data.event.title).toBe(title+" reviewed");
  expect(model.data.event.students).toEqual([]);
@@ -112,7 +112,7 @@ test("PARITY:PARITY-event-cross-client-idempotency rejects conflicting retries a
  const key=randomUUID();
  const title="One event per reviewed request "+randomUUID();
  const start="2027-10-09T14:00:00+03:00";
- const created=await call("ccp_v1_events_create",{
+ const created=await call("ccp_events_create",{
    title,startsAt:start,idempotencyKey:key,confirmed:true,
  });
  expect(created.error).toBeUndefined();
@@ -139,14 +139,14 @@ test("PARITY:PARITY-event-cross-client-idempotency rejects conflicting retries a
    location:"Reviewed club venue",idempotencyKey:updateKey,
  }});
  expect(browserUpdate.status(),await browserUpdate.text()).toBe(200);
- const modelRetry=await call("ccp_v1_events_update",{
+ const modelRetry=await call("ccp_events_update",{
    eventId:id,location:"Reviewed club venue",idempotencyKey:updateKey,
    confirmed:true,
  });
  expect(modelRetry.error).toBeUndefined();
  const after=(await (await page.request.get("/api/events/"+id)).json()).event;
  expect(after.location).toBe("Reviewed club venue");
- const updateConflict=await call("ccp_v1_events_update",{
+ const updateConflict=await call("ccp_events_update",{
    eventId:id,location:"Different venue",idempotencyKey:updateKey,
    confirmed:true,
  });
@@ -164,7 +164,7 @@ test("PARITY:PARITY-event-shared-field-validation rejects unknown fields and mal
    title,startsAt:date,secretUnexpected:"cannot mutate",
  }});
  expect(unknownWeb.status(),await unknownWeb.text()).toBe(400);
- const unknownMcp=await call("ccp_v1_events_create",{
+ const unknownMcp=await call("ccp_events_create",{
    title,startsAt:date,secretUnexpected:"cannot mutate",confirmed:true,
  });
  expect(unknownMcp.error?.code).toBe("VALIDATION_ERROR");
@@ -172,7 +172,7 @@ test("PARITY:PARITY-event-shared-field-validation rejects unknown fields and mal
    title,startsAt:"not-a-date",
  }});
  expect(invalidWeb.status(),await invalidWeb.text()).toBe(400);
- const invalidMcp=await call("ccp_v1_events_create",{
+ const invalidMcp=await call("ccp_events_create",{
    title,startsAt:"not-a-date",confirmed:true,
  });
  expect(invalidMcp.error?.code).toBe("VALIDATION_ERROR");
@@ -185,7 +185,7 @@ test("PARITY:PARITY-event-shared-field-validation rejects unknown fields and mal
    location:"Cannot write",invalidDomainField:"ignored previously",
  }});
  expect(invalidEdit.status(),await invalidEdit.text()).toBe(400);
- const mcpInvalidEdit=await call("ccp_v1_events_update",{
+ const mcpInvalidEdit=await call("ccp_events_update",{
    eventId,location:"Cannot write",invalidDomainField:"ignored previously",confirmed:true,
  });
  expect(mcpInvalidEdit.error?.code).toBe("VALIDATION_ERROR");

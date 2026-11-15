@@ -72,8 +72,8 @@ Inside Codex use /mcp to verify tools; follow its consent flow and never paste a
 ## 5. Required behavior per actual ChatGPT and Claude
 
 1. **Read first:** List your fictional workplaces/students/sessions, verify stable IDs, and verify the connected teacher cannot see a second synthetic teacher's records.
-2. **Create:** Explicitly approve one synthetic student creation (e.g. a fictional name) using `ccp_v1_students_create` with a fresh UUID idempotency key. Check the receipt and the website.
-3. **Revision-checked edit:** Read the latest record revision, then explicitly approve `ccp_v1_students_update` using the exact student ID, expectedUpdatedAt, and a new UUID idempotency key. Verify stale changes are rejected.
+2. **Create:** Explicitly approve one synthetic student creation (e.g. a fictional name) using `ccp_students_create` with a fresh UUID idempotency key. Check the receipt and the website.
+3. **Revision-checked edit:** Read the latest record revision, then explicitly approve `ccp_students_update` using the exact student ID, expectedUpdatedAt, and a new UUID idempotency key. Verify stale changes are rejected.
 4. **Attendance/lesson:** Prepare one fictional lesson, preview its frozen roster, and approve one student's attendance or a shared lesson note update. No bulk mutation.
 5. **Website correction:** Modify the same record via the /coaching website; refresh and read back in the AI client to verify a single shared source of truth.
 6. **Revoke:** In /ai-connections on the website, revoke the client's grant. Repeat a read with the old connection; it must no longer access any data.

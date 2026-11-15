@@ -6,12 +6,12 @@ type Tool=(name:string,args:Record<string,unknown>)=>Promise<{
  data?:any;error?:{code:string;message:string};
 }>;
 async function setup(call:Tool,page:Page){
- const pupil=await call("ccp_v1_students_create",{
+ const pupil=await call("ccp_students_create",{
    name:"RSVP learner "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(pupil.error).toBeUndefined();
  const studentId=pupil.data.entityId as string;
- const family=await call("ccp_v1_guardians_create",{
+ const family=await call("ccp_guardians_create",{
    name:"Guardian "+randomUUID(),studentIds:[studentId],confirmed:true,
  });
  expect(family.error).toBeUndefined();
@@ -21,7 +21,7 @@ async function setup(call:Tool,page:Page){
  const token=(await browser.json()).portal_token as string;
  expect(token).toBeTruthy();
  const title="Coach tournament "+randomUUID();
- const made=await call("ccp_v1_events_create",{
+ const made=await call("ccp_events_create",{
    title,startsAt:"2043-02-20T09:00:00+02:00",
    endsAt:"2043-02-20T11:00:00+02:00",studentIds:[studentId],confirmed:true,
  });
@@ -39,7 +39,7 @@ test("PARITY:PARITY-events-lifecycle-rsvp reads, edits and removes owned events 
  expect(webList.status(),await webList.text()).toBe(200);
  expect((await webList.json()).events.some((x:{id:string})=>x.id===record.eventId))
    .toBe(true);
- const list=await call("ccp_v1_events_list",{});
+ const list=await call("ccp_events_list",{});
  expect(list.error).toBeUndefined();
  expect(list.data.events.some((x:{id:string})=>x.id===record.eventId)).toBe(true);
  const accepted=await page.request.post(rsvp(record.token,record.eventId),{
@@ -51,7 +51,7 @@ test("PARITY:PARITY-events-lifecycle-rsvp reads, edits and removes owned events 
  const event=(await browser.json()).event;
  expect(event.rsvps.find((x:{guardianId:string})=>
    x.guardianId===record.guardianId)?.status).toBe("yes");
- const fromMcp=await call("ccp_v1_events_detail",{
+ const fromMcp=await call("ccp_events_detail",{
    eventId:record.eventId,includeRsvps:true,confirmed:true,
  });
  expect(fromMcp.error).toBeUndefined();
@@ -60,19 +60,19 @@ test("PARITY:PARITY-events-lifecycle-rsvp reads, edits and removes owned events 
    data:{location:"Chess center",description:"Individual Swiss rounds"},
  });
  expect(websiteEdit.status(),await websiteEdit.text()).toBe(200);
- expect((await call("ccp_v1_events_detail",{eventId:record.eventId}))
+ expect((await call("ccp_events_detail",{eventId:record.eventId}))
    .data.event.location).toBe("Chess center");
- const modelEdit=await call("ccp_v1_events_update",{
+ const modelEdit=await call("ccp_events_update",{
    eventId:record.eventId,title:record.title+" revised",confirmed:true,
  });
  expect(modelEdit.error).toBeUndefined();
  const after=await page.request.get("/api/events/"+record.eventId);
  expect((await after.json()).event.title).toBe(record.title+" revised");
- const preview=await call("ccp_v1_events_delete_impact",{eventId:record.eventId});
+ const preview=await call("ccp_events_delete_impact",{eventId:record.eventId});
  expect(preview.error).toBeUndefined();
  expect(preview.data.studentCount).toBe(1);
  expect(preview.data.rsvpCount).toBe(1);
- const deletion=await call("ccp_v1_events_delete",{
+ const deletion=await call("ccp_events_delete",{
    eventId:record.eventId,confirmed:true,
  });
  expect(deletion.error).toBeUndefined();
@@ -82,7 +82,7 @@ test("PARITY:PARITY-events-lifecycle-rsvp reads, edits and removes owned events 
 test("PARITY:PARITY-portal-guardian-rsvp cannot be impersonated by teacher MCP and supports cancellation",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const record=await setup(call,page);
- const other=await call("ccp_v1_guardians_create",{
+ const other=await call("ccp_guardians_create",{
    name:"Uninvited guardian "+randomUUID(),confirmed:true,
  });
  expect(other.error).toBeUndefined();
@@ -93,7 +93,7 @@ test("PARITY:PARITY-portal-guardian-rsvp cannot be impersonated by teacher MCP a
    data:{status:"yes"},
  });
  expect(forbidden.status(),await forbidden.text()).toBe(403);
- const forged=await call("ccp_v1_events_update",{
+ const forged=await call("ccp_events_update",{
    eventId:record.eventId,status:"yes",confirmed:true,
  });
  expect(forged.error?.code).toBe("VALIDATION_ERROR");
@@ -110,10 +110,10 @@ test("PARITY:PARITY-portal-guardian-rsvp cannot be impersonated by teacher MCP a
  const site=(await website.json()).event;
  expect(site.rsvps.find((x:{guardianId:string})=>
    x.guardianId===record.guardianId)?.status).toBe("no");
- const masked=await call("ccp_v1_events_detail",{eventId:record.eventId});
+ const masked=await call("ccp_events_detail",{eventId:record.eventId});
  expect(masked.error).toBeUndefined();
  expect(masked.data.event.rsvps).toEqual([]);
- const confirmed=await call("ccp_v1_events_detail",{
+ const confirmed=await call("ccp_events_detail",{
    eventId:record.eventId,includeRsvps:true,confirmed:true,
  });
  expect(confirmed.error).toBeUndefined();

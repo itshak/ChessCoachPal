@@ -3,7 +3,7 @@ import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
 async function student(call:(name:string,args:Record<string,unknown>)=>Promise<any>){
- const made=await call("ccp_v1_students_create",{
+ const made=await call("ccp_students_create",{
    name:"Chess history pupil "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(made.error).toBeUndefined();
@@ -22,7 +22,7 @@ test("PARITY:PARITY-students-strength-goals-history tracks teacher goals and 1-1
  const profile=await before.json();
  expect(profile.strength).toBe(6);
  expect(profile.chess_goals).toContain("rook endings");
- const viaMcp=await call("ccp_v1_students_profile",{studentId:id});
+ const viaMcp=await call("ccp_students_profile",{studentId:id});
  expect(viaMcp.error).toBeUndefined();
  expect(viaMcp.data.strength).toBe(6);
  expect(viaMcp.data.chess_goals).toBe(profile.chess_goals);
@@ -34,10 +34,10 @@ test("PARITY:PARITY-students-strength-goals-history tracks teacher goals and 1-1
    x.field_name==="strength"&&x.next_value===6)).toBe(true);
  expect(first.entries.some((x:{field_name:string,next_value:unknown})=>
    x.field_name==="chess_goals"&&String(x.next_value).includes("tactical"))).toBe(true);
- const mcpHistory=await call("ccp_v1_students_chess_history",{studentId:id});
+ const mcpHistory=await call("ccp_students_chess_history",{studentId:id});
  expect(mcpHistory.error).toBeUndefined();
  expect(mcpHistory.data).toEqual(first);
- const correction=await call("ccp_v1_students_profile_edit",{
+ const correction=await call("ccp_students_profile_edit",{
    studentId:id,expectedUpdatedAt:profile.updated_at,
    changes:{strength:8,chessGoals:"Plan: calculate knight forks before rook endings"},
    confirmed:true,
@@ -54,7 +54,7 @@ test("PARITY:PARITY-students-strength-goals-history tracks teacher goals and 1-1
  expect(later.entries.some((x:{field_name:string;previous_value:unknown;next_value:unknown})=>
    x.field_name==="strength"&&x.previous_value===6&&x.next_value===8))
    .toBe(true);
- expect((await call("ccp_v1_students_chess_history",{studentId:id})).data).toEqual(later);
+ expect((await call("ccp_students_chess_history",{studentId:id})).data).toEqual(later);
  await page.goto("/students/"+id);
  await expect(page.getByLabel("Teaching goals")).toHaveValue(
    "Plan: calculate knight forks before rook endings");
@@ -79,12 +79,12 @@ test("PARITY:PARITY-students-multicontrol-ratings-history supports named chess p
  expect(profile.chess_ratings).toEqual({
    lichess:{blitz:1610,rapid:1760},chesscom:{blitz:1740,rapid:1840},
  });
- const model=await call("ccp_v1_students_profile",{studentId:id});
+ const model=await call("ccp_students_profile",{studentId:id});
  expect(model.error).toBeUndefined();
  expect(model.data.chess_ratings).toEqual(profile.chess_ratings);
  expect(model.data.lichess_username).toBe("testLichess");
  expect(model.data.chesscom_username).toBe("testChessCom");
- const update=await call("ccp_v1_students_profile_edit",{
+ const update=await call("ccp_students_profile_edit",{
    studentId:id,expectedUpdatedAt:profile.updated_at,
    changes:{chessRatings:{lichess:{rapid:1810}},
      lichessRating:1820},confirmed:true,
@@ -106,7 +106,7 @@ test("PARITY:PARITY-students-multicontrol-ratings-history supports named chess p
  expect(entries.some(e=>e.field_name==="chess_ratings"&&
    e.previous_value?.lichess?.rapid===1760&&
    e.next_value?.lichess?.rapid===1810)).toBe(true);
- const mcpHistory=await call("ccp_v1_students_chess_history",{studentId:id});
+ const mcpHistory=await call("ccp_students_chess_history",{studentId:id});
  expect(mcpHistory.error).toBeUndefined();
  expect(mcpHistory.data.entries).toEqual(entries);
  await page.goto("/students/"+id);
@@ -116,6 +116,6 @@ test("PARITY:PARITY-students-multicontrol-ratings-history supports named chess p
  const siteMissing=await page.request.get(
    "/api/students/"+missingId+"?chessHistory=true");
  expect(siteMissing.status()).toBe(404);
- const toolMissing=await call("ccp_v1_students_chess_history",{studentId:missingId});
+ const toolMissing=await call("ccp_students_chess_history",{studentId:missingId});
  expect(toolMissing.error?.code).toBe("NOT_FOUND");
 });

@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     if (message.method === "initialize") return json(rpc(id, {
       protocolVersion: protocol,
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "ChessCoachPal", version: "0.1.0-pre" },
+      serverInfo: { name: "ChessCoachPal", version: "0.1.2" },
     }));
     if (message.method === "ping") return json(rpc(id, {}));
     if (message.method === "tools/list") return json(rpc(id, { tools:

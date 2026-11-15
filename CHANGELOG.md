@@ -6,6 +6,13 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 _Changes for the next release go here._
 
+## [0.1.2] - 2026-11-15
+
+### Changed
+- Removed the `v1` segment from every published ChessCoachPal MCP tool identifier: `ccp_v1_*` becomes `ccp_*`. No legacy aliases are retained under the pre-1.0 breaking-change policy.
+- Updated the MCP tool catalogue, dispatch, parity inventory, synthetic tests and client documentation to use the single current naming convention. Existing ChatGPT/Claude clients may need a tool refresh or reconnection.
+- The HTTPS `/mcp` endpoint, OAuth scopes and teacher data remain unchanged; no database migration or destructive reset is required.
+
 ## [0.1.1] - 2026-11-15
 
 ### Added

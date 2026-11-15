@@ -20,4 +20,4 @@ A six-field FEN proposal SHALL be checked for structural and static legality wit
 
 ## Website/MCP parity acceptance
 
-Every added teacher route has versioned `ccp_v1_*` tool(s), shared service and independent real delegated browser/MCP acceptance. Exact test file `e2e/parity-conversational-batch.spec.ts` and previous `e2e/parity-lesson-schedule-inference.spec.ts` cover core cases. Parent OpenSpec remains active for study preferences, distributed provider quotas, complete chess-engine SAN move validation, other listed acceptance cases and live ChatGPT/Claude prepublication tests.
+Every added teacher route has versioned `ccp_*` tool(s), shared service and independent real delegated browser/MCP acceptance. Exact test file `e2e/parity-conversational-batch.spec.ts` and previous `e2e/parity-lesson-schedule-inference.spec.ts` cover core cases. Parent OpenSpec remains active for study preferences, distributed provider quotas, complete chess-engine SAN move validation, other listed acceptance cases and live ChatGPT/Claude prepublication tests.

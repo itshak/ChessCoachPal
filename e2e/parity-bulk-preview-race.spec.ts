@@ -41,29 +41,29 @@ test("PARITY:PARITY-bulk-preview-recipient-revision-race requires reviewed fresh
  expect(first.status(),await first.text()).toBe(200);
  const snapshot=await first.json();
  expect(snapshot.results[0].preview.recipients).toEqual([firstEmail]);
- const toolView=await call("ccp_v1_billing_invoices_bulk_preview",{
+ const toolView=await call("ccp_billing_invoices_bulk_preview",{
   ids:[id],includeRecipients:true,confirmed:true,
  });
  expect(toolView.error).toBeUndefined();
  expect(toolView.data).toEqual(snapshot);
- const secretWithoutApproval=await call("ccp_v1_billing_invoices_bulk_preview",{
+ const secretWithoutApproval=await call("ccp_billing_invoices_bulk_preview",{
   ids:[id],includeRecipients:true,
  });
  expect(secretWithoutApproval.error?.code).toBe("VALIDATION_ERROR");
- const anonymousView=await call("ccp_v1_billing_invoices_bulk_preview",{
+ const anonymousView=await call("ccp_billing_invoices_bulk_preview",{
   ids:[id],includeRecipients:false,
  });
  expect(anonymousView.error).toBeUndefined();
  expect(anonymousView.data.previewDigest).toBeNull();
  expect(anonymousView.data.results[0].preview.recipients).toBeUndefined();
- const noReviewedDigest=await call("ccp_v1_billing_invoices_bulk",{
+ const noReviewedDigest=await call("ccp_billing_invoices_bulk",{
   ids:[id],action:"send",confirmed:true,confirmedEmail:true,
   previewDigest:anonymousView.data.previewDigest,
  });
  expect(noReviewedDigest.error?.code).toBe("VALIDATION_ERROR");
  expect((await admin.from("guardians").update({email:finalEmail})
   .eq("id",family.data!.id)).error).toBeNull();
- const stale=await call("ccp_v1_billing_invoices_bulk",{
+ const stale=await call("ccp_billing_invoices_bulk",{
   ids:[id],action:"send",previewDigest:snapshot.previewDigest,
   confirmed:true,confirmedEmail:true,
  });
@@ -72,7 +72,7 @@ test("PARITY:PARITY-bulk-preview-recipient-revision-race requires reviewed fresh
  expect((await afterStale.json()).status).toBe("draft");
  expect(await mailpitMessagesTo(request,firstEmail)).toHaveLength(0);
  expect(await mailpitMessagesTo(request,finalEmail)).toHaveLength(0);
- const fresh=await call("ccp_v1_billing_invoices_bulk_preview",{
+ const fresh=await call("ccp_billing_invoices_bulk_preview",{
   ids:[id],includeRecipients:true,confirmed:true,
  });
  expect(fresh.error).toBeUndefined();
@@ -84,7 +84,7 @@ test("PARITY:PARITY-bulk-preview-recipient-revision-race requires reviewed fresh
    action:"send",ids:[id],confirmedEmail:true,
    previewDigest:fresh.data.previewDigest,
   }}),
-  call("ccp_v1_billing_invoices_bulk",{
+  call("ccp_billing_invoices_bulk",{
    ids:[id],action:"send",previewDigest:fresh.data.previewDigest,
    confirmed:true,confirmedEmail:true,
   }),
@@ -96,7 +96,7 @@ test("PARITY:PARITY-bulk-preview-recipient-revision-race requires reviewed fresh
   timeout:10000,
  }).toBe(1);
  expect(await mailpitMessagesTo(request,firstEmail)).toHaveLength(0);
- const mcpInvoice=await call("ccp_v1_billing_invoice_detail",{invoiceId:id});
+ const mcpInvoice=await call("ccp_billing_invoice_detail",{invoiceId:id});
  expect(mcpInvoice.error).toBeUndefined();
  expect(mcpInvoice.data.status).toBe("sent");
 });

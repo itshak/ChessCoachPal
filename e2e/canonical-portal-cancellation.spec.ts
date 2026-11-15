@@ -6,12 +6,12 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-canonical-portal-atomic-replay guardian cancels one frozen canonical participant, with atomic replay and no teacher impersonation",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
   name:"Guardian canonical cancellation "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const guardian=await call("ccp_v1_guardians_create",{
+ const guardian=await call("ccp_guardians_create",{
   name:"Guardian "+randomUUID(),studentIds:[studentId],confirmed:true,
  });
  expect(guardian.error).toBeUndefined();
@@ -19,16 +19,16 @@ test("PARITY:PARITY-canonical-portal-atomic-replay guardian cancels one frozen c
  expect(guardianDetails.status(),await guardianDetails.text()).toBe(200);
  const portalToken=(await guardianDetails.json()).portal_token as string;
  expect(portalToken.length).toBeGreaterThanOrEqual(32);
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
   name:"Guardian workplace "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await call("ccp_v1_workplaces_enroll",{
+ expect((await call("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
- const created=await call("ccp_v1_sessions_create",{
+ const created=await call("ccp_sessions_create",{
   workplaceId,studentId,title:"Upcoming private lesson",
   startsAt:"2059-07-09T15:00:00Z",durationMinutes:60,
   lessonNote:"",idempotencyKey:randomUUID(),
@@ -67,11 +67,11 @@ test("PARITY:PARITY-canonical-portal-atomic-replay guardian cancels one frozen c
   "/sessions/"+sessionId+"/students/"+studentId+"/cancel",
   {data:{note:"Unauthorized"}});
  expect(unauth.status()).toBe(404);
- const register=await call("ccp_v1_attendance_preview",{sessionId});
+ const register=await call("ccp_attendance_preview",{sessionId});
  expect(register.error).toBeUndefined();
  expect(register.data.attendance.find((r:{student_id:string})=>
   r.student_id===studentId).status).toBe("student_cancelled");
- const details=await call("ccp_v1_sessions_details",{sessionId});
+ const details=await call("ccp_sessions_details",{sessionId});
  expect(details.error).toBeUndefined();
  expect(details.data.status).toBe("scheduled");
 });
@@ -79,12 +79,12 @@ test("PARITY:PARITY-canonical-portal-atomic-replay guardian cancels one frozen c
 
 test("PARITY:PARITY-canonical-portal-marked-and-past-guard denies a guardian overwrite or retroactive cancellation",async({page,request})=>{
  const tool=await delegatedTool(page,request);
- const learner=await tool("ccp_v1_students_create",{
+ const learner=await tool("ccp_students_create",{
   name:"Portal conflict learner "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(learner.error).toBeUndefined();
  const studentId=learner.data.entityId as string;
- const family=await tool("ccp_v1_guardians_create",{
+ const family=await tool("ccp_guardians_create",{
   name:"Portal conflict family "+randomUUID(),studentIds:[studentId],confirmed:true,
  });
  expect(family.error).toBeUndefined();
@@ -92,17 +92,17 @@ test("PARITY:PARITY-canonical-portal-marked-and-past-guard denies a guardian ove
  expect(guardian.status()).toBe(200);
  const token=(await guardian.json()).portal_token as string;
  expect(token.length).toBeGreaterThanOrEqual(32);
- const work=await tool("ccp_v1_workplaces_create",{
+ const work=await tool("ccp_workplaces_create",{
   name:"Portal historical classroom "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(work.error).toBeUndefined();
  const workplaceId=work.data.entityId as string;
- expect((await tool("ccp_v1_workplaces_enroll",{
+ expect((await tool("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
  const create=async (startsAt:string,title:string)=>{
-  const created=await tool("ccp_v1_sessions_create",{
+  const created=await tool("ccp_sessions_create",{
    workplaceId,studentId,startsAt,title,durationMinutes:45,
    lessonNote:"",idempotencyKey:randomUUID(),
   });
@@ -111,7 +111,7 @@ test("PARITY:PARITY-canonical-portal-marked-and-past-guard denies a guardian ove
  };
  const future=await create("2090-06-19T13:00:00Z","Portal locked after teacher marking");
  const past=await create("2020-05-19T13:00:00Z","Past session cannot be cancelled");
- const marked=await tool("ccp_v1_session_attendance_set",{
+ const marked=await tool("ccp_session_attendance_set",{
   sessionId:future,studentId,status:"present",note:"Lesson already marked",
   noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
   idempotencyKey:randomUUID(),notifyFamily:false,confirmed:true,
@@ -127,7 +127,7 @@ test("PARITY:PARITY-canonical-portal-marked-and-past-guard denies a guardian ove
   data:{note:"Too late to cancel"},
  });
  expect(deniedPast.status(),await deniedPast.text()).toBe(400);
- const teacherFuture=await tool("ccp_v1_session_attendance_list",{sessionId:future});
+ const teacherFuture=await tool("ccp_session_attendance_list",{sessionId:future});
  expect(teacherFuture.error).toBeUndefined();
  expect(teacherFuture.data).toHaveLength(1);
  expect(teacherFuture.data[0].status).toBe("present");

@@ -5,22 +5,22 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 test("PARITY:PARITY-reports-shared-determinism gives identical website/MCP totals after corrections",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const day="2042-04-12";
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
    name:"Deterministic reports "+randomUUID(),timezone:"UTC",
    currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
    name:"Report learner "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const enrolled=await call("ccp_v1_workplaces_enroll",{
+ const enrolled=await call("ccp_workplaces_enroll",{
    workplaceId,studentId,idempotencyKey:randomUUID(),
  });
  expect(enrolled.error).toBeUndefined();
- const session=await call("ccp_v1_sessions_create",{
+ const session=await call("ccp_sessions_create",{
    workplaceId,studentId,title:"Endgame interval",
    startsAt:day+"T10:00:00.000Z",durationMinutes:45,
    lessonNote:"Synthetic comparison",idempotencyKey:randomUUID(),
@@ -33,7 +33,7 @@ test("PARITY:PARITY-reports-shared-determinism gives identical website/MCP total
  const websiteBefore=await page.request.get(path);
  expect(websiteBefore.status(),await websiteBefore.text()).toBe(200);
  const before=await websiteBefore.json();
- const mcpBefore=await call("ccp_v1_reports_workplace_summary",{
+ const mcpBefore=await call("ccp_reports_workplace_summary",{
    workplaceId,from:day,to:day,format:"json",
  });
  expect(mcpBefore.error).toBeUndefined();
@@ -48,14 +48,14 @@ test("PARITY:PARITY-reports-shared-determinism gives identical website/MCP total
  const siteAfter=await page.request.get(path);
  expect(siteAfter.status()).toBe(200);
  const corrected=await siteAfter.json();
- const mcpAfter=await call("ccp_v1_reports_workplace_summary",{
+ const mcpAfter=await call("ccp_reports_workplace_summary",{
    workplaceId,from:day,to:day,format:"json",
  });
  expect(mcpAfter.error).toBeUndefined();
  expect(mcpAfter.data).toEqual(corrected);
  expect(corrected.report.attendance.late).toBe(1);
  expect(corrected.report.teachingMinutes).toBe(45);
- const again=await call("ccp_v1_reports_workplace_summary",{
+ const again=await call("ccp_reports_workplace_summary",{
    workplaceId,from:day,to:day,format:"json",
  });
  expect(again.data).toEqual(mcpAfter.data);

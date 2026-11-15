@@ -6,11 +6,11 @@ const at=(base:number)=>new Date(Date.UTC(2048,0,1)+base*86400000).toISOString()
 
 test("PARITY:PARITY-sessions-title-completion shares web and MCP revisioned lesson edits",async({page,request})=>{
   const callTool=await delegatedTool(page,request);
-  const workplace=(await callTool("ccp_v1_workplaces_create",{
+  const workplace=(await callTool("ccp_workplaces_create",{
     name:"Session edit "+randomUUID(),timezone:"UTC",currency:"USD",
     locale:"en",policy:{},idempotencyKey:randomUUID(),
   })).data as {entityId:string};
-  const pupil=(await callTool("ccp_v1_students_create",{
+  const pupil=(await callTool("ccp_students_create",{
     name:"Session edit learner "+randomUUID(),idempotencyKey:randomUUID(),
   })).data as {entityId:string};
   const joined=await page.request.post("/api/agent/v1",{data:{
@@ -24,20 +24,20 @@ test("PARITY:PARITY-sessions-title-completion shares web and MCP revisioned less
   }});
   expect(created.status(),await created.text()).toBe(201);
   const sessionId=(await created.json()).data.id as string;
-  const before=await callTool("ccp_v1_sessions_details",{sessionId});
+  const before=await callTool("ccp_sessions_details",{sessionId});
   expect(before.error).toBeUndefined();
   const key=randomUUID();
-  const mcp=await callTool("ccp_v1_sessions_edit",{
+  const mcp=await callTool("ccp_sessions_edit",{
     sessionId,expectedUpdatedAt:before.data.updated_at,
     idempotencyKey:key,confirmed:true,
     changes:{title:"Revised chess topic",lessonNote:"Teacher confirmed progress"},
   });
   expect(mcp.error).toBeUndefined();
-  const beforeCompletion=await callTool("ccp_v1_sessions_details",{sessionId});
+  const beforeCompletion=await callTool("ccp_sessions_details",{sessionId});
   expect(beforeCompletion.error).toBeUndefined();
-  const roster=await callTool("ccp_v1_attendance_preview",{sessionId});
+  const roster=await callTool("ccp_attendance_preview",{sessionId});
   expect(roster.error).toBeUndefined();
-  const completed=await callTool("ccp_v1_sessions_complete",{
+  const completed=await callTool("ccp_sessions_complete",{
     sessionId,expectedUpdatedAt:beforeCompletion.data.updated_at,
     idempotencyKey:randomUUID(),confirmed:true,
     attendance:roster.data.attendance.map((row:{student_id:string;updated_at:string})=>({
@@ -61,7 +61,7 @@ test("PARITY:PARITY-sessions-title-completion shares web and MCP revisioned less
     lessonNote:"Website corrected progress",
   }});
   expect(browserEdit.status(),await browserEdit.text()).toBe(200);
-  const detail=await callTool("ccp_v1_sessions_details",{sessionId});
+  const detail=await callTool("ccp_sessions_details",{sessionId});
   expect(detail.data).toMatchObject({
     title:"Website title correction",status:"completed",lesson_note:"Website corrected progress",
   });
@@ -69,40 +69,40 @@ test("PARITY:PARITY-sessions-title-completion shares web and MCP revisioned less
 
 test("PARITY:PARITY-sessions-edit-stale-replay denies stale and conflicting signed edits",async({page,request})=>{
   const callTool=await delegatedTool(page,request);
-  const workplace=(await callTool("ccp_v1_workplaces_create",{
+  const workplace=(await callTool("ccp_workplaces_create",{
     name:"Session replay "+randomUUID(),timezone:"UTC",currency:"USD",
     locale:"en",policy:{},idempotencyKey:randomUUID(),
   })).data as {entityId:string};
-  const pupil=(await callTool("ccp_v1_students_create",{
+  const pupil=(await callTool("ccp_students_create",{
     name:"Revision learner "+randomUUID(),idempotencyKey:randomUUID(),
   })).data as {entityId:string};
-  expect((await callTool("ccp_v1_workplaces_enroll",{
+  expect((await callTool("ccp_workplaces_enroll",{
     workplaceId:workplace.entityId,studentId:pupil.entityId,
     idempotencyKey:randomUUID(),
   })).error).toBeUndefined();
-  const lesson=await callTool("ccp_v1_sessions_create",{
+  const lesson=await callTool("ccp_sessions_create",{
     workplaceId:workplace.entityId,studentId:pupil.entityId,
     title:"Replay test",startsAt:at(140),durationMinutes:40,
     lessonNote:"",idempotencyKey:randomUUID(),
   });
   expect(lesson.error).toBeUndefined();
   const sessionId=lesson.data.entityId as string;
-  const before=(await callTool("ccp_v1_sessions_details",{sessionId})).data;
+  const before=(await callTool("ccp_sessions_details",{sessionId})).data;
   const payload={
     sessionId,changes:{title:"Revision-checked title"},
     expectedUpdatedAt:before.updated_at as string,idempotencyKey:randomUUID(),
     confirmed:true,
   };
-  const first=await callTool("ccp_v1_sessions_edit",payload);
+  const first=await callTool("ccp_sessions_edit",payload);
   expect(first.error).toBeUndefined();
-  const replay=await callTool("ccp_v1_sessions_edit",payload);
+  const replay=await callTool("ccp_sessions_edit",payload);
   expect(replay.error).toBeUndefined();
   expect(replay.data).toEqual(first.data);
-  const different=await callTool("ccp_v1_sessions_edit",{
+  const different=await callTool("ccp_sessions_edit",{
     ...payload,changes:{title:"Modified request with old key"},
   });
   expect(different.error?.code).toBe("CONFLICT");
-  const stale=await callTool("ccp_v1_sessions_edit",{
+  const stale=await callTool("ccp_sessions_edit",{
     ...payload,idempotencyKey:randomUUID(),changes:{title:"Stale overwrite"},
   });
   expect(stale.error?.code).toBe("CONFLICT");

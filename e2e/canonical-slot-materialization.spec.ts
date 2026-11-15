@@ -8,7 +8,7 @@ import {planCanonicalOccurrences, type CanonicalSlot}
 
 test("SCHEMA: one canonical session per recurrence identity, no teacher-owned duplicate on replay",async({page,request})=>{
  const tool=await delegatedTool(page,request);
- const learner=await tool("ccp_v1_students_create",{
+ const learner=await tool("ccp_students_create",{
   name:"Canonical slot learner "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(learner.error).toBeUndefined();
@@ -34,7 +34,7 @@ test("SCHEMA: one canonical session per recurrence identity, no teacher-owned du
  const date=new Date(Date.UTC(2080,0,1)+
   (Number.parseInt(randomUUID().slice(0,8),16)%1200)*86400000).toISOString().slice(0,10);
  const day=new Date(date+"T00:00:00.000Z").getUTCDay();
- const enrolled=await tool("ccp_v1_workplaces_enroll",{
+ const enrolled=await tool("ccp_workplaces_enroll",{
   workplaceId:workplaces![0].id,studentId,idempotencyKey:randomUUID(),
  });
  expect(enrolled.error).toBeUndefined();

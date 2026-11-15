@@ -25,7 +25,7 @@ export function canonicalSchemaErrors({
  if(/\bAS[ \t]*\$(?:\r?\n|;)/.test(sql)||/\bEND;[ \t\r\n]*\$;/.test(sql))
    errors.push("SQL function body uses malformed single-dollar delimiter");
  for(const [label,source] of Object.entries({sql,transfer,agent,catalog,studentPage,teacherComponents})){
-   if(/learning_material_legacy_links|ccp_legacy_material_bridge_change|material-legacy-bridge|LegacyMaterialBridge|ccp_v1_material_legacy_bridge_/i.test(source))
+   if(/learning_material_legacy_links|ccp_legacy_material_bridge_change|material-legacy-bridge|LegacyMaterialBridge|ccp_material_legacy_bridge_/i.test(source))
      errors.push(label+": obsolete material compatibility bridge detected");
  }
  if(/DATA_EXPORT_VERSION|(?:^|\n)\s*version:\s*(?:number|[0-9])|raw\.version|backup\.version/i.test(transfer))

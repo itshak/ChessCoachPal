@@ -52,7 +52,7 @@ verifyCoverage("teacher components",allComponents,inventory.teacherComponents);
 const knownKinds = new Set(["teacher","auth","ui","external","system"]);
 const knownParities = new Set(["mcp","partial","gap","browser-only","not-applicable"]);
 const registeredTools = readFileSync(join(root,"lib/server/agent-tools.ts"),"utf8");
-const liveNames = new Set([...registeredTools.matchAll(/\bname\s*:\s*["'](ccp_v1_[a-z0-9_]+)["']/g)].map(m=>m[1]));
+const liveNames = new Set([...registeredTools.matchAll(/\bname\s*:\s*["'](ccp_[a-z0-9_]+)["']/g)].map(m=>m[1]));
 errors.push(...validateLegacyActionCoverage(
   readFileSync(join(root,"app/api/agent/v1/route.ts"),"utf8"), registeredTools));
 const gatewayEvidence=validateGatewayActionE2E(root);

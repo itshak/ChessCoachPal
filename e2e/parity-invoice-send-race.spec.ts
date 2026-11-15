@@ -37,12 +37,12 @@ test("PARITY:PARITY-billing-send-concurrent-claim rejects duplicate website/MCP 
  expect(item.error).toBeNull();
  const previewSite=await page.request.get("/api/billing/invoices/"+invoiceId+"/send");
  expect(previewSite.status(),await previewSite.text()).toBe(200);
- const previewMcp=await call("ccp_v1_billing_invoice_send_preview",{invoiceId});
+ const previewMcp=await call("ccp_billing_invoice_send_preview",{invoiceId});
  expect(previewMcp.error).toBeUndefined();
  expect(previewMcp.data).toEqual(await previewSite.json());
  expect(previewMcp.data.subtotalCents).toBe(12000);
  expect(previewMcp.data.recipientCount).toBe(1);
- const unapproved=await call("ccp_v1_billing_invoice_send",{
+ const unapproved=await call("ccp_billing_invoice_send",{
    invoiceId,confirmed:true,
  });
  expect(unapproved.error?.code).toBe("VALIDATION_ERROR");
@@ -50,7 +50,7 @@ test("PARITY:PARITY-billing-send-concurrent-claim rejects duplicate website/MCP 
  // never sending external mail or touching real family inboxes.
  const [website,mcp]=await Promise.all([
    page.request.post("/api/billing/invoices/"+invoiceId+"/send"),
-   call("ccp_v1_billing_invoice_send",{
+   call("ccp_billing_invoice_send",{
      invoiceId,confirmed:true,confirmedEmail:true,
    }),
  ]);
@@ -71,12 +71,12 @@ test("PARITY:PARITY-billing-send-concurrent-claim rejects duplicate website/MCP 
  const body=await browserDetail.json();
  expect(body.status).toBe("sent");
  expect(body.sent_at).toBeTruthy();
- const model=await call("ccp_v1_billing_invoice_detail",{invoiceId});
+ const model=await call("ccp_billing_invoice_detail",{invoiceId});
  expect(model.error).toBeUndefined();
  expect(model.data.status).toBe("sent");
  const duplicateSite=await page.request.post("/api/billing/invoices/"+invoiceId+"/send");
  expect(duplicateSite.status()).toBe(409);
- const duplicateMcp=await call("ccp_v1_billing_invoice_send",{
+ const duplicateMcp=await call("ccp_billing_invoice_send",{
    invoiceId,confirmed:true,confirmedEmail:true,
  });
  expect(duplicateMcp.error?.code).toBe("CONFLICT");

@@ -45,7 +45,7 @@ test("PARITY:PARITY-billing-send-bulk-reviewed uses previews and at-most-once we
     const browserPreview = await page.request.get(previewPath + "?includeRecipients=true");
     expect(browserPreview.status(), await browserPreview.text()).toBe(200);
     const site = await browserPreview.json();
-    const modelPreview = await call("ccp_v1_billing_invoice_send_preview", {
+    const modelPreview = await call("ccp_billing_invoice_send_preview", {
       invoiceId, includeRecipients: true, confirmed: true,
     });
     expect(modelPreview.error).toBeUndefined();
@@ -58,7 +58,7 @@ test("PARITY:PARITY-billing-send-bulk-reviewed uses previews and at-most-once we
   }
 
   const ids = invoices.map(item => item.id);
-  const denied = await call("ccp_v1_billing_invoices_bulk", {
+  const denied = await call("ccp_billing_invoices_bulk", {
     ids, action: "send", confirmed: true,
   });
   expect(denied.error?.code).toBe("VALIDATION_ERROR");
@@ -78,7 +78,7 @@ test("PARITY:PARITY-billing-send-bulk-reviewed uses previews and at-most-once we
   expect(webRead.ok).toBe(true);
   expect(webRead.readyCount).toBe(2);
   expect(webRead.results[0].preview.recipients).toEqual([invoices[0].email]);
-  const previewModel=await call("ccp_v1_billing_invoices_bulk_preview",{
+  const previewModel=await call("ccp_billing_invoices_bulk_preview",{
     ids:ids.slice(0,2),includeRecipients:true,confirmed:true,
   });
   expect(previewModel.error).toBeUndefined();
@@ -97,12 +97,12 @@ test("PARITY:PARITY-billing-send-bulk-reviewed uses previews and at-most-once we
   expect(webBody).toMatchObject({ok: true, succeeded: 2, failed: []});
   expect(webBody.results.map((x: {id: string}) => x.id)).toEqual(ids.slice(0, 2));
 
-  const mcpPreview=await call("ccp_v1_billing_invoices_bulk_preview",{
+  const mcpPreview=await call("ccp_billing_invoices_bulk_preview",{
     ids:ids.slice(2),includeRecipients:true,confirmed:true,
   });
   expect(mcpPreview.error).toBeUndefined();
   expect(mcpPreview.data.readyCount).toBe(2);
-  const mcp = await call("ccp_v1_billing_invoices_bulk", {
+  const mcp = await call("ccp_billing_invoices_bulk", {
     ids: ids.slice(2), action: "send", confirmed: true, confirmedEmail: true,
     previewDigest:mcpPreview.data.previewDigest,
   });
@@ -119,14 +119,14 @@ test("PARITY:PARITY-billing-send-bulk-reviewed uses previews and at-most-once we
     const detail = await browser.json();
     expect(detail.status).toBe("sent");
     expect(detail.subtotal_cents).toBe(item.cents);
-    const model = await call("ccp_v1_billing_invoice_detail", {invoiceId: item.id});
+    const model = await call("ccp_billing_invoice_detail", {invoiceId: item.id});
     expect(model.error).toBeUndefined();
     expect(model.data.status).toBe(detail.status);
     expect(model.data.subtotal_cents).toBe(item.cents);
   }
 
   // Retrying on the opposite client must not send duplicate mail.
-  const mcpReplay = await call("ccp_v1_billing_invoices_bulk", {
+  const mcpReplay = await call("ccp_billing_invoices_bulk", {
     ids: ids.slice(0, 2), action: "send", confirmed: true, confirmedEmail: true,
     previewDigest:webRead.previewDigest,
   });

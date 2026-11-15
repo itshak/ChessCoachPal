@@ -5,7 +5,7 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 test("PARITY:PARITY-portable-chess-backup-restores-typed-content-homework-goals-and-audit-atomically",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const suffix=randomUUID().slice(0,9);
- const student=(await call("ccp_v1_students_create",{
+ const student=(await call("ccp_students_create",{
    name:"Backup learner "+suffix,idempotencyKey:randomUUID(),
  }));
  expect(student.error).toBeUndefined();
@@ -17,7 +17,7 @@ test("PARITY:PARITY-portable-chess-backup-restores-typed-content-homework-goals-
  const created=await page.request.post("/api/training/materials",{data:materialInput});
  expect(created.status(),await created.text()).toBe(201);
  const materialId=(await created.json()).material.id as string;
- const assigned=await call("ccp_v1_training_assignments_create",{
+ const assigned=await call("ccp_training_assignments_create",{
    studentIds:[studentId],materialId,
    instructions:"Annotate candidate moves",dueOn:null,
    requestId:randomUUID(),confirmed:true,
@@ -26,7 +26,7 @@ test("PARITY:PARITY-portable-chess-backup-restores-typed-content-homework-goals-
  const assignmentId=assigned.data.assignmentIds[0] as string;
  const goal={id:randomUUID(),title:"Explain c-pawn tension",
    status:"planned",targetDate:null,coachEvidence:null};
- const plan=await call("ccp_v1_training_plans_commit",{
+ const plan=await call("ccp_training_plans_commit",{
    studentId,title:"Positional training "+suffix,
    summary:"Coach-owned learning objectives",status:"active",
    goals:[goal],requestId:randomUUID(),confirmed:true,
@@ -62,7 +62,7 @@ test("PARITY:PARITY-portable-chess-backup-restores-typed-content-homework-goals-
    learning_materials:1,chess_games:1,training_assignments:1,
    student_training_plans:1,student_training_plan_revisions:1,
  });
- const mcpPreview=await call("ccp_v1_settings_import_preview",{payload});
+ const mcpPreview=await call("ccp_settings_import_preview",{payload});
  expect(mcpPreview.error).toBeUndefined();
  expect(mcpPreview.data.sha256).toBe(preview.sha256);
  const apply=await page.request.post("/api/settings/import",{
@@ -74,12 +74,12 @@ test("PARITY:PARITY-portable-chess-backup-restores-typed-content-homework-goals-
  expect(accepted.counts.learning_materials).toBe(1);
  expect(accepted.counts.student_training_plan_revisions).toBe(1);
 
- const replay=await call("ccp_v1_settings_import_apply",{
+ const replay=await call("ccp_settings_import_apply",{
    payload,expectedSha256:preview.sha256,confirmed:true,
  });
  expect(replay.error).toBeUndefined();
  expect(replay.data.counts).toEqual(accepted.counts);
- const materialViaMcp=await call("ccp_v1_learning_materials_get",{materialId});
+ const materialViaMcp=await call("ccp_learning_materials_get",{materialId});
  expect(materialViaMcp.error).toBeUndefined();
  expect(materialViaMcp.data.chess_games.pgn).toBe(materialInput.details.pgn);
  const assignedWeb=await page.request.get("/api/training/assignments?"+
@@ -106,13 +106,13 @@ test("PARITY:PARITY-portable-chess-backup-restores-typed-content-homework-goals-
  const badPreview=await page.request.put("/api/settings/import",{data:{payload:invalidPayload}});
  expect(badPreview.status(),await badPreview.text()).toBe(200);
  const digest=(await badPreview.json()).sha256;
- const rejected=await call("ccp_v1_settings_import_apply",{
+ const rejected=await call("ccp_settings_import_apply",{
    payload:invalidPayload,expectedSha256:digest,confirmed:true,
  });
  expect(rejected.error).toBeDefined();
  const materialAfter=await page.request.get("/api/training/materials?id="+materialId);
  expect(materialAfter.status(),await materialAfter.text()).toBe(200);
  expect((await materialAfter.json()).title).toBe(originalTitle);
- const absent=await call("ccp_v1_training_plans_get",{planId:poisonedId});
+ const absent=await call("ccp_training_plans_get",{planId:poisonedId});
  expect(absent.error?.code).toBe("NOT_FOUND");
 });

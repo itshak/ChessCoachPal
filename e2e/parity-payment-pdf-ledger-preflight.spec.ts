@@ -51,9 +51,9 @@ test("PARITY:PARITY-billing-pdf-ledger-checkout-preflight compares real browser 
  });
  expect(payment.error).toBeNull();
 
- const withoutApproval=await call("ccp_v1_billing_invoice_pdf",{invoiceId});
+ const withoutApproval=await call("ccp_billing_invoice_pdf",{invoiceId});
  expect(withoutApproval.error?.code).toBe("VALIDATION_ERROR");
- const pdf=await call("ccp_v1_billing_invoice_pdf",{invoiceId,confirmed:true});
+ const pdf=await call("ccp_billing_invoice_pdf",{invoiceId,confirmed:true});
  expect(pdf.error).toBeUndefined();
  expect(pdf.data.mimeType).toBe("application/pdf");
  const decoded=Buffer.from(pdf.data.base64 as string,"base64");
@@ -67,9 +67,9 @@ test("PARITY:PARITY-billing-pdf-ledger-checkout-preflight compares real browser 
  expect(webBytes.subarray(0,5).toString()).toBe("%PDF-");
  expect(webBytes.length).toBeGreaterThan(500);
 
- const withoutExportApproval=await call("ccp_v1_billing_payments_export",{});
+ const withoutExportApproval=await call("ccp_billing_payments_export",{});
  expect(withoutExportApproval.error?.code).toBe("VALIDATION_ERROR");
- const exportByModel=await call("ccp_v1_billing_payments_export",{confirmed:true});
+ const exportByModel=await call("ccp_billing_payments_export",{confirmed:true});
  expect(exportByModel.error).toBeUndefined();
  const websiteCsv=await page.request.get("/api/billing/export");
  expect(websiteCsv.status(),await websiteCsv.text()).toBe(200);
@@ -82,11 +82,11 @@ test("PARITY:PARITY-billing-pdf-ledger-checkout-preflight compares real browser 
 
  // An unconfirmed AI request cannot start a checkout, regardless of whether
  // the studio happens to have a payment provider configured.
- const unconfirmed=await call("ccp_v1_billing_invoice_checkout",{
+ const unconfirmed=await call("ccp_billing_invoice_checkout",{
    invoiceId,confirmed:true,
  });
  expect(unconfirmed.error?.code).toBe("VALIDATION_ERROR");
- const foreignPdf=await call("ccp_v1_billing_invoice_pdf",{
+ const foreignPdf=await call("ccp_billing_invoice_pdf",{
    invoiceId:randomUUID(),confirmed:true,
  });
  expect(foreignPdf.error?.code).toBe("NOT_FOUND");
@@ -103,7 +103,7 @@ test("PARITY:PARITY-billing-pdf-ledger-checkout-preflight compares real browser 
    expect(await browserCheckout.json()).toMatchObject({
      error:"Stripe is not configured for this studio",
    });
-   const modelCheckout=await call("ccp_v1_billing_invoice_checkout",{
+   const modelCheckout=await call("ccp_billing_invoice_checkout",{
      invoiceId,confirmed:true,confirmedExternal:true,
    });
    expect(modelCheckout.error?.code).toBe("VALIDATION_ERROR");

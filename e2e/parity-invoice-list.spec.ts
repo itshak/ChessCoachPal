@@ -31,7 +31,7 @@ test("PARITY:PARITY-billing-invoice-list-detail reads owned totals and redacts c
  const site=await browser.json() as Record<string,any>;
  expect(site.subtotal_cents).toBe(18750);
  expect(site.currency).toBe("ILS");
- const detail=await call("ccp_v1_billing_invoice_detail",{invoiceId});
+ const detail=await call("ccp_billing_invoice_detail",{invoiceId});
  expect(detail.error).toBeUndefined();
  expect(detail.data).toMatchObject({
    id:invoiceId,status:"sent",currency:"ILS",subtotal_cents:18750,
@@ -40,7 +40,7 @@ test("PARITY:PARITY-billing-invoice-list-detail reads owned totals and redacts c
  expect(detail.data.guardians.portal_token).toBeUndefined();
  expect(detail.data.stripe_checkout_url).toBeUndefined();
  expect(site.guardians.email).toContain("@example.com");
- const list=await call("ccp_v1_billing_invoices_list",{
+ const list=await call("ccp_billing_invoices_list",{
    status:"sent",limit:100,offset:0,
  });
  expect(list.error).toBeUndefined();
@@ -48,7 +48,7 @@ test("PARITY:PARITY-billing-invoice-list-detail reads owned totals and redacts c
    x.id===invoiceId&&x.subtotal_cents===site.subtotal_cents)).toBe(true);
  expect(list.data.invoices.every((x:{email?:string;portal_token?:string})=>
    !x.email&&!x.portal_token)).toBe(true);
- const privateDetail=await call("ccp_v1_billing_invoice_detail",{
+ const privateDetail=await call("ccp_billing_invoice_detail",{
    invoiceId,includePrivate:true,confirmed:true,
  });
  expect(privateDetail.error).toBeUndefined();

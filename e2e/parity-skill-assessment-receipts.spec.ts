@@ -5,19 +5,19 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-skill-assessment-receipts replays one atomic round between real website and MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
    name:"Skill receipt student "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const dimension=await call("ccp_v1_skill_dimensions_create",{
+ const dimension=await call("ccp_skill_dimensions_create",{
    name:"Endgame receipt "+randomUUID(),confirmed:true,
  });
  expect(dimension.error).toBeUndefined();
  const dimensionId=dimension.data.id as string;
  const key=randomUUID();
  const ratings=[{dimensionId,rating:3,note:"Synthetic coach attestation"}];
- const first=await call("ccp_v1_student_skill_assessments_record",{
+ const first=await call("ccp_student_skill_assessments_record",{
    studentId,ratings,idempotencyKey:key,confirmed:true,
  });
  expect(first.error).toBeUndefined();
@@ -31,7 +31,7 @@ test("PARITY:PARITY-skill-assessment-receipts replays one atomic round between r
    page.request.post("/api/students/"+studentId+"/skills",{
      data:{ratings,idempotencyKey:key},
    }),
-   call("ccp_v1_student_skill_assessments_record",{
+   call("ccp_student_skill_assessments_record",{
      studentId,ratings,idempotencyKey:key,confirmed:true,
    }),
  ]);
@@ -43,7 +43,7 @@ test("PARITY:PARITY-skill-assessment-receipts replays one atomic round between r
    data:{ratings:[{...ratings[0],rating:4}],idempotencyKey:key},
  });
  expect(changed.status()).toBe(409);
- const refused=await call("ccp_v1_student_skill_assessments_record",{
+ const refused=await call("ccp_student_skill_assessments_record",{
    studentId,ratings:[{...ratings[0],rating:5}],idempotencyKey:key,confirmed:true,
  });
  expect(refused.error?.code).toBe("CONFLICT");
@@ -57,7 +57,7 @@ test("PARITY:PARITY-skill-assessment-receipts replays one atomic round between r
  expect(values.filter(x=>x.dimension_id===dimensionId)).toHaveLength(1);
  expect(values.find(x=>x.dimension_id===dimensionId)?.id).toBe(first.data[0].id);
  expect(values.find(x=>x.dimension_id===dimensionId)?.rating).toBe(3);
- const mcpHistory=await call("ccp_v1_student_skill_assessments_list",{studentId});
+ const mcpHistory=await call("ccp_student_skill_assessments_list",{studentId});
  expect(mcpHistory.error).toBeUndefined();
  expect(mcpHistory.data).toEqual(values);
 
@@ -65,7 +65,7 @@ test("PARITY:PARITY-skill-assessment-receipts replays one atomic round between r
    data:{ratings:[{dimensionId,rating:4,note:"Later evidence"}],idempotencyKey:randomUUID()},
  });
  expect(second.status(),await second.text()).toBe(200);
- const third=await call("ccp_v1_student_skill_assessments_record",{
+ const third=await call("ccp_student_skill_assessments_record",{
    studentId,ratings:[{dimensionId,rating:5,note:"Third teacher review"}],
    idempotencyKey:randomUUID(),confirmed:true,
  });
@@ -76,25 +76,25 @@ test("PARITY:PARITY-skill-assessment-receipts replays one atomic round between r
  const pageTwo=await page.request.get("/api/students/"+studentId+"/skills?limit=2&offset=1");
  expect(pageTwo.status()).toBe(200);
  expect(await pageTwo.json()).toEqual(complete.slice(1,3));
- const delegatedPage=await call("ccp_v1_student_skill_assessments_list",{
+ const delegatedPage=await call("ccp_student_skill_assessments_list",{
    studentId,limit:2,offset:1,
  });
  expect(delegatedPage.error).toBeUndefined();
  expect(delegatedPage.data).toEqual(complete.slice(1,3));
  expect((await page.request.get("/api/students/"+studentId+"/skills?limit=-1")).status()).toBe(400);
- expect((await call("ccp_v1_student_skill_assessments_list",{
+ expect((await call("ccp_student_skill_assessments_list",{
    studentId,limit:1001,
  })).error?.code).toBe("VALIDATION_ERROR");
 });
 
 test("PARITY:PARITY-skill-assessment-cross-tenant protects student and dimension on website and MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const own=await call("ccp_v1_students_create",{
+ const own=await call("ccp_students_create",{
    name:"Own assessment "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(own.error).toBeUndefined();
  const ownId=own.data.entityId as string;
- const ourDim=await call("ccp_v1_skill_dimensions_create",{
+ const ourDim=await call("ccp_skill_dimensions_create",{
    name:"Our calculation "+randomUUID(),confirmed:true,
  });
  expect(ourDim.error).toBeUndefined();
@@ -123,14 +123,14 @@ test("PARITY:PARITY-skill-assessment-cross-tenant protects student and dimension
    const foreignStudent=student!.id as string;
    const foreignDimension=dim!.id as string;
    expect((await page.request.get("/api/students/"+foreignStudent+"/skills")).status()).toBe(404);
-   expect((await call("ccp_v1_student_skill_assessments_list",{
+   expect((await call("ccp_student_skill_assessments_list",{
      studentId:foreignStudent,
    })).error?.code).toBe("NOT_FOUND");
    const writeForeign=await page.request.post("/api/students/"+foreignStudent+"/skills",{
      data:{ratings:[{dimensionId,rating:2}],idempotencyKey:randomUUID()},
    });
    expect(writeForeign.status()).toBe(404);
-   expect((await call("ccp_v1_student_skill_assessments_record",{
+   expect((await call("ccp_student_skill_assessments_record",{
      studentId:foreignStudent,
      ratings:[{dimensionId,rating:2}],idempotencyKey:randomUUID(),confirmed:true,
    })).error?.code).toBe("NOT_FOUND");
@@ -138,7 +138,7 @@ test("PARITY:PARITY-skill-assessment-cross-tenant protects student and dimension
      data:{ratings:[{dimensionId:foreignDimension,rating:2}],idempotencyKey:randomUUID()},
    });
    expect(injectDimension.status()).toBe(404);
-   expect((await call("ccp_v1_student_skill_assessments_record",{
+   expect((await call("ccp_student_skill_assessments_record",{
      studentId:ownId,
      ratings:[{dimensionId:foreignDimension,rating:2}],idempotencyKey:randomUUID(),confirmed:true,
    })).error?.code).toBe("NOT_FOUND");

@@ -5,21 +5,21 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-canonical-calendar-all-operations-foreign-coach denies calendar, private, recurrence, attendance and notes across both clients",async({page,request,browser})=>{
  const tool=await delegatedTool(page,request);
- const learner=await tool("ccp_v1_students_create",{
+ const learner=await tool("ccp_students_create",{
   name:"Protected tenant lesson "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(learner.error).toBeUndefined();
  const studentId=learner.data.entityId as string;
- const workplace=await tool("ccp_v1_workplaces_create",{
+ const workplace=await tool("ccp_workplaces_create",{
   name:"Private calendar tenancy "+randomUUID(),timezone:"UTC",
   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await tool("ccp_v1_workplaces_enroll",{
+ expect((await tool("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
- const lesson=await tool("ccp_v1_sessions_create",{
+ const lesson=await tool("ccp_sessions_create",{
   workplaceId,studentId,title:"Owner-only private meeting",
   startsAt:"2094-04-20T13:00:00Z",durationMinutes:60,
   lessonNote:"Private teacher agenda",idempotencyKey:randomUUID(),
@@ -69,23 +69,23 @@ test("PARITY:PARITY-canonical-calendar-all-operations-foreign-coach denies calen
    "/api/coaching/calendar/slots?studentId="+studentId);
   expect(webSlots.status(),await webSlots.text()).toBe(200);
   expect(await webSlots.json()).toEqual([]);
-  const modelSlots=await otherTool("ccp_v1_recurring_slots_list",{studentId});
+  const modelSlots=await otherTool("ccp_recurring_slots_list",{studentId});
   expect(modelSlots.error).toBeUndefined();
   expect(modelSlots.data).toEqual([]);
   expect((await otherPage.request.get(
    "/api/coaching/sessions/"+sessionId+"/attendance")).status()).toBe(404);
   expect((await otherPage.request.get(
    "/api/coaching/sessions/"+sessionId+"/notes")).status()).toBe(404);
-  expect((await otherTool("ccp_v1_session_attendance_list",{
+  expect((await otherTool("ccp_session_attendance_list",{
    sessionId,
   })).error?.code).toBe("NOT_FOUND");
-  expect((await otherTool("ccp_v1_session_notes_list",{
+  expect((await otherTool("ccp_session_notes_list",{
    sessionId,includePrivate:false,
   })).error?.code).toBe("NOT_FOUND");
-  expect((await otherTool("ccp_v1_sessions_details",{
+  expect((await otherTool("ccp_sessions_details",{
    sessionId,
   })).error?.code).toBe("NOT_FOUND");
-  const foreignSlot=await otherTool("ccp_v1_recurring_slots_update",{
+  const foreignSlot=await otherTool("ccp_recurring_slots_update",{
    slotId,changes:{startTime:"10:00"},
    expectedUpdatedAt:record.updated_at,idempotencyKey:randomUUID(),confirmed:true,
   });
@@ -98,13 +98,13 @@ test("PARITY:PARITY-canonical-calendar-all-operations-foreign-coach denies calen
   expect(siteSlot.status()).toBe(404);
   const input={studentId,workplaceId,date:"2094-07-20",time:"11:00",
    durationMinutes:45,isHomeVisit:false,idempotencyKey:randomUUID()};
-  expect((await otherTool("ccp_v1_private_sessions_create",{
+  expect((await otherTool("ccp_private_sessions_create",{
    ...input,confirmed:true,
   })).error?.code).toBe("NOT_FOUND");
   const deniedPrivate=await otherPage.request.post(
    "/api/coaching/calendar/private-sessions",{data:input});
   expect(deniedPrivate.status(),await deniedPrivate.text()).toBe(404);
-  const deniedAttendance=await otherTool("ccp_v1_session_attendance_set",{
+  const deniedAttendance=await otherTool("ccp_session_attendance_set",{
    sessionId,studentId,status:"present",note:"",noticeAt:null,cancelReason:"",
    expectedUpdatedAt:null,idempotencyKey:randomUUID(),
    notifyFamily:false,confirmed:true,
@@ -121,7 +121,7 @@ test("PARITY:PARITY-canonical-calendar-all-operations-foreign-coach denies calen
   expect(owner.status()).toBe(200);
   expect((await owner.json()).find((x:{id:string})=>x.id===slotId).start_time)
    .toBe("09:00:00");
-  const notes=await tool("ccp_v1_session_notes_list",{
+  const notes=await tool("ccp_session_notes_list",{
    sessionId,includePrivate:true,confirmed:true,
   });
   expect(notes.error).toBeUndefined();

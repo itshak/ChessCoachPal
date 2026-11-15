@@ -4,11 +4,11 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-families-crud manages linked students and safe deletion through website and MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=(await call("ccp_v1_students_create",{
+ const student=(await call("ccp_students_create",{
    name:"Family pupil "+randomUUID(),idempotencyKey:randomUUID(),
  })).data as {entityId:string};
  expect(student.entityId).toBeTruthy();
- const family=await call("ccp_v1_guardians_create",{
+ const family=await call("ccp_guardians_create",{
    name:"Guardian "+randomUUID(),email:"family-"+randomUUID()+"@example.com",
    studentIds:[student.entityId],confirmed:true,
  });
@@ -27,24 +27,24 @@ test("PARITY:PARITY-families-crud manages linked students and safe deletion thro
    familyName:"Revised family "+randomUUID(),
  }});
  expect(updated.status(),await updated.text()).toBe(200);
- const read=await call("ccp_v1_guardians_detail",{guardianId});
+ const read=await call("ccp_guardians_detail",{guardianId});
  expect(read.error).toBeUndefined();
  expect(read.data.family_name).toContain("Revised family");
- const blocked=await call("ccp_v1_guardians_delete_impact",{guardianId});
+ const blocked=await call("ccp_guardians_delete_impact",{guardianId});
  expect(blocked.error).toBeUndefined();
  expect(blocked.data.studentCount).toBe(1);
- const refusal=await call("ccp_v1_guardians_delete",{guardianId,confirmed:true});
+ const refusal=await call("ccp_guardians_delete",{guardianId,confirmed:true});
  expect(refusal.error).toBeDefined();
- const detach=await call("ccp_v1_guardians_update",{
+ const detach=await call("ccp_guardians_update",{
    guardianId,studentIds:[],confirmed:true,
  });
  expect(detach.error).toBeUndefined();
  const refreshed=await page.request.get("/api/students/"+student.entityId);
  expect(refreshed.status()).toBe(200);
  expect((await refreshed.json()).guardian_id).toBeNull();
- const safe=await call("ccp_v1_guardians_delete_impact",{guardianId});
+ const safe=await call("ccp_guardians_delete_impact",{guardianId});
  expect(safe.data.studentCount).toBe(0);
- const removed=await call("ccp_v1_guardians_delete",{guardianId,confirmed:true});
+ const removed=await call("ccp_guardians_delete",{guardianId,confirmed:true});
  expect(removed.error).toBeUndefined();
  const after=await page.request.get("/api/guardians/"+guardianId);
  expect(after.status()).toBe(404);
@@ -52,7 +52,7 @@ test("PARITY:PARITY-families-crud manages linked students and safe deletion thro
 
 test("PARITY:PARITY-families-token-rotation invalidates old link without returning model secrets",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const created=await call("ccp_v1_guardians_create",{
+ const created=await call("ccp_guardians_create",{
    name:"Portal family "+randomUUID(),confirmed:true,
  });
  expect(created.error).toBeUndefined();
@@ -61,7 +61,7 @@ test("PARITY:PARITY-families-token-rotation invalidates old link without returni
  expect(before.status()).toBe(200);
  const oldToken=(await before.json()).portal_token as string;
  expect(oldToken).toBeTruthy();
- const rotation=await call("ccp_v1_guardians_rotate_portal_token",{
+ const rotation=await call("ccp_guardians_rotate_portal_token",{
    guardianId,confirmed:true,
  });
  expect(rotation.error).toBeUndefined();
@@ -72,10 +72,10 @@ test("PARITY:PARITY-families-token-rotation invalidates old link without returni
  const token=(await browser.json()).portal_token as string;
  expect(token).toBeTruthy();
  expect(token).not.toBe(oldToken);
- const ordinary=await call("ccp_v1_guardians_detail",{guardianId});
+ const ordinary=await call("ccp_guardians_detail",{guardianId});
  expect(ordinary.error).toBeUndefined();
  expect(ordinary.data.portal_token).toBeUndefined();
- const confirmed=await call("ccp_v1_guardians_detail",{
+ const confirmed=await call("ccp_guardians_detail",{
    guardianId,includeContacts:true,confirmed:true,
  });
  expect(confirmed.error).toBeUndefined();
@@ -84,11 +84,11 @@ test("PARITY:PARITY-families-token-rotation invalidates old link without returni
 
 test("PARITY:PARITY-events-crud schedules event roster and synchronizes changes without auto-email",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=(await call("ccp_v1_students_create",{
+ const student=(await call("ccp_students_create",{
    name:"Event participant "+randomUUID(),idempotencyKey:randomUUID(),
  })).data as {entityId:string};
  const title="Class tournament "+randomUUID();
- const created=await call("ccp_v1_events_create",{
+ const created=await call("ccp_events_create",{
    title,startsAt:"2027-01-23T11:00:00+02:00",
    endsAt:"2027-01-23T13:00:00+02:00",
    studentIds:[student.entityId],location:"Training hall",confirmed:true,
@@ -105,19 +105,19 @@ test("PARITY:PARITY-events-crud schedules event roster and synchronizes changes 
    location:"Updated training venue",
  }});
  expect(websiteEdit.status(),await websiteEdit.text()).toBe(200);
- const mcpRead=await call("ccp_v1_events_detail",{eventId});
+ const mcpRead=await call("ccp_events_detail",{eventId});
  expect(mcpRead.error).toBeUndefined();
  expect(mcpRead.data.event.location).toBe("Updated training venue");
- const changed=await call("ccp_v1_events_update",{
+ const changed=await call("ccp_events_update",{
    eventId,title:title+" revised",confirmed:true,
  });
  expect(changed.error).toBeUndefined();
  const browser=await page.request.get("/api/events/"+eventId);
  expect(browser.status()).toBe(200);
  expect((await browser.json()).event.title).toBe(title+" revised");
- const impact=await call("ccp_v1_events_delete_impact",{eventId});
+ const impact=await call("ccp_events_delete_impact",{eventId});
  expect(impact.error).toBeUndefined();
- const deleted=await call("ccp_v1_events_delete",{eventId,confirmed:true});
+ const deleted=await call("ccp_events_delete",{eventId,confirmed:true});
  expect(deleted.error).toBeUndefined();
  const gone=await page.request.get("/api/events/"+eventId);
  expect(gone.status()).toBe(404);
@@ -126,7 +126,7 @@ test("PARITY:PARITY-events-crud schedules event roster and synchronizes changes 
 
 test("PARITY:PARITY-family-portal-replay keeps exactly one rotated secret across browser and MCP retries",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const create=await call("ccp_v1_guardians_create",{
+ const create=await call("ccp_guardians_create",{
    name:"Replay family "+randomUUID(),confirmed:true,
  });
  expect(create.error).toBeUndefined();
@@ -141,7 +141,7 @@ test("PARITY:PARITY-family-portal-replay keeps exactly one rotated secret across
  const firstToken=(await first.json()).portal_token as string;
  expect(firstToken).toBeTruthy();
 
- const modelRetry=await call("ccp_v1_guardians_rotate_portal_token",{
+ const modelRetry=await call("ccp_guardians_rotate_portal_token",{
    guardianId:id,requestId:key,confirmed:true,
  });
  expect(modelRetry.error).toBeUndefined();
@@ -152,7 +152,7 @@ test("PARITY:PARITY-family-portal-replay keeps exactly one rotated secret across
  expect((await stable.json()).portal_token).toBe(firstToken);
 
  const anotherKey=randomUUID();
- const modelRotate=await call("ccp_v1_guardians_rotate_portal_token",{
+ const modelRotate=await call("ccp_guardians_rotate_portal_token",{
    guardianId:id,requestId:anotherKey,confirmed:true,
  });
  expect(modelRotate.error).toBeUndefined();
@@ -166,11 +166,11 @@ test("PARITY:PARITY-family-portal-replay keeps exactly one rotated secret across
  expect((await browserRetry.json()).replayed).toBe(true);
  expect((await (await page.request.get("/api/guardians/"+id)).json()).portal_token).toBe(newToken);
 
- const other=await call("ccp_v1_guardians_create",{
+ const other=await call("ccp_guardians_create",{
    name:"Different family "+randomUUID(),confirmed:true,
  });
  expect(other.error).toBeUndefined();
- const conflict=await call("ccp_v1_guardians_rotate_portal_token",{
+ const conflict=await call("ccp_guardians_rotate_portal_token",{
    guardianId:other.data.id,requestId:anotherKey,confirmed:true,
  });
  expect(conflict.error?.code).toBe("IDEMPOTENCY_CONFLICT");
@@ -187,7 +187,7 @@ test("PARITY:PARITY-families-list-create matches website and MCP while redacting
  const websiteFamily=await created.json();
  const listedSite=await page.request.get("/api/guardians");
  expect(listedSite.status(),await listedSite.text()).toBe(200);
- const listedModel=await call("ccp_v1_guardians_list",{});
+ const listedModel=await call("ccp_guardians_list",{});
  expect(listedModel.error).toBeUndefined();
  const record=(listedModel.data as Array<{id:string;name:string;email?:string;portal_token?:string}>)
    .find(x=>x.id===websiteFamily.id);
@@ -196,7 +196,7 @@ test("PARITY:PARITY-families-list-create matches website and MCP while redacting
  expect(record?.portal_token).toBeUndefined();
  expect((await listedSite.json()).some((x:{id:string})=>x.id===websiteFamily.id)).toBe(true);
  const modelName="Model family "+randomUUID();
- const modelCreate=await call("ccp_v1_guardians_create",{
+ const modelCreate=await call("ccp_guardians_create",{
    name:modelName,confirmed:true,
  });
  expect(modelCreate.error).toBeUndefined();
@@ -214,14 +214,14 @@ test("PARITY:PARITY-events-list-create shares exact event summaries from website
  }});
  expect(browser.status(),await browser.text()).toBe(201);
  const eventId=(await browser.json()).event.id as string;
- const model=await call("ccp_v1_events_list",{});
+ const model=await call("ccp_events_list",{});
  expect(model.error).toBeUndefined();
  const site=await page.request.get("/api/events");
  expect(site.status(),await site.text()).toBe(200);
  expect(model.data).toEqual(await site.json());
  expect(model.data.events.some((x:{id:string;title:string})=>
    x.id===eventId&&x.title===title)).toBe(true);
- const other=await call("ccp_v1_events_create",{
+ const other=await call("ccp_events_create",{
    title:"Model chess event "+randomUUID(),
    startsAt:"2045-01-24T14:00:00+02:00",studentIds:[],confirmed:true,
  });

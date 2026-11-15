@@ -12,8 +12,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_connections_list",
-        "ccp_v1_connections_revoke"
+        "ccp_connections_list",
+        "ccp_connections_revoke"
       ],
       "explanation": "Verified website GET/DELETE and delegated MCP list/confirmed revoke share tenant-filtered, secret-free OAuth grant service; browser CSRF/consent remains protected. Independent 99-pass E2E at 3fce603 checks connection identity, redaction and revocation; comprehensive agent E2E checks immediate token denial, read-only permission and website-side revocation.",
       "evidenceTest": "e2e/parity-connections.spec.ts"
@@ -37,45 +37,45 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_workplaces_list",
-        "ccp_v1_workplaces_create",
-        "ccp_v1_workplaces_update",
-        "ccp_v1_workplaces_enroll",
-        "ccp_v1_workplaces_unenroll",
-        "ccp_v1_workplaces_enrollments",
-        "ccp_v1_students_create",
-        "ccp_v1_students_update",
-        "ccp_v1_students_search",
-        "ccp_v1_groups_list",
-        "ccp_v1_groups_create",
-        "ccp_v1_groups_update",
-        "ccp_v1_groups_enroll",
-        "ccp_v1_groups_unenroll",
-        "ccp_v1_groups_members",
-        "ccp_v1_sessions_list",
-        "ccp_v1_sessions_create",
-        "ccp_v1_sessions_ad_hoc_create",
-        "ccp_v1_sessions_edit",
-        "ccp_v1_sessions_complete",
-        "ccp_v1_sessions_participants",
-        "ccp_v1_attendance_preview",
-        "ccp_v1_attendance_record",
-        "ccp_v1_attendance_bulk_record",
-        "ccp_v1_chess_categories_list",
-        "ccp_v1_chess_categories_create",
-        "ccp_v1_chess_categories_update",
-        "ccp_v1_chess_categories_delete_impact",
-        "ccp_v1_chess_categories_delete",
-        "ccp_v1_chess_observations_list",
-        "ccp_v1_chess_observations_propose",
-        "ccp_v1_chess_observations_update",
-        "ccp_v1_material_links_list",
-        "ccp_v1_material_links_create",
-        "ccp_v1_material_links_update",
-        "ccp_v1_material_links_unlink_impact",
-        "ccp_v1_material_links_unlink"
+        "ccp_workplaces_list",
+        "ccp_workplaces_create",
+        "ccp_workplaces_update",
+        "ccp_workplaces_enroll",
+        "ccp_workplaces_unenroll",
+        "ccp_workplaces_enrollments",
+        "ccp_students_create",
+        "ccp_students_update",
+        "ccp_students_search",
+        "ccp_groups_list",
+        "ccp_groups_create",
+        "ccp_groups_update",
+        "ccp_groups_enroll",
+        "ccp_groups_unenroll",
+        "ccp_groups_members",
+        "ccp_sessions_list",
+        "ccp_sessions_create",
+        "ccp_sessions_ad_hoc_create",
+        "ccp_sessions_edit",
+        "ccp_sessions_complete",
+        "ccp_sessions_participants",
+        "ccp_attendance_preview",
+        "ccp_attendance_record",
+        "ccp_attendance_bulk_record",
+        "ccp_chess_categories_list",
+        "ccp_chess_categories_create",
+        "ccp_chess_categories_update",
+        "ccp_chess_categories_delete_impact",
+        "ccp_chess_categories_delete",
+        "ccp_chess_observations_list",
+        "ccp_chess_observations_propose",
+        "ccp_chess_observations_update",
+        "ccp_material_links_list",
+        "ccp_material_links_create",
+        "ccp_material_links_update",
+        "ccp_material_links_unlink_impact",
+        "ccp_material_links_unlink"
       ],
-      "explanation": "Exact source c80b85c: 38/38 website gateway actions have independently named authenticated website/delegated MCP evidence. 36 are equivalent owner-scoped MCP operations and two are narrowly approved browser-only teacher-attestation exceptions with negative bearer tests. The action-evidence audit found zero missing; 225 authenticated E2E passed and all five workflow families were green. Legacy calendar vs canonical session double writers and four outstanding historical release cases remain separate blockers. Canonical per-participant cancellation is being implemented through the existing shared session commit, website attendance.record/list and ccp_v1_attendance_record/preview MCP actions. Notice timestamp, initiator and reason are independently checked in e2e/parity-session-completion.spec.ts; these new assertions still require CI confirmation. This is an incremental change only: legacy private-calendar attendance and the unresolved historical parity cases remain strict release blockers.",
+      "explanation": "Exact source c80b85c: 38/38 website gateway actions have independently named authenticated website/delegated MCP evidence. 36 are equivalent owner-scoped MCP operations and two are narrowly approved browser-only teacher-attestation exceptions with negative bearer tests. The action-evidence audit found zero missing; 225 authenticated E2E passed and all five workflow families were green. Legacy calendar vs canonical session double writers and four outstanding historical release cases remain separate blockers. Canonical per-participant cancellation is being implemented through the existing shared session commit, website attendance.record/list and ccp_attendance_record/preview MCP actions. Notice timestamp, initiator and reason are independently checked in e2e/parity-session-completion.spec.ts; these new assertions still require CI confirmation. This is an incremental change only: legacy private-calendar attendance and the unresolved historical parity cases remain strict release blockers.",
       "evidenceTest": "e2e/parity-gateway-action-coverage.spec.ts"
     },
     {
@@ -106,8 +106,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_teacher_profile_get",
-        "ccp_v1_teacher_profile_update"
+        "ccp_teacher_profile_get",
+        "ccp_teacher_profile_update"
       ],
       "explanation": "Confirmed MCP and website display/avatar edit domain service with owner-scoped path validation. Login email, passwords and MFA remain separately secured browser-only auth flows; one independently named OAuth/browser test passed at bf7c205.",
       "evidenceTest": "e2e/parity-teacher-profile.spec.ts"
@@ -130,7 +130,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_credits_package_expiry"
+        "ccp_credits_package_expiry"
       ],
       "explanation": "142-pass authenticated E2E on PR commit 12ec30b verifies website PATCH ↔ MCP confirmed expiry edit, cleared/extended expiry, redeemed lesson prohibition, foreign-tenant denial and direct database trigger refusal. Package UPDATE row locking serializes against redemption INSERT locks so historical paid lessons cannot be invalidated by racing direct writes.",
       "evidenceTest": "e2e/parity-credits-lifecycle.spec.ts"
@@ -144,8 +144,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_credits_packages_list",
-        "ccp_v1_credits_package_create"
+        "ccp_credits_packages_list",
+        "ccp_credits_package_create"
       ],
       "explanation": "142-pass authenticated E2E on PR commit 12ec30b verifies website↔MCP prepaid package GET and transactional POST, durable requestId replay and changed-payload conflict, invalid/foreign student isolation, no phantom draft invoice and shared balances; both clients use atomic owner-scoped ccp_credit_package_create SQL transaction.",
       "evidenceTest": "e2e/parity-credits-lifecycle.spec.ts"
@@ -158,7 +158,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_credits_redemption_return"
+        "ccp_credits_redemption_return"
       ],
       "explanation": "Teacher-owned credit redemption returns use one authenticated atomic SQL transaction and a durable replay receipt. Delegated MCP approval and website DELETE race on the same redeemed credit; exactly one first-return and one replay result are accepted, balances are read back from both surfaces, and unknown IDs are denied. All five PR-head workflows passed on ac60c348; no external side effect.",
       "evidenceTest": "e2e/parity-credits-lifecycle.spec.ts"
@@ -171,7 +171,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_billing_payments_export"
+        "ccp_billing_payments_export"
       ],
       "explanation": "Shared owner-scoped accountant CSV is accessible on signed-in website and only through confirmed MCP export, with HTML/CSV formula prefix escaping and Hebrew content; independent website/MCP E2E passed at bf7c205.",
       "evidenceTest": "e2e/parity-accounting-export.spec.ts"
@@ -184,8 +184,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_billing_generation_preview",
-        "ccp_v1_billing_generation_commit"
+        "ccp_billing_generation_preview",
+        "ccp_billing_generation_commit"
       ],
       "explanation": "Cross-interface invoice generation preview and confirmed commit now use one current-schema database transaction with teacher-period locks, idempotent receipts and rollback-safe credit allocation. Two actual browser/delegated MCP E2E branches verify concurrency, original invoice replay, strict fields, changed-key conflict, tenant-owned lines, plus original period/rate cases. Tested 205 passing E2E at 155cdb0, full CI/security/Compose/restore green. Broader canonical lesson data model cutover is not part of this route's acceptance.",
       "evidenceTest": "e2e/parity-billing-finance-receipts.spec.ts"
@@ -198,7 +198,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_billing_invoice_checkout"
+        "ccp_billing_invoice_checkout"
       ],
       "explanation": "Website and confirmed MCP share configured synthetic Stripe Checkout creation with safe browser handoff, validated owner/current invoice/payable-balance SQL-locked claim, and competing-provider-session expiry or fail-closed handling. Real synthetic Stripe adversarial concurrent website/MCP, same-session retries, privacy and PDF/ledger readback passed at 155cdb0 (205 E2E green). Real external provider credentials/charges not covered by CI; separate prepublication live gate.",
       "evidenceTest": "e2e/parity-configured-stripe.spec.ts"
@@ -211,7 +211,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_billing_manual_payment_record"
+        "ccp_billing_manual_payment_record"
       ],
       "explanation": "Shared owner-scoped SQL transaction locks the invoice, enforces outstanding balances and Stripe checkout reconciliation and supports cross-client idempotency. Authenticated browser/MCP cases exercise settlement races, changed-key rejection, foreign-tenant denial, validation and fail-closed unreconciled Stripe; live external Stripe charging remains separately gated. Draft cash payments share the website/MCP domain service without sending; transactional paid floors, never-sent privacy, and outstanding PDF/email balances are covered by PARITY-billing-draft-partial-payment and PARITY-billing-regenerate-draft-with-payments E2E.",
       "evidenceTest": "e2e/parity-billing-lifecycle.spec.ts"
@@ -224,7 +224,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_billing_manual_payment_delete"
+        "ccp_billing_manual_payment_delete"
       ],
       "explanation": "Both clients delete only teacher-owned mistaken manual payments through ccp_manual_payment_remove, with invoice settlement recalculation, reverse-race serialization and foreign-tenant denial E2E. Provider Stripe refunds are not an action of this route and require separate authorization. Draft cash payments share the website/MCP domain service without sending; transactional paid floors, never-sent privacy, and outstanding PDF/email balances are covered by PARITY-billing-draft-partial-payment and PARITY-billing-regenerate-draft-with-payments E2E.",
       "evidenceTest": "e2e/parity-billing-lifecycle.spec.ts"
@@ -237,7 +237,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_billing_invoice_pdf"
+        "ccp_billing_invoice_pdf"
       ],
       "explanation": "Website and explicitly approved MCP PDF export use the same owner-scoped invoice builder and data source. All 150 line items and long notes paginate instead of truncating. Authenticated E2E verifies same page count, a genuinely foreign teacher's invoice denied, no portal-token leak, sent/draft retrieval, and separate 512 KiB MCP inline limit with authenticated browser fallback. Accepted candidate source 3325b0, 207 authenticated E2E passed (5 skipped). Draft cash payments share the website/MCP domain service without sending; transactional paid floors, never-sent privacy, and outstanding PDF/email balances are covered by PARITY-billing-draft-partial-payment and PARITY-billing-regenerate-draft-with-payments E2E.",
       "evidenceTest": "e2e/parity-invoice-pdf-pages.spec.ts"
@@ -250,7 +250,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_billing_invoice_regenerate"
+        "ccp_billing_invoice_regenerate"
       ],
       "explanation": "Browser and delegated MCP share one owner-scoped regeneration domain service and database transaction with original invoice revision, immutable replay receipt, exact lesson/credit lines, stale revision rollback and no unreconciled Stripe checkout modification. Synthetic actual DB browser↔MCP concurrency and direct SQL negative tests passed at 155cdb0 (205 E2E green); live provider testing separately required. Draft cash payments share the website/MCP domain service without sending; transactional paid floors, never-sent privacy, and outstanding PDF/email balances are covered by PARITY-billing-draft-partial-payment and PARITY-billing-regenerate-draft-with-payments E2E.",
       "evidenceTest": "e2e/parity-billing-finance-receipts.spec.ts"
@@ -265,9 +265,9 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_billing_invoice_detail",
-        "ccp_v1_billing_invoice_draft_update",
-        "ccp_v1_billing_invoice_delete"
+        "ccp_billing_invoice_detail",
+        "ccp_billing_invoice_draft_update",
+        "ccp_billing_invoice_delete"
       ],
       "explanation": "Owned invoice GET, strict draft edit and reviewed draft/void deletion share one website/MCP domain service. The SQL draft writer atomically replaces lines with current invoice revision and idempotency receipt; E2E verifies rollback, cross-client replay, changed-key conflict, and deleted readback. Whole billing generation and old calendar occurrence cutover remain separate OpenSpec tasks.",
       "evidenceTest": "e2e/parity-invoice-draft.spec.ts"
@@ -281,8 +281,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_billing_invoice_send_preview",
-        "ccp_v1_billing_invoice_send"
+        "ccp_billing_invoice_send_preview",
+        "ccp_billing_invoice_send"
       ],
       "explanation": "Identical teacher-scoped PDF, amount and recipient preview plus confirmed invoice delivery in website and MCP. Authenticated Mailpit E2E runs a real synthetic SMTP delivery race, verifies exactly one claimed send across clients, and blocks duplicate retries. Crash-safe provider outbox/live external delivery remain independent C8 release requirements. Draft cash payments share the website/MCP domain service without sending; transactional paid floors, never-sent privacy, and outstanding PDF/email balances are covered by PARITY-billing-draft-partial-payment and PARITY-billing-regenerate-draft-with-payments E2E.",
       "evidenceTest": "e2e/parity-invoice-send-race.spec.ts"
@@ -295,7 +295,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_billing_invoice_void"
+        "ccp_billing_invoice_void"
       ],
       "explanation": "Current-schema ccp_invoice_void SQL serializes teacher-authorized void against payment and prepaid-credit references with shared browser/MCP idempotency receipts. E2E checks same-key cross-client replay, conflicting key reuse, paid/partial-payment refusal, open-checkout refusal and issued credit protections. Provider refund and full canonical calendar billing cutover remain separate.",
       "evidenceTest": "e2e/parity-billing-lifecycle.spec.ts"
@@ -308,8 +308,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_billing_invoices_bulk_preview",
-        "ccp_v1_billing_invoices_bulk"
+        "ccp_billing_invoices_bulk_preview",
+        "ccp_billing_invoices_bulk"
       ],
       "explanation": "Shared website/MCP bulk invoice preview with owner-scoped actual email recipients, amount, invoice revision and SHA-256 fingerprint. Approved send requires confirmedEmail plus a still-current recipient-visible preview; an anonymized preview cannot mint send permission. Synthetic Mailpit E2E tests changed recipient and competing cross-client send give exactly one delivery, missing owner/duplicate guards, and full readback. Accepted candidate source 3325b0, 207 E2E passed (5 skipped).",
       "evidenceTest": "e2e/parity-bulk-preview-race.spec.ts"
@@ -322,7 +322,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_coach_briefing_get"
+        "ccp_coach_briefing_get"
       ],
       "explanation": "Read-only coach briefing uses exactly one deterministic shared teacher-scoped domain service for website and MCP. Authenticated cross-client test compares complete returned student homework, material history, observations, and plan evidence and rejects inferred mastery. B5 canonical calendar history replacement remains separate.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
@@ -335,7 +335,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_canonical_makeup_credits_list"
+        "ccp_canonical_makeup_credits_list"
       ],
       "explanation": "Web and delegated MCP call the same owner-scoped canonical make-up eligibility service; each credit is a frozen session/student pair. The atomic private-session writer independently checks student enrollment, studio policy, expiry and single-use status.",
       "evidenceTest": "e2e/canonical-makeup-credits-parity.spec.ts"
@@ -348,7 +348,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_private_sessions_create"
+        "ccp_private_sessions_create"
       ],
       "explanation": "One tenant-authorized canonical SQL transaction for new private lessons and consumed student-specific make-up credits, shared by web and named MCP. Stable client idempotency, workplace timezone, DST and cross-tenant guards.",
       "evidenceTest": "e2e/canonical-private-sessions-parity.spec.ts"
@@ -362,8 +362,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_recurring_slots_update",
-        "ccp_v1_recurring_slots_delete"
+        "ccp_recurring_slots_update",
+        "ccp_recurring_slots_delete"
       ],
       "explanation": "Shared canonical transaction protects attendance/notes/billing and rescheduled sessions while reconciling future slots with stable receipt and expected revision.",
       "evidenceTest": "e2e/canonical-recurring-slots-parity.spec.ts"
@@ -377,8 +377,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_recurring_slots_list",
-        "ccp_v1_recurring_slots_create"
+        "ccp_recurring_slots_list",
+        "ccp_recurring_slots_create"
       ],
       "explanation": "Shared canonical recurring intent list and atomic create RPC, with a stable caller-provided idempotency key, frozen participant, owned workplace enrollment and materialized horizon. Authenticated cross-interface E2E.",
       "evidenceTest": "e2e/canonical-recurring-slots-parity.spec.ts"
@@ -391,8 +391,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_materials_link_preview",
-        "ccp_v1_materials_link_commit"
+        "ccp_materials_link_preview",
+        "ccp_materials_link_commit"
       ],
       "explanation": "Tenant-owned read-only frozen-roster preview and one atomic teacher-confirmed 1-session/N-student chapter evidence transaction, exact provider IDs and revision, deduplicated workplace teaching minutes.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
@@ -405,7 +405,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_schedule_day_preview"
+        "ccp_schedule_day_preview"
       ],
       "explanation": "Authenticated read-only teacher-owned weekday schedule lookup: exact student UUIDs, workplace, local date, active and enrolled canonical slots, DST-safe common start/duration, existing interval conflict; shared service with delegated MCP. No silent write or enrollment.",
       "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
@@ -418,7 +418,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_lessons_capture_commit_with_chapter"
+        "ccp_lessons_capture_commit_with_chapter"
       ],
       "explanation": "Authenticated website/MCP share one SEC DEFINER PostgreSQL RPC wrapping canonical ad-hoc session creation and exact chapter evidence into ONE transaction. The source must be fresh, roster hash exact, confirmation and independent idempotency keys supplied. Any evidence rejection rolls back the lesson, roster and both receipts. Attendance and mastery remain unknown; reverse-interface replay and stale negative cases have independent E2E in e2e/parity-conversational-batch.spec.ts.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
@@ -431,7 +431,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_lessons_capture_preview"
+        "ccp_lessons_capture_preview"
       ],
       "explanation": "One owner-scoped read-only website/MCP preview now accepts either an explicit offset start+duration OR a date-only localDate for exactly one common active workplace-scoped weekly slot across 2–50 unambiguously resolved active students. It refuses missing/multiple slot times, date/DST gaps/folds, foreign enrollments and existing canonical lesson intervals. Browser panel shows inferred time and requires confirmation; existing atomic ad-hoc writer remains the only commit authority. Independently named web/delegated OAuth E2E proves week-slot inference, strict input modes, negative cases, DST and retry behavior. Optional chapterSelection study ID and ordinal (1–64) resolve an exact fresh, authorized Lichess PGN metadata chapter including verified PGN players, without claiming that chapter was taught, assigned or even attached; this remains a separate confirmed material-evidence operation after session creation.",
       "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
@@ -446,10 +446,10 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_materials_history_list",
-        "ccp_v1_materials_history_record",
-        "ccp_v1_materials_history_void",
-        "ccp_v1_materials_aggregate"
+        "ccp_materials_history_list",
+        "ccp_materials_history_record",
+        "ccp_materials_history_void",
+        "ccp_materials_aggregate"
       ],
       "explanation": "Whole-filtered material summary and individual teacher-attested evidence ledger use the same website/MCP service. Full aggregate runs bounded pagination, checks for concurrent drift and deduplicates session/material/stage combinations across group participants. Existing explicit claims only. Provider write/read completeness and 93 strict cases remain separate blockers.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
@@ -462,7 +462,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_reports_workplace_summary"
+        "ccp_reports_workplace_summary"
       ],
       "explanation": "Read-only MCP summary and CSV/text exports reuse the same teacher-scoped report service as website GET; authenticated cross-interface/tenant E2E in e2e/agent-mcp.spec.ts",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
@@ -477,9 +477,9 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_session_attendance_list",
-        "ccp_v1_session_attendance_set",
-        "ccp_v1_session_attendance_bulk_set"
+        "ccp_session_attendance_list",
+        "ccp_session_attendance_set",
+        "ccp_session_attendance_bulk_set"
       ],
       "explanation": "Canonical participant attendance read, revision-checked mark/correct/clear and atomic batch use identical website/MCP domain service and SQL transaction; no attendance rows represent unmarked frozen participants. Family notifications use teacher-approved deduplicated outbox intents.",
       "evidenceTest": "e2e/canonical-session-attendance-parity.spec.ts"
@@ -492,7 +492,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_sessions_edit"
+        "ccp_sessions_edit"
       ],
       "explanation": "Teacher-owned canonical session edit, reschedule and cancel are routed through one revisioned teacher session commit used by website and delegated MCP. Explicit expected revision and idempotency key required.",
       "evidenceTest": "e2e/canonical-session-lifecycle-parity.spec.ts"
@@ -506,8 +506,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_session_notes_list",
-        "ccp_v1_session_notes_save"
+        "ccp_session_notes_list",
+        "ccp_session_notes_save"
       ],
       "explanation": "Shared teacher-only canonical session and frozen-participant notes service. Optimistic revision and idempotent SQL writer, audit, explicit guardian-email opt-in; private fields redacted by default.",
       "evidenceTest": "e2e/canonical-session-notes-parity.spec.ts"
@@ -521,9 +521,9 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_sessions_roster_preview",
-        "ccp_v1_sessions_roster_correct",
-        "ccp_v1_sessions_roster_revisions_list"
+        "ccp_sessions_roster_preview",
+        "ccp_sessions_roster_correct",
+        "ccp_sessions_roster_revisions_list"
       ],
       "explanation": "Website GET/POST and delegated MCP preview/correct/revision-list all execute the same tenant-authorized frozen-roster and append-only correction services. Authenticated E2E covers completed group attendance history, teacher approval, optimistic session revisions, replay/change conflict, original private attendance retention, explicit private audit consent, foreign student denial and a foreign-teacher session/roster denial in both transports. Linked chess/material safeguards stay enforced in SQL; canonical calendar cutover is tracked under B5.",
       "evidenceTest": "e2e/parity-completed-roster-correction.spec.ts"
@@ -536,7 +536,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_reports_student_progress"
+        "ccp_reports_student_progress"
       ],
       "explanation": "Shared report reads teacher-scoped strength, skills and explicitly attested material claims without private notes or fabricated mastery; independent authenticated website/MCP E2E at bf7c205.",
       "evidenceTest": "e2e/parity-student-progress.spec.ts"
@@ -549,7 +549,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_lessons_history_unified"
+        "ccp_lessons_history_unified"
       ],
       "explanation": "Shared teacher-scoped, date-bounded read of both teaching_sessions and legacy lessons; preserves old records, flags exact cross-model duplicates, distinguishes booked vs evidenced teaching minutes, sums teacher interval union once. Delegated OAuth/website E2E checks same filtered persisted history, group overlap and foreign tenant denial.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
@@ -584,7 +584,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_dashboard_summary"
+        "ccp_dashboard_summary"
       ],
       "explanation": "Teacher-scoped shared service powers website and MCP; real delegated OAuth browser comparison and notification write/readback in E2E",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
@@ -598,8 +598,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_events_email_preview",
-        "ccp_v1_events_email_invites"
+        "ccp_events_email_preview",
+        "ccp_events_email_invites"
       ],
       "explanation": "142-pass real synthetic Mailpit E2E on PR commit 12ec30b verifies identical browser/MCP invitation preview, no token or private recipient leak, explicit MCP external-email approval, one durable PostgreSQL send receipt in a simultaneous cross-client send race, provider delivery once, retries skipped, and 404/NOT_FOUND across both clients for another teacher's event.",
       "evidenceTest": "e2e/parity-event-email-delivery.spec.ts"
@@ -614,10 +614,10 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_events_detail",
-        "ccp_v1_events_update",
-        "ccp_v1_events_delete_impact",
-        "ccp_v1_events_delete"
+        "ccp_events_detail",
+        "ccp_events_update",
+        "ccp_events_delete_impact",
+        "ccp_events_delete"
       ],
       "explanation": "Accepted current-schema teacher event list/create/detail/update/impact/delete via shared atomic service. Authenticated website ↔ delegated MCP scenarios in parity-families-events plus event-atomic confirm roster/repertoire corrections, stable request replay, rollback and no accidental invitations; 188 passing E2E on verified SHA a3af159. External invite email is independently tracked; broader contact roles are not resolved.",
       "evidenceTest": "e2e/parity-families-events.spec.ts"
@@ -631,8 +631,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_events_list",
-        "ccp_v1_events_create"
+        "ccp_events_list",
+        "ccp_events_create"
       ],
       "explanation": "Accepted current-schema teacher event list/create/detail/update/impact/delete via shared atomic service. Authenticated website ↔ delegated MCP scenarios in parity-families-events plus event-atomic confirm roster/repertoire corrections, stable request replay, rollback and no accidental invitations; 188 passing E2E on verified SHA a3af159. External invite email is independently tracked; broader contact roles are not resolved.",
       "evidenceTest": "e2e/parity-families-events.spec.ts"
@@ -655,7 +655,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_guardians_rotate_portal_token"
+        "ccp_guardians_rotate_portal_token"
       ],
       "explanation": "Accepted teacher-owned portal-link rotation in website and delegated MCP. Secret never enters model, repeat request returns stable receipt, changed cross-client request rejects, and prior token invalidation is verified by parity-families-events on green E2E SHA a3af159. Guardian role redesign remains separate.",
       "evidenceTest": "e2e/parity-families-events.spec.ts"
@@ -670,10 +670,10 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_guardians_detail",
-        "ccp_v1_guardians_update",
-        "ccp_v1_guardians_delete_impact",
-        "ccp_v1_guardians_delete"
+        "ccp_guardians_detail",
+        "ccp_guardians_update",
+        "ccp_guardians_delete_impact",
+        "ccp_guardians_delete"
       ],
       "explanation": "Accepted current family list/create/detail/contact update/member replacement/deletion-impact and guarded delete via shared tenant and atomic idempotent services. Authenticated parity-families-events and guardian-atomic cover approval, sensitive-data redaction, bulk roster replacement, rollback, changed-key replay and child ownership on verified E2E a3af159. Independent permission roles remain unimplemented.",
       "evidenceTest": "e2e/parity-families-events.spec.ts"
@@ -687,8 +687,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_guardians_list",
-        "ccp_v1_guardians_create"
+        "ccp_guardians_list",
+        "ccp_guardians_create"
       ],
       "explanation": "Accepted current family list/create/detail/contact update/member replacement/deletion-impact and guarded delete via shared tenant and atomic idempotent services. Authenticated parity-families-events and guardian-atomic cover approval, sensitive-data redaction, bulk roster replacement, rollback, changed-key replay and child ownership on verified E2E a3af159. Independent permission roles remain unimplemented.",
       "evidenceTest": "e2e/parity-families-events.spec.ts"
@@ -731,7 +731,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_import_spreadsheet_commit"
+        "ccp_import_spreadsheet_commit"
       ],
       "explanation": "Explicit confirmed delegated MCP import and authenticated website commit share tenant-scoped atomic SQL receipt, duplicate mapping and idempotent replay, accepted in OAuth/browser E2E 42709042700; separate rollback tests also exist.",
       "evidenceTest": "e2e/parity-spreadsheet-commit.spec.ts"
@@ -745,8 +745,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_import_spreadsheet_parse",
-        "ccp_v1_import_spreadsheet_preview"
+        "ccp_import_spreadsheet_parse",
+        "ccp_import_spreadsheet_preview"
       ],
       "explanation": "Website multipart CSV parse/mapping and preview match delegated MCP parse/preview on exact normalized rows, accepted in OAuth/browser E2E 42709042700.",
       "evidenceTest": "e2e/parity-spreadsheet-commit.spec.ts"
@@ -759,7 +759,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_import_spreadsheet_suggest"
+        "ccp_import_spreadsheet_suggest"
       ],
       "explanation": "Deterministic no-egress local spreadsheet mapping remains the default in website and MCP. Explicit approved useAi+confirmedExternal is required before transmitting private samples. Shared provider path now rejects invented source columns, sanitizes upstream API errors and keeps BYO keys private. A fixed CI-only loopback OpenAI provider tests positive mapping, 503 failures, non-approved denial, identical browser/MCP output and credential masking. Source 95daf7: 208 authenticated E2E passed, 5 skipped; no live provider credential used.",
       "evidenceTest": "e2e/parity-spreadsheet-ai-provider.spec.ts"
@@ -783,9 +783,9 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_materials_preferences_list",
-        "ccp_v1_materials_preferences_resolve",
-        "ccp_v1_materials_preferences_set"
+        "ccp_materials_preferences_list",
+        "ccp_materials_preferences_resolve",
+        "ccp_materials_preferences_set"
       ],
       "explanation": "Website and authenticated MCP share exact typed teacher/workplace/student Lichess purpose-specific study preference CRUD, deterministic student>workplace>teacher selection, independent versioned SQL receipt writes and tenant checks. Explicit null clearing preserves history; anonymous/direct unauthorized writes are denied. Provider index freshness is checked server-side; no token or child data leaked. Independent positive/replay/foreign acceptance: e2e/parity-conversational-batch.spec.ts.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
@@ -799,9 +799,9 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_materials_chapters_search",
-        "ccp_v1_materials_chapters_get",
-        "ccp_v1_materials_chapters_sync"
+        "ccp_materials_chapters_search",
+        "ccp_materials_chapters_get",
+        "ccp_materials_chapters_sync"
       ],
       "explanation": "Browser/MCP share authorized metadata-only Lichess study/chapter index, exact chapter IDs and White/Black/Event tags, 24-hour freshness, revocable provider read consent and atomic all-chapter replacement.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
@@ -814,7 +814,7 @@
       "kind": "auth",
       "parity": "browser-only",
       "existingTools": [
-        "ccp_v1_lichess_connect_handoff"
+        "ccp_lichess_connect_handoff"
       ],
       "explanation": "Secure browser PKCE initiation is an explicit human provider-consent exception; MCP only returns a safe handoff URL, never a secret."
     },
@@ -827,8 +827,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_lichess_connection_status",
-        "ccp_v1_lichess_connection_disconnect"
+        "ccp_lichess_connection_status",
+        "ccp_lichess_connection_disconnect"
       ],
       "explanation": "Delegated OAuth/browser PKCE study:read/write grant E2E at cf00dff (139 pass) verifies website and MCP status equality, scope elevation, explicit revoke approval, provider-revocation failure disclosure, secret/token redaction, repeated disconnect and cross-tenant isolation. Browser-only /connect and /callback protect provider credentials.",
       "evidenceTest": "e2e/parity-lichess-oauth.spec.ts"
@@ -841,7 +841,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_chess_fen_validate"
+        "ccp_chess_fen_validate"
       ],
       "explanation": "Read-only standard chess FEN static consistency validation, image game-state unknowns and teacher review, no external publishing or inferred full legal move sequence.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
@@ -855,10 +855,10 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_puzzles_study_series_list",
-        "ccp_v1_puzzles_study_capacity",
-        "ccp_v1_puzzles_study_create",
-        "ccp_v1_puzzles_study_reconcile"
+        "ccp_puzzles_study_series_list",
+        "ccp_puzzles_study_capacity",
+        "ccp_puzzles_study_create",
+        "ccp_puzzles_study_reconcile"
       ],
       "explanation": "Shared live provider capacity check counts starter chapter toward 64 cap and explicitly approved, retry-safe private Puzzles N creation and reconciliation, scoped write and daily budget.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
@@ -871,8 +871,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_lichess_puzzle_preview",
-        "ccp_v1_lichess_image_fen_propose"
+        "ccp_lichess_puzzle_preview",
+        "ccp_lichess_image_fen_propose"
       ],
       "explanation": "Both website and authenticated delegated MCP use the same GigaChess-native FEN review and move-by-move legal SAN continuation service. A syntactically plausible but illegal line is refused before digest or Lichess publication; image state remains unverified and teacher correction/revalidation is required. Independent browser/MCP cases: e2e/parity-lichess-puzzle.spec.ts. Earlier approved image/vision consent boundaries remain intact.",
       "evidenceTest": "e2e/parity-lichess-puzzle.spec.ts"
@@ -885,7 +885,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_lichess_puzzle_publish"
+        "ccp_lichess_puzzle_publish"
       ],
       "explanation": "Provider publication requires a human-approved matching digest from the same GigaChess legal SAN preview on website and MCP; no illegal moves can enter the review receipt. Separate Lichess study:write grant and tenant idempotent external-write receipt remain mandatory; uncertain provider outcomes are not automatically retried. Authenticated browser/MCP tests: e2e/parity-lichess-puzzle.spec.ts.",
       "evidenceTest": "e2e/parity-lichess-puzzle.spec.ts"
@@ -898,7 +898,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_lichess_studies_search"
+        "ccp_lichess_studies_search"
       ],
       "explanation": "OAuth study:read and server-only bounded NDJSON/PGN metadata search share one service for website and MCP. Authenticated E2E at d18356c uses a 40-chapter synthetic Lichess provider, proves exact chapter 32, scoped revocation, input errors and absence of credentials from model output.",
       "evidenceTest": "e2e/parity-lichess-oauth.spec.ts"
@@ -912,8 +912,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_notifications_list",
-        "ccp_v1_notifications_mark_read"
+        "ccp_notifications_list",
+        "ccp_notifications_mark_read"
       ],
       "explanation": "Teacher-scoped shared service powers website and MCP; real delegated OAuth browser comparison and notification write/readback in E2E",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
@@ -987,7 +987,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_settings_export"
+        "ccp_settings_export"
       ],
       "explanation": "Shared teacher-scoped website full backup versus confirmed, size-bounded, model-safe MCP export with portal credentials stripped; accepted in named OAuth/browser E2E 42709042700.",
       "evidenceTest": "e2e/parity-teacher-export.spec.ts"
@@ -1001,8 +1001,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_settings_import_preview",
-        "ccp_v1_settings_import_apply"
+        "ccp_settings_import_preview",
+        "ccp_settings_import_apply"
       ],
       "explanation": "Website and delegated OAuth/MCP share reviewed SHA-256 preview, explicit approval, tenant-owned atomic PostgreSQL restore and replay receipt; browser/MCP rollback E2E at d18356c proves a valid guardian insert is rolled back after a later invalid student, and long-running-receipts E2E verifies confirmed success plus cross-client replay.",
       "evidenceTest": "e2e/parity-import-atomic.spec.ts"
@@ -1016,9 +1016,9 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_studio_policy_get",
-        "ccp_v1_studio_policy_update",
-        "ccp_v1_studio_credentials_handoff"
+        "ccp_studio_policy_get",
+        "ccp_studio_policy_update",
+        "ccp_studio_credentials_handoff"
       ],
       "explanation": "Ordinary studio policy fields and explicit nullable clears use the same strict website/MCP service. The four sensitive API/Stripe credential-input fields have a narrowly scoped secure-browser exception: explicitly approved MCP handoff returns only the trusted-origin authenticated form URL, never a secret, while the website handles encrypted secret submission. The MCP tool can read masked configured status and clear stored credentials. Authenticated E2E at source 930a596 passed 213 tests, including direct AI/Stripe setup link, browser secret entry, masked MCP readback, model-visible secret rejection and MCP clearing. No card or live provider is used.",
       "evidenceTest": "e2e/parity-policy-credential-handoff.spec.ts"
@@ -1033,9 +1033,9 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_skill_dimensions_update",
-        "ccp_v1_skill_dimensions_delete_impact",
-        "ccp_v1_skill_dimensions_delete"
+        "ccp_skill_dimensions_update",
+        "ccp_skill_dimensions_delete_impact",
+        "ccp_skill_dimensions_delete"
       ],
       "explanation": "Delegated browser/MCP 139-pass E2E at cf00dff verifies owner-scoped dimension delete-impact GET, website/MCP PUT rename, confirmed DELETE for assessment-free categories, DB-enforced preservation of assessed history, validation and cross-teacher denial. Named tools and both transports independently verified.",
       "evidenceTest": "e2e/parity-skill-dimensions-lifecycle.spec.ts"
@@ -1049,8 +1049,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_skill_dimensions_list",
-        "ccp_v1_skill_dimensions_create"
+        "ccp_skill_dimensions_list",
+        "ccp_skill_dimensions_create"
       ],
       "explanation": "Browser/MCP list and create share the authenticated teacher-owned skill dimension service and receipt-based SQL. Named E2E tests both-transport create/readback, invalid fields, duplicate names, tenant scope, same-key replays, six concurrent sort allocations and same-key races.",
       "evidenceTest": "e2e/parity-skill-dimensions-lifecycle.spec.ts"
@@ -1064,10 +1064,10 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_student_ratings_list",
-        "ccp_v1_student_ratings_record",
-        "ccp_v1_student_ratings_refresh_preview",
-        "ccp_v1_student_ratings_refresh_commit"
+        "ccp_student_ratings_list",
+        "ccp_student_ratings_record",
+        "ccp_student_ratings_refresh_preview",
+        "ccp_student_ratings_refresh_commit"
       ],
       "explanation": "Authenticated teacher-owned source-tagged append-only provider/time-control rating history, explicit public lookup preview and reviewed batch commit; manual write is idempotent; no 1-10 strength mutation.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
@@ -1082,13 +1082,13 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_students_profile",
-        "ccp_v1_students_profile_edit",
-        "ccp_v1_students_delete_impact",
-        "ccp_v1_students_delete",
-        "ccp_v1_students_archive_preview",
-        "ccp_v1_students_chess_history",
-        "ccp_v1_students_update"
+        "ccp_students_profile",
+        "ccp_students_profile_edit",
+        "ccp_students_delete_impact",
+        "ccp_students_delete",
+        "ccp_students_archive_preview",
+        "ccp_students_chess_history",
+        "ccp_students_update"
       ],
       "explanation": "Shared website/MCP student GET/PUT/DELETE and chess history/archive preview retain owner and revision guards. Deletion impact now queries current typed material_links and material_teaching_evidence (not removed legacy tables). Two synthetic authenticated E2E scenarios cover valid empty-profile preview, guarded concurrent website/MCP one-winner deletion, linked historical material preservation, explicit consent, and genuine foreign-tenant denial. Profiles with any historical dependencies are archived rather than erased. Source dd311cb8 passed all five CI workflows and 209 authenticated E2E scenarios, 5 deliberately skipped, zero failed. The new student lifecycle test verifies linked material survival, one-winner empty-profile deletion and genuine foreign teacher denial. Historical records continue to be archived, not erased. The route-family evidence reference now points to the broad student parity suite: profile, safe edits, archive preview, deletion impact/delete, named chess-history read and revision/idempotency update are all executed against authenticated website and delegated MCP. The dedicated material-history and concurrent-deletion E2E remains separately referenced in the new scenario checklist.",
       "evidenceTest": "e2e/parity-students.spec.ts"
@@ -1102,8 +1102,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_student_skill_assessments_list",
-        "ccp_v1_student_skill_assessments_record"
+        "ccp_student_skill_assessments_list",
+        "ccp_student_skill_assessments_record"
       ],
       "explanation": "Delegated website/MCP 139-pass E2E at cf00dff verifies teacher-owned atomic 1–5 assessment POST with cross-transport idempotent replay, changed-payload 409, append-only history, GET pagination and cross-tenant student/dimension denial. Named tools and both transports independently verified.",
       "evidenceTest": "e2e/parity-skill-assessment-receipts.spec.ts"
@@ -1116,7 +1116,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_students_resolve"
+        "ccp_students_resolve"
       ],
       "explanation": "Authenticated website and delegated OAuth/MCP resolve 1–100 exact Unicode full names and stored aliases for active teacher-owned students through the same paginated resolver, without guessing. Missing, duplicate and ambiguous IDs fail closed, no mutations or guardian contact fields.",
       "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
@@ -1130,10 +1130,10 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_students_search",
-        "ccp_v1_students_create",
-        "ccp_v1_students_roster",
-        "ccp_v1_students_create_full"
+        "ccp_students_search",
+        "ccp_students_create",
+        "ccp_students_roster",
+        "ccp_students_create_full"
       ],
       "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes.",
       "evidenceTest": "e2e/parity-students.spec.ts"
@@ -1146,8 +1146,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_calendar_feed_status",
-        "ccp_v1_calendar_feed_rotate"
+        "ccp_calendar_feed_status",
+        "ccp_calendar_feed_rotate"
       ],
       "explanation": "Confirmed MCP rotates/revokes calendar bearer secret without exposing it, website returns new token to signed-in owner, invalidated old feed confirmed by authenticated cross-surface E2E at bf7c205.",
       "evidenceTest": "e2e/parity-calendar-token.spec.ts"
@@ -1160,7 +1160,7 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_teacher_context_get"
+        "ccp_teacher_context_get"
       ],
       "explanation": "Website/MCP share signed-in teacher server clock, configured local date, day-of-week, IANA timezone and owner-filtered workplaces without model date assumptions.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
@@ -1175,10 +1175,10 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_training_assignments_list",
-        "ccp_v1_training_assignments_create",
-        "ccp_v1_training_attempt_record",
-        "ccp_v1_training_review_record"
+        "ccp_training_assignments_list",
+        "ccp_training_assignments_create",
+        "ccp_training_attempt_record",
+        "ccp_training_review_record"
       ],
       "explanation": "Website/MCP share assignment list/create, student-specific teacher-approved material review, attempt recording and reviewed feedback services. Authenticated E2E covers assignment idempotent creation, attempt/review lifecycle, teacher-evidence-only progress and cross-client readback. Goals belong to separately evidenced training-plan route.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
@@ -1192,8 +1192,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_learning_material_archive_preview",
-        "ccp_v1_learning_material_lifecycle_change"
+        "ccp_learning_material_archive_preview",
+        "ccp_learning_material_lifecycle_change"
       ],
       "explanation": "Website/MCP share material dependency preview and revisioned, receipt-safe archive/restore operations. Authenticated browser/MCP test covers preview, archive, changed-key prevention, unchanged material identity and history-safe unarchive; actual typed-history deletion is blocked.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
@@ -1207,8 +1207,8 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_learning_material_relations_list",
-        "ccp_v1_learning_material_relation_change"
+        "ccp_learning_material_relations_list",
+        "ccp_learning_material_relation_change"
       ],
       "explanation": "Website/MCP share teacher-scoped typed material relationship list and link/unlink SQL mutation, with source revision and cross-client receipts. Authenticated E2E covers link, readback and changed terms across both surfaces, preserving teacher-owned source and target identities.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
@@ -1223,10 +1223,10 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_learning_materials_list",
-        "ccp_v1_learning_materials_get",
-        "ccp_v1_learning_materials_create",
-        "ccp_v1_learning_materials_update"
+        "ccp_learning_materials_list",
+        "ccp_learning_materials_get",
+        "ccp_learning_materials_create",
+        "ccp_learning_materials_update"
       ],
       "explanation": "Website/MCP share typed material list/get/create/revisioned update, with GigaChess validation of every game PGN mainline and variation before both writes and corrections. Invalid game moves fail closed via the shared typed Zod/domain schema; teacher identity, game result and authenticity are not inferred. Source-linked cross-surface evidence: e2e/parity-material-coverage.spec.ts and e2e/agent-mcp.spec.ts.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
@@ -1240,9 +1240,9 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_v1_training_plans_list",
-        "ccp_v1_training_plans_get",
-        "ccp_v1_training_plans_commit"
+        "ccp_training_plans_list",
+        "ccp_training_plans_get",
+        "ccp_training_plans_commit"
       ],
       "explanation": "Website/MCP use the same teacher-owned plan list/get/commit service, immutable revisioned snapshots, optimistic revisions and cross-client idempotency receipts. E2E tests real plan goals, teacher-evidence-only achievement, stale/changed request rejection, archive/history and read-only scope denial.",
       "evidenceTest": "e2e/parity-training-plans.spec.ts"

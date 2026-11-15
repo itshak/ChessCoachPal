@@ -6,14 +6,14 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 test("PARITY:PARITY-ad-hoc-three-students freezes exact roster across website and MCP",async({page,request})=>{
   const callTool=await delegatedTool(page,request);
   const suff=randomUUID().slice(0,9);
-  const wp=(await callTool("ccp_v1_workplaces_create",{
+  const wp=(await callTool("ccp_workplaces_create",{
     name:"Ad-hoc "+suff,timezone:"UTC",currency:"USD",locale:"en",
     policy:{},idempotencyKey:randomUUID(),
   })).data as {entityId:string};
   expect(wp.entityId).toBeTruthy();
   const members:string[]=[];
   for(let i=0;i<3;i++){
-    const created=await callTool("ccp_v1_students_create",{
+    const created=await callTool("ccp_students_create",{
       name:"One-off learner "+suff+" "+i,idempotencyKey:randomUUID(),
     });
     expect(created.error).toBeUndefined();
@@ -41,7 +41,7 @@ test("PARITY:PARITY-ad-hoc-three-students freezes exact roster across website an
   expect(pageRoster.status()).toBe(200);
   const siteMembers=(await pageRoster.json()).data as Array<{student_id:string}>;
   expect(siteMembers.map(m=>m.student_id).sort()).toEqual([...members].sort());
-  const mcpDetails=await callTool("ccp_v1_sessions_details",{sessionId:siteLesson.id});
+  const mcpDetails=await callTool("ccp_sessions_details",{sessionId:siteLesson.id});
   expect(mcpDetails.error).toBeUndefined();
   expect(((mcpDetails.data as {participants:Array<{student_id:string}>}).participants)
     .map(m=>m.student_id).sort()).toEqual([...members].sort());
@@ -53,12 +53,12 @@ test("PARITY:PARITY-ad-hoc-three-students freezes exact roster across website an
   expect(attendance).toHaveLength(3);
   expect(attendance.every(a=>a.status==="unmarked")).toBe(true);
   const {requestId: _websiteRequestId,...mcpArgs}=args;
-  const replay=await callTool("ccp_v1_sessions_ad_hoc_create",{
+  const replay=await callTool("ccp_sessions_ad_hoc_create",{
     ...mcpArgs,idempotencyKey:requestId,confirmed:true,
   });
   expect(replay.error).toBeUndefined();
   expect(replay.data).toEqual(siteLesson);
-  const changed=await callTool("ccp_v1_sessions_ad_hoc_create",{
+  const changed=await callTool("ccp_sessions_ad_hoc_create",{
     ...mcpArgs,title:"Changed topic",idempotencyKey:requestId,confirmed:true,
   });
   expect(changed.error?.code).toBe("CONFLICT");
@@ -85,7 +85,7 @@ test("PARITY:PARITY-ad-hoc-three-students freezes exact roster across website an
     .insert({teacher_id:foreignUser.user!.id,name:"Foreign one-off learner"})
     .select("id").single();
   expect(foreignStudentError).toBeNull();
-  const rejected=await callTool("ccp_v1_sessions_ad_hoc_create",{
+  const rejected=await callTool("ccp_sessions_ad_hoc_create",{
     workplaceId:wp.entityId,studentIds:[members[0],foreignStudent!.id],
     title:"Invalid mixed-tenancy lesson",startsAt:"2040-05-20T10:00:00.000Z",
     durationMinutes:30,lessonNote:"",idempotencyKey:randomUUID(),confirmed:true,
@@ -96,24 +96,24 @@ test("PARITY:PARITY-ad-hoc-three-students freezes exact roster across website an
 
 test("PARITY:PARITY-ad-hoc-mcp-create stays visible through website attendance and roster",async({page,request})=>{
   const callTool=await delegatedTool(page,request);
-  const wp=(await callTool("ccp_v1_workplaces_create",{
+  const wp=(await callTool("ccp_workplaces_create",{
     name:"Ad-hoc MCP "+randomUUID().slice(0,8),timezone:"UTC",
     currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
   })).data as {entityId:string};
   const ids:string[]=[];
   for(let i=0;i<2;i++){
-    const made=await callTool("ccp_v1_students_create",{
+    const made=await callTool("ccp_students_create",{
       name:"Ad-hoc MCP student "+randomUUID().slice(0,8),idempotencyKey:randomUUID(),
     });
     const sid=(made.data as {entityId:string}).entityId;
     ids.push(sid);
-    const joined=await callTool("ccp_v1_workplaces_enroll",{
+    const joined=await callTool("ccp_workplaces_enroll",{
       workplaceId:wp.entityId,studentId:sid,idempotencyKey:randomUUID(),
     });
     expect(joined.error).toBeUndefined();
   }
   const key=randomUUID();
-  const made=await callTool("ccp_v1_sessions_ad_hoc_create",{
+  const made=await callTool("ccp_sessions_ad_hoc_create",{
     workplaceId:wp.entityId,studentIds:ids,title:"MCP one-off strategy study",
     startsAt:"2040-06-21T09:00:00.000Z",durationMinutes:60,
     lessonNote:"Two learner shared lesson",idempotencyKey:key,confirmed:true,

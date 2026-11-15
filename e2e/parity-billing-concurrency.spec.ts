@@ -6,12 +6,12 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and rolls back invalid regeneration",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
    name:"Concurrent billing pupil "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const family=await call("ccp_v1_guardians_create",{
+ const family=await call("ccp_guardians_create",{
    name:"Concurrent billing household "+randomUUID(),
    studentIds:[studentId],confirmed:true,
  });
@@ -19,23 +19,23 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
  expect((await page.request.put("/api/students/"+studentId,{
    data:{defaultRateCents:6200},
  })).status()).toBe(200);
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
    name:"Concurrent invoice workplace "+randomUUID(),timezone:"UTC",
    currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await call("ccp_v1_workplaces_enroll",{
+ expect((await call("ccp_workplaces_enroll",{
    workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
- const lesson=await call("ccp_v1_sessions_create",{
+ const lesson=await call("ccp_sessions_create",{
    workplaceId,studentId,title:"Concurrent invoice lesson",
    startsAt:"2043-03-19T15:00:00Z",durationMinutes:60,
    lessonNote:"",idempotencyKey:randomUUID(),
  });
  expect(lesson.error).toBeUndefined();
  const sessionId=lesson.data.entityId as string;
- const attendance=await call("ccp_v1_session_attendance_set",{
+ const attendance=await call("ccp_session_attendance_set",{
    sessionId,studentId,status:"present",note:"",
    noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
    notifyFamily:false,idempotencyKey:randomUUID(),confirmed:true,
@@ -46,7 +46,7 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
    data:{...period,commit:false},
  });
  expect(sitePreview.status(),await sitePreview.text()).toBe(200);
- const mcpPreview=await call("ccp_v1_billing_generation_preview",period);
+ const mcpPreview=await call("ccp_billing_generation_preview",period);
  expect(mcpPreview.error).toBeUndefined();
  expect(mcpPreview.data).toEqual(await sitePreview.json());
  expect(mcpPreview.data.totalCents).toBe(6200);
@@ -54,7 +54,7 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
  // teacher-period lock and duplicate line check must select exactly one.
  const [browser,model]=await Promise.all([
    page.request.post("/api/billing/generate",{data:{...period,commit:true}}),
-   call("ccp_v1_billing_generation_commit",{...period,confirmed:true}),
+   call("ccp_billing_generation_commit",{...period,confirmed:true}),
  ]);
  const browserWon=browser.status()===200;
  const mcpWon=model.error===undefined;
@@ -111,14 +111,14 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
    session_id:sessionId,student_id:studentId,
  });
  expect(still.invoice_items[0].amount_cents).toBe(6200);
- const modelAfter=await call("ccp_v1_billing_invoice_detail",{invoiceId});
+ const modelAfter=await call("ccp_billing_invoice_detail",{invoiceId});
  expect(modelAfter.error).toBeUndefined();
  expect(modelAfter.data.invoice_items).toEqual(still.invoice_items);
  // A normal rate adjustment still regenerates through the website and MCP.
  expect((await page.request.put("/api/students/"+studentId,{
    data:{defaultRateCents:7100},
  })).status()).toBe(200);
- const rebuilt=await call("ccp_v1_billing_invoice_regenerate",{
+ const rebuilt=await call("ccp_billing_invoice_regenerate",{
    invoiceId,confirmed:true,
  });
  expect(rebuilt.error).toBeUndefined();

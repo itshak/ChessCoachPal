@@ -10,7 +10,7 @@ test("PARITY:PARITY-workplaces-list lists owned workplace details without foreig
   const browserRows=(await website.json()).data as Array<{
     id:string;name:string;timezone:string;currency:string;locale:string;policy:unknown;
   }>;
-  const mcpRows=(await callTool("ccp_v1_workplaces_list",{})).data;
+  const mcpRows=(await callTool("ccp_workplaces_list",{})).data;
   expect(mcpRows).toEqual(browserRows);
   expect(browserRows.length).toBeGreaterThan(0);
   for(const row of browserRows){
@@ -43,9 +43,9 @@ test("PARITY:PARITY-workplaces-list lists owned workplace details without foreig
   const websiteAgain=await page.request.post("/api/agent/v1",{data:{action:"workplaces.list"}});
   expect(websiteAgain.status()).toBe(200);
   expect((await websiteAgain.json()).data.some((r:{id:string})=>r.id===foreignWorkplace!.id)).toBe(false);
-  expect(((await callTool("ccp_v1_workplaces_list",{})).data as Array<{id:string}>)
+  expect(((await callTool("ccp_workplaces_list",{})).data as Array<{id:string}>)
     .some(r=>r.id===foreignWorkplace!.id)).toBe(false);
-  const deniedMcp=await callTool("ccp_v1_workplaces_enrollments",{
+  const deniedMcp=await callTool("ccp_workplaces_enrollments",{
     workplaceId:foreignWorkplace!.id,
   });
   expect(deniedMcp.error?.code).toBe("NOT_FOUND");
@@ -66,7 +66,7 @@ test("PARITY:PARITY-workplaces-create preserves timezone currency and locale on 
   }});
   expect(website.status(),await website.text()).toBe(201);
   const siteRow=(await website.json()).data as {id:string;timezone:string;currency:string;locale:string};
-  const receipt=await callTool("ccp_v1_workplaces_create",{
+  const receipt=await callTool("ccp_workplaces_create",{
     name:"MCP parity "+randomUUID(),timezone:zone,currency,locale,policy:{},
     idempotencyKey:randomUUID(),
   });
@@ -77,7 +77,7 @@ test("PARITY:PARITY-workplaces-create preserves timezone currency and locale on 
   const byId=new Map(((await siteList.json()).data as Array<{
     id:string;timezone:string;currency:string;locale:string;
   }>).map(w=>[w.id,w]));
-  const toolList=(await callTool("ccp_v1_workplaces_list",{})).data as Array<{
+  const toolList=(await callTool("ccp_workplaces_list",{})).data as Array<{
     id:string;timezone:string;currency:string;locale:string;
   }>;
   expect(toolList).toEqual([...byId.values()]);
@@ -91,7 +91,7 @@ test("PARITY:PARITY-workplaces-create preserves timezone currency and locale on 
     timezone:"Etc/Definitely_Invalid",currency,locale,policy:{},
   }});
   expect(invalidWebsite.status()).toBe(400);
-  const invalidMcp=await callTool("ccp_v1_workplaces_create",{
+  const invalidMcp=await callTool("ccp_workplaces_create",{
     name:"Bad MCP zone",timezone:"Etc/Definitely_Invalid",currency,locale,policy:{},
     idempotencyKey:randomUUID(),
   });
@@ -100,16 +100,16 @@ test("PARITY:PARITY-workplaces-create preserves timezone currency and locale on 
 
 test("PARITY:PARITY-workplaces-enroll records only owned students through both surfaces", async ({page,request})=>{
   const callTool=await delegatedTool(page,request);
-  const workplace=(await callTool("ccp_v1_workplaces_create",{
+  const workplace=(await callTool("ccp_workplaces_create",{
     name:"Enroll parity "+randomUUID(),timezone:"UTC",currency:"USD",
     locale:"en",policy:{},idempotencyKey:randomUUID(),
   })).data as {entityId:string};
   expect(workplace.entityId).toBeTruthy();
-  const first=(await callTool("ccp_v1_students_create",{
+  const first=(await callTool("ccp_students_create",{
     name:"MCP member "+randomUUID(),idempotencyKey:randomUUID(),
   })).data as {entityId:string};
   expect(first.entityId).toBeTruthy();
-  const toolEnrollment=await callTool("ccp_v1_workplaces_enroll",{
+  const toolEnrollment=await callTool("ccp_workplaces_enroll",{
     workplaceId:workplace.entityId,studentId:first.entityId,idempotencyKey:randomUUID(),
   });
   expect(toolEnrollment.error).toBeUndefined();
@@ -129,7 +129,7 @@ test("PARITY:PARITY-workplaces-enroll records only owned students through both s
   const members=(await websiteMembers.json()).data as Array<{student_id:string}>;
   expect(members.some(m=>m.student_id===first.entityId)).toBe(true);
   expect(members.some(m=>m.student_id===secondId)).toBe(true);
-  expect((await callTool("ccp_v1_workplaces_enrollments",{
+  expect((await callTool("ccp_workplaces_enrollments",{
     workplaceId:workplace.entityId,
   })).data).toEqual(members);
 
@@ -150,7 +150,7 @@ test("PARITY:PARITY-workplaces-enroll records only owned students through both s
     teacher_id:other.user!.id,name:"Foreign member "+randomUUID(),
   }).select("id").single();
   expect(foreignError).toBeNull();
-  const deniedMcp=await callTool("ccp_v1_workplaces_enroll",{
+  const deniedMcp=await callTool("ccp_workplaces_enroll",{
     workplaceId:workplace.entityId,studentId:foreign!.id,idempotencyKey:randomUUID(),
   });
   expect(deniedMcp.error?.code).toBe("NOT_FOUND");
@@ -158,7 +158,7 @@ test("PARITY:PARITY-workplaces-enroll records only owned students through both s
     action:"workplaces.enroll",workplaceId:workplace.entityId,studentId:foreign!.id,
   }});
   expect(deniedSite.status()).toBe(404);
-  expect((await callTool("ccp_v1_workplaces_enrollments",{
+  expect((await callTool("ccp_workplaces_enrollments",{
     workplaceId:workplace.entityId,
   })).data).toEqual(members);
   const {error:cleanupError}=await admin.auth.admin.deleteUser(other.user!.id);

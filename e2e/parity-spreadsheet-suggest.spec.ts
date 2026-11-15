@@ -13,7 +13,7 @@ test("PARITY:PARITY-spreadsheet-suggest-local-vs-ai-consent enforces identical l
  const local=await web.json() as {mapping:Record<string,string|null>;warning:string|null};
  expect(local.warning).toBeNull();
  expect(Object.keys(local.mapping).length).toBeGreaterThan(0);
- const model=await call("ccp_v1_import_spreadsheet_suggest",payload);
+ const model=await call("ccp_import_spreadsheet_suggest",payload);
  expect(model.error).toBeUndefined();
  expect(model.data).toEqual(local);
  // Omitted mode must now behave identically on website and MCP: offline
@@ -23,7 +23,7 @@ test("PARITY:PARITY-spreadsheet-suggest-local-vs-ai-consent enforces identical l
  });
  expect(defaultWeb.status(),await defaultWeb.text()).toBe(200);
  expect(await defaultWeb.json()).toEqual(local);
- const unconfirmedModel=await call("ccp_v1_import_spreadsheet_suggest",{
+ const unconfirmedModel=await call("ccp_import_spreadsheet_suggest",{
   headers,sampleRows,useAi:true,
  });
  expect(unconfirmedModel.error?.code).toBe("VALIDATION_ERROR");
@@ -41,7 +41,7 @@ test("PARITY:PARITY-spreadsheet-suggest-local-vs-ai-consent enforces identical l
  });
  expect(malformedSite.status(),await malformedSite.text()).toBe(400);
  expect((await malformedSite.json()).code).toBe("VALIDATION_ERROR");
- const malformedModel=await call("ccp_v1_import_spreadsheet_suggest",{
+ const malformedModel=await call("ccp_import_spreadsheet_suggest",{
   headers,sampleRows:badRows,useAi:false,
  });
  expect(malformedModel.error?.code).toBe("VALIDATION_ERROR");
@@ -52,7 +52,7 @@ test("PARITY:PARITY-spreadsheet-suggest-local-vs-ai-consent enforces identical l
  });
  expect(unknownWeb.status(),await unknownWeb.text()).toBe(400);
  expect((await unknownWeb.json()).code).toBe("VALIDATION_ERROR");
- const unknownMcp=await call("ccp_v1_import_spreadsheet_suggest",{
+ const unknownMcp=await call("ccp_import_spreadsheet_suggest",{
   ...payload,token:"do-not-ingest",
  });
  expect(unknownMcp.error?.code).toBe("VALIDATION_ERROR");
@@ -71,7 +71,7 @@ test("PARITY:PARITY-spreadsheet-default-strict-local-rejects-unapproved-sample-f
  const preview=await browser.json();
  expect(preview.warning).toBeNull();
  expect(preview.mapping.student_name).toBe("Student Name");
- const model=await call("ccp_v1_import_spreadsheet_suggest",{headers,sampleRows});
+ const model=await call("ccp_import_spreadsheet_suggest",{headers,sampleRows});
  expect(model.error).toBeUndefined();
  expect(model.data).toEqual(preview);
  for(const bad of [
@@ -81,7 +81,7 @@ test("PARITY:PARITY-spreadsheet-default-strict-local-rejects-unapproved-sample-f
   const denied=await page.request.post("/api/import/spreadsheet/suggest",{data:bad});
   expect(denied.status(),await denied.text()).toBe(400);
   expect((await denied.json()).code).toBe("VALIDATION_ERROR");
-  const viaMcp=await call("ccp_v1_import_spreadsheet_suggest",bad);
+  const viaMcp=await call("ccp_import_spreadsheet_suggest",bad);
   expect(viaMcp.error?.code).toBe("VALIDATION_ERROR");
  }
  // In particular, an unapproved AI request cannot transmit spreadsheet samples.
@@ -90,7 +90,7 @@ test("PARITY:PARITY-spreadsheet-default-strict-local-rejects-unapproved-sample-f
  });
  expect(requested.status(),await requested.text()).toBe(400);
  expect((await requested.json()).code).toBe("CONFIRMATION_REQUIRED");
- const mcpDenied=await call("ccp_v1_import_spreadsheet_suggest",{
+ const mcpDenied=await call("ccp_import_spreadsheet_suggest",{
   headers,sampleRows,useAi:true,
  });
  expect(mcpDenied.error?.code).toBe("VALIDATION_ERROR");

@@ -6,12 +6,12 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns credits on both surfaces",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
    name:"Prepaid chess pupil "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const family=await call("ccp_v1_guardians_create",{
+ const family=await call("ccp_guardians_create",{
    name:"Credit family "+randomUUID(),studentIds:[studentId],confirmed:true,
  });
  expect(family.error).toBeUndefined();
@@ -20,19 +20,19 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
    startsOn:"2042-07-01",expiresOn:"2042-08-01",
  };
  const requestId=randomUUID();
- const made=await call("ccp_v1_credits_package_create",{
+ const made=await call("ccp_credits_package_create",{
    ...payload,requestId,confirmed:true,
  });
  expect(made.error).toBeUndefined();
  expect(made.data.replayed).toBe(false);
  const packageId=made.data.packageId as string;
  const invoiceId=made.data.invoiceId as string;
- const replay=await call("ccp_v1_credits_package_create",{
+ const replay=await call("ccp_credits_package_create",{
    ...payload,requestId,confirmed:true,
  });
  expect(replay.error).toBeUndefined();
  expect(replay.data).toMatchObject({packageId,invoiceId,replayed:true});
- const conflict=await call("ccp_v1_credits_package_create",{
+ const conflict=await call("ccp_credits_package_create",{
    ...payload,priceCents:9900,requestId,confirmed:true,
  });
  expect(conflict.error?.code).toBe("CONFLICT");
@@ -54,18 +54,18 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  expect(website.status(),await website.text()).toBe(200);
  const initial=(await website.json()).packages as Array<any>;
  expect(initial.find(x=>x.id===packageId)?.invoiceStatus).toBe("draft");
- const mcpInitial=await call("ccp_v1_credits_packages_list",{studentId});
+ const mcpInitial=await call("ccp_credits_packages_list",{studentId});
  expect(mcpInitial.error).toBeUndefined();
  expect(mcpInitial.data.packages).toEqual(initial);
  const changed=await page.request.patch("/api/billing/credit-packages/"+packageId,{
    data:{expiresOn:"2042-08-31"},
  });
  expect(changed.status(),await changed.text()).toBe(200);
- const updated=await call("ccp_v1_credits_packages_list",{studentId});
+ const updated=await call("ccp_credits_packages_list",{studentId});
  expect(updated.error).toBeUndefined();
  expect(updated.data.packages.find((x:{id:string})=>x.id===packageId).expiresOn)
    .toBe("2042-08-31");
- const later=await call("ccp_v1_credits_package_expiry",{
+ const later=await call("ccp_credits_package_expiry",{
    packageId,expiresOn:"2042-09-30",confirmed:true,
  });
  expect(later.error).toBeUndefined();
@@ -99,23 +99,23 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
    .eq("teacher_id",signed.data.user!.id);
  expect(countAfter.error).toBeNull();
  expect(countAfter.count).toBe(countBefore.count);
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
    name:"Prepaid package workplace "+randomUUID(),timezone:"UTC",
    currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await call("ccp_v1_workplaces_enroll",{
+ expect((await call("ccp_workplaces_enroll",{
    workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
- const lesson=await call("ccp_v1_sessions_create",{
+ const lesson=await call("ccp_sessions_create",{
    workplaceId,studentId,title:"Prepaid private coaching",
    startsAt:"2042-07-10T10:00:00Z",durationMinutes:45,
    lessonNote:"",idempotencyKey:randomUUID(),
  });
  expect(lesson.error).toBeUndefined();
  const sessionId=lesson.data.entityId as string;
- const attended=await call("ccp_v1_session_attendance_set",{
+ const attended=await call("ccp_session_attendance_set",{
    sessionId,studentId,status:"present",note:"",
    noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
    notifyFamily:false,idempotencyKey:randomUUID(),confirmed:true,
@@ -126,7 +126,7 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  });
  expect(preview.status(),await preview.text()).toBe(200);
  expect((await preview.json()).creditsToUse).toBe(1);
- const mcpPreview=await call("ccp_v1_billing_generation_preview",{
+ const mcpPreview=await call("ccp_billing_generation_preview",{
    periodStart:"2042-07-01",periodEnd:"2042-07-31",
  });
  expect(mcpPreview.error).toBeUndefined();
@@ -136,7 +136,7 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  });
  expect(applied.status(),await applied.text()).toBe(200);
  expect((await applied.json()).creditsUsed).toBe(1);
- const read=await call("ccp_v1_credits_packages_list",{studentId});
+ const read=await call("ccp_credits_packages_list",{studentId});
  expect(read.error).toBeUndefined();
  const pkg=read.data.packages.find((x:{id:string})=>x.id===packageId);
  expect(pkg.usedCredits).toBe(1);
@@ -148,7 +148,7 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
    data:{expiresOn:"2042-07-09"},
  });
  expect(wrongExpiry.status()).toBe(409);
- const mcpWrongExpiry=await call("ccp_v1_credits_package_expiry",{
+ const mcpWrongExpiry=await call("ccp_credits_package_expiry",{
    packageId,expiresOn:"2042-07-09",confirmed:true,
  });
  expect(mcpWrongExpiry.error?.code).toBe("CONFLICT");
@@ -197,7 +197,7 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  // Race the FIRST website and MCP return: SQL must commit one deletion and
  // one replay receipt, not permit lost writes or fail the losing request.
  const [returned,browserFirst]=await Promise.all([
-   call("ccp_v1_credits_redemption_return",{
+   call("ccp_credits_redemption_return",{
      redemptionId:pkg.redemptions[0].id,confirmed:true,
    }),
    page.request.delete("/api/billing/credit-redemptions/"+pkg.redemptions[0].id),
@@ -220,12 +220,12 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
    "/api/billing/credit-redemptions/"+pkg.redemptions[0].id);
  expect(browserRetry.status(),await browserRetry.text()).toBe(200);
  expect(await browserRetry.json()).toEqual({ok:true,replayed:true});
- const modelRetry=await call("ccp_v1_credits_redemption_return",{
+ const modelRetry=await call("ccp_credits_redemption_return",{
    redemptionId:pkg.redemptions[0].id,confirmed:true,
  });
  expect(modelRetry.error).toBeUndefined();
  expect(modelRetry.data).toEqual({ok:true,replayed:true});
- const noForeignReceipt=await call("ccp_v1_credits_redemption_return",{
+ const noForeignReceipt=await call("ccp_credits_redemption_return",{
    redemptionId:randomUUID(),confirmed:true,
  });
  expect(noForeignReceipt.error?.code).toBe("NOT_FOUND");
@@ -276,25 +276,25 @@ test("PARITY:PARITY-credits-tenant-scope denies foreign package reads creates an
   const listSite=await page.request.get("/api/billing/credit-packages");
   expect(listSite.status(),await listSite.text()).toBe(200);
   expect((await listSite.json()).packages.some((x:{id:string})=>x.id===packageId)).toBe(false);
-  const listMcp=await call("ccp_v1_credits_packages_list",{});
+  const listMcp=await call("ccp_credits_packages_list",{});
   expect(listMcp.error).toBeUndefined();
   expect(listMcp.data.packages.some((x:{id:string})=>x.id===packageId)).toBe(false);
   expect((await page.request.get("/api/billing/credit-packages?studentId="+foreignStudentId)).status()).toBe(404);
-  expect((await call("ccp_v1_credits_packages_list",{
+  expect((await call("ccp_credits_packages_list",{
    studentId:foreignStudentId,
   })).error?.code).toBe("NOT_FOUND");
   expect((await page.request.post("/api/billing/credit-packages",{
    data:{studentId:foreignStudentId,credits:2,durationMinutes:45,
     priceCents:4000,startsOn:"2042-02-01",requestId:randomUUID()},
   })).status()).toBe(404);
-  expect((await call("ccp_v1_credits_package_create",{
+  expect((await call("ccp_credits_package_create",{
    studentId:foreignStudentId,credits:2,durationMinutes:45,
    priceCents:4000,startsOn:"2042-02-01",requestId:randomUUID(),confirmed:true,
   })).error?.code).toBe("NOT_FOUND");
   expect((await page.request.patch("/api/billing/credit-packages/"+packageId,{
    data:{expiresOn:"2043-01-01"},
   })).status()).toBe(404);
-  expect((await call("ccp_v1_credits_package_expiry",{
+  expect((await call("ccp_credits_package_expiry",{
    packageId,expiresOn:"2043-01-01",confirmed:true,
   })).error?.code).toBe("NOT_FOUND");
   const {data:unchanged,error}=await admin.from("credit_packages")

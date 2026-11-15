@@ -10,7 +10,7 @@ test("PARITY:PARITY-connections-grants compares redacted browser/MCP grants and 
  const website=(await first.json()).connections as Array<{id:string;client_id:string}>;
  const grant=website.find(g=>g.client_id===call.clientId);
  expect(grant).toBeTruthy();
- const mcp=await call("ccp_v1_connections_list",{});
+ const mcp=await call("ccp_connections_list",{});
  expect(mcp.error).toBeUndefined();
  const rows=mcp.data.connections as Array<{
    id:string;client_id:string;access_token?:string;refresh_token?:string;
@@ -19,7 +19,7 @@ test("PARITY:PARITY-connections-grants compares redacted browser/MCP grants and 
  expect(rows.every(g=>!g.access_token&&!g.refresh_token)).toBe(true);
 
  // Revoke only this scenario's new synthetic grant, never shared seed data.
- const revoked=await call("ccp_v1_connections_revoke",{
+ const revoked=await call("ccp_connections_revoke",{
    connectionId:grant!.id,confirmed:true,
  });
  expect(revoked.error).toBeUndefined();

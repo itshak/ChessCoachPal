@@ -7,7 +7,7 @@ test("PARITY:PARITY-studio-policy covers timezone scheduling rates invoices and 
  const first=await page.request.get("/api/settings/policy");
  expect(first.status(),await first.text()).toBe(200);
  const original=await first.json() as Record<string,any>;
- const mcpOriginal=await call("ccp_v1_studio_policy_get",{});
+ const mcpOriginal=await call("ccp_studio_policy_get",{});
  expect(mcpOriginal.error).toBeUndefined();
  expect(mcpOriginal.data.timezone).toBe(original.timezone);
  expect(mcpOriginal.data.ai_api_key).toBeNull();
@@ -18,7 +18,7 @@ test("PARITY:PARITY-studio-policy covers timezone scheduling rates invoices and 
    defaultRateCents:5400,invoiceCadence:"manual",notifyInApp:false,
  };
  try{
-   const updated=await call("ccp_v1_studio_policy_update",{
+   const updated=await call("ccp_studio_policy_update",{
      changes,confirmed:true,
    });
    expect(updated.error).toBeUndefined();
@@ -34,7 +34,7 @@ test("PARITY:PARITY-studio-policy covers timezone scheduling rates invoices and 
      defaultRateCents:5800,notifyInApp:true,
    }});
    expect(browserEdit.status(),await browserEdit.text()).toBe(200);
-   const mcpFinal=await call("ccp_v1_studio_policy_get",{});
+   const mcpFinal=await call("ccp_studio_policy_get",{});
    expect(mcpFinal.error).toBeUndefined();
    expect(mcpFinal.data.default_rate_cents).toBe(5800);
    expect(mcpFinal.data.notify_in_app).toBe(true);
@@ -60,7 +60,7 @@ test("PARITY:PARITY-studio-payment-qr-provider-fields makes every approved payme
  const qr="data:image/png;base64,"+
    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+p+6UAAAAASUVORK5CYII=";
  try{
-   const changed=await call("ccp_v1_studio_policy_update",{
+   const changed=await call("ccp_studio_policy_update",{
      changes:{paymentProvider:"manual",paymentQrCode:qr},confirmed:true,
    });
    expect(changed.error).toBeUndefined();
@@ -70,22 +70,22 @@ test("PARITY:PARITY-studio-payment-qr-provider-fields makes every approved payme
    expect(webPolicy.payment_provider).toBe("manual");
    expect(webPolicy.payment_qr_code).toBe(qr);
 
-   const ordinary=await call("ccp_v1_studio_policy_get",{});
+   const ordinary=await call("ccp_studio_policy_get",{});
    expect(ordinary.error).toBeUndefined();
    expect(ordinary.data.payment_qr_code).toBeNull();
    expect(ordinary.data.paymentQrCodeConfigured).toBe(true);
-   const noConsent=await call("ccp_v1_studio_policy_get",{
+   const noConsent=await call("ccp_studio_policy_get",{
      includePaymentQrCode:true,
    });
    expect(noConsent.error).toBeUndefined();
    expect(noConsent.data.payment_qr_code).toBeNull();
-   const approved=await call("ccp_v1_studio_policy_get",{
+   const approved=await call("ccp_studio_policy_get",{
      includePaymentQrCode:true,confirmed:true,
    });
    expect(approved.error).toBeUndefined();
    expect(approved.data.payment_qr_code).toBe(qr);
 
-   const rejectSecrets=await call("ccp_v1_studio_policy_update",{
+   const rejectSecrets=await call("ccp_studio_policy_update",{
      changes:{stripeSecretKey:"sk_live_must_not_enter_model"},confirmed:true,
    });
    expect(rejectSecrets.error?.code).toBe("VALIDATION_ERROR");
@@ -93,7 +93,7 @@ test("PARITY:PARITY-studio-payment-qr-provider-fields makes every approved payme
      paymentQrCode:null,
    }});
    expect(cleared.status(),await cleared.text()).toBe(200);
-   const modelFinal=await call("ccp_v1_studio_policy_get",{});
+   const modelFinal=await call("ccp_studio_policy_get",{});
    expect(modelFinal.error).toBeUndefined();
    expect(modelFinal.data.paymentQrCodeConfigured).toBe(false);
  }finally{
@@ -121,7 +121,7 @@ test("PARITY:PARITY-policy-invalid-field-validation rejects coercion equally on 
  ]){
    const browser=await page.request.put("/api/settings/policy",{data:changes});
    expect(browser.status(),await browser.text()).toBe(400);
-   const mcp=await call("ccp_v1_studio_policy_update",{changes,confirmed:true});
+   const mcp=await call("ccp_studio_policy_update",{changes,confirmed:true});
    expect(mcp.error?.code).toBe("VALIDATION_ERROR");
  }
  const after=await page.request.get("/api/settings/policy");
@@ -148,7 +148,7 @@ test("PARITY:PARITY-studio-policy-fields-all preserves ordinary profile, rate an
   bccEmail:"coach-parity@example.org",
  };
  try{
-  const updated=await call("ccp_v1_studio_policy_update",{changes,confirmed:true});
+  const updated=await call("ccp_studio_policy_update",{changes,confirmed:true});
   expect(updated.error).toBeUndefined();
   const site=await page.request.get("/api/settings/policy");
   expect(site.status(),await site.text()).toBe(200);
@@ -166,7 +166,7 @@ test("PARITY:PARITY-studio-policy-fields-all preserves ordinary profile, rate an
    defaultRateCents:null,makeupCreditExpiryDays:null,bccEmail:null,
   }});
   expect(cleared.status(),await cleared.text()).toBe(200);
-  const read=await call("ccp_v1_studio_policy_get",{});
+  const read=await call("ccp_studio_policy_get",{});
   expect(read.error).toBeUndefined();
   expect(read.data).toMatchObject({
    studio_website:"https://chesscoachpal.example/edited",
@@ -174,7 +174,7 @@ test("PARITY:PARITY-studio-policy-fields-all preserves ordinary profile, rate an
    travel_fee_cents:null,default_rate_cents:null,
    makeup_credit_expiry_days:null,bcc_email:null,
   });
-  const bad=await call("ccp_v1_studio_policy_update",{
+  const bad=await call("ccp_studio_policy_update",{
    changes:{stripeSecretKey:"sk_live_secret_must_never_reach_mcp"},
    confirmed:true,
   });
@@ -255,7 +255,7 @@ test("PARITY:PARITY-studio-policy-ordinary-fields-roundtrip persists every coach
   return [client,value??(emptyText.includes(client)?"":null)];
  }));
  try{
-  const mcpSave=await call("ccp_v1_studio_policy_update",{
+  const mcpSave=await call("ccp_studio_policy_update",{
    changes,confirmed:true,
   });
   expect(mcpSave.error).toBeUndefined();
@@ -272,7 +272,7 @@ test("PARITY:PARITY-studio-policy-ordinary-fields-roundtrip persists every coach
     travelFeeCents:null,bccEmail:null},
   });
   expect(webEdit.status(),await webEdit.text()).toBe(200);
-  const mcpRead=await call("ccp_v1_studio_policy_get",{});
+  const mcpRead=await call("ccp_studio_policy_get",{});
   expect(mcpRead.error).toBeUndefined();
   expect(mcpRead.data).toMatchObject({
    lesson_label:"Reviewed website lesson",cancellation_window_hours:12,

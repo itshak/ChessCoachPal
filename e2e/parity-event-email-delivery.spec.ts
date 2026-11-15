@@ -6,19 +6,19 @@ import {mailpitMessagesTo} from "./helpers/mailpit";
 
 test("PARITY:PARITY-events-invitation-delivery previews and sends one local SMTP email despite MCP/browser retries",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
    name:"Invitation pupil "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
  const recipient="event-once-"+randomUUID()+"@example.com";
- const family=await call("ccp_v1_guardians_create",{
+ const family=await call("ccp_guardians_create",{
    name:"Invitation family "+randomUUID(),email:recipient,
    studentIds:[studentId],confirmed:true,
  });
  expect(family.error).toBeUndefined();
  const title="Chess field trip "+randomUUID();
- const event=await call("ccp_v1_events_create",{
+ const event=await call("ccp_events_create",{
    title,startsAt:"2042-12-10T09:00:00+02:00",
    endsAt:"2042-12-10T12:00:00+02:00",
    studentIds:[studentId],location:"Main chess hall",
@@ -35,10 +35,10 @@ test("PARITY:PARITY-events-invitation-delivery previews and sends one local SMTP
  expect(preview.recipientCount).toBe(1);
  expect(preview.drafts[0].subject).toContain(title);
  expect(preview.drafts[0].recipients).toBeUndefined();
- const mcpPreview=await call("ccp_v1_events_email_preview",{eventId});
+ const mcpPreview=await call("ccp_events_email_preview",{eventId});
  expect(mcpPreview.error).toBeUndefined();
  expect(mcpPreview.data).toEqual(preview);
- const unconfirmed=await call("ccp_v1_events_email_invites",{
+ const unconfirmed=await call("ccp_events_email_invites",{
    eventId,confirmed:true,
  });
  expect(unconfirmed.error?.code).toBe("VALIDATION_ERROR");
@@ -46,7 +46,7 @@ test("PARITY:PARITY-events-invitation-delivery previews and sends one local SMTP
  // Exercise simultaneous cross-client send attempts: the PostgreSQL
  // receipt must select exactly one sender before either SMTP request.
  const [first,viaSite]=await Promise.all([
-   call("ccp_v1_events_email_invites",{
+   call("ccp_events_email_invites",{
      eventId,confirmed:true,confirmedEmail:true,
    }),
    page.request.post(endpoint),
@@ -64,7 +64,7 @@ test("PARITY:PARITY-events-invitation-delivery previews and sends one local SMTP
  const siteReplay=await page.request.post(endpoint);
  expect(siteReplay.status(),await siteReplay.text()).toBe(200);
  expect(await siteReplay.json()).toMatchObject({sent:0,skipped:1});
- const replay=await call("ccp_v1_events_email_invites",{
+ const replay=await call("ccp_events_email_invites",{
    eventId,confirmed:true,confirmedEmail:true,
  });
  expect(replay.error).toBeUndefined();
@@ -112,10 +112,10 @@ test("PARITY:PARITY-events-email-tenant-isolation denies foreign invitation prev
   })).error).toBeNull();
   const api="/api/events/"+eventId+"/email";
   expect((await page.request.get(api)).status()).toBe(404);
-  expect((await call("ccp_v1_events_email_preview",{eventId})).error?.code)
+  expect((await call("ccp_events_email_preview",{eventId})).error?.code)
    .toBe("NOT_FOUND");
   expect((await page.request.post(api)).status()).toBe(404);
-  expect((await call("ccp_v1_events_email_invites",{
+  expect((await call("ccp_events_email_invites",{
    eventId,confirmed:true,confirmedEmail:true,
   })).error?.code).toBe("NOT_FOUND");
   expect((await mailpitMessagesTo(request,recipient)).length).toBe(0);

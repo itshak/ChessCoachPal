@@ -4,7 +4,7 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-student-basic-edit-revision-replay uses one SQL receipt across website and delegated MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const made=await call("ccp_v1_students_create",{
+ const made=await call("ccp_students_create",{
   name:"Basic edit parity "+randomUUID().slice(0,8),level:"Beginner",
   idempotencyKey:randomUUID(),
  });
@@ -31,20 +31,20 @@ test("PARITY:PARITY-student-basic-edit-revision-replay uses one SQL receipt acro
  expect(receipt).toMatchObject({
   operation:"students.update",entityId:studentId,idempotencyKey:key,
  });
- const modelReplay=await call("ccp_v1_students_update",{
+ const modelReplay=await call("ccp_students_update",{
   studentId,name:row!.name,level:"Intermediate",
   expectedUpdatedAt:row!.updated_at,idempotencyKey:key,
  });
  expect(modelReplay.error).toBeUndefined();
  expect(modelReplay.data).toEqual(receipt);
- const updated=await call("ccp_v1_students_search",{query:row!.name});
+ const updated=await call("ccp_students_search",{query:row!.name});
  expect(updated.error).toBeUndefined();
  const refreshed=(updated.data as Array<{id:string;level:string;updated_at:string}>)
   .find(x=>x.id===studentId);
  expect(refreshed?.level).toBe("Intermediate");
  expect(refreshed?.updated_at).toBe(receipt.revision);
 
- const reused=await call("ccp_v1_students_update",{
+ const reused=await call("ccp_students_update",{
   studentId,name:row!.name,level:"Different under same key",
   expectedUpdatedAt:row!.updated_at,idempotencyKey:key,
  });
@@ -59,7 +59,7 @@ test("PARITY:PARITY-student-basic-edit-revision-replay uses one SQL receipt acro
  expect(missing.status(),await missing.text()).toBe(400);
 
  const reverseKey=randomUUID();
- const updatedMcp=await call("ccp_v1_students_update",{
+ const updatedMcp=await call("ccp_students_update",{
   studentId,level:"Advanced",expectedUpdatedAt:refreshed!.updated_at,
   idempotencyKey:reverseKey,
  });

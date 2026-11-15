@@ -7,7 +7,7 @@ type Tool=(name:string,args:Record<string,unknown>)=>Promise<{
 }>;
 const unique=(prefix:string)=>prefix+" "+randomUUID().slice(0,9);
 async function workplace(callTool:Tool) {
-  const result=await callTool("ccp_v1_workplaces_create",{
+  const result=await callTool("ccp_workplaces_create",{
     name:unique("Parity workplace"),timezone:"UTC",currency:"USD",
     locale:"en",policy:{},idempotencyKey:randomUUID(),
   });
@@ -17,7 +17,7 @@ async function workplace(callTool:Tool) {
   return id;
 }
 async function student(callTool:Tool) {
-  const result=await callTool("ccp_v1_students_create",{
+  const result=await callTool("ccp_students_create",{
     name:unique("Parity learner"),idempotencyKey:randomUUID(),
   });
   expect(result.error).toBeUndefined();
@@ -38,12 +38,12 @@ test("PARITY:PARITY-workplaces-rename preserves same ID and session-report histo
   const callTool=await delegatedTool(page,request);
   const id=await workplace(callTool);
   const learner=await student(callTool);
-  expect((await callTool("ccp_v1_workplaces_enroll",{
+  expect((await callTool("ccp_workplaces_enroll",{
     workplaceId:id,studentId:learner,idempotencyKey:randomUUID(),
   })).error).toBeUndefined();
   const start=new Date(Date.UTC(2046,0,1)+Math.floor(Math.random()*31536000000));
   const day=start.toISOString().slice(0,10);
-  const session=await callTool("ccp_v1_sessions_create",{
+  const session=await callTool("ccp_sessions_create",{
     workplaceId:id,studentId:learner,title:unique("Original workplace history"),
     startsAt:start.toISOString(),durationMinutes:45,lessonNote:"Audit-safe synthetic lesson",
     idempotencyKey:randomUUID(),
@@ -56,7 +56,7 @@ test("PARITY:PARITY-workplaces-rename preserves same ID and session-report histo
   expect(before.report.sessions).toBeGreaterThan(0);
   const old=await websiteWorkplace(page,id);
   const name=unique("Renamed workplace");
-  const rename=await callTool("ccp_v1_workplaces_update",{
+  const rename=await callTool("ccp_workplaces_update",{
     workplaceId:id,name,expectedUpdatedAt:old.updated_at,idempotencyKey:randomUUID(),
   });
   expect(rename.error).toBeUndefined();
@@ -69,7 +69,7 @@ test("PARITY:PARITY-workplaces-rename preserves same ID and session-report histo
   expect(after.report.sessions).toBe(before.report.sessions);
   expect(after.report.teachingMinutes).toBe(before.report.teachingMinutes);
   expect(after.report.attendance).toEqual(before.report.attendance);
-  expect(((await callTool("ccp_v1_workplaces_list",{})).data as Array<{id:string;name:string}>)
+  expect(((await callTool("ccp_workplaces_list",{})).data as Array<{id:string;name:string}>)
     .find(x=>x.id===id)?.name).toBe(name);
 });
 
@@ -88,19 +88,19 @@ test("PARITY:PARITY-workplaces-policy edits timezone locale currency and policy 
   expect(browserRow).toMatchObject({
     timezone:"Asia/Jerusalem",currency:"ILS",locale:"he",policy:{cancellationHours:24},
   });
-  const toolRows=(await callTool("ccp_v1_workplaces_list",{})).data as Array<{
+  const toolRows=(await callTool("ccp_workplaces_list",{})).data as Array<{
     id:string;timezone:string;currency:string;locale:string;policy:Record<string,unknown>;
   }>;
   expect(toolRows.find(x=>x.id===id)).toMatchObject({
     timezone:browserRow.timezone,currency:browserRow.currency,
     locale:browserRow.locale,policy:browserRow.policy,
   });
-  const stale=await callTool("ccp_v1_workplaces_update",{
+  const stale=await callTool("ccp_workplaces_update",{
     workplaceId:id,expectedUpdatedAt:before.updated_at,name:"Stale overwrite",
     idempotencyKey:randomUUID(),
   });
   expect(stale.error?.code).toBe("CONFLICT");
-  const revised=await callTool("ccp_v1_workplaces_update",{
+  const revised=await callTool("ccp_workplaces_update",{
     workplaceId:id,name:unique("MCP policy rename"),
     expectedUpdatedAt:browserRow.updated_at,idempotencyKey:randomUUID(),
   });
@@ -122,10 +122,10 @@ test("PARITY:PARITY-workplaces-enrollments compares complete current owned roste
   expect(web.status(),await web.text()).toBe(200);
   const members=(await web.json()).data as Array<{student_id:string}>;
   expect(members.map(x=>x.student_id)).toContain(learner);
-  const mcp=await callTool("ccp_v1_workplaces_enrollments",{workplaceId:id});
+  const mcp=await callTool("ccp_workplaces_enrollments",{workplaceId:id});
   expect(mcp.error).toBeUndefined();
   expect(mcp.data).toEqual(members);
-  const unknown=await callTool("ccp_v1_workplaces_enrollments",{
+  const unknown=await callTool("ccp_workplaces_enrollments",{
     workplaceId:"00000000-0000-4000-8000-000000000001",
   });
   expect(unknown.error?.code).toBe("NOT_FOUND");
@@ -134,10 +134,10 @@ test("PARITY:PARITY-workplaces-enrollments compares complete current owned roste
 test("PARITY:PARITY-workplaces-unenroll-history preserves frozen lessons across MCP and website",async({page,request})=>{
   const callTool=await delegatedTool(page,request);
   const id=await workplace(callTool),learner=await student(callTool);
-  expect((await callTool("ccp_v1_workplaces_enroll",{
+  expect((await callTool("ccp_workplaces_enroll",{
     workplaceId:id,studentId:learner,idempotencyKey:randomUUID(),
   })).error).toBeUndefined();
-  const lesson=await callTool("ccp_v1_sessions_create",{
+  const lesson=await callTool("ccp_sessions_create",{
     workplaceId:id,studentId:learner,title:unique("Historical standalone lesson"),
     startsAt:new Date(Date.UTC(2019,0,1)+Math.floor(Math.random()*31536000000)).toISOString(),
     durationMinutes:45,lessonNote:"Preserve this teaching snapshot",
@@ -151,7 +151,7 @@ test("PARITY:PARITY-workplaces-unenroll-history preserves frozen lessons across 
   expect(before.status(),await before.text()).toBe(200);
   const roster=(await before.json()).data as Array<{student_id:string}>;
   expect(roster.map(p=>p.student_id)).toEqual([learner]);
-  const unenroll=await callTool("ccp_v1_workplaces_unenroll",{
+  const unenroll=await callTool("ccp_workplaces_unenroll",{
     workplaceId:id,studentId:learner,confirmed:true,
   });
   expect(unenroll.error).toBeUndefined();
@@ -166,12 +166,12 @@ test("PARITY:PARITY-workplaces-unenroll-history preserves frozen lessons across 
   });
   expect(historical.status()).toBe(200);
   expect((await historical.json()).data).toEqual(roster);
-  expect((await callTool("ccp_v1_sessions_participants",{sessionId})).data).toEqual(roster);
+  expect((await callTool("ccp_sessions_participants",{sessionId})).data).toEqual(roster);
   const siteJoin=await page.request.post("/api/agent/v1",{data:{
     action:"workplaces.enroll",workplaceId:id,studentId:learner,
   }});
   expect(siteJoin.status(),await siteJoin.text()).toBe(200);
-  const restoredMembers=(await callTool("ccp_v1_workplaces_enrollments",{workplaceId:id}))
+  const restoredMembers=(await callTool("ccp_workplaces_enrollments",{workplaceId:id}))
     .data as Array<{student_id:string}>;
   expect(restoredMembers.some(x=>x.student_id===learner)).toBe(true);
 });

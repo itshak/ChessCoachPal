@@ -11,7 +11,7 @@ async function web<T>(page:import("@playwright/test").Page,action:string,
 
 test("PARITY:PARITY-coach-workplace-group-revision-replay preserves one receipt across website and MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const made=await call("ccp_v1_workplaces_create",{
+ const made=await call("ccp_workplaces_create",{
   name:"Revisioned chess academy "+randomUUID().slice(0,8),
   timezone:"UTC",currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
@@ -29,10 +29,10 @@ test("PARITY:PARITY-coach-workplace-group-revision-replay preserves one receipt 
  };
  const browser=await web<{entityId:string;revision:string}>(page,"workplaces.update",input);
  expect(browser.entityId).toBe(workplaceId);
- const replay=await call("ccp_v1_workplaces_update",input);
+ const replay=await call("ccp_workplaces_update",input);
  expect(replay.error).toBeUndefined();
  expect(replay.data).toEqual(browser);
- const found=(await call("ccp_v1_workplaces_list",{})).data as Array<{
+ const found=(await call("ccp_workplaces_list",{})).data as Array<{
   id:string;name:string;timezone:string;updated_at:string;policy:Record<string,string>;
  }>;
  expect(found.find(x=>x.id===workplaceId)).toMatchObject({
@@ -40,7 +40,7 @@ test("PARITY:PARITY-coach-workplace-group-revision-replay preserves one receipt 
   updated_at:browser.revision,
  });
 
- const reused=await call("ccp_v1_workplaces_update",{
+ const reused=await call("ccp_workplaces_update",{
   ...input,name:"Different payload with the same request key",
  });
  expect(reused.error?.code).toBe("CONFLICT");
@@ -50,7 +50,7 @@ test("PARITY:PARITY-coach-workplace-group-revision-replay preserves one receipt 
  }});
  expect(stale.status(),await stale.text()).toBe(409);
 
- const groupMade=await call("ccp_v1_groups_create",{
+ const groupMade=await call("ccp_groups_create",{
   workplaceId,name:"Frozen knight class "+randomUUID().slice(0,6),
   idempotencyKey:randomUUID(),
  });
@@ -61,7 +61,7 @@ test("PARITY:PARITY-coach-workplace-group-revision-replay preserves one receipt 
  expect(group).toBeDefined();
  const groupInput={groupId,workplaceId,name:"Queen endgames "+randomUUID().slice(0,6),
   expectedUpdatedAt:group.updated_at,idempotencyKey:randomUUID()};
- const byMcp=await call("ccp_v1_groups_update",groupInput);
+ const byMcp=await call("ccp_groups_update",groupInput);
  expect(byMcp.error).toBeUndefined();
  const byBrowser=await web<{
   entityId:string;revision:string;
