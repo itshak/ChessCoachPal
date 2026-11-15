@@ -48,6 +48,8 @@ Configure these values in Coolify before first deployment:
 | TOKEN_ENCRYPTION_KEY | Dedicated random 32-byte secret represented as 64 hex digits |
 | MCP_SESSION_ENCRYPTION_KEY | **Different** random 32-byte secret for delegated session encryption |
 
+The optional NEXT_PUBLIC_BETA_ONLY flag is passed to both the image builder and runtime. Enabling it requires a nonempty server-only BETA_ACCESS_CODE before opening signup. Changing NEXT_PUBLIC_BETA_ONLY requires rebuilding the Next.js image.
+
 The checked-in script docker/supabase/generate-secrets.sh generates the six related Supabase stack values. Handle its output privately and set all of them as a consistent set; never post them to GitHub, Coolify logs, or a chat. Generate the other two encryption keys independently with a CSPRNG.
 
 For the candidate deployment the Compose file deliberately defaults **DISABLE_SIGNUP=true** and **ENABLE_EMAIL_AUTOCONFIRM=false**. Do not open public signups until SMTP/email verification, abuse prevention, password policy, tenant/RLS checks and privacy controls are verified. Optional provider secrets are absent until configured. The ChessCoachPal site and /mcp remain a single Next.js process/domain, sharing tenant authorization.
