@@ -1,5 +1,4 @@
 import "server-only";
-import {mcpObjectInputSchema} from "@/lib/server/mcp-object-input-schema";
 import { z } from "zod";
 import {ratingRecordSchema,ratingFetchSchema,ratingListSchema} from "@/lib/chess-public-ratings";
 import {ratingRefreshCommitSchema,teacherStudentRatingHistory,
@@ -1371,7 +1370,7 @@ const catalogue = [
 export const exposedTools = catalogue.map(t => ({
   name: t.name, title: t.name,
   description: t.description,
-  inputSchema: mcpObjectInputSchema(z.toJSONSchema(t.schema) as Record<string,unknown>),
+  inputSchema: z.toJSONSchema(t.schema),
   annotations: { readOnlyHint: t.readOnly, destructiveHint: false, openWorldHint: false },
 }));
 
