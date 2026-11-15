@@ -26,14 +26,14 @@ test("PARITY:PARITY-all-teacher-route-field-action-contract discovers every teac
   // every teacher endpoint; the individually named E2E matrix exercises each.
   // This acceptance independently confirms runtime OAuth discovery and a
   // representative full chess-specific profile field update/clear contract.
-  const editSchema=byName.get("ccp_v1_students_profile_edit")!.inputSchema!;
+  const editSchema=byName.get("ccp_students_profile_edit")!.inputSchema!;
   const changes=((editSchema.properties??{}).changes??{}).properties??{};
   for(const field of ["nameAliases","strength","lichessUsername",
     "chesscomUsername","lichessRating","chesscomRating","chessGoals",
     "teacherNotes","defaultRateCents","travelFeeCents","archived"])
     expect(Object.hasOwn(changes,field),"student edit field "+field).toBe(true);
   const newName="Parity catalog learner "+randomUUID().slice(0,8);
-  const created=await call("ccp_v1_students_create",{
+  const created=await call("ccp_students_create",{
     name:newName,idempotencyKey:randomUUID(),
   });
   expect(created.error).toBeUndefined();
@@ -45,7 +45,7 @@ test("PARITY:PARITY-all-teacher-route-field-action-contract discovers every teac
     chesscomRating:1820,chessGoals:"Endgames and tactics",
   }});
   expect(website.status(),await website.text()).toBe(200);
-  const model=await call("ccp_v1_students_profile",{studentId});
+  const model=await call("ccp_students_profile",{studentId});
   expect(model.error).toBeUndefined();
   expect(model.data).toMatchObject({
     id:studentId,name:newName,name_aliases:[alias],strength:7,
@@ -53,7 +53,7 @@ test("PARITY:PARITY-all-teacher-route-field-action-contract discovers every teac
     lichess_rating:1710,chesscom_rating:1820,
     chess_goals:"Endgames and tactics",
   });
-  const corrected=await call("ccp_v1_students_profile_edit",{
+  const corrected=await call("ccp_students_profile_edit",{
     studentId,expectedUpdatedAt:model.data.updated_at,
     changes:{nameAliases:[],strength:8,lichessUsername:null,
       chesscomUsername:null,lichessRating:null,chesscomRating:null},

@@ -23,19 +23,19 @@ test("PARITY:PARITY-safety-backup-preflight rejects late-table malformed imports
  expect(before.status()).toBe(404);
  const websitePreview=await page.request.put("/api/settings/import",{data:{payload}});
  expect(websitePreview.status(),await websitePreview.text()).toBe(400);
- const mcpPreview=await call("ccp_v1_settings_import_preview",{payload});
+ const mcpPreview=await call("ccp_settings_import_preview",{payload});
  expect(mcpPreview.error?.code).toBe("VALIDATION_ERROR");
  const digest=createHash("sha256").update(JSON.stringify(payload)).digest("hex");
  const browserCommit=await page.request.post("/api/settings/import",{
    data:{payload,expectedSha256:digest,confirmed:true},
  });
  expect(browserCommit.status(),await browserCommit.text()).toBe(400);
- const modelCommit=await call("ccp_v1_settings_import_apply",{
+ const modelCommit=await call("ccp_settings_import_apply",{
    payload,expectedSha256:digest,confirmed:true,
  });
  expect(modelCommit.error?.code).toBe("VALIDATION_ERROR");
  const missing=await page.request.get("/api/students/"+studentId);
  expect(missing.status()).toBe(404);
- const modelLookup=await call("ccp_v1_students_profile",{studentId});
+ const modelLookup=await call("ccp_students_profile",{studentId});
  expect(modelLookup.error?.code).toBe("NOT_FOUND");
 });

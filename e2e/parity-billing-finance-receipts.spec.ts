@@ -5,12 +5,12 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 type Call=(name:string,args:Record<string,unknown>)=>Promise<any>;
 async function billableLesson(page:import("@playwright/test").Page,call:Call,month:string){
-  const student=await call("ccp_v1_students_create",{
+  const student=await call("ccp_students_create",{
     name:"Finance parity learner "+randomUUID(),idempotencyKey:randomUUID(),
   });
   expect(student.error).toBeUndefined();
   const studentId=student.data.entityId as string;
-  const guardian=await call("ccp_v1_guardians_create",{
+  const guardian=await call("ccp_guardians_create",{
     name:"Finance parity household "+randomUUID(),studentIds:[studentId],confirmed:true,
   });
   expect(guardian.error).toBeUndefined();
@@ -18,24 +18,24 @@ async function billableLesson(page:import("@playwright/test").Page,call:Call,mon
     data:{defaultRateCents:6200},
   });
   expect(rate.status(),await rate.text()).toBe(200);
-  const workplace=await call("ccp_v1_workplaces_create",{
+  const workplace=await call("ccp_workplaces_create",{
     name:"Finance parity workplace "+randomUUID(),timezone:"UTC",
     currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
   });
   expect(workplace.error).toBeUndefined();
   const workplaceId=workplace.data.entityId as string;
-  const enrolled=await call("ccp_v1_workplaces_enroll",{
+  const enrolled=await call("ccp_workplaces_enroll",{
     workplaceId,studentId,idempotencyKey:randomUUID(),
   });
   expect(enrolled.error).toBeUndefined();
-  const lesson=await call("ccp_v1_sessions_create",{
+  const lesson=await call("ccp_sessions_create",{
     workplaceId,studentId,title:"Finance parity lesson",
     startsAt:month+"-15T13:15:00Z",durationMinutes:60,
     lessonNote:"",idempotencyKey:randomUUID(),
   });
   expect(lesson.error).toBeUndefined();
   const sessionId=lesson.data.entityId as string;
-  const attendance=await call("ccp_v1_session_attendance_set",{
+  const attendance=await call("ccp_session_attendance_set",{
     sessionId,studentId,status:"present",note:"",
     noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
     notifyFamily:false,idempotencyKey:randomUUID(),confirmed:true,
@@ -55,7 +55,7 @@ test("PARITY:PARITY-billing-generation-receipt-replay creates one invoice under 
   expect(previewSite.status(),await previewSite.text()).toBe(200);
   const preview=await previewSite.json();
   expect(preview.totalCents).toBe(6200);
-  const previewTool=await call("ccp_v1_billing_generation_preview",period);
+  const previewTool=await call("ccp_billing_generation_preview",period);
   expect(previewTool.error).toBeUndefined();
   expect(previewTool.data).toEqual(preview);
   const key=randomUUID();
@@ -63,7 +63,7 @@ test("PARITY:PARITY-billing-generation-receipt-replay creates one invoice under 
     page.request.post("/api/billing/generate",{
       data:{...period,commit:true,idempotencyKey:key},
     }),
-    call("ccp_v1_billing_generation_commit",{
+    call("ccp_billing_generation_commit",{
       ...period,idempotencyKey:key,confirmed:true,
     }),
   ]);
@@ -85,7 +85,7 @@ test("PARITY:PARITY-billing-generation-receipt-replay creates one invoice under 
     session_id:sessionId,student_id:studentId,
   });
 
-  const retry=await call("ccp_v1_billing_generation_commit",{
+  const retry=await call("ccp_billing_generation_commit",{
     ...period,idempotencyKey:key,confirmed:true,
   });
   expect(retry.error).toBeUndefined();
@@ -95,7 +95,7 @@ test("PARITY:PARITY-billing-generation-receipt-replay creates one invoice under 
       commit:true,idempotencyKey:key},
   });
   expect(foreignPeriod.status(),await foreignPeriod.text()).toBe(409);
-  const reuseOtherAction=await call("ccp_v1_billing_invoice_regenerate",{
+  const reuseOtherAction=await call("ccp_billing_invoice_regenerate",{
     invoiceId,expectedUpdatedAt:invoice.updated_at,
     idempotencyKey:key,confirmed:true,
   });
@@ -138,7 +138,7 @@ test("PARITY:PARITY-billing-regeneration-receipt-revision is transactional and r
     page.request.post("/api/billing/invoices/"+invoiceId+"/regenerate",{
       data:payload,
     }),
-    call("ccp_v1_billing_invoice_regenerate",{
+    call("ccp_billing_invoice_regenerate",{
       invoiceId,...payload,confirmed:true,
     }),
   ]);
@@ -166,12 +166,12 @@ test("PARITY:PARITY-billing-regeneration-receipt-revision is transactional and r
   expect(sameResult).toMatchObject({replayed:true,subtotalCents:8800});
   expect(Date.parse(sameResult.updatedAt)).toBe(Date.parse(saved.updated_at));
   expect((await get()).subtotal_cents).toBe(8800);
-  const stale=await call("ccp_v1_billing_invoice_regenerate",{
+  const stale=await call("ccp_billing_invoice_regenerate",{
     invoiceId,expectedUpdatedAt:first.updated_at,idempotencyKey:randomUUID(),
     confirmed:true,
   });
   expect(stale.error?.code).toBe("CONFLICT");
-  const fixed=await call("ccp_v1_billing_invoice_regenerate",{
+  const fixed=await call("ccp_billing_invoice_regenerate",{
     invoiceId,expectedUpdatedAt:saved.updated_at,idempotencyKey:randomUUID(),
     confirmed:true,
   });
@@ -183,7 +183,7 @@ test("PARITY:PARITY-billing-regeneration-receipt-revision is transactional and r
       data:{expectedUpdatedAt:saved.updated_at,providerSecret:"do-not-accept"},
     });
   expect(invalidWeb.status()).toBe(400);
-  const invalidMcp=await call("ccp_v1_billing_invoice_regenerate",{
+  const invalidMcp=await call("ccp_billing_invoice_regenerate",{
     invoiceId,confirmed:true,providerSecret:"do-not-accept",
   });
   expect(invalidMcp.error?.code).toBe("VALIDATION_ERROR");
