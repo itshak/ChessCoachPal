@@ -106,4 +106,10 @@ Security changes must have **both** a new-install baseline test **and** a live R
 - [ ] Are **same-PR** registry + delegated website/MCP E2E evidence and all release workflows green?
 - [ ] Is deployment at the expected immutable commit, with live-client verification clearly separated from automated checks?
 
+## External payment concurrency E2E pitfall
+
+In PR #81, synthetic Stripe website/MCP E2E failed because it asserted exactly one of two concurrent callers must succeed. This is not necessarily true: the first may persist the only checkout before the second reads it, and both can correctly return that same session. The corrected E2E accepts that safe interleaving while retaining strict safety invariants for distinct upstream sessions: one persisted payable winner, loser provider session expired and loser response conflict. It checks persisted identity, returned identities, provider call count and replay without extra creation. Race assertions must prove outcomes, not assume scheduling.
+
+At release, compare immutable merged-main SHA with Vercel production deployment Git SHA and domain aliases, verify HTTP and MCP, and preserve separate live-client acceptance evidence. Supabase Advisor warnings for intentionally server-only no-policy RLS tables and authorized definer functions require manual classification; a tiny database's unused indexes should not be removed reflexively. No reset is needed when hardening has been applied in place safely.
+
 **Evidence trail:** PR [#79](https://github.com/itshak/ChessCoachPal/pull/79) (Claude discovery/root schema), PR [#81](https://github.com/itshak/ChessCoachPal/pull/81) (integration rough edges/security), and the [MCP parity ADR](adr/0003-mcp-website-business-parity.md). Client observations were supplied by the maintainer from Claude Desktop and verified independently where possible; they do not constitute a ChatGPT-client test.
