@@ -13,8 +13,6 @@ _Changes for the next release go here._
 - Updated the MCP tool catalogue, dispatch, parity inventory, synthetic tests and client documentation to use the single current naming convention. Existing ChatGPT/Claude clients may need a tool refresh or reconnection.
 - The HTTPS `/mcp` endpoint, OAuth scopes and teacher data remain unchanged; no database migration or destructive reset is required.
 
-_Changes for the next release go here._
-
 ## [0.1.1] - 2026-11-15
 
 ### Added
