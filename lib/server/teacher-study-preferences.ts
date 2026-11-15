@@ -2,11 +2,15 @@ import "server-only";
 import {z} from "zod";
 import type {SupabaseClient} from "@supabase/supabase-js";
 
+// The synthetic (and historical) Supabase auth principal may be a valid
+// PostgreSQL UUID-shaped GUID without an RFC-4122 version/variant nibble.
+// The teacher identity is still checked against auth.uid() inside SQL; reject
+// malformed IDs here, not valid database UUIDs solely for lacking that nibble.
 export const studyPreferencePurpose=z.enum(["lesson","puzzle"]);
 export const studyPreferenceScope=z.enum(["teacher","workplace","student"]);
 export const studyPreferenceListSchema=z.object({
  purpose:studyPreferencePurpose.optional(),scope:studyPreferenceScope.optional(),
- scopeId:z.uuid().optional(),
+ scopeId:z.guid().optional(),
  limit:z.number().int().min(1).max(100).default(50),
  offset:z.number().int().min(0).max(100000).default(0),
 }).strict();
@@ -15,7 +19,7 @@ export const studyPreferenceResolveSchema=z.object({
  studentId:z.uuid().optional(),
 }).strict();
 export const studyPreferenceSetSchema=z.object({
- purpose:studyPreferencePurpose,scope:studyPreferenceScope,scopeId:z.uuid(),
+ purpose:studyPreferencePurpose,scope:studyPreferenceScope,scopeId:z.guid(),
  studyId:z.string().regex(/^[A-Za-z0-9]{8}$/).nullable(),
  expectedRevision:z.number().int().min(0).max(1000000000),
  requestId:z.uuid(),confirmed:z.literal(true),
