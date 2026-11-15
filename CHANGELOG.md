@@ -4,6 +4,25 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 ## [Unreleased]
 
+_Changes for the next release go here._
+
+## [0.1.0] - 2026-11-15
+
+### Added
+- MCP-first chess-coaching workflows for student profiles, aliases, workplace enrollment, groups, individual and shared lessons, attendance, reports and editable learning history.
+- Authenticated website and MCP tools sharing teacher-scoped domain services, OAuth authorization, revision checks and idempotent write receipts.
+- Typed chess learning materials, Lichess study/chapter and puzzle workflows, safe teacher-reviewed chapter assignment and atomic lesson-plus-chapter capture.
+- Teacher, workplace and student Lichess study preferences with deterministic resolution and conflict-safe multi-student preview.
+- Fresh-install self-hosted Compose setup, database and uploaded-file backup/restore, and automated security, parity and browser acceptance workflows.
+
+### Security
+- Enforced tenant isolation and fail-closed review of provider evidence; synthetic cross-tenant, rollback and exact-replay tests.
+- Historical GitHub Actions/privacy and third-party redistribution disposition remains a prepublication review item; no clearance is implied by this changelog.
+
+### Changed
+- No pre-1.0 compatibility guarantee with CogNote or older ChessCoachPal development databases; back up any existing data before a destructive reset.
+
+
 ### Added
 - Expanded scoped MCP coaching tools for workplace/student/group creation and edits, enrollment, one-off session scheduling/rescheduling/cancellation and lesson readback, with atomic idempotency receipts, revision checks, and synthetic OAuth scope/tenant security tests.
 - Deterministic teacher-scoped workplace/date-range teaching and attendance report with RTL-aware Hebrew presentation and safe CSV/text export.

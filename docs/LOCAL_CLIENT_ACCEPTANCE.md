@@ -1,6 +1,6 @@
-# Final local ChatGPT + Claude acceptance — v0.1.0 release-only procedure
+# Real ChatGPT + Claude acceptance — post-v0.1.0 procedure
 
-**Status:** NOT EXECUTED. This is a procedure/template, **not** evidence that the providers work. It is the only required manual live-provider test in the v0.1.0 roadmap, and must be carried out **on the maintainer's machine immediately before actually publishing `v0.1.0`**. Do not run it just to archive an OpenSpec development change. Development CI, OAuth/MCP integration, RLS, privacy, backup and contract checks run automatically on GitHub with **synthetic** students and teachers.
+> **Maintainer policy update (2026-11-15):** Real ChatGPT and Claude acceptance is explicitly deferred until after v0.1.0 publication. This procedure remains required follow-up, **NOT EXECUTED**, and its results must not be inferred from synthetic CI. Older instructions below describing a prepublication prerequisite are superseded by this update.\n\n**Status:** NOT EXECUTED. This is a procedure/template, **not** evidence that the providers work. It is the only required manual live-provider test in the v0.1.0 roadmap, and must be carried out **on the maintainer's machine immediately before actually publishing `v0.1.0`**. Do not run it just to archive an OpenSpec development change. Development CI, OAuth/MCP integration, RLS, privacy, backup and contract checks run automatically on GitHub with **synthetic** students and teachers.
 
 ## Preconditions
 
