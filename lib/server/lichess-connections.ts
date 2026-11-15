@@ -62,9 +62,12 @@ async function loadRow(teacherId:string) {
 export async function lichessConnectionStatus(teacherId:string) {
   return publicStatus(await loadRow(teacherId));
 }
-export function lichessConnectionHandoff(mode:"read"|"write") {
+export function lichessConnectionHandoff(
+  mode:"read"|"write",returnTo:LichessReturnTo="learning"
+) {
   return {
-    mode,connectUrl:oauthOrigin()+"/api/lichess/connect?mode="+mode,
+    mode,returnTo,connectUrl:oauthOrigin()+"/api/lichess/connect?mode="+mode+
+      (returnTo==="account"?"&returnTo=account":""),
     explanation:"Complete provider permissions only in the signed-in browser. No provider token is available to MCP.",
   };
 }

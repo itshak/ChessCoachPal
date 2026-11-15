@@ -107,6 +107,13 @@ test("PARITY:PARITY-lichess-oauth-provider-consent authenticates browser PKCE an
     const handoff=await call("ccp_lichess_connect_handoff",{mode:"read"});
     expect(handoff.error).toBeUndefined();
     expect(handoff.data.connectUrl).toBe("http://localhost:3000/api/lichess/connect?mode=read");
+    const accountHandoff=await call("ccp_lichess_connect_handoff",{
+      mode:"write",returnTo:"account",
+    });
+    expect(accountHandoff.error).toBeUndefined();
+    expect(accountHandoff.data.connectUrl)
+      .toBe("http://localhost:3000/api/lichess/connect?mode=write&returnTo=account");
+    expect(JSON.stringify(accountHandoff)).not.toContain("access_token");
 
     const unsafeReturn=await page.request.get("/api/lichess/connect?mode=read&returnTo=https://example.com");
     expect(unsafeReturn.status()).toBe(400);

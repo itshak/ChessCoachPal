@@ -843,8 +843,11 @@ const catalogue = [
   },
   {
     name:"ccp_lichess_connect_handoff",
-    description:"Return a secure signed-in browser URL to grant Lichess study:read or separately approve study:write using OAuth PKCE; MCP never receives secrets.",
-    schema:z.object({mode:z.enum(["read","write"]).default("read")}).strict(),
+    description:"Return a secure browser URL to authorize Lichess study:read or study:write with OAuth PKCE. Optionally return to Account Settings or Training & Materials. No credentials enter MCP.",
+    schema:z.object({
+      mode:z.enum(["read","write"]).default("read"),
+      returnTo:z.enum(["learning","account"]).default("learning"),
+    }).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
@@ -1908,8 +1911,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherLichessStudiesSearch(teacherId,a)};
       }
       case "ccp_lichess_connect_handoff": {
-        const a=args as {mode:"read"|"write"};
-        return {data:lichessConnectionHandoff(a.mode)};
+        const a=args as {mode:"read"|"write";returnTo:"learning"|"account"};
+        return {data:lichessConnectionHandoff(a.mode,a.returnTo)};
       }
       case "ccp_lichess_connection_disconnect": {
         return {data:await disconnectLichess(teacherId)};
