@@ -30,7 +30,7 @@ ChessCoachPal serves chess coaches and may eventually hold minors' records. The 
 
 Never advertise the repository as safe to publish solely because a source scan of the new HEAD passes.
 
-Active security and old-source clean-up is tracked under [archived remove-cognote-legacy-and-secure-data implementation](../openspec/changes/archive/2026-11-08-remove-cognote-legacy-and-secure-data/proposal.md), with the final release gate under [verify-self-hosting-and-release-v0-1-0](../openspec/changes/verify-self-hosting-and-release-v0-1-0/proposal.md). Record inspected GitHub refs, affected file ranges, CI logs/artifacts, findings, remediation, rotation and approval evidence in [STATUS.md](STATUS.md). GitHub visibility cannot be undone by merely editing these docs.
+Active security and old-source clean-up is tracked under [archived remove-cognote-legacy-and-secure-data implementation](../openspec/changes/archive/2026-11-08-remove-cognote-legacy-and-secure-data/proposal.md), with the final release gate under [verify-self-hosting-and-release-v0-1-0](../openspec/changes/archive/2026-11-08-verify-self-hosting-and-release-v0-1-0/proposal.md). Record inspected GitHub refs, affected file ranges, CI logs/artifacts, findings, remediation, rotation and approval evidence in [STATUS.md](STATUS.md). GitHub visibility cannot be undone by merely editing these docs.
 
 ## Milestone 3 scoped learning-record security evidence (not a full repository audit)
 
