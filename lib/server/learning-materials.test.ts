@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {structurallyValidFen,materialCatalogUpdateSchema,materialRelationSchema,materialLifecycleSchema} from "./learning-materials";
+import {structurallyValidFen,materialCatalogCreateSchema,materialCatalogUpdateSchema,materialRelationSchema,materialLifecycleSchema} from "./learning-materials";
 
 const requestId="f1f2f3f4-0000-4000-8000-000000000001";
 const materialId="f1f2f3f4-0000-4000-8000-000000000002";
@@ -20,6 +20,20 @@ describe("canonical typed material correction contract",()=>{
     expect(materialCatalogUpdateSchema.safeParse({...pgn,confirmed:false}).success).toBe(false);
     expect(materialCatalogUpdateSchema.safeParse({...pgn,kind:"puzzle"}).success).toBe(false);
     expect(materialCatalogUpdateSchema.safeParse({...pgn,unknown:"unguarded field"}).success).toBe(false);
+  });
+  it("uses GigaChess for game material PGN legality including variations",()=>{
+    const base={kind:"game",title:"Verified coach-provided game",
+      description:"",sourceUrl:null,requestId,
+      details:{pgn:"1. e4 e5 2. Nf3 Nc6 *",whitePlayer:"White",blackPlayer:"Black",result:"*"}};
+    expect(materialCatalogCreateSchema.safeParse(base).success).toBe(true);
+    expect(materialCatalogCreateSchema.safeParse({...base,
+      details:{...base.details,pgn:"1. e4 e5 2. Nf6 *"}}).success).toBe(false);
+    expect(materialCatalogCreateSchema.safeParse({...base,
+      details:{...base.details,pgn:"[SetUp \"1\"]\\n[FEN \"not a FEN\"]\\n\\n1. e4 *"}}).success).toBe(false);
+    expect(materialCatalogCreateSchema.safeParse({...base,
+      details:{...base.details,pgn:"1. e4 e5 2. Nf3 Nc6 (2... e6) *"}}).success).toBe(true);
+    expect(materialCatalogCreateSchema.safeParse({...base,
+      details:{...base.details,pgn:"1. e4 e5 2. Nf3 Nc6 (2... e7) *"}}).success).toBe(false);
   });
   it("guards material relation ownership inputs, self-reference and confirmation",()=>{
     const valid={fromMaterialId:materialId,toMaterialId:requestId,

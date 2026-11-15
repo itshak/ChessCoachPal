@@ -64,6 +64,23 @@ async function webMaterials(page:Page,opts:Record<string,string>){
  return await result.json();
 }
 
+test("PARITY:PARITY-chess-game-pgn-rules-validation rejects illegal game on website and MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const base={kind:"game",title:"GigaChess reviewed game",description:"",sourceUrl:null,
+   details:{pgn:"1. e4 e5 2. Nf3 Nc6 *",whitePlayer:"White",
+     blackPlayer:"Black",result:"*"},requestId:randomUUID()};
+ const illegal={...base,details:{...base.details,pgn:"1. e4 e5 2. Nf6 *"}};
+ const web=await page.request.post("/api/training/materials",{data:illegal});
+ expect(web.status(),await web.text()).toBe(400);
+ const tool=await call("ccp_v1_learning_materials_create",illegal);
+ expect(tool.error?.code).toBe("VALIDATION_ERROR");
+ const good=await call("ccp_v1_learning_materials_create",base);
+ expect(good.error).toBeUndefined();
+ const read=await page.request.get("/api/training/materials?id="+good.data.material.id);
+ expect(read.status(),await read.text()).toBe(200);
+ expect((await read.json()).chess_games.pgn).toBe(base.details.pgn);
+});
+
 test("PARITY:PARITY-materials-student-history enumerates explicitly taught student lessons by date",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const ctx=await fixture(call,8);
