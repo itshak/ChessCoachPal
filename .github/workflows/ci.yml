@@ -85,9 +85,6 @@ jobs:
           components/teacher/billing/InvoiceDetailClient.tsx
           components/teacher/settings/HostingSettingsForm.tsx
           e2e/parity-billing-lifecycle.spec.ts
-          scripts/grant-founding.mjs
-          scripts/supabase-push-target-guard.mjs
-          scripts/supabase-push-target-guard.test.mjs
 
       - name: Unit tests
         run: npm test

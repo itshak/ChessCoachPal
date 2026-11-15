@@ -4,9 +4,13 @@ import {createClient} from "@supabase/supabase-js";
 import {delegatedTool} from "./helpers/delegated-mcp";
 import {SEED_TEACHER} from "./helpers/auth";
 
-type Tool=(name:string,args:Record<string,unknown>)=>Promise<{
- data?:any;error?:{code:string;message:string};
-}>;
+type InvoiceApiRow = {
+ id: string; status: string; subtotal_cents: number; updated_at: string;
+ sent_at: string | null; stripe_checkout_session_id: string | null;
+ stripe_checkout_url: string | null;
+ invoice_items: { description: string; amount_cents: number }[];
+ payments: { id: string; amount_cents: number }[];
+};
 async function invoice(status:"sent"|"draft",subtotal=12500){
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
  const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
@@ -29,6 +33,7 @@ async function invoice(status:"sent"|"draft",subtotal=12500){
    teacher_id:teacherId,guardian_id:guardian.data!.id,status,
    period_start:"2027-03-01",period_end:"2027-03-31",
    currency:"USD",subtotal_cents:subtotal,
+    ...(status==="sent"?{sent_at:new Date().toISOString()}:{}),
  }).select("id").single();
  expect(made.error).toBeNull();
  return {id:made.data!.id as string,guardianId:guardian.data!.id as string,portalToken,admin};
@@ -36,7 +41,7 @@ async function invoice(status:"sent"|"draft",subtotal=12500){
 async function siteInvoice(page:import("@playwright/test").Page,id:string){
  const r=await page.request.get("/api/billing/invoices/"+id);
  expect(r.status(),await r.text()).toBe(200);
- return await r.json() as Record<string,any>;
+ return await r.json() as InvoiceApiRow;
 }
 
 test("PARITY:PARITY-billing-invoice-read-list mirrors owned totals and masks family credentials",async({page,request})=>{
