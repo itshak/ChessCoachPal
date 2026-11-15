@@ -102,3 +102,19 @@ The authenticated website `POST /api/coaching/lesson-capture/preview` and delega
 - **AND** the existing active parent OpenSpec SHALL remain unarchived until the other conversational and study workflows are separately accepted.
 
 See [usage guide](../../../docs/LESSON_CAPTURE_PREVIEW.md), [new scenario matrix](../../../docs/MCP_NEW_PARITY_SCENARIOS.md), [canonical lesson spec](../canonical-lesson-attendance/spec.md), and [ADR-0003](../../../docs/adr/0003-mcp-website-business-parity.md).
+
+## Requirement: Two aliases SHALL NOT imply two learners
+
+For any owner-scoped identity query, multiple supplied names/aliases that normalize to one student UUID SHALL retain their per-input successful `resolutions` and a deduplicated `matchedStudentIds` collection. The result SHALL label the issue **duplicate roster reference**, not duplicate student record. If the same student is proposed twice for a lesson, `allResolved=false`, `studentIds=[]`, and `canCommit=false` SHALL remain fail-closed; unlike an ordinary single-name lookup, a double-reference roster cannot be accepted. Ambiguous aliases shared by **different** students SHALL still return owner-scoped candidates and require explicit UUID selection.
+
+### Scenario: Full student name and short alias are both passed
+- **WHEN** a teacher submits both "MCP Integration Test" and "MCP Test", each identifying the same existing UUID
+- **THEN** both inputs SHALL resolve to that UUID, `matchedStudentIds` SHALL include it once, and the diagnostic SHALL identify the two input strings as duplicate roster references rather than fabricating two student rows.
+- **AND** no lesson, attendance or finance row is written from that duplicate roster.
+
+### Scenario: Different learners share an alias
+- **WHEN** an alias belongs to two active students
+- **THEN** the tool SHALL return an ambiguous identity with safe candidate UUIDs and prevent automatic selection.
+
+This behavior is shared by `POST /api/students/resolve`, `ccp_students_resolve` and the session preview. See [ADR-0007](../../../docs/adr/0007-mcp-supabase-contract-and-release-evidence.md).
+
