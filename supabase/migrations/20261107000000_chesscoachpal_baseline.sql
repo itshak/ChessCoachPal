@@ -7180,6 +7180,54 @@ REVOKE ALL ON FUNCTION public.ccp_invoice_void(uuid,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_void(uuid,uuid) TO authenticated;
 
 
+-- Sending must claim the exact PDF snapshot and paid balance under the
+-- same invoice row lock used by manual payments and draft edits. A partial
+-- draft payment does not necessarily change invoice.updated_at, so revision
+-- comparison alone cannot prove the printed and emailed balance is current.
+CREATE OR REPLACE FUNCTION public.ccp_invoice_send_claim(
+ p_invoice_id uuid,p_expected_updated_at timestamptz,
+ p_expected_paid_cents integer
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $invoice_send_claim$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_invoice public.invoices%ROWTYPE;
+ v_paid bigint;
+ v_updated timestamptz;
+BEGIN
+ IF v_teacher IS NULL THEN
+  RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_invoice_id IS NULL OR p_expected_updated_at IS NULL OR
+    p_expected_paid_cents IS NULL OR p_expected_paid_cents<0 THEN
+  RAISE EXCEPTION 'INVALID_INVOICE_SEND_CLAIM' USING ERRCODE='22023';END IF;
+ SELECT * INTO v_invoice FROM public.invoices
+  WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF v_invoice.status<>'draft' OR
+    v_invoice.stripe_checkout_session_id IS NOT NULL OR
+    v_invoice.stripe_checkout_url IS NOT NULL OR
+    v_invoice.stripe_payment_intent_id IS NOT NULL THEN
+  RAISE EXCEPTION 'INVOICE_NOT_SENDABLE' USING ERRCODE='23514';END IF;
+ IF v_invoice.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';END IF;
+ SELECT coalesce(sum(amount_cents),0) INTO v_paid FROM public.payments
+  WHERE invoice_id=p_invoice_id;
+ IF v_paid<>p_expected_paid_cents OR v_paid>v_invoice.subtotal_cents THEN
+  RAISE EXCEPTION 'INVOICE_SEND_BALANCE_CHANGED' USING ERRCODE='23505';END IF;
+ UPDATE public.invoices SET status='sent',sent_at=clock_timestamp()
+  WHERE id=p_invoice_id AND teacher_id=v_teacher AND status='draft'
+  RETURNING updated_at INTO v_updated;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'INVOICE_ALREADY_CLAIMED' USING ERRCODE='23505';END IF;
+ RETURN jsonb_build_object('ok',true,'invoiceId',p_invoice_id,
+  'updatedAt',v_updated,'paidCents',v_paid);
+END;
+$invoice_send_claim$;
+REVOKE ALL ON FUNCTION public.ccp_invoice_send_claim(uuid,timestamptz,integer)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_invoice_send_claim(uuid,timestamptz,integer)
+ TO authenticated;
+
 -- Only the current owner may attach a processor Checkout Session to the
 -- unchanged, still-payable balance. Both website and MCP call this after the
 -- provider has created a session. A session cannot replace another link.

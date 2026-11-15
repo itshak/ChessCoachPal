@@ -71,14 +71,13 @@ export async function sendInvoice(
   // rejected rather than replaying external side effects on an already-sent
   // invoice. In particular, PostgREST update errors alone do not indicate
   // whether any row matched the original draft status.
-  const {data:claimed,error:claimError}=await supabase.from("invoices").update({
-    status:"sent",sent_at:new Date().toISOString(),
-  }).eq("id",id).eq("teacher_id",teacherId).eq("status","draft")
-    .eq("updated_at",invoice.updated_at)
-    .select("id,updated_at").maybeSingle();
-  if(claimError)return {ok:false,error:"Unable to claim invoice send"};
-  if(!claimed)return {ok:false,
-    error:"Invoice already sent or being processed; check delivery status before retrying"};
+  const {data:claimed,error:claimError}=await supabase.rpc(
+    "ccp_invoice_send_claim",{
+      p_invoice_id:id,p_expected_updated_at:invoice.updated_at,
+      p_expected_paid_cents:paidCents,
+    });
+  if(claimError||!claimed)return {ok:false,
+    error:"Invoice or payment balance changed before sending; refresh the draft and retry"};
   const familyName = familyDisplayName(family);
 
   let checkoutUrl: string | null = invoice.stripe_checkout_url;
@@ -109,7 +108,7 @@ export async function sendInvoice(
       const {data:link,error:linkError}=await supabase.rpc("ccp_invoice_checkout_claim",{
         p_invoice_id:id,p_session_id:session.sessionId,
         p_checkout_url:session.url,p_expected_balance:balanceCents,
-        p_expected_updated_at:claimed.updated_at,
+        p_expected_updated_at:claimed.updatedAt,
       });
       if(linkError || !link) {
         try { await expireCheckoutSession(policy.stripe_secret_key,session.sessionId); }
