@@ -19,9 +19,10 @@ async function invoice(status:"sent"|"draft",subtotal=12500){
  expect(login.error).toBeNull();
  const teacherId=login.data.user!.id;
  const suffix=randomUUID().slice(0,9);
+ const portalToken=randomUUID();
  const guardian=await admin.from("guardians").insert({
    teacher_id:teacherId,name:"Billing family "+suffix,
-   email:"billing-"+suffix+"@example.com",portal_token:randomUUID(),
+   email:"billing-"+suffix+"@example.com",portal_token:portalToken,
  }).select("id").single();
  expect(guardian.error).toBeNull();
  const made=await admin.from("invoices").insert({
@@ -30,7 +31,7 @@ async function invoice(status:"sent"|"draft",subtotal=12500){
    currency:"USD",subtotal_cents:subtotal,
  }).select("id").single();
  expect(made.error).toBeNull();
- return {id:made.data!.id as string,guardianId:guardian.data!.id as string,admin};
+ return {id:made.data!.id as string,guardianId:guardian.data!.id as string,portalToken,admin};
 }
 async function siteInvoice(page:import("@playwright/test").Page,id:string){
  const r=await page.request.get("/api/billing/invoices/"+id);
@@ -499,4 +500,58 @@ test("PARITY:PARITY-billing-regenerate-checkout-reconciliation blocks stale paym
  }))).toEqual(before.invoice_items.map((x:{description:string;amount_cents:number})=>({
    description:x.description,amount_cents:x.amount_cents,
  })));
+});
+
+test("PARITY:PARITY-billing-draft-partial-payment stays private and reopens to draft",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const created=await invoice("draft",9000);
+ const item=await created.admin.from("invoice_items").insert({
+  invoice_id:created.id,kind:"lesson",description:"Chess coaching",
+  quantity:1,unit_cents:9000,amount_cents:9000,sort_order:0,
+ });
+ expect(item.error).toBeNull();
+ const key=randomUUID();
+ const data={amountCents:3200,note:"Paid before delivery",idempotencyKey:key};
+ const url="/api/billing/invoices/"+created.id;
+ const [browser,model]=await Promise.all([
+  page.request.post(url+"/mark-paid",{data}),
+  call("ccp_v1_billing_manual_payment_record",{invoiceId:created.id,...data,confirmed:true}),
+ ]);
+ expect(browser.status(),await browser.text()).toBe(200);
+ expect(model.error).toBeUndefined();
+ const result=await browser.json();
+ expect(result.paymentId).toBe(model.data.paymentId);
+ expect(Number(Boolean(result.replayed))+Number(Boolean(model.data.replayed))).toBe(1);
+ expect((await siteInvoice(page,created.id)).status).toBe("draft");
+ const portal=await page.request.get("/portal/"+created.portalToken);
+ expect(await portal.text()).toContain("No invoices yet.");
+ const before=await siteInvoice(page,created.id);
+ const refused=await page.request.put(url,{data:{
+  items:[{description:"Adjusted",quantity:1,unitCents:1000,amountCents:1000}],
+  expectedUpdatedAt:before.updated_at,idempotencyKey:randomUUID(),
+ }});
+ expect(refused.status(),await refused.text()).toBe(409);
+ expect((await siteInvoice(page,created.id)).subtotal_cents).toBe(9000);
+ const deletion=await page.request.delete(url);
+ expect(deletion.status(),await deletion.text()).toBe(409);
+ const mcpDelete=await call("ccp_v1_billing_invoice_delete",{
+  invoiceId:created.id,confirmed:true,
+ });
+ expect(mcpDelete.error?.code).toBe("CONFLICT");
+ const pdf=await page.request.get(url+"/pdf");
+ expect(pdf.status(),await pdf.text()).toBe(200);
+ const final=await call("ccp_v1_billing_manual_payment_record",{
+  invoiceId:created.id,amountCents:5800,note:"Remaining cash",
+  idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(final.error).toBeUndefined();
+ expect((await siteInvoice(page,created.id)).status).toBe("paid");
+ const hidden=await page.request.get("/portal/"+created.portalToken);
+ expect(await hidden.text()).toContain("No invoices yet.");
+ const reversal=await page.request.delete(url+"/payments/"+final.data.paymentId);
+ expect(reversal.status(),await reversal.text()).toBe(200);
+ expect((await reversal.json()).status).toBe("draft");
+ const last=await siteInvoice(page,created.id);
+ expect(last.status).toBe("draft");
+ expect(last.payments).toHaveLength(1);
 });
