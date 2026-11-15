@@ -7,18 +7,18 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 test("PARITY:PARITY-canonical-private-makeup canonical private lesson and verified make-up use one website/MCP SQL writer",
  async({page,request})=>{
  const call=await delegatedTool(page,request);
- const pupil=await call("ccp_v1_students_create",{
+ const pupil=await call("ccp_students_create",{
   name:"Make-up pupil "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(pupil.error).toBeUndefined();
  const studentId=pupil.data.entityId as string;
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
   name:"Make-up school "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await call("ccp_v1_workplaces_enroll",{
+ expect((await call("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
  const key=randomUUID();
@@ -35,13 +35,13 @@ test("PARITY:PARITY-canonical-private-makeup canonical private lesson and verifi
   student_id:studentId,workplace_id:workplaceId,
   duration_minutes:45,is_home_visit:true,replayed:false,
  });
- const replay=await call("ccp_v1_private_sessions_create",{
+ const replay=await call("ccp_private_sessions_create",{
   ...create,confirmed:true,
  });
  expect(replay.error).toBeUndefined();
  expect(replay.data.id).toBe(first.id);
  expect(replay.data.replayed).toBe(true);
- const changed=await call("ccp_v1_private_sessions_create",{
+ const changed=await call("ccp_private_sessions_create",{
   ...create,date:"2079-09-11",confirmed:true,
  });
  expect(changed.error?.code).toBe("CONFLICT");
@@ -68,7 +68,7 @@ test("PARITY:PARITY-canonical-private-makeup canonical private lesson and verifi
   studentId,workplaceId,date:"2079-09-18",time:"08:00",
   isHomeVisit:false,makeupForSessionId:first.id,idempotencyKey:randomUUID(),
  };
- const makeup=await call("ccp_v1_private_sessions_create",{
+ const makeup=await call("ccp_private_sessions_create",{
   ...makeupRequest,confirmed:true,
  });
  expect(makeup.error).toBeUndefined();
@@ -84,17 +84,17 @@ test("PARITY:PARITY-canonical-private-makeup canonical private lesson and verifi
   data:{...makeupRequest,idempotencyKey:randomUUID(),time:"10:00"},
  });
  expect(double.status()).toBe(409);
- const foreign=await call("ccp_v1_private_sessions_create",{
+ const foreign=await call("ccp_private_sessions_create",{
   ...create,studentId:randomUUID(),idempotencyKey:randomUUID(),
   confirmed:true,
  });
  expect(foreign.error?.code).toBe("NOT_FOUND");
- const ny=await call("ccp_v1_workplaces_create",{
+ const ny=await call("ccp_workplaces_create",{
   name:"DST workplace "+randomUUID(),timezone:"America/New_York",
   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(ny.error).toBeUndefined();
- expect((await call("ccp_v1_workplaces_enroll",{
+ expect((await call("ccp_workplaces_enroll",{
   workplaceId:ny.data.entityId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
  const invalidDST=await page.request.post(
@@ -108,14 +108,14 @@ test("PARITY:PARITY-canonical-private-makeup canonical private lesson and verifi
 
 test("PARITY:PARITY-canonical-personal-private-lesson accepts an unassigned student in implicit personal coaching",async({page,request})=>{
  const tool=await delegatedTool(page,request);
- const student=await tool("ccp_v1_students_create",{
+ const student=await tool("ccp_students_create",{
   name:"Unassigned personal lesson learner "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
  // Explicit club/school selection must not silently enroll a learner.
  // This is distinct from using the teacher's implicit personal workspace.
- const school=await tool("ccp_v1_workplaces_create",{
+ const school=await tool("ccp_workplaces_create",{
   name:"Unenrolled named school "+randomUUID(),timezone:"UTC",
   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
@@ -127,7 +127,7 @@ test("PARITY:PARITY-canonical-personal-private-lesson accepts an unassigned stud
   data:deniedInput,
  });
  expect(denied.status(),await denied.text()).toBe(404);
- expect((await tool("ccp_v1_private_sessions_create",{
+ expect((await tool("ccp_private_sessions_create",{
   ...deniedInput,idempotencyKey:randomUUID(),confirmed:true,
  })).error?.code).toBe("NOT_FOUND");
  // No workplace enrollment: personal/private lessons must work for a
@@ -139,7 +139,7 @@ test("PARITY:PARITY-canonical-personal-private-lesson accepts an unassigned stud
  expect(browser.status(),await browser.text()).toBe(200);
  const created=await browser.json();
  expect(created).toMatchObject({student_id:studentId,replayed:false});
- const replay=await tool("ccp_v1_private_sessions_create",{...input,confirmed:true});
+ const replay=await tool("ccp_private_sessions_create",{...input,confirmed:true});
  expect(replay.error).toBeUndefined();
  expect(replay.data).toMatchObject({id:created.id,replayed:true});
  const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,

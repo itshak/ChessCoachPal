@@ -6,21 +6,21 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("AUDIT: canonical attendance keeps immutable mark, correction and clear history across web/MCP",async({page,request})=>{
  const tool=await delegatedTool(page,request);
- const person=await tool("ccp_v1_students_create",{
+ const person=await tool("ccp_students_create",{
   name:"Audit attendee "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(person.error).toBeUndefined();
  const studentId=person.data.entityId as string;
- const workplace=await tool("ccp_v1_workplaces_create",{
+ const workplace=await tool("ccp_workplaces_create",{
   name:"Audited lessons "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await tool("ccp_v1_workplaces_enroll",{
+ expect((await tool("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
- const created=await tool("ccp_v1_sessions_create",{
+ const created=await tool("ccp_sessions_create",{
   workplaceId,studentId,title:"Chess tactics audit",
   startsAt:new Date(Date.UTC(2070,0,1)+
     (Number.parseInt(randomUUID().slice(0,8),16)%250)*86400000).toISOString(),
@@ -36,7 +36,7 @@ test("AUDIT: canonical attendance keeps immutable mark, correction and clear his
  });
  expect(web.status(),await web.text()).toBe(200);
  const first=await web.json();
- const correction=await tool("ccp_v1_session_attendance_set",{
+ const correction=await tool("ccp_session_attendance_set",{
   sessionId,...body,status:"late",note:"Arrived ten minutes late",
   expectedUpdatedAt:first.revision,idempotencyKey:randomUUID(),
  });
@@ -66,7 +66,7 @@ test("AUDIT: canonical attendance keeps immutable mark, correction and clear his
  expect(audits?.[2].before_value.status).toBe("late");
  expect(audits?.[2].after_value).toBeNull();
  expect(JSON.stringify(audits)).not.toContain("portal_token");
- const register=await tool("ccp_v1_session_attendance_list",{sessionId});
+ const register=await tool("ccp_session_attendance_list",{sessionId});
  expect(register.error).toBeUndefined();
  expect(register.data.find((x:{studentId:string})=>x.studentId===studentId).status)
   .toBe("unmarked");

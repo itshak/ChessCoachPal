@@ -4,31 +4,31 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY: canonical make-up credits are frozen participant-scoped, listed by web and MCP, and consumed once",async({page,request})=>{
  const tool=await delegatedTool(page,request);
- const student=await tool("ccp_v1_students_create",{
+ const student=await tool("ccp_students_create",{
   name:"Makeup pupil "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const workplace=await tool("ccp_v1_workplaces_create",{
+ const workplace=await tool("ccp_workplaces_create",{
   name:"Makeup group "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await tool("ccp_v1_workplaces_enroll",{
+ expect((await tool("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
  const sourceDate=new Date(Date.UTC(2074,0,1)+
    (Number.parseInt(randomUUID().slice(0,8),16)%300)*86400000)
    .toISOString().slice(0,10);
- const source=await tool("ccp_v1_sessions_create",{
+ const source=await tool("ccp_sessions_create",{
   workplaceId,studentId,title:"Cancelled private class",
   startsAt:sourceDate+"T14:00:00.000Z",durationMinutes:45,
   lessonNote:"",idempotencyKey:randomUUID(),
  });
  expect(source.error).toBeUndefined();
  const sourceSessionId=source.data.entityId as string;
- const teacherCancel=await tool("ccp_v1_session_attendance_set",{
+ const teacherCancel=await tool("ccp_session_attendance_set",{
   sessionId:sourceSessionId,studentId,status:"teacher_cancelled",
   note:"Teacher absence",cancelReason:"Teacher sick",noticeAt:null,
   expectedUpdatedAt:null,idempotencyKey:randomUUID(),
@@ -38,7 +38,7 @@ test("PARITY: canonical make-up credits are frozen participant-scoped, listed by
  const web=await page.request.get("/api/coaching/calendar/makeup-credits");
  expect(web.status(),await web.text()).toBe(200);
  const webRows=(await web.json()).credits as Array<Record<string,unknown>>;
- const mcp=await tool("ccp_v1_canonical_makeup_credits_list",{});
+ const mcp=await tool("ccp_canonical_makeup_credits_list",{});
  expect(mcp.error).toBeUndefined();
  const webOwned=webRows.filter(x=>x.studentId===studentId&&x.sourceSessionId===sourceSessionId);
  const mcpOwned=(mcp.data.credits as Array<Record<string,unknown>>)
@@ -60,7 +60,7 @@ test("PARITY: canonical make-up credits are frozen participant-scoped, listed by
  expect(create.status(),await create.text()).toBe(200);
  const receipt=await create.json();
  expect(receipt).toMatchObject({student_id:studentId,makeup_for_session_id:sourceSessionId});
- const replay=await tool("ccp_v1_private_sessions_create",{...input,confirmed:true});
+ const replay=await tool("ccp_private_sessions_create",{...input,confirmed:true});
  expect(replay.error).toBeUndefined();
  expect(replay.data).toMatchObject({id:receipt.id,replayed:true});
  const after=await page.request.get("/api/coaching/calendar/makeup-credits");

@@ -7,25 +7,25 @@ import {SEED_TEACHER} from "./helpers/auth";
 test("SECURITY: approved canonical note intent is durable, private, and unique on website/MCP replay",
  async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
   name:"Outbox recipient "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const family=await call("ccp_v1_guardians_create",{
+ const family=await call("ccp_guardians_create",{
   name:"Outbox family "+randomUUID(),studentIds:[studentId],confirmed:true,
  });
  expect(family.error).toBeUndefined();
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
   name:"Outbox studio "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await call("ccp_v1_workplaces_enroll",{
+ expect((await call("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
- const session=await call("ccp_v1_sessions_create",{
+ const session=await call("ccp_sessions_create",{
   workplaceId,studentId,title:"Outbox consent check",
   startsAt:"2080-10-14T13:00:00Z",durationMinutes:60,
   lessonNote:"",idempotencyKey:randomUUID(),
@@ -41,7 +41,7 @@ test("SECURITY: approved canonical note intent is durable, private, and unique o
  const put=await page.request.put("/api/coaching/sessions/"+sessionId+"/notes",{data:body});
  expect(put.status(),await put.text()).toBe(200);
  expect((await put.json()).emailQueued).toBe(true);
- const replay=await call("ccp_v1_session_notes_save",{
+ const replay=await call("ccp_session_notes_save",{
   sessionId,...body,confirmed:true,
  });
  expect(replay.error).toBeUndefined();

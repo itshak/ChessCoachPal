@@ -6,7 +6,7 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("FINANCE: group session bills distinct frozen students once and locks paid teaching history",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const w=await call("ccp_v1_workplaces_create",{
+ const w=await call("ccp_workplaces_create",{
   name:"Canonical group finance "+randomUUID(),timezone:"UTC",
   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
@@ -14,33 +14,33 @@ test("FINANCE: group session bills distinct frozen students once and locks paid 
  const workplaceId=w.data.entityId as string;
  const students:string[]=[],guardians:string[]=[];
  for(let i=0;i<2;i++){
-  const s=await call("ccp_v1_students_create",{
+  const s=await call("ccp_students_create",{
    name:"Billing student "+randomUUID(),idempotencyKey:randomUUID(),
   });
   expect(s.error).toBeUndefined();
   const studentId=s.data.entityId as string;
   students.push(studentId);
-  expect((await call("ccp_v1_workplaces_enroll",{
+  expect((await call("ccp_workplaces_enroll",{
    workplaceId,studentId,idempotencyKey:randomUUID(),
   })).error).toBeUndefined();
-  const guardian=await call("ccp_v1_guardians_create",{
+  const guardian=await call("ccp_guardians_create",{
    name:"Billing family "+randomUUID(),studentIds:[studentId],confirmed:true,
   });
   expect(guardian.error).toBeUndefined();
   guardians.push(guardian.data.id as string);
  }
- const group=await call("ccp_v1_groups_create",{
+ const group=await call("ccp_groups_create",{
   workplaceId,name:"Group lesson "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(group.error).toBeUndefined();
  for(const studentId of students)
-  expect((await call("ccp_v1_groups_enroll",{
+  expect((await call("ccp_groups_enroll",{
    groupId:group.data.entityId,studentId,idempotencyKey:randomUUID(),
   })).error).toBeUndefined();
  const date=new Date(Date.UTC(2085,0,1)+
   (Number.parseInt(randomUUID().slice(0,8),16)%366)*86400000)
    .toISOString().slice(0,10);
- const lesson=await call("ccp_v1_sessions_create",{
+ const lesson=await call("ccp_sessions_create",{
   workplaceId,groupId:group.data.entityId,
   title:"One instructor hour, two participants",
   startsAt:date+"T13:00:00Z",durationMinutes:60,
@@ -85,7 +85,7 @@ test("FINANCE: group session bills distinct frozen students once and locks paid 
  const altered=await db.from("teaching_sessions")
   .update({duration_minutes:90}).eq("id",sessionId);
  expect(altered.error).not.toBeNull();
- const details=await call("ccp_v1_sessions_details",{sessionId});
+ const details=await call("ccp_sessions_details",{sessionId});
  expect(details.error).toBeUndefined();
  expect(details.data.duration_minutes).toBe(60);
  const rogue=await db.from("invoice_items").insert({

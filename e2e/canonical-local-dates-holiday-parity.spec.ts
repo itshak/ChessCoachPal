@@ -12,19 +12,19 @@ import {planCanonicalOccurrences,type CanonicalSlot}
  */
 test("PARITY:PARITY-canonical-local-time-dst-holiday-manual-exception honors local recurrence, protected cancellation and workplace isolation on web and MCP",async({page,request})=>{
  const tool=await delegatedTool(page,request);
- const student=await tool("ccp_v1_students_create",{
+ const student=await tool("ccp_students_create",{
   name:"DST chess student "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const workplace=await tool("ccp_v1_workplaces_create",{
+ const workplace=await tool("ccp_workplaces_create",{
   name:"New York chess classroom "+randomUUID(),
   timezone:"America/New_York",currency:"USD",locale:"en",
   policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- expect((await tool("ccp_v1_workplaces_enroll",{
+ expect((await tool("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
  const dates=["2027-03-07","2027-03-14","2027-03-21"];
@@ -39,7 +39,7 @@ test("PARITY:PARITY-canonical-local-time-dst-holiday-manual-exception honors loc
  });
  expect(created.status(),await created.text()).toBe(200);
  expect(await created.json()).toMatchObject({id:key});
- const replay=await tool("ccp_v1_recurring_slots_create",{
+ const replay=await tool("ccp_recurring_slots_create",{
   ...input,confirmed:true,
  });
  expect(replay.error).toBeUndefined();
@@ -84,7 +84,7 @@ test("PARITY:PARITY-canonical-local-time-dst-holiday-manual-exception honors loc
   }});
  expect(cancelled.status(),await cancelled.text()).toBe(200);
  expect(await cancelled.json()).toMatchObject({id:middle.id,status:"cancelled"});
- const modelReplay=await tool("ccp_v1_sessions_edit",{
+ const modelReplay=await tool("ccp_sessions_edit",{
   sessionId:middle.id,changes:{status:"cancelled"},
   expectedUpdatedAt:middle.updated_at,idempotencyKey:approvalId,confirmed:true,
  });
@@ -107,11 +107,11 @@ test("PARITY:PARITY-canonical-local-time-dst-holiday-manual-exception honors loc
   .toEqual(planned.map(x=>x.starts_at));
  const website=await page.request.get("/api/coaching/calendar/slots?studentId="+studentId);
  expect(website.status(),await website.text()).toBe(200);
- const model=await tool("ccp_v1_recurring_slots_list",{studentId});
+ const model=await tool("ccp_recurring_slots_list",{studentId});
  expect(model.error).toBeUndefined();
  expect(model.data).toEqual(await website.json());
  // A different named workplace must not silently enroll this student.
- const otherWork=await tool("ccp_v1_workplaces_create",{
+ const otherWork=await tool("ccp_workplaces_create",{
   name:"Other timezone school "+randomUUID(),timezone:"Europe/London",
   currency:"GBP",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
@@ -122,7 +122,7 @@ test("PARITY:PARITY-canonical-local-time-dst-holiday-manual-exception honors loc
   data:denied,
  });
  expect(webDenied.status()).toBe(404);
- const toolDenied=await tool("ccp_v1_recurring_slots_create",{
+ const toolDenied=await tool("ccp_recurring_slots_create",{
   ...denied,idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(toolDenied.error?.code).toBe("NOT_FOUND");
