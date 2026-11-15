@@ -1,4 +1,5 @@
 import "server-only";
+import {createHash} from "node:crypto";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertSessionSchedule } from "@/lib/server/coach-service";
@@ -280,9 +281,21 @@ export async function teacherLessonCapturePreview(
     }
   }
   const canCommit=issues.length===0&&selectedWorkplace!==null&&timing!==null;
+  // A fresh indexed chapter can now be committed with a new lesson in ONE
+  // PostgreSQL transaction. The IDs and expected source version are exactly
+  // the ones already reviewed above; no identity, time or mastery is inferred.
+  const proposedAtomicCommit=canCommit&&selectedChapter?{
+    workplaceId:selectedWorkplace!.id,studentIds:ids,
+    title:input.title,startsAt:timing!.startsAt,
+    durationMinutes:timing!.durationMinutes,lessonNote:input.lessonNote,
+    studyId:selectedChapter.studyId,chapterId:selectedChapter.chapterId,
+    expectedVerifiedAt:selectedChapter.verifiedAt,
+    expectedRosterHash:createHash("md5").update([...ids].sort().join(",")).digest("hex"),
+    note:"Chapter assigned to reviewed frozen roster; mastery not inferred",
+  }:null;
   return {
     canCommit,resolutions,issues,workplace:selectedWorkplace,
-    selectedChapter,
+    selectedChapter,proposedAtomicCommit,
     proposedSession:canCommit ? {
       workplaceId:selectedWorkplace!.id,studentIds:ids,
       title:input.title,startsAt:timing!.startsAt,
@@ -300,9 +313,9 @@ export async function teacherLessonCapturePreview(
       inferredComprehension:false,writesPerformed:false,
       materialAssociation:"not_written",
       materialNextStep:selectedChapter?
-        "After creating the lesson, optionally assign the exact chapter using a separate materials_link_preview and confirmed materials_link_commit; mark it taught only after explicit lesson completion. Never equate a linked chapter with mastery.":
+        "Approve one combined atomic lesson+chapter commit to avoid partial writes, or use the original separately approved session and chapter operations. Both leave attendance unmarked and mastery unknown.":
         "No verified study chapter selected. Do not invent material history.",
-      nextStep:"After teacher approval, use ccp_v1_sessions_ad_hoc_create with the exact preview IDs, a new idempotencyKey and confirmed=true. Record attendance/completion separately.",
+      nextStep:selectedChapter?"After teacher approval, use ccp_v1_lessons_capture_commit_with_chapter with the exact proposedAtomicCommit fields, two distinct UUIDs and confirmed=true for one database transaction. Record attendance separately.":"After teacher approval, use ccp_v1_sessions_ad_hoc_create with the exact preview IDs, a new idempotencyKey and confirmed=true. Record attendance/completion separately.",
     },
   };
 }

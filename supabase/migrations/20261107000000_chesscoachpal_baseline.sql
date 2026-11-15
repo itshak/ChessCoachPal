@@ -9453,3 +9453,56 @@ $puzzle_claim$;
 REVOKE ALL ON FUNCTION public.ccp_puzzle_series_claim(integer,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_puzzle_series_claim(integer,uuid) TO authenticated;
 
+
+-- v0.1.0: one-transaction, explicitly approved canonical lesson and
+-- indexed Lichess chapter assignment. A failed second operation rolls back
+-- the whole transaction, including roster, lesson, material and receipts.
+-- This is a NEW current-schema operation, not a backward-compatible wrapper
+-- for an older database or a historical migration.
+CREATE OR REPLACE FUNCTION public.ccp_teacher_lesson_chapter_commit(
+ p_workplace_id uuid,p_student_ids uuid[],p_title text,
+ p_starts_at timestamptz,p_duration_minutes integer,p_lesson_note text,
+ p_study_id text,p_chapter_id text,p_expected_verified_at timestamptz,
+ p_expected_roster_hash text,p_session_request_id uuid,
+ p_material_request_id uuid,p_note text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $lesson_chapter_atomic$
+DECLARE
+ v_session jsonb;
+ v_evidence jsonb;
+BEGIN
+ IF auth.uid() IS NULL THEN
+  RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+ END IF;
+ IF p_session_request_id IS NULL OR p_material_request_id IS NULL OR
+    p_session_request_id=p_material_request_id OR
+    p_study_id !~ '^[A-Za-z0-9]{8}$' OR
+    p_chapter_id !~ '^[A-Za-z0-9]{8}$' OR
+    p_expected_verified_at IS NULL OR
+    coalesce(p_expected_roster_hash,'') !~ '^[a-f0-9]{32}$' OR
+    char_length(coalesce(p_note,''))>2000 THEN
+  RAISE EXCEPTION 'INVALID_ATOMIC_LESSON_CHAPTER' USING ERRCODE='22023';
+ END IF;
+ -- The same teacher advisory lock and SQL transaction protect BOTH calls.
+ -- The child RPCs enforce ownership, enrollment, overlap, source freshness,
+ -- frozen roster hash and immutable idempotency receipts independently.
+ v_session:=public.ccp_teacher_ad_hoc_session_create(
+  p_workplace_id,p_student_ids,p_title,p_starts_at,
+  p_duration_minutes,p_lesson_note,p_session_request_id);
+ v_evidence:=public.ccp_session_chapter_evidence_commit(
+  (v_session->>'id')::uuid,p_study_id,p_chapter_id,
+  'assigned',coalesce(p_note,''),p_expected_verified_at,
+  p_expected_roster_hash,p_material_request_id);
+ RETURN jsonb_build_object(
+  'session',v_session,'evidence',v_evidence,
+  'oneTransaction',true,'attendance','unmarked',
+  'inferredMastery',false,
+  'replayed',coalesce((v_evidence->>'replayed')::boolean,false));
+END;
+$lesson_chapter_atomic$;
+REVOKE ALL ON FUNCTION public.ccp_teacher_lesson_chapter_commit(
+ uuid,uuid[],text,timestamptz,integer,text,text,text,
+ timestamptz,text,uuid,uuid,text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_teacher_lesson_chapter_commit(
+ uuid,uuid[],text,timestamptz,integer,text,text,text,
+ timestamptz,text,uuid,uuid,text) TO authenticated;
