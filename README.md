@@ -2,12 +2,12 @@
 
 **MCP tool naming for v0.1.2:** Current tools use `ccp_<domain>_<action>` (not `ccp_v1_*`). This is a breaking tool-name cleanup with no backward aliases before v1.0.0. The HTTPS connector remains `/mcp`; existing clients may need to refresh or reconnect. See [ADR-0006](docs/adr/0006-unversioned-mcp-tool-names.md).
 
-**Release status (2026-11-15):** [v0.1.0 published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.0); [production deployment succeeded](https://github.com/itshak/ChessCoachPal/actions/runs/43664411336). Historical 0.0.0/unreleased passages below are superseded. **Still pending:** live ChatGPT/Claude MCP acceptance, historical privacy and licensing sign-off, and GitHub Homepage correction. Only active OpenSpec proposal: [selective CogNote post-fork fixes](openspec/changes/selectively-adopt-cognote-post-fork-fixes/proposal.md).
+**Release status (2026-11-15):** [v0.1.0 published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.0); [production deployment succeeded](https://github.com/itshak/ChessCoachPal/actions/runs/43664411336). Historical 0.0.0/unreleased passages below are superseded. **Still pending:** full independent real ChatGPT MCP acceptance, untested Claude OAuth/revocation scenarios, historical privacy and licensing sign-off, and GitHub Homepage correction. **Actual Claude Desktop successfully exercised synthetic material create/get/link/evidence/void after PR #79; see the live-client evidence and bounded limitations below.** Only active OpenSpec proposal: [selective CogNote post-fork fixes](openspec/changes/selectively-adopt-cognote-post-fork-fixes/proposal.md).
 
 
 **Your friendly chess-coaching assistant.**
 
-ChessCoachPal is a **proprietary, publicly viewable, MCP/Plugin-first workspace for chess teachers**, with an optional website for viewing, editing and high-risk approval. The intended primary input is authenticated ChatGPT/Claude tools, with a website for browsing, correcting, editing, scheduling and reporting. **The initial MCP/OAuth gateway is implemented and automatically verified**; real ChatGPT/Claude client interoperability is reserved for the final local prepublication v0.1.0 smoke test and has not yet been demonstrated. All core website features work without an AI subscription.
+ChessCoachPal is a **proprietary, publicly viewable, MCP/Plugin-first workspace for chess teachers**, with an optional website for viewing, editing and high-risk approval. The intended primary input is authenticated ChatGPT/Claude tools, with a website for browsing, correcting, editing, scheduling and reporting. **The MCP/OAuth gateway is implemented and automatically verified**; Claude Desktop has now also completed a real-client synthetic material workflow, while full ChatGPT and remaining vendor-client acceptance are not yet established. All core website features work without an AI subscription.
 
 The project is built from [CogNote](https://github.com/andresjmorales/cognote), the MIT-licensed teacher-management application created by Andres Jaime Morales. Its original MIT notice is preserved; see [source attribution](docs/UPSTREAM.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
 
@@ -51,6 +51,8 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 - [Synthetic chess coach walkthrough](docs/CHESS_COACH_TUTORIAL.md)
 - [Chess learning (observations, approval, Lichess study links)](docs/CHESS_LEARNING.md)
 - [Agent interface](docs/AI_AGENTS.md)
+- **[Agent/Supabase reliability playbook](docs/MCP_SUPABASE_RELIABILITY_PLAYBOOK.md)** — field propagation, deferred client tool discovery, safe schema resets, RLS/advisor hardening and portable tests
+- **[ADR-0007: MCP discovery and canonical Supabase contracts](docs/adr/0007-mcp-supabase-contract-and-release-evidence.md)** — binding future-agent quality gates
 - [Remote MCP/real Codex evidence; ChatGPT / Claude not yet live-verified](docs/AI_CONNECTORS.md)
 - [Final local client smoke test before publishing v0.1.0](docs/LOCAL_CLIENT_ACCEPTANCE.md)
 - [Public market landscape](docs/MARKET_RESEARCH.md)
