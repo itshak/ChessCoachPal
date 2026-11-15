@@ -48,3 +48,29 @@ Before release, maintainers SHALL inspect active source, retrievable GitHub hist
 
 ## Development verification boundary
 All implementation and acceptance evidence for this development change SHALL come from merged GitHub commits and passing GitHub Actions tests/automated scans with synthetic data. No manual local deployment, live Lichess/ChatGPT/Claude login or actual vendor-client session is required to check tasks or archive this change. Record test URLs/findings in docs/STATUS.md (and docs/SECURITY.md for audits). The only real ChatGPT/Claude client exercise takes place at the **final local v0.1.0 prepublication release gate**; it does not waive security/privacy review requirements that can be completed in GitHub.
+
+### Requirement: Pre-v1 canonical Supabase security and install parity
+
+One installation snapshot, `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`, SHALL define the **current** public tables/functions, RLS, least-privilege grants, triggers, fixed function search paths and necessary foreign-key indexes. It SHALL be used by fresh CI, Compose and second-install backup/restore tests. A running disposable database MAY receive equivalent transactional hardening **in place**; no incremental migration chain or compatibility view SHALL be created.
+
+Before and after Supabase changes, maintainers SHALL check **security and performance advisors**, test actual `anon`/`authenticated` permissions, and document intentional warnings. Trigger-only `SECURITY DEFINER` functions SHALL NOT be directly executable as public/authenticated REST RPCs; owner-scoped business RPCs SHALL retain intentional `authenticated` execute only with stable `search_path`, explicit `auth.uid()`/ownership safeguards, and cross-tenant tests. RLS enabled with no policies on a **server-only** table is a deliberate deny boundary; no broad policy SHALL be added merely to suppress INFO.
+
+#### Scenario: SQL reports a trigger RPC available anonymously
+- **WHEN** the advisor identifies a trigger-only `SECURITY DEFINER` function executable by `anon`
+- **THEN** canonical SQL and the live test DB SHALL revoke direct role execution while verifying the actual INSERT/UPDATE trigger still runs as intended.
+
+#### Scenario: RLS or foreign-key optimization
+- **WHEN** advisors flag per-row `auth.uid()`/`current_setting` or missing FK indexes
+- **THEN** use scalar `(SELECT auth.uid())`/`(SELECT current_setting(...))` initplan expressions and suitable indexes without changing teacher ownership; a small new DB's unused-index INFO is not proof those indexes should be deleted.
+
+#### Scenario: User-approved reset of stale test database
+- **WHEN** actual physical columns do not match the source snapshot and the user explicitly permits a disposable reset
+- **THEN** preserve Supabase-owned `auth`/`storage` schema, use supported APIs for Storage objects, handle surviving bucket policies, apply the canonical snapshot transactionally, and record one baseline migration; test an authenticated write/read and rollback.
+- **AND** a database with actual users/children's records MUST NOT be reset implicitly.
+
+#### Scenario: Hosted Auth feature outside SQL
+- **WHEN** Supabase warns about leaked-password protection
+- **THEN** record it as a provider Auth dashboard/plan-setting remediation (Pro+ as documented), not as if a SQL patch resolved it.
+
+See [the review playbook](../../../docs/MCP_SUPABASE_RELIABILITY_PLAYBOOK.md) and [ADR-0007](../../../docs/adr/0007-mcp-supabase-contract-and-release-evidence.md).
+
