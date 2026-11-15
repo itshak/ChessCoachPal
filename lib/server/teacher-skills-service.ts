@@ -125,7 +125,7 @@ export async function studentSkillAssessmentsRecord(
   // Chess instructors often enter historical assessment results after a lesson.
   // The date is a teacher-local calendar day, never an inferred UTC date.
   if(requestedAssessedOn!==undefined&&
-     (!/^\\d{4}-\\d{2}-\\d{2}$/.test(requestedAssessedOn)||
+     (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(requestedAssessedOn)||
       !Number.isFinite(Date.parse(requestedAssessedOn+"T00:00:00Z"))||
       new Date(requestedAssessedOn+"T00:00:00Z").toISOString().slice(0,10)!==requestedAssessedOn||
       requestedAssessedOn>today))
