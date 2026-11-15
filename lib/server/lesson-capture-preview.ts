@@ -59,6 +59,7 @@ type ResolutionIssue = {
   message: string;
   input?: string;
   candidates?: Array<{ id: string; name: string }>;
+  inputs?: string[]; // distinct names/aliases referencing the same learner in one roster
 };
 
 const fail = (code: string, message: string) =>
@@ -125,14 +126,30 @@ export async function teacherStudentNamesResolve(
   });
 
   const ids = resolutions.map(r => r.studentId).filter((id): id is string => id !== null);
-  if (new Set(ids).size !== ids.length) {
-    issues.push({ code: "DUPLICATE_STUDENT",
-      message: "The same learner appears more than once in the proposed roster" });
+  const byStudent = new Map<string, typeof resolutions>();
+  for(const resolution of resolutions){
+    if(!resolution.studentId)continue;
+    const refs=byStudent.get(resolution.studentId)??[];
+    refs.push(resolution);
+    byStudent.set(resolution.studentId,refs);
+  }
+  for(const [id,refs] of byStudent){
+    if(refs.length>1){
+      issues.push({
+        code:"DUPLICATE_STUDENT",
+        message:"These roster inputs refer to the same learner, not duplicate student records. Use one name or alias per learner.",
+        candidates:[{id,name:refs[0].name!}],
+        inputs:refs.map(r=>r.input),
+      });
+    }
   }
 
  return {resolutions,issues,allResolved:issues.length===0,
+  // Nonempty studentIds means safe to commit a roster. Preserve successful
+  // resolution information separately even when a duplicated alias blocks commit.
   studentIds:issues.length===0?ids:[],
-  explanation:"Name and stored aliases are compared with exact Unicode normalization; archived students and partial names cannot be auto-selected."};
+  matchedStudentIds:[...byStudent.keys()],
+  explanation:"Names and aliases may both resolve to one existing student; duplicate roster references must be corrected before committing. Archived students and partial matches are never auto-selected."};
 }
 
 /** Match only active learners within this teacher, then find their common workplace. */

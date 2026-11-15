@@ -36,6 +36,20 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
     data:{nameAliases:[alias]},
   });
   expect(patched.status(),await patched.text()).toBe(200);
+  // A name and its alias can both resolve successfully, but never count
+  // as two learners in a proposed group roster. Explain the identity clearly.
+  const duplicate=await call("ccp_students_resolve",{names:[alias,names[0]]});
+  expect(duplicate.error).toBeUndefined();
+  expect(duplicate.data.resolutions.map((r:{studentId:string})=>r.studentId))
+    .toEqual([ids[0],ids[0]]);
+  expect(duplicate.data.allResolved).toBe(false);
+  expect(duplicate.data.studentIds).toEqual([]);
+  expect(duplicate.data.matchedStudentIds).toEqual([ids[0]]);
+  expect(duplicate.data.issues[0]).toMatchObject({
+    code:"DUPLICATE_STUDENT",inputs:[alias,names[0]],
+    candidates:[{id:ids[0],name:names[0]}],
+  });
+  expect(duplicate.data.issues[0].message).toContain("not duplicate student records");
 
   const day=new Date(Date.UTC(2058,1,1)+(parseInt(tag,16)%(365*24*60))*60_000)
     .toISOString();

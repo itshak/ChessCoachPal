@@ -4,6 +4,21 @@
 
 ## Requirements
 
+### Requirement: Release provenance and concurrency-safe external checkout
+
+A production release SHALL be verified against its exact reviewed main-branch Git SHA, Vercel production target, intended aliases and application endpoints. The pre-v1 database installation SHALL remain one canonical baseline, without incremental compatibility migrations or legacy aliases.
+
+#### Scenario: Website and MCP race on one invoice
+- **WHEN** two transports initiate the same invoice checkout
+- **THEN** both MAY succeed only if they return the SAME persisted checkout link without another payable session; if distinct upstream sessions are created, only one SHALL be linked and payable, the other SHALL be expired, and the losing call SHALL conflict.
+- **AND** later retry SHALL return the persisted winner without another provider creation.
+
+#### Scenario: Hardened test database
+- **WHEN** Supabase permission fixes are applied safely in place
+- **THEN** existing records SHALL be preserved and remaining security/performance advisor findings SHALL be classified; no wipe SHALL be used solely to silence warnings.
+
+
+
 ### Requirement: Website operations without mandatory external AI
 A new teacher SHALL be able to install the current self-hosted ChessCoachPal schema, sign up and use the website without an OpenAI, Anthropic, Notion, Google or Lichess account.
 
@@ -27,4 +42,19 @@ For an authenticated teacher and one selected workplace, the app SHALL report no
 
 ## Release boundary
 
-These requirements are implemented and GitHub-verified; final vendor sign-off, historical privacy/license approval, remaining agent tools and the actual v0.1.0 tag/release stay in [active final-publication change](../../changes/finalize-v0-1-0-publication/proposal.md). Do not check final readiness boxes based on synthetic tests.
+These requirements are implemented and GitHub-verified; final vendor sign-off, historical privacy/license approval, remaining agent tools and the actual v0.1.0 tag/release stay in [active final-publication change](../../changes/archive/2026-11-08-finalize-v0-1-0-publication/proposal.md). Do not check final readiness boxes based on synthetic tests.
+
+### Requirement: Canonical Supabase bootstrap SHALL include post-audit security posture
+
+A new clean installation SHALL run the **single** pre-v1 baseline (not a compatibility migration series), including restricted direct execution of trigger-only functions, fixed search paths, owner-scoped RLS initplan expressions and indexed foreign keys. A recovery into a second empty installation SHALL preserve effective permissions, session notes, teaching evidence, student history and uploaded objects, not merely row counts. Existing data MUST NOT be silently erased for test convenience.
+
+#### Scenario: Fresh host after a security hardening PR
+- **WHEN** clean CI/Compose/restore installs the current baseline
+- **THEN** it SHALL match the expected tables, policies, roles, indexes and RPC grants, and website+MCP authenticated smoke shall both succeed without adding legacy migrations.
+
+#### Scenario: Secure hosted backend still has RLS informational warnings
+- **WHEN** the Security Advisor reports that server-only OAuth or receipt tables intentionally have no authenticated policies
+- **THEN** the operator SHALL verify client roles are denied rather than create permissive policies to obtain an artificial green report.
+
+Review the [Supabase/MCP reliability playbook](../../../docs/MCP_SUPABASE_RELIABILITY_PLAYBOOK.md) for reset/Storage policy collisions and test evidence.
+

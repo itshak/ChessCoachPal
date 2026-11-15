@@ -105,6 +105,7 @@ ALTER FUNCTION "public"."chesscoachpal_snapshot_participants"() OWNER TO "postgr
 
 CREATE OR REPLACE FUNCTION "public"."enforce_credit_package_immutability"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET search_path TO public, pg_temp
     AS $$
 BEGIN
   IF (NEW.id, NEW.teacher_id, NEW.student_id, NEW.invoice_id, NEW.credits,
@@ -130,6 +131,7 @@ ALTER FUNCTION "public"."enforce_credit_package_immutability"() OWNER TO "postgr
 
 CREATE OR REPLACE FUNCTION "public"."enforce_invoice_delete_rules"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET search_path TO public, pg_temp
     AS $$
 BEGIN
   IF OLD.status IN ('sent', 'paid') THEN
@@ -151,6 +153,7 @@ ALTER FUNCTION "public"."enforce_invoice_delete_rules"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."enforce_invoice_immutability"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET search_path TO public, pg_temp
     AS $$
 DECLARE
   paid_cents bigint;
@@ -203,6 +206,7 @@ ALTER FUNCTION "public"."enforce_invoice_immutability"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."enforce_invoice_item_freeze"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET search_path TO public, pg_temp
     AS $$
 DECLARE
   parent_status text;
@@ -235,6 +239,7 @@ ALTER FUNCTION "public"."enforce_invoice_item_freeze"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."enforce_package_invoice_void"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET search_path TO public, pg_temp
     AS $$
 BEGIN
   IF NEW.status = 'void' AND OLD.status <> 'void' AND EXISTS (
@@ -255,6 +260,7 @@ ALTER FUNCTION "public"."enforce_package_invoice_void"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."enforce_payment_rules"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET search_path TO public, pg_temp
     AS $$
 DECLARE
   parent_status text;
@@ -302,6 +308,7 @@ ALTER FUNCTION "public"."enforce_payment_rules"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."reopen_underpaid_invoice"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET search_path TO public, pg_temp
     AS $$
 DECLARE
   paid_cents bigint;
@@ -334,6 +341,7 @@ ALTER FUNCTION "public"."reopen_underpaid_invoice"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."update_updated_at"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET search_path TO public, pg_temp
     AS $$
 BEGIN
   NEW.updated_at = now();
@@ -2076,39 +2084,39 @@ ALTER TABLE "public"."agent_tool_receipts" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."chess_observations" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "chess_observations_teacher" ON "public"."chess_observations" TO "authenticated" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "chess_observations_teacher" ON "public"."chess_observations" TO "authenticated" USING (("teacher_id" = (select "auth"."uid"()))) WITH CHECK (("teacher_id" = (select "auth"."uid"())));
 
 
 
 ALTER TABLE "public"."chess_skill_categories" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "chess_skill_categories_teacher" ON "public"."chess_skill_categories" TO "authenticated" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "chess_skill_categories_teacher" ON "public"."chess_skill_categories" TO "authenticated" USING (("teacher_id" = (select "auth"."uid"()))) WITH CHECK (("teacher_id" = (select "auth"."uid"())));
 
 
 
 ALTER TABLE "public"."class_groups" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "class_groups_teacher" ON "public"."class_groups" TO "authenticated" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "class_groups_teacher" ON "public"."class_groups" TO "authenticated" USING (("teacher_id" = (select "auth"."uid"()))) WITH CHECK (("teacher_id" = (select "auth"."uid"())));
 
 
 
 ALTER TABLE "public"."credit_packages" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "credit_packages_teacher" ON "public"."credit_packages" USING (("teacher_id" = "auth"."uid"())) WITH CHECK ((("teacher_id" = "auth"."uid"()) AND ("student_id" IN ( SELECT "students"."id"
+CREATE POLICY "credit_packages_teacher" ON "public"."credit_packages" USING (("teacher_id" = (select "auth"."uid"()))) WITH CHECK ((("teacher_id" = (select "auth"."uid"())) AND ("student_id" IN ( SELECT "students"."id"
    FROM "public"."students"
-  WHERE ("students"."teacher_id" = "auth"."uid"()))) AND ("invoice_id" IN ( SELECT "invoices"."id"
+  WHERE ("students"."teacher_id" = (select "auth"."uid"())))) AND ("invoice_id" IN ( SELECT "invoices"."id"
    FROM "public"."invoices"
-  WHERE ("invoices"."teacher_id" = "auth"."uid"())))));
+  WHERE ("invoices"."teacher_id" = (select "auth"."uid"()))))));
 
 
 
 ALTER TABLE "public"."credit_redemptions" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "credit_redemptions_teacher" ON "public"."credit_redemptions" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "credit_redemptions_teacher" ON "public"."credit_redemptions" USING (("teacher_id" = (select "auth"."uid"()))) WITH CHECK (("teacher_id" = (select "auth"."uid"())));
 
 
 
@@ -2117,9 +2125,9 @@ ALTER TABLE "public"."event_rsvps" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "event_rsvps_teacher" ON "public"."event_rsvps" USING ((EXISTS ( SELECT 1
    FROM "public"."events" "e"
-  WHERE (("e"."id" = "event_rsvps"."event_id") AND ("e"."teacher_id" = "auth"."uid"()))))) WITH CHECK ((EXISTS ( SELECT 1
+  WHERE (("e"."id" = "event_rsvps"."event_id") AND ("e"."teacher_id" = (select "auth"."uid"())))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."events" "e"
-  WHERE (("e"."id" = "event_rsvps"."event_id") AND ("e"."teacher_id" = "auth"."uid"())))));
+  WHERE (("e"."id" = "event_rsvps"."event_id") AND ("e"."teacher_id" = (select "auth"."uid"()))))));
 
 
 
@@ -2128,30 +2136,30 @@ ALTER TABLE "public"."event_students" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "event_students_teacher" ON "public"."event_students" USING ((EXISTS ( SELECT 1
    FROM "public"."events" "e"
-  WHERE (("e"."id" = "event_students"."event_id") AND ("e"."teacher_id" = "auth"."uid"()))))) WITH CHECK ((EXISTS ( SELECT 1
+  WHERE (("e"."id" = "event_students"."event_id") AND ("e"."teacher_id" = (select "auth"."uid"())))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."events" "e"
-  WHERE (("e"."id" = "event_students"."event_id") AND ("e"."teacher_id" = "auth"."uid"())))));
+  WHERE (("e"."id" = "event_students"."event_id") AND ("e"."teacher_id" = (select "auth"."uid"()))))));
 
 
 
 ALTER TABLE "public"."events" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "events_teacher" ON "public"."events" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "events_teacher" ON "public"."events" USING (("teacher_id" = (select "auth"."uid"()))) WITH CHECK (("teacher_id" = (select "auth"."uid"())));
 
 
 
 ALTER TABLE "public"."group_enrollments" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "group_enrollments_teacher" ON "public"."group_enrollments" TO "authenticated" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "group_enrollments_teacher" ON "public"."group_enrollments" TO "authenticated" USING (("teacher_id" = (select "auth"."uid"()))) WITH CHECK (("teacher_id" = (select "auth"."uid"())));
 
 
 
 ALTER TABLE "public"."guardians" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "guardians_teacher" ON "public"."guardians" USING (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "guardians_teacher" ON "public"."guardians" USING (("teacher_id" = (select "auth"."uid"())));
 
 
 
@@ -2160,14 +2168,14 @@ ALTER TABLE "public"."invoice_items" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "invoice_items_teacher" ON "public"."invoice_items" USING (("invoice_id" IN ( SELECT "invoices"."id"
    FROM "public"."invoices"
-  WHERE ("invoices"."teacher_id" = "auth"."uid"()))));
+  WHERE ("invoices"."teacher_id" = (select "auth"."uid"())))));
 
 
 
 ALTER TABLE "public"."invoices" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "invoices_teacher" ON "public"."invoices" USING (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "invoices_teacher" ON "public"."invoices" USING (("teacher_id" = (select "auth"."uid"())));
 
 
 
@@ -2179,7 +2187,7 @@ CREATE POLICY "invoices_teacher" ON "public"."invoices" USING (("teacher_id" = "
 ALTER TABLE "public"."lesson_slots" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "lesson_slots_teacher" ON "public"."lesson_slots" USING (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "lesson_slots_teacher" ON "public"."lesson_slots" USING (("teacher_id" = (select "auth"."uid"())));
 
 
 
@@ -2191,7 +2199,7 @@ CREATE POLICY "lesson_slots_teacher" ON "public"."lesson_slots" USING (("teacher
 ALTER TABLE "public"."notifications" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "notifications_teacher" ON "public"."notifications" USING (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "notifications_teacher" ON "public"."notifications" USING (("teacher_id" = (select "auth"."uid"())));
 
 
 
@@ -2200,21 +2208,21 @@ ALTER TABLE "public"."payments" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "payments_teacher" ON "public"."payments" USING (("invoice_id" IN ( SELECT "invoices"."id"
    FROM "public"."invoices"
-  WHERE ("invoices"."teacher_id" = "auth"."uid"()))));
+  WHERE ("invoices"."teacher_id" = (select "auth"."uid"())))));
 
 
 
 ALTER TABLE "public"."push_subscriptions" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "push_subscriptions_teacher" ON "public"."push_subscriptions" USING (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "push_subscriptions_teacher" ON "public"."push_subscriptions" USING (("teacher_id" = (select "auth"."uid"())));
 
 
 
 ALTER TABLE "public"."session_attendance" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "session_attendance_teacher" ON "public"."session_attendance" TO "authenticated" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "session_attendance_teacher" ON "public"."session_attendance" TO "authenticated" USING (("teacher_id" = (select "auth"."uid"()))) WITH CHECK (("teacher_id" = (select "auth"."uid"())));
 
 
 
@@ -2223,11 +2231,11 @@ ALTER TABLE "public"."session_participants" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."session_notes" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "session_notes_teacher" ON "public"."session_notes"
   TO "authenticated"
-  USING (("teacher_id" = "auth"."uid"()))
-  WITH CHECK (("teacher_id" = "auth"."uid"()));
+  USING (("teacher_id" = (select "auth"."uid"())))
+  WITH CHECK (("teacher_id" = (select "auth"."uid"())));
 
 
-CREATE POLICY "session_participants_teacher" ON "public"."session_participants" FOR SELECT TO "authenticated" USING (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "session_participants_teacher" ON "public"."session_participants" FOR SELECT TO "authenticated" USING (("teacher_id" = (select "auth"."uid"())));
 
 
 
@@ -2236,42 +2244,42 @@ ALTER TABLE "public"."skill_assessments" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "skill_assessments_teacher" ON "public"."skill_assessments" USING (("student_id" IN ( SELECT "students"."id"
    FROM "public"."students"
-  WHERE ("students"."teacher_id" = "auth"."uid"()))));
+  WHERE ("students"."teacher_id" = (select "auth"."uid"())))));
 
 
 
 ALTER TABLE "public"."skill_dimensions" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "skill_dimensions_teacher" ON "public"."skill_dimensions" USING (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "skill_dimensions_teacher" ON "public"."skill_dimensions" USING (("teacher_id" = (select "auth"."uid"())));
 
 
 
 ALTER TABLE "public"."students" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "students_teacher" ON "public"."students" USING (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "students_teacher" ON "public"."students" USING (("teacher_id" = (select "auth"."uid"())));
 
 
 
 ALTER TABLE "public"."studio_policies" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "studio_policies_teacher" ON "public"."studio_policies" USING (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "studio_policies_teacher" ON "public"."studio_policies" USING (("teacher_id" = (select "auth"."uid"())));
 
 
 
 ALTER TABLE "public"."teachers" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "teachers_own" ON "public"."teachers" USING (("id" = "auth"."uid"()));
+CREATE POLICY "teachers_own" ON "public"."teachers" USING (("id" = (select "auth"."uid"())));
 
 
 
 ALTER TABLE "public"."teaching_sessions" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "teaching_sessions_teacher" ON "public"."teaching_sessions" TO "authenticated" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "teaching_sessions_teacher" ON "public"."teaching_sessions" TO "authenticated" USING (("teacher_id" = (select "auth"."uid"()))) WITH CHECK (("teacher_id" = (select "auth"."uid"())));
 
 
 
@@ -2281,14 +2289,14 @@ ALTER TABLE "public"."waitlist" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."workplace_enrollments" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "workplace_enrollments_teacher" ON "public"."workplace_enrollments" TO "authenticated" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "workplace_enrollments_teacher" ON "public"."workplace_enrollments" TO "authenticated" USING (("teacher_id" = (select "auth"."uid"()))) WITH CHECK (("teacher_id" = (select "auth"."uid"())));
 
 
 
 ALTER TABLE "public"."workplaces" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "workplaces_teacher" ON "public"."workplaces" TO "authenticated" USING (("teacher_id" = "auth"."uid"())) WITH CHECK (("teacher_id" = "auth"."uid"()));
+CREATE POLICY "workplaces_teacher" ON "public"."workplaces" TO "authenticated" USING (("teacher_id" = (select "auth"."uid"()))) WITH CHECK (("teacher_id" = (select "auth"."uid"())));
 
 
 
@@ -2543,7 +2551,8 @@ GRANT ALL ON TABLE "public"."teaching_sessions" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."waitlist" TO "authenticated";
+-- Public waitlist writes use the rate-limited service role, not direct client table access.
+REVOKE ALL ON TABLE public.waitlist FROM authenticated, anon;
 GRANT ALL ON TABLE "public"."waitlist" TO "service_role";
 
 
@@ -2615,25 +2624,25 @@ create policy avatars_storage_insert on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'avatars'
-    and (storage.foldername(name))[1] = auth.uid()::text
+    and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
 create policy avatars_storage_update on storage.objects
   for update to authenticated
   using (
     bucket_id = 'avatars'
-    and (storage.foldername(name))[1] = auth.uid()::text
+    and (storage.foldername(name))[1] = (select auth.uid())::text
   )
   with check (
     bucket_id = 'avatars'
-    and (storage.foldername(name))[1] = auth.uid()::text
+    and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
 create policy avatars_storage_delete on storage.objects
   for delete to authenticated
   using (
     bucket_id = 'avatars'
-    and (storage.foldername(name))[1] = auth.uid()::text
+    and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
 
@@ -2686,7 +2695,7 @@ CREATE INDEX material_links_session_recent ON public.material_links(teacher_id,s
 CREATE INDEX material_links_material_recent ON public.material_links(teacher_id,material_id);
 ALTER TABLE public.material_links ENABLE ROW LEVEL SECURITY;
 CREATE POLICY material_links_teacher_owner ON public.material_links
- FOR ALL TO authenticated USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+ FOR ALL TO authenticated USING(teacher_id=(select auth.uid())) WITH CHECK(teacher_id=(select auth.uid()));
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.material_links TO authenticated;
 GRANT ALL ON public.material_links TO service_role;
 
@@ -2772,17 +2781,17 @@ ALTER TABLE public.chess_drills ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chess_study_chapters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.learning_material_relations ENABLE ROW LEVEL SECURITY;
 CREATE POLICY owner_learning_materials ON public.learning_materials
- FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+ FOR ALL TO authenticated USING (teacher_id=(select auth.uid())) WITH CHECK (teacher_id=(select auth.uid()));
 CREATE POLICY owner_chess_games ON public.chess_games
- FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+ FOR ALL TO authenticated USING (teacher_id=(select auth.uid())) WITH CHECK (teacher_id=(select auth.uid()));
 CREATE POLICY owner_chess_puzzles ON public.chess_puzzles
- FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+ FOR ALL TO authenticated USING (teacher_id=(select auth.uid())) WITH CHECK (teacher_id=(select auth.uid()));
 CREATE POLICY owner_chess_drills ON public.chess_drills
- FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+ FOR ALL TO authenticated USING (teacher_id=(select auth.uid())) WITH CHECK (teacher_id=(select auth.uid()));
 CREATE POLICY owner_chess_study_chapters ON public.chess_study_chapters
- FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+ FOR ALL TO authenticated USING (teacher_id=(select auth.uid())) WITH CHECK (teacher_id=(select auth.uid()));
 CREATE POLICY owner_learning_material_relations ON public.learning_material_relations
- FOR ALL TO authenticated USING (teacher_id=auth.uid()) WITH CHECK (teacher_id=auth.uid());
+ FOR ALL TO authenticated USING (teacher_id=(select auth.uid())) WITH CHECK (teacher_id=(select auth.uid()));
 GRANT SELECT ON public.learning_materials,public.chess_games,public.chess_puzzles,
  public.chess_drills,public.chess_study_chapters,public.learning_material_relations TO authenticated;
 GRANT SELECT,INSERT ON public.learning_materials,public.chess_games,public.chess_puzzles,
@@ -2920,11 +2929,11 @@ ALTER TABLE public.training_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.assignment_attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.assignment_reviews ENABLE ROW LEVEL SECURITY;
 CREATE POLICY training_assignments_owner ON public.training_assignments
- FOR ALL TO authenticated USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+ FOR ALL TO authenticated USING(teacher_id=(select auth.uid())) WITH CHECK(teacher_id=(select auth.uid()));
 CREATE POLICY assignment_attempts_owner ON public.assignment_attempts
- FOR ALL TO authenticated USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+ FOR ALL TO authenticated USING(teacher_id=(select auth.uid())) WITH CHECK(teacher_id=(select auth.uid()));
 CREATE POLICY assignment_reviews_owner ON public.assignment_reviews
- FOR ALL TO authenticated USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+ FOR ALL TO authenticated USING(teacher_id=(select auth.uid())) WITH CHECK(teacher_id=(select auth.uid()));
 GRANT SELECT ON public.training_assignments,public.assignment_attempts,public.assignment_reviews TO authenticated;
 GRANT ALL ON public.training_assignments,public.assignment_attempts,public.assignment_reviews TO service_role;
 
@@ -4407,13 +4416,13 @@ CREATE INDEX ccp_event_email_deliveries_event
 ALTER TABLE public.event_email_deliveries ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ccp_event_email_deliveries_teacher ON public.event_email_deliveries
   FOR ALL TO authenticated
-  USING (teacher_id=auth.uid())
+  USING (teacher_id=(select auth.uid()))
   WITH CHECK (
-    teacher_id=auth.uid()
+    teacher_id=(select auth.uid())
     AND EXISTS(SELECT 1 FROM public.events e
-      WHERE e.id=event_id AND e.teacher_id=auth.uid())
+      WHERE e.id=event_id AND e.teacher_id=(select auth.uid()))
     AND EXISTS(SELECT 1 FROM public.guardians g
-      WHERE g.id=guardian_id AND g.teacher_id=auth.uid())
+      WHERE g.id=guardian_id AND g.teacher_id=(select auth.uid()))
   );
 REVOKE ALL ON public.event_email_deliveries FROM anon, PUBLIC;
 GRANT SELECT, INSERT, UPDATE ON public.event_email_deliveries TO authenticated;
@@ -4515,7 +4524,7 @@ CREATE INDEX ccp_chess_profile_history_student
  ON public.student_chess_profile_history(teacher_id,student_id,created_at DESC,id DESC);
 ALTER TABLE public.student_chess_profile_history ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ccp_chess_profile_history_owner ON public.student_chess_profile_history
- FOR SELECT TO authenticated USING(teacher_id=auth.uid());
+ FOR SELECT TO authenticated USING(teacher_id=(select auth.uid()));
 REVOKE ALL ON public.student_chess_profile_history FROM anon,PUBLIC;
 GRANT SELECT ON public.student_chess_profile_history TO authenticated;
 
@@ -4590,7 +4599,7 @@ CREATE INDEX ccp_material_defaults_scope
 ALTER TABLE public.chess_material_defaults ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ccp_material_defaults_teacher ON public.chess_material_defaults
  FOR ALL TO authenticated
- USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+ USING(teacher_id=(select auth.uid())) WITH CHECK(teacher_id=(select auth.uid()));
 REVOKE ALL ON public.chess_material_defaults FROM anon,PUBLIC;
 GRANT SELECT,INSERT,UPDATE ON public.chess_material_defaults TO authenticated;
 
@@ -4607,7 +4616,7 @@ CREATE INDEX ccp_material_default_history_scope
  ON public.chess_material_default_history(teacher_id,default_id,created_at DESC);
 ALTER TABLE public.chess_material_default_history ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ccp_material_default_history_teacher ON public.chess_material_default_history
- FOR SELECT TO authenticated USING(teacher_id=auth.uid());
+ FOR SELECT TO authenticated USING(teacher_id=(select auth.uid()));
 REVOKE ALL ON public.chess_material_default_history FROM anon,PUBLIC;
 GRANT SELECT ON public.chess_material_default_history TO authenticated;
 
@@ -4758,7 +4767,7 @@ CREATE TABLE public.session_roster_corrections (
 ALTER TABLE public.session_roster_corrections ENABLE ROW LEVEL SECURITY;
 CREATE POLICY session_roster_corrections_read_own
  ON public.session_roster_corrections FOR SELECT TO authenticated
- USING (teacher_id=auth.uid());
+ USING (teacher_id=(select auth.uid()));
 REVOKE ALL ON public.session_roster_corrections FROM PUBLIC,anon,authenticated;
 GRANT SELECT ON public.session_roster_corrections TO authenticated;
 GRANT ALL ON public.session_roster_corrections TO service_role;
@@ -5133,7 +5142,7 @@ CREATE INDEX ccp_lichess_puzzle_publications_teacher
 ALTER TABLE public.lichess_puzzle_publications ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ccp_lichess_puzzle_publications_teacher
  ON public.lichess_puzzle_publications FOR ALL TO authenticated
- USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+ USING(teacher_id=(select auth.uid())) WITH CHECK(teacher_id=(select auth.uid()));
 REVOKE ALL ON public.lichess_puzzle_publications FROM anon,PUBLIC;
 GRANT SELECT,INSERT,UPDATE ON public.lichess_puzzle_publications TO authenticated;
 
@@ -5150,8 +5159,8 @@ CREATE TABLE public.teacher_backup_import_receipts (
 );
 ALTER TABLE public.teacher_backup_import_receipts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY teacher_backup_receipts_owner ON public.teacher_backup_import_receipts
-  FOR ALL TO authenticated USING (teacher_id = auth.uid())
-  WITH CHECK (teacher_id = auth.uid());
+  FOR ALL TO authenticated USING (teacher_id = (select auth.uid()))
+  WITH CHECK (teacher_id = (select auth.uid()));
 REVOKE ALL ON public.teacher_backup_import_receipts FROM PUBLIC, anon;
 GRANT SELECT, INSERT, UPDATE(result) ON public.teacher_backup_import_receipts TO authenticated;
 
@@ -5753,7 +5762,7 @@ ALTER TABLE public.ccp_event_request_receipts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS ccp_event_receipts_owner ON public.ccp_event_request_receipts;
 CREATE POLICY ccp_event_receipts_owner ON public.ccp_event_request_receipts
   FOR ALL TO authenticated
-  USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+  USING(teacher_id=(select auth.uid())) WITH CHECK(teacher_id=(select auth.uid()));
 REVOKE ALL ON public.ccp_event_request_receipts FROM PUBLIC,anon;
 GRANT SELECT,INSERT ON public.ccp_event_request_receipts TO authenticated;
 
@@ -5819,7 +5828,7 @@ ALTER TABLE public.ccp_guardian_request_receipts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS ccp_guardian_receipts_owner ON public.ccp_guardian_request_receipts;
 CREATE POLICY ccp_guardian_receipts_owner ON public.ccp_guardian_request_receipts
   FOR ALL TO authenticated
-  USING (teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+  USING (teacher_id=(select auth.uid())) WITH CHECK(teacher_id=(select auth.uid()));
 REVOKE ALL ON public.ccp_guardian_request_receipts FROM PUBLIC,anon;
 GRANT SELECT,INSERT ON public.ccp_guardian_request_receipts TO authenticated;
 
@@ -5992,7 +6001,7 @@ ALTER TABLE public.ccp_student_create_receipts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS ccp_student_create_receipts_owner ON public.ccp_student_create_receipts;
 CREATE POLICY ccp_student_create_receipts_owner ON public.ccp_student_create_receipts
  FOR ALL TO authenticated
- USING(teacher_id=auth.uid()) WITH CHECK(teacher_id=auth.uid());
+ USING(teacher_id=(select auth.uid())) WITH CHECK(teacher_id=(select auth.uid()));
 REVOKE ALL ON public.ccp_student_create_receipts FROM PUBLIC,anon;
 GRANT SELECT,INSERT ON public.ccp_student_create_receipts TO authenticated;
 
@@ -6156,7 +6165,7 @@ CREATE TABLE public.learning_material_edit_receipts (
 );
 ALTER TABLE public.learning_material_edit_receipts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY learning_material_edits_owner ON public.learning_material_edit_receipts
-  FOR SELECT TO authenticated USING (teacher_id=auth.uid());
+  FOR SELECT TO authenticated USING (teacher_id=(select auth.uid()));
 GRANT SELECT ON public.learning_material_edit_receipts TO authenticated;
 
 CREATE FUNCTION public.ccp_material_catalog_update(
@@ -6294,7 +6303,7 @@ CREATE TABLE public.learning_material_relation_receipts(
 ALTER TABLE public.learning_material_relation_receipts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY owner_material_relation_receipts
  ON public.learning_material_relation_receipts FOR SELECT TO authenticated
- USING (teacher_id=auth.uid());
+ USING (teacher_id=(select auth.uid()));
 GRANT SELECT ON public.learning_material_relation_receipts TO authenticated;
 
 CREATE FUNCTION public.ccp_material_relation_change(
@@ -6406,7 +6415,7 @@ CREATE TABLE public.learning_material_lifecycle_receipts(
 );
 ALTER TABLE public.learning_material_lifecycle_receipts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY owner_material_lifecycle_receipts ON public.learning_material_lifecycle_receipts
- FOR SELECT TO authenticated USING(teacher_id=auth.uid());
+ FOR SELECT TO authenticated USING(teacher_id=(select auth.uid()));
 GRANT SELECT ON public.learning_material_lifecycle_receipts TO authenticated;
 
 CREATE FUNCTION public.ccp_material_lifecycle_change(
@@ -6505,7 +6514,7 @@ CREATE INDEX student_training_plans_list
  ON public.student_training_plans(teacher_id,student_id,updated_at DESC,id);
 ALTER TABLE public.student_training_plans ENABLE ROW LEVEL SECURITY;
 CREATE POLICY owner_training_plans ON public.student_training_plans
- FOR SELECT TO authenticated USING(teacher_id=auth.uid());
+ FOR SELECT TO authenticated USING(teacher_id=(select auth.uid()));
 GRANT SELECT ON public.student_training_plans TO authenticated;
 
 CREATE TABLE public.student_training_plan_revisions(
@@ -6520,7 +6529,7 @@ CREATE TABLE public.student_training_plan_revisions(
 );
 ALTER TABLE public.student_training_plan_revisions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY owner_training_plan_revisions ON public.student_training_plan_revisions
- FOR SELECT TO authenticated USING(teacher_id=auth.uid());
+ FOR SELECT TO authenticated USING(teacher_id=(select auth.uid()));
 GRANT SELECT ON public.student_training_plan_revisions TO authenticated;
 
 CREATE TABLE public.student_training_plan_receipts(
@@ -6536,7 +6545,7 @@ CREATE TABLE public.student_training_plan_receipts(
 );
 ALTER TABLE public.student_training_plan_receipts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY owner_training_plan_receipts ON public.student_training_plan_receipts
- FOR SELECT TO authenticated USING(teacher_id=auth.uid());
+ FOR SELECT TO authenticated USING(teacher_id=(select auth.uid()));
 GRANT SELECT ON public.student_training_plan_receipts TO authenticated;
 
 CREATE FUNCTION public.ccp_student_training_plan_commit(
@@ -6686,8 +6695,8 @@ CREATE INDEX material_teaching_evidence_session_idx
 
 ALTER TABLE public.material_teaching_evidence ENABLE ROW LEVEL SECURITY;
 CREATE POLICY material_teaching_evidence_owner ON public.material_teaching_evidence
- FOR ALL TO authenticated USING (teacher_id = auth.uid())
- WITH CHECK (teacher_id = auth.uid());
+ FOR ALL TO authenticated USING (teacher_id = (select auth.uid()))
+ WITH CHECK (teacher_id = (select auth.uid()));
 GRANT SELECT,INSERT,UPDATE ON public.material_teaching_evidence TO authenticated;
 GRANT ALL ON public.material_teaching_evidence TO service_role;
 
@@ -9139,7 +9148,7 @@ CREATE INDEX ccp_attendance_audit_teacher_session_idx
 ALTER TABLE public.ccp_session_attendance_audit ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ccp_attendance_audit_teacher_read
  ON public.ccp_session_attendance_audit FOR SELECT TO authenticated
- USING (teacher_id=auth.uid());
+ USING (teacher_id=(select auth.uid()));
 REVOKE ALL ON TABLE public.ccp_session_attendance_audit
  FROM PUBLIC,anon,authenticated;
 GRANT SELECT ON TABLE public.ccp_session_attendance_audit TO authenticated;
@@ -9222,11 +9231,11 @@ CREATE INDEX ccp_rating_snapshot_recent ON public.student_rating_snapshots
 ALTER TABLE public.student_rating_snapshots ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS ccp_rating_snapshot_read ON public.student_rating_snapshots;
 CREATE POLICY ccp_rating_snapshot_read ON public.student_rating_snapshots
-  FOR SELECT TO authenticated USING (teacher_id=auth.uid());
+  FOR SELECT TO authenticated USING (teacher_id=(select auth.uid()));
 DROP POLICY IF EXISTS ccp_rating_snapshot_manual ON public.student_rating_snapshots;
 CREATE POLICY ccp_rating_snapshot_manual ON public.student_rating_snapshots
   FOR INSERT TO authenticated WITH CHECK (
-    teacher_id=auth.uid() AND source='teacher_manual' AND fetched_at IS NULL);
+    teacher_id=(select auth.uid()) AND source='teacher_manual' AND fetched_at IS NULL);
 REVOKE ALL ON public.student_rating_snapshots FROM PUBLIC,anon,authenticated;
 GRANT SELECT,INSERT ON public.student_rating_snapshots TO authenticated;
 GRANT ALL ON public.student_rating_snapshots TO service_role;
@@ -9274,7 +9283,7 @@ CREATE INDEX ccp_study_index_search ON public.teacher_study_chapter_index
 ALTER TABLE public.teacher_study_chapter_index ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS ccp_study_index_owner ON public.teacher_study_chapter_index;
 CREATE POLICY ccp_study_index_owner ON public.teacher_study_chapter_index
- FOR SELECT TO authenticated USING(teacher_id=auth.uid());
+ FOR SELECT TO authenticated USING(teacher_id=(select auth.uid()));
 REVOKE ALL ON public.teacher_study_chapter_index FROM PUBLIC,anon,authenticated;
 GRANT SELECT ON public.teacher_study_chapter_index TO authenticated;
 GRANT ALL ON public.teacher_study_chapter_index TO service_role;
@@ -9490,8 +9499,8 @@ CREATE INDEX ccp_puzzle_series_recent ON public.lichess_puzzle_series
 ALTER TABLE public.lichess_puzzle_series ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS ccp_puzzle_series_owner ON public.lichess_puzzle_series;
 CREATE POLICY ccp_puzzle_series_owner ON public.lichess_puzzle_series
- FOR ALL TO authenticated USING(teacher_id=auth.uid())
- WITH CHECK(teacher_id=auth.uid());
+ FOR ALL TO authenticated USING(teacher_id=(select auth.uid()))
+ WITH CHECK(teacher_id=(select auth.uid()));
 REVOKE ALL ON public.lichess_puzzle_series FROM PUBLIC,anon,authenticated;
 GRANT SELECT ON public.lichess_puzzle_series TO authenticated;
 -- Only the server after a validated provider response may finalize a receipt.
@@ -9603,24 +9612,24 @@ CREATE TABLE public.teacher_study_preferences (
 CREATE INDEX ccp_teacher_study_preference_study ON public.teacher_study_preferences(teacher_id,study_id);
 ALTER TABLE public.teacher_study_preferences ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ccp_study_preference_read ON public.teacher_study_preferences
- FOR SELECT TO authenticated USING(teacher_id=auth.uid());
+ FOR SELECT TO authenticated USING(teacher_id=(select auth.uid()));
 -- The only ordinary write path is the confirmed, revisioned SEC DEFINER RPC.
 -- The backup restorer sets this transaction-local proof after authenticating;
 -- without that proof direct authenticated PostgREST INSERT/PATCH/DELETE is denied.
 CREATE POLICY ccp_study_preference_backup_insert ON public.teacher_study_preferences
  FOR INSERT TO authenticated WITH CHECK(
-  teacher_id=auth.uid() AND
-  current_setting('ccp.backup_import_teacher',true)=auth.uid()::text);
+  teacher_id=(select auth.uid()) AND
+  (select current_setting('ccp.backup_import_teacher',true))=(select auth.uid())::text);
 CREATE POLICY ccp_study_preference_backup_update ON public.teacher_study_preferences
  FOR UPDATE TO authenticated USING(
-  teacher_id=auth.uid() AND
-  current_setting('ccp.backup_import_teacher',true)=auth.uid()::text)
- WITH CHECK(teacher_id=auth.uid() AND
-  current_setting('ccp.backup_import_teacher',true)=auth.uid()::text);
+  teacher_id=(select auth.uid()) AND
+  (select current_setting('ccp.backup_import_teacher',true))=(select auth.uid())::text)
+ WITH CHECK(teacher_id=(select auth.uid()) AND
+  (select current_setting('ccp.backup_import_teacher',true))=(select auth.uid())::text);
 CREATE POLICY ccp_study_preference_backup_delete ON public.teacher_study_preferences
  FOR DELETE TO authenticated USING(
-  teacher_id=auth.uid() AND
-  current_setting('ccp.backup_import_teacher',true)=auth.uid()::text);
+  teacher_id=(select auth.uid()) AND
+  (select current_setting('ccp.backup_import_teacher',true))=(select auth.uid())::text);
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.teacher_study_preferences TO authenticated;
 REVOKE ALL ON TABLE public.teacher_study_preferences FROM PUBLIC,anon;
 
@@ -9734,3 +9743,79 @@ REVOKE ALL ON FUNCTION public.ccp_teacher_study_preference_set(
  text,text,uuid,text,bigint,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_study_preference_set(
  text,text,uuid,text,bigint,uuid) TO authenticated;
+
+-- Pre-v1 canonical security posture. Trigger functions are not RPC endpoints.
+REVOKE ALL ON FUNCTION public.ccp_chess_material_default_audit() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_protect_credit_expiry_history() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_student_chess_history_capture() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_canonical_finance_line_guard() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_canonical_redemption_guard() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_session_attendance_write_guard() FROM PUBLIC, anon, authenticated;
+
+REVOKE ALL ON FUNCTION public.ccp_protect_canonical_financed_attendance() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_protect_canonical_financed_session() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_protect_skill_assessment_history() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_restrict_student_history_delete() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_restrict_workplace_unenroll() FROM PUBLIC, anon, authenticated;
+
+-- Canonical FK indexes for bounded owner-scoped pagination and deletion checks.
+-- These are part of the fresh-install schema, not incremental migrations.
+CREATE INDEX IF NOT EXISTS "ccp_fk_agent_oauth_codes_834de467" ON public."agent_oauth_codes" ("client_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_agent_oauth_codes_578be6be" ON public."agent_oauth_codes" ("teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_agent_oauth_grants_14f893f2" ON public."agent_oauth_grants" ("client_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_assignment_attempts_92e0b85a" ON public."assignment_attempts" ("teacher_id","assignment_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_assignment_reviews_f8aa514b" ON public."assignment_reviews" ("teacher_id","assignment_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_assignment_reviews_aac5c50b" ON public."assignment_reviews" ("teacher_id","attempt_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_ccp_delivery_outbox_da636ad5" ON public."ccp_delivery_outbox" ("session_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_ccp_delivery_outbox_1d72ff67" ON public."ccp_delivery_outbox" ("session_id","student_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_ccp_session_attendance_audit_f0e5037b" ON public."ccp_session_attendance_audit" ("session_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_ccp_session_note_audit_bf0155c8" ON public."ccp_session_note_audit" ("note_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_ccp_session_note_audit_ba4865f8" ON public."ccp_session_note_audit" ("session_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_chess_drills_8be7c153" ON public."chess_drills" ("teacher_id","material_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_chess_games_946d860e" ON public."chess_games" ("teacher_id","material_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_chess_material_default_history_d8314dc6" ON public."chess_material_default_history" ("default_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_chess_material_defaults_ada0b748" ON public."chess_material_defaults" ("group_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_chess_material_defaults_1724d777" ON public."chess_material_defaults" ("workplace_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_chess_observations_de8f13a1" ON public."chess_observations" ("category_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_chess_observations_07db45e8" ON public."chess_observations" ("session_id","student_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_chess_observations_10f09ae5" ON public."chess_observations" ("session_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_chess_observations_0be054c0" ON public."chess_observations" ("student_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_chess_puzzles_1367ca00" ON public."chess_puzzles" ("teacher_id","material_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_chess_study_chapters_3dc07959" ON public."chess_study_chapters" ("teacher_id","material_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_class_groups_b75f46b4" ON public."class_groups" ("workplace_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_credit_redemptions_61ee2678" ON public."credit_redemptions" ("teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_event_email_deliveries_9cefd946" ON public."event_email_deliveries" ("event_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_event_email_deliveries_8a765951" ON public."event_email_deliveries" ("guardian_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_group_enrollments_b979268e" ON public."group_enrollments" ("group_id","teacher_id","workplace_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_group_enrollments_9fd27e53" ON public."group_enrollments" ("student_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_group_enrollments_1e9156ce" ON public."group_enrollments" ("teacher_id","workplace_id","student_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_invoice_items_fba281a2" ON public."invoice_items" ("session_id","student_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_learning_material_edit_receipts_d77ff893" ON public."learning_material_edit_receipts" ("teacher_id","material_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_learning_material_relations_8a470c0a" ON public."learning_material_relations" ("teacher_id","to_material_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_lesson_slots_8be59afb" ON public."lesson_slots" ("workplace_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_material_links_2f6469f1" ON public."material_links" ("session_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_material_links_826dda38" ON public."material_links" ("session_id","student_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_material_links_77986aca" ON public."material_links" ("student_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_material_teaching_evidence_fc524ea6" ON public."material_teaching_evidence" ("teacher_id","material_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_material_teaching_evidence_699bf9ed" ON public."material_teaching_evidence" ("session_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_material_teaching_evidence_6a0e0f6a" ON public."material_teaching_evidence" ("student_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_material_teaching_evidence_a12fee29" ON public."material_teaching_evidence" ("workplace_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_session_attendance_e6d58aad" ON public."session_attendance" ("session_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_session_attendance_8783cbc8" ON public."session_attendance" ("student_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_session_notes_db95be2d" ON public."session_notes" ("session_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_session_participants_6824ecbe" ON public."session_participants" ("session_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_session_participants_2d3fc50f" ON public."session_participants" ("student_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_session_roster_corrections_0bde81e3" ON public."session_roster_corrections" ("session_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_skill_assessment_write_receipts_77101c8c" ON public."skill_assessment_write_receipts" ("student_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_student_chess_profile_history_28ff2712" ON public."student_chess_profile_history" ("student_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_student_rating_snapshots_629b8242" ON public."student_rating_snapshots" ("student_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_student_training_plan_receipts_3efe082e" ON public."student_training_plan_receipts" ("teacher_id","plan_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_student_training_plans_10fa2415" ON public."student_training_plans" ("student_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_teaching_sessions_267c765a" ON public."teaching_sessions" ("group_id","teacher_id","workplace_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_teaching_sessions_b6e5b406" ON public."teaching_sessions" ("makeup_for_session_id","makeup_for_student_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_teaching_sessions_d2d5422d" ON public."teaching_sessions" ("slot_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_teaching_sessions_2edef0e2" ON public."teaching_sessions" ("workplace_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_training_assignments_ec404efb" ON public."training_assignments" ("student_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_training_assignments_697715eb" ON public."training_assignments" ("teacher_id","material_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_workplace_enrollments_5474562a" ON public."workplace_enrollments" ("student_id","teacher_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_workplace_enrollments_360dd7f3" ON public."workplace_enrollments" ("workplace_id","teacher_id");

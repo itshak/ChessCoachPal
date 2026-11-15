@@ -4,11 +4,9 @@ Current pre-1.0 fresh-install schema only (ADR-0001). A teacher can use the webs
 
 **Licensing:** The following instructions describe a deployment mechanism, not a license to reproduce or operate the proprietary ChessCoachPal portions. New deployments of proprietary code require authorization from the relevant copyright holder. The MIT rights of CogNote and historical ChessCoachPal releases remain intact; see [LICENSE](../LICENSE), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) and [ADR-0002](adr/0002-proprietary-licensing.md).
 
-## Target hosting decision: trimmed Supabase on Coolify
+## Coolify hosting target, not a completed cutover
 
-[ADR-0007](adr/0007-self-hosted-supabase-on-coolify.md) selects the **existing trimmed self-hosted Supabase stack** as the target production backend, deployed together with the Next.js website and `/mcp` on Coolify. See the [hosting architecture](HOSTING_ARCHITECTURE.md) for alternatives considered, practical resource-estimate caveats, migration sequence and verification gates. Managed Supabase may remain in use during development: this is a target decision, **not** a claim that migration has already happened.
-
-Before production deployment, inspect the example Compose file's published development ports and configure Coolify HTTPS routing and private backend networking; measure actual free storage and Docker image/volume/build-cache use; configure Google OAuth and SMTP if needed; verify teacher/RLS isolation and MCP consent, scopes, refresh and revocation. Send encrypted backups **off host** and prove recovery into a second empty instance. A fresh trimmed stack is expected to use far less disk than a full optional Supabase distribution, but do not turn estimates into a guaranteed storage minimum.
+[ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md) selects the trimmed existing Supabase Compose stack as the future Coolify-managed backend, with Next.js website and `/mcp` sharing the same services. See [HOSTING_ARCHITECTURE.md](HOSTING_ARCHITECTURE.md) for alternatives, disk estimates and rollout gates. This does not imply the managed backend or Vercel has already migrated. Before a real cutover: isolate database/Auth/Storage and service-role credentials from public ports, configure HTTPS and Google OAuth/SMTP where applicable, measure real image/volume capacity, verify RLS and delegated MCP consent/refresh/revocation, and restore off-host encrypted backups into a second empty installation.
 
 ## Initial setup (new empty installation)
 
@@ -63,3 +61,12 @@ The script validates SHA-256 checksums, archive paths, and the absence of target
 - Restore guard refuses: the target is not empty, archives/checksums are invalid or explicit confirmation is absent. Never weaken the guard for real data.
 
 See docs/RELEASING.md and docs/LOCAL_CLIENT_ACCEPTANCE.md. The actual real ChatGPT/Claude sign-off is the only manual client test, performed immediately before release, not as a development or first-run prerequisite.
+
+## Pre-v1 remote Supabase drift / reset precautions
+
+The **physical** hosted Supabase schema may lag the checked-in current fresh-install snapshot. Before attributing a `DATABASE_ERROR` to MCP/website code, verify connected project ID, actual tables/columns/functions/triggers/RLS/policies, schema-migration history and the authenticated role's permissions. A GitHub file existing does **not** imply the hosted database has been updated.
+
+**Project policy:** there is exactly **one** install SQL file, `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`, not a sequential backwards-compatible migration chain. Amend that file for new installs. For harmless security/index DDL, patch an authorized disposable test project in place transactionally, then re-run advisors and an owner-authenticated read/write. For a breaking reset, require explicit user consent, inventory and backup first. Supabase-owned `auth` and `storage` schemas are **not** ordinary app schemas; direct SQL deletes of protected Storage objects or buckets can fail. Avatar `storage.objects` policies survive replacing `public`, and Auth deletion forces new signup/OAuth authorization. Only after a successful fresh install should the test migration ledger show exactly the one baseline. Never reset actual student information automatically.
+
+A successful E2E installation, authenticated editor read-back, **second-empty-instance restore**, and no cross-tenant leaks are the acceptance criteria. See [the reusable MCP/Supabase playbook](MCP_SUPABASE_RELIABILITY_PLAYBOOK.md) and [security ADR-0007](adr/0007-mcp-supabase-contract-and-release-evidence.md).
+

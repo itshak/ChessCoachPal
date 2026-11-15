@@ -1,5 +1,5 @@
 {
-  "auditedAt": "2026-11-14",
+  "auditedAt": "2026-11-15",
   "headSha": "acea0c2178ceb35e6d24055ad1e2aa6ee17ff196",
   "policy": "All chess business features, including GigaChess legality, combined session+chapter approval and study preference hierarchy, use shared website/MCP domain operations with tenant authorization. The original 93 historical cases, additional named E2E, strict parity and manual real-client prepublication gates remain mandatory.",
   "apiRoutes": [
@@ -538,7 +538,7 @@
       "existingTools": [
         "ccp_reports_student_progress"
       ],
-      "explanation": "Shared report reads teacher-scoped strength, skills and explicitly attested material claims without private notes or fabricated mastery; independent authenticated website/MCP E2E at bf7c205.",
+      "explanation": "Shared teacher-owned progress report now combines full bounded skill-assessment trends, explicit material claims and latest provider/time-control rating snapshots with source and observation timestamps. Profile-entered ratings remain distinct; snapshots only supply a missing rapid scalar and never change teacher strength. Website/MCP E2E in e2e/parity-student-progress.spec.ts verifies identical sourced data and privacy.",
       "evidenceTest": "e2e/parity-student-progress.spec.ts"
     },
     {
@@ -551,7 +551,7 @@
       "existingTools": [
         "ccp_lessons_history_unified"
       ],
-      "explanation": "Shared teacher-scoped, date-bounded read of both teaching_sessions and legacy lessons; preserves old records, flags exact cross-model duplicates, distinguishes booked vs evidenced teaching minutes, sums teacher interval union once. Delegated OAuth/website E2E checks same filtered persisted history, group overlap and foreign tenant denial.",
+      "explanation": "Shared teacher-scoped bounded lesson history reads the one canonical teaching_sessions model and frozen rosters, counts booked vs evidenced instructor minutes without double-counting group sessions, and discloses per-session timezones plus workplace/studio fallback provenance. Browser/delegated MCP share one service and verified parity tests.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
@@ -1105,7 +1105,7 @@
         "ccp_student_skill_assessments_list",
         "ccp_student_skill_assessments_record"
       ],
-      "explanation": "Delegated website/MCP 139-pass E2E at cf00dff verifies teacher-owned atomic 1–5 assessment POST with cross-transport idempotent replay, changed-payload 409, append-only history, GET pagination and cross-tenant student/dimension denial. Named tools and both transports independently verified.",
+      "explanation": "Shared append-only 1-5 teacher skill assessment service now accepts optional backdated teacher-local assessedOn on both website and MCP, rejects future days and preserves idempotent request receipts across retries at local midnight. Delegated E2E checks dated replay, history pagination, conflicts and cross-tenant restrictions in e2e/parity-skill-assessment-receipts.spec.ts.",
       "evidenceTest": "e2e/parity-skill-assessment-receipts.spec.ts"
     },
     {
@@ -1118,8 +1118,8 @@
       "existingTools": [
         "ccp_students_resolve"
       ],
-      "explanation": "Authenticated website and delegated OAuth/MCP resolve 1–100 exact Unicode full names and stored aliases for active teacher-owned students through the same paginated resolver, without guessing. Missing, duplicate and ambiguous IDs fail closed, no mutations or guardian contact fields.",
-      "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
+      "explanation": "Shared paginated exact Unicode student-name/alias resolver reports two input references to the SAME student as a duplicate roster reference rather than duplicate database rows; returns safe matched IDs separately but still refuses an unsafe double-counted lesson roster. Website/MCP use the same service and e2e/parity-lesson-capture-preview.spec.ts verifies alias/full-name behavior.",
+      "evidenceTest": "e2e/parity-lesson-capture-preview.spec.ts"
     },
     {
       "path": "app/api/students/route.ts",

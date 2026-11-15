@@ -2,7 +2,7 @@
 
 **Decision:** Adopt a **trimmed self-hosted Supabase backend** for ChessCoachPal's target server deployment, using Coolify for application orchestration. Do **not** replace Supabase with SuperTokens and standalone PostgreSQL solely to reduce the theoretical number of services.
 
-**Status:** Architecture selected on 2026-11-15; production-ready migration **not yet completed or accepted**. Formal decision: [ADR-0007](adr/0007-self-hosted-supabase-on-coolify.md). Operational steps: [SELF_HOSTING.md](SELF_HOSTING.md).
+**Status:** Architecture selected on 2026-11-15; production-ready migration **not yet completed or accepted**. Formal decision: [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md). Operational steps: [SELF_HOSTING.md](SELF_HOSTING.md).
 
 ## Purpose and boundary
 

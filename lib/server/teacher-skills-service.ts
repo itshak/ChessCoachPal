@@ -100,7 +100,7 @@ const uuidPattern=/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
  * website ↔ delegated MCP retries, including concurrent/reordered attempts.
  */
 export async function studentSkillAssessmentsRecord(
-  db:Db,teacherId:string,studentId:string,ratings:SkillRating[],idempotencyKey?:string
+  db:Db,teacherId:string,studentId:string,ratings:SkillRating[],idempotencyKey?:string,requestedAssessedOn?:string
 ) {
   if(!Array.isArray(ratings)||!ratings.length||ratings.length>20||
     ratings.some(r=>!r||typeof r!=="object"||!uuidPattern.test(r.dimensionId)||
@@ -121,7 +121,16 @@ export async function studentSkillAssessmentsRecord(
   if(dimError) throw failure(500,"DATABASE_ERROR","Skill lookup failed");
   if(dimensions?.length!==ids.length) throw failure(404,"NOT_FOUND","Skill dimension not found");
   const policy=await getPolicy(db,teacherId);
-  const assessedOn=toLocalDateString(new Date(),policy.timezone);
+  const today=toLocalDateString(new Date(),policy.timezone);
+  // Chess instructors often enter historical assessment results after a lesson.
+  // The date is a teacher-local calendar day, never an inferred UTC date.
+  if(requestedAssessedOn!==undefined&&
+     (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(requestedAssessedOn)||
+      !Number.isFinite(Date.parse(requestedAssessedOn+"T00:00:00Z"))||
+      new Date(requestedAssessedOn+"T00:00:00Z").toISOString().slice(0,10)!==requestedAssessedOn||
+      requestedAssessedOn>today))
+    throw failure(400,"VALIDATION_ERROR","Assessment date must be a valid date no later than today in the coach's timezone");
+  const assessedOn=requestedAssessedOn??today;
   const normalized=ratings.map(r=>({
     dimensionId:r.dimensionId.toLowerCase(),rating:r.rating,
     note:typeof r.note==="string"&&r.note.trim()?r.note.trim():null,
@@ -129,7 +138,12 @@ export async function studentSkillAssessmentsRecord(
   const {data,error}=await db.rpc("ccp_skill_assessments_record",{
     p_student_id:studentId,
     p_assessed_on:assessedOn,
-    p_ratings:normalized,
+    // The explicit date becomes part of the immutable receipt payload. For
+    // default-today calls, keep the payload independent of local midnight so
+    // retrying the same request UUID tomorrow replays the original rows.
+    p_ratings:requestedAssessedOn===undefined?normalized:normalized.map(row=>({
+      ...row,explicitAssessedOn:requestedAssessedOn,
+    })),
     p_request_id:idempotencyKey??randomUUID(),
   });
   if(error?.code==="23505") throw failure(409,"CONFLICT","Retry key reused with different assessment details");

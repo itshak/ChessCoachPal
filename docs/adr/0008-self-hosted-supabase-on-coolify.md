@@ -1,4 +1,4 @@
-# ADR-0007: Retain Supabase and target a trimmed self-hosted deployment on Coolify
+# ADR-0008: Retain Supabase and target a trimmed self-hosted deployment on Coolify
 
 - **Status:** Accepted
 - **Date:** 2026-11-15

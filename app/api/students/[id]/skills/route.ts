@@ -24,11 +24,11 @@ export async function POST(req:NextRequest,{params}:Context) {
   if(!teacher) return NextResponse.json({error:"Unauthorized"},{status:401});
   const body=await req.json().catch(()=>null);
   if(!body||typeof body!=="object"||Array.isArray(body)||
-     Object.keys(body).some(key=>key!=="ratings"&&key!=="idempotencyKey")||
+     Object.keys(body).some(key=>key!=="ratings"&&key!=="idempotencyKey"&&key!=="assessedOn")||
      !Array.isArray(body.ratings))
     return NextResponse.json({error:"ratings and optional idempotencyKey required"},{status:400});
   try {return NextResponse.json(await studentSkillAssessmentsRecord(teacher.db,teacher.id,
-    (await params).id,body.ratings,body.idempotencyKey));}
+    (await params).id,body.ratings,body.idempotencyKey,body.assessedOn));}
   catch(error){return NextResponse.json({error:error instanceof TeacherSkillsError?error.message:"Unable to record skills"},{
     status:error instanceof TeacherSkillsError?error.status:500,
   });}
