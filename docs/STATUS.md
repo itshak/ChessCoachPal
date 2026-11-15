@@ -1,6 +1,6 @@
 # ChessCoachPal development and release status
 
-**CURRENT RELEASE STATUS — 2026-11-15:** v0.1.0 [published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.0); [publication and production deployment passed](https://github.com/itshak/ChessCoachPal/actions/runs/43664411336). This document's older 0.0.0 / unreleased passages are a historical development diary, not current status. **Not completed:** live ChatGPT and Claude OAuth/MCP acceptance, historical privacy/secrets and third-party licensing review, GitHub Homepage metadata correction. Four former active OpenSpec plans are archived as superseded/partially fulfilled, **not fully accepted**. The completed selective upstream-fixes implementation is [archived with merged-main verification](../openspec/changes/archive/2026-11-15-selectively-adopt-cognote-post-fork-fixes/ARCHIVE_DECISION.md); no active OpenSpec implementation change remains.
+**CURRENT RELEASE STATUS — 2026-11-15:** [v0.1.2 published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.2). PR #81 post-release hardening is newer than the v0.1.2 tag; the production SHA, full authenticated E2E, real ChatGPT client acceptance, historical privacy/licensing review and GitHub Homepage metadata must be tracked separately. Older 0.0.0/v0.1.0 entries below are retained as a historical development diary, not current facts. Supabase/Coolify migration is an accepted target (hosting ADR-0008), not a completed cutover.
 
 
 ## 2026-11-15 — checkout race and release verification lesson
