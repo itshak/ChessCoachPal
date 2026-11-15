@@ -33,6 +33,7 @@ interface LineItem {
 export function InvoiceDetailClient({
   invoiceId,
   status,
+  sentAt,
   initialRevision,
   currency,
   initialItems,
@@ -51,6 +52,7 @@ export function InvoiceDetailClient({
 }: {
   invoiceId: string;
   status: string;
+  sentAt: string | null;
   initialRevision: string;
   currency: string;
   initialItems: LineItem[];
@@ -89,7 +91,10 @@ export function InvoiceDetailClient({
   const isDraft = status === "draft";
   const itemsEditable = isDraft && !creditPackage;
   const { paidCents, balanceCents } = summarizePayments(subtotalCents, payments);
-  const partiallyPaid = status === "sent" && paidCents > 0 && balanceCents > 0;
+  const partiallyPaid = (status === "sent" || status === "draft") && paidCents > 0 && balanceCents > 0;
+  const liveBalanceCents = isDraft
+    ? items.reduce((sum, item) => sum + item.amountCents, 0) - paidCents
+    : balanceCents;
   const [paymentForm, setPaymentForm] = useState<{
     amount: string;
     note: string;
@@ -251,18 +256,57 @@ export function InvoiceDetailClient({
     }
   }
 
-  async function markPaid() {
-    setBusy(true);
-    const res = await fetch(`/api/billing/invoices/${invoiceId}/mark-paid`, {
-      method: "POST",
+  // Both partial and full payments must apply to the teacher's SAVED total.
+  // A failed draft edit must never record money against older line items.
+  async function saveBeforePayment(): Promise<boolean> {
+    if (!isDraft || (
+      JSON.stringify(items) === JSON.stringify(initialItems) &&
+      notes === initialNotes
+    )) return true;
+    const saved = await fetch(`/api/billing/invoices/${invoiceId}`, {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        items, notes, expectedUpdatedAt: initialRevision,
+        idempotencyKey: crypto.randomUUID(),
+      }),
     });
-    setBusy(false);
-    if (res.ok) router.refresh();
-    else {
-      const data = await res.json().catch(() => ({}));
-      setFlash({ text: data.error ?? "Failed", tone: "error" });
+    if (!saved.ok) {
+      const failure = await saved.json().catch(() => ({}));
+      setFlash({ text: failure.error ?? "Save the draft before recording payment", tone: "error" });
+      router.refresh();
+      return false;
+    }
+    return true;
+  }
+
+  async function markPaid() {
+    const approved = await confirm({
+      title: "Record full payment?",
+      message: `Save this draft and record the full remaining balance of ${formatMoney(liveBalanceCents, currency)}? Nothing will be sent to the family unless you explicitly send the invoice.`,
+      confirmLabel: "Record full payment",
+    });
+    if (!approved) return;
+    setBusy(true);
+    setFlash(null);
+    try {
+      if (!await saveBeforePayment()) return;
+      const res = await fetch(`/api/billing/invoices/${invoiceId}/mark-paid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setFlash({ text: data.error ?? "Payment not recorded", tone: "error" });
+      } else {
+        setFlash({ text: "Payment recorded; invoice paid in full", tone: "ok" });
+        router.refresh();
+      }
+    } catch {
+      setFlash({ text: "Payment request failed; review the ledger before retrying", tone: "error" });
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -273,19 +317,25 @@ export function InvoiceDetailClient({
       setFlash({ text: "Enter an amount greater than zero", tone: "error" });
       return;
     }
-    if (amountCents > balanceCents) {
+    if (amountCents > liveBalanceCents) {
       setFlash({
-        text: `Amount is more than the ${formatMoney(balanceCents, currency)} due`,
+        text: `Amount is more than the ${formatMoney(liveBalanceCents, currency)} due`,
         tone: "error",
       });
       return;
     }
     setBusy(true);
     setFlash(null);
+    if (!await saveBeforePayment()) {
+      setBusy(false);
+      return;
+    }
     const res = await fetch(`/api/billing/invoices/${invoiceId}/mark-paid`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountCents, note: paymentForm.note }),
+      body: JSON.stringify({
+        amountCents, note: paymentForm.note, idempotencyKey: crypto.randomUUID(),
+      }),
     });
     const data = await res.json().catch(() => ({}));
     setBusy(false);
@@ -309,7 +359,9 @@ export function InvoiceDetailClient({
       title: "Remove payment?",
       message: `Remove the ${formatMoney(payment.amountCents, currency)} payment from this invoice?${
         reopens
-          ? " The invoice will go back to unpaid with the remaining balance due, and the family portal will show it as owed again."
+          ? sentAt
+            ? " The invoice will reopen as sent, and the remaining balance may appear in the family portal."
+            : " The invoice will reopen as a private draft; nothing will appear in the family portal."
           : ""
       } Use this to fix a payment recorded by mistake; nothing is sent to the family.`,
       confirmLabel: "Remove payment",
@@ -440,13 +492,13 @@ export function InvoiceDetailClient({
               Mark paid
             </Button>
           )}
-          {status === "sent" && balanceCents > 0 && (
+          {(status === "sent" || status === "draft") && liveBalanceCents > 0 && (
             <Button
               size="sm"
               variant="secondary"
               onClick={() =>
                 setPaymentForm({
-                  amount: centsToDollarsInput(balanceCents),
+                  amount: centsToDollarsInput(liveBalanceCents),
                   note: "",
                 })
               }
@@ -510,7 +562,7 @@ export function InvoiceDetailClient({
             <div>
               <h2 className="font-semibold">Record payment</h2>
               <p className="text-xs text-muted">
-                {formatMoney(balanceCents, currency)} due. Enter less for a
+                {formatMoney(liveBalanceCents, currency)} due. Enter less for a
                 partial payment; the invoice is marked paid once payments
                 cover the total.
               </p>

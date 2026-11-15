@@ -24,7 +24,11 @@ export async function teacherInvoiceDelete(db:Db,teacherId:string,id:string){
  const {data,error}=await db.from("invoices").delete()
   .eq("id",id).eq("teacher_id",teacherId).eq("status",invoice.status)
   .select("id").maybeSingle();
- if(error)throw fail(500,"DATABASE_ERROR","Unable to delete invoice");
+ if(error){
+  if(/INVOICE_HAS_PAYMENTS|CREDIT_PACKAGE_EXISTS/.test(error.message)||error.code==="23514")
+   throw fail(409,"CONFLICT","Reconcile existing payments and prepaid credits before deleting this invoice");
+  throw fail(500,"DATABASE_ERROR","Unable to delete invoice");
+ }
  if(!data)throw fail(409,"CONFLICT","Invoice status changed; reload before deletion");
  return {ok:true};
 }
@@ -84,7 +88,9 @@ export async function teacherInvoiceDraftUpdate(db:Db,teacherId:string,id:string
   if(error){
     if(error.message.includes("NOT_FOUND"))
       throw fail(404,"NOT_FOUND","Invoice or referenced lesson not found");
-    if(/INVOICE_NOT_DRAFT|PREPAID_INVOICE_IMMUTABLE|STALE_INVOICE_REVISION|INVOICE_DRAFT_REQUEST_CONFLICT/.test(error.message)||error.code==="23505")
+    if(/INVOICE_TOTAL_BELOW_PAID/.test(error.message))
+      throw fail(409,"INVOICE_TOTAL_BELOW_PAID","Draft total cannot be less than payments already recorded");
+    if(/INVOICE_NOT_EDITABLE|INVOICE_NOT_DRAFT|PREPAID_INVOICE_IMMUTABLE|STALE_INVOICE_REVISION|INVOICE_DRAFT_REQUEST_CONFLICT/.test(error.message)||error.code==="23505")
       throw fail(409,"CONFLICT","Invoice state changed or prepaid lines cannot be edited");
     if(/INVALID|EMPTY|OVERFLOW/.test(error.message))
       throw fail(400,"VALIDATION_ERROR","Invalid draft invoice line items or notes");

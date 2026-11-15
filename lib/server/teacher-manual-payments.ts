@@ -46,8 +46,6 @@ export async function teacherManualPaymentRecord(db:Db,teacherId:string,id:strin
  const requested=input.amountCents??null;
  if(requested!==null&&(!Number.isSafeInteger(requested)||requested<=0))
   throw fail(400,"VALIDATION_ERROR","Payment amount must be whole positive cents");
- if(invoice.status==="draft"&&requested!==null)
-  throw fail(409,"CONFLICT","Send an invoice before making a partial payment");
  const amount=resolveManualPaymentAmount(requested,before.balanceCents);
  if(!amount.ok)throw fail(400,"VALIDATION_ERROR",amount.error);
  // Retire external Checkout BEFORE touching financial rows. If it is complete
@@ -102,6 +100,8 @@ export async function teacherManualPaymentDelete(
    throw fail(409,"STRIPE_REFUND_REQUIRED","Stripe payments can only be refunded through Stripe");
   if(error.message.includes("INVOICE_VOID"))
    throw fail(409,"CONFLICT","Void invoice payments cannot be removed");
+  if(error.message.includes("CREDITS_ALREADY_USED"))
+   throw fail(409,"CREDITS_ALREADY_USED","Redeemed prepaid credits must be reconciled before reversing this payment");
   if(error.code==="42501")
    throw fail(404,"NOT_FOUND","Invoice or payment not found");
   throw fail(500,"DATABASE_ERROR","Payment removal was rolled back");

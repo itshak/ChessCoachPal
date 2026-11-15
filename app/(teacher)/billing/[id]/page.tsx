@@ -127,6 +127,7 @@ export default async function InvoiceDetailPage({
       <InvoiceDetailClient
         invoiceId={invoice.id}
         status={invoice.status}
+        sentAt={invoice.sent_at}
         initialRevision={invoice.updated_at}
         currency={invoice.currency}
         initialItems={items}

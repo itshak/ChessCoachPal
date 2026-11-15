@@ -164,6 +164,7 @@ export default async function PortalPage({
     )
     .eq("guardian_id", guardian.id)
     .in("status", ["sent", "paid"])
+    .not("sent_at", "is", null)
     .order("period_end", { ascending: false })
     .limit(12);
   invoices = (invoicesRes.data ?? []) as typeof invoices;
