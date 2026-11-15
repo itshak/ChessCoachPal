@@ -1,5 +1,7 @@
 # ChessCoachPal
 
+**MCP tool naming for v0.1.2:** Current tools use `ccp_<domain>_<action>` (not `ccp_v1_*`). This is a breaking tool-name cleanup with no backward aliases before v1.0.0. The HTTPS connector remains `/mcp`; existing clients may need to refresh or reconnect. See [ADR-0006](docs/adr/0006-unversioned-mcp-tool-names.md).
+
 **Release status (2026-11-15):** [v0.1.0 published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.0); [production deployment succeeded](https://github.com/itshak/ChessCoachPal/actions/runs/43664411336). Historical 0.0.0/unreleased passages below are superseded. **Still pending:** live ChatGPT/Claude MCP acceptance, historical privacy and licensing sign-off, and GitHub Homepage correction. Only active OpenSpec proposal: [selective CogNote post-fork fixes](openspec/changes/selectively-adopt-cognote-post-fork-fixes/proposal.md).
 
 

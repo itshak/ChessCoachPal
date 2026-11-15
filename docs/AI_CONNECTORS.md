@@ -1,5 +1,7 @@
 # ChessCoachPal MCP — 28 implemented tools, live Codex demo; ChatGPT/Claude release acceptance outstanding
 
+**Tool naming since v0.1.2:** All discoverable tool names use the unversioned `ccp_<domain>_<action>` convention (for example, `ccp_students_create`). The old `ccp_v1_*` names are **not available as aliases**; existing Claude/ChatGPT connections should refresh the tool list or reconnect. The MCP URL remains `https://chesscoachpal.com/mcp`, and OAuth grants/data are unaffected.
+
 **Important:** The initial server-side MCP/OAuth foundation passed GitHub CI/E2E; a real Codex remote MCP connection has now performed synthetic student/workplace/enrollment writes, independently verified in the hosted Supabase database. **This does not establish real ChatGPT/Claude interoperability.** Do **not** test real provider clients during development milestones; both live client tests are required **only once, immediately before publishing v0.1.0, on the maintainer's machine**, using a synthetic locally controlled HTTPS-reachable instance. Record sanitized evidence via [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md). No production approval or voice-tool support is implied.
 
 ## Host configuration

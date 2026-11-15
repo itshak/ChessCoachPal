@@ -66,6 +66,9 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   // Pre-1.0 policy: expose only current unversioned names, never legacy aliases.
   expect(names.every((name:string) => /^ccp_(?!v\d+_)[a-z][a-z0-9_]*$/.test(name))).toBe(true);
   expect(names).not.toContain("ccp_v1_attendance_record");
+  const legacyCall = await mcp("tools/call", {name:"ccp_v1_attendance_record",arguments:{}});
+  expect(legacyCall.isError).toBe(true);
+  expect(legacyCall.structuredContent?.error?.code).toBe("NOT_FOUND");
 
   const userClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
     auth:{persistSession:false,autoRefreshToken:false},
