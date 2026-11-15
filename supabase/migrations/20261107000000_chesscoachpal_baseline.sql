@@ -9618,17 +9618,17 @@ CREATE POLICY ccp_study_preference_read ON public.teacher_study_preferences
 CREATE POLICY ccp_study_preference_backup_insert ON public.teacher_study_preferences
  FOR INSERT TO authenticated WITH CHECK(
   teacher_id=(select auth.uid()) AND
-  current_setting('ccp.backup_import_teacher',true)=(select auth.uid())::text);
+  (select current_setting('ccp.backup_import_teacher',true))=(select auth.uid())::text);
 CREATE POLICY ccp_study_preference_backup_update ON public.teacher_study_preferences
  FOR UPDATE TO authenticated USING(
   teacher_id=(select auth.uid()) AND
-  current_setting('ccp.backup_import_teacher',true)=(select auth.uid())::text)
+  (select current_setting('ccp.backup_import_teacher',true))=(select auth.uid())::text)
  WITH CHECK(teacher_id=(select auth.uid()) AND
-  current_setting('ccp.backup_import_teacher',true)=(select auth.uid())::text);
+  (select current_setting('ccp.backup_import_teacher',true))=(select auth.uid())::text);
 CREATE POLICY ccp_study_preference_backup_delete ON public.teacher_study_preferences
  FOR DELETE TO authenticated USING(
   teacher_id=(select auth.uid()) AND
-  current_setting('ccp.backup_import_teacher',true)=(select auth.uid())::text);
+  (select current_setting('ccp.backup_import_teacher',true))=(select auth.uid())::text);
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.teacher_study_preferences TO authenticated;
 REVOKE ALL ON TABLE public.teacher_study_preferences FROM PUBLIC,anon;
 
