@@ -26,23 +26,23 @@ test("PARITY:PARITY-teacher-profile-display-name shares website and MCP without 
      data:{displayName:browserName},
    });
    expect(web.status(),await web.text()).toBe(200);
-   const read=await call("ccp_v1_teacher_profile_get",{});
+   const read=await call("ccp_teacher_profile_get",{});
    expect(read.error).toBeUndefined();
    expect(read.data.displayName).toBe(browserName);
    expect(read.data.email).toBeUndefined();
    expect(read.data.password).toBeUndefined();
-   const rejected=await call("ccp_v1_teacher_profile_update",{
+   const rejected=await call("ccp_teacher_profile_update",{
      displayName:"Unconfirmed mutation",
    });
    expect(rejected.error?.code).toBe("VALIDATION_ERROR");
-   const changed=await call("ccp_v1_teacher_profile_update",{
+   const changed=await call("ccp_teacher_profile_update",{
      displayName:modelName,confirmed:true,
    });
    expect(changed.error).toBeUndefined();
    expect(changed.data.ok).toBe(true);
    await page.goto("/account");
    await expect(page.getByLabel("Display name")).toHaveValue(modelName);
-   const invalid=await call("ccp_v1_teacher_profile_update",{
+   const invalid=await call("ccp_teacher_profile_update",{
      avatarUrl:"https://example.com/evil.png",confirmed:true,
    });
    expect(invalid.error?.code).toBe("VALIDATION_ERROR");
