@@ -37,7 +37,16 @@ for name, service in services.items():
 assert services["auth"]["environment"]["GOTRUE_DISABLE_SIGNUP"] == "true", "Signup must start closed"
 assert services["auth"]["environment"]["GOTRUE_MAILER_AUTOCONFIRM"] == "false", "Email auto-confirm unsafe"
 assert not services["app"].get("env_file"), "App must not load repository-local secrets"
-assert services["gateway"]["image"] == "nginx:1.30.6-alpine", "Gateway image is outdated"
+for name in ("db", "gateway", "migrate"):
+    assert services[name].get("build"), f"{name} must bundle Git assets into its image"
+for name, service in services.items():
+    for mount in service.get("volumes", []):
+        if isinstance(mount,dict):
+            assert not str(mount.get("source","")).startswith("./"), f"{name}: relative host bind mount"
+        elif isinstance(mount,str):
+            assert not mount.startswith("."), f"{name}: relative host bind mount"
+assert services["db"]["image"] == services["migrate"]["image"]
+assert services["gateway"]["image"] == "chesscoachpal-staging-gateway:1.30.6", "Wrong packaged Nginx gateway image"
 assert set(("db-data", "db-config", "storage-data")) <= set(data["volumes"]), "Missing persistence volumes"
 assert services["app"]["build"]["args"]["NEXT_PUBLIC_SUPABASE_URL"] == (
     "https://supabase-beta.example.invalid"
