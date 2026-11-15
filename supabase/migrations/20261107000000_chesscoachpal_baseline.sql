@@ -9751,6 +9751,12 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_finance_line_guard() FROM PUBLIC, an
 REVOKE ALL ON FUNCTION public.ccp_canonical_redemption_guard() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.ccp_session_attendance_write_guard() FROM PUBLIC, anon, authenticated;
 
+REVOKE ALL ON FUNCTION public.ccp_protect_canonical_financed_attendance() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_protect_canonical_financed_session() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_protect_skill_assessment_history() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_restrict_student_history_delete() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ccp_restrict_workplace_unenroll() FROM PUBLIC, anon, authenticated;
+
 -- Canonical FK indexes for bounded owner-scoped pagination and deletion checks.
 -- These are part of the fresh-install schema, not incremental migrations.
 CREATE INDEX IF NOT EXISTS "ccp_fk_agent_oauth_codes_834de467" ON public."agent_oauth_codes" ("client_id");
