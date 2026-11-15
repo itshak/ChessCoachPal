@@ -12,7 +12,8 @@ type DisconnectResult={
   manualRevokeRequired:boolean;manualRevokeUrl?:string;
 };
 
-export function LichessConnectionPanel(){
+export function LichessConnectionPanel({returnTo="learning"}:{returnTo?:"learning"|"account"}){
+  const returnSuffix=returnTo==="account"?"&returnTo=account":"";
   const [status,setStatus]=useState<Connection|null>(null);
   const [error,setError]=useState("");
   const [notice,setNotice]=useState("");
@@ -53,6 +54,10 @@ export function LichessConnectionPanel(){
     <p className="text-sm text-muted">
       Connect only your teacher account. Permissions stay on the secure server and are never revealed to ChatGPT or Claude.
     </p>
+    {redirectResult==="connected"&&
+      <p role="status" className="text-success">Lichess account connected.</p>}
+    {redirectResult==="permission-denied"&&
+      <p role="alert" className="text-error">Lichess permission was not granted.</p>}
     {redirectResult==="connection-failed"&&
       <p role="alert" className="text-error">Lichess authorization failed. No provider credentials were saved.</p>}
     {error&&<p role="alert" className="text-error">{error}</p>}
@@ -66,7 +71,7 @@ export function LichessConnectionPanel(){
         </p>}
         <div className="flex flex-wrap items-center gap-3">
           {!status.canPublish&&
-            <a className="text-primary underline text-sm" href="/api/lichess/connect?mode=write">
+            <a className="text-primary underline text-sm" href={`/api/lichess/connect?mode=write${returnSuffix}`}>
               Enable study publishing (requires separate Lichess consent)
             </a>}
           <button type="button" disabled={busy} onClick={()=>void disconnect()}
@@ -77,6 +82,6 @@ export function LichessConnectionPanel(){
             target="_blank" rel="noreferrer">Review Lichess permissions</a>
         </div>
       </div>:<a className="inline-block rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white"
-        href="/api/lichess/connect?mode=read">Connect Lichess studies (read-only)</a>}
+        href={`/api/lichess/connect?mode=read${returnSuffix}`}>Connect Lichess studies (read-only)</a>}
   </section>;
 }

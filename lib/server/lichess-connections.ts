@@ -9,6 +9,7 @@ export class LichessConnectionError extends Error {
 }
 const failure=(s:number,c:string,m:string)=>new LichessConnectionError(s,c,m);
 type Scope="study:read"|"study:write";
+export type LichessReturnTo="learning"|"account";
 type ConnectionRow={
   teacher_id:string;lichess_username:string;scopes:string[];
   token_ciphertext:string;token_sha256:string;connected_at:string;
@@ -67,13 +68,15 @@ export function lichessConnectionHandoff(mode:"read"|"write") {
     explanation:"Complete provider permissions only in the signed-in browser. No provider token is available to MCP.",
   };
 }
-export function beginLichessAuthorization(teacherId:string,mode:"read"|"write") {
+export function beginLichessAuthorization(
+  teacherId:string,mode:"read"|"write",returnTo:LichessReturnTo="learning"
+) {
   const verifier=randomBytes(48).toString("base64url");
   const challenge=createHash("sha256").update(verifier).digest("base64url");
   const state=randomBytes(32).toString("base64url");
   const scopes:Scope[]=mode==="write"?["study:read","study:write"]:["study:read"];
   const data=encryptSecret(JSON.stringify({
-    teacherId,verifier,state,scopes,issuedAt:Date.now(),
+    teacherId,verifier,state,scopes,returnTo,issuedAt:Date.now(),
   }));
   const params=new URLSearchParams({
     response_type:"code",client_id:clientId(),redirect_uri:callbackUrl(),
@@ -89,17 +92,24 @@ export function authorizeLichessCallback(
   if(!plaintext||!state) throw failure(400,"INVALID_STATE","Lichess connection expired; start again");
   let parsed:unknown;
   try {parsed=JSON.parse(plaintext);} catch {throw failure(400,"INVALID_STATE","Lichess connection expired; start again");}
-  const p=parsed as {teacherId?:unknown;verifier?:unknown;state?:unknown;scopes?:unknown;issuedAt?:unknown};
+  const p=parsed as {
+    teacherId?:unknown;verifier?:unknown;state?:unknown;scopes?:unknown;
+    issuedAt?:unknown;returnTo?:unknown;
+  };
   if(p.teacherId!==teacherId||typeof p.verifier!=="string"||
      !/^[A-Za-z0-9._~-]{43,128}$/.test(p.verifier)||
      typeof p.state!=="string"||typeof p.issuedAt!=="number"||
      Date.now()-p.issuedAt>600000||Date.now()-p.issuedAt< -30000||
-     !Array.isArray(p.scopes)||p.scopes.some(s=>s!=="study:read"&&s!=="study:write"))
+     !Array.isArray(p.scopes)||p.scopes.some(s=>s!=="study:read"&&s!=="study:write")||
+     (p.returnTo!=="learning"&&p.returnTo!=="account"))
     throw failure(400,"INVALID_STATE","Lichess connection expired; start again");
   const a=Buffer.from(p.state),b=Buffer.from(state);
   if(a.length!==b.length||!timingSafeEqual(a,b))
     throw failure(400,"INVALID_STATE","Lichess OAuth state mismatch");
-  return {verifier:p.verifier,scopes:normalizedScopes((p.scopes as string[]).join(" "))};
+  return {
+    verifier:p.verifier,scopes:normalizedScopes((p.scopes as string[]).join(" ")),
+    returnTo:p.returnTo as LichessReturnTo,
+  };
 }
 async function fetchLichess(path:string,options:RequestInit) {
   try {

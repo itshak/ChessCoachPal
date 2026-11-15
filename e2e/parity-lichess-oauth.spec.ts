@@ -108,8 +108,16 @@ test("PARITY:PARITY-lichess-oauth-provider-consent authenticates browser PKCE an
     expect(handoff.error).toBeUndefined();
     expect(handoff.data.connectUrl).toBe("http://localhost:3000/api/lichess/connect?mode=read");
 
-    await page.goto("/api/lichess/connect?mode=read");
-    await page.waitForURL(u=>u.pathname==="/learning"&&u.searchParams.get("lichess")==="connected");
+    const unsafeReturn=await page.request.get("/api/lichess/connect?mode=read&returnTo=https://example.com");
+    expect(unsafeReturn.status()).toBe(400);
+    await page.goto("/account");
+    const accountLichess=page.getByRole("region",{name:"Lichess study connection"});
+    await expect(accountLichess.getByRole("link",{name:"Connect Lichess studies (read-only)"}))
+      .toHaveAttribute("href","/api/lichess/connect?mode=read&returnTo=account");
+    await accountLichess.getByRole("link",{name:"Connect Lichess studies (read-only)"}).click();
+    await page.waitForURL(u=>u.pathname==="/account"&&u.searchParams.get("lichess")==="connected");
+    await expect(accountLichess).toContainText("Connected as mockchesscoach");
+    await expect(accountLichess.getByRole("button",{name:"Disconnect Lichess"})).toBeVisible();
     const connected=await call("ccp_lichess_connection_status",{});
     expect(connected.error).toBeUndefined();
     expect(connected.data).toMatchObject({
@@ -130,8 +138,13 @@ test("PARITY:PARITY-lichess-oauth-provider-consent authenticates browser PKCE an
     expect(denied.status()).toBe(400);
     expect((await call("ccp_lichess_connection_status",{})).data.connected).toBe(true);
 
-    await page.goto("/api/lichess/connect?mode=write");
-    await page.waitForURL(u=>u.pathname==="/learning"&&u.searchParams.get("lichess")==="connected");
+    await accountLichess.getByRole("link",{name:/Enable study publishing/}).click();
+    await page.waitForURL(u=>u.pathname==="/account"&&u.searchParams.get("lichess")==="connected");
+    await expect(accountLichess).toContainText("study:write");
+    await page.goto("/learning");
+    const materialsLichess=page.getByRole("region",{name:"Lichess study connection"});
+    await expect(materialsLichess).toContainText("Connected as mockchesscoach");
+    await expect(materialsLichess.getByRole("button",{name:"Disconnect Lichess"})).toBeVisible();
     const elevated=await call("ccp_lichess_connection_status",{});
     expect(elevated.data).toMatchObject({
       connected:true,scopes:["study:read","study:write"],canPublish:true,
@@ -147,6 +160,9 @@ test("PARITY:PARITY-lichess-oauth-provider-consent authenticates browser PKCE an
     expect(disconnected.data.manualRevokeUrl).toMatch(/^https:\/\/lichess\.org/);
     const after=await page.request.get("/api/lichess/connection");
     expect(await after.json()).toMatchObject({connected:false,canPublish:false});
+    await page.reload();
+    await expect(page.getByRole("region",{name:"Lichess study connection"})
+      .getByRole("link",{name:"Connect Lichess studies (read-only)"})).toBeVisible();
     expect((await call("ccp_lichess_connection_status",{})).data)
       .toEqual(await after.json());
     const repeated=await page.request.delete("/api/lichess/connection",{data:{confirmed:true}});
