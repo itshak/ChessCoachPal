@@ -27,7 +27,7 @@ For an authenticated teacher and one selected workplace, the app SHALL report no
 
 ## Release boundary
 
-These requirements are implemented and GitHub-verified; final vendor sign-off, historical privacy/license approval, remaining agent tools and the actual v0.1.0 tag/release stay in [active final-publication change](../../changes/finalize-v0-1-0-publication/proposal.md). Do not check final readiness boxes based on synthetic tests.
+These requirements are implemented and GitHub-verified; final vendor sign-off, historical privacy/license approval, remaining agent tools and the actual v0.1.0 tag/release stay in [active final-publication change](../../changes/archive/2026-11-08-finalize-v0-1-0-publication/proposal.md). Do not check final readiness boxes based on synthetic tests.
 
 ### Requirement: Canonical Supabase bootstrap SHALL include post-audit security posture
 
