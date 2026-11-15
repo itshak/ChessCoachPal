@@ -1,6 +1,16 @@
 # ChessCoachPal development and release status
 
-**Updated:** 2026-11-14 · **Branch of record:** main (parity implementation merged and accepted; v0.1.0 unreleased) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
+**Updated:** 2026-11-15 · **Branch of record:** main (consolidated coaching features merged; v0.1.0 unreleased) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
+
+## 2026-11-15 — consolidated coaching batch merged and validated; publication handoff
+
+PR [#68](https://github.com/itshak/ChessCoachPal/pull/68) was merged to `main` at [d825d81](https://github.com/itshak/ChessCoachPal/commit/d825d81da4c4b7466d4f680c0994165695d66df3). It combines the atomic, rollback-safe group lesson + verified Lichess chapter commit with teacher/workplace/student Lichess study preferences, scoped resolution, website/MCP edits and exact replay/revision enforcement. The synthetic teacher GUID schema bug was fixed at `e5428cd` without relaxing tenant ownership checks.
+
+**Exact integrated PR head `e5428cd` (all green):** [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43660570544), [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43660570583), [security audit](https://github.com/itshak/ChessCoachPal/actions/runs/43660570456), [self-host Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43660570477), [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43660570513).
+
+**Merged-main `d825d81`:** [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43661136580), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43661136550), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43661136540) and [restore](https://github.com/itshak/ChessCoachPal/actions/runs/43661136512) passed; [merged-main E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43661136501) was still in progress at the time of this handoff entry. The GitHub Release workflow skipped publication as intended because the package remains `0.0.0`.
+
+**Release is NOT authorized yet.** Open gates: (1) maintainer must replace/remove the unrelated legacy public GitHub Homepage and explicitly disposition historical logs/artifacts, unreachable/binary privacy risks and third-party redistribution rights; (2) maintainer must run **real ChatGPT and Claude** HTTPS OAuth/MCP write-and-correction acceptance with synthetic data and record sanitized evidence; (3) the seven release criteria in `docs/RELEASING.md` must be evidenced and checked, including complete 93-case parity acceptance; (4) confirm `VERCEL_TOKEN` repository Actions secret for the intended tagged production deploy; (5) only then prepare/review a version bump, allow release CI to create `v0.1.0`, and verify GitHub Release plus Vercel deployment. **Do not manufacture human approvals, tick unchecked criteria, change the version, tag, or publish early.**
 
 ## 2026-11-15 — authenticated Lichess study-preference hierarchy (candidate)
 
