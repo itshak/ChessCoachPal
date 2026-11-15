@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-14",
   "headSha": "acea0c2178ceb35e6d24055ad1e2aa6ee17ff196",
-  "policy": "Active feature-branch batch: shared teacher student exact alias resolver, week-date canonical slot inference, day preview, optional verified PGN chapter choice, website + MCP. No acceptance claim before exact final-head CI/E2E/security/Compose/restore. Original 93 historic and all independent expanded scenarios remain strict and must not be weakened.",
+  "policy": "Atomic optional combined lesson+chapter approval shares one canonical source and SQL transaction across website/MCP; no fallback to two writes after failure. Original 93 historical cases, additional chess-first cases, strict parity, and human-only prepublication checks remain mandatory.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -409,6 +409,19 @@
       ],
       "explanation": "Authenticated read-only teacher-owned weekday schedule lookup: exact student UUIDs, workplace, local date, active and enrolled canonical slots, DST-safe common start/duration, existing interval conflict; shared service with delegated MCP. No silent write or enrollment.",
       "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/lesson-capture/commit/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_lessons_capture_commit_with_chapter"
+      ],
+      "explanation": "Authenticated website/MCP share one SEC DEFINER PostgreSQL RPC wrapping canonical ad-hoc session creation and exact chapter evidence into ONE transaction. The source must be fresh, roster hash exact, confirmation and independent idempotency keys supplied. Any evidence rejection rolls back the lesson, roster and both receipts. Attendance and mastery remain unknown; reverse-interface replay and stale negative cases have independent E2E in e2e/parity-conversational-batch.spec.ts.",
+      "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {
       "path": "app/api/coaching/lesson-capture/preview/route.ts",
