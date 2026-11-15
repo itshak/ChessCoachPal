@@ -81,7 +81,7 @@ jobs:
           lib/hosted-billing/founding.test.ts
           app/api/hosted-billing/webhook/route.ts
           app/portal/[token]/page.tsx
-          app/(teacher)/billing/[id]/page.tsx
+          "app/(teacher)/billing/[id]/page.tsx"
           components/teacher/billing/InvoiceDetailClient.tsx
           components/teacher/settings/HostingSettingsForm.tsx
           e2e/parity-billing-lifecycle.spec.ts
