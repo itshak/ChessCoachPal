@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fenBoard } from "@/lib/lichess-puzzles";
+import {validGamePgn} from "@/lib/chess-pgn-review";
 
 // A typed catalog, not a polymorphic "games" table. PGNs and puzzle positions
 // are stored as coach-supplied content; neither implies engine verification.
@@ -23,7 +24,8 @@ const base = z.object({
 const game = base.extend({
   kind: z.literal("game"),
   details: z.object({
-    pgn: z.string().trim().min(1).max(150000),
+    pgn: z.string().trim().min(1).max(150000).refine(validGamePgn,
+      "PGN must contain a complete legal GigaChess mainline and variations"),
     whitePlayer: z.string().max(120).default(""),
     blackPlayer: z.string().max(120).default(""),
     result: z.enum(["1-0", "0-1", "1/2-1/2", "*"]).default("*"),

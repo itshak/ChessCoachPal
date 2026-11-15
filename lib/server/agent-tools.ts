@@ -803,12 +803,12 @@ const catalogue = [
   },
   {
     name:"ccp_v1_lichess_puzzle_preview",
-    description:"Review a chess-board FEN and solution SAN/PGN inferred from a photo or supplied by the teacher. Display the 8x8 board and exact chapter import preview and SHA-256 for teacher correction. NEVER publish from this tool; image recognition is not a verified FEN until the teacher visually confirms it.",
+    description:"Review a teacher-supplied FEN and every solution SAN move with native GigaChess legality before returning an 8x8 board, a verified move-by-move continuation, and a SHA-256 Lichess import preview. Reject impossible/ambiguous continuations. NEVER publish; a photograph cannot prove its position or unknown game-state fields.",
     schema:puzzleDraftSchema,scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_v1_lichess_puzzle_publish",
-    description:"Publish exactly one teacher-reviewed FEN puzzle as a Lichess study chapter. Requires separate study:write browser grant, matching SHA-256 from a preview, new UUID idempotency key, and explicit confirmation both to create the chapter and to contact Lichess. Provider timeouts are ambiguous and must be reconciled in browser, never retried automatically.",
+    description:"Publish one explicitly approved GigaChess-legality-validated puzzle continuation to Lichess. Requires separate study:write browser grant, unchanged preview SHA-256, new UUID receipt and external-write confirmation. Native SAN legality cannot be bypassed; provider timeouts are ambiguous and must be reconciled, not automatically retried.",
     schema:puzzlePublishSchema,scope:"coach:write",readOnly:false,
   },
   {
@@ -1278,12 +1278,12 @@ const catalogue = [
   },
   {
     name:"ccp_v1_learning_materials_create",
-    description:"Create one typed game, puzzle, drill, study chapter or HTTPS link. Student mastery and assignments are separate. Require an idempotency UUID.",
+    description:"Create a typed game, puzzle, drill, study chapter or HTTPS link. For games, GigaChess checks all PGN mainline and variation moves against their starting FEN; invalid moves are refused. Do not infer player identity, mastery or lesson attendance. Require an idempotency UUID.",
     schema:materialCatalogCreateSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_learning_materials_update",
-    description:"Correct a teacher-owned typed chess material in one atomic root/subtype transaction. Same kind only; exact revision, confirmation and idempotency UUID required.",
+    description:"Correct a teacher-owned typed chess material using the shared atomic root/subtype service, with GigaChess legality validation for revised game PGN mainlines and variations. Same kind, current revision, explicit confirmation and idempotency UUID required.",
     schema:materialCatalogUpdateSchema,scope:"coach:write",readOnly:false,
   },
   {

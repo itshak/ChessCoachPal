@@ -70,6 +70,10 @@ This active parent covers several **already implemented foundation features** (c
 
 **Unchanged:** `complete-v0-1-0-release-gates` remains open; no v0.1.0 tag, v1.0.0 promise or official public ChatGPT plugin is authorized by this change.
 
+## 2026-11-15 GigaChess native rules candidate — PR #66 (unverified)
+
+A concentrated correctness increment replaces puzzle SAN regex-only acceptance with legal continuation replay through the native `gigachess@0.5.0` engine. It also validates typed game PGN mainline/variation legality via GigaChess and adds teacher-edited FEN square corrections requiring a fresh review. Browser/API and MCP share the validation domain, and unit/authenticated cross-surface E2E are included. GigaChess already exposes native `Board.fromFen`, `parseSan`, `makeMove`, `parsePgn`; no upstream library changes or chess.js runtime package were necessary. Node runtime floor is 22.5+. This is **not accepted** until PR and postmerge exact-SHA CI/E2E/security/Compose/restore pass. The broader C2/C3 preference, B3 combined atomic transaction, distributed provider rate limits, and live-client gates stay open.
+
 ## 2026-11-15 atomic lesson+chapter source candidate — NOT YET ACCEPTED
 
 The new optional `ccp_v1_lessons_capture_commit_with_chapter` and matching website approval route use exactly one PostgreSQL transaction wrapping the canonical ad-hoc roster writer and authorized indexed-chapter evidence writer. A failure of either rolls back both. The preview exposes source timestamp/roster hash and the website adds a dedicated explicit chapter confirmation. A distinct named browser↔MCP test validates one teacher duration, N student assignments, exact cross-interface replay, changed-payload refusal and the stale-source full-rollback case. The two-step path is retained. Do not check B3/F2, archive this OpenSpec, or tag release based on this candidate before full exact-head and merged-main proof.

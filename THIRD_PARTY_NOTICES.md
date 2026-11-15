@@ -30,3 +30,7 @@ SOFTWARE.
 ```
 
 Other third-party packages, images, fonts, and dependencies retain their own licenses. Their applicable notices and license files must be respected. This file is not a claim that the pending third-party asset/license audit for v0.1.0 has been completed.
+
+## GigaChess chess rules engine
+
+ChessCoachPal uses the native GigaChess TypeScript engine (`gigachess@0.5.0`), authored by Itshak and contributors, under the MIT License. Source: https://github.com/itshak/gigachess. Preserve its MIT notice in redistributed packages. This does not change ChessCoachPal's proprietary licensing.
