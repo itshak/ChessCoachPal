@@ -28,3 +28,18 @@ For an authenticated teacher and one selected workplace, the app SHALL report no
 ## Release boundary
 
 These requirements are implemented and GitHub-verified; final vendor sign-off, historical privacy/license approval, remaining agent tools and the actual v0.1.0 tag/release stay in [active final-publication change](../../changes/finalize-v0-1-0-publication/proposal.md). Do not check final readiness boxes based on synthetic tests.
+
+### Requirement: Canonical Supabase bootstrap SHALL include post-audit security posture
+
+A new clean installation SHALL run the **single** pre-v1 baseline (not a compatibility migration series), including restricted direct execution of trigger-only functions, fixed search paths, owner-scoped RLS initplan expressions and indexed foreign keys. A recovery into a second empty installation SHALL preserve effective permissions, session notes, teaching evidence, student history and uploaded objects, not merely row counts. Existing data MUST NOT be silently erased for test convenience.
+
+#### Scenario: Fresh host after a security hardening PR
+- **WHEN** clean CI/Compose/restore installs the current baseline
+- **THEN** it SHALL match the expected tables, policies, roles, indexes and RPC grants, and website+MCP authenticated smoke shall both succeed without adding legacy migrations.
+
+#### Scenario: Secure hosted backend still has RLS informational warnings
+- **WHEN** the Security Advisor reports that server-only OAuth or receipt tables intentionally have no authenticated policies
+- **THEN** the operator SHALL verify client roles are denied rather than create permissive policies to obtain an artificial green report.
+
+Review the [Supabase/MCP reliability playbook](../../../docs/MCP_SUPABASE_RELIABILITY_PLAYBOOK.md) for reset/Storage policy collisions and test evidence.
+
