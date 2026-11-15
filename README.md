@@ -2,7 +2,7 @@
 
 **MCP tool naming for v0.1.2:** Current tools use `ccp_<domain>_<action>` (not `ccp_v1_*`). This is a breaking tool-name cleanup with no backward aliases before v1.0.0. The HTTPS connector remains `/mcp`; existing clients may need to refresh or reconnect. See [ADR-0006](docs/adr/0006-unversioned-mcp-tool-names.md).
 
-**Release status (2026-11-15):** [v0.1.0 published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.0); [production deployment succeeded](https://github.com/itshak/ChessCoachPal/actions/runs/43664411336). Historical 0.0.0/unreleased passages below are superseded. **Still pending:** full independent real ChatGPT MCP acceptance, untested Claude OAuth/revocation scenarios, historical privacy and licensing sign-off, and GitHub Homepage correction. **Actual Claude Desktop successfully exercised synthetic material create/get/link/evidence/void after PR #79; see the live-client evidence and bounded limitations below.** The selective CogNote post-fork fixes have been completed and archived; the historic development entries below should not be mistaken for active OpenSpec implementation work.
+**Release status (2026-11-15):** [v0.1.2 published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.2), with unversioned `ccp_*` MCP tools and no legacy aliases. The follow-up live-client/Supabase hardening in PR #81 is newer than that tag and must be verified and deployed separately. Real Claude Desktop completed one synthetic material workflow after PR #79; full real ChatGPT MCP acceptance, historical privacy/licensing sign-off and GitHub Homepage metadata remain open. Pre-v1 installation has one canonical baseline, not a compatibility migration chain.
 
 
 **Your friendly chess-coaching assistant.**
