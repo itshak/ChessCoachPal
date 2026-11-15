@@ -1,56 +1,38 @@
-# AI-agent integration architecture
+# AI/MCP integration — current architecture and acceptance
 
-**Implementation status:** The initial [OAuth/MCP foundation](../openspec/changes/archive/2026-11-07-connect-chatgpt-and-claude/proposal.md) and the [expanded coaching-tool implementation](../openspec/changes/archive/2026-11-08-expand-agent-coaching-tools/proposal.md) are GitHub-tested. Exact names, access rules and client setup are in [AI_CONNECTORS.md](AI_CONNECTORS.md). Real ChatGPT/Claude interoperability is still **unverified** and requires the maintainer's one-time [final local prepublication test](LOCAL_CLIENT_ACCEPTANCE.md).
+**Date:** 2026-11-15. ChessCoachPal is **MCP/Plugin first**, not a website-first app with an AI addon. The authenticated website is a secondary editor/visualization and trusted secure browser consent surface. All ordinary teacher business actions use one shared server-side domain service through website routes and the existing **single** `/mcp` gateway.
 
-**Primary interaction model:** ChessCoachPal is **MCP/Plugin first**, with the website an optional viewer/editor and secure consent/approval surface. Teachers naturally tell Codex, ChatGPT or Claude what they taught, which student to edit, what material they covered, or which reports they need. The same teacher-owned domain actions must be exposed via authenticated MCP and web; an operation available only in the web UI is a **parity defect** except narrowly justified protected browser actions. We do **not** require a built-in chatbot inside the website.
+See [architecture](ARCHITECTURE.md), [connectors](AI_CONNECTORS.md), [ADR-0003](adr/0003-mcp-website-business-parity.md), [ADR-0007](adr/0007-mcp-supabase-contract-and-release-evidence.md), and the detailed [MCP/Supabase playbook](MCP_SUPABASE_RELIABILITY_PLAYBOOK.md).
 
-## End-to-end flow
+## Known client evidence — do not generalize
 
-1. Teacher connects a supported AI client to their ChessCoachPal self-hosted instance through delegated authorization.
-2. Client discovers the versioned tools and request schemas.
-3. Teacher says, for example, "Yesterday's Tuesday beginners class had six students; one was absent; we practiced opposition."
-4. Agent calls `sessions.search` / `students.search` to discover actual candidate records.
-5. If context is ambiguous, the API returns `NEEDS_RESOLUTION`; the agent asks for the missing class, student, date or workplace, without writing.
-6. The agent requests `attendance.preview` and `lesson_notes.preview`, showing the resolved teacher-owned IDs and proposed changes.
-7. Validated commit commands save the result, atomically when possible, using an idempotency key and expected revision.
-8. The tool returns a receipt. Opening the website shows exactly the same records, where the teacher can correct them.
+- **Automated GitHub browser/delegated MCP** tests verify tool inventory, scopes, core writes/reads, cross-tenant denial, parity, retry, fresh installs and reports.
+- **Actual Claude Desktop** was tested against `chesscoachpal.com` with a synthetic test student. Connector settings displayed 88 read-only + 95 write tools. Its initial deferred ToolSearch could not load `ccp_learning_materials_create` despite tool registration.
+- After [PR #79](https://github.com/itshak/ChessCoachPal/pull/79) corrected the **shared** material root JSON Schema and deployed, Claude loaded both create/get and successfully created a drill, linked it separately to a student and session, recorded `assigned`/`taught` material evidence, and voided `assigned` while retaining its audit trail. The website/database shared source verified the resulting state; material links were independently checked in SQL afterward.
+- This does **not** certify every one of the 183 tools, other cached conversations, voice, or **real ChatGPT** tool discovery/writes. Live vendor acceptance must always name the exact client, session and operation. See [manual acceptance](LOCAL_CLIENT_ACCEPTANCE.md).
 
-## Implemented v0.1.0 coaching/learning tools and possible future extensions
+## Exact tool usage pattern
 
-| Namespace | Queries | Mutations |
-| --- | --- | --- |
-| Workplaces | list, get | create, update |
-| Students | search, get, enrollments | create, update, enroll |
-| Classes | list, get, membership | create, update, add/remove student |
-| Sessions | calendar, get, conflicts | schedule, reschedule, cancel |
-| Attendance | list, preview | record, bulk-preview, bulk-commit |
-| Notes | get, history | upsert, correct, annotate |
-| Compensation | preview, period totals | reconcile with confirmation |
-| Materials | list, selected-study reference | link, unlink with confirmation |
-| Reporting | preview, runs | export, publish with confirmation |
-| Ratings | list, snapshot | refresh from authorized provider |
+1. Connect the teacher via authorized OAuth PKCE and the requested scope; **read** tools require `coach:read`, mutating tools require `coach:write` and operation confirmation as appropriate. Do not send raw credentials to the LLM.
+2. Read current student/workplace/material/session candidates by ID/search (`ccp_students_roster`, `ccp_students_resolve`, `ccp_sessions_list`, `ccp_learning_materials_list`).
+3. For multiple names or aliases, resolve to stable UUIDs. Two strings can refer to the **same** student; refuse duplicate *roster references* without inventing duplicate database rows. Ambiguous aliases need explicit disambiguation.
+4. Preview or re-read revisions and relevant timezone. Propose precise changes with explicit `durationMinutes`, `assessedOn`, and intended lesson-note replacement; request teacher confirmation before sensitive writes.
+5. Call the current exact `ccp_<domain>_<action>` tool with an idempotency UUID. On retry use the **same** UUID and immutable payload, never a new key for a network retry. Revision-checked updates use the freshest revision.
+6. Read back through an **independent** tool or website route, including nested details, stored nulls, provenance and date. For reports compare website/MCP outputs. For material evidence inspect history both with and without voided claims; link IDs should be read through `ccp_material_links_list`.
+7. Treat provider ratings, teacher-confirmed strength, skill assessments, notes, attendance and mastery as distinct facts. No automatic mastery inference from a Lichess link, puzzle, session, rating or homework attempt.
 
-The current 29 live MCP tools cover a working subset: workplace/student/group CRUD/enrollment, newer teaching sessions, one-student attendance, notes, and learning proposal/link operations. This is **NOT full parity with the website**. The wider compensation, rating, publishing, bulk and export commands in this table are **future design ideas, not available MCP tools**. Use [the exact supported tool list](AI_CONNECTORS.md); never expose unrestricted table CRUD, open-ended SQL or bulk exports to a language model.
+## Tool schema and dispatch requirements
 
-## Protocol and security
+The canonical `lib/server/agent-tools.ts` catalogue advertises the exact unversioned tool names, root-object JSON Schemas, security scope and dispatcher. Kind-specific material validation lives in the **same** typed input schema that website actions use, not an MCP-only compatibility adapter. Non-default optional inputs **must** survive `tools/call`, runtime dispatch, shared service, database transaction, receipt and read-back. PR #81's E2E caught `assessedOn` being accepted in schema but dropped by dispatch; that is why code review of catalogue alone is insufficient.
 
-- Publish OpenAPI and an MCP-compatible tool gateway with equivalent versioned schemas when client support is verified.
-- OAuth-compatible delegated credentials and scopes bind each client to a real teacher. Never pass database or service credentials to the model.
-- Permission checks occur in code and RLS; return only necessary student fields.
-- Request keys make retries safe; optimistic record revisions avoid overwrites.
-- Confirmation tokens expire and bind exact proposed payloads, especially for payments, deletions and parent notifications.
-- Store minimal audit metadata and consent/revocation state; do not log natural-language messages containing children's details.
-- Accept both English and Hebrew inputs, but normalize exact dates/timezones and confirm ambiguity.
-- Keep tool transport, prompt content and provider failures separate from database durability.
-- Do not promise voice-initiated tool calls until tested in the relevant client.
+Each changed teacher-facing UI/API capability requires a reviewed parity-registry entry, current MCP schema/adapter, and independent named browser/delegated OAuth E2E in the same PR. This is enforced in PR CI by `scripts/mcp-parity-pr-guard.mjs`, `npm run mcp:parity:strict`, and the synthetic tests. The approved exceptions are **only** security-sensitive operations (password, MFA, raw credentials/hosted card entry, full confidential backup with guardian tokens, other principals); otherwise a website-only feature is a defect.
 
-## Acceptance evidence
+## Why the database sometimes looks like a tool bug
 
-Development acceptance uses **automated GitHub Actions only**: simulated delegated clients exercise MCP against fresh synthetic Supabase, with retries, tenant/scope denial, provider-outage fallback and website correction. The initial foundation and expanded coaching tools passed synthetic GitHub verification; the latter is archived in [change 2b](../openspec/changes/archive/2026-11-08-expand-agent-coaching-tools/proposal.md). **One manual release-only live-provider check** from the maintainer's machine, immediately before publishing v0.1.0, must demonstrate both real ChatGPT and Claude connections and website correction. See [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md). Its absence does not keep earlier development changes open.
+A deployed MCP tool can work while the connected hosted Supabase project has **outdated physical columns or RLS grants**. The earlier `ccp_students_profile_edit` failure was a missing `students.strength`/`name_aliases` baseline problem. After explicit authorization, the disposable DB was transactionally rebuilt from one current installation schema, and both fields were persisted and read. It did **not** require a compatibility migration or second MCP adapter.
 
+For the exact reset hazards—protected Supabase Storage triggers, surviving `storage.objects` policies, Auth sessions, migration bookkeeping—and for advisor classification of server-only tables and privileged RPCs, follow [the playbook](MCP_SUPABASE_RELIABILITY_PLAYBOOK.md) and [ADR-0001](adr/0001-pre1-breaking-changes.md). Never reset a real-teacher database without explicit operator instruction and backup.
 
-## Mandatory parity and reporting gate
+## Test / publication boundary
 
-A source-level audit found **61 API routes, 17 teacher pages, 49 teacher components**, and **43 teacher-business API route surfaces: 39 missing complete MCP coverage, 3 partial and 1 report route implemented and verified in merged-main GitHub CI**. The audit/checklist is [MCP_WEBSITE_PARITY_CHECKLIST.md](MCP_WEBSITE_PARITY_CHECKLIST.md), automated registry [mcp-website-parity.json](../scripts/mcp-website-parity.json), normal `npm run mcp:parity:audit` and strict release `npm run mcp:parity:strict`. New website business features require a corresponding tested MCP read/write interface in the same PR or an approved sensitive browser handoff. These checks cannot substitute for the full 93 scenario authenticated website↔MCP/teacher-isolation tests.
-
-**Reports are part of the same MCP server, not a separate connector.** Website `/api/coaching/report` and the new read-only `ccp_reports_workplace_summary` share `lib/server/coaching-report-service.ts` and `lib/coaching-report.ts`. This report code slice passed merged-main GitHub E2E and CI; student/material reports remain proposed. Proposed `ccp_reports_workplace_summary`, student progress/material coverage and CSV/text export tools must reuse the same service and require scope. Student/workplace materials history, complete student profiles, events/finance/imports/notifications are similarly proposed, not deployed. See [OpenSpec parity spec](../openspec/changes/support-conversational-lesson-and-lichess-workflows/specs/teacher-workspace-mcp-parity/spec.md).
+Development CI MUST run on fresh synthetic installs and prove strong cross-tenant, scope, read-only, stale-revision, idempotent-replay, report, material and security behavior. **Actual client tests** must separately discover and invoke each critical tool in a real current Claude or ChatGPT conversation; connector inventory and CI are not equivalent to actual client support. Merge only when CI, full E2E, security, self-host Compose and backup/restore all pass. Verify Vercel production alias and deployed SHA, then actual provider behavior.
