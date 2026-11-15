@@ -41,7 +41,7 @@ export function HostingSettingsForm({
   const canUpgrade =
     softLimitsApply || plan === "trial" || plan === "free" || plan === "gifted";
   const canManageBilling =
-    checkoutConfigured && hasStripeCustomer && (plan === "pro" || !!stripeCancelAt);
+    checkoutConfigured && hasStripeCustomer && (plan === "pro" || plan === "founding" || !!stripeCancelAt);
 
   async function startCheckout() {
     setBusy("checkout");

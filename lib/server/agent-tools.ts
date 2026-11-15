@@ -341,13 +341,13 @@ const catalogue = [
   },
   {
     name:"ccp_v1_billing_manual_payment_record",
-    description:"Record an actual payment already received outside ChessCoachPal against a teacher-owned invoice. This tool does not charge a card. Use a new idempotencyKey per real-world payment, reuse it on retries, verify invoice balance first and require explicit teacher confirmation.",
+    description:"Record an actual full or partial manual payment on a saved draft or sent invoice. Draft payments never send email or publish to the family portal. Save on-screen draft edits first, check the balance, and confirm. Use one idempotencyKey per actual payment, reusing it only on retries.",
     schema:manualPaymentMcpSchema.extend({invoiceId:uuid}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_billing_manual_payment_delete",
-    description:"Remove a mistakenly recorded manual payment from one identified owned invoice after explicit confirmation. A Stripe payment requires refund on the provider, not deletion.",
+    description:"Correct one mistaken manual payment after confirmation. A paid never-sent invoice reopens privately as draft, while a previously sent invoice reopens as sent. Used prepaid credits must be reconciled first; Stripe payments need provider refunds.",
     schema:z.object({invoiceId:uuid,paymentId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
@@ -401,13 +401,13 @@ const catalogue = [
   },
   {
     name:"ccp_v1_billing_invoice_delete",
-    description:"Permanently delete one identified draft or void invoice after confirmation. Never remove paid/sent invoice history.",
+    description:"Permanently delete a draft or void invoice only after confirmation and reconciliation of existing payments and issued credit packages. Never silently erase received funds.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_v1_billing_invoice_send_preview",
-    description:"Non-mutating preview of an owned draft invoice: PDF readiness, amount, recipient count, subject and content summary. includeRecipients=true requires confirmed=true; never reveal portal tokens or Stripe URLs.",
+    description:"Non-mutating invoice send preview for unsent drafts or never-sent paid invoices: PDF readiness, total, paid, outstanding balance and recipient summary. includeRecipients=true requires confirmed=true; never reveal portal tokens or Stripe URLs.",
     schema:z.object({invoiceId:uuid,includeRecipients:z.boolean().default(false),
       confirmed:z.literal(true).optional()}).strict()
       .refine(a=>!a.includeRecipients||a.confirmed===true,"Email addresses require confirmation"),
@@ -415,7 +415,7 @@ const catalogue = [
   },
   {
     name:"ccp_v1_billing_invoice_send",
-    description:"Email an existing draft invoice PDF and mark it sent, optionally creating a Stripe checkout link. Requires explicit approval for the external email and financial impact; never silently send/retry.",
+    description:"Explicitly send an unsent saved draft or a fully paid never-sent invoice PDF. An already-paid invoice stays paid; no further payment is requested. Partial invoices offer only the outstanding Stripe balance. Teacher email confirmation is required; never retry without checking delivery.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true),confirmedEmail:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },

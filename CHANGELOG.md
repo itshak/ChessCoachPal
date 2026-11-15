@@ -4,7 +4,17 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 ## [Unreleased]
 
-_Changes for the next release go here._
+### Added
+- Safe full or partial manual payments on saved draft invoices without delivering or publishing them to families, with shared teacher website/MCP operations and replayable receipts.
+- Invoice PDF and send previews with previously paid and remaining-balance amounts, and a database-locked send claim to prevent stale checkout or email totals.
+- Migration destination guard, hosted founding billing-cancellation operator script, and authenticated payment-parity regression coverage.
+
+### Fixed
+- Payment reversal now restores never-sent paid invoices to private drafts, while preserving sent-invoice behavior and refusing irreversible credit/payment loss.
+- Stripe subscriptions linked to founding hosted entitlements are cancelled with webhook retries and preserved billing portal access.
+- Vitest and mocker patched to 4.1.12 for dependency hardening.
+
+_No private business strategy, unpublished pricing, or subscription entitlements are announced by these technical changes._
 
 ## [0.1.0] - 2026-11-15
 

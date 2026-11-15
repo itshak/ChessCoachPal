@@ -104,4 +104,18 @@ describe("buildInvoicePdf", () => {
     });
     expect(String.fromCharCode(...bytes.slice(0, 4))).toBe("%PDF");
   });
+  it("renders a valid PDF with paid and outstanding balance lines",async()=>{
+    const {PDFDocument}=await import("pdf-lib");
+    const invoice={
+      studioName:"Chess Academy",familyName:"Knight Family",
+      periodStart:"2048-03-01",periodEnd:"2048-03-31",currency:"USD",
+      items:[{description:"Chess instruction",quantity:1,unitCents:9000,amountCents:9000}],
+      subtotalCents:9000,paymentInstructions:"",
+    };
+    const unpaid=await buildInvoicePdf(invoice);
+    const partiallyPaid=await buildInvoicePdf({...invoice,paidCents:3200});
+    expect((await PDFDocument.load(partiallyPaid)).getPageCount()).toBe(1);
+    expect(partiallyPaid.length).toBeGreaterThan(unpaid.length);
+  });
+
 });

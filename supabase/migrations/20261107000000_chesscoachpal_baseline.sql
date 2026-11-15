@@ -135,6 +135,12 @@ BEGIN
   IF OLD.status IN ('sent', 'paid') THEN
     RAISE EXCEPTION 'Invoice % is %; only draft or void invoices can be deleted', OLD.id, OLD.status;
   END IF;
+  IF EXISTS(SELECT 1 FROM public.payments WHERE invoice_id=OLD.id) THEN
+    RAISE EXCEPTION 'INVOICE_HAS_PAYMENTS' USING ERRCODE='23514';
+  END IF;
+  IF EXISTS(SELECT 1 FROM public.credit_packages WHERE invoice_id=OLD.id) THEN
+    RAISE EXCEPTION 'CREDIT_PACKAGE_EXISTS' USING ERRCODE='23514';
+  END IF;
   RETURN OLD;
 END;
 $$;
@@ -164,24 +170,30 @@ BEGIN
       RAISE EXCEPTION 'Invoice % is %; its commercial fields are frozen', OLD.id, OLD.status;
     END IF;
   END IF;
-
-  IF NEW.status IS DISTINCT FROM OLD.status THEN
-    IF OLD.status = 'paid' AND NEW.status = 'sent' THEN
-      SELECT COALESCE(SUM(amount_cents), 0) INTO paid_cents
-        FROM payments WHERE invoice_id = OLD.id;
-      IF paid_cents >= OLD.subtotal_cents THEN
-        RAISE EXCEPTION 'Invoice % is fully paid; remove a payment before reopening it', OLD.id;
-      END IF;
-    ELSIF NOT (
-      (OLD.status = 'draft')
-      OR (OLD.status = 'sent' AND NEW.status IN ('paid', 'void'))
-      OR (OLD.status = 'paid' AND NEW.status = 'void')
-    ) THEN
-      RAISE EXCEPTION 'Invalid invoice status transition: % -> %', OLD.status, NEW.status;
+  IF NEW.subtotal_cents IS DISTINCT FROM OLD.subtotal_cents OR
+     NEW.status IS DISTINCT FROM OLD.status THEN
+    SELECT COALESCE(SUM(amount_cents),0) INTO paid_cents
+      FROM public.payments WHERE invoice_id=OLD.id;
+    IF NEW.subtotal_cents < paid_cents THEN
+      RAISE EXCEPTION 'INVOICE_TOTAL_BELOW_PAID' USING ERRCODE='23514';
     END IF;
   END IF;
-
-  RETURN NEW;
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    IF OLD.status='paid' AND NEW.status IN ('draft','sent') THEN
+      IF paid_cents >= OLD.subtotal_cents OR
+         (NEW.status='draft' AND OLD.sent_at IS NOT NULL) OR
+         (NEW.status='sent' AND OLD.sent_at IS NULL) THEN
+        RAISE EXCEPTION 'INVOICE_INVALID_REOPEN' USING ERRCODE='23514';
+      END IF;
+    ELSIF NOT (
+      (OLD.status='draft')
+      OR (OLD.status='sent' AND NEW.status IN ('paid','void'))
+      OR (OLD.status='paid' AND NEW.status='void')
+    ) THEN
+      RAISE EXCEPTION 'Invalid invoice status transition: % -> %',OLD.status,NEW.status;
+    END IF;
+  END IF;
+ RETURN NEW;
 END;
 $$;
 
@@ -297,11 +309,20 @@ BEGIN
   SELECT COALESCE(SUM(amount_cents), 0) INTO paid_cents
     FROM payments WHERE invoice_id = OLD.invoice_id;
 
-  UPDATE invoices
-     SET status = 'sent', paid_at = NULL, payment_method = NULL
-   WHERE id = OLD.invoice_id
-     AND status = 'paid'
-     AND paid_cents < subtotal_cents;
+  IF EXISTS (
+    SELECT 1 FROM public.invoices i
+    JOIN public.credit_packages cp ON cp.invoice_id=i.id
+    JOIN public.credit_redemptions cr ON cr.package_id=cp.id
+    WHERE i.id=OLD.invoice_id AND i.status='paid'
+      AND i.sent_at IS NULL AND paid_cents<i.subtotal_cents
+  ) THEN
+    RAISE EXCEPTION 'CREDITS_ALREADY_USED' USING ERRCODE='23514';
+  END IF;
+  UPDATE public.invoices
+     SET status=CASE WHEN sent_at IS NULL THEN 'draft' ELSE 'sent' END,
+         paid_at=NULL,payment_method=NULL
+   WHERE id=OLD.invoice_id AND status='paid'
+     AND paid_cents<subtotal_cents;
 
   RETURN OLD;
 END;
@@ -3813,7 +3834,6 @@ BEGIN
    OR v_invoice.stripe_checkout_session_id IS NOT NULL
    OR v_invoice.stripe_checkout_url IS NOT NULL
    OR v_invoice.stripe_payment_intent_id IS NOT NULL
-   OR EXISTS(SELECT 1 FROM public.payments WHERE invoice_id=p_invoice_id)
  THEN RAISE EXCEPTION 'INVOICE_NOT_EDITABLE' USING ERRCODE='23514';END IF;
  IF p_expected_updated_at IS NOT NULL
    AND v_invoice.updated_at IS DISTINCT FROM p_expected_updated_at THEN
@@ -3868,6 +3888,10 @@ BEGIN
   END LOOP;
   IF v_subtotal>2147483647 THEN
     RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';END IF;
+  IF v_subtotal < (SELECT COALESCE(SUM(amount_cents),0)
+    FROM public.payments WHERE invoice_id=p_invoice_id) THEN
+    RAISE EXCEPTION 'INVOICE_TOTAL_BELOW_PAID' USING ERRCODE='23514';
+  END IF;
   DELETE FROM public.invoice_items WHERE invoice_id=p_invoice_id;
   FOR v_line IN SELECT value FROM jsonb_array_elements(v_prepared) LOOP
     INSERT INTO public.invoice_items(
@@ -5909,9 +5933,6 @@ BEGIN
   IF v_balance<=0 THEN
     RAISE EXCEPTION 'INVOICE_NOTHING_OWED' USING ERRCODE='22023';
   END IF;
-  IF v_invoice.status='draft' AND p_amount_cents IS NOT NULL THEN
-    RAISE EXCEPTION 'PARTIAL_DRAFT_PAYMENT' USING ERRCODE='23514';
-  END IF;
   IF v_invoice.stripe_payment_intent_id IS NOT NULL THEN
     RAISE EXCEPTION 'STRIPE_PAYMENT_RECONCILIATION_REQUIRED' USING ERRCODE='23514';
   END IF;
@@ -7159,6 +7180,59 @@ REVOKE ALL ON FUNCTION public.ccp_invoice_void(uuid,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_void(uuid,uuid) TO authenticated;
 
 
+-- Sending must claim the exact PDF snapshot and paid balance under the
+-- same invoice row lock used by manual payments and draft edits. A partial
+-- draft payment does not necessarily change invoice.updated_at, so revision
+-- comparison alone cannot prove the printed and emailed balance is current.
+CREATE OR REPLACE FUNCTION public.ccp_invoice_send_claim(
+ p_invoice_id uuid,p_expected_updated_at timestamptz,
+ p_expected_paid_cents integer
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $invoice_send_claim$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_invoice public.invoices%ROWTYPE;
+ v_paid bigint;
+ v_updated timestamptz;
+BEGIN
+ IF v_teacher IS NULL THEN
+  RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_invoice_id IS NULL OR p_expected_updated_at IS NULL OR
+    p_expected_paid_cents IS NULL OR p_expected_paid_cents<0 THEN
+  RAISE EXCEPTION 'INVALID_INVOICE_SEND_CLAIM' USING ERRCODE='22023';END IF;
+ SELECT * INTO v_invoice FROM public.invoices
+  WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF NOT (
+   v_invoice.status='draft' OR
+   (v_invoice.status='paid' AND v_invoice.sent_at IS NULL)
+ ) OR v_invoice.stripe_checkout_session_id IS NOT NULL OR
+      v_invoice.stripe_checkout_url IS NOT NULL OR
+      v_invoice.stripe_payment_intent_id IS NOT NULL THEN
+  RAISE EXCEPTION 'INVOICE_NOT_SENDABLE' USING ERRCODE='23514';END IF;
+ IF v_invoice.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';END IF;
+ SELECT coalesce(sum(amount_cents),0) INTO v_paid FROM public.payments
+  WHERE invoice_id=p_invoice_id;
+ IF v_paid<>p_expected_paid_cents OR v_paid>v_invoice.subtotal_cents THEN
+  RAISE EXCEPTION 'INVOICE_SEND_BALANCE_CHANGED' USING ERRCODE='23505';END IF;
+ UPDATE public.invoices
+    SET status=CASE WHEN status='draft' THEN 'sent' ELSE 'paid' END,
+        sent_at=clock_timestamp()
+  WHERE id=p_invoice_id AND teacher_id=v_teacher
+    AND (status='draft' OR (status='paid' AND sent_at IS NULL))
+  RETURNING updated_at INTO v_updated;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'INVOICE_ALREADY_CLAIMED' USING ERRCODE='23505';END IF;
+ RETURN jsonb_build_object('ok',true,'invoiceId',p_invoice_id,
+  'updatedAt',v_updated,'paidCents',v_paid);
+END;
+$invoice_send_claim$;
+REVOKE ALL ON FUNCTION public.ccp_invoice_send_claim(uuid,timestamptz,integer)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_invoice_send_claim(uuid,timestamptz,integer)
+ TO authenticated;
+
 -- Only the current owner may attach a processor Checkout Session to the
 -- unchanged, still-payable balance. Both website and MCP call this after the
 -- provider has created a session. A session cannot replace another link.
@@ -8212,7 +8286,6 @@ BEGIN
  END IF;
  IF v_invoice.status<>'draft'
    OR EXISTS(SELECT 1 FROM public.credit_packages WHERE invoice_id=p_invoice_id)
-   OR EXISTS(SELECT 1 FROM public.payments WHERE invoice_id=p_invoice_id)
    OR v_invoice.stripe_checkout_session_id IS NOT NULL
    OR v_invoice.stripe_checkout_url IS NOT NULL
    OR v_invoice.stripe_payment_intent_id IS NOT NULL THEN
@@ -8255,6 +8328,10 @@ BEGIN
  END LOOP;
  IF v_subtotal>2147483647 THEN
    RAISE EXCEPTION 'INVOICE_SUBTOTAL_OVERFLOW' USING ERRCODE='22003';
+ END IF;
+ IF v_subtotal < (SELECT COALESCE(SUM(amount_cents),0)
+                  FROM public.payments WHERE invoice_id=p_invoice_id) THEN
+   RAISE EXCEPTION 'INVOICE_TOTAL_BELOW_PAID' USING ERRCODE='23514';
  END IF;
  UPDATE public.invoices SET subtotal_cents=v_subtotal::integer
    WHERE id=p_invoice_id RETURNING updated_at INTO v_updated;

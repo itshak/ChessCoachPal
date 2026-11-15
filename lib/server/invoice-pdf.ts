@@ -17,6 +17,8 @@ export interface InvoicePdfInput {
   currency: string;
   items: InvoicePdfItem[];
   subtotalCents: number;
+  /** Manual/Stripe payments already received, not the original invoice total. */
+  paidCents?: number;
   paymentInstructions: string;
   /** Optional payment QR (data:image/png|jpeg;base64 URL). */
   paymentQrCode?: string | null;
@@ -173,6 +175,20 @@ export async function buildInvoicePdf(
     size: 12,
     x: 480,
   });
+  if ((input.paidCents ?? 0) > 0) {
+    if (y < 105) {
+      page = doc.addPage([612, 792]);
+      y = height - margin;
+    }
+    y -= 17;
+    draw("Paid", { size: 11 });
+    draw(formatMoney(input.paidCents ?? 0, input.currency), { size: 11, x: 480 });
+    y -= 18;
+    draw("Balance due", { font: bold, size: 11 });
+    draw(formatMoney(Math.max(0, input.subtotalCents - (input.paidCents ?? 0)), input.currency), {
+      font: bold, size: 11, x: 480,
+    });
+  }
 
   const qr = decodePaymentQrDataUrl(input.paymentQrCode);
   const qrImage = qr

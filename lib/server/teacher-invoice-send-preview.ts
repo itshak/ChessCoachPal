@@ -1,7 +1,7 @@
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {loadInvoicePdf} from "@/lib/server/invoice-pdf-data";
 import {familyEmailRecipients,familyGreetingNames} from "@/lib/guardians";
-import {formatMoney} from "@/lib/billing";
+import {formatMoney,summarizePayments} from "@/lib/billing";
 
 /** Safe, non-mutating preview for the same draft/PDF gate used by sendInvoice.
  * Neither the PDF, provider keys, Stripe URLs nor guardian portal tokens
@@ -23,17 +23,21 @@ export async function teacherInvoiceSendPreview(
  }
  const {invoice,family,policy,items}=loaded.data;
  const recipients=familyEmailRecipients(family);
+ const {paidCents,balanceCents}=summarizePayments(invoice.subtotal_cents,
+   (invoice.payments??[]).map(payment=>({amountCents:payment.amount_cents})));
  const total=formatMoney(invoice.subtotal_cents,invoice.currency);
+ const balance=formatMoney(balanceCents,invoice.currency);
  const periodLabel=`${invoice.period_start} to ${invoice.period_end}`;
  const studio=policy.studio_name||"your studio";
  return {
    invoiceId:invoice.id,invoiceRevision:invoice.updated_at,
    periodStart:invoice.period_start,periodEnd:invoice.period_end,
    currency:invoice.currency,subtotalCents:invoice.subtotal_cents,
+   paidCents,balanceCents,
    itemCount:items.length,recipientCount:recipients.length,
    deliveryPossible:recipients.length>0,
    messageSubject:`Invoice for ${periodLabel} - ${studio}`,
-   messagePreview:`Hi ${familyGreetingNames(family)},\n\nPlease find attached your invoice for ${periodLabel}.\n\nTotal due: ${total}`,
+   messagePreview:`Hi ${familyGreetingNames(family)},\n\nPlease find attached your invoice for ${periodLabel}.\n\nTotal: ${total}\nPaid: ${formatMoney(paidCents,invoice.currency)}\nBalance due: ${balance}`,
    pdfReady:true,portalLinkIncluded:Boolean(family.portal_token),
    ...(includeRecipients?{recipients}:{}),
  };

@@ -40,6 +40,7 @@ export interface InvoicePdfInvoiceRow {
   sent_at: string | null;
   guardians: InvoicePdfFamilyRow | InvoicePdfFamilyRow[] | null;
   invoice_items: InvoicePdfItemRow[] | null;
+  payments: { amount_cents: number }[] | null;
 }
 
 export interface InvoicePdfBundle {
@@ -110,7 +111,8 @@ export async function loadInvoicePdf(
         id, name, family_name, email, secondary_name, secondary_email,
         email_recipients, portal_token
       ),
-      invoice_items ( * )
+      invoice_items ( * ),
+      payments ( amount_cents )
     `
     )
     .eq("id", invoiceId)
@@ -124,7 +126,9 @@ export async function loadInvoicePdf(
 
   const invoice = data as unknown as InvoicePdfInvoiceRow | null;
   if (!invoice) return { ok: false, code: "not_found" };
-  if (requireDraft && invoice.status !== "draft") {
+  // Already-paid but never-sent invoices must still be explicitly deliverable.
+  if (requireDraft && !(invoice.status === "draft" ||
+    (invoice.status === "paid" && invoice.sent_at === null))) {
     return { ok: false, code: "not_draft" };
   }
 
@@ -138,6 +142,8 @@ export async function loadInvoicePdf(
   const family = oneToOne(invoice.guardians);
   if (!family) return { ok: false, code: "no_family" };
 
+  const alreadyPaidCents = (invoice.payments ?? [])
+    .reduce((sum, payment) => sum + payment.amount_cents, 0);
   let pdfBytes: Uint8Array;
   try {
     pdfBytes = await buildInvoicePdf({
@@ -153,9 +159,11 @@ export async function loadInvoicePdf(
         amountCents: i.amount_cents,
       })),
       subtotalCents: invoice.subtotal_cents,
+      paidCents: alreadyPaidCents,
       paymentInstructions: policy.payment_instructions,
       paymentQrCode:
-        policy.payment_provider === "manual" ? policy.payment_qr_code : null,
+        policy.payment_provider === "manual" &&
+        alreadyPaidCents < invoice.subtotal_cents ? policy.payment_qr_code : null,
       notes: invoice.notes ?? undefined,
     });
   } catch (err) {

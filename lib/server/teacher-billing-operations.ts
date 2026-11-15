@@ -15,7 +15,7 @@ const DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type RegenerateOptions={expectedUpdatedAt?:string;idempotencyKey?:string};
 function billingConflict(error:{message:string}|null){
-  return /23505|23514|REQUEST_CONFLICT|STALE_INVOICE_REVISION|INVOICE_ALREADY_COMMITTED|INVOICE_REGENERATION_BLOCKED/.test(error?.message??"");
+  return /23505|23514|REQUEST_CONFLICT|STALE_INVOICE_REVISION|INVOICE_ALREADY_COMMITTED|INVOICE_REGENERATION_BLOCKED|INVOICE_TOTAL_BELOW_PAID/.test(error?.message??"");
 }
 function validRequestId(value:unknown){
   return value===undefined||(typeof value==="string"&&UUID_RE.test(value));
