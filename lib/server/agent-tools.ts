@@ -1922,8 +1922,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await studentSkillAssessmentsList(db,teacherId,a.studentId,{limit:a.limit,offset:a.offset})};
       }
       case "ccp_student_skill_assessments_record": {
-        const a=args as {studentId:string;ratings:Parameters<typeof studentSkillAssessmentsRecord>[3];idempotencyKey?:string};
-        return {data:await studentSkillAssessmentsRecord(db,teacherId,a.studentId,a.ratings,a.idempotencyKey)};
+        const a=args as {studentId:string;ratings:Parameters<typeof studentSkillAssessmentsRecord>[3];idempotencyKey?:string;assessedOn?:string};
+        return {data:await studentSkillAssessmentsRecord(db,teacherId,a.studentId,a.ratings,a.idempotencyKey,a.assessedOn)};
       }
       case "ccp_students_roster": {
         const a=args as {query?:string;includeArchived:boolean;archivedOnly:boolean;offset:number;limit:number};
