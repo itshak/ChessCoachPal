@@ -4,12 +4,12 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendance and changed lesson rates",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
    name:"Invoice-rate pupil "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const family=await call("ccp_v1_guardians_create",{
+ const family=await call("ccp_guardians_create",{
    name:"Invoice-rate family "+randomUUID(),studentIds:[studentId],
    confirmed:true,
  });
@@ -18,24 +18,24 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
    data:{defaultRateCents:6000},
  });
  expect(rate.status(),await rate.text()).toBe(200);
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
   name:"Invoice-rate studio "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- const enrolled=await call("ccp_v1_workplaces_enroll",{
+ const enrolled=await call("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  });
  expect(enrolled.error).toBeUndefined();
- const lesson=await call("ccp_v1_sessions_create",{
+ const lesson=await call("ccp_sessions_create",{
    workplaceId,studentId,title:"Rate-driven individual lesson",
    startsAt:"2042-10-15T13:00:00Z",durationMinutes:60,
    lessonNote:"",idempotencyKey:randomUUID(),
  });
  expect(lesson.error).toBeUndefined();
  const sessionId=lesson.data.entityId as string;
- const attended=await call("ccp_v1_session_attendance_set",{
+ const attended=await call("ccp_session_attendance_set",{
    sessionId,studentId,status:"present",note:"",
    noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
    notifyFamily:false,idempotencyKey:randomUUID(),confirmed:true,
@@ -47,7 +47,7 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
  });
  expect(browserPreview.status(),await browserPreview.text()).toBe(200);
  const preview=await browserPreview.json();
- const mcpPreview=await call("ccp_v1_billing_generation_preview",period);
+ const mcpPreview=await call("ccp_billing_generation_preview",period);
  expect(mcpPreview.error).toBeUndefined();
  expect(mcpPreview.data).toEqual(preview);
  expect(preview.totalFamilies).toBe(1);
@@ -55,7 +55,7 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
  expect(preview.drafts[0].missingRateCount).toBe(0);
  expect(preview.drafts[0].creditedLessonCount).toBe(0);
  expect(preview.drafts[0].items).toHaveLength(1);
- const committed=await call("ccp_v1_billing_generation_commit",{
+ const committed=await call("ccp_billing_generation_commit",{
    ...period,confirmed:true,
  });
  expect(committed.error).toBeUndefined();
@@ -70,7 +70,7 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
  expect(site.invoice_items[0]).toMatchObject({
   session_id:sessionId,student_id:studentId,
  });
- const mcp=await call("ccp_v1_billing_invoice_detail",{invoiceId});
+ const mcp=await call("ccp_billing_invoice_detail",{invoiceId});
  expect(mcp.error).toBeUndefined();
  expect(mcp.data.subtotal_cents).toBe(site.subtotal_cents);
  expect(mcp.data.invoice_items).toEqual(site.invoice_items);
@@ -78,7 +78,7 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
    data:{defaultRateCents:7200},
  });
  expect(adjusted.status(),await adjusted.text()).toBe(200);
- const regenerated=await call("ccp_v1_billing_invoice_regenerate",{
+ const regenerated=await call("ccp_billing_invoice_regenerate",{
    invoiceId,confirmed:true,
  });
  expect(regenerated.error).toBeUndefined();
@@ -98,7 +98,7 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
  );
  expect(siteRegen.status(),await siteRegen.text()).toBe(200);
  expect((await siteRegen.json()).subtotalCents).toBe(8100);
- const final=await call("ccp_v1_billing_invoice_detail",{invoiceId});
+ const final=await call("ccp_billing_invoice_detail",{invoiceId});
  expect(final.error).toBeUndefined();
  expect(final.data.subtotal_cents).toBe(8100);
  expect(final.data.invoice_items).toHaveLength(1);
@@ -106,7 +106,7 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
    data:{...period,commit:true},
  });
  expect(doubleBill.status()).toBe(400);
- const check=await call("ccp_v1_billing_generation_preview",period);
+ const check=await call("ccp_billing_generation_preview",period);
  expect(check.error).toBeUndefined();
  expect(check.data.totalFamilies).toBe(0);
  expect(check.data.skippedAlreadyInvoiced).toBeGreaterThan(0);

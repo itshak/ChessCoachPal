@@ -44,7 +44,7 @@ test("PARITY:PARITY-invoice-pdf-multipage-private-export preserves 150 line item
  expect(webBytes.subarray(0,5).toString()).toBe("%PDF-");
  const webPdf=await PDFDocument.load(webBytes);
  expect(webPdf.getPageCount()).toBeGreaterThanOrEqual(4);
- const tool=await call("ccp_v1_billing_invoice_pdf",{
+ const tool=await call("ccp_billing_invoice_pdf",{
   invoiceId:id,confirmed:true,
  });
  expect(tool.error).toBeUndefined();
@@ -55,7 +55,7 @@ test("PARITY:PARITY-invoice-pdf-multipage-private-export preserves 150 line item
  expect(toolBytes.length).toBeLessThanOrEqual(512*1024);
  expect(webBytes.toString("latin1")).not.toContain(portalToken);
  expect(toolBytes.toString("latin1")).not.toContain(portalToken);
- const noConsent=await call("ccp_v1_billing_invoice_pdf",{invoiceId:id});
+ const noConsent=await call("ccp_billing_invoice_pdf",{invoiceId:id});
  expect(noConsent.error?.code).toBe("VALIDATION_ERROR");
  // Test another real tenant's existing, owned PDF—not just an unknown UUID.
  const email="foreign-pdf-"+randomUUID()+"@example.com";
@@ -87,7 +87,7 @@ test("PARITY:PARITY-invoice-pdf-multipage-private-export preserves 150 line item
   })).error).toBeNull();
   const blocked=await page.request.get("/api/billing/invoices/"+foreignId+"/pdf");
   expect(blocked.status()).toBe(404);
-  const mcpBlocked=await call("ccp_v1_billing_invoice_pdf",{
+  const mcpBlocked=await call("ccp_billing_invoice_pdf",{
    invoiceId:foreignId,confirmed:true,
   });
   expect(mcpBlocked.error?.code).toBe("NOT_FOUND");

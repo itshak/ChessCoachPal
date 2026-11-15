@@ -7,7 +7,7 @@ import {SEED_TEACHER} from "./helpers/auth";
 type Tool=(name:string,args:Record<string,unknown>)=>Promise<any>;
 const unique=(prefix:string)=>prefix+" "+randomUUID().slice(0,8);
 async function teacherContext(call:Tool){
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
   name:unique("Gateway audit workplace"),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
@@ -15,7 +15,7 @@ async function teacherContext(call:Tool){
  const workplaceId=workplace.data.entityId as string;
  const students:string[]=[];
  for(let i=0;i<2;i++){
-  const made=await call("ccp_v1_students_create",{
+  const made=await call("ccp_students_create",{
    name:unique("Gateway audit learner"),idempotencyKey:randomUUID(),
   });
   expect(made.error).toBeUndefined();
@@ -32,7 +32,7 @@ test("PARITY:PARITY-gateway-student-search-and-workplace-unenroll uses both real
  });
  expect(searchWeb.status(),await searchWeb.text()).toBe(200);
  const webStudents=(await searchWeb.json()).data;
- const searchMcp=await call("ccp_v1_students_search",{query:"Gateway audit learner"});
+ const searchMcp=await call("ccp_students_search",{query:"Gateway audit learner"});
  expect(searchMcp.error).toBeUndefined();
  // MCP intentionally returns additional owner-scoped chess profile metadata.
  // Parity requires identical searchable identities, names, levels and
@@ -47,7 +47,7 @@ test("PARITY:PARITY-gateway-student-search-and-workplace-unenroll uses both real
   .toHaveProperty("name_aliases");
 
  for(const studentId of [a,b]){
-  const joined=await call("ccp_v1_workplaces_enroll",{
+  const joined=await call("ccp_workplaces_enroll",{
    workplaceId:ctx.workplaceId,studentId,idempotencyKey:randomUUID(),
   });
   expect(joined.error).toBeUndefined();
@@ -59,12 +59,12 @@ test("PARITY:PARITY-gateway-student-search-and-workplace-unenroll uses both real
  expect(removedWeb.status(),await removedWeb.text()).toBe(200);
  const deletedWeb=(await removedWeb.json()).data;
  expect(deletedWeb.removed).toBe(true);
- const afterWeb=await call("ccp_v1_workplaces_enrollments",{
+ const afterWeb=await call("ccp_workplaces_enrollments",{
   workplaceId:ctx.workplaceId,
  });
  expect(afterWeb.error).toBeUndefined();
  expect(afterWeb.data.some((x:{student_id:string})=>x.student_id===a)).toBe(false);
- const removedMcp=await call("ccp_v1_workplaces_unenroll",{
+ const removedMcp=await call("ccp_workplaces_unenroll",{
   workplaceId:ctx.workplaceId,studentId:b,confirmed:true,
  });
  expect(removedMcp.error).toBeUndefined();
@@ -87,7 +87,7 @@ test("PARITY:PARITY-gateway-student-search-and-workplace-unenroll uses both real
 test("PARITY:PARITY-gateway-group-create-enroll has reverse-direction membership readback",async({page,request})=>{
  const call=await delegatedTool(page,request),ctx=await teacherContext(call);
  for(const studentId of ctx.students){
-  expect((await call("ccp_v1_workplaces_enroll",{
+  expect((await call("ccp_workplaces_enroll",{
    workplaceId:ctx.workplaceId,studentId,idempotencyKey:randomUUID(),
   })).error).toBeUndefined();
  }
@@ -97,10 +97,10 @@ test("PARITY:PARITY-gateway-group-create-enroll has reverse-direction membership
  expect(created.status(),await created.text()).toBe(201);
  const groupId=(await created.json()).data.id as string;
  expect(groupId).toMatch(/^[0-9a-f-]{36}$/);
- const modelGroups=await call("ccp_v1_groups_list",{});
+ const modelGroups=await call("ccp_groups_list",{});
  expect(modelGroups.error).toBeUndefined();
  expect(modelGroups.data.some((x:{id:string})=>x.id===groupId)).toBe(true);
- const mcpGroup=await call("ccp_v1_groups_create",{
+ const mcpGroup=await call("ccp_groups_create",{
   workplaceId:ctx.workplaceId,name:unique("MCP class"),idempotencyKey:randomUUID(),
  });
  expect(mcpGroup.error).toBeUndefined();
@@ -112,10 +112,10 @@ test("PARITY:PARITY-gateway-group-create-enroll has reverse-direction membership
   action:"groups.enroll",groupId,studentId:ctx.students[0],
  }});
  expect(siteEnroll.status(),await siteEnroll.text()).toBe(200);
- const modelMembers=await call("ccp_v1_groups_members",{groupId});
+ const modelMembers=await call("ccp_groups_members",{groupId});
  expect(modelMembers.error).toBeUndefined();
  expect(modelMembers.data.some((x:{student_id:string})=>x.student_id===ctx.students[0])).toBe(true);
- const modelEnroll=await call("ccp_v1_groups_enroll",{
+ const modelEnroll=await call("ccp_groups_enroll",{
   groupId,studentId:ctx.students[1],idempotencyKey:randomUUID(),
  });
  expect(modelEnroll.error).toBeUndefined();
@@ -123,14 +123,14 @@ test("PARITY:PARITY-gateway-group-create-enroll has reverse-direction membership
   data:{action:"groups.members",groupId},
  });
  expect(siteMembers.status(),await siteMembers.text()).toBe(200);
- expect((await siteMembers.json()).data).toEqual((await call("ccp_v1_groups_members",{groupId})).data);
+ expect((await siteMembers.json()).data).toEqual((await call("ccp_groups_members",{groupId})).data);
  expect((await siteMembers.json()).data).toHaveLength(2);
 });
 
 test("PARITY:PARITY-gateway-sessions-list matches one current frozen session on website and MCP",async({page,request})=>{
  const call=await delegatedTool(page,request),ctx=await teacherContext(call);
  const studentId=ctx.students[0];
- const joined=await call("ccp_v1_workplaces_enroll",{
+ const joined=await call("ccp_workplaces_enroll",{
   workplaceId:ctx.workplaceId,studentId,idempotencyKey:randomUUID(),
  });
  expect(joined.error).toBeUndefined();
@@ -149,7 +149,7 @@ test("PARITY:PARITY-gateway-sessions-list matches one current frozen session on 
  expect(siteList.status(),await siteList.text()).toBe(200);
  const rows=(await siteList.json()).data as Array<{id:string;title:string;student_id:string}>;
  expect(rows.find(x=>x.id===id)?.student_id).toBe(studentId);
- const mcpList=await call("ccp_v1_sessions_list",{});
+ const mcpList=await call("ccp_sessions_list",{});
  expect(mcpList.error).toBeUndefined();
  // Delegated MCP additionally returns the revision required for safe edits.
  // The historical website gateway projection omits that one capability.
@@ -162,11 +162,11 @@ test("PARITY:PARITY-gateway-sessions-list matches one current frozen session on 
 
 test("PARITY:PARITY-gateway-observation-edit preserves unverified provenance in both clients",async({page,request})=>{
  const call=await delegatedTool(page,request),ctx=await teacherContext(call);
- const categories=await call("ccp_v1_chess_categories_list",{});
+ const categories=await call("ccp_chess_categories_list",{});
  expect(categories.error).toBeUndefined();
  expect(categories.data.length).toBeGreaterThan(0);
  const studentId=ctx.students[0];
- const proposed=await call("ccp_v1_chess_observations_propose",{
+ const proposed=await call("ccp_chess_observations_propose",{
   studentId,categoryId:categories.data[0].id,
   observation:unique("Unverified candidate"),requestId:randomUUID(),
  });
@@ -177,12 +177,12 @@ test("PARITY:PARITY-gateway-observation-edit preserves unverified provenance in 
    observation:unique("Browser correction")},
  });
  expect(websiteEdit.status(),await websiteEdit.text()).toBe(200);
- const mcpRead=await call("ccp_v1_chess_observations_list",{studentId});
+ const mcpRead=await call("ccp_chess_observations_list",{studentId});
  expect(mcpRead.error).toBeUndefined();
  const browserRecord=mcpRead.data.find((x:{id:string})=>x.id===observationId);
  expect(browserRecord).toBeDefined();
  expect(browserRecord.verified_at).toBeNull();
- const updated=await call("ccp_v1_chess_observations_update",{
+ const updated=await call("ccp_chess_observations_update",{
   observationId,observation:unique("MCP corrected candidate"),confirmed:true,
  });
  expect(updated.error).toBeUndefined();
@@ -191,7 +191,7 @@ test("PARITY:PARITY-gateway-observation-edit preserves unverified provenance in 
  });
  expect(websiteRead.status(),await websiteRead.text()).toBe(200);
  expect((await websiteRead.json()).data).toEqual(
-  (await call("ccp_v1_chess_observations_list",{studentId})).data);
+  (await call("ccp_chess_observations_list",{studentId})).data);
  expect((await websiteRead.json()).data.find((x:{id:string})=>x.id===observationId)
   .verified_at).toBeNull();
 });
@@ -199,7 +199,7 @@ test("PARITY:PARITY-gateway-observation-edit preserves unverified provenance in 
 test("PARITY:PARITY-gateway-material-unlink-impact-and-delete preserves catalog across browser and MCP",async({page,request})=>{
  const call=await delegatedTool(page,request),ctx=await teacherContext(call);
  const studentId=ctx.students[0];
- const newMaterial=await call("ccp_v1_learning_materials_create",{
+ const newMaterial=await call("ccp_learning_materials_create",{
   kind:"study_chapter",title:unique("Linked chess study"),description:"",
   sourceUrl:"https://lichess.org/study/AbCd1234",
   details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
@@ -207,7 +207,7 @@ test("PARITY:PARITY-gateway-material-unlink-impact-and-delete preserves catalog 
  });
  expect(newMaterial.error).toBeUndefined();
  const materialId=newMaterial.data.material.id as string;
- const link=await call("ccp_v1_material_links_create",{
+ const link=await call("ccp_material_links_create",{
   studentId,materialId,requestId:randomUUID(),confirmed:true,
  });
  expect(link.error).toBeUndefined();
@@ -216,7 +216,7 @@ test("PARITY:PARITY-gateway-material-unlink-impact-and-delete preserves catalog 
   data:{action:"materials.links.unlinkImpact",linkId},
  });
  expect(previewSite.status(),await previewSite.text()).toBe(200);
- const previewMcp=await call("ccp_v1_material_links_unlink_impact",{linkId});
+ const previewMcp=await call("ccp_material_links_unlink_impact",{linkId});
  expect(previewMcp.error).toBeUndefined();
  expect(previewMcp.data).toEqual((await previewSite.json()).data);
  expect(previewMcp.data.canUnlink).toBe(true);
@@ -230,14 +230,14 @@ test("PARITY:PARITY-gateway-material-unlink-impact-and-delete preserves catalog 
  }});
  expect(browserUnlink.status(),await browserUnlink.text()).toBe(200);
  expect((await browserUnlink.json()).data.unlinked).toBe(true);
- const modelRead=await call("ccp_v1_material_links_list",{studentId});
+ const modelRead=await call("ccp_material_links_list",{studentId});
  expect(modelRead.error).toBeUndefined();
  expect(modelRead.data.links.some((x:{id:string})=>x.id===linkId)).toBe(false);
- const second=await call("ccp_v1_material_links_create",{
+ const second=await call("ccp_material_links_create",{
   studentId,materialId,requestId:randomUUID(),confirmed:true,
  });
  expect(second.error).toBeUndefined();
- const removedMcp=await call("ccp_v1_material_links_unlink",{
+ const removedMcp=await call("ccp_material_links_unlink",{
   linkId:second.data.link.id,expectedRevision:second.data.link.revision,
   confirmed:true,
  });
@@ -248,7 +248,7 @@ test("PARITY:PARITY-gateway-material-unlink-impact-and-delete preserves catalog 
  expect(siteList.status(),await siteList.text()).toBe(200);
  expect((await siteList.json()).data.links.some((x:{id:string})=>x.id===second.data.link.id))
   .toBe(false);
- const catalog=await call("ccp_v1_learning_materials_get",{materialId});
+ const catalog=await call("ccp_learning_materials_get",{materialId});
  expect(catalog.error).toBeUndefined();
  expect(JSON.stringify(catalog.data)).toContain(materialId);
 });
@@ -256,11 +256,11 @@ test("PARITY:PARITY-gateway-material-unlink-impact-and-delete preserves catalog 
 
 test("PARITY:PARITY-gateway-observation-browser-approval-requires-person-rejects-bearer-forgery",async({page,request})=>{
  const call=await delegatedTool(page,request),ctx=await teacherContext(call);
- const categories=await call("ccp_v1_chess_categories_list",{});
+ const categories=await call("ccp_chess_categories_list",{});
  expect(categories.error).toBeUndefined();
  expect(categories.data.length).toBeGreaterThan(0);
  const studentId=ctx.students[0],categoryId=categories.data[0].id as string;
- const observationId=(await call("ccp_v1_chess_observations_propose",{
+ const observationId=(await call("ccp_chess_observations_propose",{
   studentId,categoryId,observation:unique("Agent-proposed candidate"),
   requestId:randomUUID(),
  })).data.id as string;
@@ -282,7 +282,7 @@ test("PARITY:PARITY-gateway-observation-browser-approval-requires-person-rejects
  });
  expect(forgedCreate.status(),await forgedCreate.text()).toBe(403);
  expect((await forgedCreate.json()).error.code).toBe("BROWSER_APPROVAL_REQUIRED");
- const preApproval=await call("ccp_v1_chess_observations_list",{studentId});
+ const preApproval=await call("ccp_chess_observations_list",{studentId});
  expect(preApproval.error).toBeUndefined();
  expect(preApproval.data.find((x:{id:string})=>x.id===observationId).verified_at).toBeNull();
  const approved=await page.request.post("/api/agent/v1",{
@@ -294,7 +294,7 @@ test("PARITY:PARITY-gateway-observation-browser-approval-requires-person-rejects
    observation:unique("Teacher-attested through browser"),requestId:randomUUID()},
  });
  expect(teacherCreated.status(),await teacherCreated.text()).toBe(201);
- const mcpRead=await call("ccp_v1_chess_observations_list",{studentId});
+ const mcpRead=await call("ccp_chess_observations_list",{studentId});
  expect(mcpRead.error).toBeUndefined();
  expect(mcpRead.data.find((x:{id:string})=>x.id===observationId).verified_at).toBeTruthy();
  const teacherObservationId=(await teacherCreated.json()).data.id as string;
@@ -311,7 +311,7 @@ test("PARITY:PARITY-gateway-discovery-get-is-authenticated-and-MCP-contract-rema
  expect(content.status).toBe("experimental");
  expect(content.tools).toContain("students.search");
  expect(content.warning).toContain("delegated OAuth/MCP");
- const model=await call("ccp_v1_students_search",{query:""});
+ const model=await call("ccp_students_search",{query:""});
  expect(model.error).toBeUndefined();
  expect(Array.isArray(model.data)).toBe(true);
  const anonymous=await request.get("/api/agent/v1");
