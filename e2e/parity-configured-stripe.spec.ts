@@ -153,11 +153,23 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
        invoiceId:rivalId,confirmed:true,confirmedExternal:true,
      }),
    ]);
-   expect(Number(concurrentWeb.status()===200)+
-     Number(concurrentMcp.error===undefined)).toBe(1);
-   if(concurrentWeb.status()!==200)
-     expect(concurrentWeb.status()).toBe(409);
-   if(concurrentMcp.error)expect(concurrentMcp.error.code).toBe("CONFLICT");
+   // Both callers may legitimately receive the same durable checkout link
+   // if one wins before the other reads. That is not a second payable session.
+   // If both reached Stripe, the losing distinct provider session must instead
+   // return CONFLICT and be expired. Test persisted safety, not winner count.
+   const providerCallCount=calls.length;
+   expect([2,3]).toContain(providerCallCount);
+   const webWon=concurrentWeb.status()===200;
+   const mcpWon=concurrentMcp.error===undefined;
+   if(providerCallCount===2){
+     expect(webWon).toBe(true);
+     expect(mcpWon).toBe(true);
+     expect(await concurrentWeb.json()).toEqual(concurrentMcp.data);
+   }else{
+     expect(Number(webWon)+Number(mcpWon)).toBe(1);
+     if(!webWon)expect(concurrentWeb.status()).toBe(409);
+     if(!mcpWon)expect(concurrentMcp.error?.code).toBe("CONFLICT");
+   }
    const rivalRow=await admin.from("invoices")
      .select("stripe_checkout_session_id,stripe_checkout_url")
      .eq("id",rivalId).single();
@@ -166,12 +178,20 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    expect(claimedId).toMatch(/^cs_test_ccp[0-9]{8}$/);
    expect(rivalRow.data!.stripe_checkout_url)
      .toBe("https://checkout.stripe.com/c/pay/"+claimedId);
-   expect(calls).toHaveLength(3);
-   const losingIds=["cs_test_ccp00000002","cs_test_ccp00000003"]
-     .filter(value=>value!==claimedId);
-   expect(losingIds).toHaveLength(1);
-   expect(expired.has(losingIds[0])).toBe(true);
+   expect(calls).toHaveLength(providerCallCount);
+   const competingIds=calls.slice(1).map((_,i)=>
+     "cs_test_ccp"+String(i+2).padStart(8,"0"));
+   expect(competingIds).toContain(claimedId);
+   const losingIds=competingIds.filter(value=>value!==claimedId);
+   expect(losingIds).toHaveLength(providerCallCount-2);
+   for(const losingId of losingIds)expect(expired.has(losingId)).toBe(true);
    expect(expired.has(claimedId)).toBe(false);
+   if(webWon)expect(await concurrentWeb.json()).toEqual({
+     url:rivalRow.data!.stripe_checkout_url,sessionId:claimedId,
+   });
+   if(mcpWon)expect(concurrentMcp.data).toEqual({
+     url:rivalRow.data!.stripe_checkout_url,sessionId:claimedId,
+   });
    const repeatMcp=await call("ccp_billing_invoice_checkout",{
      invoiceId:rivalId,confirmed:true,confirmedExternal:true,
    });
@@ -179,7 +199,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    expect(repeatMcp.data).toEqual({
      url:rivalRow.data!.stripe_checkout_url,sessionId:claimedId,
    });
-   expect(calls).toHaveLength(3);
+   expect(calls).toHaveLength(providerCallCount);
 
    const pdf=await call("ccp_billing_invoice_pdf",{invoiceId,confirmed:true});
    expect(pdf.error).toBeUndefined();
