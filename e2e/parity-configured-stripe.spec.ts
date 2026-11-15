@@ -76,7 +76,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    const safePolicy=await configure.json();
    expect(safePolicy.stripe.secretKey.configured).toBe(true);
    expect(JSON.stringify(safePolicy)).not.toContain(secret);
-   const mcpPolicy=await call("ccp_v1_studio_policy_get",{});
+   const mcpPolicy=await call("ccp_studio_policy_get",{});
    expect(mcpPolicy.error).toBeUndefined();
    expect(JSON.stringify(mcpPolicy.data)).not.toContain(secret);
 
@@ -110,7 +110,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    });
    expect(line.error).toBeNull();
 
-   const invalidConsent=await call("ccp_v1_billing_invoice_checkout",{
+   const invalidConsent=await call("ccp_billing_invoice_checkout",{
      invoiceId,confirmed:true,
    });
    expect(invalidConsent.error?.code).toBe("VALIDATION_ERROR");
@@ -121,7 +121,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    const browserCheckout=await website.json();
    expect(browserCheckout.url).toMatch(/^https:\/\/checkout\.stripe\.com\/c\/pay\/cs_test_ccp/);
    expect(browserCheckout.sessionId).toMatch(/^cs_test_ccp[0-9]{8}$/);
-   const viaMcp=await call("ccp_v1_billing_invoice_checkout",{
+   const viaMcp=await call("ccp_billing_invoice_checkout",{
      invoiceId,confirmed:true,confirmedExternal:true,
    });
    expect(viaMcp.error).toBeUndefined();
@@ -149,7 +149,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    })).error).toBeNull();
    const [concurrentWeb,concurrentMcp]=await Promise.all([
      page.request.post("/api/billing/invoices/"+rivalId+"/checkout"),
-     call("ccp_v1_billing_invoice_checkout",{
+     call("ccp_billing_invoice_checkout",{
        invoiceId:rivalId,confirmed:true,confirmedExternal:true,
      }),
    ]);
@@ -172,7 +172,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    expect(losingIds).toHaveLength(1);
    expect(expired.has(losingIds[0])).toBe(true);
    expect(expired.has(claimedId)).toBe(false);
-   const repeatMcp=await call("ccp_v1_billing_invoice_checkout",{
+   const repeatMcp=await call("ccp_billing_invoice_checkout",{
      invoiceId:rivalId,confirmed:true,confirmedExternal:true,
    });
    expect(repeatMcp.error).toBeUndefined();
@@ -181,7 +181,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    });
    expect(calls).toHaveLength(3);
 
-   const pdf=await call("ccp_v1_billing_invoice_pdf",{invoiceId,confirmed:true});
+   const pdf=await call("ccp_billing_invoice_pdf",{invoiceId,confirmed:true});
    expect(pdf.error).toBeUndefined();
    expect(Buffer.from(pdf.data.base64,"base64").subarray(0,5).toString()).toBe("%PDF-");
    const browserPdf=await page.request.get("/api/billing/invoices/"+invoiceId+"/pdf");
@@ -191,14 +191,14 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    // Recording a payment already received is not a card charge. It first
    // expires the provider session, then atomically settles and updates ledger.
    const paymentIdempotency=randomUUID();
-   const payment=await call("ccp_v1_billing_manual_payment_record",{
+   const payment=await call("ccp_billing_manual_payment_record",{
      invoiceId,amountCents:4800,note:"Synthetic cash settlement",
      idempotencyKey:paymentIdempotency,confirmed:true,
    });
    expect(payment.error).toBeUndefined();
    expect(payment.data.ok).toBe(true);
    expect(expired.has(browserCheckout.sessionId)).toBe(true);
-   const replayPayment=await call("ccp_v1_billing_manual_payment_record",{
+   const replayPayment=await call("ccp_billing_manual_payment_record",{
      invoiceId,amountCents:4800,note:"Synthetic cash settlement",
      idempotencyKey:paymentIdempotency,confirmed:true,
    });
@@ -212,7 +212,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
 
    const browserLedger=await page.request.get("/api/billing/export");
    expect(browserLedger.status(),await browserLedger.text()).toBe(200);
-   const modelLedger=await call("ccp_v1_billing_payments_export",{confirmed:true});
+   const modelLedger=await call("ccp_billing_payments_export",{confirmed:true});
    expect(modelLedger.error).toBeUndefined();
    const lineForInvoice=(csv:string)=>csv.split("\n").find(row=>row.includes(invoiceId));
    expect(lineForInvoice(await browserLedger.text())).toBeTruthy();

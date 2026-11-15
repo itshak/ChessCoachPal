@@ -10,7 +10,7 @@ async function close(server:Server){
  await new Promise<void>((ok,bad)=>server.close(e=>e?bad(e):ok()));
 }
 async function newTeacherStudents(call:Awaited<ReturnType<typeof delegatedTool>>){
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
   name:randomName("Integrated chess club"),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:uuid(),
  });
@@ -20,10 +20,10 @@ async function newTeacherStudents(call:Awaited<ReturnType<typeof delegatedTool>>
  for(let i=0;i<3;i++){
   const name=randomName("Integrated learner "+i);
   names.push(name);
-  const created=await call("ccp_v1_students_create",{name,idempotencyKey:uuid()});
+  const created=await call("ccp_students_create",{name,idempotencyKey:uuid()});
   expect(created.error).toBeUndefined();
   const studentId=created.data.entityId as string;
-  expect((await call("ccp_v1_workplaces_enroll",{
+  expect((await call("ccp_workplaces_enroll",{
    workplaceId,studentId,idempotencyKey:uuid(),
   })).error).toBeUndefined();
   ids.push(studentId);
@@ -147,7 +147,7 @@ test("PARITY:PARITY-integrated-teacher-context-student-ratings-and-fen",async({p
  const ctx=await page.request.get("/api/teacher/context");
  expect(ctx.status()).toBe(200);
  const webCtx=await ctx.json();
- const mcpCtx=await call("ccp_v1_teacher_context_get",{});
+ const mcpCtx=await call("ccp_teacher_context_get",{});
  expect(mcpCtx.error).toBeUndefined();
  expect(mcpCtx.data.localDate).toBe(webCtx.localDate);
  expect(mcpCtx.data.timezone).toBe(webCtx.timezone);
@@ -162,12 +162,12 @@ test("PARITY:PARITY-integrated-teacher-context-student-ratings-and-fen",async({p
  });
  expect(observed.status(),await observed.text()).toBe(200);
  expect((await observed.json()).replayed).toBe(false);
- const replay=await call("ccp_v1_student_ratings_record",{studentId,...manual});
+ const replay=await call("ccp_student_ratings_record",{studentId,...manual});
  expect(replay.error).toBeUndefined();
  expect(replay.data.replayed).toBe(true);
  const history=await page.request.get("/api/students/"+studentId+"/ratings?limit=50");
  expect(history.status()).toBe(200);
- const list=await call("ccp_v1_student_ratings_list",{studentId});
+ const list=await call("ccp_student_ratings_list",{studentId});
  expect(list.error).toBeUndefined();
  expect(list.data).toEqual(await history.json());
  expect(list.data.snapshots).toMatchObject([{
@@ -176,7 +176,7 @@ test("PARITY:PARITY-integrated-teacher-context-student-ratings-and-fen",async({p
  const unchanged=await page.request.get("/api/students/"+studentId);
  expect(unchanged.status()).toBe(200);
  expect((await unchanged.json()).strength).toBeNull();
- const foreign=await call("ccp_v1_student_ratings_list",{studentId:uuid()});
+ const foreign=await call("ccp_student_ratings_list",{studentId:uuid()});
  expect(foreign.error).toBeDefined();
  const webFen=await page.request.post("/api/lichess/fen-validate",{
   data:{fen:startFen,source:"image"},
@@ -184,13 +184,13 @@ test("PARITY:PARITY-integrated-teacher-context-student-ratings-and-fen",async({p
  expect(webFen.status()).toBe(200);
  const fen=await webFen.json();
  expect(fen.unknownGameState).toContain("sideToMove");
- const mcpFen=await call("ccp_v1_chess_fen_validate",{fen:startFen,source:"image"});
+ const mcpFen=await call("ccp_chess_fen_validate",{fen:startFen,source:"image"});
  expect(mcpFen.error).toBeUndefined();expect(mcpFen.data).toEqual(fen);
  const impossible="4k3/8/8/8/8/8/8/4R2K w - - 0 1";
  expect((await page.request.post("/api/lichess/fen-validate",{
   data:{fen:impossible,source:"manual"},
  })).status()).toBe(400);
- expect((await call("ccp_v1_chess_fen_validate",{
+ expect((await call("ccp_chess_fen_validate",{
   fen:impossible,source:"manual",
  })).error?.code).toBe("VALIDATION_ERROR");
 });
@@ -214,7 +214,7 @@ test("PARITY:PARITY-public-lichess-and-chesscom-rating-sources-are-independent",
    const candidate=await web.json();
    expect(candidate.provider).toBe(provider);
    expect(candidate.teacherStrengthChanged).toBe(false);
-   const mcp=await call("ccp_v1_student_ratings_refresh_preview",{
+   const mcp=await call("ccp_student_ratings_refresh_preview",{
     studentId,provider,confirmedExternal:true,
    });
    expect(mcp.error).toBeUndefined();
@@ -225,7 +225,7 @@ test("PARITY:PARITY-public-lichess-and-chesscom-rating-sources-are-independent",
      [x.timeControl,x.rating]));
    const approval={studentId,provider,expectedDigest:candidate.expectedDigest,
     requestId:uuid(),confirmed:true,confirmedExternal:true};
-   const committed=await call("ccp_v1_student_ratings_refresh_commit",approval);
+   const committed=await call("ccp_student_ratings_refresh_commit",approval);
    expect(committed.error).toBeUndefined();
    expect(committed.data.replayed).toBe(false);
    const replay=await page.request.post("/api/students/"+studentId+"/ratings",{
@@ -240,12 +240,12 @@ test("PARITY:PARITY-public-lichess-and-chesscom-rating-sources-are-independent",
    });
    expect(mismatched.status(),await mismatched.text()).toBe(400);
    expect((await mismatched.json()).error).toMatch(/student ID does not match URL/);
-   const altered=await call("ccp_v1_student_ratings_refresh_commit",{
+   const altered=await call("ccp_student_ratings_refresh_commit",{
     ...approval,expectedDigest:"0".repeat(64),
    });
    expect(altered.error?.code).toBe("IDEMPOTENCY_CONFLICT");
   }
-  const list=await call("ccp_v1_student_ratings_list",{studentId});
+  const list=await call("ccp_student_ratings_list",{studentId});
   expect(list.error).toBeUndefined();
   const snaps=list.data.snapshots as Array<{
    provider:string;time_control:string;rating:number;provisional:boolean|null;source:string;
@@ -269,7 +269,7 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
   });
   expect(sync.status(),await sync.text()).toBe(200);
   expect((await sync.json()).chapterCount).toBe(64);
-  const mcpSync=await call("ccp_v1_materials_chapters_sync",{
+  const mcpSync=await call("ccp_materials_chapters_sync",{
    studyId:"StUd1234",confirmedExternal:true,
   });
   expect(mcpSync.error).toBeUndefined();
@@ -278,7 +278,7 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
   const web=await page.request.get("/api/lichess/chapter-index"+query);
   expect(web.status(),await web.text()).toBe(200);
   const cached=await web.json();
-  const mcp=await call("ccp_v1_materials_chapters_search",{
+  const mcp=await call("ccp_materials_chapters_search",{
    studyId:"StUd1234",chapterNumber:32,query:"Steinitz",
   });
   expect(mcp.error).toBeUndefined();expect(mcp.data).toEqual(cached);
@@ -287,7 +287,7 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
    chapter_id:"Ch000032",chapter_number:32,
    white_player:"Steinitz",black_player:"Chigorin",stale:false,
   });
-  const chapter=await call("ccp_v1_materials_chapters_get",{
+  const chapter=await call("ccp_materials_chapters_get",{
    studyId:"StUd1234",chapterId:"Ch000032",
   });
   expect(chapter.error).toBeUndefined();
@@ -306,7 +306,7 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
   });
   expect(proposed.status(),await proposed.text()).toBe(200);
   const reviewed=await proposed.json();
-  const delegated=await call("ccp_v1_lessons_capture_preview",capture);
+  const delegated=await call("ccp_lessons_capture_preview",capture);
   expect(delegated.error).toBeUndefined();
   expect(delegated.data).toEqual(reviewed);
   expect(reviewed.canCommit).toBe(true);
@@ -317,7 +317,7 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
   });
   expect(reviewed.review.materialAssociation).toBe("not_written");
   expect(reviewed.proposedSession.studentIds).toEqual(ids);
-  const session=await call("ccp_v1_sessions_ad_hoc_create",{
+  const session=await call("ccp_sessions_ad_hoc_create",{
    ...reviewed.proposedSession,
    idempotencyKey:uuid(),confirmed:true,
   });
@@ -333,11 +333,11 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
   expect(plan.canCommit).toBe(true);
   expect(plan.studentCoverageCount).toBe(3);
   expect(plan.uniqueWorkplaceLessonCount).toBe(1);
-  const model=await call("ccp_v1_materials_link_preview",payload);
+  const model=await call("ccp_materials_link_preview",payload);
   expect(model.error).toBeUndefined();
   expect(model.data).toEqual(plan);
   const key=uuid();
-  const confirmed=await call("ccp_v1_materials_link_commit",{
+  const confirmed=await call("ccp_materials_link_commit",{
    ...plan.proposedCommit,requestId:key,confirmed:true,
   });
   expect(confirmed.error).toBeUndefined();
@@ -350,7 +350,7 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
   });
   expect(replay.status(),await replay.text()).toBe(200);
   expect((await replay.json()).replayed).toBe(true);
-  const history=await call("ccp_v1_materials_history_list",{sessionId});
+  const history=await call("ccp_materials_history_list",{sessionId});
   expect(history.error).toBeUndefined();
   expect(history.data.entries).toHaveLength(3);
   expect(history.data.pageSummary.uniqueSessionMaterialCount).toBe(1);
@@ -359,7 +359,7 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
   });
   expect(rejected.status()).toBe(200);
   expect((await rejected.json()).canCommit).toBe(false);
-  const foreign=await call("ccp_v1_materials_chapters_get",{
+  const foreign=await call("ccp_materials_chapters_get",{
    studyId:"StUd1234",chapterId:"Ch123456",
   });
   expect(foreign.error?.code).toBe("NOT_FOUND");
@@ -394,7 +394,7 @@ test("PARITY:PARITY-lesson-and-verified-chapter-commit-is-one-transaction-across
   const webPreview=await page.request.post("/api/coaching/lesson-capture/preview",{data:payload});
   expect(webPreview.status(),await webPreview.text()).toBe(200);
   const preview=await webPreview.json();
-  const mcpPreview=await call("ccp_v1_lessons_capture_preview",payload);
+  const mcpPreview=await call("ccp_lessons_capture_preview",payload);
   expect(mcpPreview.error).toBeUndefined();
   expect(mcpPreview.data).toEqual(preview);
   expect(preview.canCommit).toBe(true);
@@ -404,7 +404,7 @@ test("PARITY:PARITY-lesson-and-verified-chapter-commit-is-one-transaction-across
   });
   const keys={requestId:uuid(),evidenceRequestId:uuid(),confirmed:true};
   const agreed={...preview.proposedAtomicCommit,...keys};
-  const committed=await call("ccp_v1_lessons_capture_commit_with_chapter",agreed);
+  const committed=await call("ccp_lessons_capture_commit_with_chapter",agreed);
   expect(committed.error).toBeUndefined();
   expect(committed.data).toMatchObject({
    oneTransaction:true,replayed:false,attendance:"unmarked",inferredMastery:false,
@@ -418,15 +418,15 @@ test("PARITY:PARITY-lesson-and-verified-chapter-commit-is-one-transaction-across
    oneTransaction:true,replayed:true,session:{id:sessionId},
    evidence:{participantCoverages:3,replayed:true},
   });
-  const saved=await call("ccp_v1_sessions_details",{sessionId});
+  const saved=await call("ccp_sessions_details",{sessionId});
   expect(saved.error).toBeUndefined();
   expect(saved.data.duration_minutes).toBe(90);
-  const attendance=await call("ccp_v1_attendance_preview",{sessionId});
+  const attendance=await call("ccp_attendance_preview",{sessionId});
   expect(attendance.error).toBeUndefined();
   expect(attendance.data.attendance).toHaveLength(3);
   expect(attendance.data.attendance.every((x:{status:string})=>x.status==="unmarked"))
    .toBe(true);
-  const history=await call("ccp_v1_materials_history_list",{sessionId});
+  const history=await call("ccp_materials_history_list",{sessionId});
   expect(history.error).toBeUndefined();
   expect(history.data.entries).toHaveLength(3);
   expect(history.data.pageSummary.uniqueSessionMaterialCount).toBe(1);
@@ -439,13 +439,13 @@ test("PARITY:PARITY-lesson-and-verified-chapter-commit-is-one-transaction-across
   // Failed verified-source version must ROLLBACK both the new lesson and
   // material assignment, not leave a ghost session with unlinked chapter.
   const staleTitle=randomName("Rollback stale chapter");
-  const stale=await call("ccp_v1_lessons_capture_commit_with_chapter",{
+  const stale=await call("ccp_lessons_capture_commit_with_chapter",{
    ...agreed,requestId:uuid(),evidenceRequestId:uuid(),title:staleTitle,
    startsAt:"2091-07-08T16:00:00.000Z",
    expectedVerifiedAt:"2000-01-01T00:00:00.000Z",
   });
   expect(stale.error?.code).toBe("CONFLICT");
-  const missing=await call("ccp_v1_sessions_list",{query:staleTitle,workplaceId});
+  const missing=await call("ccp_sessions_list",{query:staleTitle,workplaceId});
   expect(missing.error).toBeUndefined();
   expect((missing.data as Array<{title:string}>).some(x=>x.title===staleTitle)).toBe(false);
   const invalid=await page.request.post("/api/coaching/lesson-capture/commit",{
@@ -476,7 +476,7 @@ test("PARITY:PARITY-student-workplace-teacher-lichess-preferences-resolve-and-co
   const base={purpose:"lesson" as const,expectedRevision:0,confirmed:true};
   const teacherApproval={...base,scope:"teacher" as const,scopeId:teacherId,
    studyId:"StUd1234",requestId:uuid()};
-  const teacher=await call("ccp_v1_materials_preferences_set",teacherApproval);
+  const teacher=await call("ccp_materials_preferences_set",teacherApproval);
   expect(teacher.error).toBeUndefined();
   expect(teacher.data).toMatchObject({studyId:"StUd1234",revision:1,replayed:false});
   const exactReplay=await page.request.post("/api/lichess/study-preferences",{
@@ -492,7 +492,7 @@ test("PARITY:PARITY-student-workplace-teacher-lichess-preferences-resolve-and-co
   });
   expect(workplace.status(),await workplace.text()).toBe(200);
   expect((await workplace.json()).revision).toBe(1);
-  const afterWorkplace=await call("ccp_v1_materials_preferences_resolve",{
+  const afterWorkplace=await call("ccp_materials_preferences_resolve",{
    purpose:"lesson",workplaceId,studentId:ids[0],
   });
   expect(afterWorkplace.error).toBeUndefined();
@@ -502,7 +502,7 @@ test("PARITY:PARITY-student-workplace-teacher-lichess-preferences-resolve-and-co
 
   const studentApproval={...base,scope:"student" as const,
    scopeId:ids[0],studyId:"PuzZ0002",requestId:uuid()};
-  const student=await call("ccp_v1_materials_preferences_set",studentApproval);
+  const student=await call("ccp_materials_preferences_set",studentApproval);
   expect(student.error).toBeUndefined();
   expect(student.data.studyId).toBe("PuzZ0002");
   const resolver=new URLSearchParams({action:"resolve",purpose:"lesson",
@@ -515,7 +515,7 @@ test("PARITY:PARITY-student-workplace-teacher-lichess-preferences-resolve-and-co
   const listWeb=await page.request.get(
    "/api/lichess/study-preferences?action=list&purpose=lesson&limit=50");
   expect(listWeb.status(),await listWeb.text()).toBe(200);
-  const listMcp=await call("ccp_v1_materials_preferences_list",{purpose:"lesson"});
+  const listMcp=await call("ccp_materials_preferences_list",{purpose:"lesson"});
   expect(listMcp.error).toBeUndefined();
   expect(listMcp.data).toEqual(await listWeb.json());
 
@@ -524,7 +524,7 @@ test("PARITY:PARITY-student-workplace-teacher-lichess-preferences-resolve-and-co
     studyId:"PuzZ0001",expectedRevision:0},
   });
   expect(invalid.status(),await invalid.text()).toBe(409);
-  const foreign=await call("ccp_v1_materials_preferences_set",{
+  const foreign=await call("ccp_materials_preferences_set",{
    ...studentApproval,scopeId:uuid(),requestId:uuid(),
   });
   expect(foreign.error?.code).toBe("NOT_FOUND");
@@ -534,7 +534,7 @@ test("PARITY:PARITY-student-workplace-teacher-lichess-preferences-resolve-and-co
   const proposed={names,workplaceId,title:randomName("Preferred study lesson"),
    startsAt:"2092-07-08T13:00:00.000Z",durationMinutes:90,lessonNote:"",
    chapterSelection:{chapterNumber:1}};
-  const ambiguous=await call("ccp_v1_lessons_capture_preview",proposed);
+  const ambiguous=await call("ccp_lessons_capture_preview",proposed);
   expect(ambiguous.error).toBeUndefined();
   expect(ambiguous.data.canCommit).toBe(false);
   expect(ambiguous.data.issues.some((x:{code:string})=>x.code==="CHAPTER_AMBIGUOUS"))
@@ -554,24 +554,24 @@ test("PARITY:PARITY-student-workplace-teacher-lichess-preferences-resolve-and-co
   expect(resolved.selectedChapter).toMatchObject({studyId:"PuzZ0001",
    chapterId:"ChP00001",attached:false});
   expect(resolved.review.writesPerformed).toBe(false);
-  expect((await call("ccp_v1_lessons_capture_preview",proposed)).data).toEqual(resolved);
-  const clearWorkplace=await call("ccp_v1_materials_preferences_set",{
+  expect((await call("ccp_lessons_capture_preview",proposed)).data).toEqual(resolved);
+  const clearWorkplace=await call("ccp_materials_preferences_set",{
    purpose:"lesson",scope:"workplace",scopeId:workplaceId,studyId:null,
    expectedRevision:1,requestId:uuid(),confirmed:true,
   });
   expect(clearWorkplace.error).toBeUndefined();
-  const teacherFallback=await call("ccp_v1_materials_preferences_resolve",{
+  const teacherFallback=await call("ccp_materials_preferences_resolve",{
    purpose:"lesson",workplaceId,studentId:ids[0],
   });
   expect(teacherFallback.error).toBeUndefined();
   expect(teacherFallback.data).toMatchObject({
    studyId:"StUd1234",selectedScope:"teacher",needsSync:false,
   });
-  expect((await call("ccp_v1_materials_preferences_resolve",{
+  expect((await call("ccp_materials_preferences_resolve",{
    purpose:"lesson",workplaceId:uuid(),studentId:ids[0],
   })).error?.code).toBe("NOT_FOUND");
   // Preferences do not alter progress, mastery, attendance or lesson history.
-  const sessions=await call("ccp_v1_sessions_list",{query:proposed.title,workplaceId});
+  const sessions=await call("ccp_sessions_list",{query:proposed.title,workplaceId});
   expect(sessions.error).toBeUndefined();
   expect((sessions.data as Array<{title:string}>)
    .some(x=>x.title===proposed.title)).toBe(false);
@@ -591,7 +591,7 @@ test("PARITY:PARITY-puzzles-study-capacity-and-private-numbered-series",async({p
   expect(web.status(),await web.text()).toBe(200);
   const series=await web.json();
   expect(series.nextName).toBe("Puzzles 3");
-  const mcp=await call("ccp_v1_puzzles_study_series_list",{});
+  const mcp=await call("ccp_puzzles_study_series_list",{});
   expect(mcp.error).toBeUndefined();
   expect(mcp.data.nextName).toBe(series.nextName);
   const capacity=await page.request.get("/api/lichess/puzzle-series?studyId=StUd1234");
@@ -600,16 +600,16 @@ test("PARITY:PARITY-puzzles-study-capacity-and-private-numbered-series",async({p
    chapterCount:64,maxChapters:64,availableChapters:0,
    canPublish:false,rolloverRequired:true,
   });
-  const mcpCapacity=await call("ccp_v1_puzzles_study_capacity",{studyId:"StUd1234"});
+  const mcpCapacity=await call("ccp_puzzles_study_capacity",{studyId:"StUd1234"});
   expect(mcpCapacity.error).toBeUndefined();
   expect(mcpCapacity.data).toEqual(await capacity.json());
   // A 64/64 destination is rejected before POST /import-pgn, even when
   // study:write authorization exists. It must not create a duplicate chapter.
   const puzzle={studyId:"StUd1234",chapterName:"Capacity guarded position",
     fen:startFen,moves:"1. e4 e5",orientation:"white"};
-  const review=await call("ccp_v1_lichess_puzzle_preview",puzzle);
+  const review=await call("ccp_lichess_puzzle_preview",puzzle);
   expect(review.error).toBeUndefined();
-  const denied=await call("ccp_v1_lichess_puzzle_publish",{
+  const denied=await call("ccp_lichess_puzzle_publish",{
    ...puzzle,expectedSha256:review.data.sha256,
    idempotencyKey:uuid(),confirmed:true,confirmedExternal:true,
   });
@@ -625,10 +625,10 @@ test("PARITY:PARITY-puzzles-study-capacity-and-private-numbered-series",async({p
    name:"Puzzles 3",studyId:"PuzZ0003",private:true,starterChapterCount:1,
   });
   expect(provider.getCreates()).toBe(1);
-  const noRepeat=await call("ccp_v1_puzzles_study_create",approved);
+  const noRepeat=await call("ccp_puzzles_study_create",approved);
   expect(noRepeat.error).toBeDefined();
   expect(provider.getCreates()).toBe(1);
-  const reconcile=await call("ccp_v1_puzzles_study_reconcile",{
+  const reconcile=await call("ccp_puzzles_study_reconcile",{
    requestId,confirmed:true,confirmedExternal:true,
   });
   expect(reconcile.error).toBeUndefined();

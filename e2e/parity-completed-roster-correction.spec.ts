@@ -14,29 +14,29 @@ test("PARITY:PARITY-calendar-correct-frozen-history completes group roster corre
    expect(result.error,JSON.stringify(result)).toBeUndefined();
    return result.data.entityId as string;
  };
- const workplaceId=await create("ccp_v1_workplaces_create",{
+ const workplaceId=await create("ccp_workplaces_create",{
    name:"Roster correction "+randomUUID(),timezone:"UTC",locale:"en",
    currency:"USD",policy:{},idempotencyKey:randomUUID(),
  });
- const studentA=await create("ccp_v1_students_create",{
+ const studentA=await create("ccp_students_create",{
    name:"Frozen alpha "+randomUUID(),idempotencyKey:randomUUID(),
  });
- const studentB=await create("ccp_v1_students_create",{
+ const studentB=await create("ccp_students_create",{
    name:"Frozen beta "+randomUUID(),idempotencyKey:randomUUID(),
  });
- const studentC=await create("ccp_v1_students_create",{
+ const studentC=await create("ccp_students_create",{
    name:"Historical late entrant "+randomUUID(),idempotencyKey:randomUUID(),
  });
- const groupId=await create("ccp_v1_groups_create",{
+ const groupId=await create("ccp_groups_create",{
    workplaceId,name:"Historical correcting class",idempotencyKey:randomUUID(),
  });
  for(const id of [studentA,studentB]){
-   const member=await call("ccp_v1_groups_enroll",{
+   const member=await call("ccp_groups_enroll",{
      groupId,studentId:id,idempotencyKey:randomUUID(),
    });
    expect(member.error).toBeUndefined();
  }
- const sessionId=await create("ccp_v1_sessions_create",{
+ const sessionId=await create("ccp_sessions_create",{
    workplaceId,groupId,title:"Completed rook endgame",
    startsAt:"2048-03-02T14:00:00.000Z",durationMinutes:60,
    lessonNote:"Original group lesson",idempotencyKey:randomUUID(),
@@ -46,11 +46,11 @@ test("PARITY:PARITY-calendar-correct-frozen-history completes group roster corre
    status:"absent",note:"Originally marked absent, requires correction",
  }});
  expect(browserAttendance.status(),await browserAttendance.text()).toBe(200);
- const details=await call("ccp_v1_sessions_details",{sessionId});
+ const details=await call("ccp_sessions_details",{sessionId});
  expect(details.error).toBeUndefined();
- const attendance=await call("ccp_v1_attendance_preview",{sessionId});
+ const attendance=await call("ccp_attendance_preview",{sessionId});
  expect(attendance.error).toBeUndefined();
- const completed=await call("ccp_v1_sessions_complete",{
+ const completed=await call("ccp_sessions_complete",{
    sessionId,expectedUpdatedAt:details.data.updated_at,
    idempotencyKey:randomUUID(),confirmed:true,
    attendance:attendance.data.attendance.map((row:{
@@ -70,7 +70,7 @@ test("PARITY:PARITY-calendar-correct-frozen-history completes group roster corre
  const preview=await siteBefore.json();
  expect(preview.studentIds.slice().sort()).toEqual([studentA,studentB].sort());
  expect(preview.status).toBe("completed");
- const mcpBefore=await call("ccp_v1_sessions_roster_preview",{sessionId});
+ const mcpBefore=await call("ccp_sessions_roster_preview",{sessionId});
  expect(mcpBefore.error).toBeUndefined();
  expect(mcpBefore.data.studentIds).toEqual(preview.studentIds);
  expect(mcpBefore.data.updatedAt).toBe(preview.updatedAt);
@@ -81,22 +81,22 @@ test("PARITY:PARITY-calendar-correct-frozen-history completes group roster corre
    reason:"Correct mistaken historical attendee after coach review",
    confirmed:true,
  };
- const denied=await call("ccp_v1_sessions_roster_correct",{
+ const denied=await call("ccp_sessions_roster_correct",{
    ...args,confirmed:false,
  });
  expect(denied.error?.code).toBe("VALIDATION_ERROR");
- const revised=await call("ccp_v1_sessions_roster_correct",args);
+ const revised=await call("ccp_sessions_roster_correct",args);
  expect(revised.error).toBeUndefined();
  expect(revised.data.removedStudentIds).toEqual([studentB]);
  expect(revised.data.addedStudentIds).toEqual([studentC]);
- const replay=await call("ccp_v1_sessions_roster_correct",args);
+ const replay=await call("ccp_sessions_roster_correct",args);
  expect(replay.error).toBeUndefined();
  expect(replay.data).toEqual(revised.data);
- const changedKey=await call("ccp_v1_sessions_roster_correct",{
+ const changedKey=await call("ccp_sessions_roster_correct",{
    ...args,reason:"Different historical reason, same request key",
  });
  expect(changedKey.error?.code).toBe("CONFLICT");
- const stale=await call("ccp_v1_sessions_roster_correct",{
+ const stale=await call("ccp_sessions_roster_correct",{
    ...args,idempotencyKey:randomUUID(),
  });
  expect(stale.error?.code).toBe("CONFLICT");
@@ -114,16 +114,16 @@ test("PARITY:PARITY-calendar-correct-frozen-history completes group roster corre
  expect(marks.map(x=>x.student_id).sort()).toEqual([studentA,studentC].sort());
  expect(marks.find(x=>x.student_id===studentC)?.status).toBe("unmarked");
 
- const publicAudit=await call("ccp_v1_sessions_roster_revisions_list",{sessionId});
+ const publicAudit=await call("ccp_sessions_roster_revisions_list",{sessionId});
  expect(publicAudit.error).toBeUndefined();
  expect(publicAudit.data.corrections).toHaveLength(1);
  expect(publicAudit.data.corrections[0].removedAttendanceCount).toBe(1);
  expect(publicAudit.data.corrections[0].removedAttendance).toBeUndefined();
- const refusedPrivate=await call("ccp_v1_sessions_roster_revisions_list",{
+ const refusedPrivate=await call("ccp_sessions_roster_revisions_list",{
    sessionId,includePrivate:true,
  });
  expect(refusedPrivate.error?.code).toBe("VALIDATION_ERROR");
- const privateAudit=await call("ccp_v1_sessions_roster_revisions_list",{
+ const privateAudit=await call("ccp_sessions_roster_revisions_list",{
    sessionId,includePrivate:true,confirmed:true,
  });
  expect(privateAudit.error).toBeUndefined();
@@ -143,10 +143,10 @@ test("PARITY:PARITY-calendar-correct-frozen-history completes group roster corre
    confirmed:true,
  }});
  expect(browserCorrection.status(),await browserCorrection.text()).toBe(200);
- const modelFinal=await call("ccp_v1_sessions_roster_preview",{sessionId});
+ const modelFinal=await call("ccp_sessions_roster_preview",{sessionId});
  expect(modelFinal.error).toBeUndefined();
  expect(modelFinal.data.studentIds.slice().sort()).toEqual([studentA,studentB,studentC].sort());
- const history=await call("ccp_v1_sessions_roster_revisions_list",{sessionId});
+ const history=await call("ccp_sessions_roster_revisions_list",{sessionId});
  expect(history.error).toBeUndefined();
  expect(history.data.corrections).toHaveLength(2);
  expect(history.data.corrections[1].previousStudentIds).toEqual([studentA,studentB].sort());
@@ -158,7 +158,7 @@ test("PARITY:PARITY-calendar-correct-frozen-history completes group roster corre
    confirmed:true,
  }});
  expect(bad.status()).toBe(404);
- const still=await call("ccp_v1_sessions_roster_preview",{sessionId});
+ const still=await call("ccp_sessions_roster_preview",{sessionId});
  expect(still.data.studentIds.slice().sort()).toEqual([studentA,studentB,studentC].sort());
 });
 
@@ -210,12 +210,12 @@ test("PARITY:PARITY-session-roster-foreign-tenant denies snapshot, confidential 
 
   const site=await page.request.get("/api/coaching/sessions/"+id+"/roster");
   expect(site.status(),await site.text()).toBe(404);
-  const model=await call("ccp_v1_sessions_roster_preview",{sessionId:id});
+  const model=await call("ccp_sessions_roster_preview",{sessionId:id});
   expect(model.error?.code).toBe("NOT_FOUND");
   const privateSite=await page.request.get(
    "/api/coaching/sessions/"+id+"/roster?revisions=true&includePrivate=true&confirmed=true");
   expect(privateSite.status(),await privateSite.text()).toBe(404);
-  const privateModel=await call("ccp_v1_sessions_roster_revisions_list",{
+  const privateModel=await call("ccp_sessions_roster_revisions_list",{
    sessionId:id,includePrivate:true,confirmed:true,
   });
   expect(privateModel.error?.code).toBe("NOT_FOUND");
@@ -228,7 +228,7 @@ test("PARITY:PARITY-session-roster-foreign-tenant denies snapshot, confidential 
   const deniedWeb=await page.request.post(
    "/api/coaching/sessions/"+id+"/roster",{data:correction});
   expect(deniedWeb.status(),await deniedWeb.text()).toBe(404);
-  const deniedMcp=await call("ccp_v1_sessions_roster_correct",{
+  const deniedMcp=await call("ccp_sessions_roster_correct",{
    sessionId:id,...correction,idempotencyKey:randomUUID(),
   });
   expect(deniedMcp.error?.code).toBe("NOT_FOUND");

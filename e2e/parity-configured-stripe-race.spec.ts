@@ -84,7 +84,7 @@ test("PARITY:PARITY-configured-checkout-independent-two-claim-race keeps only on
   })).error).toBeNull();
   const [site,agent]=await Promise.all([
    page.request.post("/api/billing/invoices/"+invoiceId+"/checkout"),
-   call("ccp_v1_billing_invoice_checkout",{
+   call("ccp_billing_invoice_checkout",{
     invoiceId,confirmed:true,confirmedExternal:true,
    }),
   ]);
@@ -105,7 +105,7 @@ test("PARITY:PARITY-configured-checkout-independent-two-claim-race keeps only on
   expect(loser).toBeDefined();
   expect(expired.has(loser!)).toBe(true);
   expect(expired.has(winner)).toBe(false);
-  const replay=await call("ccp_v1_billing_invoice_checkout",{
+  const replay=await call("ccp_billing_invoice_checkout",{
    invoiceId,confirmed:true,confirmedExternal:true,
   });
   expect(replay.error).toBeUndefined();

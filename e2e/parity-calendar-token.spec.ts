@@ -23,12 +23,12 @@ test("PARITY:PARITY-calendar-token-rotation revokes feed through MCP without rev
  };
  const oldToken=await token();
  expect(oldToken.length).toBeGreaterThan(15);
- const status=await call("ccp_v1_calendar_feed_status",{});
+ const status=await call("ccp_calendar_feed_status",{});
  expect(status.error).toBeUndefined();
  expect(status.data).toEqual({configured:true,secretNotReturned:true});
- const denied=await call("ccp_v1_calendar_feed_rotate",{});
+ const denied=await call("ccp_calendar_feed_rotate",{});
  expect(denied.error?.code).toBe("VALIDATION_ERROR");
- const mcp=await call("ccp_v1_calendar_feed_rotate",{confirmed:true});
+ const mcp=await call("ccp_calendar_feed_rotate",{confirmed:true});
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual({ok:true,rotated:true,secretNotReturned:true});
  const newToken=await token();
@@ -42,7 +42,7 @@ test("PARITY:PARITY-calendar-token-rotation revokes feed through MCP without rev
  const latestToken=await token();
  expect(response.calendar_token).toBe(latestToken);
  expect(latestToken).not.toBe(newToken);
- const safe=await call("ccp_v1_calendar_feed_status",{});
+ const safe=await call("ccp_calendar_feed_status",{});
  expect(safe.error).toBeUndefined();
  expect(safe.data).toEqual({configured:true,secretNotReturned:true});
  expect(JSON.stringify(safe.data)).not.toContain(latestToken);
