@@ -4,6 +4,21 @@
 
 ## Requirements
 
+### Requirement: Release provenance and concurrency-safe external checkout
+
+A production release SHALL be verified against its exact reviewed main-branch Git SHA, Vercel production target, intended aliases and application endpoints. The pre-v1 database installation SHALL remain one canonical baseline, without incremental compatibility migrations or legacy aliases.
+
+#### Scenario: Website and MCP race on one invoice
+- **WHEN** two transports initiate the same invoice checkout
+- **THEN** both MAY succeed only if they return the SAME persisted checkout link without another payable session; if distinct upstream sessions are created, only one SHALL be linked and payable, the other SHALL be expired, and the losing call SHALL conflict.
+- **AND** later retry SHALL return the persisted winner without another provider creation.
+
+#### Scenario: Hardened test database
+- **WHEN** Supabase permission fixes are applied safely in place
+- **THEN** existing records SHALL be preserved and remaining security/performance advisor findings SHALL be classified; no wipe SHALL be used solely to silence warnings.
+
+
+
 ### Requirement: Website operations without mandatory external AI
 A new teacher SHALL be able to install the current self-hosted ChessCoachPal schema, sign up and use the website without an OpenAI, Anthropic, Notion, Google or Lichess account.
 
