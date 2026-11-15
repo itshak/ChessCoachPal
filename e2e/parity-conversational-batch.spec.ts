@@ -360,6 +360,90 @@ test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",asyn
   await close(provider.server);
  }
 });
+test("PARITY:PARITY-lesson-and-verified-chapter-commit-is-one-transaction-across-web-and-MCP",async({page,request})=>{
+ const provider=await lichessStudyProvider();
+ try{
+  const call=await delegatedTool(page,request);
+  const {workplaceId,ids,names}=await newTeacherStudents(call);
+  await page.goto("/api/lichess/connect?mode=read");
+  await page.waitForURL(u=>u.pathname==="/learning"&&u.searchParams.get("lichess")==="connected");
+  const sync=await page.request.post("/api/lichess/chapter-index",{
+   data:{studyId:"StUd1234",confirmedExternal:true},
+  });
+  expect(sync.status(),await sync.text()).toBe(200);
+  const payload={
+   names,workplaceId,title:randomName("Atomic rook endgame"),
+   startsAt:"2091-07-08T13:00:00.000Z",durationMinutes:90,
+   lessonNote:"Unmarked attendance, verified chapter assignment only",
+   chapterSelection:{studyId:"StUd1234",chapterNumber:32,
+    expectedPlayers:"Steinitz–Chigorin"},
+  };
+  const webPreview=await page.request.post("/api/coaching/lesson-capture/preview",{data:payload});
+  expect(webPreview.status(),await webPreview.text()).toBe(200);
+  const preview=await webPreview.json();
+  const mcpPreview=await call("ccp_v1_lessons_capture_preview",payload);
+  expect(mcpPreview.error).toBeUndefined();
+  expect(mcpPreview.data).toEqual(preview);
+  expect(preview.canCommit).toBe(true);
+  expect(preview.proposedAtomicCommit).toMatchObject({
+   workplaceId,studentIds:ids,studyId:"StUd1234",chapterId:"Ch000032",
+   durationMinutes:90,
+  });
+  const keys={requestId:uuid(),evidenceRequestId:uuid(),confirmed:true};
+  const agreed={...preview.proposedAtomicCommit,...keys};
+  const committed=await call("ccp_v1_lessons_capture_commit_with_chapter",agreed);
+  expect(committed.error).toBeUndefined();
+  expect(committed.data).toMatchObject({
+   oneTransaction:true,replayed:false,attendance:"unmarked",inferredMastery:false,
+   evidence:{participantCoverages:3,uniqueWorkplaceLessonCount:1,inferredMastery:false},
+  });
+  const sessionId=committed.data.session.id as string;
+  expect(sessionId).toBeTruthy();
+  const replay=await page.request.post("/api/coaching/lesson-capture/commit",{data:agreed});
+  expect(replay.status(),await replay.text()).toBe(200);
+  expect(await replay.json()).toMatchObject({
+   oneTransaction:true,replayed:true,session:{id:sessionId},
+   evidence:{participantCoverages:3,replayed:true},
+  });
+  const saved=await call("ccp_v1_sessions_details",{sessionId});
+  expect(saved.error).toBeUndefined();
+  expect(saved.data.duration_minutes).toBe(90);
+  const attendance=await call("ccp_v1_attendance_preview",{sessionId});
+  expect(attendance.error).toBeUndefined();
+  expect(attendance.data.attendance).toHaveLength(3);
+  expect(attendance.data.attendance.every((x:{status:string})=>x.status==="unmarked"))
+   .toBe(true);
+  const history=await call("ccp_v1_materials_history_list",{sessionId});
+  expect(history.error).toBeUndefined();
+  expect(history.data.entries).toHaveLength(3);
+  expect(history.data.pageSummary.uniqueSessionMaterialCount).toBe(1);
+
+  const reused=await page.request.post("/api/coaching/lesson-capture/commit",{
+   data:{...agreed,title:"Rebound title"},
+  });
+  expect(reused.status(),await reused.text()).toBe(409);
+
+  // Failed verified-source version must ROLLBACK both the new lesson and
+  // material assignment, not leave a ghost session with unlinked chapter.
+  const staleTitle=randomName("Rollback stale chapter");
+  const stale=await call("ccp_v1_lessons_capture_commit_with_chapter",{
+   ...agreed,requestId:uuid(),evidenceRequestId:uuid(),title:staleTitle,
+   startsAt:"2091-07-08T16:00:00.000Z",
+   expectedVerifiedAt:"2000-01-01T00:00:00.000Z",
+  });
+  expect(stale.error?.code).toBe("CONFLICT");
+  const missing=await call("ccp_v1_sessions_list",{query:staleTitle,workplaceId});
+  expect(missing.error).toBeUndefined();
+  expect((missing.data as Array<{title:string}>).some(x=>x.title===staleTitle)).toBe(false);
+  const invalid=await page.request.post("/api/coaching/lesson-capture/commit",{
+   data:{...agreed,evidenceRequestId:keys.requestId},
+  });
+  expect(invalid.status(),await invalid.text()).toBe(400);
+ }finally{
+  await page.request.delete("/api/lichess/connection",{data:{confirmed:true}}).catch(()=>{});
+  await close(provider.server);
+ }
+});
 test("PARITY:PARITY-puzzles-study-capacity-and-private-numbered-series",async({page,request})=>{
  const provider=await lichessStudyProvider();
  try{
