@@ -65,6 +65,30 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Lint modified financial, MCP and migration code
+        run: >-
+          npm run lint --
+          lib/server/teacher-manual-payments.ts
+          lib/server/teacher-invoice-actions.ts
+          lib/server/teacher-billing-operations.ts
+          lib/server/invoice-send.ts
+          lib/server/invoice-pdf-data.ts
+          lib/server/invoice-pdf.ts
+          lib/server/invoice-pdf.test.ts
+          lib/server/teacher-invoice-send-preview.ts
+          lib/server/agent-tools.ts
+          lib/hosted-billing/founding.ts
+          lib/hosted-billing/founding.test.ts
+          app/api/hosted-billing/webhook/route.ts
+          app/portal/[token]/page.tsx
+          app/(teacher)/billing/[id]/page.tsx
+          components/teacher/billing/InvoiceDetailClient.tsx
+          components/teacher/settings/HostingSettingsForm.tsx
+          e2e/parity-billing-lifecycle.spec.ts
+          scripts/grant-founding.mjs
+          scripts/supabase-push-target-guard.mjs
+          scripts/supabase-push-target-guard.test.mjs
+
       - name: Unit tests
         run: npm test
 

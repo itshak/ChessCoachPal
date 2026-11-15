@@ -15,7 +15,11 @@ export function unsafeMigrationPushes(source,file="input"){
    if(line.startsWith("#")||line.startsWith("//"))continue;
    const match=line.match(/(?:^|[;&|\s])(?:npx\s+)?supabase\s+db\s+push\b/);
    if(!match)continue;
-   const command=lines.slice(i,i+4).join(" ").split(/\s+(?:&&|;|\|\|)\s+/)[0];
+   const candidate=lines.slice(i,i+4).join(" ");
+   const offset=candidate.indexOf(match[0])+match[0].length;
+   // Ignore commands BEFORE the push (for example an explicit project-ref
+   // check joined with &&); evaluate only flags attached to this push.
+   const command=candidate.slice(offset).split(/\s*(?:&&|;|\|\|)\s*/)[0];
    if(!/(?:^|\s)--(?:remote|local)(?:\s|$)/.test(command))
      errors.push(`${file}:${i+1}: Supabase db push must specify --remote or --local`);
    if(/--remote\b/.test(command)&&
