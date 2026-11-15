@@ -7,7 +7,7 @@ test("PARITY:PARITY-spreadsheet-preview-commit-replay shares mapping and dedupli
  const name="CSV chess learner "+randomUUID(),parent="Guardian "+randomUUID().slice(0,7);
  const csv="Student Name,Guardian Name\n"+name+","+parent+"\n";
  const filename="parity-pupils.csv";
- const fromMcp=await call("ccp_v1_import_spreadsheet_parse",{
+ const fromMcp=await call("ccp_import_spreadsheet_parse",{
    filename,base64:Buffer.from(csv).toString("base64"),
  });
  expect(fromMcp.error).toBeUndefined();
@@ -24,11 +24,11 @@ test("PARITY:PARITY-spreadsheet-preview-commit-replay shares mapping and dedupli
    data:{rows,mapping},
  });
  expect(webPreview.status(),await webPreview.text()).toBe(200);
- const modelPreview=await call("ccp_v1_import_spreadsheet_preview",{rows,mapping});
+ const modelPreview=await call("ccp_import_spreadsheet_preview",{rows,mapping});
  expect(modelPreview.error).toBeUndefined();
  expect(modelPreview.data).toEqual(await webPreview.json());
  const idempotencyKey=randomUUID();
- const write=await call("ccp_v1_import_spreadsheet_commit",{
+ const write=await call("ccp_import_spreadsheet_commit",{
    rows,mapping,idempotencyKey,confirmed:true,
  });
  expect(write.error).toBeUndefined();

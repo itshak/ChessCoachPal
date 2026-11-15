@@ -57,12 +57,12 @@ test("PARITY:PARITY-spreadsheet-ai-provider-consent-response-and-failure is iden
    data:{headers,sampleRows,useAi:false},
   });
   expect(safe.status(),await safe.text()).toBe(200);
-  const safeMcp=await call("ccp_v1_import_spreadsheet_suggest",{
+  const safeMcp=await call("ccp_import_spreadsheet_suggest",{
    headers,sampleRows,useAi:false,
   });
   expect(safeMcp.error).toBeUndefined();
   expect(safeMcp.data).toEqual(await safe.json());
-  const notApproved=await call("ccp_v1_import_spreadsheet_suggest",{
+  const notApproved=await call("ccp_import_spreadsheet_suggest",{
    headers,sampleRows,useAi:true,
   });
   expect(notApproved.error?.code).toBe("VALIDATION_ERROR");
@@ -74,7 +74,7 @@ test("PARITY:PARITY-spreadsheet-ai-provider-consent-response-and-failure is iden
   expect(aiSite.mapping.student_name).toBe("Learner full name");
   expect(aiSite.mapping.guardian_name).toBe("Parent contact");
   expect(aiSite.warning).toBeNull();
-  const aiMcp=await call("ccp_v1_import_spreadsheet_suggest",approved);
+  const aiMcp=await call("ccp_import_spreadsheet_suggest",approved);
   expect(aiMcp.error).toBeUndefined();
   expect(aiMcp.data).toEqual(aiSite);
   expect(attempts).toHaveLength(2);
@@ -95,7 +95,7 @@ test("PARITY:PARITY-spreadsheet-ai-provider-consent-response-and-failure is iden
   expect(failedSite.status()).toBe(502);
   const body=await failedSite.json();
   expect(body.code).toBe("AI_UNAVAILABLE");
-  const failedTool=await call("ccp_v1_import_spreadsheet_suggest",approved);
+  const failedTool=await call("ccp_import_spreadsheet_suggest",approved);
   expect(failedTool.error?.code).toBe("AI_UNAVAILABLE");
   expect(JSON.stringify({body,model:failedTool})).not.toContain("PII-DO-NOT-LEAK");
   expect(JSON.stringify({body,model:failedTool})).not.toContain(marker);

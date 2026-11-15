@@ -20,7 +20,7 @@ test("PARITY:PARITY-student-delete-impact-current-material-schema denies histori
  const {admin,browserDb}=clients();
  expect((await browserDb.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
  const teacherId=(await browserDb.auth.getUser()).data.user!.id;
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
   name:"Delete history guard "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
@@ -29,7 +29,7 @@ test("PARITY:PARITY-student-delete-impact-current-material-schema denies histori
   const web=await page.request.get("/api/students/"+studentId+"?deletePreview=true");
   expect(web.status(),await web.text()).toBe(200);
   const data=await web.json();
-  const mcp=await call("ccp_v1_students_delete_impact",{studentId});
+  const mcp=await call("ccp_students_delete_impact",{studentId});
   expect(mcp.error).toBeUndefined();
   expect(mcp.data).toEqual(data);
   return data as {canDelete:boolean;updatedAt:string;blockers:Record<string,number>};
@@ -69,7 +69,7 @@ test("PARITY:PARITY-student-delete-impact-current-material-schema denies histori
  });
  expect(websiteDelete.status(),await websiteDelete.text()).toBe(409);
  expect((await websiteDelete.json()).code).toBe("HISTORY_DEPENDENCIES");
- const modelDelete=await call("ccp_v1_students_delete",{
+ const modelDelete=await call("ccp_students_delete",{
   studentId,expectedUpdatedAt:blocked.updatedAt,confirmed:true,
  });
  expect(modelDelete.error?.code).toBe("HISTORY_DEPENDENCIES");
@@ -85,19 +85,19 @@ test("PARITY:PARITY-student-delete-revision-race-and-tenant-isolation allow one 
  const call=await delegatedTool(page,request);
  const {admin,browserDb}=clients();
  expect((await browserDb.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
   name:"Deletable empty profile "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const before=await call("ccp_v1_students_delete_impact",{studentId});
+ const before=await call("ccp_students_delete_impact",{studentId});
  expect(before.error).toBeUndefined();
  expect(before.data.canDelete).toBe(true);
  const unreviewed=await page.request.delete("/api/students/"+studentId,{
   data:{confirmed:true},
  });
  expect(unreviewed.status()).toBe(400);
- const unconfirmed=await call("ccp_v1_students_delete",{
+ const unconfirmed=await call("ccp_students_delete",{
   studentId,expectedUpdatedAt:before.data.updatedAt,
  });
  expect(unconfirmed.error?.code).toBe("VALIDATION_ERROR");
@@ -105,7 +105,7 @@ test("PARITY:PARITY-student-delete-revision-race-and-tenant-isolation allow one 
   page.request.delete("/api/students/"+studentId,{
    data:{confirmed:true,expectedUpdatedAt:before.data.updatedAt},
   }),
-  call("ccp_v1_students_delete",{
+  call("ccp_students_delete",{
    studentId,expectedUpdatedAt:before.data.updatedAt,confirmed:true,
   }),
  ]);
@@ -136,13 +136,13 @@ test("PARITY:PARITY-student-delete-revision-race-and-tenant-isolation allow one 
   const target=other.data!.id as string;
   const foreignPreview=await page.request.get("/api/students/"+target+"?deletePreview=true");
   expect(foreignPreview.status()).toBe(404);
-  const deniedModel=await call("ccp_v1_students_delete_impact",{studentId:target});
+  const deniedModel=await call("ccp_students_delete_impact",{studentId:target});
   expect(deniedModel.error?.code).toBe("NOT_FOUND");
   const foreignDelete=await page.request.delete("/api/students/"+target,{
    data:{confirmed:true,expectedUpdatedAt:other.data!.updated_at},
   });
   expect(foreignDelete.status()).toBe(404);
-  const modelDelete=await call("ccp_v1_students_delete",{
+  const modelDelete=await call("ccp_students_delete",{
    studentId:target,expectedUpdatedAt:other.data!.updated_at,confirmed:true,
   });
   expect(modelDelete.error?.code).toBe("NOT_FOUND");
