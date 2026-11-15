@@ -225,7 +225,7 @@ const catalogue = [
   },
   {
     name:"ccp_lessons_history_unified",
-    description:"Read one bounded calendar period across historic private lessons and current coaching/group sessions. Preserves both sources, flags exact overlaps, and computes instructor booked vs actually evidenced minutes as interval unions (groups count once); legacy workplace attribution is unknown rather than guessed. Optional student/workplace filters.",
+    description:"Read bounded lesson history with instructor booked vs evidenced minutes. Each lesson\u0027s date uses its saved local timezone; filter.timezone is only the workplace/teacher fallback. timezonesUsed and timezoneSource explain why student-only and workplace-only queries may echo different fallback zones. Optional student/workplace filters.",
     schema:unifiedLessonFilter,
     scope:"coach:read",readOnly:true,
   },
@@ -621,7 +621,7 @@ const catalogue = [
   },
   {
     name:"ccp_private_sessions_create",
-    description:"Atomically schedule one canonical private/ad-hoc chess lesson or verified make-up for a frozen original participant. Local timezone and DST are validated inside SQL; teacher, active student and workplace enrollment are enforced. Replays return the original session.",
+    description:"Atomically schedule one canonical private/ad-hoc chess lesson or verified make-up. Optional durationMinutes (15–480) defaults to 30 minutes for ordinary sessions or the original length for make-ups; supply it to avoid surprise defaults. Local timezone/DST, ownership and enrollment are enforced; replays return the original session.",
     schema:canonicalPrivateSessionCreateSchema.extend({
       confirmed:z.literal(true),
     }).strict(),scope:"coach:write",readOnly:false,
@@ -862,10 +862,10 @@ const catalogue = [
   },
   {
     name:"ccp_student_skill_assessments_record",
-    description:"Append teacher-approved 1–5 skill assessments atomically. Supply the same idempotencyKey UUID on retries; one retry key cannot be reused for changed ratings.",
+    description:"Append teacher-approved 1–5 skill assessments atomically, optionally backdated to an explicit coach-local assessedOn date (YYYY-MM-DD; not future). Supply the same idempotencyKey UUID on retries; replays retain the original date.",
     schema:z.object({studentId:uuid,ratings:z.array(z.object({
       dimensionId:uuid,rating:z.number().int().min(1).max(5),note:z.string().max(2000).optional(),
-    }).strict()).min(1).max(20),idempotencyKey:uuid.optional(),confirmed:z.literal(true)}).strict(),
+    }).strict()).min(1).max(20),assessedOn:z.string().date().optional(),idempotencyKey:uuid.optional(),confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1249,7 +1249,7 @@ const catalogue = [
   },
   {
     name:"ccp_sessions_complete",
-    description:"Atomically record the complete frozen student roster and mark one coaching lesson completed. Requires one explicit present/absent/late/excused status and current attendance revision per student, current lesson revision, one idempotency UUID and confirmation. No material mastery inferred.",
+    description:"Atomically complete one lesson with every frozen learner\u0027s explicit attendance and current revisions. Omit optional lessonNote to preserve the existing note; providing it intentionally REPLACES the session\u0027s shared note. Participant notes live separately. No material mastery inferred.",
     schema:lessonCompletionSchema,scope:"coach:write",readOnly:false,
   },
   {
