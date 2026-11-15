@@ -1,6 +1,6 @@
 # Change: selectively-adopt-cognote-post-fork-fixes
 
-**Status:** PROPOSED — not implemented. **Target:** post-v0.1.0 development (next release, not a rewrite of v0.1.0).
+**Status:** IMPLEMENTED ON FEATURE BRANCH — awaiting CI, security, E2E and merge acceptance. **Target:** post-v0.1.0 development (next release, not a rewrite of v0.1.0).
 **Upstream:** andresjmorales/cognote merged PRs #142–#145, November 7–10, 2026.
 **Policy:** selectively reimplement against ChessCoachPal's canonical services and schema; do not merge/cherry-pick upstream wholesale. No CogNote compatibility layer.
 

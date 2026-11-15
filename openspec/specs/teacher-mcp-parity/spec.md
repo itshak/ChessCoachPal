@@ -51,3 +51,13 @@ The complete teacher-route registry, actual delegated OAuth `tools/list` catalog
 - **WHEN** any teacher route has a missing or partial MCP counterpart, an unverified required scenario, or a website-only domain operation **THEN** `npm run mcp:parity:strict` or the same-PR guard SHALL fail.
 - **WHEN** a parity change is accepted **THEN** its 93 historical and 26 additional chess/canonical cases SHALL have named authenticated evidence and the exact merged-main source SHALL pass CI, E2E, security, Compose and restore workflows.
 - **WHEN** version v0.1.0 is prepared for publication **THEN** real ChatGPT and Claude client acceptance remains a distinct local prepublication sign-off; automated parity evidence SHALL NOT be misrepresented as live-vendor certification.
+
+## Requirement: Manual payments on saved draft invoices SHALL retain private and reconciled financial history
+
+An authenticated coach may record a partial or full real-world manual payment on either a saved draft or a sent invoice through the existing website and MCP operations. Recording the payment SHALL NOT email, publish, or silently send an unsent draft. Both surfaces SHALL require review and confirmation, reject duplicate/conflicting idempotency replays, and use the same owner-scoped transactional payment writer. The website SHALL save current on-screen line edits successfully before recording money; MCP SHALL offer the corresponding draft edit first when needed.
+
+### Scenarios
+- **WHEN** a coach records partial manual funds on a draft **THEN** the invoice remains draft and private, with its payment ledger and remaining balance available to the teacher through both surfaces.
+- **WHEN** a draft edit, regeneration, or deletion would lower its total below the amount collected or destroy a payment/prepaid-credit record **THEN** the database SHALL reject the whole transaction and leave the original data unchanged.
+- **WHEN** a paid never-sent invoice has an erroneous payment reversed **THEN** it SHALL reopen as an unsent draft. A previously sent invoice SHALL reopen as sent; redeemed prepaid credits SHALL prevent an unsafe reversal.
+- **WHEN** a coach sends a partially paid draft **THEN** one server-side lock SHALL confirm that the PDF, email and payment link refer to the unchanged remaining balance. Stale snapshots, active incompatible Stripe sessions and competing sends SHALL be rejected.

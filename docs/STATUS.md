@@ -3,6 +3,12 @@
 **CURRENT RELEASE STATUS — 2026-11-15:** v0.1.0 [published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.0); [publication and production deployment passed](https://github.com/itshak/ChessCoachPal/actions/runs/43664411336). This document's older 0.0.0 / unreleased passages are a historical development diary, not current status. **Not completed:** live ChatGPT and Claude OAuth/MCP acceptance, historical privacy/secrets and third-party licensing review, GitHub Homepage metadata correction. Four former active OpenSpec plans are archived as superseded/partially fulfilled, **not fully accepted**. The sole active proposal is [selectively-adopt-cognote-post-fork-fixes](../openspec/changes/selectively-adopt-cognote-post-fork-fixes/proposal.md), unimplemented.
 
 
+## 2026-11-15 — upstream post-fork fixes implementation candidate
+
+The `selectively-adopt-cognote-post-fork-fixes` change has been implemented on feature branch `feat/selective-postfork-fixes-20261115` with draft manual-payment parity, database-paid floors, private reopens, atomic send claims, outstanding-balance PDF/email, Vitest patch, migration-target guard and hosted founding cancellation. The existing website/MCP domain operations were retained; no CogNote compatibility layer or separate SQL migration was introduced. See [upstream disposition](UPSTREAM_POSTFORK_FIXES.md).
+
+**Acceptance not yet recorded:** automated CI, browser/MCP E2E, security, Compose and backup/restore must run after the complete implementation and be green at the final source SHA; only then archive the OpenSpec change. External Stripe charges and live ChatGPT/Claude acceptance remain independent prepublication gates.
+
 **Updated:** 2026-11-15 · **Branch of record:** main (consolidated coaching features merged; v0.1.0 unreleased) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
 ## 2026-11-15 — consolidated coaching batch merged and validated; publication handoff
