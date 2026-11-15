@@ -89,14 +89,14 @@ export async function teacherUnifiedLessonHistory(db:Db,teacherId:string,filter:
  }
  const evidenceBySession=new Set(register.filter(r=>
   r.status==="present"||r.status==="late").map(r=>r.session_id));
- const records:LessonTimelineItem[]=[];
+ const records:LessonTimelineItem[]=[];\n const timezonesUsed=new Set<string>();
  for(const session of sessions){
   const effectiveZone=session.local_timezone??zone;
   const date=workplaceDay(session.starts_at,effectiveZone);
   if(date<filter.from||date>filter.to)continue;
   const students=rosterBySession.get(session.id)??(
    session.student_id?[session.student_id]:[]);
-  if(filter.studentId&&!students.includes(filter.studentId))continue;
+  if(filter.studentId&&!students.includes(filter.studentId))continue;\n  timezonesUsed.add(effectiveZone);
   records.push({
    id:session.id,kind:"coaching",startsAt:session.starts_at,
    durationMinutes:session.duration_minutes,studentIds:students,
@@ -116,7 +116,7 @@ export async function teacherUnifiedLessonHistory(db:Db,teacherId:string,filter:
    canonicalSessionCount:records.length,
    participantAttendanceDecisions:register.length,
   },
-  filter:{...filter,timezone:zone},
+  filter:{...filter,timezone:zone,timezoneSource:workplace?"workplace":"studio_policy",\n    dateBasis:"session_local_timezone_with_fallback"},\n  timezonesUsed:[...timezonesUsed].sort(),
   warnings:["Booked minutes do not prove material was taught. Evidenced minutes require completed sessions or recorded attendance."],
   summaryScope:"complete_bounded_date_range"};
 }
