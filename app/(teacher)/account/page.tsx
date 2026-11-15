@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { AccountSettings } from "@/components/teacher/AccountSettings";
 import { AccountMfaSettings } from "@/components/teacher/AccountMfaSettings";
+import { LichessConnectionPanel } from "@/components/teacher/LichessConnectionPanel";
 import { HostingSettingsForm } from "@/components/teacher/settings/HostingSettingsForm";
 import { HostedLimitBanner } from "@/components/teacher/HostedLimitBanner";
 import { NotificationSettingsForm } from "@/components/teacher/settings/NotificationSettingsForm";
@@ -147,6 +148,10 @@ export default async function AccountPage({
           {hostingSection}
         </AccountSettings>
         <AccountMfaSettings />
+
+        <div id="lichess-connection">
+          <LichessConnectionPanel returnTo="account" />
+        </div>
 
         {teacher?.calendar_token && (
           <TeacherCalendarFeed token={teacher.calendar_token} />

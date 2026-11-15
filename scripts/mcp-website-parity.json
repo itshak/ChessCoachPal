@@ -772,7 +772,7 @@
       "kind": "auth",
       "parity": "browser-only",
       "existingTools": [],
-      "explanation": "Lichess OAuth callback binds encrypted verifier/state to authenticated teacher and never exposes access tokens through MCP or website."
+      "explanation": "Lichess OAuth callback binds encrypted verifier/state, authenticated teacher, and allowlisted return destination (Account Settings or Training & Materials), never exposing access tokens to MCP or website."
     },
     {
       "path": "app/api/lichess/study-preferences/route.ts",
@@ -816,7 +816,7 @@
       "existingTools": [
         "ccp_lichess_connect_handoff"
       ],
-      "explanation": "Secure browser PKCE initiation is an explicit human provider-consent exception; MCP only returns a safe handoff URL, never a secret."
+      "explanation": "Secure browser PKCE initiation via both Account Settings and Training & Materials with allowlisted return destination (account/learning); MCP remains a safe handoff, never receives a token."
     },
     {
       "path": "app/api/lichess/connection/route.ts",

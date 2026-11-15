@@ -9,8 +9,11 @@ export async function GET(req:NextRequest){
   const mode=req.nextUrl.searchParams.get("mode")??"read";
   if(mode!=="read"&&mode!=="write")
     return NextResponse.json({error:"Invalid Lichess permission mode"},{status:400});
+  const returnTo=req.nextUrl.searchParams.get("returnTo")??"learning";
+  if(returnTo!=="learning"&&returnTo!=="account")
+    return NextResponse.json({error:"Invalid Lichess return location"},{status:400});
   try {
-    const {authorizationUrl,cookie}=beginLichessAuthorization(user.id,mode);
+    const {authorizationUrl,cookie}=beginLichessAuthorization(user.id,mode,returnTo);
     const response=NextResponse.redirect(authorizationUrl,303);
     response.cookies.set(LICHESS_HANDOFF_COOKIE,cookie,{
       httpOnly:true,sameSite:"lax",secure:new URL(req.url).protocol==="https:",
