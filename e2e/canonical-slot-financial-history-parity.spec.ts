@@ -6,23 +6,23 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes keeps frozen financial history on website and MCP deletion replay",async({page,request})=>{
  const tool=await delegatedTool(page,request);
- const learner=await tool("ccp_v1_students_create",{
+ const learner=await tool("ccp_students_create",{
   name:"Financial slot learner "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(learner.error).toBeUndefined();
  const studentId=learner.data.entityId as string;
- const guardian=await tool("ccp_v1_guardians_create",{
+ const guardian=await tool("ccp_guardians_create",{
   name:"Financial slot payer "+randomUUID(),studentIds:[studentId],confirmed:true,
  });
  expect(guardian.error).toBeUndefined();
  const guardianId=guardian.data.id as string;
- const work=await tool("ccp_v1_workplaces_create",{
+ const work=await tool("ccp_workplaces_create",{
   name:"Preserve paid coaching "+randomUUID(),timezone:"UTC",
   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
  expect(work.error).toBeUndefined();
  const workplaceId=work.data.entityId as string;
- expect((await tool("ccp_v1_workplaces_enroll",{
+ expect((await tool("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
  const today=Date.parse(new Date().toISOString().slice(0,10)+"T00:00:00Z");
@@ -43,7 +43,7 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
  const created=await page.request.post("/api/coaching/calendar/slots",{data:slotInput});
  expect(created.status(),await created.text()).toBe(200);
  expect(await created.json()).toMatchObject({id:idempotencyKey});
- const mcpReplay=await tool("ccp_v1_recurring_slots_create",{
+ const mcpReplay=await tool("ccp_recurring_slots_create",{
   ...slotInput,confirmed:true,
  });
  expect(mcpReplay.error).toBeUndefined();
@@ -71,7 +71,7 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
    expectedUpdatedAt:null,idempotencyKey:randomUUID(),
   }});
  expect(note.status(),await note.text()).toBe(200);
- const attendance=await tool("ccp_v1_session_attendance_set",{
+ const attendance=await tool("ccp_session_attendance_set",{
   sessionId:creditSession,studentId,status:"present",
   note:"",noticeAt:null,cancelReason:"",expectedUpdatedAt:null,
   idempotencyKey:randomUUID(),notifyFamily:false,confirmed:true,
@@ -109,7 +109,7 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
  }).select("id").single();
  expect(redeemed.error).toBeNull();
  const key=randomUUID();
- const deleted=await tool("ccp_v1_recurring_slots_delete",{
+ const deleted=await tool("ccp_recurring_slots_delete",{
   slotId:idempotencyKey,idempotencyKey:key,confirmed:true,
  });
  expect(deleted.error).toBeUndefined();
@@ -141,7 +141,7 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
   session_id:creditSession,student_id:studentId,
   package_id:credits.data!.id,
  });
- const privateNotes=await tool("ccp_v1_session_notes_list",{
+ const privateNotes=await tool("ccp_session_notes_list",{
   sessionId:invoiceSession,includePrivate:true,confirmed:true,
  });
  expect(privateNotes.error).toBeUndefined();
