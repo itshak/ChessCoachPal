@@ -1,5 +1,6 @@
 import {createHash} from "node:crypto";
 import {z} from "zod";
+import {Board} from "gigachess";
 import {fenStaticValidation} from "@/lib/fen-legality";
 
 export const puzzleDraftSchema=z.object({
@@ -27,6 +28,7 @@ export type PuzzlePreview={
   studyId:string;chapterName:string;fen:string;moves:string;
   orientation:"white"|"black";pgn:string;sha256:string;
   board:string[][];sideToMove:"white"|"black";
+  continuationMovesVerified:true;legalPlyCount:number;endingFen:string;rulesEngine:"GigaChess";
 };
 const invalid=(message:string):never=>{throw new PuzzleReviewError("VALIDATION_ERROR",message);};
 const idPattern=/^[A-Za-z0-9]{8}$/;
@@ -66,8 +68,41 @@ export function fenBoard(fen:string){
     invalid("Invalid FEN move counters");
   try{fenStaticValidation(board,turn,castling,ep);}
   catch(error){invalid(error instanceof Error?error.message:"Impossible chess position");}
+  // GigaChess is the authoritative native chess-rules engine. Keep the
+  // extra static checks: a valid position cannot prove its photo's origin.
+  try{Board.fromFen(parts.join(" "));}
+  catch{invalid("GigaChess cannot load the reviewed chess position");}
   return {board,sideToMove:turn==="w"?"white" as const:"black" as const,
     canonical:parts.join(" ")};
+}
+
+/**
+ * Read-only legal continuation review. This is native GigaChess, not chess.js:
+ * every SAN token is applied to the same position with turn/castling/ep state.
+ * Raw untrusted PGN tags, comments, branches and null moves are forbidden.
+ */
+export function validatePuzzleSanContinuation(fen:string,movetext:string){
+ const board=Board.fromFen(fen);
+ const spaced=movetext.replace(/\b([1-9]\d{0,3})\.(\.\.)?(?=[A-Za-z])/g,
+  (_raw,n:string,dots:string|undefined)=>n+"."+(dots??"")+" ");
+ const tokens=spaced.trim().split(/\s+/).filter(Boolean);
+ let plies=0,awaitingSan=false;
+ for(const token of tokens){
+  const label=/^([1-9]\d{0,3})\.(\.\.)?$/.exec(token);
+  if(label){
+   if(awaitingSan)invalid("A numbered move must contain legal SAN");
+   if(Number(label[1])!==board.fullmoves||Boolean(label[2])!==(board.turn===1))
+    invalid("Move number or side does not match the reviewed FEN");
+   awaitingSan=true;continue;
+  }
+  if(!/^(?:O-O(?:-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?)(?:[+#])?[!?]{0,2}$/.test(token))
+   invalid("Puzzle continuation contains invalid SAN notation");
+  const move=board.parseSan(token.replace(/[!?]{1,2}$/,""));
+  if(move===null)invalid("Puzzle continuation has an illegal or ambiguous SAN move at ply "+(plies+1));
+  board.makeMove(move);plies++;awaitingSan=false;
+ }
+ if(!plies||awaitingSan)invalid("Puzzle continuation needs a complete legal move");
+ return {legalPlyCount:plies,endingFen:board.toFen()};
 }
 
 /** Image-to-position interpretation is a proposal, NEVER a confirmed import.
@@ -91,6 +126,7 @@ export function buildPuzzlePreview(input:PuzzleDraft):PuzzlePreview{
   if(orientation!=="white"&&orientation!=="black")invalid("Invalid board orientation");
   const body=moves.replace(/\s*\*$/,"").trim();
   if(!body)invalid("At least one solution move is required");
+  const {legalPlyCount,endingFen}=validatePuzzleSanContinuation(canonical,body);
   const pgn=[
     '[Event "ChessCoachPal reviewed puzzle"]',
     '[Site "https://lichess.org"]',
@@ -109,6 +145,7 @@ export function buildPuzzlePreview(input:PuzzleDraft):PuzzlePreview{
   return {
     studyId:input.studyId,chapterName,fen:canonical,moves:body,
     orientation,pgn,sha256,board,sideToMove,
+    continuationMovesVerified:true,legalPlyCount,endingFen,rulesEngine:"GigaChess",
   };
 }
 
@@ -120,9 +157,9 @@ export function validateFenPosition(fen:string,source:"manual"|"image"="manual")
   requiresTeacherConfirmation:true,
   unknownGameState:source==="image"?
    ["sideToMove","castlingRights","enPassant","halfmoveClock","fullmoveNumber"]:[],
-  continuationMovesVerified:false,
+  continuationMovesVerified:false,rulesEngine:"GigaChess" as const,
   warning:source==="image"?
    "Verify every square and all unknown game-state fields; the image cannot establish castling or turn.":
-   "Static checks passed, but full SAN continuation legality and the position origin remain unverified.",
+   "Static checks and GigaChess FEN loading passed. No continuation was supplied; the position origin remains unverified.",
  };
 }

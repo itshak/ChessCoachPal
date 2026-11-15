@@ -22,7 +22,7 @@ export function FenReviewPanel(){
  }
  return <section aria-label="FEN position validation" className="rounded-xl border border-border bg-surface p-4 space-y-3">
   <h2 className="text-lg font-semibold">Review a chess position before publishing</h2>
-  <p className="text-sm text-muted">Checks six FEN fields, piece counts, impossible king/check states, castling and en-passant consistency. This is not a move-engine guarantee. Images cannot prove turn, castling or clocks.</p>
+  <p className="text-sm text-muted">Checks six FEN fields, piece counts, impossible king/check states, castling and en-passant consistency. GigaChess checks the position and each solution move before publication. Images cannot prove turn, castling or clocks.</p>
   <label className="text-sm block">Reviewed six-field FEN
    <textarea rows={2} className="w-full border rounded-lg bg-background p-2" maxLength={120}
     value={fen} onChange={e=>{setFen(e.target.value);setBoard(null);}} />

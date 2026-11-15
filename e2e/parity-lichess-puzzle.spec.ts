@@ -101,6 +101,7 @@ test("PARITY:PARITY-lichess-image-fen-human-review makes identical website and M
  expect(reviewed.board[7][4]).toBe("K");
  expect(reviewed.sideToMove).toBe("white");
  expect(reviewed.sha256).toMatch(/^[a-f0-9]{64}$/);
+ expect(reviewed).toMatchObject({rulesEngine:"GigaChess",continuationMovesVerified:true,legalPlyCount:4});
  const model=await call("ccp_v1_lichess_puzzle_preview",draft);
  expect(model.error).toBeUndefined();
  expect(model.data).toEqual(reviewed);
@@ -111,6 +112,14 @@ test("PARITY:PARITY-lichess-image-fen-human-review makes identical website and M
  })).status()).toBe(400);
  expect((await call("ccp_v1_lichess_puzzle_preview",malformed)).error?.code)
   .toBe("VALIDATION_ERROR");
+ // The browser and delegated MCP must reject syntactically valid but
+ // chess-illegal continuations before any Lichess provider write.
+ for(const moves of ["1. e5","1. e4 e5 2. Nf6","1. e4 e5 2. Nf3 Nc6 3. O-O"]){
+  const illegal={...draft,moves};
+  const web=await page.request.post("/api/lichess/puzzles/preview",{data:illegal});
+  expect(web.status(),await web.text()).toBe(400);
+  expect((await call("ccp_v1_lichess_puzzle_preview",illegal)).error?.code).toBe("VALIDATION_ERROR");
+ }
  const unsafe={...draft,moves:'1. e4\\n[FEN "unreviewed"]'};
  expect((await page.request.post("/api/lichess/puzzles/preview",{
   data:unsafe,
