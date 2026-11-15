@@ -57,3 +57,12 @@ The script validates SHA-256 checksums, archive paths, and the absence of target
 - Restore guard refuses: the target is not empty, archives/checksums are invalid or explicit confirmation is absent. Never weaken the guard for real data.
 
 See docs/RELEASING.md and docs/LOCAL_CLIENT_ACCEPTANCE.md. The actual real ChatGPT/Claude sign-off is the only manual client test, performed immediately before release, not as a development or first-run prerequisite.
+
+## Pre-v1 remote Supabase drift / reset precautions
+
+The **physical** hosted Supabase schema may lag the checked-in current fresh-install snapshot. Before attributing a `DATABASE_ERROR` to MCP/website code, verify connected project ID, actual tables/columns/functions/triggers/RLS/policies, schema-migration history and the authenticated role's permissions. A GitHub file existing does **not** imply the hosted database has been updated.
+
+**Project policy:** there is exactly **one** install SQL file, `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`, not a sequential backwards-compatible migration chain. Amend that file for new installs. For harmless security/index DDL, patch an authorized disposable test project in place transactionally, then re-run advisors and an owner-authenticated read/write. For a breaking reset, require explicit user consent, inventory and backup first. Supabase-owned `auth` and `storage` schemas are **not** ordinary app schemas; direct SQL deletes of protected Storage objects or buckets can fail. Avatar `storage.objects` policies survive replacing `public`, and Auth deletion forces new signup/OAuth authorization. Only after a successful fresh install should the test migration ledger show exactly the one baseline. Never reset actual student information automatically.
+
+A successful E2E installation, authenticated editor read-back, **second-empty-instance restore**, and no cross-tenant leaks are the acceptance criteria. See [the reusable MCP/Supabase playbook](MCP_SUPABASE_RELIABILITY_PLAYBOOK.md) and [security ADR-0007](adr/0007-mcp-supabase-contract-and-release-evidence.md).
+
