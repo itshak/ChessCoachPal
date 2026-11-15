@@ -588,3 +588,38 @@ test("PARITY:PARITY-billing-regenerate-draft-with-payments protects the received
  expect(mcp.data.status).toBe("draft");
  expect(mcp.data.subtotal_cents).toBe(6500);
 });
+
+test("PARITY:PARITY-billing-send-claim rejects stale payment snapshots before email",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const created=await invoice("draft",7000);
+ const item=await created.admin.from("invoice_items").insert({
+  invoice_id:created.id,kind:"lesson",description:"Scheduled chess tuition",
+  quantity:1,unit_cents:7000,amount_cents:7000,sort_order:0,
+ });
+ expect(item.error).toBeNull();
+ const before=await siteInvoice(page,created.id);
+ const deposit=await call("ccp_v1_billing_manual_payment_record",{
+  invoiceId:created.id,amountCents:1800,note:"Already collected",
+  idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(deposit.error).toBeUndefined();
+ const auth=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ expect((await auth.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
+ const stale=await auth.rpc("ccp_invoice_send_claim",{
+  p_invoice_id:created.id,p_expected_updated_at:before.updated_at,
+  p_expected_paid_cents:0,
+ });
+ expect(stale.error?.message).toContain("INVOICE_SEND_BALANCE_CHANGED");
+ const current=await siteInvoice(page,created.id);
+ expect(current.status).toBe("draft");
+ expect(current.sent_at).toBeNull();
+ expect(current.payments).toHaveLength(1);
+ const hidden=await page.request.get("/portal/"+created.portalToken);
+ expect(await hidden.text()).toContain("No invoices yet.");
+ const preview=await call("ccp_v1_billing_invoice_send_preview",{invoiceId:created.id});
+ expect(preview.error).toBeUndefined();
+ expect(preview.data.balanceCents).toBe(5200);
+});
