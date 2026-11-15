@@ -2,7 +2,7 @@
 
 **Prepared:** 2026-11-08 · **target:** v0.1.0 · **current package version:** `0.0.0` (unreleased) · **publication:** BLOCKED
 
-This report is a **handoff**, not a sign-off. Do not set `0.1.0`, create `v0.1.0`, publish a GitHub Release, or check the six readiness boxes on the strength of synthetic tests alone. The last real-client check must be done by the maintainer on their own computer with **both** ChatGPT and Claude, immediately before the release PR. See [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md).
+This report is a **handoff**, not a sign-off. Do not set `0.1.0`, create `v0.1.0`, publish a GitHub Release, or check the six non-provider readiness boxes on the strength of synthetic tests alone. The maintainer explicitly deferred real ChatGPT and Claude production acceptance until **after** v0.1.0. See [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md).
 
 ## Automated milestone implementation
 
@@ -19,7 +19,7 @@ The application, including agent integrations, is verified **only** with synthet
 
 GitHub verifies the current main commit with `CI` (typecheck, unit tests, Docker, Compose syntax), `E2E` (fresh Supabase, production build, Playwright), `M5 self-host Compose smoke`, `M5 backup-restore smoke`, and `Security history audit`. Exact merged-main run URLs and results belong in [STATUS.md](STATUS.md).
 
-The existing [GitHub release workflow](../.github/workflows/release.yml) skips unpublished `0.0.0`; a later reviewed `0.1.0` version/changelog commit will trigger the candidate checks and **only then** create an annotated tag, GitHub Release and source zip/tar.gz. The release validator checks all six [readiness criteria](RELEASING.md). Do not merge the version bump or set the manual checkbox before real provider sign-off.
+The existing [GitHub release workflow](../.github/workflows/release.yml) skips unpublished `0.0.0`; a later reviewed `0.1.0` version/changelog commit will trigger the candidate checks and **only then** create an annotated tag, GitHub Release and source zip/tar.gz. The release validator checks all six [readiness criteria](RELEASING.md). Do not merge the version bump until all six non-provider release gates are evidenced. Real provider sign-off is now post-release.
 
 ## Updated historic privacy triage (2026-11-08)
 
@@ -37,3 +37,7 @@ A newer merged-main Actions audit covered **367 runs, 352 log archives, 122 arti
 The next manual action is **not to publish**. Correct the old public GitHub Homepage and disposition affected historical logs; then use the [disposable Vercel + Supabase staging runbook](STAGING_MCP_ACCEPTANCE.md) if preferable to a local HTTPS tunnel. First resolve outstanding historical privacy/license leads; after all non-provider gates have cleared, follow [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md) on the maintainer machine. Only the maintainer's recorded success authorizes the final version-bump PR and automated GitHub publication.
 
 **Compatibility:** Until 1.0.0 there is no compatibility commitment to CogNote or prior ChessCoachPal versions. Never reset a real database as part of testing.
+
+## Maintainer decision (2026-11-15)
+
+Real ChatGPT/Claude production client testing is explicitly postponed until after v0.1.0. This deferral does not waive the unresolved historical privacy, GitHub Homepage metadata, asset redistribution or licensing checks. These remain blocking until independently dispositioned.
