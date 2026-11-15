@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - name: Check pending release
         id: candidate
@@ -76,7 +76,7 @@ jobs:
       - uses: supabase/setup-cli@v1
         if: steps.candidate.outputs.publish == 'true'
         with:
-          version: latest
+          version: 3.0.0
       - name: Fresh database bootstrap
         if: steps.candidate.outputs.publish == 'true'
         run: |
@@ -94,6 +94,16 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY:-$PUBLISHABLE_KEY}"
             echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY:-$SECRET_KEY}"
             echo "TOKEN_ENCRYPTION_KEY=$token_key"
+            echo "MCP_PUBLIC_ORIGIN=http://localhost:3000"
+            echo "LICHESS_API_ORIGIN=http://127.0.0.1:3999"
+            echo "CCP_SYNTHETIC_VISION_ORIGIN=http://127.0.0.1:3998"
+            echo "CCP_SYNTHETIC_RATINGS_ORIGIN=http://127.0.0.1:3995"
+            echo "CCP_SYNTHETIC_STRIPE_ORIGIN=http://127.0.0.1:3997"
+            echo "CCP_SYNTHETIC_AI_ORIGIN=http://127.0.0.1:3996"
+            echo "EMAIL_PROVIDER=smtp"
+            echo "SMTP_HOST=127.0.0.1"
+            echo "SMTP_PORT=54325"
+            echo "EMAIL_FROM_ADDRESS=notifications@chesscoachpal.test"
           } >> "$GITHUB_ENV"
       - name: Production build
         if: steps.candidate.outputs.publish == 'true'
@@ -105,11 +115,9 @@ jobs:
           npx --yes wait-on --timeout 60000 http://localhost:3000
       - name: Playwright Chromium
         if: steps.candidate.outputs.publish == 'true'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Browser E2E
         if: steps.candidate.outputs.publish == 'true'
-        env:
-          PWA_E2E: "1"
         run: npm run test:e2e
       - name: E2E failure artifacts
         if: failure()
