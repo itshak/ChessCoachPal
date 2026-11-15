@@ -1,5 +1,8 @@
 # ChessCoachPal
 
+**Release status (2026-11-15):** [v0.1.0 published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.0); [production deployment succeeded](https://github.com/itshak/ChessCoachPal/actions/runs/43664411336). Historical 0.0.0/unreleased passages below are superseded. **Still pending:** live ChatGPT/Claude MCP acceptance, historical privacy and licensing sign-off, and GitHub Homepage correction. Only active OpenSpec proposal: [selective CogNote post-fork fixes](openspec/changes/selectively-adopt-cognote-post-fork-fixes/proposal.md).
+
+
 **Your friendly chess-coaching assistant.**
 
 ChessCoachPal is a **proprietary, publicly viewable, MCP/Plugin-first workspace for chess teachers**, with an optional website for viewing, editing and high-risk approval. The intended primary input is authenticated ChatGPT/Claude tools, with a website for browsing, correcting, editing, scheduling and reporting. **The initial MCP/OAuth gateway is implemented and automatically verified**; real ChatGPT/Claude client interoperability is reserved for the final local prepublication v0.1.0 smoke test and has not yet been demonstrated. All core website features work without an AI subscription.
