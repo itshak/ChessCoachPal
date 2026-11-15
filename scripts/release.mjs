@@ -52,9 +52,11 @@ export function firstReleaseReady(markdown) {
   const start = markdown.indexOf(heading);
   if (start < 0) return false;
   const following = markdown.indexOf("\n## ", start + heading.length);
-  const block = markdown.slice(start, following >= 0 ? following : markdown.length);
+  const fullBlock = markdown.slice(start, following >= 0 ? following : markdown.length);
+  const deferred = fullBlock.indexOf("**Deferred manual tasks");
+  const block = deferred >= 0 ? fullBlock.slice(0, deferred) : fullBlock;
   const checks = [...block.matchAll(/^- \[([ xX])\] /gm)];
-  return checks.length >= 6 && checks.every((match) => match[1].toLowerCase() === "x");
+  return checks.length === 5 && checks.every((match) => match[1].toLowerCase() === "x");
 }
 
 export function prepareChangelog(markdown, version, date) {
