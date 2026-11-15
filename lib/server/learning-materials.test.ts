@@ -1,10 +1,56 @@
 import {describe,expect,it} from "vitest";
+import {z} from "zod";
 import {structurallyValidFen,materialCatalogCreateSchema,materialCatalogUpdateSchema,materialRelationSchema,materialLifecycleSchema} from "./learning-materials";
 
 const requestId="f1f2f3f4-0000-4000-8000-000000000001";
 const materialId="f1f2f3f4-0000-4000-8000-000000000002";
 
 describe("canonical typed material correction contract",()=>{
+  it("publishes the SAME object-shaped material contract to website and MCP",()=>{
+    for(const schema of [materialCatalogCreateSchema,materialCatalogUpdateSchema]){
+      const json=z.toJSONSchema(schema) as Record<string,unknown>;
+      expect(json.type).toBe("object");
+      expect(json).not.toHaveProperty("anyOf");
+      expect(json).not.toHaveProperty("oneOf");
+      expect(json).not.toHaveProperty("allOf");
+      const properties=json.properties as Record<string,unknown>;
+      expect(properties).toHaveProperty("kind");
+      expect(properties).toHaveProperty("details");
+      expect(properties).toHaveProperty("title");
+      expect(properties).toHaveProperty("requestId");
+      expect(json.required).toEqual(expect.arrayContaining(["kind","title","details","requestId"]));
+    }
+  });
+  it("rejects mismatched material kind, foreign fields and missing source links",()=>{
+    const valid={kind:"drill",title:"Fork calculation",requestId,
+      details:{instructions:"Find knight forks"}};
+    const parsed=materialCatalogCreateSchema.safeParse(valid);
+    expect(parsed.success).toBe(true);
+    if(parsed.success){
+      expect(parsed.data.details).toMatchObject({
+        instructions:"Find knight forks",mode:"other",repetitions:null,
+      });
+    }
+    expect(materialCatalogCreateSchema.safeParse({
+      ...valid,kind:"puzzle",
+    }).success).toBe(false);
+    expect(materialCatalogCreateSchema.safeParse({
+      ...valid,details:{instructions:"Find knight forks",pgn:"1. e4 e5 *"},
+    }).success).toBe(false);
+    expect(materialCatalogCreateSchema.safeParse({
+      ...valid,kind:"study_chapter",details:{studyId:"abcdef01"},
+    }).success).toBe(false);
+    expect(materialCatalogCreateSchema.safeParse({
+      ...valid,kind:"study_chapter",sourceUrl:"https://lichess.org/study/abcdef01",
+      details:{studyId:"abcdef01"},
+    }).success).toBe(true);
+    expect(materialCatalogCreateSchema.safeParse({
+      ...valid,kind:"external_link",details:{},
+    }).success).toBe(false);
+    expect(materialCatalogCreateSchema.safeParse({
+      ...valid,kind:"external_link",sourceUrl:"https://example.org/chess",details:{},
+    }).success).toBe(true);
+  });
   it("shares reviewed puzzle FEN validation, including one king each and no first-rank pawn",()=>{
     expect(structurallyValidFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")).toBe(true);
     expect(structurallyValidFen("8/8/8/8/8/8/8/8 w - - 0 1")).toBe(false);
