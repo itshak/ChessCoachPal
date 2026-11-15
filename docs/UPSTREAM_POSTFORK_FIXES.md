@@ -22,3 +22,5 @@ These upstream changes were reviewed against ChessCoachPal's current canonical s
 ## Verification status
 
 Implementation and automated test cases are committed on a feature branch. Their execution results, exact GitHub Actions run links and merge SHA belong in the OpenSpec archive and status report **only after the tests have actually passed**. No claim of live external Stripe or ChatGPT/Claude acceptance is made by synthetic tests.
+
+A fully paid draft remains private until the teacher explicitly sends its paid invoice. Delivery retains status `paid`, stamps `sent_at`, never requests another payment/Checkout, and rejects duplicate sends.

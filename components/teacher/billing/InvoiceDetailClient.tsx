@@ -89,6 +89,9 @@ export function InvoiceDetailClient({
     tone: "ok" | "error" | "warn";
   } | null>(null);
   const isDraft = status === "draft";
+  const isPaidUnsent = status === "paid" && sentAt === null;
+  const pendingManualPayment = useRef<{ fingerprint: string; key: string } | null>(null);
+  const successfullySavedPaymentDraft = useRef<string | null>(null);
   const itemsEditable = isDraft && !creditPackage;
   const { paidCents, balanceCents } = summarizePayments(subtotalCents, payments);
   const partiallyPaid = (status === "sent" || status === "draft") && paidCents > 0 && balanceCents > 0;
@@ -259,6 +262,8 @@ export function InvoiceDetailClient({
   // Both partial and full payments must apply to the teacher's SAVED total.
   // A failed draft edit must never record money against older line items.
   async function saveBeforePayment(): Promise<boolean> {
+    const fingerprint = JSON.stringify({ items, notes });
+    if (successfullySavedPaymentDraft.current === fingerprint) return true;
     if (!isDraft || (
       JSON.stringify(items) === JSON.stringify(initialItems) &&
       notes === initialNotes
@@ -277,6 +282,7 @@ export function InvoiceDetailClient({
       router.refresh();
       return false;
     }
+    successfullySavedPaymentDraft.current = fingerprint;
     return true;
   }
 
@@ -324,33 +330,44 @@ export function InvoiceDetailClient({
       });
       return;
     }
+    const fingerprint = JSON.stringify({ invoiceId, amountCents,
+      note: paymentForm.note, items, notes });
+    if (pendingManualPayment.current?.fingerprint !== fingerprint) {
+      pendingManualPayment.current = { fingerprint, key: crypto.randomUUID() };
+    }
+    const requestKey = pendingManualPayment.current.key;
     setBusy(true);
     setFlash(null);
-    if (!await saveBeforePayment()) {
+    try {
+      if (!await saveBeforePayment()) return;
+      const res = await fetch(`/api/billing/invoices/${invoiceId}/mark-paid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amountCents, note: paymentForm.note,
+          idempotencyKey: requestKey }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFlash({ text: data.error ?? "Payment not recorded", tone: "error" });
+        return;
+      }
+      pendingManualPayment.current = null;
+      setPaymentForm(null);
+      setFlash({
+        text: data.paid
+          ? "Payment recorded; invoice paid in full"
+          : `Payment recorded; ${formatMoney(data.balanceCents ?? 0, currency)} still due`,
+        tone: "ok",
+      });
+      router.refresh();
+    } catch {
+      setFlash({
+        text: "Unable to confirm payment. Review the ledger, then retry the same request.",
+        tone: "error",
+      });
+    } finally {
       setBusy(false);
-      return;
     }
-    const res = await fetch(`/api/billing/invoices/${invoiceId}/mark-paid`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amountCents, note: paymentForm.note, idempotencyKey: crypto.randomUUID(),
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!res.ok) {
-      setFlash({ text: data.error ?? "Failed", tone: "error" });
-      return;
-    }
-    setPaymentForm(null);
-    setFlash({
-      text: data.paid
-        ? "Payment recorded; invoice paid in full"
-        : `Payment recorded; ${formatMoney(data.balanceCents ?? 0, currency)} still due`,
-      tone: "ok",
-    });
-    router.refresh();
   }
 
   async function removePayment(payment: { id: string; amountCents: number }) {
@@ -481,6 +498,11 @@ export function InvoiceDetailClient({
                 Send
               </Button>
             </>
+          )}
+          {isPaidUnsent && (
+            <Button size="sm" onClick={send} disabled={busy}>
+              Send paid invoice
+            </Button>
           )}
           {status === "draft" && (
             <Button

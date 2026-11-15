@@ -32,3 +32,6 @@ When the hosted database marks a teacher as founding, recurring Stripe billable 
 
 ### Scenario: Delayed subscription webhook
 **WHEN** a subscription-created or updated webhook arrives for a founding teacher **THEN** it SHALL cancel the subscription or recognize an already-cancelled subscription, without promoting that teacher to Pro or restarting billing.
+
+### Scenario: Fully paid but not yet shared
+**WHEN** a saved draft is paid in full before emailing **THEN** it SHALL remain hidden until an explicitly approved send. Delivery SHALL retain its paid status, record the send timestamp, include the zero-balance PDF/email without requesting payment, and reject duplicate sends.

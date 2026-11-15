@@ -407,7 +407,7 @@ const catalogue = [
   },
   {
     name:"ccp_v1_billing_invoice_send_preview",
-    description:"Non-mutating preview of an owned draft invoice: PDF readiness, amount, recipient count, subject and content summary. includeRecipients=true requires confirmed=true; never reveal portal tokens or Stripe URLs.",
+    description:"Non-mutating invoice send preview for unsent drafts or never-sent paid invoices: PDF readiness, total, paid, outstanding balance and recipient summary. includeRecipients=true requires confirmed=true; never reveal portal tokens or Stripe URLs.",
     schema:z.object({invoiceId:uuid,includeRecipients:z.boolean().default(false),
       confirmed:z.literal(true).optional()}).strict()
       .refine(a=>!a.includeRecipients||a.confirmed===true,"Email addresses require confirmation"),
@@ -415,7 +415,7 @@ const catalogue = [
   },
   {
     name:"ccp_v1_billing_invoice_send",
-    description:"Email an existing draft invoice PDF and mark it sent, optionally creating a Stripe checkout link. Requires explicit approval for the external email and financial impact; never silently send/retry.",
+    description:"Explicitly send an unsent saved draft or a fully paid never-sent invoice PDF. An already-paid invoice stays paid; no further payment is requested. Partial invoices offer only the outstanding Stripe balance. Teacher email confirmation is required; never retry without checking delivery.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true),confirmedEmail:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },

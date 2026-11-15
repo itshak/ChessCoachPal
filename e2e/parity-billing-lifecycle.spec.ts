@@ -628,3 +628,41 @@ test("PARITY:PARITY-billing-send-claim rejects stale payment snapshots before em
  expect(preview.error).toBeUndefined();
  expect(preview.data.balanceCents).toBe(5200);
 });
+
+test("PARITY:PARITY-billing-paid-before-send remains private until deliberate delivery",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const created=await invoice("draft",5400);
+ const item=await created.admin.from("invoice_items").insert({
+  invoice_id:created.id,kind:"lesson",description:"Paid chess lesson",
+  quantity:1,unit_cents:5400,amount_cents:5400,sort_order:0,
+ });
+ expect(item.error).toBeNull();
+ const url="/api/billing/invoices/"+created.id;
+ const payment=await page.request.post(url+"/mark-paid",{
+  data:{amountCents:5400,note:"Cash received before email",
+    idempotencyKey:randomUUID()},
+ });
+ expect(payment.status(),await payment.text()).toBe(200);
+ const before=await siteInvoice(page,created.id);
+ expect(before.status).toBe("paid");
+ expect(before.sent_at).toBeNull();
+ const portalBefore=await page.request.get("/portal/"+created.portalToken);
+ expect(await portalBefore.text()).toContain("No invoices yet.");
+ const preview=await call("ccp_v1_billing_invoice_send_preview",{
+  invoiceId:created.id,confirmed:true,
+ });
+ expect(preview.error).toBeUndefined();
+ expect(preview.data.paidCents).toBe(5400);
+ expect(preview.data.balanceCents).toBe(0);
+ const sent=await page.request.post(url+"/send");
+ expect(sent.status(),await sent.text()).toBe(200);
+ const delivered=await siteInvoice(page,created.id);
+ expect(delivered.status).toBe("paid");
+ expect(delivered.sent_at).not.toBeNull();
+ const portalAfter=await page.request.get("/portal/"+created.portalToken);
+ expect(await portalAfter.text()).not.toContain("No invoices yet.");
+ const duplicate=await call("ccp_v1_billing_invoice_send",{
+  invoiceId:created.id,confirmed:true,confirmedEmail:true,
+ });
+ expect(duplicate.error?.code).toBe("CONFLICT");
+});
