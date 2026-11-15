@@ -1,0 +1,7 @@
+# Nginx API gateway image: template only, no credentials or app files.
+**
+!docker
+!docker/supabase
+!docker/supabase/volumes
+!docker/supabase/volumes/api
+!docker/supabase/volumes/api/nginx.conf.template
