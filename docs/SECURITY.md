@@ -1,5 +1,16 @@
 # Privacy, secrets and publication safety
 
+## 2026-11-15 live Supabase advisor and canonical schema audit
+
+[PR #81](https://github.com/itshak/ChessCoachPal/pull/81) carries a **single canonical baseline** update with a corresponding transactional hardening change applied to the test Supabase project. No test-teacher/student/material rows were deleted by this hardening; the current pre-v1 snapshot remains `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`.
+
+**Verified improvements:** fixed search paths on 8 inherited functions, revoked `anon`/`authenticated` direct EXECUTE on 11 **trigger-only** `SECURITY DEFINER` functions, optimized 63 live ownership policies including session-setting initialization plans (66 CREATE POLICY definitions in the baseline), and added 59 indexed FK constraints flagged by Supabase. The follow-up Security Advisor showed **zero anonymous security-definer RPC warnings and zero mutable search-path warnings**; Performance Advisor showed **zero unindexed-FK and zero auth RLS initplan warnings**. An authenticated student-update SQL transaction was run and rolled back successfully after hardening; the test material's two independent links were queried separately.
+
+**Intentional/unresolved advisor findings (do not conceal):** 13 RLS-enabled server-only tables have **no client policies**, an intentional deny boundary, not an invitation to add permissive `SELECT` policies; the advisor still reports about 45 signed-in executable definer functions because authorized teacher-owned RPCs are intentionally part of the REST business API—each must preserve strong `auth.uid()`/tenant authorization and denial tests. `unused_index` is informational for a tiny new dataset; benchmark before dropping defensive FK indexes. Supabase leaked-password protection remains a hosted **Auth configuration** warning, documented by Supabase as available on **Pro and above**; it cannot be enabled via the canonical SQL and requires the eligible operator's dashboard action. Do not claim that all advisor warnings are zero or that every privileged RPC has been manually threat-modeled.
+
+**Operational hazards:** direct SQL deletion of Supabase Storage objects/buckets hits protected internal triggers; surviving `storage.objects` avatar policies must be handled on an expressly approved disposable reset. App-schema DDL and `supabase_migrations.schema_migrations` history are distinct. Never reset a real-student database implicitly. See [ADR-0007](adr/0007-mcp-supabase-contract-and-release-evidence.md), [operator/portable runbook](MCP_SUPABASE_RELIABILITY_PLAYBOOK.md), [applied spec](../openspec/specs/chess-only-security/spec.md) and [Supabase password security docs](https://supabase.com/docs/guides/auth/password-security).
+
+
 **Status: repository already PUBLIC. Milestone 4 implementation and reachable-ref secret scan are CI-verified; broader historical privacy/asset review and v0.1.0 publication approval remain OPEN.**
 
 ChessCoachPal serves chess coaches and may eventually hold minors' records. The repository SHALL contain only public source, safe defaults and synthetic examples. Real names, workplace identities, report URLs, cloud service IDs, secrets and personal records belong outside Git.
