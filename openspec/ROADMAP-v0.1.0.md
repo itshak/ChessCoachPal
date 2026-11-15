@@ -1,5 +1,8 @@
 # ChessCoachPal — OpenSpec roadmap to v0.1.0
 
+**FINAL STATUS — 2026-11-15:** v0.1.0 [published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.0); [release workflow and Vercel deployment passed](https://github.com/itshak/ChessCoachPal/actions/runs/43664411336). The pre-release statuses, old active-change links, and 0.0.0 references below are retained as **historical** only. Four residual plans were archived as superseded/partially fulfilled, **not as fully accepted**. Live ChatGPT/Claude acceptance, historical privacy/licensing and Homepage correction are deferred manual follow-ups. The only active OpenSpec change is [selective CogNote upstream fixes](changes/selectively-adopt-cognote-post-fork-fixes/proposal.md).
+
+
 **Status:** Milestones 1, 2 foundation, 3, 4 implementation and 5 automated self-hosting implementation archived; agent tools 2b accepted/archived; only replacement final-publication follow-on active · **updated:** 2026-11-08 · **version today:** 0.0.0 (unreleased)
 
 ## One release, five actionable milestones
