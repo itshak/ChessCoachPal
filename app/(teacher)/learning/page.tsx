@@ -8,11 +8,13 @@ import { MaterialHistoryPanel } from "@/components/teacher/MaterialHistoryPanel"
 import { StudyChapterEvidencePanel } from "@/components/teacher/StudyChapterEvidencePanel";
 import { PuzzleSeriesPanel } from "@/components/teacher/PuzzleSeriesPanel";
 import { FenReviewPanel } from "@/components/teacher/FenReviewPanel";
+import {StudyPreferencesPanel} from "@/components/teacher/StudyPreferencesPanel";
 
 export const metadata = { title: "Training & materials" };
 
 export default function LearningPage() {
   return <main className="max-w-6xl mx-auto px-4 py-8">
-    <div className="space-y-8"><LearningMaterialsCatalog /><TrainingHomeworkPanel /><LichessConnectionPanel /><LichessStudyExplorer /><StudyChapterEvidencePanel /><PuzzleSeriesPanel /><FenReviewPanel /><LichessPuzzlePublisher /><ChessLearningPanel /><MaterialHistoryPanel /></div>
+    <div className="space-y-8"><LearningMaterialsCatalog /><TrainingHomeworkPanel /><LichessConnectionPanel /><LichessStudyExplorer /><StudyPreferencesPanel />
+      <StudyChapterEvidencePanel /><PuzzleSeriesPanel /><FenReviewPanel /><LichessPuzzlePublisher /><ChessLearningPanel /><MaterialHistoryPanel /></div>
   </main>;
 }

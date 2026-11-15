@@ -54,6 +54,7 @@ export function LessonCapturePreviewPanel() {
   const [localDate,setLocalDate] = useState("");
   const [duration,setDuration] = useState(60);
   const [lessonNote,setLessonNote] = useState("");
+  const [useSavedStudy,setUseSavedStudy] = useState(false);
   const [studyId,setStudyId] = useState("");
   const [studyName,setStudyName] = useState("");
   const [chapterNumber,setChapterNumber] = useState("");
@@ -111,8 +112,8 @@ export function LessonCapturePreviewPanel() {
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({names:studentNames,workplaceId,title:title.trim(),
           ...timing,lessonNote,
-          ...(studyId.trim()||studyName.trim()?{chapterSelection:{
-            ...(studyId.trim()?{studyId:studyId.trim()}:{studyName:studyName.trim()}),
+          ...(useSavedStudy||studyId.trim()||studyName.trim()?{chapterSelection:{
+            ...(useSavedStudy?{}:studyId.trim()?{studyId:studyId.trim()}:{studyName:studyName.trim()}),
             chapterNumber:Number(chapterNumber),
             ...(expectedPlayers.trim()?{expectedPlayers:expectedPlayers.trim()}:{}),
           }}:{})}),cache:"no-store",
@@ -276,19 +277,25 @@ export function LessonCapturePreviewPanel() {
         <input className={field} value={lessonNote} maxLength={10000}
           onChange={e=>{setLessonNote(e.target.value);invalidate();}} />
       </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={useSavedStudy}
+          onChange={e=>{setUseSavedStudy(e.target.checked);setStudyId("");setStudyName("");invalidate();}} />
+        Resolve my saved Lichess lesson study (student &gt; workplace &gt; teacher).
+        All selected students must resolve the same exact study.
+      </label>
       <label className="block text-sm">Lichess study title (optional, exact cached name)
         <input className={field} value={studyName} maxLength={160}
-          disabled={Boolean(studyId.trim())}
+          disabled={useSavedStudy||Boolean(studyId.trim())}
           placeholder="e.g. Classic Games 2"
           onChange={e=>{setStudyName(e.target.value);invalidate();}} />
       </label>
       <label className="block text-sm">Lichess study ID (alternative to title)
         <input className={field} value={studyId} minLength={8} maxLength={8}
-          disabled={Boolean(studyName.trim())}
+          disabled={useSavedStudy||Boolean(studyName.trim())}
           placeholder="8 characters from /study/" pattern="[A-Za-z0-9]{8}"
           onChange={e=>{setStudyId(e.target.value);invalidate();}} />
       </label>
-      {(studyId.trim()||studyName.trim())&&<>
+      {(useSavedStudy||studyId.trim()||studyName.trim())&&<>
         <label className="block text-sm">Chapter number in that study (1–64)
           <input className={field} type="number" min={1} max={64} required
             value={chapterNumber} onChange={e=>{setChapterNumber(e.target.value);invalidate();}} />
