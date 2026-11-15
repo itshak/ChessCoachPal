@@ -555,3 +555,36 @@ test("PARITY:PARITY-billing-draft-partial-payment stays private and reopens to d
  expect(last.status).toBe("draft");
  expect(last.payments).toHaveLength(1);
 });
+
+test("PARITY:PARITY-billing-regenerate-draft-with-payments protects the received balance",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const created=await invoice("draft",6500);
+ const line=await created.admin.from("invoice_items").insert({
+  invoice_id:created.id,kind:"lesson",description:"Original chess lesson",
+  quantity:1,unit_cents:6500,amount_cents:6500,sort_order:0,
+ });
+ expect(line.error).toBeNull();
+ const payment=await page.request.post("/api/billing/invoices/"+created.id+"/mark-paid",{
+  data:{amountCents:2000,note:"Partial deposit",idempotencyKey:randomUUID()},
+ });
+ expect(payment.status(),await payment.text()).toBe(200);
+ const before=await siteInvoice(page,created.id);
+ const auth=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ expect((await auth.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
+ const refused=await auth.rpc("ccp_canonical_invoice_regenerate_atomic",{
+  p_invoice_id:created.id,p_items:[],p_redemptions:[],
+  p_expected_updated_at:before.updated_at,p_request_id:randomUUID(),
+ });
+ expect(refused.error?.message).toContain("INVOICE_TOTAL_BELOW_PAID");
+ const after=await siteInvoice(page,created.id);
+ expect(after.status).toBe("draft");
+ expect(after.subtotal_cents).toBe(6500);
+ expect(after.invoice_items).toHaveLength(1);
+ const mcp=await call("ccp_v1_billing_invoice_detail",{invoiceId:created.id});
+ expect(mcp.error).toBeUndefined();
+ expect(mcp.data.status).toBe("draft");
+ expect(mcp.data.subtotal_cents).toBe(6500);
+});

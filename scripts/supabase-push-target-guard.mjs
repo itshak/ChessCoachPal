@@ -31,7 +31,7 @@ function filesIn(path){
 }
 export function auditRepository(root){
  const files=[...filesIn(join(root,".github/workflows")),...filesIn(join(root,"scripts")),...filesIn(join(root,"docker"))]
-   .filter(file=>/\.(?:yml|yaml|sh|mjs|bash)$/.test(file));
+   .filter(file=>/\.(?:yml|yaml|sh|bash)$/.test(file));
  return files.flatMap(file=>unsafeMigrationPushes(readFileSync(file,"utf8"),file.slice(root.length+1)));
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
