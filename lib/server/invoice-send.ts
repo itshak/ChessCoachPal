@@ -23,7 +23,8 @@ export interface SendInvoiceResult {
 }
 
 /**
- * Freeze a draft invoice and email the PDF. Shared by single-send and bulk.
+ * Send a saved draft or never-sent paid invoice PDF.
+ * Shared by single-send and bulk; a settled invoice remains paid.
  */
 export async function sendInvoice(
   supabase: SupabaseClient,
@@ -47,7 +48,7 @@ export async function sendInvoice(
       case "not_found":
         return { ok: false, error: "Not found" };
       case "not_draft":
-        return { ok: false, error: "Only draft invoices can be sent" };
+        return { ok: false, error: "Only unsent drafts or never-sent paid invoices can be sent" };
       case "no_items":
         return { ok: false, error: "Add at least one line item before sending" };
       case "no_family":
@@ -148,19 +149,23 @@ export async function sendInvoice(
     const greeting = familyGreetingNames(family);
 
     const qrNote =
-      !checkoutUrl &&
+      balanceCents > 0 && !checkoutUrl &&
       policy.payment_provider === "manual" &&
       isValidPaymentQrDataUrl(policy.payment_qr_code)
         ? "A payment QR code is included on the attached invoice."
         : "";
 
-    const payText = checkoutUrl
+    const payText = balanceCents === 0
+      ? "Payment received in full. No further payment is due."
+      : checkoutUrl
       ? `Pay online: ${checkoutUrl}`
       : policy.payment_instructions.trim()
         ? `Payment instructions:\n${policy.payment_instructions.trim()}${qrNote ? `\n\n${qrNote}` : ""}`
         : qrNote || "See your family portal for payment details.";
 
-    const payHtml = checkoutUrl
+    const payHtml = balanceCents === 0
+      ? "<p>Payment received in full. No further payment is due.</p>"
+      : checkoutUrl
       ? `<p><a href="${escapeHtml(checkoutUrl)}">Pay online</a></p>`
       : policy.payment_instructions.trim()
         ? `<p><strong>Payment instructions</strong></p><p style="white-space:pre-wrap;">${escapeHtml(policy.payment_instructions.trim())}</p>${qrNote ? `<p>${qrNote}</p>` : ""}`

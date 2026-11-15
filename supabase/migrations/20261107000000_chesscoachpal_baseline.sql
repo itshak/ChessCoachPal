@@ -7203,10 +7203,12 @@ BEGIN
  SELECT * INTO v_invoice FROM public.invoices
   WHERE id=p_invoice_id AND teacher_id=v_teacher FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
- IF v_invoice.status<>'draft' OR
-    v_invoice.stripe_checkout_session_id IS NOT NULL OR
-    v_invoice.stripe_checkout_url IS NOT NULL OR
-    v_invoice.stripe_payment_intent_id IS NOT NULL THEN
+ IF NOT (
+   v_invoice.status='draft' OR
+   (v_invoice.status='paid' AND v_invoice.sent_at IS NULL)
+ ) OR v_invoice.stripe_checkout_session_id IS NOT NULL OR
+      v_invoice.stripe_checkout_url IS NOT NULL OR
+      v_invoice.stripe_payment_intent_id IS NOT NULL THEN
   RAISE EXCEPTION 'INVOICE_NOT_SENDABLE' USING ERRCODE='23514';END IF;
  IF v_invoice.updated_at IS DISTINCT FROM p_expected_updated_at THEN
   RAISE EXCEPTION 'STALE_INVOICE_REVISION' USING ERRCODE='23505';END IF;
@@ -7214,8 +7216,11 @@ BEGIN
   WHERE invoice_id=p_invoice_id;
  IF v_paid<>p_expected_paid_cents OR v_paid>v_invoice.subtotal_cents THEN
   RAISE EXCEPTION 'INVOICE_SEND_BALANCE_CHANGED' USING ERRCODE='23505';END IF;
- UPDATE public.invoices SET status='sent',sent_at=clock_timestamp()
-  WHERE id=p_invoice_id AND teacher_id=v_teacher AND status='draft'
+ UPDATE public.invoices
+    SET status=CASE WHEN status='draft' THEN 'sent' ELSE 'paid' END,
+        sent_at=clock_timestamp()
+  WHERE id=p_invoice_id AND teacher_id=v_teacher
+    AND (status='draft' OR (status='paid' AND sent_at IS NULL))
   RETURNING updated_at INTO v_updated;
  IF NOT FOUND THEN
   RAISE EXCEPTION 'INVOICE_ALREADY_CLAIMED' USING ERRCODE='23505';END IF;
