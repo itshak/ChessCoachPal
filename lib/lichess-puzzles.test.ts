@@ -48,6 +48,22 @@ describe("human-reviewed FEN puzzle preview",()=>{
  ])("rejects statically impossible FEN %s",fen=>{
   expect(()=>fenBoard(fen)).toThrow();
  });
+ it("validates every SAN move through native GigaChess",()=>{
+   const preview=buildPuzzlePreview(draft);
+   expect(preview.rulesEngine).toBe("GigaChess");
+   expect(preview.continuationMovesVerified).toBe(true);
+   expect(preview.legalPlyCount).toBe(4);
+   expect(preview.endingFen).toContain(" w KQkq - ");
+   for(const moves of [
+    "1. e5","1. e4 e5 2. Nf6",
+    "1. e4 e5 2. Nf3 Nc6 3. O-O",
+    "1. f3 e5 2. g4 Qh4# 3. e4",
+    "1. e4 e5 2.","1. e4 2... e5",
+   ])expect(()=>buildPuzzlePreview({...draft,moves})).toThrow();
+   const ep="rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1";
+   const black=buildPuzzlePreview({...draft,fen:ep,moves:"1... c5 2. Nf3"});
+   expect(black.legalPlyCount).toBe(2);
+ });
  it("marks image-derived game state as unknown rather than certified",()=>{
   const proposal=validateFenPosition(start,"image");
   expect(proposal.requiresTeacherConfirmation).toBe(true);

@@ -91,6 +91,22 @@ async function close(server:Server){
  await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
 }
 
+test("PARITY:PARITY-lichess-fen-visual-correction-requires-revalidation-before-sharing",async({page,request})=>{
+ await delegatedTool(page,request); // authenticated teacher website
+ await page.goto("/learning");
+ const panel=page.locator('section[aria-label="FEN position validation"]');
+ const fenInput=panel.getByRole("textbox",{name:"Reviewed six-field FEN"});
+ await fenInput.fill(sampleFen);
+ await panel.getByRole("button",{name:"Validate and review (no provider write)"}).click();
+ await expect(panel.getByRole("button",{name:"Edit e2"})).toBeVisible();
+ await panel.getByRole("combobox",{name:"Piece to place"}).selectOption(".");
+ await panel.getByRole("button",{name:"Edit e2"}).click();
+ await expect(fenInput).toHaveValue(sampleFen.replace("/PPPPPPPP/","/PPPP1PPP/"));
+ await expect(panel.getByRole("button",{name:"Edit e2"})).toHaveCount(0);
+ await panel.getByRole("button",{name:"Validate and review (no provider write)"}).click();
+ await expect(panel.getByRole("button",{name:"Edit e2"})).toBeVisible();
+});
+
 test("PARITY:PARITY-lichess-image-fen-human-review makes identical website and MCP board proposals without publishing",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const website=await page.request.post("/api/lichess/puzzles/preview",{data:draft});
@@ -101,6 +117,7 @@ test("PARITY:PARITY-lichess-image-fen-human-review makes identical website and M
  expect(reviewed.board[7][4]).toBe("K");
  expect(reviewed.sideToMove).toBe("white");
  expect(reviewed.sha256).toMatch(/^[a-f0-9]{64}$/);
+ expect(reviewed).toMatchObject({rulesEngine:"GigaChess",continuationMovesVerified:true,legalPlyCount:4});
  const model=await call("ccp_v1_lichess_puzzle_preview",draft);
  expect(model.error).toBeUndefined();
  expect(model.data).toEqual(reviewed);
@@ -111,6 +128,14 @@ test("PARITY:PARITY-lichess-image-fen-human-review makes identical website and M
  })).status()).toBe(400);
  expect((await call("ccp_v1_lichess_puzzle_preview",malformed)).error?.code)
   .toBe("VALIDATION_ERROR");
+ // The browser and delegated MCP must reject syntactically valid but
+ // chess-illegal continuations before any Lichess provider write.
+ for(const moves of ["1. e5","1. e4 e5 2. Nf6","1. e4 e5 2. Nf3 Nc6 3. O-O"]){
+  const illegal={...draft,moves};
+  const web=await page.request.post("/api/lichess/puzzles/preview",{data:illegal});
+  expect(web.status(),await web.text()).toBe(400);
+  expect((await call("ccp_v1_lichess_puzzle_preview",illegal)).error?.code).toBe("VALIDATION_ERROR");
+ }
  const unsafe={...draft,moves:'1. e4\\n[FEN "unreviewed"]'};
  expect((await page.request.post("/api/lichess/puzzles/preview",{
   data:unsafe,

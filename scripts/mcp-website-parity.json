@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-14",
   "headSha": "acea0c2178ceb35e6d24055ad1e2aa6ee17ff196",
-  "policy": "Active feature-branch batch: shared teacher student exact alias resolver, week-date canonical slot inference, day preview, optional verified PGN chapter choice, website + MCP. No acceptance claim before exact final-head CI/E2E/security/Compose/restore. Original 93 historic and all independent expanded scenarios remain strict and must not be weakened.",
+  "policy": "GigaChess native chess-rules legality is a shared website/MCP domain validation boundary. The original 93 historical scenarios and independent additional cases are mandatory; this PR includes new browser/MCP tests but is not accepted until final SHA tests pass. Live ChatGPT/Claude and external provider client acceptance are separate publication gates.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -845,7 +845,7 @@
         "ccp_v1_lichess_puzzle_preview",
         "ccp_v1_lichess_image_fen_propose"
       ],
-      "explanation": "Website/MCP FEN, board and PGN preview plus opt-in AI board-image extraction are covered by one authenticated CI-only synthetic vision provider, returned candidate identity, teacher correction, cross-client PGN preview and reviewed typed Lichess publication. Image input consent and MIME validation are tested; live external Lichess/vision credentials are separately launch-gated.",
+      "explanation": "Both website and authenticated delegated MCP use the same GigaChess-native FEN review and move-by-move legal SAN continuation service. A syntactically plausible but illegal line is refused before digest or Lichess publication; image state remains unverified and teacher correction/revalidation is required. Independent browser/MCP cases: e2e/parity-lichess-puzzle.spec.ts. Earlier approved image/vision consent boundaries remain intact.",
       "evidenceTest": "e2e/parity-lichess-puzzle.spec.ts"
     },
     {
@@ -858,7 +858,7 @@
       "existingTools": [
         "ccp_v1_lichess_puzzle_publish"
       ],
-      "explanation": "Website and delegated MCP share approved Lichess study:write publishing, SHA-256 preview confirmation and tenant-scoped idempotent provider receipts. Authenticated synthetic-provider E2E at d18356c verifies scope denial, cross-client replay, changed-content conflicts and fail-closed ambiguous provider 503 without duplicate writes.",
+      "explanation": "Provider publication requires a human-approved matching digest from the same GigaChess legal SAN preview on website and MCP; no illegal moves can enter the review receipt. Separate Lichess study:write grant and tenant idempotent external-write receipt remain mandatory; uncertain provider outcomes are not automatically retried. Authenticated browser/MCP tests: e2e/parity-lichess-puzzle.spec.ts.",
       "evidenceTest": "e2e/parity-lichess-puzzle.spec.ts"
     },
     {
@@ -1199,7 +1199,7 @@
         "ccp_v1_learning_materials_create",
         "ccp_v1_learning_materials_update"
       ],
-      "explanation": "Website/MCP share teacher-scoped canonical typed learning material list/get/create/update, typed game/puzzle/study detail, revision and approved correction. Authenticated E2E creates typed materials, reads both directions, validates content and edits; relation and archive behavior have separately tested routes.",
+      "explanation": "Website/MCP share typed material list/get/create/revisioned update, with GigaChess validation of every game PGN mainline and variation before both writes and corrections. Invalid game moves fail closed via the shared typed Zod/domain schema; teacher identity, game result and authenticity are not inferred. Source-linked cross-surface evidence: e2e/parity-material-coverage.spec.ts and e2e/agent-mcp.spec.ts.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
