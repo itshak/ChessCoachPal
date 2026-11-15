@@ -18,17 +18,17 @@ test("PARITY:PARITY-optional-ai-settings masks browser-entered key and permits c
    expect(website.ai_api_key).toBeNull();
    expect(website.ai.apiKey.configured).toBe(true);
    expect(JSON.stringify(website)).not.toContain(secret);
-   const model=await call("ccp_v1_studio_policy_get",{});
+   const model=await call("ccp_studio_policy_get",{});
    expect(model.error).toBeUndefined();
    expect(model.data.ai_provider).toBe("openai");
    expect(model.data.ai_api_key).toBeNull();
    expect(model.data.ai.apiKey.configured).toBe(true);
    expect(JSON.stringify(model.data)).not.toContain(secret);
-   const rejected=await call("ccp_v1_studio_policy_update",{
+   const rejected=await call("ccp_studio_policy_update",{
      changes:{aiApiKey:"model-cannot-write-secrets"},confirmed:true,
    });
    expect(rejected.error?.code).toBe("VALIDATION_ERROR");
-   const cleared=await call("ccp_v1_studio_policy_update",{
+   const cleared=await call("ccp_studio_policy_update",{
      changes:{aiProvider:"none",clearAiApiKey:true},confirmed:true,
    });
    expect(cleared.error).toBeUndefined();
@@ -61,11 +61,11 @@ test("PARITY:PARITY-spreadsheet-external-ai-consent prevents unapproved student 
  });
  expect(deniedWebsite.status(),await deniedWebsite.text()).toBe(400);
  expect(await deniedWebsite.json()).toMatchObject({code:"CONFIRMATION_REQUIRED"});
- const model=await call("ccp_v1_import_spreadsheet_suggest",{
+ const model=await call("ccp_import_spreadsheet_suggest",{
    ...sample,useAi:true,
  });
  expect(model.error?.code).toBe("VALIDATION_ERROR");
- const permittedHeuristic=await call("ccp_v1_import_spreadsheet_suggest",{
+ const permittedHeuristic=await call("ccp_import_spreadsheet_suggest",{
    ...sample,useAi:false,
  });
  expect(permittedHeuristic.error).toBeUndefined();

@@ -3,7 +3,7 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-account-security-handoff keeps browser reauthentication outside MCP",async({page,request})=>{
  const call=await delegatedTool(page,request,"coach:read");
- const result=await call("ccp_v1_account_security_handoff",{});
+ const result=await call("ccp_account_security_handoff",{});
  expect(result.error).toBeUndefined();
  const data=result.data as {url:string;browserOnly:boolean;action:string};
  expect(data.browserOnly).toBe(true);
@@ -18,7 +18,7 @@ test("PARITY:PARITY-account-security-handoff keeps browser reauthentication outs
 });
 test("PARITY:PARITY-hosted-subscription-handoff opens signed-in account without exposing Stripe credentials",async({page,request})=>{
  const call=await delegatedTool(page,request,"coach:read");
- const result=await call("ccp_v1_hosted_subscription_handoff",{});
+ const result=await call("ccp_hosted_subscription_handoff",{});
  expect(result.error).toBeUndefined();
  const data=result.data as {url:string;browserOnly:boolean;action:string};
  expect(data.browserOnly).toBe(true);
@@ -32,7 +32,7 @@ test("PARITY:PARITY-hosted-subscription-handoff opens signed-in account without 
 
 test("PARITY:PARITY-account-browser-mfa-presence is accessible only through secure signed-in UI",async({page,request})=>{
  const call=await delegatedTool(page,request,"coach:read");
- const redirect=await call("ccp_v1_account_security_handoff",{});
+ const redirect=await call("ccp_account_security_handoff",{});
  expect(redirect.error).toBeUndefined();
  await page.goto(new URL(redirect.data.url).pathname);
  await expect(page.getByRole("heading",{name:"Account Settings"})).toBeVisible();

@@ -7,7 +7,7 @@ test("PARITY:PARITY-dashboard-summary matches all website counts through read-on
  const call=await delegatedTool(page,request,"coach:read");
  const website=await page.request.get("/api/dashboard/summary");
  expect(website.status(),await website.text()).toBe(200);
- const tool=await call("ccp_v1_dashboard_summary",{});
+ const tool=await call("ccp_dashboard_summary",{});
  expect(tool.error).toBeUndefined();
  expect(tool.data).toEqual(await website.json());
  for(const key of ["studentCount","workplaceCount","groupCount"])
@@ -19,11 +19,11 @@ test("PARITY:PARITY-security-read-only-client cannot mutate students or workplac
  const before=await page.request.get("/api/students?limit=10&activeOnly=true");
  expect(before.status(),await before.text()).toBe(200);
  const marker="Unauthorized read-only mutation "+randomUUID();
- const attempted=await call("ccp_v1_students_create",{
+ const attempted=await call("ccp_students_create",{
    name:marker,idempotencyKey:randomUUID(),
  });
  expect(attempted.error?.code).toBe("FORBIDDEN");
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
    name:marker,timezone:"UTC",currency:"USD",locale:"en",
    policy:{},idempotencyKey:randomUUID(),
  });
@@ -31,7 +31,7 @@ test("PARITY:PARITY-security-read-only-client cannot mutate students or workplac
  const site=await page.request.get("/api/students?query="+encodeURIComponent(marker));
  expect(site.status(),await site.text()).toBe(200);
  expect((await site.json()).students).toEqual([]);
- const read=await call("ccp_v1_workplaces_list",{});
+ const read=await call("ccp_workplaces_list",{});
  expect(read.error).toBeUndefined();
  expect((read.data as Array<{name:string}>).some(x=>x.name===marker)).toBe(false);
 });
@@ -57,11 +57,11 @@ test("PARITY:PARITY-security-cross-tenant-ids cannot be read or edited on websit
      .select("id").single();
    expect(createError).toBeNull();
    const studentId=student!.id as string;
-   const mcp=await call("ccp_v1_students_profile",{studentId});
+   const mcp=await call("ccp_students_profile",{studentId});
    expect(mcp.error?.code).toBe("NOT_FOUND");
    const site=await page.request.get("/api/students/"+studentId);
    expect(site.status()).toBe(404);
-   const blockedMcp=await call("ccp_v1_students_profile_edit",{
+   const blockedMcp=await call("ccp_students_profile_edit",{
      studentId,expectedUpdatedAt:new Date().toISOString(),
      changes:{name:"Cross-tenant violation"},confirmed:true,
    });
@@ -82,7 +82,7 @@ test("PARITY:PARITY-security-cross-tenant-ids cannot be read or edited on websit
 test("PARITY:PARITY-delegated-oauth-website-roundtrip performs actual teacher-owned writes",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const firstName="Roundtrip "+randomUUID();
- const created=await call("ccp_v1_students_create",{
+ const created=await call("ccp_students_create",{
    name:firstName,idempotencyKey:randomUUID(),
  });
  expect(created.error).toBeUndefined();
@@ -95,7 +95,7 @@ test("PARITY:PARITY-delegated-oauth-website-roundtrip performs actual teacher-ow
    data:{name:nextName},
  });
  expect(changed.status(),await changed.text()).toBe(200);
- const read=await call("ccp_v1_students_profile",{studentId});
+ const read=await call("ccp_students_profile",{studentId});
  expect(read.error).toBeUndefined();
  expect(read.data.name).toBe(nextName);
  expect(read.data.id).toBe(studentId);

@@ -6,25 +6,25 @@ import {reportCsv} from "../lib/coaching-report";
 
 test("PARITY:PARITY-reports-hebrew-rtl-csv renders RTL and exports exact MCP-local calendar totals safely",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
    name:"מועדון שחמט "+randomUUID().slice(0,8),timezone:"Asia/Jerusalem",
    currency:"ILS",locale:"he",policy:{},idempotencyKey:randomUUID(),
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
    name:"=SUM(1+1) משה "+randomUUID().slice(0,8),
    idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const enrolled=await call("ccp_v1_workplaces_enroll",{
+ const enrolled=await call("ccp_workplaces_enroll",{
    workplaceId,studentId,idempotencyKey:randomUUID(),
  });
  expect(enrolled.error).toBeUndefined();
  // 22:30 UTC is already the next day in Jerusalem summer time.
  for(const startsAt of ["2042-07-14T22:30:00.000Z","2042-07-15T22:30:00.000Z"]){
-   const created=await call("ccp_v1_sessions_create",{
+   const created=await call("ccp_sessions_create",{
      workplaceId,studentId,title:"סיום צריח",startsAt,durationMinutes:50,
      lessonNote:"No accidental public student details",
      idempotencyKey:randomUUID(),
@@ -38,7 +38,7 @@ test("PARITY:PARITY-reports-hebrew-rtl-csv renders RTL and exports exact MCP-loc
  const browserApi=await page.request.get(url);
  expect(browserApi.status(),await browserApi.text()).toBe(200);
  const site=await browserApi.json();
- const mcp=await call("ccp_v1_reports_workplace_summary",{
+ const mcp=await call("ccp_reports_workplace_summary",{
    workplaceId,from:date,to:date,format:"json",
  });
  expect(mcp.error).toBeUndefined();
@@ -70,7 +70,7 @@ test("PARITY:PARITY-reports-hebrew-rtl-csv renders RTL and exports exact MCP-loc
  expect(csv).toBe("\uFEFF"+csv.slice(1));
  expect(csv).not.toContain("=SUM(1+1)");
  expect(csv).not.toContain("מֹשה");
- const mcpCsv=await call("ccp_v1_reports_workplace_summary",{
+ const mcpCsv=await call("ccp_reports_workplace_summary",{
    workplaceId,from:date,to:date,format:"csv",
  });
  expect(mcpCsv.error).toBeUndefined();
