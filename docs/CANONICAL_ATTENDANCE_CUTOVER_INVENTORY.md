@@ -25,7 +25,7 @@ Run `npm run schema:attendance:inventory` for source details or `npm run schema:
 | History/archive | lib/server/student-profile-service.ts; lib/server/unified-lesson-service.ts | Single canonical timeline and history preservation |
 | Seed/transfer | supabase/seed.sql; SQL backup/restore; lib/data-transfer.ts | Canonical-only data import/export |
 
-Indirect entry points needing behavior tests even without direct old-table reads: app/api/schedule routes; app/api/agent/v1/route.ts; named ccp_v1_calendar_* MCP operations in lib/server/agent-tools.ts; teacher schedule, attendance and notes components; portal, invoice and credit flows; reports, feeds, backups and notifications.
+Indirect entry points needing behavior tests even without direct old-table reads: app/api/schedule routes; app/api/agent/v1/route.ts; named ccp_calendar_* MCP operations in lib/server/agent-tools.ts; teacher schedule, attendance and notes components; portal, invoice and credit flows; reports, feeds, backups and notifications.
 
 ## Behavioral acceptance map
 

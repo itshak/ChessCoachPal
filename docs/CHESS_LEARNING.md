@@ -10,7 +10,7 @@ The teacher can also record chess skill categories and observations. New teacher
 
 ## Website / MCP parity
 
-The website domain API and delegated MCP use the same ownership-scoped services for `materials.links.list`, `materials.links.create`, `materials.links.update`, `materials.links.unlinkImpact` and `materials.links.unlink`. The corresponding MCP tools are `ccp_v1_material_links_list`, `ccp_v1_material_links_create`, `ccp_v1_material_links_update`, `ccp_v1_material_links_unlink_impact` and `ccp_v1_material_links_unlink`. Creating a link requires a canonical material ID, target student or lesson, request UUID and explicit confirmation. Reassignment and unlinking require the latest revision.
+The website domain API and delegated MCP use the same ownership-scoped services for `materials.links.list`, `materials.links.create`, `materials.links.update`, `materials.links.unlinkImpact` and `materials.links.unlink`. The corresponding MCP tools are `ccp_material_links_list`, `ccp_material_links_create`, `ccp_material_links_update`, `ccp_material_links_unlink_impact` and `ccp_material_links_unlink`. Creating a link requires a canonical material ID, target student or lesson, request UUID and explicit confirmation. Reassignment and unlinking require the latest revision.
 
 The typed catalog is edited through the shared `/api/training/materials` routes and their MCP counterparts. No link operation edits material content. Both interfaces retain explicit teacher-attested material history in `material_teaching_evidence`, even after removing an association. The backend does not fetch or mirror provider content just to establish a link.
 
