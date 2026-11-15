@@ -31,9 +31,9 @@ describe("canonical typed material correction contract",()=>{
     expect(materialCatalogCreateSchema.safeParse({...base,
       details:{...base.details,pgn:"[SetUp \"1\"]\\n[FEN \"not a FEN\"]\\n\\n1. e4 *"}}).success).toBe(false);
     expect(materialCatalogCreateSchema.safeParse({...base,
-      details:{...base.details,pgn:"1. e4 e5 2. Nf3 Nc6 (2... e6) *"}}).success).toBe(true);
+      details:{...base.details,pgn:"1. e4 e5 2. Nf3 Nc6 (2... d6) *"}}).success).toBe(true);
     expect(materialCatalogCreateSchema.safeParse({...base,
-      details:{...base.details,pgn:"1. e4 e5 2. Nf3 Nc6 (2... e7) *"}}).success).toBe(false);
+      details:{...base.details,pgn:"1. e4 e5 2. Nf3 Nc6 (2... e6) *"}}).success).toBe(false);
   });
   it("guards material relation ownership inputs, self-reference and confirmation",()=>{
     const valid={fromMaterialId:materialId,toMaterialId:requestId,
