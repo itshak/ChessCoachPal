@@ -61,6 +61,32 @@ test("PARITY:PARITY-skill-assessment-receipts replays one atomic round between r
  expect(mcpHistory.error).toBeUndefined();
  expect(mcpHistory.data).toEqual(values);
 
+ // Backdating uses the same core service and immutable receipt across
+ // website and MCP; a future date is rejected on both transports.
+ const historicDate="2020-01-14";
+ const datedKey=randomUUID();
+ const dated=await call("ccp_student_skill_assessments_record",{
+   studentId,ratings:[{dimensionId,rating:2,note:"Historical lesson"}],
+   assessedOn:historicDate,idempotencyKey:datedKey,confirmed:true,
+ });
+ expect(dated.error).toBeUndefined();
+ expect(dated.data[0].assessed_on).toBe(historicDate);
+ const replayHistoric=await page.request.post("/api/students/"+studentId+"/skills",{
+   data:{ratings:[{dimensionId,rating:2,note:"Historical lesson"}],
+     assessedOn:historicDate,idempotencyKey:datedKey},
+ });
+ expect(replayHistoric.status(),await replayHistoric.text()).toBe(200);
+ expect(await replayHistoric.json()).toEqual(dated.data);
+ const illegalFuture=await call("ccp_student_skill_assessments_record",{
+   studentId,ratings:[{dimensionId,rating:2}],
+   assessedOn:"2099-01-01",idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(illegalFuture.error?.code).toBe("VALIDATION_ERROR");
+ const webFuture=await page.request.post("/api/students/"+studentId+"/skills",{
+   data:{ratings:[{dimensionId,rating:2}],
+     assessedOn:"2099-01-01",idempotencyKey:randomUUID()},
+ });
+ expect(webFuture.status()).toBe(400);
  const second=await page.request.post("/api/students/"+studentId+"/skills",{
    data:{ratings:[{dimensionId,rating:4,note:"Later evidence"}],idempotencyKey:randomUUID()},
  });
@@ -72,7 +98,7 @@ test("PARITY:PARITY-skill-assessment-receipts replays one atomic round between r
  expect(third.error).toBeUndefined();
  const complete=(await (await page.request.get("/api/students/"+studentId+"/skills")).json()) as
    Array<{id:string;dimension_id:string;rating:number}>;
- expect(complete).toHaveLength(3);
+ expect(complete).toHaveLength(4);
  const pageTwo=await page.request.get("/api/students/"+studentId+"/skills?limit=2&offset=1");
  expect(pageTwo.status()).toBe(200);
  expect(await pageTwo.json()).toEqual(complete.slice(1,3));
