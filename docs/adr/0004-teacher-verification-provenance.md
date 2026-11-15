@@ -12,7 +12,7 @@ An unverified observation created by an AI agent is marked with `source = agent`
 ## Proposed decision
 
 1. Delegated MCP may list observations, propose **unverified** observations and correct their details with explicit teacher confirmation.
-2. The action that sets `verified_at` / `verified_by` remains an authenticated, explicit teacher-originated browser operation; the MCP tool catalogue MUST NOT expose `ccp_v1_chess_observations_approve`.
+2. The action that sets `verified_at` / `verified_by` remains an authenticated, explicit teacher-originated browser operation; the MCP tool catalogue MUST NOT expose `ccp_chess_observations_approve`.
 3. MCP can subsequently list the observation and see its provenance and verification status. No raw SQL or direct trusted-state update path may bypass the browser approval boundary.
 4. This is a **narrow trust/provenance exception**, not an exemption for category editing, notes, saved Lichess links or other chess business fields; those must retain MCP parity.
 5. Full MCP-first approval may be introduced later only with a server-validated, human-interactive authorization receipt or equivalent independent human confirmation that an agent cannot synthesize by supplying tool arguments.
