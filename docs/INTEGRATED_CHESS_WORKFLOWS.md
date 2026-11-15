@@ -12,6 +12,12 @@ The lesson capture panel also allows an exact indexed Lichess study **title or s
 
 A separate **teacher context** read (`GET /api/teacher/context`, `ccp_v1_teacher_context_get`) provides the server-derived teacher-local date and IANA timezone. Agents should call this rather than inventing the current local day.
 
+## Saved teacher, workplace and student Lichess study preferences
+
+The **Training & materials** website manages a verified, purpose-specific lesson or puzzle Lichess study ID for the teacher, a workplace, or an active learner. Website: `GET/POST /api/lichess/study-preferences`; delegated MCP: `ccp_v1_materials_preferences_list`, `ccp_v1_materials_preferences_resolve`, `ccp_v1_materials_preferences_set`. All access is owner scoped. A study may be saved only after authorized Lichess `study:read` indexing within 24 hours; no OAuth tokens are stored in preference rows. Set/clear uses a revisioned SQL idempotency receipt and explicit approval, and ordinary direct PostgREST writes are denied outside a protected portable-backup transaction.
+
+**Deterministic precedence is student > workplace > teacher.** A resolved study requires student enrollment in the selected workplace. A group lesson preview may now supply the exact chapter number **without** a study; it resolves every student's effective preference. When any student lacks a preference or choices disagree, the preview fails closed and requires an explicit authorized study. A teacher-supplied explicit study still overrides a default when valid. Preference storage never proves the subject was taught or mastered. Current-schema portable teacher export/restore includes scoped defaults and owner validation.
+
 ## 2. Student chess platform ratings (manual or opt-in public lookup)
 
 On the student detail page, **Rating observations** separates provider, time control, source, observation date, games, provisional marker and rating deviation. The teacher can record an append-only manual rating. With explicit consent, the app can query only a saved student **public username** against fixed official Lichess or Chess.com endpoints. It first returns a read-only review/digest; a separate confirmed action fetches again and writes immutable provider-specific snapshots. A changed digest or replay request is rejected. The public handle is not proof of account ownership.
