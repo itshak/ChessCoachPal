@@ -5178,7 +5178,7 @@ BEGIN
   -- arbitrary JSON table names are ignored, never interpolated into SQL.
   FOREACH v_table IN ARRAY ARRAY[
     'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
-    'workplace_enrollments', 'group_enrollments', 'lesson_slots',
+    'workplace_enrollments', 'group_enrollments', 'teacher_study_preferences', 'lesson_slots',
     'teaching_sessions', 'session_participants', 'session_attendance',
     'session_notes', 'chess_skill_categories', 'chess_observations',
     'skill_dimensions', 'skill_assessments',
@@ -5219,7 +5219,7 @@ BEGIN
       END IF;
       IF v_table = ANY(ARRAY[
         'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
-        'workplace_enrollments', 'group_enrollments', 'lesson_slots',
+        'workplace_enrollments', 'group_enrollments', 'teacher_study_preferences', 'lesson_slots',
         'teaching_sessions', 'session_participants', 'session_attendance',
         'session_notes', 'chess_skill_categories', 'chess_observations',
         'skill_dimensions', 'invoices', 'events', 'credit_packages',
@@ -9506,3 +9506,154 @@ REVOKE ALL ON FUNCTION public.ccp_teacher_lesson_chapter_commit(
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_lesson_chapter_commit(
  uuid,uuid[],text,timestamptz,integer,text,text,text,
  timestamptz,text,uuid,uuid,text) TO authenticated;
+
+
+-- Current-schema per-teacher, workplace and student Lichess study preferences.
+-- Student > workplace > teacher precedence is an explicit read-only resolution;
+-- none of these preferences proves lesson attendance or topic mastery.
+CREATE TABLE public.teacher_study_preferences (
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ purpose text NOT NULL CHECK (purpose IN ('lesson','puzzle')),
+ scope text NOT NULL CHECK (scope IN ('teacher','workplace','student')),
+ scope_id uuid NOT NULL,
+ study_id text NOT NULL CHECK (study_id ~ '^[A-Za-z0-9]{8}$'),
+ revision bigint NOT NULL DEFAULT 1 CHECK (revision>=1),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY (teacher_id,purpose,scope,scope_id),
+ CONSTRAINT ccp_preference_teacher_scope CHECK(scope <> 'teacher' OR scope_id=teacher_id)
+);
+CREATE INDEX ccp_teacher_study_preference_study ON public.teacher_study_preferences(teacher_id,study_id);
+ALTER TABLE public.teacher_study_preferences ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ccp_study_preference_read ON public.teacher_study_preferences
+ FOR SELECT TO authenticated USING(teacher_id=auth.uid());
+-- The only ordinary write path is the confirmed, revisioned SEC DEFINER RPC.
+-- The backup restorer sets this transaction-local proof after authenticating;
+-- without that proof direct authenticated PostgREST INSERT/PATCH/DELETE is denied.
+CREATE POLICY ccp_study_preference_backup_insert ON public.teacher_study_preferences
+ FOR INSERT TO authenticated WITH CHECK(
+  teacher_id=auth.uid() AND
+  current_setting('ccp.backup_import_teacher',true)=auth.uid()::text);
+CREATE POLICY ccp_study_preference_backup_update ON public.teacher_study_preferences
+ FOR UPDATE TO authenticated USING(
+  teacher_id=auth.uid() AND
+  current_setting('ccp.backup_import_teacher',true)=auth.uid()::text)
+ WITH CHECK(teacher_id=auth.uid() AND
+  current_setting('ccp.backup_import_teacher',true)=auth.uid()::text);
+CREATE POLICY ccp_study_preference_backup_delete ON public.teacher_study_preferences
+ FOR DELETE TO authenticated USING(
+  teacher_id=auth.uid() AND
+  current_setting('ccp.backup_import_teacher',true)=auth.uid()::text);
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.teacher_study_preferences TO authenticated;
+REVOKE ALL ON TABLE public.teacher_study_preferences FROM PUBLIC,anon;
+
+-- Scope is never an unrestricted UUID: a foreign or nonexistent student or
+-- workplace cannot be inserted by a forged portable backup, either.
+CREATE OR REPLACE FUNCTION public.ccp_study_preference_scope_guard()
+ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $study_pref_guard$
+BEGIN
+ IF (NEW.scope='teacher' AND NEW.scope_id<>NEW.teacher_id)
+ OR (NEW.scope='workplace' AND NOT EXISTS(
+  SELECT 1 FROM public.workplaces
+  WHERE id=NEW.scope_id AND teacher_id=NEW.teacher_id))
+ OR (NEW.scope='student' AND NOT EXISTS(
+  SELECT 1 FROM public.students
+  WHERE id=NEW.scope_id AND teacher_id=NEW.teacher_id)) THEN
+  RAISE EXCEPTION 'STUDY_PREFERENCE_FOREIGN_SCOPE' USING ERRCODE='42501';
+ END IF;
+ IF TG_OP='UPDATE' AND NEW.revision<OLD.revision THEN
+  RAISE EXCEPTION 'STUDY_PREFERENCE_STALE_VERSION' USING ERRCODE='23505';
+ END IF;
+ RETURN NEW;
+END;
+$study_pref_guard$;
+REVOKE ALL ON FUNCTION public.ccp_study_preference_scope_guard() FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_study_preference_guard
+ BEFORE INSERT OR UPDATE ON public.teacher_study_preferences
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_study_preference_scope_guard();
+
+CREATE OR REPLACE FUNCTION public.ccp_teacher_study_preference_set(
+ p_purpose text,p_scope text,p_scope_id uuid,p_study_id text,
+ p_expected_revision bigint,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $study_pref_set$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_prior public.agent_tool_receipts%ROWTYPE;
+ v_revision bigint:=0;
+ v_previous text;
+ v_hash text;
+ v_receipt jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_purpose NOT IN ('lesson','puzzle') OR
+    p_scope NOT IN ('teacher','workplace','student') OR
+    p_scope_id IS NULL OR p_request_id IS NULL OR
+    p_expected_revision IS NULL OR p_expected_revision<0 OR
+    (p_study_id IS NOT NULL AND p_study_id !~ '^[A-Za-z0-9]{8}$') THEN
+  RAISE EXCEPTION 'STUDY_PREFERENCE_INVALID' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=md5(jsonb_build_array(
+  p_purpose,p_scope,p_scope_id,p_study_id,p_expected_revision)::text);
+ INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_request_id,'study.preference.set',v_hash,'{}'::jsonb)
+ ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+  SELECT * INTO v_prior FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+  IF NOT FOUND OR v_prior.operation<>'study.preference.set' OR
+    v_prior.request_hash<>v_hash OR v_prior.receipt='{}'::jsonb
+  THEN RAISE EXCEPTION 'STUDY_PREFERENCE_REPLAY_CONFLICT' USING ERRCODE='23505';END IF;
+  RETURN v_prior.receipt || jsonb_build_object('replayed',true);
+ END IF;
+ IF (p_scope='teacher' AND p_scope_id<>v_teacher)
+ OR (p_scope='workplace' AND NOT EXISTS(
+  SELECT 1 FROM public.workplaces WHERE teacher_id=v_teacher AND id=p_scope_id))
+ OR (p_scope='student' AND NOT EXISTS(
+  SELECT 1 FROM public.students
+  WHERE teacher_id=v_teacher AND id=p_scope_id AND archived_at IS NULL)) THEN
+  RAISE EXCEPTION 'STUDY_PREFERENCE_SCOPE_UNAVAILABLE' USING ERRCODE='42501';
+ END IF;
+ IF p_study_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM public.teacher_study_chapter_index
+  WHERE teacher_id=v_teacher AND study_id=p_study_id
+    AND verified_at>=clock_timestamp()-interval '24 hours') THEN
+  RAISE EXCEPTION 'STUDY_PREFERENCE_UNVERIFIED' USING ERRCODE='23514';
+ END IF;
+ SELECT study_id,revision INTO v_previous,v_revision
+  FROM public.teacher_study_preferences
+  WHERE teacher_id=v_teacher AND purpose=p_purpose AND
+   scope=p_scope AND scope_id=p_scope_id FOR UPDATE;
+ v_revision:=coalesce(v_revision,0);
+ IF v_revision<>p_expected_revision THEN
+  RAISE EXCEPTION 'STUDY_PREFERENCE_STALE_REVISION' USING ERRCODE='23505';
+ END IF;
+ IF p_study_id IS NULL THEN
+  DELETE FROM public.teacher_study_preferences
+    WHERE teacher_id=v_teacher AND purpose=p_purpose
+      AND scope=p_scope AND scope_id=p_scope_id;
+  v_revision:=0;
+ ELSE
+  v_revision:=v_revision+1;
+  INSERT INTO public.teacher_study_preferences(
+   teacher_id,purpose,scope,scope_id,study_id,revision)
+  VALUES(v_teacher,p_purpose,p_scope,p_scope_id,p_study_id,v_revision)
+  ON CONFLICT(teacher_id,purpose,scope,scope_id) DO UPDATE SET
+   study_id=EXCLUDED.study_id,revision=EXCLUDED.revision,updated_at=now();
+ END IF;
+ v_receipt:=jsonb_build_object(
+  'purpose',p_purpose,'scope',p_scope,'scopeId',p_scope_id,
+  'previousStudyId',v_previous,'studyId',p_study_id,
+  'revision',v_revision,'provider','lichess','replayed',false,
+  'masteryInferred',false,'providerTokenExposed',false);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ RETURN v_receipt;
+END;
+$study_pref_set$;
+REVOKE ALL ON FUNCTION public.ccp_teacher_study_preference_set(
+ text,text,uuid,text,bigint,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_teacher_study_preference_set(
+ text,text,uuid,text,bigint,uuid) TO authenticated;

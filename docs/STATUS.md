@@ -2,6 +2,12 @@
 
 **Updated:** 2026-11-14 · **Branch of record:** main (parity implementation merged and accepted; v0.1.0 unreleased) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
+## 2026-11-15 — authenticated Lichess study-preference hierarchy (candidate)
+
+The new candidate adds teacher/workplace/student preferences for `lesson` and `puzzle` study purposes, with deterministic student→workplace→teacher resolution and verified authorized Lichess chapter-index freshness. The website can create/revise/clear and preview the effective study; matching typed MCP tools share an owner/scoped SQL idempotency receipt. A group lesson preview may omit the study only if every learner resolves to the same authenticated cached study; it never guesses or picks the first student's source. The current-schema portable backup includes this tenant-safe table. Independent synthetic website/delegated MCP E2E covers the precedence ladder, exact replay, stale revision, cross-teacher rejection, group ambiguity and fallback.
+
+**Not accepted until full CI:** Fresh Supabase/typecheck/unit/strict parity, authenticated E2E, security, Compose and backup/restore must pass on exact PR and merged-main source. Live ChatGPT/Claude, real Lichess provider and historical privacy/licensing sign-off remain separate.
+
 ## 2026-11-15 — atomic one-transaction lesson+verified-chapter implementation candidate
 
 A separate current-schema release-gap branch now implements **one authenticated PostgreSQL RPC** wrapping the existing canonical multi-student session writer and exact Lichess chapter-evidence writer. Both child calls execute within the same database transaction: stale provider index, modified roster, overlap, replay conflict, unauthorized workplace or missing chapter cause a complete rollback, never a lesson left partially linked. Read-only website and MCP previews return matching `proposedAtomicCommit`; the teacher UI requires a separate approved chapter checkbox before the new combined commit. Website `POST /api/coaching/lesson-capture/commit` and MCP `ccp_v1_lessons_capture_commit_with_chapter` use the same service, along with independently named cross-surface synthetic rollback/replay acceptance tests. The existing separately approved path remains available.

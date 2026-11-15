@@ -19,7 +19,7 @@ const POLICY_SECRET_FIELDS = [
 /** Order respects FK dependencies when imported into a different teacher. */
 const IMPORT_ORDER = [
   "studio_policies", "guardians", "students", "workplaces", "class_groups",
-  "workplace_enrollments", "group_enrollments", "lesson_slots",
+  "workplace_enrollments", "group_enrollments", "teacher_study_preferences", "lesson_slots",
   "teaching_sessions", "session_participants", "session_attendance",
   "session_notes", "chess_skill_categories", "chess_observations",
   "skill_dimensions", "skill_assessments",
@@ -35,7 +35,7 @@ const IMPORT_ORDER = [
 
 const TEACHER_SCOPED = [
   "guardians", "students", "workplaces", "class_groups",
-  "workplace_enrollments", "group_enrollments", "lesson_slots",
+  "workplace_enrollments", "group_enrollments", "teacher_study_preferences", "lesson_slots",
   "teaching_sessions", "session_participants", "session_attendance",
   "session_notes", "chess_skill_categories", "chess_observations",
   "skill_dimensions", "invoices", "events", "credit_packages", "credit_redemptions",
@@ -105,6 +105,7 @@ export async function buildStudioExport(
       // Deterministic key order ensures multi-page exports cannot repeat or
       // silently skip records after PostgREST's 1000-row limit.
       const keyOrders:Partial<Record<typeof table,readonly string[]>>={
+        teacher_study_preferences:["purpose","scope","scope_id"],
         session_participants:["session_id","student_id"],
         group_enrollments:["group_id","student_id"],
         chess_games:["material_id"],chess_puzzles:["material_id"],

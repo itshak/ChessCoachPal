@@ -10,7 +10,7 @@ export async function teacherContextGet(db:SupabaseClient,teacherId:string){
   getPolicy(db,teacherId),workplacesList(db,teacherId),
  ]);
  const localDate=toLocalDateString(new Date(),policy.timezone);
- return {localDate,dayOfWeek:dayOfWeek(localDate),timezone:policy.timezone,
+ return {teacherId,localDate,dayOfWeek:dayOfWeek(localDate),timezone:policy.timezone,
   utcNow:new Date().toISOString(),workplaces,
   note:"The teacher's local date and listed workplace timezones are authoritative; select a real date for scheduling. Context does not imply attendance or consent."};
 }

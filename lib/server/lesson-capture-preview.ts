@@ -1,4 +1,5 @@
 import "server-only";
+import {teacherStudyPreferenceResolve} from "@/lib/server/teacher-study-preferences";
 import {createHash} from "node:crypto";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -26,8 +27,8 @@ export const lessonCapturePreviewSchema = z.object({
     studyName:z.string().trim().min(1).max(160).optional(),
     chapterNumber:z.number().int().min(1).max(64),
     expectedPlayers:z.string().trim().max(120).optional(),
-  }).strict().refine(x=>Boolean(x.studyId)!==Boolean(x.studyName),
-    "Supply one exact study name OR provider study ID, never both").optional(),
+  }).strict().refine(x=>!(x.studyId&&x.studyName),
+    "Use an explicit study ID or title, or omit both to resolve the saved preference").optional(),
 }).strict().refine(x=>
   (x.startsAt!==undefined&&x.durationMinutes!==undefined&&x.localDate===undefined) ||
   (x.startsAt===undefined&&x.durationMinutes===undefined&&x.localDate!==undefined),
@@ -231,8 +232,29 @@ export async function teacherLessonCapturePreview(
     source:"AUTHORIZED_LICHESS_PGN_CACHE";attached:false}=null;
   if(input.chapterSelection&&issues.length===0){
     const choice=input.chapterSelection;
+    let resolvedStudyId=choice.studyId;
+    if(!choice.studyId&&!choice.studyName&&selectedWorkplace){
+      // A default is ONLY safe when all selected students resolve the same
+      // exact teacher-authorized study after student > workplace > teacher
+      // precedence. Never pick the first student's source silently.
+      const preferences=await Promise.all(ids.map(studentId=>
+        teacherStudyPreferenceResolve(db,teacherId,{
+          purpose:"lesson",workplaceId:selectedWorkplace!.id,studentId,
+        })));
+      const distinct=new Set(preferences.map(p=>p.studyId).filter(Boolean));
+      if(preferences.some(p=>!p.studyId)){
+        issues.push({code:"CHAPTER_NOT_FOUND",
+          message:"Some learners have no saved Lichess study preference; select an explicit study"});
+      }else if(distinct.size!==1){
+        issues.push({code:"CHAPTER_AMBIGUOUS",
+          message:"Learners have different saved Lichess studies; choose one exact study for this shared lesson"});
+      }else{
+        resolvedStudyId=preferences[0].studyId??undefined;
+      }
+    }
+    if(issues.length===0){
     const found=await teacherStudyIndexSearch(db,teacherId,{
-      ...(choice.studyId?{studyId:choice.studyId}:{}),
+      ...(resolvedStudyId?{studyId:resolvedStudyId}:{}),
       ...(choice.studyName?{query:choice.studyName}:{}),
       chapterNumber:choice.chapterNumber,limit:100,
     });
@@ -240,8 +262,8 @@ export async function teacherLessonCapturePreview(
     // exact title or provider ID; an approximate match is never accepted.
     const candidates=(found.matches as Array<Record<string,unknown>&{
       stale:boolean;chapterUrl:string;
-    }>).filter(c=>choice.studyId?
-      c.study_id===choice.studyId:
+    }>).filter(c=>resolvedStudyId?
+      c.study_id===resolvedStudyId:
       normalizeStudentIdentity(c.study_name as string)===
         normalizeStudentIdentity(choice.studyName!));
     if(found.truncated||candidates.length>1){
@@ -278,6 +300,7 @@ export async function teacherLessonCapturePreview(
           source:"AUTHORIZED_LICHESS_PGN_CACHE",attached:false,
         };
       }
+    }
     }
   }
   const canCommit=issues.length===0&&selectedWorkplace!==null&&timing!==null;
