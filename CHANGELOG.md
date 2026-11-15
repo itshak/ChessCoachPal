@@ -4,6 +4,10 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 ## [Unreleased]
 
+_Changes for the next release go here._
+
+## [0.1.1] - 2026-11-15
+
 ### Added
 - Safe full or partial manual payments on saved draft invoices without delivering or publishing them to families, with shared teacher website/MCP operations and replayable receipts.
 - Invoice PDF and send previews with previously paid and remaining-balance amounts, and a database-locked send claim to prevent stale checkout or email totals.
