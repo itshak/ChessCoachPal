@@ -98,7 +98,8 @@ export function validatePuzzleSanContinuation(fen:string,movetext:string){
   if(!/^(?:O-O(?:-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?)(?:[+#])?[!?]{0,2}$/.test(token))
    invalid("Puzzle continuation contains invalid SAN notation");
   const move=board.parseSan(token.replace(/[!?]{1,2}$/,""));
-  if(move===null)invalid("Puzzle continuation has an illegal or ambiguous SAN move at ply "+(plies+1));
+  if(move===null)throw new PuzzleReviewError("VALIDATION_ERROR",
+   "Puzzle continuation has an illegal or ambiguous SAN move at ply "+(plies+1));
   board.makeMove(move);plies++;awaitingSan=false;
  }
  if(!plies||awaitingSan)invalid("Puzzle continuation needs a complete legal move");
