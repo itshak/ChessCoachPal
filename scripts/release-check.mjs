@@ -45,9 +45,11 @@ test("rejects empty unreleased sections", () => {
 
 test("v0.1.0 requires every first-functional-release checklist item", () => {
   const prefix = "## v0.1.0: first functional release gate\n\n";
-  const six = Array.from({ length: 6 }, (_, i) => "- [x] criterion " + i).join("\n");
-  assert.equal(firstReleaseReady(prefix + six), true);
-  assert.equal(firstReleaseReady(prefix + six.replace("- [x] criterion 5", "- [ ] criterion 5")), false);
+  const five = Array.from({ length: 5 }, (_, i) => "- [x] criterion " + i).join("\n");
+  assert.equal(firstReleaseReady(prefix + five), true);
+  assert.equal(firstReleaseReady(prefix + five.replace("- [x] criterion 4", "- [ ] criterion 4")), false);
   assert.equal(firstReleaseReady(prefix + "- [x] only one"), false);
   assert.equal(firstReleaseReady("## Other heading\n- [x] criterion"), false);
+  assert.equal(firstReleaseReady(prefix + five + "\n\n**Deferred manual tasks — open after publication**\n- [ ] real client acceptance"), true);
+  assert.equal(firstReleaseReady(prefix + five + "\n- [x] extra criterion"), false);
 });
