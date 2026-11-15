@@ -13,9 +13,9 @@ const schema=read("supabase/migrations/20261107000000_chesscoachpal_baseline.sql
 
 test("teacher website core profile edits and delegated MCP use exactly one SQL writer",()=>{
  for(const [op,tool] of [
-  ["students.update","ccp_v1_students_update"],
-  ["workplaces.update","ccp_v1_workplaces_update"],
-  ["groups.update","ccp_v1_groups_update"],
+  ["students.update","ccp_students_update"],
+  ["workplaces.update","ccp_workplaces_update"],
+  ["groups.update","ccp_groups_update"],
  ]){
   const action=op.replace(".","\\.");
   const route=new RegExp('case "'+action+'":[\\s\\S]*?case "');

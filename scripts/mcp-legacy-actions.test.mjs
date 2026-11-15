@@ -18,8 +18,8 @@ test("a new website gateway action without MCP coverage cannot pass",()=>{
   assert.match(validateLegacyActionCoverage(edited,catalogue).join("\n"),/Unreviewed legacy website action/);
 });
 test("a renamed or deleted MCP tool cannot silently satisfy domain route parity",()=>{
-  const edited=catalogue.replace('name: "ccp_v1_workplaces_list"',
-    'name: "ccp_v1_missing_workplaces_list"');
+  const edited=catalogue.replace('name: "ccp_workplaces_list"',
+    'name: "ccp_missing_workplaces_list"');
   assert.match(validateLegacyActionCoverage(gateway,edited).join("\n"),/Missing registered MCP tool/);
 });
 test("teacher approval cannot be turned into a non-browser business exception",()=>{
@@ -49,15 +49,15 @@ test("a paired gateway test name without a real delegated MCP invocation cannot 
   const file=join(root,"e2e","synthetic.spec.ts");
   const browserOnly=`test("PARITY:PARITY-synthetic-unpaired",async({page})=>{
     await page.request.post("/api/agent/v1",{data:{action:"workplaces.list"}});
-    const label="ccp_v1_workplaces_list";
+    const label="ccp_workplaces_list";
     expect(label).toContain("workplaces");
   });`;
   writeFileSync(file,browserOnly);
   const missing=validateGatewayActionE2E(root);
   assert.ok(missing.errors.some(line=>line.includes("workplaces.list")));
   const pair=browserOnly.replace(
-   'const label="ccp_v1_workplaces_list";',
-   'const response=await call("ccp_v1_workplaces_list",{});');
+   'const label="ccp_workplaces_list";',
+   'const response=await call("ccp_workplaces_list",{});');
   writeFileSync(file,pair);
   const valid=validateGatewayActionE2E(root);
   assert.ok(!valid.errors.some(line=>line.includes("workplaces.list")));
