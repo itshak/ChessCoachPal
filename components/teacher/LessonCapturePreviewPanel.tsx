@@ -26,6 +26,11 @@ type Preview = {
     workplaceId:string;studentIds:string[];title:string;startsAt:string;
     durationMinutes:number;lessonNote:string;
   }|null;
+  proposedAtomicCommit:null|{
+    workplaceId:string;studentIds:string[];title:string;startsAt:string;
+    durationMinutes:number;lessonNote:string;studyId:string;chapterId:string;
+    expectedVerifiedAt:string;expectedRosterHash:string;note:string;
+  };
   selectedChapter:null|{studyId:string;chapterId:string;chapterNumber:number;
     studyName:string;chapterName:string;white:string|null;black:string|null;
     verifiedAt:string;chapterUrl:string;attached:false};
@@ -55,6 +60,7 @@ export function LessonCapturePreviewPanel() {
   const [expectedPlayers,setExpectedPlayers] = useState("");
   const [preview,setPreview] = useState<Preview|null>(null);
   const [approved,setApproved] = useState(false);
+  const [atomicApproved,setAtomicApproved] = useState(false);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
   const [receipt,setReceipt] = useState("");
@@ -62,6 +68,7 @@ export function LessonCapturePreviewPanel() {
   const [linkReview,setLinkReview] = useState<ChapterLinkPreview|null>(null);
   const [linkApproved,setLinkApproved] = useState(false);
   const [linkedReceipt,setLinkedReceipt] = useState("");
+  const atomicKeyRef = useRef<{signature:string;requestId:string;evidenceRequestId:string}|null>(null);
   const linkKeyRef = useRef<string|null>(null);
   const requestRef = useRef<{signature:string;requestId:string}|null>(null);
 
@@ -78,13 +85,14 @@ export function LessonCapturePreviewPanel() {
     return () => {active=false;};
   }, []);
 
-  const invalidate = () => {setPreview(null);setApproved(false);setReceipt("");
+  const invalidate = () => {setPreview(null);setApproved(false);setAtomicApproved(false);setReceipt("");
+    atomicKeyRef.current=null;
     setPendingLink(null);setLinkReview(null);setLinkApproved(false);setLinkedReceipt("");
     linkKeyRef.current=null;};
 
   async function check(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");setReceipt("");setPreview(null);setApproved(false);
+    setError("");setReceipt("");setPreview(null);setApproved(false);setAtomicApproved(false);atomicKeyRef.current=null;
     const workplace=workplaces.find(item=>item.id===workplaceId);
     if(!workplace){setError("Choose a workplace and its time zone");return;}
     const studentNames=names.split(/\r?\n/).map(n=>n.trim()).filter(Boolean);
@@ -145,6 +153,38 @@ export function LessonCapturePreviewPanel() {
     finally{setBusy(false);}
   }
 
+
+  async function confirmAtomic(){
+    if(!preview?.canCommit||!preview.proposedAtomicCommit||!approved||!atomicApproved)return;
+    const payload=preview.proposedAtomicCommit;
+    const signature=JSON.stringify(payload);
+    if(atomicKeyRef.current?.signature!==signature){
+      atomicKeyRef.current={signature,requestId:crypto.randomUUID(),
+        evidenceRequestId:crypto.randomUUID()};
+    }
+    setBusy(true);setError("");
+    try{
+      const response=await fetch("/api/coaching/lesson-capture/commit",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({...payload,requestId:atomicKeyRef.current.requestId,
+          evidenceRequestId:atomicKeyRef.current.evidenceRequestId,confirmed:true}),
+        cache:"no-store",
+      });
+      const body=await response.json() as {error?:string;replayed?:boolean;
+        oneTransaction?:boolean;session?:{id:string};
+        evidence?:{participantCoverages:number;inferredMastery:boolean}};
+      if(!response.ok||!body.oneTransaction||!body.session?.id)
+        throw new Error(body.error??"Atomic lesson/chapter approval unavailable");
+      setReceipt("One lesson and verified chapter assigned atomically: "+
+        body.session.id+"; "+body.evidence?.participantCoverages+
+        " student coverages. Attendance unmarked, mastery unknown."+
+        (body.replayed?" (safe replay)":""));
+      setPendingLink(null);setLinkReview(null);setLinkApproved(false);
+      setPreview(null);setApproved(false);setAtomicApproved(false);
+      atomicKeyRef.current=null;
+    }catch(e){setError(e instanceof Error?e.message:"Combined approval failed");}
+    finally{setBusy(false);}
+  }
 
   async function reviewChapterAssignment(){
     if(!pendingLink)return;
@@ -323,6 +363,20 @@ export function LessonCapturePreviewPanel() {
         <button className={button} type="button" disabled={!approved||busy} onClick={()=>void confirm()}>
           Confirm and create one lesson
         </button>
+        {preview.proposedAtomicCommit&&<>
+          <label className="flex gap-2 items-start text-sm">
+            <input type="checkbox" checked={atomicApproved}
+              onChange={e=>setAtomicApproved(e.target.checked)} />
+            I separately approve assigning the exact indexed Lichess chapter
+            to every reviewed learner in the SAME transaction as lesson creation.
+            This records an assignment, not attendance, teaching, or mastery.
+          </label>
+          <button className={button} type="button"
+            disabled={!approved||!atomicApproved||busy}
+            onClick={()=>void confirmAtomic()}>
+            Confirm lesson + chapter in one atomic transaction
+          </button>
+        </>}
       </>}
     </div>}
   </section>;

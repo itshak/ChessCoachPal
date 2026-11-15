@@ -7,6 +7,8 @@ import {ratingRefreshCommitSchema,teacherStudentRatingHistory,
 import {studyIndexSearchSchema,studyIndexGetSchema,studyIndexSyncSchema,
  teacherStudyIndexSearch,teacherStudyIndexGet,teacherStudyIndexSync,
  StudyIndexError} from "@/lib/server/teacher-study-index";
+import {atomicLessonChapterCommitSchema,teacherAtomicLessonChapterCommit,
+ AtomicLessonChapterError} from "@/lib/server/atomic-lesson-chapter";
 import {lessonChapterPreviewSchema,lessonChapterCommitSchema,
  teacherLessonChapterPreview,teacherLessonChapterCommit,
  ChapterEvidenceError} from "@/lib/server/lesson-chapter-evidence";
@@ -1173,6 +1175,11 @@ const catalogue = [
     schema:studentNamesResolveSchema,scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_v1_lessons_capture_commit_with_chapter",
+    description:"After a read-only reviewed lesson-capture preview with an exact authorized study/chapter, atomically create ONE multi-student session and its assigned chapter evidence inside the SAME SQL transaction. Confirm stable roster, source verified timestamp and roster hash; use two distinct UUID receipts and confirmed=true. Never infer attendance, lesson completion or mastery; failed chapter writes roll back the lesson.",
+    schema:atomicLessonChapterCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_v1_lessons_capture_preview",
     description:"Read-only multi-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. Confirm separately via ccp_v1_sessions_ad_hoc_create.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
@@ -2047,6 +2054,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_v1_students_resolve":
         return {data:await teacherStudentNamesResolve(db,teacherId,
           (args as {names:string[]}).names)};
+      case "ccp_v1_lessons_capture_commit_with_chapter":
+        return {data:await teacherAtomicLessonChapterCommit(db,teacherId,
+          args as Parameters<typeof teacherAtomicLessonChapterCommit>[2])};
       case "ccp_v1_lessons_capture_preview":
         return {data:await teacherLessonCapturePreview(db,teacherId,
           args as Parameters<typeof teacherLessonCapturePreview>[2])};
@@ -2183,6 +2193,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof PuzzleReviewError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LessonTimingError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof AtomicLessonChapterError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LessonCapturePreviewError)
       return {error:{code:error.code,message:error.message}};

@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-14",
   "headSha": "acea0c2178ceb35e6d24055ad1e2aa6ee17ff196",
-  "policy": "GigaChess native chess-rules legality is a shared website/MCP domain validation boundary. The original 93 historical scenarios and independent additional cases are mandatory; this PR includes new browser/MCP tests but is not accepted until final SHA tests pass. Live ChatGPT/Claude and external provider client acceptance are separate publication gates.",
+  "policy": "Native GigaChess legal SAN/FEN/PGN and atomic combined lesson+chapter approval use common website/MCP domain operations. Original 93 historical and all extra named cases, strict parity and manual real-client prepublication acceptance remain mandatory.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -409,6 +409,19 @@
       ],
       "explanation": "Authenticated read-only teacher-owned weekday schedule lookup: exact student UUIDs, workplace, local date, active and enrolled canonical slots, DST-safe common start/duration, existing interval conflict; shared service with delegated MCP. No silent write or enrollment.",
       "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/lesson-capture/commit/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_v1_lessons_capture_commit_with_chapter"
+      ],
+      "explanation": "Authenticated website/MCP share one SEC DEFINER PostgreSQL RPC wrapping canonical ad-hoc session creation and exact chapter evidence into ONE transaction. The source must be fresh, roster hash exact, confirmation and independent idempotency keys supplied. Any evidence rejection rolls back the lesson, roster and both receipts. Attendance and mastery remain unknown; reverse-interface replay and stale negative cases have independent E2E in e2e/parity-conversational-batch.spec.ts.",
+      "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {
       "path": "app/api/coaching/lesson-capture/preview/route.ts",

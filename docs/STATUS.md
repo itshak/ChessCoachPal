@@ -2,6 +2,14 @@
 
 **Updated:** 2026-11-14 · **Branch of record:** main (parity implementation merged and accepted; v0.1.0 unreleased) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
+## 2026-11-15 — atomic one-transaction lesson+verified-chapter implementation candidate
+
+A separate current-schema release-gap branch now implements **one authenticated PostgreSQL RPC** wrapping the existing canonical multi-student session writer and exact Lichess chapter-evidence writer. Both child calls execute within the same database transaction: stale provider index, modified roster, overlap, replay conflict, unauthorized workplace or missing chapter cause a complete rollback, never a lesson left partially linked. Read-only website and MCP previews return matching `proposedAtomicCommit`; the teacher UI requires a separate approved chapter checkbox before the new combined commit. Website `POST /api/coaching/lesson-capture/commit` and MCP `ccp_v1_lessons_capture_commit_with_chapter` use the same service, along with independently named cross-surface synthetic rollback/replay acceptance tests. The existing separately approved path remains available.
+
+**Final implementation candidate assembled:** database transaction/RLS, browser/MCP schema and common domain service, independent two-UUID replay, website chapter approval, exact preview and a rollback/no-ghost-session test are present. This commit intentionally does not claim acceptance before all five workflows pass on this head and merged main. If the other GigaChess branch merges first, compare and reconcile source ancestry before the atomic PR is merged.
+
+**Status: candidate, NOT accepted.** Exact-head CI, authenticated E2E, security, self-host Compose and restore are still required, followed by merged-main recheck. No real provider/customer data was modified, and no release or live-client acceptance is claimed. Broader preference/provider and publication gates remain open.
+
 ## 2026-11-15 — native GigaChess chess-rules acceptance candidate (PR #66)
 
 [PR #66](https://github.com/itshak/ChessCoachPal/pull/66) adds the **first-party GigaChess v0.5.0 native rules engine** (Node >=22.5; CI/E2E Node 24) without depending on chess.js. Instead of merely checking PGN text characters, website and MCP puzzle previews now reject illegal/ambiguous SAN moves from the exact reviewed FEN before assigning a digest or contacting Lichess. Typed game material creation and corrections validate GigaChess PGN mainlines and variations. The website also offers square-by-square FEN corrections, clearing previous verification so edits require revalidation. All source paths share the same domain services; there are no model-visible chess credentials.
