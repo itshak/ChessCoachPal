@@ -18,6 +18,15 @@ The stack runs the minimum Supabase components already used by ChessCoachPal: Po
 
 **Do not deploy the generic development docker-compose.example.yml unchanged on a shared Coolify host.** It publishes conflicting host ports, uses a local secrets file, and defaults to email auto-confirmation.
 
+## Coolify image packaging (required)
+
+Coolify generates its Compose file outside the Git checkout. Relative file mounts for
+SQL initialization, migrations and nginx templates can become missing directories
+and break a fresh database. The staging Compose file now bundles the SQL and
+migration scripts in Dockerfile.postgres-init, and the nginx template in
+Dockerfile.gateway. Keep all images built from the release commit. Verify auth
+role passwords, GoTrue, PostgREST, Storage and schema migration on fresh install.
+
 ## Coolify installation and target resource
 
 1. Keep the existing Tongrix and all other projects untouched. Create a **new ChessCoachPal project** with **staging** environment in Coolify. A separate **production** environment should be created only after a staging acceptance review.
