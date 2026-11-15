@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Guard Supabase migration destination (never implicit production)
+        run: node scripts/supabase-push-target-guard.mjs && node --test scripts/supabase-push-target-guard.test.mjs
+
       - name: Enforce ADR-0001 current-schema-only contract
         run: npm run schema:canonical:guard && npm run schema:canonical:guard-test
 
