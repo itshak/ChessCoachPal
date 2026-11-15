@@ -23,11 +23,11 @@
 
 The expanded tools are implemented: **both** live clients must exercise at least one authorized create and one revision-checked edit (using a fresh UUID idempotency key for each intentional mutation), then demonstrate website readback/correction and revocation. Do not substitute synthetic MCP calls for either provider. **Do not accept a simulated HTTP client as a substitute** for both real platforms.
 
-## Pass/fail and release sign-off
+## Pass/fail and post-release sign-off
 
 - **Fail or plan restriction:** Leave post-release vendor acceptance open, document the limitation and correct it through a tested patch release. Never represent a failed production connection as accepted.
 - **Pass:** Record the tested main SHA, date, hostname (safe), both vendor product/client versions, approved scopes, basic call outcome/receipt IDs (redact private contents), website correction, revocation and relevant screenshots/transcript excerpts **without** access tokens, codes, refresh credentials, secrets, student data or full model prompts. Link this sign-off in docs/STATUS.md.
-- Only the maintainer who actually performed the local test may mark the third readiness checkbox in [RELEASING.md](RELEASING.md). Fill all other readiness checkboxes from GitHub automated evidence first. Then open/merge the reviewed `0.1.0` package/lock/changelog PR. GitHub Actions **automatically** runs release checks and publishes the tag and source archives if all gates pass. No manual upload/tag action is required.
+- This post-release acceptance does not correspond to any prepublication readiness checkbox. Keep the real-vendor acceptance status separately in docs/STATUS.md. If a defect is found, fix and publish a tested patch release.
 - Revoke test grants, stop the HTTPS tunnel/temporary exposure, dispose of the synthetic test data safely, and retain only sanitized evidence.
 
-**No real-client validation is claimed yet.** This document assigns the gate to actual v0.1.0 publication, not to pre-release development.
+**No real-client validation is claimed yet.** This procedure applies after the v0.1.0 production release, not before it.
