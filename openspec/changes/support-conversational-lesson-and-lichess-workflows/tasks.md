@@ -69,3 +69,7 @@ This active parent covers several **already implemented foundation features** (c
 - [ ] F6: Run fresh CI/typecheck/Playwright/Supabase RLS, Compose and DB/file backup-restore green **on merged main**; cite SHA/runs; update applied specs/AI_CONNECTORS with implemented tools and archive only after full acceptance.
 
 **Unchanged:** `complete-v0-1-0-release-gates` remains open; no v0.1.0 tag, v1.0.0 promise or official public ChatGPT plugin is authorized by this change.
+
+## 2026-11-15 atomic lesson+chapter source candidate — NOT YET ACCEPTED
+
+The new optional `ccp_v1_lessons_capture_commit_with_chapter` and matching website approval route use exactly one PostgreSQL transaction wrapping the canonical ad-hoc roster writer and authorized indexed-chapter evidence writer. A failure of either rolls back both. The preview exposes source timestamp/roster hash and the website adds a dedicated explicit chapter confirmation. A distinct named browser↔MCP test validates one teacher duration, N student assignments, exact cross-interface replay, changed-payload refusal and the stale-source full-rollback case. The two-step path is retained. Do not check B3/F2, archive this OpenSpec, or tag release based on this candidate before full exact-head and merged-main proof.

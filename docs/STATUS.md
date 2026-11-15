@@ -2,6 +2,12 @@
 
 **Updated:** 2026-11-14 · **Branch of record:** main (parity implementation merged and accepted; v0.1.0 unreleased) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
+## 2026-11-15 — atomic one-transaction lesson+verified-chapter implementation candidate
+
+A separate current-schema release-gap branch now implements **one authenticated PostgreSQL RPC** wrapping the existing canonical multi-student session writer and exact Lichess chapter-evidence writer. Both child calls execute within the same database transaction: stale provider index, modified roster, overlap, replay conflict, unauthorized workplace or missing chapter cause a complete rollback, never a lesson left partially linked. Read-only website and MCP previews return matching `proposedAtomicCommit`; the teacher UI requires a separate approved chapter checkbox before the new combined commit. Website `POST /api/coaching/lesson-capture/commit` and MCP `ccp_v1_lessons_capture_commit_with_chapter` use the same service, along with independently named cross-surface synthetic rollback/replay acceptance tests. The existing separately approved path remains available.
+
+**Status: candidate, NOT accepted.** Exact-head CI, authenticated E2E, security, self-host Compose and restore are still required, followed by merged-main recheck. No real provider/customer data was modified, and no release or live-client acceptance is claimed. Broader preference/provider and publication gates remain open.
+
 ## 2026-11-15 — rating cross-interface replay hotfix for PR #65 (awaiting CI)
 
 The full PR #65 run at `a1afe9c` passed **249 authenticated E2E cases**, skipped five intentionally and failed exactly one: `PARITY-public-lichess-and-chesscom-rating-sources-are-independent`. The MCP provider-refresh commit succeeded, but the matching browser replay returned HTTP 400 because the strict browser action schema rejected the same `studentId` present in the MCP receipt. This is a web adapter validation mismatch, not a provider-fetch issue. The shared server-side receipt validator and account/provider digest checks remain unchanged.
