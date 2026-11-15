@@ -34,6 +34,8 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 
 ## Documentation
 
+- [Hosting architecture and Coolify deployment plan](docs/HOSTING_ARCHITECTURE.md) — accepted self-hosted Supabase target, alternatives, resource estimates and operational readiness gates
+- [ADR-0007: Retain trimmed self-hosted Supabase](docs/adr/0007-self-hosted-supabase-on-coolify.md) — reasons for not replacing the current backend with SuperTokens + standalone PostgreSQL
 - **[v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md)** — archived implementation milestones; separate active publication and new proposed chess-trainer workflow development
 - [Complete coaching workflows](openspec/changes/archive/2026-11-07-complete-coaching-workflows/proposal.md)
 - [Archived MCP/OAuth foundation for ChatGPT and Claude](openspec/changes/archive/2026-11-07-connect-chatgpt-and-claude/proposal.md)
