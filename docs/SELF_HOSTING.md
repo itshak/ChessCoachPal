@@ -4,6 +4,12 @@ Current pre-1.0 fresh-install schema only (ADR-0001). A teacher can use the webs
 
 **Licensing:** The following instructions describe a deployment mechanism, not a license to reproduce or operate the proprietary ChessCoachPal portions. New deployments of proprietary code require authorization from the relevant copyright holder. The MIT rights of CogNote and historical ChessCoachPal releases remain intact; see [LICENSE](../LICENSE), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) and [ADR-0002](adr/0002-proprietary-licensing.md).
 
+## Target hosting decision: trimmed Supabase on Coolify
+
+[ADR-0007](adr/0007-self-hosted-supabase-on-coolify.md) selects the **existing trimmed self-hosted Supabase stack** as the target production backend, deployed together with the Next.js website and `/mcp` on Coolify. See the [hosting architecture](HOSTING_ARCHITECTURE.md) for alternatives considered, practical resource-estimate caveats, migration sequence and verification gates. Managed Supabase may remain in use during development: this is a target decision, **not** a claim that migration has already happened.
+
+Before production deployment, inspect the example Compose file's published development ports and configure Coolify HTTPS routing and private backend networking; measure actual free storage and Docker image/volume/build-cache use; configure Google OAuth and SMTP if needed; verify teacher/RLS isolation and MCP consent, scopes, refresh and revocation. Send encrypted backups **off host** and prove recovery into a second empty instance. A fresh trimmed stack is expected to use far less disk than a full optional Supabase distribution, but do not turn estimates into a guaranteed storage minimum.
+
 ## Initial setup (new empty installation)
 
 Install Docker Engine, Compose v2 and Buildx. Make ports 3000 (app) and 8000 (API gateway) available. Clone the ChessCoachPal repository, then run:
