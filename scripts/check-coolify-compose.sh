@@ -37,6 +37,7 @@ for name, service in services.items():
 assert services["auth"]["environment"]["GOTRUE_DISABLE_SIGNUP"] == "true", "Signup must start closed"
 assert services["auth"]["environment"]["GOTRUE_MAILER_AUTOCONFIRM"] == "false", "Email auto-confirm unsafe"
 assert not services["app"].get("env_file"), "App must not load repository-local secrets"
+assert services["gateway"]["image"] == "nginx:1.30.6-alpine", "Gateway image is outdated"
 assert set(("db-data", "db-config", "storage-data")) <= set(data["volumes"]), "Missing persistence volumes"
 assert services["app"]["build"]["args"]["NEXT_PUBLIC_SUPABASE_URL"] == (
     "https://supabase-beta.example.invalid"
