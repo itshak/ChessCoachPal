@@ -112,6 +112,19 @@ async function lichessStudyProvider(){
    }).join("\n\n");
    res.writeHead(200,{"Content-Type":"application/x-chess-pgn"});res.end(pg);return;
   }
+  if(req.method==="GET"&&
+    (url.pathname==="/api/study/PuzZ0001.pgn"||
+     url.pathname==="/api/study/PuzZ0002.pgn")){
+   const id=url.pathname.includes("PuzZ0001")?"PuzZ0001":"PuzZ0002";
+   const name=id==="PuzZ0001"?"Puzzles":"Puzzles 2";
+   res.writeHead(200,{"Content-Type":"application/x-chess-pgn"});
+   res.end([
+    '[Event "Synthetic study preferences"]','[StudyName "'+name+'"]',
+    '[ChapterName "Reviewed opening"]',
+    '[ChapterURL "https://lichess.org/study/'+id+'/ChP00001"]',
+    '[White "White"]','[Black "Black"]','[Result "*"]',"","*",
+   ].join("\n"));return;
+  }
   if(req.method==="POST"&&url.pathname==="/api/study"){
    if(!tokens.get(token)?.includes("study:write")){res.writeHead(403);res.end();return;}
    let raw="";for await(const c of req)raw+=String(c);
@@ -444,6 +457,130 @@ test("PARITY:PARITY-lesson-and-verified-chapter-commit-is-one-transaction-across
   await close(provider.server);
  }
 });
+test("PARITY:PARITY-student-workplace-teacher-lichess-preferences-resolve-and-correct-across-website-MCP",async({page,request})=>{
+ const mock=await lichessStudyProvider();
+ try{
+  const call=await delegatedTool(page,request);
+  const {workplaceId,ids,names}=await newTeacherStudents(call);
+  await page.goto("/api/lichess/connect?mode=read");
+  await page.waitForURL(u=>u.pathname==="/learning"&&u.searchParams.get("lichess")==="connected");
+  for(const studyId of ["StUd1234","PuzZ0001","PuzZ0002"]){
+   const index=await page.request.post("/api/lichess/chapter-index",{
+    data:{studyId,confirmedExternal:true},
+   });
+   expect(index.status(),await index.text()).toBe(200);
+  }
+  const ctx=await (await page.request.get("/api/teacher/context")).json();
+  const teacherId=ctx.teacherId as string;
+  expect(teacherId).toMatch(/^[0-9a-f-]{36}$/);
+  const base={purpose:"lesson" as const,expectedRevision:0,confirmed:true};
+  const teacherApproval={...base,scope:"teacher" as const,scopeId:teacherId,
+   studyId:"StUd1234",requestId:uuid()};
+  const teacher=await call("ccp_v1_materials_preferences_set",teacherApproval);
+  expect(teacher.error).toBeUndefined();
+  expect(teacher.data).toMatchObject({studyId:"StUd1234",revision:1,replayed:false});
+  const exactReplay=await page.request.post("/api/lichess/study-preferences",{
+   data:{action:"set",...teacherApproval},
+  });
+  expect(exactReplay.status(),await exactReplay.text()).toBe(200);
+  expect((await exactReplay.json()).replayed).toBe(true);
+
+  const workplaceApproval={...base,scope:"workplace" as const,
+   scopeId:workplaceId,studyId:"PuzZ0001",requestId:uuid()};
+  const workplace=await page.request.post("/api/lichess/study-preferences",{
+   data:{action:"set",...workplaceApproval},
+  });
+  expect(workplace.status(),await workplace.text()).toBe(200);
+  expect((await workplace.json()).revision).toBe(1);
+  const afterWorkplace=await call("ccp_v1_materials_preferences_resolve",{
+   purpose:"lesson",workplaceId,studentId:ids[0],
+  });
+  expect(afterWorkplace.error).toBeUndefined();
+  expect(afterWorkplace.data).toMatchObject({
+   studyId:"PuzZ0001",selectedScope:"workplace",needsSync:false,
+  });
+
+  const studentApproval={...base,scope:"student" as const,
+   scopeId:ids[0],studyId:"PuzZ0002",requestId:uuid()};
+  const student=await call("ccp_v1_materials_preferences_set",studentApproval);
+  expect(student.error).toBeUndefined();
+  expect(student.data.studyId).toBe("PuzZ0002");
+  const resolver=new URLSearchParams({action:"resolve",purpose:"lesson",
+   workplaceId,studentId:ids[0]});
+  const web=await page.request.get("/api/lichess/study-preferences?"+resolver);
+  expect(web.status(),await web.text()).toBe(200);
+  expect(await web.json()).toMatchObject({
+   studyId:"PuzZ0002",selectedScope:"student",needsSync:false,
+  });
+  const listWeb=await page.request.get(
+   "/api/lichess/study-preferences?action=list&purpose=lesson&limit=50");
+  expect(listWeb.status(),await listWeb.text()).toBe(200);
+  const listMcp=await call("ccp_v1_materials_preferences_list",{purpose:"lesson"});
+  expect(listMcp.error).toBeUndefined();
+  expect(listMcp.data).toEqual(await listWeb.json());
+
+  const invalid=await page.request.post("/api/lichess/study-preferences",{
+   data:{action:"set",...studentApproval,requestId:uuid(),
+    studyId:"PuzZ0001",expectedRevision:0},
+  });
+  expect(invalid.status(),await invalid.text()).toBe(409);
+  const foreign=await call("ccp_v1_materials_preferences_set",{
+   ...studentApproval,scopeId:uuid(),requestId:uuid(),
+  });
+  expect(foreign.error?.code).toBe("NOT_FOUND");
+
+  // Different per-learner defaults must NOT be silently collapsed into the
+  // first student's study during a three-person captured lesson.
+  const proposed={names,workplaceId,title:randomName("Preferred study lesson"),
+   startsAt:"2092-07-08T13:00:00.000Z",durationMinutes:90,lessonNote:"",
+   chapterSelection:{chapterNumber:1}};
+  const ambiguous=await call("ccp_v1_lessons_capture_preview",proposed);
+  expect(ambiguous.error).toBeUndefined();
+  expect(ambiguous.data.canCommit).toBe(false);
+  expect(ambiguous.data.issues.some((x:{code:string})=>x.code==="CHAPTER_AMBIGUOUS"))
+   .toBe(true);
+  const clearStudent=await page.request.post("/api/lichess/study-preferences",{
+   data:{action:"set",purpose:"lesson",scope:"student",scopeId:ids[0],
+    studyId:null,expectedRevision:1,requestId:uuid(),confirmed:true},
+  });
+  expect(clearStudent.status(),await clearStudent.text()).toBe(200);
+  expect((await clearStudent.json()).revision).toBe(0);
+  const shared=await page.request.post("/api/coaching/lesson-capture/preview",{
+   data:proposed,
+  });
+  expect(shared.status(),await shared.text()).toBe(200);
+  const resolved=await shared.json();
+  expect(resolved.canCommit).toBe(true);
+  expect(resolved.selectedChapter).toMatchObject({studyId:"PuzZ0001",
+   chapterId:"ChP00001",attached:false});
+  expect(resolved.review.writesPerformed).toBe(false);
+  expect((await call("ccp_v1_lessons_capture_preview",proposed)).data).toEqual(resolved);
+  const clearWorkplace=await call("ccp_v1_materials_preferences_set",{
+   purpose:"lesson",scope:"workplace",scopeId:workplaceId,studyId:null,
+   expectedRevision:1,requestId:uuid(),confirmed:true,
+  });
+  expect(clearWorkplace.error).toBeUndefined();
+  const teacherFallback=await call("ccp_v1_materials_preferences_resolve",{
+   purpose:"lesson",workplaceId,studentId:ids[0],
+  });
+  expect(teacherFallback.error).toBeUndefined();
+  expect(teacherFallback.data).toMatchObject({
+   studyId:"StUd1234",selectedScope:"teacher",needsSync:false,
+  });
+  expect((await call("ccp_v1_materials_preferences_resolve",{
+   purpose:"lesson",workplaceId:uuid(),studentId:ids[0],
+  })).error?.code).toBe("NOT_FOUND");
+  // Preferences do not alter progress, mastery, attendance or lesson history.
+  const sessions=await call("ccp_v1_sessions_list",{query:proposed.title,workplaceId});
+  expect(sessions.error).toBeUndefined();
+  expect((sessions.data as Array<{title:string}>)
+   .some(x=>x.title===proposed.title)).toBe(false);
+ }finally{
+  await page.request.delete("/api/lichess/connection",{data:{confirmed:true}}).catch(()=>{});
+  await close(mock.server);
+ }
+});
+
 test("PARITY:PARITY-puzzles-study-capacity-and-private-numbered-series",async({page,request})=>{
  const provider=await lichessStudyProvider();
  try{
