@@ -10,7 +10,7 @@ const localDate="2060-01-06";
 const dayOfWeek=new Date(localDate+"T00:00:00Z").getUTCDay();
 
 async function setup(call:Call,timezone="Asia/Jerusalem"){
- const workplace=await call("ccp_v1_workplaces_create",{
+ const workplace=await call("ccp_workplaces_create",{
   name:unique("Weekly capture club"),timezone,currency:"ILS",locale:"he",
   policy:{},idempotencyKey:randomUUID(),
  });
@@ -20,10 +20,10 @@ async function setup(call:Call,timezone="Asia/Jerusalem"){
  const names:string[]=[];
  for(let i=0;i<3;i++){
   const name=unique("Weekly learner "+i);
-  const student=await call("ccp_v1_students_create",{name,idempotencyKey:randomUUID()});
+  const student=await call("ccp_students_create",{name,idempotencyKey:randomUUID()});
   expect(student.error).toBeUndefined();
   const studentId=student.data.entityId as string;
-  expect((await call("ccp_v1_workplaces_enroll",{
+  expect((await call("ccp_workplaces_enroll",{
     workplaceId,studentId,idempotencyKey:randomUUID(),
   })).error).toBeUndefined();
   students.push(studentId);names.push(name);
@@ -32,7 +32,7 @@ async function setup(call:Call,timezone="Asia/Jerusalem"){
 }
 async function createSlot(call:Call,workplaceId:string,studentId:string,
  startTime:string,date=localDate,durationMinutes=90,endDate:string|null=null){
- const result=await call("ccp_v1_recurring_slots_create",{
+ const result=await call("ccp_recurring_slots_create",{
   studentId,workplaceId,dayOfWeek:new Date(date+"T00:00:00Z").getUTCDay(),
   startTime,durationMinutes,startDate:date,endDate,
   rateCents:null,isHomeVisit:false,confirmed:true,idempotencyKey:randomUUID(),
@@ -55,7 +55,7 @@ test("PARITY:PARITY-weekly-slot-unique-time-and-existing-session-denial",async({
  const payload={names,workplaceId,localDate,
   title:unique("Inferred endgames lesson"),lessonNote:"Unverified understanding"};
  const web=await previewWebsite(page,payload);
- const mcp=await call("ccp_v1_lessons_capture_preview",payload);
+ const mcp=await call("ccp_lessons_capture_preview",payload);
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(web);
  expect(web.canCommit).toBe(true);
@@ -66,7 +66,7 @@ test("PARITY:PARITY-weekly-slot-unique-time-and-existing-session-denial",async({
   workplaceId,studentIds:students,durationMinutes:90,lessonNote:payload.lessonNote,
  });
  expect(web.proposedSession.startsAt).toBe("2060-01-06T11:00:00.000Z");
- const before=await call("ccp_v1_sessions_list",{
+ const before=await call("ccp_sessions_list",{
   query:payload.title,workplaceId,
  });
  expect(before.error).toBeUndefined();
@@ -77,12 +77,12 @@ test("PARITY:PARITY-weekly-slot-unique-time-and-existing-session-denial",async({
  });
  expect(created.status(),await created.text()).toBe(200);
  const sessionId=(await created.json()).data.id as string;
- const audit=await call("ccp_v1_sessions_details",{sessionId});
+ const audit=await call("ccp_sessions_details",{sessionId});
  expect(audit.error).toBeUndefined();
  expect(audit.data.participants.map((x:{student_id:string})=>x.student_id).sort())
   .toEqual([...students].sort());
  const nowWeb=await previewWebsite(page,payload);
- const nowMcp=await call("ccp_v1_lessons_capture_preview",payload);
+ const nowMcp=await call("ccp_lessons_capture_preview",payload);
  expect(nowMcp.error).toBeUndefined();
  expect(nowMcp.data).toEqual(nowWeb);
  expect(nowWeb.canCommit).toBe(false);
@@ -91,7 +91,7 @@ test("PARITY:PARITY-weekly-slot-unique-time-and-existing-session-denial",async({
   .toBe(true);
  expect(nowWeb.issues.find((x:{code:string})=>x.code==="SCHEDULE_CONFLICT").candidates)
   .toEqual(expect.arrayContaining([expect.objectContaining({id:sessionId})]));
- const retry=await call("ccp_v1_sessions_ad_hoc_create",{
+ const retry=await call("ccp_sessions_ad_hoc_create",{
   ...web.proposedSession,idempotencyKey:requestId,confirmed:true,
  });
  expect(retry.error).toBeUndefined();
@@ -111,25 +111,25 @@ test("PARITY:PARITY-weekly-slot-missing-conflicting-and-ambiguous-time-denial",a
  const missing=await previewWebsite(page,input);
  expect(missing.canCommit).toBe(false);
  expect(missing.issues.map((x:{code:string})=>x.code)).toContain("MISSING_SCHEDULE");
- const missingMcp=await call("ccp_v1_lessons_capture_preview",input);
+ const missingMcp=await call("ccp_lessons_capture_preview",input);
  expect(missingMcp.data).toEqual(missing);
  await createSlot(call,workplaceId,students[2],"15:00",date);
  const conflicting=await previewWebsite(page,input);
  expect(conflicting.canCommit).toBe(false);
  expect(conflicting.issues.map((x:{code:string})=>x.code)).toContain("TIME_AMBIGUOUS");
- const conflictingMcp=await call("ccp_v1_lessons_capture_preview",input);
+ const conflictingMcp=await call("ccp_lessons_capture_preview",input);
  expect(conflictingMcp.data).toEqual(conflicting);
  // Adding a common 13:00 slot resolves one exact candidate, while a second
  // matching time on every learner must become ambiguous again.
  await createSlot(call,workplaceId,students[2],"13:00",date);
  const uniqueWeb=await previewWebsite(page,input);
  expect(uniqueWeb.canCommit).toBe(true);
- const uniqueMcp=await call("ccp_v1_lessons_capture_preview",input);
+ const uniqueMcp=await call("ccp_lessons_capture_preview",input);
  expect(uniqueMcp.data).toEqual(uniqueWeb);
  for(const studentId of students.slice(0,2))
   await createSlot(call,workplaceId,studentId,"15:00",date);
  const ambiguous=await previewWebsite(page,input);
- const ambiguousMcp=await call("ccp_v1_lessons_capture_preview",input);
+ const ambiguousMcp=await call("ccp_lessons_capture_preview",input);
  expect(ambiguousMcp.data).toEqual(ambiguous);
  expect(ambiguous.canCommit).toBe(false);
  expect(ambiguous.issues.map((x:{code:string})=>x.code)).toContain("TIME_AMBIGUOUS");
@@ -138,7 +138,7 @@ test("PARITY:PARITY-weekly-slot-missing-conflicting-and-ambiguous-time-denial",a
   data:{...input,startsAt:"2060-01-13T11:00:00Z",durationMinutes:90},
  });
  expect(malformed.status()).toBe(400);
- const invalidMcp=await call("ccp_v1_lessons_capture_preview",{
+ const invalidMcp=await call("ccp_lessons_capture_preview",{
   ...input,startsAt:"2060-01-13T11:00:00Z",durationMinutes:90,
  });
  expect(invalidMcp.error).toBeDefined();
@@ -152,7 +152,7 @@ test("PARITY:PARITY-weekly-slot-DST-gap-and-fold-rejected",async({page,request})
  const spring={names,workplaceId,localDate:"2027-03-14",
   title:unique("DST spring"),lessonNote:""};
  const webSpring=await previewWebsite(page,spring);
- const mcpSpring=await call("ccp_v1_lessons_capture_preview",spring);
+ const mcpSpring=await call("ccp_lessons_capture_preview",spring);
  expect(mcpSpring.data).toEqual(webSpring);
  expect(webSpring.canCommit).toBe(false);
  expect(webSpring.issues.map((x:{code:string})=>x.code)).toContain("DST_UNRESOLVED");
@@ -160,7 +160,7 @@ test("PARITY:PARITY-weekly-slot-DST-gap-and-fold-rejected",async({page,request})
   await createSlot(call,workplaceId,studentId,"01:30","2027-11-07",90,"2027-11-07");
  const fall={...spring,localDate:"2027-11-07",title:unique("DST fall")};
  const webFall=await previewWebsite(page,fall);
- const mcpFall=await call("ccp_v1_lessons_capture_preview",fall);
+ const mcpFall=await call("ccp_lessons_capture_preview",fall);
  expect(mcpFall.data).toEqual(webFall);
  expect(webFall.canCommit).toBe(false);
  expect(webFall.issues.map((x:{code:string})=>x.code)).toContain("DST_UNRESOLVED");
@@ -178,7 +178,7 @@ test("PARITY:PARITY-bulk-exact-student-alias-resolution-web-MCP",async({page,req
  const web=await page.request.post("/api/students/resolve",{data:input});
  expect(web.status(),await web.text()).toBe(200);
  const result=await web.json();
- const mcp=await call("ccp_v1_students_resolve",input);
+ const mcp=await call("ccp_students_resolve",input);
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(result);
  expect(result.allResolved).toBe(false);
@@ -192,7 +192,7 @@ test("PARITY:PARITY-bulk-exact-student-alias-resolution-web-MCP",async({page,req
  expect(dupWeb.status()).toBe(200);
  const dupResult=await dupWeb.json();
  expect(dupResult.issues.map((x:{code:string})=>x.code)).toContain("DUPLICATE_STUDENT");
- expect((await call("ccp_v1_students_resolve",duplicate)).data).toEqual(dupResult);
+ expect((await call("ccp_students_resolve",duplicate)).data).toEqual(dupResult);
 });
 
 test("PARITY:PARITY-standalone-day-lookup-uses-identical-tenant-scoped-schedule",async({page,request})=>{
@@ -205,7 +205,7 @@ test("PARITY:PARITY-standalone-day-lookup-uses-identical-tenant-scoped-schedule"
  const web=await page.request.post("/api/coaching/lesson-capture/day",{data:payload});
  expect(web.status(),await web.text()).toBe(200);
  const result=await web.json();
- const mcp=await call("ccp_v1_schedule_day_preview",payload);
+ const mcp=await call("ccp_schedule_day_preview",payload);
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(result);
  expect(result.canUse).toBe(true);
@@ -221,7 +221,7 @@ test("PARITY:PARITY-standalone-day-lookup-uses-identical-tenant-scoped-schedule"
  });
  expect(negative.status()).toBe(503);
  expect((await negative.json()).code).toBe("NOT_FOUND");
- const mcpDenied=await call("ccp_v1_schedule_day_preview",unauthorized);
+ const mcpDenied=await call("ccp_schedule_day_preview",unauthorized);
  expect(mcpDenied.error?.code).toBe("NOT_FOUND");
 });
 
@@ -239,7 +239,7 @@ test("PARITY:PARITY-exact-chapter-selection-rejects-unknown-ordinal-without-fict
  });
  expect(browser.status(),await browser.text()).toBe(200);
  const web=await browser.json();
- const mcp=await call("ccp_v1_lessons_capture_preview",payload);
+ const mcp=await call("ccp_lessons_capture_preview",payload);
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(web);
  expect(web.canCommit).toBe(false);
@@ -290,7 +290,7 @@ test("PARITY:PARITY-lichess-index-cannot-be-forged-by-browser-or-delegated-MCP",
   "/api/lichess/chapter-index?studyId="+studyId+"&chapterId=FORG0001",
  );
  expect(web.status()).toBe(404);
- const mcp=await call("ccp_v1_materials_chapters_get",{
+ const mcp=await call("ccp_materials_chapters_get",{
   studyId,chapterId:"FORG0001",
  });
  expect(mcp.error?.code).toBe("NOT_FOUND");
@@ -324,7 +324,7 @@ test("PARITY:PARITY-website-reviewer-date-only-form-commits-matching-roster",asy
  await page.getByRole("button",{name:"Confirm and create one lesson"}).click();
  await expect(page.getByRole("status").filter({hasText:"One session created:"}))
   .toBeVisible();
- const created=await call("ccp_v1_sessions_list",{
+ const created=await call("ccp_sessions_list",{
   workplaceId,query:"Verified weekly UI session",
  });
  expect(created.error).toBeUndefined();

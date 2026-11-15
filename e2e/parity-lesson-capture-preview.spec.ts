@@ -7,7 +7,7 @@ type Call = (name:string,args:Record<string,unknown>)=>Promise<any>;
 
 async function teacherFixture(call:Call) {
   const tag=suffix();
-  const workplace=await call("ccp_v1_workplaces_create",{
+  const workplace=await call("ccp_workplaces_create",{
     name:"Preview club "+tag,timezone:"Asia/Jerusalem",currency:"ILS",locale:"he",
     policy:{},idempotencyKey:randomUUID(),
   });
@@ -16,11 +16,11 @@ async function teacherFixture(call:Call) {
   const names=["שושנה לוי "+tag,"David synthetic "+tag,"Leah synthetic "+tag];
   const ids:string[]=[];
   for(const name of names){
-    const result=await call("ccp_v1_students_create",{name,idempotencyKey:randomUUID()});
+    const result=await call("ccp_students_create",{name,idempotencyKey:randomUUID()});
     expect(result.error).toBeUndefined();
     const id=result.data.entityId as string;
     ids.push(id);
-    const enrolled=await call("ccp_v1_workplaces_enroll",{
+    const enrolled=await call("ccp_workplaces_enroll",{
       workplaceId,studentId:id,idempotencyKey:randomUUID(),
     });
     expect(enrolled.error).toBeUndefined();
@@ -57,7 +57,7 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
   });
   expect(preview.review.writesPerformed).toBe(false);
   expect(preview.review.attendance).toBe("unmarked");
-  const fromMcp=await call("ccp_v1_lessons_capture_preview",payload);
+  const fromMcp=await call("ccp_lessons_capture_preview",payload);
   expect(fromMcp.error).toBeUndefined();
   expect(fromMcp.data).toEqual(preview);
   // The agent may omit a workplace only when the same three learners have
@@ -68,12 +68,12 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
     data:withoutWorkplace,
   });
   expect(inferredWeb.status(),await inferredWeb.text()).toBe(200);
-  const inferredMcp=await call("ccp_v1_lessons_capture_preview",withoutWorkplace);
+  const inferredMcp=await call("ccp_lessons_capture_preview",withoutWorkplace);
   expect(inferredMcp.error).toBeUndefined();
   expect(inferredMcp.data).toEqual(await inferredWeb.json());
   expect(inferredMcp.data.canCommit).toBe(true);
   expect(inferredMcp.data.workplace.id).toBe(workplaceId);
-  const beforeCommit=await call("ccp_v1_sessions_list",{query:payload.title,workplaceId});
+  const beforeCommit=await call("ccp_sessions_list",{query:payload.title,workplaceId});
   expect(beforeCommit.error).toBeUndefined();
   expect((beforeCommit.data as Array<{title:string}>)
     .filter(row=>row.title===payload.title)).toHaveLength(0);
@@ -81,7 +81,7 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
   // Preview did not persist anything. Confirm through the existing one-session
   // transaction and read the frozen roster using the other transport.
   const idempotencyKey=randomUUID();
-  const confirmed=await call("ccp_v1_sessions_ad_hoc_create",{
+  const confirmed=await call("ccp_sessions_ad_hoc_create",{
     ...preview.proposedSession,idempotencyKey,confirmed:true,
   });
   expect(confirmed.error).toBeUndefined();
@@ -97,7 +97,7 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
   expect((await roster.json()).data.map((r:{student_id:string})=>r.student_id).sort())
     .toEqual([...ids].sort());
 
-  const attendance=await call("ccp_v1_attendance_preview",{sessionId});
+  const attendance=await call("ccp_attendance_preview",{sessionId});
   expect(attendance.error).toBeUndefined();
   expect(attendance.data.attendance).toHaveLength(3);
   expect(attendance.data.attendance.every((r:{status:string})=>r.status==="unmarked"))
@@ -109,11 +109,11 @@ test("PARITY:PARITY-conversational-preview-exact-hebrew-alias-and-confirmed-sess
   });
   expect(replay.status(),await replay.text()).toBe(200);
   expect((await replay.json()).data.id).toBe(sessionId);
-  const afterReplay=await call("ccp_v1_sessions_details",{sessionId});
+  const afterReplay=await call("ccp_sessions_details",{sessionId});
   expect(afterReplay.error).toBeUndefined();
   expect(afterReplay.data.id).toBe(sessionId);
   expect(afterReplay.data.duration_minutes).toBe(90);
-  const changedReplay=await call("ccp_v1_sessions_ad_hoc_create",{
+  const changedReplay=await call("ccp_sessions_ad_hoc_create",{
     ...preview.proposedSession,title:"Different lesson",idempotencyKey,confirmed:true,
   });
   expect(changedReplay.error?.code).toBe("CONFLICT");
@@ -146,29 +146,29 @@ test("PARITY:PARITY-conversational-preview-fails-closed-for-missing-duplicate-am
     expect(preview.canCommit).toBe(false);
     expect(preview.proposedSession).toBeNull();
     expect(preview.issues.map((i:{code:string})=>i.code)).toContain(testCase.code);
-    const mcp=await call("ccp_v1_lessons_capture_preview",payload);
+    const mcp=await call("ccp_lessons_capture_preview",payload);
     expect(mcp.error).toBeUndefined();
     expect(mcp.data).toEqual(preview);
   }
-  const foreignWorkplace=await call("ccp_v1_lessons_capture_preview",{
+  const foreignWorkplace=await call("ccp_lessons_capture_preview",{
     ...common,workplaceId:randomUUID(),names:[names[0],names[2]],
   });
   expect(foreignWorkplace.data.canCommit).toBe(false);
   expect(foreignWorkplace.data.issues.some((i:{code:string})=>
     i.code==="WORKPLACE_NOT_FOUND")).toBe(true);
 
-  const second=await call("ccp_v1_workplaces_create",{
+  const second=await call("ccp_workplaces_create",{
     name:"Second club "+tag,timezone:"UTC",currency:"USD",
     locale:"en",policy:{},idempotencyKey:randomUUID(),
   });
   expect(second.error).toBeUndefined();
   const secondId=second.data.entityId as string;
   for(const studentId of [ids[0],ids[2]]){
-    expect((await call("ccp_v1_workplaces_enroll",{
+    expect((await call("ccp_workplaces_enroll",{
       workplaceId:secondId,studentId,idempotencyKey:randomUUID(),
     })).error).toBeUndefined();
   }
-  const ambiguous=await call("ccp_v1_lessons_capture_preview",{
+  const ambiguous=await call("ccp_lessons_capture_preview",{
     names:[names[0],names[2]],title:common.title,
     startsAt:common.startsAt,durationMinutes:common.durationMinutes,lessonNote:"",
   });
@@ -176,7 +176,7 @@ test("PARITY:PARITY-conversational-preview-fails-closed-for-missing-duplicate-am
   expect(ambiguous.data.canCommit).toBe(false);
   expect(ambiguous.data.issues.some((i:{code:string})=>i.code==="AMBIGUOUS_WORKPLACE"))
     .toBe(true);
-  const incorrectEnrollment=await call("ccp_v1_lessons_capture_preview",{
+  const incorrectEnrollment=await call("ccp_lessons_capture_preview",{
     ...common,workplaceId:secondId,names:[names[0],names[1]],
   });
   expect(incorrectEnrollment.data.canCommit).toBe(false);

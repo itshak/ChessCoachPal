@@ -101,16 +101,16 @@ test("PARITY:PARITY-lichess-oauth-provider-consent authenticates browser PKCE an
     const revokedBefore=provider.revoked.size;
     const initial=await page.request.get("/api/lichess/connection");
     expect(initial.status()).toBe(200);
-    const status=await call("ccp_v1_lichess_connection_status",{});
+    const status=await call("ccp_lichess_connection_status",{});
     expect(status.error).toBeUndefined();
     expect(status.data).toEqual(await initial.json());
-    const handoff=await call("ccp_v1_lichess_connect_handoff",{mode:"read"});
+    const handoff=await call("ccp_lichess_connect_handoff",{mode:"read"});
     expect(handoff.error).toBeUndefined();
     expect(handoff.data.connectUrl).toBe("http://localhost:3000/api/lichess/connect?mode=read");
 
     await page.goto("/api/lichess/connect?mode=read");
     await page.waitForURL(u=>u.pathname==="/learning"&&u.searchParams.get("lichess")==="connected");
-    const connected=await call("ccp_v1_lichess_connection_status",{});
+    const connected=await call("ccp_lichess_connection_status",{});
     expect(connected.error).toBeUndefined();
     expect(connected.data).toMatchObject({
       connected:true,username:"mockchesscoach",scopes:["study:read"],canPublish:false,
@@ -128,18 +128,18 @@ test("PARITY:PARITY-lichess-oauth-provider-consent authenticates browser PKCE an
     expect(JSON.stringify(connected.data)).not.toContain([...provider.tokens.keys()][0]);
     const denied=await page.request.delete("/api/lichess/connection",{data:{confirmed:false}});
     expect(denied.status()).toBe(400);
-    expect((await call("ccp_v1_lichess_connection_status",{})).data.connected).toBe(true);
+    expect((await call("ccp_lichess_connection_status",{})).data.connected).toBe(true);
 
     await page.goto("/api/lichess/connect?mode=write");
     await page.waitForURL(u=>u.pathname==="/learning"&&u.searchParams.get("lichess")==="connected");
-    const elevated=await call("ccp_v1_lichess_connection_status",{});
+    const elevated=await call("ccp_lichess_connection_status",{});
     expect(elevated.data).toMatchObject({
       connected:true,scopes:["study:read","study:write"],canPublish:true,
     });
     expect(provider.revoked.size-revokedBefore).toBe(1);
     expect(elevated.data.previousRevokeFailed).toBe(false);
     provider.setFailRevoke(true);
-    const disconnected=await call("ccp_v1_lichess_connection_disconnect",{confirmed:true});
+    const disconnected=await call("ccp_lichess_connection_disconnect",{confirmed:true});
     expect(disconnected.error).toBeUndefined();
     expect(disconnected.data).toMatchObject({
       disconnected:true,providerRevoked:false,manualRevokeRequired:true,
@@ -147,7 +147,7 @@ test("PARITY:PARITY-lichess-oauth-provider-consent authenticates browser PKCE an
     expect(disconnected.data.manualRevokeUrl).toMatch(/^https:\/\/lichess\.org/);
     const after=await page.request.get("/api/lichess/connection");
     expect(await after.json()).toMatchObject({connected:false,canPublish:false});
-    expect((await call("ccp_v1_lichess_connection_status",{})).data)
+    expect((await call("ccp_lichess_connection_status",{})).data)
       .toEqual(await after.json());
     const repeated=await page.request.delete("/api/lichess/connection",{data:{confirmed:true}});
     expect(repeated.status()).toBe(200);
@@ -194,7 +194,7 @@ test("PARITY:PARITY-lichess-tenant-security never returns another coach's provid
     const website=await page.request.get("/api/lichess/connection");
     expect(website.status()).toBe(200);
     expect((await website.json()).connected).toBe(false);
-    const mcp=await call("ccp_v1_lichess_connection_status",{});
+    const mcp=await call("ccp_lichess_connection_status",{});
     expect(mcp.error).toBeUndefined();
     expect(mcp.data).toEqual(await website.json());
     const {data:still}=await admin.from("teacher_lichess_connections")
@@ -215,7 +215,7 @@ test("PARITY:PARITY-lichess-study-chapter-32 searches actual OAuth-authorized PG
     })).status()).toBe(200);
     const disconnected=await page.request.get("/api/lichess/studies");
     expect(disconnected.status()).toBe(409);
-    const modelDisconnected=await call("ccp_v1_lichess_studies_search",{});
+    const modelDisconnected=await call("ccp_lichess_studies_search",{});
     expect(modelDisconnected.error).toBeDefined();
 
     await page.goto("/api/lichess/connect?mode=read");
@@ -226,7 +226,7 @@ test("PARITY:PARITY-lichess-study-chapter-32 searches actual OAuth-authorized PG
     expect(studies.studies).toMatchObject([
       {id:"StUd1234",name:"Synthetic chess endgames"},
     ]);
-    const mcpList=await call("ccp_v1_lichess_studies_search",{query:"chess"});
+    const mcpList=await call("ccp_lichess_studies_search",{query:"chess"});
     expect(mcpList.error).toBeUndefined();
     expect(mcpList.data).toEqual(studies);
     expect(JSON.stringify(mcpList.data)).not.toContain([...provider.tokens.keys()][0]);
@@ -245,7 +245,7 @@ test("PARITY:PARITY-lichess-study-chapter-32 searches actual OAuth-authorized PG
       chapterUrl:"https://lichess.org/study/StUd1234/Ch000032",
       opening:"Lucena bridge",eco:"E00",
     });
-    const model=await call("ccp_v1_lichess_studies_search",{
+    const model=await call("ccp_lichess_studies_search",{
       studyId:"StUd1234",chapterNumber:32,query:"Lucena",limit:50,
     });
     expect(model.error).toBeUndefined();
@@ -257,7 +257,7 @@ test("PARITY:PARITY-lichess-study-chapter-32 searches actual OAuth-authorized PG
     expect(impossible.status()).toBe(200);
     expect((await impossible.json()).matches).toHaveLength(0);
     expect((await page.request.get("/api/lichess/studies?chapterNumber=32")).status()).toBe(400);
-    expect((await call("ccp_v1_lichess_studies_search",{chapterNumber:32})).error?.code)
+    expect((await call("ccp_lichess_studies_search",{chapterNumber:32})).error?.code)
       .toBe("VALIDATION_ERROR");
     expect((await page.request.get("/api/lichess/studies?studyId=../secret")).status()).toBe(400);
 
@@ -266,7 +266,7 @@ test("PARITY:PARITY-lichess-study-chapter-32 searches actual OAuth-authorized PG
     });
     expect(disconnect.status()).toBe(200);
     expect((await page.request.get(url)).status()).toBe(409);
-    expect((await call("ccp_v1_lichess_studies_search",{
+    expect((await call("ccp_lichess_studies_search",{
       studyId:"StUd1234",chapterNumber:32,
     })).error).toBeDefined();
   }finally{

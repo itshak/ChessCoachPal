@@ -3,7 +3,7 @@ import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
 async function workplace(call:(name:string,args:Record<string,unknown>)=>Promise<any>){
- const made=await call("ccp_v1_workplaces_create",{
+ const made=await call("ccp_workplaces_create",{
   name:"Materials workplace "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
@@ -26,21 +26,21 @@ test("PARITY:PARITY-workplaces-material-default-history creates, corrects and ar
    new URLSearchParams({defaults:"true",workplaceId}));
  expect(site.status()).toBe(200);
  const current=await site.json();
- const model=await call("ccp_v1_material_defaults_list",{workplaceId});
+ const model=await call("ccp_material_defaults_list",{workplaceId});
  expect(model.error).toBeUndefined();
  expect(model.data).toEqual(current);
  expect(model.data.defaults.some((x:{id:string})=>x.id===id)).toBe(true);
- const duplicate=await call("ccp_v1_material_default_create",{
+ const duplicate=await call("ccp_material_default_create",{
    workplaceId,label:body.label,url,notes:body.notes,requestId:body.requestId,
    confirmed:true,
  });
  expect(duplicate.error).toBeUndefined();
  expect(duplicate.data).toMatchObject({id,replayed:true});
- const conflict=await call("ccp_v1_material_default_create",{
+ const conflict=await call("ccp_material_default_create",{
    workplaceId,label:"Changed duplicate",url,requestId:body.requestId,confirmed:true,
  });
  expect(conflict.error?.code).toBe("CONFLICT");
- const corrected=await call("ccp_v1_material_default_update",{
+ const corrected=await call("ccp_material_default_update",{
    defaultId:id,expectedUpdatedAt:row.updated_at,
    label:"Updated endings study",notes:"Use for groups or private lessons",
    confirmed:true,
@@ -60,10 +60,10 @@ test("PARITY:PARITY-workplaces-material-default-history creates, corrects and ar
      expectedUpdatedAt:revised.updated_at,confirmed:true},
  });
  expect(archived.status(),await archived.text()).toBe(200);
- const hidden=await call("ccp_v1_material_defaults_list",{workplaceId});
+ const hidden=await call("ccp_material_defaults_list",{workplaceId});
  expect(hidden.error).toBeUndefined();
  expect(hidden.data.defaults.some((x:{id:string})=>x.id===id)).toBe(false);
- const historical=await call("ccp_v1_material_defaults_list",{
+ const historical=await call("ccp_material_defaults_list",{
    workplaceId,includeArchived:true,
  });
  expect(historical.error).toBeUndefined();
@@ -73,7 +73,7 @@ test("PARITY:PARITY-workplaces-material-default-history creates, corrects and ar
    .map((x:{action:string})=>x.action).sort()).toEqual([
      "archived","created","updated",
    ]);
- expect((await call("ccp_v1_material_defaults_list",{
+ expect((await call("ccp_material_defaults_list",{
    workplaceId:"00000000-0000-4000-8000-000000000001",
  })).error?.code).toBe("NOT_FOUND");
 });
@@ -81,7 +81,7 @@ test("PARITY:PARITY-workplaces-material-default-history creates, corrects and ar
 test("PARITY:PARITY-groups-default-study-scoped verifies official study link against workplace/group ownership",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const workplaceId=await workplace(call),otherWorkplaceId=await workplace(call);
- const group=await call("ccp_v1_groups_create",{
+ const group=await call("ccp_groups_create",{
    workplaceId,name:"Beginners "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(group.error).toBeUndefined();
@@ -90,7 +90,7 @@ test("PARITY:PARITY-groups-default-study-scoped verifies official study link aga
    url:"https://lichess.org/study/AbCd1234/QwEr5678",
    notes:"Mate patterns and elementary tactics",requestId:randomUUID(),
    confirmed:true};
- const created=await call("ccp_v1_material_default_create",payload);
+ const created=await call("ccp_material_default_create",payload);
  expect(created.error).toBeUndefined();
  const id=created.data.id as string;
  const browser=await page.request.get("/api/coaching/materials?"+
@@ -104,11 +104,11 @@ test("PARITY:PARITY-groups-default-study-scoped verifies official study link aga
      confirmed:true},
  });
  expect(edited.status(),await edited.text()).toBe(200);
- const viaMcp=await call("ccp_v1_material_defaults_list",{workplaceId,groupId});
+ const viaMcp=await call("ccp_material_defaults_list",{workplaceId,groupId});
  expect(viaMcp.error).toBeUndefined();
  expect(viaMcp.data.defaults.find((x:{id:string})=>x.id===id).notes)
    .toBe("Focus on exercise 4");
- const bad=await call("ccp_v1_material_default_create",{
+ const bad=await call("ccp_material_default_create",{
    ...payload,workplaceId:otherWorkplaceId,requestId:randomUUID(),
  });
  expect(bad.error?.code).toBe("NOT_FOUND");

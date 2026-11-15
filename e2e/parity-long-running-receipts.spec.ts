@@ -10,14 +10,14 @@ import {mailpitMessagesTo} from "./helpers/mailpit";
  */
 test("PARITY:PARITY-safety-long-running-receipts confirms export/import/send with cross-surface receipts",async({page,request})=>{
   const call=await delegatedTool(page,request);
-  const exportDenied=await call("ccp_v1_settings_export",{});
+  const exportDenied=await call("ccp_settings_export",{});
   expect(exportDenied.error?.code).toBe("VALIDATION_ERROR");
 
   const websiteExport=await page.request.get("/api/settings/export");
   expect(websiteExport.status(),await websiteExport.text()).toBe(200);
   expect(websiteExport.headers()["cache-control"]).toContain("no-store");
   const backup=await websiteExport.json();
-  const safe=await call("ccp_v1_settings_export",{confirmed:true});
+  const safe=await call("ccp_settings_export",{confirmed:true});
   expect(safe.error).toBeUndefined();
   expect(safe.data.guardianPortalLinksExcluded).toBe(true);
   expect(safe.data.export.version).toBe(backup.version);
@@ -32,22 +32,22 @@ test("PARITY:PARITY-safety-long-running-receipts confirms export/import/send wit
     teacherId:backup.teacherId,
     tables:{students:[{id:studentId,name:studentName}]},
   };
-  const preview=await call("ccp_v1_settings_import_preview",{payload});
+  const preview=await call("ccp_settings_import_preview",{payload});
   expect(preview.error).toBeUndefined();
   expect(preview.data.counts.students).toBe(1);
   expect(preview.data.sha256).toMatch(/^[a-f0-9]{64}$/);
   const before=await page.request.get("/api/students/"+studentId);
   expect(before.status()).toBe(404);
-  const silent=await call("ccp_v1_settings_import_apply",{
+  const silent=await call("ccp_settings_import_apply",{
     payload,expectedSha256:preview.data.sha256,
   });
   expect(silent.error?.code).toBe("VALIDATION_ERROR");
-  const changed=await call("ccp_v1_settings_import_apply",{
+  const changed=await call("ccp_settings_import_apply",{
     payload,expectedSha256:"0".repeat(64),confirmed:true,
   });
   expect(changed.error).toBeDefined();
   expect((await page.request.get("/api/students/"+studentId)).status()).toBe(404);
-  const committed=await call("ccp_v1_settings_import_apply",{
+  const committed=await call("ccp_settings_import_apply",{
     payload,expectedSha256:preview.data.sha256,confirmed:true,
   });
   expect(committed.error).toBeUndefined();
@@ -68,19 +68,19 @@ test("PARITY:PARITY-safety-long-running-receipts confirms export/import/send wit
   });
   expect(browserReplay.status(),await browserReplay.text()).toBe(200);
   expect(await browserReplay.json()).toEqual(committed.data);
-  const afterMcp=await call("ccp_v1_students_profile",{studentId});
+  const afterMcp=await call("ccp_students_profile",{studentId});
   expect(afterMcp.error).toBeUndefined();
   expect(afterMcp.data.name).toBe(studentName);
 
   // Preview reveals a count but never the portal token. External sends require
   // a second, explicit email approval, and a cross-client retry returns skipped.
   const recipient="receipt-proof-"+randomUUID()+"@example.com";
-  const guardian=await call("ccp_v1_guardians_create",{
+  const guardian=await call("ccp_guardians_create",{
     name:"Receipt proof family "+randomUUID(),email:recipient,
     studentIds:[studentId],confirmed:true,
   });
   expect(guardian.error).toBeUndefined();
-  const event=await call("ccp_v1_events_create",{
+  const event=await call("ccp_events_create",{
     title:"Receipt proof chess event "+randomUUID(),
     startsAt:"2042-11-10T09:00:00+02:00",
     endsAt:"2042-11-10T10:00:00+02:00",
@@ -91,17 +91,17 @@ test("PARITY:PARITY-safety-long-running-receipts confirms export/import/send wit
   const path="/api/events/"+eventId+"/email";
   const browserPreview=await page.request.get(path);
   expect(browserPreview.status(),await browserPreview.text()).toBe(200);
-  const modelPreview=await call("ccp_v1_events_email_preview",{eventId});
+  const modelPreview=await call("ccp_events_email_preview",{eventId});
   expect(modelPreview.error).toBeUndefined();
   expect(modelPreview.data).toEqual(await browserPreview.json());
   expect(modelPreview.data.recipientCount).toBe(1);
   expect(JSON.stringify(modelPreview.data)).not.toContain("portal_token");
-  const emailDenied=await call("ccp_v1_events_email_invites",{
+  const emailDenied=await call("ccp_events_email_invites",{
     eventId,confirmed:true,
   });
   expect(emailDenied.error?.code).toBe("VALIDATION_ERROR");
   expect(await mailpitMessagesTo(request,recipient)).toHaveLength(0);
-  const sent=await call("ccp_v1_events_email_invites",{
+  const sent=await call("ccp_events_email_invites",{
     eventId,confirmed:true,confirmedEmail:true,
   });
   expect(sent.error).toBeUndefined();
@@ -112,7 +112,7 @@ test("PARITY:PARITY-safety-long-running-receipts confirms export/import/send wit
   const websiteRetry=await page.request.post(path);
   expect(websiteRetry.status(),await websiteRetry.text()).toBe(200);
   expect(await websiteRetry.json()).toMatchObject({sent:0,skipped:1});
-  const modelRetry=await call("ccp_v1_events_email_invites",{
+  const modelRetry=await call("ccp_events_email_invites",{
     eventId,confirmed:true,confirmedEmail:true,
   });
   expect(modelRetry.error).toBeUndefined();

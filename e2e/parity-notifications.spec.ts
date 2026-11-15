@@ -26,14 +26,14 @@ test("PARITY:PARITY-notifications-list-mark compares website and MCP read/unread
  const website=await page.request.get("/api/notifications");
  expect(website.status(),await website.text()).toBe(200);
  const websiteRows=(await website.json()).notifications as Array<{id:string;read_at:string|null}>;
- const fromMcp=await call("ccp_v1_notifications_list",{});
+ const fromMcp=await call("ccp_notifications_list",{});
  expect(fromMcp.error).toBeUndefined();
  const modelRows=fromMcp.data.notifications as Array<{id:string;read_at:string|null}>;
  for(const id of ids){
    expect(websiteRows.find(x=>x.id===id)?.read_at).toBeNull();
    expect(modelRows.find(x=>x.id===id)?.read_at).toBeNull();
  }
- const mcpEdit=await call("ccp_v1_notifications_mark_read",{id:ids[0]});
+ const mcpEdit=await call("ccp_notifications_mark_read",{id:ids[0]});
  expect(mcpEdit.error).toBeUndefined();
  expect(mcpEdit.data.ok).toBe(true);
  const webAfter=await page.request.get("/api/notifications");
@@ -43,7 +43,7 @@ test("PARITY:PARITY-notifications-list-mark compares website and MCP read/unread
  expect(updated.find(x=>x.id===ids[1])?.read_at).toBeNull();
  const webEdit=await page.request.patch("/api/notifications",{data:{id:ids[1]}});
  expect(webEdit.status(),await webEdit.text()).toBe(200);
- const modelAfter=await call("ccp_v1_notifications_list",{});
+ const modelAfter=await call("ccp_notifications_list",{});
  expect(modelAfter.error).toBeUndefined();
  for(const id of ids)
    expect((modelAfter.data.notifications as Array<{id:string;read_at:string|null}>)

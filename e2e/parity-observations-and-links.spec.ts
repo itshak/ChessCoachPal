@@ -4,14 +4,14 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-chess-observations-read compares teacher-owned historical observations on both surfaces",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=await call("ccp_v1_students_create",{
+ const student=await call("ccp_students_create",{
    name:"Observation history "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const categories=(await call("ccp_v1_chess_categories_list",{})).data as Array<{id:string}>;
+ const categories=(await call("ccp_chess_categories_list",{})).data as Array<{id:string}>;
  expect(categories.length).toBeGreaterThan(0);
- const created=await call("ccp_v1_chess_observations_propose",{
+ const created=await call("ccp_chess_observations_propose",{
    studentId,categoryId:categories[0].id,
    observation:"Unverified tactical theme "+randomUUID(),
    requestId:randomUUID(),
@@ -23,19 +23,19 @@ test("PARITY:PARITY-chess-observations-read compares teacher-owned historical ob
  expect(web.status(),await web.text()).toBe(200);
  const website=(await web.json()).data as Array<{id:string;source:string}>;
  expect(website.some(x=>x.id===created.data.id)).toBe(true);
- const mcp=await call("ccp_v1_chess_observations_list",{studentId});
+ const mcp=await call("ccp_chess_observations_list",{studentId});
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(website);
 });
 
 test("PARITY:PARITY-chess-observations-proposal remains unverified until explicit browser approval",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const student=(await call("ccp_v1_students_create",{
+ const student=(await call("ccp_students_create",{
    name:"Unverified learner "+randomUUID(),idempotencyKey:randomUUID(),
  })).data as {entityId:string};
- const categories=(await call("ccp_v1_chess_categories_list",{})).data as Array<{id:string}>;
+ const categories=(await call("ccp_chess_categories_list",{})).data as Array<{id:string}>;
  const categoryId=categories[0].id;
- const suggestion=await call("ccp_v1_chess_observations_propose",{
+ const suggestion=await call("ccp_chess_observations_propose",{
    studentId:student.entityId,categoryId,observation:"Needs verification",
    requestId:randomUUID(),
  });
@@ -55,7 +55,7 @@ test("PARITY:PARITY-chess-observations-proposal remains unverified until explici
  }});
  expect(browserProposal.status(),await browserProposal.text()).toBe(200);
  expect((await browserProposal.json()).data.verified_at).toBeNull();
- const mcp=await call("ccp_v1_chess_observations_list",{studentId:student.entityId});
+ const mcp=await call("ccp_chess_observations_list",{studentId:student.entityId});
  expect(mcp.error).toBeUndefined();
  expect(mcp.data.filter((x:{verified_at:string|null})=>x.verified_at===null))
    .toHaveLength(2);
@@ -63,12 +63,12 @@ test("PARITY:PARITY-chess-observations-proposal remains unverified until explici
 
 test("PARITY:PARITY-material-links-list enumerates canonical student materials without fetching content",async({page,request})=>{
  const call=await delegatedTool(page,request);
- const made=await call("ccp_v1_students_create",{
+ const made=await call("ccp_students_create",{
    name:"Study association student "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(made.error).toBeUndefined();
  const studentId=made.data.entityId as string;
- const material=await call("ccp_v1_learning_materials_create",{
+ const material=await call("ccp_learning_materials_create",{
  kind:"study_chapter",title:"Test study "+randomUUID().slice(0,8),
  description:"",sourceUrl:"https://lichess.org/study/AbCd1234",
  details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
@@ -82,7 +82,7 @@ test("PARITY:PARITY-material-links-list enumerates canonical student materials w
  }});
  expect(website.status(),await website.text()).toBe(201);
  const linkId=(await website.json()).data.link.id as string;
- const mcp=await call("ccp_v1_material_links_list",{studentId});
+ const mcp=await call("ccp_material_links_list",{studentId});
  expect(mcp.error).toBeUndefined();
  expect(mcp.data.links.some((l:{id:string})=>l.id===linkId)).toBe(true);
  const browser=await page.request.post("/api/agent/v1",{data:{

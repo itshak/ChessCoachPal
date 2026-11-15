@@ -7,30 +7,30 @@ type Tool=(name:string,args:Record<string,unknown>)=>Promise<{
 }>;
 async function fixture(call:Tool,hour:number){
  const suffix=randomUUID().slice(0,8);
- const w=await call("ccp_v1_workplaces_create",{
+ const w=await call("ccp_workplaces_create",{
    name:"Coverage "+suffix,timezone:"Asia/Jerusalem",currency:"ILS",locale:"he",
    policy:{},idempotencyKey:randomUUID(),
  });
  expect(w.error).toBeUndefined();
  const workplaceId=w.data.entityId as string;
- const group=await call("ccp_v1_groups_create",{
+ const group=await call("ccp_groups_create",{
    workplaceId,name:"Coverage group "+suffix,idempotencyKey:randomUUID(),
  });
  expect(group.error).toBeUndefined();
  const studentIds:string[]=[];
  for(let i=0;i<2;i++){
-   const m=await call("ccp_v1_students_create",{
+   const m=await call("ccp_students_create",{
      name:"Coverage תלמיד "+i+" "+suffix,idempotencyKey:randomUUID(),
    });
    expect(m.error).toBeUndefined();
    const studentId=m.data.entityId as string;
    studentIds.push(studentId);
-   const enrolled=await call("ccp_v1_groups_enroll",{
+   const enrolled=await call("ccp_groups_enroll",{
      groupId:group.data.entityId,studentId,idempotencyKey:randomUUID(),
    });
    expect(enrolled.error).toBeUndefined();
  }
- const made=await call("ccp_v1_sessions_create",{
+ const made=await call("ccp_sessions_create",{
    workplaceId,groupId:group.data.entityId,
    title:"Endgame coverage "+suffix,startsAt:"2041-03-01T"+String(hour).padStart(2,"0")+":00:00+02:00",
    durationMinutes:60,lessonNote:"Two pupils, one instructor session",
@@ -38,7 +38,7 @@ async function fixture(call:Tool,hour:number){
  });
  expect(made.error).toBeUndefined();
  const sessionId=made.data.entityId as string;
- const material=await call("ccp_v1_learning_materials_create",{
+ const material=await call("ccp_learning_materials_create",{
    kind:"study_chapter",title:"King and pawn "+suffix,
    description:"",sourceUrl:"https://lichess.org/study/AbCd1234",
    details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
@@ -50,7 +50,7 @@ async function fixture(call:Tool,hour:number){
 }
 async function claim(call:Tool,ctx:Awaited<ReturnType<typeof fixture>>,
  studentId:string,stage:"assigned"|"taught"|"completed"){
- const result=await call("ccp_v1_materials_history_record",{
+ const result=await call("ccp_materials_history_record",{
    studentId,materialId:ctx.materialId,sessionId:ctx.sessionId,
    workplaceId:ctx.workplaceId,stage,occurredOn:"2041-03-01",
    note:"Teacher-confirmed "+stage,requestId:randomUUID(),confirmed:true,
@@ -72,9 +72,9 @@ test("PARITY:PARITY-chess-game-pgn-rules-validation rejects illegal game on webs
  const illegal={...base,details:{...base.details,pgn:"1. e4 e5 2. Nf6 *"}};
  const web=await page.request.post("/api/training/materials",{data:illegal});
  expect(web.status(),await web.text()).toBe(400);
- const tool=await call("ccp_v1_learning_materials_create",illegal);
+ const tool=await call("ccp_learning_materials_create",illegal);
  expect(tool.error?.code).toBe("VALIDATION_ERROR");
- const good=await call("ccp_v1_learning_materials_create",base);
+ const good=await call("ccp_learning_materials_create",base);
  expect(good.error).toBeUndefined();
  const read=await page.request.get("/api/training/materials?id="+good.data.material.id);
  expect(read.status(),await read.text()).toBe(200);
@@ -91,7 +91,7 @@ test("PARITY:PARITY-materials-student-history enumerates explicitly taught stude
    new URLSearchParams(filters));
  expect(browserResponse.status(),await browserResponse.text()).toBe(200);
  const browser=await browserResponse.json();
- const mcp=await call("ccp_v1_materials_history_list",filters);
+ const mcp=await call("ccp_materials_history_list",filters);
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(browser);
  expect(browser.total).toBe(2);
@@ -110,7 +110,7 @@ test("PARITY:PARITY-materials-workplace deduplicates group lesson studies in ful
    new URLSearchParams({...query,aggregate:"true"}));
  expect(browserResponse.status(),await browserResponse.text()).toBe(200);
  const browser=await browserResponse.json();
- const mcp=await call("ccp_v1_materials_aggregate",query);
+ const mcp=await call("ccp_materials_aggregate",query);
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(browser);
  expect(browser.evidenceClaims).toBe(2);
@@ -132,13 +132,13 @@ test("PARITY:PARITY-materials-stage-reconciliation never invents learned or comp
  expect(assignedResponse.status(),await assignedResponse.text()).toBe(200);
  const assigned=await assignedResponse.json();
  expect(assigned.stages).toEqual({assigned:1,taught:0,completed:0});
- const mcpAssigned=await call("ccp_v1_materials_aggregate",filters);
+ const mcpAssigned=await call("ccp_materials_aggregate",filters);
  expect(mcpAssigned.data).toEqual(assigned);
  await claim(call,ctx,studentId,"taught");
  const afterTeaching=await webMaterials(page,{...filters,aggregate:"true"});
  expect(afterTeaching.stages).toEqual({assigned:1,taught:1,completed:0});
  await claim(call,ctx,studentId,"completed");
- const all=await call("ccp_v1_materials_aggregate",filters);
+ const all=await call("ccp_materials_aggregate",filters);
  const browser=await webMaterials(page,{...filters,aggregate:"true"});
  expect(all.data).toEqual(browser);
  expect(browser.stages).toEqual({assigned:1,taught:1,completed:1});
@@ -154,7 +154,7 @@ test("PARITY:PARITY-materials-workplace-student-report distinguishes individual 
    new URLSearchParams({...wp,aggregate:"true"}));
  expect(websiteResponse.status(),await websiteResponse.text()).toBe(200);
  const website=await websiteResponse.json();
- const mcp=await call("ccp_v1_materials_aggregate",wp);
+ const mcp=await call("ccp_materials_aggregate",wp);
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(website);
  expect(website.stages).toEqual({assigned:1,taught:1,completed:0});
@@ -162,7 +162,7 @@ test("PARITY:PARITY-materials-workplace-student-report distinguishes individual 
    const filters={studentId,workplaceId:ctx.workplaceId,
      from:"2041-03-01",to:"2041-03-01"};
    const childSite=await webMaterials(page,{...filters,aggregate:"true"});
-   const childMcp=await call("ccp_v1_materials_aggregate",filters);
+   const childMcp=await call("ccp_materials_aggregate",filters);
    expect(childMcp.error).toBeUndefined();
    expect(childMcp.data).toEqual(childSite);
    expect(childSite.evidenceClaims).toBe(1);
@@ -179,9 +179,9 @@ test("PARITY:material evidence rejects a nonexistent canonical material from bot
    requestId:randomUUID(),confirmed:true};
  const website=await page.request.post("/api/coaching/materials",{data:payload});
  expect(website.status(),await website.text()).toBe(404);
- const mcp=await call("ccp_v1_materials_history_record",payload);
+ const mcp=await call("ccp_materials_history_record",payload);
  expect(mcp.error?.code).toBe("NOT_FOUND");
- const history=await call("ccp_v1_materials_history_list",{studentId:ctx.studentIds[0]});
+ const history=await call("ccp_materials_history_list",{studentId:ctx.studentIds[0]});
  expect(history.error).toBeUndefined();
  expect(history.data.total).toBe(0);
 });

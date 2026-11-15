@@ -29,7 +29,7 @@ test("PARITY:PARITY-billing-send-preview checks totals and contacts without emai
  }).select("id").single();
  expect(invoice.error).toBeNull();
  const invoiceId=invoice.data!.id as string;
- const reviewed=await call("ccp_v1_billing_invoice_draft_update",{
+ const reviewed=await call("ccp_billing_invoice_draft_update",{
    invoiceId,changes:{items:[{
      description:"Chess lessons",quantity:2,unitCents:4500,amountCents:9000,
    }]},confirmed:true,
@@ -46,15 +46,15 @@ test("PARITY:PARITY-billing-send-preview checks totals and contacts without emai
  expect(preview.pdfReady).toBe(true);
  expect(preview.messageSubject).toContain("Invoice");
  expect(preview.recipients).toBeUndefined();
- const mcp=await call("ccp_v1_billing_invoice_send_preview",{invoiceId});
+ const mcp=await call("ccp_billing_invoice_send_preview",{invoiceId});
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(preview);
  expect(JSON.stringify(mcp.data)).not.toContain(family.data!.portal_token);
- const refused=await call("ccp_v1_billing_invoice_send_preview",{
+ const refused=await call("ccp_billing_invoice_send_preview",{
    invoiceId,includeRecipients:true,
  });
  expect(refused.error?.code).toBe("VALIDATION_ERROR");
- const approved=await call("ccp_v1_billing_invoice_send_preview",{
+ const approved=await call("ccp_billing_invoice_send_preview",{
    invoiceId,includeRecipients:true,confirmed:true,
  });
  expect(approved.error).toBeUndefined();

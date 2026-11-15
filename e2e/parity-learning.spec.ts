@@ -15,7 +15,7 @@ async function firstStudent(page:import("@playwright/test").Page){
 test("PARITY:PARITY-chess-categories compares configuration create rename and reorder",async({page,request})=>{
  const callTool=await delegatedTool(page,request);
  const label="MCP skill "+randomUUID().slice(0,8);
- const created=await callTool("ccp_v1_chess_categories_create",{
+ const created=await callTool("ccp_chess_categories_create",{
    name:label,description:"Synthetic skill",sortOrder:91,confirmed:true,
  });
  expect(created.error).toBeUndefined();
@@ -24,28 +24,28 @@ test("PARITY:PARITY-chess-categories compares configuration create rename and re
  expect(website.status()).toBe(200);
  const rows=(await website.json()).data as Array<{id:string;name:string;sort_order:number}>;
  expect(rows.some(row=>row.id===id&&row.name===label)).toBe(true);
- expect((await callTool("ccp_v1_chess_categories_list",{})).data).toEqual(rows);
+ expect((await callTool("ccp_chess_categories_list",{})).data).toEqual(rows);
  const corrected=await page.request.post("/api/agent/v1",{data:{
    action:"chess.categories.update",categoryId:id,name:label+" revised",sortOrder:92,
  }});
  expect(corrected.status()).toBe(200);
- const mcpNow=(await callTool("ccp_v1_chess_categories_list",{})).data as
+ const mcpNow=(await callTool("ccp_chess_categories_list",{})).data as
   Array<{id:string;name:string;sort_order:number}>;
  expect(mcpNow.find(x=>x.id===id)).toMatchObject({name:label+" revised",sort_order:92});
- const mcpcorrected=await callTool("ccp_v1_chess_categories_update",{
+ const mcpcorrected=await callTool("ccp_chess_categories_update",{
    categoryId:id,description:"MCP corrected",confirmed:true,
  });
  expect(mcpcorrected.error).toBeUndefined();
  const siteNow=await page.request.post("/api/agent/v1",{data:{action:"chess.categories.list"}});
- expect((await siteNow.json()).data).toEqual((await callTool("ccp_v1_chess_categories_list",{})).data);
+ expect((await siteNow.json()).data).toEqual((await callTool("ccp_chess_categories_list",{})).data);
 });
 
 test("PARITY:PARITY-chess-observations requires actual browser-only teacher approval",async({page,request})=>{
  const callTool=await delegatedTool(page,request);
  const studentId=await firstStudent(page);
- const categories=(await callTool("ccp_v1_chess_categories_list",{})).data as Array<{id:string}>;
+ const categories=(await callTool("ccp_chess_categories_list",{})).data as Array<{id:string}>;
  expect(categories.length).toBeGreaterThan(0);
- const proposed=await callTool("ccp_v1_chess_observations_propose",{
+ const proposed=await callTool("ccp_chess_observations_propose",{
    studentId,categoryId:categories[0].id,
    observation:"Synthetic unverified endgame insight "+randomUUID(),
    requestId:randomUUID(),
@@ -60,7 +60,7 @@ test("PARITY:PARITY-chess-observations requires actual browser-only teacher appr
  expect(websiteBefore.status()).toBe(200);
  expect(((await websiteBefore.json()).data as Array<{id:string;verified_at:string|null}>)
    .find(x=>x.id===value.id)?.verified_at).toBeNull();
- const corrected=await callTool("ccp_v1_chess_observations_update",{
+ const corrected=await callTool("ccp_chess_observations_update",{
    observationId:value.id,observation:"Teacher-reviewed candidate "+randomUUID(),confirmed:true,
  });
  expect(corrected.error).toBeUndefined();
@@ -70,7 +70,7 @@ test("PARITY:PARITY-chess-observations requires actual browser-only teacher appr
  expect(approved.status(),await approved.text()).toBe(200);
  const webApproved=(await approved.json()).data as {verified_at:string};
  expect(webApproved.verified_at).toBeTruthy();
- const readMcp=(await callTool("ccp_v1_chess_observations_list",{
+ const readMcp=(await callTool("ccp_chess_observations_list",{
    studentId,
  })).data as Array<{id:string;verified_at:string;verified_by:string}>;
  expect(readMcp.find(x=>x.id===value.id)?.verified_at).toBeTruthy();
@@ -83,7 +83,7 @@ test("PARITY:PARITY-chess-observations requires actual browser-only teacher appr
 test("PARITY:PARITY-material-links shares the typed catalog and revision guarded associations",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const studentId=await firstStudent(page);
- const material=await call("ccp_v1_learning_materials_create",{
+ const material=await call("ccp_learning_materials_create",{
  kind:"study_chapter",title:"Test study "+randomUUID().slice(0,8),
  description:"",sourceUrl:"https://lichess.org/study/AbCd1234",
  details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
@@ -92,7 +92,7 @@ test("PARITY:PARITY-material-links shares the typed catalog and revision guarded
  expect(material.error).toBeUndefined();
  const materialId=material.data.material.id as string;
  const requestId=randomUUID();
- const linked=await call("ccp_v1_material_links_create",{
+ const linked=await call("ccp_material_links_create",{
    studentId,materialId,requestId,confirmed:true,
  });
  expect(linked.error).toBeUndefined();
@@ -103,7 +103,7 @@ test("PARITY:PARITY-material-links shares the typed catalog and revision guarded
  }});
  expect(browser.status(),await browser.text()).toBe(200);
  const current=(await browser.json()).data;
- const mcp=await call("ccp_v1_material_links_list",{studentId});
+ const mcp=await call("ccp_material_links_list",{studentId});
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(current);
  expect(current.links.some((l:{id:string;material_id:string})=>l.id===id&&l.material_id===materialId)).toBe(true);
@@ -112,14 +112,14 @@ test("PARITY:PARITY-material-links shares the typed catalog and revision guarded
  }});
  expect(replay.status(),await replay.text()).toBe(201);
  expect((await replay.json()).data.replayed).toBe(true);
- const alternate=await call("ccp_v1_learning_materials_create",{
+ const alternate=await call("ccp_learning_materials_create",{
  kind:"study_chapter",title:"Test study "+randomUUID().slice(0,8),
  description:"",sourceUrl:"https://lichess.org/study/AbCd1234",
  details:{provider:"lichess",studyId:"AbCd1234",chapterId:null},
  requestId:randomUUID(),
 });
  expect(alternate.error).toBeUndefined();
- const corrected=await call("ccp_v1_material_links_update",{
+ const corrected=await call("ccp_material_links_update",{
    linkId:id,materialId:alternate.data.material.id,
    expectedRevision:linked.data.link.revision,confirmed:true,
  });
@@ -129,7 +129,7 @@ test("PARITY:PARITY-material-links shares the typed catalog and revision guarded
    expectedRevision:linked.data.link.revision,confirmed:true,
  }});
  expect(stale.status()).toBe(409);
- const foreign=await call("ccp_v1_material_links_create",{
+ const foreign=await call("ccp_material_links_create",{
    studentId,materialId:randomUUID(),requestId:randomUUID(),confirmed:true,
  });
  expect(foreign.error?.code).toBe("NOT_FOUND");
@@ -138,10 +138,10 @@ test("PARITY:PARITY-material-links shares the typed catalog and revision guarded
 test("PARITY:PARITY-chess-observation-attestation blocks bearer self-verification",async({page,request})=>{
   const callTool=await delegatedTool(page,request);
   const studentId=await firstStudent(page);
-  const categories=(await callTool("ccp_v1_chess_categories_list",{})).data as Array<{id:string}>;
+  const categories=(await callTool("ccp_chess_categories_list",{})).data as Array<{id:string}>;
   expect(categories.length).toBeGreaterThan(0);
   const categoryId=categories[0].id;
-  const proposed=await callTool("ccp_v1_chess_observations_propose",{
+  const proposed=await callTool("ccp_chess_observations_propose",{
     studentId,categoryId,observation:"Not yet verified "+randomUUID(),
     requestId:randomUUID(),
   });
@@ -159,7 +159,7 @@ test("PARITY:PARITY-chess-observation-attestation blocks bearer self-verificatio
   expect(verified.source).toBe("teacher");
   expect(verified.verified_at).toBeTruthy();
   expect(verified.verified_by).toBeTruthy();
-  const mcpList=(await callTool("ccp_v1_chess_observations_list",{studentId}))
+  const mcpList=(await callTool("ccp_chess_observations_list",{studentId}))
     .data as Array<{id:string;verified_at:string|null}>;
   expect(mcpList.find(x=>x.id===verified.id)?.verified_at).toBeTruthy();
   expect(mcpList.find(x=>x.id===proposed.data.id)?.verified_at).toBeNull();
