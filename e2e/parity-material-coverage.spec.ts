@@ -185,3 +185,37 @@ test("PARITY:material evidence rejects a nonexistent canonical material from bot
  expect(history.error).toBeUndefined();
  expect(history.data.total).toBe(0);
 });
+
+test("PARITY:material student and session links read back independently",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const ctx=await fixture(call,18);
+ const studentId=ctx.studentIds[0];
+ const student=await call("ccp_material_links_create",{
+   materialId:ctx.materialId,studentId,
+   requestId:randomUUID(),confirmed:true,
+ });
+ expect(student.error).toBeUndefined();
+ expect(student.data.replayed).toBe(false);
+ const session=await call("ccp_material_links_create",{
+   materialId:ctx.materialId,sessionId:ctx.sessionId,
+   requestId:randomUUID(),confirmed:true,
+ });
+ expect(session.error).toBeUndefined();
+ expect(session.data.replayed).toBe(false);
+ const studentLinks=await call("ccp_material_links_list",{studentId});
+ expect(studentLinks.error).toBeUndefined();
+ expect(studentLinks.data.links).toEqual(expect.arrayContaining([
+   expect.objectContaining({
+     id:student.data.link.id,student_id:studentId,
+     material_id:ctx.materialId,session_id:null,
+   }),
+ ]));
+ const sessionLinks=await call("ccp_material_links_list",{sessionId:ctx.sessionId});
+ expect(sessionLinks.error).toBeUndefined();
+ expect(sessionLinks.data.links).toEqual(expect.arrayContaining([
+   expect.objectContaining({
+     id:session.data.link.id,session_id:ctx.sessionId,
+     material_id:ctx.materialId,student_id:null,
+   }),
+ ]));
+});
