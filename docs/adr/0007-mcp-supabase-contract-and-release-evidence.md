@@ -47,6 +47,10 @@ All exposed tables SHALL have intentionally reviewed grants and RLS. Server-only
 
 Run both Supabase **security** and **performance** advisors before/after changes; classify remaining warnings rather than calling an intentional access restriction a failure or misreporting zero warnings. Optimize auth RLS lookup calls through scalar SELECT initplans without changing ownership logic; add useful FK indexes and do not delete indexes just because a tiny test DB reports them unused. Leaked-password-protection is a Supabase Auth setting (Pro+ capability), not fixed through SQL.
 
+### 5. Safe external checkout races are not counted by successful callers
+
+When website and MCP concurrently request one invoice checkout, a second caller MAY return the same already-persisted provider checkout link successfully. A test SHALL distinguish that safe replay from two DISTINCT upstream sessions. The durable invoice may hold only one payable session; if distinct sessions are created, the loser SHALL be expired, the loser call SHALL conflict, and retries SHALL return the durable winner. Test the persisted winner, both transport responses, upstream creation count, loser expiry and later replay, rather than imposing one arbitrary scheduler outcome.
+
 ### 5. All parity/CI/production gates remain blocking
 
 Each PR that touches a teacher website/API surface SHALL include corresponding core/MCP changes, `scripts/mcp-website-parity.json` review and independently named authenticated website↔delegated MCP E2E. Required checks: static parity guard, TypeScript/lint/unit, fresh canonical DB, client-safe JSON Schema, E2E with non-default values/negative authorization/replay, security/history, self-host Compose, backup and second-install restore. Do not bypass red CI by weakening tests or bypassing the guard.
