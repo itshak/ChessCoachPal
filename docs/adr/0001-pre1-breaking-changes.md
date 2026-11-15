@@ -36,8 +36,10 @@ ChessCoachPal is still prelaunch and has no stable released data format, API, da
 - PRs should edit the authoritative schema/source in place and avoid new incremental upgrade migrations. A fresh-install integration test becomes the minimum database validation gate.
 - This ADR takes precedence over conflicting requirements in `openspec/changes/adopt-cognote-chesscoachpal` and `docs/ARCHITECTURE.md` until those documents are revised.
 
-## Implementation direction
+## Current implementation (2026-11-15)
 
-The recently introduced `20261107000000_chess_coaching_core.sql` additive migration is contrary to this decision. Remove it and fold its definitions into the canonical initial schema and RLS bootstrap in the active implementation branch. Consolidate or replace inherited CogNote migration history into a single installation-only baseline as the port progresses. No backward compatibility with CogNote or any ChessCoachPal pre-1.0 version may be required by acceptance criteria.
+The canonical baseline **has already been consolidated** into `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`. Exactly one installation snapshot and no pre-v1 incremental schema migration or compatibility adapter is permitted. Do not follow obsolete directions referring to the former `20261107000000_chess_coaching_core.sql` addition.
 
-**Acceptance evidence:** ADR in version control, implementation uses current schema on fresh database, and no compatibility layer is required by new features.
+The 2026-11-15 Supabase hardening was folded directly into that baseline, while equivalent transactional SQL was applied **in place** to the authorized disposable test project without deleting its synthetic records. Full destructive resets of any project containing real teachers/students still require explicit operator authorization and backup. Supabase-managed Auth/Storage schemas and policy objects are not part of an app-owned `public` reset.
+
+**Acceptance:** fresh Supabase/Compose install, owner-authenticated write/read, tenant-denial and grant checks, advisors, protected Storage handling, no dual schema, and second-empty-instance backup/restore. See [ADR-0007](0007-mcp-supabase-contract-and-release-evidence.md) and the [runbook](../MCP_SUPABASE_RELIABILITY_PLAYBOOK.md).
