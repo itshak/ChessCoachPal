@@ -61,3 +61,41 @@ An authenticated coach may record a partial or full real-world manual payment on
 - **WHEN** a draft edit, regeneration, or deletion would lower its total below the amount collected or destroy a payment/prepaid-credit record **THEN** the database SHALL reject the whole transaction and leave the original data unchanged.
 - **WHEN** a paid never-sent invoice has an erroneous payment reversed **THEN** it SHALL reopen as an unsent draft. A previously sent invoice SHALL reopen as sent; redeemed prepaid credits SHALL prevent an unsafe reversal.
 - **WHEN** a coach sends a partially paid draft **THEN** one server-side lock SHALL confirm that the PDF, email and payment link refer to the unchanged remaining balance. Stale snapshots, active incompatible Stripe sessions and competing sends SHALL be rejected.
+
+## Requirement: Published MCP schema, actual dispatch and client discovery SHALL agree
+
+All named `ccp_<domain>_<action>` operations SHALL expose a client-discoverable **root-object** JSON Schema derived from the same typed core as website input. A website or MCP route SHALL NOT introduce a parallel schema adapter or silently drop any optional field. Every supported field (including `assessedOn`, duration, notes, links, explicit nulls, revisions, idempotency UUIDs) SHALL be forwarded to the owner-scoped service and verified by persisted read-back, not just accepted by validation.
+
+### Scenario: Tool advertised but not loaded in a real Claude conversation
+
+- **WHEN** connector settings show a named write tool but the actual conversation's deferred ToolSearch cannot load it
+- **THEN** the failure SHALL be reported as client-discovery/contract acceptance, not conflated with server registration or data storage; the exact current `tools/list`, root schema, deployed SHA, fresh client conversation and `tools/call` SHALL be checked.
+- **AND** the current shared input schema SHALL be corrected rather than adding an MCP-only compatibility adapter, as in the resolved `ccp_learning_materials_create` incident.
+
+### Scenario: Optional date disappears in MCP dispatcher
+
+- **WHEN** an authorized client records a 1–5 skill assessment with explicit historical `assessedOn`
+- **THEN** website and MCP SHALL store and independently read the exact same teacher-local date, even across retry, not silently default to today.
+- **AND** the E2E test SHALL invoke the **real delegated MCP dispatcher** and compare the result to the website on the same record.
+
+### Scenario: Actual client acceptance has honest boundaries
+
+- **WHEN** Claude Desktop passes the material create/link/record/void workflow
+- **THEN** the result SHALL certify only that concrete client's tested tools; registered count, green CI and a different client's behavior SHALL NOT imply ChatGPT interoperability.
+
+## Requirement: Semantic parity SHALL preserve identity, evidence and source distinctions
+
+The student resolver SHALL distinguish duplicate *roster references to one student ID* from different students with an ambiguous shared alias. A proposed roster including full name and alias of the same student SHALL fail closed without creating duplicate attendance while preserving explicit per-input matches and a safe deduplicated matched-ID view. A platform rating snapshot SHALL remain independent of teacher strength, skill grades and manually edited profile ratings. Student progress SHALL expose latest time-control/provider/source/observed-at snapshots and bounded dated skill trend, with no automatic mastery inference.
+
+### Scenario: Reconcile name and alias without duplicating a student
+- **WHEN** the teacher resolves "Full reporting name" and its saved alias together
+- **THEN** both entries SHALL identify one stable UUID and a clear duplicate-*roster-reference* issue SHALL prevent a double-counted lesson; the system SHALL NOT assert two student records exist.
+
+### Scenario: Provider rating snapshots exist but profile scalar is unset
+- **WHEN** two historical Lichess rapid snapshots exist and the teacher's explicit profile rating is absent
+- **THEN** the latest rapid snapshot MAY fill a clearly sourced display scalar, while the snapshot list/history still records provider, time control, source and observation dates, and strength stays unchanged.
+
+### Scenario: Material evidence correction
+- **WHEN** teacher-approved `assigned` material evidence is voided
+- **THEN** history with voids included SHALL retain correction metadata, while default progress excludes the assigned count; a separately recorded `taught` claim SHALL remain and SHALL NOT imply mastery.
+
