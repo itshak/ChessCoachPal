@@ -27,7 +27,7 @@ export function validateCheckedParityRow(row, ordinal, exists, read) {
     // Canonical E2E tests name their real OAuth/MCP helper "tool".
     // Require both initialization and a named authenticated MCP call.
     const delegatedMcp = /\bconst\s+tool\s*=\s*await\s+delegatedTool\s*\(/.test(body)
-      && /\btool\s*\(\s*["']ccp_v1_[a-z0-9_]+["']/.test(body);
+      && /\btool\s*\(\s*["']ccp_[a-z0-9_]+["']/.test(body);
     const checks = [
       [/tools\/call|\bcall\s*\(|\bcallTool\s*\(/, "MCP invocation"],
       [/page\.request\.|\brequest\.(get|post|put|patch|delete)\s*\(\s*["']\/api\//, "website API request"],

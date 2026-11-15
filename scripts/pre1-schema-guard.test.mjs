@@ -16,7 +16,7 @@ test("ADR-0001: rejects incremental upgrade files",()=>{
 });
 test("ADR-0001: rejects previous-material mapping in schema, MCP or UI",()=>{
  for(const prop of ["sql","agent","catalog","studentPage","teacherComponents"]){
-  ok(canonicalSchemaErrors({...clean,[prop]:clean[prop]+" ccp_v1_material_legacy_bridge_list"}).length>0,prop);
+  ok(canonicalSchemaErrors({...clean,[prop]:clean[prop]+" ccp_material_legacy_bridge_list"}).length>0,prop);
  }
 });
 test("ADR-0001: rejects backup-format version negotiation",()=>{

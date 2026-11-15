@@ -6,7 +6,7 @@ const path = "e2e/parity.spec.ts";
 const row = "| - [x] | Archive student | " + path + "#PARITY-student-archive |";
 const valid = [
   'test("PARITY:PARITY-student-archive compares clients", async ({page}) => {',
-  '  const result = await call("ccp_v1_students_archive_preview", {studentId:"id"});',
+  '  const result = await call("ccp_students_archive_preview", {studentId:"id"});',
   '  const response = await page.request.get("/api/students/id?archivePreview=true");',
   '  expect(result).toEqual(await response.json());',
   '});'
@@ -20,7 +20,7 @@ test("rejects checked rows lacking distinct named test evidence", () => {
 });
 test("validates transport and assertions within the named test", () => {
   assert.deepEqual(check(valid), []);
-  assert.match(check(valid.replace('await call("ccp_v1_students_archive_preview", {studentId:"id"})','42'))[0], /MCP/);
+  assert.match(check(valid.replace('await call("ccp_students_archive_preview", {studentId:"id"})','42'))[0], /MCP/);
   assert.match(check(valid.replace('page.request.get("/api/students/id?archivePreview=true")','page.goto("/students")'))[0], /website/);
   assert.match(check(valid.replace("expect(result).toEqual","console.log"))[0], /assertion/);
 });
@@ -39,7 +39,7 @@ test("accepts real bound delegated OAuth/MCP tool calls but rejects unbound tool
  const source=[
   'test("PARITY:PARITY-student-archive secure",async({page,request})=>{',
   'const tool=await delegatedTool(page,request);',
-  'const result=await tool("ccp_v1_students_archive_preview",{studentId:"id"});',
+  'const result=await tool("ccp_students_archive_preview",{studentId:"id"});',
   'const web=await page.request.get("/api/students/id");',
   'expect(result).toEqual(await web.json());',
   '});',
@@ -47,6 +47,6 @@ test("accepts real bound delegated OAuth/MCP tool calls but rejects unbound tool
  assert.deepEqual(check(source),[]);
  assert.match(check(source.replace("const tool=await delegatedTool(page,request);",
   "const tool=async()=>({data:null});"))[0],/MCP invocation/);
- assert.match(check(source.replace('tool("ccp_v1_students_archive_preview"',
+ assert.match(check(source.replace('tool("ccp_students_archive_preview"',
   'tool("fake_tool"'))[0],/MCP invocation/);
 });
