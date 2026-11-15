@@ -1,5 +1,14 @@
 # ChessCoachPal development and release status
 
+## 2026-11-15 — v0.1.0 release-policy decision and exact automated evidence
+
+The maintainer explicitly deferred real ChatGPT/Claude production MCP acceptance until **after** the first v0.1.0 tagged production deployment. No real vendor-client acceptance is claimed. The six remaining non-provider release checks, including historical privacy, asset redistribution and licensing, are **not waived**. Do not publish until those checks are evidenced and the current release workflow is green.
+
+The consolidated lesson+chapter and scoped Lichess preference implementation merged as [PR #68](https://github.com/itshak/ChessCoachPal/pull/68), commit [d825d81](https://github.com/itshak/ChessCoachPal/commit/d825d81da4c4b7466d4f680c0994165695d66df3). Exact feature-source `e5428cda` passed [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43660570145), [authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43660570281) (254 passed, five intentionally skipped, zero failed), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43660570179), [self-host Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43660570173) and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43660570168). The merged main commit has independent [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43661136580), [security](https://github.com/itshak/ChessCoachPal/actions/runs/43661136550), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43661136540) and [restore](https://github.com/itshak/ChessCoachPal/actions/runs/43661136512) green; [merged-main E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43661136501) was still running at this update.
+
+Publication remains blocked by [historical privacy ledger](HISTORICAL_PRIVACY_REVIEW.md): repository public Homepage metadata still advertises an unrelated legacy host, and prior Actions artifacts/logs, inaccessible media, and redistribution rights have no recorded final disposition. GitHub repository About/Website settings cannot be changed through the available connected GitHub actions. Do not mark those review steps complete without remediation and documented maintainer approval. The production release also requires the pre-tag Vercel credential check, all six truthful checkboxes and versioned manifests/changelog.
+
+
 **Updated:** 2026-11-14 · **Branch of record:** main (parity implementation merged and accepted; v0.1.0 unreleased) · **Version:** 0.0.0 (unreleased) · **Release target:** v0.1.0
 
 ## 2026-11-15 — authenticated Lichess study-preference hierarchy (candidate)
