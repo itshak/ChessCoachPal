@@ -1,6 +1,6 @@
 # Canonical-domain cutover: ChessCoachPal remains a private beta
 
-**Operator state, 2026-11-16:** PREPARED IN GIT; LIVE CUTOVER NOT YET COMPLETED. This is a runbook, not approval to launch publicly; invite-code registration and waitlist remain mandatory. Use the existing Coolify Git-based Compose application and preserve its named database and Storage volumes. The user has confirmed there are no teachers to migrate and explicitly does **not** want a `beta` redirect, Vercel rollback window or duplicate hosting environments. This does not authorize deleting any application records, secrets, or backups.
+**Operator state, 2026-11-16:** CANONICAL DOMAIN CUTOVER COMPLETED; private-beta restrictions remain mandatory. This is a runbook, not approval to launch publicly; invite-code registration and waitlist remain mandatory. Use the existing Coolify Git-based Compose application and preserve its named database and Storage volumes. The user has confirmed there are no teachers to migrate and explicitly does **not** want a `beta` redirect, Vercel rollback window or duplicate hosting environments. This does not authorize deleting any application records, secrets, or backups.
 
 ## Target
 
@@ -57,3 +57,22 @@ No new database, new Supabase project, new application container network or inde
 - [ ] SendPulse SMTP verification and email delivery **pending owner setup**
 
 Keep unchecked items unchecked until live evidence exists. Avoid mentioning unapproved pricing or private strategy in public documents.
+
+
+## Verified live domain acceptance — 2026-11-16
+
+The same Coolify v0.1.3 application has been rebuilt on the canonical site/API hostnames. The live resource is renamed ChessCoachPal (Live Private Beta) and remains in the historically named staging environment, which is NOT a separate deployment. The existing PostgreSQL, Auth and Storage volumes are retained.
+
+Cloudflare apex and API A records resolve to the existing Coolify host; www is a proxied CNAME and a path/query-preserving 301 redirect to the apex. Both former beta subdomain A records are removed, without redirects. Existing SendPulse SPF, DKIM and DMARC records were preserved. The email sender configuration is attached to this same live Coolify resource.
+
+The installed Coolify Compose/Traefik generator requires exactly one hostname per service with explicit internal port: app on chesscoachpal.com:3000; gateway on api.chesscoachpal.com:8000. Multiple domain aliases caused ambiguous Traefik router/backend mappings; missing the gateway backend port caused 502. www redirection is implemented in Cloudflare instead.
+
+HTTPS was verified with full certificate validation (not insecure mode): website root/login 200, OAuth authorization server and protected-resource discovery 200, Supabase Auth health 200, PostgREST 200, Storage status 200, www redirects HTTPS 301 preserving path/query. OAuth issuer and MCP resource are canonical. Unauthenticated MCP requests return 401; invalid beta invitation codes return 403.
+
+Live data remained 1 original Auth account, 1 teacher and 28 students. Direct public GoTrue signup remains disabled under the released v0.1.3 security fix; invite-code private beta and public waitlist remain configured. Automatic email confirmation remains ON while SendPulse setup is incomplete, as switching it off with the current admin-createUser route would block registration.
+
+The latest root-only PostgreSQL custom-format dump, Storage archive and configuration snapshot passed SHA-256 checksums on the server. Off-host transfer and an independent full isolated-data restore have not been attested in this cutover; GitHub CI backup/restore tests are a separate verification.
+
+Not retested on canonical origin: real valid-code registration, waitlist persistence, or a live ChatGPT/Claude MCP authorization. The attempted synthetic write test was blocked by a security safeguard. PR #85 tested valid signup and waitlist on the previous beta origin of the same v0.1.3 code; new-host client reauthorization remains required.
+
+The old Vercel project is not yet deleted, though no public ChessCoachPal DNS points to it. Review that particular project's other attached domains before decommissioning; retire the Vercel reminder cron or replace it with a secured Coolify scheduled job when email is enabled. SendPulse SMTP password is not yet installed and there is no live confirmation email flow.

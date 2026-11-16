@@ -2,7 +2,7 @@
 
 > **Permanent-domain transition:** See [BETA_DOMAIN_CUTOVER.md](BETA_DOMAIN_CUTOVER.md) for the canonical site/API hostnames, Vercel retirement and beta-domain removal. The historical staging sections below do not attest that this transition has finished.
 
-**Status (2026-11-16):** Isolated staging responds successfully on public HTTPS. Reusing this same Coolify application as the **private beta** at canonical hostnames is proposed, but the canonical hostnames, live Coolify configuration, and acceptance tests are **not yet verified**. See [private beta domain cutover](BETA_DOMAIN_CUTOVER.md). See [hosting architecture](HOSTING_ARCHITECTURE.md), [self-hosting](SELF_HOSTING.md), and [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md).
+**Status (2026-11-16):** The existing Coolify resource is now the live invitation-only private beta at canonical app/API domains. Trusted HTTPS and existing data were verified. The old staging label is historical and does not indicate a separate deployment. See [private beta domain cutover](BETA_DOMAIN_CUTOVER.md). See [hosting architecture](HOSTING_ARCHITECTURE.md), [self-hosting](SELF_HOSTING.md), and [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md).
 
 ## Architecture and service exposure
 
