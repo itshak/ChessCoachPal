@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
     contactPhone: body.contactPhone ?? null,
     contactName: body.contactName ?? null,
     adultSelf: Boolean(body.adultSelf),
+    archived: Boolean(body.archived),
     idempotencyKey: body.idempotencyKey,
   });
 
