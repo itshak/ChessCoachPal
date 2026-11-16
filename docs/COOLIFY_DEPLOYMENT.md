@@ -1,6 +1,6 @@
 # Coolify deployment runbook — ChessCoachPal
 
-**Status:** Infrastructure deployment candidate. The Compose topology is validated for static configuration only; **the hosted application has not been deployed or accepted**. See [hosting architecture](HOSTING_ARCHITECTURE.md), [self-hosting](SELF_HOSTING.md), and [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md).
+**Status:** Isolated staging has been deployed and verified with healthy services and public HTTPS; the hosted application has **not** been accepted for real users or production. See [hosting architecture](HOSTING_ARCHITECTURE.md), [self-hosting](SELF_HOSTING.md), and [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md).
 
 ## Architecture and service exposure
 
@@ -91,3 +91,18 @@ For a safe, repeatable static verification, run **`bash scripts/check-coolify-co
 - Verify the existing Coolify proxy is healthy, and use domain routing rather than direct host ports. Back up live Coolify configuration before any proxy-wide configuration change.
 
 **Acceptance gate:** A healthy initial deployment is only a technical smoke test; public beta readiness still requires domain ownership, secure signup/email, RLS/MCP parity evidence, monitoring, encrypted offsite backups, and a proven restore. Record actual measurements rather than assuming this config is production-safe solely because its static Compose validation passes.
+
+
+## Release-triggered automatic staging deployment
+
+The staging application is registered in Coolify as resource UUID `wu2pa46yyr4ssws9d1tah0ct`. It uses the private `staging` GitHub Actions environment. The existing GitHub release workflow invokes `.github/workflows/deploy-coolify-release.yml` after a new version passes all release gates and is published. Independently published releases also trigger the same reusable workflow through `release.published`.
+
+- Only a published SemVer GitHub Release with a matching 40-character Git commit is accepted by the server-side forced-command script `scripts/coolify-release-gate.py`. Never deploy mere branch pushes or unverified tags.
+- GitHub Actions has staging-scoped secret `COOLIFY_STAGING_DEPLOY_KEY` (dedicated ED25519 private key), secret `COOLIFY_STAGING_KNOWN_HOSTS` (pinned server host key), and variable `COOLIFY_STAGING_HOST` (server IP). These values are not shared with public PRs.
+- The restricted SSH user `ccpdeploy` cannot execute arbitrary commands. Its `authorized_keys` entry uses `restrict` and a forced script; no root or sudo privileges are granted. The script accepts only `status` or `deploy vX.Y.Z SHA`, confirms the published tag and commit, then calls Coolify's API with a resource-scoped token for **this one staging application only**.
+- Coolify's built-in push-based `is_auto_deploy_enabled` remains **false**. Release deployments explicitly pin the commit hash and update the branch/tag reference. Releases are serialized in GitHub Actions and the SSH gate reports Coolify's final deployment status.
+- GitHub Actions `.github/workflows/check-coolify-staging.yml` is a **manual read-only smoke test** for the restricted SSH identity and the HTTPS site/Auth/REST endpoints. Run it after setting up secrets or rotating the server host key.
+- The Coolify API token for the restricted deploy user expires after **12 months** from November 16, 2026 and must be rotated before expiry; keep the new token scoped to this staging resource and protect its `0600` file at `/var/lib/chesscoachpal-deploy/.config/coolify-api-token`. Regenerate an SSH key if leaked, delete the prior `authorized_keys` entry, and replace the staging GitHub environment secret.
+- Staging starts with `DISABLE_SIGNUP=true` and `ENABLE_EMAIL_SIGNUP=false`. Domain `https://beta.chesscoachpal.com` serves the site and `/mcp`; `https://api-beta.chesscoachpal.com` serves Supabase API. Production `chesscoachpal.com` remains on Vercel and must **not** be changed by staging release automation.
+
+The staging installation is a disposable acceptance environment. A passing smoke test is not a backup/restore rehearsal, and production migration must remain gated on authentication, MCP client testing, a verified encrypted PostgreSQL and Storage backup, and proper rollout controls.
