@@ -314,7 +314,7 @@ const catalogue = [
   },
   {
     name:"ccp_import_spreadsheet_commit",
-    description:"Atomically import up to 500 reviewed student/family rows with explicit approval and idempotent receipts. A failed batch rolls back all student and family writes. Archived names are deduplicated.",
+    description:"Atomically import up to 500 reviewed student/family rows, including optional archived status, with explicit approval and idempotent receipts. A failed batch rolls back all student and family writes. Archived names are deduplicated.",
     schema:z.object({rows:z.array(z.record(z.string(),z.string())).min(1).max(500),
       mapping:z.record(z.string(),z.string().nullable()),confirmed:z.literal(true),
       idempotencyKey:uuid.optional()}).strict(),
@@ -1130,7 +1130,7 @@ const catalogue = [
   },
   {
     name:"ccp_students_create_full",
-    description:"Create a teacher-owned learner with optional owned family, guardian contact, birthdate, level and private teacher notes in ONE atomic website/MCP transaction. Requires an idempotency key and approval; output redacts private notes and contact details.",
+    description:"Create an active or already archived teacher-owned learner with optional owned family, guardian contact, birthdate, level and private teacher notes in ONE atomic website/MCP transaction. archived=true never consumes active quota. Requires an idempotency key and approval; output redacts private notes and contact details.",
     schema:studentCreateSchema.extend({
       idempotencyKey:uuid,confirmed:z.literal(true),
     }).strict(),
