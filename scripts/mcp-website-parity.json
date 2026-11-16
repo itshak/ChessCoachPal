@@ -733,7 +733,7 @@
       "existingTools": [
         "ccp_import_spreadsheet_commit"
       ],
-      "explanation": "Explicit confirmed delegated MCP import and authenticated website commit share tenant-scoped atomic SQL receipt, duplicate mapping and idempotent replay, accepted in OAuth/browser E2E 42709042700; separate rollback tests also exist.",
+      "explanation": "Explicit confirmed delegated MCP import and authenticated website commit share tenant-scoped atomic SQL receipt, duplicate mapping and idempotent replay, accepted in OAuth/browser E2E 42709042700; separate rollback tests also exist. Candidate archived-column browser commit and MCP replay, preserving active/archived roster membership, are covered in e2e/parity-spreadsheet-commit.spec.ts.",
       "evidenceTest": "e2e/parity-spreadsheet-commit.spec.ts"
     },
     {
@@ -748,7 +748,7 @@
         "ccp_import_spreadsheet_parse",
         "ccp_import_spreadsheet_preview"
       ],
-      "explanation": "Website multipart CSV parse/mapping and preview match delegated MCP parse/preview on exact normalized rows, accepted in OAuth/browser E2E 42709042700.",
+      "explanation": "Website multipart CSV parse/mapping and preview match delegated MCP parse/preview on exact normalized rows, accepted in OAuth/browser E2E 42709042700. Candidate archived-state mapping and per-row preview equivalence are covered in e2e/parity-spreadsheet-commit.spec.ts.",
       "evidenceTest": "e2e/parity-spreadsheet-commit.spec.ts"
     },
     {
@@ -1135,7 +1135,7 @@
         "ccp_students_roster",
         "ccp_students_create_full"
       ],
-      "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes.",
+      "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes. Direct archived-on-create uses the same confirmed website/MCP SQL receipt and excludes the archived learner from active roster/quota; the candidate exercises archived creation and changed-payload replay in e2e/parity-students.spec.ts.",
       "evidenceTest": "e2e/parity-students.spec.ts"
     },
     {

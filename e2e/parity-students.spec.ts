@@ -231,6 +231,48 @@ test("PARITY:PARITY-students-skills preserves 1–5 append-only assessment histo
 });
 
 
+
+test("PARITY:PARITY-students-archived-on-create-website-MCP-no-active-roster",async({page,request})=>{
+ const callTool=await delegatedTool(page,request);
+ const name=unique("Previously taught chess student");
+ const key=randomUUID();
+ const payload={name,archived:true,idempotencyKey:key};
+ const created=await callTool("ccp_students_create_full",{...payload,confirmed:true});
+ expect(created.error).toBeUndefined();
+ const id=(created.data as {id:string}).id;
+ expect((await browserProfile(page,id)).archived_at).toBeTruthy();
+ const replay=await page.request.post("/api/students",{data:payload});
+ expect(replay.status(),await replay.text()).toBe(201);
+ expect((await replay.json()).id).toBe(id);
+ const altered=await page.request.post("/api/students",{
+   data:{...payload,archived:false},
+ });
+ expect(altered.status(),await altered.text()).toBe(409);
+ const activeRoster=await page.request.get("/api/students?query="+encodeURIComponent(name));
+ expect(activeRoster.status()).toBe(200);
+ expect((await activeRoster.json()).students.some((s:{id:string})=>s.id===id)).toBe(false);
+ const archiveRoster=await page.request.get("/api/students?archivedOnly=true&query="+encodeURIComponent(name));
+ expect(archiveRoster.status()).toBe(200);
+ expect((await archiveRoster.json()).students.some((s:{id:string})=>s.id===id)).toBe(true);
+
+ const websiteName=unique("Archived website learner");
+ const websiteKey=randomUUID();
+ const websiteCreate=await page.request.post("/api/students",{
+   data:{name:websiteName,archived:true,idempotencyKey:websiteKey},
+ });
+ expect(websiteCreate.status(),await websiteCreate.text()).toBe(201);
+ const browserId=(await websiteCreate.json()).id;
+ const mcpRead=await callTool("ccp_students_profile",{studentId:browserId});
+ expect(mcpRead.error).toBeUndefined();
+ expect(mcpRead.data).toMatchObject({id:browserId,name:websiteName});
+ const mcpReplay=await callTool("ccp_students_create_full",{
+   name:websiteName,archived:true,idempotencyKey:websiteKey,confirmed:true,
+ });
+ expect(mcpReplay.error).toBeUndefined();
+ expect((mcpReplay.data as {id:string}).id).toBe(browserId);
+ expect((await browserProfile(page,browserId)).archived_at).toBeTruthy();
+});
+
 test("PARITY:PARITY-students-full-atomic-family-create shares durable website and MCP receipts",async({page,request})=>{
  const callTool=await delegatedTool(page,request);
  const name=unique("Full family student");
