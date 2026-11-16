@@ -1,11 +1,11 @@
-name: Verify Coolify canonical-domain private beta release connection
+name: Verify Coolify production release connection
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   verify:
-    name: Check restricted release SSH and private-beta HTTPS
+    name: Check restricted release SSH and production HTTPS
     runs-on: ubuntu-latest
     # Legacy credential environment is retained until GitHub secret rotation.
     environment: staging
@@ -38,7 +38,7 @@ jobs:
           # Forced-command server script retains its historical status prefix.
           [[ "$output" == staging\ running:* ]]
 
-      - name: Verify canonical beta website, OAuth metadata and Supabase health
+      - name: Verify production website, OAuth metadata and Supabase health
         shell: bash
         run: |
           set -euo pipefail
@@ -52,4 +52,4 @@ jobs:
             https://api.chesscoachpal.com/rest/v1/ -o /dev/null
           curl --fail --silent --show-error --location --max-time 20 \
             https://www.chesscoachpal.com/ -o /dev/null
-          echo "COOLIFY_BETA_CANONICAL_CONNECTION_AND_HTTPS_OK"
+          echo "COOLIFY_PRODUCTION_CONNECTION_AND_HTTPS_OK"
