@@ -6,6 +6,17 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 _Changes for the next release go here._
 
+## [0.1.3] - 2026-11-16
+
+### Security
+- Close the direct Supabase GoTrue registration bypass in private-beta Coolify deployments. Public GoTrue signup and new-user OTP must remain disabled; the server creates an Auth account only after validating the existing beta invitation code.
+- Fail closed when the beta signup route detects inconsistent GoTrue signup or email-confirmation settings. Never expose the service-role key, access code or Auth user enumeration to browsers.
+
+### Changed
+- Preserve the beta-code login flow, existing teacher accounts and public waitlist. Extend isolated Docker Compose verification to cover direct Auth denial, accepted/rejected invite codes, teacher provisioning and waitlist persistence without resetting data.
+
+
+
 ## [0.1.2] - 2026-11-15
 
 ### Changed
