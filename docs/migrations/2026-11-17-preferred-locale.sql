@@ -9,4 +9,6 @@ ALTER TABLE public.teachers
   ADD CONSTRAINT teachers_preferred_locale_check CHECK (preferred_locale IN ('en','he','ru'));
 COMMENT ON COLUMN public.teachers.preferred_locale IS
   'Teacher interface language, independent of workplace locale/timezone.';
+-- Preserve least-privilege teacher field grants. Do not grant UPDATE on the entire table.
+GRANT UPDATE(preferred_locale) ON TABLE public.teachers TO authenticated;
 COMMIT;

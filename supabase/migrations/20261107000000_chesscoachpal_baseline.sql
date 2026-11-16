@@ -2537,6 +2537,7 @@ GRANT UPDATE("display_name") ON TABLE "public"."teachers" TO "authenticated";
 
 
 GRANT UPDATE("avatar_url") ON TABLE "public"."teachers" TO "authenticated";
+GRANT UPDATE("preferred_locale") ON TABLE "public"."teachers" TO "authenticated";
 
 
 
@@ -3450,7 +3451,7 @@ UPDATE public.teachers SET hosted_enforced=true
 -- The existing migration grants only safe teacher-profile columns to authenticated.
 -- Restate that security invariant so raw PostgREST requests cannot falsify caps.
 REVOKE UPDATE ON TABLE public.teachers FROM PUBLIC,anon,authenticated;
-GRANT UPDATE(email,display_name,avatar_url,onboarding_tour_completed_at,calendar_token)
+GRANT UPDATE(email,display_name,avatar_url,preferred_locale,onboarding_tour_completed_at,calendar_token)
  ON TABLE public.teachers TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.ccp_student_capacity_guard()

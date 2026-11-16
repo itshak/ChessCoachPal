@@ -121,7 +121,7 @@ test("PARITY:PARITY-reports-csv-text export exactly the browser JSON calculation
  expect(txt.data.report).toEqual(site.report);
  expect(csv.data.export).toBe(reportCsv(site.report));
  expect(txt.data.export).toBe(reportText(site.report));
- expect(csv.data.export).toContain("Teaching minutes");
+ expect(csv.data.export).toContain("דקות הוראה");
  expect(csv.data.export).not.toContain("Report pupil");
 });
 
@@ -201,7 +201,7 @@ test("PARITY:PARITY-reports-hebrew-timezone-csv-safety honors local midnight and
  expect(csv.error).toBeUndefined();
  expect(csv.data.report).toEqual(site.report);
  expect(csv.data.export).toBe(reportCsv(site.report));
- expect(csv.data.export).toMatch(/^\uFEFF"Metric","Value"/);
+ expect(csv.data.export).toMatch(/^\uFEFF"מדד","ערך"/);
  expect(csv.data.export).not.toContain("=HYPERLINK");
  expect(csv.data.export).not.toContain("רבקה כהן");
 });

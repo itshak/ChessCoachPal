@@ -29,3 +29,12 @@
 1. Finish every remaining page/component and supported generated output, with reviewed Hebrew and Russian copy.
 2. Audit RTL and mixed-direction behaviors at desktop/mobile and add visual/accessibility regression coverage.
 3. Run all CI/E2E, update tasks and applied specs only when verified; use an additive migration for real beta data.
+
+
+## Subsequent corrections and UI expansion
+- GitHub Actions initially rejected an npm lockfile with a missing floating-ui optional dependency; regenerated and verified lockfile with the runner's npm 11.19.1 and pushed correction.
+- First GitHub CI, security history audit, self-host Compose and backup/restore passed on 019ea7b. The first authenticated E2E at that SHA found three failures: two English-heading assertions for deliberately localized Hebrew CSV, and a teacher preference update permission error.
+- Identified the RLS-safe **column-level UPDATE privilege** omission in canonical teacher-table GRANT after a security REVOKE; added preferred_locale to the explicit allowed-column list and to the non-destructive existing-database SQL. Did NOT grant table-wide UPDATE.
+- Updated corresponding Hebrew CSV E2E expectations to assert translated labels, preserving aggregate content and formula-injection guarantees.
+- Added another 100+ curated translated keys to the teacher coaching workspace, student creation and chess profile editor; additional visible screen labels now render in Hebrew and Russian. These do not yet amount to full website translation.
+- Repeat all checks and authenticated E2E on new exact-head CI after the fix; prior green workflows are not proof for later changes.
