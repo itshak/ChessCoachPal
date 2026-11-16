@@ -4,6 +4,78 @@
   "policy": "All chess business features, including GigaChess legality, combined session+chapter approval and study preference hierarchy, use shared website/MCP domain operations with tenant authorization. The original 93 historical cases, additional named E2E, strict parity and manual real-client prepublication gates remain mandatory.",
   "apiRoutes": [
     {
+      "path": "app/api/import/historical/report/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_historical_attendance_report",
+        "ccp_historical_attendance_summary"
+      ],
+      "explanation": "Teacher-owner filtered historical report and full-source summary separately label dated observations versus aggregate-only counts. Browser and MCP responses are independently compared in e2e/parity-historical-import.spec.ts.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
+    },
+    {
+      "path": "app/api/import/historical/commit/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_historical_attendance_commit"
+      ],
+      "explanation": "Reviewed historical evidence commits through one owner-scoped, idempotent SQL transaction, never fabricating calendar sessions. Exact browser and MCP replay and dated versus aggregate results use e2e/parity-historical-import.spec.ts.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
+    },
+    {
+      "path": "app/api/import/historical/preview/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_historical_attendance_preview"
+      ],
+      "explanation": "Website and delegated MCP share owner-scoped historical evidence preview with exact school year, timezone, matching student names/aliases, workplace resolution, ambiguous match blocker, dated versus aggregate-only classification and stable preview digest, evidenced in e2e/parity-historical-import.spec.ts.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
+    },
+    {
+      "path": "app/api/import/historical/stage/route.ts",
+      "methods": [
+        "POST",
+        "GET",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_historical_import_upload_handoff",
+        "ccp_historical_import_stage_info",
+        "ccp_historical_import_stage_delete"
+      ],
+      "explanation": "Binary spreadsheet upload is an authenticated browser-only secure handoff; MCP exposes the browser handoff, stage metadata and confirmed delete. Both use private two-hour teacher-scoped Supabase Storage references, no model-visible large raw bytes. Cross-client stage info and deletion independently exercised in e2e/parity-historical-import.spec.ts.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
+    },
+    {
+      "path": "app/api/students/bulk-lifecycle/route.ts",
+      "methods": [
+        "POST",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_students_bulk_lifecycle_preview",
+        "ccp_students_bulk_lifecycle_commit"
+      ],
+      "explanation": "Reviewed owner-scoped bulk archived/reactivate preview and confirmed atomic, revisioned SQL commit share website and MCP domain services. Current enrollments, future commitments, hosted quota and durable replay are tested as synthetic cross-client cases in e2e/parity-historical-import.spec.ts.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
+    },
+    {
       "path": "app/api/agent/connections/route.ts",
       "methods": [
         "GET",
@@ -1339,6 +1411,8 @@
     "components/teacher/settings/OptionalAiSettingsForm.tsx",
     "components/teacher/settings/PaymentsSettingsForm.tsx",
     "components/teacher/settings/PushNotificationToggle.tsx",
+    "components/teacher/settings/BulkStudentLifecyclePanel.tsx",
+    "components/teacher/settings/HistoricalAttendanceImportPanel.tsx",
     "components/teacher/settings/SpreadsheetImportSettings.tsx",
     "components/teacher/settings/StudioSettingsForm.tsx",
     "components/teacher/settings/TeacherCalendarFeed.tsx",
