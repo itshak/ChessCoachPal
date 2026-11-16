@@ -1,0 +1,77 @@
+name: Deploy published ChessCoachPal release to Coolify staging
+
+on:
+  release:
+    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: Published SemVer release tag
+        required: true
+        type: string
+      sha:
+        description: Exact tested commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chesscoachpal-coolify-staging-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy exact published commit to Coolify staging
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 55
+    steps:
+      - name: Checkout published version
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release tag, SHA, and main ancestry
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+          RELEASE_SHA: ${{ inputs.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] || exit 1
+          [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+
+      - name: Deploy via restricted SSH identity
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+          RELEASE_SHA: ${{ inputs.sha || github.sha }}
+          DEPLOY_KEY: ${{ secrets.COOLIFY_STAGING_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.COOLIFY_STAGING_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.COOLIFY_STAGING_HOST }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DEPLOY_KEY" || -z "$KNOWN_HOSTS" || -z "$DEPLOY_HOST" ]]; then
+            echo "::error::Missing Coolify staging environment SSH key, known-hosts secret, or host variable."
+            exit 1
+          fi
+          umask 077
+          key="$RUNNER_TEMP/coolify-staging-deploy-key"
+          known="$RUNNER_TEMP/coolify-staging-known-hosts"
+          printf '%s\n' "$DEPLOY_KEY" > "$key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$known"
+          chmod 600 "$key" "$known"
+          trap 'rm -f "$key" "$known"' EXIT
+          ssh -T -i "$key" -p 22 \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$known" \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=5 \
+            -o ConnectTimeout=15 \
+            "ccpdeploy@$DEPLOY_HOST" "deploy $RELEASE_TAG $RELEASE_SHA"

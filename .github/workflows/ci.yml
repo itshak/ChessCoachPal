@@ -177,3 +177,5 @@ jobs:
           # The cron service only exists under its profile, so a bare `config`
           # never renders it. Validate both.
           docker compose -f docker-compose.example.yml --profile cron config --quiet
+      - name: Validate isolated Coolify Compose (no host ports / closed signup)
+        run: bash scripts/check-coolify-compose.sh

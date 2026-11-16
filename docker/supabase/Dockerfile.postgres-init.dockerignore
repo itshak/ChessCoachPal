@@ -1,0 +1,12 @@
+# PostgreSQL init/migration image: include only required files, never secrets.
+**
+!docker
+!docker/supabase
+!docker/supabase/volumes
+!docker/supabase/volumes/db
+!docker/supabase/volumes/db/roles.sql
+!docker/supabase/volumes/db/jwt.sql
+!docker/supabase/migrate.sh
+!supabase
+!supabase/migrations
+!supabase/migrations/*.sql

@@ -1,0 +1,5 @@
+FROM nginx:1.30.6-alpine
+
+# Coolify deploys generated Compose files outside the Git checkout. Package
+# the nginx template inside the image instead of bind-mounting a repo path.
+COPY docker/supabase/volumes/api/nginx.conf.template /etc/nginx/templates/default.conf.template

@@ -48,7 +48,7 @@ The current repository's [`docker-compose.example.yml`](../docker-compose.exampl
 | `auth` | `supabase/gotrue:v2.197.0` | Teacher sign-in, sessions, optional Google OAuth and email flows |
 | `rest` | `postgrest/postgrest:v14.17` | Database REST API used by Supabase clients |
 | `storage` | `supabase/storage-api:v1.79.31` | Private file/avatar uploads |
-| `gateway` | `nginx:1.27-alpine` | API routing |
+| `gateway` | `nginx:1.30.6-alpine` | API routing |
 | `app` | Multi-stage `Dockerfile` / Next.js standalone output | Website, agent MCP gateway and app-specific OAuth endpoints |
 
 A one-time `migrate` job, plus optional `backup`, `restore` and `cron` jobs, are **not independent application backends**. Jobs based on the same PostgreSQL image reuse the locally cached image layers. We intentionally exclude Supabase Studio, Realtime, Edge Functions, Analytics, Supavisor and `imgproxy` because the current app does not require them. The compose file—not an unreviewed generic full Supabase template—is the deployment starting point.
