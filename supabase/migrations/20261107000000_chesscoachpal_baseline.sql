@@ -3598,7 +3598,8 @@ BEGIN
       OR v_key IS NULL OR length(v_key) NOT BETWEEN 1 AND 320
       OR v_row_number NOT BETWEEN 1 AND 1000000
       OR length(coalesce(v_row->>'teacherNotes',''))>50000
-      OR length(coalesce(v_row->>'guardianName',''))>200 THEN
+      OR length(coalesce(v_row->>'guardianName',''))>200
+      OR jsonb_typeof(v_row->'archived') NOT IN ('boolean','null') THEN
      RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE='22023';
    END IF;
    -- Historical/archived student names are preserved, not recreated.
@@ -3646,10 +3647,11 @@ BEGIN
    END IF;
 
    INSERT INTO public.students(
-     teacher_id,name,guardian_id,birthdate,level,teacher_notes
+     teacher_id,name,guardian_id,birthdate,level,teacher_notes,archived_at
    ) VALUES (
      v_teacher,v_name,v_guardian,nullif(v_row->>'birthdate','')::date,
-     nullif(v_row->>'level',''),coalesce(v_row->>'teacherNotes','')
+     nullif(v_row->>'level',''),coalesce(v_row->>'teacherNotes',''),
+     CASE WHEN coalesce(v_row->>'archived','false')='true' THEN clock_timestamp() ELSE NULL END
    );
    v_created:=v_created+1;
  END LOOP;
@@ -6008,7 +6010,7 @@ GRANT SELECT,INSERT ON public.ccp_student_create_receipts TO authenticated;
 CREATE OR REPLACE FUNCTION public.ccp_student_create_full(
  p_name text,p_birthdate date,p_level text,p_teacher_notes text,
  p_guardian_id uuid,p_contact_email text,p_contact_phone text,
- p_contact_name text,p_adult_self boolean,p_request_id uuid DEFAULT NULL
+ p_contact_name text,p_adult_self boolean,p_archived boolean DEFAULT false,p_request_id uuid DEFAULT NULL
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER
 SET search_path=public,pg_temp AS $$
 DECLARE
@@ -6039,7 +6041,8 @@ BEGIN
      'name',v_name,'birthdate',p_birthdate,'level',p_level,
      'notes',p_teacher_notes,'guardianId',p_guardian_id,
      'email',v_email,'phone',v_phone,'contactName',v_contact,
-     'adultSelf',coalesce(p_adult_self,false))::text);
+     'adultSelf',coalesce(p_adult_self,false),
+     'archived',coalesce(p_archived,false))::text);
    PERFORM pg_advisory_xact_lock(hashtextextended(
      v_teacher::text||':full-student:'||p_request_id::text,0));
    SELECT * INTO v_previous FROM public.ccp_student_create_receipts
@@ -6083,10 +6086,11 @@ BEGIN
    END IF;
  END IF;
  INSERT INTO public.students(
-   teacher_id,name,guardian_id,birthdate,level,teacher_notes
+   teacher_id,name,guardian_id,birthdate,level,teacher_notes,archived_at
  ) VALUES(
    v_teacher,v_name,v_guardian_id,p_birthdate,
-   nullif(btrim(p_level),''),coalesce(btrim(p_teacher_notes),'')
+   nullif(btrim(p_level),''),coalesce(btrim(p_teacher_notes),''),
+   CASE WHEN coalesce(p_archived,false) THEN clock_timestamp() ELSE NULL END
  ) RETURNING * INTO v_student;
  IF p_request_id IS NOT NULL THEN
    INSERT INTO public.ccp_student_create_receipts(
@@ -6100,9 +6104,9 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.ccp_student_create_full(
- text,date,text,text,uuid,text,text,text,boolean,uuid) FROM PUBLIC,anon;
+ text,date,text,text,uuid,text,text,text,boolean,boolean,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_student_create_full(
- text,date,text,text,uuid,text,text,text,boolean,uuid) TO authenticated;
+ text,date,text,text,uuid,text,text,text,boolean,boolean,uuid) TO authenticated;
 
 -- Correcting an accidental cash payment must atomically reopen a previously
 -- settled invoice, with the same owner checks and Stripe refund protection
