@@ -1,0 +1,15 @@
+# Tasks
+
+- [x] Add archived flag to shared full-student creation schema and service
+- [x] Insert directly archived in canonical student SQL RPC with idempotency hash
+- [x] Map archived status in spreadsheet normalization and SQL import
+- [x] Update MCP tool descriptions
+- [ ] Add unit and authenticated website/MCP E2E for direct archived creation and spreadsheet quota behavior
+- [ ] Implement deterministic preview of global archive/reactivate batch with blockers
+- [ ] Implement owner-scoped atomic batch lifecycle commit with revision checks and durable receipt
+- [ ] Implement historical attendance parsing and reviewed evidence import with workplace/date resolution
+- [ ] Add secure staged upload reference flow and transport limits
+- [ ] Update website import UX and parity tests
+- [ ] Update main OpenSpec specifications and user/operator documentation
+- [ ] Run exact-head CI, security, E2E, Compose and restore; fix all failures
+- [ ] Archive change only after verified acceptance and merge to main
