@@ -24,7 +24,7 @@ const makeWorkplace=async(call:Tool,zone="Asia/Jerusalem")=>{
  return (result.data as {entityId:string}).entityId;
 };
 
-test("PARITY:PARITY-students-bulk-lifecycle exact website/MCP preview, atomic receipt, reactivation",async({page,request})=>{
+test("PARITY:PARITY-history-bulk-atomic exact website/MCP preview, atomic receipt, reactivation",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const a=await teacherStudent(page,unique("Former archive A"));
  const b=await teacherStudent(page,unique("Former archive B"));
@@ -72,7 +72,7 @@ test("PARITY:PARITY-students-bulk-lifecycle exact website/MCP preview, atomic re
  expect((await profile(page,b)).archived_at).toBeTruthy();
 });
 
-test("PARITY:PARITY-students-bulk-lifecycle rejects current workplace, duplicates, stale revision, foreign ID",async({page,request})=>{
+test("PARITY:PARITY-history-bulk-denials rejects current workplace, duplicates, stale revision, foreign ID",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const studentId=await teacherStudent(page,unique("Multi-school learner"));
  const workplaceId=await makeWorkplace(call);
@@ -122,7 +122,7 @@ test("PARITY:PARITY-students-bulk-lifecycle rejects current workplace, duplicate
  expect((await profile(page,studentId)).archived_at).toBeNull();
 });
 
-test("PARITY:PARITY-historical-import staged two-year multi-workplace dated and aggregate evidence",async({page,request})=>{
+test("PARITY:PARITY-history-staged-aggregate staged two-year multi-workplace dated and aggregate evidence",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const name=unique("History pupil");
  const studentId=await teacherStudent(page,name);
@@ -207,6 +207,34 @@ test("PARITY:PARITY-historical-import staged two-year multi-workplace dated and 
  const progress=await call("ccp_reports_student_progress",{studentId});
  expect(progress.error).toBeUndefined();
  expect((progress.data as {historicalAttendance:unknown}).historicalAttendance).toEqual(summary);
+ // Portable backups must carry the source-precise rows and only allow
+ // immutable, same-owner restore. Browser apply and MCP replay share receipt.
+ const exportResponse=await page.request.get("/api/settings/export");
+ expect(exportResponse.status(),await exportResponse.text()).toBe(200);
+ const exported=await exportResponse.json();
+ const exportedHistory=(exported.tables.ccp_historical_attendance_evidence as
+  Array<{id:string;student_id:string}>)
+  .filter(r=>r.student_id===studentId);
+ expect(exportedHistory).toHaveLength(3);
+ const historyPayload={teacherId:exported.teacherId,
+  exportedAt:new Date().toISOString(),
+  tables:{ccp_historical_attendance_evidence:exportedHistory}};
+ const backupPreviewResponse=await page.request.put("/api/settings/import",{
+  data:{payload:historyPayload},
+ });
+ expect(backupPreviewResponse.status(),await backupPreviewResponse.text()).toBe(200);
+ const backupDigest=(await backupPreviewResponse.json()).sha256 as string;
+ const restored=await page.request.post("/api/settings/import",{
+  data:{payload:historyPayload,expectedSha256:backupDigest,confirmed:true},
+ });
+ expect(restored.status(),await restored.text()).toBe(200);
+ expect((await restored.json()).counts.ccp_historical_attendance_evidence).toBe(3);
+ const restoredReplay=await call("ccp_settings_import_apply",{
+  payload:historyPayload,expectedSha256:backupDigest,confirmed:true,
+ });
+ expect(restoredReplay.error).toBeUndefined();
+ expect((restoredReplay.data as {counts:Record<string,number>}).counts
+  .ccp_historical_attendance_evidence).toBe(3);
  expect(report.records.map((r:{mode:string})=>r.mode).sort())
   .toEqual(["aggregate","dated","dated"]);
  const removed=await call("ccp_historical_import_stage_delete",{
@@ -246,7 +274,7 @@ test("PARITY:PARITY-historical-import staged two-year multi-workplace dated and 
  expect(expiredRemoved.error).toBeUndefined();
 });
 
-test("PARITY:PARITY-historical-import rejects unknown dates, aliases and duplicate source",async({page,request})=>{
+test("PARITY:PARITY-history-ambiguous-source rejects unknown dates, aliases and duplicate source",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const name=unique("Historical duplicate name");
  const student=await teacherStudent(page,name);
@@ -295,7 +323,7 @@ test("PARITY:PARITY-historical-import rejects unknown dates, aliases and duplica
  expect((handoff.data as {uploadUrl:string}).uploadUrl).toContain("/account");
 });
 
-test("PARITY:PARITY-historical-evidence denies foreign tenant student in reviewed import",async({page,request})=>{
+test("PARITY:PARITY-history-foreign-owner denies foreign tenant student in reviewed import",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const workplaceId=await makeWorkplace(call);
  const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -329,7 +357,7 @@ test("PARITY:PARITY-historical-evidence denies foreign tenant student in reviewe
  expect(cleanupError).toBeNull();
 });
 
-test("PARITY:PARITY-history-quota archived former students do not consume cap; batch reactivation fails atomically",async({page,request})=>{
+test("PARITY:PARITY-history-hosted-cap archived former students do not consume cap; batch reactivation fails atomically",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const ids:string[]=[];
  for(let i=0;i<2;i++){
@@ -358,6 +386,18 @@ test("PARITY:PARITY-history-quota archived former students do not consume cap; b
    hosted_enforced:true,hosted_plan:"free",hosted_max_active_students:cap,
   }).eq("id",teacherId);
   expect(setupError).toBeNull();
+  // Creating another already archived former pupil when the active roster
+  // is exactly at capacity must not be denied or count as an active pupil.
+  const extraArchived=await page.request.post("/api/students",{
+   data:{name:unique("Imported former pupil while already at cap"),
+    archived:true},
+  });
+  expect(extraArchived.status(),await extraArchived.text()).toBe(201);
+  expect((await extraArchived.json()).archived_at).toBeTruthy();
+  const {data:afterCreate,error:afterCreateError}=await admin.from("teachers")
+   .select("active_student_count").eq("id",teacherId).single();
+  expect(afterCreateError).toBeNull();
+  expect(afterCreate!.active_student_count).toBe(original!.active_student_count);
   const rows=await Promise.all(ids.map(async studentId=>({
    studentId,archived:false,expectedUpdatedAt:(await profile(page,studentId)).updated_at,
   })));

@@ -1,6 +1,6 @@
 {
-  "auditedAt": "2026-11-15",
-  "headSha": "acea0c2178ceb35e6d24055ad1e2aa6ee17ff196",
+  "auditedAt": "2026-11-16",
+  "headSha": "4ff2e1524ad0e4a2b26ec1174a0326e9e1d3200b",
   "policy": "All chess business features, including GigaChess legality, combined session+chapter approval and study preference hierarchy, use shared website/MCP domain operations with tenant authorization. The original 93 historical cases, additional named E2E, strict parity and manual real-client prepublication gates remain mandatory.",
   "apiRoutes": [
     {

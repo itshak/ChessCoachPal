@@ -10,6 +10,6 @@
 - [x] Implement historical attendance parsing and reviewed evidence import with workplace/date resolution
 - [x] Add secure staged upload reference flow and transport limits
 - [x] Update website import UX and parity tests
-- [ ] Update main OpenSpec specifications and user/operator documentation
-- [ ] Run exact-head CI, security, E2E, Compose and restore; fix all failures
-- [ ] Archive change only after verified acceptance and merge to main
+- [x] Update main OpenSpec specifications and user/operator documentation
+- [x] Run exact-head CI, security, E2E, Compose and restore; fix all failures
+- [x] Archive change only after verified acceptance and merge to main

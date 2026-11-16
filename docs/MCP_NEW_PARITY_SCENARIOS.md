@@ -49,3 +49,22 @@ is green. New routes/fields require additional cases, not renaming old ones.
 | - [x] | Deleting a recurring calendar slot atomically preserves attendance, teacher notes, invoices, credits and historical lessons while removing only unused future occurrences; website/MCP share one receipt | **Accepted at exact source `ac250e596cbc3fbf29441fbc65175eed7292b772` ([235 authenticated E2E passed, five skipped](https://github.com/itshak/ChessCoachPal/actions/runs/43441151638); [CI](https://github.com/itshak/ChessCoachPal/actions/runs/43441151541), security, Compose and restore green).** Frozen invoice lines, redeemed prepaid credits, private notes, attendance, cross-client replay: `e2e/canonical-slot-financial-history-parity.spec.ts#PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes`. |
 
 **2026-11-12 accepted source c80b85c:** 26/26 new independently evidenced scenarios checked; four historic cases remain open (89/93). The follow-on invoice/permission regression has not yet passed on its own final SHA.
+
+## Historical students and source-precise attendance — accepted 2026-11-16
+
+PR #83's current feature logic passed five exact-source verification groups on 4ff2e15:
+[268 authenticated E2E passed, 5 intentionally skipped, zero failures](https://github.com/itshak/ChessCoachPal/actions/runs/43957950118),
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/43957950060),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/43957950143),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43957950176),
+and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43957950047).
+The final archived-spec source must independently pass the same matrix before merging.
+
+| Verified | New independent teacher workflow | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | Atomic owner-scoped bulk archive/reactivate, exact revisions, confirmed digest, preserved history and cross-client idempotent replay | e2e/parity-historical-import.spec.ts#PARITY-history-bulk-atomic |
+| - [x] | Duplicate student IDs, current workplace enrollment, future commitments, stale revision and foreign student IDs block archive without partial writes | e2e/parity-historical-import.spec.ts#PARITY-history-bulk-denials |
+| - [x] | Two years and two workplaces retain exact dated versus aggregate-only source evidence without inventing sessions; website/MCP preview, import and report agree | e2e/parity-historical-import.spec.ts#PARITY-history-staged-aggregate |
+| - [x] | Ambiguous aliases, missing dates, and repeated source evidence fail closed and require reviewed identity resolution | e2e/parity-historical-import.spec.ts#PARITY-history-ambiguous-source |
+| - [x] | Historical evidence preview cannot attach another teacher's pupil to this coach's workplace | e2e/parity-historical-import.spec.ts#PARITY-history-foreign-owner |
+| - [x] | Archived pupils do not count toward hosted active quota; over-cap reactivation is rejected across website and MCP with no partial activation | e2e/parity-historical-import.spec.ts#PARITY-history-hosted-cap |

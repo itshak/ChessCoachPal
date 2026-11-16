@@ -1,9 +1,9 @@
-# Historical student import and lifecycle (implementation in progress)
+# Historical student import and lifecycle (implemented and archived)
 
 ## Why
 Teachers migrating two years of attendance must create active and archived learners without exceeding active quota, preserve evidence and avoid per-student MCP calls. The current spreadsheet importer supports atomic student/family batches but not archived state, source attendance or secure large-sheet references.
 
-## Scope
+## What Changes
 1. Create students directly archived, with default active, in website and MCP shared transaction.
 2. Extend spreadsheet preview/commit with explicit per-row archived state and strict invalid-status rejection.
 3. Add a confirmed batch archive/reactivate preview and commit with stable IDs, revision guards, current enrollment and future-session blockers, transaction rollback and replay receipt.
@@ -20,3 +20,7 @@ Teachers migrating two years of attendance must create active and archived learn
 
 ## Acceptance
 Fresh canonical Supabase install, TypeScript, lint, unit tests, strict website↔MCP parity, authenticated E2E, security-history, self-host Compose and backup/restore must all pass on PR and merged-main commit. Live Claude and ChatGPT acceptance remains separately required.
+
+## Acceptance evidence
+
+The feature implementation at 4ff2e15 passed authenticated browser and MCP E2E (268 passed, five intentional skips), CI, security-history, Compose, and backup/restore on 2026-11-16. The final archived-spec commit requires its own exact-head verification before merge. Live Coolify rollout remains an independently authorized, non-destructive schema/data safety step.
