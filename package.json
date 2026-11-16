@@ -25,7 +25,8 @@
     "schema:attendance:strict": "node scripts/canonical-cutover-audit.mjs --strict",
     "schema:canonical:strict": "node scripts/pre1-schema-guard.mjs --strict-materials",
     "i18n:check": "node scripts/i18n-catalog-check.mjs",
-    "pretypecheck": "npm run i18n:check"
+    "pretypecheck": "npm run i18n:check && npm run i18n:literal-audit",
+    "i18n:literal-audit": "node scripts/i18n-literal-audit.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

@@ -1,18 +1,18 @@
 # Tasks: introduce multilingual support (en, he, ru)
 
-**All tasks open. Proposed OpenSpec only: no code is claimed implemented.** Complete in focused PRs and retain exact-head acceptance links.
+**Active implementation, not yet complete or archived.** Mark only fully implemented items complete; do not infer full translation/RTL from catalog or structural parity checks. Complete remaining requirements and retain exact-head acceptance links.
 
 ## A. Establish the contract and framework
 - [ ] A1. Inventory every visible English literal in teacher, guest/auth, legal, marketing, portal, emails, reports/CSV/PDF, PWA/offline, error states and accessibility text; map surfaces to translation namespaces.
 - [ ] A2. Pin a Next.js 16-compatible next-intl version, configure typed en/he/ru dictionaries, ICU plural/select, shared locale registry, fallback and namespace conventions; verify SSR/client setup without breaking proxy.ts auth.
-- [ ] A3. Implement unauthenticated language selector, validated locale cookie and Accept-Language fallback; keep existing URL paths and all API/MCP/OAuth/feed token routes unchanged.
+- [x] A3. Implement unauthenticated language selector, validated locale cookie and Accept-Language fallback; keep existing URL paths and all API/MCP/OAuth/feed token routes unchanged.
 - [ ] A4. Resolve authenticated teacher preference on the server on first paint and set root html lang/dir, localized metadata, accessible language labels and stable hydration; exercise sign-in/out and multi-tab transitions.
 - [ ] A5. Add CI checks for required keys/placeholders, forbidden missing translations and new user-facing hardcoded literals; document how to add a future locale.
 
 ## B. Persist settings with website and MCP parity (deliver together)
 - [ ] B1. Add constrained teachers.preferred_locale with en default in canonical fresh-install schema; write/review additive deployment plan for databases with real data; backup and restore.
-- [ ] B2. Extend shared teacherProfileGet/teacherProfileUpdate, website profile PUT and AccountSettings with preferredLocale; expose native labels English / עברית / Русский and a recoverable global switch.
-- [ ] B3. Extend ccp_teacher_profile_get/update typed MCP schemas/dispatcher using the same domain code, confirmation and OAuth scopes; expose preferredLocale in ccp_teacher_context_get and website teacher context.
+- [x] B2. Extend shared teacherProfileGet/teacherProfileUpdate, website profile PUT and AccountSettings with preferredLocale; expose native labels English / עברית / Русский and a recoverable global switch.
+- [x] B3. Extend ccp_teacher_profile_get/update typed MCP schemas/dispatcher using the same domain code, confirmation and OAuth scopes; expose preferredLocale in ccp_teacher_context_get and website teacher context.
 - [ ] B4. Update parity registry and add authenticated website↔MCP E2E proving change/reload/readback across device/session, read-only rejection, invalid locale, unauthorized user isolation, stable metadata and no secret exposure.
 - [ ] B5. Verify workplace locale, currency and timezone remain independent from teacher UI setting; no rewriting of student names, notes or historic records.
 

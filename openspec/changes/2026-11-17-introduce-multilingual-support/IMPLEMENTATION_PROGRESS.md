@@ -38,3 +38,11 @@
 - Updated corresponding Hebrew CSV E2E expectations to assert translated labels, preserving aggregate content and formula-injection guarantees.
 - Added another 100+ curated translated keys to the teacher coaching workspace, student creation and chess profile editor; additional visible screen labels now render in Hebrew and Russian. These do not yet amount to full website translation.
 - Repeat all checks and authenticated E2E on new exact-head CI after the fix; prior green workflows are not proof for later changes.
+
+## Continued UI migration and automated debt guard — November 17
+- All five workflow groups, including the full authenticated E2E, passed on commit 3fb6a96. This is **checkpoint evidence**, not proof of later commits.
+- Added reviewed en/he/ru labels across the full weekly teaching-calendar board including day headers, mobile buttons, attendance controls, private lesson scheduling, rescheduling, cancellation, safe confirmation dialogs, and note-sharing controls. Kept canonical attendance enums stable and did not translate saved lesson text.
+- Translated the teacher Help section and public PWA offline page, including SSR title and functional links.
+- The language E2E spec now verifies Hebrew/Russian schedule headings and Hebrew mobile 390px RTL horizontal-overflow, and keyboard focus of the language switcher. These additional tests require exact-head CI confirmation.
+- Added a TypeScript AST-based UI-text inventory and incremental regression guard, included in the standard typecheck pre-step. Baseline tracks approximately 1,330 remaining English labels across about 100 TSX files: these are **untranslated debt**, not acceptable final coverage. The audit does not yet include all server-generated emails or PDF content.
+- Local latest code: TypeScript, optimized Next.js build, touched-file ESLint, catalog parity and strict MCP structural parity pass. Exact-head GitHub authenticated E2E, PDF/email localization and site-wide responsive RTL remain open.

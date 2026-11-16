@@ -22,6 +22,10 @@ test("PARITY: teacher language preference persists identically via website and M
     await expect(page.locator("html")).toHaveAttribute("lang","he");
     await expect(page.locator("html")).toHaveAttribute("dir","rtl");
     await expect(page.getByLabel("שפת הממשק").first()).toHaveValue("he");
+    await page.goto("/schedule");
+    await expect(page.getByRole("heading",{name:"לוח שיעורים"})).toBeVisible();
+    await page.getByRole("button",{name:/Private session|שיעור פרטי/}).click();
+    await expect(page.getByRole("heading",{name:"קביעת שיעור שחמט פרטי"})).toBeVisible();
     const mcp = await call("ccp_teacher_profile_update",{
       preferredLocale:"ru", confirmed:true
     });
@@ -31,6 +35,8 @@ test("PARITY: teacher language preference persists identically via website and M
     await expect(page.locator("html")).toHaveAttribute("lang","ru");
     await expect(page.locator("html")).toHaveAttribute("dir","ltr");
     await expect(page.getByLabel("Язык интерфейса").first()).toHaveValue("ru");
+    await page.goto("/schedule");
+    await expect(page.getByRole("heading",{name:"Расписание занятий"})).toBeVisible();
     const invalidWeb = await page.request.put("/api/auth/update-profile", {
       data:{preferredLocale:"unsupported"}
     });
@@ -74,4 +80,23 @@ test("anonymous locale cookie drives SSR document language and direction",async(
     });
     expect(invalid.status()).toBe(400);
   } finally {await context.close();}
+});
+
+test("RTL mobile login and landing have no horizontal overflow",async({browser})=>{
+  const context=await browser.newContext({baseURL:"http://localhost:3000",viewport:{width:390,height:844}});
+  try{
+    const response=await context.request.post("/api/preferences/locale",{data:{locale:"he"}});
+    expect(response.status()).toBe(200);
+    const page=await context.newPage();
+    for(const path of ["/","/login"]){
+      await page.goto(path);
+      await expect(page.locator("html")).toHaveAttribute("dir","rtl");
+      await expect(page.locator("html")).toHaveAttribute("lang","he");
+      const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
+      expect(overflow, "horizontal overflow at "+path).toBeLessThanOrEqual(2);
+    }
+    await expect(page.getByRole("button",{name:"כניסה"})).toBeVisible();
+    await page.getByLabel("שפת הממשק").focus();
+    await expect(page.getByLabel("שפת הממשק")).toBeFocused();
+  }finally{await context.close();}
 });
