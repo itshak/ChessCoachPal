@@ -50,7 +50,7 @@ test("PARITY:PARITY-spreadsheet-archived-status-website-MCP-atomic-roundtrip",as
  const call=await delegatedTool(page,request);
  const historicalName="Archived imported chess learner "+randomUUID();
  const currentName="Active imported chess learner "+randomUUID();
- const csv="Student Name,Archived\\n"+historicalName+",inactive\\n"+currentName+",active\\n";
+ const csv="Student Name,Archived\n"+historicalName+",inactive\n"+currentName+",active\n";
  const filename="historical-learners.csv";
  const parsedResponse=await page.request.post("/api/import/spreadsheet/parse",{
    multipart:{file:{name:filename,mimeType:"text/csv",buffer:Buffer.from(csv)}},
