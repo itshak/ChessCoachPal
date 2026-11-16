@@ -284,7 +284,21 @@
     "viewCorrectionHistory": "View correction history",
     "noParticipants": "No participants were enrolled when this session was created.",
     "remove": "Remove",
-    "beginner": "Beginner"
+    "beginner": "Beginner",
+    "workspaceIntro": "Manage workplaces, classes, sessions and attendance. These screens use the same authenticated commands as the experimental agent API.",
+    "instructorTime": "Instructor time in this workplace (listed sessions): {count} minutes. Group attendees do not multiply teacher minutes.",
+    "filteringStudents": "Filtering student selectors by: {query}",
+    "enrolledWorkplace": "{count} enrolled in the selected workplace.",
+    "adhocSelected": "{count} selected. Attendance is frozen at creation.",
+    "localTimezoneWarning": "Local time in {zone}; invalid or ambiguous daylight-saving times are rejected.",
+    "correctionCaution": "Changes only this lesson's historical participants, not current class enrollment. Removed attendance is preserved in the audit. Linked chess observations and materials must be addressed before removing a learner.",
+    "rosterAria": "Correct historical lesson participants",
+    "correctionConfirmation": "I have reviewed this historical correction and understand removed attendance is retained in the audit.",
+    "rosterSelected": "{count} learners selected. At most 80 matching learners displayed.",
+    "removeFromGroup": "Remove {name} from group",
+    "studentNote": "Student note",
+    "updateAttendance": "Update attendance",
+    "recordAttendance": "Record attendance"
   },
   "students": {
     "title": "Students",

@@ -420,8 +420,7 @@ export function ChessCoachWorkspace() {
       <div>
         <h1 className="text-2xl font-bold">{t("heading")}</h1>
         <p className="text-sm text-muted mt-1">
-          Manage workplaces, classes, sessions and attendance. These screens use the same
-          authenticated commands as the experimental agent API.
+          {t("workspaceIntro")}
         </p>
         <p className="text-sm mt-2">
           <Link href="/students" className="text-primary underline">{t("fullRecords")}</Link>
@@ -436,9 +435,7 @@ export function ChessCoachWorkspace() {
           {workplaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
       </label>
-      <p className="text-sm text-muted">Instructor time in this workplace (listed sessions):
-        <strong> {teacherMinutes} minutes</strong>. Group attendees do not multiply teacher minutes.
-      </p>
+      <p className="text-sm text-muted">{t("instructorTime",{count:teacherMinutes})}</p>
       <section className={panel} aria-labelledby="coaching-session-timeline">
         <h2 id="coaching-session-timeline" className="text-lg font-semibold">{t("sessionTimeline")}</h2>
         {localSessions.length ? (
@@ -450,7 +447,7 @@ export function ChessCoachWorkspace() {
                   onClick={() => setSelectedSessionId(item.id)}>
                   <time dateTime={item.starts_at}>{new Date(item.starts_at).toLocaleString(lang, {
                     timeZone: activeWorkplace?.timezone ?? "UTC",
-                  })}</time> · {item.title} · {item.status} · {item.duration_minutes} minutes
+                  })}</time> · {item.title} · {t(item.status)} · {item.duration_minutes} minutes
                 </button>
               </li>
             ))}
@@ -517,7 +514,7 @@ export function ChessCoachWorkspace() {
               <button className="rounded-lg border border-border px-4 py-2" type="button"
                 onClick={() => { setStudentSearch(""); setActiveStudentSearch(""); }}>{t("clearSearch")}</button>
             </div>
-            {activeStudentSearch && <p className="text-xs text-muted">Filtering student selectors by: {activeStudentSearch}</p>}
+            {activeStudentSearch && <p className="text-xs text-muted">{t("filteringStudents",{query:activeStudentSearch})}</p>}
           </form>
           <form onSubmit={addStudent} className="space-y-2">
             <label className="block text-sm">{t("newStudentName")}
@@ -553,7 +550,7 @@ export function ChessCoachWorkspace() {
             </label>
             <button className={button} disabled={busy || !workplaceId}>{t("enrollWorkplaceButton")}</button>
           </form>
-          <p className="text-sm text-muted">{enrolledIds.length} enrolled in selected workplace.</p>
+          <p className="text-sm text-muted">{t("enrolledWorkplace",{count:enrolledIds.length})}</p>
         </section>
         <section className={panel}>
           <h2 className="text-lg font-semibold">{t("classGroups")}</h2>
@@ -598,7 +595,7 @@ export function ChessCoachWorkspace() {
           {groupId && <div className="border-t border-border pt-3 text-sm">
             <h3 className="font-semibold">{t("currentGroupRoster")}</h3>
             {groupMembersId !== groupId && <p>{t("loadingGroupRoster")}</p>}
-            <ul className="space-y-2">{(groupMembersId === groupId ? groupMembers : []).map(m => <li key={m.student_id} className="flex flex-wrap items-center justify-between gap-2"><span>{rosterName(m)}</span><button type="button" className="rounded border border-border px-2 py-1 text-sm" disabled={busy} onClick={() => void removeFromGroup(m.student_id)} aria-label={`Remove ${rosterName(m)} from group`}>{t("remove")}</button></li>)}</ul>
+            <ul className="space-y-2">{(groupMembersId === groupId ? groupMembers : []).map(m => <li key={m.student_id} className="flex flex-wrap items-center justify-between gap-2"><span>{rosterName(m)}</span><button type="button" className="rounded border border-border px-2 py-1 text-sm" disabled={busy} onClick={() => void removeFromGroup(m.student_id)} aria-label={t("removeFromGroup",{name:rosterName(m)})}>{t("remove")}</button></li>)}</ul>
             {groupMembersId === groupId && !groupMembers.length && <p>{t("noStudentsYet")}</p>}
           </div>}
         </section>
@@ -626,7 +623,7 @@ export function ChessCoachWorkspace() {
                       [...new Set([...old,st.id])].slice(0,50) : old.filter(id=>id!==st.id))} />
                   {st.name}
                 </label>)}
-                <p className="text-xs text-muted">{adHocIds.length} selected. Attendance is frozen at creation.</p>
+                <p className="text-xs text-muted">{t("adhocSelected",{count:adHocIds.length})}</p>
               </fieldset> :
               <label className="block text-sm">{t("privateStudent")}
                 <select className={field} value={studentId} onChange={e => setStudentId(e.target.value)} required>
@@ -651,7 +648,7 @@ export function ChessCoachWorkspace() {
                 placeholder="Practiced pawn opposition and triangulation" />
             </label>
             <button className={button} disabled={busy || !workplaceId}>{t("createLesson")}</button>
-            <p className="text-xs text-muted">Local time in {activeWorkplace?.timezone ?? "UTC"}; invalid or ambiguous DST times are rejected.</p>
+            <p className="text-xs text-muted">{t("localTimezoneWarning",{zone:activeWorkplace?.timezone ?? "UTC"})}</p>
           </form>
         </section>
         <section className={panel}>
@@ -686,9 +683,9 @@ export function ChessCoachWorkspace() {
             </label>
             <label className="block text-sm">{t("sessionStatus")}
               <select className={field} value={editStatus} onChange={e => setEditStatus(e.target.value as Session["status"])}>
-                <option value="scheduled">Scheduled</option>
+                <option value="scheduled">{t("scheduled")}</option>
                 {editStatus==="completed"&&<option value="completed" disabled>{t("completedRecorded")}</option>}
-                <option value="cancelled">Cancelled</option>
+                <option value="cancelled">{t("cancelled")}</option>
               </select>
             </label>
             <p className="text-xs text-muted">{t("finishHint")}</p>
@@ -697,16 +694,13 @@ export function ChessCoachWorkspace() {
           {session && rosterRevision && <form onSubmit={correctHistoricalRoster}
             className="space-y-3 border-y border-border py-4">
             <h3 className="font-semibold">{t("correctRoster")}</h3>
-            <p className="text-xs text-muted">Changes only this lesson's historical
-              participants, not current class enrollment. Removed attendance
-              is preserved in the audit. Linked chess observations and materials
-              must be addressed before removing a learner.</p>
+            <p className="text-xs text-muted">{t("correctionCaution")}</p>
             <label className="block text-sm">{t("findLearner")}
               <input className={field} value={rosterSearch}
                 placeholder={t("searchByName")} onChange={e=>setRosterSearch(e.target.value)}/>
             </label>
             <div className="max-h-44 overflow-y-auto rounded-lg border border-border p-2 space-y-1"
-              role="group" aria-label="Correct historical lesson participants">
+              role="group" aria-label={t("rosterAria")}>
               {rosterCandidates.filter(s=>rosterEditIds.includes(s.id)||
                 s.name.toLocaleLowerCase().includes(rosterSearch.toLocaleLowerCase()))
                 .slice(0,80).map(s=><label key={s.id}
@@ -717,8 +711,7 @@ export function ChessCoachWorkspace() {
                 <span>{s.name}</span>
               </label>)}
             </div>
-            <p className="text-xs text-muted">{rosterEditIds.length}
-              learner(s) selected. At most 80 matching learners displayed.</p>
+            <p className="text-xs text-muted">{t("rosterSelected",{count:rosterEditIds.length})}</p>
             <label className="block text-sm">{t("reasonCorrection")}
               <textarea className={field} value={rosterReason}
                 onChange={e=>setRosterReason(e.target.value)}
@@ -728,12 +721,11 @@ export function ChessCoachWorkspace() {
             <label className="flex items-start gap-2 text-sm">
               <input type="checkbox" checked={rosterConfirmed}
                 onChange={e=>setRosterConfirmed(e.target.checked)}/>
-              <span>I have reviewed this historical correction and understand
-                removed attendance is retained in the audit.</span>
+              <span>{t("correctionConfirmation")}</span>
             </label>
             <button className={button} disabled={busy||!rosterRevision||
               !rosterConfirmed||rosterReason.trim().length<8||rosterEditIds.length===0}>
-              Confirm historical correction
+              {t("confirmCorrection")}
             </button>
             <div>
               <button type="button" className="text-sm text-primary underline"
@@ -749,7 +741,7 @@ export function ChessCoachWorkspace() {
             <p className="text-sm text-muted">{t("noParticipants")}</p>}
           {session && rosterSessionId === selectedSessionId && roster.map(person => {
             const marked = attendance.find(a => a.student_id === person.student_id);
-            return <AttendanceRow key={person.student_id}
+            return <AttendanceRow key={selectedSessionId+":"+person.student_id+":"+(marked?.status??"")+":"+(marked?.note??"")}
               name={rosterName(person)} existing={marked} busy={busy}
               onSave={(status, note) => record(person.student_id, status, note)} />;
           })}
@@ -767,24 +759,21 @@ function AttendanceRow({ name, existing, busy, onSave }: {
 }) {
   const [status, setStatus] = useState<AttendanceStatus>(existing?.status && existing.status !== "unmarked" ? existing.status : "present");
   const [note, setNote] = useState(existing?.note ?? "");
-  useEffect(() => {
-    setStatus(existing?.status && existing.status !== "unmarked" ? existing.status : "present");
-    setNote(existing?.note ?? "");
-  }, [existing?.status, existing?.note]);
+  const t=useTranslations("coaching");
   return <div className="rounded-lg border border-border p-3 space-y-2">
     <div className="font-medium">{name}</div>
-    <label className="block text-sm">Attendance
+    <label className="block text-sm">{t("attendance")}
       <select className={field} value={status}
         onChange={e => setStatus(e.target.value as AttendanceStatus)}>
-        {attendanceStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+        {attendanceStatuses.map(s => <option key={s} value={s}>{t(s)}</option>)}
       </select>
     </label>
-    <label className="block text-sm">Student note
+    <label className="block text-sm">{t("studentNote")}
       <input className={field} value={note} maxLength={5000}
         onChange={e => setNote(e.target.value)} />
     </label>
     <button className={button} disabled={busy} onClick={() => onSave(status, note)}>
-      {existing && existing.status !== "unmarked" ? "Update attendance" : "Record attendance"}
+      {existing && existing.status !== "unmarked" ? t("updateAttendance") : t("recordAttendance")}
     </button>
   </div>;
 }
