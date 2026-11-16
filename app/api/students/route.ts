@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
   // A keyed replay that already created a student may have filled the last
   // hosted slot. Do not reject it before the atomic SQL receipt can replay;
   // new writes are independently capacity-checked by the database trigger.
-  if (!body.idempotencyKey) {
+  if (!body.idempotencyKey && !body.archived) {
     const {
       assertWithinHostedLimit,
       limitReachedResponse,
@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
     contactPhone: body.contactPhone ?? null,
     contactName: body.contactName ?? null,
     adultSelf: Boolean(body.adultSelf),
+    archived: Boolean(body.archived),
     idempotencyKey: body.idempotencyKey,
   });
 

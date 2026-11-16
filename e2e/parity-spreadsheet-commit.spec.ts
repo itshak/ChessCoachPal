@@ -45,3 +45,49 @@ test("PARITY:PARITY-spreadsheet-preview-commit-replay shares mapping and dedupli
    .toHaveLength(1);
  expect(JSON.stringify(write.data)).not.toContain("portal_token");
 });
+
+test("PARITY:PARITY-spreadsheet-archived-status-website-MCP-atomic-roundtrip",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const historicalName="Archived imported chess learner "+randomUUID();
+ const currentName="Active imported chess learner "+randomUUID();
+ const csv="Student Name,Archived\n"+historicalName+",inactive\n"+currentName+",active\n";
+ const filename="historical-learners.csv";
+ const parsedResponse=await page.request.post("/api/import/spreadsheet/parse",{
+   multipart:{file:{name:filename,mimeType:"text/csv",buffer:Buffer.from(csv)}},
+ });
+ expect(parsedResponse.status(),await parsedResponse.text()).toBe(200);
+ const parsed=await parsedResponse.json();
+ expect(parsed.mapping.archived).toBe("Archived");
+ expect(parsed.previewRows.map((r:{archived:boolean})=>r.archived)).toEqual([true,false]);
+ const {rows,mapping}=parsed as {rows:Record<string,string>[];mapping:Record<string,string|null>};
+ const modelPreview=await call("ccp_import_spreadsheet_preview",{rows,mapping});
+ expect(modelPreview.error).toBeUndefined();
+ const browserPreview=await page.request.put("/api/import/spreadsheet/parse",{data:{rows,mapping}});
+ expect(browserPreview.status(),await browserPreview.text()).toBe(200);
+ expect(modelPreview.data).toEqual(await browserPreview.json());
+ const key=randomUUID();
+ const browserCommit=await page.request.post("/api/import/spreadsheet/commit",{
+   data:{rows,mapping,idempotencyKey:key},
+ });
+ expect(browserCommit.status(),await browserCommit.text()).toBe(200);
+ const committed=await browserCommit.json();
+ expect(committed.studentsCreated).toBe(2);
+ const mcpReplay=await call("ccp_import_spreadsheet_commit",{
+   rows,mapping,idempotencyKey:key,confirmed:true,
+ });
+ expect(mcpReplay.error).toBeUndefined();
+ expect(mcpReplay.data).toEqual(committed);
+ const archivedWebsite=await page.request.get("/api/students?archivedOnly=true&query="+encodeURIComponent(historicalName));
+ expect(archivedWebsite.status()).toBe(200);
+ expect((await archivedWebsite.json()).students.some((s:{name:string})=>s.name===historicalName)).toBe(true);
+ const archivedMcp=await call("ccp_students_roster",{query:historicalName,archivedOnly:true});
+ expect(archivedMcp.error).toBeUndefined();
+ expect(((archivedMcp.data as {students:Array<{name:string}>}).students)
+   .some(s=>s.name===historicalName)).toBe(true);
+ const activeWebsite=await page.request.get("/api/students?query="+encodeURIComponent(currentName));
+ expect(activeWebsite.status()).toBe(200);
+ expect((await activeWebsite.json()).students.some((s:{name:string})=>s.name===currentName)).toBe(true);
+ const excluded=await page.request.get("/api/students?query="+encodeURIComponent(historicalName));
+ expect(excluded.status()).toBe(200);
+ expect((await excluded.json()).students.some((s:{name:string})=>s.name===historicalName)).toBe(false);
+});

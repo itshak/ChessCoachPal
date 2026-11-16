@@ -11,6 +11,7 @@ export const IMPORT_FIELDS = [
   "student_birthdate",
   "level",
   "teacher_notes",
+  "archived",
   "guardian_name",
   "family_name",
   "email",
@@ -29,6 +30,7 @@ export interface NormalizedImportRow {
   birthdate: string | null;
   level: string | null;
   teacherNotes: string | null;
+  archived: boolean;
   guardianName: string | null;
   familyName: string | null;
   email: string | null;
@@ -66,6 +68,7 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
   ],
   level: ["level", "rcm", "grade", "book", "method level"],
   teacher_notes: ["notes", "teacher notes", "comments", "memo"],
+  archived: ["archived", "former student", "inactive", "student status"],
   guardian_name: [
     "guardian",
     "guardian name",
@@ -232,7 +235,14 @@ export function normalizeImportRows(
       }
     }
 
+    const statusRaw = cell(row, mapping.archived).trim().toLowerCase();
+    const archived = ["true", "yes", "1", "archived", "inactive", "former"].includes(statusRaw);
+    if (statusRaw && !archived && !["false", "no", "0", "active", "current"].includes(statusRaw)) {
+      issues.push({ row: sourceRow, message: `Unknown archive status "${statusRaw}" (row skipped)` });
+      return;
+    }
     out.push({
+      archived,
       studentName,
       birthdate,
       level: cell(row, mapping.level) || null,

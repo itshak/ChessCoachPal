@@ -2,13 +2,14 @@ import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
+type Tool=Awaited<ReturnType<typeof delegatedTool>>;
 const label=(prefix:string)=>prefix+" "+randomUUID().slice(0,9);
-async function workplace(callTool:(n:string,a:Record<string,unknown>)=>Promise<any>){
+async function workplace(callTool:Tool){
  const data=(await callTool("ccp_workplaces_list",{})).data as Array<{id:string}>;
  expect(data.length).toBeGreaterThan(0);
  return data[0].id;
 }
-async function createGroup(callTool:(n:string,a:Record<string,unknown>)=>Promise<any>,
+async function createGroup(callTool:Tool,
   workplaceId:string){
  const r=await callTool("ccp_groups_create",{
    workplaceId,name:label("Class"),idempotencyKey:randomUUID(),
@@ -16,7 +17,7 @@ async function createGroup(callTool:(n:string,a:Record<string,unknown>)=>Promise
  expect(r.error).toBeUndefined();
  return r.data as {entityId:string;revision:string};
 }
-async function createStudent(callTool:(n:string,a:Record<string,unknown>)=>Promise<any>){
+async function createStudent(callTool:Tool){
  const r=await callTool("ccp_students_create",{
    name:label("Class member"),idempotencyKey:randomUUID(),
  });
@@ -166,6 +167,12 @@ test("PARITY:PARITY-groups-archived-roster retains frozen lesson history after a
    groupId:group.entityId,studentId:first,idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(removed.error).toBeUndefined();
+ // Global archive now also requires explicitly ending current workplace
+ // enrollment, even when this pupil has already left the class group.
+ const unenrolled=await callTool("ccp_workplaces_unenroll",{
+   workplaceId:wp,studentId:first,confirmed:true,
+ });
+ expect(unenrolled.error).toBeUndefined();
  const preview=await callTool("ccp_students_archive_preview",{studentId:first});
  expect(preview.error).toBeUndefined();
  const sitePreview=await page.request.get(

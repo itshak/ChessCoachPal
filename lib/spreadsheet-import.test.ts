@@ -62,6 +62,26 @@ describe("normalizeImportRows", () => {
       true
     );
   });
+  it("recognizes archived and active spreadsheet values and rejects unknown statuses", () => {
+    const mapping = suggestColumnMapping(["Student Name", "Archived"]);
+    expect(mapping.archived).toBe("Archived");
+    const { rows, issues } = normalizeImportRows(
+      [
+        { "Student Name": "Former pupil", Archived: "inactive" },
+        { "Student Name": "Current pupil", Archived: "no" },
+        { "Student Name": "Ambiguous pupil", Archived: "sometimes" },
+      ],
+      mapping
+    );
+    expect(rows.map(({ studentName, archived }) => ({ studentName, archived }))).toEqual([
+      { studentName: "Former pupil", archived: true },
+      { studentName: "Current pupil", archived: false },
+    ]);
+    expect(issues).toEqual([
+      expect.objectContaining({ row: 4, message: expect.stringContaining("Unknown archive status") }),
+    ]);
+  });
+
 });
 
 describe("familyGroupKey", () => {
@@ -71,6 +91,7 @@ describe("familyGroupKey", () => {
       birthdate: null,
       level: null,
       teacherNotes: null,
+      archived: false,
       guardianName: "Jordan",
       familyName: null,
       email: "jordan@example.com",

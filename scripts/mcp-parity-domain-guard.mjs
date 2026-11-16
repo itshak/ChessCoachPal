@@ -13,6 +13,10 @@ const infrastructural = new Set([
 ]);
 const browserOnlyExport = new Set([
   "@/lib/server/teacher-transfer-service#teacherExport",
+  // Uploading multi-megabyte private binary student spreadsheets from a
+  // browser is a deliberate approved-credential boundary. The MCP handoff
+  // and metadata, preview, commit and cleanup tools remain required and E2E.
+  "@/lib/server/teacher-historical-stage#teacherHistoricalStageUpload",
 ]);
 export function namedBusinessImports(source) {
   const modules = new Map();
@@ -48,7 +52,9 @@ export function teacherDomainParityErrors(path,websiteSource,toolSource) {
       // Full backups may contain portal credentials. The MCP path intentionally
       // exposes only teacherSafeExport, never raw teacherExport. This is an
       // explicit privacy exception, not a missing teacher business operation.
-      if (path==="app/api/settings/export/route.ts" && browserOnlyExport.has(id))
+      if ((path==="app/api/settings/export/route.ts" ||
+           path==="app/api/import/historical/stage/route.ts") &&
+          browserOnlyExport.has(id))
         continue;
       if (!agent.get(module)?.has(name))
         errors.push(path+": website domain operation "+id+" lacks matching MCP import (add a tool and E2E, or review a secure exception)");

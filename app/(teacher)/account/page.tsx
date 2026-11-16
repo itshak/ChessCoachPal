@@ -8,6 +8,8 @@ import { HostedLimitBanner } from "@/components/teacher/HostedLimitBanner";
 import { NotificationSettingsForm } from "@/components/teacher/settings/NotificationSettingsForm";
 import { OptionalAiSettingsForm } from "@/components/teacher/settings/OptionalAiSettingsForm";
 import { SpreadsheetImportSettings } from "@/components/teacher/settings/SpreadsheetImportSettings";
+import {HistoricalAttendanceImportPanel} from "@/components/teacher/settings/HistoricalAttendanceImportPanel";
+import {BulkStudentLifecyclePanel} from "@/components/teacher/settings/BulkStudentLifecyclePanel";
 import { DataTransferSettings } from "@/components/teacher/settings/DataTransferSettings";
 import { TeacherCalendarFeed } from "@/components/teacher/settings/TeacherCalendarFeed";
 import { getPolicy } from "@/lib/server/scheduling";
@@ -174,6 +176,8 @@ export default async function AccountPage({
             policy.ai_provider !== "none" && Boolean(policy.ai_api_key)
           }
         />
+        <HistoricalAttendanceImportPanel />
+        <BulkStudentLifecyclePanel />
         <DataTransferSettings />
       </div>
     </div>

@@ -103,13 +103,16 @@ export async function teacherStudentArchivePreview(db: Db, teacherId: string, st
       .is("teaching_sessions.student_id",null),
     db.from("group_enrollments").select("id", {count:"exact",head:true})
       .eq("teacher_id",teacherId).eq("student_id",studentId),
+    db.from("workplace_enrollments").select("id",{count:"exact",head:true})
+      .eq("teacher_id",teacherId).eq("student_id",studentId),
   ]);
   if (checks.some(({error})=>error))
     throw new StudentProfileError(503,"PREVIEW_UNAVAILABLE","Cannot verify future commitments; archive was not performed");
   const [recurringSlots,futurePrivateLessons,futureDirectSessions,
-    futureGroupSessions,activeGroupMemberships] = checks.map(({count})=>count ?? 0);
+    futureGroupSessions,activeGroupMemberships,currentWorkplaceEnrollments] =
+      checks.map(({count})=>count ?? 0);
   const blockers = {recurringSlots,futurePrivateLessons,futureDirectSessions,
-    futureGroupSessions,activeGroupMemberships};
+    futureGroupSessions,activeGroupMemberships,currentWorkplaceEnrollments};
   return {studentId,archived:Boolean(student.archived_at),updatedAt:student.updated_at,
     blockers,canArchive:Object.values(blockers).every(count=>count===0)};
 }
@@ -210,6 +213,7 @@ export async function teacherStudentDeleteImpact(db: Db, teacherId: string, stud
     ["chessProfileHistory","student_chess_profile_history",true],
     ["typedHomework","training_assignments",true],
     ["trainingPlans","student_training_plans",true],
+    ["historicalAttendance","ccp_historical_attendance_evidence",true],
   ] as const;
   const counts=await Promise.all(references.map(([,table,scope])=>{
     let query=db.from(table).select("student_id",{count:"exact",head:true}).eq("student_id",studentId);

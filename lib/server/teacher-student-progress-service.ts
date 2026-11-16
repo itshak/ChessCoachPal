@@ -2,6 +2,7 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import {teacherStudentProfile} from "@/lib/server/student-profile-service";
 import {skillDimensionsList,studentSkillAssessmentsList} from "@/lib/server/teacher-skills-service";
 import {teacherMaterialAggregate} from "@/lib/server/teacher-material-history";
+import {teacherHistoricalAttendanceSummary} from "@/lib/server/teacher-historical-attendance";
 
 /**
  * Teacher-owned, source-backed evidence. Platform snapshots and manually
@@ -12,7 +13,7 @@ export async function teacherStudentProgressReport(
  db:SupabaseClient,teacherId:string,studentId:string
 ){
  const student=await teacherStudentProfile(db,teacherId,studentId);
- const [dimensions,materials,snapshotsResult]=await Promise.all([
+ const [dimensions,materials,snapshotsResult,historicalAttendance]=await Promise.all([
    skillDimensionsList(db,teacherId),
    teacherMaterialAggregate(db,teacherId,{
      studentId,includeVoided:false,offset:0,limit:100,
@@ -23,6 +24,7 @@ export async function teacherStudentProgressReport(
      .order("observed_at",{ascending:false})
      .order("created_at",{ascending:false}).order("id",{ascending:false})
      .limit(5001),
+   teacherHistoricalAttendanceSummary(db,teacherId,{studentId}),
  ]);
  if(snapshotsResult.error)throw new Error("Student rating snapshot summary unavailable");
  if((snapshotsResult.data?.length??0)>5000)
@@ -96,6 +98,7 @@ export async function teacherStudentProgressReport(
      ratingSources:{lichessRating:lichessRatingSource,chesscomRating:chesscomRatingSource},
      archived:Boolean(student.archived_at)},
    latestPlatformRatings,
+   historicalAttendance,
    skills:dimensions.map(d=>({
      dimensionId:d.id,name:d.name,sortOrder:d.sort_order,
      latestRating:byDimension.get(d.id)?.rating??null,
@@ -105,6 +108,6 @@ export async function teacherStudentProgressReport(
    })),
    materials,
    truthBasis:"teacher_attested_only",
-   caveat:"Snapshot ratings are reported by provider/time control and may be teacher-entered or provider-sourced. A rapid snapshot only fills an empty profile rating; it never changes strength. Study links, ratings and scheduled lessons do not prove mastery. Material coverage requires explicit teacher-recorded evidence.",
+   caveat:"Historical attendance contains separately sourced dated evidence and aggregate-only counts; neither creates calendar sessions or implies mastery. Snapshot ratings are reported by provider/time control and may be teacher-entered or provider-sourced. A rapid snapshot only fills an empty profile rating; it never changes strength. Study links, ratings and scheduled lessons do not prove mastery. Material coverage requires explicit teacher-recorded evidence.",
  };
 }

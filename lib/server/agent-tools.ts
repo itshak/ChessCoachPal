@@ -23,6 +23,15 @@ import {teacherFenValidate} from "@/lib/server/fen-validation";
 import {teacherContextGet} from "@/lib/server/teacher-context";
 
 import {spreadsheetSuggestMcpSchema} from "@/lib/spreadsheet-suggest";
+import {bulkLifecyclePreviewSchema,bulkLifecycleCommitSchema,
+ teacherBulkLifecyclePreview,teacherBulkLifecycleCommit,BulkLifecycleError}
+ from "@/lib/server/teacher-bulk-lifecycle";
+import {historicalInputSchema,historicalCommitSchema,historicalReportSchema,
+ teacherHistoricalAttendancePreview,teacherHistoricalAttendanceCommit,
+ teacherHistoricalAttendanceReport,teacherHistoricalAttendanceSummary} from "@/lib/server/teacher-historical-attendance";
+import {teacherHistoricalStageInfo,teacherHistoricalStageDelete,HistoricalImportError}
+ from "@/lib/server/teacher-historical-stage";
+
 import {invoiceDraftEditSchema} from "@/lib/server/invoice-draft-schemas";
 import {eventChanges} from "@/lib/server/teacher-event-schemas";
 import {manualPaymentMcpSchema} from "@/lib/server/manual-payment-schemas";
@@ -295,6 +304,53 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_students_bulk_lifecycle_preview",
+    description:"Review 1–100 student archive or reactivation changes by stable ID and exact revision, including active workplace enrollments, group membership, future commitments, and hosted quota. Never silently archive a pupil active elsewhere.",
+    schema:bulkLifecyclePreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_students_bulk_lifecycle_commit",
+    description:"After reviewing the exact digest and blockers, atomically archive/reactivate up to 100 students. Confirm explicitly. SQL rechecks tenant, revisions, commitments, quota, and durable replay. No student history is deleted.",
+    schema:bulkLifecycleCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_historical_import_upload_handoff",
+    description:"Receive the secure ChessCoachPal browser upload URL for staging a large historical spreadsheet. Do not send raw private student file bytes or a base64 file through MCP. Upload from the signed-in website and then supply the resulting short-lived stageId.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_historical_import_stage_info",
+    description:"Check ownership, expiry, file size and digest of an already uploaded private spreadsheet by stageId; no raw student/file content returned.",
+    schema:z.object({stageId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_historical_import_stage_delete",
+    description:"After confirmation, delete the teacher-owned private staged spreadsheet and stage reference. Does not delete committed historical evidence.",
+    schema:z.object({stageId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_historical_attendance_preview",
+    description:"Review dated versus aggregate-only historical attendance, with explicit school-year bounds, source timezone, workplace and exact student alias resolution. Ambiguous, missing and duplicate records block import. Large files use short-lived private stageId; at most 50 small direct typed rows are allowed.",
+    schema:historicalInputSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_historical_attendance_commit",
+    description:"Atomically import previously reviewed historical evidence only, never fabricated sessions; requires exact previewDigest, request UUID, confirmation, owned student/workplace IDs, and no ambiguity.",
+    schema:historicalCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_historical_attendance_report",
+    description:"Read tenant-scoped dated and aggregate-only historical attendance evidence with source-row provenance. Dated observations and aggregate counts are reported separately and never counted as fabricated calendar sessions.",
+    schema:historicalReportSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_historical_attendance_summary",
+    description:"Read complete, owner-scoped dated-observation and aggregate-only lesson counts by optional student and/or workplace. Distinct from ordinary calendar sessions; no inferred dates, attendance or mastery.",
+    schema:z.object({studentId:uuid.optional(),workplaceId:uuid.optional()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_import_spreadsheet_parse",
     description:"Parse a teacher-supplied CSV/XLSX spreadsheet provided as base64 without writing data. Return proposed mapping and a preview. Max file size 2 MB.",
     schema:z.object({filename:z.string().trim().min(1).max(120),
@@ -314,7 +370,7 @@ const catalogue = [
   },
   {
     name:"ccp_import_spreadsheet_commit",
-    description:"Atomically import up to 500 reviewed student/family rows with explicit approval and idempotent receipts. A failed batch rolls back all student and family writes. Archived names are deduplicated.",
+    description:"Atomically import up to 500 reviewed student/family rows, including optional archived status, with explicit approval and idempotent receipts. A failed batch rolls back all student and family writes. Archived names are deduplicated.",
     schema:z.object({rows:z.array(z.record(z.string(),z.string())).min(1).max(500),
       mapping:z.record(z.string(),z.string().nullable()),confirmed:z.literal(true),
       idempotencyKey:uuid.optional()}).strict(),
@@ -1130,7 +1186,7 @@ const catalogue = [
   },
   {
     name:"ccp_students_create_full",
-    description:"Create a teacher-owned learner with optional owned family, guardian contact, birthdate, level and private teacher notes in ONE atomic website/MCP transaction. Requires an idempotency key and approval; output redacts private notes and contact details.",
+    description:"Create an active or already archived teacher-owned learner with optional owned family, guardian contact, birthdate, level and private teacher notes in ONE atomic website/MCP transaction. archived=true never consumes active quota. Requires an idempotency key and approval; output redacts private notes and contact details.",
     schema:studentCreateSchema.extend({
       idempotencyKey:uuid,confirmed:z.literal(true),
     }).strict(),
@@ -1523,6 +1579,35 @@ export async function runTool(db: SupabaseClient, teacherId: string,
             previewDigest:a.previewDigest,
           }));
       }
+      case "ccp_students_bulk_lifecycle_preview": {
+        const a=args as {rows:Parameters<typeof teacherBulkLifecyclePreview>[2]};
+        return {data:await teacherBulkLifecyclePreview(db,teacherId,a.rows)};
+      }
+      case "ccp_students_bulk_lifecycle_commit": {
+        const a=args as Parameters<typeof teacherBulkLifecycleCommit>[2];
+        return {data:await teacherBulkLifecycleCommit(db,teacherId,a)};
+      }
+      case "ccp_historical_import_upload_handoff":
+        return {data:{
+          uploadUrl:oauthOrigin()+"/account",
+          method:"Authenticated browser upload",
+          instructions:"Upload the spreadsheet under Historical Attendance Import. Then use the returned private stageId with ccp_historical_attendance_preview. Never paste large private files into the chat.",
+        }};
+      case "ccp_historical_import_stage_info":
+        return {data:await teacherHistoricalStageInfo(db,teacherId,
+          (args as {stageId:string}).stageId)};
+      case "ccp_historical_import_stage_delete":
+        return {data:await teacherHistoricalStageDelete(db,teacherId,
+          (args as {stageId:string}).stageId)};
+      case "ccp_historical_attendance_preview":
+        return {data:await teacherHistoricalAttendancePreview(db,teacherId,args)};
+      case "ccp_historical_attendance_commit":
+        return {data:await teacherHistoricalAttendanceCommit(db,teacherId,args)};
+      case "ccp_historical_attendance_report":
+        return {data:await teacherHistoricalAttendanceReport(db,teacherId,args)};
+      case "ccp_historical_attendance_summary":
+        return {data:await teacherHistoricalAttendanceSummary(
+          db,teacherId,args as {studentId?:string;workplaceId?:string})};
       case "ccp_import_spreadsheet_parse": {
         const a=args as {filename:string;base64:string};
         const bytes=Buffer.from(a.base64,"base64");
@@ -2233,6 +2318,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof MaterialCatalogError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof MaterialHistoryError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof BulkLifecycleError||error instanceof HistoricalImportError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof SpreadsheetImportError)
       return {error:{code:error.code,message:error.message}};
