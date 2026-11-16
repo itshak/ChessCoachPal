@@ -53,6 +53,8 @@ export interface CreateStudentInput {
   contactName?: string | null;
   /** Family named after the student; contact is the student. */
   adultSelf?: boolean;
+  /** Create former students without temporarily consuming active quota. */
+  archived?: boolean;
   /** Optional cross-client durable create receipt. */
   idempotencyKey?: string;
 }
@@ -88,6 +90,7 @@ export async function createStudentWithOptionalFamily(
     p_contact_phone:input.contactPhone??null,
     p_contact_name:input.contactName??null,
     p_adult_self:Boolean(input.adultSelf),
+    p_archived:Boolean(input.archived),
     p_request_id:input.idempotencyKey??null,
   });
   void teacherId;
