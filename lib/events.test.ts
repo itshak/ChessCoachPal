@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatEventDateKey,
+  formatEventWhen,
   isEventReminderDay,
   validateEventEndAfterStart,
 } from "@/lib/events";
@@ -74,5 +75,28 @@ describe("validateEventEndAfterStart", () => {
         "2026-07-12T19:00:00.000Z"
       )
     ).toMatch(/after/i);
+  });
+});
+
+describe("event human formatting by teacher interface language",()=>{
+  it("preserves the established English default and localizes Hebrew and Russian",()=>{
+    const starts="2026-07-12T20:00:00.000Z";
+    const english=formatEventWhen(starts,null,CHICAGO);
+    const hebrew=formatEventWhen(starts,null,CHICAGO,"he");
+    const russian=formatEventWhen(starts,null,CHICAGO,"ru");
+    expect(english).toContain(" at ");
+    expect(hebrew).toMatch(/[\u0590-\u05ff]/);
+    expect(russian).toMatch(/[\u0400-\u04ff]/);
+    expect(hebrew).not.toContain(" at ");
+    expect(english).not.toEqual(hebrew);
+  });
+  it("renders localized start/end without changing the actual timezone",()=>{
+    const start="2026-07-12T20:00:00.000Z",end="2026-07-12T21:30:00.000Z";
+    const he=formatEventWhen(start,end,CHICAGO,"he");
+    const ru=formatEventWhen(start,end,CHICAGO,"ru");
+    expect(he).toContain("15:00");
+    expect(ru).toContain("15:00");
+    expect(he).toContain("16:30");
+    expect(ru).toContain("16:30");
   });
 });

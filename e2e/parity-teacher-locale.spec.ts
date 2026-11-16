@@ -26,6 +26,14 @@ test("PARITY: teacher language preference persists identically via website and M
     await expect(page.getByRole("heading",{name:"לוח שיעורים"})).toBeVisible();
     await page.getByRole("button",{name:/Private session|שיעור פרטי/}).click();
     await expect(page.getByRole("heading",{name:"קביעת שיעור שחמט פרטי"})).toBeVisible();
+    await page.goto("/events");
+    await expect(page.getByRole("heading",{name:"אירועי שחמט"})).toBeVisible();
+    await page.goto("/families");
+    await expect(page.getByRole("heading",{name:"משפחות"})).toBeVisible();
+    await page.setViewportSize({width:390,height:844});
+    const familyOverflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
+    expect(familyOverflow,"Hebrew family list horizontal overflow").toBeLessThanOrEqual(2);
+    await page.setViewportSize({width:1280,height:720});
     const mcp = await call("ccp_teacher_profile_update",{
       preferredLocale:"ru", confirmed:true
     });
@@ -37,6 +45,10 @@ test("PARITY: teacher language preference persists identically via website and M
     await expect(page.getByLabel("Язык интерфейса").first()).toHaveValue("ru");
     await page.goto("/schedule");
     await expect(page.getByRole("heading",{name:"Расписание занятий"})).toBeVisible();
+    await page.goto("/events");
+    await expect(page.getByRole("heading",{name:"Шахматные мероприятия"})).toBeVisible();
+    await page.goto("/families");
+    await expect(page.getByRole("heading",{name:"Семьи"})).toBeVisible();
     const invalidWeb = await page.request.put("/api/auth/update-profile", {
       data:{preferredLocale:"unsupported"}
     });

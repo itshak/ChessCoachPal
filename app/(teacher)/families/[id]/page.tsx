@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import {getLocale,getTranslations} from "next-intl/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -19,24 +20,19 @@ export async function generateMetadata({
     .select("name, family_name")
     .eq("id", id)
     .single();
-  return { title: guardian ? familyDisplayName(guardian) : "Family" };
+  const t=await getTranslations("families");
+  return { title: guardian ? familyDisplayName(guardian) : t("title") };
 }
 
-const DAY_NAMES = [
-  "Sundays",
-  "Mondays",
-  "Tuesdays",
-  "Wednesdays",
-  "Thursdays",
-  "Fridays",
-  "Saturdays",
-];
-
-function formatSlotTime(time: string): string {
-  const [hh, mm] = time.split(":").map(Number);
-  const period = hh >= 12 ? "PM" : "AM";
-  const hour = hh % 12 === 0 ? 12 : hh % 12;
-  return `${hour}:${String(mm).padStart(2, "0")} ${period}`;
+function dayName(day:number,locale:string):string{
+  return new Intl.DateTimeFormat(locale,{weekday:"long",timeZone:"UTC"})
+    .format(new Date(Date.UTC(2023,0,1+day)));
+}
+function formatSlotTime(time:string,locale:string):string{
+  const [hours,minutes]=time.split(":").map(Number);
+  return new Intl.DateTimeFormat(locale,{hour:"numeric",minute:"2-digit",
+    hour12:locale==="en",timeZone:"UTC"})
+    .format(new Date(Date.UTC(2023,0,1,hours,minutes)));
 }
 
 export default async function FamilyDetailPage({
@@ -45,6 +41,7 @@ export default async function FamilyDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const t=await getTranslations("families"),locale=await getLocale();
   const supabase = await createClient();
   const {
     data: { user },
@@ -108,28 +105,28 @@ export default async function FamilyDetailPage({
 
   const emailRoutingLabel =
     guardian.email_recipients === "both"
-      ? "Both guardians receive family emails"
+      ? t("routingBoth")
       : guardian.email_recipients === "secondary"
-        ? `Family emails go to ${guardian.secondary_name || "the second guardian"}`
+        ? t("routingSecondary",{name:guardian.secondary_name||t("secondGuardianFallback")})
         : guardian.secondary_email
-          ? `Family emails go to ${guardian.name}`
+          ? t("routingPrimary",{name:guardian.name})
           : null;
 
   return (
     <div>
       <div className="flex items-center gap-3 mb-6">
         <Link href="/families" className="text-muted hover:text-foreground">
-          ← Families
+          <span className="inline-block rtl:rotate-180" aria-hidden="true">←</span> {t("title")}
         </Link>
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-2xl font-bold">{familyDisplayName(guardian)}</h1>
+          <h1 className="text-2xl font-bold"><bdi dir="auto">{familyDisplayName(guardian)}</bdi></h1>
           <p className="text-muted text-sm">
             {members.length > 0
-              ? `${members.length} student${members.length !== 1 ? "s" : ""}`
-              : "No students linked yet"}
+              ? t("memberCount",{count:members.length})
+              : t("noneMembers")}
           </p>
         </div>
       </div>
@@ -143,16 +140,16 @@ export default async function FamilyDetailPage({
       <Card padding="sm" className="mb-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <div className="text-xs text-muted font-medium mb-0.5">Guardian</div>
-            <div className="font-medium text-sm">{guardian.name}</div>
+            <div className="text-xs text-muted font-medium mb-0.5">{t("guardian")}</div>
+            <div className="font-medium text-sm"><bdi dir="auto">{guardian.name}</bdi></div>
             <div className="text-sm text-muted">
               {[guardian.email, guardian.phone].filter(Boolean).join(" · ") ||
-                "No contact info"}
+                t("noContact")}
             </div>
           </div>
           <div>
             <div className="text-xs text-muted font-medium mb-0.5">
-              Second Guardian
+              {t("secondGuardian")}
             </div>
             {guardian.secondary_name || secondGuardianContact ? (
               <>
@@ -160,12 +157,12 @@ export default async function FamilyDetailPage({
                   {guardian.secondary_name || "—"}
                 </div>
                 <div className="text-sm text-muted">
-                  {secondGuardianContact || "No contact info"}
+                  {secondGuardianContact || t("noContact")}
                 </div>
               </>
             ) : (
               <div className="text-sm text-muted">
-                None. Add one with Edit Family
+                {t("noneSecondGuardian")}
               </div>
             )}
           </div>
@@ -178,12 +175,12 @@ export default async function FamilyDetailPage({
       </Card>
 
       {/* Students */}
-      <h2 className="text-lg font-semibold mb-3">Students</h2>
+      <h2 className="text-lg font-semibold mb-3">{t("studentsFamily")}</h2>
       {members.length === 0 ? (
         <Card className="text-center text-muted py-8">
-          <p>No students in this family yet.</p>
+          <p>{t("noneFamilyStudents")}</p>
           <p className="text-sm mt-1">
-            Use Edit Family to link existing students or add new ones.
+            {t("noneFamilyHint")}
           </p>
         </Card>
       ) : (
@@ -201,15 +198,15 @@ export default async function FamilyDetailPage({
                   className="hover:border-primary/40 transition-colors cursor-pointer"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <div className="font-semibold">{student.name}</div>
+                    <div className="font-semibold"><bdi dir="auto">{student.name}</bdi></div>
                     <div className="text-end text-sm text-muted">
                       {studentSlots.length > 0 ? (
                         studentSlots.map((slot, i) => (
                           <div key={i}>
-                            {DAY_NAMES[slot.day_of_week]}{" "}
-                            {formatSlotTime(slot.start_time)} ·{" "}
-                            {slot.duration_minutes} min
-                            {!slot.active && " (paused)"}
+                            {dayName(slot.day_of_week,locale)}{" "}
+                            {formatSlotTime(slot.start_time,locale)} ·{" "}
+                            {t("minutes",{count:slot.duration_minutes})}
+                            {!slot.active && t("paused")}
                           </div>
                         ))
                       ) : (

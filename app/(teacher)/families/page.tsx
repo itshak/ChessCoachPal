@@ -1,9 +1,11 @@
+import {getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { FamiliesManager } from "@/components/teacher/FamiliesManager";
 
-export const metadata = { title: "Families" };
+export async function generateMetadata(){const t=await getTranslations("families");return {title:t("title")};}
 
 export default async function FamiliesPage() {
+  const t=await getTranslations("families");
   const supabase = await createClient();
   const {
     data: { user },
@@ -29,11 +31,9 @@ export default async function FamiliesPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Families</h1>
+        <h1 className="text-2xl font-bold">{t("title")}</h1>
         <p className="text-muted text-sm mt-1">
-          Each family gets a private portal link with practice links, the lesson
-          schedule, and your shared notes. No parent accounts needed, and
-          siblings share one family. Click a family name for details.
+          {t("intro")}
         </p>
       </div>
       <FamiliesManager guardians={guardians ?? []} students={students ?? []} />
