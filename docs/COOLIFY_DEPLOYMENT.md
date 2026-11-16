@@ -1,8 +1,8 @@
 # Coolify deployment runbook — ChessCoachPal
 
-> **Permanent-domain transition:** See [PRODUCTION_DOMAIN_CUTOVER.md](PRODUCTION_DOMAIN_CUTOVER.md) for the canonical site/API hostnames, Vercel retirement and beta-domain removal. The historical staging sections below do not attest that this transition has finished.
+> **Permanent-domain transition:** See [BETA_DOMAIN_CUTOVER.md](BETA_DOMAIN_CUTOVER.md) for the canonical site/API hostnames, Vercel retirement and beta-domain removal. The historical staging sections below do not attest that this transition has finished.
 
-**Status (2026-11-16):** Isolated staging responds successfully on public HTTPS. A direct reuse of its persistent Coolify application as the invitation-only production environment is planned, but the canonical hostnames, live Coolify configuration, and acceptance tests are **not yet verified**. See [production cutover](PRODUCTION_DOMAIN_CUTOVER.md). See [hosting architecture](HOSTING_ARCHITECTURE.md), [self-hosting](SELF_HOSTING.md), and [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md).
+**Status (2026-11-16):** Isolated staging responds successfully on public HTTPS. Reusing this same Coolify application as the **private beta** at canonical hostnames is proposed, but the canonical hostnames, live Coolify configuration, and acceptance tests are **not yet verified**. See [private beta domain cutover](BETA_DOMAIN_CUTOVER.md). See [hosting architecture](HOSTING_ARCHITECTURE.md), [self-hosting](SELF_HOSTING.md), and [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md).
 
 ## Architecture and service exposure
 

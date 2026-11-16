@@ -6,6 +6,11 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 _Changes for the next release go here._
 
+### Changed
+- Prepare the permanent canonical chesscoachpal.com / api.chesscoachpal.com private-beta deployment on the existing Coolify services, preserving the existing database, invite-code-only access and waitlist.
+- Replace the obsolete Vercel release deployment with restricted Coolify release deployment and canonical-domain checks. Live migration and email verification require independent acceptance before announcing completion.
+
+
 ## [0.1.3] - 2026-11-16
 
 
@@ -14,18 +19,7 @@ _Changes for the next release go here._
 - Fail closed when the beta signup route detects inconsistent GoTrue signup or email-confirmation settings. Never expose the service-role key, access code or Auth user enumeration to browsers.
 
 ### Changed
-- Preserve the beta-code login flow, existing teacher accounts and public waitlist. Extend isolated Docker Compose verification to cover direct Auth denial, accepted/rejected invite codes, teacher provisioning and waitlist persistence without resetting data.
-
-
-
-
-### Changed
-- Prepare a guarded migration of the published ChessCoachPal application from Vercel and beta subdomains to the existing self-hosted Coolify deployment at `chesscoachpal.com` and `api.chesscoachpal.com`, retaining the same PostgreSQL, Auth and Storage volumes.
-- Prepare routing of verified GitHub Release deployments through the restricted Coolify SSH gate, with canonical private-beta hostname smoke tests and a documented domain cutover procedure.
-- Preserve invitation-only signup until the owner completes SendPulse SMTP setup; do not enable auto-confirmed public signup or rely on the retired Vercel reminder cron.
-
-### Fixed
-- Document the required rebuild of build-time Next.js and GoTrue origins after changing canonical hostnames and the planned retirement of beta-only domain routing.
+- Preserve the beta-code registration flow, existing teacher accounts and public waitlist. Extend isolated Docker Compose verification to cover direct Auth denial, accepted/rejected invite codes, teacher provisioning and waitlist persistence without resetting data.
 
 
 ## [0.1.2] - 2026-11-15

@@ -47,7 +47,7 @@ Automated prepublication evidence, all verified on merged main `d825d81` and on 
 
 - [ ] Real ChatGPT **and** Claude HTTPS OAuth/MCP create/edit/revoke and website correction using synthetic records; record sanitized results.
 - [ ] Repository Homepage correction; review historical Actions artifacts/logs, unreachable/binary entries, PII/secrets and third-party licensing/redistribution rights; rotate any exposed credentials and document disposition.
-- [ ] Confirm the live Coolify production hostname, HTTPS, release SHA, Auth, website and MCP after the domain cutover. Verify configured scheduled jobs and the SendPulse email path separately; do not mark tests passed without live evidence.
+- [ ] Confirm the live Coolify private-beta hostname, HTTPS, release SHA, Auth, website and MCP after the domain cutover. Verify configured scheduled jobs and the SendPulse email path separately; do not mark tests passed without live evidence.
 
 This is a deliberate release-policy exception authorized by the maintainer, not a retroactive attestation of the deferred checks. The first-release validator verifies **only the five prepublication automated checkboxes**; it must not treat the deferred manual checklist as complete.
 
@@ -55,13 +55,13 @@ This is a deliberate release-policy exception authorized by the maintainer, not 
 
 For `0.x` releases, users may have to reinstall or explicitly reinitialize a development database. We **do not** retain CogNote migrations, API aliases or migration chains for old ChessCoachPal versions solely for compatibility. Never automatically erase a database that might contain real information. Decide the post-`1.0.0` compatibility and migration contract before publishing that milestone.
 
-## Coolify production policy: published releases only
+## Coolify private-beta deployment policy: published releases only
 
 The [release workflow](../.github/workflows/release.yml) runs the full release gate, publishes the annotated tag and GitHub Release, then invokes the restricted [Coolify deployment workflow](../.github/workflows/deploy-coolify-release.yml). The Vercel production deployment job has been removed. No tag push, ordinary commit or pull request triggers a deployment by itself.
 
-The existing Coolify application and persistent database/Storage volumes are **reused** rather than replaced during the domain cutover. Its forced-command SSH deploy user accepts only an exact published SemVer tag and SHA. To avoid breaking the existing authorized key before the cutover, the reusable workflow temporarily retains the historically named `staging` GitHub Actions environment and `COOLIFY_STAGING_*` credentials. These refer to the **same** Coolify application resource, not to a parallel deployment. Change/rename them in a separate credential-rotation step after live production verification.
+The existing Coolify application and persistent database/Storage volumes are **reused** rather than replaced during the domain cutover. Its forced-command SSH deploy user accepts only an exact published SemVer tag and SHA. To avoid breaking the existing authorized key before the cutover, the reusable workflow temporarily retains the historically named `staging` GitHub Actions environment and `COOLIFY_STAGING_*` credentials. These refer to the **same** Coolify application resource, not to a parallel deployment. Change/rename them in a separate credential-rotation step after private-beta domain verification.
 
-**This repository change does not itself configure Coolify domains, change its encrypted environment variables, issue certificates, migrate DNS, or delete Vercel.** Those operational changes are documented in [PRODUCTION_DOMAIN_CUTOVER.md](PRODUCTION_DOMAIN_CUTOVER.md) and must be verified before considering the switch complete. Keep release-traceability and the strict MCP parity gate unchanged.
+**This repository change does not itself configure Coolify domains, change its encrypted environment variables, issue certificates, migrate DNS, or delete Vercel.** Those operational changes are documented in [BETA_DOMAIN_CUTOVER.md](BETA_DOMAIN_CUTOVER.md) and must be verified before considering the private-beta hosting switch complete. Invite-code enrollment and waitlist must remain operational, and public GoTrue signup must not bypass the invite gate. Keep release-traceability and the strict MCP parity gate unchanged.
 
 The old `vercel.json` also schedules `/api/cron/event-reminders`. Before shutting down Vercel, confirm that the equivalent optional Coolify `cron` service or an explicitly configured Coolify scheduled task is enabled with an appropriate `CRON_SECRET` when reminders are required. Do not silently treat the application deployment workflow as equivalent to scheduled execution.
 

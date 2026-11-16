@@ -169,11 +169,11 @@ jobs:
           gh "${args[@]}"
           # GitHub provides source-code ZIP and tar.gz for every tagged release.
 
-  deploy_coolify_production:
-    name: Deploy published version to Coolify production
+  deploy_coolify_beta:
+    name: Deploy published version to Coolify private beta
     needs: publish
-    # After the final hostname/environment cutover, the existing isolated
-    # Coolify resource is repurposed as production without replacing volumes.
+    # Private beta remains private after a canonical hostname cutover.
+    # Reuse the existing Coolify resource without replacing volumes.
     if: needs.publish.outputs.published == 'true'
     uses: ./.github/workflows/deploy-coolify-release.yml
     with:
