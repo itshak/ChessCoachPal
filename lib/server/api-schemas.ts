@@ -45,6 +45,7 @@ export const studentCreateSchema = z.object({
   contactPhone: optionalText(50),
   contactName: optionalText(200),
   adultSelf: z.boolean().optional(),
+  archived: z.boolean().optional(),
   idempotencyKey: z.uuid().optional(),
 });
 
