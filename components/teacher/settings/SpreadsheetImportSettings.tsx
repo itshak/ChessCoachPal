@@ -17,6 +17,7 @@ const FIELD_LABELS: Record<ImportField, string> = {
   student_birthdate: "Birthdate",
   level: "Level",
   teacher_notes: "Teacher notes",
+  archived: "Archived (optional)",
   guardian_name: "Guardian name",
   family_name: "Family name",
   email: "Email",
@@ -309,6 +310,7 @@ export function SpreadsheetImportSettings({
                   <tr className="text-left text-muted border-b border-border">
                     <th className="py-1 pr-2">Row</th>
                     <th className="py-1 pr-2">Student</th>
+                    <th className="py-1 pr-2">Status</th>
                     <th className="py-1 pr-2">Guardian</th>
                     <th className="py-1 pr-2">Email</th>
                   </tr>
@@ -318,6 +320,7 @@ export function SpreadsheetImportSettings({
                     <tr key={r.sourceRow} className="border-b border-border/60">
                       <td className="py-1 pr-2">{r.sourceRow}</td>
                       <td className="py-1 pr-2">{r.studentName}</td>
+                      <td className="py-1 pr-2">{r.archived ? "Archived" : "Active"}</td>
                       <td className="py-1 pr-2">
                         {r.guardianName || r.familyName || "—"}
                       </td>
