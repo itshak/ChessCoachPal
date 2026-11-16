@@ -1028,6 +1028,13 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   }));
   expect(restore.status(),await restore.text()).toBe(200);
   expect((await restore.json()).archived_at).toBeNull();
+  // Reactivation does not silently restore historical workplace membership.
+  // Re-enroll explicitly before this longer scenario creates a new lesson.
+  const rejoined=(await call("ccp_workplaces_enroll",{
+    workplaceId:madeWorkplace.entityId,studentId:profileId,
+    idempotencyKey:randomUUID(),
+  })).structuredContent;
+  expect(rejoined.error).toBeUndefined();
 
   const historicalImpact=(await call("ccp_students_delete_impact",{
     studentId:profileId,

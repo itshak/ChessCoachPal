@@ -169,6 +169,26 @@ test("PARITY:PARITY-historical-import staged two-year multi-workplace dated and 
  });
  expect(replay.status(),await replay.text()).toBe(200);
  expect((await replay.json()).replayed).toBe(true);
+ // The second source row duplicates saved evidence. The first source row
+ // is new but MUST roll back too; the batch never commits halfway.
+ const atomicRollback={
+  schoolYearStart:"2024-09-01",schoolYearEnd:"2026-08-31",
+  timezone:"Asia/Jerusalem",
+  rows:[
+   {"Student Name":name,Workplace:aName,Date:"2024-11-20",Attendance:"present"},
+   {"Student Name":name,Workplace:aName,Date:"2024-10-12",Attendance:"present"},
+  ],
+ };
+ const rollbackPreviewResponse=await page.request.post(
+  "/api/import/historical/preview",{data:atomicRollback});
+ expect(rollbackPreviewResponse.status(),await rollbackPreviewResponse.text()).toBe(200);
+ const rollbackPreview=await rollbackPreviewResponse.json();
+ expect(rollbackPreview.canCommit).toBe(true);
+ const rejected=await call("ccp_historical_attendance_commit",{
+  ...atomicRollback,previewDigest:rollbackPreview.previewDigest,
+  idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(rejected.error?.code).toBe("CONFLICT");
  const webReport=await page.request.get("/api/import/historical/report?studentId="+studentId);
  expect(webReport.status(),await webReport.text()).toBe(200);
  const report=await webReport.json();
@@ -197,6 +217,33 @@ test("PARITY:PARITY-historical-import staged two-year multi-workplace dated and 
  expect(after.status()).toBe(404);
  expect((await page.request.get(
   "/api/import/historical/report?summary=true&studentId="+studentId)).status()).toBe(200);
+ // Private staging metadata is only valid for its two-hour lifetime.
+ const reupload=await page.request.post("/api/import/historical/stage",{
+  multipart:{file:{name:"expired-historical-source.csv",mimeType:"text/csv",
+    buffer:Buffer.from(csv)}},
+ });
+ expect(reupload.status(),await reupload.text()).toBe(200);
+ const expiredStage=(await reupload.json()).stageId as string;
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.SUPABASE_SERVICE_ROLE_KEY!,
+   {auth:{persistSession:false,autoRefreshToken:false}});
+ const now=Date.now();
+ const {error:expireError}=await admin.from("ccp_historical_import_stages")
+  .update({created_at:new Date(now-4*60*60_000).toISOString(),
+   expires_at:new Date(now-3*60*60_000).toISOString()})
+  .eq("id",expiredStage);
+ expect(expireError).toBeNull();
+ const expiredModel=await call("ccp_historical_import_stage_info",{
+  stageId:expiredStage,
+ });
+ expect(expiredModel.error?.code).toBe("STAGE_EXPIRED");
+ const expiredWebsite=await page.request.get(
+  "/api/import/historical/stage?stageId="+expiredStage);
+ expect(expiredWebsite.status()).toBe(410);
+ const expiredRemoved=await call("ccp_historical_import_stage_delete",{
+  stageId:expiredStage,confirmed:true,
+ });
+ expect(expiredRemoved.error).toBeUndefined();
 });
 
 test("PARITY:PARITY-historical-import rejects unknown dates, aliases and duplicate source",async({page,request})=>{
@@ -280,4 +327,59 @@ test("PARITY:PARITY-historical-evidence denies foreign tenant student in reviewe
  expect((tool.data as {canCommit:boolean}).canCommit).toBe(false);
  const {error:cleanupError}=await admin.auth.admin.deleteUser(user.user!.id);
  expect(cleanupError).toBeNull();
+});
+
+test("PARITY:PARITY-history-quota archived former students do not consume cap; batch reactivation fails atomically",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const ids:string[]=[];
+ for(let i=0;i<2;i++){
+  const res=await page.request.post("/api/students",{
+   data:{name:unique("Quota-exempt former student"),archived:true},
+  });
+  expect(res.status(),await res.text()).toBe(201);
+  const row=await res.json();
+  expect(row.archived_at).toBeTruthy();
+  ids.push(row.id as string);
+ }
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.SUPABASE_SERVICE_ROLE_KEY!,
+   {auth:{persistSession:false,autoRefreshToken:false}});
+ const {data:pupil,error:pupilError}=await admin.from("students")
+   .select("teacher_id").eq("id",ids[0]).single();
+ expect(pupilError).toBeNull();
+ const teacherId=pupil!.teacher_id as string;
+ const {data:original,error:profileError}=await admin.from("teachers")
+  .select("hosted_enforced,hosted_plan,hosted_max_active_students,active_student_count")
+  .eq("id",teacherId).single();
+ expect(profileError).toBeNull();
+ try{
+  const cap=Math.max(1,original!.active_student_count as number);
+  const {error:setupError}=await admin.from("teachers").update({
+   hosted_enforced:true,hosted_plan:"free",hosted_max_active_students:cap,
+  }).eq("id",teacherId);
+  expect(setupError).toBeNull();
+  const rows=await Promise.all(ids.map(async studentId=>({
+   studentId,archived:false,expectedUpdatedAt:(await profile(page,studentId)).updated_at,
+  })));
+  const previewRes=await page.request.post("/api/students/bulk-lifecycle",{data:{rows}});
+  expect(previewRes.status(),await previewRes.text()).toBe(200);
+  const preview=await previewRes.json();
+  expect(preview.canCommit).toBe(false);
+  expect(preview.quotaBlocked).toBe(true);
+  const toolPreview=await call("ccp_students_bulk_lifecycle_preview",{rows});
+  expect(toolPreview.error).toBeUndefined();
+  expect(toolPreview.data).toEqual(preview);
+  const denied=await call("ccp_students_bulk_lifecycle_commit",{
+   rows,previewDigest:preview.previewDigest,idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(denied.error?.code).toBe("HOSTED_LIMIT_REACHED");
+  for(const id of ids)expect((await profile(page,id)).archived_at).toBeTruthy();
+ }finally{
+  const {error:restoreError}=await admin.from("teachers").update({
+   hosted_enforced:original!.hosted_enforced,
+   hosted_plan:original!.hosted_plan,
+   hosted_max_active_students:original!.hosted_max_active_students,
+  }).eq("id",teacherId);
+  expect(restoreError).toBeNull();
+ }
 });
