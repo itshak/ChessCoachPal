@@ -994,6 +994,12 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     studentId:foreignStudent!.id,
   })).structuredContent;
   expect(forbiddenProfile.error.code).toBe("NOT_FOUND");
+  // Ending a group membership alone does not end workplace enrollment.
+  // The teacher must explicitly unenroll a former pupil before global archive.
+  const profileUnenroll=(await call("ccp_workplaces_unenroll",{
+    workplaceId:madeWorkplace.entityId,studentId:profileId,confirmed:true,
+  })).structuredContent;
+  expect(profileUnenroll.error).toBeUndefined();
   const previewMcp=(await call("ccp_students_archive_preview",{
     studentId:profileId,
   })).structuredContent.data;

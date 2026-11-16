@@ -6796,7 +6796,8 @@ BEGIN
    'learning_materials','chess_games','chess_puzzles','chess_drills',
    'chess_study_chapters','learning_material_relations',
    'material_links','material_teaching_evidence','training_assignments','assignment_attempts','assignment_reviews',
-   'student_training_plans','student_training_plan_revisions'
+   'student_training_plans','student_training_plan_revisions',
+   'ccp_historical_attendance_evidence'
  ] LOOP
    v_rows := p_tables -> v_table;
    IF v_rows IS NULL THEN CONTINUE; END IF;
@@ -6873,6 +6874,11 @@ BEGIN
          THEN ' AND dst.snapshot = EXCLUDED.snapshot'
        WHEN v_table IN ('assignment_attempts','assignment_reviews')
          THEN ' AND dst.request_hash = EXCLUDED.request_hash'
+       -- Historical evidence is immutable source testimony. Portable restores
+       -- may replay an identical saved row, never rewrite its provenance,
+       -- exact date, count, teacher, student or workplace.
+       WHEN v_table='ccp_historical_attendance_evidence'
+         THEN ' AND to_jsonb(dst) = to_jsonb(EXCLUDED)'
        ELSE '' END;
      EXECUTE format(
        'INSERT INTO public.%I AS dst (%s)

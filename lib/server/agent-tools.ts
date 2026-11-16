@@ -1580,8 +1580,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           }));
       }
       case "ccp_students_bulk_lifecycle_preview": {
-        const a=args as Parameters<typeof teacherBulkLifecyclePreview>[2];
-        return {data:await teacherBulkLifecyclePreview(db,teacherId,a)};
+        const a=args as {rows:Parameters<typeof teacherBulkLifecyclePreview>[2]};
+        return {data:await teacherBulkLifecyclePreview(db,teacherId,a.rows)};
       }
       case "ccp_students_bulk_lifecycle_commit": {
         const a=args as Parameters<typeof teacherBulkLifecycleCommit>[2];

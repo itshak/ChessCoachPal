@@ -263,7 +263,14 @@ export async function teacherHistoricalAttendanceCommit(db:SupabaseClient,
  if(!validated.success)
   return historicalFail(400,"VALIDATION_ERROR","Reviewed historical import, digest, UUID receipt and confirmation required");
  const body=validated.data;
- const prepared=await historicalPrepare(db,teacherId,body);
+ // The preview uses the strict read-only schema: do not leak write-only
+ // confirmation/receipt fields into the preview validator.
+ const reviewInput:HistoricalInput={
+   stageId:body.stageId,rows:body.rows,mapping:body.mapping,
+   resolutions:body.resolutions,schoolYearStart:body.schoolYearStart,
+   schoolYearEnd:body.schoolYearEnd,timezone:body.timezone,
+ };
+ const prepared=await historicalPrepare(db,teacherId,reviewInput);
  const params={
   p_rows:prepared.entries,p_school_year_start:body.schoolYearStart,
   p_school_year_end:body.schoolYearEnd,p_timezone:body.timezone,
