@@ -237,6 +237,7 @@ services:
       args:
         NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_PUBLIC_URL:?}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY:?}
+      NEXT_PUBLIC_BETA_ONLY: ${NEXT_PUBLIC_BETA_ONLY:-false}
     restart: unless-stopped
     depends_on:
       migrate:
@@ -251,6 +252,10 @@ services:
       NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_PUBLIC_URL:?}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY:?}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:?}
+      NEXT_PUBLIC_BETA_ONLY: ${NEXT_PUBLIC_BETA_ONLY:-false}
+      # Must mirror auth.GOTRUE_DISABLE_SIGNUP for private-beta admin signup.
+      BETA_GOTRUE_SIGNUP_DISABLED: ${DISABLE_SIGNUP:-false}
+      BETA_GOTRUE_EMAIL_AUTOCONFIRM: ${ENABLE_EMAIL_AUTOCONFIRM:-true}
       NEXT_PUBLIC_SITE_URL: ${APP_URL:-http://localhost:3000}
       # .env.local also holds the stack's own secrets; the app needs none of
       # them, so keep the database password and JWT secret out of it.

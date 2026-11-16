@@ -35,7 +35,9 @@ for name, service in services.items():
         f"{name} unexpected shared proxy-network membership"
     )
 assert services["auth"]["environment"]["GOTRUE_DISABLE_SIGNUP"] == "true", "Signup must start closed"
+assert services["app"]["environment"]["BETA_GOTRUE_SIGNUP_DISABLED"] == services["auth"]["environment"]["GOTRUE_DISABLE_SIGNUP"], "Private beta signup guard must track actual GoTrue public signup setting"
 assert services["auth"]["environment"]["GOTRUE_MAILER_AUTOCONFIRM"] == "false", "Email auto-confirm unsafe"
+assert services["app"]["environment"]["BETA_GOTRUE_EMAIL_AUTOCONFIRM"] == services["auth"]["environment"]["GOTRUE_MAILER_AUTOCONFIRM"], "App beta email safety flag must mirror GoTrue"
 assert not services["app"].get("env_file"), "App must not load repository-local secrets"
 for name in ("db", "gateway", "migrate"):
     assert services[name].get("build"), f"{name} must bundle Git assets into its image"

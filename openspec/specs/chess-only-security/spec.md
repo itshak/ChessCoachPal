@@ -74,3 +74,19 @@ Before and after Supabase changes, maintainers SHALL check **security and perfor
 
 See [the review playbook](../../../docs/MCP_SUPABASE_RELIABILITY_PLAYBOOK.md) and [ADR-0007](../../../docs/adr/0007-mcp-supabase-contract-and-release-evidence.md).
 
+
+### Requirement: Private beta enrollment is not bypassable through public Auth
+
+When `NEXT_PUBLIC_BETA_ONLY=true`, the system SHALL require a nonempty server-only beta access code on the website signup route and SHALL prevent public GoTrue clients from creating a user through `/auth/v1/signup` or other direct signup paths. The website SHALL create a beta identity only through an authorized server-only Auth admin operation **after** validating the access code. Public Auth signup-disable and email-confirmation settings SHALL be tied to the same deployment configuration as the website guard and fail closed when inconsistent. The beta waitlist SHALL remain available without a code; existing accounts SHALL still sign in. No `service_role` key or invite code SHALL be exposed to a browser or MCP client.
+
+#### Scenario: No code or direct public Auth signup
+- **WHEN** a visitor sends an absent/invalid code to the website OR calls the public GoTrue signup API directly with a valid-looking address and password
+- **THEN** no new `auth.users` record SHALL be created, and the caller SHALL not receive authenticated teacher access.
+
+#### Scenario: Valid beta code
+- **WHEN** the code matches and the Auth provider has public signup disabled under the configured private-beta policy
+- **THEN** a server-side admin Auth call SHALL create one account, provision the scoped teacher record and permit password login; the waitlist handler SHALL continue to record requests without a beta code.
+
+#### Scenario: Deployment drift or email verification change
+- **WHEN** GoTrue public signup remains enabled, or the configured beta email-auto-confirm policy changes without a working mail-confirmation flow
+- **THEN** the website beta creation path SHALL fail closed with no privileged account creation, and deployment acceptance SHALL fail rather than silently reverting to open signup or bypassing email verification.

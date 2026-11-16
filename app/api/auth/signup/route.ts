@@ -15,12 +15,15 @@ import { secureCompare } from "@/lib/server/secure-compare";
 
 /**
  * Sign-up. When `requiresBetaCode()` (NEXT_PUBLIC_BETA_ONLY or BETA_ACCESS_CODE),
- * new accounts need the server-only access code. Self-hosters who leave both
- * unset get open sign-ups. Failed beta guesses are rate-limited per IP.
+ * new accounts need the server-only access code. Public GoTrue signup MUST
+ * be disabled by the Auth provider: beta signup uses a service-role admin API
+ * only after validating the access code. Failed guesses are rate-limited.
+ * Self-hosters without the beta gate retain ordinary public Auth signup.
  *
- * The teachers row (with hosted trial fields) is created even when email
- * confirmation is still pending, so confirm-then-land-on-dashboard is not
- * stuck on a free/missing entitlement.
+ * Private beta currently uses auto-confirmed email signups while transactional
+ * email is not configured. Admin createUser never sends a confirmation email.
+ * When email verification is introduced, replace this with a tested invite /
+ * confirmation flow instead of silently leaving unconfirmed accounts locked.
  */
 export async function POST(req: NextRequest) {
   const { email, password, displayName, accessCode, timezone } =
@@ -81,30 +84,74 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // A public GoTrue signup endpoint bypasses a website-only invite-code gate.
+  // Never use the service-role admin creation path unless GoTrue has public
+  // signup disabled too. Compose maps this sentinel from the SAME DISABLE_SIGNUP
+  // value as GOTRUE_DISABLE_SIGNUP; absent/mismatched config fails closed.
+  if (betaRequired && process.env.BETA_GOTRUE_SIGNUP_DISABLED !== "true") {
+    console.error("Beta signup refused: public GoTrue registration is not disabled");
+    return NextResponse.json(
+      { error: "Beta registration is temporarily unavailable." },
+      { status: 503 }
+    );
+  }
+
+  // Admin createUser cannot send confirmation email. Never silently bypass
+  // an operator's later decision to require email verification.
+  if (betaRequired && process.env.BETA_GOTRUE_EMAIL_AUTOCONFIRM !== "true") {
+    console.error("Beta signup refused: verification flow is not configured");
+    return NextResponse.json(
+      { error: "Beta registration is temporarily unavailable." },
+      { status: 503 }
+    );
+  }
+
   const supabase = await createClient();
   const timezoneValue = typeof timezone === "string" ? timezone : undefined;
-  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        display_name: displayName,
-        ...(timezoneValue ? { timezone: timezoneValue } : {}),
+  const userMetadata = {
+    display_name: displayName,
+    ...(timezoneValue ? { timezone: timezoneValue } : {}),
+  };
+  const serviceClient = createServiceClient();
+  let userId: string | undefined;
+  if (betaRequired) {
+    // Privileged Auth creation only happens AFTER the invite code was checked.
+    // Admin createUser doesn't email a confirmation link. Our current private
+    // beta intentionally retains auto-confirm (same as previous GoTrue config).
+    const { data, error } = await serviceClient.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: userMetadata,
+    });
+    if (error) {
+      // Do not reveal that an email was previously registered. Invalid
+      // passwords/emails get the same generic response as existing accounts.
+      return NextResponse.json(
+        { error: "Unable to complete registration. Check the details and try again." },
+        { status: 400 }
+      );
+    }
+    userId = data.user?.id;
+  } else {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: userMetadata,
+        emailRedirectTo: signupEmailRedirectTo(requestOrigin(req)),
       },
-      emailRedirectTo: signupEmailRedirectTo(requestOrigin(req)),
-    },
-  });
-  if (signUpError) {
-    return NextResponse.json({ error: signUpError.message }, { status: 400 });
+    });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (!shouldProvisionTeacherFromSignup(data.user)) {
+      // Duplicate email (dummy user): do not insert a teachers row.
+      return NextResponse.json({ ok: true, needsConfirmation: true });
+    }
+    userId = data.user?.id;
   }
 
-  if (!shouldProvisionTeacherFromSignup(signUpData.user)) {
-    // Duplicate email (dummy user) or missing user object. Same response as
-    // "check your inbox" so we do not leak whether the address is taken.
-    return NextResponse.json({ ok: true, needsConfirmation: true });
-  }
-
-  const userId = signUpData.user?.id;
   if (!userId) {
     return NextResponse.json(
       { error: "Sign up did not return a user" },
@@ -112,10 +159,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Create the teacher row before attempting sign-in. Production often
-  // requires email confirmation, so sign-in fails and we used to return
-  // early without a teachers row (missing trial → free limit banner).
-  const serviceClient = createServiceClient();
+  // Create teacher + onboarding rows before signing in. Preserve the previous
+  // non-beta email-confirmation behavior on managed and open self-hosted Auth.
   const ensured = await ensureTeacherForAuthUser(serviceClient, {
     userId,
     email,
