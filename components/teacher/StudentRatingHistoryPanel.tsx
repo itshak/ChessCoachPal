@@ -123,7 +123,7 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
   </div>
   {preview&&<div className="border border-border rounded-lg p-3 space-y-2 text-sm">
    <h3 className="font-semibold">Review {preview.username} — {preview.provider}</h3>
-   <ul className="list-disc pl-5">
+   <ul className="list-disc ps-5">
     {preview.ratings.map(x=><li key={x.timeControl}>
      {x.timeControl}: {x.rating??"unavailable"}{x.provisional===true?" (provisional)":""}
      {x.games!==null?" · "+x.games+" games":""}
@@ -139,7 +139,7 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
    <h3 className="font-semibold text-sm">Recent immutable observations</h3>
    {history.length===0?<p className="text-sm text-muted">No rating snapshots yet.</p>:
     <div className="overflow-x-auto"><table className="w-full text-xs">
-     <thead><tr className="text-left"><th>Recorded</th><th>Provider</th><th>Control</th><th>Rating</th><th>Source</th><th>Status</th></tr></thead>
+     <thead><tr className="text-start"><th>Recorded</th><th>Provider</th><th>Control</th><th>Rating</th><th>Source</th><th>Status</th></tr></thead>
      <tbody>{history.map(x=><tr key={x.id} className="border-t border-border">
       <td>{new Date(x.observed_at).toLocaleDateString()}</td><td>{x.provider}</td>
       <td>{x.time_control}</td><td>{x.rating}</td><td>{x.source}</td>

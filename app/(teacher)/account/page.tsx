@@ -1,4 +1,5 @@
 import Link from "next/link";
+import {getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { AccountSettings } from "@/components/teacher/AccountSettings";
 import { AccountMfaSettings } from "@/components/teacher/AccountMfaSettings";
@@ -36,6 +37,7 @@ export default async function AccountPage({
 }: {
   searchParams: Promise<{ hosted?: string }>;
 }) {
+  const t=await getTranslations("account");
   const supabase = await createClient();
   const {
     data: { user },
@@ -125,8 +127,8 @@ export default async function AccountPage({
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Account Settings</h1>
-      <Link href="/ai-connections" className="underline text-sm">Manage ChatGPT / Claude connections and revoke access</Link>
+      <h1 className="text-2xl font-bold mb-6">{t("heading")}</h1>
+      <Link href="/ai-connections" className="underline text-sm">{t("connections")}</Link>
 
       {params.hosted === "success" && (
         <p className="text-sm text-success mb-4">

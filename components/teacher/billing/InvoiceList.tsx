@@ -173,7 +173,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
     <div>
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-border">
-          <span className="text-sm text-muted mr-1">
+          <span className="text-sm text-muted me-1">
             {selected.size} selected
           </span>
           <Button
@@ -204,7 +204,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
           <button
             type="button"
             onClick={() => setSelected(new Set())}
-            className="text-xs text-muted hover:text-foreground cursor-pointer ml-auto"
+            className="text-xs text-muted hover:text-foreground cursor-pointer ms-auto"
           >
             Clear
           </button>
@@ -254,7 +254,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
                   status={inv.status}
                   partiallyPaid={inv.paidCents > 0}
                 />
-                <span className="text-sm font-semibold tabular-nums text-right">
+                <span className="text-sm font-semibold tabular-nums text-end">
                   {formatMoney(inv.subtotalCents, inv.currency)}
                   {inv.status === "sent" &&
                     inv.paidCents > 0 &&

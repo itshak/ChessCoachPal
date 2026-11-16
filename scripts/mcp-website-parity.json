@@ -1328,6 +1328,16 @@
       "parity": "not-applicable",
       "existingTools": [],
       "explanation": "Payment webhook; never expose as chat tool"
+    },
+    {
+      "path": "app/api/preferences/locale/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "ui",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Unauthenticated language cookie selection changes no teacher-owned business record. Authenticated preferredLocale is a separate owner-scoped profile field with ccp_teacher_profile_get/update parity."
     }
   ],
   "teacherPages": [

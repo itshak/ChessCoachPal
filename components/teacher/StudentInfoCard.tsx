@@ -220,7 +220,7 @@ function PracticeSinceField({
               if (addDate) saveValue(addDate);
             }}
             disabled={saving}
-            className="text-xs text-muted hover:text-primary text-left cursor-pointer"
+            className="text-xs text-muted hover:text-primary text-start cursor-pointer"
           >
             Use date student was added
           </button>

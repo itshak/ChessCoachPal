@@ -58,7 +58,7 @@ function EventList({ items, empty }: { items: EventRow[]; empty: string }) {
                   </div>
                 ) : null}
               </div>
-              <div className="text-sm text-muted text-right shrink-0">
+              <div className="text-sm text-muted text-end shrink-0">
                 <div>
                   {event.studentCount}{" "}
                   {event.studentCount === 1 ? "performer" : "performers"}

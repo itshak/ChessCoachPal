@@ -137,7 +137,7 @@ export function AccountMfaSettings(){
     </label>
     {verified.map(factor=><button type="button" key={factor.id}
      disabled={busy} onClick={()=>void disable(factor.id)}
-     className="mr-2 rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50">
+     className="me-2 rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50">
      Remove {factor.friendly_name||"authenticator"}
     </button>)}
     <button type="button" onClick={()=>void enable()} disabled={busy}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import {getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { AddStudentForm } from "@/components/teacher/AddStudentForm";
@@ -30,6 +31,7 @@ export default async function StudentsPage({
 }: {
   searchParams: Promise<{ show?: string }>;
 }) {
+  const t=await getTranslations("students");
   const supabase = await createClient();
   const {
     data: { user },
@@ -113,22 +115,21 @@ export default async function StudentsPage({
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Students</h1>
+        <h1 className="text-2xl font-bold">{t("title")}</h1>
         <p className="text-muted text-sm mt-1">
-          Select a student to review chess skills, learning observations,
-          attendance, lesson notes and family information.
+          {t("intro")}
         </p>
         <p className="text-xs text-muted mt-2">
           {showArchived ? (
             <Link href="/students" className="text-primary font-semibold">
-              Show active
+              {t("showActive")}
             </Link>
           ) : (
             <Link
               href="/students?show=archived"
               className="text-primary font-semibold"
             >
-              Show archived
+              {t("showArchived")}
             </Link>
           )}
         </p>
@@ -143,10 +144,10 @@ export default async function StudentsPage({
             <Card className="text-center text-muted py-12">
               <div className="text-4xl mb-3">👋</div>
               <p className="text-lg">
-                {showArchived ? "No archived students" : "No students yet"}
+                {showArchived ? t("noArchived") : t("noStudents")}
               </p>
               {!showArchived && (
-                <p className="text-sm">Add your first student using the form.</p>
+                <p className="text-sm">{t("addFirst")}</p>
               )}
             </Card>
           ) : (
@@ -162,7 +163,7 @@ export default async function StudentsPage({
                 const familyLine = guardianRow
                   ? familyDisplayName(guardianRow)
                   : student.parent_contact || null;
-                const subtitle = [familyLine, age !== null ? `age ${age}` : null]
+                const subtitle = [familyLine, age !== null ? t("age",{age}) : null]
                   .filter(Boolean)
                   .join(" · ");
 
@@ -181,8 +182,8 @@ export default async function StudentsPage({
                           <div className="font-semibold text-lg">
                             {student.name}
                             {student.archived_at && (
-                              <span className="ml-2 text-xs font-normal text-muted">
-                                Archived
+                              <span className="ms-2 text-xs font-normal text-muted">
+                                {t("archivedTag")}
                               </span>
                             )}
                           </div>
@@ -190,8 +191,8 @@ export default async function StudentsPage({
                             <div className="text-sm text-muted">{subtitle}</div>
                           )}
                         </div>
-                        <div className="text-right text-sm text-muted">
-                          {student.level ? student.level : "Chess learner"}
+                        <div className="text-end text-sm text-muted">
+                          {student.level ? student.level : t("learner")}
                         </div>                      </div>
                     </Card>
                   </Link>

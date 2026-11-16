@@ -241,7 +241,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
          onChange={e=>setEditDefaultNotes(e.target.value)}/>
        <button className={button} type="button" disabled={busy}
          onClick={()=>void updateDefault(item)}>Save default</button>
-       <button type="button" className="ml-2 underline" onClick={()=>setEditDefaultId("")}>Cancel</button>
+       <button type="button" className="ms-2 underline" onClick={()=>setEditDefaultId("")}>Cancel</button>
       </div>:<>
        <p><strong>{item.label}</strong> · {item.group_id?"Group":"Workplace"}</p>
        <a href={item.url} target="_blank" rel="noopener noreferrer"
@@ -281,7 +281,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
     {rows.map(row=><li key={row.id} className="border border-border rounded-lg p-3 flex justify-between gap-3">
      <div className="text-sm">
       <strong>{row.learning_materials?.title||"Unknown material"}</strong>
-      <span className="ml-2 text-muted">{row.stage} · {row.occurred_on}</span>
+      <span className="ms-2 text-muted">{row.stage} · {row.occurred_on}</span>
       {row.note&&<p className="text-muted whitespace-pre-wrap">{row.note}</p>}
       {row.learning_materials?.source_url&&<a className="text-primary underline" target="_blank" rel="noopener noreferrer" href={row.learning_materials.source_url}>Source link</a>}
      </div>

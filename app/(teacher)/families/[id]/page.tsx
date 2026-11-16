@@ -202,7 +202,7 @@ export default async function FamilyDetailPage({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-semibold">{student.name}</div>
-                    <div className="text-right text-sm text-muted">
+                    <div className="text-end text-sm text-muted">
                       {studentSlots.length > 0 ? (
                         studentSlots.map((slot, i) => (
                           <div key={i}>

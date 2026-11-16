@@ -256,7 +256,7 @@ export function PaymentsSettingsForm({
             <summary className="cursor-pointer font-semibold text-foreground select-none">
               How to set up Stripe
             </summary>
-            <ol className="mt-2 list-decimal pl-5 space-y-2 text-xs text-muted leading-relaxed">
+            <ol className="mt-2 list-decimal ps-5 space-y-2 text-xs text-muted leading-relaxed">
               <li>
                 In Stripe, open <strong className="font-semibold text-foreground">Developers → API keys</strong>{" "}
                 (live mode). Under <strong className="font-semibold text-foreground">Standard keys</strong>,
@@ -396,7 +396,7 @@ function KeyField({
       <span className="block text-xs font-semibold text-muted mb-1">
         {label}
         {configured && !clear && (
-          <span className="ml-2 font-normal text-success">configured</span>
+          <span className="ms-2 font-normal text-success">configured</span>
         )}
       </span>
       <input

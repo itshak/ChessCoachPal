@@ -246,6 +246,7 @@ const catalogue = [
       from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       format: z.enum(["json", "csv", "text"]).default("json"),
+      outputLocale:z.enum(["en","he","ru"]).optional(),
     }).strict(),
     scope: "coach:read", readOnly: true,
   },
@@ -570,17 +571,18 @@ const catalogue = [
   },
   {
     name:"ccp_teacher_profile_get",
-    description:"Read this coach's display name and public avatar reference without authentication credentials or account email.",
+    description:"Read this coach's display name, preferred UI language (en/he/ru) and avatar without credentials or email. Answer in the teacher's requested language.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_teacher_profile_update",
-    description:"Update the coach's display name or their own approved avatar URL after explicit confirmation. Password, login email and MFA are website-only secured account operations.",
+    description:"Update display name, preferredLocale (en/he/ru) or approved avatar after confirmation. Language changes UI and conversational defaults, not teaching data. Password, login email and MFA remain browser-secured.",
     schema:z.object({
       displayName:z.string().trim().min(1).max(200).optional(),
       avatarUrl:z.string().url().max(2048).nullable().optional(),
+      preferredLocale:z.enum(["en","he","ru"]).optional(),
       confirmed:z.literal(true),
-    }).strict().refine(a=>a.displayName!==undefined||a.avatarUrl!==undefined,"No profile changes"),
+    }).strict().refine(a=>a.displayName!==undefined||a.avatarUrl!==undefined||a.preferredLocale!==undefined,"No profile changes"),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -774,7 +776,7 @@ const catalogue = [
   },
   {
     name:"ccp_teacher_context_get",
-    description:"Trusted local teacher date, configured IANA timezone and owned workplaces. Read-only scheduling context; never assume the model clock determines today.",
+    description:"Read trusted local date, timezone, workplaces and preferredLocale (en/he/ru). Answer in the explicit user message language, else preferredLocale. Preserve student names and chess notation.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
@@ -1796,11 +1798,11 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_teacher_profile_get":
         return {data:await teacherProfileGet(db,teacherId)};
       case "ccp_teacher_profile_update": {
-        const a=args as {displayName?:string;avatarUrl?:string|null;confirmed:true};
+        const a=args as {displayName?:string;avatarUrl?:string|null;preferredLocale?:"en"|"he"|"ru";confirmed:true};
         // Approval is an MCP transport control, never an editable profile field.
         // Pass only the same domain fields accepted by the website.
         return {data:await teacherProfileUpdate(db,teacherId,{
-          displayName:a.displayName,avatarUrl:a.avatarUrl,
+          displayName:a.displayName,avatarUrl:a.avatarUrl,preferredLocale:a.preferredLocale,
         })};
       }
       case "ccp_calendar_feed_status":
@@ -2061,11 +2063,11 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherUnifiedLessonHistory(db,teacherId,a)};
       }
       case "ccp_reports_workplace_summary": {
-        const a = args as { workplaceId: string; from: string; to: string; format: "json" | "csv" | "text" };
+        const a = args as { workplaceId: string; from: string; to: string; format: "json" | "csv" | "text"; outputLocale?:"en"|"he"|"ru" };
         try {
           const result = await workplaceTeachingReport(db, teacherId, a.workplaceId, a.from, a.to);
-          if (a.format === "csv") return { data: { ...result, format: "csv", export: reportCsv(result.report) } };
-          if (a.format === "text") return { data: { ...result, format: "text", export: reportText(result.report) } };
+          if (a.format === "csv") return { data: { ...result, format: "csv", export: reportCsv(result.report,a.outputLocale) } };
+          if (a.format === "text") return { data: { ...result, format: "text", export: reportText(result.report,a.outputLocale) } };
           return { data: result };
         } catch (error) {
           if (error instanceof ReportServiceError) return { error: {

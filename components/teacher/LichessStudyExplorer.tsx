@@ -89,7 +89,7 @@ export function LichessStudyExplorer(){
    {!!result.studies.length&&<ul className="space-y-1">
     {result.studies.map(study=><li key={study.id}>
      <button type="button" onClick={()=>void openStudy(study.id)}
-      className="text-sm text-primary underline text-left">
+      className="text-sm text-primary underline text-start">
       {study.name} ({study.id})
      </button>
     </li>)}

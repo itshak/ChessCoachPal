@@ -49,7 +49,7 @@ export function FenReviewPanel(){
     value={fen} onChange={e=>{setFen(e.target.value);setBoard(null);}} />
   </label>
   <label className="text-sm">FEN source
-   <select className="ml-2 border rounded-lg bg-background p-2" value={source}
+   <select className="ms-2 border rounded-lg bg-background p-2" value={source}
     onChange={e=>{setSource(e.target.value as "manual"|"image");setBoard(null);}}>
     <option value="manual">Teacher-entered</option><option value="image">Image-derived proposal</option>
    </select>
@@ -60,7 +60,7 @@ export function FenReviewPanel(){
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}
   {board&&<div className="space-y-2 text-sm">
    <label className="block">Square editor — revalidate after every correction
-    <select aria-label="Piece to place" className="ml-2 border rounded-lg bg-background p-2"
+    <select aria-label="Piece to place" className="ms-2 border rounded-lg bg-background p-2"
       value={pieceToPlace} onChange={e=>setPieceToPlace(e.target.value)}>
       <option value=".">Empty square</option>
       {["P","N","B","R","Q","K","p","n","b","r","q","k"].map(piece=>

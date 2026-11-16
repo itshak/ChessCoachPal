@@ -442,7 +442,7 @@ export function ChessCoachWorkspace() {
           <ol className="space-y-2">
             {localSessions.map(item => (
               <li key={item.id}>
-                <button type="button" className="w-full rounded-lg border border-border p-2 text-left text-sm"
+                <button type="button" className="w-full rounded-lg border border-border p-2 text-start text-sm"
                   aria-current={selectedSessionId === item.id ? "true" : undefined}
                   onClick={() => setSelectedSessionId(item.id)}>
                   <time dateTime={item.starts_at}>{new Date(item.starts_at).toLocaleString("en-US", {

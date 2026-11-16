@@ -197,7 +197,7 @@ export function ProfilePhotoField({
           )}
           <span className="absolute inset-0 bg-black/35 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
         </span>
-        <span className="absolute -bottom-0.5 -right-0.5 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface text-foreground shadow-sm">
+        <span className="absolute -bottom-0.5 -end-0.5 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface text-foreground shadow-sm">
           <PencilIcon className="scale-90" />
         </span>
       </button>

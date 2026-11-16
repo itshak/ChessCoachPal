@@ -191,7 +191,7 @@ export function EventForm({
           </span>
         </label>
         {reminderSentAt && (
-          <p className="text-xs text-muted pl-6">
+          <p className="text-xs text-muted ps-6">
             Reminder already sent{" "}
             {new Date(reminderSentAt).toLocaleString(undefined, {
               dateStyle: "medium",

@@ -95,7 +95,7 @@ export function NotificationBell() {
           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
         {unread > 0 && (
-          <span className="absolute top-1 right-1 min-w-[1rem] h-4 px-1 rounded-full bg-error text-white text-[10px] font-bold flex items-center justify-center">
+          <span className="absolute top-1 end-1 min-w-[1rem] h-4 px-1 rounded-full bg-error text-white text-[10px] font-bold flex items-center justify-center">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -110,7 +110,7 @@ export function NotificationBell() {
         <div
           role="dialog"
           aria-label="Notifications"
-          className="fixed left-3 right-3 top-16 mt-1 md:absolute md:left-auto md:right-0 md:top-auto md:w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface shadow-lg z-50 overflow-hidden"
+          className="fixed start-3 end-3 top-16 mt-1 md:absolute md:start-auto md:end-0 md:top-auto md:w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface shadow-lg z-50 overflow-hidden"
         >
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
             <span className="text-sm font-semibold">Notifications</span>
@@ -134,7 +134,7 @@ export function NotificationBell() {
                 <button
                   key={n.id}
                   type="button"
-                  className={`w-full text-left px-3 py-2.5 border-b border-border last:border-0 hover:bg-surface-dim cursor-pointer ${
+                  className={`w-full text-start px-3 py-2.5 border-b border-border last:border-0 hover:bg-surface-dim cursor-pointer ${
                     n.read_at ? "" : "bg-primary/5"
                   }`}
                   onClick={() => {

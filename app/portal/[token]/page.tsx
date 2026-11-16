@@ -314,7 +314,7 @@ export default async function PortalPage({
           <span className="text-lg font-bold text-primary tracking-tight">
             {policy.studio_name || "ChessCoachPal"}
           </span>
-          <span className="text-muted text-sm ml-2">Family Portal</span>
+          <span className="text-muted text-sm ms-2">Family Portal</span>
         </div>
       </header>
 
@@ -490,7 +490,7 @@ export default async function PortalPage({
                           : "No expiry"}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <div className="text-lg font-bold tabular-nums">
                         {pkg.balance.remainingCredits}
                         <span className="text-sm font-normal text-muted">
@@ -558,7 +558,7 @@ export default async function PortalPage({
                       {inv.status === "sent" &&
                         !inv.stripe_checkout_url &&
                         policy.payment_instructions.trim() && (
-                          <p className="text-xs text-muted whitespace-pre-wrap text-right max-w-xs">
+                          <p className="text-xs text-muted whitespace-pre-wrap text-end max-w-xs">
                             {policy.payment_instructions}
                           </p>
                         )}

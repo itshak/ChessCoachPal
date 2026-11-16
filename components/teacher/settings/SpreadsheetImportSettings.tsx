@@ -307,24 +307,24 @@ export function SpreadsheetImportSettings({
             <div className="overflow-x-auto text-xs">
               <table className="w-full border-collapse">
                 <thead>
-                  <tr className="text-left text-muted border-b border-border">
-                    <th className="py-1 pr-2">Row</th>
-                    <th className="py-1 pr-2">Student</th>
-                    <th className="py-1 pr-2">Status</th>
-                    <th className="py-1 pr-2">Guardian</th>
-                    <th className="py-1 pr-2">Email</th>
+                  <tr className="text-start text-muted border-b border-border">
+                    <th className="py-1 pe-2">Row</th>
+                    <th className="py-1 pe-2">Student</th>
+                    <th className="py-1 pe-2">Status</th>
+                    <th className="py-1 pe-2">Guardian</th>
+                    <th className="py-1 pe-2">Email</th>
                   </tr>
                 </thead>
                 <tbody>
                   {previewRows.slice(0, 12).map((r) => (
                     <tr key={r.sourceRow} className="border-b border-border/60">
-                      <td className="py-1 pr-2">{r.sourceRow}</td>
-                      <td className="py-1 pr-2">{r.studentName}</td>
-                      <td className="py-1 pr-2">{r.archived ? "Archived" : "Active"}</td>
-                      <td className="py-1 pr-2">
+                      <td className="py-1 pe-2">{r.sourceRow}</td>
+                      <td className="py-1 pe-2">{r.studentName}</td>
+                      <td className="py-1 pe-2">{r.archived ? "Archived" : "Active"}</td>
+                      <td className="py-1 pe-2">
                         {r.guardianName || r.familyName || "—"}
                       </td>
-                      <td className="py-1 pr-2">{r.email || "—"}</td>
+                      <td className="py-1 pe-2">{r.email || "—"}</td>
                     </tr>
                   ))}
                 </tbody>

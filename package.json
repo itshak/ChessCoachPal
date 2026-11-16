@@ -23,7 +23,9 @@
     "schema:canonical:guard-test": "node --test scripts/pre1-schema-guard.test.mjs scripts/canonical-cutover-audit.test.mjs scripts/canonical-lessons-guard.test.mjs",
     "schema:attendance:inventory": "node scripts/canonical-cutover-audit.mjs",
     "schema:attendance:strict": "node scripts/canonical-cutover-audit.mjs --strict",
-    "schema:canonical:strict": "node scripts/pre1-schema-guard.mjs --strict-materials"
+    "schema:canonical:strict": "node scripts/pre1-schema-guard.mjs --strict-materials",
+    "i18n:check": "node scripts/i18n-catalog-check.mjs",
+    "pretypecheck": "npm run i18n:check"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
@@ -32,8 +34,10 @@
     "@tiptap/pm": "^3.31.3",
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
+    "gigachess": "0.5.0",
     "ics": "^3.12.0",
     "next": "16.4.1",
+    "next-intl": "4.15.1",
     "papaparse": "^5.5.4",
     "pdf-lib": "^1.17.1",
     "react": "19.2.3",
@@ -43,8 +47,7 @@
     "stripe": "^22.3.1",
     "web-push": "^3.6.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
-    "zod": "^4.6.7",
-    "gigachess": "0.5.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

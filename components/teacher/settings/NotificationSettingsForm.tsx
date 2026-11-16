@@ -136,7 +136,7 @@ export function NotificationSettingsForm({
           </span>
         </label>
         {bccEnabled && (
-          <div className="pl-6">
+          <div className="ps-6">
             <label
               htmlFor="bcc-email"
               className="block text-xs font-medium text-muted mb-1"

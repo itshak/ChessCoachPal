@@ -335,7 +335,7 @@ export function LessonCapturePreviewPanel() {
     </div>}
     {preview&&<div className="space-y-3 border-t border-border pt-4" aria-live="polite">
       <h3 className="font-semibold">Identity and enrollment review</h3>
-      <ul className="list-disc pl-5 text-sm">
+      <ul className="list-disc ps-5 text-sm">
         {preview.resolutions.map((r,i)=><li key={i}>
           {r.input}: {r.status==="resolved"?r.name+" ("+r.studentId+")":r.status}
           {r.candidates.length>0&&" — "+r.candidates.map(c=>c.name+" ["+c.id+"]").join(", ")}

@@ -56,7 +56,7 @@ export function CoachBriefingPanel({studentId}:{studentId:string}){
       <div>
         <h3 className="font-semibold">Recent lessons ({briefing.lessonHistory.total})</h3>
         {briefing.lessonHistory.entries.length===0?<p className="text-muted">No recorded lessons in this period.</p>:
-          <ul className="list-disc pl-5 space-y-1">
+          <ul className="list-disc ps-5 space-y-1">
             {briefing.lessonHistory.entries.slice(0,10).map(l=><li key={l.id}>
               {new Date(l.startsAt).toLocaleDateString()} · {l.durationMinutes} min ·
               {" "}{l.delivered?"Teaching evidenced":l.status+" (not evidenced)"} <span className="text-xs text-muted">({l.id})</span>
@@ -66,7 +66,7 @@ export function CoachBriefingPanel({studentId}:{studentId:string}){
       <div>
         <h3 className="font-semibold">Explicitly recorded material history ({briefing.materialCoverage.total})</h3>
         {briefing.materialCoverage.entries.length===0?<p className="text-muted">No coverage recorded yet.</p>:
-          <ul className="list-disc pl-5 space-y-1">
+          <ul className="list-disc ps-5 space-y-1">
             {briefing.materialCoverage.entries.slice(0,10).map(m=><li key={m.id}>
               {m.label||"Resource"} · {m.stage} · {m.occurredOn} <span className="text-xs text-muted">({m.id})</span>
             </li>)}
@@ -75,7 +75,7 @@ export function CoachBriefingPanel({studentId}:{studentId:string}){
       <div>
         <h3 className="font-semibold">Homework ({briefing.homework.total})</h3>
         {briefing.homework.entries.length===0?<p className="text-muted">No assignments recorded yet.</p>:
-          <ul className="list-disc pl-5 space-y-1">
+          <ul className="list-disc ps-5 space-y-1">
             {briefing.homework.entries.slice(0,10).map(h=><li key={h.id}>
               {h.material?.title??"Unspecified material"}{h.dueOn?" · Due "+h.dueOn:""}
               {h.needsCoachReview?" · Coach review needed":h.reviews.length?" · Reviewed":" · Not reviewed"}
@@ -88,10 +88,10 @@ export function CoachBriefingPanel({studentId}:{studentId:string}){
         <h3 className="font-semibold">Explicit training plans and goals ({briefing.trainingPlans.total})</h3>
         {briefing.trainingPlans.entries.length===0?
           <p className="text-muted">No coach-authored training plan is recorded.</p>:
-          <ul className="list-disc pl-5 space-y-2">
+          <ul className="list-disc ps-5 space-y-2">
             {briefing.trainingPlans.entries.map(plan=><li key={plan.id}>
               {plan.title} · {plan.status} · revision {plan.revision}
-              <ul className="list-disc pl-5">
+              <ul className="list-disc ps-5">
                 {plan.goals.map(goal=><li key={goal.id}>
                   {goal.title} · {goal.status}
                   {goal.targetDate?" · Target "+goal.targetDate:""}
@@ -104,7 +104,7 @@ export function CoachBriefingPanel({studentId}:{studentId:string}){
       <div>
         <h3 className="font-semibold">Coach-approved chess observations</h3>
         {briefing.verifiedObservations.length===0?<p className="text-muted">No verified observations.</p>:
-          <ul className="list-disc pl-5 space-y-1">
+          <ul className="list-disc ps-5 space-y-1">
             {briefing.verifiedObservations.slice(0,10).map(o=><li key={o.id}>
               {o.observation} · {o.observedAt.slice(0,10)} <span className="text-xs text-muted">({o.id})</span>
             </li>)}
@@ -112,7 +112,7 @@ export function CoachBriefingPanel({studentId}:{studentId:string}){
       </div>
       <div>
         <h3 className="font-semibold">Known unknowns and safeguards</h3>
-        <ul className="list-disc pl-5 space-y-1 text-muted">
+        <ul className="list-disc ps-5 space-y-1 text-muted">
           {briefing.unknowns.map((u,i)=><li key={i}>{u}</li>)}
         </ul>
       </div>

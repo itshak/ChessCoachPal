@@ -20,9 +20,12 @@ describe("deterministic coaching summaries", () => {
     expect(result.cancelled).toBe(1);
     expect(result.participants).toBe(4);
     expect(result.attendance).toEqual({ present: 2, absent: 1, late: 1, excused: 0, unmarked: 0 });
-    expect(reportCsv(result)).toContain('"Teaching minutes","60"');
+    expect(reportCsv(result)).toContain('"דקות הוראה","60"');
     expect(reportCsv(result)).toMatch(/^\uFEFF/);
-    expect(reportText(result)).toContain("Teaching minutes: 60");
+    expect(reportText(result)).toContain("דקות הוראה: 60");
+    expect(reportCsv(result,"ru")).toContain('"Минут занятий","60"');
+    expect(reportText(result,"ru")).toContain("Минут занятий: 60");
+    expect(reportCsv(result,"en")).toContain('"Teaching minutes","60"');
   });
   it("uses the workplace's local day, not the server's UTC day", () => {
     const rows = [{ id: "late", starts_at: "2027-03-31T22:30:00Z", duration_minutes: 30, status: "scheduled" }];

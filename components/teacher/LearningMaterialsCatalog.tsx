@@ -308,12 +308,12 @@ export function LearningMaterialsCatalog(){
       <p className="text-sm text-muted">Showing {items.length} of {total} stored materials</p>
       {items.map(material=><div key={material.id} className="rounded-lg border border-border p-3 space-y-1">
         <strong className="text-sm">{material.title}</strong>
-        <span className="ml-2 text-xs text-muted">{labels[material.kind]}</span>
-        <button className="ml-3 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>beginEdit(material)} aria-label={"Correct "+material.title}>Correct material</button>
-        <button className="ml-2 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>{void selectRelationshipSource(material);}} aria-label={"Link "+material.title}>Relationships</button>
+        <span className="ms-2 text-xs text-muted">{labels[material.kind]}</span>
+        <button className="ms-3 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>beginEdit(material)} aria-label={"Correct "+material.title}>Correct material</button>
+        <button className="ms-2 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>{void selectRelationshipSource(material);}} aria-label={"Link "+material.title}>Relationships</button>
         {material.archived_at
-          ?<button type="button" className="ml-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void changeMaterialLifecycle(material.id,material.revision,"restore");}} aria-label={"Restore "+material.title}>Restore</button>
-          :<button type="button" className="ml-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void previewMaterialArchive(material);}} aria-label={"Preview archive "+material.title}>Preview archive</button>}
+          ?<button type="button" className="ms-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void changeMaterialLifecycle(material.id,material.revision,"restore");}} aria-label={"Restore "+material.title}>Restore</button>
+          :<button type="button" className="ms-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void previewMaterialArchive(material);}} aria-label={"Preview archive "+material.title}>Preview archive</button>}
         {material.description&&<p className="text-sm">{material.description}</p>}
         {material.chess_games&&<p className="text-xs text-muted">{material.chess_games.white_player} – {material.chess_games.black_player} ({material.chess_games.result})</p>}
         {material.chess_puzzles&&<p className="text-xs font-mono break-all">FEN: {material.chess_puzzles.fen}</p>}

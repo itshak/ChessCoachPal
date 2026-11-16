@@ -71,7 +71,7 @@ export function BulkStudentLifecyclePanel(){
    Active workplace enrollments, groups and future sessions must be resolved first.
   </p>
   <label className="block text-sm mb-3">Action
-   <select className="rounded-lg border border-border bg-background p-2 ml-2"
+   <select className="rounded-lg border border-border bg-background p-2 ms-2"
     value={action} disabled={busy}
     onChange={e=>{setAction(e.target.value as "archive"|"reactivate");
      setChosen([]);reset();}}>

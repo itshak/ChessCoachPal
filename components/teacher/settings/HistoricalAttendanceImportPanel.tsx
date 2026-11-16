@@ -220,7 +220,7 @@ export function HistoricalAttendanceImportPanel(){
    </div>}
    <div className="overflow-x-auto text-xs">
     <table className="w-full">
-     <thead><tr className="text-left border-b border-border">
+     <thead><tr className="text-start border-b border-border">
       <th>Source row</th><th>Student ID</th><th>Workplace ID</th>
       <th>Precision</th><th>Date/period</th><th>Status</th><th>Count</th>
      </tr></thead>

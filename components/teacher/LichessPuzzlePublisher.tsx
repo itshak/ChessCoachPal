@@ -202,7 +202,7 @@ export function LichessPuzzlePublisher(){
       </div>))}
    </div>
    <p className="text-xs text-muted">Side to move: {preview.sideToMove}. SHA-256 review:
-    <code className="ml-1 break-all">{preview.sha256.slice(0,16)}…</code>
+    <code className="ms-1 break-all">{preview.sha256.slice(0,16)}…</code>
    </p>
    <details className="text-xs">
     <summary className="cursor-pointer">Inspect exact PGN to be sent</summary>

@@ -1053,8 +1053,10 @@ CREATE TABLE IF NOT EXISTS "public"."teachers" (
     "founding_number" integer,
     "stripe_cancel_at" timestamp with time zone,
     "avatar_url" "text",
+    "preferred_locale" "text" DEFAULT 'en'::"text" NOT NULL,
     "onboarding_tour_completed_at" timestamp with time zone,
     "calendar_token" "text" DEFAULT "rtrim"("translate"("encode"("extensions"."gen_random_bytes"(16), 'base64'::"text"), '+/'::"text", '-_'::"text"), '='::"text") NOT NULL,
+    CONSTRAINT "teachers_preferred_locale_check" CHECK (("preferred_locale" = ANY (ARRAY['en'::"text", 'he'::"text", 'ru'::"text"]))),
     CONSTRAINT "teachers_hosted_plan_check" CHECK (("hosted_plan" = ANY (ARRAY['free'::"text", 'trial'::"text", 'pro'::"text", 'founding'::"text", 'gifted'::"text"])))
 );
 

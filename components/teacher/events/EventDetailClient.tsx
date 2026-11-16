@@ -197,21 +197,21 @@ export function EventDetailClient({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-muted border-b border-border">
-                  <th className="py-2 pr-3 font-medium">Family</th>
-                  <th className="py-2 pr-3 font-medium">Status</th>
-                  <th className="py-2 pr-3 font-medium">Party size</th>
+                <tr className="text-start text-muted border-b border-border">
+                  <th className="py-2 pe-3 font-medium">Family</th>
+                  <th className="py-2 pe-3 font-medium">Status</th>
+                  <th className="py-2 pe-3 font-medium">Party size</th>
                   <th className="py-2 font-medium">Note</th>
                 </tr>
               </thead>
               <tbody>
                 {rsvps.map((rsvp) => (
                   <tr key={rsvp.id} className="border-b border-border last:border-0">
-                    <td className="py-2.5 pr-3 font-medium">{rsvp.guardianName}</td>
-                    <td className="py-2.5 pr-3">
+                    <td className="py-2.5 pe-3 font-medium">{rsvp.guardianName}</td>
+                    <td className="py-2.5 pe-3">
                       {RSVP_LABELS[rsvp.status] ?? rsvp.status}
                     </td>
-                    <td className="py-2.5 pr-3 tabular-nums">
+                    <td className="py-2.5 pe-3 tabular-nums">
                       {rsvp.partySize ?? "—"}
                     </td>
                     <td className="py-2.5 text-muted">

@@ -199,7 +199,7 @@ function PackageRow({
             </Link>
           </div>
         </div>
-        <div className="text-right shrink-0">
+        <div className="text-end shrink-0">
           <div className="text-lg font-bold tabular-nums">
             {pkg.remainingCredits}
             <span className="text-sm font-normal text-muted">

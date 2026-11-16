@@ -97,7 +97,7 @@ export function OptionalAiSettingsForm({
             <label className="block text-xs font-medium text-muted">
               API key
               {aiStatus.configured && (
-                <span className="ml-2 font-normal">
+                <span className="ms-2 font-normal">
                   (saved: {aiStatus.masked})
                 </span>
               )}

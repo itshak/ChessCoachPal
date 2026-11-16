@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import {useTranslations} from "next-intl";
+import {LanguageSwitcher} from "@/components/locale/LanguageSwitcher";
 import { useRouter } from "next/navigation";
 import { ProfilePhotoField } from "@/components/avatar/ProfilePhotoField";
 import { TimezoneSettingsForm } from "@/components/teacher/settings/TimezoneSettingsForm";
@@ -28,6 +30,7 @@ export function AccountSettings({
   children?: ReactNode;
 }) {
   const router = useRouter();
+  const t = useTranslations("account");
 
   const [name, setName] = useState(initialName);
   const [nameSaving, setNameSaving] = useState(false);
@@ -76,11 +79,11 @@ export function AccountSettings({
         const data = await res.json();
         setNameMessage({ type: "error", text: data.error ?? "Failed to update name" });
       } else {
-        setNameMessage({ type: "success", text: "Name updated" });
+        setNameMessage({ type: "success", text: t("nameUpdated") });
         router.refresh();
       }
     } catch {
-      setNameMessage({ type: "error", text: "Something went wrong" });
+      setNameMessage({ type: "error", text: t("saveFailed") });
     } finally {
       setNameSaving(false);
     }
@@ -92,7 +95,7 @@ export function AccountSettings({
 
     const email = newEmail.trim();
     if (!email || email === currentEmail) {
-      setEmailMessage({ type: "error", text: "Enter a new email address" });
+      setEmailMessage({ type: "error", text: t("emailRequired") });
       return;
     }
 
@@ -108,12 +111,12 @@ export function AccountSettings({
       } else {
         setEmailMessage({
           type: "success",
-          text: "Check both inboxes to confirm the change.",
+          text: t("checkInboxes"),
         });
         setNewEmail("");
       }
     } catch {
-      setEmailMessage({ type: "error", text: "Something went wrong" });
+      setEmailMessage({ type: "error", text: t("saveFailed") });
     } finally {
       setEmailSaving(false);
     }
@@ -124,12 +127,12 @@ export function AccountSettings({
     setPwMessage(null);
 
     if (newPassword.length < 6) {
-      setPwMessage({ type: "error", text: "New password must be at least 6 characters" });
+      setPwMessage({ type: "error", text: t("passwordTooShort") });
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setPwMessage({ type: "error", text: "Passwords don't match" });
+      setPwMessage({ type: "error", text: t("passwordMismatch") });
       return;
     }
 
@@ -144,7 +147,7 @@ export function AccountSettings({
       });
 
       if (signInError) {
-        setPwMessage({ type: "error", text: "Current password is incorrect" });
+        setPwMessage({ type: "error", text: t("incorrectPassword") });
         setPwSaving(false);
         return;
       }
@@ -154,14 +157,14 @@ export function AccountSettings({
       if (error) {
         setPwMessage({ type: "error", text: error.message });
       } else {
-        setPwMessage({ type: "success", text: "Password updated" });
+        setPwMessage({ type: "success", text: t("passwordUpdated") });
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
         setPasswordOpen(false);
       }
     } catch {
-      setPwMessage({ type: "error", text: "Something went wrong" });
+      setPwMessage({ type: "error", text: t("saveFailed") });
     } finally {
       setPwSaving(false);
     }
@@ -171,9 +174,9 @@ export function AccountSettings({
     <div className="space-y-6">
       <Card padding="lg">
         <div className="flex items-start justify-between gap-3 mb-5">
-          <h2 className="text-lg font-semibold">Profile</h2>
-          <div className="text-right shrink-0">
-            <div className="text-xs text-muted">Member since</div>
+          <h2 className="text-lg font-semibold">{t("profile")}</h2>
+          <div className="text-end shrink-0">
+            <div className="text-xs text-muted">{t("memberSince")}</div>
             <div className="text-sm font-medium">{memberSinceLabel}</div>
           </div>
         </div>
@@ -188,7 +191,7 @@ export function AccountSettings({
             <form onSubmit={handleNameSave} className="flex-1 min-w-0 space-y-2 pt-0.5">
               <div>
                 <label htmlFor="displayName" className="text-sm font-medium block mb-1">
-                  Display name
+                  {t("displayName")}
                 </label>
                 <input
                   id="displayName"
@@ -205,7 +208,7 @@ export function AccountSettings({
                 </p>
               )}
               <Button type="submit" size="sm" disabled={nameSaving || name.trim() === initialName}>
-                {nameSaving ? "Saving..." : "Save name"}
+                {nameSaving ? t("saving") : t("saveName")}
               </Button>
             </form>
           </div>
@@ -213,7 +216,7 @@ export function AccountSettings({
           <div className="pt-1 border-t border-border space-y-3">
             <div className="flex items-start justify-between gap-3 pt-4">
               <div className="min-w-0 text-sm">
-                <div className="text-xs text-muted mb-0.5">Email</div>
+                <div className="text-xs text-muted mb-0.5">{t("email")}</div>
                 <div className="font-medium break-all">{currentEmail}</div>
               </div>
               <Button
@@ -229,7 +232,7 @@ export function AccountSettings({
                 }}
                 aria-expanded={emailOpen}
               >
-                {emailOpen ? "Cancel" : "Change"}
+                {emailOpen ? t("cancel") : t("change")}
               </Button>
             </div>
 
@@ -237,7 +240,7 @@ export function AccountSettings({
               <form onSubmit={handleEmailChange} className="space-y-3">
                 <div>
                   <label htmlFor="newEmail" className="text-sm font-medium block mb-1">
-                    New email
+                    {t("newEmail")}
                   </label>
                   <input
                     id="newEmail"
@@ -250,7 +253,7 @@ export function AccountSettings({
                     autoFocus
                   />
                   <p className="text-xs text-muted mt-1.5">
-                    Confirmations go to both addresses.
+                    {t("emailHint")}
                   </p>
                 </div>
                 {emailMessage && (
@@ -259,7 +262,7 @@ export function AccountSettings({
                   </p>
                 )}
                 <Button type="submit" size="sm" disabled={emailSaving || !newEmail.trim()}>
-                  {emailSaving ? "Sending..." : "Send confirmation"}
+                  {emailSaving ? t("sending") : t("confirmEmail")}
                 </Button>
               </form>
             )}
@@ -268,6 +271,7 @@ export function AccountSettings({
           <div className="pt-1 border-t border-border">
             <div className="pt-4">
               <TimezoneSettingsForm timezone={timezone} embedded />
+              <div className="pt-4"><LanguageSwitcher authenticated /></div>
             </div>
           </div>
         </div>
@@ -278,9 +282,9 @@ export function AccountSettings({
       <Card padding="lg">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">Password</h2>
+            <h2 className="text-lg font-semibold">{t("password")}</h2>
             {!passwordOpen && (
-              <p className="text-sm text-muted mt-1">Update your sign-in password.</p>
+              <p className="text-sm text-muted mt-1">{t("passwordHint")}</p>
             )}
           </div>
           <Button
@@ -293,7 +297,7 @@ export function AccountSettings({
             }}
             aria-expanded={passwordOpen}
           >
-            {passwordOpen ? "Cancel" : "Change"}
+            {passwordOpen ? t("cancel") : t("change")}
           </Button>
         </div>
 
@@ -301,7 +305,7 @@ export function AccountSettings({
           <form onSubmit={handlePasswordChange} className="space-y-3 mt-4">
             <div>
               <label htmlFor="currentPassword" className="text-sm font-medium block mb-1">
-                Current password
+                {t("currentPassword")}
               </label>
               <input
                 id="currentPassword"
@@ -315,7 +319,7 @@ export function AccountSettings({
             </div>
             <div>
               <label htmlFor="newPassword" className="text-sm font-medium block mb-1">
-                New password
+                {t("newPassword")}
               </label>
               <input
                 id="newPassword"
@@ -329,7 +333,7 @@ export function AccountSettings({
             </div>
             <div>
               <label htmlFor="confirmPassword" className="text-sm font-medium block mb-1">
-                Confirm new password
+                {t("confirmPassword")}
               </label>
               <input
                 id="confirmPassword"
@@ -351,7 +355,7 @@ export function AccountSettings({
               size="sm"
               disabled={pwSaving || !currentPassword || !newPassword || !confirmPassword}
             >
-              {pwSaving ? "Updating..." : "Update password"}
+              {pwSaving ? t("updating") : t("updatePassword")}
             </Button>
           </form>
         )}
