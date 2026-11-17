@@ -102,6 +102,10 @@ migration review and final licensing review first.
    run the full release test matrix before claiming support. Do not introduce
    per-locale copies of MCP tools or alter existing status/error semantics.
 
+For the prepublication real ChatGPT/Claude matrix, recipient-language review and
+real assistive-technology sign-off, use
+[Multilingual live-client acceptance](multilingual-live-client-acceptance.md).
+
 See [ADR-0009](adr/0009-localization-mcp-presentation.md) and
 [ADR-0010](adr/0010-family-communications-locale-and-unicode-pdf.md), and the
 active `openspec/changes/2026-11-17-introduce-multilingual-support` checklist.

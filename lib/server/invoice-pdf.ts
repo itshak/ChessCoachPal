@@ -170,7 +170,7 @@ export async function buildInvoicePdf(
     // Font-width clipping prevents translated and mixed-direction descriptions
     // from overlapping the immutable monetary amount on either side.
     draw(truncate(item.description,390,10), { size: 10 });
-    draw(formatMoney(item.amountCents, input.currency), {
+    draw(formatMoney(item.amountCents, input.currency,locale), {
       size: 10,
       x: 480,
     });
@@ -190,7 +190,7 @@ export async function buildInvoicePdf(
   });
   y -= 20;
   draw(labels.total, { font: bold, size: 12 });
-  draw(formatMoney(input.subtotalCents, input.currency), {
+  draw(formatMoney(input.subtotalCents, input.currency,locale), {
     font: bold,
     size: 12,
     x: 480,
@@ -202,10 +202,10 @@ export async function buildInvoicePdf(
     }
     y -= 17;
     draw(labels.paid, { size: 11 });
-    draw(formatMoney(input.paidCents ?? 0, input.currency), { size: 11, x: 480 });
+    draw(formatMoney(input.paidCents ?? 0, input.currency,locale), { size: 11, x: 480 });
     y -= 18;
     draw(labels.balance, { font: bold, size: 11 });
-    draw(formatMoney(Math.max(0, input.subtotalCents - (input.paidCents ?? 0)), input.currency), {
+    draw(formatMoney(Math.max(0, input.subtotalCents - (input.paidCents ?? 0)), input.currency,locale), {
       font: bold, size: 11, x: 480,
     });
   }

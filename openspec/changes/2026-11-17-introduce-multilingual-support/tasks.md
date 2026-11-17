@@ -28,13 +28,13 @@
 - [ ] D1. Replace hardcoded en-US/uncontrolled Date.toLocaleString() in UI and human-readable exports with centralized Intl formatting; retain IANA timezone and stable ISO/UTC machine contracts.
 - [x] D2. Extend shared reporting domain and matching website/MCP request with optional outputLocale, deterministic locale precedence and translated JSON presentation/TXT/CSV labels without modifying stable machine fields.
 - [ ] D3. Preserve UTF-8 BOM, safe CSV escaping/formula injection protection, Unicode and Hebrew PDF embedding; test identical website/MCP exported bytes for same requested locale.
-- [ ] D4. Localize event/reminder/email and portal messages using explicit recipient/workplace/portal language, including HTML lang/dir and plain text, without sending as a side effect of language selection.
+- [x] D4. Localize event/reminder/email and portal messages using explicit recipient/workplace/portal language, including HTML lang/dir and plain text, without sending as a side effect of language selection.
 - [ ] D5. Extend optional AI note-drafting to accept reviewed outputLocale while preserving evidence and explicit teacher approval; prevent inferred mastery/ratings or silent translation of persisted notes.
 - [ ] D6. Audit historical spreadsheet import, Russian/Hebrew column headers and name alias normalization; retain exact matching and ambiguous-name fail-closed behavior.
 
 ## E. Multilingual MCP experience and safety
-- [ ] E1. Keep stable ccp_* tool names, input/output schema property names, error codes, scopes, ordered tools/list and single /mcp connection across locales; add a catalog invariance test.
-- [ ] E2. Provide concise locale-language guidance in existing MCP tool descriptions/initialization only where protocol/client support is proven; instructions prioritize explicit user message language over preferredLocale for prose.
+- [x] E1. Keep stable ccp_* tool names, input/output schema property names, error codes, scopes, ordered tools/list and single /mcp connection across locales; add a catalog invariance test.
+- [x] E2. Provide concise locale-language guidance in existing MCP tool descriptions/initialization only where protocol/client support is proven; instructions prioritize explicit user message language over preferredLocale for prose.
 - [ ] E3. Add or reuse localized displayMessage/userMessage for human-facing errors where useful, never replacing structured error code or technical diagnostic; apply outputLocale only to human-formatted output.
 - [ ] E4. Test Hebrew/Russian conversational synthetic capture and readback, alias ambiguity, report requested in another language, one-group-lesson count and no accidental write/permission bypass.
 - [ ] E5. Independently verify real ChatGPT and Claude multilingual workflows prepublication, documenting client limitations without treating model-only responses as persistence evidence.
