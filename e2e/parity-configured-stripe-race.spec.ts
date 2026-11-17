@@ -89,6 +89,18 @@ test("PARITY:PARITY-configured-checkout-independent-two-claim-race keeps only on
    }),
   ]);
   const webOk=site.status()===200,agentOk=agent.error===undefined;
+  if(Number(webOk)+Number(agentOk)!==1){
+    // Synthetic data only. Keep the independent concurrency assertion strict;
+    // expose the real provider, RPC, website and MCP results for diagnosis.
+    const observed=await admin.from("invoices")
+      .select("stripe_checkout_session_id,stripe_checkout_url")
+      .eq("id",invoiceId).single();
+    console.error("Checkout claim race diagnostics",JSON.stringify({
+      websiteStatus:site.status(),websiteResponse:await site.text(),
+      mcpResponse:agent,minted,expired:[...expired],
+      stored:observed.data,readError:observed.error?.code,
+    }));
+  }
   expect(Number(webOk)+Number(agentOk)).toBe(1);
   if(!webOk)expect(site.status()).toBe(409);
   if(!agentOk)expect(agent.error?.code).toBe("CONFLICT");
