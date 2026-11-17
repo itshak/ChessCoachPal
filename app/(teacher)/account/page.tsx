@@ -1,5 +1,7 @@
 import Link from "next/link";
 import {getTranslations} from "next-intl/server";
+import {resolveRequestLocale} from "@/i18n/server";
+import {localeDetails} from "@/i18n/locales";
 import { createClient } from "@/lib/supabase/server";
 import { AccountSettings } from "@/components/teacher/AccountSettings";
 import { AccountMfaSettings } from "@/components/teacher/AccountMfaSettings";
@@ -30,7 +32,10 @@ import {
 } from "@/lib/server/entitlements";
 import { isHostedCheckoutConfigured } from "@/lib/hosted-billing/stripe";
 
-export const metadata = { title: "Account" };
+export async function generateMetadata(){
+  const t=await getTranslations("account");
+  return {title:t("heading")};
+}
 
 export default async function AccountPage({
   searchParams,
@@ -119,7 +124,7 @@ export default async function AccountPage({
   const accountEmail = user.email ?? teacher?.email ?? "";
   const memberSinceLabel = new Date(
     teacher?.created_at ?? user.created_at
-  ).toLocaleDateString(undefined, {
+  ).toLocaleDateString(localeDetails[await resolveRequestLocale()].intl, {
     year: "numeric",
     month: "long",
     day: "numeric",

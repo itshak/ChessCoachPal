@@ -20,10 +20,12 @@ test("PARITY: teacher language preference persists identically via website and M
     expect(context.error).toBeUndefined();
     expect(context.data.preferredLocale).toBe("he");
     await page.goto("/account");
+    await expect(page).toHaveTitle(/הגדרות חשבון/);
     await expect(page.locator("html")).toHaveAttribute("lang","he");
     await expect(page.locator("html")).toHaveAttribute("dir","rtl");
     await expect(page.getByLabel("שפת הממשק").first()).toHaveValue("he");
     await page.goto("/schedule");
+    await expect(page).toHaveTitle(/לוח שיעורים/);
     await expect(page.getByRole("heading",{name:"לוח שיעורים"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"שיעורים קבועים"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"זיכויי שיעורי השלמה"})).toBeVisible();
@@ -53,10 +55,12 @@ test("PARITY: teacher language preference persists identically via website and M
     expect(mcp.error).toBeUndefined();
     expect(mcp.data.ok).toBe(true);
     await page.goto("/account");
+    await expect(page).toHaveTitle(/Настройки аккаунта/);
     await expect(page.locator("html")).toHaveAttribute("lang","ru");
     await expect(page.locator("html")).toHaveAttribute("dir","ltr");
     await expect(page.getByLabel("Язык интерфейса").first()).toHaveValue("ru");
     await page.goto("/schedule");
+    await expect(page).toHaveTitle(/Расписание занятий/);
     await expect(page.getByRole("heading",{name:"Расписание занятий"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"Повторяющиеся уроки"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"Кредиты на отработки"})).toBeVisible();
@@ -101,6 +105,9 @@ test("anonymous locale cookie drives SSR document language and direction",async(
     expect(reply.status(),await reply.text()).toBe(200);
     const page = await context.newPage();
     await page.goto("/");
+    await page.goto("/login");
+    await expect(page).toHaveTitle(/כניסה/);
+    await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("lang","he");
     await expect(page.locator("html")).toHaveAttribute("dir","rtl");
     await expect(page.getByRole("heading",{name:"יותר זמן לאימון. פחות זמן לניהול."})).toBeVisible();
@@ -109,6 +116,9 @@ test("anonymous locale cookie drives SSR document language and direction",async(
     });
     expect(next.status()).toBe(200);
     await page.reload();
+    await page.goto("/login");
+    await expect(page).toHaveTitle(/Вход/);
+    await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("lang","ru");
     await expect(page.locator("html")).toHaveAttribute("dir","ltr");
     await expect(page.getByRole("heading",{name:"Больше времени на шахматы. Меньше — на администрирование."})).toBeVisible();

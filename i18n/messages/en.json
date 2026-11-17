@@ -307,7 +307,9 @@
     "recordAttendance": "Record attendance",
     "topicPlaceholder": "King and pawn endgames",
     "notePlaceholder": "Practiced pawn opposition and triangulation",
-    "minuteCount": "{count} min"
+    "minuteCount": "{count} min",
+    "removedAttendanceAudited": "{count, plural, one {# removed attendance row audited} other {# removed attendance rows audited}}",
+    "metadataDescription": "Workplaces, classes, lessons and per-student attendance"
   },
   "students": {
     "title": "Students",
@@ -1660,7 +1662,8 @@
     "add": "Add",
     "durationHint": "These durations are offered when creating weekly slots and one-off lessons.",
     "saving": "Saving...",
-    "save": "Save Studio Settings"
+    "save": "Save Studio Settings",
+    "contactPlaceholder": "e.g. (555) 123-4567 · hello@your-studio.com"
   },
   "ratesSettings": {
     "rateError": "Enter a valid default rate (e.g. 45.00)",
@@ -2510,9 +2513,11 @@
   },
   "invoicePage": {
     "back": "Billing",
-    "family": "Family"
+    "family": "Family",
+    "metadataTitle": "Invoice"
   },
   "eventPage": {
-    "back": "Events"
+    "back": "Events",
+    "metadataTitle": "Event"
   }
 }

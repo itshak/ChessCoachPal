@@ -34,6 +34,35 @@ describe("suggestColumnMapping", () => {
       email:"Эл. почта",phone:"Телефон",student_birthdate:"Дата рождения",level:"Уровень"});
   });
 
+  it("never infers a student from parent/family column names in any supported language",()=>{
+    for(const columns of [
+      ["Parent Name","Family Name","Email"],
+      ["שם ההורה","שם המשפחה","דוא״ל"],
+      ["Имя родителя","Название семьи","Эл. почта"],
+    ]){
+      const mapping=suggestColumnMapping(columns);
+      expect(mapping.student_name).toBeUndefined();
+      expect(mapping.guardian_name).toBe(columns[0]);
+      expect(mapping.family_name).toBe(columns[1]);
+    }
+  });
+
+  it("prefers explicit student header over generic Name, but refuses ambiguous student identities",()=>{
+    const chosen=suggestColumnMapping(["Name","Student Name","Parent Name"]);
+    expect(chosen.student_name).toBe("Student Name");
+    expect(chosen.guardian_name).toBe("Parent Name");
+    expect(suggestColumnMapping(["Child Name","Student Name"]).student_name).toBeUndefined();
+    expect(suggestColumnMapping(["Student Name","Student Name"])
+      .student_name).toBeUndefined();
+  });
+
+  it("does not arbitrarily select one of multiple email or guardian contact columns",()=>{
+    const mapping=suggestColumnMapping(["Student Name","Email","Parent Email","Guardian Name","Parent Name"]);
+    expect(mapping.student_name).toBe("Student Name");
+    expect(mapping.email).toBeUndefined();
+    expect(mapping.guardian_name).toBeUndefined();
+  });
+
   it("maps a lone Name column to student_name", () => {
     const mapping = suggestColumnMapping(["Name", "Email"]);
     expect(mapping.student_name).toBe("Name");

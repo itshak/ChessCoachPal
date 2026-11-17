@@ -9,7 +9,10 @@ import { oneToOne } from "@/lib/schedule";
 import { InvoiceDetailClient } from "@/components/teacher/billing/InvoiceDetailClient";
 import { describeCreditPackage } from "@/lib/credits";
 
-export const metadata = { title: "Invoice" };
+export async function generateMetadata(){
+  const t=await getTranslations("invoicePage");
+  return {title:t("metadataTitle")};
+}
 
 interface PackageRow {
   student_id: string;

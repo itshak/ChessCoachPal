@@ -7,7 +7,10 @@ import { oneToOne } from "@/lib/schedule";
 import { EventDetailClient } from "@/components/teacher/events/EventDetailClient";
 import type { RsvpStatus } from "@/lib/supabase/types";
 
-export const metadata = { title: "Event" };
+export async function generateMetadata(){
+  const t=await getTranslations("eventPage");
+  return {title:t("metadataTitle")};
+}
 
 export default async function EventDetailPage({
   params,

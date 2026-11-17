@@ -731,9 +731,9 @@ export function ChessCoachWorkspace() {
               <button type="button" className="text-sm text-primary underline"
                 onClick={()=>void loadRosterAudit()}>{t("viewCorrectionHistory")}</button>
               {rosterAudit.map(entry=><p key={entry.id} className="text-xs text-muted mt-1">
-                {new Date(entry.createdAt).toLocaleString()} — {entry.reason}
-                {" · "}{entry.previousStudentIds.length} to {entry.correctedStudentIds.length}
-                {" · "}{entry.removedAttendanceCount} removed attendance row(s) audited
+                {new Date(entry.createdAt).toLocaleString(lang,{timeZone:timezone})} — {entry.reason}
+                {" · "}{entry.previousStudentIds.length} → {entry.correctedStudentIds.length}
+                {" · "}{t("removedAttendanceAudited",{count:entry.removedAttendanceCount})}
               </p>)}
             </div>
           </form>}

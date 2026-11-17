@@ -12,7 +12,10 @@ import {CanonicalSlotManager,type Slot} from "@/components/teacher/schedule/Cano
 import {CanonicalMakeupPanel} from "@/components/teacher/schedule/CanonicalMakeupPanel";
 import Link from "next/link";
 
-export const metadata={title:"Schedule"};
+export async function generateMetadata(){
+  const t=await getTranslations("calendar");
+  return {title:t("heading")};
+}
 
 export default async function SchedulePage({
  searchParams,

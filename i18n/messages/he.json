@@ -307,7 +307,9 @@
     "recordAttendance": "רישום נוכחות",
     "topicPlaceholder": "סיומי מלך ורגלי",
     "notePlaceholder": "תרגלנו אופוזיציה ומשולשים בסיומי רגלים",
-    "minuteCount": "{count} דקות"
+    "minuteCount": "{count} דקות",
+    "removedAttendanceAudited": "{count, plural, one {רשומת נוכחות אחת שהוסרה תועדה בביקורת} other {# רשומות נוכחות שהוסרו תועדו בביקורת}}",
+    "metadataDescription": "מקומות עבודה, קבוצות, שיעורים ונוכחות לכל תלמיד"
   },
   "students": {
     "title": "תלמידים",
@@ -1660,7 +1662,8 @@
     "add": "הוספה",
     "durationHint": "משכי זמן אלה יוצעו כשיוצרים שיעורים שבועיים או חד-פעמיים.",
     "saving": "שומרים…",
-    "save": "שמירת הגדרות המועדון"
+    "save": "שמירת הגדרות המועדון",
+    "contactPlaceholder": "לדוגמה 050-123-4567 · hello@your-studio.com"
   },
   "ratesSettings": {
     "rateError": "הזינו תעריף ברירת מחדל תקין (למשל 45.00)",
@@ -2510,9 +2513,11 @@
   },
   "invoicePage": {
     "back": "חיובים",
-    "family": "משפחה"
+    "family": "משפחה",
+    "metadataTitle": "חשבונית"
   },
   "eventPage": {
-    "back": "אירועים"
+    "back": "אירועים",
+    "metadataTitle": "אירוע"
   }
 }

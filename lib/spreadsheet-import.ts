@@ -125,51 +125,32 @@ function normalizeHeader(h: string): string {
     .replace(/\s+/g, " ");
 }
 
-/** Suggest a column mapping from header labels (no AI). */
+/**
+ * Suggest only unambiguous EXPLICIT header synonyms. A former substring
+ * heuristic treated e.g. "Parent Name" as a student "Name", silently
+ * importing a guardian under the child's identity. With multilingual column
+ * names we must fail closed instead of guessing where family/student roles
+ * overlap. Callers expose the unassigned columns for manual review.
+ */
 export function suggestColumnMapping(headers: string[]): ColumnMapping {
-  const normalized = headers.map((h) => ({ raw: h, norm: normalizeHeader(h) }));
+  const normalized = headers.map((raw) => ({raw, norm: normalizeHeader(raw)}));
   const used = new Set<string>();
   const mapping: ColumnMapping = {};
-
   for (const field of IMPORT_FIELDS) {
-    const synonyms = HEADER_SYNONYMS[field];
-    const hit = normalized.find(
-      (h) =>
-        !used.has(h.raw) &&
-        synonyms.some((s) => h.norm === s || h.norm.includes(s))
-    );
-    if (hit) {
-      // Prefer exact synonym match over includes for ambiguous "name"
-      const exact = normalized.find(
-        (h) =>
-          !used.has(h.raw) && synonyms.some((s) => h.norm === s)
-      );
-      const chosen = exact ?? hit;
-      // "name" alone maps to student_name only if no better student header
-      if (
-        field === "student_name" ||
-        chosen.norm !== "name" ||
-        !mapping.student_name
-      ) {
-        if (field === "guardian_name" && chosen.norm === "name") {
-          continue;
-        }
-        mapping[field] = chosen.raw;
-        used.add(chosen.raw);
-      }
-    }
+    const synonyms = new Set(HEADER_SYNONYMS[field].map(normalizeHeader));
+    const candidates = normalized.filter(h => !used.has(h.raw) && synonyms.has(h.norm));
+    // A lone "Name" column can mean the pupil only when no stronger student
+    // header exists; "Parent Name"/"Family Name" are NEVER student aliases.
+    // If two distinct specific aliases exist for one field, let the teacher
+    // choose instead of arbitrarily taking one based on spreadsheet order.
+    const specific = field === "student_name"
+      ? candidates.filter(h=>h.norm!=="name")
+      : candidates;
+    const choices=specific.length?specific:candidates;
+    if (choices.length!==1) continue;
+    mapping[field]=choices[0].raw;
+    used.add(choices[0].raw);
   }
-
-  // If we still lack student_name but have a lone "name" column
-  if (!mapping.student_name) {
-    const nameCol = normalized.find(
-      (h) => !used.has(h.raw) && h.norm === "name"
-    );
-    if (nameCol) {
-      mapping.student_name = nameCol.raw;
-    }
-  }
-
   return mapping;
 }
 

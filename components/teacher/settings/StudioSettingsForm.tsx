@@ -130,6 +130,7 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
               value={studioWebsite}
               onChange={(e) => setStudioWebsite(e.target.value)}
               placeholder="https://your-studio.com"
+              dir="ltr"
               maxLength={300}
               className={`${inputClass} w-full`}
             />
@@ -142,7 +143,7 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
               type="text"
               value={studioContact}
               onChange={(e) => setStudioContact(e.target.value)}
-              placeholder="e.g. (555) 123-4567 · hello@your-studio.com"
+              placeholder={t("contactPlaceholder")}
               maxLength={300}
               className={`${inputClass} w-full`}
             />
