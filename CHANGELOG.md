@@ -6,6 +6,18 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 _Changes for the next release go here._
 
+## [0.1.5] - 2026-11-17
+
+### Fixed
+- Repair missing PostgreSQL lifecycle-receipt and historical-attendance RPCs and evidence tables on existing Coolify deployments without resetting teacher data.
+- Add an audited, forward-only database schema extension with a preserved canonical fresh-install baseline and safe migration ledger.
+
+### Changed
+- Allow up to 250 directly typed historical-attendance rows per reviewed MCP import (256 KiB input cap); keep private staged spreadsheet imports for larger datasets.
+
+### Tests
+- Add boundary validation for direct historical import and verify isolated archive, historical summary, replay and rollback behavior.
+
 ## [0.1.4] - 2026-11-17
 
 _Changes for the next release go here._
