@@ -6,10 +6,24 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 _Changes for the next release go here._
 
-### Changed
-- Prepare the permanent canonical chesscoachpal.com / api.chesscoachpal.com private-beta deployment on the existing Coolify services, preserving the existing database, invite-code-only access and waitlist.
-- Replace the obsolete Vercel release deployment with restricted Coolify release deployment and canonical-domain checks. Live migration and email verification require independent acceptance before announcing completion.
+## [0.1.4] - 2026-11-17
 
+_Changes for the next release go here._
+
+### Added
+- Private-beta email ownership verification using GoTrue's signed single-use invitation links, sent through the configured SMTP service only after validating the existing invitation code. The new flow does not issue an account session until the email invitation has been accepted.
+- Configurable rollout guard for invitation-only verified-email enrollment, with tests for malformed and invalid codes, sign-up gating, email delivery through an isolated SMTP test inbox, and inability to bypass unverified registration.
+
+### Security
+- Require the public Supabase GoTrue signup bypass to stay disabled during verified beta enrollment; fail closed if the site's verification flag disagrees with GoTrue auto-confirm settings.
+- Rate-limit approved invitation emails by source and email hash, avoid leaking existing-account status, and keep SMTP credentials confined to the Auth container at runtime.
+
+### Fixed
+- Remove the Compose-defined empty SMTP password from the web service, allowing Coolify to manage the Auth SMTP secret as a secure editable runtime variable.
+
+### Changed
+- Deploy the canonical private-beta application on the existing Coolify database and service at chesscoachpal.com and api.chesscoachpal.com instead of the obsolete Vercel hostnames; preserve teacher data, existing accounts and the public waitlist.
+- Add documented, reversible operator steps for verified-beta SMTP setup and rollout. Email ownership checks remain disabled until a separately verified production SMTP rollout succeeds.
 
 ## [0.1.3] - 2026-11-16
 
