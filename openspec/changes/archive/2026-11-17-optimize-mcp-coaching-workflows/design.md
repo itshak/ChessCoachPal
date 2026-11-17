@@ -1,6 +1,6 @@
 # Design — user-workflow-first MCP without sacrificing parity
 
-**Status:** Implemented candidate design on PR #97; final acceptance requires green exact merged-main checks.
+**Status:** Accepted implementation design on merged main `ebb4af8` with automated development acceptance; live deployment and vendor-client certification remain separate.
 **Date:** 2026-11-17
 
 ## 1. Baseline and problem decomposition

@@ -1,8 +1,8 @@
 # ADR-0014: User-workflow-first MCP operations with complete granular parity
 
 - **Date:** 2026-11-17
-- **Status:** Proposed implementation candidate; do not mark accepted until PR #97 exact-head and merged-main checks pass
-- **OpenSpec:** [optimize-mcp-coaching-workflows](../../openspec/changes/optimize-mcp-coaching-workflows/proposal.md)
+- **Status:** Accepted for server-side implementation on merged main `ebb4af8`; deployment/client certification remains separate
+- **OpenSpec:** [archived optimize-mcp-coaching-workflows](../../openspec/changes/archive/2026-11-17-optimize-mcp-coaching-workflows/proposal.md)
 - **Existing binding policies:** ADR-0003 (complete website/MCP business parity), ADR-0006 (unversioned canonical tool names), ADR-0007 (root-object schemas, actual dispatch/read-back), ADR-0013 (non-destructive live SQL rollout).
 
 ## Context
@@ -21,7 +21,7 @@ The remaining common friction is **model-driven orchestration across many depend
 6. Normalize tool naming/description quality with static CI checks and a source-derived audit. Hosts supporting progressive ToolSearch can defer full schemas; the MCP server itself cannot guarantee which tools a particular consumer assistant loads into context.
 7. Keep OAuth scope, tenant/RLS authorization, plan entitlement and explicit consent at the SQL transaction boundary. An advertised tool is not authorization. Never leak secrets or provide raw SQL.
 
-## Current implementation candidate
+## Accepted implementation
 
 - `ccp_lessons_capture_completed` → `teacherCompletedGroupCapture` → `ccp_teacher_completed_group_lesson_create`; matched website POST `/api/coaching/lesson-capture/completed`.
 - `ccp_materials_lesson_use_preview`/`_commit` → `teacherMaterialInLessonPreview/Commit` → `ccp_teacher_lesson_material_use_commit`; matched website POST/PUT `/api/coaching/materials/lesson-use`.
@@ -39,8 +39,8 @@ The remaining common friction is **model-driven orchestration across many depend
 
 ## Verification and decision boundary
 
-Development requires current source/catalog lint, TypeScript/unit, strict parity registry, authenticated website↔delegated MCP tests (including replay, foreign tenant, ambiguity, database rollback, non-default fields), security-history, new-install Compose and off-machine restore. The four new named E2E ledger rows in `docs/MCP_NEW_PARITY_SCENARIOS.md` remain **unchecked** until they actually pass.
+Development requires current source/catalog lint, TypeScript/unit, strict parity registry, authenticated website↔delegated MCP tests (including replay, foreign tenant, ambiguity, database rollback, non-default fields), security-history, new-install Compose and off-machine restore. The five new named E2E ledger rows in `docs/MCP_NEW_PARITY_SCENARIOS.md` have passed; no ChatGPT or Claude real-client certification is implied.
 
 Do not claim live ChatGPT/Claude tool-selection or cheaper model reliability from these server-side tests. A static “minimum safe tool sequence” comparison is an engineering proxy, not measured model token savings.
 
-**Decision remains proposed until those evidence links, exact merged SHA and operational rollout boundaries are recorded.** Source/feature activation on the existing live database is not part of this PR's approval.
+**Accepted evidence:** PR #97 merged to [`ebb4af8`](https://github.com/itshak/ChessCoachPal/commit/ebb4af86b9ee4a826a21b8841c062763c7b8c219). [CI](https://github.com/itshak/ChessCoachPal/actions/runs/44168139027), [auth website/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/44168139268), [security](https://github.com/itshak/ChessCoachPal/actions/runs/44168138614), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/44168139157) and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/44168138711) passed on exact main. Source/feature activation on the existing live database is not part of this decision. The separate GitHub Release workflow remains red because it misidentifies the already published v0.1.6 tag; [issue #98](https://github.com/itshak/ChessCoachPal/issues/98) tracks this and no retagging/release/deployment is authorized.
