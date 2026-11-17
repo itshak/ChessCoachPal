@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requiresBetaCode } from "@/lib/entitlements";
 import { shouldProvisionTeacherFromSignup, signupEmailRedirectTo } from "@/lib/onboarding";
@@ -20,10 +21,10 @@ import { secureCompare } from "@/lib/server/secure-compare";
  * only after validating the access code. Failed guesses are rate-limited.
  * Self-hosters without the beta gate retain ordinary public Auth signup.
  *
- * Private beta currently uses auto-confirmed email signups while transactional
- * email is not configured. Admin createUser never sends a confirmation email.
- * When email verification is introduced, replace this with a tested invite /
- * confirmation flow instead of silently leaving unconfirmed accounts locked.
+ * Private beta has a staged email-verification mode. When enabled, the valid
+ * access code authorizes only a server-side GoTrue invitation, which sends
+ * its own SMTP email. Public GoTrue signup remains disabled; the new account
+ * cannot sign in until the invited email address is verified.
  */
 export async function POST(req: NextRequest) {
   const { email, password, displayName, accessCode, timezone } =
@@ -96,13 +97,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Admin createUser cannot send confirmation email. Never silently bypass
-  // an operator's later decision to require email verification.
-  if (betaRequired && process.env.BETA_GOTRUE_EMAIL_AUTOCONFIRM !== "true") {
-    console.error("Beta signup refused: verification flow is not configured");
+  // Email verification is separately enabled only after SMTP is proven.
+  // The app-side sentinel must always match GoTrue's actual auto-confirm
+  // setting. Otherwise refuse new users rather than create bypassed accounts.
+  const verifiedBetaSignup =
+    betaRequired && process.env.BETA_EMAIL_VERIFICATION_ENABLED === "true";
+  if (
+    betaRequired &&
+    process.env.BETA_GOTRUE_EMAIL_AUTOCONFIRM !==
+      (verifiedBetaSignup ? "false" : "true")
+  ) {
+    console.error("Beta signup refused: email-confirmation mode mismatch");
     return NextResponse.json(
       { error: "Beta registration is temporarily unavailable." },
       { status: 503 }
+    );
+  }
+
+  // Validate before sending an irreversible invitation email. Password
+  // checks in GoTrue's admin update alone happen too late for SMTP sends.
+  if (verifiedBetaSignup && password.length < 6) {
+    return NextResponse.json(
+      { error: "Password must be at least 6 characters long." },
+      { status: 400 }
     );
   }
 
@@ -115,24 +132,69 @@ export async function POST(req: NextRequest) {
   const serviceClient = createServiceClient();
   let userId: string | undefined;
   if (betaRequired) {
-    // Privileged Auth creation only happens AFTER the invite code was checked.
-    // Admin createUser doesn't email a confirmation link. Our current private
-    // beta intentionally retains auto-confirm (same as previous GoTrue config).
-    const { data, error } = await serviceClient.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: userMetadata,
-    });
-    if (error) {
-      // Do not reveal that an email was previously registered. Invalid
-      // passwords/emails get the same generic response as existing accounts.
-      return NextResponse.json(
-        { error: "Unable to complete registration. Check the details and try again." },
-        { status: 400 }
+    if (verifiedBetaSignup) {
+      // Invitations cost SendPulse quota. Bound approved attempts as well as
+      // bad access-code guesses; hash the recipient to keep PII out of keys.
+      const inviteWindow = 60 * 60_000;
+      const inviteKeys = [
+        `beta-invite-ip:${clientIpFromRequest(req)}`,
+        `beta-invite-mail:${createHash("sha256")
+          .update(email.trim().toLowerCase()).digest("hex")}`,
+      ];
+      if (inviteKeys.some((key) => !checkRateLimit(key, 5, inviteWindow).ok)) {
+        return NextResponse.json(
+          { error: "Too many invitations requested. Try again later." },
+          { status: 429 }
+        );
+      }
+      for (const key of inviteKeys) hitRateLimit(key, inviteWindow);
+      // GoTrue's server-side admin invitation is permitted even with public
+      // signup disabled. It sends an email using auth's private SMTP settings.
+      // Do not expose a direct invitation endpoint to unauthenticated users.
+      const { data, error } = await serviceClient.auth.admin.inviteUserByEmail(
+        email,
+        {
+          data: userMetadata,
+          redirectTo: `${requestOrigin(req)}/login?message=Email%20verified.%20Please%20sign%20in.`,
+        }
       );
+      if (error || !data.user?.id) {
+        return NextResponse.json(
+          { error: "Unable to send verification email. Check your details and try again." },
+          { status: 400 }
+        );
+      }
+      userId = data.user.id;
+      // Admin invitations create an unconfirmed, passwordless user. Set the
+      // chosen password while leaving email confirmation to the email link.
+      const { error: passwordError } =
+        await serviceClient.auth.admin.updateUserById(userId, { password });
+      if (passwordError) {
+        const { error: cleanupError } =
+          await serviceClient.auth.admin.deleteUser(userId);
+        if (cleanupError) console.error("Beta invited-user cleanup failed");
+        return NextResponse.json(
+          { error: "Unable to complete registration. Contact support if this persists." },
+          { status: 503 }
+        );
+      }
+    } else {
+      // Existing private-beta behavior remains available until email
+      // verification is explicitly activated after real delivery testing.
+      const { data, error } = await serviceClient.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: userMetadata,
+      });
+      if (error) {
+        return NextResponse.json(
+          { error: "Unable to complete registration. Check the details and try again." },
+          { status: 400 }
+        );
+      }
+      userId = data.user?.id;
     }
-    userId = data.user?.id;
   } else {
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -170,6 +232,11 @@ export async function POST(req: NextRequest) {
   });
   if (!ensured.ok) {
     return NextResponse.json({ error: ensured.error }, { status: 500 });
+  }
+
+  // Do not issue a session until the verified user accepts the email invite.
+  if (verifiedBetaSignup) {
+    return NextResponse.json({ ok: true, needsConfirmation: true });
   }
 
   // In local dev Supabase auto-confirms; sign in to establish the session.

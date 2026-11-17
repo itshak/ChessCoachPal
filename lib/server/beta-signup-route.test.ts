@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   signUp: vi.fn(),
   signInWithPassword: vi.fn(),
   adminCreateUser: vi.fn(),
+  adminInviteUserByEmail: vi.fn(),
+  adminUpdateUserById: vi.fn(),
+  adminDeleteUser: vi.fn(),
   ensureTeacherForAuthUser: vi.fn(),
   checkRateLimit: vi.fn(),
   hitRateLimit: vi.fn(),
@@ -15,7 +18,12 @@ vi.mock("@/lib/supabase/server", () => ({
     auth: { signUp: mocks.signUp, signInWithPassword: mocks.signInWithPassword },
   })),
   createServiceClient: vi.fn(() => ({
-    auth: { admin: { createUser: mocks.adminCreateUser } },
+    auth: { admin: {
+      createUser: mocks.adminCreateUser,
+      inviteUserByEmail: mocks.adminInviteUserByEmail,
+      updateUserById: mocks.adminUpdateUserById,
+      deleteUser: mocks.adminDeleteUser,
+    } },
   })),
 }));
 vi.mock("@/lib/server/ensure-teacher", () => ({
@@ -52,6 +60,12 @@ describe("private beta signup cannot bypass disabled public GoTrue signup", () =
     vi.stubEnv("BETA_ACCESS_CODE", "private-test-code");
     vi.stubEnv("BETA_GOTRUE_SIGNUP_DISABLED", "true");
     vi.stubEnv("BETA_GOTRUE_EMAIL_AUTOCONFIRM", "true");
+    vi.stubEnv("BETA_EMAIL_VERIFICATION_ENABLED", "false");
+    mocks.adminInviteUserByEmail.mockResolvedValue({
+      data: { user: { id: "new-beta-invitee" } }, error: null,
+    });
+    mocks.adminUpdateUserById.mockResolvedValue({ error: null });
+    mocks.adminDeleteUser.mockResolvedValue({ error: null });
     mocks.checkRateLimit.mockReturnValue({ ok: true });
     mocks.adminCreateUser.mockResolvedValue({
       data: { user: { id: "new-beta-teacher" } }, error: null,
@@ -140,5 +154,93 @@ describe("private beta signup cannot bypass disabled public GoTrue signup", () =
     const response = await POST(request("private-test-code"));
     expect(response.status).toBe(503);
     expect(mocks.adminCreateUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("private beta verified invitation activation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("NEXT_PUBLIC_BETA_ONLY", "true");
+    vi.stubEnv("BETA_ACCESS_CODE", "private-test-code");
+    vi.stubEnv("BETA_GOTRUE_SIGNUP_DISABLED", "true");
+    vi.stubEnv("BETA_EMAIL_VERIFICATION_ENABLED", "true");
+    vi.stubEnv("BETA_GOTRUE_EMAIL_AUTOCONFIRM", "false");
+    mocks.checkRateLimit.mockReturnValue({ ok: true });
+    mocks.adminInviteUserByEmail.mockResolvedValue({
+      data: { user: { id: "verified-beta-invitee" } }, error: null,
+    });
+    mocks.adminUpdateUserById.mockResolvedValue({ error: null });
+    mocks.adminDeleteUser.mockResolvedValue({ error: null });
+    mocks.ensureTeacherForAuthUser.mockResolvedValue({ ok: true, created: true });
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("requires an access code before sending any invitation email", async () => {
+    expect((await POST(request("wrong-code"))).status).toBe(403);
+    expect(mocks.adminInviteUserByEmail).not.toHaveBeenCalled();
+    expect(mocks.adminCreateUser).not.toHaveBeenCalled();
+  });
+
+  it("requires disabled public GoTrue signup and disabled auto-confirm", async () => {
+    vi.stubEnv("BETA_GOTRUE_SIGNUP_DISABLED", "false");
+    expect((await POST(request("private-test-code"))).status).toBe(503);
+    vi.stubEnv("BETA_GOTRUE_SIGNUP_DISABLED", "true");
+    vi.stubEnv("BETA_GOTRUE_EMAIL_AUTOCONFIRM", "true");
+    expect((await POST(request("private-test-code"))).status).toBe(503);
+    expect(mocks.adminInviteUserByEmail).not.toHaveBeenCalled();
+  });
+
+  it("emails only after a valid beta code; never confirms or signs in before proof of email ownership", async () => {
+    const response = await POST(request("private-test-code"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, needsConfirmation: true });
+    expect(mocks.adminCreateUser).not.toHaveBeenCalled();
+    expect(mocks.signUp).not.toHaveBeenCalled();
+    expect(mocks.signInWithPassword).not.toHaveBeenCalled();
+    expect(mocks.adminInviteUserByEmail).toHaveBeenCalledExactlyOnceWith(
+      "teacher@example.test", {
+        data: { display_name: "Beta Teacher", timezone: "Asia/Jerusalem" },
+        redirectTo: expect.stringContaining("/login?message=Email%20verified."),
+      }
+    );
+    expect(mocks.adminUpdateUserById).toHaveBeenCalledExactlyOnceWith(
+      "verified-beta-invitee", { password: "ValidPassword123!" }
+    );
+    expect(mocks.ensureTeacherForAuthUser).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ userId: "verified-beta-invitee" })
+    );
+  });
+
+  it("fails closed on rejected SMTP/invite sending without leaking existing email", async () => {
+    mocks.adminInviteUserByEmail.mockResolvedValue({
+      data: { user: null },
+      error: { message: "Email address is already registered" },
+    });
+    const response = await POST(request("private-test-code"));
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(await response.json())).not.toContain("already registered");
+    expect(mocks.adminUpdateUserById).not.toHaveBeenCalled();
+    expect(mocks.ensureTeacherForAuthUser).not.toHaveBeenCalled();
+  });
+
+  it("rate-limits approved invitations before any SendPulse email is sent", async () => {
+    mocks.checkRateLimit
+      .mockReturnValueOnce({ ok: true }) // initial beta-code rate limit
+      .mockReturnValue({ ok: false, retryAfterSec: 60 }); // invite throttle
+    const response = await POST(request("private-test-code"));
+    expect(response.status).toBe(429);
+    expect(mocks.adminInviteUserByEmail).not.toHaveBeenCalled();
+    expect(mocks.adminUpdateUserById).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the unconfirmed invitation if the password cannot be installed", async () => {
+    mocks.adminUpdateUserById.mockResolvedValue({
+      error: { message: "Synthetic password update failure" },
+    });
+    const response = await POST(request("private-test-code"));
+    expect(response.status).toBe(503);
+    expect(mocks.adminDeleteUser).toHaveBeenCalledExactlyOnceWith("verified-beta-invitee");
+    expect(mocks.ensureTeacherForAuthUser).not.toHaveBeenCalled();
   });
 });
