@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import {useLocale,useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { centsToDollarsInput, dollarsToCents, formatMoney } from "@/lib/billing";
 import {
   createdAtToPracticeStartDate,
   formatPracticeSince,
+  yearsSincePracticeStart,
   isYearOnlyPracticeStart,
   yearToPracticeStartDate,
 } from "@/lib/students-practice";
@@ -31,31 +33,32 @@ export function StudentInfoCard({
   initialDefaultRateCents: number | null;
   initialTravelFeeCents?: number | null;
 }) {
+  const t=useTranslations("studentInfo"),locale=useLocale();
   return (
     <Card padding="sm" className="mb-6">
       <div className="flex flex-wrap gap-x-10 gap-y-3">
         <InfoField
           studentId={studentId}
-          label="Level"
+          label={t("level")}
           field="level"
           type="text"
           initialValue={initialLevel}
-          placeholder="e.g. Beginner, intermediate, or tactical training"
-          emptyLabel="Set level"
+          placeholder={t("levelHint")}
+          emptyLabel={t("setLevel")}
           display={(v) => v}
         />
         <InfoField
           studentId={studentId}
-          label="Birthday"
+          label={t("birthday")}
           field="birthdate"
           type="date"
           initialValue={initialBirthdate}
-          emptyLabel="Set birthday"
+          emptyLabel={t("setBirthday")}
           display={(v) => {
             const age = ageFromBirthdate(v);
             return age !== null
-              ? `${formatBirthdate(v)} (age ${age})`
-              : formatBirthdate(v);
+              ? formatBirthdate(v,locale)+" ("+t("age",{age})+")"
+              : formatBirthdate(v,locale);
           }}
         />
         <PracticeSinceField
@@ -65,18 +68,18 @@ export function StudentInfoCard({
         />
         <MoneyOverrideField
           studentId={studentId}
-          label="Lesson rate / hour"
+          label={t("rate")}
           field="defaultRateCents"
           initialCents={initialDefaultRateCents}
-          displaySuffix="/hr"
-          editTitle="Edit lesson rate"
+          displaySuffix={t("hourSuffix")}
+          editTitle={t("rateTitle")}
         />
         <MoneyOverrideField
           studentId={studentId}
-          label="Travel fee (home visits)"
+          label={t("travelFee")}
           field="travelFeeCents"
           initialCents={initialTravelFeeCents}
-          editTitle="Optional per-student travel fee. Only billed on home visits."
+          editTitle={t("travelFeeTitle")}
         />
       </div>
     </Card>
@@ -93,6 +96,7 @@ function PracticeSinceField({
   createdAt: string;
 }) {
   const router = useRouter();
+  const t=useTranslations("studentInfo"),locale=useLocale();
   const [editing, setEditing] = useState(false);
   const [mode, setMode] = useState<"year" | "date">(
     initialValue && !isYearOnlyPracticeStart(initialValue) ? "date" : "year"
@@ -130,7 +134,7 @@ function PracticeSinceField({
 
   return (
     <div>
-      <div className="text-xs text-muted font-medium mb-0.5">Practicing since</div>
+      <div className="text-xs text-muted font-medium mb-0.5">{t("practiceSince")}</div>
       {editing ? (
         <div className="flex flex-col gap-1.5">
           <div className="flex gap-2 text-xs">
@@ -141,7 +145,7 @@ function PracticeSinceField({
                 mode === "year" ? "text-primary font-semibold" : "text-muted"
               }`}
             >
-              Year only
+              {t("yearOnly")}
             </button>
             <span className="text-muted">·</span>
             <button
@@ -151,7 +155,7 @@ function PracticeSinceField({
                 mode === "date" ? "text-primary font-semibold" : "text-muted"
               }`}
             >
-              Exact date
+              {t("exactDate")}
             </button>
           </div>
           <span className="inline-flex flex-wrap items-center gap-1.5">
@@ -202,7 +206,7 @@ function PracticeSinceField({
               disabled={saving}
               className="text-xs text-primary hover:text-primary-dark font-semibold cursor-pointer"
             >
-              {saving ? "..." : "Save"}
+              {saving ? "…" : t("save")}
             </button>
             <button
               type="button"
@@ -210,7 +214,7 @@ function PracticeSinceField({
               disabled={saving}
               className="text-xs text-muted hover:text-foreground cursor-pointer"
             >
-              Clear
+              {t("clear")}
             </button>
           </span>
           <button
@@ -222,19 +226,22 @@ function PracticeSinceField({
             disabled={saving}
             className="text-xs text-muted hover:text-primary text-start cursor-pointer"
           >
-            Use date student was added
+            {t("useAddedDate")}
           </button>
         </div>
       ) : (
         <button
           onClick={openEdit}
           className="text-sm hover:text-primary transition-colors cursor-pointer"
-          title="Edit practicing since"
+          title={t("editPractice")}
         >
           {initialValue ? (
-            <span className="font-medium">{formatPracticeSince(initialValue)}</span>
+            <span className="font-medium">{locale==="en"?formatPracticeSince(initialValue):
+             t("practiceSinceDate",{date:formatLocalizedPracticeDate(initialValue,locale)})+
+             ((yearsSincePracticeStart(initialValue)??0)>=1?
+                " "+t("practiceApproxYears",{count:yearsSincePracticeStart(initialValue)!}):"")}</span>
           ) : (
-            <span className="text-muted">Set start</span>
+            <span className="text-muted">{t("setStart")}</span>
           )}
         </button>
       )}
@@ -258,6 +265,7 @@ function MoneyOverrideField({
   editTitle: string;
 }) {
   const router = useRouter();
+  const t=useTranslations("studentInfo");
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(centsToDollarsInput(initialCents));
   const [saving, setSaving] = useState(false);
@@ -279,7 +287,7 @@ function MoneyOverrideField({
   async function save() {
     const cents = value.trim() === "" ? null : dollarsToCents(value);
     if (value.trim() !== "" && cents === null) {
-      setError("Invalid amount");
+      setError(t("invalidAmount"));
       return;
     }
     await saveCents(cents);
@@ -301,7 +309,7 @@ function MoneyOverrideField({
               if (e.key === "Enter") save();
               if (e.key === "Escape") setEditing(false);
             }}
-            placeholder="Use default"
+            placeholder={t("useDefault")}
             className="px-2 py-0.5 rounded border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm w-24"
           />
           <button
@@ -309,7 +317,7 @@ function MoneyOverrideField({
             disabled={saving}
             className="text-xs text-primary hover:text-primary-dark font-semibold cursor-pointer"
           >
-            {saving ? "..." : "Save"}
+            {saving ? "…" : t("save")}
           </button>
           <button
             type="button"
@@ -317,7 +325,7 @@ function MoneyOverrideField({
             disabled={saving}
             className="text-xs text-muted hover:text-foreground cursor-pointer"
           >
-            Clear
+            {t("clear")}
           </button>
           {error && <span className="text-xs text-error">{error}</span>}
         </span>
@@ -336,7 +344,7 @@ function MoneyOverrideField({
               {displaySuffix}
             </span>
           ) : (
-            <span className="text-muted">Use default</span>
+            <span className="text-muted">{t("useDefault")}</span>
           )}
         </button>
       )}
@@ -364,6 +372,7 @@ function InfoField({
   display: (value: string) => string;
 }) {
   const router = useRouter();
+  const t=useTranslations("studentInfo");
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(initialValue ?? "");
   const [saving, setSaving] = useState(false);
@@ -402,17 +411,17 @@ function InfoField({
             disabled={saving}
             className="text-xs text-primary hover:text-primary-dark font-semibold cursor-pointer"
           >
-            {saving ? "..." : "Save"}
+            {saving ? "…" : t("save")}
           </button>
         </span>
       ) : (
         <button
           onClick={() => setEditing(true)}
           className="text-sm hover:text-primary transition-colors cursor-pointer"
-          title={`Edit ${label.toLowerCase()}`}
+          title={t("editField",{field:label.toLowerCase()})}
         >
           {initialValue ? (
-            <span className="font-medium">{display(initialValue)}</span>
+            <span className="font-medium"><bdi dir="auto">{display(initialValue)}</bdi></span>
           ) : (
             <span className="text-muted">{emptyLabel}</span>
           )}
@@ -442,13 +451,24 @@ function ageFromBirthdate(birthdate: string): number | null {
   return age >= 0 && age < 130 ? age : null;
 }
 
-function formatBirthdate(birthdate: string): string {
+function formatBirthdate(birthdate: string,locale:string): string {
   const parts = parseDateParts(birthdate);
   if (!parts) return birthdate;
   const [year, month, day] = parts;
-  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+  return new Date(year, month - 1, day).toLocaleDateString(locale, {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
+}
+
+/** Human-readable locale display only; stored date sentinel is not modified. */
+function formatLocalizedPracticeDate(date:string,locale:string):string {
+  const parts=parseDateParts(date);
+  if(!parts)return date;
+  const [year,month,day]=parts;
+  if(isYearOnlyPracticeStart(date))return String(year);
+  return new Intl.DateTimeFormat(locale,day===1?
+    {month:"short",year:"numeric"}:{day:"numeric",month:"short",year:"numeric"})
+    .format(new Date(year,month-1,day));
 }

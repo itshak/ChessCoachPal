@@ -37,17 +37,20 @@ test("workplace report is teacher-scoped, counts group minutes once, and exports
   await page.getByLabel("To date").fill("2027-04-02");
   await page.getByRole("button", { name: "Generate report" }).click();
   const panel = page.getByRole("region", { name: "Teaching activity report" });
-  await expect(panel).toContainText("Teaching minutes: 60");
-  await expect(panel).toContainText("Participants: 2");
-  await expect(panel).toContainText("Present: 1");
-  await expect(panel).toContainText("Absent: 1");
+  // Chrome follows teacher UI (English); report body follows workplace locale (Hebrew).
+  await expect(panel).toHaveAttribute("dir","ltr");
+  await expect(panel.locator('[aria-live="polite"]')).toHaveAttribute("dir","rtl");
+  await expect(panel).toContainText("דקות הוראה: 60");
+  await expect(panel).toContainText("משתתפים: 2");
+  await expect(panel).toContainText("נוכחים: 1");
+  await expect(panel).toContainText("נעדרים: 1");
   await expect(panel.getByRole("button", { name: "Export CSV" })).toBeVisible();
   await page.reload();
   await page.getByLabel("Report workplace").selectOption(workplace.id);
   await page.getByLabel("From date").fill("2027-04-01");
   await page.getByLabel("To date").fill("2027-04-02");
   await page.getByRole("button", { name: "Generate report" }).click();
-  await expect(panel).toContainText("Teaching minutes: 60");
+  await expect(panel).toContainText("דקות הוראה: 60");
   const outsider = await page.request.get("/api/coaching/report?" + new URLSearchParams({
     workplaceId: "00000000-0000-0000-0000-000000000001", from: "2027-04-01", to: "2027-04-02",
   }));

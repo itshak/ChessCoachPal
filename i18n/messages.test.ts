@@ -22,6 +22,16 @@ describe("reviewed locale ICU messages",()=>{
     expect(russian("portal.creditPackage",{count:3,minutes:60})).toContain("3 урока");
     expect(russian("portal.creditPackage",{count:5,minutes:60})).toContain("5 уроков");
     expect(hebrew("portal.cancelWarning",{hours:1})).toContain("שעה אחת");
+    expect(english("ratingHistory.games",{count:1})).toBe("1 game");
+    expect(english("ratingHistory.games",{count:3})).toBe("3 games");
+    expect(hebrew("ratingHistory.games",{count:1})).toBe("משחק אחד");
+    expect(hebrew("ratingHistory.games",{count:4})).toBe("4 משחקים");
+    expect(russian("ratingHistory.games",{count:1})).toBe("1 игра");
+    expect(russian("ratingHistory.games",{count:2})).toBe("2 игры");
+    expect(russian("ratingHistory.games",{count:5})).toBe("5 игр");
+    expect(russian("studentInfo.practiceApproxYears",{count:1})).toContain("1 года");
+    expect(russian("studentInfo.practiceApproxYears",{count:5})).toContain("5 лет");
+    expect(hebrew("studentInfo.practiceSinceDate",{date:"2021"})).toContain("2021");
 
   });
   it("preserves multilingual user-provided names in interpolated translations",()=>{
@@ -29,5 +39,7 @@ describe("reviewed locale ICU messages",()=>{
     const russian=createTranslator({locale:"ru",messages:ru});
     expect(hebrew("dashboard.welcome",{name:"Ребекка כהן"})).toContain("Ребекка כהן");
     expect(russian("dashboard.welcome",{name:"רבקה כהן"})).toContain("רבקה כהן");
+    expect(hebrew("ratingHistory.review",{username:"Шахматы כהן",provider:"Lichess"})).toContain("Шахматы כהן");
+    expect(russian("ratingHistory.review",{username:"משה шахмат",provider:"Chess.com"})).toContain("משה шахмат");
   });
 });

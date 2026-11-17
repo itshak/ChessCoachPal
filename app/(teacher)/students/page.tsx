@@ -13,7 +13,9 @@ import {
   persistDemotionIfNeeded,
 } from "@/lib/server/entitlements";
 
-export const metadata = { title: "Students" };
+export async function generateMetadata(){
+  const t=await getTranslations("students");return {title:t("title")};
+}
 
 interface StudentListRow {
   id: string;
@@ -180,7 +182,7 @@ export default async function StudentsPage({
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="font-semibold text-lg">
-                            {student.name}
+                            <bdi dir="auto">{student.name}</bdi>
                             {student.archived_at && (
                               <span className="ms-2 text-xs font-normal text-muted">
                                 {t("archivedTag")}
@@ -204,7 +206,7 @@ export default async function StudentsPage({
 
         <div>
           <Card>
-            <h2 className="font-semibold mb-3">Add Student</h2>
+            <h2 className="font-semibold mb-3">{t("addButton")}</h2>
             <AddStudentForm guardians={guardianOptions} />
           </Card>
         </div>

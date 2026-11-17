@@ -1,5 +1,6 @@
 "use client";
 import {useCallback,useEffect,useState} from "react";
+import {useLocale,useTranslations} from "next-intl";
 
 type Provider="lichess"|"chesscom";
 type Control="bullet"|"blitz"|"rapid"|"classical"|"daily"|"puzzle";
@@ -21,6 +22,7 @@ const field="w-full rounded-lg border border-border bg-background p-2 text-foreg
 const button="rounded-lg bg-primary px-3 py-2 text-white font-medium disabled:opacity-50";
 
 export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
+ const t=useTranslations("ratingHistory"),locale=useLocale();
  const [provider,setProvider]=useState<Provider>("lichess");
  const [control,setControl]=useState<Control>("rapid");
  const [manual,setManual]=useState("");
@@ -31,14 +33,14 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
  const [cursor,setCursor]=useState<string|null>(null);
  const load=useCallback(async()=>{
   const res=await fetch("/api/students/"+studentId+"/ratings?limit=100",{cache:"no-store"});
-  if(!res.ok)throw new Error("Rating history cannot be loaded");
+  if(!res.ok)throw new Error(t("loadError"));
   const body=await res.json() as {snapshots:Rating[]};
   setHistory(body.snapshots);
- },[studentId]);
+ },[studentId,t]);
  useEffect(()=>{void load().catch(e=>setError(String(e)));},[load]);
  async function manualRecord(){
   const value=Number(manual);
-  if(!Number.isInteger(value)||value<100||value>4000){setError("Enter a rating from 100 to 4000");return;}
+  if(!Number.isInteger(value)||value<100||value>4000){setError(t("rangeError"));return;}
   setBusy(true);setError("");setNotice("");
   try{
    const res=await fetch("/api/students/"+studentId+"/ratings",{
@@ -47,14 +49,14 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
      ratingDeviation:null,provisional:null,games:null,observedAt:new Date().toISOString(),
      requestId:crypto.randomUUID(),confirmed:true}),
    });
-   if(!res.ok)throw new Error((await res.json()).error??"Manual rating failed");
-   setManual("");setNotice("Teacher-entered rating saved to append-only history.");
+   if(!res.ok)throw new Error((await res.json()).error??t("manualError"));
+   setManual("");setNotice(t("manualSaved"));
    await load();
-  }catch(e){setError(e instanceof Error?e.message:"Rating save failed");}
+  }catch(e){setError(e instanceof Error?e.message:t("saveError"));}
   finally{setBusy(false);}
  }
  async function inspectProvider(){
-  if(!externalApproved){setError("Approve public account lookup first");return;}
+  if(!externalApproved){setError(t("approveLookup"));return;}
   setBusy(true);setError("");setNotice("");setPreview(null);
   try{
    const res=await fetch("/api/students/"+studentId+"/ratings",{
@@ -62,9 +64,9 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
     body:JSON.stringify({action:"refreshPreview",provider,confirmedExternal:true}),
    });
    const data=await res.json();
-   if(!res.ok)throw new Error(data.error??"Public provider lookup unavailable");
+   if(!res.ok)throw new Error(data.error??t("lookupUnavailable"));
    setPreview(data as Preview);setCursor(null);
-  }catch(e){setError(e instanceof Error?e.message:"Public lookup failed");}
+  }catch(e){setError(e instanceof Error?e.message:t("lookupFailed"));}
   finally{setBusy(false);}
  }
  async function acceptProvider(){
@@ -81,69 +83,70 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
      confirmedExternal:true}),
    });
    const body=await res.json();
-   if(!res.ok)throw new Error(body.error??"Public rating import rejected");
+   if(!res.ok)throw new Error(body.error??t("importRejected"));
    setPreview(null);setCursor(null);
-   setNotice("Provider-sourced observations saved. Teacher-assessed strength was not changed.");
+   setNotice(t("importSaved"));
    await load();
-  }catch(e){setError(e instanceof Error?e.message:"Rating refresh failed");}
+  }catch(e){setError(e instanceof Error?e.message:t("importFailed"));}
   finally{setBusy(false);}
  }
- return <section aria-label="Chess rating observations" className="rounded-xl border border-border bg-surface p-4 space-y-3">
-  <h2 className="font-semibold text-lg">Rating observations by source and time control</h2>
-  <p className="text-sm text-muted">These snapshots are separate from teacher-assessed strength (1–10).
-   A public username does not prove account ownership. Ratings across providers or time controls must not be averaged.</p>
+ return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-4 space-y-3">
+  <h2 className="font-semibold text-lg">{t("title")}</h2>
+  <p className="text-sm text-muted">{t("intro")}</p>
   <div className="grid gap-3 sm:grid-cols-3">
-   <label className="text-sm">Platform
+   <label className="text-sm">{t("platform")}
     <select className={field} value={provider} onChange={e=>{const p=e.target.value as Provider;
       setProvider(p);setControl("rapid");setPreview(null);setCursor(null);}}>
      <option value="lichess">Lichess</option><option value="chesscom">Chess.com</option>
     </select>
    </label>
-   <label className="text-sm">Time control
+   <label className="text-sm">{t("timeControl")}
     <select className={field} value={control} onChange={e=>setControl(e.target.value as Control)}>
-     {controls[provider].map(x=><option key={x} value={x}>{x}</option>)}
+     {controls[provider].map(x=><option key={x} value={x}>{t(x)}</option>)}
     </select>
    </label>
-   <label className="text-sm">Teacher-entered rating
+   <label className="text-sm">{t("teacherRating")}
     <input type="number" min={100} max={4000} className={field} value={manual}
       onChange={e=>setManual(e.target.value)} />
    </label>
   </div>
   <button type="button" className={button} onClick={()=>void manualRecord()} disabled={busy}>
-   Record manual rating
+   {t("recordManual")}
   </button>
   <div className="border-t border-border pt-3 space-y-2">
    <label className="flex gap-2 items-start text-sm">
     <input type="checkbox" checked={externalApproved}
      onChange={e=>{setExternalApproved(e.target.checked);setPreview(null);setCursor(null);}} />
-    I approve checking the saved public chess username with the selected provider. This can disclose the username externally.
+    {t("externalConsent")}
    </label>
    <button type="button" className={button} disabled={!externalApproved||busy}
-    onClick={()=>void inspectProvider()}>Preview public ratings (no save)</button>
+    onClick={()=>void inspectProvider()}>{t("previewButton")}</button>
   </div>
   {preview&&<div className="border border-border rounded-lg p-3 space-y-2 text-sm">
-   <h3 className="font-semibold">Review {preview.username} — {preview.provider}</h3>
+   <h3 className="font-semibold" dir="auto">{t("review",{
+     username:preview.username,provider:preview.provider==="lichess"?"Lichess":"Chess.com"
+   })}</h3>
    <ul className="list-disc ps-5">
     {preview.ratings.map(x=><li key={x.timeControl}>
-     {x.timeControl}: {x.rating??"unavailable"}{x.provisional===true?" (provisional)":""}
-     {x.games!==null?" · "+x.games+" games":""}
+     {t(x.timeControl)}: {x.rating??t("unavailable")}{x.provisional===true?" "+t("provisionalSuffix"):""}
+     {x.games!==null?" · "+t("games",{count:x.games}):""}
     </li>)}
    </ul>
-   <p>{preview.note}</p>
+   <p dir="auto">{preview.note}</p>
    <button type="button" className={button} disabled={busy||!externalApproved}
-    onClick={()=>void acceptProvider()}>Confirm import of these provider observations</button>
+    onClick={()=>void acceptProvider()}>{t("importConfirm")}</button>
   </div>}
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}
   {notice&&<p role="status" className="text-sm">{notice}</p>}
   <div className="space-y-2">
-   <h3 className="font-semibold text-sm">Recent immutable observations</h3>
-   {history.length===0?<p className="text-sm text-muted">No rating snapshots yet.</p>:
+   <h3 className="font-semibold text-sm">{t("recent")}</h3>
+   {history.length===0?<p className="text-sm text-muted">{t("noSnapshots")}</p>:
     <div className="overflow-x-auto"><table className="w-full text-xs">
-     <thead><tr className="text-start"><th>Recorded</th><th>Provider</th><th>Control</th><th>Rating</th><th>Source</th><th>Status</th></tr></thead>
+     <thead><tr className="text-start"><th>{t("recorded")}</th><th>{t("provider")}</th><th>{t("control")}</th><th>{t("rating")}</th><th>{t("source")}</th><th>{t("status")}</th></tr></thead>
      <tbody>{history.map(x=><tr key={x.id} className="border-t border-border">
-      <td>{new Date(x.observed_at).toLocaleDateString()}</td><td>{x.provider}</td>
-      <td>{x.time_control}</td><td>{x.rating}</td><td>{x.source}</td>
-      <td>{x.provisional===true?"Provisional":x.provisional===false?"Established":"Unknown"}</td>
+      <td>{new Date(x.observed_at).toLocaleDateString(locale)}</td><td>{x.provider==="lichess"?"Lichess":"Chess.com"}</td>
+      <td>{t(x.time_control)}</td><td>{x.rating}</td><td>{t(x.source==="provider_api"?"providerApi":"teacherManual")}</td>
+      <td>{x.provisional===true?t("provisional"):x.provisional===false?t("established"):t("unknown")}</td>
      </tr>)}</tbody>
     </table></div>}
   </div>

@@ -36,6 +36,14 @@ test("PARITY: teacher language preference persists identically via website and M
     const familyOverflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
     expect(familyOverflow,"Hebrew family list horizontal overflow").toBeLessThanOrEqual(2);
     await page.setViewportSize({width:1280,height:720});
+    await page.goto("/students");
+    const studentLink=page.locator('a[href^="/students/"]').first();
+    await expect(studentLink).toBeVisible();
+    await studentLink.click();
+    await expect(page.getByRole("heading",{name:"תצפיות דירוג לפי מקור וקצב משחק"})).toBeVisible();
+    await expect(page.getByRole("heading",{name:"התקדמות"})).toBeVisible();
+    await expect(page.getByLabel("תצפיות דירוג שחמט")).toBeVisible();
+    await expect(page.getByText("מתאמן מאז",{exact:true})).toBeVisible();
     const mcp = await call("ccp_teacher_profile_update",{
       preferredLocale:"ru", confirmed:true
     });
@@ -53,6 +61,14 @@ test("PARITY: teacher language preference persists identically via website and M
     await expect(page.getByRole("heading",{name:"Шахматные мероприятия"})).toBeVisible();
     await page.goto("/families");
     await expect(page.getByRole("heading",{name:"Семьи"})).toBeVisible();
+    await page.goto("/students");
+    const russianStudentLink=page.locator('a[href^="/students/"]').first();
+    await expect(russianStudentLink).toBeVisible();
+    await russianStudentLink.click();
+    await expect(page.getByRole("heading",{name:"Рейтинги по источникам и контролю времени"})).toBeVisible();
+    await expect(page.getByRole("heading",{name:"Прогресс"})).toBeVisible();
+    await expect(page.getByLabel("Наблюдения шахматного рейтинга")).toBeVisible();
+    await expect(page.getByText("Занимается с",{exact:true})).toBeVisible();
     const invalidWeb = await page.request.put("/api/auth/update-profile", {
       data:{preferredLocale:"unsupported"}
     });

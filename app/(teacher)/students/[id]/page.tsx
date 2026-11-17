@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import {getTranslations} from "next-intl/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -26,15 +27,17 @@ import { oneToOne, toLocalDateString } from "@/lib/schedule";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
+  const t=await getTranslations("studentDetail");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { title: "Student" };
+  if (!user) return { title: t("student") };
   const { data } = await supabase.from("students").select("name").eq("id", id).eq("teacher_id", user.id).maybeSingle();
-  return { title: data?.name ?? "Student" };
+  return { title: data?.name ?? t("student") };
 }
 
 export default async function StudentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const t=await getTranslations("studentDetail");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -94,21 +97,21 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div>
-      <Link href="/students" className="inline-block mb-6 text-muted hover:text-foreground">← Students</Link>
+      <Link href="/students" className="inline-block mb-6 text-muted hover:text-foreground"><span aria-hidden="true" className="inline-block rtl:rotate-180">←</span>{" "}{t("back")}</Link>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <EditableStudentName studentId={id} initialName={student.name} />
           {student.guardians ? (
             <p className="text-muted text-sm">
-              Family:{" "}
+              {t("family")}{" "}
               <Link href={`/families/${student.guardians.id}`} className="hover:text-primary transition-colors">
-                {familyDisplayName(student.guardians)}
+                <bdi dir="auto">{familyDisplayName(student.guardians)}</bdi>
               </Link>
             </p>
           ) : student.parent_contact ? (
             <p className="text-muted text-sm">{student.parent_contact}</p>
           ) : (
-            <Link href="/families" className="text-sm text-primary hover:underline">Link a family</Link>
+            <Link href="/families" className="text-sm text-primary hover:underline">{t("linkFamily")}</Link>
           )}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -171,30 +174,30 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       <div className="mb-8"><UnifiedLessonHistoryPanel fixedStudentId={id}/></div>
       <div className="mb-8"><MaterialHistoryPanel fixedStudentId={id} /></div>
 
-      <h2 className="text-lg font-semibold mb-3">Progress</h2>
+      <h2 className="text-lg font-semibold mb-3">{t("progress")}</h2>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <SkillsPanel studentId={id} dimensions={dimensions} assessments={assessments ?? []} />
         <Card padding="sm">
-          <h3 className="font-semibold mb-3">Attendance</h3>
+          <h3 className="font-semibold mb-3">{t("attendance")}</h3>
           {markedLessons === 0 ? (
             <p className="text-sm text-muted">
-              No attendance marked yet. Record it on the{" "}
-              <Link href="/schedule" className="text-primary hover:underline">Schedule</Link> page.
+              {t("noAttendance")}{" "}
+              <Link href="/schedule" className="text-primary hover:underline">{t("schedule")}</Link> {t("pageSuffix")}
             </p>
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className="rounded-lg bg-surface-dim/60 p-3">
-                  <div className="text-xs text-muted">Attended</div>
+                  <div className="text-xs text-muted">{t("attended")}</div>
                   <div className="text-xl font-bold text-success">{attendanceCounts.attended ?? 0} / {markedLessons}</div>
                 </div>
                 <div className="rounded-lg bg-surface-dim/60 p-3">
-                  <div className="text-xs text-muted">Attendance rate</div>
+                  <div className="text-xs text-muted">{t("attendanceRate")}</div>
                   <div className="text-xl font-bold">{attendanceRate === null ? "—" : `${attendanceRate}%`}</div>
                 </div>
               </div>
               <div className="space-y-1 text-sm">
-                {([["student_cancel","Student cancellations"],["teacher_cancel","Teacher cancellations"],["no_show","No-shows"]] as const).map(([key,label]) => (
+                {([["student_cancel",t("studentCancellations")],["teacher_cancel",t("teacherCancellations")],["no_show",t("noShows")]] as const).map(([key,label]) => (
                   <div key={key} className="flex justify-between">
                     <span className="text-muted">{label}</span><span>{attendanceCounts[key] ?? 0}</span>
                   </div>
