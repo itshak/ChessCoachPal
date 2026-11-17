@@ -298,7 +298,10 @@
     "removeFromGroup": "הסרת {name} מהקבוצה",
     "studentNote": "הערה לתלמיד",
     "updateAttendance": "עדכון נוכחות",
-    "recordAttendance": "רישום נוכחות"
+    "recordAttendance": "רישום נוכחות",
+    "topicPlaceholder": "סיומי מלך ורגלי",
+    "notePlaceholder": "תרגלנו אופוזיציה ומשולשים בסיומי רגלים",
+    "minuteCount": "{count} דקות"
   },
   "students": {
     "title": "תלמידים",

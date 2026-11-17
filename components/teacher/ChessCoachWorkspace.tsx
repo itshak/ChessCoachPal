@@ -28,9 +28,9 @@ type RosterAudit = {
 type Result<T> = { ok?: boolean; data?: T; error?: { code: string; message?: string } };
 type AttendanceStatus = Exclude<Attendance["status"], "unmarked">;
 
-const field = "w-full rounded-lg border border-border bg-surface p-2 text-foreground";
+const field = "w-full min-w-0 max-w-full rounded-lg border border-border bg-surface p-2 text-foreground";
 const button = "rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50";
-const panel = "rounded-xl border border-border bg-surface p-5 space-y-3";
+const panel = "min-w-0 max-w-full rounded-xl border border-border bg-surface p-5 space-y-3 [overflow-wrap:anywhere]";
 const attendanceStatuses: AttendanceStatus[] = ["present", "absent", "late", "excused"];
 
 async function operation<T>(action: string, values: Record<string, unknown> = {}): Promise<T> {
@@ -416,7 +416,7 @@ export function ChessCoachWorkspace() {
   }, [session, workplaces]);
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
       <div>
         <h1 className="text-2xl font-bold">{t("heading")}</h1>
         <p className="text-sm text-muted mt-1">
@@ -447,7 +447,7 @@ export function ChessCoachWorkspace() {
                   onClick={() => setSelectedSessionId(item.id)}>
                   <time dateTime={item.starts_at}>{new Date(item.starts_at).toLocaleString(lang, {
                     timeZone: activeWorkplace?.timezone ?? "UTC",
-                  })}</time> · {item.title} · {t(item.status)} · {item.duration_minutes} minutes
+                  })}</time> · <bdi dir="auto">{item.title}</bdi> · {t(item.status)} · {t("minuteCount",{count:item.duration_minutes})}
                 </button>
               </li>
             ))}
@@ -456,24 +456,24 @@ export function ChessCoachWorkspace() {
       </section>
       <div className="grid gap-5 md:grid-cols-2">
         <section className={panel}>
-          <h2 className="text-lg font-semibold">Workplaces</h2>
-          <ul className="text-sm space-y-1">
-            {workplaces.map(w => <li key={w.id}>{w.name} · {w.timezone} · {w.currency}</li>)}
+          <h2 className="text-lg font-semibold">{t("workplaces")}</h2>
+          <ul className="text-sm space-y-1 [overflow-wrap:anywhere]">
+            {workplaces.map(w => <li key={w.id}><bdi dir="auto">{w.name}</bdi> · <span dir="ltr">{w.timezone}</span> · <span dir="ltr">{w.currency}</span></li>)}
           </ul>
           <form onSubmit={addWorkplace} className="space-y-2">
             <label className="block text-sm">{t("newWorkplaceName")}
               <input className={field} value={workplaceName} maxLength={120}
                 onChange={e => setWorkplaceName(e.target.value)} required />
             </label>
-            <label className="block text-sm">IANA timezone
+            <label className="block text-sm">{t("timezone")}
               <input className={field} value={timezone} onChange={e => setTimezone(e.target.value)}
                 maxLength={80} required />
             </label>
-            <label className="block text-sm">Currency (ISO 4217)
+            <label className="block text-sm">{t("currency")}
               <input className={field} value={currency} maxLength={3}
                 onChange={e => setCurrency(e.target.value.toUpperCase())} required pattern="[A-Z]{3}" />
             </label>
-            <label className="block text-sm">Locale
+            <label className="block text-sm">{t("locale")}
               <input className={field} value={locale} onChange={e => setLocale(e.target.value)} required />
             </label>
             <button className={button} disabled={busy}>{t("createWorkplace")}</button>
@@ -500,7 +500,7 @@ export function ChessCoachWorkspace() {
           </form>}
         </section>
         <section className={panel}>
-          <h2 className="text-lg font-semibold">Students</h2>
+          <h2 className="text-lg font-semibold">{t("students")}</h2>
           <form className="space-y-2" onSubmit={e => {
             e.preventDefault();
             setActiveStudentSearch(studentSearch.trim());
@@ -611,7 +611,7 @@ export function ChessCoachWorkspace() {
             {mode === "group" ?
               <label className="block text-sm">{t("sessionGroup")}
                 <select className={field} value={groupId} onChange={e => setGroupId(e.target.value)} required>
-                  <option value="">Select group</option>
+                  <option value="">{t("selectGroup")}</option>
                   {localGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
               </label> : mode==="ad_hoc" ?
@@ -627,25 +627,25 @@ export function ChessCoachWorkspace() {
               </fieldset> :
               <label className="block text-sm">{t("privateStudent")}
                 <select className={field} value={studentId} onChange={e => setStudentId(e.target.value)} required>
-                  <option value="">Select student</option>
+                  <option value="">{t("selectStudent")}</option>
                   {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </label>}
             <label className="block text-sm">{t("topicTitle")}
               <input className={field} maxLength={160} value={title}
-                onChange={e => setTitle(e.target.value)} required placeholder="King and pawn endgames" />
+                onChange={e => setTitle(e.target.value)} required placeholder={t("topicPlaceholder")} />
             </label>
             <label className="block text-sm">{t("localDateTime")}
               <input className={field} type="datetime-local" value={start} onChange={e => setStart(e.target.value)} required />
             </label>
-            <label className="block text-sm">Duration (minutes)
+            <label className="block text-sm">{t("duration")}
               <input className={field} type="number" min={15} max={480} value={durationMinutes}
                 onChange={e => setDurationMinutes(Number(e.target.value))} required />
             </label>
             <label className="block text-sm">{t("teachingNote")}
               <textarea className={field} value={lessonNote} maxLength={10000}
                 onChange={e => setLessonNote(e.target.value)} rows={3}
-                placeholder="Practiced pawn opposition and triangulation" />
+                placeholder={t("notePlaceholder")} />
             </label>
             <button className={button} disabled={busy || !workplaceId}>{t("createLesson")}</button>
             <p className="text-xs text-muted">{t("localTimezoneWarning",{zone:activeWorkplace?.timezone ?? "UTC"})}</p>
@@ -663,7 +663,7 @@ export function ChessCoachWorkspace() {
             </select>
           </label>
           {session && <p className="text-sm text-muted">
-            {sessionWorkplace?.name} · {session.duration_minutes} minutes
+            <bdi dir="auto">{sessionWorkplace?.name}</bdi> · {t("minuteCount",{count:session.duration_minutes})}
             {session.lesson_note && <> · {session.lesson_note}</>}
           </p>}
           {!session && <p className="text-sm text-muted">{t("selectSessionHint")}</p>}

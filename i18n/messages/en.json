@@ -298,7 +298,10 @@
     "removeFromGroup": "Remove {name} from group",
     "studentNote": "Student note",
     "updateAttendance": "Update attendance",
-    "recordAttendance": "Record attendance"
+    "recordAttendance": "Record attendance",
+    "topicPlaceholder": "King and pawn endgames",
+    "notePlaceholder": "Practiced pawn opposition and triangulation",
+    "minuteCount": "{count} min"
   },
   "students": {
     "title": "Students",

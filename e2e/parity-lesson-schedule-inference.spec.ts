@@ -319,7 +319,7 @@ test("PARITY:PARITY-website-reviewer-date-only-form-commits-matching-roster",asy
  await expect(page.getByText("Time inferred from matching active weekly slots.",{
   exact:false,
  })).toBeVisible();
- const checkbox=page.getByLabel("I checked every learner, the workplace, date and time");
+ const checkbox=page.getByLabel("I checked every learner, workplace, date and time, and approve creating this one session.");
  await checkbox.check();
  await page.getByRole("button",{name:"Confirm and create one lesson"}).click();
  await expect(page.getByRole("status").filter({hasText:"One session created:"}))

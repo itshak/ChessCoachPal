@@ -298,7 +298,10 @@
     "removeFromGroup": "Исключить {name} из группы",
     "studentNote": "Заметка об ученике",
     "updateAttendance": "Изменить посещаемость",
-    "recordAttendance": "Отметить посещаемость"
+    "recordAttendance": "Отметить посещаемость",
+    "topicPlaceholder": "Эндшпили: король и пешка",
+    "notePlaceholder": "Отрабатывали оппозицию и треугольник в пешечных окончаниях",
+    "minuteCount": "{count} мин"
   },
   "students": {
     "title": "Ученики",
