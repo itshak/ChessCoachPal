@@ -6,6 +6,21 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 _Changes for the next release go here._
 
+## [0.1.6] - 2026-11-17
+
+### Added
+- Source-neutral historical attendance import: select one workplace, then submit each verified student's real ISO attendance dates. The website and MCP share reviewed previews, explicit confirmation, replay-safe commit and preserved history for archived students.
+- Full-data portable CSV: an authenticated website ZIP with separate UTF-8 CSV files for each teacher-owned data category, and a paginated, privacy-redacted CSV table catalogue through MCP. The existing JSON backup remains the supported restore format.
+
+### Fixed
+- Increase the bounded MCP JSON-RPC request envelope to 320 KiB so advertised 250-row / 256 KiB direct attendance imports work in practice; reject oversized streams safely.
+- Clarify historical attendance MCP target fields and tool selection, add actionable invalid-column errors and use the actual package version in MCP initialization.
+- Pin a previously missing floating-ui peer dependency for repeatable clean installs in GitHub Actions and Docker.
+
+### Verification
+- Authenticated website/MCP E2E scenarios cover archived pupils, date-list import review/atomic replay, large MCP requests, CSV export consistency and credential redaction; strict website/MCP parity and CI, Compose, Docker, restore and security gates apply.
+
+
 ## [0.1.5] - 2026-11-17
 
 ### Fixed
