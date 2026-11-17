@@ -1,5 +1,14 @@
 # Privacy, secrets and publication safety
 
+## Private beta signup defense in depth (2026-11-16)
+
+**Confirmed vulnerability before fix:** the live self-hosted GoTrue Auth server advertised `disable_signup=false` while the Next.js `/api/auth/signup` route required a `BETA_ACCESS_CODE`. A direct call to the public GoTrue `/auth/v1/signup` endpoint could therefore create an identity without passing the site's invite-code check. The teacher setup endpoint's existing guard limits some provisioning but does **not** secure Auth identity creation by itself.
+
+**Fix in development:** keep the beta-code + waitlist UX; configure GoTrue `DISABLE_SIGNUP=true`, and only after verifying the server-only invite code create an Auth user via Supabase service-role `auth.admin.createUser`. Map `BETA_GOTRUE_SIGNUP_DISABLED` and `BETA_GOTRUE_EMAIL_AUTOCONFIRM` into the website from the same Compose environment values as Auth; the website refuses beta signup if either safety condition is not met. Admin user creation uses `email_confirm=true` only while the operator intentionally enables auto-confirm; it does not email confirmation links, and does **not** constitute verified email ownership. Secure email confirmation/invitation requires a separate tested mail-delivery flow (SendPulse is owner-configured later).
+
+**Acceptance:** isolated Compose must reject direct unauthenticated GoTrue signup without inserting an identity; reject absent/incorrect invite code; accept valid code and provision teacher exactly once; persist a public waitlist email through its rate-limited server route; preserve existing login and public self-hosted signup where beta mode is disabled. The live endpoint `/auth/v1/settings` must say `disable_signup=true` after the fix is deployed. No database reset or new broad RLS grant is permitted. The source-code change alone is **not** evidence that the live GoTrue setting was changed.
+
+
 ## 2026-11-15 live Supabase advisor and canonical schema audit
 
 [PR #81](https://github.com/itshak/ChessCoachPal/pull/81) carries a **single canonical baseline** update with a corresponding transactional hardening change applied to the test Supabase project. No test-teacher/student/material rows were deleted by this hardening; the current pre-v1 snapshot remains `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`.

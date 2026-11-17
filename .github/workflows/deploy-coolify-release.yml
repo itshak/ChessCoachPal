@@ -1,4 +1,4 @@
-name: Deploy published ChessCoachPal release to Coolify staging
+name: Deploy published ChessCoachPal release to Coolify private beta
 
 on:
   release:
@@ -18,13 +18,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: chesscoachpal-coolify-staging-release
+  group: chesscoachpal-coolify-beta-release
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy exact published commit to Coolify staging
+    name: Deploy exact published commit to Coolify private beta
     runs-on: ubuntu-latest
+    # Existing staging-named GitHub environment holds the restricted deploy
+    # key for the SAME Coolify resource repurposed as production. Rename the
+    # secret/variable environment only after rotating and testing its access.
     environment: staging
     timeout-minutes: 55
     steps:

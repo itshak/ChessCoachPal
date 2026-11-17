@@ -1,6 +1,8 @@
 # Coolify deployment runbook — ChessCoachPal
 
-**Status:** Isolated staging has been deployed and verified with healthy services and public HTTPS; the hosted application has **not** been accepted for real users or production. See [hosting architecture](HOSTING_ARCHITECTURE.md), [self-hosting](SELF_HOSTING.md), and [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md).
+> **Permanent-domain transition:** See [BETA_DOMAIN_CUTOVER.md](BETA_DOMAIN_CUTOVER.md) for the canonical site/API hostnames, Vercel retirement and beta-domain removal. The historical staging sections below do not attest that this transition has finished.
+
+**Status (2026-11-16):** The existing Coolify resource is now the live invitation-only private beta at canonical app/API domains. Trusted HTTPS and existing data were verified. The old staging label is historical and does not indicate a separate deployment. See [private beta domain cutover](BETA_DOMAIN_CUTOVER.md). See [hosting architecture](HOSTING_ARCHITECTURE.md), [self-hosting](SELF_HOSTING.md), and [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md).
 
 ## Architecture and service exposure
 
@@ -59,6 +61,10 @@ Configure these values in Coolify before first deployment:
 
 The optional NEXT_PUBLIC_BETA_ONLY flag is passed to both the image builder and runtime. Enabling it requires a nonempty server-only BETA_ACCESS_CODE before opening signup. Changing NEXT_PUBLIC_BETA_ONLY requires rebuilding the Next.js image.
 
+**Private-beta Auth invariant (security fix):** `NEXT_PUBLIC_BETA_ONLY=true` with `BETA_ACCESS_CODE` requires `DISABLE_SIGNUP=true` (so public GoTrue `/auth/v1/signup` / OTP cannot create an identity). The website's `/api/auth/signup` validates the code and then calls `auth.admin.createUser()` server-side using the existing private service-role key. The app receives `BETA_GOTRUE_SIGNUP_DISABLED` from the **same** Compose input as GoTrue; if that setting is not true, invited signup returns 503 rather than allowing a bypass. The private-beta admin creation flow currently requires `ENABLE_EMAIL_AUTOCONFIRM=true`: it does **not send verification email** and preserves the previously active test-beta semantics. If the operator turns off auto-confirm to enable real verification, signup deliberately fails closed until an actual confirmation/invite email flow has been implemented and tested. The waitlist does not depend on GoTrue signup.
+
+**Do not confuse `DISABLE_SIGNUP=true` with disabling beta registration.** The GoTrue public endpoint is closed, but the verified-code server-only admin endpoint remains open. Do not switch back to `DISABLE_SIGNUP=false` as a workaround for a broken invite-code signup: that reopens the bypass. Verify GoTrue `/auth/v1/settings`, direct synthetic signup denial, valid-code `/api/auth/signup`, waitlist persistence and regular existing-user login after every deployment. Never print `BETA_ACCESS_CODE` or service-role JWT in tests/logs.
+
 The checked-in script docker/supabase/generate-secrets.sh generates the six related Supabase stack values. Handle its output privately and set all of them as a consistent set; never post them to GitHub, Coolify logs, or a chat. Generate the other two encryption keys independently with a CSPRNG.
 
 For the candidate deployment the Compose file deliberately defaults **DISABLE_SIGNUP=true** and **ENABLE_EMAIL_AUTOCONFIRM=false**. Do not open public signups until SMTP/email verification, abuse prevention, password policy, tenant/RLS checks and privacy controls are verified. Optional provider secrets are absent until configured. The ChessCoachPal site and /mcp remain a single Next.js process/domain, sharing tenant authorization.
@@ -103,6 +109,23 @@ The staging application is registered in Coolify as resource UUID `wu2pa46yyr4ss
 - Coolify's built-in push-based `is_auto_deploy_enabled` remains **false**. Release deployments explicitly pin the commit hash and update the branch/tag reference. Releases are serialized in GitHub Actions and the SSH gate reports Coolify's final deployment status.
 - GitHub Actions `.github/workflows/check-coolify-staging.yml` is a **manual read-only smoke test** for the restricted SSH identity and the HTTPS site/Auth/REST endpoints. Run it after setting up secrets or rotating the server host key.
 - The Coolify API token for the restricted deploy user expires after **12 months** from November 16, 2026 and must be rotated before expiry; keep the new token scoped to this staging resource and protect its `0600` file at `/var/lib/chesscoachpal-deploy/.config/coolify-api-token`. Regenerate an SSH key if leaked, delete the prior `authorized_keys` entry, and replace the staging GitHub environment secret.
-- Staging starts with `DISABLE_SIGNUP=true` and `ENABLE_EMAIL_SIGNUP=false`. Domain `https://beta.chesscoachpal.com` serves the site and `/mcp`; `https://api-beta.chesscoachpal.com` serves Supabase API. Production `chesscoachpal.com` remains on Vercel and must **not** be changed by staging release automation.
+- Private beta **requires** `NEXT_PUBLIC_BETA_ONLY=true`, a nonempty private `BETA_ACCESS_CODE`, `DISABLE_SIGNUP=true`, `ENABLE_EMAIL_SIGNUP=true`, and the current synthetic-beta `ENABLE_EMAIL_AUTOCONFIRM=true` until real email verification is implemented. Domain `https://beta.chesscoachpal.com` serves the site and `/mcp`; `https://api-beta.chesscoachpal.com` serves Supabase API. Moving canonical DNS or retiring Vercel is a **separate** change; this security fix does not authorize it.
 
 The staging installation is a disposable acceptance environment. A passing smoke test is not a backup/restore rehearsal, and production migration must remain gated on authentication, MCP client testing, a verified encrypted PostgreSQL and Storage backup, and proper rollout controls.
+
+### SMTP password editing in Coolify
+
+Supabase Auth consumes GOTRUE_SMTP_PASS from the Compose reference
+AUTH_SMTP_PASS. The AUTH_SMTP_PASS value must be managed using Coolify's
+Environment Variables UI and kept out of the Compose file, Git history,
+Next.js application container, build logs, and browser-visible environment
+variables. In particular, do not add a literal empty AUTH_SMTP_PASS assignment
+to the web app service: Coolify treats that declaration as Defined in Compose
+and makes the editable, referenced variable appear read-only.
+
+On the existing live private-beta Coolify resource, set the managed
+AUTH_SMTP_PASS value to the SendPulse SMTP password. Only the auth service
+should receive it via GOTRUE_SMTP_PASS. Check sender activation and test
+STARTTLS delivery before enabling email verification. The current beta
+registration flow deliberately auto-confirms accounts and requires a
+separate invitation-protected confirmation implementation before changing it.

@@ -8,10 +8,22 @@ const clean={
  agent:"const tools=[];",catalog:"{}",studentPage:"export default function Page(){}",
  teacherComponents:"LearningMaterialsCatalog.tsx",
 };
-test("ADR-0001: current source has one installation schema and no format adapter",()=>{
+test("ADR-0001: canonical baseline plus approved live repair and no format adapter",()=>{
  deepStrictEqual(checkRepository(),[]);
 });
-test("ADR-0001: rejects incremental upgrade files",()=>{
+test("ADR-0001: permits only the explicitly reviewed additive live repair",()=>{
+ deepStrictEqual(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,
+  "20261117000000_live_historical_lifecycle_extension.sql"]}),[]);
+});
+test("ADR-0001: permits specifically reviewed non-destructive workflow extension after live repair",()=>{
+ deepStrictEqual(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,
+  "20261117000000_live_historical_lifecycle_extension.sql",
+  "20261117190000_mcp_workflow_composition.sql"]}),[]);
+ ok(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,
+  "20261117190000_mcp_workflow_composition.sql"]}).length>0,
+  "Cannot skip the previously approved historical-live extension");
+});
+test("ADR-0001: rejects arbitrary incremental upgrade files",()=>{
  ok(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,"new_patch.sql"]}).length>0);
 });
 test("ADR-0001: rejects previous-material mapping in schema, MCP or UI",()=>{

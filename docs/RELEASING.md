@@ -10,7 +10,7 @@ The release-only [predecessor](../openspec/changes/archive/2026-11-08-finalize-v
 
 ## Current status
 
-The development snapshot is `0.0.0`. CogNote's inherited `0.1.0` in the package metadata was **not** a published ChessCoachPal release and has been reset. **Do not publish `v0.1.0` until the functional first-release criteria below are met.**
+ChessCoachPal has published pre-1.0 releases; [v0.1.5](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.5) is the current live release before this v0.1.6 change. The first `v0.1.0` release gate was already completed under the explicitly documented deferred manual tasks below. Later releases must retain strict CI, tenant and browser/MCP parity checks, and run only through signed, immutable GitHub release tags. Publishing a source release does **not** certify manual live ChatGPT/Claude workflows.
 
 Each published version is a *reviewed commit on the current `main` branch* with:
 
@@ -47,7 +47,7 @@ Automated prepublication evidence, all verified on merged main `d825d81` and on 
 
 - [ ] Real ChatGPT **and** Claude HTTPS OAuth/MCP create/edit/revoke and website correction using synthetic records; record sanitized results.
 - [ ] Repository Homepage correction; review historical Actions artifacts/logs, unreachable/binary entries, PII/secrets and third-party licensing/redistribution rights; rotate any exposed credentials and document disposition.
-- [ ] Confirm final production Vercel deployment and domain after the GitHub Release. GitHub tag and Release publishing no longer depend on Vercel credentials. The post-publication production deploy job requires a repository-level `VERCEL_TOKEN` and fails clearly if missing; rerun that failed job after configuring the secret.
+- [ ] Confirm the live Coolify private-beta hostname, HTTPS, release SHA, Auth, website and MCP after the domain cutover. Verify configured scheduled jobs and the SendPulse email path separately; do not mark tests passed without live evidence.
 
 This is a deliberate release-policy exception authorized by the maintainer, not a retroactive attestation of the deferred checks. The first-release validator verifies **only the five prepublication automated checkboxes**; it must not treat the deferred manual checklist as complete.
 
@@ -55,17 +55,15 @@ This is a deliberate release-policy exception authorized by the maintainer, not 
 
 For `0.x` releases, users may have to reinstall or explicitly reinitialize a development database. We **do not** retain CogNote migrations, API aliases or migration chains for old ChessCoachPal versions solely for compatibility. Never automatically erase a database that might contain real information. Decide the post-`1.0.0` compatibility and migration contract before publishing that milestone.
 
-## Vercel deployment policy: tagged releases only
+## Coolify private-beta deployment policy: published releases only
 
-**Vercel's automatic Git deployments are disabled** in [`vercel.json`](../vercel.json) with `git.deploymentEnabled: false`. Preview deployments are also disabled in the Vercel project settings. Regular pushes to `main`, feature branches and pull requests continue to run GitHub CI without consuming a Vercel deployment.
+The [release workflow](../.github/workflows/release.yml) runs the full release gate, publishes the annotated tag and GitHub Release, then invokes the restricted [Coolify deployment workflow](../.github/workflows/deploy-coolify-release.yml). The Vercel production deployment job has been removed. No tag push, ordinary commit or pull request triggers a deployment by itself.
 
-The existing [release workflow](../.github/workflows/release.yml) runs the complete release gates, creates the annotated `vX.Y.Z` tag and GitHub Release, **then deploys that exact tested tag to Vercel production** with `vercel pull --environment=production`, `vercel build --prod` and `vercel deploy --prebuilt --prod`. It does not publish on regular pushes while `package.json` is `0.0.0`. SemVer prerelease tags such as `v0.2.0-beta.1` are supported.
+The existing Coolify application and persistent database/Storage volumes are **reused** rather than replaced during the domain cutover. Its forced-command SSH deploy user accepts only an exact published SemVer tag and SHA. To avoid breaking the existing authorized key before the cutover, the reusable workflow temporarily retains the historically named `staging` GitHub Actions environment and `COOLIFY_STAGING_*` credentials. These refer to the **same** Coolify application resource, not to a parallel deployment. Change/rename them in a separate credential-rotation step after private-beta domain verification.
 
-**Required once:** create a Vercel access token with access to the `itshaks-projects` team, and configure it as the repository-level `VERCEL_TOKEN` **GitHub Actions secret** (Settings → Secrets and variables → Actions). The deploy job runs after GitHub publication; an environment-only secret will not satisfy the repository-level token requirement unless the job is configured to read it. Do not store the token in source, docs or GitHub Actions variables. Nonsecret team/project IDs are bound in the release job. The deploy job fails **after GitHub Release publication** if `VERCEL_TOKEN` is missing. The `production` GitHub Actions environment may separately require maintainer approval for the deployment job, if desired.
+**This repository change does not itself configure Coolify domains, change its encrypted environment variables, issue certificates, migrate DNS, or delete Vercel.** Those operational changes are documented in [BETA_DOMAIN_CUTOVER.md](BETA_DOMAIN_CUTOVER.md) and must be verified before considering the private-beta hosting switch complete. Invite-code enrollment and waitlist must remain operational, and public GoTrue signup must not bypass the invite gate. Keep release-traceability and the strict MCP parity gate unchanged.
 
-The deploy is a separate GitHub Actions job that starts only after successful tag publication. A standalone `push.tags` workflow would **not** run for these tags: GitHub suppresses follow-up workflow events caused by the release workflow's `GITHUB_TOKEN`. Do not create/version-tag manually to bypass the tested release pipeline. If Vercel deployment fails after the GitHub Release succeeds, use **Re-run failed jobs** on that release workflow to retry only the deploy job without republishing the tag.
-
-The setting does not prohibit an authorized operator from manually deploying with the Vercel CLI/API; it disables automatic Git-triggered deployments. Existing production remains served until the next successful tagged release. No deployment is needed just to turn off automatic Git builds.
+The old `vercel.json` also schedules `/api/cron/event-reminders`. Before shutting down Vercel, confirm that the equivalent optional Coolify `cron` service or an explicitly configured Coolify scheduled task is enabled with an appropriate `CRON_SECRET` when reminders are required. Do not silently treat the application deployment workflow as equivalent to scheduled execution.
 
 ## GitHub permissions
 

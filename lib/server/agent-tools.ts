@@ -21,6 +21,11 @@ import {puzzleSeriesCreateSchema,puzzleSeriesReconcileSchema,puzzleCapacitySchem
 import {PuzzleReviewError} from "@/lib/lichess-puzzles";
 import {teacherFenValidate} from "@/lib/server/fen-validation";
 import {teacherContextGet} from "@/lib/server/teacher-context";
+import {completedGroupCaptureSchema,teacherCompletedGroupCapture,CompletedGroupCaptureError}
+ from "@/lib/server/teacher-completed-group-capture";
+import {materialInLessonPreviewSchema,materialInLessonCommitSchema,
+ teacherMaterialInLessonPreview,teacherMaterialInLessonCommit,MaterialInLessonError}
+ from "@/lib/server/teacher-material-in-lesson";
 
 import {spreadsheetSuggestMcpSchema} from "@/lib/spreadsheet-suggest";
 import {bulkLifecyclePreviewSchema,bulkLifecycleCommitSchema,
@@ -31,6 +36,10 @@ import {historicalInputSchema,historicalCommitSchema,historicalReportSchema,
  teacherHistoricalAttendanceReport,teacherHistoricalAttendanceSummary} from "@/lib/server/teacher-historical-attendance";
 import {teacherHistoricalStageInfo,teacherHistoricalStageDelete,HistoricalImportError}
  from "@/lib/server/teacher-historical-stage";
+import {historicalDatesInputSchema,historicalDatesCommitSchema,
+ teacherHistoricalDatesPreview,teacherHistoricalDatesCommit}
+ from "@/lib/server/teacher-historical-attendance-dates";
+import {teacherCsvExport} from "@/lib/server/teacher-csv-export";
 
 import {invoiceDraftEditSchema} from "@/lib/server/invoice-draft-schemas";
 import {eventChanges} from "@/lib/server/teacher-event-schemas";
@@ -331,8 +340,18 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_historical_attendance_dates_preview",
+    description:"For verified PAST attended dates, preview 1–250 source-attested ISO dates per teacher-owned student under ONE verified workplace and IANA timezone; use ccp_workplaces_list and exact student names/IDs. NOT for normal scheduled/completed lessons or student/family CSV imports. Never guess dates from V/X/blank marks or totals. Returns issues and a digest without writing; after approval use ccp_historical_attendance_dates_commit. For absences/aggregates use advanced ccp_historical_attendance_preview; no teaching hours or mastery inferred.",
+    schema:historicalDatesInputSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_historical_attendance_dates_commit",
+    description:"Commit a previously previewed ccp_historical_attendance_dates_preview request only after explicit teacher approval. Repeat EXACT preview inputs and append previewDigest, confirmed:true, and fresh idempotencyKey UUID. Atomic, owner-scoped, duplicate-safe historical evidence; does not create calendar lessons or teaching durations.",
+    schema:historicalDatesCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_historical_attendance_preview",
-    description:"Review dated versus aggregate-only historical attendance, with explicit school-year bounds, source timezone, workplace and exact student alias resolution. Ambiguous, missing and duplicate records block import. Large files use short-lived private stageId; at most 50 small direct typed rows are allowed.",
+    description:"ADVANCED mapped historical import for aggregate/absence/mixed rows or private staged files, NOT the preferred source-neutral date-list importer. Mapping format is targetField -> exact source column header, with camelCase targets: {studentName:'Student Name',workplaceId:'Workplace ID',attendedOn:'Lesson Date',attendanceStatus:'Status'}. Do not use snake_case roster-import suggestions or map a date-matrix heading directly. For plain student plus real attended dates use ccp_historical_attendance_dates_preview instead. Ambiguous, missing or duplicate records block import. Large files use short-lived private stageId; direct rows up to 250 / 256 KiB.",
     schema:historicalInputSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -381,6 +400,14 @@ const catalogue = [
     name:"ccp_settings_export",
     description:"Export teacher-owned chess academy data as portable JSON after explicit approval. Guardian portal credentials and provider secrets are NOT returned. Large backups require a secure browser download.",
     schema:z.object({confirmed:z.literal(true)}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_settings_export_csv",
+    description:"Portable ALL-DATA CSV export with privacy-filtered, per-table pagination. Call with {confirmed:true} and no table to list EVERY exported table and row count; then call with {confirmed:true,table:'students',offset:0,limit:100} (or each other listed table), repeat using nextOffset until null. Returns CSV text with header and UTF-8 data, not secrets/guardian portal credentials. The website can download every table in one ZIP at /api/settings/export?format=csv. Large raw data must never be sent in one MCP response.",
+    schema:z.object({confirmed:z.literal(true),table:z.string().max(80).optional(),
+      offset:z.number().int().min(0).max(20000).default(0),
+      limit:z.number().int().min(1).max(200).default(100)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
@@ -1152,6 +1179,16 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_materials_lesson_use_preview",
+    description:"Read-only preview for using a known OR newly created typed chess material in an EXISTING COMPLETED lesson. Validates session date, exact frozen participant IDs, documented attendance and explicitly attested assigned/taught/completed stage per chosen learner. Returns a safe proposed commit and current revision; no writes or inferred mastery. Use lesson capture tools first if the session does not yet exist.",
+    schema:materialInLessonPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_materials_lesson_use_commit",
+    description:"After reviewing ccp_materials_lesson_use_preview and confirming exact session, material and selected learners, atomically create/reuse the typed material, link it to the completed session and record individual teacher-attested evidence with a single retry-safe UUID. The server enforces revisions, presence, ownership and rollback; neither a link nor taught status proves mastery.",
+    schema:materialInLessonCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_material_links_list",
     description:"List canonical typed material associations for one teacher-owned student or lesson, including catalog title and source URL.",
     schema:materialLinkListInput,scope:"coach:read",readOnly:true,
@@ -1262,6 +1299,11 @@ const catalogue = [
     name:"ccp_lessons_capture_preview",
     description:"Read-only multi-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. Confirm separately via ccp_sessions_ad_hoc_create.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_lessons_capture_completed",
+    description:"After ccp_lessons_capture_preview resolves the exact enrolled learner IDs, workplace and time, record a COMPLETED group lesson with one explicit attendance decision and independent note for each frozen learner. Backend creates the session AND completes attendance in one owner-scoped SQL transaction, counts teacher minutes once, rejects ambiguities and retries safely. Teacher confirmation and request UUID are mandatory. No material mastery inferred. To SCHEDULE without attendance, use ccp_sessions_ad_hoc_create instead.",
+    schema:completedGroupCaptureSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_sessions_ad_hoc_create",
@@ -1428,11 +1470,33 @@ const catalogue = [
   },
 ] as const;
 
+// OAuth permission is a real operation contract. The readOnly annotation is
+// only a side-effect hint: external vision/rating previews legitimately use a
+// coach:read grant while being annotated non-read-only due to outbound calls.
+// Conflating the two previously hid those tools from read-only tools/list.
+export const toolScopeByName = new Map<string,string>(catalogue.map(t => [t.name,t.scope]));
+
+const destructiveTool = (name:string,readOnly:boolean) => !readOnly &&
+  (/(?:^|_)(?:delete|void|revoke|rotate|cancel|unlink)(?:_|$)/.test(name) ||
+   ["ccp_students_bulk_lifecycle_commit","ccp_learning_material_lifecycle_change",
+    "ccp_billing_invoices_bulk"].includes(name));
+const externalTool = (name:string) => [
+  "ccp_student_ratings_refresh_preview","ccp_lichess_image_fen_propose",
+  "ccp_lichess_puzzle_publish","ccp_events_email_invites",
+  "ccp_billing_invoice_checkout","ccp_billing_invoice_send",
+  "ccp_billing_invoices_bulk","ccp_materials_chapters_sync",
+  "ccp_import_spreadsheet_suggest",
+].includes(name);
+
 export const exposedTools = catalogue.map(t => ({
   name: t.name, title: t.name,
   description: t.description,
   inputSchema: z.toJSONSchema(t.schema),
-  annotations: { readOnlyHint: t.readOnly, destructiveHint: false, openWorldHint: false },
+  annotations: {
+    readOnlyHint: t.readOnly,
+    destructiveHint: destructiveTool(t.name,t.readOnly),
+    openWorldHint: externalTool(t.name),
+  },
 }));
 
 export function validateCall(name: string, input: unknown) {
@@ -1448,10 +1512,16 @@ export function validateCall(name: string, input: unknown) {
 
 export async function runTool(db: SupabaseClient, teacherId: string,
   name: string, input: unknown, scopes: string[], clientId: string) {
+  // Check the permission *before* parsing input or disclosing validation
+  // details of an operation unavailable to this OAuth grant.
+  const requiredScope=toolScopeByName.get(name);
+  if (!requiredScope) return {error:{code:"NOT_FOUND",message:"Unknown tool"}};
+  if (!scopes.includes(requiredScope))
+    return { error: { code: "FORBIDDEN", message: "Insufficient OAuth scope" } };
   const parsed = validateCall(name, input);
   if ("error" in parsed) return { error: parsed.error };
   const { tool, args } = parsed;
-  if (!scopes.includes(tool!.scope)) return { error: { code: "FORBIDDEN", message: "Insufficient OAuth scope" } };
+  void tool;
   try {
     // Scoped SQL RPC uses the end-user's JWT and RLS, not the service role.
     // It checks expected revision and stores the receipt and domain write in the same transaction.
@@ -1601,6 +1671,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_historical_import_stage_delete":
         return {data:await teacherHistoricalStageDelete(db,teacherId,
           (args as {stageId:string}).stageId)};
+      case "ccp_historical_attendance_dates_preview":
+        return {data:await teacherHistoricalDatesPreview(db,teacherId,args)};
+      case "ccp_historical_attendance_dates_commit":
+        return {data:await teacherHistoricalDatesCommit(db,teacherId,args)};
       case "ccp_historical_attendance_preview":
         return {data:await teacherHistoricalAttendancePreview(db,teacherId,args)};
       case "ccp_historical_attendance_commit":
@@ -1638,6 +1712,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_settings_export":
         return {data:await teacherSafeExport(db,teacherId)};
+      case "ccp_settings_export_csv":
+        return {data:await teacherCsvExport(db,teacherId,args as {
+          table?:string;offset:number;limit:number})};
       case "ccp_settings_import_preview": {
         const a=args as {payload:unknown};
         const {payload,...preview}=teacherImportPreview(a.payload);
@@ -2153,6 +2230,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as Parameters<typeof teacherMaterialVoid>[2];
         return {data:await teacherMaterialVoid(db,teacherId,a)};
       }
+      case "ccp_materials_lesson_use_preview":
+        return {data:await teacherMaterialInLessonPreview(db,teacherId,
+          args as Parameters<typeof teacherMaterialInLessonPreview>[2])};
+      case "ccp_materials_lesson_use_commit":
+        return {data:await teacherMaterialInLessonCommit(db,teacherId,
+          args as Parameters<typeof teacherMaterialInLessonCommit>[2])};
       case "ccp_material_links_list": {
         const a=args as Parameters<typeof materialLinksList>[2];
         return {data:await materialLinksList(db,teacherId,a)};
@@ -2179,6 +2262,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_lessons_capture_preview":
         return {data:await teacherLessonCapturePreview(db,teacherId,
           args as Parameters<typeof teacherLessonCapturePreview>[2])};
+      case "ccp_lessons_capture_completed":
+        return {data:await teacherCompletedGroupCapture(db,teacherId,
+          args as Parameters<typeof teacherCompletedGroupCapture>[2])};
       case "ccp_sessions_ad_hoc_create": {
         const a=args as {workplaceId:string;studentIds:string[];title:string;
           startsAt:string;durationMinutes:number;lessonNote:string;idempotencyKey:string};
@@ -2314,6 +2400,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof PuzzleReviewError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LessonTimingError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof MaterialInLessonError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof CompletedGroupCaptureError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof AtomicLessonChapterError)
       return {error:{code:error.code,message:error.message}};

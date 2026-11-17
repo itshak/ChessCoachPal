@@ -6,6 +6,73 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 _Changes for the next release go here._
 
+## [0.1.7] - 2026-11-18
+
+### Added
+- English, Hebrew (RTL), and Russian localization of teacher/guest interfaces, OAuth consent, shared website/MCP preferences and language-aware reports, family communications, invoice PDFs and exports.
+- Forward-only multilingual teacher and recipient locale migration for existing Coolify databases; preserve canonical business records and language-neutral MCP fields.
+- Localized the new full JSON/CSV export and historical attended-date import controls introduced on main, preserving their verification and replay protections.
+
+### Verified
+- Integrated 56 newer main commits without discarding historical imports, CSV exports or workflow-first MCP; language catalogs and strict parity checks remain aligned.
+
+## [0.1.6] - 2026-11-17
+
+### Added
+- Source-neutral historical attendance import: select one workplace, then submit each verified student's real ISO attendance dates. The website and MCP share reviewed previews, explicit confirmation, replay-safe commit and preserved history for archived students.
+- Full-data portable CSV: an authenticated website ZIP with separate UTF-8 CSV files for each teacher-owned data category, and a paginated, privacy-redacted CSV table catalogue through MCP. The existing JSON backup remains the supported restore format.
+
+### Fixed
+- Increase the bounded MCP JSON-RPC request envelope to 320 KiB so advertised 250-row / 256 KiB direct attendance imports work in practice; reject oversized streams safely.
+- Clarify historical attendance MCP target fields and tool selection, add actionable invalid-column errors and use the actual package version in MCP initialization.
+- Pin a previously missing floating-ui peer dependency for repeatable clean installs in GitHub Actions and Docker.
+
+### Verification
+- Authenticated website/MCP E2E scenarios cover archived pupils, date-list import review/atomic replay, large MCP requests, CSV export consistency and credential redaction; strict website/MCP parity and CI, Compose, Docker, restore and security gates apply.
+
+
+## [0.1.5] - 2026-11-17
+
+### Fixed
+- Repair missing PostgreSQL lifecycle-receipt and historical-attendance RPCs and evidence tables on existing Coolify deployments without resetting teacher data.
+- Add an audited, forward-only database schema extension with a preserved canonical fresh-install baseline and safe migration ledger.
+
+### Changed
+- Allow up to 250 directly typed historical-attendance rows per reviewed MCP import (256 KiB input cap); keep private staged spreadsheet imports for larger datasets.
+
+### Tests
+- Add boundary validation for direct historical import and verify isolated archive, historical summary, replay and rollback behavior.
+
+## [0.1.4] - 2026-11-17
+
+_Changes for the next release go here._
+
+### Added
+- Private-beta email ownership verification using GoTrue's signed single-use invitation links, sent through the configured SMTP service only after validating the existing invitation code. The new flow does not issue an account session until the email invitation has been accepted.
+- Configurable rollout guard for invitation-only verified-email enrollment, with tests for malformed and invalid codes, sign-up gating, email delivery through an isolated SMTP test inbox, and inability to bypass unverified registration.
+
+### Security
+- Require the public Supabase GoTrue signup bypass to stay disabled during verified beta enrollment; fail closed if the site's verification flag disagrees with GoTrue auto-confirm settings.
+- Rate-limit approved invitation emails by source and email hash, avoid leaking existing-account status, and keep SMTP credentials confined to the Auth container at runtime.
+
+### Fixed
+- Remove the Compose-defined empty SMTP password from the web service, allowing Coolify to manage the Auth SMTP secret as a secure editable runtime variable.
+
+### Changed
+- Deploy the canonical private-beta application on the existing Coolify database and service at chesscoachpal.com and api.chesscoachpal.com instead of the obsolete Vercel hostnames; preserve teacher data, existing accounts and the public waitlist.
+- Add documented, reversible operator steps for verified-beta SMTP setup and rollout. Email ownership checks remain disabled until a separately verified production SMTP rollout succeeds.
+
+## [0.1.3] - 2026-11-16
+
+
+### Security
+- Close the direct Supabase GoTrue registration bypass in private-beta Coolify deployments. Public GoTrue signup and new-user OTP must remain disabled; the server creates an Auth account only after validating the existing beta invitation code.
+- Fail closed when the beta signup route detects inconsistent GoTrue signup or email-confirmation settings. Never expose the service-role key, access code or Auth user enumeration to browsers.
+
+### Changed
+- Preserve the beta-code registration flow, existing teacher accounts and public waitlist. Extend isolated Docker Compose verification to cover direct Auth denial, accepted/rejected invite codes, teacher provisioning and waitlist persistence without resetting data.
+
+
 ## [0.1.2] - 2026-11-15
 
 ### Changed

@@ -1,9 +1,8 @@
 # ChessCoachPal
 
-**MCP tool naming for v0.1.2:** Current tools use `ccp_<domain>_<action>` (not `ccp_v1_*`). This is a breaking tool-name cleanup with no backward aliases before v1.0.0. The HTTPS connector remains `/mcp`; existing clients may need to refresh or reconnect. See [ADR-0006](docs/adr/0006-unversioned-mcp-tool-names.md).
+**MCP tool naming:** The single HTTPS `/mcp` connector exposes `ccp_<domain>_<action>` tools (no `ccp_v1_*` compatibility aliases before 1.0.0). After a release adds tools, refresh the tool catalogue or start a new client conversation; disconnect/reconnect only if the client still caches an outdated catalogue. See [client instructions](docs/AI_CONNECTORS.md).
 
-**Release status (2026-11-15):** [v0.1.2 published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.2), with unversioned `ccp_*` MCP tools and no legacy aliases. The follow-up live-client/Supabase hardening in PR #81 is newer than that tag and must be verified and deployed separately. Real Claude Desktop completed one synthetic material workflow after PR #79; full real ChatGPT MCP acceptance, historical privacy/licensing sign-off and GitHub Homepage metadata remain open. Pre-v1 installation has one canonical baseline, not a compatibility migration chain.
-
+**Release status:** Private beta on the existing OVH/Coolify server. Use [GitHub Releases](https://github.com/itshak/ChessCoachPal/releases) for the published version and deployable source; the [release procedure](docs/RELEASING.md) describes the approved tagged-only deployment. Automated tests are extensive, but the real-client ChatGPT/Claude beta exercises and remaining operational/privacy sign-offs must be evaluated separately.
 
 **Your friendly chess-coaching assistant.**
 
@@ -22,11 +21,11 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 
 ## Status
 
-**Pre-release development (0.0.0).** The original CogNote-derived foundation and release automation are on main, Milestone 1 coaching workflows have merged. Milestone 2's initial MCP/OAuth gateway is merged and archived after GitHub CI/E2E verification. Milestone 3 chess-learning basics are also merged and archived with passing GitHub CI/E2E. Milestone 4 security hardening and Milestone 5 automated self-hosting/report/recovery implementation have merged and been archived on GitHub test evidence. The expanded coaching-tool change (2b) is archived; the final publication privacy/history/license and real ChatGPT/Claude acceptance gates remain blocked. A real Codex + Vercel/Supabase demo successfully created a synthetic student and workplace enrollment, but no v0.1.0 release has been approved. New end-to-end chess trainer workflows and richer student profiles are separately proposed, not yet implemented. Only the *final live ChatGPT/Claude client demonstrations* take place manually on the maintainer's machine immediately before actual v0.1.0 publication; no development change depends on live providers. See [current status](docs/STATUS.md) and the [v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md).
+ChessCoachPal is in its **pre-1.0 private beta**. Core coaching, historical archiving, billing and learning-history workflows are available through the website and a large authenticated MCP tool catalogue. Real clients can cache obsolete tool descriptions; check the deployed release, refresh tool discovery and verify every critical write by independent read-back. Product-market readiness and real-provider certification are not implied by green synthetic tests. See [current development status](docs/STATUS.md) and [private-beta release policy](docs/RELEASING.md).
 
 ## Versions and releases
 
-The source tree is currently an **unreleased `0.0.0` development snapshot**, not an installed `v0.1.0` release. Once the first functional application passes the [v0.1.0 checklist](docs/RELEASING.md#v010-first-functional-release-gate) **and all five OpenSpec milestone gates**, it will become **`v0.1.0`**.
+Published versions follow Semantic Versioning, with private-beta features and no promised API or database compatibility before 1.0.0. The release archive and current published version are listed under [GitHub Releases](https://github.com/itshak/ChessCoachPal/releases).
 
 Every subsequent version is published automatically from `main` as a [GitHub Release](https://github.com/itshak/ChessCoachPal/releases), with notes from [CHANGELOG.md](CHANGELOG.md), an immutable `vX.Y.Z` source tag, and the corresponding ZIP and tar.gz source archives. [Release procedure](docs/RELEASING.md).
 

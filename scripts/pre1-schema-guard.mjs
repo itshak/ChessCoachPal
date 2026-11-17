@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * ADR-0001 mechanical fresh-install contract. This guards against changes
- * reintroducing schema upgrade chains, material compatibility mapping or
+ * reintroducing schema upgrade chains (other than the reviewed live-data
+ * additive extension), material compatibility mapping or
  * data-export version negotiation. It does not replace live tenant/RLS tests.
  */
 import {readdirSync,readFileSync} from "node:fs";
@@ -9,13 +10,17 @@ import {resolve,dirname,join} from "node:path";
 import {fileURLToPath} from "node:url";
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const read=path=>readFileSync(join(root,path),"utf8");
+const BASELINE="20261107000000_chesscoachpal_baseline.sql";
+const LIVE_EXTENSION="20261117000000_live_historical_lifecycle_extension.sql";
+const WORKFLOW_EXTENSION="20261117190000_mcp_workflow_composition.sql";
+const ALLOWED_SQL=[BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION];
 
 export function canonicalSchemaErrors({
  sqlFiles,sql,transfer,agent,catalog,studentPage,teacherComponents,strictMaterials=false,
 }){
  const errors=[];
- if(sqlFiles.length!==1||sqlFiles[0]!=="20261107000000_chesscoachpal_baseline.sql")
-   errors.push("One canonical fresh-install SQL snapshot is required; no incremental migrations");
+ if(sqlFiles.some((file,i)=>file!==ALLOWED_SQL[i])||sqlFiles.length>ALLOWED_SQL.length)
+   errors.push("Only the canonical baseline and the specifically approved additive live-data and workflow extensions are permitted");
  if(!sql.includes("CREATE TABLE public.learning_materials")||
     !sql.includes("CREATE TABLE public.student_training_plans"))
    errors.push("Canonical snapshot is missing required current typed chess tables");
@@ -44,7 +49,7 @@ export function canonicalSchemaErrors({
 export function repositoryInputs(){
  const sqlFiles=readdirSync(join(root,"supabase/migrations")).filter(x=>x.endsWith(".sql")).sort();
  const checks={
-   sqlFiles,sql:sqlFiles.length===1?read("supabase/migrations/"+sqlFiles[0]):"",
+   sqlFiles,sql:sqlFiles.includes(BASELINE)?read("supabase/migrations/"+BASELINE):"",
    transfer:read("lib/data-transfer.ts"),
    agent:read("lib/server/agent-tools.ts"),
    catalog:read("scripts/mcp-website-parity.json"),

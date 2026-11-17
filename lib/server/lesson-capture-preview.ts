@@ -355,7 +355,7 @@ export async function teacherLessonCapturePreview(
       materialNextStep:selectedChapter?
         "Approve one combined atomic lesson+chapter commit to avoid partial writes, or use the original separately approved session and chapter operations. Both leave attendance unmarked and mastery unknown.":
         "No verified study chapter selected. Do not invent material history.",
-      nextStep:selectedChapter?"After teacher approval, use ccp_lessons_capture_commit_with_chapter with the exact proposedAtomicCommit fields, two distinct UUIDs and confirmed=true for one database transaction. Record attendance separately.":"After teacher approval, use ccp_sessions_ad_hoc_create with the exact preview IDs, a new idempotencyKey and confirmed=true. Record attendance/completion separately.",
+      nextStep:selectedChapter?"For a scheduled lesson plus verified chapter use ccp_lessons_capture_commit_with_chapter with exact reviewed data, two request UUIDs and teacher approval; this leaves attendance unmarked. For a completed group lesson with explicit attendance instead use ccp_lessons_capture_completed (chapter association is separate).":"For a completed group lesson with explicit attendance for EACH student, confirm exact proposedSession fields and use ccp_lessons_capture_completed with participant-specific attendance notes, one requestId and confirmed=true. Otherwise schedule without attendance via ccp_sessions_ad_hoc_create.",
     },
   };
 }

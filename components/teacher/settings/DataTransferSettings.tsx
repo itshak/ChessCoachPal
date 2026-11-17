@@ -20,12 +20,12 @@ export function DataTransferSettings() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleExport() {
+  async function handleExport(format: "json" | "csv") {
     setExporting(true);
     setMessage(null);
     setError(null);
     try {
-      const res = await fetch("/api/settings/export");
+      const res = await fetch("/api/settings/export"+(format==="csv"?"?format=csv":""));
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(toUserError(data, t("exportFailed")));
@@ -33,7 +33,7 @@ export function DataTransferSettings() {
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") ?? "";
       const match = disposition.match(/filename="([^"]+)"/);
-      const filename = match?.[1] ?? "chesscoachpal-export.json";
+      const filename = match?.[1] ?? (format==="csv"?"chesscoachpal-all-data.zip":"chesscoachpal-export.json");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -117,9 +117,12 @@ export function DataTransferSettings() {
           size="sm"
           variant="secondary"
           disabled={exporting || importing}
-          onClick={handleExport}
+          onClick={()=>void handleExport("json")}
         >
-          {exporting?t("exporting"):t("export")}
+          {exporting?t("exporting"):t("exportJson")}
+        </Button>
+        <Button size="sm" variant="secondary" disabled={exporting || importing} onClick={()=>void handleExport("csv")}>
+          {exporting?t("exporting"):t("exportCsv")}
         </Button>
         <Button
           size="sm"
