@@ -331,7 +331,7 @@ const catalogue = [
   },
   {
     name:"ccp_historical_attendance_preview",
-    description:"Review dated versus aggregate-only historical attendance, with explicit school-year bounds, source timezone, workplace and exact student alias resolution. Ambiguous, missing and duplicate records block import. Large files use short-lived private stageId; at most 50 small direct typed rows are allowed.",
+    description:"Review dated versus aggregate-only historical attendance, with explicit school-year bounds, source timezone, workplace and exact student alias resolution. Ambiguous, missing and duplicate records block import. Large files use short-lived private stageId; up to 250 directly supplied rows (max 256 KiB) are supported without browser upload; use a private staged file for larger datasets.",
     schema:historicalInputSchema,scope:"coach:read",readOnly:true,
   },
   {
