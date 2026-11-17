@@ -100,8 +100,10 @@ test("PARITY:PARITY-mcp-completed-group-validation rejects missing or duplicated
 });
 
 test("PARITY:PARITY-mcp-tool-scope-discovery read-scoped external preview retains listing",async({page,request})=>{
- const read=await delegatedTool(page,request,"coach:read");
- const listed=await read.listTools();
+ const tool=await delegatedTool(page,request,"coach:read");
+ const browser=await page.request.get("/api/students?limit=1");
+ expect(browser.status(),await browser.text()).toBe(200);
+ const listed=await tool.listTools();
  const names=listed.map((t:{name:string})=>t.name);
  expect(names).toContain("ccp_student_ratings_refresh_preview");
  expect(names).toContain("ccp_lichess_image_fen_propose");
@@ -109,7 +111,7 @@ test("PARITY:PARITY-mcp-tool-scope-discovery read-scoped external preview retain
  expect(names).toContain("ccp_materials_lesson_use_preview");
  expect(names).not.toContain("ccp_lessons_capture_completed");
  expect(names).not.toContain("ccp_materials_lesson_use_commit");
- const denied=await read("ccp_lessons_capture_completed",{
+ const denied=await tool("ccp_lessons_capture_completed",{
   workplaceId:randomUUID(),studentIds:[randomUUID(),randomUUID()],
   title:"Unauthorized write",startsAt:"2046-02-05T09:00:00+02:00",
   durationMinutes:90,lessonNote:"",
