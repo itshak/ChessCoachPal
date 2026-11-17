@@ -32,6 +32,11 @@ describe("reviewed locale ICU messages",()=>{
     expect(russian("studentInfo.practiceApproxYears",{count:1})).toContain("1 года");
     expect(russian("studentInfo.practiceApproxYears",{count:5})).toContain("5 лет");
     expect(hebrew("studentInfo.practiceSinceDate",{date:"2021"})).toContain("2021");
+    expect(hebrew("lessonCapture.approveAtomic")).toContain("אטומית");
+    expect(russian("lessonCapture.approveAtomic")).toContain("ОДНОЙ");
+    expect(hebrew("materialCatalog.archiveImpact",{assignments:2,relations:3})).toContain("3");
+    expect(russian("materialHistory.aggregateHeadline",{count:7})).toContain("7");
+    expect(hebrew("materialHistory.recordConfirm",{stage:"נלמד"})).toContain("נלמד");
 
   });
   it("preserves multilingual user-provided names in interpolated translations",()=>{

@@ -42,6 +42,8 @@ test("PARITY: teacher language preference persists identically via website and M
     await studentLink.click();
     await expect(page.getByRole("heading",{name:"תצפיות דירוג לפי מקור וקצב משחק"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"התקדמות"})).toBeVisible();
+    await expect(page.getByRole("heading",{name:"למידת שחמט"})).toBeVisible();
+    await expect(page.getByRole("heading",{name:"חומרים שהוקצו, נלמדו והושלמו"})).toBeVisible();
     await expect(page.getByLabel("תצפיות דירוג שחמט")).toBeVisible();
     await expect(page.getByText("מתאמן מאז",{exact:true})).toBeVisible();
     const mcp = await call("ccp_teacher_profile_update",{
@@ -67,6 +69,8 @@ test("PARITY: teacher language preference persists identically via website and M
     await russianStudentLink.click();
     await expect(page.getByRole("heading",{name:"Рейтинги по источникам и контролю времени"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"Прогресс"})).toBeVisible();
+    await expect(page.getByRole("heading",{name:"Изучение шахмат"})).toBeVisible();
+    await expect(page.getByRole("heading",{name:"Назначенные, изученные и завершённые материалы"})).toBeVisible();
     await expect(page.getByLabel("Наблюдения шахматного рейтинга")).toBeVisible();
     await expect(page.getByText("Занимается с",{exact:true})).toBeVisible();
     const invalidWeb = await page.request.put("/api/auth/update-profile", {

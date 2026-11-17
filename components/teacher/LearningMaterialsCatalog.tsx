@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {useTranslations} from "next-intl";
 
 type MaterialKind="game"|"puzzle"|"drill"|"study_chapter"|"external_link";
 type Material={
@@ -13,12 +14,12 @@ type Material={
 const field="w-full rounded-lg border border-border bg-surface p-2 text-foreground";
 const button="rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50";
 const kinds:MaterialKind[]=["game","puzzle","drill","study_chapter","external_link"];
-const labels:Record<MaterialKind,string>={
-  game:"Game (PGN)",puzzle:"Puzzle (FEN)",drill:"Drill",
-  study_chapter:"Study chapter",external_link:"External link",
-};
-
 export function LearningMaterialsCatalog(){
+  const t=useTranslations("materialCatalog");
+  const labels:Record<MaterialKind,string>={
+    game:t("kindGame"),puzzle:t("kindPuzzle"),drill:t("kindDrill"),
+    study_chapter:t("kindChapter"),external_link:t("kindExternal")
+  };
   const [items,setItems]=useState<Material[]>([]);
   const [editing,setEditing]=useState<{id:string;revision:number}|null>(null);
   const [relationSource,setRelationSource]=useState<Material|null>(null);
@@ -59,14 +60,14 @@ export function LearningMaterialsCatalog(){
     if(filter)params.set("kind",filter);
     if(search.trim())params.set("query",search.trim());
     const response=await fetch("/api/training/materials?"+params,{cache:"no-store"});
-    if(!response.ok)throw new Error("Unable to load the learning materials");
+    if(!response.ok)throw new Error(t("loadFailed"));
     const data=await response.json() as {materials:Material[];total:number};
     setItems(data.materials);setTotal(data.total);
-  },[filter,search,showArchived]);
+  },[filter,search,showArchived,t]);
   useEffect(()=>{let active=true;
-    void load().catch(()=>{if(active)setError("Unable to load materials");});
+    void load().catch(()=>{if(active)setError(t("loadError"));});
     return()=>{active=false};
-  },[load]);
+  },[load,t]);
   function beginEdit(material:Material){
     setEditing({id:material.id,revision:material.revision});
     setKind(material.kind);setTitle(material.title);setDescription(material.description);
@@ -92,9 +93,9 @@ export function LearningMaterialsCatalog(){
       const response=await fetch("/api/training/materials/lifecycle?"+
         new URLSearchParams({materialId:material.id}),{cache:"no-store"});
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||"Unable to inspect archive impact");
+      if(!response.ok)throw new Error(data.error||t("inspectError"));
       setArchivePreview(data);
-    }catch(e){setError(e instanceof Error?e.message:"Archive preview unavailable");}
+    }catch(e){setError(e instanceof Error?e.message:t("archiveUnavailable"));}
   }
   async function changeMaterialLifecycle(materialId:string,revision:number,action:"archive"|"restore"){
     setBusy(true);setError("");setStatus("");
@@ -105,10 +106,10 @@ export function LearningMaterialsCatalog(){
           requestId:crypto.randomUUID(),confirmed:true}),
       });
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||"Unable to change material status");
-      setStatus(action==="archive"?"Material archived without deleting history.":"Material restored to the library.");
+      if(!response.ok)throw new Error(data.error||t("lifecycleError"));
+      setStatus(action==="archive"?t("archived"):t("restored"));
       setArchivePreview(null);await load();
-    }catch(e){setError(e instanceof Error?e.message:"Material lifecycle failed");}
+    }catch(e){setError(e instanceof Error?e.message:t("lifecycleFailed"));}
     finally{setBusy(false);}
   }
   async function selectRelationshipSource(material:Material){
@@ -117,9 +118,9 @@ export function LearningMaterialsCatalog(){
       const response=await fetch("/api/training/materials/relations?"+
         new URLSearchParams({materialId:material.id}),{cache:"no-store"});
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||"Unable to fetch relations");
+      if(!response.ok)throw new Error(data.error||t("fetchRelations"));
       setRelations(data.relations??[]);
-    }catch(e){setError(e instanceof Error?e.message:"Unable to fetch relations");}
+    }catch(e){setError(e instanceof Error?e.message:t("fetchRelations"));}
   }
   async function changeRelation(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
@@ -135,11 +136,11 @@ export function LearningMaterialsCatalog(){
         }),
       });
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||"Unable to change relation");
-      setStatus(relationAction==="link"?"Material relationship recorded.":"Material relationship removed.");
+      if(!response.ok)throw new Error(data.error||t("changeRelation"));
+      setStatus(relationAction==="link"?t("relationLinked"):t("relationUnlinked"));
       setRelationSource(null);setRelations([]);setTargetMaterialId("");
       await load();
-    }catch(e){setError(e instanceof Error?e.message:"Unable to change relationship");}
+    }catch(e){setError(e instanceof Error?e.message:t("relationFailed"));}
     finally{setBusy(false);}
   }
   async function create(event:FormEvent<HTMLFormElement>){
@@ -160,166 +161,173 @@ export function LearningMaterialsCatalog(){
         method:editing?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),
       });
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||"Unable to create material");
-      setStatus(editing?"Material correction saved.":"Material saved to the reusable learning library.");
+      if(!response.ok)throw new Error(data.error||t("createError"));
+      setStatus(editing?t("corrected"):t("saved"));
       setEditing(null);
       setTitle("");setDescription("");setPgn("");setFen("");setInstructions("");
       setSourceUrl("");setStudyId("");setChapterId("");setThemes("");setSolution("");
       await load();
-    }catch(e){setError(e instanceof Error?e.message:"Unable to save material");}
+    }catch(e){setError(e instanceof Error?e.message:t("saveFailed"));}
     finally{setBusy(false);}
   }
-  return <section className="space-y-4" aria-label="Typed learning materials catalog">
+  return <section className="space-y-4" aria-label={t("aria")}>
     <div>
-      <h2 className="text-2xl font-semibold">Learning materials library</h2>
-      <p className="text-sm text-muted">Games, puzzles, drills and study chapters have separate chess-specific records in one searchable catalog. Saving a resource does not mark it as taught or mastered.</p>
+      <h2 className="text-2xl font-semibold">{t("title")}</h2>
+      <p className="text-sm text-muted">{t("intro")}</p>
     </div>
-    {archivePreview&&<div className="rounded-xl border border-border p-4 space-y-2" aria-label="Material archive impact">
-      <h3 className="font-semibold">Archive preview: {archivePreview.title}</h3>
-      <p className="text-sm text-muted">Assignments linked: {archivePreview.assignmentCount} · Material relationships: {archivePreview.relationshipCount}. Archiving hides unused material from active search; it never erases stored history.</p>
-      {!archivePreview.canArchive&&<p role="alert" className="text-sm text-red-500">This material is referenced. Resolve the linked records before archiving.</p>}
+    {archivePreview&&<div className="rounded-xl border border-border p-4 space-y-2" aria-label={t("archiveAria")}>
+      <h3 className="font-semibold">{t("archivePreview",{name:archivePreview.title})}</h3>
+      <p className="text-sm text-muted">{t("archiveImpact",{
+      assignments:archivePreview.assignmentCount,relations:archivePreview.relationshipCount})}</p>
+      {!archivePreview.canArchive&&<p role="alert" className="text-sm text-red-500">{t("archiveBlocked")}</p>}
       <div className="flex gap-2">
-        <button type="button" className={button} disabled={busy||!archivePreview.canArchive} onClick={()=>{void changeMaterialLifecycle(archivePreview.materialId,archivePreview.revision,"archive");}}>Confirm archive</button>
-        <button type="button" className="rounded-lg border border-border px-3 py-2 text-sm" onClick={()=>setArchivePreview(null)}>Cancel</button>
+        <button type="button" className={button} disabled={busy||!archivePreview.canArchive} onClick={()=>{void changeMaterialLifecycle(archivePreview.materialId,archivePreview.revision,"archive");}}>{t("confirmArchive")}</button>
+        <button type="button" className="rounded-lg border border-border px-3 py-2 text-sm" onClick={()=>setArchivePreview(null)}>{t("cancel")}</button>
       </div>
     </div>}
-    {relationSource&&<form onSubmit={changeRelation} className="rounded-xl border border-border p-4 space-y-3" aria-label="Edit material relationships">
-      <h3 className="font-semibold">Relationships for {relationSource.title}</h3>
-      <p className="text-xs text-muted">Links describe material provenance or study order; they do not record teaching or mastery. For puzzle extraction, choose a puzzle as the source and game as the target.</p>
+    {relationSource&&<form onSubmit={changeRelation} className="rounded-xl border border-border p-4 space-y-3" aria-label={t("relationshipsAria")}>
+      <h3 className="font-semibold">{t("relationshipsTitle",{name:relationSource.title})}</h3>
+      <p className="text-xs text-muted">{t("relationshipsHint")}</p>
       <div className="grid gap-3 sm:grid-cols-3">
-        <label className="text-sm">Operation
+        <label className="text-sm">{t("operation")}
           <select className={field} value={relationAction} onChange={e=>setRelationAction(e.target.value as "link"|"unlink")}>
-            <option value="link">Link</option><option value="unlink">Unlink</option>
+            <option value="link">{t("link")}</option><option value="unlink">{t("unlink")}</option>
           </select>
         </label>
-        <label className="text-sm">Relationship
+        <label className="text-sm">{t("relationship")}
           <select className={field} value={relationType} onChange={e=>setRelationType(e.target.value as typeof relationType)}>
-            <option value="derived_from">Derived from</option>
-            <option value="extracted_from">Puzzle extracted from game</option>
-            <option value="prerequisite">Prerequisite</option>
+            <option value="derived_from">{t("derivedFrom")}</option>
+            <option value="extracted_from">{t("extractedFrom")}</option>
+            <option value="prerequisite">{t("prerequisite")}</option>
           </select>
         </label>
-        <label className="text-sm">Target material
+        <label className="text-sm">{t("targetMaterial")}
           <select className={field} required value={targetMaterialId} onChange={e=>setTargetMaterialId(e.target.value)}>
-            <option value="">Choose material</option>
-            {items.filter(m=>m.id!==relationSource.id).map(m=><option key={m.id} value={m.id}>{m.kind}: {m.title}</option>)}
+            <option value="">{t("chooseMaterial")}</option>
+            {items.filter(m=>m.id!==relationSource.id).map(m=><option key={m.id} value={m.id}>{labels[m.kind]}: {m.title}</option>)}
           </select>
         </label>
       </div>
       <div className="flex gap-2">
-        <button type="submit" className={button} disabled={busy||!targetMaterialId}>{relationAction==="link"?"Save relationship":"Remove relationship"}</button>
-        <button type="button" className="rounded-lg border border-border px-3 py-2 text-sm" onClick={()=>{setRelationSource(null);setRelations([]);}}>Cancel</button>
+        <button type="submit" className={button} disabled={busy||!targetMaterialId}>{relationAction==="link"?t("saveRelationship"):t("removeRelationship")}</button>
+        <button type="button" className="rounded-lg border border-border px-3 py-2 text-sm" onClick={()=>{setRelationSource(null);setRelations([]);}}>{t("cancel")}</button>
       </div>
-      <p className="text-xs text-muted">Existing source or target relationships: {relations.length}</p>
+      <p className="text-xs text-muted">{t("existingRelations",{count:relations.length})}</p>
     </form>}
     <form onSubmit={create} className="rounded-xl border border-border p-4 space-y-3">
-      <h3 className="text-lg font-semibold">{editing?"Correct chess material":"Add chess material"}</h3>
+      <h3 className="text-lg font-semibold">{editing?t("correctMaterial"):t("addMaterial")}</h3>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm">Material type
+        <label className="text-sm">{t("materialType")}
           <select className={field} value={kind} disabled={!!editing} onChange={e=>setKind(e.target.value as MaterialKind)}>
             {kinds.map(k=><option key={k} value={k}>{labels[k]}</option>)}
           </select>
         </label>
-        <label className="text-sm">Title
+        <label className="text-sm">{t("titleField")}
           <input className={field} value={title} maxLength={160} required onChange={e=>setTitle(e.target.value)}/>
         </label>
       </div>
-      <label className="block text-sm">Description (optional)
+      <label className="block text-sm">{t("description")}
         <textarea className={field} rows={2} maxLength={4000} value={description} onChange={e=>setDescription(e.target.value)}/>
       </label>
-      <label className="block text-sm">HTTPS source URL {kind==="study_chapter"||kind==="external_link"?"(required)":"(optional)"}
-        <input className={field} type="url" value={sourceUrl} required={kind==="study_chapter"||kind==="external_link"} onChange={e=>setSourceUrl(e.target.value)} placeholder="https://lichess.org/study/..."/>
+      <label className="block text-sm">{t("sourceUrl")} {kind==="study_chapter"||kind==="external_link"?t("required"):t("optional")}
+        <input dir="ltr" className={field} type="url" value={sourceUrl} required={kind==="study_chapter"||kind==="external_link"} onChange={e=>setSourceUrl(e.target.value)} placeholder="https://lichess.org/study/..."/>
       </label>
       {kind==="game"&&<div className="space-y-2">
-        <label className="block text-sm">Game PGN
-          <textarea className={field} rows={5} value={pgn} required onChange={e=>setPgn(e.target.value)} placeholder={"1. e4 e5 2. Nf3 Nc6 *"}/>
+        <label className="block text-sm">{t("gamePgn")}
+          <textarea dir="ltr" className={field} rows={5} value={pgn} required onChange={e=>setPgn(e.target.value)} placeholder={"1. e4 e5 2. Nf3 Nc6 *"}/>
         </label>
         <div className="grid grid-cols-3 gap-2">
-          <label className="text-sm">White<input className={field} value={white} maxLength={120} onChange={e=>setWhite(e.target.value)}/></label>
-          <label className="text-sm">Black<input className={field} value={black} maxLength={120} onChange={e=>setBlack(e.target.value)}/></label>
-          <label className="text-sm">Result
+          <label className="text-sm">{t("white")}<input className={field} value={white} maxLength={120} onChange={e=>setWhite(e.target.value)}/></label>
+          <label className="text-sm">{t("black")}<input className={field} value={black} maxLength={120} onChange={e=>setBlack(e.target.value)}/></label>
+          <label className="text-sm">{t("result")}
             <select className={field} value={result} onChange={e=>setResult(e.target.value as typeof result)}>
               {["*","1-0","0-1","1/2-1/2"].map(v=><option key={v} value={v}>{v}</option>)}
             </select>
           </label>
         </div>
-        <p className="text-xs text-muted">PGN is stored as supplied; move legality and analysis are not engine-verified in this version.</p>
+        <p className="text-xs text-muted">{t("pgnWarning")}</p>
       </div>}
       {kind==="puzzle"&&<div className="space-y-2">
-        <label className="block text-sm">Puzzle FEN (all six fields)
-          <input className={field} value={fen} required onChange={e=>setFen(e.target.value)} placeholder="... w KQkq - 0 1"/>
+        <label className="block text-sm">{t("puzzleFen")}
+          <input dir="ltr" className={field} value={fen} required onChange={e=>setFen(e.target.value)} placeholder="... w KQkq - 0 1"/>
         </label>
-        <label className="block text-sm">Solution (optional/unverified)
-          <textarea className={field} rows={2} value={solution} onChange={e=>setSolution(e.target.value)}/>
+        <label className="block text-sm">{t("solution")}
+          <textarea dir="ltr" className={field} rows={2} value={solution} onChange={e=>setSolution(e.target.value)}/>
         </label>
-        <label className="block text-sm">Themes, separated by commas
-          <input className={field} value={themes} onChange={e=>setThemes(e.target.value)} placeholder="fork, endgame"/>
+        <label className="block text-sm">{t("themes")}
+          <input className={field} value={themes} onChange={e=>setThemes(e.target.value)} placeholder={t("themesExample")}/>
         </label>
       </div>}
       {kind==="drill"&&<div className="space-y-2">
-        <label className="block text-sm">Drill instructions
+        <label className="block text-sm">{t("drillInstructions")}
           <textarea className={field} rows={3} required value={instructions} onChange={e=>setInstructions(e.target.value)}/>
         </label>
         <div className="grid grid-cols-2 gap-2">
-          <label className="text-sm">Mode
+          <label className="text-sm">{t("mode")}
             <select className={field} value={mode} onChange={e=>setMode(e.target.value as typeof mode)}>
-              {["other","calculation","repetition","endgame","opening"].map(v=><option key={v} value={v}>{v}</option>)}
+              {(["other","calculation","repetition","endgame","opening"] as const).map(v=>
+                <option key={v} value={v}>{t(v==="other"?"modeOther":v==="calculation"?"modeCalculation":
+                  v==="repetition"?"modeRepetition":v==="endgame"?"modeEndgame":"modeOpening")}</option>)}
             </select>
           </label>
-          <label className="text-sm">Repetitions (optional)
+          <label className="text-sm">{t("repetitions")}
             <input className={field} type="number" min={1} max={10000} value={repetitions} onChange={e=>setRepetitions(e.target.value)}/>
           </label>
         </div>
       </div>}
       {kind==="study_chapter"&&<div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <label className="text-sm">Provider
+        <label className="text-sm">{t("provider")}
           <select className={field} value={provider} onChange={e=>setProvider(e.target.value as typeof provider)}>
-            <option value="lichess">Lichess</option><option value="other">Other</option>
+            <option value="lichess">Lichess</option><option value="other">{t("providerOther")}</option>
           </select>
         </label>
-        <label className="text-sm">Study ID
-          <input className={field} maxLength={128} value={studyId} required onChange={e=>setStudyId(e.target.value)}/>
+        <label className="text-sm">{t("studyId")}
+          <input dir="ltr" className={field} maxLength={128} value={studyId} required onChange={e=>setStudyId(e.target.value)}/>
         </label>
-        <label className="text-sm">Chapter ID (optional)
-          <input className={field} maxLength={128} value={chapterId} onChange={e=>setChapterId(e.target.value)}/>
+        <label className="text-sm">{t("chapterId")}
+          <input dir="ltr" className={field} maxLength={128} value={chapterId} onChange={e=>setChapterId(e.target.value)}/>
         </label>
       </div>}
       <div className="flex gap-2">
-        <button className={button} type="submit" disabled={busy}>{busy?"Saving…":editing?"Save correction":"Save material"}</button>
+        <button className={button} type="submit" disabled={busy}>{busy?t("saving"):editing?t("saveCorrection"):t("saveMaterial")}</button>
         {editing&&<button className="rounded-lg border border-border px-4 py-2 text-sm" type="button" onClick={()=>{
           setEditing(null);setTitle("");setDescription("");setPgn("");setFen("");
           setInstructions("");setSourceUrl("");setStudyId("");setChapterId("");
           setThemes("");setSolution("");setStatus("");setError("");
-        }}>Cancel correction</button>}
+        }}>{t("cancelCorrection")}</button>}
       </div>
       {error&&<p role="alert" className="text-sm text-red-500">{error}</p>}
       {status&&<p role="status" className="text-sm text-emerald-600">{status}</p>}
     </form>
     <div className="space-y-2">
       <div className="flex gap-2 flex-wrap">
-        <input className={field+" sm:max-w-xs"} aria-label="Search learning materials" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by title"/>
-        <select className={field+" sm:max-w-xs"} aria-label="Filter material type" value={filter} onChange={e=>setFilter(e.target.value as MaterialKind|"")}>
-          <option value="">All types</option>{kinds.map(k=><option key={k} value={k}>{labels[k]}</option>)}
+        <input className={field+" sm:max-w-xs"} aria-label={t("searchAria")} value={search} onChange={e=>setSearch(e.target.value)} placeholder={t("searchHint")}/>
+        <select className={field+" sm:max-w-xs"} aria-label={t("filterAria")} value={filter} onChange={e=>setFilter(e.target.value as MaterialKind|"")}>
+          <option value="">{t("allTypes")}</option>{kinds.map(k=><option key={k} value={k}>{labels[k]}</option>)}
         </select>
       </div>
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)}/>Include archived materials
+        <input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)}/>{t("includeArchived")}
       </label>
-      <p className="text-sm text-muted">Showing {items.length} of {total} stored materials</p>
+      <p className="text-sm text-muted">{t("showing",{shown:items.length,total})}</p>
       {items.map(material=><div key={material.id} className="rounded-lg border border-border p-3 space-y-1">
-        <strong className="text-sm">{material.title}</strong>
+        <strong className="text-sm"><bdi dir="auto">{material.title}</bdi></strong>
         <span className="ms-2 text-xs text-muted">{labels[material.kind]}</span>
-        <button className="ms-3 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>beginEdit(material)} aria-label={"Correct "+material.title}>Correct material</button>
-        <button className="ms-2 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>{void selectRelationshipSource(material);}} aria-label={"Link "+material.title}>Relationships</button>
+        <button className="ms-3 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>beginEdit(material)} aria-label={t("correctAria",{name:material.title})}>{t("correctButton")}</button>
+        <button className="ms-2 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>{void selectRelationshipSource(material);}} aria-label={t("linkAria",{name:material.title})}>{t("relationsButton")}</button>
         {material.archived_at
-          ?<button type="button" className="ms-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void changeMaterialLifecycle(material.id,material.revision,"restore");}} aria-label={"Restore "+material.title}>Restore</button>
-          :<button type="button" className="ms-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void previewMaterialArchive(material);}} aria-label={"Preview archive "+material.title}>Preview archive</button>}
-        {material.description&&<p className="text-sm">{material.description}</p>}
-        {material.chess_games&&<p className="text-xs text-muted">{material.chess_games.white_player} – {material.chess_games.black_player} ({material.chess_games.result})</p>}
-        {material.chess_puzzles&&<p className="text-xs font-mono break-all">FEN: {material.chess_puzzles.fen}</p>}
-        {material.chess_drills&&<p className="text-sm">{material.chess_drills.instructions}</p>}
-        {material.chess_study_chapters&&<p className="text-xs text-muted">Study {material.chess_study_chapters.study_id}, chapter {material.chess_study_chapters.chapter_id||"not specified"}</p>}
-        {material.source_url&&<a className="text-sm underline" href={material.source_url} target="_blank" rel="noopener noreferrer">Open original source</a>}
+          ?<button type="button" className="ms-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void changeMaterialLifecycle(material.id,material.revision,"restore");}} aria-label={t("restoreAria",{name:material.title})}>{t("restoreButton")}</button>
+          :<button type="button" className="ms-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void previewMaterialArchive(material);}} aria-label={t("archiveButtonAria",{name:material.title})}>{t("archiveButton")}</button>}
+        {material.description&&<p className="text-sm" dir="auto">{material.description}</p>}
+        {material.chess_games&&<p className="text-xs text-muted"><bdi dir="auto">{material.chess_games.white_player}</bdi>
+         {" – "}<bdi dir="auto">{material.chess_games.black_player}</bdi>
+         {" ("}<bdi dir="ltr">{material.chess_games.result}</bdi>{")"}</p>}
+        {material.chess_puzzles&&<p className="text-xs font-mono break-all" dir="ltr">FEN: {material.chess_puzzles.fen}</p>}
+        {material.chess_drills&&<p className="text-sm" dir="auto">{material.chess_drills.instructions}</p>}
+        {material.chess_study_chapters&&<p className="text-xs text-muted">{t("studyChapterSummary",{
+        study:material.chess_study_chapters.study_id,
+        chapter:material.chess_study_chapters.chapter_id||t("notSpecified")})}</p>}
+        {material.source_url&&<a className="text-sm underline" href={material.source_url} target="_blank" rel="noopener noreferrer">{t("originalSource")}</a>}
       </div>)}
     </div>
   </section>;

@@ -1,5 +1,6 @@
 "use client";
 import {useCallback,useEffect,useState,type FormEvent} from "react";
+import {useLocale,useTranslations} from "next-intl";
 
 type Student={id:string;name:string};
 type Workplace={id:string;name:string};
@@ -32,6 +33,9 @@ async function json(url:string,init?:RequestInit){
  return result;
 }
 export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
+ const t=useTranslations("materialHistory"),locale=useLocale();
+ const stageLabel=(s:"assigned"|"taught"|"completed")=>
+   t(s==="assigned"?"statusAssigned":s==="taught"?"statusTaught":"statusCompleted");
  const [students,setStudents]=useState<Student[]>([]);
  const [workplaces,setWorkplaces]=useState<Workplace[]>([]);
  const [groups,setGroups]=useState<Group[]>([]);
@@ -92,7 +96,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
   return ()=>{active=false;};},[loadDefaults]);
  async function addDefault(e:FormEvent<HTMLFormElement>){
   e.preventDefault();if(!workplaceId)return;
-  if(!window.confirm("Add this Lichess study as a default? This does not mark material as taught."))return;
+  if(!window.confirm(t("addDefaultConfirm")))return;
   setBusy(true);setError("");setSuccess("");
   try{
    await json("/api/coaching/materials",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -101,12 +105,12 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
      notes:studyNotes,requestId:crypto.randomUUID(),confirmed:true}),
    });
    setStudyLabel("");setStudyUrl("");setStudyNotes("");
-   await loadDefaults();setSuccess("Default study linked. It is not a teaching claim.");
-  }catch(e){setError(e instanceof Error?e.message:"Could not add study default");}
+   await loadDefaults();setSuccess(t("addedDefault"));
+  }catch(e){setError(e instanceof Error?e.message:t("addDefaultFailed"));}
   finally{setBusy(false);}
  }
  async function updateDefault(item:DefaultStudy){
-  if(!window.confirm("Save this study default correction and its audit record?"))return;
+  if(!window.confirm(t("updateDefaultConfirm")))return;
   setBusy(true);setError("");setSuccess("");
   try{
    await json("/api/coaching/materials",{method:"PATCH",headers:{"Content-Type":"application/json"},
@@ -114,20 +118,20 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
       expectedUpdatedAt:item.updated_at,label:editDefaultLabel.trim(),
       url:editDefaultUrl.trim(),notes:editDefaultNotes,confirmed:true}),
    });
-   setEditDefaultId("");await loadDefaults();setSuccess("Study default revision saved.");
-  }catch(e){setError(e instanceof Error?e.message:"Could not edit study default");}
+   setEditDefaultId("");await loadDefaults();setSuccess(t("updatedDefault"));
+  }catch(e){setError(e instanceof Error?e.message:t("updateDefaultFailed"));}
   finally{setBusy(false);}
  }
  async function archiveDefault(item:DefaultStudy){
-  if(!window.confirm("Archive this default study? Existing history remains available."))return;
+  if(!window.confirm(t("archiveDefaultConfirm")))return;
   setBusy(true);setError("");setSuccess("");
   try{
    await json("/api/coaching/materials",{method:"PATCH",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({operation:"default.archive",defaultId:item.id,
       expectedUpdatedAt:item.updated_at,confirmed:true}),
    });
-   await loadDefaults();setSuccess("Study default archived without changing teaching history.");
-  }catch(e){setError(e instanceof Error?e.message:"Could not archive study default");}
+   await loadDefaults();setSuccess(t("archivedDefault"));
+  }catch(e){setError(e instanceof Error?e.message:t("archiveDefaultFailed"));}
   finally{setBusy(false);}
  }
  const load=useCallback(async(offset=0)=>{
@@ -157,93 +161,93 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
  },[studentId]);
  async function record(e:FormEvent<HTMLFormElement>){
   e.preventDefault();if(!studentId||!materialId)return;
-  if(!window.confirm("Record this material as "+stage+" for the selected student? This is teacher-attested evidence."))return;
+  if(!window.confirm(t("recordConfirm",{stage:stageLabel(stage)})))return;
   setBusy(true);setError("");setSuccess("");
   try{
    await json("/api/coaching/materials",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({studentId,materialId,...(workplaceId?{workplaceId}:{}),
      stage,occurredOn,note,requestId:crypto.randomUUID(),confirmed:true}),
    });
-   setNote("");await load();setSuccess("Material evidence recorded.");
-  }catch(e){setError(e instanceof Error?e.message:"Could not record material");}
+   setNote("");await load();setSuccess(t("evidenceSaved"));
+  }catch(e){setError(e instanceof Error?e.message:t("evidenceFailed"));}
   finally{setBusy(false);}
  }
  async function retract(row:MaterialEntry){
-  const reason=window.prompt("Why is this teaching/material record incorrect? (minimum 5 characters)");
+  const reason=window.prompt(t("retractReason"));
   if(!reason)return;
   setBusy(true);setError("");setSuccess("");
   try{
    await json("/api/coaching/materials",{method:"PATCH",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({entryId:row.id,expectedUpdatedAt:row.updated_at,reason,confirmed:true}),
    });
-   await load();setSuccess("Incorrect entry retracted; audit history remains preserved.");
-  }catch(e){setError(e instanceof Error?e.message:"Could not correct history");}
+   await load();setSuccess(t("retracted"));
+  }catch(e){setError(e instanceof Error?e.message:t("retractFailed"));}
   finally{setBusy(false);}
  }
- return <section className="rounded-xl border border-border bg-surface p-4 space-y-4" aria-label="Material learning history">
+ return <section className="rounded-xl border border-border bg-surface p-4 space-y-4" aria-label={t("aria")}>
   <div>
-   <h2 className="text-lg font-semibold">Materials assigned, taught and completed</h2>
-   <p className="text-sm text-muted">Only explicitly recorded teacher evidence appears here. Merely linking a study does not mean it was taught or mastered.</p>
+   <h2 className="text-lg font-semibold">{t("title")}</h2>
+   <p className="text-sm text-muted">{t("intro")}</p>
   </div>
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}
   {success&&<p role="status" className="text-sm text-success">{success}</p>}
   <div className="grid gap-3 md:grid-cols-2">
-   <label className="text-sm">Student
+   <label className="text-sm">{t("student")}
     <select className={input} value={studentId} disabled={!!fixedStudentId} onChange={e=>setStudentId(e.target.value)}>
-     <option value="">Choose student</option>
+     <option value="">{t("chooseStudent")}</option>
      {students.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}
-     {fixedStudentId&&!students.some(s=>s.id===fixedStudentId)&&<option value={fixedStudentId}>This student</option>}
+     {fixedStudentId&&!students.some(s=>s.id===fixedStudentId)&&<option value={fixedStudentId}>{t("thisStudent")}</option>}
     </select>
    </label>
-   <label className="text-sm">Workplace (optional)
+   <label className="text-sm">{t("workplaceOptional")}
     <select className={input} value={workplaceId}
       onChange={e=>{setWorkplaceId(e.target.value);setGroupId("");}}> 
-     <option value="">All workplaces / private</option>
+     <option value="">{t("allWorkplaces")}</option>
      {workplaces.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}
     </select>
    </label>
   </div>
-  {workplaceId&&<section aria-label="Default lesson studies" className="border border-border rounded-lg p-3 space-y-3">
-   <h3 className="font-semibold">Workplace and group default studies</h3>
-   <p className="text-xs text-muted">Selected Lichess studies are teaching references, not proof of learning. Every edit and archive is audited.</p>
-   <label className="text-sm block">Select group (optional)
-    <select className={input} aria-label="Default study group" value={groupId}
+  {workplaceId&&<section aria-label={t("defaultAria")} className="border border-border rounded-lg p-3 space-y-3">
+   <h3 className="font-semibold">{t("defaultsTitle")}</h3>
+   <p className="text-xs text-muted">{t("defaultsHint")}</p>
+   <label className="text-sm block">{t("groupOptional")}
+    <select className={input} aria-label={t("groupAria")} value={groupId}
       onChange={e=>setGroupId(e.target.value)}>
-     <option value="">All workplace defaults</option>
+     <option value="">{t("allDefaults")}</option>
      {groups.filter(g=>g.workplace_id===workplaceId)
        .map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
     </select>
    </label>
    <form onSubmit={addDefault} className="grid md:grid-cols-2 gap-2">
-    <label className="text-xs">Study label
-     <input className={input} aria-label="New default study label" required maxLength={160}
+    <label className="text-xs">{t("studyLabel")}
+     <input className={input} aria-label={t("newDefaultLabelAria")} required maxLength={160}
        value={studyLabel} onChange={e=>setStudyLabel(e.target.value)}/>
     </label>
-    <label className="text-xs">Official Lichess study/chapter URL
-     <input type="url" className={input} aria-label="New default study URL"
+    <label className="text-xs">{t("studyUrl")}
+     <input type="url" className={input} aria-label={t("newDefaultUrlAria")}
        required maxLength={500} placeholder="https://lichess.org/study/AbCd1234"
        value={studyUrl} onChange={e=>setStudyUrl(e.target.value)}/>
     </label>
-    <label className="text-xs md:col-span-2">Teaching notes
+    <label className="text-xs md:col-span-2">{t("teachingNotes")}
      <input className={input} maxLength={1000} value={studyNotes}
        onChange={e=>setStudyNotes(e.target.value)}/>
     </label>
-    <button className={button} disabled={busy}>Add default study</button>
+    <button className={button} disabled={busy}>{t("addDefault")}</button>
    </form>
    <ul className="space-y-2">
     {defaults.map(item=><li key={item.id} className="border-t border-border pt-2 space-y-1 text-sm">
       {editDefaultId===item.id?<div className="space-y-2">
-       <input aria-label="Edit default study label" className={input} value={editDefaultLabel}
+       <input aria-label={t("editDefaultLabelAria")} className={input} value={editDefaultLabel}
          onChange={e=>setEditDefaultLabel(e.target.value)}/>
-       <input aria-label="Edit default study URL" className={input} value={editDefaultUrl}
+       <input aria-label={t("editDefaultUrlAria")} className={input} value={editDefaultUrl}
          onChange={e=>setEditDefaultUrl(e.target.value)}/>
-       <input aria-label="Edit default study notes" className={input} value={editDefaultNotes}
+       <input aria-label={t("editDefaultNotesAria")} className={input} value={editDefaultNotes}
          onChange={e=>setEditDefaultNotes(e.target.value)}/>
        <button className={button} type="button" disabled={busy}
-         onClick={()=>void updateDefault(item)}>Save default</button>
-       <button type="button" className="ms-2 underline" onClick={()=>setEditDefaultId("")}>Cancel</button>
+         onClick={()=>void updateDefault(item)}>{t("saveDefault")}</button>
+       <button type="button" className="ms-2 underline" onClick={()=>setEditDefaultId("")}>{t("cancel")}</button>
       </div>:<>
-       <p><strong>{item.label}</strong> · {item.group_id?"Group":"Workplace"}</p>
+       <p><strong><bdi dir="auto">{item.label}</bdi></strong> · {item.group_id?t("group"):t("workplace")}</p>
        <a href={item.url} target="_blank" rel="noopener noreferrer"
          className="text-primary underline break-all">{item.url}</a>
        {item.notes&&<p className="text-xs text-muted">{item.notes}</p>}
@@ -251,70 +255,74 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
         <button type="button" className="underline" onClick={()=>{
           setEditDefaultId(item.id);setEditDefaultLabel(item.label);
           setEditDefaultUrl(item.url);setEditDefaultNotes(item.notes);
-        }}>Edit</button>
+        }}>{t("edit")}</button>
         <button type="button" className="underline" disabled={busy}
-          onClick={()=>void archiveDefault(item)}>Archive</button>
+          onClick={()=>void archiveDefault(item)}>{t("archive")}</button>
        </div>
       </>}
     </li>)}
    </ul>
    <details>
-    <summary className="text-xs cursor-pointer">Show study default change history ({defaultHistory.length})</summary>
+    <summary className="text-xs cursor-pointer">{t("defaultHistory",{count:defaultHistory.length})}</summary>
     <ol className="text-xs space-y-1 mt-2">
       {defaultHistory.slice(0,50).map(item=><li key={item.id}>
-        {new Date(item.created_at).toLocaleString()} · {item.action} · {String(item.after_value.label??"Study")}
+        {new Date(item.created_at).toLocaleString(locale)} · {item.action} · {String(item.after_value.label??t("fallbackStudy"))}
       </li>)}
     </ol>
    </details>
   </section>}
   <div className="space-y-2" aria-live="polite">
-   <h3 className="font-medium">Recorded evidence ({total})</h3>
-   {aggregate&&<div className="text-sm rounded-lg border border-border p-3 space-y-2" aria-label="Whole-history material summary">
-    <p className="font-medium">Whole-history evidence (not just this page): {aggregate.evidenceClaims} claims</p>
-    <p className="text-muted">Assigned {aggregate.stages.assigned} · Taught {aggregate.stages.taught} · Teacher-confirmed completed {aggregate.stages.completed} · Students {aggregate.studentCount} · Unique session/material/stage combinations {aggregate.uniqueSessionMaterialStageCount}</p>
+   <h3 className="font-medium">{t("recordedEvidence",{count:total})}</h3>
+   {aggregate&&<div className="text-sm rounded-lg border border-border p-3 space-y-2" aria-label={t("aggregateAria")}>
+    <p className="font-medium">{t("aggregateHeadline",{count:aggregate.evidenceClaims})}</p>
+    <p className="text-muted">{t("aggregateCounts",{assigned:aggregate.stages.assigned,
+      taught:aggregate.stages.taught,completed:aggregate.stages.completed,
+      students:aggregate.studentCount,combinations:aggregate.uniqueSessionMaterialStageCount})}</p>
     <ul className="space-y-1">{aggregate.materials.map(item=><li key={item.materialId}>
-     {item.label||"Linked material"}: {item.stages.assigned} assigned, {item.stages.taught} taught, {item.stages.completed} completed (across {item.studentCount} students)
+     {t("aggregateRow",{name:item.label||t("linkedMaterial"),
+       assigned:item.stages.assigned,taught:item.stages.taught,
+       completed:item.stages.completed,students:item.studentCount})}
     </li>)}</ul>
    </div>}
-   {rows.length===0&&<p className="text-sm text-muted">No material learning evidence recorded for this selection.</p>}
+   {rows.length===0&&<p className="text-sm text-muted">{t("noEvidence")}</p>}
    <ul className="space-y-2">
     {rows.map(row=><li key={row.id} className="border border-border rounded-lg p-3 flex justify-between gap-3">
      <div className="text-sm">
-      <strong>{row.learning_materials?.title||"Unknown material"}</strong>
-      <span className="ms-2 text-muted">{row.stage} · {row.occurred_on}</span>
-      {row.note&&<p className="text-muted whitespace-pre-wrap">{row.note}</p>}
-      {row.learning_materials?.source_url&&<a className="text-primary underline" target="_blank" rel="noopener noreferrer" href={row.learning_materials.source_url}>Source link</a>}
+      <strong><bdi dir="auto">{row.learning_materials?.title||t("unknownMaterial")}</bdi></strong>
+      <span className="ms-2 text-muted">{stageLabel(row.stage)} · {row.occurred_on}</span>
+      {row.note&&<p className="text-muted whitespace-pre-wrap" dir="auto">{row.note}</p>}
+      {row.learning_materials?.source_url&&<a className="text-primary underline" target="_blank" rel="noopener noreferrer" href={row.learning_materials.source_url}>{t("sourceLink")}</a>}
      </div>
-     <button type="button" className="text-sm text-primary disabled:opacity-50" disabled={busy} onClick={()=>void retract(row)}>Correct</button>
+     <button type="button" className="text-sm text-primary disabled:opacity-50" disabled={busy} onClick={()=>void retract(row)}>{t("correct")}</button>
     </li>)}
    </ul>
-   {nextOffset!==null&&<button type="button" className={button} disabled={busy} onClick={()=>void load(nextOffset).catch(e=>setError(String(e)))}>Load more</button>}
+   {nextOffset!==null&&<button type="button" className={button} disabled={busy} onClick={()=>void load(nextOffset).catch(e=>setError(String(e)))}>{t("loadMore")}</button>}
   </div>
   <form onSubmit={record} className="space-y-3 border-t border-border pt-3">
-   <h3 className="font-medium">Record material evidence</h3>
-   <p className="text-xs text-muted">Choose a game, puzzle, drill, study chapter, or HTTPS link from the typed Training & Materials catalog.</p>
+   <h3 className="font-medium">{t("recordTitle")}</h3>
+   <p className="text-xs text-muted">{t("recordHint")}</p>
    <div className="grid gap-3 md:grid-cols-2">
-    <label className="text-sm">Study / reference
+    <label className="text-sm">{t("studyReference")}
      <select className={input} value={materialId} onChange={e=>setMaterialId(e.target.value)} required>
-      {!materials.length&&<option value="">Create a typed learning material first</option>}
+      {!materials.length&&<option value="">{t("firstMaterial")}</option>}
       {materials.map(r=><option key={r.id} value={r.id}>{r.title}</option>)}
      </select>
     </label>
-    <label className="text-sm">Learning stage
+    <label className="text-sm">{t("stage")}
      <select className={input} value={stage} onChange={e=>setStage(e.target.value as typeof stage)}>
-      <option value="assigned">Assigned (not yet taught)</option>
-      <option value="taught">Taught (not necessarily mastered)</option>
-      <option value="completed">Teacher-confirmed completed</option>
+      <option value="assigned">{t("stageAssigned")}</option>
+      <option value="taught">{t("stageTaught")}</option>
+      <option value="completed">{t("stageCompleted")}</option>
      </select>
     </label>
-    <label className="text-sm">Recorded date
+    <label className="text-sm">{t("recordedDate")}
      <input className={input} type="date" required value={occurredOn} onChange={e=>setOccurredOn(e.target.value)} />
     </label>
-    <label className="text-sm">Evidence / context
-     <input className={input} value={note} maxLength={2000} onChange={e=>setNote(e.target.value)} placeholder="Chapter, outcome or exercise notes" />
+    <label className="text-sm">{t("context")}
+     <input className={input} value={note} maxLength={2000} onChange={e=>setNote(e.target.value)} placeholder={t("contextHint")} />
     </label>
    </div>
-   <button type="submit" className={button} disabled={busy||!studentId||!materialId}>{busy?"Saving…":"Confirm and record"}</button>
+   <button type="submit" className={button} disabled={busy||!studentId||!materialId}>{busy?t("saving"):t("confirmRecord")}</button>
   </form>
  </section>;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {useLocale,useTranslations} from "next-intl";
 
 type Student = { id:string;name:string };
 type Session = { id:string;title:string;starts_at:string;student_id:string|null };
@@ -32,6 +33,7 @@ async function command<T>(action:string,body:Record<string,unknown>={}):Promise<
  * suggestions; MCP is only allowed to propose, never to call approve/update.
  */
 export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
+  const t=useTranslations("chessLearning"),locale=useLocale();
   const [students,setStudents]=useState<Student[]>([]);
   const [sessions,setSessions]=useState<Session[]>([]);
   const [categories,setCategories]=useState<Category[]>([]);
@@ -98,11 +100,11 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
 
   const refreshMaterials=useCallback(async()=>{
     const response=await fetch("/api/training/materials?limit=100",{cache:"no-store"});
-    if(!response.ok)throw new Error("Could not load the typed material catalog");
+    if(!response.ok)throw new Error(t("loadMaterialsError"));
     const value=await response.json() as {materials:MaterialOption[]};
     setMaterials(value.materials);
     setMaterialId(old=>value.materials.some(m=>m.id===old)?old:value.materials[0]?.id??"");
-  },[]);
+  },[t]);
   useEffect(()=>{void refreshMaterials().catch(e=>setError(String(e)));},[refreshMaterials]);
 
   useEffect(()=>{
@@ -112,7 +114,7 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
   async function run(work:()=>Promise<void>,message:string){
     setBusy(true);setError("");setNotice("");
     try {await work();await Promise.all([refreshHistory(),refreshCategories()]);setNotice(message);}
-    catch(e){setError(e instanceof Error?e.message:"Learning operation failed");}
+    catch(e){setError(e instanceof Error?e.message:t("operationFailed"));}
     finally {setBusy(false);}
   }
 
@@ -121,13 +123,13 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
     await run(async()=>{
       const row=await command<Category>("chess.categories.create",{name:newCategory.trim()});
       setNewCategory("");setCategoryId(row.id);
-    },"Chess skill added.");
+    },t("skillAdded"));
   }
   async function saveCategory(e:FormEvent<HTMLFormElement>){
     e.preventDefault();
     await run(async()=>{
       await command("chess.categories.update",{categoryId,name:editCategory.trim()});
-    },"Chess skill updated.");
+    },t("skillUpdated"));
   }
   async function addObservation(e:FormEvent<HTMLFormElement>){
     e.preventDefault();
@@ -137,11 +139,11 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
         ...(sessionId?{sessionId}:{}),
       });
       setObservation("");
-    },"Verified teacher observation saved.");
+    },t("observationSaved"));
   }
   async function approve(id:string) {
     await run(async()=>{await command("chess.observations.approve",{observationId:id});},
-      "AI suggestion explicitly approved by teacher.");
+      t("suggestionApproved"));
   }
   async function saveObservation(e:FormEvent<HTMLFormElement>){
     e.preventDefault();
@@ -150,17 +152,17 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
         observationId:editObservationId,observation:editObservationText.trim(),
       });
       setEditObservationId("");
-    },"Observation corrected.");
+    },t("observationCorrected"));
   }
   async function addLink(e:FormEvent<HTMLFormElement>){
     e.preventDefault();if(!materialId)return;
-    if(!window.confirm("Attach this typed learning material? This is not evidence that it was taught."))return;
+    if(!window.confirm(t("attachConfirm")))return;
     await run(async()=>{
       await command("materials.links.create",{
         materialId,...(target==="session"?{sessionId}:{studentId}),
         requestId:crypto.randomUUID(),confirmed:true,
       });
-    },"Material associated with the selected student or lesson.");
+    },t("materialAttached"));
   }
   async function saveLink(e:FormEvent<HTMLFormElement>){
     e.preventDefault();
@@ -171,18 +173,18 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
         linkId:old.id,materialId:editMaterialId,expectedRevision:old.revision,confirmed:true,
       });
       setEditLinkId("");
-    },"Material association corrected.");
+    },t("associationCorrected"));
   }
   async function unlink(link:MaterialLink){
     await run(async()=>{
       const preview=await command<{evidencePreserved:boolean;explanation:string}>(
         "materials.links.unlinkImpact",{linkId:link.id});
       if(!preview.evidencePreserved||
-         !window.confirm("Remove this association? Existing learning evidence and the material remain."))return;
+         !window.confirm(t("unlinkConfirm")))return;
       await command("materials.links.unlink",{
         linkId:link.id,expectedRevision:link.revision,confirmed:true,
       });
-    },"Material link removed; evidence and catalog record preserved.");
+    },t("unlinkSuccess"));
   }
   const selectedMaterial=(link:MaterialLink)=>{
     const value=link.learning_materials;
@@ -190,140 +192,143 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
   };
 
   return (
-    <section aria-label="Chess learning" className="space-y-4">
+    <section aria-label={t("title")} className="space-y-4">
       <header>
-        <h2 className="text-xl font-semibold">Chess learning</h2>
-        <p className="text-sm text-muted">Skills, teacher-approved observations, and selected HTTPS studies. AI suggestions remain unverified until you approve them.</p>
+        <h2 className="text-xl font-semibold">{t("title")}</h2>
+        <p className="text-sm text-muted">{t("intro")}</p>
       </header>
       {error&&<p role="alert" className="text-error">{error}</p>}
       {notice&&<p role="status" className="text-success">{notice}</p>}
       <div className="grid gap-3 md:grid-cols-2">
-        <label>Chess learner
-          <select aria-label="Chess learner" className={inputClass} value={studentId}
+        <label>{t("learner")}
+          <select aria-label={t("learner")} className={inputClass} value={studentId}
             disabled={!!fixedStudentId} onChange={e=>{setStudentId(e.target.value);setSessionId("");}}>
-            {!studentId&&<option value="">Choose student</option>}
+            {!studentId&&<option value="">{t("chooseStudent")}</option>}
             {students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
             {fixedStudentId&&!students.some(s=>s.id===fixedStudentId)&&
-              <option value={fixedStudentId}>This student</option>}
+              <option value={fixedStudentId}>{t("thisStudent")}</option>}
           </select>
         </label>
-        <label>Related coaching lesson (optional)
-          <select aria-label="Related coaching lesson" className={inputClass} value={sessionId}
+        <label>{t("relatedLesson")}
+          <select aria-label={t("relatedLessonAria")} className={inputClass} value={sessionId}
             onChange={e=>setSessionId(e.target.value)}>
-            <option value="">All student observations</option>
+            <option value="">{t("allObservations")}</option>
             {sessions.map(s=><option value={s.id} key={s.id}>
-              {s.title} · {new Date(s.starts_at).toLocaleDateString()}
+              {s.title} · {new Date(s.starts_at).toLocaleDateString(locale)}
             </option>)}
           </select>
         </label>
       </div>
-      {!studentId&&<p className="text-muted">Create a student before recording chess learning.</p>}
+      {!studentId&&<p className="text-muted">{t("firstStudent")}</p>}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className={boxClass}>
-          <h3 className="font-semibold">Chess skill categories</h3>
-          <p className="text-sm text-muted">Six starter categories are provided for each new teacher. You can add or rename your own.</p>
-          <label>Skill area
-            <select aria-label="Chess skill area" className={inputClass} value={categoryId} onChange={e=>setCategoryId(e.target.value)}>
+          <h3 className="font-semibold">{t("categories")}</h3>
+          <p className="text-sm text-muted">{t("categoriesHint")}</p>
+          <label>{t("skillArea")}
+            <select aria-label={t("skillAreaAria")} className={inputClass} value={categoryId} onChange={e=>setCategoryId(e.target.value)}>
               {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
           <form className="flex gap-2" onSubmit={saveCategory}>
-            <input aria-label="Rename chess skill" className={inputClass} value={editCategory}
+            <input aria-label={t("renameSkill")} className={inputClass} value={editCategory}
               maxLength={80} required onChange={e=>setEditCategory(e.target.value)}/>
-            <button className={actionClass} disabled={busy||!categoryId}>Rename</button>
+            <button className={actionClass} disabled={busy||!categoryId}>{t("rename")}</button>
           </form>
           <form className="flex gap-2" onSubmit={addCategory}>
-            <input aria-label="New chess skill" className={inputClass} placeholder="e.g. Pawn structures"
+            <input aria-label={t("newSkill")} className={inputClass} placeholder={t("skillExample")}
               value={newCategory} maxLength={80} required onChange={e=>setNewCategory(e.target.value)}/>
-            <button className={actionClass} disabled={busy}>Add skill</button>
+            <button className={actionClass} disabled={busy}>{t("addSkill")}</button>
           </form>
         </div>
         <div className={boxClass}>
-          <h3 className="font-semibold">Record a teacher observation</h3>
+          <h3 className="font-semibold">{t("observationTitle")}</h3>
           <form className="space-y-3" onSubmit={addObservation}>
-            <label>Chess observation
-              <textarea aria-label="Chess observation" className={inputClass}
-                placeholder="The student understands the opposition but needs to practice triangulation."
+            <label>{t("observation")}
+              <textarea aria-label={t("observation")} className={inputClass}
+                placeholder={t("observationPlaceholder")}
                 value={observation} maxLength={5000} required rows={3}
                 onChange={e=>setObservation(e.target.value)}/>
             </label>
             <button className={actionClass} disabled={busy||!studentId||!categoryId}>
-              Save verified observation
+              {t("saveVerified")}
             </button>
           </form>
         </div>
       </div>
       <div className={boxClass}>
-        <h3 className="font-semibold">Observation history</h3>
-        {observations.length===0?<p className="text-sm text-muted">No observations recorded for this view yet.</p>:
+        <h3 className="font-semibold">{t("history")}</h3>
+        {observations.length===0?<p className="text-sm text-muted">{t("noHistory")}</p>:
           <ul className="space-y-3">{observations.map(note=><li key={note.id} className="border-t border-border pt-3">
-            <p className="font-medium">{categories.find(c=>c.id===note.category_id)?.name??"Chess skill"} · {new Date(note.observed_at).toLocaleDateString()}</p>
-            <p className="text-sm">{note.observation}</p>
-            <p className="text-xs text-muted">{note.source==="agent"?"AI proposed":"Teacher authored"} · {note.verified_at?"Verified":"Unverified suggestion"}</p>
+            <p className="font-medium"><bdi dir="auto">{categories.find(c=>c.id===note.category_id)?.name??t("fallbackSkill")}</bdi> · {new Date(note.observed_at).toLocaleDateString(locale)}</p>
+            <p className="text-sm whitespace-pre-wrap" dir="auto">{note.observation}</p>
+            <p className="text-xs text-muted">{note.source==="agent"?t("aiProposed"):t("teacherAuthored")} ·
+              {note.verified_at?t("verified"):t("unverified")}</p>
             <div className="flex gap-2 mt-2">
               {note.source==="agent"&&!note.verified_at&&
-                <button type="button" className={actionClass} disabled={busy} onClick={()=>void approve(note.id)}>Approve suggestion</button>}
+                <button type="button" className={actionClass} disabled={busy} onClick={()=>void approve(note.id)}>{t("approve")}</button>}
               <button type="button" className="underline text-sm" onClick={()=>{
                 setEditObservationId(note.id);setEditObservationText(note.observation);
-              }}>Edit observation</button>
+              }}>{t("editObservation")}</button>
             </div>
             {editObservationId===note.id&&<form className="space-y-2 mt-2" onSubmit={saveObservation}>
-              <textarea aria-label="Edit chess observation" className={inputClass} maxLength={5000}
+              <textarea aria-label={t("editObservationAria")} className={inputClass} maxLength={5000}
                 value={editObservationText} required onChange={e=>setEditObservationText(e.target.value)}/>
-              <button className={actionClass} disabled={busy}>Save correction</button>
-              <button type="button" className="px-3" onClick={()=>setEditObservationId("")}>Cancel</button>
+              <button className={actionClass} disabled={busy}>{t("saveCorrection")}</button>
+              <button type="button" className="px-3" onClick={()=>setEditObservationId("")}>{t("cancel")}</button>
             </form>}
           </li>)}</ul>}
       </div>
       <div className={boxClass}>
-        <h3 className="font-semibold">Selected learning materials</h3>
-        <p className="text-sm text-muted">Create or edit a game, study chapter, puzzle, drill, or HTTPS link in the typed materials catalog on the Training &amp; materials page. This panel only attaches an existing material to a student or lesson. A link never proves learning.</p>
+        <h3 className="font-semibold">{t("materials")}</h3>
+        <p className="text-sm text-muted">{t("materialsHint")}</p>
         <button type="button" className="underline text-sm" disabled={busy}
           onClick={()=>void refreshMaterials().catch(e=>setError(String(e)))}>
-          Refresh material catalog
+          {t("refreshMaterials")}
         </button>
         <form className="grid gap-2 md:grid-cols-2" onSubmit={addLink}>
-          <label>Learning material
-            <select aria-label="Learning material" className={inputClass} value={materialId}
+          <label>{t("material")}
+            <select aria-label={t("material")} className={inputClass} value={materialId}
               onChange={e=>setMaterialId(e.target.value)} required>
-              {!materials.length&&<option value="">Create a material in the catalog first</option>}
+              {!materials.length&&<option value="">{t("materialEmpty")}</option>}
               {materials.map(m=><option key={m.id} value={m.id}>{m.title} · {m.kind}</option>)}
             </select>
           </label>
-          <label>Attach material to
-            <select aria-label="Attach material to" className={inputClass} value={target}
+          <label>{t("attachTo")}
+            <select aria-label={t("attachTo")} className={inputClass} value={target}
               onChange={e=>setTarget(e.target.value as "student"|"session")}>
-              <option value="student">Student</option>
-              {sessionId&&<option value="session">Selected coaching lesson</option>}
+              <option value="student">{t("student")}</option>
+              {sessionId&&<option value="session">{t("selectedLesson")}</option>}
             </select>
           </label>
           <div><button className={actionClass}
             disabled={busy||!materialId||!studentId||(target==="session"&&!sessionId)}>
-            Attach learning material
+            {t("attachMaterial")}
           </button></div>
         </form>
-        {links.length===0?<p className="text-sm text-muted">No material associations for this view.</p>:
+        {links.length===0?<p className="text-sm text-muted">{t("noLinks")}</p>:
           <ul className="space-y-3">{links.map(link=>{
             const material=selectedMaterial(link);
             return <li key={link.id} className="border-t border-border pt-3">
-              <p className="font-medium">{material?.title??"Unknown material"}</p>
+              <p className="font-medium"><bdi dir="auto">{material?.title??t("unknownMaterial")}</bdi></p>
               {material?.source_url&&<a className="text-primary underline break-all"
-                href={material.source_url} target="_blank" rel="noopener noreferrer">Open source link</a>}
-              <p className="text-xs text-muted">{material?.kind??"Material"} · {link.session_id?"Lesson":"Student"} · Revision {link.revision}</p>
+                href={material.source_url} target="_blank" rel="noopener noreferrer">{t("openSource")}</a>}
+              <p className="text-xs text-muted">{material?.kind??t("materialFallback")} ·
+               {link.session_id?t("lesson"):t("student")} ·
+               {t("revision",{number:link.revision})}</p>
               <div className="flex gap-3">
                 <button type="button" className="text-sm underline" onClick={()=>{
                   setEditLinkId(link.id);setEditMaterialId(link.material_id);
-                }}>Reassign material</button>
+                }}>{t("reassign")}</button>
                 <button type="button" className="text-sm underline" disabled={busy}
-                  onClick={()=>void unlink(link)}>Unlink</button>
+                  onClick={()=>void unlink(link)}>{t("unlink")}</button>
               </div>
               {editLinkId===link.id&&<form className="space-y-2 mt-2" onSubmit={saveLink}>
-                <select aria-label="Replacement learning material" className={inputClass}
+                <select aria-label={t("replacement")} className={inputClass}
                   value={editMaterialId} onChange={e=>setEditMaterialId(e.target.value)}>
                   {materials.map(m=><option key={m.id} value={m.id}>{m.title}</option>)}
                 </select>
-                <button className={actionClass} disabled={busy||!editMaterialId}>Save association</button>
-                <button type="button" className="px-3" onClick={()=>setEditLinkId("")}>Cancel</button>
+                <button className={actionClass} disabled={busy||!editMaterialId}>{t("saveAssociation")}</button>
+                <button type="button" className="px-3" onClick={()=>setEditLinkId("")}>{t("cancel")}</button>
               </form>}
             </li>;
           })}</ul>}
