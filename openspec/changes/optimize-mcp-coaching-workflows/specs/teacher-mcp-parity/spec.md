@@ -37,6 +37,24 @@ Both website routes and MCP tools SHALL execute shared owner-scoped typed domain
 - **THEN** the application SHALL roll back the entire local unit of work without a ghost lesson or orphaned association
 - **AND** an independently retried, correctly authorized request SHALL use immutable idempotency semantics and disclose pending external-provider reconciliation when relevant.
 
+### Requirement: Historical date-list and portable export surfaces SHALL retain PR #95 parity
+
+The already-merged source-neutral historical date-list import SHALL use the same owner-scoped preview/commit contract on website and MCP, distinct from calendar lesson capture, advanced historical source mapping and student/family roster spreadsheets. The website's full CSV ZIP SHALL correspond to the MCP's sanitized paginated table catalog and data; JSON restore export remains independently supported. Transport limitations SHALL be explicit rather than misreported as missing core business parity.
+
+#### Scenario: Historical date import retains identical history evidence
+- **WHEN** the same teacher previews approved ISO presence dates for one workplace via website and MCP
+- **THEN** both SHALL agree on identities, source bounds, duplicate/ambiguity checks, digest, committed historical evidence and replay results
+- **AND** neither SHALL create canonical lessons, inferred attendance duration, payables or mastery.
+
+#### Scenario: Complete CSV export uses different safe transports
+- **WHEN** a teacher requests all-data CSV through the website and through MCP
+- **THEN** the website ZIP manifest and the MCP table catalog/pages SHALL represent the same secret-redacted owner-owned records, with stable headers and safe spreadsheet quoting, without silent truncation
+- **AND** a client SHALL NOT need the binary ZIP in model context to exercise the equivalent authorized export capability.
+
+#### Scenario: Large reviewed import honors request boundaries
+- **WHEN** a valid direct historical date request exceeds the former 32-KiB framing limit but stays within the current documented 320-KiB envelope and per-operation 250-observation/256-KiB input bounds
+- **THEN** the MCP gateway SHALL accept it for preview/commit as authorized, and SHALL safely reject oversized requests with no partial mutations.
+
 ### Requirement: Parity remains a strict implementation and release gate
 
 The source inventory, full route/tool field mappings, strict 93 original + 26 chess/canonical scenarios, additional workflow-specific authenticated browser↔MCP E2E and current security/backup/recovery gates SHALL continue to apply. Tool-description or name-only presence SHALL never count as full behavior verification.
