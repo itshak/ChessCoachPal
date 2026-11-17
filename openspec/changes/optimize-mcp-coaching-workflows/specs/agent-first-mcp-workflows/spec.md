@@ -32,6 +32,37 @@ A common “we introduced/taught this material” intent SHALL be executable thr
 - **THEN** the workflow SHALL reject with no orphaned local material/session/evidence records
 - **AND** external provider writes SHALL use separately reviewed authorization and recoverable intent/reconciliation rather than an unsupported cross-provider atomicity guarantee.
 
+### Requirement: Existing source-neutral historical attendance import SHALL remain a preferred typed workflow
+
+The previously merged PR #95 date-list importer SHALL remain the preferred option for verified prior attendance dates. It SHALL reuse the existing historical evidence service and keep the advanced mapped/absence/aggregate import path independently available. Student/family spreadsheet onboarding SHALL NOT be selected for historical attendance data merely because it accepts CSV/XLSX. The server SHALL never infer ordinary calendar lessons, duration, payment or mastery from historical date evidence.
+
+#### Scenario: Coach supplies verified attended dates
+- **WHEN** an owner-authorized coach provides one existing workplace, a source time zone and real ISO attendance dates for known or archived students
+- **THEN** `ccp_historical_attendance_dates_preview` SHALL return a no-write review and digest; `ccp_historical_attendance_dates_commit` SHALL require consent, immutable idempotency key and exact reviewed inputs
+- **AND** each accepted date SHALL become dated historical presence evidence, **not** a new scheduled lesson or billed teaching time.
+
+#### Scenario: Coach supplies aggregate totals or marked absences
+- **WHEN** the source contains aggregate-only attendance, explicit absences or mixed source fields that cannot be represented as verified presence-only date lists
+- **THEN** the agent SHALL be guided toward the existing advanced mapped/staged historical import with review rather than fabricate presence dates or reinterpret spreadsheet markers.
+
+### Requirement: Full teacher data export SHALL remain safely obtainable in the single MCP connector
+
+An authorized coach SHALL be able to enumerate exportable teacher-owned data categories and retrieve sanitized CSV by bounded pages through `ccp_settings_export_csv`; the website SHALL retain the full CSV ZIP transport and lossless JSON backup/restore format. Routine coaching questions SHOULD use narrower domain readers; large exports SHALL not be forced into a single model-context response.
+
+#### Scenario: Export a complete history without a giant tool response
+- **WHEN** a coach explicitly requests a full CSV export through MCP
+- **THEN** the tool SHALL first enumerate valid tables and then retrieve each by exact table name and safe `offset/limit` pagination until the terminal page
+- **AND** no portal or provider secrets, formula-executable CSV cells or silently truncated database table snapshots SHALL be returned, and the teacher SHALL be told CSV is not a JSON restore archive.
+
+### Requirement: MCP startup and tool descriptions SHALL guide goals without introducing global bias
+
+MCP `initialize.instructions`, tool names and descriptions SHALL identify workflow choice accurately but SHOULD remain concise and relevant to a broad chess-teaching assistant. Specific source mappings, examples and warnings MAY live in individual validated schemas or docs; indispensable constraints SHALL remain discoverable. Provider-specific schema assumptions or undocumented lazy loading MUST NOT be used to hide authorized operations.
+
+#### Scenario: Teacher asks about a lesson rather than historical import
+- **WHEN** a connected client initializes and the user asks to capture, correct or review a current lesson
+- **THEN** general startup instructions SHALL NOT misdirect the agent toward historical date-list importing or a student/family CSV wizard
+- **AND** the precise ordinary-session tools SHALL remain discoverable alongside the specialized historical import tools.
+
 ### Requirement: Common workflow tools SHALL be specific and discoverable without hiding detailed controls
 
 Each MCP operation SHALL have an accurate unique `ccp_<domain>_<action>` name, a concise description of the teacher goal, when to use it, its read/write effects, approvals, limits and its distinction from similar tools. Published input JSON Schemas SHALL be valid root objects, reflect canonical typed domain inputs and forward every supported field through dispatcher/service/storage/read-back.
