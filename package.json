@@ -26,6 +26,7 @@
     "schema:canonical:strict": "node scripts/pre1-schema-guard.mjs --strict-materials"
   },
   "dependencies": {
+    "@floating-ui/dom": "^1.8.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.98.0",
     "@tiptap/extension-placeholder": "^3.31.3",
