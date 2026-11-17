@@ -65,6 +65,24 @@ Before changing names, produce `docs/MCP_TOOL_WORKFLOW_AUDIT.md` (or another pub
 - Where similar tools legitimately differ (private lesson vs group, draft vs sent invoice, evidence vs assignment), state the selection rule explicitly.
 - Generate a **manifest quality check** in CI: unique names, normalized descriptions, root-object input schema, read-only/destructive/open-world hints consistent with effects, correctly mapped dispatch service, permission mapping, size/format bounds and no accidental public credentials.
 
+## 3A. Post-PR #95 baseline: a working workflow-first pattern, not a gap to reimplement
+
+[PR #95](https://github.com/itshak/ChessCoachPal/pull/95) merged at `f2254f6ce74872f77984aaea11479b8e8abe4fab` while this change was being drafted. It adds specific **already implemented** business functions on both website and MCP that this optimization SHALL preserve and review rather than duplicate:
+
+| Teacher intent | Current tool/service and intended use | Workflow boundary |
+| --- | --- | --- |
+| “Import these **verified past attendance dates** for these existing pupils” | `ccp_historical_attendance_dates_preview` → explicit approval → `ccp_historical_attendance_dates_commit`; `teacherHistoricalDatesPreview/Commit` call the existing historical evidence service, with one verified workplace, per-student optional ID/name, actual ISO dates, source range/timezone/provenance | **Historical evidence only**, not a scheduled/completed lesson, session duration, billing, or inferred absence/mastery |
+| “Import mixed historical records, aggregate-only counts or marked absences” | Existing `ccp_historical_attendance_preview/commit`, with verified source-column mapping or staged private file | Advanced path remains distinct; don't force the simple date list through spreadsheet column mapping |
+| “Import students/families from a spreadsheet” | `ccp_import_spreadsheet_*` tools | Student onboarding, **not historical attendance**; avoid similar descriptions causing misrouting |
+| “Export all my records as CSV” | `ccp_settings_export_csv({confirmed:true})` lists tables/counts, then same tool with `table`, `offset`, `limit` pages up to the documented response bound; website offers a full CSV ZIP | CSV is **portable analysis/export**, not lossless reimport; existing JSON full backup remains the restore format |
+| “See my lessons and progress” | Existing bounded history and report tools | **Do not** retrieve entire CSV tables merely to answer ordinary coaching questions; use task-specific readers instead |
+
+**MCP envelope and output boundaries:** PR #95 raised HTTP JSON-RPC request framing to **320 KiB**, so the date importer can accept up to **250 observations/256 KiB** while rejecting oversized streamed requests. CSV MCP responses are capped (the implementation uses **192 KiB** CSV response bytes with smaller effective page sizes where necessary) and paginated; website ZIP is a secure browser download, not a giant binary response to the model. These are transport constraints, not permissions to send raw child/guardian records into unlimited model context. The import's identity, date-range, duplicate and approved digest checks remain mandatory.
+
+**Discovery and description follow-up:** PR #95 also adds `initialize.instructions` and a long example-containing description for the preferred quick import. Audit whether global startup guidance is concise, neutral across teacher domains, stable and actually supported by the target client. Preserve critical distinctions (“verified attended dates only”, “student/family importer is different”, “CSV paged vs ZIP”, “never invent calendar lessons”) but move lengthy examples to schemas or linked documentation where possible; *do not* remove guidance that resolved real discoverability problems without comparable synthetic contract tests. This is a **description quality task**, not a claim that shorter text inherently improves Claude or ChatGPT.
+
+**Source/evidence anchors:** `lib/server/teacher-historical-attendance-dates.ts`, `lib/server/teacher-csv-export.ts`, `app/mcp/route.ts`, `docs/HISTORICAL_IMPORT_WORKFLOW.md`, `docs/CSV_EXPORT_GUIDE.md`, `e2e/parity-historical-import.spec.ts` and `e2e/parity-teacher-export.spec.ts`. PR #95 cites a green 272-pass authenticated E2E run at `86742f55`; that is named PR-head test evidence, not automatic acceptance of any later optimization commit.
+
 ## 4. Higher-level workflow patterns
 
 ### 4.1 Normal completed lesson
