@@ -1472,7 +1472,7 @@ const catalogue = [
 // only a side-effect hint: external vision/rating previews legitimately use a
 // coach:read grant while being annotated non-read-only due to outbound calls.
 // Conflating the two previously hid those tools from read-only tools/list.
-export const toolScopeByName = new Map(catalogue.map(t => [t.name,t.scope]));
+export const toolScopeByName = new Map<string,string>(catalogue.map(t => [t.name,t.scope]));
 
 const destructiveTool = (name:string,readOnly:boolean) => !readOnly &&
   (/(?:^|_)(?:delete|void|revoke|rotate|cancel|unlink)(?:_|$)/.test(name) ||
