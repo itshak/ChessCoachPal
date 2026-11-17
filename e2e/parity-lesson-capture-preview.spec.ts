@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { delegatedTool } from "./helpers/delegated-mcp";
+import { delegatedTool, type TestMcpReply} from "./helpers/delegated-mcp";
 
 const suffix = () => randomUUID().slice(0, 8);
-type Call = (name:string,args:Record<string,unknown>)=>Promise<any>;
+type Call = (name:string,args:Record<string,unknown>)=>Promise<TestMcpReply>;
 
 async function teacherFixture(call:Call) {
   const tag=suffix();

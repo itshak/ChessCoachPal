@@ -396,7 +396,12 @@
     "rapid": "rapid",
     "classical": "classical",
     "daily": "daily",
-    "puzzle": "puzzle"
+    "puzzle": "puzzle",
+    "rosterLoadFailed": "Student roster could not be loaded.",
+    "rosterTooLarge": "Student roster is too large for this view. Use an export.",
+    "familiesLoadFailed": "Family options could not be loaded.",
+    "familiesTooLarge": "Family roster is too large for this view. Use an export.",
+    "freeLimit": "Free plan allows {count} active students. Archive one, upgrade to Pro, or export and self-host."
   },
   "calendar": {
     "title": "Calendar",

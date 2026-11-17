@@ -52,7 +52,7 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  });
  const website=await page.request.get("/api/billing/credit-packages?studentId="+studentId);
  expect(website.status(),await website.text()).toBe(200);
- const initial=(await website.json()).packages as Array<any>;
+ const initial=(await website.json()).packages as Array<{id:string;invoiceStatus:string}>;
  expect(initial.find(x=>x.id===packageId)?.invoiceStatus).toBe("draft");
  const mcpInitial=await call("ccp_credits_packages_list",{studentId});
  expect(mcpInitial.error).toBeUndefined();

@@ -7,6 +7,17 @@ test("PARITY: teacher language preference persists identically via website and M
   const original = await call("ccp_teacher_profile_get",{});
   expect(original.error).toBeUndefined();
   const initial = original.data.preferredLocale as "en"|"he"|"ru";
+  const readWorkplaceContracts=async()=>{
+    const result=await call("ccp_workplaces_list",{});
+    expect(result.error).toBeUndefined();
+    return (result.data as Array<{
+      id:string;timezone:string;currency:string;locale:string;
+    }>).map(({id,timezone,currency,locale})=>({id,timezone,currency,locale}));
+  };
+  // A teacher's display language must not silently modify any workplace's
+  // business locale, billing currency or timezone (including a seeded legacy
+  // workplace). Compare through the live authenticated MCP data service.
+  const originalWorkplaces=await readWorkplaceContracts();
   try {
     const web = await page.request.put("/api/auth/update-profile", {
       data:{preferredLocale:"he"}
@@ -88,6 +99,7 @@ test("PARITY: teacher language preference persists identically via website and M
     expect(invalidMcp.error?.code).toBe("VALIDATION_ERROR");
     const after = await call("ccp_teacher_profile_get",{});
     expect(after.data.preferredLocale).toBe("ru");
+    expect(await readWorkplaceContracts()).toEqual(originalWorkplaces);
   } finally {
     const restore = await page.request.put("/api/auth/update-profile",{
       data:{preferredLocale:initial}

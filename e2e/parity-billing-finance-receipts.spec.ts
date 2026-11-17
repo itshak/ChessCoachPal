@@ -1,9 +1,9 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
-import {delegatedTool} from "./helpers/delegated-mcp";
+import {delegatedTool,type TestMcpReply} from "./helpers/delegated-mcp";
 
-type Call=(name:string,args:Record<string,unknown>)=>Promise<any>;
+type Call=(name:string,args:Record<string,unknown>)=>Promise<TestMcpReply>;
 async function billableLesson(page:import("@playwright/test").Page,call:Call,month:string){
   const student=await call("ccp_students_create",{
     name:"Finance parity learner "+randomUUID(),idempotencyKey:randomUUID(),
@@ -125,7 +125,10 @@ test("PARITY:PARITY-billing-regeneration-receipt-revision is transactional and r
   const get=async()=> {
     const response=await page.request.get("/api/billing/invoices/"+invoiceId);
     expect(response.status(),await response.text()).toBe(200);
-    return await response.json() as Record<string,any>;
+    return await response.json() as {
+      updated_at:string;subtotal_cents:number;
+      invoice_items:Array<{session_id:string;student_id:string}>;
+    };
   };
   const first=await get();
   expect(first.subtotal_cents).toBe(6200);

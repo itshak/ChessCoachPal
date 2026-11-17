@@ -1,10 +1,10 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
-import {delegatedTool} from "./helpers/delegated-mcp";
+import {delegatedTool,type TestMcpReply} from "./helpers/delegated-mcp";
 import {createClient} from "@supabase/supabase-js";
 import {SEED_TEACHER} from "./helpers/auth";
 
-type Tool=(name:string,args:Record<string,unknown>)=>Promise<any>;
+type Tool=(name:string,args:Record<string,unknown>)=>Promise<TestMcpReply>;
 const unique=(prefix:string)=>prefix+" "+randomUUID().slice(0,8);
 async function teacherContext(call:Tool){
  const workplace=await call("ccp_workplaces_create",{

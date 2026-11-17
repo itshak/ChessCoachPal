@@ -1,9 +1,9 @@
 import {randomUUID} from "node:crypto";
 import {expect,test,type Page} from "@playwright/test";
-import {delegatedTool} from "./helpers/delegated-mcp";
+import {delegatedTool, type TestMcpReply} from "./helpers/delegated-mcp";
 
 type Tool=(name:string,args:Record<string,unknown>)=>Promise<{
-  data?:any;error?:{code:string;message:string};
+  data?:TestMcpReply["data"];error?:{code:string;message:string};
 }>;
 const name=(p:string)=>p+" "+randomUUID().slice(0,9);
 async function context(call:Tool){

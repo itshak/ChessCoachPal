@@ -67,3 +67,40 @@ test("EN/HE/RU: all teacher entrypoints obey saved language and mobile layout di
     expect(restored.status(),await restored.text()).toBe(200);
   }
 });
+
+test("EN/HE/RU: 390px students list wraps very long original Unicode names and skill labels without cutting text",async({page})=>{
+  const {randomUUID}=await import("node:crypto");
+  await signInAsTeacher(page);
+  const orig=await page.request.get("/api/teacher/context");
+  expect(orig.status(),await orig.text()).toBe(200);
+  const original=(await orig.json()).preferredLocale as "en"|"he"|"ru";
+  const name="תלמיד"+"שחמט".repeat(25)+"Русский".repeat(6)+randomUUID().slice(0,8);
+  const level="уровень".repeat(12);
+  const created=await page.request.post("/api/students",{
+    data:{name,level},
+  });
+  expect(created.status(),await created.text()).toBe(201);
+  await page.setViewportSize({width:390,height:844});
+  try{
+    for(const locale of ["en","he","ru"] as const){
+      const set=await page.request.put("/api/auth/update-profile",{
+        data:{preferredLocale:locale}
+      });
+      expect(set.status(),await set.text()).toBe(200);
+      await page.goto("/students");
+      await expect(page.locator("html")).toHaveAttribute("lang",locale);
+      const link=page.locator('a[href^="/students/"]').filter({hasText:name});
+      await expect(link).toBeVisible();
+      await expect(link.locator("bdi").first()).toHaveText(name);
+      await expect(link.getByText(level)).toBeVisible();
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth),
+        `${locale}: long real student names/levels must not overflow mobile UI`)
+        .toBeLessThanOrEqual(2);
+    }
+  }finally{
+    const restore=await page.request.put("/api/auth/update-profile",{
+      data:{preferredLocale:original}
+    });
+    expect(restore.status(),await restore.text()).toBe(200);
+  }
+});

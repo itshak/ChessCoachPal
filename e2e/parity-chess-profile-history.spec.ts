@@ -1,8 +1,8 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
-import {delegatedTool} from "./helpers/delegated-mcp";
+import {delegatedTool,type TestMcpReply} from "./helpers/delegated-mcp";
 
-async function student(call:(name:string,args:Record<string,unknown>)=>Promise<any>){
+async function student(call:(name:string,args:Record<string,unknown>)=>Promise<TestMcpReply>){
  const made=await call("ccp_students_create",{
    name:"Chess history pupil "+randomUUID(),idempotencyKey:randomUUID(),
  });
@@ -100,7 +100,9 @@ test("PARITY:PARITY-students-multicontrol-ratings-history supports named chess p
  const site=await page.request.get(historyPath);
  expect(site.status()).toBe(200);
  const entries=(await site.json()).entries as Array<{
-   field_name:string;previous_value:any;next_value:any;
+   field_name:string;
+   previous_value:{lichess?:{rapid?:number}}|null;
+   next_value:{lichess?:{rapid?:number}}|null;
  }>;
  expect(entries.filter(e=>e.field_name==="chess_ratings")).toHaveLength(2);
  expect(entries.some(e=>e.field_name==="chess_ratings"&&

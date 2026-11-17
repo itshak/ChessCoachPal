@@ -61,10 +61,10 @@ export default async function StudentsPage({
       ? query.not("archived_at", "is", null)
       : query.is("archived_at", null);
     const { data, error } = await query.range(offset, offset + pageSize - 1);
-    if (error) { rosterError = "Student roster could not be loaded."; break; }
+    if (error) { rosterError = t("rosterLoadFailed"); break; }
     const chunk = (data ?? []) as unknown as StudentListRow[];
     if (students.length + chunk.length > maxRows) {
-      rosterError = "Student roster is too large for this view. Use an export.";
+      rosterError = t("rosterTooLarge");
       break;
     }
     students.push(...chunk);
@@ -74,10 +74,10 @@ export default async function StudentsPage({
     const {data,error} = await supabase.from("guardians")
       .select("id,name,family_name").eq("teacher_id",user.id)
       .order("name").order("id").range(offset,offset+pageSize-1);
-    if(error){rosterError="Family options could not be loaded.";break;}
+    if(error){rosterError=t("familiesLoadFailed");break;}
     const chunk=data??[];
     if(guardians.length+chunk.length>maxRows){
-      rosterError="Family roster is too large for this view. Use an export.";
+      rosterError=t("familiesTooLarge");
       break;
     }
     guardians.push(...chunk);
@@ -107,7 +107,7 @@ export default async function StudentsPage({
         limitBanner = (
           <HostedLimitBanner
             monthlyPriceCents={entitlement.monthlyPriceCents}
-            message={`Free plan allows ${entitlement.limits.maxStudents} active students. Archive one, upgrade to Pro, or export and self-host.`}
+            message={t("freeLimit",{count:entitlement.limits.maxStudents})}
           />
         );
       }
@@ -140,8 +140,8 @@ export default async function StudentsPage({
       {limitBanner}
       {rosterError && <p role="alert" className="mb-4 text-sm text-error">{rosterError}</p>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="min-w-0 lg:col-span-2">
           {rosterError ? null : !students.length ? (
             <Card className="text-center text-muted py-12">
               <div className="text-4xl mb-3">👋</div>
@@ -153,7 +153,7 @@ export default async function StudentsPage({
               )}
             </Card>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-3">
               {students.map((student) => {
                 const age =
                   student.birthdate != null
@@ -173,15 +173,15 @@ export default async function StudentsPage({
                   <Link
                     key={student.id}
                     href={`/students/${student.id}`}
-                    className="block"
+                    className="block min-w-0"
                   >
                     <Card
                       padding="sm"
-                      className="hover:border-primary/40 transition-colors cursor-pointer"
+                      className="min-w-0 hover:border-primary/40 transition-colors cursor-pointer"
                     >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-semibold text-lg">
+                      <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                        <div className="min-w-0 flex-1">
+                          <div className="min-w-0 font-semibold text-lg break-words [overflow-wrap:anywhere]">
                             <bdi dir="auto">{student.name}</bdi>
                             {student.archived_at && (
                               <span className="ms-2 text-xs font-normal text-muted">
@@ -190,12 +190,15 @@ export default async function StudentsPage({
                             )}
                           </div>
                           {subtitle && (
-                            <div className="text-sm text-muted">{subtitle}</div>
+                            <div className="min-w-0 text-sm text-muted break-words [overflow-wrap:anywhere]">
+                              <bdi dir="auto">{subtitle}</bdi>
+                            </div>
                           )}
                         </div>
-                        <div className="text-end text-sm text-muted">
-                          {student.level ? student.level : t("learner")}
-                        </div>                      </div>
+                        <div className="min-w-0 max-w-full text-end text-sm text-muted break-words [overflow-wrap:anywhere]">
+                          <bdi dir="auto">{student.level ? student.level : t("learner")}</bdi>
+                        </div>
+                      </div>
                     </Card>
                   </Link>
                 );
