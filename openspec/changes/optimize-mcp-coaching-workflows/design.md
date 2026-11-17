@@ -1,6 +1,6 @@
 # Design — user-workflow-first MCP without sacrificing parity
 
-**Status:** Proposed design for `optimize-mcp-coaching-workflows`; no implementation implied.  
+**Status:** Implemented candidate design on PR #97; final acceptance requires green exact merged-main checks.
 **Date:** 2026-11-17
 
 ## 1. Baseline and problem decomposition

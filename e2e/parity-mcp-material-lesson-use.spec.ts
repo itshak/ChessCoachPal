@@ -1,4 +1,4 @@
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
@@ -83,6 +83,82 @@ test("PARITY:PARITY-mcp-material-lesson-use typed material and student-specific 
  expect(denied.error?.code).toBe("CONFLICT");
  const after=await call("ccp_materials_history_list",{sessionId});
  expect(after.data.total).toBe(1);
+
+ // Existing-material reuse is a first-class choice; do not silently create
+ // a second resource because the teacher referenced a known catalog ID.
+ const secondLesson=await call("ccp_lessons_capture_completed",{
+  workplaceId,studentIds,title:"Existing material use "+tag,
+  startsAt:"2046-03-02T09:00:00+02:00",durationMinutes:90,
+  lessonNote:"Second reviewed session",
+  attendance:[
+   {studentId:studentIds[0],status:"present",note:"Daniel present"},
+   {studentId:studentIds[1],status:"present",note:"Michael present"},
+  ],requestId:randomUUID(),confirmed:true,
+ });
+ expect(secondLesson.error).toBeUndefined();
+ const secondSessionId=secondLesson.data.sessionId as string;
+ const reusePreview=await call("ccp_materials_lesson_use_preview",{
+  sessionId:secondSessionId,material:{existingMaterialId:materialId},
+  occurredOn:"2046-03-02",studentEvidence:[
+   {studentId:studentIds[1],stage:"taught",note:"Explicitly revisited this known drill"},
+  ],
+ });
+ expect(reusePreview.error).toBeUndefined();
+ expect(reusePreview.data.canCommit).toBe(true);
+ const reused=await call("ccp_materials_lesson_use_commit",{
+  ...reusePreview.data.proposedCommit,requestId:randomUUID(),confirmed:true,
+ });
+ expect(reused.error).toBeUndefined();
+ expect(reused.data).toMatchObject({materialId,newMaterialCreated:false,
+  sessionId:secondSessionId,evidenceCount:1,oneTransaction:true});
+
+ // Force a failure LATE inside the SQL transaction: seed a valid UUID that
+ // collides with the composite's deterministic child material-evidence key.
+ // The first catalog insertion and session link MUST then roll back as well.
+ let rollbackKey="",collisionId="";
+ for(let i=0;i<128;i++){
+  const candidate=randomUUID();
+  const digest=createHash("md5").update(candidate+":student-evidence:1").digest("hex");
+  if(!/[1-8]/.test(digest[12])||!/[89ab]/.test(digest[16]))continue;
+  rollbackKey=candidate;
+  collisionId=[digest.slice(0,8),digest.slice(8,12),digest.slice(12,16),
+    digest.slice(16,20),digest.slice(20)].join("-");
+  break;
+ }
+ expect(rollbackKey).not.toBe("");
+ const seeded=await call("ccp_materials_history_record",{
+  studentId:studentIds[0],materialId,sessionId:secondSessionId,
+  workplaceId,stage:"assigned",occurredOn:"2046-03-02",
+  note:"Existing unrelated attestation must survive",
+  requestId:collisionId,confirmed:true,
+ });
+ expect(seeded.error).toBeUndefined();
+ const rollbackMaterial={...material,title:"Rollback root "+tag,requestId:randomUUID()};
+ const rollbackPreview=await call("ccp_materials_lesson_use_preview",{
+  sessionId:secondSessionId,material:{create:rollbackMaterial},
+  occurredOn:"2046-03-02",studentEvidence:[
+   {studentId:studentIds[0],stage:"taught",note:"Intentional child-unique conflict"},
+  ],
+ });
+ expect(rollbackPreview.error).toBeUndefined();
+ expect(rollbackPreview.data.canCommit).toBe(true);
+ const rejected=await call("ccp_materials_lesson_use_commit",{
+  ...rollbackPreview.data.proposedCommit,requestId:rollbackKey,confirmed:true,
+ });
+ expect(rejected.error?.code).toBe("CONFLICT");
+ const catalogAfter=await call("ccp_learning_materials_list",{
+  kind:"drill",query:rollbackMaterial.title,limit:100,
+ });
+ expect(catalogAfter.error).toBeUndefined();
+ expect(catalogAfter.data.materials).toHaveLength(0);
+ const linksAfter=await call("ccp_material_links_list",{sessionId:secondSessionId});
+ expect(linksAfter.error).toBeUndefined();
+ expect(JSON.stringify(linksAfter.data)).not.toContain(rollbackMaterial.title);
+ const historyAfter=await call("ccp_materials_history_list",{sessionId:secondSessionId});
+ expect(historyAfter.error).toBeUndefined();
+ expect(historyAfter.data.total).toBe(2);
+ expect(historyAfter.data.entries.some((e:{note:string})=>
+  e.note==="Existing unrelated attestation must survive")).toBe(true);
 });
 
 test("PARITY:PARITY-mcp-material-lesson-use-invalid rejects invalid source and duplicate participant claims",async({page,request})=>{

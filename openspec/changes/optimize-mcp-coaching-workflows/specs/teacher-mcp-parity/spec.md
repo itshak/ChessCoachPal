@@ -1,8 +1,8 @@
 # Delta specification — preserve website↔MCP parity while optimizing workflows
 
-**Status:** Proposed modification clarifying the existing **applied** `teacher-mcp-parity` requirements. This does not relax ADR-0003 or the 93+26 accepted checks.
+**Status:** Proposed additive clarification preserving all existing **applied** `teacher-mcp-parity` requirements. This does not relax ADR-0003 or the 93+26 accepted checks.
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Every ordinary teacher business capability SHALL remain reachable via one authenticated MCP connector
 
