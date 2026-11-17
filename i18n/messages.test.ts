@@ -37,6 +37,11 @@ describe("reviewed locale ICU messages",()=>{
     expect(hebrew("materialCatalog.archiveImpact",{assignments:2,relations:3})).toContain("3");
     expect(russian("materialHistory.aggregateHeadline",{count:7})).toContain("7");
     expect(hebrew("materialHistory.recordConfirm",{stage:"נלמד"})).toContain("נלמד");
+    expect(hebrew("homework.attemptSaved")).toContain("אין בכך");
+    expect(russian("homework.reviewSaved")).toContain("тренера");
+    expect(hebrew("trainingPlans.goalCount",{count:2})).toContain("2 יעדים");
+    expect(russian("trainingPlans.goalCount",{count:1})).toBe("1 цель");
+    expect(russian("trainingPlans.goalCount",{count:5})).toBe("5 целей");
 
   });
   it("preserves multilingual user-provided names in interpolated translations",()=>{
