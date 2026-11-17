@@ -1,4 +1,5 @@
 "use client";
+import {useTranslations} from "next-intl";
 
 import {
   startTransition,
@@ -81,7 +82,8 @@ function cardPosition(rect: DOMRect | null): CSSProperties {
 }
 
 export function OnboardingTour({ initialShow }: { initialShow: boolean }) {
-  const router = useRouter();
+  const t=useTranslations("tour");
+  const router=useRouter();
   const pathname = usePathname();
   const titleId = useId();
   const [active, setActive] = useState(initialShow);
@@ -92,6 +94,7 @@ export function OnboardingTour({ initialShow }: { initialShow: boolean }) {
   const visible = active;
   const step = ONBOARDING_TOUR_STEPS[stepIndex] ?? ONBOARDING_TOUR_STEPS[0];
   const isLast = stepIndex === ONBOARDING_TOUR_STEPS.length - 1;
+  const stepKey=step.id as "welcome"|"students"|"learning"|"schedule"|"coaching"|"reports"|"account";
 
   const persist = useCallback((nextIndex: number, nextActive = true) => {
     if (!nextActive) {
@@ -267,19 +270,19 @@ export function OnboardingTour({ initialShow }: { initialShow: boolean }) {
         style={cardPosition(highlight)}
       >
         <p className="text-[11px] uppercase tracking-wide text-muted">
-          {stepIndex + 1} of {ONBOARDING_TOUR_STEPS.length}
+          {t("step",{current:stepIndex+1,total:ONBOARDING_TOUR_STEPS.length})}
         </p>
         <h2 id={titleId} className="text-base font-semibold">
-          {step.title}
+          {t(`steps.${stepKey}.title`)}
         </h2>
-        <p className="text-sm text-muted leading-relaxed">{step.body}</p>
+        <p className="text-sm text-muted leading-relaxed">{t(`steps.${stepKey}.body`)}</p>
         <div className="flex items-center justify-between gap-2 pt-1">
           <button
             type="button"
             className="text-xs text-muted hover:text-foreground cursor-pointer"
             onClick={() => void finish()}
           >
-            Skip
+            {t("skip")}
           </button>
           <div className="flex gap-2">
             {stepIndex > 0 && (
@@ -288,7 +291,7 @@ export function OnboardingTour({ initialShow }: { initialShow: boolean }) {
                 size="sm"
                 onClick={() => go(stepIndex - 1)}
               >
-                Back
+                {t("back")}
               </Button>
             )}
             <Button
@@ -302,7 +305,7 @@ export function OnboardingTour({ initialShow }: { initialShow: boolean }) {
                 go(stepIndex + 1);
               }}
             >
-              {isLast ? "Done" : "Next"}
+              {isLast?t("done"):t("next")}
             </Button>
           </div>
         </div>

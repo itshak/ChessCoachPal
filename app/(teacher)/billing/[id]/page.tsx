@@ -1,3 +1,4 @@
+import {getTranslations} from "next-intl/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -29,6 +30,7 @@ export default async function InvoiceDetailPage({
   } = await supabase.auth.getUser();
 
   if (!user) return null;
+  const t=await getTranslations("invoicePage");
 
   const [policy, { data: invoice }] = await Promise.all([
     getPolicy(supabase, user.id),
@@ -122,7 +124,7 @@ export default async function InvoiceDetailPage({
         href="/billing"
         className="text-sm text-muted hover:text-foreground mb-4 inline-block"
       >
-        ← Billing
+        <span className="inline-block rtl:rotate-180" aria-hidden="true">←</span> {t("back")}
       </Link>
       <InvoiceDetailClient
         invoiceId={invoice.id}
@@ -132,7 +134,7 @@ export default async function InvoiceDetailPage({
         currency={invoice.currency}
         initialItems={items}
         initialNotes={invoice.notes ?? ""}
-        familyName={family ? familyDisplayName(family) : "Family"}
+        familyName={family ? familyDisplayName(family) : t("family")}
         periodStart={invoice.period_start}
         periodEnd={invoice.period_end}
         subtotalCents={invoice.subtotal_cents}

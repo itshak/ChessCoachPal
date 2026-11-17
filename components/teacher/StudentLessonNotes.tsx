@@ -1,4 +1,5 @@
 "use client";
+import {useTranslations} from "next-intl";
 
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
@@ -24,15 +25,16 @@ export function StudentLessonNotes({
   timezone: string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const t=useTranslations("lessonNotes");
   const visible = expanded ? notes : notes.slice(0, PREVIEW_COUNT);
   const hiddenCount = notes.length - PREVIEW_COUNT;
 
   return (
     <section className="mb-8">
-      <h2 className="text-lg font-semibold mb-3">Lesson Notes</h2>
+      <h2 className="text-lg font-semibold mb-3">{t("title")}</h2>
       {notes.length === 0 ? (
         <Card className="text-center text-muted text-sm">
-          No lesson notes yet. Add them from the schedule after a lesson.
+          {t("empty")}
         </Card>
       ) : (
         <div className="space-y-3">
@@ -47,20 +49,20 @@ export function StudentLessonNotes({
                   </span>
                   {hasFamily && (
                     <span className="rounded bg-primary/10 text-primary px-1.5 py-0.5">
-                      Family
+                      {t("family")}
                     </span>
                   )}
                   {hasPrivate && (
                     <span className="rounded bg-surface-dim text-muted px-1.5 py-0.5">
-                      Private
+                      {t("private")}
                     </span>
                   )}
-                  {note.emailedAt && <span>Emailed</span>}
+                  {note.emailedAt && <span>{t("emailed")}</span>}
                 </div>
                 {hasPrivate && (
                   <div className="mb-2">
                     <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-0.5">
-                      Private
+                      {t("private")}
                     </p>
                     <p className="text-sm whitespace-pre-wrap">{note.privateBody}</p>
                   </div>
@@ -68,7 +70,7 @@ export function StudentLessonNotes({
                 {hasFamily && (
                   <div>
                     <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-0.5">
-                      For student / parent
+                      {t("forStudent")}
                     </p>
                     <p className="text-sm whitespace-pre-wrap">{note.body}</p>
                   </div>
@@ -82,7 +84,7 @@ export function StudentLessonNotes({
               onClick={() => setExpanded((v) => !v)}
               className="text-sm text-primary hover:underline cursor-pointer"
             >
-              {expanded ? "Show less" : `Show more (${hiddenCount})`}
+              {expanded?t("showLess"):t("showMore",{count:hiddenCount})}
             </button>
           )}
         </div>

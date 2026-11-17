@@ -41,7 +41,11 @@
     "noUpcoming": "No upcoming sessions yet. Create one in Coaching.",
     "recent": "Recent coaching sessions",
     "noRecent": "Completed sessions will appear here.",
-    "minutes": "{count} min"
+    "minutes": "{count} min",
+    "studentsSection": "Students",
+    "viewAll": "View all",
+    "addFirstStudent": "Add your first student to start coaching.",
+    "reviewLearning": "Review chess learning observations and selected studies"
   },
   "account": {
     "heading": "Account Settings",
@@ -73,7 +77,9 @@
     "passwordTooShort": "New password must be at least 6 characters",
     "passwordMismatch": "Passwords don't match",
     "incorrectPassword": "Current password is incorrect",
-    "connections": "Manage ChatGPT / Claude connections and revoke access"
+    "connections": "Manage ChatGPT / Claude connections and revoke access",
+    "stripePending": "Payment received. Your plan updates when Stripe confirms.",
+    "checkoutCanceled": "Checkout canceled."
   },
   "reports": {
     "title": "Teaching activity report",
@@ -446,7 +452,8 @@
     "localTimeZone": "Local time ({zone})",
     "cancelledByStudent": "Cancelled by student",
     "cancelledByTeacher": "Cancelled by teacher",
-    "requestInvalid": "Request failed ({status})"
+    "requestInvalid": "Request failed ({status})",
+    "studioSettingsLink": "Studio settings"
   },
   "materials": {
     "title": "Training & Materials",
@@ -2317,5 +2324,191 @@
     "description": "Manual payment instructions or your own Stripe account for family tuition.",
     "help": "Help",
     "close": "Close"
+  },
+  "privacyPage": {
+    "title": "Privacy and data ownership",
+    "intro": "ChessCoachPal is source-visible chess coaching software. This page describes the application, not the privacy policy of any particular hosting operator.",
+    "operatorTitle": "Who operates your installation?",
+    "operatorBody": "The teacher or organization running your instance controls its hosting, database, backups, logs, retention period, email delivery, optional payments and connected AI providers. ChessCoachPal contributors do not automatically receive records stored on independent installations. Contact your hosting operator for their privacy notice and privacy-request details.",
+    "storedTitle": "What can be stored?",
+    "storedBody": "The application can store teacher accounts, workplaces, students and family contacts, birth dates, lesson schedules, attendance, private and shared coaching notes, chess learning observations and study links, invoices and payment records. Family portals are accessible to anyone with their private portal link; protect and rotate these links when necessary.",
+    "authBody": "Session cookies authenticate teachers. Delegated AI clients receive teacher-authorized OAuth permissions. Optional email, payments, AI and other integrations can send information to providers selected by the operator or teacher. Never expose a service-role database key to a client or AI agent.",
+    "childrenTitle": "Children and sensitive records",
+    "childrenBody": "Teachers and operators must obtain applicable permissions, restrict access, handle correction and deletion requests, and meet their legal child-privacy obligations. Do not enter identifiable real students, personal records or production credentials in public demo or CI environments.",
+    "retentionTitle": "Retention, export and security",
+    "retentionBody": "Teachers can export records from Account settings. Exports contain sensitive information and need separate protection. Operators must manage database and uploaded-object backups, retention, deletion and incident response. No hosting region, retention period, contact address or contractual guarantee is implied by this open-source repository.",
+    "securityBefore": "See the",
+    "securityLink": "security documentation",
+    "securityAfter": "for implementation guidance, and ask your deployment operator about their actual practices."
+  },
+  "termsPage": {
+    "title": "Software license and hosting terms",
+    "intro": "ChessCoachPal is chess teaching software that can be self-hosted under the applicable license terms. The current ChessCoachPal contributions are proprietary, while specified earlier and third-party material retains its own licenses.",
+    "licenseTitle": "Software license and third-party notices",
+    "licenseBefore": "The repository contains source-visible proprietary ChessCoachPal contributions. Their permitted use is defined in the",
+    "licenseLink": "LICENSE notice",
+    "licenseMiddle": "Prior ChessCoachPal and CogNote MIT-licensed contributions retain applicable rights; see",
+    "creditsLink": "third-party and upstream notices",
+    "licenseAfter": "Public source access does not itself grant permission to redistribute proprietary portions. This page does not replace any license.",
+    "hostingTitle": "Independent hosting",
+    "hostingBody": "Each installation is run by its own operator. If your chess teacher, school, club or service provider hosts your account, ask them for applicable terms, data practices, pricing, support arrangements and availability. The source repository makes no claim that a specific paid hosting service or central support organization is available.",
+    "responsibleTitle": "Responsible use",
+    "responsibleBody": "Operators and teachers must obtain appropriate permissions to hold students' and families' records, protect credentials and private links, comply with applicable laws, and check redistribution rights before uploading teaching materials. Optional AI, payments and email services have separate provider terms.",
+    "contractTitle": "No implied service contract",
+    "contractBody": "Installing this software does not create a subscription, hosting agreement, service-level guarantee or legal relationship with its contributors. Separate hosting contracts, if any, are between the user and their chosen operator."
+  },
+  "legalLayout": {
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service"
+  },
+  "avatarCrop": {
+    "noCanvas": "Canvas not available",
+    "encodeFailed": "Could not encode image",
+    "cancelCrop": "Cancel crop",
+    "title": "Crop profile photo",
+    "hint": "Drag to reposition. The circle shows how it will look as your avatar; the saved image is square.",
+    "zoom": "Zoom",
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "use": "Use photo"
+  },
+  "profilePhoto": {
+    "chooseImage": "Choose an image file",
+    "sizeLimit": "Image must be under 8 MB",
+    "notSignedIn": "Not signed in",
+    "saveFailed": "Failed to save photo",
+    "removeFailed": "Could not remove photo",
+    "updated": "Photo updated",
+    "removed": "Photo removed",
+    "uploadFailed": "Could not upload photo",
+    "changeProfile": "Change profile photo",
+    "uploadProfile": "Upload profile photo",
+    "change": "Change photo",
+    "upload": "Upload photo",
+    "remove": "Remove"
+  },
+  "richEditor": {
+    "loading": "Loading editor…",
+    "bold": "Bold",
+    "italic": "Italic",
+    "bullets": "Bullet list",
+    "numbers": "Numbered list",
+    "heading": "Heading",
+    "bulletLabel": "• List",
+    "numberLabel": "1. List"
+  },
+  "quizProgress": {
+    "question": "Question {current} of {total}"
+  },
+  "lessonNotes": {
+    "title": "Lesson Notes",
+    "empty": "No lesson notes yet. Add them from the schedule after a lesson.",
+    "family": "Family",
+    "private": "Private",
+    "emailed": "Emailed",
+    "forStudent": "For student / parent",
+    "showLess": "Show less",
+    "showMore": "Show more ({count})"
+  },
+  "tour": {
+    "step": "Step {current} of {total}",
+    "skip": "Skip",
+    "back": "Back",
+    "done": "Done",
+    "next": "Next",
+    "steps": {
+      "welcome": {
+        "title": "Welcome to ChessCoachPal",
+        "body": "Your chess coaching workspace. Start with students and lessons, then track materials and homework. Optional business tools are available from More."
+      },
+      "students": {
+        "title": "Students first",
+        "body": "Add a student by name and record their chess profile. Contacts and guardians are supporting details; they do not define your teaching history. Import existing records from Account settings."
+      },
+      "learning": {
+        "title": "Training and materials",
+        "body": "Save games, puzzles, drills and study chapters in one library. Give individual homework and record results and coach feedback separately from skill assessments."
+      },
+      "schedule": {
+        "title": "Calendar",
+        "body": "Review recurring lesson times, planned sessions, attendance and scheduling. Events and advanced cancellation policies remain accessible from More."
+      },
+      "coaching": {
+        "title": "Lessons and groups",
+        "body": "Manage private and group chess lessons by workplace. Record attendance, teaching notes and what was covered for each student."
+      },
+      "reports": {
+        "title": "Teaching reports",
+        "body": "Read workplace teaching totals and activities. One group session counts its teacher duration once. Business and billing remain available under More."
+      },
+      "account": {
+        "title": "Account settings",
+        "body": "Manage profile, timezone, notifications, import/export and connected AI tools. You can change dark mode from the account menu."
+      }
+    }
+  },
+  "skills": {
+    "loadingCharts": "Loading charts…",
+    "saveFailed": "Failed to save ratings",
+    "title": "Skills",
+    "done": "Done",
+    "edit": "Edit Skills",
+    "rate": "Rate Skills",
+    "ratingHint": "1 = emerging · 5 = mastered. Skip skills you didn't assess today.",
+    "saving": "Saving…",
+    "saveRatings": "Save Ratings",
+    "cancel": "Cancel",
+    "empty": "No skill ratings yet. Tap “Rate Skills” after a lesson to start tracking progress.",
+    "addFailed": "Failed to add skill",
+    "inspectFailed": "Unable to inspect this skill's rating history.",
+    "hasHistory": "“{name}” has {count} historical ratings. Rename the skill instead; its records cannot be erased here.",
+    "deleteTitle": "Delete unused skill?",
+    "deleteWarning": "Delete “{name}”? It has no historical student ratings.",
+    "delete": "Delete",
+    "deleteFailed": "Failed to delete skill",
+    "inspectOrDeleteFailed": "Failed to inspect or delete skill",
+    "shared": "Skills are shared across all your students.",
+    "deleteNamed": "Delete {name}",
+    "newSkillPlaceholder": "Add a skill (e.g. Tactics)",
+    "add": "Add",
+    "overTime": "Over Time"
+  },
+  "connectionsPage": {
+    "title": "ChatGPT and Claude connections",
+    "description": "Disconnect a tool client at any time. Revocation stops future tool calls immediately.",
+    "back": "Back to account settings"
+  },
+  "billingPage": {
+    "title": "Billing",
+    "description": "Typical month: Generate for last month → review drafts → select all → Send. Rates and billability live in Studio; configure Stripe or payment instructions via Payment settings.",
+    "empty": "No invoices yet. Mark attendance for a period, then generate drafts.",
+    "family": "Family"
+  },
+  "newEventPage": {
+    "title": "Create Event",
+    "events": "Events",
+    "description": "Set the date, invite players, and their families will receive pending RSVPs."
+  },
+  "studioPage": {
+    "title": "Studio",
+    "description": "Your studio name, lesson lengths, cancellation and make-up policy, rates and teaching policies. These drive scheduling, invoices and what families see in their portal."
+  },
+  "iosInstall": {
+    "before": "Install ChessCoachPal: tap Share, then",
+    "add": "Add to Home Screen",
+    "dismiss": "Dismiss install instructions"
+  },
+  "dialogCommon": {
+    "dismiss": "Dismiss",
+    "cancel": "Cancel",
+    "areYouSure": "Are you sure?",
+    "confirm": "Confirm"
+  },
+  "invoicePage": {
+    "back": "Billing",
+    "family": "Family"
+  },
+  "eventPage": {
+    "back": "Events"
   }
 }

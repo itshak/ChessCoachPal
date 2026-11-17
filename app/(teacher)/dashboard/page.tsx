@@ -83,8 +83,8 @@ export default async function DashboardPage() {
             <div className="space-y-2">
               {upcoming.map(session => (
                 <Card key={session.id} padding="sm">
-                  <p className="font-medium break-words">{session.title}</p>
-                  <p className="text-sm text-muted">{dateLabel(session.starts_at)} · {session.duration_minutes} min</p>
+                  <p className="font-medium break-words"><bdi dir="auto">{session.title}</bdi></p>
+                  <p className="text-sm text-muted">{dateLabel(session.starts_at)} · {t("minutes",{count:session.duration_minutes})}</p>
                 </Card>
               ))}
             </div>
@@ -98,7 +98,7 @@ export default async function DashboardPage() {
             <div className="space-y-2">
               {recent.map(session => (
                 <Card key={session.id} padding="sm">
-                  <p className="font-medium break-words">{session.title}</p>
+                  <p className="font-medium break-words"><bdi dir="auto">{session.title}</bdi></p>
                   <p className="text-sm text-muted">{dateLabel(session.starts_at)}</p>
                 </Card>
               ))}
@@ -109,16 +109,16 @@ export default async function DashboardPage() {
 
       <section>
         <div className="flex items-center justify-between gap-3 mb-3">
-          <h2 className="text-lg font-semibold">Students</h2>
-          <Link href="/students" className="text-sm text-primary hover:underline">View all</Link>
+          <h2 className="text-lg font-semibold">{t("studentsSection")}</h2>
+          <Link href="/students" className="text-sm text-primary hover:underline">{t("viewAll")}</Link>
         </div>
         {!activeStudents.length ? (
-          <Card><p className="text-sm text-muted">Add your first student to start coaching.</p></Card>
+          <Card><p className="text-sm text-muted">{t("addFirstStudent")}</p></Card>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {activeStudents.slice(0, 9).map(student => (
               <Card key={student.id} padding="sm">
-                <Link href={`/students/${student.id}`} className="font-semibold text-primary hover:underline break-words">{student.name}</Link>
+                <Link href={`/students/${student.id}`} className="font-semibold text-primary hover:underline break-words"><bdi dir="auto">{student.name}</bdi></Link>
                 {student.level && <p className="text-xs text-muted mt-1">{student.level}</p>}
               </Card>
             ))}
@@ -127,7 +127,7 @@ export default async function DashboardPage() {
       </section>
       <div className="mt-8">
         <Link href="/learning" className="text-primary hover:underline font-medium">
-          Review chess learning observations and selected studies
+          {t("reviewLearning")}
         </Link>
       </div>
     </div>

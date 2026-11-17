@@ -1,8 +1,9 @@
 import Link from "next/link";
+import {getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { NewEventForm } from "@/components/teacher/events/NewEventForm";
 
-export const metadata = { title: "New Event" };
+export async function generateMetadata(){const t=await getTranslations("newEventPage");return {title:t("title")};}
 
 function defaultStartsAt(dateParam?: string): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -20,6 +21,7 @@ export default async function NewEventPage({
 }: {
   searchParams: Promise<{ date?: string }>;
 }) {
+  const t=await getTranslations("newEventPage");
   const params = await searchParams;
   const supabase = await createClient();
   const {
@@ -40,11 +42,11 @@ export default async function NewEventPage({
           href="/events"
           className="text-sm text-muted hover:text-foreground transition-colors"
         >
-          ← Events
+          <span aria-hidden="true" className="inline-block rtl:rotate-180">←</span> {t("events")}
         </Link>
-        <h1 className="text-2xl font-bold mt-2">Create Event</h1>
+        <h1 className="text-2xl font-bold mt-2">{t("title")}</h1>
         <p className="text-muted text-sm mt-1">
-          Set the date, invite performers, and families will get pending RSVPs.
+          {t("description")}
         </p>
       </div>
       <NewEventForm

@@ -1,4 +1,5 @@
 "use client";
+import {useTranslations} from "next-intl";
 
 import { useEffect, useRef, useState } from "react";
 import { AvatarCropDialog } from "@/components/avatar/AvatarCropDialog";
@@ -53,6 +54,7 @@ export function ProfilePhotoField({
   onUrlChange,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const t=useTranslations("profilePhoto");
   const [url, setUrl] = useState<string | null>(initialUrl);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -77,11 +79,11 @@ export function ProfilePhotoField({
     e.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setMessage({ type: "error", text: "Choose an image file" });
+      setMessage({ type: "error", text:t("chooseImage") });
       return;
     }
     if (file.size > AVATAR_MAX_INPUT_BYTES) {
-      setMessage({ type: "error", text: "Image must be under 8 MB" });
+      setMessage({ type: "error", text:t("sizeLimit") });
       return;
     }
     if (cropSrc) URL.revokeObjectURL(cropSrc);
@@ -96,7 +98,7 @@ export function ProfilePhotoField({
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not signed in");
+      if (!user) throw new Error(t("notSignedIn"));
 
       const path = avatarStoragePath(user.id);
       const { error: uploadError } = await supabase.storage
@@ -119,7 +121,7 @@ export function ProfilePhotoField({
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(
-          typeof body.error === "string" ? body.error : "Failed to save photo"
+          typeof body.error === "string" ? body.error :t("saveFailed")
         );
       }
 
@@ -127,11 +129,11 @@ export function ProfilePhotoField({
       onUrlChange?.(publicUrl);
       if (cropSrc) URL.revokeObjectURL(cropSrc);
       setCropSrc(null);
-      setMessage({ type: "success", text: "Photo updated" });
+      setMessage({ type: "success", text:t("updated") });
     } catch (err) {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message : "Could not upload photo",
+        text: err instanceof Error ? err.message :t("uploadFailed"),
       });
     } finally {
       setBusy(false);
@@ -146,7 +148,7 @@ export function ProfilePhotoField({
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not signed in");
+      if (!user) throw new Error(t("notSignedIn"));
 
       const path = avatarStoragePath(user.id);
       await supabase.storage.from(AVATARS_BUCKET).remove([path]);
@@ -159,17 +161,17 @@ export function ProfilePhotoField({
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(
-          typeof body.error === "string" ? body.error : "Failed to remove photo"
+          typeof body.error === "string" ? body.error :t("removeFailed")
         );
       }
 
       setUrl(null);
       onUrlChange?.(null);
-      setMessage({ type: "success", text: "Photo removed" });
+      setMessage({ type: "success", text:t("removed") });
     } catch (err) {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message : "Could not remove photo",
+        text: err instanceof Error ? err.message :t("removeFailed"),
       });
     } finally {
       setBusy(false);
@@ -182,8 +184,8 @@ export function ProfilePhotoField({
         type="button"
         onClick={openPicker}
         disabled={busy}
-        aria-label={url ? "Change profile photo" : "Upload profile photo"}
-        title={url ? "Change photo" : "Upload photo"}
+        aria-label={url?t("changeProfile"):t("uploadProfile")}
+        title={url?t("change"):t("upload")}
         className="group relative h-20 w-20 rounded-full bg-surface-dim text-base font-semibold flex items-center justify-center text-foreground ring-1 ring-border disabled:opacity-40 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
         <span className="absolute inset-0 overflow-hidden rounded-full">
@@ -208,7 +210,7 @@ export function ProfilePhotoField({
           disabled={busy}
           className="text-[11px] text-muted hover:text-foreground cursor-pointer disabled:opacity-40"
         >
-          Remove
+          {t("remove")}
         </button>
       )}
       <input

@@ -132,11 +132,11 @@ export default async function AccountPage({
 
       {params.hosted === "success" && (
         <p className="text-sm text-success mb-4">
-          Payment received. Your plan updates when Stripe confirms.
+          {t("stripePending")}
         </p>
       )}
       {params.hosted === "cancel" && (
-        <p className="text-sm text-muted mb-4">Checkout canceled.</p>
+        <p className="text-sm text-muted mb-4">{t("checkoutCanceled")}</p>
       )}
 
       {limitBanner}

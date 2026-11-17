@@ -210,7 +210,7 @@ export default async function FamilyDetailPage({
                           </div>
                         ))
                       ) : (
-                        <span>No weekly slot</span>
+                        <span>{t("noWeeklySlot")}</span>
                       )}
                     </div>
                   </div>

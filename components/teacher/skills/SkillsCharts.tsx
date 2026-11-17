@@ -16,6 +16,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import type { Dimension } from "./SkillsPanel";
+import {useLocale,useTranslations} from "next-intl";
 
 const LINE_COLORS = [
   "#2a9d8f", // primary teal
@@ -28,9 +29,9 @@ const LINE_COLORS = [
   "#c95d8f", // pink
 ];
 
-function formatShortDate(isoDate: string): string {
+function formatShortDate(isoDate: string,locale:string): string {
   const [y, m, d] = isoDate.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+  return new Date(y, m - 1, d).toLocaleDateString(locale, {
     month: "short",
     day: "numeric",
   });
@@ -51,6 +52,7 @@ export default function SkillsCharts({
   dimensions: Dimension[];
   hasTrend: boolean;
 }) {
+  const t=useTranslations("skills"),locale=useLocale();
   return (
     <>
       <div className="h-64">
@@ -75,7 +77,7 @@ export default function SkillsCharts({
       {hasTrend && (
         <div className="mt-4">
           <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
-            Over Time
+            {t("overTime")}
           </p>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
@@ -83,7 +85,7 @@ export default function SkillsCharts({
                 <CartesianGrid stroke="#e5e2dc" strokeDasharray="3 3" />
                 <XAxis
                   dataKey="date"
-                  tickFormatter={formatShortDate}
+                  tickFormatter={v=>formatShortDate(String(v),locale)}
                   tick={{ fontSize: 11, fill: "#6b6b7b" }}
                 />
                 <YAxis
@@ -91,7 +93,7 @@ export default function SkillsCharts({
                   tickCount={6}
                   tick={{ fontSize: 11, fill: "#6b6b7b" }}
                 />
-                <Tooltip labelFormatter={(v) => formatShortDate(String(v))} />
+                <Tooltip labelFormatter={(v) => formatShortDate(String(v),locale)} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 {dimensions.map((d, i) => (
                   <Line
