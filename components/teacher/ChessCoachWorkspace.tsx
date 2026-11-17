@@ -454,7 +454,7 @@ export function ChessCoachWorkspace() {
           </ol>
         ) : <p className="text-sm text-muted">{t("emptySessions")}</p>}
       </section>
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <section className={panel}>
           <h2 className="text-lg font-semibold">{t("workplaces")}</h2>
           <ul className="text-sm space-y-1 [overflow-wrap:anywhere]">

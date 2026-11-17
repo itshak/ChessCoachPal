@@ -199,7 +199,7 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
       </header>
       {error&&<p role="alert" className="text-error">{error}</p>}
       {notice&&<p role="status" className="text-success">{notice}</p>}
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <label>{t("learner")}
           <select aria-label={t("learner")} className={inputClass} value={studentId}
             disabled={!!fixedStudentId} onChange={e=>{setStudentId(e.target.value);setSessionId("");}}>
@@ -220,7 +220,7 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
         </label>
       </div>
       {!studentId&&<p className="text-muted">{t("firstStudent")}</p>}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className={boxClass}>
           <h3 className="font-semibold">{t("categories")}</h3>
           <p className="text-sm text-muted">{t("categoriesHint")}</p>
@@ -285,7 +285,7 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
           onClick={()=>void refreshMaterials().catch(e=>setError(String(e)))}>
           {t("refreshMaterials")}
         </button>
-        <form className="grid gap-2 md:grid-cols-2" onSubmit={addLink}>
+        <form className="grid grid-cols-1 gap-2 md:grid-cols-2" onSubmit={addLink}>
           <label>{t("material")}
             <select aria-label={t("material")} className={inputClass} value={materialId}
               onChange={e=>setMaterialId(e.target.value)} required>

@@ -2,6 +2,7 @@
 
 import {useCallback,useEffect,useMemo,useState} from "react";
 import {createClient} from "@/lib/supabase/client";
+import {useTranslations} from "next-intl";
 import {useConfirm} from "@/components/ui/confirm-dialog";
 
 type TotpFactor={id:string;status:string;friendly_name?:string|null;
@@ -9,6 +10,7 @@ type TotpFactor={id:string;status:string;friendly_name?:string|null;
 type Enrollment={id:string;qr:string;secret:string};
 
 export function AccountMfaSettings(){
+ const t=useTranslations("mfa");
  const confirm=useConfirm();
  const [verified,setVerified]=useState<TotpFactor[]>([]);
  const [unverified,setUnverified]=useState<TotpFactor[]>([]);
@@ -31,7 +33,7 @@ export function AccountMfaSettings(){
   setReady(true);
  },[client]);
  useEffect(()=>{void refresh().catch(e=>{
-  setError(e instanceof Error?e.message:"Authenticator status unavailable");
+  setError(e instanceof Error?e.message:t("statusUnavailable"));
   setReady(true);
  });},[refresh]);
 
@@ -49,10 +51,10 @@ export function AccountMfaSettings(){
    });
    if(error)throw error;
    if(!data.totp?.qr_code||!data.totp.secret)
-    throw new Error("Authenticator setup response was incomplete");
+    throw new Error(t("setupIncomplete"));
    setEnrollment({id:data.id,qr:data.totp.qr_code,secret:data.totp.secret});
    setCode("");
-  }catch(e){setError(e instanceof Error?e.message:"Could not begin MFA setup");}
+  }catch(e){setError(e instanceof Error?e.message:t("setupError"));}
   finally{setBusy(false);}
  }
  async function verify(){
@@ -69,8 +71,8 @@ export function AccountMfaSettings(){
    if(verifyError)throw verifyError;
    setEnrollment(null);setCode("");
    await refresh();
-   setNotice("Two-factor authentication is enabled. Keep access to your authenticator app.");
-  }catch(e){setError(e instanceof Error?e.message:"Invalid authenticator code");}
+   setNotice(t("success"));
+  }catch(e){setError(e instanceof Error?e.message:t("invalidCode"));}
   finally{setBusy(false);}
  }
  async function cancel(){
@@ -80,18 +82,18 @@ export function AccountMfaSettings(){
    const {error}=await client.auth.mfa.unenroll({factorId:enrollment.id});
    if(error)throw error;
    setEnrollment(null);setCode("");await refresh();
-  }catch(e){setError(e instanceof Error?e.message:"Could not cancel setup");}
+  }catch(e){setError(e instanceof Error?e.message:t("cancelError"));}
   finally{setBusy(false);}
  }
  async function disable(factorId:string){
   if(!/^[0-9]{6}$/.test(code)){
-   setError("Enter a fresh six-digit authenticator code to remove this factor");
+   setError(t("removeCodeRequired"));
    return;
   }
   const approved=await confirm({
-   title:"Remove authenticator factor?",
-   message:"This reduces sign-in protection. You must confirm with your current authenticator code.",
-   confirmLabel:"Remove two-factor authentication",variant:"danger",
+   title:t("removeTitle"),
+   message:t("removeWarning"),
+   confirmLabel:t("removeConfirm"),variant:"danger",
   });
   if(!approved)return;
   setBusy(true);setError("");setNotice("");
@@ -101,34 +103,32 @@ export function AccountMfaSettings(){
    const {error:removeError}=await client.auth.mfa.unenroll({factorId});
    if(removeError)throw removeError;
    setCode("");await refresh();
-   setNotice("Authenticator factor removed.");
-  }catch(e){setError(e instanceof Error?e.message:"Could not remove authenticator");}
+   setNotice(t("removed"));
+  }catch(e){setError(e instanceof Error?e.message:t("removeError"));}
   finally{setBusy(false);}
  }
- return <section id="security" aria-label="Two-factor authentication"
+ return <section id="security" aria-label={t("title")}
   className="space-y-4 rounded-xl border border-border bg-surface p-5">
-  <h2 className="text-lg font-semibold">Two-factor authentication</h2>
+  <h2 className="text-lg font-semibold">{t("title")}</h2>
   <p className="text-sm text-muted">
-   Use an authenticator app to protect your teacher account. Setup, codes and
-   recovery stay in this secure signed-in browser, never in ChatGPT or Claude.
+   {t("description")}
   </p>
-  {!ready&&<p role="status" className="text-sm">Checking security settings…</p>}
+  {!ready&&<p role="status" className="text-sm">{t("checking")}</p>}
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}
   {notice&&<p role="status" className="text-sm text-success">{notice}</p>}
   {ready&&!enrollment&&<div className="space-y-3">
    {verified.length===0?<div className="space-y-2">
-    <p className="text-sm">Authenticator: not enabled.</p>
+    <p className="text-sm">{t("notEnabled")}</p>
     <button type="button" onClick={()=>void enable()} disabled={busy}
      className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-     Enable two-factor authentication
+     {t("enable")}
     </button>
    </div>:<>
-    <p className="text-sm">Authenticator enabled ({verified.length} verified factor{verified.length===1?"":"s"}).</p>
+    <p className="text-sm">{t("enabled",{count:verified.length})}</p>
     <p className="text-xs text-muted">
-     To remove a factor, confirm with a fresh code from your authenticator.
-     Keep another enrolled factor for account recovery.
+     {t("removeGuidance")}
     </p>
-    <label className="block text-sm">Authenticator code for removal
+    <label className="block text-sm">{t("removalCode")}
      <input type="text" inputMode="numeric" autoComplete="one-time-code"
       pattern="[0-9]{6}" maxLength={6} value={code}
       onChange={e=>setCode(e.target.value.replace(/\D/g,""))}
@@ -138,25 +138,25 @@ export function AccountMfaSettings(){
     {verified.map(factor=><button type="button" key={factor.id}
      disabled={busy} onClick={()=>void disable(factor.id)}
      className="me-2 rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50">
-     Remove {factor.friendly_name||"authenticator"}
+     {t("removeFactor",{name:factor.friendly_name||t("authenticator")})}
     </button>)}
     <button type="button" onClick={()=>void enable()} disabled={busy}
      className="rounded-md border border-primary px-4 py-2 text-sm text-primary disabled:opacity-50">
-     Add backup authenticator
+     {t("addBackup")}
     </button>
    </>}
   </div>}
   {enrollment&&<div className="space-y-3">
-   <p className="text-sm font-semibold">Scan this code in your authenticator app, then verify.</p>
+   <p className="text-sm font-semibold">{t("scan")}</p>
    {/* Supabase returns the QR as SVG. Its secret is confined to browser memory. */}
    {/* eslint-disable-next-line @next/next/no-img-element */}
    <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(enrollment.qr)}`}
-    width={196} height={196} alt="Authenticator app enrollment QR"
+    width={196} height={196} alt={t("qrAlt")}
     className="rounded-md bg-white p-2"/>
-   <p className="text-xs text-muted">If scanning fails, manually enter this secret in the app:</p>
-   <code aria-label="Authenticator setup secret"
+   <p className="text-xs text-muted">{t("scanFails")}</p>
+   <code aria-label={t("setupSecret")}
     className="block break-all rounded-md border border-border p-3 text-sm">{enrollment.secret}</code>
-   <label className="block text-sm">Six-digit verification code
+   <label className="block text-sm">{t("sixDigit")}
     <input type="text" inputMode="numeric" autoComplete="one-time-code"
      pattern="[0-9]{6}" maxLength={6} value={code}
      onChange={e=>setCode(e.target.value.replace(/\D/g,""))}
@@ -167,11 +167,11 @@ export function AccountMfaSettings(){
     <button type="button" onClick={()=>void verify()}
      disabled={busy||code.length!==6}
      className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-     Verify and enable
+     {t("verify")}
     </button>
     <button type="button" onClick={()=>void cancel()} disabled={busy}
      className="rounded-md border border-border px-4 py-2 text-sm disabled:opacity-50">
-     Cancel setup
+     {t("cancel")}
     </button>
    </div>
   </div>}

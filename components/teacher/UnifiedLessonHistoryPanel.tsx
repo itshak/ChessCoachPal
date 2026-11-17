@@ -65,7 +65,7 @@ export function UnifiedLessonHistoryPanel({fixedStudentId}:{fixedStudentId?:stri
   </form>
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}
   {result&&<div aria-live="polite" className="space-y-3">
-   <div className="grid gap-2 sm:grid-cols-3">
+   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
     <div className="border border-border rounded-lg p-3"><div className="text-xs text-muted">Booked instructor minutes</div><div className="font-bold">{result.summary.bookedInstructorMinutes}</div></div>
     <div className="border border-border rounded-lg p-3"><div className="text-xs text-muted">Evidenced teaching minutes</div><div className="font-bold">{result.summary.evidencedInstructorMinutes}</div></div>
     <div className="border border-border rounded-lg p-3"><div className="text-xs text-muted">Attendance decisions</div><div className="font-bold">{result.summary.participantAttendanceDecisions}</div></div>

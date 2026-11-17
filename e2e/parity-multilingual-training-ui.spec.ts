@@ -48,8 +48,21 @@ test("reviewed en/he/ru learning, teaching-evidence, and lesson-capture controls
       await expect(page.getByRole("heading",{name:lang.capture})).toBeVisible();
       await expect(page.getByRole("button",{name:lang.preview})).toBeVisible();
       await page.setViewportSize({width:390,height:844});
-      const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
-      expect(overflow,lang.locale+" coaching page horizontal overflow").toBeLessThanOrEqual(2);
+      const {overflow, offenders}=await page.evaluate(()=>{
+        const viewport=window.innerWidth;
+        const entries=Array.from(document.querySelectorAll<HTMLElement>("main *"))
+          .map(element=>{
+            const rect=element.getBoundingClientRect();
+            return {tag:element.tagName, classes:String(element.className).slice(0,125),
+              left:Math.round(rect.left), right:Math.round(rect.right),
+              width:Math.round(rect.width)};
+          })
+          .filter(element=>element.right>viewport+2 || element.left<-2)
+          .sort((a,b)=>b.right-a.right).slice(0,12);
+        return {overflow:document.documentElement.scrollWidth-viewport,offenders:entries};
+      });
+      expect(overflow,lang.locale+" coaching page horizontal overflow: "+JSON.stringify(offenders))
+        .toBeLessThanOrEqual(2);
       await page.setViewportSize({width:1280,height:720});
     }
   }finally{

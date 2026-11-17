@@ -191,7 +191,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
   </div>
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}
   {success&&<p role="status" className="text-sm text-success">{success}</p>}
-  <div className="grid gap-3 md:grid-cols-2">
+  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
    <label className="text-sm">{t("student")}
     <select className={input} value={studentId} disabled={!!fixedStudentId} onChange={e=>setStudentId(e.target.value)}>
      <option value="">{t("chooseStudent")}</option>
@@ -218,7 +218,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
        .map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
     </select>
    </label>
-   <form onSubmit={addDefault} className="grid md:grid-cols-2 gap-2">
+   <form onSubmit={addDefault} className="grid grid-cols-1 md:grid-cols-2 gap-2">
     <label className="text-xs">{t("studyLabel")}
      <input className={input} aria-label={t("newDefaultLabelAria")} required maxLength={160}
        value={studyLabel} onChange={e=>setStudyLabel(e.target.value)}/>
@@ -301,7 +301,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
   <form onSubmit={record} className="space-y-3 border-t border-border pt-3">
    <h3 className="font-medium">{t("recordTitle")}</h3>
    <p className="text-xs text-muted">{t("recordHint")}</p>
-   <div className="grid gap-3 md:grid-cols-2">
+   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
     <label className="text-sm">{t("studyReference")}
      <select className={input} value={materialId} onChange={e=>setMaterialId(e.target.value)} required>
       {!materials.length&&<option value="">{t("firstMaterial")}</option>}

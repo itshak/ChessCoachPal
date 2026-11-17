@@ -235,7 +235,7 @@ export function LessonCapturePreviewPanel() {
         {t("intro")}
       </p>
     </div>
-    <form onSubmit={check} className="grid gap-3 md:grid-cols-2">
+    <form onSubmit={check} className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <label className="block text-sm">{t("names")}
         <textarea className={field} rows={3} required value={names}
           onChange={e=>{setNames(e.target.value);invalidate();}} />
