@@ -139,3 +139,39 @@ test("anonymous family portal renders English, Hebrew RTL, and Russian without m
     await expect(page.getByLabel("Язык интерфейса")).toHaveValue("ru");
   }finally{await context.close();}
 });
+
+test("anonymous public try, hosting, password recovery and missing-page texts follow en/he/ru",async({browser})=>{
+  const context=await browser.newContext({baseURL:"http://localhost:3000",viewport:{width:390,height:844}});
+  try{
+    const page=await context.newPage();
+    const cases=[
+      {locale:"en",dir:"ltr",tryTitle:"Try ChessCoachPal",
+        hostingTitle:"Host ChessCoachPal your way",resetIntro:"Choose a new password",
+        missingTitle:"Page not found 😕"},
+      {locale:"he",dir:"rtl",tryTitle:"התנסות ב-ChessCoachPal",
+        hostingTitle:"מארחים את ChessCoachPal בדרך שלכם",resetIntro:"בחרו סיסמה חדשה",
+        missingTitle:"הדף לא נמצא 😕"},
+      {locale:"ru",dir:"ltr",tryTitle:"Попробовать ChessCoachPal",
+        hostingTitle:"Размещайте ChessCoachPal на своих условиях",resetIntro:"Выберите новый пароль",
+        missingTitle:"Страница не найдена 😕"}
+    ] as const;
+    for(const row of cases){
+      const response=await context.request.post("/api/preferences/locale",{data:{locale:row.locale}});
+      expect(response.status(),await response.text()).toBe(200);
+      const pages=[
+        ["/try",row.tryTitle],
+        ["/hosting",row.hostingTitle],
+        ["/reset-password",row.resetIntro],
+        ["/missing-coach-page-unknown",row.missingTitle]
+      ] as const;
+      for(const [route,heading] of pages){
+        await page.goto(route);
+        await expect(page.locator("html")).toHaveAttribute("lang",row.locale);
+        await expect(page.locator("html")).toHaveAttribute("dir",row.dir);
+        await expect(page.getByText(heading,{exact:true}).first()).toBeVisible();
+        const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
+        expect(overflow,row.locale+" "+route+" 390px horizontal overflow").toBeLessThanOrEqual(2);
+      }
+    }
+  }finally{await context.close();}
+});

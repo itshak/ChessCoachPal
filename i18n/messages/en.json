@@ -748,5 +748,48 @@
     "failed": "Failed to save",
     "savePolicy": "Save Policy",
     "makeupLessonFor": "Make-up lesson for {name}"
+  },
+  "resetPassword": {
+    "title": "Reset Password",
+    "intro": "Choose a new password",
+    "checking": "Checking your link...",
+    "expired": "This reset link is invalid or has expired.",
+    "backSignIn": "Back to sign in",
+    "requestNew": "to request a new one.",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "mismatch": "Passwords don't match",
+    "save": "Set New Password",
+    "saving": "Saving…"
+  },
+  "publicTry": {
+    "title": "Try ChessCoachPal",
+    "intro": "A chess teacher's workspace for students, coaching groups, lesson attendance, teaching notes, and chess skill observations.",
+    "starting": "Start with a self-hosted workspace",
+    "description": "Sign in to an installation, connect your ChatGPT or Claude client with delegated OAuth, or use the full browser interface. All coaching data belongs to your authenticated teacher account.",
+    "signIn": "Sign in",
+    "hosting": "Hosting options",
+    "privacy": "No sample learner data or public live practice tokens are served by this page."
+  },
+  "hostingPage": {
+    "metadata": "Hosting",
+    "title": "Host ChessCoachPal your way",
+    "intro": "ChessCoachPal is a self-hostable, open-source chess teacher assistant. Core student, family, coaching and learning workflows run in your own environment, with no mandatory external AI provider.",
+    "selfHost": "Self-host",
+    "selfHostIntro": "Own the application, database, secrets, and backups. No hosted student limits.",
+    "source": "Source and setup instructions",
+    "hosted": "Optional hosted deployment",
+    "hostedIntro": "Optional hosted features are controlled by the installation operator and are not required for self-hosting. Check your account page for availability and terms on a specific server.",
+    "account": "Account settings",
+    "warning": "Do not point development tests or database reset commands at production databases. Real ChatGPT and Claude interoperability is verified locally at the final v0.1.0 release gate."
+  },
+  "systemUi": {
+    "notFoundTitle": "Page not found 😕",
+    "notFoundIntro": "The page you're looking for doesn't exist or has been moved.",
+    "goHome": "Go Home",
+    "errorTitle": "Something went wrong 😕",
+    "errorIntro": "An unexpected error occurred. Please try again.",
+    "tryAgain": "Try Again",
+    "loading": "Loading..."
   }
 }

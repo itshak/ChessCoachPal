@@ -528,8 +528,9 @@ test("PARITY:PARITY-billing-draft-partial-payment stays private and reopens to d
  expect(result.paymentId).toBe(model.data.paymentId);
  expect(Number(Boolean(result.replayed))+Number(Boolean(model.data.replayed))).toBe(1);
  expect((await siteInvoice(page,created.id)).status).toBe("draft");
- const portal=await page.request.get("/portal/"+created.portalToken);
- expect(await portal.text()).toContain("No invoices yet.");
+ await page.goto("/portal/"+created.portalToken);
+ await expect(page.getByText("No invoices yet.",{exact:true})).toBeVisible();
+ await expect(page.getByText("2027-03-01",{exact:false})).toHaveCount(0);
  const before=await siteInvoice(page,created.id);
  const refused=await page.request.put(url,{data:{
   items:[{description:"Adjusted",quantity:1,unitCents:1000,amountCents:1000}],

@@ -1,8 +1,10 @@
 import Link from "next/link";
+import {getTranslations} from "next-intl/server";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { BRAND_ICON_SIZE } from "@/lib/ui-constants";
 
-export default function NotFound() {
+export default async function NotFound() {
+  const t=await getTranslations("systemUi");
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="text-center">
@@ -11,15 +13,15 @@ export default function NotFound() {
           alt="ChessCoachPal"
           className="mx-auto mb-6"
         />
-        <h1 className="text-2xl font-bold mb-2">Page not found 😕</h1>
+        <h1 className="text-2xl font-bold mb-2">{t("notFoundTitle")}</h1>
         <p className="text-muted mb-6">
-          The page you&apos;re looking for doesn&apos;t exist or has been moved.
+          {t("notFoundIntro")}
         </p>
         <Link
           href="/"
           className="inline-block bg-primary text-white rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-primary-dark transition-colors"
         >
-          Go Home
+          {t("goHome")}
         </Link>
       </div>
     </div>

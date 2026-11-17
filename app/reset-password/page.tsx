@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {useTranslations} from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -12,9 +13,10 @@ const inputClass =
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const t=useTranslations("resetPassword");
   useEffect(() => {
-    document.title = "ChessCoachPal - Reset Password";
-  }, []);
+    document.title = "ChessCoachPal - "+t("title");
+  }, [t]);
 
   const [checking, setChecking] = useState(true);
   const [hasSession, setHasSession] = useState(false);
@@ -35,7 +37,7 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError(null);
     if (password !== confirm) {
-      setError("Passwords don't match");
+      setError(t("mismatch"));
       return;
     }
     setSaving(true);
@@ -55,28 +57,28 @@ export default function ResetPasswordPage() {
       <Card padding="lg" className="max-w-sm w-full">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-primary">ChessCoachPal</h1>
-          <p className="text-muted text-sm mt-1">Choose a new password</p>
+          <p className="text-muted text-sm mt-1">{t("intro")}</p>
         </div>
 
         {checking ? (
-          <p className="text-center text-muted text-sm">Checking your link...</p>
+          <p className="text-center text-muted text-sm">{t("checking")}</p>
         ) : !hasSession ? (
           <div className="text-center text-sm space-y-3">
             <p className="text-error">
-              This reset link is invalid or has expired.
+              {t("expired")}
             </p>
             <p className="text-muted">
               <Link href="/login" className="text-primary font-semibold hover:underline">
-                Back to sign in
+                {t("backSignIn")}
               </Link>{" "}
-              to request a new one.
+              {t("requestNew")}
             </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <input
               type="password"
-              placeholder="New password"
+              placeholder={t("newPassword")} aria-label={t("newPassword")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={inputClass}
@@ -86,7 +88,7 @@ export default function ResetPasswordPage() {
             />
             <input
               type="password"
-              placeholder="Confirm new password"
+              placeholder={t("confirmPassword")} aria-label={t("confirmPassword")}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               className={inputClass}
@@ -95,7 +97,7 @@ export default function ResetPasswordPage() {
             />
             {error && <p className="text-error text-sm text-center">{error}</p>}
             <Button type="submit" size="lg" disabled={saving} className="w-full">
-              {saving ? "..." : "Set New Password"}
+              {saving ? t("saving") : t("save")}
             </Button>
           </form>
         )}
