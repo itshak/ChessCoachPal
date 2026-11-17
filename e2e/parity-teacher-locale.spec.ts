@@ -256,3 +256,69 @@ test("PARITY: family communication locale round-trips website and MCP without ch
   const deleted=await call("ccp_guardians_delete",{guardianId:id,confirmed:true});
   expect(deleted.error).toBeUndefined();
 });
+
+test("LANGUAGE: changing interface language in one authenticated tab reloads another tab with the same SSR direction",async({page})=>{
+  const {signInAsTeacher}=await import("./helpers/auth");
+  await signInAsTeacher(page);
+  const profile=await page.request.get("/api/teacher/context");
+  expect(profile.status()).toBe(200);
+  const original=(await profile.json()).preferredLocale as "en"|"he"|"ru";
+  const alternate=original==="he"?"ru":"he";
+  const direction=alternate==="he"?"rtl":"ltr";
+  const second=await page.context().newPage();
+  try{
+    await page.goto("/account");
+    await second.goto("/account");
+    await page.locator("#account-language").selectOption(alternate);
+    await expect(page.locator("html")).toHaveAttribute("lang",alternate);
+    await expect(second.locator("html")).toHaveAttribute("lang",alternate);
+    await expect(second.locator("html")).toHaveAttribute("dir",direction);
+    await expect(second.locator("#account-language")).toHaveValue(alternate);
+  }finally{
+    const restored=await page.request.put("/api/auth/update-profile",{
+      data:{preferredLocale:original},
+    });
+    expect(restored.status(),await restored.text()).toBe(200);
+    await second.close();
+  }
+});
+
+test("RTL: account theme switch thumb stays within its track in both states",async({page})=>{
+  const {signInAsTeacher}=await import("./helpers/auth");
+  await signInAsTeacher(page);
+  const original=(await (await page.request.get("/api/teacher/context")).json())
+    .preferredLocale as "en"|"he"|"ru";
+  try{
+    const response=await page.request.put("/api/auth/update-profile",{
+      data:{preferredLocale:"he"},
+    });
+    expect(response.status()).toBe(200);
+    await page.setViewportSize({width:390,height:844});
+    await page.goto("/dashboard");
+    await page.getByRole("button",{name:"תפריט חשבון"}).click();
+    const toggle=page.getByRole("switch");
+    await expect(toggle).toBeVisible();
+    const assertInside=async()=>{
+      const track=await toggle.boundingBox();
+      const thumb=await toggle.locator("span").boundingBox();
+      expect(track).not.toBeNull();expect(thumb).not.toBeNull();
+      expect(thumb!.x, "thumb must not leave the track on the left")
+        .toBeGreaterThanOrEqual(track!.x-1);
+      expect(thumb!.x+thumb!.width, "thumb must not leave the track on the right")
+        .toBeLessThanOrEqual(track!.x+track!.width+1);
+    };
+    const before=await toggle.getAttribute("aria-checked");
+    await assertInside();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-checked",before==="true"?"false":"true");
+    await page.waitForTimeout(230); // CSS transition must complete before geometry assertion.
+    await assertInside();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-checked",before!);
+  }finally{
+    const restored=await page.request.put("/api/auth/update-profile",{
+      data:{preferredLocale:original},
+    });
+    expect(restored.status(),await restored.text()).toBe(200);
+  }
+});

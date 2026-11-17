@@ -51,7 +51,9 @@ test("EN/HE/RU: all teacher entrypoints obey saved language and mobile layout di
             :[];
           return {viewport,document:documentWidth,culprits};
         });
-        expect(widths.document-widths.viewport,
+        // Soft assertions still FAIL E2E, but collect all affected pages in
+        // one CI run instead of fixing only the first route per iteration.
+        expect.soft(widths.document-widths.viewport,
           `${locale} ${path} causes document horizontal overflow; structural diagnostics: ${JSON.stringify(widths.culprits)}`)
           .toBeLessThanOrEqual(2);
         await expect(page.locator("h1").first(),`${locale} ${path} must have accessible heading`)

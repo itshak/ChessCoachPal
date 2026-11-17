@@ -115,10 +115,10 @@ export default async function DashboardPage() {
         {!activeStudents.length ? (
           <Card><p className="text-sm text-muted">{t("addFirstStudent")}</p></Card>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 min-w-0">
             {activeStudents.slice(0, 9).map(student => (
-              <Card key={student.id} padding="sm">
-                <Link href={`/students/${student.id}`} className="font-semibold text-primary hover:underline break-words"><bdi dir="auto">{student.name}</bdi></Link>
+              <Card key={student.id} padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
+                <Link href={`/students/${student.id}`} className="font-semibold text-primary hover:underline [overflow-wrap:anywhere]"><bdi dir="auto">{student.name}</bdi></Link>
                 {student.level && <p className="text-xs text-muted mt-1">{student.level}</p>}
               </Card>
             ))}

@@ -185,7 +185,7 @@ function AccountMenu({
             >
               <span
                 className={`absolute top-0.5 start-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  isDark ? "translate-x-5" : "translate-x-0"
+                  isDark ? "ltr:translate-x-5 rtl:-translate-x-5" : "translate-x-0"
                 }`}
               />
             </button>
