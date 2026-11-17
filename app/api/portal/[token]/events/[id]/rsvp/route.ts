@@ -100,6 +100,7 @@ export async function POST(
   await createTeacherNotification(supabase, {
     teacherId: guardian.teacher_id,
     type: "event_rsvp",
+    presentation:{kind:"event_rsvp",family,eventTitle:event.title,status,partySize,note},
     title: `${family} RSVP’d ${statusLabel} to ${event.title}`,
     body: [
       partySize != null ? `Party size: ${partySize}` : null,

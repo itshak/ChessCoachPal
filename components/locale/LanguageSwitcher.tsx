@@ -8,15 +8,20 @@ import {isAppLocale,locales, localeDetails, type AppLocale} from "@/i18n/locales
 // travel over this channel. The server remains the source of truth.
 const CHANNEL="ccp-locale-updated";
 function notifyOtherTabs(locale:AppLocale){
+  // BroadcastChannel is best-effort: another tab may not yet have hydrated
+  // its listener, and closing a transient channel immediately after sending
+  // is not a reliable delivery guarantee across Chromium/mobile browsers.
+  // Always emit a storage event AS WELL, with a new version on every change.
+  try{
+    localStorage.setItem(CHANNEL,`${locale}:${Date.now()}:${crypto.randomUUID()}`);
+  }catch{/* Storage may be disabled; keep BroadcastChannel fallback. */}
   try{
     if(typeof BroadcastChannel!=="undefined"){
       const channel=new BroadcastChannel(CHANNEL);
       channel.postMessage(locale);
       channel.close();
-    }else{
-      localStorage.setItem(CHANNEL,`${locale}:${Date.now()}`);
     }
-  }catch{/* Private browsing/storage restrictions: current tab still reloads. */}
+  }catch{/* Current tab still reloads when storage/BroadcastChannel fail. */}
 }
 
 export function LanguageSwitcher({authenticated = false, compact = false}: {
@@ -28,22 +33,53 @@ export function LanguageSwitcher({authenticated = false, compact = false}: {
   const [error, setError] = useState("");
   useEffect(()=>{
     let channel:BroadcastChannel|null=null;
+    let reloadRequested=false;
+    let alive=true;
     const sync=(next:unknown)=>{
-      if(isAppLocale(next)&&next!==current)window.location.reload();
+      if(alive&&!reloadRequested&&isAppLocale(next)&&next!==current){
+        reloadRequested=true;
+        window.location.reload();
+      }
     };
     const onStorage=(event:StorageEvent)=>{
       if(event.key===CHANNEL)sync(event.newValue?.split(":")[0]);
     };
+    const verifyServerLocale=async()=>{
+      // If the other tab mounted AFTER the event was sent, its BroadcastChannel
+      // and storage listener missed the change. Check the trusted DB-backed
+      // teacher setting once after hydration and when the tab is reactivated.
+      // No teacher data is put into localStorage or cross-tab messages.
+      if(!authenticated)return;
+      try{
+        const response=await fetch("/api/teacher/context",{cache:"no-store"});
+        if(!response.ok)return;
+        const data=await response.json();
+        sync(data.preferredLocale);
+      }catch{/* Offline: do not loop reloads or block the language selector. */}
+    };
+    const onFocus=()=>void verifyServerLocale();
+    const onVisible=()=>{
+      if(document.visibilityState==="visible")void verifyServerLocale();
+    };
+    window.addEventListener("storage",onStorage);
+    window.addEventListener("focus",onFocus);
+    document.addEventListener("visibilitychange",onVisible);
     try{
       if(typeof BroadcastChannel!=="undefined"){
         channel=new BroadcastChannel(CHANNEL);
         channel.onmessage=event=>sync(event.data);
-      }else window.addEventListener("storage",onStorage);
-    }catch{
-      window.addEventListener("storage",onStorage);
-    }
-    return ()=>{channel?.close();window.removeEventListener("storage",onStorage);};
-  },[current]);
+      }
+    }catch{/* Storage listener and trusted context check remain active. */}
+    void verifyServerLocale();
+    return ()=>{
+      alive=false;
+      channel?.close();
+      window.removeEventListener("storage",onStorage);
+      window.removeEventListener("focus",onFocus);
+      document.removeEventListener("visibilitychange",onVisible);
+    };
+  },[current,authenticated]);
+
   async function select(locale: AppLocale) {
     if (locale === current || pending) return;
     setPending(true); setError("");

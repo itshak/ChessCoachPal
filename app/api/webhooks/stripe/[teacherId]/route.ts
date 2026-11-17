@@ -156,6 +156,8 @@ export async function POST(
           `Period: ${periodLabel}`,
           "Method: Stripe (paid online)",
         ].join("\n"),
+        presentation:{kind:"invoice_paid",family:familyLabel,amount:amountLabel,
+          periodStart:invoice.period_start,periodEnd:invoice.period_end},
         href: `/billing/${invoiceId}`,
         origin: requestOrigin(req),
         policy,

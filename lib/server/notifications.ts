@@ -6,6 +6,7 @@ import { sendPushToTeacher } from "@/lib/server/push";
 import type { StudioPolicy } from "@/lib/schedule";
 import {isAppLocale} from "@/i18n/locales";
 import {communicationCopy} from "@/lib/server/communication-locales";
+import {localizedNotificationText,type NotificationPresentation} from "@/lib/server/notification-copy";
 
 export type NotificationType =
   | "portal_cancel"
@@ -20,6 +21,9 @@ export async function createTeacherNotification(
     type: NotificationType;
     title: string;
     body?: string;
+    /** Typed system template; prevents an English producer from deciding
+     * the language of a teacher's bell, push or email notification. */
+    presentation?: NotificationPresentation;
     /** App-relative path, e.g. `/schedule` or `/billing/...` */
     href?: string | null;
     /** Absolute origin for email links (e.g. https://chesscoachpal.example) */
@@ -28,6 +32,13 @@ export async function createTeacherNotification(
   }
 ): Promise<{ emailed: boolean; emailError?: string }> {
   const policy = args.policy ?? (await getPolicy(supabase, args.teacherId));
+  const {data:teacher}=await supabase.from("teachers")
+    .select("email, display_name, preferred_locale").eq("id",args.teacherId).maybeSingle();
+  const locale=isAppLocale(teacher?.preferred_locale)?teacher.preferred_locale:"en";
+  const copy=communicationCopy[locale].notification;
+  const presentation=args.presentation&&args.presentation.kind===args.type
+    ?localizedNotificationText(args.presentation,locale)
+    :{title:args.title,body:args.body??""};
   const href = args.href ?? null;
   // Both fields the push needs come from the same row: id tags the tray entry
   // (a re-delivery replaces its own notification instead of stacking a
@@ -42,8 +53,8 @@ export async function createTeacherNotification(
       .insert({
         teacher_id: args.teacherId,
         type: args.type,
-        title: args.title,
-        body: args.body ?? "",
+        title: presentation.title,
+        body: presentation.body,
         href,
       })
       .select("id, created_at")
@@ -64,8 +75,8 @@ export async function createTeacherNotification(
   await sendPushToTeacher(supabase, args.teacherId, {
     id: insertedRow?.id ?? null,
     createdAt: insertedRow?.created_at ?? null,
-    title: args.title,
-    body: args.body,
+    title: presentation.title,
+    body: presentation.body,
     href,
   });
 
@@ -78,18 +89,10 @@ export async function createTeacherNotification(
 
   if (!wantEmail) return { emailed: false };
 
-  const { data: teacher } = await supabase
-    .from("teachers")
-    .select("email, display_name, preferred_locale")
-    .eq("id", args.teacherId)
-    .single();
-
   if (!teacher?.email) {
     return { emailed: false, emailError: "No teacher email on file" };
   }
 
-  const locale=isAppLocale(teacher.preferred_locale)?teacher.preferred_locale:"en";
-  const copy=communicationCopy[locale].notification;
   const studio = policy.studio_name || "ChessCoachPal Studio";
   const absoluteHref =
     href && args.origin
@@ -102,22 +105,22 @@ export async function createTeacherNotification(
       ? [
           copy.receipt,
           "",
-          args.body ?? args.title,
+          presentation.body || presentation.title,
           absoluteHref ? `\n${copy.viewInvoice}: ${absoluteHref}` : "",
           `\n${studio}`,
         ]
           .filter((line) => line !== undefined)
           .join("\n")
       : [
-          args.title,
-          args.body ? `\n${args.body}` : "",
+          presentation.title,
+          presentation.body ? `\n${presentation.body}` : "",
           absoluteHref ? `\n\n${copy.openInApp}: ${absoluteHref}` : "",
           `\n\n${studio}`,
         ].join("");
 
   const result = await sendEmail({
     to: teacher.email,
-    subject: args.type==="invoice_paid"?copy.receipt:args.title,
+    subject: args.type==="invoice_paid"?copy.receipt:presentation.title,
     text,
     locale,
     fromName: studio,

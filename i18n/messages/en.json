@@ -2267,7 +2267,9 @@
     "markAll": "Mark all read",
     "empty": "No notifications yet.",
     "emailIn": "Email alerts are controlled in",
-    "accountSettings": "Account settings"
+    "accountSettings": "Account settings",
+    "welcomeTitle": "Welcome to ChessCoachPal!",
+    "welcomeBody": "Add students, record chess lessons and organize training materials. Optional contacts and business tools are available when needed."
   },
   "studentNotes": {
     "saveFailed": "Failed to save notes. Please try again.",

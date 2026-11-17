@@ -147,10 +147,10 @@ export function NotificationBell() {
                     }
                   }}
                 >
-                  <div className="text-sm font-medium">{n.title}</div>
-                  {n.body && (
+                  <div className="text-sm font-medium"><bdi dir="auto">{n.type==="welcome"?t("welcomeTitle"):n.title}</bdi></div>
+                  {(n.type==="welcome"||n.body) && (
                     <div className="text-xs text-muted mt-0.5 whitespace-pre-wrap line-clamp-3">
-                      {n.body}
+                      <bdi dir="auto">{n.type==="welcome"?t("welcomeBody"):n.body}</bdi>
                     </div>
                   )}
                   <div className="text-[10px] text-muted mt-1">
