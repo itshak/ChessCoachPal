@@ -1,6 +1,6 @@
 # Change: optimize-mcp-coaching-workflows
 
-- **Status:** Proposed — NOT implemented or accepted.
+- **Status:** Implementation candidate on PR #97; acceptance, merged-main verification and OpenSpec archive pending.
 - **Date:** 2026-11-17
 - **Owner:** ChessCoachPal agent-first product/MCP.
 - **Intent:** Make real chess-coach tasks reliable and economical for AI agents, without removing any teacher business capability from the existing single authenticated `/mcp` connector.
@@ -71,4 +71,4 @@ These are **candidates for analysis**, not automatic commitments to eight new to
 
 ## Acceptance and archival boundary
 
-A completed *implementation* must also preserve PR #95's date-list vs advanced import semantics, privacy-filtered/paginated export and accurate transport/tool-discovery guidance. A completed *implementation* must demonstrate (a) a current full tool/intent inventory and deliberate disposition of every tool, (b) several representative teacher tasks completed with backend-owned coordination and **bounded** model-side calls, (c) every granular business operation and existing parity scenario still available, (d) exact-field website/MCP read-back and full tenant/security/replay tests, and (e) passing required checks on the exact merged-main SHA. This **proposal commit does none of those things**. The change stays active and unchecked until implemented and verified. Do not archive on the strength of this document alone.
+A completed *implementation* must also preserve PR #95's date-list vs advanced import semantics, privacy-filtered/paginated export and accurate transport/tool-discovery guidance. A completed *implementation* must demonstrate (a) a current full tool/intent inventory and deliberate disposition of every tool, (b) several representative teacher tasks completed with backend-owned coordination and **bounded** model-side calls, (c) every granular business operation and existing parity scenario still available, (d) exact-field website/MCP read-back and full tenant/security/replay tests, and (e) passing required checks on the exact merged-main SHA. The implementation candidate now includes source-derived catalog metadata and two teacher-intent transactions, but the change remains **active** until the exact-code full CI/E2E and merged-main checks are green and the remaining task checkboxes are genuinely evidenced. Real vendor-client sign-off remains a separate release gate. Do not archive on the strength of this document alone.

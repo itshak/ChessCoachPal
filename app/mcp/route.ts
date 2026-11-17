@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeBearer } from "@/lib/server/agent-oauth";
 import { oauthOrigin } from "@/lib/server/agent-oauth-core";
-import { exposedTools, runTool } from "@/lib/server/agent-tools";
+import { exposedTools, runTool, toolScopeByName } from "@/lib/server/agent-tools";
 import packageJson from "@/package.json";
 
 export const dynamic = "force-dynamic";
@@ -63,12 +63,13 @@ export async function POST(req: NextRequest) {
       protocolVersion: protocol,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: "ChessCoachPal", version: packageJson.version },
-      instructions: "ChessCoachPal is an AI-first chess coaching record system. Prefer ccp_historical_attendance_dates_preview and _commit for importing exact real attended dates per student; workplaceId applies to all pupils and must be verified with ccp_workplaces_list. Do not use student/family spreadsheet mapping tools for attendance, and do not infer dates from V/X/blank spreadsheet cells or totals. First preview and review issues/digest; commit only on explicit teacher approval. Use ccp_settings_export_csv to list tables and export pageable CSV. JSON backup and full CSV ZIP are available on the authenticated website.",
+      instructions: "ChessCoachPal manages teacher-owned students, lessons, materials, scheduling, learning history and reports. Use named task-specific tools; resolve ambiguous names or times before writing and confirm consequential changes. For a completed multi-student lesson prefer ccp_lessons_capture_preview then ccp_lessons_capture_completed; for scheduling without attendance use ccp_sessions_ad_hoc_create. For newly introduced lesson material prefer ccp_materials_lesson_use_preview then ccp_materials_lesson_use_commit. Historical attendance dates are evidence only, NOT calendar lessons; use ccp_historical_attendance_dates_preview for verified past dates and advanced import for mixed/aggregate sources. Student/family spreadsheets have separate import tools. Full CSV export is bounded/paged via ccp_settings_export_csv; website ZIP and JSON restore are distinct. Never invent mastery, attendance, dates or successful persistence; check receipts.",
+
     }));
     if (message.method === "ping") return json(rpc(id, {}));
     if (message.method === "tools/list") return json(rpc(id, { tools:
       exposedTools.filter(t => auth.scopes.includes(
-        t.annotations.readOnlyHint ? "coach:read" : "coach:write")) }));
+        toolScopeByName.get(t.name) ?? "")) }));
     if (message.method === "tools/call") {
       const name = message.params?.name;
       if (typeof name !== "string") return json(rpc(id, undefined, {code:-32602,message:"Missing tool name"}));
