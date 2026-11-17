@@ -13,8 +13,22 @@ import {
 export function formatEventWhen(
   startsAt: string,
   endsAt: string | null | undefined,
-  timezone: string
+  timezone: string,
+  locale: "en"|"he"|"ru"="en"
 ): string {
+  if(locale!=="en") {
+    const dateTime=(iso:string)=>new Intl.DateTimeFormat(locale,{
+      timeZone:timezone,dateStyle:"full",timeStyle:"short"
+    }).format(new Date(iso));
+    if(!endsAt)return dateTime(startsAt);
+    const sameDay=formatEventDateKey(startsAt,timezone)===formatEventDateKey(endsAt,timezone);
+    if(!sameDay)return dateTime(startsAt)+" – "+dateTime(endsAt);
+    const date=new Intl.DateTimeFormat(locale,{timeZone:timezone,dateStyle:"full"})
+      .format(new Date(startsAt));
+    const time=(iso:string)=>new Intl.DateTimeFormat(locale,{timeZone:timezone,
+      hour:"2-digit",minute:"2-digit"}).format(new Date(iso));
+    return date+" · "+time(startsAt)+"–"+time(endsAt);
+  }
   const date = formatEventDate(startsAt, timezone);
   const startTime = formatLessonTime(startsAt, timezone);
 

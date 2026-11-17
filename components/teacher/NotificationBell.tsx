@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import {useLocale,useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 
 type Notif = {
@@ -15,6 +16,7 @@ type Notif = {
 };
 
 export function NotificationBell() {
+  const t=useTranslations("bell"),locale=useLocale();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notif[]>([]);
@@ -78,7 +80,7 @@ export function NotificationBell() {
           if (!open) void load();
         }}
         className="relative p-2 rounded-lg text-muted hover:text-foreground hover:bg-surface-dim cursor-pointer"
-        aria-label={unread > 0 ? `Notifications (${unread} unread)` : "Notifications"}
+        aria-label={unread>0?t("unread",{count:unread}):t("title")}
       >
         <svg
           width="20"
@@ -95,7 +97,7 @@ export function NotificationBell() {
           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
         {unread > 0 && (
-          <span className="absolute top-1 right-1 min-w-[1rem] h-4 px-1 rounded-full bg-error text-white text-[10px] font-bold flex items-center justify-center">
+          <span className="absolute top-1 end-1 min-w-[1rem] h-4 px-1 rounded-full bg-error text-white text-[10px] font-bold flex items-center justify-center">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -109,32 +111,32 @@ export function NotificationBell() {
         // from md up there is room for the anchored dropdown.
         <div
           role="dialog"
-          aria-label="Notifications"
-          className="fixed left-3 right-3 top-16 mt-1 md:absolute md:left-auto md:right-0 md:top-auto md:w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface shadow-lg z-50 overflow-hidden"
+          aria-label={t("title")}
+          className="fixed start-3 end-3 top-16 mt-1 md:absolute md:start-auto md:end-0 md:top-auto md:w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface shadow-lg z-50 overflow-hidden"
         >
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-            <span className="text-sm font-semibold">Notifications</span>
+            <span className="text-sm font-semibold">{t("title")}</span>
             {unread > 0 && (
               <button
                 type="button"
                 onClick={() => void markAllRead()}
                 className="text-xs text-primary hover:underline cursor-pointer"
               >
-                Mark all read
+                {t("markAll")}
               </button>
             )}
           </div>
           <div className="max-h-80 overflow-y-auto">
             {items.length === 0 ? (
               <p className="text-sm text-muted px-3 py-6 text-center">
-                No notifications yet.
+                {t("empty")}
               </p>
             ) : (
               items.map((n) => (
                 <button
                   key={n.id}
                   type="button"
-                  className={`w-full text-left px-3 py-2.5 border-b border-border last:border-0 hover:bg-surface-dim cursor-pointer ${
+                  className={`w-full text-start px-3 py-2.5 border-b border-border last:border-0 hover:bg-surface-dim cursor-pointer ${
                     n.read_at ? "" : "bg-primary/5"
                   }`}
                   onClick={() => {
@@ -145,27 +147,27 @@ export function NotificationBell() {
                     }
                   }}
                 >
-                  <div className="text-sm font-medium">{n.title}</div>
-                  {n.body && (
+                  <div className="text-sm font-medium"><bdi dir="auto">{n.type==="welcome"?t("welcomeTitle"):n.title}</bdi></div>
+                  {(n.type==="welcome"||n.body) && (
                     <div className="text-xs text-muted mt-0.5 whitespace-pre-wrap line-clamp-3">
-                      {n.body}
+                      <bdi dir="auto">{n.type==="welcome"?t("welcomeBody"):n.body}</bdi>
                     </div>
                   )}
                   <div className="text-[10px] text-muted mt-1">
-                    {new Date(n.created_at).toLocaleString()}
+                    {new Date(n.created_at).toLocaleString(locale)}
                   </div>
                 </button>
               ))
             )}
           </div>
           <div className="px-3 py-2 border-t border-border text-[11px] text-muted">
-            Email alerts are controlled in{" "}
+            {t("emailIn")}{" "}
             <Link
               href="/account"
               className="text-primary hover:underline"
               onClick={() => setOpen(false)}
             >
-              Account settings
+              {t("accountSettings")}
             </Link>
             .
           </div>

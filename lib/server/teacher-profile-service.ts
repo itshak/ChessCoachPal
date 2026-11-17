@@ -1,4 +1,5 @@
 import type {SupabaseClient} from "@supabase/supabase-js";
+import {isAppLocale} from "@/i18n/locales";
 
 /** Ordinary teacher profile fields. Authentication secrets, sign-in email,
  * passwords and MFA are deliberately not accessible through this service. */
@@ -7,21 +8,26 @@ export class TeacherProfileError extends Error {
 }
 export async function teacherProfileGet(db:SupabaseClient,teacherId:string){
  const {data,error}=await db.from("teachers")
-  .select("id,display_name,avatar_url").eq("id",teacherId).maybeSingle();
+  .select("id,display_name,avatar_url,preferred_locale").eq("id",teacherId).maybeSingle();
  if(error)throw new TeacherProfileError(500,"DATABASE_ERROR","Profile unavailable");
  if(!data)throw new TeacherProfileError(404,"NOT_FOUND","Profile not found");
- return {id:data.id,displayName:data.display_name,avatarUrl:data.avatar_url};
+ return {id:data.id,displayName:data.display_name,avatarUrl:data.avatar_url,preferredLocale:data.preferred_locale ?? "en"};
 }
 export async function teacherProfileUpdate(
  db:SupabaseClient,teacherId:string,changes:{
- displayName?:unknown;avatarUrl?:unknown;
+ displayName?:unknown;avatarUrl?:unknown;preferredLocale?:unknown;
 }){
  // This domain operation is shared by the website and MCP. Authentication
  // credentials, sign-in email, and MFA settings require a secure browser
  // identity flow; reject rather than silently ignoring such extra inputs.
- if(Object.keys(changes).some(key=>key!=="displayName"&&key!=="avatarUrl"))
+ if(Object.keys(changes).some(key=>key!=="displayName"&&key!=="avatarUrl"&&key!=="preferredLocale"))
    throw new TeacherProfileError(400,"VALIDATION_ERROR","Unsupported profile field");
- const patch:{display_name?:string;avatar_url?:string|null}={};
+ const patch:{display_name?:string;avatar_url?:string|null;preferred_locale?:"en"|"he"|"ru"}={};
+ if(changes.preferredLocale!==undefined){
+   if(!isAppLocale(changes.preferredLocale))
+     throw new TeacherProfileError(400,"VALIDATION_ERROR","Unsupported interface language");
+   patch.preferred_locale=changes.preferredLocale;
+ }
  if(changes.displayName!==undefined){
    if(typeof changes.displayName!=="string"||!changes.displayName.trim())
      throw new TeacherProfileError(400,"VALIDATION_ERROR","Display name is required");
@@ -45,5 +51,29 @@ export async function teacherProfileUpdate(
   .eq("id",teacherId).select("id").maybeSingle();
  if(error)throw new TeacherProfileError(500,"DATABASE_ERROR","Failed to update profile");
  if(!data)throw new TeacherProfileError(404,"NOT_FOUND","Profile not found");
+ // Supabase Auth delivers invite/recovery mail through its own SMTP service.
+ // Its conditional templates read user_metadata.preferred_locale, NOT the
+ // teachers table. Keep a validated, display-only metadata copy in sync after
+ // a confirmed website/MCP preference update. This touches neither login
+ // credentials nor email address and cannot trigger email delivery.
+ // Database is authoritative; Auth metadata sync is best-effort because
+ // GoTrue and PostgREST have no cross-service atomic transaction.
+ if(patch.preferred_locale!==undefined){
+   try{
+     const {error:authError}=await db.auth.updateUser({
+       data:{preferred_locale:patch.preferred_locale}
+     });
+     if(authError){
+       // Delegated MCP uses a verified bearer identity but a stateless
+       // Supabase JS client; updateUser may lack a persisted Auth session.
+       // The teacher-owned database update above is the authorization gate.
+       const {createServiceClient}=await import("@/lib/supabase/server");
+       const {error:adminError}=await createServiceClient().auth.admin.updateUserById(
+         teacherId,{user_metadata:{preferred_locale:patch.preferred_locale}}
+       );
+       if(adminError)console.warn("Auth mail-language metadata sync unavailable");
+     }
+   }catch{console.warn("Auth mail-language metadata sync unavailable");}
+ }
  return {ok:true};
 }

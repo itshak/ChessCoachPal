@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Card } from "@/components/ui/card";
@@ -8,13 +9,10 @@ import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 
 // Recharts is heavy; load it only when a student actually has ratings.
+function LoadingCharts(){const t=useTranslations("skills");return <div className="h-64 flex items-center justify-center text-sm text-muted">{t("loadingCharts")}</div>;}
 const SkillsCharts = dynamic(() => import("./SkillsCharts"), {
   ssr: false,
-  loading: () => (
-    <div className="h-64 flex items-center justify-center text-sm text-muted">
-      Loading charts…
-    </div>
-  ),
+  loading: LoadingCharts,
 });
 
 export interface Dimension {
@@ -40,6 +38,7 @@ export function SkillsPanel({
   dimensions: Dimension[];
   assessments: Assessment[];
 }) {
+  const t=useTranslations("skills");
   const router = useRouter();
   const [rating, setRating] = useState(false);
   const [managing, setManaging] = useState(false);
@@ -126,7 +125,7 @@ export function SkillsPanel({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
-        setError(err?.error ?? "Failed to save ratings");
+        setError(err?.error??t("saveFailed"));
         setSaving(false);
         return;
       }
@@ -134,7 +133,7 @@ export function SkillsPanel({
       setRating(false);
       router.refresh();
     } catch {
-      setError("Failed to save ratings");
+      setError(t("saveFailed"));
     }
     setSaving(false);
   }
@@ -142,17 +141,17 @@ export function SkillsPanel({
   return (
     <Card padding="sm">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold">Skills</h3>
+        <h3 className="font-semibold">{t("title")}</h3>
         <div className="flex items-center gap-2">
           <button
             className="text-xs text-muted hover:text-foreground transition-colors cursor-pointer"
             onClick={() => setManaging(!managing)}
           >
-            {managing ? "Done" : "Edit Skills"}
+            {managing?t("done"):t("edit")}
           </button>
           {!rating && (
             <Button size="sm" variant="secondary" onClick={startRating}>
-              Rate Skills
+              {t("rate")}
             </Button>
           )}
         </div>
@@ -195,22 +194,21 @@ export function SkillsPanel({
             </div>
           ))}
           <p className="text-xs text-muted">
-            1 = emerging · 5 = mastered. Skip skills you didn&apos;t assess today.
+            {t("ratingHint")}
           </p>
           {error && <p className="text-xs text-error">{error}</p>}
           <div className="flex gap-2">
             <Button size="sm" onClick={saveRatings} disabled={saving}>
-              {saving ? "Saving..." : "Save Ratings"}
+              {saving?t("saving"):t("saveRatings")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setRating(false)}>
-              Cancel
+              {t("cancel")}
             </Button>
           </div>
         </div>
       ) : !hasRatings ? (
         <p className="text-sm text-muted text-center py-6">
-          No skill ratings yet. Tap &quot;Rate Skills&quot; after a lesson to start
-          tracking progress.
+          {t("empty")}
         </p>
       ) : (
         <SkillsCharts
@@ -231,6 +229,7 @@ function ManageDimensions({
   dimensions: Dimension[];
   onChanged: () => void;
 }) {
+  const t=useTranslations("skills");
   const confirmDialog = useConfirm();
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -248,7 +247,7 @@ function ManageDimensions({
     });
     if (!res.ok) {
       const err = await res.json().catch(() => null);
-      setError(err?.error ?? "Failed to add skill");
+      setError(err?.error??t("addFailed"));
     } else {
       setNewName("");
       onChanged();
@@ -263,19 +262,18 @@ function ManageDimensions({
       const url="/api/skills/dimensions/"+d.id;
       const preview=await fetch(url);
       if(!preview.ok) {
-        setError("Unable to inspect this skill's rating history.");
+        setError(t("inspectFailed"));
         return;
       }
       const impact=await preview.json() as {assessmentCount:number;canDelete:boolean};
       if(!impact.canDelete) {
-        setError('"' + d.name + '" has ' + impact.assessmentCount +
-          ' historical rating(s). Rename the skill instead; its records cannot be erased here.');
+        setError(t("hasHistory",{name:d.name,count:impact.assessmentCount}));
         return;
       }
       const ok=await confirmDialog({
-        title:"Delete unused skill?",
-        message:'Delete "'+d.name+'"? It has no historical student ratings.',
-        confirmLabel:"Delete",
+        title:t("deleteTitle"),
+        message:t("deleteWarning",{name:d.name}),
+        confirmLabel:t("delete"),
         variant:"danger",
       });
       if(!ok) return;
@@ -286,12 +284,12 @@ function ManageDimensions({
       });
       if(!res.ok) {
         const err=await res.json().catch(()=>null);
-        setError(err?.error ?? "Failed to delete skill");
+        setError(err?.error??t("deleteFailed"));
       } else {
         onChanged();
       }
     } catch {
-      setError("Failed to inspect or delete skill");
+      setError(t("inspectOrDeleteFailed"));
     } finally {
       setBusy(false);
     }
@@ -300,7 +298,7 @@ function ManageDimensions({
   return (
     <div className="mb-4 p-3 rounded-lg bg-surface-dim/60 border border-border">
       <p className="text-xs text-muted mb-2">
-        Skills are shared across all your students.
+        {t("shared")}
       </p>
       <div className="flex flex-wrap gap-1.5 mb-2">
         {dimensions.map((d) => (
@@ -313,7 +311,7 @@ function ManageDimensions({
               onClick={() => removeDimension(d)}
               disabled={busy}
               className="text-muted hover:text-error transition-colors cursor-pointer"
-              aria-label={`Delete ${d.name}`}
+              aria-label={t("deleteNamed",{name:d.name})}
             >
               ×
             </button>
@@ -325,11 +323,11 @@ function ManageDimensions({
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addDimension()}
-          placeholder="Add a skill (e.g. Ear Training)"
+          placeholder={t("newSkillPlaceholder")}
           className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm"
         />
         <Button size="sm" variant="secondary" onClick={addDimension} disabled={busy}>
-          Add
+          {t("add")}
         </Button>
       </div>
       {error && <p className="text-xs text-error mt-1">{error}</p>}

@@ -1,4 +1,5 @@
 "use client";
+import {useTranslations} from "next-intl";
 
 import { useCallback, useSyncExternalStore } from "react";
 
@@ -48,6 +49,7 @@ function readVisible(): boolean {
 }
 
 export function IosInstallHint() {
+  const t=useTranslations("iosInstall");
   const visible = useSyncExternalStore(subscribe, readVisible, () => false);
 
   const dismiss = useCallback(() => {
@@ -69,12 +71,12 @@ export function IosInstallHint() {
     <div className="border-t border-border mt-1 pt-1 px-3 py-2">
       <p className="flex items-start justify-between gap-2 text-xs text-muted">
         <span>
-          Install ChessCoachPal: tap Share, then <strong>Add to Home Screen</strong>.
+          {t("before")} <strong>{t("add")}</strong>.
         </span>
         <button
           type="button"
           onClick={dismiss}
-          aria-label="Dismiss install instructions"
+          aria-label={t("dismiss")}
           className="shrink-0 p-2 -m-1 text-lg leading-none text-muted hover:text-foreground cursor-pointer"
         >
           ×

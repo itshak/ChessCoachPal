@@ -26,8 +26,10 @@ test("PARITY:PARITY-all-teacher-route-field-action-contract discovers every teac
   // every teacher endpoint; the individually named E2E matrix exercises each.
   // This acceptance independently confirms runtime OAuth discovery and a
   // representative full chess-specific profile field update/clear contract.
-  const editSchema=byName.get("ccp_students_profile_edit")!.inputSchema!;
-  const changes=((editSchema.properties??{}).changes??{}).properties??{};
+  const editSchema=byName.get("ccp_students_profile_edit")!.inputSchema! as {
+    properties?:Record<string,{properties?:Record<string,unknown>}>
+  };
+  const changes=editSchema.properties?.changes?.properties??{};
   for(const field of ["nameAliases","strength","lichessUsername",
     "chesscomUsername","lichessRating","chesscomRating","chessGoals",
     "teacherNotes","defaultRateCents","travelFeeCents","archived"])

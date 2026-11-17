@@ -1,14 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
+import {getTranslations} from "next-intl/server";
+import {resolveRequestLocale} from "@/i18n/server";
+import {languageDirection,type AppLocale} from "@/i18n/locales";
 import { clientById, cookieTeacher, createAuthorizationCode } from "@/lib/server/agent-oauth";
 import { oauthOrigin, parseScopes, randomToken, resourceUri, validateRedirectUri } from "@/lib/server/agent-oauth-core";
 
 export const dynamic = "force-dynamic";
 const escapeHtml = (v:string) => v.replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
-function html(content: string, status = 200) {
+function html(content: string, status = 200, locale:AppLocale="en") {
   return new NextResponse(content, {status,headers:{"Content-Type":"text/html; charset=utf-8",
+    "Content-Language":locale,
     "Cache-Control":"no-store", "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
     "X-Content-Type-Options":"nosniff"}});
+}
+function shell(title:string,body:string,locale:AppLocale){
+  return '<!doctype html><html lang="'+locale+'" dir="'+languageDirection(locale)+'">'+
+   '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
+   '<title>'+escapeHtml(title)+'</title></head><body>'+body+'</body></html>';
+}
+function errorPage(message:string,status:number,locale:AppLocale){
+  return html(shell(message,
+    '<main style="max-width:640px;margin:3rem auto;font:16px system-ui;padding:1rem"><h1>'+escapeHtml(message)+'</h1></main>',
+    locale),status,locale);
 }
 function formParam(p: URLSearchParams | FormData, k:string) {
   const v = p.get(k);
@@ -29,6 +43,7 @@ async function check(input: URLSearchParams | FormData) {
     state: formParam(input,"state") };
 }
 export async function GET(req: NextRequest) {
+  const locale=await resolveRequestLocale(),t=await getTranslations("oauthConsent");
   try {
     const p = await check(req.nextUrl.searchParams);
     const csrf = randomToken();
@@ -37,18 +52,21 @@ export async function GET(req: NextRequest) {
       '<input type="hidden" name="'+k+'" value="'+escapeHtml(formParam(req.nextUrl.searchParams,k))+'">').join("");
     const teacher = await cookieTeacher();
     const heading = teacher
-      ? '<p>Connected teacher account. Review the request and approve only if you recognize this client.</p>'
-      : '<p>You are not signed in. <a href="/login">Sign in to ChessCoachPal</a>, then return to and reload this page.</p>';
-    const page = html('<!doctype html><html lang="en"><meta charset="utf-8"><title>Authorize ChessCoachPal AI connector</title>'+
-      '<main style="max-width:640px;margin:3rem auto;font:16px system-ui;padding:1rem"><h1>Authorize AI connector</h1>'+
-      '<p><strong>'+escapeHtml(p.client.name)+'</strong> requests access to ChessCoachPal.</p>'+
-      '<p>Redirect destination: <code>'+escapeHtml(p.redirect)+'</code></p>'+
-      '<p>Requested permissions: <strong>'+escapeHtml(p.scopes)+'</strong></p>'+
-      '<p>Read: view students and lessons. Write: change confirmed attendance and lesson topics.</p>'+
+      ? '<p>'+escapeHtml(t("teacherConnected"))+'</p>'
+      : '<p>'+escapeHtml(t("notSignedIn"))+' <a href="/login">'+
+        escapeHtml(t("signIn"))+'</a>. '+escapeHtml(t("returnReload"))+'</p>';
+    const consentBody='<main style="max-width:640px;margin:3rem auto;font:16px system-ui;padding:1rem;line-height:1.5">'+
+      '<h1>'+escapeHtml(t("heading"))+'</h1>'+
+      '<p><strong><bdi>'+escapeHtml(p.client.name)+'</bdi></strong> '+escapeHtml(t("clientRequests"))+'</p>'+
+      '<p>'+escapeHtml(t("redirectDestination"))+': <code dir="ltr"><bdi>'+escapeHtml(p.redirect)+'</bdi></code></p>'+
+      '<p>'+escapeHtml(t("permissions"))+': <strong dir="ltr"><bdi>'+escapeHtml(p.scopes)+'</bdi></strong></p>'+
+      '<p>'+escapeHtml(t(p.scopes.split(" ").includes("coach:write")
+        ?"scopeDetailsWrite":"scopeDetailsRead"))+'</p>'+
       heading+'<form method="post" action="/oauth/authorize">'+params+
       '<input type="hidden" name="csrf" value="'+escapeHtml(csrf)+'">'+
-      '<button type="submit" name="decision" value="approve" '+(!teacher?'disabled':'')+'>Authorize</button> '+
-      '<button type="submit" name="decision" value="deny">Deny</button></form></main></html>');
+      '<button type="submit" name="decision" value="approve" '+(!teacher?'disabled':'')+'>'+escapeHtml(t("approve"))+'</button> '+
+      '<button type="submit" name="decision" value="deny">'+escapeHtml(t("deny"))+'</button></form></main>';
+    const page = html(shell(t("title"),consentBody,locale),200,locale);
     // OAuth consent must be allowed to redirect to the client's exact registered
     // origin. A strict self-only form-action CSP blocks cross-origin OAuth redirects
     // in Chromium even though the form initially posts to this server.
@@ -59,29 +77,30 @@ export async function GET(req: NextRequest) {
     page.cookies.set("agent_oauth_consent_csrf", csrf, {httpOnly:true,sameSite:"lax",secure:oauthOrigin().startsWith("https:"),path:"/oauth/authorize",maxAge:600});
     return page;
   } catch {
-    return html("<h1>Invalid OAuth authorization request</h1>",400);
+    return errorPage(t("invalidRequest"),400,locale);
   }
 }
 export async function POST(req: NextRequest) {
+  const locale=await resolveRequestLocale(),t=await getTranslations("oauthConsent");
   if (req.headers.get("origin") !== oauthOrigin() ||
       !req.headers.get("content-type")?.startsWith("application/x-www-form-urlencoded") ||
       Number(req.headers.get("content-length") ?? 0) > 8192)
-    return html("<h1>Forbidden</h1>",403);
+    return errorPage(t("forbidden"),403,locale);
   try {
     const body = new URLSearchParams(await req.text());
     const p = await check(body);
     const supplied = formParam(body, "csrf");
     const cookie = req.cookies.get("agent_oauth_consent_csrf")?.value;
-    if (!cookie || supplied !== cookie) return html("<h1>Invalid consent session</h1>",403);
+    if (!cookie || supplied !== cookie) return errorPage(t("invalidConsent"),403,locale);
     if (formParam(body,"decision") === "deny") {
       const destination = new URL(p.redirect);
       destination.searchParams.set("error","access_denied");
       destination.searchParams.set("state",p.state);
       return NextResponse.redirect(destination,303);
     }
-    if (formParam(body,"decision") !== "approve") return html("<h1>Invalid decision</h1>",400);
+    if (formParam(body,"decision") !== "approve") return errorPage(t("invalidDecision"),400,locale);
     const teacher = await cookieTeacher();
-    if (!teacher) return html("<h1>Sign in first, then retry the connection</h1>",401);
+    if (!teacher) return errorPage(t("signInFirst"),401,locale);
     const code = await createAuthorizationCode({
       clientId:p.clientId,teacherId:teacher.teacherId,redirectUri:p.redirect,
       scopes:p.scopes,challenge:p.challenge,encryptedSession:teacher.encryptedSession,
@@ -93,6 +112,6 @@ export async function POST(req: NextRequest) {
     response.cookies.delete("agent_oauth_consent_csrf");
     return response;
   } catch {
-    return html("<h1>Could not authorize this client</h1>",400);
+    return errorPage(t("couldNotAuthorize"),400,locale);
   }
 }

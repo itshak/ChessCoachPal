@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useMemo, useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -25,6 +28,8 @@ export interface InvoiceListRow {
  * Bulk Send = drafts only; Delete = draft/void; Void = draft/sent (not paid).
  */
 export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
+  const t=useTranslations("invoiceList");
+  const toUserError=useLocalizedApiError();
   const router = useRouter();
   const confirm = useConfirm();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -83,7 +88,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
         });
         const body=await response.json();
         if(!response.ok||!body.ok){
-          setMessage("Some invoices are no longer sendable. Refresh and review them.");
+          setMessage(t("notSendable"));
           return;
         }
         previewDigest=body.previewDigest;
@@ -94,42 +99,32 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
           const invoice=actionable.find(row=>row.id===item.id);
           return (invoice?.familyName??item.id)+": "+
             (item.preview.recipients.length?
-              item.preview.recipients.join(", "):"NO EMAIL")+
+              item.preview.recipients.join(", "):t("noEmail"))+
             " · "+formatMoney(item.preview.subtotalCents,item.preview.currency);
         }).join("\n");
       }catch{
-        setMessage("Unable to load all recipients. No invoices were sent.");
+        setMessage(t("recipientsFailed"));
         return;
       }finally{setBusy(false);}
     }
 
     const confirmMsg =
       action === "send"
-        ? `Send ${n} draft invoice${n === 1 ? "" : "s"}? Review EVERY recipient and exact amount below before confirming:\n\n${sendRecipients}${
-            skipped > 0 ? ` (${skipped} non-draft selected will be skipped.)` : ""
-          }`
+        ?t("sendWarning",{count:n,recipients:sendRecipients,skipped:skipped>0?t("skippedNonDraft",{count:skipped}):""})
         : action === "delete"
-          ? `Permanently delete ${n} draft/void invoice${n === 1 ? "" : "s"}?${
-              skipped > 0
-                ? ` (${skipped} sent/paid selected will be skipped.)`
-                : ""
-            }`
-          : `Void ${n} unpaid invoice${n === 1 ? "" : "s"}? That cancels the charge, so the family should not pay it, and those lessons can be billed again later.${
-              skipped > 0
-                ? ` (${skipped} paid/already-void selected will be skipped.)`
-                : ""
-            }`;
+          ?t("deleteWarning",{count:n,skipped:skipped>0?t("skippedSent",{count:skipped}):""})
+          :t("voidWarning",{count:n,skipped:skipped>0?t("skippedPaid",{count:skipped}):""});
 
     const confirmed = await confirm({
       title:
         action === "send"
-          ? "Send invoices?"
+          ? t("sendTitle")
           : action === "delete"
-            ? "Delete invoices?"
-            : "Void invoices?",
+            ? t("deleteTitle")
+            :t("voidTitle"),
       message: confirmMsg,
       confirmLabel:
-        action === "send" ? "Send" : action === "delete" ? "Delete" : "Void",
+        action==="send"?t("send"):action==="delete"?t("delete"):t("void"),
       variant: action === "send" ? "primary" : "danger",
     });
     if (!confirmed) return;
@@ -145,17 +140,17 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
     const data = await res.json().catch(() => ({}));
     setBusy(false);
 
-    const labels = { send: "Send", delete: "Delete", void: "Void" };
+    const labels = {send:t("send"),delete:t("delete"),void:t("void")};
     if (!res.ok) {
-      setMessage(data.error ?? `${labels[action]} failed`);
+      setMessage(toUserError(data,t("actionFailed",{action:labels[action]})));
       return;
     }
 
     const failCount = data.failed?.length ?? 0;
     setMessage(
       failCount === 0
-        ? `${labels[action]}: ${data.succeeded} succeeded`
-        : `${labels[action]}: ${data.succeeded} succeeded, ${failCount} skipped/failed`
+        ? t("allSucceeded",{action:labels[action],count:data.succeeded})
+        : t("partialSuccess",{action:labels[action],count:data.succeeded,failed:failCount})
     );
     setSelected(new Set());
     router.refresh();
@@ -173,16 +168,16 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
     <div>
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-border">
-          <span className="text-sm text-muted mr-1">
-            {selected.size} selected
+          <span className="text-sm text-muted me-1">
+            {t("selected",{count:selected.size})}
           </span>
           <Button
             size="sm"
             onClick={() => runBulk("send")}
             disabled={busy || draftSelected === 0}
-            title="Sends draft invoices only"
+            title={t("sendOnlyDrafts")}
           >
-            Send drafts{draftSelected > 0 ? ` (${draftSelected})` : ""}
+            {t("sendDrafts",{count:draftSelected})}
           </Button>
           <Button
             size="sm"
@@ -190,23 +185,23 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
             onClick={() => runBulk("void")}
             disabled={busy || voidableSelected === 0}
           >
-            Void{voidableSelected > 0 ? ` (${voidableSelected})` : ""}
+            {t("voidSelected",{count:voidableSelected})}
           </Button>
           <Button
             size="sm"
             variant="secondary"
             onClick={() => runBulk("delete")}
             disabled={busy || deletableSelected === 0}
-            title="Deletes drafts and voided invoices only"
+            title={t("deleteOnlyDraftVoid")}
           >
-            Delete{deletableSelected > 0 ? ` (${deletableSelected})` : ""}
+            {t("deleteSelected",{count:deletableSelected})}
           </Button>
           <button
             type="button"
             onClick={() => setSelected(new Set())}
-            className="text-xs text-muted hover:text-foreground cursor-pointer ml-auto"
+            className="text-xs text-muted hover:text-foreground cursor-pointer ms-auto"
           >
-            Clear
+            {t("clear")}
           </button>
         </div>
       )}
@@ -218,10 +213,10 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
           type="checkbox"
           checked={allSelected}
           onChange={toggleAll}
-          aria-label="Select all invoices"
+          aria-label={t("selectAll")}
           className="cursor-pointer"
         />
-        <span>Select all</span>
+        <span>{t("selectAll")}</span>
       </div>
 
       {invoices.map((inv) => {
@@ -235,7 +230,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
               type="checkbox"
               checked={checked}
               onChange={() => toggle(inv.id)}
-              aria-label={`Select ${inv.familyName}`}
+              aria-label={t("selectFamily",{name:inv.familyName})}
               className="cursor-pointer shrink-0"
               onClick={(e) => e.stopPropagation()}
             />
@@ -244,7 +239,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
               className="flex flex-1 items-center justify-between gap-3 min-w-0"
             >
               <div className="min-w-0">
-                <div className="font-medium truncate">{inv.familyName}</div>
+                <div className="font-medium truncate"><bdi dir="auto">{inv.familyName}</bdi></div>
                 <div className="text-xs text-muted">
                   {inv.periodStart} → {inv.periodEnd}
                 </div>
@@ -254,7 +249,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
                   status={inv.status}
                   partiallyPaid={inv.paidCents > 0}
                 />
-                <span className="text-sm font-semibold tabular-nums text-right">
+                <span className="text-sm font-semibold tabular-nums text-end">
                   {formatMoney(inv.subtotalCents, inv.currency)}
                   {inv.status === "sent" &&
                     inv.paidCents > 0 &&
@@ -264,7 +259,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
                           inv.subtotalCents - inv.paidCents,
                           inv.currency
                         )}{" "}
-                        due
+                        {t("due")}
                       </span>
                     )}
                 </span>

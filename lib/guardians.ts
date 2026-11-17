@@ -1,5 +1,6 @@
 import type { EmailRecipients } from "@/lib/supabase/types";
 import type { StudioPolicy } from "@/lib/schedule";
+import type {AppLocale} from "@/i18n/locales";
 
 /**
  * The contact fields a family (guardians row) carries. A family has a
@@ -12,6 +13,7 @@ export interface FamilyContact {
   secondary_name?: string | null;
   secondary_email?: string | null;
   email_recipients?: EmailRecipients | null;
+  preferred_locale?: "en" | "he" | "ru" | null;
 }
 
 /**
@@ -76,7 +78,7 @@ export function stripeCheckoutPrefillEmail(
  * Greeting name(s) matching the recipients: "Jordan" or "Jordan and Sam".
  * Falls back to the primary guardian's name.
  */
-export function familyGreetingNames(family: FamilyContact): string {
+export function familyGreetingNames(family: FamilyContact,locale:AppLocale="en"): string {
   const recipients = familyEmailRecipients(family);
   const names: string[] = [];
   if (recipients.includes(family.email?.trim() ?? "")) names.push(family.name);
@@ -87,5 +89,5 @@ export function familyGreetingNames(family: FamilyContact): string {
     names.push(family.secondary_name);
   }
   if (names.length === 0) return family.name;
-  return names.join(" and ");
+  return names.join(locale==="he"?" ו":locale==="ru"?" и ":" and ");
 }

@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +16,8 @@ const COMMON_BLOCKS = [15, 20, 30, 45, 60, 90];
 
 export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
   const router = useRouter();
+  const t=useTranslations("studioSettings");
+  const toUserError=useLocalizedApiError();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -51,7 +56,7 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (blocks.length === 0) {
-      setMessage("Pick at least one time block");
+      setMessage(t("needBlock"));
       setTimeout(() => setMessage(null), 2500);
       return;
     }
@@ -71,77 +76,77 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
     });
     setBusy(false);
     if (res.ok) {
-      setMessage("Saved");
+      setMessage(t("saved"));
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error ?? "Failed to save");
+      setMessage(toUserError(data, t("saveError")));
     }
     setTimeout(() => setMessage(null), 2500);
   }
 
   return (
     <Card padding="sm">
-      <h2 className="font-semibold mb-3">Studio</h2>
+      <h2 className="font-semibold mb-3">{t("title")}</h2>
       <form onSubmit={handleSave} className="flex flex-col gap-4">
         <label className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Studio name
+            {t("studioName")}
           </span>
           <input
             type="text"
             value={studioName}
             onChange={(e) => setStudioName(e.target.value)}
-            placeholder="e.g. Downtown Chess Club"
+            placeholder={t("studioPlaceholder")}
             maxLength={120}
             className={`${inputClass} w-full`}
           />
           <span className="block text-xs text-muted mt-1">
-            Shown to families on their portal and in emailed lesson notes.
+            {t("studioHint")}
           </span>
         </label>
 
         <label className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Lesson label
+            {t("lessonLabel")}
           </span>
           <input
             type="text"
             value={lessonLabel}
             onChange={(e) => setLessonLabel(e.target.value)}
-            placeholder="e.g. Chess"
+            placeholder={t("lessonPlaceholder")}
             maxLength={60}
             className={`${inputClass} w-full`}
           />
           <span className="block text-xs text-muted mt-1">
-            Names your lessons in the calendar feeds — &quot;Chess&quot; shows
-            &quot;Chess lesson&quot;. Leave blank for a neutral &quot;Lesson&quot;.
+            {t("lessonHint")}
           </span>
         </label>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted mb-1">
-              Studio website
+              {t("website")}
             </span>
             <input
               type="url"
               value={studioWebsite}
               onChange={(e) => setStudioWebsite(e.target.value)}
               placeholder="https://your-studio.com"
+              dir="ltr"
               maxLength={300}
               className={`${inputClass} w-full`}
             />
           </label>
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted mb-1">
-              Contact info
+              {t("contact")}
             </span>
             <input
               type="text"
               value={studioContact}
               onChange={(e) => setStudioContact(e.target.value)}
-              placeholder="e.g. (555) 123-4567 · hello@your-studio.com"
+              placeholder={t("contactPlaceholder")}
               maxLength={300}
               className={`${inputClass} w-full`}
             />
@@ -150,26 +155,26 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
 
         <label className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Studio info
+            {t("info")}
           </span>
           <textarea
             value={studioInfo}
             onChange={(e) => setStudioInfo(e.target.value)}
             placeholder={
-              "Anything families should know: cancellation policy, make-up rules, tuition, tournament dates..."
+              t("infoPlaceholder")
             }
             rows={4}
             maxLength={5000}
             className={`${inputClass} w-full resize-y`}
           />
           <span className="block text-xs text-muted mt-1">
-            Shown on the family portal along with your website and contact info.
+            {t("infoHint")}
           </span>
         </label>
 
         <fieldset>
           <legend className="text-xs font-semibold text-muted mb-1">
-            Lesson time blocks
+            {t("timeBlocks")}
           </legend>
           <div className="flex flex-wrap gap-2 mb-2">
             {chipChoices.map((minutes) => {
@@ -185,7 +190,7 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
                       : "bg-background text-muted border-border hover:border-primary/50"
                   }`}
                 >
-                  {minutes} min
+                  {t("minutes",{count:minutes})}
                 </button>
               );
             })}
@@ -196,7 +201,7 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
               min={5}
               max={240}
               step={5}
-              placeholder="Custom"
+              placeholder={t("custom")}
               value={customBlock}
               onChange={(e) => setCustomBlock(e.target.value)}
               onKeyDown={(e) => {
@@ -208,18 +213,17 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
               className={`${inputClass} w-24`}
             />
             <Button type="button" size="sm" variant="secondary" onClick={addCustom}>
-              Add
+              {t("add")}
             </Button>
           </div>
           <span className="block text-xs text-muted mt-1">
-            These durations are offered when creating weekly slots and one-off
-            lessons.
+            {t("durationHint")}
           </span>
         </fieldset>
 
         <div className="flex items-center gap-3">
           <Button type="submit" size="sm" disabled={busy}>
-            {busy ? "Saving..." : "Save Studio Settings"}
+            {busy?t("saving"):t("save")}
           </Button>
           {message && <span className="text-xs text-muted">{message}</span>}
         </div>

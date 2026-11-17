@@ -1,11 +1,16 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+import {useLocale,useTranslations} from "next-intl";
+import {locales,localeDetails, type AppLocale} from "@/i18n/locales";
+
 import { useEffect, useState, type FormEvent } from "react";
-import { reportCsv, reportText, type ReportSummary } from "@/lib/coaching-report";
+import { reportCsv, reportText, type ReportSummary, type ReportPresentation } from "@/lib/coaching-report";
 
 type Workplace = { id: string; name: string; locale: string };
 type ResponseBody = {
   workplace?: { id: string; name: string }; report?: ReportSummary;
+  presentation?: ReportPresentation;
   error?: string;
 };
 const today = new Date().toISOString().slice(0, 10);
@@ -18,11 +23,16 @@ function saveReport(filename: string, type: string, data: string) {
 }
 
 export function CoachingReportPanel() {
+  const t=useTranslations("reports");
+  const toUserError=useLocalizedApiError();
+  const uiLocale=useLocale();
+  const [reportOutputLocale,setReportOutputLocale]=useState<""|AppLocale>("");
   const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
   const [workplaceId, setWorkplaceId] = useState("");
   const [from, setFrom] = useState(today.slice(0, 7) + "-01");
   const [to, setTo] = useState(today);
   const [report, setReport] = useState<ReportSummary | null>(null);
+  const [presentation,setPresentation]=useState<ReportPresentation|null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -31,72 +41,91 @@ export function CoachingReportPanel() {
       body: JSON.stringify({ action: "workplaces.list" }), cache: "no-store",
     }).then(response => response.json()).then(body => {
       if (cancelled) return;
-      if (!body.ok) throw new Error("Could not load workplaces");
+      if (!body.ok) throw new Error(t("loadFailed"));
       const options = body.data as Workplace[];
       setWorkplaces(options);
       setWorkplaceId(current => current || options[0]?.id || "");
-    }).catch(() => { if (!cancelled) setError("Could not load workplaces"); });
+    }).catch(() => { if (!cancelled) setError(t("loadFailed")); });
     return () => { cancelled = true; };
-  }, []);
-  const workplace = workplaces.find(w => w.id === workplaceId);
+  }, [t]);
   async function generate(event: FormEvent) {
     event.preventDefault();
-    setBusy(true); setError(""); setReport(null);
+    setBusy(true); setError(""); setReport(null);setPresentation(null);
     try {
       const query = new URLSearchParams({ workplaceId, from, to });
+      if(reportOutputLocale)query.set("outputLocale",reportOutputLocale);
       const response = await fetch("/api/coaching/report?" + query, { cache: "no-store" });
       const body = await response.json() as ResponseBody;
-      if (!response.ok || !body.report) throw new Error(body.error || "Report failed");
+      if (!response.ok || !body.report) throw new Error(toUserError(body, t("reportFailed")));
       setReport(body.report);
+      setPresentation(body.presentation??null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Report failed");
+      setError(toUserError(reason, t("reportFailed")));
     } finally { setBusy(false); }
   }
   return (
-    <section aria-label="Teaching activity report" dir={workplace?.locale?.startsWith("he") ? "rtl" : "ltr"}
+    <section aria-label={t("title")} dir={uiLocale==="he"?"rtl":"ltr"}
       className="rounded-xl border border-border bg-surface p-5 space-y-4">
-      <h2 className="text-xl font-semibold">Teaching activity report</h2>
+      <h2 className="text-xl font-semibold">{t("title")}</h2>
       <p className="text-sm text-muted-foreground">
-        Teacher-scoped calendar-day totals; group teaching time counts once, attendance per learner.
-        Cancelled lessons are excluded from teaching minutes.
+        {t("description")}
       </p>
-      <form onSubmit={generate} className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1">Report workplace
+      <form onSubmit={generate} className="flex min-w-0 flex-wrap items-end gap-3">
+        <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-full">{t("workplace")}
           <select value={workplaceId} onChange={event => { setWorkplaceId(event.target.value); setReport(null); }}
-            required className="rounded border border-border bg-surface p-2">
+            required className="w-full min-w-0 max-w-full rounded border border-border bg-surface p-2">
             {workplaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
         </label>
-        <label className="flex flex-col gap-1">From date
+        <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-full">{t("from")}
           <input type="date" required value={from} onChange={event => setFrom(event.target.value)}
-            className="rounded border border-border bg-surface p-2" />
+            className="w-full min-w-0 max-w-full rounded border border-border bg-surface p-2" />
         </label>
-        <label className="flex flex-col gap-1">To date
+        <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-full">{t("to")}
           <input type="date" required value={to} onChange={event => setTo(event.target.value)}
-            className="rounded border border-border bg-surface p-2" />
+            className="w-full min-w-0 max-w-full rounded border border-border bg-surface p-2" />
         </label>
         <button type="submit" disabled={busy || !workplaceId}
           className="rounded bg-primary px-4 py-2 text-white disabled:opacity-50">
-          {busy ? "Calculating…" : "Generate report"}
+          {busy ? t("generating") : t("generate")}
         </button>
+        <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-full">{t("outputLocale")}
+          <select value={reportOutputLocale} onChange={event=>{
+              setReportOutputLocale(event.target.value as ""|AppLocale);
+              setReport(null);setPresentation(null);
+            }}
+            className="w-full min-w-0 max-w-full rounded border border-border bg-surface p-2">
+            <option value="">{t("workplaceDefault")}</option>
+            {locales.map(locale=><option key={locale} value={locale}>{localeDetails[locale].name}</option>)}
+          </select>
+        </label>
       </form>
       {error && <p role="alert" className="text-red-700">{error}</p>}
-      {report && <div aria-live="polite" className="space-y-3">
-        <p>Sessions: <strong>{report.sessions}</strong> · Cancelled: {report.cancelled} ·
-          Teaching minutes: <strong>{report.teachingMinutes}</strong> ·
-          Participants: <strong>{report.participants}</strong></p>
-        <p>Present: {report.attendance.present} · Absent: {report.attendance.absent} ·
-          Late: {report.attendance.late} · Excused: {report.attendance.excused} ·
-          Unmarked: {report.attendance.unmarked}</p>
-        <p className="text-sm">Time zone: {report.timezone} · {report.from} to {report.to}</p>
-        <div className="flex gap-3">
+      {report && presentation && <div
+        aria-live="polite" dir={presentation.direction} className="space-y-3">
+        <p className="flex flex-wrap gap-x-3 gap-y-1">
+          {presentation.metrics.map(item=><span key={item.key}>
+            {item.label}: <strong>{item.value}</strong>
+          </span>)}
+        </p>
+        <p className="flex flex-wrap gap-x-3 gap-y-1">
+          {presentation.attendance.map(item=><span key={item.status}>
+            {item.label}: <strong>{item.value}</strong>
+          </span>)}
+        </p>
+        <p className="text-sm">{presentation.periodLabel}: {presentation.period} ·{" "}
+          {presentation.timezoneLabel}: <bdi dir="ltr">{presentation.timezone}</bdi>
+        </p>
+        <div className="flex flex-wrap gap-3">
           <button type="button" className="rounded border border-border px-3 py-2"
-            onClick={() => saveReport("chesscoachpal-report.csv", "text/csv;charset=utf-8", reportCsv(report))}>
-            Export CSV
+            onClick={()=>saveReport("chesscoachpal-report.csv","text/csv;charset=utf-8",
+              reportCsv(report,presentation.outputLocale))}>
+            {t("exportCsv")}
           </button>
           <button type="button" className="rounded border border-border px-3 py-2"
-            onClick={() => saveReport("chesscoachpal-report.txt", "text/plain;charset=utf-8", reportText(report))}>
-            Export text
+            onClick={()=>saveReport("chesscoachpal-report.txt","text/plain;charset=utf-8",
+              reportText(report,presentation.outputLocale))}>
+            {t("exportText")}
           </button>
         </div>
       </div>}

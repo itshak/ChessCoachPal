@@ -1,22 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildInvoicePdf, toPdfSafeText } from "@/lib/server/invoice-pdf";
-
-describe("toPdfSafeText", () => {
-  it("keeps Latin-1 accents used in names", () => {
-    expect(toPdfSafeText("Andrés")).toBe("Andrés");
-  });
-
-  it("strips emoji that Helvetica cannot encode", () => {
-    expect(toPdfSafeText("Andrés❤️")).toBe("Andrés");
-    expect(toPdfSafeText("Lesson — Andrés❤️, Aug 10")).toBe(
-      "Lesson - Andrés, Aug 10"
-    );
-  });
-
-  it("maps common punctuation to WinAnsi-safe ASCII", () => {
-    expect(toPdfSafeText("“Hi” – there…")).toBe('"Hi" - there...');
-  });
-});
+import { buildInvoicePdf } from "@/lib/server/invoice-pdf";
 
 describe("buildInvoicePdf", () => {
   it("builds a PDF when a line item includes emoji in the student name", async () => {
@@ -118,4 +101,24 @@ describe("buildInvoicePdf", () => {
     expect(partiallyPaid.length).toBeGreaterThan(unpaid.length);
   });
 
+});
+
+describe("multilingual Unicode invoice delivery artifact",()=>{
+  it.each(["en","he","ru"] as const)("embeds a valid %s PDF with mixed Hebrew/Cyrillic/Latin family names and financial values",async(locale)=>{
+    const {PDFDocument}=await import("pdf-lib");
+    const bytes=await buildInvoicePdf({
+      locale,studioName:"ChessCoachPal Шахматы שחמט",
+      familyName:"יוסף Петров Knight",
+      periodStart:"2026-11-01",periodEnd:"2026-11-30",currency:"ILS",
+      items:[{description:"שיעור chess Иван — lesson",quantity:1,unitCents:12345,amountCents:12345}],
+      subtotalCents:12345,paidCents:2345,
+      paymentInstructions:"שלום мир — pay at office",
+      notes:"הערה Русский notes with mixed content",
+    });
+    expect(String.fromCharCode(...bytes.slice(0,4))).toBe("%PDF");
+    expect(bytes.byteLength).toBeGreaterThan(2500);
+    const pdf=await PDFDocument.load(bytes);
+    expect(pdf.getPageCount()).toBe(1);
+    expect(pdf.getTitle()).toBeUndefined(); // No personal family data in metadata.
+  });
 });

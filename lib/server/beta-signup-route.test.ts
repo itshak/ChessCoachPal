@@ -39,7 +39,7 @@ vi.mock("@/lib/rateLimit", () => ({
 
 import { POST } from "@/app/api/auth/signup/route";
 
-function request(accessCode?: string) {
+function request(accessCode?: string,preferredLocale?:unknown) {
   return new NextRequest("https://beta.chesscoachpal.com/api/auth/signup", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -49,6 +49,7 @@ function request(accessCode?: string) {
       displayName: "Beta Teacher",
       timezone: "Asia/Jerusalem",
       accessCode,
+      ...(preferredLocale===undefined?{}:{preferredLocale}),
     }),
   });
 }
@@ -200,7 +201,7 @@ describe("private beta verified invitation activation", () => {
     expect(mocks.adminInviteUserByEmail).toHaveBeenCalledExactlyOnceWith(
       "teacher@example.test", {
         data: { display_name: "Beta Teacher", timezone: "Asia/Jerusalem" },
-        redirectTo: expect.stringContaining("/login?message=Email%20verified."),
+        redirectTo: expect.stringContaining("/login?auth_notice=verified"),
       }
     );
     expect(mocks.adminUpdateUserById).toHaveBeenCalledExactlyOnceWith(
@@ -210,6 +211,39 @@ describe("private beta verified invitation activation", () => {
       expect.anything(),
       expect.objectContaining({ userId: "verified-beta-invitee" })
     );
+  });
+
+  it("uses verified Hebrew/Russian signup locale in GoTrue SMTP invite metadata and teacher row",async()=>{
+    for(const locale of ["he","ru"] as const){
+      vi.clearAllMocks();
+      mocks.adminInviteUserByEmail.mockResolvedValue({
+        data:{user:{id:"verified-beta-invitee"}},error:null,
+      });
+      mocks.adminUpdateUserById.mockResolvedValue({error:null});
+      mocks.checkRateLimit.mockReturnValue({ok:true});
+      mocks.ensureTeacherForAuthUser.mockResolvedValue({ok:true,created:true});
+      const response=await POST(request("private-test-code",locale));
+      expect(response.status).toBe(200);
+      expect(mocks.adminInviteUserByEmail).toHaveBeenCalledExactlyOnceWith(
+        "teacher@example.test",{
+          data:{display_name:"Beta Teacher",timezone:"Asia/Jerusalem",preferred_locale:locale},
+          redirectTo:expect.stringContaining("/login?auth_notice=verified"),
+        }
+      );
+      expect(mocks.ensureTeacherForAuthUser).toHaveBeenCalledWith(
+        expect.anything(),expect.objectContaining({preferredLocale:locale})
+      );
+    }
+  });
+
+  it("rejects unsupported mail language before sending any Auth SMTP invitation",async()=>{
+    for(const bad of ["fr","he-IL","../secrets",null,{}]){
+      const response=await POST(request("private-test-code",bad));
+      expect(response.status).toBe(400);
+      expect((await response.json()).code).toBe("VALIDATION_ERROR");
+    }
+    expect(mocks.adminInviteUserByEmail).not.toHaveBeenCalled();
+    expect(mocks.adminCreateUser).not.toHaveBeenCalled();
   });
 
   it("fails closed on rejected SMTP/invite sending without leaking existing email", async () => {

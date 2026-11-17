@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useRef, useState } from "react";
+import {useLocale,useTranslations} from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -9,15 +12,11 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   centsToDollarsInput,
   dollarsToCents,
-  formatCalendarDate,
   formatMoney,
   resolveLessonCharge,
   type RateSources,
 } from "@/lib/billing";
-import {
-  describeCreditPackage,
-  type CreditPackageState,
-} from "@/lib/credits";
+import {type CreditPackageState} from "@/lib/credits";
 
 const inputClass =
   "px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm";
@@ -37,11 +36,9 @@ export interface CreditPackageView {
   redemptions: { id: string; lessonDate: string | null }[];
 }
 
-const STATE_LABELS: Record<CreditPackageState, { text: string; className: string }> = {
-  pending: { text: "Invoice not sent", className: "bg-warning/20 text-foreground" },
-  active: { text: "Active", className: "bg-success/15 text-success" },
-  used_up: { text: "Used up", className: "bg-surface-dim text-muted" },
-  expired: { text: "Expired", className: "bg-surface-dim text-muted" },
+const STATE_STYLES:Record<CreditPackageState,string>={
+ pending:"bg-warning/20 text-foreground",active:"bg-success/15 text-success",
+ used_up:"bg-surface-dim text-muted",expired:"bg-surface-dim text-muted",
 };
 
 /**
@@ -68,6 +65,7 @@ export function CreditPackagesCard({
   durationRates: Record<number, number>;
   rateBasis: "per_lesson" | "per_hour";
 }) {
+  const t=useTranslations("credits");
   const [selling, setSelling] = useState(false);
   const live = packages.filter((p) => p.state === "active");
   const totalLeft = live.reduce((sum, p) => sum + p.remainingCredits, 0);
@@ -76,11 +74,11 @@ export function CreditPackagesCard({
     <Card padding="sm" className="mb-6">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div>
-          <h3 className="font-semibold">Prepaid lessons</h3>
+          <h3 className="font-semibold">{t("title")}</h3>
           <p className="text-xs text-muted">
             {live.length > 0
-              ? `${totalLeft} credit${totalLeft === 1 ? "" : "s"} left. Billable lessons of a package's length use a credit instead of being invoiced.`
-              : "Sell a package of lessons up front. Billable lessons use a credit instead of being invoiced, and bill as usual once credits run out."}
+              ? t("creditsLeft",{count:totalLeft})
+              :t("description")}
           </p>
         </div>
         {!selling && (
@@ -89,9 +87,9 @@ export function CreditPackagesCard({
             variant="secondary"
             onClick={() => setSelling(true)}
             disabled={!hasFamily}
-            title={hasFamily ? undefined : "Link a family first"}
+            title={hasFamily?undefined:t("linkFamilyFirst")}
           >
-            Sell package
+            {t("sellPackage")}
           </Button>
         )}
       </div>
@@ -126,6 +124,9 @@ function PackageRow({
   pkg: CreditPackageView;
   currency: string;
 }) {
+  const t=useTranslations("credits"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
+  const date=(d:string)=>new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeZone:"UTC"}).format(new Date(d+"T12:00:00Z"));
   const router = useRouter();
   const confirm = useConfirm();
   const [showUsed, setShowUsed] = useState(false);
@@ -133,7 +134,7 @@ function PackageRow({
   const [expiry, setExpiry] = useState(pkg.expiresOn ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const badge = STATE_LABELS[pkg.state];
+  const badgeClass=STATE_STYLES[pkg.state];
 
   async function saveExpiry() {
     setBusy(true);
@@ -146,7 +147,7 @@ function PackageRow({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(data.error ?? "Couldn't save the expiry date");
+      setError(toUserError(data,t("expirySaveError")));
       return;
     }
     setEditingExpiry(false);
@@ -155,9 +156,9 @@ function PackageRow({
 
   async function returnCredit(redemptionId: string, lessonDate: string | null) {
     const ok = await confirm({
-      title: "Return this credit?",
-      message: `The ${lessonDate ? formatCalendarDate(lessonDate) : ""} lesson goes back to unbilled. The next invoice run bills it, or covers it with a credit again, under its current attendance.`,
-      confirmLabel: "Return credit",
+      title:t("returnTitle"),
+      message:t("returnWarning",{date:lessonDate?date(lessonDate):""}),
+      confirmLabel:t("returnCredit"),
     });
     if (!ok) return;
     setBusy(true);
@@ -168,7 +169,7 @@ function PackageRow({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(data.error ?? "Couldn't return the credit");
+      setError(toUserError(data,t("returnError")));
       return;
     }
     router.refresh();
@@ -179,37 +180,37 @@ function PackageRow({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-medium flex flex-wrap items-center gap-2">
-            {describeCreditPackage(pkg.credits, pkg.durationMinutes)}
-            <span className={`text-xs px-2 py-0.5 rounded-full ${badge.className}`}>
-              {badge.text}
+            {t("packageDescription",{count:pkg.credits,minutes:pkg.durationMinutes})}
+            <span className={`text-xs px-2 py-0.5 rounded-full ${badgeClass}`}>
+              {pkg.state==="pending"?t("pending"):pkg.state==="active"?t("active"):pkg.state==="used_up"?t("usedUp"):t("expired")}
             </span>
           </div>
           <div className="text-xs text-muted mt-0.5">
-            {formatMoney(pkg.priceCents, currency)} · from{" "}
-            {formatCalendarDate(pkg.startsOn)} ·{" "}
+            {formatMoney(pkg.priceCents, currency)} · {t("from")}{" "}
+            {date(pkg.startsOn)} ·{" "}
             {pkg.expiresOn
-              ? `expires ${formatCalendarDate(pkg.expiresOn)}`
-              : "no expiry"}{" "}
+              ?t("expiresOn",{date:date(pkg.expiresOn)})
+              :t("noExpiry")}{" "}
             ·{" "}
             <Link
               href={`/billing/${pkg.invoiceId}`}
               className="text-primary hover:underline"
             >
-              Invoice
+              {t("invoice")}
             </Link>
           </div>
         </div>
-        <div className="text-right shrink-0">
+        <div className="text-end shrink-0">
           <div className="text-lg font-bold tabular-nums">
             {pkg.remainingCredits}
             <span className="text-sm font-normal text-muted">
               {" "}
-              / {pkg.credits} left
+              / {t("remainingTotal",{count:pkg.credits})}
             </span>
           </div>
           {pkg.pendingCredits > 0 && (
             <div className="text-xs text-muted">
-              {pkg.pendingCredits} marked, not yet billed
+              {t("pendingCredits",{count:pkg.pendingCredits})}
             </div>
           )}
         </div>
@@ -224,10 +225,10 @@ function PackageRow({
               min={pkg.startsOn}
               onChange={(e) => setExpiry(e.target.value)}
               className={inputClass}
-              aria-label="Expiry date"
+              aria-label={t("expiryDate")}
             />
             <Button size="sm" onClick={saveExpiry} disabled={busy}>
-              Save
+              {t("save")}
             </Button>
             <button
               type="button"
@@ -237,9 +238,9 @@ function PackageRow({
               }}
               className="text-muted hover:text-foreground cursor-pointer"
             >
-              Cancel
+              {t("cancel")}
             </button>
-            <span className="text-muted">Leave blank for no expiry.</span>
+            <span className="text-muted">{t("expiryHint")}</span>
           </span>
         ) : (
           <button
@@ -247,7 +248,7 @@ function PackageRow({
             onClick={() => setEditingExpiry(true)}
             className="text-primary hover:underline cursor-pointer"
           >
-            Change expiry
+            {t("changeExpiry")}
           </button>
         )}
         {pkg.redemptions.length > 0 && (
@@ -256,7 +257,7 @@ function PackageRow({
             onClick={() => setShowUsed((v) => !v)}
             className="text-primary hover:underline cursor-pointer"
           >
-            {showUsed ? "Hide" : "Show"} {pkg.redemptions.length} used
+            {showUsed?t("hideUsed",{count:pkg.redemptions.length}):t("showUsed",{count:pkg.redemptions.length})}
           </button>
         )}
       </div>
@@ -269,7 +270,7 @@ function PackageRow({
               className="flex items-center justify-between gap-2 text-xs"
             >
               <span>
-                {r.lessonDate ? formatCalendarDate(r.lessonDate) : "Lesson"}
+                {r.lessonDate?date(r.lessonDate):t("lesson")}
               </span>
               <button
                 type="button"
@@ -277,7 +278,7 @@ function PackageRow({
                 disabled={busy}
                 className="text-error hover:underline cursor-pointer disabled:opacity-50"
               >
-                Return credit
+                {t("returnCredit")}
               </button>
             </li>
           ))}
@@ -306,6 +307,8 @@ function SellPackageForm({
   rateBasis: "per_lesson" | "per_hour";
   onCancel: () => void;
 }) {
+  const t=useTranslations("credits");
+  const toUserError=useLocalizedApiError();
   const router = useRouter();
   // Keep the same request ID for transport retries; server-side RPC returns
   // the original invoice instead of selling duplicate prepaid lessons.
@@ -345,7 +348,7 @@ function SellPackageForm({
     e.preventDefault();
     const priceCents = dollarsToCents(price);
     if (priceCents == null) {
-      setError("Enter a package price");
+      setError(t("priceRequired"));
       return;
     }
     setBusy(true);
@@ -365,7 +368,7 @@ function SellPackageForm({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(data.error ?? "Couldn't create the package");
+      setError(toUserError(data,t("packageCreateFailed")));
       return;
     }
     router.push(`/billing/${data.invoiceId}`);
@@ -379,7 +382,7 @@ function SellPackageForm({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <label className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Lessons
+            {t("lessons")}
           </span>
           <input
             type="number"
@@ -395,7 +398,7 @@ function SellPackageForm({
         </label>
         <label className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Length (min)
+            {t("length")}
           </span>
           <input
             type="number"
@@ -412,7 +415,7 @@ function SellPackageForm({
         </label>
         <label className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Price ({currency})
+            {t("price",{currency})}
           </span>
           <input
             inputMode="decimal"
@@ -427,7 +430,7 @@ function SellPackageForm({
         </label>
         <label className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Expires (optional)
+            {t("expiresOptional")}
           </span>
           <input
             type="date"
@@ -438,14 +441,12 @@ function SellPackageForm({
         </label>
       </div>
       <p className="text-xs text-muted">
-        Creates a draft invoice for the family. Credits can be used once you
-        send it or mark it paid, and cover {duration || "?"}-min lessons from
-        today on.
+        {t("createHint",{duration:duration||"?"})}
       </p>
       {error && <p className="text-error text-sm">{error}</p>}
       <div className="flex gap-2">
         <Button size="sm" type="submit" disabled={busy}>
-          {busy ? "Creating..." : "Create invoice"}
+          {busy?t("creating"):t("createInvoice")}
         </Button>
         <Button
           size="sm"
@@ -454,7 +455,7 @@ function SellPackageForm({
           onClick={onCancel}
           disabled={busy}
         >
-          Cancel
+          {t("cancel")}
         </Button>
       </div>
     </form>

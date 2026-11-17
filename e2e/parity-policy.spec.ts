@@ -6,7 +6,7 @@ test("PARITY:PARITY-studio-policy covers timezone scheduling rates invoices and 
  const call=await delegatedTool(page,request);
  const first=await page.request.get("/api/settings/policy");
  expect(first.status(),await first.text()).toBe(200);
- const original=await first.json() as Record<string,any>;
+ const original=await first.json() as Record<string,unknown>;
  const mcpOriginal=await call("ccp_studio_policy_get",{});
  expect(mcpOriginal.error).toBeUndefined();
  expect(mcpOriginal.data.timezone).toBe(original.timezone);
@@ -136,7 +136,7 @@ test("PARITY:PARITY-studio-policy-fields-all preserves ordinary profile, rate an
  const call=await delegatedTool(page,request);
  const initial=await page.request.get("/api/settings/policy");
  expect(initial.status(),await initial.text()).toBe(200);
- const original=await initial.json() as Record<string,any>;
+ const original=await initial.json() as Record<string,unknown>;
  const newWebsite="https://chesscoachpal.example/"+randomUUID().slice(0,8);
  const changes={
   studioWebsite:newWebsite,studioContact:"Academy desk "+randomUUID().slice(0,5),
@@ -203,7 +203,7 @@ test("PARITY:PARITY-studio-policy-ordinary-fields-roundtrip persists every coach
  const call=await delegatedTool(page,request);
  const current=await page.request.get("/api/settings/policy");
  expect(current.status(),await current.text()).toBe(200);
- const original=await current.json() as Record<string,any>;
+ const original=await current.json() as Record<string,unknown>;
  const mapping=[
   ["studioName","studio_name"],["studioWebsite","studio_website"],
   ["studioContact","studio_contact"],["studioInfo","studio_info"],
@@ -261,7 +261,7 @@ test("PARITY:PARITY-studio-policy-ordinary-fields-roundtrip persists every coach
   expect(mcpSave.error).toBeUndefined();
   const browser=await page.request.get("/api/settings/policy");
   expect(browser.status(),await browser.text()).toBe(200);
-  const saved=await browser.json() as Record<string,any>;
+  const saved=await browser.json() as Record<string,unknown>;
   for(const [client,db] of mapping){
    expect(saved[db],client+" was not persisted").toEqual(
     changes[client as keyof typeof changes]);

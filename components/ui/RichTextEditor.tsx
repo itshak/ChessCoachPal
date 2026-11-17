@@ -1,4 +1,5 @@
 "use client";
+import {useTranslations} from "next-intl";
 
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -42,6 +43,7 @@ export function RichTextEditor({
   placeholder?: string;
   minHeightClass?: string;
 }) {
+  const t=useTranslations("richEditor");
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -67,7 +69,7 @@ export function RichTextEditor({
       <div
         className={`${minHeightClass} rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted`}
       >
-        Loading editor…
+        {t("loading")}
       </div>
     );
   }
@@ -76,35 +78,35 @@ export function RichTextEditor({
     <div className="rounded-lg border border-border bg-background focus-within:ring-2 focus-within:ring-primary/40 overflow-hidden">
       <div className="flex flex-wrap gap-0.5 px-1.5 py-1 border-b border-border bg-surface-dim/50">
         <ToolbarButton
-          title="Bold"
+          title={t("bold")}
           active={editor.isActive("bold")}
           onClick={() => editor.chain().focus().toggleBold().run()}
         >
           <strong>B</strong>
         </ToolbarButton>
         <ToolbarButton
-          title="Italic"
+          title={t("italic")}
           active={editor.isActive("italic")}
           onClick={() => editor.chain().focus().toggleItalic().run()}
         >
           <em>i</em>
         </ToolbarButton>
         <ToolbarButton
-          title="Bullet list"
+          title={t("bullets")}
           active={editor.isActive("bulletList")}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
         >
-          • List
+          {t("bulletLabel")}
         </ToolbarButton>
         <ToolbarButton
-          title="Numbered list"
+          title={t("numbers")}
           active={editor.isActive("orderedList")}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
         >
-          1. List
+          {t("numberLabel")}
         </ToolbarButton>
         <ToolbarButton
-          title="Heading"
+          title={t("heading")}
           active={editor.isActive("heading", { level: 3 })}
           onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
         >

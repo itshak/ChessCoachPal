@@ -1,3 +1,4 @@
+import {getTranslations} from "next-intl/server";
 import {createClient} from "@/lib/supabase/server";
 import {getPolicy} from "@/lib/server/scheduling";
 import {addDays,startOfWeek,toLocalDateString} from "@/lib/schedule";
@@ -11,11 +12,15 @@ import {CanonicalSlotManager,type Slot} from "@/components/teacher/schedule/Cano
 import {CanonicalMakeupPanel} from "@/components/teacher/schedule/CanonicalMakeupPanel";
 import Link from "next/link";
 
-export const metadata={title:"Schedule"};
+export async function generateMetadata(){
+  const t=await getTranslations("calendar");
+  return {title:t("heading")};
+}
 
 export default async function SchedulePage({
  searchParams,
 }:{searchParams:Promise<{week?:string}>}){
+ const t=await getTranslations("calendar");
  const db=await createClient(),{data:{user}}=await db.auth.getUser();
  if(!user)return null;
  const {week}=await searchParams;
@@ -59,10 +64,9 @@ export default async function SchedulePage({
 
  return <main className="space-y-6">
   <header>
-   <h1 className="font-bold text-2xl">Teaching schedule</h1>
+   <h1 className="font-bold text-2xl">{t("heading")}</h1>
    <p className="text-muted text-sm mt-1">
-    Every class is one canonical teaching session. Group attendance, make-up
-    decisions and notes belong to its frozen student roster.
+    {t("intro")}
    </p>
   </header>
   <CanonicalScheduleBoard
@@ -77,8 +81,8 @@ export default async function SchedulePage({
     <CanonicalMakeupPanel credits={makeup} timezone={policy.timezone}
      today={today} workplaces={workplaces}/>
     <p className="text-muted text-sm">
-     Cancellation windows, make-up eligibility and teaching rates are configured in{" "}
-     <Link className="text-primary hover:underline" href="/studio">Studio settings</Link>.
+     {t("policy")}{" "}
+     <Link className="text-primary hover:underline" href="/studio">{t("studioSettingsLink")}</Link>.
     </p>
    </div>
   </div>

@@ -1,4 +1,4 @@
-import {describe,expect,it} from "vitest";
+import {describe,expect,it,vi} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {teacherProfileUpdate,TeacherProfileError} from "@/lib/server/teacher-profile-service";
 
@@ -30,5 +30,27 @@ describe("teacher profile identity boundary",()=>{
    await expect(teacherProfileUpdate(db,"teacher-id",{avatarUrl:"https://example.com/evil.png"}))
      .rejects.toMatchObject({code:"VALIDATION_ERROR"});
    expect(queries).toBe(0);
+ });
+});
+
+
+describe("mail-language metadata mirrors validated teacher language without sending email",()=>{
+ it("syncs user_metadata only after a successful teacher-scoped update",async()=>{
+   const updateUser=vi.fn(async()=>({error:null}));
+   const maybeSingle=vi.fn(async()=>({data:{id:"teacher-id"},error:null}));
+   const chain={
+     eq(){return this;},select(){return this;},maybeSingle,
+   };
+   const db={auth:{updateUser},from:()=>({update:()=>chain})} as unknown as SupabaseClient;
+   await expect(teacherProfileUpdate(db,"teacher-id",{preferredLocale:"ru"}))
+     .resolves.toEqual({ok:true});
+   expect(updateUser).toHaveBeenCalledExactlyOnceWith({data:{preferred_locale:"ru"}});
+ });
+ it("never touches auth or stored profile for unsupported locale",async()=>{
+   const updateUser=vi.fn();const from=vi.fn();
+   const db={auth:{updateUser},from} as unknown as SupabaseClient;
+   await expect(teacherProfileUpdate(db,"teacher-id",{preferredLocale:"de"}))
+     .rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
+   expect(updateUser).not.toHaveBeenCalled();expect(from).not.toHaveBeenCalled();
  });
 });

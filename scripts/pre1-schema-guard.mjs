@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * ADR-0001 mechanical fresh-install contract. This guards against changes
- * reintroducing schema upgrade chains (other than the reviewed live-data
- * additive extension), material compatibility mapping or
+ * reintroducing arbitrary schema upgrade chains (other than the explicitly
+ * reviewed forward-only live data extensions), material compatibility mapping or
  * data-export version negotiation. It does not replace live tenant/RLS tests.
  */
 import {readdirSync,readFileSync} from "node:fs";
@@ -13,14 +13,24 @@ const read=path=>readFileSync(join(root,path),"utf8");
 const BASELINE="20261107000000_chesscoachpal_baseline.sql";
 const LIVE_EXTENSION="20261117000000_live_historical_lifecycle_extension.sql";
 const WORKFLOW_EXTENSION="20261117190000_mcp_workflow_composition.sql";
-const ALLOWED_SQL=[BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION];
+const FAMILY_LOCALE_EXTENSION="20261117231554_family_communication_locale.sql";
+const TEACHER_LOCALE_EXTENSION="20261118000000_multilingual_teacher_and_family_locale.sql";
+const APPROVED_PREFIXES=[
+ [BASELINE],
+ [BASELINE,LIVE_EXTENSION],
+ [BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION],
+ [BASELINE,LIVE_EXTENSION,FAMILY_LOCALE_EXTENSION],
+ [BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION,FAMILY_LOCALE_EXTENSION],
+ [BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION,FAMILY_LOCALE_EXTENSION,TEACHER_LOCALE_EXTENSION],
+];
 
 export function canonicalSchemaErrors({
  sqlFiles,sql,transfer,agent,catalog,studentPage,teacherComponents,strictMaterials=false,
 }){
  const errors=[];
- if(sqlFiles.some((file,i)=>file!==ALLOWED_SQL[i])||sqlFiles.length>ALLOWED_SQL.length)
-   errors.push("Only the canonical baseline and the specifically approved additive live-data and workflow extensions are permitted");
+ if(!APPROVED_PREFIXES.some(expected=>
+   expected.length===sqlFiles.length && expected.every((file,i)=>file===sqlFiles[i])))
+   errors.push("Only the canonical baseline and explicitly approved ordered forward-only live extensions are permitted");
  if(!sql.includes("CREATE TABLE public.learning_materials")||
     !sql.includes("CREATE TABLE public.student_training_plans"))
    errors.push("Canonical snapshot is missing required current typed chess tables");

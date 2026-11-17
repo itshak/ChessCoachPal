@@ -1,6 +1,10 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useEffect, useState } from "react";
+import {useLocale,useTranslations} from "next-intl";
+import {LanguageSwitcher} from "@/components/locale/LanguageSwitcher";
 import { useRouter } from "next/navigation";
 import {
   AUTH_REQUEST_TIMEOUT_MS,
@@ -28,18 +32,20 @@ export function LoginForm({
   isHosted?: boolean;
 }) {
   const router = useRouter();
-  useEffect(() => {
-    document.title = "ChessCoachPal - Login";
-  }, []);
+  const t=useTranslations("login");
+  const preferredLocale=useLocale();
+  const toUserError=useLocalizedApiError();
   const [mode, setMode] = useState<Mode>("signin");
 
   useEffect(() => {
-    const message = new URLSearchParams(window.location.search).get("message");
-    if (message) {
-      setError({ headline: message });
-      window.history.replaceState(null, "", "/login");
-    }
-  }, []);
+    const search=new URLSearchParams(window.location.search);
+    const notice=search.get("auth_notice");
+    const legacyMessage=search.get("message");
+    if(notice==="verified")setInfo(t("emailVerified"));
+    else if(notice==="invalid")setError({headline:t("invalidEmailLink")});
+    else if(legacyMessage)setError({headline:legacyMessage});
+    if(notice||legacyMessage)window.history.replaceState(null,"","/login");
+  }, [t]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -75,8 +81,8 @@ export function LoginForm({
           AUTH_REQUEST_TIMEOUT_MS
         );
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error ?? "Something went wrong");
-        setInfo("You're on the list! We'll email you when a spot opens up.");
+        if (!res.ok) throw new Error(toUserError(data, t("somethingWrong")));
+        setInfo(t("submitWaitlist"));
         return;
       }
 
@@ -89,7 +95,7 @@ export function LoginForm({
           AUTH_REQUEST_TIMEOUT_MS
         );
         setInfo(
-          "If an account exists for that email, a password reset link is on its way. Open it in this browser."
+          t("resetSent")
         );
         return;
       }
@@ -105,15 +111,16 @@ export function LoginForm({
               displayName: displayName || email.split("@")[0],
               accessCode: betaRequired ? accessCode : undefined,
               timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              preferredLocale,
             }),
           }),
           AUTH_REQUEST_TIMEOUT_MS
         );
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error ?? "Something went wrong");
+        if (!res.ok) throw new Error(toUserError(data, t("somethingWrong")));
         if (data.needsConfirmation) {
           setInfo(
-            "Check your email and click the confirmation link to activate your account."
+            t("checkEmail")
           );
           return;
         }
@@ -162,14 +169,15 @@ export function LoginForm({
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background">
+      <div className="mb-4"><LanguageSwitcher compact /></div>
       <Card padding="lg" className="max-w-sm w-full">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-primary">ChessCoachPal</h1>
           <p className="text-muted text-sm mt-1">
-            {mode === "signin" && "Sign in to your dashboard"}
-            {mode === "signup" && "Create your teacher account"}
-            {mode === "waitlist" && "Join the beta waitlist"}
-            {mode === "forgot" && "Reset your password"}
+            {mode === "signin" && t("signinSubtitle")}
+            {mode === "signup" && t("signupSubtitle")}
+            {mode === "waitlist" && t("waitlistSubtitle")}
+            {mode === "forgot" && t("forgotSubtitle")}
           </p>
         </div>
 
@@ -177,7 +185,7 @@ export function LoginForm({
           {mode === "signup" && (
             <input
               type="text"
-              placeholder="Your name"
+              placeholder={t("name")}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               className={inputClass}
@@ -186,7 +194,7 @@ export function LoginForm({
           )}
           <input
             type="email"
-            placeholder="Email"
+            placeholder={t("email")}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className={inputClass}
@@ -195,7 +203,7 @@ export function LoginForm({
           {mode !== "waitlist" && mode !== "forgot" && (
             <input
               type="password"
-              placeholder="Password"
+              placeholder={t("password")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={inputClass}
@@ -204,48 +212,46 @@ export function LoginForm({
             />
           )}
           {mode === "signin" && (
-            <p className="text-xs text-right -mt-2">
+            <p className="text-xs text-end -mt-2">
               <button
                 type="button"
                 className="text-muted hover:text-primary transition-colors cursor-pointer"
                 onClick={() => switchMode("forgot")}
               >
-                Forgot password?
+                {t("forgot")}
               </button>
             </p>
           )}
           {mode === "forgot" && (
             <p className="text-xs text-muted -mt-2">
-              Enter your account email and we&apos;ll send you a link to choose a
-              new password.
+              {t("forgotDescription")}
             </p>
           )}
           {mode === "signup" && betaRequired && (
             <div>
               <input
                 type="text"
-                placeholder="Beta access code"
+                placeholder={t("betaCode")}
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value)}
                 className={inputClass}
                 required
               />
               <p className="text-xs text-muted mt-1.5">
-                No code?{" "}
+                {t("noCode")}{" "}
                 <button
                   type="button"
                   className="text-primary font-semibold hover:underline cursor-pointer"
                   onClick={() => switchMode("waitlist")}
                 >
-                  Join the waitlist
+                  {t("submitWaitlist")}
                 </button>
               </p>
             </div>
           )}
           {mode === "waitlist" && betaRequired && (
             <p className="text-xs text-muted -mt-2">
-              ChessCoachPal Studio is in private beta. Leave your email and we&apos;ll
-              reach out when a spot opens up.
+              {t("betaDescription")}
             </p>
           )}
 
@@ -255,9 +261,9 @@ export function LoginForm({
               {error.detail && (
                 <details className="mt-1">
                   <summary className="text-xs text-muted cursor-pointer hover:text-foreground select-none">
-                    See error
+                    {t("seeError")}
                   </summary>
-                  <p className="text-xs text-muted mt-1.5 leading-relaxed text-left">
+                  <p className="text-xs text-muted mt-1.5 leading-relaxed text-start">
                     {error.detail}
                   </p>
                 </details>
@@ -270,36 +276,36 @@ export function LoginForm({
             {loading
               ? "..."
               : mode === "signin"
-                ? "Sign In"
+                ? t("signInButton")
                 : mode === "signup"
-                  ? "Create Account"
+                  ? t("signUpButton")
                   : mode === "forgot"
-                    ? "Send Reset Link"
-                    : "Join Waitlist"}
+                    ? t("forgotButton")
+                    : t("waitlistButton")}
           </Button>
         </form>
 
         <p className="text-center text-sm text-muted mt-4">
           {mode === "signin" ? (
             <>
-              Don&apos;t have an account?{" "}
+              {t("noAccountQuestion")}{" "}
               <button
                 type="button"
                 className="text-primary font-semibold hover:underline cursor-pointer"
                 onClick={() => switchMode("signup")}
               >
-                Sign up
+                {t("signUpLink")}
               </button>
             </>
           ) : (
             <>
-              Already have an account?{" "}
+              {t("alreadyAccount")}{" "}
               <button
                 type="button"
                 className="text-primary font-semibold hover:underline cursor-pointer"
                 onClick={() => switchMode("signin")}
               >
-                Sign in
+                {t("signIn")}
               </button>
             </>
           )}
@@ -308,11 +314,11 @@ export function LoginForm({
       {showLegalLinks && (
         <p className="text-xs text-muted mt-4 flex items-center gap-3">
           <a href="/privacy" className="hover:text-foreground transition-colors">
-            Privacy Policy
+            {t("privacy")}
           </a>
           <span aria-hidden="true">·</span>
           <a href="/terms" className="hover:text-foreground transition-colors">
-            Terms of Service
+            {t("terms")}
           </a>
         </p>
       )}

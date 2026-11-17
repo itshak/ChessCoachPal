@@ -1,10 +1,13 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useMemo, useState } from "react";
+import {useLocale,useTranslations} from "next-intl";
 import { Button } from "@/components/ui/button";
 
 const inputClass =
-  "w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm";
+  "min-w-0 max-w-full w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm";
 
 export type EventFormStudent = { id: string; name: string };
 
@@ -33,6 +36,8 @@ export function EventForm({
   /** ISO timestamp when the day-before reminder was already sent (detail page). */
   reminderSentAt?: string | null;
 }) {
+  const t=useTranslations("eventForm"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
   const [title, setTitle] = useState(initial.title);
   const [startsAt, setStartsAt] = useState(initial.startsAt);
   const [endsAt, setEndsAt] = useState(initial.endsAt);
@@ -67,18 +72,18 @@ export function EventForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) {
-      setError("Title is required");
+      setError(t("titleRequired"));
       return;
     }
     if (!startsAt) {
-      setError("Start date/time is required");
+      setError(t("startRequired"));
       return;
     }
     if (endsAt) {
       const startMs = new Date(startsAt).getTime();
       const endMs = new Date(endsAt).getTime();
       if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs <= startMs) {
-        setError("End time must be after the start time");
+        setError(t("endAfterStart"));
         return;
       }
     }
@@ -104,7 +109,7 @@ export function EventForm({
         repertoireByStudent,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(toUserError(err, t("unknownError")));
     } finally {
       setLoading(false);
     }
@@ -113,19 +118,19 @@ export function EventForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium mb-1">Title</label>
+        <label className="block text-sm font-medium mb-1">{t("title")}</label>
         <input
           className={inputClass}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Spring Recital"
+          placeholder={t("titleExample")}
           required
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium mb-1">Starts</label>
+          <label className="block text-sm font-medium mb-1">{t("starts")}</label>
           <input
             type="datetime-local"
             className={inputClass}
@@ -136,7 +141,7 @@ export function EventForm({
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">
-            Ends <span className="text-muted font-normal">(optional)</span>
+            {t("ends")} <span className="text-muted font-normal">{t("optional")}</span>
           </label>
           <input
             type="datetime-local"
@@ -150,26 +155,26 @@ export function EventForm({
 
       <div>
         <label className="block text-sm font-medium mb-1">
-          Location <span className="text-muted font-normal">(optional)</span>
+          {t("location")} <span className="text-muted font-normal">{t("optional")}</span>
         </label>
         <input
           className={inputClass}
           value={location}
           onChange={(e) => setLocation(e.target.value)}
-          placeholder="Studio recital hall"
+          placeholder={t("locationExample")}
         />
       </div>
 
       <div>
         <label className="block text-sm font-medium mb-1">
-          Description <span className="text-muted font-normal">(optional)</span>
+          {t("description")} <span className="text-muted font-normal">{t("optional")}</span>
         </label>
         <textarea
           className={inputClass}
           rows={3}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Details for families…"
+          placeholder={t("descriptionExample")}
         />
       </div>
 
@@ -183,37 +188,37 @@ export function EventForm({
           />
           <span>
             <span className="font-medium">
-              Email families a reminder the day before
+              {t("reminder")}
             </span>
             <span className="block text-muted font-normal mt-0.5">
-              Sends automatically to invited families (skips those who RSVP’d No).
+              {t("reminderHint")}
             </span>
           </span>
         </label>
         {reminderSentAt && (
-          <p className="text-xs text-muted pl-6">
-            Reminder already sent{" "}
-            {new Date(reminderSentAt).toLocaleString(undefined, {
+          <p className="text-xs text-muted ps-6">
+            {t("reminderAlready")}{" "}
+            {new Date(reminderSentAt).toLocaleString(locale, {
               dateStyle: "medium",
               timeStyle: "short",
             })}
-            . Changing the start time will allow another reminder.
+            {t("reminderAgain")}
           </p>
         )}
       </div>
 
       <div>
         <div className="flex flex-wrap items-end justify-between gap-2 mb-2">
-          <label className="block text-sm font-medium">Performers</label>
+          <label className="block text-sm font-medium">{t("participants")}</label>
           <input
             className={`${inputClass} max-w-xs`}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Search students…"
+            placeholder={t("searchStudents")}
           />
         </div>
         {students.length === 0 ? (
-          <p className="text-sm text-muted">No students yet.</p>
+          <p className="text-sm text-muted">{t("noStudents")}</p>
         ) : (
           <div className="rounded-lg border border-border divide-y divide-border max-h-72 overflow-y-auto">
             {filteredStudents.map((student) => {
@@ -226,7 +231,7 @@ export function EventForm({
                       checked={checked}
                       onChange={() => toggleStudent(student.id)}
                     />
-                    <span className="font-medium">{student.name}</span>
+                    <span className="font-medium"><bdi dir="auto">{student.name}</bdi></span>
                   </label>
                   {checked && (
                     <input
@@ -238,14 +243,14 @@ export function EventForm({
                           [student.id]: e.target.value,
                         }))
                       }
-                      placeholder="Repertoire (optional)"
+                      placeholder={t("focusOptional")}
                     />
                   )}
                 </div>
               );
             })}
             {filteredStudents.length === 0 && (
-              <p className="p-3 text-sm text-muted">No students match.</p>
+              <p className="p-3 text-sm text-muted">{t("noMatches")}</p>
             )}
           </div>
         )}
@@ -254,7 +259,7 @@ export function EventForm({
       {error && <p className="text-sm text-error">{error}</p>}
 
       <Button type="submit" disabled={loading}>
-        {loading ? "Saving…" : submitLabel}
+        {loading?t("saving"):submitLabel}
       </Button>
     </form>
   );

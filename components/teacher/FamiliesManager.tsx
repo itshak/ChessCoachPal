@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {useTranslations} from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
@@ -21,6 +22,7 @@ export function FamiliesManager({
   students: FamilyStudent[];
 }) {
   const router = useRouter();
+  const t=useTranslations("families");
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<FamilyGuardian | null>(null);
@@ -58,16 +60,16 @@ export function FamiliesManager({
       ) : (
         <div className="mb-4">
           <Button size="sm" onClick={() => setEditing("new")}>
-            Add Family
+            {t("add")}
           </Button>
         </div>
       )}
 
       {guardians.length === 0 && editing === null ? (
         <Card className="text-center text-muted py-12">
-          <p className="text-lg">No families yet</p>
+          <p className="text-lg">{t("empty")}</p>
           <p className="text-sm">
-            Add a family, link its students, and share the portal link.
+            {t("emptyHint")}
           </p>
         </Card>
       ) : (
@@ -106,28 +108,28 @@ export function FamiliesManager({
                       href={`/families/${g.id}`}
                       className="font-semibold text-lg hover:text-primary transition-colors"
                     >
-                      {familyDisplayName(g)}
+                      <bdi dir="auto">{familyDisplayName(g)}</bdi>
                     </Link>
                     {contacts.length > 0 ? (
                       contacts.map((line, i) => (
                         <div key={i} className="text-sm text-muted">
-                          {line}
+                          <bdi dir="auto">{line}</bdi>
                         </div>
                       ))
                     ) : (
-                      <div className="text-sm text-muted">No contact info</div>
+                      <div className="text-sm text-muted">{t("noContact")}</div>
                     )}
                     <div className="text-xs text-muted mt-1">
                       {members.length > 0
-                        ? `Students: ${members.map((m) => m.name).join(", ")}`
-                        : "No students linked"}
+                        ? t("members",{names:members.map(m=>m.name).join(", ")})
+                        : t("noMembers")}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <CopyLinkClient
                       url={`/portal/${g.portal_token}`}
-                      title="Family portal link"
-                      label="Portal Link"
+                      title={t("portalTitle")}
+                      label={t("portal")}
                     />
                     <Button
                       size="sm"
@@ -135,7 +137,7 @@ export function FamiliesManager({
                       aria-expanded={isEditing}
                       onClick={() => setEditing(isEditing ? null : g.id)}
                     >
-                      {isEditing ? "Close" : "Edit"}
+                      {isEditing ? t("close") : t("edit")}
                     </Button>
                     <Button
                       size="sm"
@@ -143,7 +145,7 @@ export function FamiliesManager({
                       className="text-error"
                       onClick={() => setConfirmDelete(g)}
                     >
-                      Delete
+                      {t("delete")}
                     </Button>
                   </div>
                 </div>
@@ -168,18 +170,17 @@ export function FamiliesManager({
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <Card className="max-w-sm w-full">
             <h3 className="font-semibold mb-2">
-              Delete {familyDisplayName(confirmDelete)}?
+              {t("deleteQuestion",{name:familyDisplayName(confirmDelete)})}
             </h3>
             <p className="text-sm text-muted mb-4">
-              The portal link stops working and students are unlinked from this family.
-              Students and their practice history are kept.
+              {t("deleteWarning")}
             </p>
             <div className="flex gap-2 justify-end">
               <Button size="sm" variant="secondary" onClick={() => setConfirmDelete(null)}>
-                Cancel
+                {t("cancel")}
               </Button>
               <Button size="sm" variant="error" disabled={busy} onClick={handleDelete}>
-                {busy ? "Deleting..." : "Delete"}
+                {busy ? t("deleting") : t("delete")}
               </Button>
             </div>
           </Card>

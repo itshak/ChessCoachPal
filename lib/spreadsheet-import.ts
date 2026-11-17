@@ -57,6 +57,7 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "child name",
     "learner",
     "pupil",
+    "שם התלמיד","שם תלמיד","תלמיד","имя ученика","ученик","ученица",
   ],
   student_birthdate: [
     "birthdate",
@@ -65,10 +66,11 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "date of birth",
     "birth date",
     "student birthdate",
+    "תאריך לידה","дата рождения",
   ],
-  level: ["level", "rcm", "grade", "book", "method level"],
-  teacher_notes: ["notes", "teacher notes", "comments", "memo"],
-  archived: ["archived", "former student", "inactive", "student status"],
+  level: ["level","rcm","grade","book","method level","רמה","уровень"],
+  teacher_notes: ["notes","teacher notes","comments","memo","הערות מורה","הערות","заметки тренера","примечания"],
+  archived: ["archived","former student","inactive","student status","בארכיון","מצב תלמיד","в архиве","архив","статус ученика"],
   guardian_name: [
     "guardian",
     "guardian name",
@@ -80,8 +82,10 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "father",
     "contact name",
     "primary contact",
+    "שם ההורה","שם האפוטרופוס","שם אפוטרופוס","הורה",
+    "имя родителя","имя опекуна","родитель","опекун",
   ],
-  family_name: ["family", "family name", "household"],
+  family_name: ["family","family name","household","שם המשפחה","фамилия","название семьи"],
   email: [
     "email",
     "e-mail",
@@ -89,6 +93,7 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "guardian email",
     "contact email",
     "email address",
+    "דוא״ל",'דוא"ל',"אימייל","эл. почта","электронная почта","почта",
   ],
   phone: [
     "phone",
@@ -98,6 +103,7 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "parent phone",
     "guardian phone",
     "contact phone",
+    "טלפון","נייד","телефон","мобильный",
   ],
   secondary_name: [
     "secondary",
@@ -105,9 +111,10 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "second guardian",
     "parent 2",
     "other parent",
+    "אפוטרופוס נוסף","הורה נוסף","второй опекун","второй родитель",
   ],
-  secondary_email: ["secondary email", "parent 2 email", "other email"],
-  secondary_phone: ["secondary phone", "parent 2 phone", "other phone"],
+  secondary_email: ["secondary email","parent 2 email","other email","דוא״ל נוסף","электронная почта второго опекуна","дополнительная почта"],
+  secondary_phone: ["secondary phone","parent 2 phone","other phone","טלפון נוסף","дополнительный телефон"],
 };
 
 function normalizeHeader(h: string): string {
@@ -118,51 +125,32 @@ function normalizeHeader(h: string): string {
     .replace(/\s+/g, " ");
 }
 
-/** Suggest a column mapping from header labels (no AI). */
+/**
+ * Suggest only unambiguous EXPLICIT header synonyms. A former substring
+ * heuristic treated e.g. "Parent Name" as a student "Name", silently
+ * importing a guardian under the child's identity. With multilingual column
+ * names we must fail closed instead of guessing where family/student roles
+ * overlap. Callers expose the unassigned columns for manual review.
+ */
 export function suggestColumnMapping(headers: string[]): ColumnMapping {
-  const normalized = headers.map((h) => ({ raw: h, norm: normalizeHeader(h) }));
+  const normalized = headers.map((raw) => ({raw, norm: normalizeHeader(raw)}));
   const used = new Set<string>();
   const mapping: ColumnMapping = {};
-
   for (const field of IMPORT_FIELDS) {
-    const synonyms = HEADER_SYNONYMS[field];
-    const hit = normalized.find(
-      (h) =>
-        !used.has(h.raw) &&
-        synonyms.some((s) => h.norm === s || h.norm.includes(s))
-    );
-    if (hit) {
-      // Prefer exact synonym match over includes for ambiguous "name"
-      const exact = normalized.find(
-        (h) =>
-          !used.has(h.raw) && synonyms.some((s) => h.norm === s)
-      );
-      const chosen = exact ?? hit;
-      // "name" alone maps to student_name only if no better student header
-      if (
-        field === "student_name" ||
-        chosen.norm !== "name" ||
-        !mapping.student_name
-      ) {
-        if (field === "guardian_name" && chosen.norm === "name") {
-          continue;
-        }
-        mapping[field] = chosen.raw;
-        used.add(chosen.raw);
-      }
-    }
+    const synonyms = new Set(HEADER_SYNONYMS[field].map(normalizeHeader));
+    const candidates = normalized.filter(h => !used.has(h.raw) && synonyms.has(h.norm));
+    // A lone "Name" column can mean the pupil only when no stronger student
+    // header exists; "Parent Name"/"Family Name" are NEVER student aliases.
+    // If two distinct specific aliases exist for one field, let the teacher
+    // choose instead of arbitrarily taking one based on spreadsheet order.
+    const specific = field === "student_name"
+      ? candidates.filter(h=>h.norm!=="name")
+      : candidates;
+    const choices=specific.length?specific:candidates;
+    if (choices.length!==1) continue;
+    mapping[field]=choices[0].raw;
+    used.add(choices[0].raw);
   }
-
-  // If we still lack student_name but have a lone "name" column
-  if (!mapping.student_name) {
-    const nameCol = normalized.find(
-      (h) => !used.has(h.raw) && h.norm === "name"
-    );
-    if (nameCol) {
-      mapping.student_name = nameCol.raw;
-    }
-  }
-
   return mapping;
 }
 
@@ -236,8 +224,8 @@ export function normalizeImportRows(
     }
 
     const statusRaw = cell(row, mapping.archived).trim().toLowerCase();
-    const archived = ["true", "yes", "1", "archived", "inactive", "former"].includes(statusRaw);
-    if (statusRaw && !archived && !["false", "no", "0", "active", "current"].includes(statusRaw)) {
+    const archived = ["true","yes","1","archived","inactive","former","כן","בארכיון","לא פעיל","да","в архиве","неактивен"].includes(statusRaw);
+    if (statusRaw && !archived && !["false","no","0","active","current","לא","פעיל","нет","активен"].includes(statusRaw)) {
       issues.push({ row: sourceRow, message: `Unknown archive status "${statusRaw}" (row skipped)` });
       return;
     }

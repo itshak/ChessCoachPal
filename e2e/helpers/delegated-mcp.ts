@@ -2,6 +2,15 @@ import {createHash,randomUUID} from "node:crypto";
 import {expect,type APIRequestContext,type Page} from "@playwright/test";
 import {signInAsTeacher} from "./auth";
 
+/** A single deliberate dynamic-data boundary for test-only JSON-RPC tool
+ * results: each of ~190 tools has a different Zod-shaped result. The website
+ * vs MCP parity suites assert the returned shape and values explicitly.
+ * Production MCP parsing and validation remain independently typed and strict.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogenous test-only JSON-RPC tool result
+export type TestMcpData = any;
+export type TestMcpReply = {data?:TestMcpData;error?:{code:string;message:string}};
+
 /**
  * Each named scenario independently authenticates a browser and delegates a
  * real OAuth PKCE MCP client. These are individual acceptance evidence tests,
@@ -48,8 +57,7 @@ export async function delegatedTool(page: Page, request: APIRequestContext, scop
     },data:{jsonrpc:"2.0",id:randomUUID(),method:"tools/call",
       params:{name,arguments:args}}});
     expect(reply.status(),await reply.text()).toBe(200);
-    return (await reply.json()).result.structuredContent as
-      {data?:any;error?:{code:string;message:string}};
+    return (await reply.json()).result.structuredContent as TestMcpReply;
   };
   // Stable client identity lets acceptance tests target only their own OAuth
   // grant for revocation instead of touching parallel/seeded connections.
@@ -61,7 +69,7 @@ export async function delegatedTool(page: Page, request: APIRequestContext, scop
     },data:{jsonrpc:"2.0",id:randomUUID(),method:"tools/list",params:{}}});
     expect(reply.status(),await reply.text()).toBe(200);
     const result=await reply.json() as {result?:{tools?:Array<{
-      name:string;inputSchema?:Record<string,any>;
+      name:string;inputSchema?:Record<string,unknown>;
     }>};error?:unknown};
     expect(result.error).toBeUndefined();
     return result.result?.tools??[];

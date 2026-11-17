@@ -17,7 +17,7 @@ async function mcpStudent(callTool:(name:string,args:Record<string,unknown>)=>Pr
 async function browserProfile(page:import("@playwright/test").Page,id:string){
  const res=await page.request.get("/api/students/"+id);
  expect(res.status(),await res.text()).toBe(200);
- return (await res.json()) as Record<string,any>;
+ return (await res.json()) as Record<string,unknown>;
 }
 async function updateProfile(callTool:(name:string,args:Record<string,unknown>)=>Promise<{
  data?:unknown;error?:{code:string;message:string};

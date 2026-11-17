@@ -1,4 +1,5 @@
 "use client";
+import {useTranslations} from "next-intl";
 
 interface ProgressBarProps {
   current: number;
@@ -12,12 +13,13 @@ export function ProgressBar({
   className = "",
 }: ProgressBarProps) {
   const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  const t=useTranslations("quizProgress");
 
   return (
     <div className={`w-full ${className}`}>
       <div className="flex justify-between text-sm text-muted mb-1">
         <span>
-          Question {current} of {total}
+          {t("question",{current,total})}
         </span>
         <span>{pct}%</span>
       </div>

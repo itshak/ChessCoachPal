@@ -1,7 +1,23 @@
 "use client";
 
+import {useSyncExternalStore} from "react";
+import {messagesFor} from "@/i18n/messages";
+import {
+  localeCookie,languageDirection,supportedLocale,type AppLocale
+} from "@/i18n/locales";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { BRAND_ICON_SIZE } from "@/lib/ui-constants";
+
+// This boundary replaces the root layout and therefore cannot assume that
+// NextIntlClientProvider survived. Use the validated public locale cookie
+// and browser preference, with an English server/hydration-safe fallback.
+function emergencyLocale():AppLocale {
+  const raw=document.cookie.split(";").map(part=>part.trim())
+    .find(part=>part.startsWith(localeCookie+"="))?.slice(localeCookie.length+1);
+  let cookieValue:string|undefined;
+  try{cookieValue=raw?decodeURIComponent(raw):undefined;}catch{cookieValue=undefined;}
+  return supportedLocale(cookieValue)??supportedLocale(navigator.language)??"en";
+}
 
 export default function GlobalError({
   reset,
@@ -9,8 +25,14 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const locale=useSyncExternalStore(
+    () => () => {},
+    emergencyLocale,
+    ():AppLocale => "en"
+  );
+  const t=messagesFor(locale).systemUi;
   return (
-    <html lang="en">
+    <html lang={locale} dir={languageDirection(locale)}>
       <body
         style={{
           margin: 0,
@@ -18,8 +40,8 @@ export default function GlobalError({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#faf9f7",
-          color: "#1a1a2e",
+          background: "#0D1829",
+          color: "#EAF3F4",
           fontFamily:
             '"Inter", ui-sans-serif, system-ui, -apple-system, sans-serif',
         }}
@@ -37,10 +59,10 @@ export default function GlobalError({
               marginBottom: "0.5rem",
             }}
           >
-            Something went wrong 😕
+            {t.errorTitle}
           </h1>
-          <p style={{ color: "#7a7872", marginBottom: "1.5rem" }}>
-            An unexpected error occurred. Please try again.
+          <p style={{ color: "#9BAEB7", marginBottom: "1.5rem" }}>
+            {t.errorIntro}
           </p>
           <button
             onClick={() => reset()}
@@ -55,7 +77,7 @@ export default function GlobalError({
               cursor: "pointer",
             }}
           >
-            Try Again
+            {t.tryAgain}
           </button>
         </div>
       </body>

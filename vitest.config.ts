@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     // Pure-logic unit tests only — colocated next to the code they cover.
     // No jsdom/browser environment: everything under lib/ runs in plain Node.
-    include: ["lib/**/*.test.ts"],
+    include: ["lib/**/*.test.ts", "i18n/**/*.test.ts"],
     environment: "node",
   },
   resolve: {

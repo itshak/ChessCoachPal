@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {createHash} from "node:crypto";
 import { sendEmail } from "@/lib/email";
 import { formatEventWhen } from "@/lib/events";
+import {communicationCopy,familyCommunicationLocale} from "@/lib/server/communication-locales";
+import type {AppLocale} from "@/i18n/locales";
 import {
   familyEmailRecipients,
   familyGreetingNames,
@@ -52,7 +54,7 @@ const EVENT_EMAIL_SELECT = `
     guardian_id, status,
     guardians (
       id, name, email, secondary_name, secondary_email,
-      email_recipients, portal_token
+      email_recipients, preferred_locale, portal_token
     )
   )
 `;
@@ -84,17 +86,13 @@ export async function loadEventForEmail(
  * Reminder mode skips RSVP = no.
  */
 type PreparedEmail = {
-  guardianId:string;to:string[];subject:string;text:string;portalToken:string|null;
+  guardianId:string;to:string[];subject:string;text:string;portalToken:string|null;locale:AppLocale;
 };
 /**
  * Prepare exactly the same messages used by the real send path.
  * An MCP or website preview never returns the portalToken.
  */
 function prepareEventEmails(event:EventEmailRow,policy:StudioPolicy,mode:EventEmailMode){
-  const when=formatEventWhen(event.starts_at,event.ends_at,policy.timezone);
-  const signature=policy.studio_name
-    ? `— ${policy.studio_name} (sent via ChessCoachPal Studio)`
-    : "— Sent via ChessCoachPal Studio";
   const performersByGuardian=new Map<string,{name:string;repertoire:string}[]>();
   for(const row of event.event_students??[]){
     const student=oneToOne(row.students);
@@ -111,21 +109,20 @@ function prepareEventEmails(event:EventEmailRow,policy:StudioPolicy,mode:EventEm
     if(!family){skipped++;continue;}
     const recipients=familyEmailRecipients(family);
     if(recipients.length===0){skipped++;continue;}
+    const locale=familyCommunicationLocale(family),copy=communicationCopy[locale].event;
+    const when=formatEventWhen(event.starts_at,event.ends_at,policy.timezone,locale);
     const kids=performersByGuardian.get(rsvp.guardian_id)??[];
-    const repertoireLines=kids.length===0?"":"\n\nPerforming:\n"+kids.map(k=>
+    const repertoireLines=kids.length===0?"":`\n\n${copy.performing}:\n`+kids.map(k=>
       k.repertoire?`• ${k.name} — ${k.repertoire}`:`• ${k.name}`).join("\n");
-    const locationLine=event.location?.trim()?`\nLocation: ${event.location.trim()}`:"";
+    const locationLine=event.location?.trim()?`\n${copy.where}: ${event.location.trim()}`:"";
     const descriptionLine=event.description?.trim()?`\n\n${event.description.trim()}`:"";
     const subject=mode==="reminder"
-      ?`Reminder: ${event.title} is tomorrow`:`${event.title} — ${when}`;
+      ?copy.reminder(event.title):`${copy.invite(event.title)} — ${when}`;
     const intro=mode==="reminder"
-      ?`This is a reminder that ${event.title} is tomorrow.`
-      :`You're invited to ${event.title}.`;
-    const cta=mode==="reminder"
-      ?"Details and RSVP are in your family portal."
-      :"Please RSVP in your family portal.";
-    const text=`Hi ${familyGreetingNames(family)},\n\n${intro}\n\nWhen: ${when}${locationLine}${descriptionLine}${repertoireLines}\n\n${cta}\n\n${signature}`;
-    messages.push({guardianId:rsvp.guardian_id,to:recipients,subject,text,portalToken:family.portal_token});
+      ?copy.introReminder(event.title):copy.introInvite(event.title);
+    const cta=mode==="reminder"?copy.reminderCta:copy.inviteCta;
+    const text=`${copy.greeting(familyGreetingNames(family,locale))}\n\n${intro}\n\n${copy.when}: ${when}${locationLine}${descriptionLine}${repertoireLines}\n\n${cta}\n\n${copy.signature(policy.studio_name)}`;
+    messages.push({guardianId:rsvp.guardian_id,to:recipients,subject,text,portalToken:family.portal_token,locale});
   }
   return {messages,skipped};
 }
@@ -138,7 +135,7 @@ export function previewEventEmails(args:{
     draftCount:messages.length,skippedCount:skipped,
     recipientCount:messages.reduce((n,m)=>n+m.to.length,0),
     drafts:messages.map(m=>({
-      subject:m.subject,text:m.text,recipientCount:m.to.length,
+      subject:m.subject,text:m.text,locale:m.locale,recipientCount:m.to.length,
       portalLinkIncluded:Boolean(m.portalToken),
       ...(args.includeRecipients?{recipients:m.to}:{}),
     })),
@@ -158,7 +155,7 @@ export async function sendEventEmails(args:{
     const fromName=args.policy.studio_name
       ?`${args.policy.studio_name} (via ChessCoachPal)`:undefined;
     const contentHash=createHash("sha256").update(JSON.stringify({
-      to:message.to,bcc,subject:message.subject,text:message.text,
+      to:message.to,bcc,subject:message.subject,text:message.text,locale:message.locale,
       portalUrl,replyTo:args.teacherEmail??null,fromName,
     })).digest("hex");
     // Unique receipt is the atomic cross-process send claim. If it already
@@ -175,7 +172,7 @@ export async function sendEventEmails(args:{
       throw new Error("Unable to reserve event invitation delivery; no email sent");
     const result=await sendEmail({
       to:message.to,bcc,subject:message.subject,text:message.text,
-      fromName,replyTo:args.teacherEmail??undefined,portalUrl,
+      locale:message.locale,fromName,replyTo:args.teacherEmail??undefined,portalUrl,
       idempotencyKey:`event/${args.event.id}/${message.guardianId}/${args.mode}/${contentHash}`,
     });
     const {error:markError}=await args.db.from("event_email_deliveries")

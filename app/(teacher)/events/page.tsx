@@ -1,4 +1,6 @@
 import Link from "next/link";
+import {getLocale,getTranslations} from "next-intl/server";
+import {useTranslations} from "next-intl";
 import { createClient } from "@/lib/supabase/server";
 import { getPolicy } from "@/lib/server/scheduling";
 import { formatEventWhen } from "@/lib/events";
@@ -6,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { RsvpStatus } from "@/lib/supabase/types";
 
-export const metadata = { title: "Events" };
+export async function generateMetadata() {const t=await getTranslations("events");return {title:t("title")};}
 
 interface EventListRow {
   id: string;
@@ -20,7 +22,7 @@ interface EventListRow {
 
 type EventRow = ReturnType<typeof buildEventRows>[number];
 
-function buildEventRows(events: EventListRow[], timezone: string) {
+function buildEventRows(events: EventListRow[], timezone: string, locale:"en"|"he"|"ru") {
   const now = Date.now();
   return events.map((event) => {
     const rsvps = event.event_rsvps ?? [];
@@ -30,7 +32,7 @@ function buildEventRows(events: EventListRow[], timezone: string) {
       location: event.location,
       startsAt: event.starts_at,
       endsAt: event.ends_at,
-      when: formatEventWhen(event.starts_at, event.ends_at, timezone),
+      when: formatEventWhen(event.starts_at, event.ends_at, timezone, locale),
       studentCount: event.event_students?.length ?? 0,
       rsvpYes: rsvps.filter((r) => r.status === "yes").length,
       rsvpPending: rsvps.filter((r) => r.status === "pending").length,
@@ -40,6 +42,7 @@ function buildEventRows(events: EventListRow[], timezone: string) {
 }
 
 function EventList({ items, empty }: { items: EventRow[]; empty: string }) {
+  const t=useTranslations("events");
   if (items.length === 0) {
     return <p className="text-sm text-muted py-2">{empty}</p>;
   }
@@ -50,21 +53,20 @@ function EventList({ items, empty }: { items: EventRow[]; empty: string }) {
           <Card padding="sm" className="hover:border-primary/40 transition-colors">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="font-semibold truncate">{event.title}</div>
+                <div className="font-semibold truncate"><bdi dir="auto">{event.title}</bdi></div>
                 <div className="text-sm text-muted mt-0.5">{event.when}</div>
                 {event.location?.trim() ? (
                   <div className="text-sm text-muted mt-0.5">
-                    {event.location}
+                    <bdi dir="auto">{event.location}</bdi>
                   </div>
                 ) : null}
               </div>
-              <div className="text-sm text-muted text-right shrink-0">
+              <div className="text-sm text-muted text-end shrink-0">
                 <div>
-                  {event.studentCount}{" "}
-                  {event.studentCount === 1 ? "performer" : "performers"}
+                  {t("participants",{count:event.studentCount})}
                 </div>
                 <div className="mt-0.5">
-                  RSVP: {event.rsvpYes} yes · {event.rsvpPending} pending
+                  {t("rsvp",{yes:event.rsvpYes,pending:event.rsvpPending})}
                 </div>
               </div>
             </div>
@@ -76,6 +78,7 @@ function EventList({ items, empty }: { items: EventRow[]; empty: string }) {
 }
 
 export default async function EventsPage() {
+  const t=await getTranslations("events"),locale=await getLocale();
   const supabase = await createClient();
   const {
     data: { user },
@@ -97,7 +100,7 @@ export default async function EventsPage() {
 
   const rows = buildEventRows(
     (events ?? []) as unknown as EventListRow[],
-    policy.timezone
+    policy.timezone,locale
   );
 
   const upcoming = rows.filter((r) => r.isUpcoming).reverse();
@@ -107,33 +110,33 @@ export default async function EventsPage() {
     <div>
       <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Events</h1>
+          <h1 className="text-2xl font-bold">{t("title")}</h1>
           <p className="text-muted text-sm mt-1">
-            Recitals and studio events. Invite performers and track family RSVPs.
+            {t("intro")}
           </p>
         </div>
         <Link href="/events/new">
-          <Button>Create Event</Button>
+          <Button>{t("create")}</Button>
         </Link>
       </div>
 
       {rows.length === 0 ? (
         <Card className="text-center text-muted">
-          No events yet. Create a recital to invite students and collect RSVPs.
+          {t("none")}
         </Card>
       ) : (
         <div className="space-y-8">
           <section>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted mb-3">
-              Upcoming
+              {t("upcoming")}
             </h2>
-            <EventList items={upcoming} empty="No upcoming events." />
+            <EventList items={upcoming} empty={t("emptyUpcoming")} />
           </section>
           <section>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted mb-3">
-              Past
+              {t("past")}
             </h2>
-            <EventList items={past} empty="No past events." />
+            <EventList items={past} empty={t("emptyPast")} />
           </section>
         </div>
       )}

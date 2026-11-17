@@ -11,9 +11,13 @@ const clean={
 test("ADR-0001: canonical baseline plus approved live repair and no format adapter",()=>{
  deepStrictEqual(checkRepository(),[]);
 });
-test("ADR-0001: permits only the explicitly reviewed additive live repair",()=>{
- deepStrictEqual(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,
-  "20261117000000_live_historical_lifecycle_extension.sql"]}),[]);
+test("ADR-0001: permits only the explicitly reviewed additive live repairs",()=>{
+ const historical="20261117000000_live_historical_lifecycle_extension.sql";
+ const familyLocale="20261117231554_family_communication_locale.sql";
+ deepStrictEqual(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,historical]}),[]);
+ deepStrictEqual(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,historical,familyLocale]}),[]);
+ ok(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,familyLocale]}).length>0);
+ ok(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,familyLocale,historical]}).length>0);
 });
 test("ADR-0001: permits specifically reviewed non-destructive workflow extension after live repair",()=>{
  deepStrictEqual(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,
@@ -22,6 +26,16 @@ test("ADR-0001: permits specifically reviewed non-destructive workflow extension
  ok(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,
   "20261117190000_mcp_workflow_composition.sql"]}).length>0,
   "Cannot skip the previously approved historical-live extension");
+});
+test("ADR-0001: permits the ordered workflow and bilingual family/teacher additive migrations",()=>{
+ const baseline="20261107000000_chesscoachpal_baseline.sql";
+ const historical="20261117000000_live_historical_lifecycle_extension.sql";
+ const workflow="20261117190000_mcp_workflow_composition.sql";
+ const family="20261117231554_family_communication_locale.sql";
+ const teacher="20261118000000_multilingual_teacher_and_family_locale.sql";
+ deepStrictEqual(canonicalSchemaErrors({...clean,sqlFiles:[baseline,historical,workflow,family,teacher]}),[]);
+ ok(canonicalSchemaErrors({...clean,sqlFiles:[baseline,historical,teacher]}).length>0);
+ ok(canonicalSchemaErrors({...clean,sqlFiles:[baseline,historical,workflow,teacher,family]}).length>0);
 });
 test("ADR-0001: rejects arbitrary incremental upgrade files",()=>{
  ok(canonicalSchemaErrors({...clean,sqlFiles:[...clean.sqlFiles,"new_patch.sql"]}).length>0);

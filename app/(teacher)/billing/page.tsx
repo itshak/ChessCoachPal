@@ -1,3 +1,4 @@
+import {getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPolicy } from "@/lib/server/scheduling";
 import { toLocalDateString } from "@/lib/schedule";
@@ -13,13 +14,14 @@ import { BillingListActions } from "@/components/teacher/billing/BillingList";
 import { InvoiceList } from "@/components/teacher/billing/InvoiceList";
 import { PaymentSettingsButton } from "@/components/teacher/billing/PaymentSettingsButton";
 
-export const metadata = { title: "Billing" };
+export async function generateMetadata(){const t=await getTranslations("billingPage");return {title:t("title")};}
 
 export default async function BillingPage({
   searchParams,
 }: {
   searchParams: Promise<{ paymentSettings?: string }>;
 }) {
+  const t=await getTranslations("billingPage");
   const showPaymentCredentials=(await searchParams).paymentSettings==="1";
   const supabase = await createClient();
   const {
@@ -49,7 +51,7 @@ export default async function BillingPage({
     );
     return {
       id: inv.id,
-      familyName: family ? familyDisplayName(family) : "Family",
+      familyName: family ? familyDisplayName(family) : t("family"),
       periodStart: inv.period_start,
       periodEnd: inv.period_end,
       status: inv.status,
@@ -75,11 +77,9 @@ export default async function BillingPage({
     <div>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Billing</h1>
+          <h1 className="text-2xl font-bold">{t("title")}</h1>
           <p className="text-muted text-sm mt-1">
-            Typical month: Generate for last month → review drafts → select all
-            → Send. Rates and billability live in Studio; configure Stripe or
-            payment instructions via Payment settings.
+            {t("description")}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -100,7 +100,7 @@ export default async function BillingPage({
       <Card padding="sm">
         {!rows.length ? (
           <p className="text-sm text-muted py-4 text-center">
-            No invoices yet. Mark attendance for a period, then generate drafts.
+            {t("empty")}
           </p>
         ) : (
           <InvoiceList invoices={rows} />

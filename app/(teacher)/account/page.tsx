@@ -1,4 +1,7 @@
 import Link from "next/link";
+import {getTranslations} from "next-intl/server";
+import {resolveRequestLocale} from "@/i18n/server";
+import {localeDetails} from "@/i18n/locales";
 import { createClient } from "@/lib/supabase/server";
 import { AccountSettings } from "@/components/teacher/AccountSettings";
 import { AccountMfaSettings } from "@/components/teacher/AccountMfaSettings";
@@ -29,13 +32,17 @@ import {
 } from "@/lib/server/entitlements";
 import { isHostedCheckoutConfigured } from "@/lib/hosted-billing/stripe";
 
-export const metadata = { title: "Account" };
+export async function generateMetadata(){
+  const t=await getTranslations("account");
+  return {title:t("heading")};
+}
 
 export default async function AccountPage({
   searchParams,
 }: {
   searchParams: Promise<{ hosted?: string }>;
 }) {
+  const t=await getTranslations("account");
   const supabase = await createClient();
   const {
     data: { user },
@@ -117,7 +124,7 @@ export default async function AccountPage({
   const accountEmail = user.email ?? teacher?.email ?? "";
   const memberSinceLabel = new Date(
     teacher?.created_at ?? user.created_at
-  ).toLocaleDateString(undefined, {
+  ).toLocaleDateString(localeDetails[await resolveRequestLocale()].intl, {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -125,16 +132,16 @@ export default async function AccountPage({
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Account Settings</h1>
-      <Link href="/ai-connections" className="underline text-sm">Manage ChatGPT / Claude connections and revoke access</Link>
+      <h1 className="text-2xl font-bold mb-6">{t("heading")}</h1>
+      <Link href="/ai-connections" className="underline text-sm">{t("connections")}</Link>
 
       {params.hosted === "success" && (
         <p className="text-sm text-success mb-4">
-          Payment received. Your plan updates when Stripe confirms.
+          {t("stripePending")}
         </p>
       )}
       {params.hosted === "cancel" && (
-        <p className="text-sm text-muted mb-4">Checkout canceled.</p>
+        <p className="text-sm text-muted mb-4">{t("checkoutCanceled")}</p>
       )}
 
       {limitBanner}

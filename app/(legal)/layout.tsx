@@ -1,4 +1,5 @@
 import Link from "next/link";
+import {getTranslations} from "next-intl/server";
 import { notFound } from "next/navigation";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { getDeploymentMode } from "@/lib/entitlements";
@@ -8,12 +9,13 @@ import { BRAND_ICON_SIZE } from "@/lib/ui-constants";
  * Legal pages exist only on the official hosted instance; a self-hosted
  * deployment is its own data controller and needs its own terms.
  */
-export default function LegalLayout({
+export default async function LegalLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   if (getDeploymentMode() !== "hosted") notFound();
+  const t=await getTranslations("legalLayout");
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -34,10 +36,10 @@ export default function LegalLayout({
       <footer className="border-t border-border py-4 shrink-0">
         <div className="flex items-center justify-center gap-4 text-sm text-muted">
           <Link href="/privacy" className="hover:text-foreground transition-colors">
-            Privacy Policy
+            {t("privacy")}
           </Link>
           <Link href="/terms" className="hover:text-foreground transition-colors">
-            Terms of Service
+            {t("terms")}
           </Link>
         </div>
       </footer>

@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useCallback,useEffect,useState} from "react";
+import {useTranslations} from "next-intl";
 import {useConfirm} from "@/components/ui/confirm-dialog";
 
 type Connection={
@@ -13,6 +16,8 @@ type DisconnectResult={
 };
 
 export function LichessConnectionPanel({returnTo="learning"}:{returnTo?:"learning"|"account"}){
+ const t=useTranslations("lichessConnection");
+  const toUserError=useLocalizedApiError();
   const returnSuffix=returnTo==="account"?"&returnTo=account":"";
   const [status,setStatus]=useState<Connection|null>(null);
   const [error,setError]=useState("");
@@ -21,16 +26,16 @@ export function LichessConnectionPanel({returnTo="learning"}:{returnTo?:"learnin
   const confirmDialog=useConfirm();
   const refresh=useCallback(async()=>{
     const res=await fetch("/api/lichess/connection",{cache:"no-store"});
-    if(!res.ok)throw new Error("Could not load Lichess permissions");
+    if(!res.ok)throw new Error(t("permissionsFailed"));
     setStatus(await res.json() as Connection);
-  },[]);
+  },[t]);
   useEffect(()=>{void refresh().catch(e=>setError(String(e)));},[refresh]);
 
   async function disconnect(){
     const approved=await confirmDialog({
-      title:"Disconnect Lichess?",
-      message:"Revoke the connected Lichess study permission? Existing saved study links will remain.",
-      confirmLabel:"Disconnect",variant:"danger",
+      title:t("disconnectTitle"),
+      message:t("disconnectWarning"),
+      confirmLabel:t("disconnectConfirm"),variant:"danger",
     });
     if(!approved)return;
     setBusy(true);setError("");setNotice("");
@@ -39,49 +44,49 @@ export function LichessConnectionPanel({returnTo="learning"}:{returnTo?:"learnin
         method:"DELETE",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({confirmed:true}),
       });
-      if(!res.ok)throw new Error((await res.json()).error??"Unable to disconnect");
+      if(!res.ok)throw new Error((await res.json()).error??t("disconnectFailed"));
       const result=await res.json() as DisconnectResult;
       setNotice(result.manualRevokeRequired?
-        "Disconnected locally. Lichess did not confirm revocation; revoke the token in your Lichess account.":"Lichess disconnected.");
+        t("manualRevoke"):t("disconnected"));
       await refresh();
-    }catch(e){setError(e instanceof Error?e.message:"Unable to disconnect");}
+    }catch(e){setError(toUserError(e, t("disconnectFailed")));}
     finally{setBusy(false);}
   }
   const params=typeof window!=="undefined"?new URLSearchParams(window.location.search):null;
   const redirectResult=params?.get("lichess");
-  return <section aria-label="Lichess study connection" className="rounded-xl border border-border bg-surface p-4 space-y-3">
-    <h2 className="text-xl font-semibold">Lichess study connection</h2>
+  return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-4 space-y-3">
+    <h2 className="text-xl font-semibold">{t("title")}</h2>
     <p className="text-sm text-muted">
-      Connect only your teacher account. Permissions stay on the secure server and are never revealed to ChatGPT or Claude.
+      {t("description")}
     </p>
     {redirectResult==="connected"&&
-      <p role="status" className="text-success">Lichess account connected.</p>}
+      <p role="status" className="text-success">{t("connectedNotice")}</p>}
     {redirectResult==="permission-denied"&&
-      <p role="alert" className="text-error">Lichess permission was not granted.</p>}
+      <p role="alert" className="text-error">{t("permissionDenied")}</p>}
     {redirectResult==="connection-failed"&&
-      <p role="alert" className="text-error">Lichess authorization failed. No provider credentials were saved.</p>}
+      <p role="alert" className="text-error">{t("authorizationFailed")}</p>}
     {error&&<p role="alert" className="text-error">{error}</p>}
     {notice&&<p role="status" className="text-success">{notice}</p>}
-    {!status?<p className="text-sm text-muted">Loading connection…</p>:
+    {!status?<p className="text-sm text-muted">{t("loading")}</p>:
       status.connected?<div className="space-y-2">
-        <p className="text-sm">Connected as <strong>{status.username}</strong></p>
-        <p className="text-sm text-muted">Permissions: {status.scopes.join(", ")}</p>
+        <p className="text-sm">{t("connectedAs")} <strong dir="ltr">{status.username}</strong></p>
+        <p className="text-sm text-muted">{t("scopes")} <bdi dir="ltr">{status.scopes.join(", ")}</bdi></p>
         {status.previousRevokeFailed&&<p role="alert" className="text-error">
-          A previous Lichess token could not be revoked. Review your active tokens on Lichess.
+          {t("previousRevokeFailed")}
         </p>}
         <div className="flex flex-wrap items-center gap-3">
           {!status.canPublish&&
             <a className="text-primary underline text-sm" href={`/api/lichess/connect?mode=write${returnSuffix}`}>
-              Enable study publishing (requires separate Lichess consent)
+              {t("enablePublishing")}
             </a>}
           <button type="button" disabled={busy} onClick={()=>void disconnect()}
             className="rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-50">
-            Disconnect Lichess
+            {t("disconnect")}
           </button>
           <a className="text-primary underline text-sm" href="https://lichess.org/account/oauth/token"
-            target="_blank" rel="noreferrer">Review Lichess permissions</a>
+            target="_blank" rel="noreferrer">{t("reviewPermissions")}</a>
         </div>
       </div>:<a className="inline-block rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white"
-        href={`/api/lichess/connect?mode=read${returnSuffix}`}>Connect Lichess studies (read-only)</a>}
+        href={`/api/lichess/connect?mode=read${returnSuffix}`}>{t("connectRead")}</a>}
   </section>;
 }

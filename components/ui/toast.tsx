@@ -1,4 +1,5 @@
 "use client";
+import {useTranslations} from "next-intl";
 
 import {
   createContext,
@@ -43,6 +44,7 @@ const SUCCESS_TTL_MS = 3500;
 const ERROR_TTL_MS = 6000;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const t=useTranslations("dialogCommon");
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const nextId = useRef(1);
 
@@ -66,7 +68,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       {toasts.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-[100] flex flex-col items-end gap-2">
+        <div className="fixed bottom-4 end-4 z-[100] flex flex-col items-end gap-2">
           {toasts.map((toast) => (
             <div
               key={toast.id}
@@ -76,7 +78,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <span className="min-w-0 break-words">{toast.message}</span>
               <button
                 type="button"
-                aria-label="Dismiss"
+                aria-label={t("dismiss")}
                 className="shrink-0 opacity-70 hover:opacity-100 font-bold leading-none cursor-pointer"
                 onClick={() => dismiss(toast.id)}
               >

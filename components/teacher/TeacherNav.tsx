@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import {useTranslations} from "next-intl";
+import {LanguageSwitcher} from "@/components/locale/LanguageSwitcher";
 import Link from "next/link";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { usePathname, useRouter } from "next/navigation";
@@ -12,19 +14,19 @@ import { useTeacherTheme } from "@/components/teacher/TeacherThemeProvider";
 import { IosInstallHint } from "@/components/pwa/IosInstallHint";
 
 const navItems = [
-  { href: "/dashboard", label: "Today", tour: "dashboard" },
-  { href: "/students", label: "Students", tour: "students" },
-  { href: "/coaching", label: "Lessons", tour: "coaching" },
-  { href: "/learning", label: "Training & Materials", tour: "learning" },
-  { href: "/schedule", label: "Calendar", tour: "schedule" },
-  { href: "/reports", label: "Reports", tour: "reports" },
-];
+  { href: "/dashboard", key: "today", tour: "dashboard" },
+  { href: "/students", key: "students", tour: "students" },
+  { href: "/coaching", key: "lessons", tour: "coaching" },
+  { href: "/learning", key: "learning", tour: "learning" },
+  { href: "/schedule", key: "calendar", tour: "schedule" },
+  { href: "/reports", key: "reports", tour: "reports" },
+] as const;
 const secondaryNavItems = [
-  { href: "/families", label: "Contacts & Guardians", tour: "families" },
-  { href: "/events", label: "Chess events", tour: "events" },
-  { href: "/billing", label: "Business & billing", tour: "billing" },
-  { href: "/studio", label: "Coaching settings", tour: "studio" },
-];
+  { href: "/families", key: "contacts", tour: "families" },
+  { href: "/events", key: "events", tour: "events" },
+  { href: "/billing", key: "billing", tour: "billing" },
+  { href: "/studio", key: "settings", tour: "studio" },
+] as const;
 
 function NavTab({
   href,
@@ -73,6 +75,7 @@ function AccountMenu({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const t = useTranslations("nav");
   const { theme, toggleTheme } = useTeacherTheme();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -114,7 +117,7 @@ function AccountMenu({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label="Account menu"
+        aria-label={t("accountMenu")}
         aria-expanded={open}
         aria-haspopup="menu"
         title={teacherName}
@@ -144,11 +147,11 @@ function AccountMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 mt-2 w-64 rounded-xl border border-border bg-surface shadow-lg z-50 py-1 overflow-hidden"
+          className="absolute end-0 mt-2 w-64 rounded-xl border border-border bg-surface shadow-lg z-50 py-1 overflow-hidden"
         >
           <div className="px-3 py-2.5 border-b border-border">
             <div className="text-sm font-semibold truncate">{teacherName}</div>
-            <div className="text-[11px] text-muted">Teacher account</div>
+            <div className="text-[11px] text-muted">{t("teacherAccount")}</div>
           </div>
 
           <Link
@@ -161,11 +164,12 @@ function AccountMenu({
                 : "text-foreground hover:bg-surface-dim"
             }`}
           >
-            Account settings
+            {t("account")}
           </Link>
 
+          <div className="px-3 py-2.5 border-b border-border"><LanguageSwitcher authenticated /></div>
           <div className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
-            <span className="text-foreground">Dark mode</span>
+            <span className="text-foreground">{t("darkMode")}</span>
             <button
               type="button"
               role="switch"
@@ -180,8 +184,8 @@ function AccountMenu({
               }`}
             >
               <span
-                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  isDark ? "translate-x-5" : "translate-x-0"
+                className={`absolute top-0.5 start-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  isDark ? "ltr:translate-x-5 rtl:-translate-x-5" : "translate-x-0"
                 }`}
               />
             </button>
@@ -198,7 +202,7 @@ function AccountMenu({
                 : "text-foreground hover:bg-surface-dim"
             }`}
           >
-            Help
+            {t("help")}
           </Link>
 
           <IosInstallHint />
@@ -208,9 +212,9 @@ function AccountMenu({
               type="button"
               role="menuitem"
               onClick={handleSignOut}
-              className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-surface-dim cursor-pointer"
+              className="w-full text-start px-3 py-2.5 text-sm text-foreground hover:bg-surface-dim cursor-pointer"
             >
-              Sign out
+              {t("signOut")}
             </button>
           </div>
         </div>
@@ -227,6 +231,7 @@ export function TeacherNav({
   avatarUrl: string | null;
 }) {
   const pathname = usePathname();
+  const t = useTranslations("nav");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen,setMoreOpen] = useState(false);
 
@@ -259,20 +264,20 @@ export function TeacherNav({
                       : "text-muted hover:text-foreground hover:bg-surface-dim"
                   }`}
                 >
-                  {item.label}
+                  {t(item.key)}
                 </NavTab>
               );
             })}
             <div className="relative">
               <button type="button" className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${secondaryNavItems.some(item=>pathname.startsWith(item.href))?"bg-primary/10 text-primary":"text-muted hover:text-foreground hover:bg-surface-dim"}`}
-                aria-label="More coaching options" aria-expanded={moreOpen} onClick={()=>setMoreOpen(v=>!v)}>
-                More
+                aria-label={t("moreOptions")} aria-expanded={moreOpen} onClick={()=>setMoreOpen(v=>!v)}>
+                {t("more")}
               </button>
-              {moreOpen&&<div className="absolute top-full right-0 mt-2 w-56 rounded-lg border border-border bg-surface z-50 shadow-lg p-1">
+              {moreOpen&&<div className="absolute top-full end-0 mt-2 w-56 rounded-lg border border-border bg-surface z-50 shadow-lg p-1">
                 {secondaryNavItems.map(item=><Link key={item.href} href={item.href} data-tour={item.tour}
                   onClick={()=>setMoreOpen(false)}
                   className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-surface-dim">
-                  {item.label}
+                  {t(item.key)}
                 </Link>)}
               </div>}
             </div>
@@ -284,9 +289,9 @@ export function TeacherNav({
           <AccountMenu teacherName={teacherName} avatarUrl={avatarUrl} />
           <button
             type="button"
-            className="md:hidden p-2.5 -mr-2 text-muted hover:text-foreground cursor-pointer"
+            className="md:hidden p-2.5 -me-2 text-muted hover:text-foreground cursor-pointer"
             onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label="Toggle navigation"
+            aria-label={t("toggleNavigation")}
             aria-expanded={mobileOpen}
           >
             <svg
@@ -333,15 +338,15 @@ export function TeacherNav({
                     : "text-muted hover:text-foreground hover:bg-surface-dim"
                 }`}
               >
-                {item.label}
+                {t(item.key)}
               </NavTab>
             );
           })}
-          <div className="pt-2 text-xs text-muted font-semibold px-3">More coaching tools</div>
+          <div className="pt-2 text-xs text-muted font-semibold px-3">{t("moreTools")}</div>
           {secondaryNavItems.map(item=><NavTab key={item.href} href={item.href} tour={item.tour}
             active={pathname.startsWith(item.href)} onClick={()=>setMobileOpen(false)}
             className="block px-3 py-2 rounded-lg text-sm text-muted hover:text-foreground hover:bg-surface-dim">
-            {item.label}
+            {t(item.key)}
           </NavTab>)}
         </div>
       )}

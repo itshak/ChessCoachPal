@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
+import {useLocale,useTranslations} from "next-intl";
 
 type Session={id:string;title:string;status:string;starts_at:string};
 type Person={studentId:string;name:string};
@@ -9,17 +12,17 @@ type Roster={sessionId:string;title:string;status:string;updatedAt:string;
 type Register={student_id:string;status:string;note:string;updated_at:string|null};
 type Decision={studentId:string;status:""|"present"|"absent"|"late"|"excused";
  note:string;expectedUpdatedAt:string|null};
-const select="w-full rounded-lg border border-border bg-surface px-3 py-2 text-foreground";
-const statuses=[["present","Present"],["absent","Absent"],["late","Late"],["excused","Excused"]] as const;
+const select="w-full min-w-0 max-w-full rounded-lg border border-border bg-surface px-3 py-2 text-foreground";
+const statuses=["present","absent","late","excused"] as const;
 
-async function api<T>(action:string,args:Record<string,unknown>={}):Promise<T>{
+async function api<T>(action:string,args:Record<string,unknown>={},fallback="Unable to load lesson"):Promise<T>{
  const res=await fetch("/api/agent/v1",{
   method:"POST",headers:{"Content-Type":"application/json"},
   body:JSON.stringify({action,...args}),cache:"no-store",
  });
  const value=await res.json() as {ok?:boolean;data?:T;error?:{message?:string;code:string}};
  if(!res.ok||!value.ok)
-   throw new Error(value.error?.message??value.error?.code??"Unable to load lesson");
+   throw new Error(value.error?.message??value.error?.code??fallback);
  return value.data as T;
 }
 
@@ -28,6 +31,9 @@ async function api<T>(action:string,args:Record<string,unknown>={}):Promise<T>{
  * lesson never implies material mastery or homework completion.
  */
 export function LessonCompletionPanel(){
+ const t=useTranslations("lessonCompletion"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
+ const statusName=(status:string)=>status==="scheduled"?t("scheduled"):status==="completed"?t("completed"):status==="cancelled"?t("cancelled"):status;
  const [sessions,setSessions]=useState<Session[]>([]);
  const [sessionId,setSessionId]=useState("");
  const [roster,setRoster]=useState<Roster|null>(null);
@@ -48,15 +54,15 @@ export function LessonCompletionPanel(){
   try{
    [details,register]=await Promise.all([
     fetch("/api/coaching/sessions/"+encodeURIComponent(id)+"/roster",{cache:"no-store"}).then(async response=>{
-     if(!response.ok)throw new Error("Cannot read the lesson's frozen roster");
+     if(!response.ok)throw new Error(t("rosterReadFailed"));
      return response.json() as Promise<Roster>;
     }),
-    api<Register[]>("attendance.list",{sessionId:id}),
+    api<Register[]>("attendance.list",{sessionId:id},t("loadFailed")),
    ]);
   }catch(e){
    // A superseded request must never blank a newer selected lesson.
    if(generation===rosterLoad.current){
-    setRoster(null);setError(e instanceof Error?e.message:"Cannot load roster");
+    setRoster(null);setError(toUserError(e, t("rosterLoadFailed")));
    }
    return;
   }
@@ -75,12 +81,12 @@ export function LessonCompletionPanel(){
     }];
   })));
   setConfirmed(false);
- },[]);
+ },[t,toUserError]);
  const refreshSessions=useCallback(async()=>{
-  const items=await api<Session[]>("sessions.list");
+  const items=await api<Session[]>("sessions.list",{},t("loadFailed"));
   setSessions(items);
   setSessionId(old=>old&&items.some(s=>s.id===old)?old:items[0]?.id??"");
- },[]);
+ },[t]);
  useEffect(()=>{
   void refreshSessions().catch(e=>setError(String(e)));
  },[refreshSessions]);
@@ -96,7 +102,7 @@ export function LessonCompletionPanel(){
  async function commit(complete:boolean){
   if(!roster||roster.sessionId!==sessionId||busy||!confirmed)return;
   if(roster.participants.some(p=>!decisions[p.studentId]?.status)){
-   setError("Choose an explicit attendance status for each learner.");return;
+   setError(t("attendanceRequired"));return;
   }
   setBusy(true);setError("");setNotice("");
   try{
@@ -110,19 +116,18 @@ export function LessonCompletionPanel(){
      sessionId:roster.sessionId,expectedUpdatedAt:roster.updatedAt,
      idempotencyKey:crypto.randomUUID(),attendance,
      ...(lessonNote.trim()?{lessonNote}:{}),confirmed:true,
-    });
+    },t("completionFailed"));
     setSessions(old=>old.map(x=>x.id===roster.sessionId?{...x,status:"completed"}:x));
    }else{
     await api("attendance.bulkRecord",{
      sessionId:roster.sessionId,idempotencyKey:crypto.randomUUID(),attendance,
-    });
+    },t("attendanceFailed"));
    }
-   setNotice(complete?"Lesson and full frozen-roster attendance committed atomically.":
-    "All attendance decisions saved atomically without completing the lesson.");
+   setNotice(complete?t("committed"):t("attendanceSaved"));
    setConfirmed(false);
    if(complete)setLessonNote("");
    await refresh(roster.sessionId);
-  }catch(e){setError(e instanceof Error?e.message:"Unable to record attendance");}
+  }catch(e){setError(toUserError(e, t("attendanceFailed")));}
   finally{setBusy(false);}
  }
 
@@ -131,71 +136,71 @@ export function LessonCompletionPanel(){
   await commit(true);
  }
 
- return <section aria-label="Complete coaching lesson" className="rounded-xl border border-border bg-surface p-5 space-y-4">
+ return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-5 space-y-4">
   <header>
-   <h2 className="text-lg font-semibold">Complete a coaching lesson</h2>
-   <p className="text-sm text-muted">Record every learner's actual attendance, then complete the lesson as one confirmed transaction. Attendance is not a skill grade or evidence that material was taught.</p>
+   <h2 className="text-lg font-semibold">{t("title")}</h2>
+   <p className="text-sm text-muted">{t("description")}</p>
   </header>
   {error&&<p role="alert" className="text-error">{error}</p>}
   {notice&&<p role="status" className="text-success">{notice}</p>}
   <button type="button" disabled={busy} className="text-sm underline"
    onClick={()=>void refreshSessions().catch(e=>setError(String(e)))}>
-   Refresh lessons
+   {t("refresh")}
   </button>
   <button type="button" disabled={!sessionId||busy} className="text-sm underline"
    onClick={()=>void refresh(sessionId)}>
-   Reload selected roster
+   {t("reloadRoster")}
   </button>
-  <label className="block">Lesson
-   <select className={select} aria-label="Lesson to complete" value={sessionId}
+  <label className="block">{t("lesson")}
+   <select className={select} aria-label={t("lessonToComplete")} value={sessionId}
      onChange={e=>{rosterLoad.current++;setRoster(null);setDecisions({});
       setSessionId(e.target.value);setLessonNote("");setConfirmed(false);
       setNotice("");setError("");}}>
-    {!sessions.length&&<option value="">No coaching sessions</option>}
+    {!sessions.length&&<option value="">{t("noSessions")}</option>}
     {sessions.map(s=><option value={s.id} key={s.id}>
-     {s.title} · {new Date(s.starts_at).toLocaleDateString()} · {s.status}
+     {s.title} · {new Date(s.starts_at).toLocaleDateString(locale)} · {statusName(s.status)}
     </option>)}
    </select>
   </label>
   {roster&&<form onSubmit={submit} data-session-id={roster.sessionId} className="space-y-3">
-   <p className="text-sm font-medium">{roster.participants.length} frozen learner(s) · {roster.status}</p>
+   <p className="text-sm font-medium">{t("frozenRoster",{count:roster.participants.length,status:statusName(roster.status)})}</p>
    {roster.participants.map(person=>{
     const decision=decisions[person.studentId];
-    return <div key={person.studentId} className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-2">
-     <label>{person.name}: attendance
-      <select className={select} aria-label={"Attendance for "+person.name} data-student-id={person.studentId}
+    return <div key={person.studentId} className="grid min-w-0 grid-cols-1 gap-2 rounded-lg border border-border p-3 sm:grid-cols-2">
+     <label><bdi dir="auto">{person.name}</bdi>: {t("attendance")}
+      <select className={select} aria-label={t("attendanceFor",{name:person.name})} data-student-id={person.studentId}
        value={decision?.status??""} required onChange={e=>change(person.studentId,{
          status:e.target.value as Decision["status"],
        })}>
-       <option value="">Select actual attendance</option>
-       {statuses.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+       <option value="">{t("chooseAttendance")}</option>
+       {statuses.map(key=><option key={key} value={key}>{t(key)}</option>)}
       </select>
      </label>
-     <label>Attendance note (optional)
+     <label>{t("attendanceNote")}
       <input className={select} maxLength={5000} value={decision?.note??""}
        onChange={e=>change(person.studentId,{note:e.target.value})}/>
      </label>
     </div>;
    })}
-   <label className="block">Shared coaching lesson note (optional; leave blank to retain existing notes)
+   <label className="block">{t("sharedNote")}
     <textarea className={select} maxLength={10000} rows={2} value={lessonNote}
      onChange={e=>{setLessonNote(e.target.value);setConfirmed(false);}}/>
    </label>
    <label className="flex gap-2 items-center">
     <input type="checkbox" checked={confirmed}
      onChange={e=>setConfirmed(e.target.checked)}/>
-    I confirm these attendance statuses and lesson completion.
+    {t("approval")}
    </label>
    <button type="submit" disabled={busy||!confirmed||roster.sessionId!==sessionId||!roster.participants.length||
       roster.participants.some(p=>!decisions[p.studentId]?.status)}
     className="rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50">
-     {busy?"Recording…":"Complete lesson"}
+     {busy?t("recording"):t("complete")}
    </button>
    <button type="button" disabled={busy||!confirmed||roster.sessionId!==sessionId||
       roster.participants.some(p=>!decisions[p.studentId]?.status)}
     onClick={()=>void commit(false)}
     className="rounded-lg border border-border px-4 py-2 font-semibold disabled:opacity-50">
-     Save attendance without completing
+     {t("saveAttendance")}
    </button>
   </form>}
  </section>;

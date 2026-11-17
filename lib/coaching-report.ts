@@ -1,4 +1,6 @@
 /** Deterministic, tenant-filtered teaching report calculations (no model inference). */
+import {messagesFor} from "@/i18n/messages";
+import {supportedLocale, localeDetails, type AppLocale} from "@/i18n/locales";
 export type ReportSession = {
   id: string; starts_at: string; duration_minutes: number;
   status: string;
@@ -62,28 +64,75 @@ export function summarizeTeaching(
 }
 
 /** No student names or private notes are exposed in aggregate exports. */
-export function reportCsv(r: ReportSummary): string {
-  const lines = [
-    ["Metric", "Value"], ["From", r.from], ["To", r.to],
-    ["Timezone", r.timezone], ["Sessions", String(r.sessions)],
-    ["Cancelled", String(r.cancelled)], ["Teaching minutes", String(r.teachingMinutes)],
-    ["Participants", String(r.participants)],
-    ...(["present", "absent", "late", "excused", "unmarked"] as const)
-      .map(status => ["Attendance " + status, String(r.attendance[status])]),
+function outputLanguage(report:ReportSummary, locale?:AppLocale):AppLocale {
+  return locale ?? supportedLocale(report.locale) ?? "en";
+}
+function humanLabels(report:ReportSummary, locale?:AppLocale) {
+  return messagesFor(outputLanguage(report,locale)).reports;
+}
+export function reportCsv(r: ReportSummary, outputLocale?:AppLocale): string {
+  const t=humanLabels(r,outputLocale);
+  const labels=[
+    ["Metric",t.metric],["Value",t.value],["From",t.fromShort],["To",t.toShort],
+    ["Timezone",t.timezone],["Sessions",t.sessions],["Cancelled",t.cancelled],
+    ["Teaching minutes",t.teachingMinutes],["Participants",t.participants]
+  ] as const;
+  const name=(key:string)=>labels.find(([canonical])=>canonical===key)?.[1]??key;
+  const lines=[
+    [t.metric,t.value],[name("From"),r.from],[name("To"),r.to],
+    [name("Timezone"),r.timezone],[name("Sessions"),String(r.sessions)],
+    [name("Cancelled"),String(r.cancelled)],
+    [name("Teaching minutes"),String(r.teachingMinutes)],
+    [name("Participants"),String(r.participants)],
+    ...(["present","absent","late","excused","unmarked"] as const)
+      .map(status=>[t.attendance+" "+t[status],String(r.attendance[status])])
   ];
-  const cell = (value: string) => '"' + ( /^[=+\-@\t\r]/.test(value) ? "'" : "") +
-    value.replace(/"/g, '""') + '"';
-  return "\uFEFF" + lines.map(line => line.map(cell).join(",")).join("\r\n") + "\r\n";
+  const cell=(value:string)=>'"'+(/^[=+\-@\t\r]/.test(value)?"'":"")+
+    value.replace(/"/g,'""')+'"';
+  return "\uFEFF"+lines.map(line=>line.map(cell).join(",")).join("\r\n")+"\r\n";
+}
+export function reportText(r:ReportSummary,outputLocale?:AppLocale):string {
+  const t=humanLabels(r,outputLocale);
+  return [
+    t.reportHeading,
+    t.period+": "+r.from+" — "+r.to+" ("+r.timezone+")",
+    t.sessions+": "+r.sessions+" ("+t.cancelled+": "+r.cancelled+")",
+    t.teachingMinutes+": "+r.teachingMinutes,
+    t.participants+": "+r.participants,
+    ...(["present","absent","late","excused","unmarked"] as const)
+      .map(status=>t[status]+": "+r.attendance[status])
+  ].join("\n")+"\n";
 }
 
-export function reportText(r: ReportSummary): string {
-  return [
-    "ChessCoachPal workplace report",
-    "Period: " + r.from + " through " + r.to + " (" + r.timezone + ")",
-    "Sessions: " + r.sessions + " (cancelled: " + r.cancelled + ")",
-    "Teaching minutes: " + r.teachingMinutes,
-    "Participants: " + r.participants,
-    ...(["present", "absent", "late", "excused", "unmarked"] as const)
-      .map(status => status + ": " + r.attendance[status]),
-  ].join("\n") + "\n";
+/** Human presentation only: stable machine report fields and dates remain untouched. */
+export type ReportPresentation = {
+  outputLocale:AppLocale; direction:"ltr"|"rtl";
+  heading:string; periodLabel:string; period:string;
+  timezoneLabel:string; timezone:string;
+  metrics:{key:"sessions"|"cancelled"|"teachingMinutes"|"participants";label:string;value:string}[];
+  attendance:{status:ReportStatus;label:string;value:string}[];
+};
+export function reportPresentation(r:ReportSummary, requested?:AppLocale):ReportPresentation {
+  const outputLocale=outputLanguage(r,requested);
+  const t=humanLabels(r,requested), info=localeDetails[outputLocale];
+  const number=new Intl.NumberFormat(info.intl);
+  // Render date-only values at UTC noon; never use the server timezone for
+  // YYYY-MM-DD source dates or convert them into another calendar day.
+  const date=(iso:string)=>new Intl.DateTimeFormat(info.intl,{
+    dateStyle:"medium",timeZone:"UTC"
+  }).format(new Date(iso+"T12:00:00Z"));
+  return {
+    outputLocale,direction:info.dir,heading:t.reportHeading,
+    periodLabel:t.period,period:date(r.from)+" — "+date(r.to),
+    timezoneLabel:t.timezone,timezone:r.timezone,
+    metrics:([
+      ["sessions",t.sessions,r.sessions],
+      ["cancelled",t.cancelled,r.cancelled],
+      ["teachingMinutes",t.teachingMinutes,r.teachingMinutes],
+      ["participants",t.participants,r.participants]
+    ] as const).map(([key,label,value])=>({key,label,value:number.format(value)})),
+    attendance:([
+      "present","absent","late","excused","unmarked"
+    ] as const).map(status=>({status,label:t[status],value:number.format(r.attendance[status])}))
+  };
 }

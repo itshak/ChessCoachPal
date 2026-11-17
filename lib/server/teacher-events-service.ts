@@ -56,10 +56,21 @@ async function saveEvent(db:Db,teacherId:string,id:string|null,input:TeacherEven
   }
   if(!data||typeof data!=="object"||Array.isArray(data))
     throw failure(500,"DATABASE_ERROR","Event transaction returned invalid data");
-  return data as Record<string,any>;
+  // The RPC uses the same canonical event row as the regular events table.
+  // Cast only the documented result shape, never a blanket `any` dictionary.
+  return data as {
+    id:string;title:string;description:string;location:string;
+    starts_at:string;ends_at:string|null;send_reminder:boolean;
+    reminder_sent_at:string|null;created_at:string;updated_at:string;
+  };
 }
 export async function teacherEventsList(db:Db,teacherId:string){
- const all:Record<string,any>[]=[];
+ const all:Array<{
+   id:string;title:string;description:string;location:string;
+   starts_at:string;ends_at:string|null;created_at:string;updated_at:string;
+   event_students:{id:string}[]|null;
+   event_rsvps:{status:RsvpStatus}[]|null;
+ }>=[];
  const size=500,maxRows=20000;
  for(let offset=0;;offset+=size){
    const {data,error}=await db.from("events").select(`

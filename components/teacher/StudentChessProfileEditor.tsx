@@ -1,5 +1,6 @@
 "use client";
 import {useCallback,useEffect,useState} from "react";
+import {useTranslations,useLocale} from "next-intl";
 import {useRouter} from "next/navigation";
 import {Card} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
@@ -19,6 +20,7 @@ type Props={
 };
 export function StudentChessProfileEditor(props:Props){
  const router=useRouter();
+ const t=useTranslations("students"),locale=useLocale();
  const [aliases,setAliases]=useState(props.initialAliases.join(", "));
  const [strength,setStrength]=useState(props.initialStrength?.toString()??"");
  const [lichess,setLichess]=useState(props.initialLichessUsername??"");
@@ -61,61 +63,61 @@ export function StudentChessProfileEditor(props:Props){
      });
      if(!res.ok){
        const data=await res.json().catch(()=>null);
-       setError(data?.error??"Unable to save chess profile");return;
+       setError(data?.error??t("saveProfileError"));return;
      }
      await loadHistory();router.refresh();
-   }catch{setError("Unable to save chess profile");}
+   }catch{setError(t("saveProfileError"));}
    finally{setBusy(false);}
  }
  const show=(v:unknown)=>v==null?"—":typeof v==="string"?v:JSON.stringify(v);
  return <Card padding="sm" className="mb-6">
    <form onSubmit={save} className="space-y-3">
      <div>
-       <h2 className="font-semibold">Chess profile</h2>
-       <p className="text-xs text-muted">Ratings and goals are entered by the teacher, not verified against chess platforms. Edits are recorded in history.</p>
+       <h2 className="font-semibold">{t("chessProfile")}</h2>
+       <p className="text-xs text-muted">{t("chessProfileCaution")}</p>
      </div>
      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-       <label className="text-sm">Name aliases (comma-separated, Hebrew or English)
+       <label className="text-sm">{t("aliasesProfile")}
          <input className={field} value={aliases} onChange={e=>setAliases(e.target.value)}
-           maxLength={2400} placeholder="Short name, English spelling"/>
+           maxLength={2400} placeholder={t("aliasesPlaceholder")}/>
        </label>
-       <label className="text-sm">Teacher-assessed strength (1–10)
+       <label className="text-sm">{t("teacherStrength")}
          <select className={field} value={strength} onChange={e=>setStrength(e.target.value)}>
-           <option value="">Not assessed</option>
+           <option value="">{t("notAssessed")}</option>
            {Array.from({length:10},(_,i)=><option key={i+1} value={i+1}>{i+1}</option>)}
          </select>
        </label>
-       <label className="text-sm">Lichess username
+       <label className="text-sm">{t("lichessUsername")}
          <input className={field} value={lichess} onChange={e=>setLichess(e.target.value)} maxLength={30}/>
        </label>
-       <label className="text-sm">Chess.com username
+       <label className="text-sm">{t("chesscomUsername")}
          <input className={field} value={chesscom} onChange={e=>setChesscom(e.target.value)} maxLength={30}/>
        </label>
-       <label className="text-sm">Lichess rating (teacher-recorded, general)
+       <label className="text-sm">{t("lichessRating")}
          <input type="number" className={field} value={lichessRating}
            onChange={e=>setLichessRating(e.target.value)} min={100} max={4000}/>
        </label>
-       <label className="text-sm">Chess.com rating (teacher-recorded, general)
+       <label className="text-sm">{t("chesscomRating")}
          <input type="number" className={field} value={chesscomRating}
            onChange={e=>setChesscomRating(e.target.value)} min={100} max={4000}/>
        </label>
      </div>
-     <label className="text-sm block">Teaching goals
+     <label className="text-sm block">{t("teachingGoals")}
        <textarea className={field} rows={3} maxLength={5000} value={goals}
          onChange={e=>setGoals(e.target.value)}
-         placeholder="Goals, priorities and planned chess topics"/>
+         placeholder={t("goalsPlaceholder")}/>
      </label>
      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
        {(["lichess","chesscom"] as const).map(provider=>
          <fieldset key={provider} className="border border-border rounded-lg p-3">
            <legend className="text-sm font-semibold">
-             {provider==="lichess"?"Lichess":"Chess.com"} ratings by time control
+             {provider==="lichess"?"Lichess":"Chess.com"} {t("ratingsByControl")}
            </legend>
            <div className="grid grid-cols-2 gap-2">
              {controls.map(control=>
-               <label key={control} className="text-xs capitalize">{control}
+               <label key={control} className="text-xs capitalize">{t(control)}
                  <input type="number" min={100} max={4000} className={field}
-                   aria-label={`${provider} ${control} rating`}
+                   aria-label={t("ratingAria",{provider,control:t(control)})}
                    value={ratings[provider]?.[control]??""}
                    onChange={e=>updateRating(provider,control,e.target.value)}/>
                </label>)}
@@ -123,14 +125,14 @@ export function StudentChessProfileEditor(props:Props){
          </fieldset>)}
      </div>
      {error&&<p role="alert" className="text-sm text-error">{error}</p>}
-     <Button type="submit" disabled={busy}>{busy?"Saving…":"Save chess profile"}</Button>
+     <Button type="submit" disabled={busy}>{busy?t("adding"):t("saveProfile")}</Button>
    </form>
    <div className="mt-4 border-t border-border pt-3">
-     <h3 className="text-sm font-semibold mb-2">Chess profile change history</h3>
-     {history.length===0?<p className="text-xs text-muted">No rating, strength or goal changes recorded yet.</p>:
-       <ol className="space-y-2 max-h-64 overflow-y-auto" aria-label="Chess profile change history">
+     <h3 className="text-sm font-semibold mb-2">{t("historyProfile")}</h3>
+     {history.length===0?<p className="text-xs text-muted">{t("noHistoryProfile")}</p>:
+       <ol className="space-y-2 max-h-64 overflow-y-auto" aria-label={t("historyProfile")}>
          {history.map(item=><li key={item.id} className="text-xs text-muted">
-           <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time>
+           <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(locale)}</time>
            {" · "}<strong>{item.field_name.replaceAll("_"," ")}</strong>
            {": "}{show(item.previous_value)}{" → "}{show(item.next_value)}
          </li>)}

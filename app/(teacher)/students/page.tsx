@@ -1,4 +1,5 @@
 import Link from "next/link";
+import {getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { AddStudentForm } from "@/components/teacher/AddStudentForm";
@@ -12,7 +13,9 @@ import {
   persistDemotionIfNeeded,
 } from "@/lib/server/entitlements";
 
-export const metadata = { title: "Students" };
+export async function generateMetadata(){
+  const t=await getTranslations("students");return {title:t("title")};
+}
 
 interface StudentListRow {
   id: string;
@@ -30,6 +33,7 @@ export default async function StudentsPage({
 }: {
   searchParams: Promise<{ show?: string }>;
 }) {
+  const t=await getTranslations("students");
   const supabase = await createClient();
   const {
     data: { user },
@@ -57,10 +61,10 @@ export default async function StudentsPage({
       ? query.not("archived_at", "is", null)
       : query.is("archived_at", null);
     const { data, error } = await query.range(offset, offset + pageSize - 1);
-    if (error) { rosterError = "Student roster could not be loaded."; break; }
+    if (error) { rosterError = t("rosterLoadFailed"); break; }
     const chunk = (data ?? []) as unknown as StudentListRow[];
     if (students.length + chunk.length > maxRows) {
-      rosterError = "Student roster is too large for this view. Use an export.";
+      rosterError = t("rosterTooLarge");
       break;
     }
     students.push(...chunk);
@@ -70,10 +74,10 @@ export default async function StudentsPage({
     const {data,error} = await supabase.from("guardians")
       .select("id,name,family_name").eq("teacher_id",user.id)
       .order("name").order("id").range(offset,offset+pageSize-1);
-    if(error){rosterError="Family options could not be loaded.";break;}
+    if(error){rosterError=t("familiesLoadFailed");break;}
     const chunk=data??[];
     if(guardians.length+chunk.length>maxRows){
-      rosterError="Family roster is too large for this view. Use an export.";
+      rosterError=t("familiesTooLarge");
       break;
     }
     guardians.push(...chunk);
@@ -103,7 +107,7 @@ export default async function StudentsPage({
         limitBanner = (
           <HostedLimitBanner
             monthlyPriceCents={entitlement.monthlyPriceCents}
-            message={`Free plan allows ${entitlement.limits.maxStudents} active students. Archive one, upgrade to Pro, or export and self-host.`}
+            message={t("freeLimit",{count:entitlement.limits.maxStudents})}
           />
         );
       }
@@ -113,22 +117,21 @@ export default async function StudentsPage({
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Students</h1>
+        <h1 className="text-2xl font-bold">{t("title")}</h1>
         <p className="text-muted text-sm mt-1">
-          Select a student to review chess skills, learning observations,
-          attendance, lesson notes and family information.
+          {t("intro")}
         </p>
         <p className="text-xs text-muted mt-2">
           {showArchived ? (
             <Link href="/students" className="text-primary font-semibold">
-              Show active
+              {t("showActive")}
             </Link>
           ) : (
             <Link
               href="/students?show=archived"
               className="text-primary font-semibold"
             >
-              Show archived
+              {t("showArchived")}
             </Link>
           )}
         </p>
@@ -137,20 +140,20 @@ export default async function StudentsPage({
       {limitBanner}
       {rosterError && <p role="alert" className="mb-4 text-sm text-error">{rosterError}</p>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="min-w-0 lg:col-span-2">
           {rosterError ? null : !students.length ? (
             <Card className="text-center text-muted py-12">
               <div className="text-4xl mb-3">👋</div>
               <p className="text-lg">
-                {showArchived ? "No archived students" : "No students yet"}
+                {showArchived ? t("noArchived") : t("noStudents")}
               </p>
               {!showArchived && (
-                <p className="text-sm">Add your first student using the form.</p>
+                <p className="text-sm">{t("addFirst")}</p>
               )}
             </Card>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-3">
               {students.map((student) => {
                 const age =
                   student.birthdate != null
@@ -162,7 +165,7 @@ export default async function StudentsPage({
                 const familyLine = guardianRow
                   ? familyDisplayName(guardianRow)
                   : student.parent_contact || null;
-                const subtitle = [familyLine, age !== null ? `age ${age}` : null]
+                const subtitle = [familyLine, age !== null ? t("age",{age}) : null]
                   .filter(Boolean)
                   .join(" · ");
 
@@ -170,29 +173,32 @@ export default async function StudentsPage({
                   <Link
                     key={student.id}
                     href={`/students/${student.id}`}
-                    className="block"
+                    className="block min-w-0"
                   >
                     <Card
                       padding="sm"
-                      className="hover:border-primary/40 transition-colors cursor-pointer"
+                      className="min-w-0 hover:border-primary/40 transition-colors cursor-pointer"
                     >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-semibold text-lg">
-                            {student.name}
+                      <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                        <div className="min-w-0 flex-1">
+                          <div className="min-w-0 font-semibold text-lg break-words [overflow-wrap:anywhere]">
+                            <bdi dir="auto">{student.name}</bdi>
                             {student.archived_at && (
-                              <span className="ml-2 text-xs font-normal text-muted">
-                                Archived
+                              <span className="ms-2 text-xs font-normal text-muted">
+                                {t("archivedTag")}
                               </span>
                             )}
                           </div>
                           {subtitle && (
-                            <div className="text-sm text-muted">{subtitle}</div>
+                            <div className="min-w-0 text-sm text-muted break-words [overflow-wrap:anywhere]">
+                              <bdi dir="auto">{subtitle}</bdi>
+                            </div>
                           )}
                         </div>
-                        <div className="text-right text-sm text-muted">
-                          {student.level ? student.level : "Chess learner"}
-                        </div>                      </div>
+                        <div className="min-w-0 max-w-full text-end text-sm text-muted break-words [overflow-wrap:anywhere]">
+                          <bdi dir="auto">{student.level ? student.level : t("learner")}</bdi>
+                        </div>
+                      </div>
                     </Card>
                   </Link>
                 );
@@ -203,7 +209,7 @@ export default async function StudentsPage({
 
         <div>
           <Card>
-            <h2 className="font-semibold mb-3">Add Student</h2>
+            <h2 className="font-semibold mb-3">{t("addButton")}</h2>
             <AddStudentForm guardians={guardianOptions} />
           </Card>
         </div>

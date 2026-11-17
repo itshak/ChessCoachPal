@@ -129,3 +129,23 @@ should receive it via GOTRUE_SMTP_PASS. Check sender activation and test
 STARTTLS delivery before enabling email verification. The current beta
 registration flow deliberately auto-confirms accounts and requires a
 separate invitation-protected confirmation implementation before changing it.
+
+### v0.1.7 multilingual Auth SMTP mail (existing installation)
+
+The existing `auth` service keeps its private `AUTH_SMTP_*` secrets. Its six
+`GOTRUE_MAILER_TEMPLATES_*` URLs use `http://app:3000/auth-email-templates`
+by default on the internal Compose network. After deploying, check that Auth
+can fetch the templates from `app` and that an **approved synthetic invitation**
+in local/staging Mailpit renders the requested English, Hebrew or Russian HTML
+rather than GoTrue's fallback. Do not send a real customer's test invitation.
+
+The separate application `EMAIL_PROVIDER=smtp` path now MIME-encodes localized
+subjects and HTML. No SMTP credentials are committed and no existing user email
+or authorization is changed by switching interface language.
+
+New release migration `20261117231554_family_communication_locale` upgrades
+existing family rows *in place*; null locale defaults to English. The
+`migrate` service applies new entries once and must finish successfully before
+`app` starts. Preserve the persistent `db-data`, `db-config` and Storage
+volumes. A failed migration is a rollback/repair stop, not permission to reset
+production data.

@@ -1,4 +1,5 @@
 "use client";
+import {useTranslations} from "next-intl";
 
 import {
   createContext,
@@ -41,6 +42,7 @@ type PendingConfirm = {
 };
 
 export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
+  const t=useTranslations("dialogCommon");
   const [pending, setPending] = useState<PendingConfirm | null>(null);
 
   const confirm = useCallback((options: ConfirmOptions) => {
@@ -84,7 +86,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
           <button
             type="button"
             className="absolute inset-0 bg-black/50 border-0 cursor-default"
-            aria-label="Cancel"
+            aria-label={t("cancel")}
             onClick={() => close(false)}
           />
           <div
@@ -95,7 +97,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
             className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-surface shadow-xl p-5 space-y-4"
           >
             <h2 id="confirm-dialog-title" className="text-base font-semibold">
-              {options.title ?? "Are you sure?"}
+              {options.title??t("areYouSure")}
             </h2>
             <p
               id="confirm-dialog-message"
@@ -110,14 +112,14 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
                 onClick={() => close(false)}
                 autoFocus
               >
-                {options.cancelLabel ?? "Cancel"}
+                {options.cancelLabel??t("cancel")}
               </Button>
               <Button
                 variant={options.variant === "danger" ? "error" : "primary"}
                 size="sm"
                 onClick={() => close(true)}
               >
-                {options.confirmLabel ?? "Confirm"}
+                {options.confirmLabel??t("confirm")}
               </Button>
             </div>
           </div>

@@ -95,3 +95,52 @@ test("PARITY:PARITY-invoice-pdf-multipage-private-export preserves 150 line item
   await admin.auth.admin.deleteUser(foreignTeacherId);
  }
 });
+
+test("PARITY: Hebrew and Russian recipient preferences select the SAME valid private invoice PDF via website and MCP",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+   });
+ const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+   });
+ expect((await db.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
+ const teacherId=(await db.auth.getUser()).data.user!.id;
+ for(const locale of ["he","ru"] as const){
+  const family=await admin.from("guardians").insert({
+   teacher_id:teacherId,name:"יוסף Петров "+randomUUID(),
+   preferred_locale:locale,email:"locale-pdf-"+randomUUID()+"@example.com",
+   portal_token:randomUUID(),
+  }).select("id").single();
+  expect(family.error).toBeNull();
+  const id=family.data!.id;
+  const invoice=await admin.from("invoices").insert({
+   teacher_id:teacherId,guardian_id:id,period_start:"2055-01-01",
+   period_end:"2055-01-31",currency:"ILS",status:"draft",
+   subtotal_cents:12345,notes:"הערה Русский notes",
+  }).select("id").single();
+  expect(invoice.error).toBeNull();
+  expect((await admin.from("invoice_items").insert({
+   invoice_id:invoice.data!.id,kind:"lesson",session_id:null,student_id:null,
+   description:"שיעור chess Иван — lesson",quantity:1,
+   unit_cents:12345,amount_cents:12345,sort_order:0,
+  })).error).toBeNull();
+  const invoiceId=invoice.data!.id as string;
+  const website=await page.request.get("/api/billing/invoices/"+invoiceId+"/pdf");
+  expect(website.status(),await website.text()).toBe(200);
+  const webBytes=await website.body();
+  const webPdf=await PDFDocument.load(webBytes);
+  expect(webPdf.getPageCount()).toBe(1);
+  expect(webBytes.toString("latin1")).not.toContain(family.data!.id);
+  const viaModel=await call("ccp_billing_invoice_pdf",{
+   invoiceId,confirmed:true,
+  });
+  expect(viaModel.error).toBeUndefined();
+  const mcpBytes=Buffer.from(viaModel.data.base64,"base64");
+  expect(mcpBytes.subarray(0,5).toString()).toBe("%PDF-");
+  expect((await PDFDocument.load(mcpBytes)).getPageCount()).toBe(webPdf.getPageCount());
+  expect(mcpBytes.length).toBeLessThanOrEqual(512*1024);
+ }
+});

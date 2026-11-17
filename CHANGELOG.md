@@ -6,6 +6,23 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 _Changes for the next release go here._
 
+## [0.1.7] - 2026-11-18
+
+### Added
+- Full English, Hebrew (RTL) and Russian interface localization with persisted teacher language, localized navigation, login/account/billing/student/event/coaching screens, accessibility labels, keyboard-friendly selector, cross-tab sync, and language-aware web/MCP report output.
+- Family-level communication language independent of the teacher UI, including event invitations, reminders, approved notes/cancellations, invoice-preview/send emails and Unicode invoice PDFs with properly rendered Hebrew/Russian/Latin names, mixed-script handling, numbers and QR instructions.
+- Localized GoTrue Auth invitation, registration confirmation, password reset, magic link, email change and verification-code templates for existing private-beta SMTP integration. SMTP MIME subject/display name/HTML are encoded safely for Hebrew and Russian. Signed Auth URLs and the private-beta code/verified-email checks remain unchanged.
+- Language support for the v0.1.6 historical date-list import and full-data CSV export; English/Hebrew/Russian template and import regression checks preserve exact source records and consent.
+
+### Changed
+- Add a forward-only teacher preferred-locale database migration for existing installations; preserve teacher-owned records. The family locale migration is also additive.
+- Preserve every post-v0.1.2 improvement on current main (v0.1.6), its 195 MCP tools, full-data CSV features, historical attendance evidence and canonical migrations while integrating the multilingual branch; no compatibility shims or destructive resets.
+- Forward-only, owner-scoped live database upgrade for optional guardian communication language; authentic teacher profile changes can mirror display language into Auth mail template metadata without exposing credentials.
+
+### Verification
+- Full TypeScript, lint, production build, 2,410 matching EN/HE/RU translated message keys, strict website/MCP parity across 76 business routes and 37 canonical cases, Unicode/RTL PDF and local SMTP/Auth template unit tests; fresh-install database, browser E2E, Compose, encrypted backup/restore and published-release deployment remain GitHub Actions gates.
+
+
 ## [0.1.6] - 2026-11-17
 
 ### Added

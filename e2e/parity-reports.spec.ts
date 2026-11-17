@@ -4,6 +4,8 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 import {reportCsv,reportText} from "../lib/coaching-report";
 
 type Tool=(name:string,args:Record<string,unknown>)=>Promise<{
+  // The MCP fixture deliberately exercises multiple heterogeneous tool payloads.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?:any;error?:{code:string;message:string};
 }>;
 async function fixture(callTool:Tool,page:import("@playwright/test").Page,date:string){
@@ -44,12 +46,6 @@ async function fixture(callTool:Tool,page:import("@playwright/test").Page,date:s
  }
  return {workplaceId,participants,sessionId};
 }
-const read=async(page:import("@playwright/test").Page,wp:string,day:string)=>{
- const r=await page.request.get("/api/coaching/report?"+
-   new URLSearchParams({workplaceId:wp,from:day,to:day}));
- expect(r.status(),await r.text()).toBe(200);
- return await r.json();
-};
 test("PARITY:PARITY-reports-workplace-summary uses same timezone-local calculation",async({page,request})=>{
  const callTool=await delegatedTool(page,request),day="2042-03-04";
  const {workplaceId}=await fixture(callTool,page,day);
@@ -67,6 +63,53 @@ test("PARITY:PARITY-reports-workplace-summary uses same timezone-local calculati
  expect(site.report.sessions).toBe(1);
  expect(site.report.teachingMinutes).toBe(60);
  expect(site.report.participants).toBe(3);
+});
+
+test("requested en/he/ru human presentation matches MCP JSON and safe exports byte-for-byte",async({page,request})=>{
+ const callTool=await delegatedTool(page,request),day="2042-03-10";
+ const {workplaceId}=await fixture(callTool,page,day);
+ let canonicalReport:unknown;
+ for(const outputLocale of ["en","he","ru"] as const){
+   const params=new URLSearchParams({workplaceId,from:day,to:day,outputLocale});
+   const response=await page.request.get("/api/coaching/report?"+params);
+   expect(response.status(),await response.text()).toBe(200);
+   const site=await response.json();
+   const mcp=await callTool("ccp_reports_workplace_summary",{
+     workplaceId,from:day,to:day,outputLocale,format:"json"
+   });
+   expect(mcp.error).toBeUndefined();
+   expect(mcp.data).toEqual(site);
+   expect(site.presentation.outputLocale).toBe(outputLocale);
+   expect(site.presentation.direction).toBe(outputLocale==="he"?"rtl":"ltr");
+   expect(site.report.locale).toBe("he");
+   expect(site.report.sessions).toBe(1);
+   expect(site.report.teachingMinutes).toBe(60);
+   expect(site.report.participants).toBe(3);
+   if(canonicalReport)expect(site.report).toEqual(canonicalReport);
+   canonicalReport=site.report;
+   const csv=await callTool("ccp_reports_workplace_summary",{
+     workplaceId,from:day,to:day,outputLocale,format:"csv"
+   });
+   const txt=await callTool("ccp_reports_workplace_summary",{
+     workplaceId,from:day,to:day,outputLocale,format:"text"
+   });
+   expect(csv.error).toBeUndefined();
+   expect(txt.error).toBeUndefined();
+   expect(csv.data.presentation).toEqual(site.presentation);
+   expect(txt.data.presentation).toEqual(site.presentation);
+   expect(csv.data.export).toBe(reportCsv(site.report,outputLocale));
+   expect(txt.data.export).toBe(reportText(site.report,outputLocale));
+   expect(csv.data.export).toMatch(/^\uFEFF/);
+   expect(csv.data.export).not.toContain("Report pupil");
+ }
+ const badWeb=await page.request.get("/api/coaching/report?"+new URLSearchParams({
+   workplaceId,from:day,to:day,outputLocale:"zz"
+ }));
+ expect(badWeb.status()).toBe(400);
+ const badMcp=await callTool("ccp_reports_workplace_summary",{
+   workplaceId,from:day,to:day,outputLocale:"zz"
+ });
+ expect(badMcp.error?.code).toBe("VALIDATION_ERROR");
 });
 
 test("PARITY:PARITY-reports-group-teacher-minutes counts one teacher hour",async({page,request})=>{
@@ -121,7 +164,7 @@ test("PARITY:PARITY-reports-csv-text export exactly the browser JSON calculation
  expect(txt.data.report).toEqual(site.report);
  expect(csv.data.export).toBe(reportCsv(site.report));
  expect(txt.data.export).toBe(reportText(site.report));
- expect(csv.data.export).toContain("Teaching minutes");
+ expect(csv.data.export).toContain("דקות הוראה");
  expect(csv.data.export).not.toContain("Report pupil");
 });
 
@@ -201,7 +244,7 @@ test("PARITY:PARITY-reports-hebrew-timezone-csv-safety honors local midnight and
  expect(csv.error).toBeUndefined();
  expect(csv.data.report).toEqual(site.report);
  expect(csv.data.export).toBe(reportCsv(site.report));
- expect(csv.data.export).toMatch(/^\uFEFF"Metric","Value"/);
+ expect(csv.data.export).toMatch(/^\uFEFF"מדד","ערך"/);
  expect(csv.data.export).not.toContain("=HYPERLINK");
  expect(csv.data.export).not.toContain("רבקה כהן");
 });

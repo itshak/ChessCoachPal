@@ -1,4 +1,7 @@
-import type { Metadata } from "next";
+import type {Metadata} from "next";
+import {getLocale,getTranslations} from "next-intl/server";
+import {useTranslations} from "next-intl";
+import type {AppLocale} from "@/i18n/locales";
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getPolicy } from "@/lib/server/scheduling";
@@ -15,6 +18,7 @@ import {
 import type { RsvpStatus } from "@/lib/supabase/types";
 import { Card } from "@/components/ui/card";
 import { BrandMark } from "@/components/brand/BrandMark";
+import {LanguageSwitcher} from "@/components/locale/LanguageSwitcher";
 import { familyDisplayName } from "@/lib/guardians";
 import {
   formatCalendarDate,
@@ -33,7 +37,9 @@ import { PortalEventRsvp } from "@/components/portal/PortalEventRsvp";
 import { PortalPolicyBanner } from "@/components/portal/PortalPolicyBanner";
 import { StudioPoliciesSection } from "@/components/portal/StudioPoliciesSection";
 
-export const metadata: Metadata = { title: "Family Portal" };
+export async function generateMetadata():Promise<Metadata>{
+  const t=await getTranslations("portal");return {title:t("title")};
+}
 
 type PortalAttendanceStatus =
   "present"|"late"|"absent"|"excused"|"student_cancelled"|"teacher_cancelled";
@@ -61,12 +67,15 @@ function PortalLessonCard({
   timezone,
   token,
   windowHours,
+  locale,
 }: {
   lesson: PortalLesson;
   timezone: string;
   token: string;
   windowHours: number;
+  locale: AppLocale;
 }) {
+  const t=useTranslations("portal");
   const status = oneToOne(lesson.attendance)?.status;
   const cancelled = status === "teacher_cancelled" || status === "student_cancelled";
   const upcoming = lessonIsUpcoming(lesson, status, cancelled);
@@ -76,17 +85,21 @@ function PortalLessonCard({
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <div className={`font-medium ${cancelled ? "line-through text-muted" : ""}`}>
-            {formatLessonDate(lesson.starts_at, timezone)} ·{" "}
-            {formatLessonTime(lesson.starts_at, timezone)}
+            {locale==="en"?formatLessonDate(lesson.starts_at,timezone):
+              new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeZone:timezone})
+                .format(new Date(lesson.starts_at))} ·{" "}
+            {locale==="en"?formatLessonTime(lesson.starts_at,timezone):
+              new Intl.DateTimeFormat(locale,{timeStyle:"short",timeZone:timezone})
+                .format(new Date(lesson.starts_at))}
           </div>
           <div className="text-xs text-muted">
-            {lesson.duration_minutes} min
-            {lesson.makeup_for_session_id && " · make-up"}
+            {t("shortMinutes",{count:lesson.duration_minutes})}
+            {lesson.makeup_for_session_id && " · "+t("makeup")}
           </div>
         </div>
         {cancelled && status && (
           <span className="text-xs text-error font-medium">
-            {status==="student_cancelled"?"Student cancelled":"Teacher cancelled"}
+            {status==="student_cancelled"?t("cancelledStudent"):t("cancelledTeacher")}
           </span>
         )}
         {upcoming && (
@@ -108,6 +121,7 @@ export default async function PortalPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
+  const t=await getTranslations("portal"),locale=await getLocale();
   const supabase = createServiceClient();
 
   const { data: guardian } = await supabase
@@ -309,12 +323,13 @@ export default async function PortalPage({
   return (
     <div className="min-h-screen bg-background">
       <header className="bg-surface border-b border-border">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-2">
+        <div className="max-w-3xl mx-auto px-4 min-h-14 py-2 flex flex-wrap items-center gap-2">
           <BrandMark size={28} className="h-7 w-7" />
           <span className="text-lg font-bold text-primary tracking-tight">
             {policy.studio_name || "ChessCoachPal"}
           </span>
-          <span className="text-muted text-sm ml-2">Family Portal</span>
+          <span className="text-muted text-sm ms-2">{t("title")}</span>
+          <div className="ms-auto"><LanguageSwitcher compact /></div>
         </div>
       </header>
 
@@ -327,32 +342,27 @@ export default async function PortalPage({
         )}
         <div>
           <h1 className="text-2xl font-bold">
-            Welcome, {familyDisplayName(guardian)}
+            {t("welcome",{name:familyDisplayName(guardian)})}
           </h1>
           <p className="text-muted text-sm mt-1">
-            Lesson schedule and teaching notes for your family. No
-            login needed; keep this link private.
+            {t("intro")}
           </p>
         </div>
 
         {/* Events */}
         {portalEvents.length > 0 && (
           <section>
-            <h2 className="text-lg font-semibold mb-3">Events</h2>
+            <h2 className="text-lg font-semibold mb-3">{t("events")}</h2>
             <div className="space-y-2">
               {portalEvents.map((event) => (
                 <Card key={event.id} padding="sm">
-                  <div className="font-medium">{event.title}</div>
+                  <div className="font-medium"><bdi dir="auto">{event.title}</bdi></div>
                   <div className="text-sm text-muted mt-0.5">
-                    {formatEventWhen(
-                      event.starts_at,
-                      event.ends_at,
-                      policy.timezone
-                    )}
+                    {formatEventWhen(event.starts_at,event.ends_at,policy.timezone,locale)}
                   </div>
                   {event.location?.trim() && (
                     <div className="text-xs text-muted mt-0.5">
-                      {event.location.trim()}
+                      <bdi dir="auto">{event.location.trim()}</bdi>
                     </div>
                   )}
                   {event.performers.length > 0 && (
@@ -367,7 +377,7 @@ export default async function PortalPage({
                     </ul>
                   )}
                   {event.description?.trim() && (
-                    <p className="text-xs text-muted mt-2 whitespace-pre-wrap">
+                    <p className="text-xs text-muted mt-2 whitespace-pre-wrap" dir="auto">
                       {event.description.trim()}
                     </p>
                   )}
@@ -389,17 +399,17 @@ export default async function PortalPage({
         {/* Upcoming lessons */}
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">Upcoming Lessons</h2>
+            <h2 className="text-lg font-semibold">{t("upcoming")}</h2>
             <a
               href={calendarPath}
               download
               className="inline-flex items-center justify-center font-semibold bg-surface border border-border text-foreground hover:border-primary/50 px-3 py-1.5 text-xs rounded-lg transition-colors"
             >
-              Download Calendar Events
+              {t("calendarDownload")}
             </a>
           </div>
           {lessons.length === 0 ? (
-            <Card className="text-center text-muted">No lessons scheduled.</Card>
+            <Card className="text-center text-muted">{t("noneLessons")}</Card>
           ) : students.length > 1 ? (
             <div className="space-y-5">
               {students.map((student) => {
@@ -410,7 +420,7 @@ export default async function PortalPage({
                 return (
                   <div key={student.id}>
                     <h3 className="text-sm font-semibold text-muted uppercase tracking-wide mb-2">
-                      {student.name}
+                      <bdi dir="auto">{student.name}</bdi>
                     </h3>
                     <div className="space-y-2">
                       {studentLessons.map((lesson) => (
@@ -420,6 +430,7 @@ export default async function PortalPage({
                           timezone={policy.timezone}
                           token={token}
                           windowHours={policy.cancellation_window_hours}
+                          locale={locale}
                         />
                       ))}
                     </div>
@@ -436,22 +447,21 @@ export default async function PortalPage({
                   timezone={policy.timezone}
                   token={token}
                   windowHours={policy.cancellation_window_hours}
+                  locale={locale}
                 />
               ))}
             </div>
           )}
           <p className="text-xs text-muted mt-2">
-            The download gives you an .ics file to import into Google Calendar,
-            Apple Calendar, or Outlook. Most calendar apps can also subscribe to
-            the same link so lessons stay up to date automatically.
+            {t("calendarHelp")}
           </p>
         </section>
 
         {/* Lesson notes from the teacher */}
         <section>
-          <h2 className="text-lg font-semibold mb-3">Notes from the Teacher</h2>
+          <h2 className="text-lg font-semibold mb-3">{t("teacherNotes")}</h2>
           {sharedNotes.length === 0 ? (
-            <Card className="text-center text-muted">No notes shared yet.</Card>
+            <Card className="text-center text-muted">{t("noneNotes")}</Card>
           ) : (
             <div className="space-y-2">
               {sharedNotes.map((note) => (
@@ -464,7 +474,7 @@ export default async function PortalPage({
                         )}`
                       : ""}
                   </div>
-                  <p className="text-sm whitespace-pre-wrap">{note.body}</p>
+                  <p className="text-sm whitespace-pre-wrap" dir="auto">{note.body}</p>
                 </Card>
               ))}
             </div>
@@ -473,7 +483,7 @@ export default async function PortalPage({
 
         {creditPackages.length > 0 && (
           <section>
-            <h2 className="text-lg font-semibold mb-3">Prepaid Lessons</h2>
+            <h2 className="text-lg font-semibold mb-3">{t("prepaid")}</h2>
             <div className="space-y-2">
               {creditPackages.map((pkg) => (
                 <Card key={pkg.id} padding="sm">
@@ -482,20 +492,23 @@ export default async function PortalPage({
                       <div className="font-medium">
                         {students.length > 1 &&
                           `${nameById.get(pkg.studentId) ?? "Student"} · `}
-                        {describeCreditPackage(pkg.credits, pkg.durationMinutes)}
+                        {locale==="en"?describeCreditPackage(pkg.credits,pkg.durationMinutes):
+                          t("creditPackage",{count:pkg.credits,minutes:pkg.durationMinutes})}
                       </div>
                       <div className="text-xs text-muted">
                         {pkg.expiresOn
-                          ? `Use by ${formatCalendarDate(pkg.expiresOn)}`
-                          : "No expiry"}
+                          ? t("creditExpiry",{date:locale==="en"?formatCalendarDate(pkg.expiresOn):
+                              new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeZone:"UTC"})
+                                .format(new Date(pkg.expiresOn+"T12:00:00Z"))})
+                          : t("noExpiry")}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <div className="text-lg font-bold tabular-nums">
                         {pkg.balance.remainingCredits}
                         <span className="text-sm font-normal text-muted">
                           {" "}
-                          / {pkg.credits} left
+                          {t("creditsTotal",{count:pkg.credits})}
                         </span>
                       </div>
                     </div>
@@ -504,17 +517,16 @@ export default async function PortalPage({
               ))}
             </div>
             <p className="text-xs text-muted mt-2">
-              Each lesson of that length uses one credit. Once they run out,
-              lessons are invoiced as usual.
+              {t("creditHelp")}
             </p>
           </section>
         )}
 
         {/* Invoices */}
         <section>
-          <h2 className="text-lg font-semibold mb-3">Invoices</h2>
+          <h2 className="text-lg font-semibold mb-3">{t("invoices")}</h2>
           {invoices.length === 0 ? (
-            <Card className="text-center text-muted">No invoices yet.</Card>
+            <Card className="text-center text-muted">{t("noneInvoices")}</Card>
           ) : (
             <div className="space-y-2">
               {invoices.map((inv) => (
@@ -525,7 +537,7 @@ export default async function PortalPage({
                         {inv.period_start} → {inv.period_end}
                       </div>
                       <div className="text-xs text-muted capitalize">
-                        {inv.status} · {formatMoney(inv.subtotal_cents, inv.currency)}
+                        {inv.status==="paid"?t("paid"):t("sent")} · {formatMoney(inv.subtotal_cents, inv.currency,locale)}
                       </div>
                       {(() => {
                         if (inv.status !== "sent") return null;
@@ -538,8 +550,8 @@ export default async function PortalPage({
                         if (paidCents <= 0 || balanceCents <= 0) return null;
                         return (
                           <div className="text-xs font-semibold">
-                            {formatMoney(paidCents, inv.currency)} paid ·{" "}
-                            {formatMoney(balanceCents, inv.currency)} due
+                            {t("paidAmount",{amount:formatMoney(paidCents, inv.currency,locale)})} ·{" "}
+                            {t("dueAmount",{amount:formatMoney(balanceCents, inv.currency,locale)})}
                           </div>
                         );
                       })()}
@@ -552,19 +564,19 @@ export default async function PortalPage({
                           rel="noreferrer"
                           className="inline-flex items-center justify-center font-semibold bg-primary text-white hover:bg-primary-dark px-4 py-2 text-sm rounded-lg transition-colors"
                         >
-                          Pay online
+                          {t("payOnline")}
                         </a>
                       )}
                       {inv.status === "sent" &&
                         !inv.stripe_checkout_url &&
                         policy.payment_instructions.trim() && (
-                          <p className="text-xs text-muted whitespace-pre-wrap text-right max-w-xs">
+                          <p className="text-xs text-muted whitespace-pre-wrap text-end max-w-xs">
                             {policy.payment_instructions}
                           </p>
                         )}
                       {inv.status === "paid" && (
                         <span className="text-xs font-semibold text-primary">
-                          Paid
+                          {t("paid")}
                         </span>
                       )}
                     </div>
@@ -578,13 +590,13 @@ export default async function PortalPage({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={paymentQrCode}
-                alt="Payment QR code"
+                alt={t("paymentQr")}
                 className="h-36 w-36 shrink-0 rounded-lg border border-border bg-white object-contain p-1"
               />
               <div className="text-sm">
-                <div className="font-medium">Scan to pay</div>
+                <div className="font-medium">{t("scanToPay")}</div>
                 <p className="text-xs text-muted">
-                  Use your banking or payment app to scan this code.
+                  {t("scanHint")}
                 </p>
               </div>
             </Card>
@@ -598,11 +610,11 @@ export default async function PortalPage({
         {(policy.studio_info || policy.studio_website || policy.studio_contact) && (
           <section>
             <h2 className="text-lg font-semibold mb-3">
-              About {policy.studio_name || "the Studio"}
+              {t("about",{name:policy.studio_name||t("studioFallback")})}
             </h2>
             <Card padding="sm">
               {policy.studio_info && (
-                <p className="text-sm whitespace-pre-wrap mb-3">
+                <p className="text-sm whitespace-pre-wrap mb-3" dir="auto">
                   {policy.studio_info}
                 </p>
               )}
@@ -614,7 +626,7 @@ export default async function PortalPage({
                     rel="noreferrer"
                     className="text-primary font-medium hover:underline"
                   >
-                    Visit our website
+                    {t("visitWebsite")}
                   </a>
                 )}
                 {policy.studio_contact && (

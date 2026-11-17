@@ -25,6 +25,44 @@ describe("suggestColumnMapping", () => {
     expect(mapping.level).toBe("Level");
   });
 
+  it("maps localized Hebrew and Russian CSV template headers", () => {
+    const he=suggestColumnMapping(["שם התלמיד","שם ההורה","דוא״ל","טלפון","תאריך לידה","רמה"]);
+    expect(he).toMatchObject({student_name:"שם התלמיד",guardian_name:"שם ההורה",
+      email:"דוא״ל",phone:"טלפון",student_birthdate:"תאריך לידה",level:"רמה"});
+    const ru=suggestColumnMapping(["Имя ученика","Имя родителя","Эл. почта","Телефон","Дата рождения","Уровень"]);
+    expect(ru).toMatchObject({student_name:"Имя ученика",guardian_name:"Имя родителя",
+      email:"Эл. почта",phone:"Телефон",student_birthdate:"Дата рождения",level:"Уровень"});
+  });
+
+  it("never infers a student from parent/family column names in any supported language",()=>{
+    for(const columns of [
+      ["Parent Name","Family Name","Email"],
+      ["שם ההורה","שם המשפחה","דוא״ל"],
+      ["Имя родителя","Название семьи","Эл. почта"],
+    ]){
+      const mapping=suggestColumnMapping(columns);
+      expect(mapping.student_name).toBeUndefined();
+      expect(mapping.guardian_name).toBe(columns[0]);
+      expect(mapping.family_name).toBe(columns[1]);
+    }
+  });
+
+  it("prefers explicit student header over generic Name, but refuses ambiguous student identities",()=>{
+    const chosen=suggestColumnMapping(["Name","Student Name","Parent Name"]);
+    expect(chosen.student_name).toBe("Student Name");
+    expect(chosen.guardian_name).toBe("Parent Name");
+    expect(suggestColumnMapping(["Child Name","Student Name"]).student_name).toBeUndefined();
+    expect(suggestColumnMapping(["Student Name","Student Name"])
+      .student_name).toBeUndefined();
+  });
+
+  it("does not arbitrarily select one of multiple email or guardian contact columns",()=>{
+    const mapping=suggestColumnMapping(["Student Name","Email","Parent Email","Guardian Name","Parent Name"]);
+    expect(mapping.student_name).toBe("Student Name");
+    expect(mapping.email).toBeUndefined();
+    expect(mapping.guardian_name).toBeUndefined();
+  });
+
   it("maps a lone Name column to student_name", () => {
     const mapping = suggestColumnMapping(["Name", "Email"]);
     expect(mapping.student_name).toBe("Name");
@@ -62,6 +100,19 @@ describe("normalizeImportRows", () => {
       true
     );
   });
+  it("recognizes explicit Hebrew and Russian archive flags without guessing", () => {
+    const he=suggestColumnMapping(["שם התלמיד","בארכיון"]);
+    const ru=suggestColumnMapping(["Имя ученика","В архиве"]);
+    const a=normalizeImportRows([{"שם התלמיד":"תלמיד קודם","בארכיון":"כן"},
+       {"שם התלמיד":"תלמיד פעיל","בארכיון":"לא"}],he);
+    expect(a.rows.map(r=>r.archived)).toEqual([true,false]);
+    const b=normalizeImportRows([{"Имя ученика":"Бывший","В архиве":"в архиве"},
+      {"Имя ученика":"Текущий","В архиве":"нет"},
+      {"Имя ученика":"Неизвестный","В архиве":"может быть"}],ru);
+    expect(b.rows.map(r=>r.archived)).toEqual([true,false]);
+    expect(b.issues).toHaveLength(1);
+  });
+
   it("recognizes archived and active spreadsheet values and rejects unknown statuses", () => {
     const mapping = suggestColumnMapping(["Student Name", "Archived"]);
     expect(mapping.archived).toBe("Archived");

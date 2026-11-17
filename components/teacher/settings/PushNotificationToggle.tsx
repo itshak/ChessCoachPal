@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useCallback, useEffect, useState } from "react";
+import {useTranslations} from "next-intl";
 import { Button } from "@/components/ui/button";
 import { isIosBrowser } from "@/lib/pwa";
 import {
@@ -41,6 +44,8 @@ async function activeRegistration(): Promise<ServiceWorkerRegistration | null> {
  * teacher forgets to press it.
  */
 export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boolean }) {
+  const t=useTranslations("pushNotifications");
+  const toUserError=useLocalizedApiError();
   const [support, setSupport] = useState<PushSupport | null>(null);
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -108,14 +113,14 @@ export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boo
           ok: false,
           conflict: false,
           error:
-            "Notifications need the app's service worker, which only runs in a production build. Reload the page and try again.",
+            t("workerRequired"),
         };
       }
       if (!publicKey) {
         return {
           ok: false,
           conflict: false,
-          error: "Notifications are not configured on this server.",
+          error: t("unconfigured"),
         };
       }
       const sub = await reg.pushManager.subscribe({
@@ -138,7 +143,7 @@ export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boo
         return {
           ok: false,
           conflict: res.status === 409,
-          error: data.error ?? "Could not save this device.",
+          error: toUserError(data, t("saveError")),
         };
       }
       return { ok: true, conflict: false };
@@ -149,8 +154,8 @@ export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boo
       if (permission !== "granted") {
         setMessage(
           permission === "denied"
-            ? "Notifications are blocked for this site — re-enable them in your browser settings."
-            : "Permission was not granted."
+            ? t("permissionDenied")
+            : t("permissionMissing")
         );
         return;
       }
@@ -162,7 +167,7 @@ export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boo
         attempt = await subscribeOnce();
       }
       if (!attempt.ok) {
-        setMessage(attempt.error ?? "Could not save this device.");
+        setMessage(toUserError(attempt,t("saveError")));
         return;
       }
 
@@ -173,26 +178,26 @@ export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boo
       const { data } = await createClient().auth.getSession();
       const ownerId = data.session?.user.id;
       if (ownerId) rememberPushOwner(ownerId);
-      setMessage("Notifications are on for this device.");
+      setMessage(t("enabled"));
     } catch {
-      setMessage("Could not enable notifications on this device.");
+      setMessage(t("enableFailed"));
     } finally {
       setBusy(false);
       await refresh().catch(() => {});
     }
-  }, [refresh, publicKey]);
+  }, [refresh, publicKey,t,toUserError]);
 
   const disable = useCallback(async () => {
     setBusy(true);
     setMessage(null);
     try {
       await releasePushSubscription();
-      setMessage("Notifications are off for this device.");
+      setMessage(t("disabled"));
     } finally {
       setBusy(false);
       await refresh().catch(() => {});
     }
-  }, [refresh]);
+  }, [refresh,t]);
 
   // Hidden unless the SERVER has BOTH VAPID keys — pushConfigured is the server's
   // verdict, so a half-configured self-host cannot promise delivery it can never
@@ -207,13 +212,13 @@ export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boo
     <div className="border-t border-border pt-3 mt-1">
       <div className="flex items-start justify-between gap-3">
         <span className="text-sm">
-          <span className="font-medium">Push notifications on this device</span>
+          <span className="font-medium">{t("title")}</span>
           <span className="block text-xs text-muted">
             {support === "install-first"
-              ? "On iPhone and iPad, add ChessCoachPal to your Home Screen first — iOS only allows notifications in the installed app (iOS 16.4+)."
+              ? t("iosInstall")
               : support === "denied"
-                ? "Blocked in your browser settings for this site."
-                : "Alerts in your phone's notification tray, even when ChessCoachPal is closed."}
+                ? t("blocked")
+                : t("description")}
           </span>
         </span>
         <Button
@@ -225,7 +230,7 @@ export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boo
           aria-busy={busy}
           onClick={() => void (subscribed ? disable() : enable())}
         >
-          {busy ? "…" : subscribed ? "Turn off" : "Turn on"}
+          {busy ? "…" : subscribed ? t("turnOff") : t("turnOn")}
         </Button>
       </div>
       {message && <p className="text-xs text-muted mt-1">{message}</p>}

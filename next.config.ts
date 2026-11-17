@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -20,6 +21,8 @@ const nextConfig: NextConfig = {
   // A local `npm run build` now emits .next/standalone as well; nothing reads it
   // outside a container.
   output: process.env.VERCEL ? undefined : "standalone",
+  // Unicode invoice fonts must exist in Vercel functions and standalone images.
+  outputFileTracingIncludes: {"/*": ["./assets/fonts/*.ttf"]},
   turbopack: {
     root: projectRoot,
   },
@@ -34,4 +37,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default createNextIntlPlugin("./i18n/request.ts")(nextConfig);

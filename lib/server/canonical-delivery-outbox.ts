@@ -4,7 +4,8 @@ import {sendEmail,type SendEmailArgs} from "@/lib/email";
 import {getPolicy} from "@/lib/server/scheduling";
 import {familyEmailRecipients,familyGreetingNames,familyEmailBcc,
   type FamilyContact} from "@/lib/guardians";
-import {formatLessonDate,formatLessonTime} from "@/lib/schedule";
+import {localeDetails,isAppLocale,type AppLocale} from "@/i18n/locales";
+import {communicationCopy,familyCommunicationLocale} from "@/lib/server/communication-locales";
 
 type Db=SupabaseClient;
 type Kind="session_note_family"|"session_cancel_family"|"portal_cancel_teacher";
@@ -65,13 +66,14 @@ async function deliverOne(db:Db,row:OutboxRow,siteUrl:string):Promise<Delivery>{
  if(sessionError)throw new Error("Session ownership lookup failed");
  if(!session)return {outcome:"cancelled",failureCode:"session_removed"};
  const {data:teacher,error:teacherError}=await db.from("teachers")
-  .select("id,email,display_name").eq("id",row.teacher_id).maybeSingle();
+  .select("id,email,display_name,preferred_locale").eq("id",row.teacher_id).maybeSingle();
  if(teacherError)throw new Error("Teacher lookup failed");
  if(!teacher)return {outcome:"cancelled",failureCode:"teacher_removed"};
  const policy=await getPolicy(db,row.teacher_id);
  const studio=policy.studio_name||teacher.display_name||"ChessCoachPal Studio";
- const when=formatLessonDate(session.starts_at,policy.timezone,"long")+
-  " at "+formatLessonTime(session.starts_at,policy.timezone);
+ const sessionWhen=(locale:AppLocale)=>new Intl.DateTimeFormat(localeDetails[locale].intl,{
+   timeZone:policy.timezone,dateStyle:"full",timeStyle:"short"
+  }).format(new Date(session.starts_at));
  const providerKey="ccp-outbox-"+row.event_key;
 
  if(row.kind==="portal_cancel_teacher"){
@@ -79,14 +81,16 @@ async function deliverOne(db:Db,row:OutboxRow,siteUrl:string):Promise<Delivery>{
   const payload=row.payload;
   if(payload.sessionId!==row.session_id||payload.studentId!==row.student_id)
    return {outcome:"cancelled",failureCode:"invalid_payload"};
-  const subject="Chess lesson cancelled by a student";
-  const text="Student cancellation notice\n\n"+
-    "Student: "+String(payload.studentName??"Student")+"\n"+
-    "When: "+when+"\n"+
-    (payload.cancelReason?"Reason: "+String(payload.cancelReason).slice(0,1000)+"\n":"")+
-    "\nReview the attendance register in your ChessCoachPal schedule.";
+  const locale=isAppLocale(teacher.preferred_locale)?teacher.preferred_locale:"en";
+  const copy=communicationCopy[locale].outbox;
+  const subject=copy.studentCancelled;
+  const text=copy.studentCancelNotice+"\n\n"+
+    copy.student+": "+String(payload.studentName??copy.student)+"\n"+
+    copy.when+": "+sessionWhen(locale)+"\n"+
+    (payload.cancelReason?copy.reason+": "+String(payload.cancelReason).slice(0,1000)+"\n":"")+
+    "\n"+copy.reviewAttendance;
   return sendApprovedEmail({
-   to:teacher.email,subject,text,fromName:studio,
+   to:teacher.email,subject,text,locale,fromName:studio,
    idempotencyKey:providerKey,
   });
  }
@@ -104,7 +108,7 @@ async function deliverOne(db:Db,row:OutboxRow,siteUrl:string):Promise<Delivery>{
  if(studentError)throw new Error("Student lookup failed");
  if(!student?.guardian_id)return {outcome:"cancelled",failureCode:"no_family"};
  const {data:family,error:familyError}=await db.from("guardians")
-  .select("id,teacher_id,name,email,secondary_name,secondary_email,email_recipients,portal_token")
+  .select("id,teacher_id,name,email,secondary_name,secondary_email,email_recipients,preferred_locale,portal_token")
   .eq("id",student.guardian_id).eq("teacher_id",row.teacher_id).maybeSingle();
  if(familyError)throw new Error("Family lookup failed");
  if(!family)return {outcome:"cancelled",failureCode:"family_removed"};
@@ -114,6 +118,8 @@ async function deliverOne(db:Db,row:OutboxRow,siteUrl:string):Promise<Delivery>{
  const base=siteUrl.trim().replace(/\/$/,"");
  const portalUrl=base&&contacts.portal_token&&/^https:\/\//.test(base)
   ?base+"/portal/"+encodeURIComponent(contacts.portal_token):undefined;
+ const locale=familyCommunicationLocale(contacts);
+ const copy=communicationCopy[locale],when=sessionWhen(locale);
  let subject:string,text:string;
  if(row.kind==="session_note_family"){
   const requestedBody=row.payload.body;
@@ -131,11 +137,10 @@ async function deliverOne(db:Db,row:OutboxRow,siteUrl:string):Promise<Delivery>{
   if(noteError)throw new Error("Note sharing check failed");
   if(!note?.shared_with_guardian||note.body!==requestedBody)
    return {outcome:"cancelled",failureCode:"note_not_shared_anymore"};
-  subject="Chess lesson notes for "+student.name;
-  text="Hi "+familyGreetingNames(contacts)+",\n\n"+
-   "Here are the notes shared by "+studio+" for "+student.name+
-   "'s chess lesson on "+when+":\n\n"+requestedBody+"\n\n"+
-   "— "+studio+" (via ChessCoachPal)";
+  subject=copy.outbox.lessonNotes(student.name);
+  text=copy.event.greeting(familyGreetingNames(contacts,locale))+"\n\n"+
+   copy.outbox.lessonNotesIntro(studio,student.name,when)+"\n\n"+
+   requestedBody+"\n\n"+copy.event.signature(studio);
  }else if(row.kind==="session_cancel_family"){
   if(row.payload.sessionId!==row.session_id||
      row.payload.studentId!==row.student_id)
@@ -149,16 +154,16 @@ async function deliverOne(db:Db,row:OutboxRow,siteUrl:string):Promise<Delivery>{
   if(mark?.status!=="teacher_cancelled")
    return {outcome:"cancelled",failureCode:"cancellation_retracted"};
   const reason=String(row.payload.cancelReason??"").slice(0,1000);
-  subject="Chess lesson cancelled — "+student.name;
-  text="Hi "+familyGreetingNames(contacts)+",\n\n"+
-   studio+" cancelled "+student.name+"'s chess lesson on "+when+
-   (reason?"\n\nReason: "+reason:"")+
-   "\n\nPlease review your family portal for the updated schedule.\n\n— "+studio;
+  subject=copy.outbox.lessonCancelled(student.name);
+  text=copy.event.greeting(familyGreetingNames(contacts,locale))+"\n\n"+
+   copy.outbox.lessonCancelIntro(studio,student.name,when)+
+   (reason?"\n\n"+copy.outbox.reason+": "+reason:"")+
+   "\n\n"+copy.outbox.reviewPortal+"\n\n"+copy.event.signature(studio);
  }else{
   return {outcome:"cancelled",failureCode:"unsupported_intent"};
  }
  return sendApprovedEmail({
-  to:recipients,bcc:familyEmailBcc(policy),subject,text,
+  to:recipients,bcc:familyEmailBcc(policy),subject,text,locale,
   fromName:studio+" (via ChessCoachPal)",
   replyTo:teacher.email??undefined,portalUrl,
   idempotencyKey:providerKey,

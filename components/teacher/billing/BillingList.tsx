@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useRef, useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -31,6 +34,8 @@ export function GenerateInvoicesModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const t=useTranslations("billingList");
+  const toUserError=useLocalizedApiError();
   const [periodStart, setPeriodStart] = useState(defaultStart);
   const [periodEnd, setPeriodEnd] = useState(defaultEnd);
   const [busy, setBusy] = useState(false);
@@ -46,7 +51,7 @@ export function GenerateInvoicesModal({
 
   async function runPreview() {
     if (periodEnd < periodStart) {
-      setError("End date must be on or after the start date");
+      setError(t("invalidDates"));
       return;
     }
     setBusy(true);
@@ -61,7 +66,7 @@ export function GenerateInvoicesModal({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(data.error ?? "Preview failed");
+      setError(toUserError(data,t("previewFailed")));
       return;
     }
     setPreview({
@@ -85,13 +90,13 @@ export function GenerateInvoicesModal({
       });
     }catch{
       setBusy(false);
-      setError("Connection interrupted. Retry to recover the same invoice generation result.");
+      setError(t("connectionInterrupted"));
       return;
     }
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(data.error ?? "Failed to create invoices");
+      setError(toUserError(data,t("createFailed")));
       return;
     }
     onClose();
@@ -102,19 +107,19 @@ export function GenerateInvoicesModal({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
       <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto" padding="lg">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Generate invoices</h2>
+          <h2 className="text-lg font-semibold">{t("title")}</h2>
           <button
             onClick={onClose}
             className="text-muted hover:text-foreground text-sm cursor-pointer"
           >
-            Close
+            {t("close")}
           </button>
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-4">
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted mb-1">
-              From
+              {t("from")}
             </span>
             <input
               type="date"
@@ -125,7 +130,7 @@ export function GenerateInvoicesModal({
           </label>
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted mb-1">
-              To
+              {t("to")}
             </span>
             <input
               type="date"
@@ -138,7 +143,7 @@ export function GenerateInvoicesModal({
 
         <div className="flex gap-2 mb-4">
           <Button size="sm" onClick={runPreview} disabled={busy}>
-            {busy && !preview ? "Loading..." : "Preview"}
+            {busy&&!preview?t("loading"):t("preview")}
           </Button>
         </div>
 
@@ -148,40 +153,33 @@ export function GenerateInvoicesModal({
           <div className="space-y-3 mb-4">
             {preview.skippedAlreadyInvoiced > 0 && (
               <p className="text-xs text-muted bg-surface-dim rounded-lg px-3 py-2">
-                Skipping {preview.skippedAlreadyInvoiced} lesson
-                {preview.skippedAlreadyInvoiced === 1 ? "" : "s"} already on
-                another invoice (avoids double-billing). Void an invoice to
-                free its lessons, or use Regenerate on a draft to refresh it.
+                {t("alreadyInvoiced",{count:preview.skippedAlreadyInvoiced})}
               </p>
             )}
             {preview.creditsToUse > 0 && (
               <p className="text-xs text-muted bg-surface-dim rounded-lg px-3 py-2">
-                {preview.creditsToUse} lesson
-                {preview.creditsToUse === 1 ? "" : "s"} will use prepaid
-                credits instead of being invoiced.
+                {t("creditsUsed",{count:preview.creditsToUse})}
               </p>
             )}
             {preview.drafts.length === 0 && preview.creditsToUse > 0 ? (
               <>
                 <p className="text-sm text-muted">
-                  Nothing new to invoice. Save to record the credits used.
+                  {t("nothingButCredits")}
                 </p>
                 <Button size="sm" onClick={commit} disabled={busy}>
-                  {busy ? "Saving..." : "Use credits"}
+                  {busy?t("saving"):t("useCredits")}
                 </Button>
               </>
             ) : preview.drafts.length === 0 ? (
               <p className="text-sm text-muted">
                 {preview.skippedAlreadyInvoiced > 0
-                  ? "Nothing new to invoice. Everything billable in this period is already covered."
-                  : "No billable lessons in this period. Mark attendance first, or adjust billability in Studio."}
+                  ? t("nothingNew")
+                  : t("noBillable")}
               </p>
             ) : (
               <>
                 <p className="text-sm text-muted">
-                  {preview.drafts.length} famil
-                  {preview.drafts.length === 1 ? "y" : "ies"} ·{" "}
-                  {formatMoney(preview.totalCents, currency)} total
+                  {t("familiesAmount",{count:preview.drafts.length,amount:formatMoney(preview.totalCents,currency)})}
                 </p>
                 {preview.drafts.map((d) => (
                   <div
@@ -194,26 +192,23 @@ export function GenerateInvoicesModal({
                     </div>
                     {d.creditedLessonCount > 0 && (
                       <p className="text-xs text-muted mb-1">
-                        {d.creditedLessonCount} lesson
-                        {d.creditedLessonCount === 1 ? "" : "s"} paid by
-                        prepaid credits
+                        {t("familyCredits",{count:d.creditedLessonCount})}
                       </p>
                     )}
                     {d.missingRateCount > 0 && (
                       <p className="text-xs text-error mb-1">
-                        {d.missingRateCount} line
-                        {d.missingRateCount === 1 ? "" : "s"} missing a rate
+                        {t("missingRates",{count:d.missingRateCount})}
                       </p>
                     )}
                     <ul className="text-xs text-muted space-y-0.5">
                       {d.items.slice(0, 4).map((item, i) => (
                         <li key={i}>
                           {item.description}
-                          {item.missingRate ? " (no rate)" : ""}
+                          {item.missingRate?t("noRate"):""}
                         </li>
                       ))}
                       {d.items.length > 4 && (
-                        <li>+{d.items.length - 4} more</li>
+                        <li>{t("moreItems",{count:d.items.length-4})}</li>
                       )}
                     </ul>
                   </div>
@@ -223,7 +218,7 @@ export function GenerateInvoicesModal({
                   onClick={commit}
                   disabled={busy || preview.drafts.length === 0}
                 >
-                  {busy ? "Creating..." : "Create draft invoices"}
+                  {busy?t("creating"):t("createDrafts")}
                 </Button>
               </>
             )}
@@ -243,19 +238,20 @@ export function BillingListActions({
   defaultEnd: string;
   currency: string;
 }) {
+  const t=useTranslations("billingList");
   const [open, setOpen] = useState(false);
 
   return (
     <>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={() => setOpen(true)}>
-          Generate invoices
+          {t("title")}
         </Button>
         <a
           href="/api/billing/export"
           className="inline-flex items-center justify-center font-semibold bg-surface border border-border text-foreground hover:border-primary/50 px-3 py-1.5 text-sm rounded-lg transition-colors"
         >
-          Export payments CSV
+          {t("exportCsv")}
         </a>
       </div>
       {open && (
@@ -278,6 +274,7 @@ export function InvoiceStatusBadge({
   /** Sent invoice with some, but not all, of its total paid. */
   partiallyPaid?: boolean;
 }) {
+  const t=useTranslations("billingList");
   const styles: Record<string, string> = {
     draft: "bg-surface-dim text-muted",
     sent: "bg-primary/10 text-primary",
@@ -286,13 +283,14 @@ export function InvoiceStatusBadge({
     void: "bg-surface-dim text-error line-through",
   };
   const partial = partiallyPaid && status === "sent";
+  const statusLabel = partial?t("partial"):status==="draft"?t("draft"):status==="sent"?t("sent"):status==="paid"?t("paid"):status==="void"?t("void"):status;
   return (
     <span
       className={`inline-block px-2 py-0.5 rounded text-xs font-semibold capitalize ${
         styles[partial ? "partial" : status] ?? styles.draft
       }`}
     >
-      {partial ? "Partly paid" : status}
+      {statusLabel}
     </span>
   );
 }
@@ -320,7 +318,7 @@ export function InvoiceRowLink({
       className="flex items-center justify-between gap-3 py-3 px-1 border-b border-border last:border-0 hover:bg-surface-dim/50 transition-colors rounded"
     >
       <div className="min-w-0">
-        <div className="font-medium truncate">{familyName}</div>
+        <div className="font-medium truncate"><bdi dir="auto">{familyName}</bdi></div>
         <div className="text-xs text-muted">
           {periodStart} → {periodEnd}
         </div>

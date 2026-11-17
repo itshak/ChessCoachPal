@@ -1,8 +1,8 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
-import {delegatedTool} from "./helpers/delegated-mcp";
+import {delegatedTool, type TestMcpReply} from "./helpers/delegated-mcp";
 
-async function workplace(call:(name:string,args:Record<string,unknown>)=>Promise<any>){
+async function workplace(call:(name:string,args:Record<string,unknown>)=>Promise<TestMcpReply>){
  const made=await call("ccp_workplaces_create",{
   name:"Materials workplace "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),

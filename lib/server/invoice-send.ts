@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
 import { loadInvoicePdf } from "@/lib/server/invoice-pdf-data";
+import {familyCommunicationLocale} from "@/lib/server/communication-locales";
 import { isValidPaymentQrDataUrl } from "@/lib/payment-qr";
-import { formatMoney, summarizePayments } from "@/lib/billing";
+import {buildInvoiceEmailContent} from "@/lib/server/invoice-email-content";
+import { summarizePayments } from "@/lib/billing";
 import { createCheckoutSession, expireCheckoutSession } from "@/lib/payments";
 import {
   familyEmailRecipients,
@@ -57,7 +59,7 @@ export async function sendInvoice(
         return {
           ok: false,
           error:
-            "Could not build the invoice PDF. Try removing emoji from names or notes.",
+            "Could not build the invoice PDF; check the font resources and invoice content.",
         };
       case "db_error":
         return { ok: false, error: "Could not load the invoice" };
@@ -135,58 +137,25 @@ export async function sendInvoice(
     emailError =
       "No family email on file; invoice marked sent for the portal";
   } else {
-    const periodLabel = `${invoice.period_start} to ${invoice.period_end}`;
-    const studio = policy.studio_name || "your studio";
-    const total = formatMoney(invoice.subtotal_cents, invoice.currency);
-    const paid = formatMoney(paidCents, invoice.currency);
-    const balance = formatMoney(balanceCents, invoice.currency);
-    const balanceSummary = paidCents > 0
-      ? `Total: ${total}\nPaid: ${paid}\nBalance due: ${balance}`
-      : `Total due: ${balance}`;
-    const balanceHtml = paidCents > 0
-      ? `<p>Total: ${escapeHtml(total)}<br/>Paid: ${escapeHtml(paid)}<br/><strong>Balance due: ${escapeHtml(balance)}</strong></p>`
-      : `<p><strong>Total due: ${escapeHtml(balance)}</strong></p>`;
-    const greeting = familyGreetingNames(family);
-
-    const qrNote =
-      balanceCents > 0 && !checkoutUrl &&
-      policy.payment_provider === "manual" &&
-      isValidPaymentQrDataUrl(policy.payment_qr_code)
-        ? "A payment QR code is included on the attached invoice."
-        : "";
-
-    const payText = balanceCents === 0
-      ? "Payment received in full. No further payment is due."
-      : checkoutUrl
-      ? `Pay online: ${checkoutUrl}`
-      : policy.payment_instructions.trim()
-        ? `Payment instructions:\n${policy.payment_instructions.trim()}${qrNote ? `\n\n${qrNote}` : ""}`
-        : qrNote || "See your family portal for payment details.";
-
-    const payHtml = balanceCents === 0
-      ? "<p>Payment received in full. No further payment is due.</p>"
-      : checkoutUrl
-      ? `<p><a href="${escapeHtml(checkoutUrl)}">Pay online</a></p>`
-      : policy.payment_instructions.trim()
-        ? `<p><strong>Payment instructions</strong></p><p style="white-space:pre-wrap;">${escapeHtml(policy.payment_instructions.trim())}</p>${qrNote ? `<p>${qrNote}</p>` : ""}`
-        : `<p>${qrNote || "See your family portal for payment details."}</p>`;
-
-    const text = `Hi ${greeting},\n\nPlease find attached your invoice for ${periodLabel}.\n\n${balanceSummary}\n\n${payText}\n\n— ${studio} (sent via ChessCoachPal Studio)`;
-
-    const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.5;color:#222;">
-<p>Hi ${escapeHtml(greeting)},</p>
-<p>Please find attached your invoice for ${escapeHtml(periodLabel)}.</p>
-${balanceHtml}
-${payHtml}
-<p>— ${escapeHtml(studio)} (sent via ChessCoachPal Studio)</p>
-</div>`;
+    const locale=familyCommunicationLocale(family);
+    const content=buildInvoiceEmailContent({
+      locale,familyGreetingName:familyGreetingNames(family,locale),
+      studioName:policy.studio_name,periodStart:invoice.period_start,
+      periodEnd:invoice.period_end,currency:invoice.currency,
+      subtotalCents:invoice.subtotal_cents,paidCents,balanceCents,
+      paymentInstructions:policy.payment_instructions,
+      paymentProvider:policy.payment_provider,
+      hasPaymentQrCode:isValidPaymentQrDataUrl(policy.payment_qr_code),
+      checkoutUrl,
+    });
 
     const result = await sendEmail({
       to: recipients,
       bcc: familyEmailBcc(policy),
-      subject: `Invoice for ${periodLabel} - ${studio}`,
-      text,
-      html,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+      locale,
       fromName: policy.studio_name
         ? `${policy.studio_name} (via ChessCoachPal)`
         : undefined,
@@ -207,12 +176,4 @@ ${payHtml}
   }
 
   return { ok: true, emailed, emailError, checkoutUrl, checkoutError };
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }

@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type {AppLocale} from "@/i18n/locales";
+import type {ReportPresentation} from "@/lib/coaching-report";
 import {
-  summarizeTeaching, validateReportRange,
+  summarizeTeaching, validateReportRange, reportPresentation,
   type ReportAttendance, type ReportSession, type ReportSummary,
 } from "@/lib/coaching-report";
 
@@ -14,8 +16,9 @@ export class ReportServiceError extends Error {
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function workplaceTeachingReport(
-  db: SupabaseClient, teacherId: string, workplaceId: string, from: string, to: string
-): Promise<{ workplace: { id: string; name: string }; report: ReportSummary }> {
+  db: SupabaseClient, teacherId: string, workplaceId: string, from: string, to: string,
+  outputLocale?:AppLocale
+): Promise<{ workplace: { id: string; name: string }; report: ReportSummary; presentation: ReportPresentation }> {
   if (!uuid.test(workplaceId))
     throw new ReportServiceError(400, "Invalid workplace");
   try {
@@ -75,9 +78,12 @@ export async function workplaceTeachingReport(
         if ((query.data?.length ?? 0) < 500) break;
       }
     }
+    const report=summarizeTeaching(
+      sessions,attendance,from,to,workplace.timezone,workplace.locale
+    );
     return {
-      workplace: { id: workplace.id, name: workplace.name },
-      report: summarizeTeaching(sessions, attendance, from, to, workplace.timezone, workplace.locale),
+      workplace:{id:workplace.id,name:workplace.name},
+      report,presentation:reportPresentation(report,outputLocale)
     };
   } catch (error) {
     if (error instanceof ReportServiceError) throw error;

@@ -75,6 +75,22 @@ describe("withPortalFooter", () => {
     expect(out.html).not.toContain("<b>loud</b>");
   });
 
+  it("uses an explicitly selected Hebrew recipient language with RTL HTML",()=>{
+    const out=withPortalFooter({...base,locale:"he",text:"שלום <user>",
+      portalUrl:"https://app.test/portal/abc"});
+    expect(out.text).toContain("הפורטל המשפחתי");
+    expect(out.text).not.toContain("Your family portal");
+    expect(out.html).toContain('lang="he" dir="rtl"');
+    expect(out.html).toContain("שלום &lt;user&gt;");
+  });
+
+  it("uses Russian recipient language and LTR HTML independently",()=>{
+    const out=withPortalFooter({...base,locale:"ru",portalUrl:"https://app.test/portal/abc"});
+    expect(out.text).toContain("Семейный портал");
+    expect(out.html).toContain('lang="ru" dir="ltr"');
+    expect(out.html).toContain("Семейный портал");
+  });
+
   it("preserves an existing HTML body and appends the footer to it", () => {
     const out = withPortalFooter({
       ...base,

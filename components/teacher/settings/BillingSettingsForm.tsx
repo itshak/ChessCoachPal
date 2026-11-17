@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useMemo, useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,6 +26,8 @@ function durationInputsFromPolicy(
 
 export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
   const router = useRouter();
+  const t=useTranslations("ratesSettings");
+  const toUserError=useLocalizedApiError();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -60,14 +65,14 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
     const rateCents =
       defaultRate.trim() === "" ? null : dollarsToCents(defaultRate);
     if (defaultRate.trim() !== "" && rateCents === null) {
-      setMessage("Enter a valid default rate (e.g. 45.00)");
+      setMessage(t("rateError"));
       setTimeout(() => setMessage(null), 2500);
       return;
     }
     const travelFeeCents =
       travelFee.trim() === "" ? null : dollarsToCents(travelFee);
     if (travelFee.trim() !== "" && travelFeeCents === null) {
-      setMessage("Enter a valid travel fee (e.g. 10.00)");
+      setMessage(t("travelFeeError"));
       setTimeout(() => setMessage(null), 2500);
       return;
     }
@@ -78,7 +83,7 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
       if (!raw) continue;
       const cents = dollarsToCents(raw);
       if (cents === null) {
-        setMessage(`Enter a valid rate for ${minutes} min lessons`);
+        setMessage(t("durationRateError",{minutes}));
         setTimeout(() => setMessage(null), 2500);
         return;
       }
@@ -108,31 +113,30 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
     });
     setBusy(false);
     if (res.ok) {
-      setMessage("Saved");
+      setMessage(t("saved"));
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error ?? "Failed to save");
+      setMessage(toUserError(data, t("saveError")));
     }
     setTimeout(() => setMessage(null), 2500);
   }
 
   return (
     <Card padding="sm">
-      <h2 className="font-semibold mb-3">Rates</h2>
+      <h2 className="font-semibold mb-3">{t("title")}</h2>
       <form onSubmit={handleSave} className="flex flex-col gap-4">
         <div className="rounded-lg border border-border bg-background/60 px-3 py-2.5 text-sm">
-          <p className="font-medium">Hourly rate (pro-rated)</p>
+          <p className="font-medium">{t("hourly")}</p>
           <p className="text-xs text-muted mt-0.5">
-            The default rate scales with lesson length (e.g. $60/hr → $30 for 30
-            min, $45 for 45 min). Prefer this for most studios.
+            {t("hourlyHint")}
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted mb-1">
-              Default rate / hour
+              {t("defaultRate")}
             </span>
             <div className="flex items-center gap-2">
               <span className="text-muted text-sm">$</span>
@@ -146,12 +150,12 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
               />
             </div>
             <span className="block text-xs text-muted mt-1">
-              Fallback when a slot or student has no rate. Leave blank for none.
+              {t("fallback")}
             </span>
           </label>
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted mb-1">
-              Currency
+              {t("currency")}
             </span>
             <input
               type="text"
@@ -165,18 +169,16 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
 
         <fieldset className="space-y-2">
           <legend className="text-xs font-semibold text-muted mb-1">
-            Custom rates by lesson length (optional)
+            {t("customRates")}
           </legend>
           <p className="text-xs text-muted">
-            When a length has its own amount, that lesson is charged flat instead
-            of the studio hourly default. Edit which lengths appear under Studio →
-            time blocks.
+            {t("customRatesHint")}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {durationOptions.map((minutes) => (
               <label key={minutes} className="text-sm">
                 <span className="block text-xs font-semibold text-muted mb-1">
-                  {minutes} min lesson
+                  {t("minuteLesson",{minutes})}
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="text-muted text-sm">$</span>
@@ -190,7 +192,7 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
                         [String(minutes)]: e.target.value,
                       }))
                     }
-                    placeholder="Use hourly"
+                    placeholder={t("useHourly")}
                     className={`${inputClass} w-full`}
                   />
                 </div>
@@ -201,7 +203,7 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
 
         <label className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Travel fee (home visits)
+            {t("travelFee")}
           </span>
           <div className="flex items-center gap-2 max-w-xs">
             <span className="text-muted text-sm">$</span>
@@ -215,16 +217,13 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
             />
           </div>
           <span className="block text-xs text-muted mt-1">
-            Flat add-on only for lessons marked as a home visit (not applied
-            retroactively). Slot changes affect upcoming lessons; override any
-            single occurrence from the schedule. Per-student override on their
-            page. Leave blank or 0 for none.
+            {t("travelHint")}
           </span>
         </label>
 
         <label className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Generate invoices (default dates)
+            {t("invoiceDates")}
           </span>
           <select
             value={cadence}
@@ -232,19 +231,18 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
             className={`${inputClass} w-full`}
           >
             <option value="monthly">
-              Previous calendar month (typical monthly billing)
+              {t("previousMonth")}
             </option>
-            <option value="manual">Month-to-date (1st through today)</option>
+            <option value="manual">{t("monthToDate")}</option>
           </select>
           <span className="block text-xs text-muted mt-1">
-            Only pre-fills the Generate dialog. You can always change the
-            range before creating drafts.
+            {t("dateHint")}
           </span>
         </label>
 
         <fieldset>
           <legend className="text-xs font-semibold text-muted mb-1">
-            What appears on invoices?
+            {t("invoiceItems")}
           </legend>
           <div className="space-y-1.5 text-sm">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -253,7 +251,7 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
                 checked={billAttended}
                 onChange={(e) => setBillAttended(e.target.checked)}
               />
-              Attended lessons
+              {t("attended")}
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -261,7 +259,7 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
                 checked={billNoShow}
                 onChange={(e) => setBillNoShow(e.target.checked)}
               />
-              No-shows
+              {t("noShows")}
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -269,7 +267,7 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
                 checked={billLateCancel}
                 onChange={(e) => setBillLateCancel(e.target.checked)}
               />
-              Late student cancellations
+              {t("lateCancel")}
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -277,7 +275,7 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
                 checked={billTimelyCancel}
                 onChange={(e) => setBillTimelyCancel(e.target.checked)}
               />
-              Timely student cancellations
+              {t("timelyCancel")}
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -285,7 +283,7 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
                 checked={billTeacherCancel}
                 onChange={(e) => setBillTeacherCancel(e.target.checked)}
               />
-              Teacher cancellations
+              {t("teacherCancel")}
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -293,14 +291,14 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
                 checked={billMakeup}
                 onChange={(e) => setBillMakeup(e.target.checked)}
               />
-              Make-up lessons (redeeming a credit)
+              {t("makeup")}
             </label>
           </div>
         </fieldset>
 
         <div className="flex items-center gap-3">
           <Button type="submit" size="sm" disabled={busy}>
-            {busy ? "Saving..." : "Save Rates"}
+            {busy?t("saving"):t("save")}
           </Button>
           {message && <span className="text-xs text-muted">{message}</span>}
         </div>

@@ -606,6 +606,8 @@ CREATE TABLE IF NOT EXISTS "public"."guardians" (
     "secondary_phone" "text",
     "email_recipients" "text" DEFAULT 'primary'::"text" NOT NULL,
     "family_name" "text",
+    "preferred_locale" "text",
+    CONSTRAINT "guardians_preferred_locale_check" CHECK (("preferred_locale" IS NULL OR "preferred_locale" = ANY (ARRAY['en'::"text", 'he'::"text", 'ru'::"text"]))),
     CONSTRAINT "guardians_email_recipients_check" CHECK (("email_recipients" = ANY (ARRAY['primary'::"text", 'secondary'::"text", 'both'::"text"])))
 );
 
@@ -1053,8 +1055,10 @@ CREATE TABLE IF NOT EXISTS "public"."teachers" (
     "founding_number" integer,
     "stripe_cancel_at" timestamp with time zone,
     "avatar_url" "text",
+    "preferred_locale" "text" DEFAULT 'en'::"text" NOT NULL,
     "onboarding_tour_completed_at" timestamp with time zone,
     "calendar_token" "text" DEFAULT "rtrim"("translate"("encode"("extensions"."gen_random_bytes"(16), 'base64'::"text"), '+/'::"text", '-_'::"text"), '='::"text") NOT NULL,
+    CONSTRAINT "teachers_preferred_locale_check" CHECK (("preferred_locale" = ANY (ARRAY['en'::"text", 'he'::"text", 'ru'::"text"]))),
     CONSTRAINT "teachers_hosted_plan_check" CHECK (("hosted_plan" = ANY (ARRAY['free'::"text", 'trial'::"text", 'pro'::"text", 'founding'::"text", 'gifted'::"text"])))
 );
 
@@ -2535,6 +2539,7 @@ GRANT UPDATE("display_name") ON TABLE "public"."teachers" TO "authenticated";
 
 
 GRANT UPDATE("avatar_url") ON TABLE "public"."teachers" TO "authenticated";
+GRANT UPDATE("preferred_locale") ON TABLE "public"."teachers" TO "authenticated";
 
 
 
@@ -3448,7 +3453,7 @@ UPDATE public.teachers SET hosted_enforced=true
 -- The existing migration grants only safe teacher-profile columns to authenticated.
 -- Restate that security invariant so raw PostgREST requests cannot falsify caps.
 REVOKE UPDATE ON TABLE public.teachers FROM PUBLIC,anon,authenticated;
-GRANT UPDATE(email,display_name,avatar_url,onboarding_tour_completed_at,calendar_token)
+GRANT UPDATE(email,display_name,avatar_url,preferred_locale,onboarding_tour_completed_at,calendar_token)
  ON TABLE public.teachers TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.ccp_student_capacity_guard()
@@ -5347,7 +5352,7 @@ BEGIN
        SELECT 1 FROM jsonb_each(p_fields) AS f
        WHERE f.key NOT IN (
          'name','family_name','email','phone','secondary_name',
-         'secondary_email','secondary_phone','email_recipients'
+         'secondary_email','secondary_phone','email_recipients','preferred_locale'
        ) OR (f.value<>'null'::jsonb AND jsonb_typeof(f.value)<>'string')
      )
      OR jsonb_typeof(p_new_students) IS DISTINCT FROM 'array'
@@ -5363,6 +5368,10 @@ BEGIN
   IF p_fields ? 'email_recipients' AND
      p_fields->>'email_recipients' NOT IN ('primary','secondary','both') THEN
     RAISE EXCEPTION 'GUARDIAN_INVALID_RECIPIENTS' USING ERRCODE='22023';
+  END IF;
+  IF p_fields ? 'preferred_locale' AND (p_fields->>'preferred_locale') IS NOT NULL AND
+     (p_fields->>'preferred_locale') NOT IN ('en','he','ru') THEN
+    RAISE EXCEPTION 'GUARDIAN_INVALID_LOCALE' USING ERRCODE='22023';
   END IF;
   -- Serializes concurrent family changes and student capacity reservations.
   -- No elevated UPDATE rights on teachers are required here. Existing
@@ -5392,7 +5401,7 @@ BEGIN
     END IF;
     INSERT INTO public.guardians (
       teacher_id,name,family_name,email,phone,secondary_name,
-      secondary_email,secondary_phone,email_recipients,portal_token
+      secondary_email,secondary_phone,email_recipients,preferred_locale,portal_token
     ) VALUES (
       v_teacher,v_name,nullif(btrim(p_fields->>'family_name'),''),
       nullif(btrim(p_fields->>'email'),''),
@@ -5401,6 +5410,7 @@ BEGIN
       nullif(btrim(p_fields->>'secondary_email'),''),
       nullif(btrim(p_fields->>'secondary_phone'),''),
       coalesce(p_fields->>'email_recipients','primary'),
+      p_fields->>'preferred_locale',
       encode(extensions.gen_random_bytes(24),'hex')
     ) RETURNING * INTO v_guardian;
   ELSE
@@ -5424,7 +5434,9 @@ BEGIN
       secondary_phone=CASE WHEN p_fields ? 'secondary_phone'
         THEN nullif(btrim(p_fields->>'secondary_phone'),'') ELSE secondary_phone END,
       email_recipients=CASE WHEN p_fields ? 'email_recipients'
-        THEN p_fields->>'email_recipients' ELSE email_recipients END
+        THEN p_fields->>'email_recipients' ELSE email_recipients END,
+      preferred_locale=CASE WHEN p_fields ? 'preferred_locale'
+        THEN p_fields->>'preferred_locale' ELSE preferred_locale END
     WHERE id=v_guardian.id AND teacher_id=v_teacher
     RETURNING * INTO v_guardian;
   END IF;

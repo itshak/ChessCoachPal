@@ -1,10 +1,14 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { EmailRecipients } from "@/lib/supabase/types";
+import type {AppLocale} from "@/i18n/locales";
 
 export interface FamilyGuardian {
   id: string;
@@ -16,6 +20,7 @@ export interface FamilyGuardian {
   secondary_email: string | null;
   secondary_phone: string | null;
   email_recipients: EmailRecipients;
+  preferred_locale: AppLocale | null;
   portal_token: string;
 }
 
@@ -52,6 +57,8 @@ export function FamilyForm({
   embedded?: boolean;
 }) {
   const router = useRouter();
+  const t=useTranslations("families");
+  const toUserError=useLocalizedApiError();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +72,7 @@ export function FamilyForm({
   const [emailRecipients, setEmailRecipients] = useState<EmailRecipients>(
     guardian?.email_recipients ?? "primary"
   );
+  const [communicationLocale, setCommunicationLocale] = useState<AppLocale | "">(guardian?.preferred_locale ?? "");
   const [showSecondary, setShowSecondary] = useState(
     !!(guardian?.secondary_name || guardian?.secondary_email || guardian?.secondary_phone)
   );
@@ -102,6 +110,7 @@ export function FamilyForm({
       secondaryEmail: secondaryEmail.trim(),
       secondaryPhone: secondaryPhone.trim(),
       emailRecipients,
+      preferredLocale: communicationLocale || null,
       studentIds: memberIds,
       newStudents: newStudents
         .filter((s) => s.name.trim())
@@ -121,7 +130,7 @@ export function FamilyForm({
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Something went wrong");
+      setError(toUserError(data, t("error")));
       setBusy(false);
     } else {
       setBusy(false);
@@ -134,15 +143,15 @@ export function FamilyForm({
 
   const form = (
     <form onSubmit={handleSave} className="flex flex-col gap-3">
-      <h3 className="font-semibold">{guardian ? "Edit Family" : "New Family"}</h3>
+      <h3 className="font-semibold">{guardian ? t("editFamily") : t("newFamily")}</h3>
 
         <div>
           <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
-            Family Name
+            {t("familyName")}
           </p>
           <input
             type="text"
-            placeholder="e.g. The Parker Family (optional; defaults to the guardian's name)"
+            placeholder={t("familyNameHint")}
             value={familyName}
             onChange={(e) => setFamilyName(e.target.value)}
             className={inputClass}
@@ -151,12 +160,12 @@ export function FamilyForm({
 
         <div>
           <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
-            Guardian
+            {t("guardian")}
           </p>
           <div className="flex flex-col gap-3">
             <input
               type="text"
-              placeholder="Guardian name (e.g. Jordan Parent)"
+              placeholder={t("guardianName")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className={inputClass}
@@ -165,14 +174,14 @@ export function FamilyForm({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
                 type="email"
-                placeholder="Email (for lesson notes & invoices)"
+                placeholder={t("guardianEmail")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className={inputClass}
               />
               <input
                 type="tel"
-                placeholder="Phone (optional)"
+                placeholder={t("phone")}
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className={inputClass}
@@ -185,7 +194,7 @@ export function FamilyForm({
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-muted uppercase tracking-wide">
-                Second Guardian
+                {t("secondGuardian")}
               </p>
               <button
                 type="button"
@@ -198,13 +207,13 @@ export function FamilyForm({
                 }}
                 className="text-xs text-muted hover:text-error underline cursor-pointer"
               >
-                Remove
+                {t("remove")}
               </button>
             </div>
             <div className="flex flex-col gap-3">
               <input
                 type="text"
-                placeholder="Second guardian name"
+                placeholder={t("secondName")}
                 value={secondaryName}
                 onChange={(e) => setSecondaryName(e.target.value)}
                 className={inputClass}
@@ -212,14 +221,14 @@ export function FamilyForm({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <input
                   type="email"
-                  placeholder="Email (optional)"
+                  placeholder={t("optionalEmail")}
                   value={secondaryEmail}
                   onChange={(e) => setSecondaryEmail(e.target.value)}
                   className={inputClass}
                 />
                 <input
                   type="tel"
-                  placeholder="Phone (optional)"
+                  placeholder={t("phone")}
                   value={secondaryPhone}
                   onChange={(e) => setSecondaryPhone(e.target.value)}
                   className={inputClass}
@@ -228,7 +237,7 @@ export function FamilyForm({
               {hasSecondaryEmail && (
                 <label className="text-sm flex flex-col gap-1">
                   <span className="text-xs font-semibold text-muted uppercase tracking-wide">
-                    Who gets family emails?
+                    {t("emailRouting")}
                   </span>
                   <select
                     value={emailRecipients}
@@ -237,9 +246,9 @@ export function FamilyForm({
                     }
                     className={inputClass}
                   >
-                    <option value="primary">Only {name.trim() || "the first guardian"} (default)</option>
-                    <option value="secondary">Only {secondaryName.trim() || "the second guardian"}</option>
-                    <option value="both">Always email both</option>
+                    <option value="primary">{t("recipientPrimary",{name:name.trim()||t("firstGuardian")})}</option>
+                    <option value="secondary">{t("recipientSecondary",{name:secondaryName.trim()||t("secondGuardianFallback")})}</option>
+                    <option value="both">{t("recipientBoth")}</option>
                   </select>
                 </label>
               )}
@@ -251,13 +260,24 @@ export function FamilyForm({
             onClick={() => setShowSecondary(true)}
             className="self-start text-sm text-primary hover:underline cursor-pointer"
           >
-            + Add second guardian
+            {t("addSecond")}
           </button>
         )}
 
+        <label className="text-sm flex flex-col gap-1">
+          <span className="text-xs font-semibold text-muted uppercase tracking-wide">{t("communicationLanguage")}</span>
+          <select value={communicationLocale} onChange={e=>setCommunicationLocale(e.target.value as AppLocale|"")} className={inputClass}>
+            <option value="">{t("communicationDefault")}</option>
+            <option value="en">{t("languageEnglish")}</option>
+            <option value="he">עברית</option>
+            <option value="ru">Русский</option>
+          </select>
+          <span className="text-xs text-muted">{t("communicationLanguageHint")}</span>
+        </label>
+
         <div>
           <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
-            Students in this family
+            {t("studentsFamily")}
           </p>
           {students.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
@@ -277,7 +297,7 @@ export function FamilyForm({
                     }`}
                     title={
                       inOtherFamily
-                        ? "Currently in another family; selecting moves them here"
+                        ? t("otherFamilyWarning")
                         : undefined
                     }
                   >
@@ -292,14 +312,14 @@ export function FamilyForm({
             <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center mb-2">
               <input
                 type="text"
-                placeholder="New student name"
+                placeholder={t("newStudentName")}
                 value={draft.name}
                 onChange={(e) => updateNewStudent(i, { name: e.target.value })}
                 className={inputClass}
               />
               <input
                 type="date"
-                title="Birthday (optional)"
+                title={t("birthday")}
                 value={draft.birthdate}
                 onChange={(e) => updateNewStudent(i, { birthdate: e.target.value })}
                 className={inputClass}
@@ -310,7 +330,7 @@ export function FamilyForm({
                   setNewStudents((drafts) => drafts.filter((_, j) => j !== i))
                 }
                 className="text-muted hover:text-error cursor-pointer text-lg leading-none px-1"
-                aria-label="Remove new student"
+                aria-label={t("removeStudent")}
               >
                 ×
               </button>
@@ -323,12 +343,11 @@ export function FamilyForm({
             }
             className="text-sm text-primary hover:underline cursor-pointer"
           >
-            + New student
+            {t("addStudent")}
           </button>
           {newStudents.length > 0 && (
             <p className="text-xs text-muted mt-1">
-              Birthday is optional. New students are created and linked to this
-              family when you save.
+              {t("newStudentHint")}
             </p>
           )}
         </div>
@@ -336,10 +355,10 @@ export function FamilyForm({
         {error && <p className="text-error text-xs">{error}</p>}
         <div className="flex gap-2">
           <Button type="submit" size="sm" disabled={busy}>
-            {busy ? "Saving..." : "Save Family"}
+            {busy ? t("saving") : t("saveFamily")}
           </Button>
           <Button type="button" size="sm" variant="secondary" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </Button>
         </div>
       </form>

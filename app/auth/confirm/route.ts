@@ -48,10 +48,7 @@ export async function GET(req: NextRequest) {
 
   if (!ok) {
     redirectTo.pathname = "/login";
-    redirectTo.searchParams.set(
-      "message",
-      "That link is invalid or has expired. Request a new one. (Password reset links must be opened in the same browser you requested them from.)"
-    );
+    redirectTo.searchParams.set("auth_notice","invalid");
     return NextResponse.redirect(redirectTo);
   }
 

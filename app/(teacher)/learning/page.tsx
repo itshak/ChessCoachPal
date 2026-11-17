@@ -1,3 +1,4 @@
+import {getTranslations} from "next-intl/server";
 import { LearningMaterialsCatalog } from "@/components/teacher/LearningMaterialsCatalog";
 import { TrainingHomeworkPanel } from "@/components/teacher/TrainingHomeworkPanel";
 import { ChessLearningPanel } from "@/components/teacher/ChessLearningPanel";
@@ -10,11 +11,16 @@ import { PuzzleSeriesPanel } from "@/components/teacher/PuzzleSeriesPanel";
 import { FenReviewPanel } from "@/components/teacher/FenReviewPanel";
 import {StudyPreferencesPanel} from "@/components/teacher/StudyPreferencesPanel";
 
-export const metadata = { title: "Training & materials" };
+export async function generateMetadata(){
+  const t=await getTranslations("nav");
+  return {title:t("learning")};
+}
 
-export default function LearningPage() {
-  return <main className="max-w-6xl mx-auto px-4 py-8">
+export default async function LearningPage() {
+  const t=await getTranslations("nav");
+  return <div className="max-w-6xl mx-auto px-4 py-8">
+    <h1 className="text-2xl font-bold mb-6">{t("learning")}</h1>
     <div className="space-y-8"><LearningMaterialsCatalog /><TrainingHomeworkPanel /><LichessConnectionPanel /><LichessStudyExplorer /><StudyPreferencesPanel />
       <StudyChapterEvidencePanel /><PuzzleSeriesPanel /><FenReviewPanel /><LichessPuzzlePublisher /><ChessLearningPanel /><MaterialHistoryPanel /></div>
-  </main>;
+  </div>;
 }

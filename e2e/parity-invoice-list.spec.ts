@@ -28,7 +28,10 @@ test("PARITY:PARITY-billing-invoice-list-detail reads owned totals and redacts c
  const invoiceId=invoice.data!.id as string;
  const browser=await page.request.get("/api/billing/invoices/"+invoiceId);
  expect(browser.status(),await browser.text()).toBe(200);
- const site=await browser.json() as Record<string,any>;
+ const site=await browser.json() as {
+   subtotal_cents:number;currency:string;
+   guardians:{email:string|null;portal_token:string|null};
+ };
  expect(site.subtotal_cents).toBe(18750);
  expect(site.currency).toBe("ILS");
  const detail=await call("ccp_billing_invoice_detail",{invoiceId});

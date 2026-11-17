@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +21,8 @@ export function TimezoneSettingsForm({
   embedded?: boolean;
 }) {
   const router = useRouter();
+  const t=useTranslations("timezoneForm");
+  const toUserError=useLocalizedApiError();
   const [value, setValue] = useState(timezone);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -34,11 +39,11 @@ export function TimezoneSettingsForm({
     });
     setBusy(false);
     if (res.ok) {
-      setMessage("Saved");
+      setMessage(t("saved"));
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error ?? "Failed to save");
+      setMessage(toUserError(data, t("saveFailed")));
     }
     setTimeout(() => setMessage(null), 2500);
   }
@@ -47,12 +52,12 @@ export function TimezoneSettingsForm({
     <form onSubmit={handleSave} className="flex flex-col gap-3">
       <label className="text-sm">
         <span className="block text-xs font-semibold text-muted mb-1">
-          Studio timezone
+          {t("studioTimezone")}
         </span>
         <select
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          className={`${inputClass} w-full`}
+          className={`${inputClass} w-full min-w-0 max-w-full`}
         >
           {options.map((tz) => (
             <option key={tz} value={tz}>
@@ -63,12 +68,12 @@ export function TimezoneSettingsForm({
       </label>
       {embedded && (
         <p className="text-xs text-muted -mt-1">
-          Schedule times, make-up windows, and lesson reminders use this zone.
+          {t("hint")}
         </p>
       )}
       <div className="flex items-center gap-3">
         <Button type="submit" size="sm" disabled={busy || value === timezone}>
-          {busy ? "Saving..." : "Save timezone"}
+          {busy?t("saving"):t("save")}
         </Button>
         {message && <span className="text-xs text-muted">{message}</span>}
       </div>
@@ -79,9 +84,9 @@ export function TimezoneSettingsForm({
 
   return (
     <Card padding="sm">
-      <h2 className="font-semibold mb-1">Timezone</h2>
+      <h2 className="font-semibold mb-1">{t("title")}</h2>
       <p className="text-sm text-muted mb-3">
-        Studio schedule times, make-up windows, and lesson reminders use this zone.
+        {t("studioHint")}
       </p>
       {form}
     </Card>

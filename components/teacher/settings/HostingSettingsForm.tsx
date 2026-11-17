@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
+import {useLocale,useTranslations} from "next-intl";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,6 +39,8 @@ export function HostingSettingsForm({
   };
 }) {
   const [busy, setBusy] = useState<"checkout" | "portal" | null>(null);
+  const t=useTranslations("hostingSettings"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
   const [message, setMessage] = useState<string | null>(null);
 
   const canUpgrade =
@@ -52,7 +57,7 @@ export function HostingSettingsForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMessage(data.error ?? "Could not start checkout");
+        setMessage(toUserError(data, t("checkoutError")));
         setBusy(null);
         return;
       }
@@ -60,10 +65,10 @@ export function HostingSettingsForm({
         window.location.href = data.url;
         return;
       }
-      setMessage("No checkout URL returned");
+      setMessage(t("checkoutUrlMissing"));
       setBusy(null);
     } catch {
-      setMessage("Could not start checkout");
+      setMessage(t("checkoutError"));
       setBusy(null);
     }
   }
@@ -77,7 +82,7 @@ export function HostingSettingsForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMessage(data.error ?? "Could not open billing portal");
+        setMessage(toUserError(data, t("portalError")));
         setBusy(null);
         return;
       }
@@ -85,20 +90,19 @@ export function HostingSettingsForm({
         window.location.href = data.url;
         return;
       }
-      setMessage("No portal URL returned");
+      setMessage(t("portalUrlMissing"));
       setBusy(null);
     } catch {
-      setMessage("Could not open billing portal");
+      setMessage(t("portalError"));
       setBusy(null);
     }
   }
 
   return (
     <Card padding="sm">
-      <h2 className="font-semibold mb-1">Hosting plan</h2>
+      <h2 className="font-semibold mb-1">{t("title")}</h2>
       <p className="text-sm text-muted mb-3">
-        Your ChessCoachPal subscription on this hosted site. Family tuition (Zelle,
-        Venmo, or your own Stripe) is separate — see Billing → Payment settings.
+        {t("description")}
       </p>
       <HostedPlanSummary
         plan={plan}
@@ -111,7 +115,7 @@ export function HostingSettingsForm({
       />
       {stripeCancelAt && plan === "pro" && (
         <p className="text-xs text-muted mt-2">
-          Cancels on {new Date(stripeCancelAt).toLocaleDateString()}
+          {t("cancelsOn",{date:new Date(stripeCancelAt).toLocaleDateString(locale)})}
         </p>
       )}
       <div className="flex flex-wrap gap-2 mt-4">
@@ -122,7 +126,7 @@ export function HostingSettingsForm({
             disabled={busy !== null || plan === "pro" || plan === "founding"}
             onClick={startCheckout}
           >
-            {busy === "checkout" ? "…" : "Upgrade to Pro"}
+            {busy==="checkout"?"…":t("upgrade")}
           </Button>
         )}
         {canManageBilling && (
@@ -133,12 +137,12 @@ export function HostingSettingsForm({
             disabled={busy !== null}
             onClick={openPortal}
           >
-            {busy === "portal" ? "…" : "Manage billing"}
+            {busy==="portal"?"…":t("manage")}
           </Button>
         )}
         <Link href="/hosting">
           <Button type="button" size="sm" variant="secondary">
-            Hosting options
+            {t("options")}
           </Button>
         </Link>
       </div>

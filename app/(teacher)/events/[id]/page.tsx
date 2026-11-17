@@ -1,3 +1,4 @@
+import {getTranslations} from "next-intl/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -6,7 +7,10 @@ import { oneToOne } from "@/lib/schedule";
 import { EventDetailClient } from "@/components/teacher/events/EventDetailClient";
 import type { RsvpStatus } from "@/lib/supabase/types";
 
-export const metadata = { title: "Event" };
+export async function generateMetadata(){
+  const t=await getTranslations("eventPage");
+  return {title:t("metadataTitle")};
+}
 
 export default async function EventDetailPage({
   params,
@@ -19,6 +23,7 @@ export default async function EventDetailPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return null;
+  const t=await getTranslations("eventPage");
 
   const [{ data: event }, { data: allStudents }] = await Promise.all([
     supabase
@@ -96,7 +101,7 @@ export default async function EventDetailPage({
         href="/events"
         className="text-sm text-muted hover:text-foreground transition-colors"
       >
-        ← Events
+        <span className="inline-block rtl:rotate-180" aria-hidden="true">←</span> {t("back")}
       </Link>
       <div className="mt-4">
         <EventDetailClient

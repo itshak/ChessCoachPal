@@ -1,12 +1,14 @@
+import {getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPolicy } from "@/lib/server/scheduling";
 import { StudioSettingsForm } from "@/components/teacher/settings/StudioSettingsForm";
 import { PolicySettings } from "@/components/teacher/schedule/PolicySettings";
 import { BillingSettingsForm } from "@/components/teacher/settings/BillingSettingsForm";
 
-export const metadata = { title: "Studio" };
+export async function generateMetadata(){const t=await getTranslations("studioPage");return {title:t("title")};}
 
 export default async function StudioPage() {
+  const t=await getTranslations("studioPage");
   const supabase = await createClient();
   const {
     data: { user },
@@ -27,11 +29,9 @@ export default async function StudioPage() {
   return (
     <div className="max-w-2xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Studio</h1>
+        <h1 className="text-2xl font-bold">{t("title")}</h1>
         <p className="text-muted text-sm mt-1">
-          Your studio name, lesson lengths, cancellation and make-up policy,
-          rates and teaching policies. These drive scheduling, invoices, and
-          what families see on their portal.
+          {t("description")}
         </p>
       </div>
 

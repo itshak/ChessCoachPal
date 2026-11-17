@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPolicy } from "@/lib/server/scheduling";
 import { buildInvoicePdf } from "@/lib/server/invoice-pdf";
+import {familyCommunicationLocale} from "@/lib/server/communication-locales";
 import { familyDisplayName, type FamilyContact } from "@/lib/guardians";
 import { oneToOne } from "@/lib/schedule";
 
@@ -109,7 +110,7 @@ export async function loadInvoicePdf(
       *,
       guardians (
         id, name, family_name, email, secondary_name, secondary_email,
-        email_recipients, portal_token
+        email_recipients, preferred_locale, portal_token
       ),
       invoice_items ( * ),
       payments ( amount_cents )
@@ -147,6 +148,7 @@ export async function loadInvoicePdf(
   let pdfBytes: Uint8Array;
   try {
     pdfBytes = await buildInvoicePdf({
+      locale: familyCommunicationLocale(family),
       studioName: policy.studio_name,
       familyName: familyDisplayName(family),
       periodStart: invoice.period_start,

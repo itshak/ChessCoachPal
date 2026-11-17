@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import {useLocale,useTranslations} from "next-intl";
 import { workplaceLocalToUtc } from "@/lib/coaching-time";
 
 type Workplace = { id:string; name:string; timezone:string };
@@ -37,7 +40,7 @@ type Preview = {
   review:{ creates:string;instructorMinutes:number|null; attendance:string; writesPerformed:boolean; timeSource:"explicit"|"weekly_slot";slotIds:string[];localDate:string|null;timezone:string|null };
 };
 
-const field = "w-full rounded-lg border border-border bg-surface p-2 text-foreground";
+const field = "w-full min-w-0 max-w-full rounded-lg border border-border bg-surface p-2 text-foreground";
 const button = "rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50";
 
 /**
@@ -45,6 +48,8 @@ const button = "rounded-lg bg-primary px-4 py-2 text-white font-semibold disable
  * This panel never assumes a nickname, guesses a local time or marks attendance.
  */
 export function LessonCapturePreviewPanel() {
+  const t=useTranslations("lessonCapture"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
   const [workplaces,setWorkplaces] = useState<Workplace[]>([]);
   const [workplaceId,setWorkplaceId] = useState("");
   const [names,setNames] = useState("");
@@ -80,11 +85,11 @@ export function LessonCapturePreviewPanel() {
       body:JSON.stringify({action:"workplaces.list"}),cache:"no-store",
     }).then(async response => {
       const result=await response.json() as {data?:Workplace[]};
-      if(!response.ok || !result.data) throw new Error("Could not load workplaces");
+      if(!response.ok || !result.data) throw new Error(t("loadWorkplaces"));
       if(active)setWorkplaces(result.data);
-    }).catch(() => {if(active)setError("Unable to load workplace list");});
+    }).catch(() => {if(active)setError(t("loadWorkplacesFailed"));});
     return () => {active=false;};
-  }, []);
+  }, [t]);
 
   const invalidate = () => {setPreview(null);setApproved(false);setAtomicApproved(false);setReceipt("");
     atomicKeyRef.current=null;
@@ -95,15 +100,15 @@ export function LessonCapturePreviewPanel() {
     event.preventDefault();
     setError("");setReceipt("");setPreview(null);setApproved(false);setAtomicApproved(false);atomicKeyRef.current=null;
     const workplace=workplaces.find(item=>item.id===workplaceId);
-    if(!workplace){setError("Choose a workplace and its time zone");return;}
+    if(!workplace){setError(t("chooseWorkplace"));return;}
     const studentNames=names.split(/\r?\n/).map(n=>n.trim()).filter(Boolean);
     let timing:{startsAt:string;durationMinutes:number}|{localDate:string};
     if(timingMode==="explicit"){
       try {timing={startsAt:workplaceLocalToUtc(localStart,workplace.timezone),
         durationMinutes:duration};}
-      catch(e){setError(e instanceof Error?e.message:"Invalid local date or time");return;}
+      catch(e){setError(toUserError(e, t("invalidLocalTime")));return;}
     }else{
-      if(!localDate){setError("Choose a real date for weekly schedule inference");return;}
+      if(!localDate){setError(t("chooseDate"));return;}
       timing={localDate};
     }
     setBusy(true);
@@ -119,10 +124,10 @@ export function LessonCapturePreviewPanel() {
           }}:{})}),cache:"no-store",
       });
       const result=await response.json() as Preview&{error?:string};
-      if(!response.ok)throw new Error(result.error??"Unable to preview lesson");
+      if(!response.ok)throw new Error(result.error??t("previewUnavailable"));
       setPreview(result);
       requestRef.current=null;
-    }catch(e){setError(e instanceof Error?e.message:"Preview failed");}
+    }catch(e){setError(toUserError(e, t("previewFailed")));}
     finally{setBusy(false);}
   }
 
@@ -141,16 +146,16 @@ export function LessonCapturePreviewPanel() {
       });
       const result=await response.json() as {ok?:boolean;error?:{message?:string;code?:string};data?:{id?:string}};
       if(!response.ok || !result.ok)
-        throw new Error(result.error?.message??result.error?.code??"Lesson creation failed");
+        throw new Error(result.error?.message??result.error?.code??t("lessonCreateFailed"));
       const sessionId=result.data?.id;
-      if(!sessionId)throw new Error("Session write returned no confirmed ID; verify session history before retry");
-      setReceipt("One session created: "+sessionId+". Attendance remains unmarked.");
+      if(!sessionId)throw new Error(t("noSessionId"));
+      setReceipt(t("createdReceipt",{id:sessionId}));
       setPendingLink(preview.selectedChapter?{sessionId,chapter:preview.selectedChapter}:null);
       setLinkReview(null);setLinkApproved(false);setLinkedReceipt("");
       linkKeyRef.current=null;
       setPreview(null);setApproved(false);
       requestRef.current=null;
-    }catch(e){setError(e instanceof Error?e.message:"Lesson creation failed");}
+    }catch(e){setError(toUserError(e, t("lessonCreateFailed")));}
     finally{setBusy(false);}
   }
 
@@ -175,15 +180,13 @@ export function LessonCapturePreviewPanel() {
         oneTransaction?:boolean;session?:{id:string};
         evidence?:{participantCoverages:number;inferredMastery:boolean}};
       if(!response.ok||!body.oneTransaction||!body.session?.id)
-        throw new Error(body.error??"Atomic lesson/chapter approval unavailable");
-      setReceipt("One lesson and verified chapter assigned atomically: "+
-        body.session.id+"; "+body.evidence?.participantCoverages+
-        " student coverages. Attendance unmarked, mastery unknown."+
-        (body.replayed?" (safe replay)":""));
+        throw new Error(toUserError(body, t("atomicUnavailable")));
+      setReceipt(t("atomicReceipt",{id:body.session.id,count:body.evidence?.participantCoverages??0})+
+        (body.replayed?" "+t("safeReplay"):""));
       setPendingLink(null);setLinkReview(null);setLinkApproved(false);
       setPreview(null);setApproved(false);setAtomicApproved(false);
       atomicKeyRef.current=null;
-    }catch(e){setError(e instanceof Error?e.message:"Combined approval failed");}
+    }catch(e){setError(toUserError(e, t("atomicFailed")));}
     finally{setBusy(false);}
   }
 
@@ -200,9 +203,9 @@ export function LessonCapturePreviewPanel() {
         }),cache:"no-store",
       });
       const data=await response.json() as ChapterLinkPreview&{error?:string};
-      if(!response.ok)throw new Error(data.error??"Chapter evidence preview unavailable");
+      if(!response.ok)throw new Error(toUserError(data, t("chapterUnavailable")));
       setLinkReview(data);
-    }catch(e){setError(e instanceof Error?e.message:"Could not review chapter");}
+    }catch(e){setError(toUserError(e, t("chapterReviewFailed")));}
     finally{setBusy(false);}
   }
   async function commitChapterAssignment(){
@@ -220,124 +223,122 @@ export function LessonCapturePreviewPanel() {
       const data=await response.json() as {
         participantCoverages?:number;replayed?:boolean;error?:string;
       };
-      if(!response.ok)throw new Error(data.error??"Could not assign exact chapter");
-      setLinkedReceipt("Verified chapter assigned to "+data.participantCoverages+
-        " learners. Attendance and mastery are unchanged.");
+      if(!response.ok)throw new Error(toUserError(data, t("chapterAssignUnavailable")));
+      setLinkedReceipt(t("chapterAssigned",{count:data.participantCoverages??0}));
       setPendingLink(null);setLinkReview(null);setLinkApproved(false);
       linkKeyRef.current=null;
-    }catch(e){setError(e instanceof Error?e.message:"Chapter assignment failed");}
+    }catch(e){setError(toUserError(e, t("chapterAssignFailed")));}
     finally{setBusy(false);}
   }
 
-  return <section className="rounded-xl border border-border bg-surface p-5 space-y-4" aria-label="Multi-student lesson capture">
+  return <section className="rounded-xl border border-border bg-surface p-5 space-y-4" aria-label={t("aria")}>
     <div>
-      <h2 className="font-semibold text-lg">Capture a lesson from student names</h2>
+      <h2 className="font-semibold text-lg">{t("title")}</h2>
       <p className="text-sm text-muted-foreground">
-        Enter one name or Hebrew/English alias per line. Preview exact identities before
-        creating a single frozen-roster lesson. No attendance or mastery is assumed.
+        {t("intro")}
       </p>
     </div>
-    <form onSubmit={check} className="grid gap-3 md:grid-cols-2">
-      <label className="block text-sm">Student names, one per line (2–50)
+    <form onSubmit={check} className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <label className="block min-w-0 text-sm">{t("names")}
         <textarea className={field} rows={3} required value={names}
           onChange={e=>{setNames(e.target.value);invalidate();}} />
       </label>
-      <label className="block text-sm">Workplace / time zone
+      <label className="block min-w-0 text-sm">{t("workplace")}
         <select className={field} required value={workplaceId}
           onChange={e=>{setWorkplaceId(e.target.value);invalidate();}}>
-          <option value="">Select workplace</option>
+          <option value="">{t("selectWorkplace")}</option>
           {workplaces.map(w=><option key={w.id} value={w.id}>{w.name} ({w.timezone})</option>)}
         </select>
       </label>
-      <label className="block text-sm">Lesson title
+      <label className="block min-w-0 text-sm">{t("lessonTitle")}
         <input className={field} value={title} required maxLength={160}
           onChange={e=>{setTitle(e.target.value);invalidate();}} />
       </label>
-      <label className="block text-sm">How to determine lesson time
+      <label className="block min-w-0 text-sm">{t("timeMode")}
         <select className={field} value={timingMode} onChange={e=>{
           setTimingMode(e.target.value as "explicit"|"weekly");invalidate();}}>
-          <option value="explicit">I know the exact start and duration</option>
-          <option value="weekly">Use a unique matching weekly slot (date only)</option>
+          <option value="explicit">{t("explicit")}</option>
+          <option value="weekly">{t("weekly")}</option>
         </select>
       </label>
       {timingMode==="explicit"?<>
-        <label className="block text-sm">Start time in workplace time zone
+        <label className="block min-w-0 text-sm">{t("startTime")}
           <input className={field} type="datetime-local" required value={localStart}
             onChange={e=>{setLocalStart(e.target.value);invalidate();}} />
         </label>
-        <label className="block text-sm">Instructor minutes (15–480)
+        <label className="block min-w-0 text-sm">{t("duration")}
           <input className={field} type="number" min={15} max={480} required value={duration}
             onChange={e=>{setDuration(Number(e.target.value));invalidate();}} />
         </label>
-      </>:<label className="block text-sm">Lesson date in workplace time zone
+      </>:<label className="block min-w-0 text-sm">{t("lessonDate")}
         <input className={field} type="date" required value={localDate}
           onChange={e=>{setLocalDate(e.target.value);invalidate();}} />
       </label>}
-      <label className="block text-sm">Shared note (optional)
+      <label className="block min-w-0 text-sm">{t("sharedNote")}
         <input className={field} value={lessonNote} maxLength={10000}
           onChange={e=>{setLessonNote(e.target.value);invalidate();}} />
       </label>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={useSavedStudy}
           onChange={e=>{setUseSavedStudy(e.target.checked);setStudyId("");setStudyName("");invalidate();}} />
-        Resolve my saved Lichess lesson study (student &gt; workplace &gt; teacher).
-        All selected students must resolve the same exact study.
+        {t("resolveSaved")}
       </label>
-      <label className="block text-sm">Lichess study title (optional, exact cached name)
+      <label className="block min-w-0 text-sm">{t("studyTitle")}
         <input className={field} value={studyName} maxLength={160}
           disabled={useSavedStudy||Boolean(studyId.trim())}
-          placeholder="e.g. Classic Games 2"
+          placeholder={t("studyTitleHint")}
           onChange={e=>{setStudyName(e.target.value);invalidate();}} />
       </label>
-      <label className="block text-sm">Lichess study ID (alternative to title)
-        <input className={field} value={studyId} minLength={8} maxLength={8}
+      <label className="block min-w-0 text-sm">{t("studyId")}
+        <input dir="ltr" className={field} value={studyId} minLength={8} maxLength={8}
           disabled={useSavedStudy||Boolean(studyName.trim())}
-          placeholder="8 characters from /study/" pattern="[A-Za-z0-9]{8}"
+          placeholder={t("studyIdHint")} pattern="[A-Za-z0-9]{8}"
           onChange={e=>{setStudyId(e.target.value);invalidate();}} />
       </label>
       {(useSavedStudy||studyId.trim()||studyName.trim())&&<>
-        <label className="block text-sm">Chapter number in that study (1–64)
+        <label className="block min-w-0 text-sm">{t("chapterNumber")}
           <input className={field} type="number" min={1} max={64} required
             value={chapterNumber} onChange={e=>{setChapterNumber(e.target.value);invalidate();}} />
         </label>
-        <label className="block text-sm">Expected PGN players (optional, for identity check)
+        <label className="block min-w-0 text-sm">{t("players")}
           <input className={field} value={expectedPlayers} maxLength={120}
             onChange={e=>{setExpectedPlayers(e.target.value);invalidate();}} />
         </label>
       </>}
-      <div><button className={button} type="submit" disabled={busy}>Preview only</button></div>
+      <div><button className={button} type="submit" disabled={busy}>{t("previewOnly")}</button></div>
     </form>
     {error&&<p role="alert" className="text-red-500">{error}</p>}
     {receipt&&<p role="status">{receipt}</p>}
     {linkedReceipt&&<p role="status">{linkedReceipt}</p>}
     {pendingLink&&<div className="space-y-3 rounded-lg border border-border p-3">
-      <h3 className="font-semibold">Optional second approval: assign selected chapter</h3>
-      <p className="text-sm">Session {pendingLink.sessionId} exists. Chapter
-        {" "+pendingLink.chapter.studyName+" #"+pendingLink.chapter.chapterNumber}
-        {" ("+pendingLink.chapter.chapterId+")"} is not attached yet.
-        This separate action records an assignment for the frozen roster,
-        never attendance, lesson completion or mastery.</p>
+      <h3 className="font-semibold">{t("pendingTitle")}</h3>
+      <p className="text-sm" dir="auto">{t("pendingInfo",{
+          session:pendingLink.sessionId,studyName:pendingLink.chapter.studyName,
+          number:pendingLink.chapter.chapterNumber,chapterId:pendingLink.chapter.chapterId
+        })}</p>
       <button type="button" className={button} disabled={busy}
-        onClick={()=>void reviewChapterAssignment()}>Review chapter assignment</button>
+        onClick={()=>void reviewChapterAssignment()}>{t("reviewChapter")}</button>
       {linkReview&&<>
-        <p className="text-sm">Eligible learners: {linkReview.studentCoverageCount}.
-          One workplace lesson. {linkReview.canCommit?"Ready for teacher approval.":"Cannot assign: "+linkReview.issues.join(", ")}</p>
+        <p className="text-sm">{t("eligible",{count:linkReview.studentCoverageCount})}{" "}
+          {linkReview.canCommit?t("ready"):t("cannotAssign",{issues:linkReview.issues.join(", ")})}</p>
         {linkReview.canCommit&&<>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={linkApproved}
               onChange={e=>setLinkApproved(e.target.checked)} />
-            I approve assigning this exact indexed chapter to all frozen learners.
+            {t("approveChapter")}
           </label>
           <button type="button" className={button} disabled={busy||!linkApproved}
-            onClick={()=>void commitChapterAssignment()}>Assign reviewed chapter</button>
+            onClick={()=>void commitChapterAssignment()}>{t("assignChapter")}</button>
         </>}
       </>}
     </div>}
     {preview&&<div className="space-y-3 border-t border-border pt-4" aria-live="polite">
-      <h3 className="font-semibold">Identity and enrollment review</h3>
-      <ul className="list-disc pl-5 text-sm">
+      <h3 className="font-semibold">{t("reviewTitle")}</h3>
+      <ul className="list-disc ps-5 text-sm">
         {preview.resolutions.map((r,i)=><li key={i}>
-          {r.input}: {r.status==="resolved"?r.name+" ("+r.studentId+")":r.status}
+          <bdi dir="auto">{r.input}</bdi>: {r.status==="resolved"?
+             <><bdi dir="auto">{r.name}</bdi>{" ("}<bdi dir="ltr">{r.studentId}</bdi>{")"}</>:
+             t(r.status==="ambiguous"?"ambiguous":"notFound")}
           {r.candidates.length>0&&" — "+r.candidates.map(c=>c.name+" ["+c.id+"]").join(", ")}
         </li>)}
       </ul>
@@ -346,42 +347,43 @@ export function LessonCapturePreviewPanel() {
           " — "+issue.candidates.map(c=>c.name+" ["+c.id+"]").join(", "):""}
       </p>)}
       {preview.selectedChapter&&<div className="rounded-lg border border-border p-3 text-sm">
-        <p className="font-semibold">Verified indexed chapter — not yet linked</p>
-        <p>{preview.selectedChapter.studyName} · #{preview.selectedChapter.chapterNumber} ·
-          {" "+preview.selectedChapter.chapterName}</p>
-        <p>{preview.selectedChapter.white??"Unknown white"} – {preview.selectedChapter.black??"Unknown black"}</p>
-        <p>Source: authorized cached Lichess metadata ({preview.selectedChapter.verifiedAt}). 
-          Session material and student mastery are not recorded during this preview.</p>
+        <p className="font-semibold">{t("verifiedChapter")}</p>
+        <p><bdi dir="auto">{preview.selectedChapter.studyName}</bdi> ·
+          #{preview.selectedChapter.chapterNumber} ·
+          <bdi dir="auto">{preview.selectedChapter.chapterName}</bdi></p>
+        <p><bdi dir="auto">{preview.selectedChapter.white??t("unknownWhite")}</bdi>
+          {" – "}<bdi dir="auto">{preview.selectedChapter.black??t("unknownBlack")}</bdi></p>
+        <p>{t("cachedMetadata",{time:preview.selectedChapter.verifiedAt})}</p>
         <a href={preview.selectedChapter.chapterUrl} target="_blank" rel="noopener noreferrer"
-          className="underline">Open verified Lichess chapter</a>
+          className="underline">{t("openChapter")}</a>
       </div>}
       {preview.canCommit&&preview.proposedSession&&<>
-        <p className="text-sm">One {preview.proposedSession.durationMinutes}-minute teacher session,
-          {preview.proposedSession.studentIds.length} learners, starting at
-          {" "+new Date(preview.proposedSession.startsAt).toLocaleString("en-GB",{
-            timeZone:preview.workplace?.timezone??"UTC",dateStyle:"medium",timeStyle:"short"})}
-          {" ("+(preview.workplace?.timezone??"UTC")+")"}.
-          {preview.review.timeSource==="weekly_slot"?" Time inferred from matching active weekly slots.":" Explicit start time."}
-          {" "}Attendance: unmarked. Comprehension: unknown. No changes have been saved yet.</p>
+        <p className="text-sm">{t("proposedSession",{
+          minutes:preview.proposedSession.durationMinutes,
+          learners:preview.proposedSession.studentIds.length,
+          start:new Date(preview.proposedSession.startsAt).toLocaleString(
+            locale==="en"?"en-GB":locale,{
+            timeZone:preview.workplace?.timezone??"UTC",dateStyle:"medium",timeStyle:"short"}),
+          zone:preview.workplace?.timezone??"UTC"
+        })}{" "}{preview.review.timeSource==="weekly_slot"?t("timeInferred"):t("timeExplicit")}{" "}
+        {t("noWrites")}</p>
         <label className="flex gap-2 items-start text-sm">
           <input type="checkbox" checked={approved} onChange={e=>setApproved(e.target.checked)} />
-          I checked every learner, the workplace, date and time and approve creating this session.
+          {t("approveSession")}
         </label>
         <button className={button} type="button" disabled={!approved||busy} onClick={()=>void confirm()}>
-          Confirm and create one lesson
+          {t("confirmLesson")}
         </button>
         {preview.proposedAtomicCommit&&<>
           <label className="flex gap-2 items-start text-sm">
             <input type="checkbox" checked={atomicApproved}
               onChange={e=>setAtomicApproved(e.target.checked)} />
-            I separately approve assigning the exact indexed Lichess chapter
-            to every reviewed learner in the SAME transaction as lesson creation.
-            This records an assignment, not attendance, teaching, or mastery.
+            {t("approveAtomic")}
           </label>
           <button className={button} type="button"
             disabled={!approved||!atomicApproved||busy}
             onClick={()=>void confirmAtomic()}>
-            Confirm lesson + chapter in one atomic transaction
+          {t("confirmAtomic")}
           </button>
         </>}
       </>}

@@ -1,6 +1,10 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+import {LocalizedUiError} from "@/i18n/api-error";
+
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import {useTranslations,useLocale} from "next-intl";
 import Link from "next/link";
 import { workplaceLocalToUtc, utcToWorkplaceLocal } from "@/lib/coaching-time";
 
@@ -27,9 +31,9 @@ type RosterAudit = {
 type Result<T> = { ok?: boolean; data?: T; error?: { code: string; message?: string } };
 type AttendanceStatus = Exclude<Attendance["status"], "unmarked">;
 
-const field = "w-full rounded-lg border border-border bg-surface p-2 text-foreground";
+const field = "w-full min-w-0 max-w-full rounded-lg border border-border bg-surface p-2 text-foreground";
 const button = "rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50";
-const panel = "rounded-xl border border-border bg-surface p-5 space-y-3";
+const panel = "min-w-0 max-w-full rounded-xl border border-border bg-surface p-5 space-y-3 [overflow-wrap:anywhere]";
 const attendanceStatuses: AttendanceStatus[] = ["present", "absent", "late", "excused"];
 
 async function operation<T>(action: string, values: Record<string, unknown> = {}): Promise<T> {
@@ -40,7 +44,8 @@ async function operation<T>(action: string, values: Record<string, unknown> = {}
   });
   const result = (await response.json()) as Result<T>;
   if (!response.ok || !result.ok) {
-    throw new Error(result.error?.message ?? result.error?.code ?? "Operation failed");
+    throw Object.assign(new Error(result.error?.message ?? result.error?.code ?? "Operation failed"),
+      {code:result.error?.code});
   }
   return result.data as T;
 }
@@ -51,6 +56,9 @@ function rosterName(row: Roster) {
 }
 
 export function ChessCoachWorkspace() {
+  const t=useTranslations("coaching");
+  const lang=useLocale();
+  const toUserError=useLocalizedApiError();
   const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -120,8 +128,8 @@ export function ChessCoachWorkspace() {
   }, [activeStudentSearch]);
 
   useEffect(() => {
-    void refresh().catch(e => setError(String(e)));
-  }, [refresh]);
+    void refresh().catch(e => setError(toUserError(e,t("operationFailed"))));
+  }, [refresh,t,toUserError]);
 
   useEffect(() => {
     let active = true;
@@ -136,11 +144,11 @@ export function ChessCoachWorkspace() {
         operation<Attendance[]>("attendance.list", { sessionId: selectedSessionId }),
         fetch("/api/coaching/sessions/"+encodeURIComponent(selectedSessionId)+"/roster",
           {cache:"no-store"}).then(async response=>{
-          if(!response.ok)throw new Error("Unable to read frozen roster");
+          if(!response.ok)throw new LocalizedUiError(t("rosterReadFailed"));
           return await response.json() as RosterPreview;
         }),
         fetch("/api/students?limit=1000",{cache:"no-store"}).then(async response=>{
-          if(!response.ok)throw new Error("Unable to load teacher student roster");
+          if(!response.ok)throw new LocalizedUiError(t("studentRosterLoadFailed"));
           const result=await response.json() as {students:Student[]};
           return result.students;
         }),
@@ -152,10 +160,10 @@ export function ChessCoachWorkspace() {
           setRosterRevision(preview.updatedAt);
           setRosterCandidates(candidates);
         }
-      }).catch(e=>{if(active)setError(String(e));});
+      }).catch(e=>{if(active)setError(toUserError(e,t("operationFailed")));});
     }
     return () => { active = false; };
-  }, [selectedSessionId]);
+  }, [selectedSessionId,t,toUserError]);
 
   async function perform(work: () => Promise<unknown>, success: string) {
     setBusy(true); setError(""); setNotice("");
@@ -164,7 +172,7 @@ export function ChessCoachWorkspace() {
       await refresh();
       setNotice(success);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Operation failed");
+      setError(toUserError(e,t("operationFailed")));
     } finally {
       setBusy(false);
     }
@@ -175,30 +183,30 @@ export function ChessCoachWorkspace() {
     await perform(async () => {
       await operation("workplaces.create", { name: workplaceName.trim(), timezone, currency, locale });
       setWorkplaceName("");
-    }, "Workplace created.");
+    }, t("workplaceCreated"));
   }
 
   async function updateWorkplace(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const current=workplaces.find(workplace=>workplace.id===workplaceId);
-    if(!current){setError("Reload the workplace before editing.");return;}
+    if(!current){setError(t("reloadWorkplace"));return;}
     await perform(async () => {
       let policy: Record<string, unknown>;
       try {
         const parsed: unknown = JSON.parse(editWorkplacePolicy);
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          throw new Error("Policy must be a JSON object");
+          throw new LocalizedUiError(t("policyMustBeObject"));
         }
         policy = parsed as Record<string, unknown>;
       } catch {
-        throw new Error("Workplace policy must be a valid JSON object");
+        throw new LocalizedUiError(t("invalidWorkplacePolicy"));
       }
       await operation("workplaces.update", {
         workplaceId, name: editWorkplaceName.trim(), timezone: editTimezone,
         currency: editCurrency, locale: editLocale, policy,
         expectedUpdatedAt:current.updated_at,idempotencyKey:crypto.randomUUID(),
       });
-    }, "Workplace saved.");
+    }, t("workplaceSaved"));
   }
 
   async function addStudent(e: FormEvent<HTMLFormElement>) {
@@ -206,17 +214,17 @@ export function ChessCoachWorkspace() {
     await perform(async () => {
       await operation("students.create", { name: newStudentName.trim(), level: newStudentLevel.trim() || null });
       setNewStudentName(""); setNewStudentLevel("");
-    }, "Student created.");
+    }, t("studentCreated"));
   }
 
   async function updateStudent(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const selected=students.find(student=>student.id===editStudentId);
-    if(!selected){setError("Select a current learner and reload before editing.");return;}
+    if(!selected){setError(t("selectCurrentLearner"));return;}
     await perform(() => operation("students.update", {
       studentId: editStudentId, name: editStudentName.trim(), level: editStudentLevel.trim() || null,
       expectedUpdatedAt:selected.updated_at,idempotencyKey:crypto.randomUUID(),
-    }), "Student saved.");
+    }), t("studentSaved"));
   }
 
   async function reloadEnrollments(id: string) {
@@ -230,14 +238,14 @@ export function ChessCoachWorkspace() {
     await perform(async () => {
       await operation("workplaces.enroll", { workplaceId, studentId: workplaceStudentId });
       await reloadEnrollments(workplaceId);
-    }, "Student enrolled in workplace.");
+    }, t("workplaceEnrollmentSaved"));
   }
 
   async function removeFromGroup(student: string) {
     await perform(async () => {
       await operation("groups.unenroll", { groupId, studentId: student });
       await reloadGroupMembers(groupId);
-    }, "Student removed from group. Existing lesson rosters remain unchanged.");
+    }, t("groupStudentRemoved"));
   }
 
   async function reloadGroupMembers(id: string) {
@@ -255,11 +263,11 @@ export function ChessCoachWorkspace() {
   async function updateGroup(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const current=groups.find(group=>group.id===groupId&&group.workplace_id===workplaceId);
-    if(!current){setError("Reload the class group before editing.");return;}
+    if(!current){setError(t("reloadGroup"));return;}
     await perform(() => operation("groups.update", {
       groupId, workplaceId, name: editGroupName.trim(),
       expectedUpdatedAt:current.updated_at,idempotencyKey:crypto.randomUUID(),
-    }), "Class group saved.");
+    }), t("groupSaved"));
   }
 
   async function addGroup(e: FormEvent<HTMLFormElement>) {
@@ -267,7 +275,7 @@ export function ChessCoachWorkspace() {
     await perform(async () => {
       await operation("groups.create", { name: groupName.trim(), workplaceId });
       setGroupName("");
-    }, "Class group created.");
+    }, t("groupCreated"));
   }
 
   async function enroll(e: FormEvent<HTMLFormElement>) {
@@ -276,18 +284,18 @@ export function ChessCoachWorkspace() {
       await operation("groups.enroll", { groupId, studentId });
       await reloadEnrollments(workplaceId);
       await reloadGroupMembers(groupId);
-    }, "Student enrolled.");
+    }, t("studentEnrolled"));
   }
 
   async function schedule(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!start || (mode === "group" ? !groupId : mode === "private" ? !studentId : adHocIds.length<2)) {
-      setError("Choose a time and a class group or student."); return;
+      setError(t("chooseLessonRoster")); return;
     }
     const zone = workplaces.find(w => w.id === workplaceId)?.timezone ?? "UTC";
     let startsAt: string;
     try { startsAt = workplaceLocalToUtc(start, zone); }
-    catch (e) { setError(e instanceof Error ? e.message : "Invalid lesson time"); return; }
+    catch (e) { setError(toUserError(e,t("invalidLessonTime"))); return; }
     const payload = {
       workplaceId, groupId: mode === "group" ? groupId : undefined,
       studentId: mode === "private" ? studentId : undefined,
@@ -304,7 +312,7 @@ export function ChessCoachWorkspace() {
       requestRef.current = null;
       setSelectedSessionId(created.id);
       setTitle(""); setLessonNote(""); setStart(""); setAdHocIds([]);
-    }, "Lesson session created with a frozen attendance roster.");
+    }, t("lessonCreatedFrozen"));
   }
 
   async function updateSession(e: FormEvent<HTMLFormElement>) {
@@ -313,12 +321,12 @@ export function ChessCoachWorkspace() {
     const zone = workplaces.find(w => w.id === current?.workplace_id)?.timezone ?? "UTC";
     let startsAt: string;
     try { startsAt = workplaceLocalToUtc(editStart, zone); }
-    catch (e) { setError(e instanceof Error ? e.message : "Invalid lesson time"); return; }
+    catch (e) { setError(toUserError(e,t("invalidLessonTime"))); return; }
     await perform(() => operation("sessions.update", {
       sessionId: selectedSessionId, title: editSessionTitle.trim(), startsAt,
       durationMinutes: editDuration, lessonNote: editSessionNote,
       ...(editStatus==="completed"?{}:{status:editStatus}),
-    }), "Session changes saved.");
+    }), t("sessionChangesSaved"));
   }
 
   async function correctHistoricalRoster(e:FormEvent<HTMLFormElement>){
@@ -335,10 +343,10 @@ export function ChessCoachWorkspace() {
         }),
       });
       const outcome=await response.json() as {error?:string};
-      if(!response.ok)throw new Error(outcome.error??"Roster correction failed");
+      if(!response.ok)throw new Error(outcome.error??t("rosterCorrectionFailed"));
       const [preview,people,marks]=await Promise.all([
         fetch(url,{cache:"no-store"}).then(async r=>{
-          if(!r.ok)throw new Error("Unable to reload corrected roster");
+          if(!r.ok)throw new LocalizedUiError(t("rosterReloadFailed"));
           return await r.json() as RosterPreview;
         }),
         operation<Roster[]>("sessions.participants",{sessionId:selectedSessionId}),
@@ -347,7 +355,7 @@ export function ChessCoachWorkspace() {
       setRosterEditIds(preview.studentIds);setRosterRevision(preview.updatedAt);
       setRoster(people);setAttendance(marks);setRosterSessionId(selectedSessionId);
       setRosterReason("");setRosterConfirmed(false);setRosterAudit([]);
-    },"Historical roster corrected; removed attendance is retained in the audit log.");
+    },t("rosterCorrectedAudited"));
   }
 
   async function loadRosterAudit(){
@@ -357,10 +365,10 @@ export function ChessCoachWorkspace() {
       const response=await fetch("/api/coaching/sessions/"+
         encodeURIComponent(selectedSessionId)+"/roster?revisions=true",
         {cache:"no-store"});
-      if(!response.ok)throw new Error("Unable to load correction history");
+      if(!response.ok)throw new LocalizedUiError(t("correctionHistoryFailed"));
       const body=await response.json() as {corrections:RosterAudit[]};
       setRosterAudit(body.corrections);
-    }catch(e){setError(e instanceof Error?e.message:"Unable to load correction history");}
+    }catch(e){setError(toUserError(e,t("correctionHistoryFailed")));}
   }
 
   async function record(student: string, status: AttendanceStatus, note: string) {
@@ -369,7 +377,7 @@ export function ChessCoachWorkspace() {
         sessionId: selectedSessionId, studentId: student, status, note,
       });
       setAttendance(await operation<Attendance[]>("attendance.list", { sessionId: selectedSessionId }));
-    }, "Attendance saved.");
+    }, t("attendanceSavedNotice"));
   }
 
   const localGroups = groups.filter(g => g.workplace_id === workplaceId);
@@ -387,7 +395,7 @@ export function ChessCoachWorkspace() {
       setEditCurrency(w.currency); setEditLocale(w.locale);
       setEditWorkplacePolicy(JSON.stringify(w.policy ?? {}, null, 2));
     }
-    void reloadEnrollments(workplaceId).catch(e => setError(String(e)));
+    void reloadEnrollments(workplaceId).catch(e => setError(toUserError(e,t("operationFailed"))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workplaceId, workplaces]);
 
@@ -400,7 +408,7 @@ export function ChessCoachWorkspace() {
   useEffect(() => {
     const g = groups.find(item => item.id === groupId && item.workplace_id === workplaceId);
     setEditGroupName(g?.name ?? "");
-    void reloadGroupMembers(g?.id ?? "").catch(e => setError(String(e)));
+    void reloadGroupMembers(g?.id ?? "").catch(e => setError(toUserError(e,t("operationFailed"))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId, groups, workplaceId]);
 
@@ -413,297 +421,291 @@ export function ChessCoachWorkspace() {
   }, [session, workplaces]);
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
       <div>
-        <h1 className="text-2xl font-bold">Chess coaching</h1>
+        <h1 className="text-2xl font-bold">{t("heading")}</h1>
         <p className="text-sm text-muted mt-1">
-          Manage workplaces, classes, sessions and attendance. These screens use the same
-          authenticated commands as the experimental agent API.
+          {t("workspaceIntro")}
         </p>
         <p className="text-sm mt-2">
-          <Link href="/students" className="text-primary underline">Full student records</Link>
+          <Link href="/students" className="text-primary underline">{t("fullRecords")}</Link>
         </p>
       </div>
       {error && <div role="alert" className="rounded-lg border border-red-500 p-3 text-sm">{error}</div>}
       {notice && <div role="status" className="rounded-lg border border-border p-3 text-sm">{notice}</div>}
-      <label className="block text-sm max-w-lg">Active workplace
+      <label className="block text-sm max-w-lg">{t("activeWorkplace")}
         <select className={field} value={workplaceId} onChange={e => {
           setWorkplaceId(e.target.value); setGroupId(""); setSelectedSessionId("");
         }}>
           {workplaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
       </label>
-      <p className="text-sm text-muted">Instructor time in this workplace (listed sessions):
-        <strong> {teacherMinutes} minutes</strong>. Group attendees do not multiply teacher minutes.
-      </p>
+      <p className="text-sm text-muted">{t("instructorTime",{count:teacherMinutes})}</p>
       <section className={panel} aria-labelledby="coaching-session-timeline">
-        <h2 id="coaching-session-timeline" className="text-lg font-semibold">Session timeline</h2>
+        <h2 id="coaching-session-timeline" className="text-lg font-semibold">{t("sessionTimeline")}</h2>
         {localSessions.length ? (
           <ol className="space-y-2">
             {localSessions.map(item => (
               <li key={item.id}>
-                <button type="button" className="w-full rounded-lg border border-border p-2 text-left text-sm"
+                <button type="button" className="w-full rounded-lg border border-border p-2 text-start text-sm"
                   aria-current={selectedSessionId === item.id ? "true" : undefined}
                   onClick={() => setSelectedSessionId(item.id)}>
-                  <time dateTime={item.starts_at}>{new Date(item.starts_at).toLocaleString("en-US", {
+                  <time dateTime={item.starts_at}>{new Date(item.starts_at).toLocaleString(lang, {
                     timeZone: activeWorkplace?.timezone ?? "UTC",
-                  })}</time> · {item.title} · {item.status} · {item.duration_minutes} minutes
+                  })}</time> · <bdi dir="auto">{item.title}</bdi> · {t(item.status)} · {t("minuteCount",{count:item.duration_minutes})}
                 </button>
               </li>
             ))}
           </ol>
-        ) : <p className="text-sm text-muted">No sessions in this workplace yet.</p>}
+        ) : <p className="text-sm text-muted">{t("emptySessions")}</p>}
       </section>
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <section className={panel}>
-          <h2 className="text-lg font-semibold">Workplaces</h2>
-          <ul className="text-sm space-y-1">
-            {workplaces.map(w => <li key={w.id}>{w.name} · {w.timezone} · {w.currency}</li>)}
+          <h2 className="text-lg font-semibold">{t("workplaces")}</h2>
+          <ul className="text-sm space-y-1 [overflow-wrap:anywhere]">
+            {workplaces.map(w => <li key={w.id}><bdi dir="auto">{w.name}</bdi> · <span dir="ltr">{w.timezone}</span> · <span dir="ltr">{w.currency}</span></li>)}
           </ul>
           <form onSubmit={addWorkplace} className="space-y-2">
-            <label className="block text-sm">New workplace name
+            <label className="block text-sm">{t("newWorkplaceName")}
               <input className={field} value={workplaceName} maxLength={120}
                 onChange={e => setWorkplaceName(e.target.value)} required />
             </label>
-            <label className="block text-sm">IANA timezone
+            <label className="block text-sm">{t("timezone")}
               <input className={field} value={timezone} onChange={e => setTimezone(e.target.value)}
                 maxLength={80} required />
             </label>
-            <label className="block text-sm">Currency (ISO 4217)
+            <label className="block text-sm">{t("currency")}
               <input className={field} value={currency} maxLength={3}
                 onChange={e => setCurrency(e.target.value.toUpperCase())} required pattern="[A-Z]{3}" />
             </label>
-            <label className="block text-sm">Locale
+            <label className="block text-sm">{t("locale")}
               <input className={field} value={locale} onChange={e => setLocale(e.target.value)} required />
             </label>
-            <button className={button} disabled={busy}>Create workplace</button>
+            <button className={button} disabled={busy}>{t("createWorkplace")}</button>
           </form>
           {activeWorkplace && <form onSubmit={updateWorkplace} className="space-y-2 border-t border-border pt-3">
-            <h3 className="font-semibold">Edit selected workplace</h3>
-            <label className="block text-sm">Edit workplace name
+            <h3 className="font-semibold">{t("editWorkplace")}</h3>
+            <label className="block text-sm">{t("editWorkplaceName")}
               <input className={field} value={editWorkplaceName} onChange={e => setEditWorkplaceName(e.target.value)} required maxLength={120} />
             </label>
-            <label className="block text-sm">Edit workplace timezone
+            <label className="block text-sm">{t("editWorkplaceTimezone")}
               <input className={field} value={editTimezone} onChange={e => setEditTimezone(e.target.value)} required />
             </label>
-            <label className="block text-sm">Edit workplace currency
+            <label className="block text-sm">{t("editWorkplaceCurrency")}
               <input className={field} value={editCurrency} onChange={e => setEditCurrency(e.target.value.toUpperCase())} maxLength={3} required pattern="[A-Z]{3}" />
             </label>
-            <label className="block text-sm">Edit workplace locale
+            <label className="block text-sm">{t("editWorkplaceLocale")}
               <input className={field} value={editLocale} onChange={e => setEditLocale(e.target.value)} required />
             </label>
-            <label className="block text-sm">Workplace policy (JSON)
+            <label className="block text-sm">{t("workplacePolicy")}
               <textarea className={field} rows={4} value={editWorkplacePolicy}
                 onChange={e => setEditWorkplacePolicy(e.target.value)} spellCheck={false} />
             </label>
-            <button className={button} disabled={busy}>Save workplace</button>
+            <button className={button} disabled={busy}>{t("saveWorkplace")}</button>
           </form>}
         </section>
         <section className={panel}>
-          <h2 className="text-lg font-semibold">Students</h2>
+          <h2 className="text-lg font-semibold">{t("students")}</h2>
           <form className="space-y-2" onSubmit={e => {
             e.preventDefault();
             setActiveStudentSearch(studentSearch.trim());
           }}>
-            <label className="block text-sm">Find student by name
+            <label className="block text-sm">{t("findStudent")}
               <input className={field} value={studentSearch}
                 onChange={e => setStudentSearch(e.target.value)} maxLength={80} />
             </label>
             <div className="flex flex-wrap gap-2">
-              <button className={button} type="submit">Search students</button>
+              <button className={button} type="submit">{t("searchStudents")}</button>
               <button className="rounded-lg border border-border px-4 py-2" type="button"
-                onClick={() => { setStudentSearch(""); setActiveStudentSearch(""); }}>Clear search</button>
+                onClick={() => { setStudentSearch(""); setActiveStudentSearch(""); }}>{t("clearSearch")}</button>
             </div>
-            {activeStudentSearch && <p className="text-xs text-muted">Filtering student selectors by: {activeStudentSearch}</p>}
+            {activeStudentSearch && <p className="text-xs text-muted">{t("filteringStudents",{query:activeStudentSearch})}</p>}
           </form>
           <form onSubmit={addStudent} className="space-y-2">
-            <label className="block text-sm">New student name
+            <label className="block text-sm">{t("newStudentName")}
               <input className={field} value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required maxLength={120} />
             </label>
-            <label className="block text-sm">New student skill level
-              <input className={field} value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} maxLength={120} placeholder="Beginner" />
+            <label className="block text-sm">{t("newStudentLevel")}
+              <input className={field} value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} maxLength={120} placeholder={t("beginner")} />
             </label>
-            <button className={button} disabled={busy}>Create student</button>
+            <button className={button} disabled={busy}>{t("createStudent")}</button>
           </form>
           <form onSubmit={updateStudent} className="space-y-2 border-t border-border pt-3">
-            <label className="block text-sm">Student to edit
+            <label className="block text-sm">{t("studentToEdit")}
               <select className={field} value={editStudentId} onChange={e => setEditStudentId(e.target.value)} required>
-                <option value="">Choose student</option>
+                <option value="">{t("chooseStudent")}</option>
                 {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </label>
-            <label className="block text-sm">Edit student name
+            <label className="block text-sm">{t("editStudentName")}
               <input className={field} value={editStudentName} onChange={e => setEditStudentName(e.target.value)} required />
             </label>
-            <label className="block text-sm">Edit student skill level
+            <label className="block text-sm">{t("editStudentLevel")}
               <input className={field} value={editStudentLevel} onChange={e => setEditStudentLevel(e.target.value)} maxLength={120} />
             </label>
-            <button className={button} disabled={busy || !editStudentId}>Save student</button>
+            <button className={button} disabled={busy || !editStudentId}>{t("saveStudent")}</button>
           </form>
           <form onSubmit={enrollWorkplace} className="space-y-2 border-t border-border pt-3">
-            <h3 className="font-semibold">Enroll student in selected workplace</h3>
-            <label className="block text-sm">Student for workplace
+            <h3 className="font-semibold">{t("enrollInWorkplace")}</h3>
+            <label className="block text-sm">{t("studentForWorkplace")}
               <select className={field} value={workplaceStudentId} onChange={e => setWorkplaceStudentId(e.target.value)} required>
-                <option value="">Choose student</option>
+                <option value="">{t("chooseStudent")}</option>
                 {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </label>
-            <button className={button} disabled={busy || !workplaceId}>Enroll in workplace</button>
+            <button className={button} disabled={busy || !workplaceId}>{t("enrollWorkplaceButton")}</button>
           </form>
-          <p className="text-sm text-muted">{enrolledIds.length} enrolled in selected workplace.</p>
+          <p className="text-sm text-muted">{t("enrolledWorkplace",{count:enrolledIds.length})}</p>
         </section>
         <section className={panel}>
-          <h2 className="text-lg font-semibold">Class groups</h2>
+          <h2 className="text-lg font-semibold">{t("classGroups")}</h2>
            <ul className="text-sm space-y-1">
             {localGroups.map(g => <li key={g.id}>{g.name}</li>)}
           </ul>
           <form onSubmit={addGroup} className="space-y-2">
-            <label className="block text-sm">New group name
+            <label className="block text-sm">{t("newGroupName")}
               <input className={field} maxLength={120} value={groupName}
                 onChange={e => setGroupName(e.target.value)} required />
             </label>
-            <button className={button} disabled={busy || !workplaceId}>Create class group</button>
+            <button className={button} disabled={busy || !workplaceId}>{t("createClassGroup")}</button>
           </form>
           <form onSubmit={updateGroup} className="space-y-2 border-t border-border pt-3">
-            <label className="block text-sm">Group to edit
+            <label className="block text-sm">{t("groupToEdit")}
               <select className={field} value={groupId} onChange={e => setGroupId(e.target.value)} required>
-                <option value="">Choose group</option>
+                <option value="">{t("chooseGroup")}</option>
                 {localGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </label>
-            <label className="block text-sm">Edit group name
+            <label className="block text-sm">{t("editGroupName")}
               <input className={field} value={editGroupName} onChange={e => setEditGroupName(e.target.value)} required />
             </label>
-            <button className={button} disabled={busy || !groupId}>Save group</button>
+            <button className={button} disabled={busy || !groupId}>{t("saveGroup")}</button>
           </form>
           <form onSubmit={enroll} className="space-y-2 pt-3 border-t border-border">
-            <h3 className="font-semibold">Enroll a student</h3>
-            <label className="block text-sm">Group to enroll
+            <h3 className="font-semibold">{t("enrollStudent")}</h3>
+            <label className="block text-sm">{t("groupToEnroll")}
               <select className={field} value={groupId} onChange={e => setGroupId(e.target.value)} required>
-                <option value="">Select a group</option>
+                <option value="">{t("selectGroup")}</option>
                 {localGroups.map(g => <option value={g.id} key={g.id}>{g.name}</option>)}
               </select>
             </label>
-            <label className="block text-sm">Student to enroll
+            <label className="block text-sm">{t("studentToEnroll")}
               <select className={field} value={studentId} onChange={e => setStudentId(e.target.value)} required>
-                <option value="">Select a student</option>
+                <option value="">{t("selectStudent")}</option>
                 {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </label>
-            <button className={button} disabled={busy || !localGroups.length}>Enroll student</button>
+            <button className={button} disabled={busy || !localGroups.length}>{t("enrollButton")}</button>
           </form>
           {groupId && <div className="border-t border-border pt-3 text-sm">
-            <h3 className="font-semibold">Current group register</h3>
-            {groupMembersId !== groupId && <p>Loading group register...</p>}
-            <ul className="space-y-2">{(groupMembersId === groupId ? groupMembers : []).map(m => <li key={m.student_id} className="flex flex-wrap items-center justify-between gap-2"><span>{rosterName(m)}</span><button type="button" className="rounded border border-border px-2 py-1 text-sm" disabled={busy} onClick={() => void removeFromGroup(m.student_id)} aria-label={`Remove ${rosterName(m)} from group`}>Remove</button></li>)}</ul>
-            {groupMembersId === groupId && !groupMembers.length && <p>No students yet.</p>}
+            <h3 className="font-semibold">{t("currentGroupRoster")}</h3>
+            {groupMembersId !== groupId && <p>{t("loadingGroupRoster")}</p>}
+            <ul className="space-y-2">{(groupMembersId === groupId ? groupMembers : []).map(m => <li key={m.student_id} className="flex flex-wrap items-center justify-between gap-2"><span>{rosterName(m)}</span><button type="button" className="rounded border border-border px-2 py-1 text-sm" disabled={busy} onClick={() => void removeFromGroup(m.student_id)} aria-label={t("removeFromGroup",{name:rosterName(m)})}>{t("remove")}</button></li>)}</ul>
+            {groupMembersId === groupId && !groupMembers.length && <p>{t("noStudentsYet")}</p>}
           </div>}
         </section>
         <section className={panel}>
-          <h2 className="text-lg font-semibold">Schedule a lesson</h2>
+          <h2 className="text-lg font-semibold">{t("scheduleLesson")}</h2>
           <form className="space-y-2" onSubmit={schedule}>
-            <label className="block text-sm">Lesson type
+            <label className="block text-sm">{t("lessonType")}
               <select className={field} value={mode} onChange={e => setMode(e.target.value as "group" | "private" | "ad_hoc")}>
-                <option value="group">Group</option><option value="private">Private student</option>
-                <option value="ad_hoc">Ad-hoc multi-student</option>
+                <option value="group">{t("groupOption")}</option><option value="private">{t("privateStudent")}</option>
+                <option value="ad_hoc">{t("adhocOption")}</option>
               </select>
             </label>
             {mode === "group" ?
-              <label className="block text-sm">Session group
+              <label className="block text-sm">{t("sessionGroup")}
                 <select className={field} value={groupId} onChange={e => setGroupId(e.target.value)} required>
-                  <option value="">Select group</option>
+                  <option value="">{t("selectGroup")}</option>
                   {localGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
               </label> : mode==="ad_hoc" ?
               <fieldset className="space-y-1 rounded-lg border border-border p-3">
-                <legend className="text-sm font-medium">Choose 2–50 students from this workplace</legend>
+                <legend className="text-sm font-medium">{t("chooseMulti")}</legend>
                 {students.filter(st=>enrolledIds.includes(st.id)).map(st=><label key={st.id} className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={adHocIds.includes(st.id)}
                     onChange={e=>setAdHocIds(old=>e.target.checked ?
                       [...new Set([...old,st.id])].slice(0,50) : old.filter(id=>id!==st.id))} />
                   {st.name}
                 </label>)}
-                <p className="text-xs text-muted">{adHocIds.length} selected. Attendance is frozen at creation.</p>
+                <p className="text-xs text-muted">{t("adhocSelected",{count:adHocIds.length})}</p>
               </fieldset> :
-              <label className="block text-sm">Private student
+              <label className="block text-sm">{t("privateStudent")}
                 <select className={field} value={studentId} onChange={e => setStudentId(e.target.value)} required>
-                  <option value="">Select student</option>
+                  <option value="">{t("selectStudent")}</option>
                   {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </label>}
-            <label className="block text-sm">Topic or title
+            <label className="block text-sm">{t("topicTitle")}
               <input className={field} maxLength={160} value={title}
-                onChange={e => setTitle(e.target.value)} required placeholder="King and pawn endgames" />
+                onChange={e => setTitle(e.target.value)} required placeholder={t("topicPlaceholder")} />
             </label>
-            <label className="block text-sm">Local date and time (selected workplace timezone)
+            <label className="block text-sm">{t("localDateTime")}
               <input className={field} type="datetime-local" value={start} onChange={e => setStart(e.target.value)} required />
             </label>
-            <label className="block text-sm">Duration (minutes)
+            <label className="block text-sm">{t("duration")}
               <input className={field} type="number" min={15} max={480} value={durationMinutes}
                 onChange={e => setDurationMinutes(Number(e.target.value))} required />
             </label>
-            <label className="block text-sm">Teaching note
+            <label className="block text-sm">{t("teachingNote")}
               <textarea className={field} value={lessonNote} maxLength={10000}
                 onChange={e => setLessonNote(e.target.value)} rows={3}
-                placeholder="Practiced pawn opposition and triangulation" />
+                placeholder={t("notePlaceholder")} />
             </label>
-            <button className={button} disabled={busy || !workplaceId}>Create lesson</button>
-            <p className="text-xs text-muted">Local time in {activeWorkplace?.timezone ?? "UTC"}; invalid or ambiguous DST times are rejected.</p>
+            <button className={button} disabled={busy || !workplaceId}>{t("createLesson")}</button>
+            <p className="text-xs text-muted">{t("localTimezoneWarning",{zone:activeWorkplace?.timezone ?? "UTC"})}</p>
           </form>
         </section>
         <section className={panel}>
-          <h2 className="text-lg font-semibold">Session attendance</h2>
-          <label className="block text-sm">Lesson
+          <h2 className="text-lg font-semibold">{t("sessionAttendance")}</h2>
+          <label className="block text-sm">{t("lessonOption")}
             <select className={field} value={selectedSessionId}
               onChange={e => setSelectedSessionId(e.target.value)}>
-              <option value="">Choose lesson</option>
+              <option value="">{t("chooseLesson")}</option>
               {localSessions.map(s => <option key={s.id} value={s.id}>
-                {new Date(s.starts_at).toLocaleString("en-US", { timeZone: activeWorkplace?.timezone ?? "UTC" })} — {s.title} ({s.status})
+                {new Date(s.starts_at).toLocaleString(lang, { timeZone: activeWorkplace?.timezone ?? "UTC" })} — {s.title} ({s.status})
               </option>)}
             </select>
           </label>
           {session && <p className="text-sm text-muted">
-            {sessionWorkplace?.name} · {session.duration_minutes} minutes
+            <bdi dir="auto">{sessionWorkplace?.name}</bdi> · {t("minuteCount",{count:session.duration_minutes})}
             {session.lesson_note && <> · {session.lesson_note}</>}
           </p>}
-          {!session && <p className="text-sm text-muted">Choose a session to mark each learner independently.</p>}
+          {!session && <p className="text-sm text-muted">{t("selectSessionHint")}</p>}
           {session && <form onSubmit={updateSession} className="space-y-2 border-y border-border py-3">
-            <h3 className="font-semibold">Edit session or cancel</h3>
-            <label className="block text-sm">Edit session title
+            <h3 className="font-semibold">{t("editSession")}</h3>
+            <label className="block text-sm">{t("editSessionTitle")}
               <input className={field} value={editSessionTitle} onChange={e => setEditSessionTitle(e.target.value)} required maxLength={160} />
             </label>
-            <label className="block text-sm">Reschedule local time
+            <label className="block text-sm">{t("rescheduleLocal")}
               <input className={field} type="datetime-local" value={editStart} onChange={e => setEditStart(e.target.value)} required />
             </label>
-            <label className="block text-sm">Edit session duration
+            <label className="block text-sm">{t("editDuration")}
               <input className={field} type="number" min={15} max={480} value={editDuration} onChange={e => setEditDuration(Number(e.target.value))} required />
             </label>
-            <label className="block text-sm">Shared session note
+            <label className="block text-sm">{t("sharedNote")}
               <textarea className={field} value={editSessionNote} onChange={e => setEditSessionNote(e.target.value)} maxLength={10000} rows={3} />
             </label>
-            <label className="block text-sm">Session status
+            <label className="block text-sm">{t("sessionStatus")}
               <select className={field} value={editStatus} onChange={e => setEditStatus(e.target.value as Session["status"])}>
-                <option value="scheduled">Scheduled</option>
-                {editStatus==="completed"&&<option value="completed" disabled>Completed (recorded with full attendance)</option>}
-                <option value="cancelled">Cancelled</option>
+                <option value="scheduled">{t("scheduled")}</option>
+                {editStatus==="completed"&&<option value="completed" disabled>{t("completedRecorded")}</option>}
+                <option value="cancelled">{t("cancelled")}</option>
               </select>
             </label>
-            <p className="text-xs text-muted">To finish a lesson, use “Complete a coaching lesson” below and confirm the full frozen attendance roster.</p>
-            <button className={button} disabled={busy}>Save session changes</button>
+            <p className="text-xs text-muted">{t("finishHint")}</p>
+            <button className={button} disabled={busy}>{t("saveSession")}</button>
           </form>}
           {session && rosterRevision && <form onSubmit={correctHistoricalRoster}
             className="space-y-3 border-y border-border py-4">
-            <h3 className="font-semibold">Correct frozen lesson roster</h3>
-            <p className="text-xs text-muted">Changes only this lesson's historical
-              participants, not current class enrollment. Removed attendance
-              is preserved in the audit. Linked chess observations and materials
-              must be addressed before removing a learner.</p>
-            <label className="block text-sm">Find learner
+            <h3 className="font-semibold">{t("correctRoster")}</h3>
+            <p className="text-xs text-muted">{t("correctionCaution")}</p>
+            <label className="block text-sm">{t("findLearner")}
               <input className={field} value={rosterSearch}
-                placeholder="Search by name" onChange={e=>setRosterSearch(e.target.value)}/>
+                placeholder={t("searchByName")} onChange={e=>setRosterSearch(e.target.value)}/>
             </label>
             <div className="max-h-44 overflow-y-auto rounded-lg border border-border p-2 space-y-1"
-              role="group" aria-label="Correct historical lesson participants">
+              role="group" aria-label={t("rosterAria")}>
               {rosterCandidates.filter(s=>rosterEditIds.includes(s.id)||
                 s.name.toLocaleLowerCase().includes(rosterSearch.toLocaleLowerCase()))
                 .slice(0,80).map(s=><label key={s.id}
@@ -714,39 +716,37 @@ export function ChessCoachWorkspace() {
                 <span>{s.name}</span>
               </label>)}
             </div>
-            <p className="text-xs text-muted">{rosterEditIds.length}
-              learner(s) selected. At most 80 matching learners displayed.</p>
-            <label className="block text-sm">Reason for correction
+            <p className="text-xs text-muted">{t("rosterSelected",{count:rosterEditIds.length})}</p>
+            <label className="block text-sm">{t("reasonCorrection")}
               <textarea className={field} value={rosterReason}
                 onChange={e=>setRosterReason(e.target.value)}
-                placeholder="Explain the required historical attendance correction"
+                placeholder={t("correctionPlaceholder")}
                 minLength={8} maxLength={1000} required rows={2}/>
             </label>
             <label className="flex items-start gap-2 text-sm">
               <input type="checkbox" checked={rosterConfirmed}
                 onChange={e=>setRosterConfirmed(e.target.checked)}/>
-              <span>I have reviewed this historical correction and understand
-                removed attendance is retained in the audit.</span>
+              <span>{t("correctionConfirmation")}</span>
             </label>
             <button className={button} disabled={busy||!rosterRevision||
               !rosterConfirmed||rosterReason.trim().length<8||rosterEditIds.length===0}>
-              Confirm historical correction
+              {t("confirmCorrection")}
             </button>
             <div>
               <button type="button" className="text-sm text-primary underline"
-                onClick={()=>void loadRosterAudit()}>View correction history</button>
+                onClick={()=>void loadRosterAudit()}>{t("viewCorrectionHistory")}</button>
               {rosterAudit.map(entry=><p key={entry.id} className="text-xs text-muted mt-1">
-                {new Date(entry.createdAt).toLocaleString()} — {entry.reason}
-                {" · "}{entry.previousStudentIds.length} to {entry.correctedStudentIds.length}
-                {" · "}{entry.removedAttendanceCount} removed attendance row(s) audited
+                {new Date(entry.createdAt).toLocaleString(lang,{timeZone:timezone})} — {entry.reason}
+                {" · "}{entry.previousStudentIds.length} → {entry.correctedStudentIds.length}
+                {" · "}{t("removedAttendanceAudited",{count:entry.removedAttendanceCount})}
               </p>)}
             </div>
           </form>}
           {session && roster.length === 0 &&
-            <p className="text-sm text-muted">No participants were enrolled when this session was created.</p>}
+            <p className="text-sm text-muted">{t("noParticipants")}</p>}
           {session && rosterSessionId === selectedSessionId && roster.map(person => {
             const marked = attendance.find(a => a.student_id === person.student_id);
-            return <AttendanceRow key={person.student_id}
+            return <AttendanceRow key={selectedSessionId+":"+person.student_id+":"+(marked?.status??"")+":"+(marked?.note??"")}
               name={rosterName(person)} existing={marked} busy={busy}
               onSave={(status, note) => record(person.student_id, status, note)} />;
           })}
@@ -764,24 +764,21 @@ function AttendanceRow({ name, existing, busy, onSave }: {
 }) {
   const [status, setStatus] = useState<AttendanceStatus>(existing?.status && existing.status !== "unmarked" ? existing.status : "present");
   const [note, setNote] = useState(existing?.note ?? "");
-  useEffect(() => {
-    setStatus(existing?.status && existing.status !== "unmarked" ? existing.status : "present");
-    setNote(existing?.note ?? "");
-  }, [existing?.status, existing?.note]);
+  const t=useTranslations("coaching");
   return <div className="rounded-lg border border-border p-3 space-y-2">
     <div className="font-medium">{name}</div>
-    <label className="block text-sm">Attendance
+    <label className="block text-sm">{t("attendance")}
       <select className={field} value={status}
         onChange={e => setStatus(e.target.value as AttendanceStatus)}>
-        {attendanceStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+        {attendanceStatuses.map(s => <option key={s} value={s}>{t(s)}</option>)}
       </select>
     </label>
-    <label className="block text-sm">Student note
+    <label className="block text-sm">{t("studentNote")}
       <input className={field} value={note} maxLength={5000}
         onChange={e => setNote(e.target.value)} />
     </label>
     <button className={button} disabled={busy} onClick={() => onSave(status, note)}>
-      {existing && existing.status !== "unmarked" ? "Update attendance" : "Record attendance"}
+      {existing && existing.status !== "unmarked" ? t("updateAttendance") : t("recordAttendance")}
     </button>
   </div>;
 }

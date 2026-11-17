@@ -1,3 +1,4 @@
+import {localeDetails,type AppLocale} from "@/i18n/locales";
 import type { ColumnMapping, ImportField } from "@/lib/spreadsheet-import";
 import { IMPORT_FIELDS } from "@/lib/spreadsheet-import";
 
@@ -73,8 +74,10 @@ export type StudentSummaryContext = {
   level: string | null;
   /** Human label e.g. "since 2022" / "since Jan 15, 2024"; null if unknown. */
   practiceSinceLabel: string | null;
-  /** Exact title date line to use, e.g. "July 13, 2026". */
+  /** Exact title date line if no calendar date is available. Never parse ambiguous dates. */
   noteDateLabel: string;
+  /** Optional ISO calendar date, formatted only in the desired output language. */
+  noteDateISO?: string;
   existingPrivateNotes: string | null;
   skills: { dimension: string; rating: number; assessedAt: string }[];
   attendance: {
@@ -104,6 +107,8 @@ export async function draftStudentSummaryWithAi(args: {
   provider: AiProviderId;
   apiKey: string;
   context: StudentSummaryContext;
+  /** Requested language for this REVIEW-ONLY draft, independent of saved notes. */
+  outputLocale?: AppLocale;
 }): Promise<{ summary: string; error?: string }> {
   if (args.provider === "none" || !args.apiKey.trim()) {
     return {
@@ -112,6 +117,14 @@ export async function draftStudentSummaryWithAi(args: {
     };
   }
 
+  const locale=args.outputLocale??"en";
+  const noteDate=progressNoteDate(args.context,locale);
+  const noteTitle=progressNoteHeadings[locale];
+  const outputInstructions={
+    en:"Write every explanatory sentence in English.",
+    he:"Write every explanatory sentence in natural Hebrew, right-to-left. Keep proper names and algebraic chess notation exactly as given.",
+    ru:"Write every explanatory sentence in natural Russian. Keep proper names and algebraic chess notation exactly as given."
+  }[locale];
   const ageLine =
     args.context.ageYears != null
       ? `Age is ${args.context.ageYears} (already computed — never recalculate or invent a different age).`
@@ -120,8 +133,10 @@ export async function draftStudentSummaryWithAi(args: {
   const prompt = `You write a short private progress note for a chess coach about one student.
 
 Hard rules:
+- Write in the language specified below. Do not translate student names, chess notation, URLs or verified teacher-authored evidence in the input JSON:
+  ${outputInstructions}
 - Start with exactly this H1 title (copy verbatim):
-  # Progress Note — ${args.context.noteDateLabel}
+  # ${noteTitle} — ${noteDate}
 - Then optionally a short subtitle with the student's first name only (not another date).
 - ${ageLine}
 - Use only facts in the JSON below. Do not invent chess topics, ratings, grades, milestones, "target ages," readiness timelines, or decisions about continuing/stopping lessons.
@@ -156,7 +171,7 @@ ${JSON.stringify(
       args.provider === "openai"
         ? await callOpenAiText(args.apiKey, {
             system:
-              "You draft concise private chess-coach progress notes as markdown. Obey age and title instructions exactly. Never invent milestones from age.",
+              "You draft concise private chess-coach progress notes as markdown. Use the requested output language for the draft, but never alter source facts, names, algebraic chess notation, age or milestones. Obey the exact localized dated title.",
             prompt,
             jsonObject: false,
           })
@@ -166,7 +181,7 @@ ${JSON.stringify(
     }
     const summary = ensureProgressNoteTitle(
       (content.text ?? "").trim(),
-      args.context.noteDateLabel
+      noteDate,locale
     );
     return { summary };
   } catch (err) {
@@ -177,17 +192,41 @@ ${JSON.stringify(
   }
 }
 
-/** Guarantee the dated H1 so stacked notes stay scannable. */
-export function ensureProgressNoteTitle(
-  markdown: string,
-  noteDateLabel: string
-): string {
-  const expected = `# Progress Note — ${noteDateLabel}`;
-  const trimmed = markdown.trim();
-  if (!trimmed) return expected;
-  if (/^#\s*Progress Note\b/i.test(trimmed)) {
-    return trimmed.replace(/^#\s*Progress Note[^\n]*/i, expected);
+/** Checked language-dependent headings (never translated into stored evidence). */
+const progressNoteHeadings:Record<AppLocale,string>={
+  en:"Progress Note",
+  he:"סיכום התקדמות",
+  ru:"Заметка о прогрессе"
+};
+
+export function progressNoteDate(context:StudentSummaryContext,locale:AppLocale):string{
+  if(context.noteDateISO && /^\d{4}-\d{2}-\d{2}$/.test(context.noteDateISO)){
+    const date=new Date(`${context.noteDateISO}T12:00:00Z`);
+    if(Number.isFinite(date.valueOf()) && date.toISOString().startsWith(context.noteDateISO))
+      return new Intl.DateTimeFormat(localeDetails[locale].intl,{timeZone:"UTC",
+        day:"numeric",month:"long",year:"numeric"}).format(date);
   }
+  // A source-provided English label may be ambiguous: do not silently
+  // reinterpret calendar dates or mutate a date embedded in original notes.
+  return context.noteDateLabel;
+}
+
+/** Guarantee exactly one localized dated H1, leaving the model's BODY intact.
+ * This helper operates on uncommitted drafts. No record save occurs here. */
+export function ensureProgressNoteTitle(
+  markdown: string, noteDateLabel: string, locale:AppLocale="en"
+): string {
+  const expected=`# ${progressNoteHeadings[locale]} — ${noteDateLabel}`;
+  const trimmed=markdown.trim();
+  if(!trimmed)return expected;
+  const line=trimmed.split("\n",1)[0];
+  const heading=line.replace(/^#\s+/,"").trim();
+  const modelHeading=Object.values(progressNoteHeadings).some(title=>
+    heading===title || heading.startsWith(`${title}:`) ||
+    heading.startsWith(`${title} `) || heading.startsWith(`${title} —`) ||
+    heading.startsWith(`${title} –`));
+  if(line.startsWith("# ")&&modelHeading)
+    return expected+trimmed.slice(line.length);
   return `${expected}\n\n${trimmed}`;
 }
 

@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
@@ -13,6 +16,8 @@ export function AddStudentForm({
   guardians?: { id: string; name: string }[];
 }) {
   const router = useRouter();
+  const t=useTranslations("students");
+  const toUserError=useLocalizedApiError();
   const [name, setName] = useState("");
   const [guardianId, setGuardianId] = useState("");
   const [birthdate, setBirthdate] = useState("");
@@ -39,13 +44,13 @@ export function AddStudentForm({
 
       if ((email || phone) && !adultSelf && !parent) {
         setError(
-          "Parent / guardian name is required unless Adult student is checked"
+          t("guardianRequiredError")
         );
         return;
       }
       if (parent && !adultSelf && !email && !phone) {
         setError(
-          "Add an email or phone for the parent, or check Adult student, or clear the parent name for practice-only"
+          t("guardianContactError")
         );
         return;
       }
@@ -70,7 +75,7 @@ export function AddStudentForm({
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const base = data.error ?? "Failed to add student";
+      const base = toUserError(data, t("addFailed"));
       setError(
         data.code === "HOSTED_LIMIT_REACHED" && data.upgradePath
           ? `${base} See ${data.upgradePath}.`
@@ -95,7 +100,7 @@ export function AddStudentForm({
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       <input
         type="text"
-        placeholder="Student name"
+        placeholder={t("name")}
         value={name}
         onChange={(e) => setName(e.target.value)}
         className={inputClass}
@@ -106,7 +111,7 @@ export function AddStudentForm({
         onChange={(e) => setGuardianId(e.target.value)}
         className={inputClass}
       >
-        <option value="">New contact / family (or none)</option>
+        <option value="">{t("contactOption")}</option>
         {guardians.map((g) => (
           <option key={g.id} value={g.id}>
             {g.name}
@@ -117,9 +122,7 @@ export function AddStudentForm({
       {!linkExisting && (
         <div className="space-y-2 rounded-lg border border-border p-3">
           <p className="text-xs text-muted">
-            Leave contact blank for practice-only (link a family later). To
-            create a portal: check Adult student, or enter a parent name plus
-            email or phone.
+            {t("contactHint")}
           </p>
           <label className="flex items-center gap-2 text-xs cursor-pointer">
             <input
@@ -127,16 +130,16 @@ export function AddStudentForm({
               checked={adultSelf}
               onChange={(e) => setAdultSelf(e.target.checked)}
             />
-            Adult student (bills / portal to self)
+            {t("adultSelf")}
           </label>
           <input
             type="text"
             placeholder={
               adultSelf
-                ? "Contact name (optional; defaults to student)"
+                ? t("contactNameOptional")
                 : wantsPortal
-                  ? "Parent / guardian name (required)"
-                  : "Parent / guardian name"
+                  ? t("guardianNameRequired")
+                  : t("guardianName")
             }
             value={contactName}
             onChange={(e) => setContactName(e.target.value)}
@@ -145,14 +148,14 @@ export function AddStudentForm({
           />
           <input
             type="email"
-            placeholder="Email"
+            placeholder={t("email")}
             value={contactEmail}
             onChange={(e) => setContactEmail(e.target.value)}
             className={inputClass}
           />
           <input
             type="tel"
-            placeholder="Phone"
+            placeholder={t("phone")}
             value={contactPhone}
             onChange={(e) => setContactPhone(e.target.value)}
             className={inputClass}
@@ -161,7 +164,7 @@ export function AddStudentForm({
       )}
 
       <label className="flex flex-col gap-1 text-xs text-muted">
-        Birthday (optional)
+        {t("birthday")}
         <input
           type="date"
           value={birthdate}
@@ -171,7 +174,7 @@ export function AddStudentForm({
       </label>
       {error && <p className="text-error text-xs">{error}</p>}
       <Button type="submit" size="sm" disabled={loading}>
-        {loading ? "Adding..." : "Add Student"}
+        {loading ? t("adding") : t("addButton")}
       </Button>
     </form>
   );

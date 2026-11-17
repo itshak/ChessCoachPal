@@ -1,4 +1,5 @@
 "use client";
+import {useTranslations} from "next-intl";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -30,6 +31,7 @@ function isSafeCropSrc(value: string): boolean {
 }
 
 export function AvatarCropDialog({ src, onCancel, onConfirm, busy = false }: Props) {
+  const t=useTranslations("avatarCrop");
   const imgRef = useRef<HTMLImageElement>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -115,7 +117,7 @@ export function AvatarCropDialog({ src, onCancel, onConfirm, busy = false }: Pro
       canvas.width = AVATAR_OUTPUT_SIZE;
       canvas.height = AVATAR_OUTPUT_SIZE;
       const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Canvas not available");
+      if (!ctx) throw new Error(t("noCanvas"));
 
       const left = AVATAR_CROP_VIEWPORT / 2 + pan.x - drawnW / 2;
       const top = AVATAR_CROP_VIEWPORT / 2 + pan.y - drawnH / 2;
@@ -139,7 +141,7 @@ export function AvatarCropDialog({ src, onCancel, onConfirm, busy = false }: Pro
       const blob = await new Promise<Blob | null>((resolve) => {
         canvas.toBlob(resolve, AVATAR_OUTPUT_MIME, AVATAR_OUTPUT_QUALITY);
       });
-      if (!blob) throw new Error("Could not encode image");
+      if (!blob) throw new Error(t("encodeFailed"));
       await onConfirm(blob);
     } finally {
       setExporting(false);
@@ -153,7 +155,7 @@ export function AvatarCropDialog({ src, onCancel, onConfirm, busy = false }: Pro
       <button
         type="button"
         className="absolute inset-0 bg-black/50 border-0 cursor-default"
-        aria-label="Cancel crop"
+        aria-label={t("cancelCrop")}
         onClick={() => {
           if (!busy && !exporting) onCancel();
         }}
@@ -165,11 +167,10 @@ export function AvatarCropDialog({ src, onCancel, onConfirm, busy = false }: Pro
         className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-surface shadow-xl p-4 space-y-3"
       >
         <h2 id="avatar-crop-title" className="text-base font-semibold">
-          Crop profile photo
+          {t("title")}
         </h2>
         <p className="text-xs text-muted">
-          Drag to reposition. The circle shows how it will look as your avatar;
-          the saved image is a square.
+          {t("hint")}
         </p>
 
         <div
@@ -219,7 +220,7 @@ export function AvatarCropDialog({ src, onCancel, onConfirm, busy = false }: Pro
         </div>
 
         <label className="flex items-center gap-3 text-sm">
-          <span className="text-muted shrink-0 w-12">Zoom</span>
+          <span className="text-muted shrink-0">{t("zoom")}</span>
           <input
             type="range"
             min={AVATAR_ZOOM_MIN}
@@ -243,7 +244,7 @@ export function AvatarCropDialog({ src, onCancel, onConfirm, busy = false }: Pro
             disabled={busy || exporting}
             onClick={onCancel}
           >
-            Cancel
+            {t("cancel")}
           </button>
           <button
             type="button"
@@ -251,7 +252,7 @@ export function AvatarCropDialog({ src, onCancel, onConfirm, busy = false }: Pro
             disabled={disabled}
             onClick={() => void handleConfirm()}
           >
-            {busy || exporting ? "Saving…" : "Use photo"}
+            {busy||exporting?t("saving"):t("use")}
           </button>
         </div>
       </div>

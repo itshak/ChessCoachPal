@@ -1,6 +1,9 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useRef, useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
@@ -38,6 +41,8 @@ export function PaymentsSettingsForm({
   onSaved?: () => void;
 }) {
   const router = useRouter();
+  const t=useTranslations("paymentSettings");
+  const toUserError=useLocalizedApiError();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -66,18 +71,18 @@ export function PaymentsSettingsForm({
     if (!file) return;
     setQrError(null);
     if (!file.type.startsWith("image/")) {
-      setQrError("Choose an image file");
+      setQrError(t("chooseImage"));
       return;
     }
     if (file.size > PAYMENT_QR_MAX_INPUT_BYTES) {
-      setQrError("Image must be under 8 MB");
+      setQrError(t("imageSize"));
       return;
     }
     try {
-      setQrCode(await qrImageToDataUrl(file));
+      setQrCode(await qrImageToDataUrl(file,{read:t("readImage"),process:t("processImage"),tooDetailed:t("cropImage")}));
       setQrDirty(true);
     } catch (err) {
-      setQrError(err instanceof Error ? err.message : "Could not read image");
+      setQrError(toUserError(err, t("readImage")));
     }
   }
 
@@ -120,7 +125,7 @@ export function PaymentsSettingsForm({
     });
     setBusy(false);
     if (res.ok) {
-      setMessage("Saved");
+      setMessage(t("saved"));
       setSecretKey("");
       setPublishableKey("");
       setWebhookSecret("");
@@ -132,7 +137,7 @@ export function PaymentsSettingsForm({
       onSaved?.();
     } else {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error ?? "Failed to save");
+      setMessage(toUserError(data,t("saveError")));
       setTimeout(() => setMessage(null), 2500);
     }
   }
@@ -140,7 +145,7 @@ export function PaymentsSettingsForm({
   const saveRow = (
     <div className="flex items-center gap-3">
       <Button type="submit" size="sm" disabled={busy}>
-        {busy ? "Saving..." : "Save payment settings"}
+        {busy?t("saving"):t("save")}
       </Button>
       {message && <span className="text-xs text-muted">{message}</span>}
     </div>
@@ -150,7 +155,7 @@ export function PaymentsSettingsForm({
     <>
       <fieldset>
         <legend className="text-xs font-semibold text-muted mb-1">
-          Payment provider
+          {t("provider")}
         </legend>
         <div className="space-y-1.5 text-sm">
           <label className="flex items-center gap-2 cursor-pointer">
@@ -160,7 +165,7 @@ export function PaymentsSettingsForm({
               checked={provider === "manual"}
               onChange={() => setProvider("manual")}
             />
-            Manual (Zelle, Venmo, cash; mark paid yourself)
+            {t("manual")}
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -169,7 +174,7 @@ export function PaymentsSettingsForm({
               checked={provider === "stripe"}
               onChange={() => setProvider("stripe")}
             />
-            Stripe (bring your own keys)
+            {t("stripe")}
           </label>
         </div>
       </fieldset>
@@ -177,18 +182,18 @@ export function PaymentsSettingsForm({
       {provider === "manual" && (
         <label className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Payment instructions
+            {t("instructions")}
           </span>
           <textarea
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
-            placeholder="e.g. Zelle to you@email.com · Venmo @yourstudio · cash at lesson"
+            placeholder={t("instructionsPlaceholder")}
             rows={3}
             maxLength={2000}
             className={`${inputClass} w-full resize-y`}
           />
           <span className="block text-xs text-muted mt-1">
-            Shown on invoices and the family portal when using manual payments.
+            {t("instructionsHint")}
           </span>
         </label>
       )}
@@ -196,19 +201,19 @@ export function PaymentsSettingsForm({
       {provider === "manual" && (
         <div className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Payment QR code (optional)
+            {t("qrCode")}
           </span>
           <div className="flex items-start gap-3">
             {qrCode ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={qrCode}
-                alt="Payment QR code"
+                alt={t("qrAlt")}
                 className="h-28 w-28 rounded-lg border border-border bg-white object-contain p-1"
               />
             ) : (
               <div className="h-28 w-28 rounded-lg border border-dashed border-border flex items-center justify-center text-xs text-muted text-center px-2">
-                No QR code
+                {t("noQr")}
               </div>
             )}
             <div className="flex flex-col items-start gap-1.5">
@@ -218,7 +223,7 @@ export function PaymentsSettingsForm({
                 variant="secondary"
                 onClick={() => qrInputRef.current?.click()}
               >
-                {qrCode ? "Replace image" : "Upload image"}
+                {qrCode?t("replaceImage"):t("uploadImage")}
               </Button>
               {qrCode && (
                 <button
@@ -230,7 +235,7 @@ export function PaymentsSettingsForm({
                   }}
                   className="text-xs text-muted hover:text-foreground cursor-pointer"
                 >
-                  Remove
+                  {t("removeImage")}
                 </button>
               )}
               {qrError && <span className="text-xs text-error">{qrError}</span>}
@@ -244,8 +249,7 @@ export function PaymentsSettingsForm({
             onChange={onQrFileChange}
           />
           <span className="block text-xs text-muted mt-1">
-            e.g. PayNow, UPI, PIX, or Venmo. Added to invoice PDFs and shown in
-            the family portal. Test-scan it after saving.
+            {t("qrHint")}
           </span>
         </div>
       )}
@@ -254,43 +258,27 @@ export function PaymentsSettingsForm({
         <div className="space-y-3 border-t border-border pt-3">
           <details className="rounded-lg border border-border bg-surface-dim/40 px-3 py-2 text-sm">
             <summary className="cursor-pointer font-semibold text-foreground select-none">
-              How to set up Stripe
+              {t("setupTitle")}
             </summary>
-            <ol className="mt-2 list-decimal pl-5 space-y-2 text-xs text-muted leading-relaxed">
-              <li>
-                In Stripe, open <strong className="font-semibold text-foreground">Developers → API keys</strong>{" "}
-                (live mode). Under <strong className="font-semibold text-foreground">Standard keys</strong>,
-                copy the <strong className="font-semibold text-foreground">Secret key</strong>{" "}
-                (<code className="text-[11px]">sk_live_…</code>) and{" "}
-                <strong className="font-semibold text-foreground">Publishable key</strong>{" "}
-                (<code className="text-[11px]">pk_live_…</code>). Do not use Restricted keys (
-                <code className="text-[11px]">rk_…</code>) or test keys (
-                <code className="text-[11px]">sk_test_…</code>).
-              </li>
-              <li>
-                Open <strong className="font-semibold text-foreground">Workbench → Webhooks</strong>{" "}
-                (or Developers → Webhooks), add an endpoint with the URL below, and
-                subscribe only to{" "}
-                <code className="text-[11px]">checkout.session.completed</code>.
-                Paste the signing secret (<code className="text-[11px]">whsec_…</code>) here.
-              </li>
-              <li>
-                If the webhook is missing or wrong, families can still pay (Stripe
-                collects the money), but ChessCoachPal will not auto-mark the invoice paid.
-                You can mark it paid manually on the invoice.
-              </li>
+            <ol className="mt-2 list-decimal ps-5 space-y-2 text-xs text-muted leading-relaxed">
+              <li>{t("stepKeysA")} <strong>Developers → API keys</strong>. {t("stepKeysB")} <strong>Standard keys</strong>:
+                <code className="text-[11px]">sk_live_…</code> {t("and")} <code className="text-[11px]">pk_live_…</code>.
+                {t("stepKeysC")} <code className="text-[11px]">rk_…</code> {t("or")} <code className="text-[11px]">sk_test_…</code>.</li>
+              <li>{t("stepWebhookA")} <strong>Workbench → Webhooks</strong> {t("stepWebhookB")}
+                <code className="text-[11px]">checkout.session.completed</code>. {t("stepWebhookC")}
+                <code className="text-[11px]">whsec_…</code> {t("stepWebhookD")}</li>
+              <li>{t("stepRisk")}</li>
             </ol>
             <p className="mt-2 text-xs text-muted">
-              More detail:{" "}
+              {t("moreDetail")}{" "}
               <Link href="/help#billing-payments" className="text-primary hover:underline">
-                Help → Billing &amp; Payments
+                {t("billingHelp")}
               </Link>
-              .
             </p>
           </details>
 
           <KeyField
-            label="Standard secret key"
+            label={t("secretKey")}
             placeholder={
               stripeStatus.secretConfigured
                 ? stripeStatus.secretMasked ?? "••••••••"
@@ -303,7 +291,7 @@ export function PaymentsSettingsForm({
             onClearChange={setClearSecret}
           />
           <KeyField
-            label="Publishable key"
+            label={t("publishableKey")}
             placeholder={
               stripeStatus.publishableConfigured
                 ? stripeStatus.publishableMasked ?? "••••••••"
@@ -316,7 +304,7 @@ export function PaymentsSettingsForm({
             onClearChange={setClearPublishable}
           />
           <KeyField
-            label="Webhook signing secret"
+            label={t("webhookKey")}
             placeholder={
               stripeStatus.webhookConfigured
                 ? stripeStatus.webhookMasked ?? "••••••••"
@@ -331,15 +319,13 @@ export function PaymentsSettingsForm({
 
           <div className="text-sm">
             <span className="block text-xs font-semibold text-muted mb-1">
-              Webhook endpoint URL
+              {t("endpoint")}
             </span>
             <code className="block text-xs bg-surface-dim px-2 py-2 rounded break-all">
               {webhookUrl}
             </code>
             <span className="block text-xs text-muted mt-1">
-              Listen for{" "}
-              <code className="text-[11px]">checkout.session.completed</code> only.
-              Keys stay in your database and are never returned to the browser in full.
+              {t("listenFor")} <code className="text-[11px]">checkout.session.completed</code> {t("listenOnly")}
             </span>
           </div>
         </div>
@@ -365,7 +351,7 @@ export function PaymentsSettingsForm({
 
   return (
     <Card padding="sm">
-      <h2 className="font-semibold mb-3">Payments</h2>
+      <h2 className="font-semibold mb-3">{t("title")}</h2>
       <form onSubmit={handleSave} className="flex flex-col gap-4">
         {fields}
         {saveRow}
@@ -391,12 +377,13 @@ function KeyField({
   clear: boolean;
   onClearChange: (v: boolean) => void;
 }) {
+  const t=useTranslations("paymentSettings");
   return (
     <label className="text-sm block">
       <span className="block text-xs font-semibold text-muted mb-1">
         {label}
         {configured && !clear && (
-          <span className="ml-2 font-normal text-success">configured</span>
+          <span className="ms-2 font-normal text-success">{t("configured")}</span>
         )}
       </span>
       <input
@@ -407,7 +394,7 @@ function KeyField({
           onChange(e.target.value);
           if (clear) onClearChange(false);
         }}
-        placeholder={clear ? "(will clear on save)" : placeholder}
+        placeholder={clear?t("clearOnSave"):placeholder}
         disabled={clear}
         className={`${inputClass} w-full font-mono`}
       />
@@ -421,7 +408,7 @@ function KeyField({
               if (e.target.checked) onChange("");
             }}
           />
-          Clear saved {label.toLowerCase()}
+          {t("clearSaved",{label})}
         </label>
       )}
     </label>
@@ -433,13 +420,13 @@ function KeyField({
  * to store on the policy. PNG keeps QR edges crisp; JPEG is the fallback for
  * photos of a QR code that PNG can't compress under the limit.
  */
-async function qrImageToDataUrl(file: File): Promise<string> {
+async function qrImageToDataUrl(file: File, errors:{read:string;process:string;tooDetailed:string}): Promise<string> {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
       const el = new Image();
       el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error("Could not read image"));
+      el.onerror = () => reject(new Error(errors.read));
       el.src = url;
     });
     const scale = Math.min(
@@ -450,7 +437,7 @@ async function qrImageToDataUrl(file: File): Promise<string> {
     canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
     const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Could not process image");
+    if (!ctx) throw new Error(errors.process);
     // White backdrop so transparent PNGs stay scannable (and JPEG-safe).
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -461,7 +448,7 @@ async function qrImageToDataUrl(file: File): Promise<string> {
     if (png.length <= PAYMENT_QR_MAX_DATA_URL_LENGTH) return png;
     const jpeg = canvas.toDataURL("image/jpeg", 0.9);
     if (jpeg.length <= PAYMENT_QR_MAX_DATA_URL_LENGTH) return jpeg;
-    throw new Error("Image is too detailed; crop it to just the QR code");
+    throw new Error(errors.tooDetailed);
   } finally {
     URL.revokeObjectURL(url);
   }
