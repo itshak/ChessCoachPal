@@ -102,8 +102,48 @@ migration review and final licensing review first.
    run the full release test matrix before claiming support. Do not introduce
    per-locale copies of MCP tools or alter existing status/error semantics.
 
+For the prepublication real ChatGPT/Claude matrix, recipient-language review and
+real assistive-technology sign-off, use
+[Multilingual live-client acceptance](multilingual-live-client-acceptance.md).
+
 See [ADR-0009](adr/0009-localization-mcp-presentation.md) and
 [ADR-0010](adr/0010-family-communications-locale-and-unicode-pdf.md), and the
 active `openspec/changes/2026-11-17-introduce-multilingual-support` checklist.
 The OpenSpec change remains active and must not be archived before accepted
 website, MCP, output, security, deployment and live-client evidence.
+
+## v0.1.7 — existing Coolify SMTP and v0.1.6 compatibility
+
+This release integrates (rather than replaces) the live v0.1.6 historical
+attendance import, complete CSV export, 195 MCP tools and existing private-beta
+SMTP configuration. The website/MCP `ccp_historical_attendance_dates_preview`
+and `_commit` tools remain canonical and preserve exact real pupil dates.
+
+The server-validated `preferredLocale` (`en`, `he`, `ru`) is sent in GoTrue
+Auth `user_metadata.preferred_locale` on signup and synchronized on teacher
+profile changes. It only changes email presentation; it is **never an
+authorization claim**. GoTrue invite, confirmation, reset, magic-link,
+change-email and reauthentication templates are checked into
+`public/auth-email-templates/` and bound by the existing self-hosted Auth
+container (the internal service URL is configurable via
+`AUTH_EMAIL_TEMPLATES_BASE_URL`). The same assets are used in local Supabase
+Mailpit tests. Templates fall back to English for absent/unsupported locale.
+
+The private-beta gate and verified-email ownership check are unchanged. The
+App's separate `EMAIL_PROVIDER=smtp` for customer-facing invoices, event invites
+and notifications uses MIME-encoded Unicode headers and UTF-8 body transfer
+encoding; this is independent of `AUTH_SMTP_*` credentials in GoTrue. Do not
+configure Auth SMTP passwords in app environment variables.
+
+For **existing** databases, the v0.1.7 `supabase/migrations/*family_communication_locale.sql`
+is an additive, row-preserving upgrade: it adds a nullable family communication
+locale, validates the three supported values, and safely replaces the
+owner-scoped `ccp_guardian_save` function. The one-shot migration service uses
+the normal ledger; it must not reset PostgreSQL, Auth users or Storage. On
+failure, halt deployment and consult the encrypted backup before retrying.
+
+The published GitHub release and Coolify deployment are gated on CI,
+authenticated tri-language E2E, deterministic owner isolation, updated OpenSpec,
+Compose startup and backup/restore. Live ChatGPT/Claude client testing and an
+actual screen-reader audit remain separately documented operational gates; do
+not report them as run by GitHub Actions.

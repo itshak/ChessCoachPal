@@ -51,5 +51,29 @@ export async function teacherProfileUpdate(
   .eq("id",teacherId).select("id").maybeSingle();
  if(error)throw new TeacherProfileError(500,"DATABASE_ERROR","Failed to update profile");
  if(!data)throw new TeacherProfileError(404,"NOT_FOUND","Profile not found");
+ // Supabase Auth delivers invite/recovery mail through its own SMTP service.
+ // Its conditional templates read user_metadata.preferred_locale, NOT the
+ // teachers table. Keep a validated, display-only metadata copy in sync after
+ // a confirmed website/MCP preference update. This touches neither login
+ // credentials nor email address and cannot trigger email delivery.
+ // Database is authoritative; Auth metadata sync is best-effort because
+ // GoTrue and PostgREST have no cross-service atomic transaction.
+ if(patch.preferred_locale!==undefined){
+   try{
+     const {error:authError}=await db.auth.updateUser({
+       data:{preferred_locale:patch.preferred_locale}
+     });
+     if(authError){
+       // Delegated MCP uses a verified bearer identity but a stateless
+       // Supabase JS client; updateUser may lack a persisted Auth session.
+       // The teacher-owned database update above is the authorization gate.
+       const {createServiceClient}=await import("@/lib/supabase/server");
+       const {error:adminError}=await createServiceClient().auth.admin.updateUserById(
+         teacherId,{user_metadata:{preferred_locale:patch.preferred_locale}}
+       );
+       if(adminError)console.warn("Auth mail-language metadata sync unavailable");
+     }
+   }catch{console.warn("Auth mail-language metadata sync unavailable");}
+ }
  return {ok:true};
 }

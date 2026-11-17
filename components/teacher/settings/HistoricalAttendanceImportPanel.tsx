@@ -31,7 +31,7 @@ async function asJson(res:Response){
 type DateEntry={studentId:string;datesText:string};
 function HistoricalDatesQuickImport({students,workplaces}:{students:Roster[];workplaces:Roster[]}){
  const confirm=useConfirm();
- const tq=useTranslations("historyQuickImport");
+ const t=useTranslations("historyImport.quick");
  const toUserError=useLocalizedApiError();
  const [workplaceId,setWorkplaceId]=useState("");
  const [start,setStart]=useState(""),[end,setEnd]=useState("");
@@ -50,12 +50,12 @@ function HistoricalDatesQuickImport({students,workplaces}:{students:Roster[];wor
  const payload=()=>{
   const selected=entries.filter(e=>e.studentId||e.datesText.trim());
   if(!workplaceId||!start||!end||!selected.length)
-   throw new Error(tq("required"));
+   throw new Error(t("missingSelection"));
   const rows=selected.map((entry,index)=>{
    const student=students.find(s=>s.id===entry.studentId);
-   if(!student)throw new Error(tq("unknown",{row:index+1}));
+   if(!student)throw new Error(t("unknownStudentRow",{row:index+1}));
    const attendanceDates=entry.datesText.split(/[\s,;]+/).map(s=>s.trim()).filter(Boolean);
-   if(!attendanceDates.length)throw new Error(tq("noDates",{row:index+1}));
+   if(!attendanceDates.length)throw new Error(t("missingDatesRow",{row:index+1}));
    return {studentName:student.name,studentId:student.id,attendanceDates};
   });
   return {workplaceId,schoolYearStart:start,schoolYearEnd:end,timezone,
@@ -69,14 +69,14 @@ function HistoricalDatesQuickImport({students,workplaces}:{students:Roster[];wor
     body:JSON.stringify(payload()),
    })) as Preview;
    setReview(result);setRequestKey(crypto.randomUUID());
-   if(!result.canCommit)setMessage(tq("reviewIssues"));
-  }catch(e){setError(toUserError(e,tq("failed")));}finally{setBusy(false);}
+   if(!result.canCommit)setMessage(t("reviewIssues"));
+  }catch(e){setError(toUserError(e,t("requestFailed")));}finally{setBusy(false);}
  }
  async function saveDates(){
   if(!review?.canCommit||!requestKey)return;
-  const approved=await confirm({title:tq("confirmTitle"),
-   message:tq("confirmMessage",{count:review.previewTotal,digest:review.previewDigest}),
-   confirmLabel:tq("confirmLabel")});
+  const approved=await confirm({title:t("confirmTitle"),
+   message:t("confirmMessage",{count:review.previewTotal,digest:review.previewDigest}),
+   confirmLabel:t("confirmSave")});
   if(!approved)return;
   setBusy(true);setError(null);
   try{
@@ -85,63 +85,66 @@ function HistoricalDatesQuickImport({students,workplaces}:{students:Roster[];wor
     body:JSON.stringify({...payload(),previewDigest:review.previewDigest,
      idempotencyKey:requestKey,confirmed:true}),
    })) as {count:number;replayed?:boolean};
-   setMessage(tq(result.replayed?"alreadySaved":"saved",{count:result.count}));
-  }catch(e){setError(toUserError(e,tq("failed")));}finally{setBusy(false);}
+   setMessage(t(result.replayed?"alreadySaved":"saved",{count:result.count}));
+  }catch(e){setError(toUserError(e,t("requestFailed")));}finally{setBusy(false);}
  }
- return <section className="border-b border-border pb-5 mb-5" aria-label={tq("aria")}>
-  <h3 className="font-medium mb-1">{tq("title")}</h3>
-  <p className="text-sm text-muted mb-3">{tq("description")}</p>
+ return <section className="border-b border-border pb-5 mb-5" aria-label={t("aria")}>
+  <h3 className="font-medium mb-1">{t("title")}</h3>
+  <p className="text-sm text-muted mb-3">{t("description")}</p>
   <div className="grid sm:grid-cols-2 gap-3 mb-3">
-   <label className="text-xs">{tq("workplace")}
+   <label className="text-xs">{t("workplace")}
     <select className={cls} value={workplaceId}
      onChange={e=>{setWorkplaceId(e.target.value);invalidate();}}>
-     <option value="">{tq("selectWorkplace")}</option>
+     <option value="">{t("selectWorkplace")}</option>
      {workplaces.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
     </select>
    </label>
-   <label className="text-xs">{tq("source")}
-    <input className={cls} value={sourceLabel} placeholder={tq("sourceExample")}
+   <label className="text-xs">{t("sourceLabel")}
+    <input className={cls} value={sourceLabel} placeholder={t("sourcePlaceholder")}
      onChange={e=>{setSourceLabel(e.target.value);invalidate();}} />
    </label>
-   <label className="text-xs">{tq("start")}
+   <label className="text-xs">{t("dateStart")}
     <input className={cls} type="date" value={start}
      onChange={e=>{setStart(e.target.value);invalidate();}}/>
    </label>
-   <label className="text-xs">{tq("end")}
+   <label className="text-xs">{t("dateEnd")}
     <input className={cls} type="date" value={end}
      onChange={e=>{setEnd(e.target.value);invalidate();}}/>
    </label>
-   <label className="text-xs">{tq("timezone")}
+   <label className="text-xs">{t("timezone")}
     <input className={cls} value={timezone}
      onChange={e=>{setTimezone(e.target.value);invalidate();}}/>
    </label>
   </div>
   {entries.map((entry,i)=><div key={i} className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] gap-2 items-end mb-2">
-   <label className="text-xs">{tq("student",{number:i+1})}
+   <label className="text-xs">{t("studentIndex",{count:i+1})}
     <select className={cls} value={entry.studentId}
      onChange={e=>setEntry(i,"studentId",e.target.value)}>
-     <option value="">{tq("selectStudent")}</option>
+     <option value="">{t("selectStudent")}</option>
      {students.map(student=><option key={student.id} value={student.id}>{student.name}</option>)}
     </select>
    </label>
-   <label className="text-xs">{tq("dates")}
+   <label className="text-xs">{t("attendedDates")}
     <textarea className={cls} rows={2} value={entry.datesText}
      placeholder="2026-09-07, 2026-09-14"
      onChange={e=>setEntry(i,"datesText",e.target.value)} />
    </label>
    <Button type="button" variant="secondary" disabled={busy||entries.length===1}
-    onClick={()=>{setEntries(rows=>rows.filter((_,j)=>j!==i));invalidate();}}>{tq("remove")}</Button>
+    onClick={()=>{setEntries(rows=>rows.filter((_,j)=>j!==i));invalidate();}}>{t("remove")}</Button>
   </div>)}
   <div className="flex flex-wrap gap-2 mb-3">
    <Button type="button" variant="secondary" disabled={busy||entries.length>=250}
-    onClick={()=>{setEntries(rows=>[...rows,{studentId:"",datesText:""}]);invalidate();}}>{tq("add")}</Button>
-   <Button type="button" disabled={busy} onClick={()=>void previewDates()}>{tq("preview")}</Button>
+    onClick={()=>{setEntries(rows=>[...rows,{studentId:"",datesText:""}]);invalidate();}}>{t("addStudent")}</Button>
+   <Button type="button" disabled={busy} onClick={()=>void previewDates()}>{t("previewButton")}</Button>
    {review?.canCommit&&<Button type="button" disabled={busy}
-    onClick={()=>void saveDates()}>{tq("confirm")}</Button>}
+    onClick={()=>void saveDates()}>{t("confirmButton")}</Button>}
   </div>
-  {review&&<p className="text-sm mb-2">{tq("summary",{count:review.previewTotal,issues:review.issueCount,status:review.canCommit?tq("ready"):tq("blocked")})}
+
+  {review&&<p className="text-sm mb-2">{t("previewSummary",{
+    count:review.previewTotal,issues:review.issueCount,
+    status:review.canCommit?t("ready"):t("cannotCommit")})}
    {review.issues.slice(0,10).map((issue,i)=><span className="block text-error" key={i}>
-    {tq("issue",{row:issue.row,message:issue.message})}</span>)}
+    {t("issueRow",{row:issue.row,message:issue.message})}</span>)}
   </p>}
   {message&&<p className="text-sm text-muted">{message}</p>}
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}

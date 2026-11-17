@@ -212,3 +212,30 @@
 - Corrected the student-list card grid/flex min-content layout, bounded both student-name and level sections, and allowed real Unicode words to break at narrow viewports without eliding, truncating or modifying original student names. Retained `<bdi dir="auto">` for mixed-direction names and family text. Localized five old English-only student roster loading/capacity errors. Catalogs now match at **2,375 entries** for all supported languages.
 - Added a **deterministic, strict 390 px EN/HE/RU E2E** inserting a synthetic 150+-character concatenated Hebrew/Cyrillic student name and a long Russian level. For each language the test demands exact original-name visibility, correct level rendering and no page horizontal overflow. Added a workplace locale/currency/timezone invariance assertion to the existing teacher language website/MCP parity test.
 - Local TypeScript/catalog checks and touched-file ESLint passed. Full-repo lint previously passed with 0 errors and 40 warnings. This new source patch and full-lint refactor are **not yet GitHub CI/E2E accepted**. No main merge/deploy/production database reset or OpenSpec archive.
+
+
+## v0.1.7 integration with current main and SMTP — release candidate
+
+- Recovered the shallow merge base, integrated all changes from `main` v0.1.6
+  into PR #86 and resolved four content conflicts. Latest main historical date
+  import (strict preview/commit), teacher export and paginated CSV MCP, live
+  lifecycle repairs, rate limiting and beta confirmation/SMTP were preserved.
+- Translated the **new** quick date-list historical importer and JSON/CSV
+  export controls to all three locales. The latest strict MCP audit verifies
+  76/76 website business routes, 37/37 canonical cases, 93/93 historical cases,
+  and 195 tools on the merged candidate; no tool name was localized.
+- Added validated teacher signup/profile Auth mail locale metadata for the
+  existing GoTrue SMTP invitation flow; six GoTrue conditional template files
+  with EN/HE/RU and English fallback; correctly localized login notices; and
+  safe UTF-8 MIME transport for the separate app SMTP provider. Never used
+  user metadata for authorization or modified protected credential fields.
+- Added a **forward-only**, additive live migration for family locale on
+  existing Coolify databases, using the ledger-backed one-shot migrate job;
+  fresh baseline remains valid and no live DB has been reset by this PR.
+- v0.1.7 release manifests/dated changelog prepared. Local release validation,
+  typecheck, build, strict MCP parity, full lint and static Auth template checks
+  passed before first integration push. New actual Mailpit and tri-language
+  invite / family emails E2E must pass on the **exact candidate SHA**. Release
+  tag/deployment must follow current-main release workflow; no shortcut to
+  production is permitted. Manual real ChatGPT/Claude, screen-reader and live
+  mail-provider acceptance remain unverified by automation.

@@ -1,3 +1,4 @@
+import {localeDetails,type AppLocale} from "@/i18n/locales";
 import type {
   AttendanceStatus,
   InvoiceItemKind,
@@ -410,8 +411,8 @@ export function resolveManualPaymentAmount(
 }
 
 /** e.g. formatMoney(4500, "USD") → "$45.00" */
-export function formatMoney(cents: number, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
+export function formatMoney(cents: number, currency = "USD",locale:AppLocale="en"): string {
+  return new Intl.NumberFormat(localeDetails[locale].intl, {
     style: "currency",
     currency,
   }).format(cents / 100);

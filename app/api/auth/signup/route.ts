@@ -4,6 +4,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requiresBetaCode } from "@/lib/entitlements";
 import { shouldProvisionTeacherFromSignup, signupEmailRedirectTo } from "@/lib/onboarding";
 import { requestOrigin } from "@/lib/server/http";
+import {isAppLocale} from "@/i18n/locales";
 import { ensureTeacherForAuthUser } from "@/lib/server/ensure-teacher";
 import {
   BETA_GUESS_LIMIT,
@@ -27,7 +28,7 @@ import { secureCompare } from "@/lib/server/secure-compare";
  * cannot sign in until the invited email address is verified.
  */
 export async function POST(req: NextRequest) {
-  const { email, password, displayName, accessCode, timezone } =
+  const { email, password, displayName, accessCode, timezone, preferredLocale } =
     await req.json();
 
   if (typeof email !== "string" || typeof password !== "string") {
@@ -36,6 +37,12 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+
+  // Auth SMTP templates read a narrow, validated language tag from Auth
+  // user_metadata, never an inferred name/Accept-Language guess. Reject
+  // unsupported explicit choices BEFORE sending any irreversible invitation.
+  if(preferredLocale!==undefined && !isAppLocale(preferredLocale))
+    return NextResponse.json({error:"Unsupported interface language",code:"VALIDATION_ERROR"},{status:400});
 
   const betaRequired = requiresBetaCode();
   const requiredCode = process.env.BETA_ACCESS_CODE?.trim();
@@ -128,6 +135,7 @@ export async function POST(req: NextRequest) {
   const userMetadata = {
     display_name: displayName,
     ...(timezoneValue ? { timezone: timezoneValue } : {}),
+    ...(preferredLocale ? { preferred_locale: preferredLocale } : {}),
   };
   const serviceClient = createServiceClient();
   let userId: string | undefined;
@@ -155,7 +163,7 @@ export async function POST(req: NextRequest) {
         email,
         {
           data: userMetadata,
-          redirectTo: `${requestOrigin(req)}/login?message=Email%20verified.%20Please%20sign%20in.`,
+          redirectTo: `${requestOrigin(req)}/login?auth_notice=verified`,
         }
       );
       if (error || !data.user?.id) {
@@ -229,6 +237,7 @@ export async function POST(req: NextRequest) {
     displayName:
       typeof displayName === "string" ? displayName : email.split("@")[0],
     timezone: typeof timezone === "string" ? timezone : null,
+    ...(preferredLocale ? {preferredLocale} : {}),
   });
   if (!ensured.ok) {
     return NextResponse.json({ error: ensured.error }, { status: 500 });

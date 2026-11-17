@@ -537,7 +537,7 @@ export default async function PortalPage({
                         {inv.period_start} → {inv.period_end}
                       </div>
                       <div className="text-xs text-muted capitalize">
-                        {inv.status==="paid"?t("paid"):t("sent")} · {formatMoney(inv.subtotal_cents, inv.currency)}
+                        {inv.status==="paid"?t("paid"):t("sent")} · {formatMoney(inv.subtotal_cents, inv.currency,locale)}
                       </div>
                       {(() => {
                         if (inv.status !== "sent") return null;
@@ -550,8 +550,8 @@ export default async function PortalPage({
                         if (paidCents <= 0 || balanceCents <= 0) return null;
                         return (
                           <div className="text-xs font-semibold">
-                            {t("paidAmount",{amount:formatMoney(paidCents, inv.currency)})} ·{" "}
-                            {t("dueAmount",{amount:formatMoney(balanceCents, inv.currency)})}
+                            {t("paidAmount",{amount:formatMoney(paidCents, inv.currency,locale)})} ·{" "}
+                            {t("dueAmount",{amount:formatMoney(balanceCents, inv.currency,locale)})}
                           </div>
                         );
                       })()}

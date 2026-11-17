@@ -1,11 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
 import { loadInvoicePdf } from "@/lib/server/invoice-pdf-data";
-import {invoiceFormatPeriod} from "@/lib/server/invoice-pdf";
-import {communicationCopy,familyCommunicationLocale} from "@/lib/server/communication-locales";
-import {localeDetails} from "@/i18n/locales";
+import {familyCommunicationLocale} from "@/lib/server/communication-locales";
 import { isValidPaymentQrDataUrl } from "@/lib/payment-qr";
-import { formatMoney, summarizePayments } from "@/lib/billing";
+import {buildInvoiceEmailContent} from "@/lib/server/invoice-email-content";
+import { summarizePayments } from "@/lib/billing";
 import { createCheckoutSession, expireCheckoutSession } from "@/lib/payments";
 import {
   familyEmailRecipients,
@@ -138,59 +137,24 @@ export async function sendInvoice(
     emailError =
       "No family email on file; invoice marked sent for the portal";
   } else {
-    const locale=familyCommunicationLocale(family),copy=communicationCopy[locale].invoice;
-    const periodLabel = invoiceFormatPeriod(invoice.period_start, invoice.period_end, locale);
-    const studio = policy.studio_name || copy.studioFallback;
-    const total = formatMoney(invoice.subtotal_cents, invoice.currency);
-    const paid = formatMoney(paidCents, invoice.currency);
-    const balance = formatMoney(balanceCents, invoice.currency);
-    const balanceSummary = paidCents > 0
-      ? `${copy.total}: ${total}\n${copy.paid}: ${paid}\n${copy.balance}: ${balance}`
-      : `${copy.totalDue}: ${balance}`;
-    const isolate=(value:string)=>`<bdi>${escapeHtml(value)}</bdi>`;
-    const balanceHtml = paidCents > 0
-      ? `<p>${copy.total}: ${isolate(total)}<br/>${copy.paid}: ${isolate(paid)}<br/><strong>${copy.balance}: ${isolate(balance)}</strong></p>`
-      : `<p><strong>${copy.totalDue}: ${isolate(balance)}</strong></p>`;
-    const greeting = familyGreetingNames(family,locale);
-
-    const qrNote =
-      balanceCents > 0 && !checkoutUrl &&
-      policy.payment_provider === "manual" &&
-      isValidPaymentQrDataUrl(policy.payment_qr_code)
-        ? copy.qrNote : "";
-
-    const payText = balanceCents === 0
-      ? copy.paymentReceived
-      : checkoutUrl
-      ? `${copy.payOnline}: ${checkoutUrl}`
-      : policy.payment_instructions.trim()
-        ? `${copy.paymentInstructions}:\n${policy.payment_instructions.trim()}${qrNote ? `\n\n${qrNote}` : ""}`
-        : qrNote || copy.seePortal;
-
-    const payHtml = balanceCents === 0
-      ? `<p>${copy.paymentReceived}</p>`
-      : checkoutUrl
-      ? `<p><a href="${escapeHtml(checkoutUrl)}">${copy.payOnline}</a></p>`
-      : policy.payment_instructions.trim()
-        ? `<p><strong>${copy.paymentInstructions}</strong></p><p style="white-space:pre-wrap;">${escapeHtml(policy.payment_instructions.trim())}</p>${qrNote ? `<p>${qrNote}</p>` : ""}`
-        : `<p>${qrNote || copy.seePortal}</p>`;
-
-    const text = `${copy.greeting(greeting)}\n\n${copy.attached(periodLabel)}\n\n${balanceSummary}\n\n${payText}\n\n${copy.signature(studio)}`;
-
-    const html = `<div lang="${locale}" dir="${localeDetails[locale].dir}" style="font-family:sans-serif;font-size:14px;line-height:1.5;color:#222;">
-<p>${copy.greeting(isolate(greeting))}</p>
-<p>${escapeHtml(copy.attached(periodLabel))}</p>
-${balanceHtml}
-${payHtml}
-<p>${copy.signature(isolate(studio))}</p>
-</div>`;
+    const locale=familyCommunicationLocale(family);
+    const content=buildInvoiceEmailContent({
+      locale,familyGreetingName:familyGreetingNames(family,locale),
+      studioName:policy.studio_name,periodStart:invoice.period_start,
+      periodEnd:invoice.period_end,currency:invoice.currency,
+      subtotalCents:invoice.subtotal_cents,paidCents,balanceCents,
+      paymentInstructions:policy.payment_instructions,
+      paymentProvider:policy.payment_provider,
+      hasPaymentQrCode:isValidPaymentQrDataUrl(policy.payment_qr_code),
+      checkoutUrl,
+    });
 
     const result = await sendEmail({
       to: recipients,
       bcc: familyEmailBcc(policy),
-      subject: copy.subject(periodLabel,studio),
-      text,
-      html,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
       locale,
       fromName: policy.studio_name
         ? `${policy.studio_name} (via ChessCoachPal)`
@@ -212,12 +176,4 @@ ${payHtml}
   }
 
   return { ok: true, emailed, emailError, checkoutUrl, checkoutError };
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }

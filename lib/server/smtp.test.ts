@@ -3,6 +3,7 @@ import net from "node:net";
 import {
   smtpEnvelopeRecipients,
   buildData,
+  encodeMimeHeader,
   sendViaSmtp,
 } from "@/lib/server/smtp";
 
@@ -127,5 +128,34 @@ describe("sendViaSmtp BCC delivery", () => {
     } finally {
       capture.close();
     }
+  });
+});
+
+
+describe("SMTP multilingual Unicode MIME and header safety",()=>{
+  it("encodes Hebrew/Russian subject and From display name without touching the address",()=>{
+    const data=buildData({...base,
+      fromHeader:'"מורה Петров (via ChessCoachPal)" <notifications@chesscoachpal.invalid>',
+      subject:"תזכורת: Иван שלום — ChessCoachPal",
+      text:"שלום мир",html:'<div lang="he" dir="rtl">שלום мир</div>',
+    });
+    const [headers]=data.split("\r\n\r\n");
+    expect(headers).toContain("Subject: =?UTF-8?B?");
+    expect(headers).toContain("From: =?UTF-8?B?");
+    expect(headers).toContain("<notifications@chesscoachpal.invalid>");
+    expect(data).toContain("Content-Transfer-Encoding: base64");
+    expect(data).not.toContain("שלום мир");
+    expect(data).not.toContain("תזכורת");
+    // Recipient's MIME reader sees the original Unicode after decoding.
+    const encoded=data.match(/Content-Type: text\/plain; charset="utf-8"\r\nContent-Transfer-Encoding: base64\r\n\r\n([A-Za-z0-9+/=\r\n]+)/)?.[1];
+    expect(Buffer.from(encoded?.replace(/\s/g,"")??"","base64").toString("utf8")).toBe("שלום мир");
+  });
+  it("strips CRLF header injection from subject and From header",()=>{
+    const data=buildData({...base,subject:"Hello\r\nBcc: attacker@evil.test",
+      fromHeader:'"Coach" <notifications@chesscoachpal.invalid>\r\nBcc: attacker@evil.test'});
+    const [headers]=data.split("\r\n\r\n");
+    expect(headers).not.toMatch(/^Bcc:/im);
+    expect(headers).toContain("Subject: Hello Bcc: attacker@evil.test");
+    expect(encodeMimeHeader("abc\r\nDEF")).toBe("abc DEF");
   });
 });

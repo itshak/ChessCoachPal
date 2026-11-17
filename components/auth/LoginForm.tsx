@@ -3,7 +3,7 @@
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 
 import { useEffect, useState } from "react";
-import {useTranslations} from "next-intl";
+import {useLocale,useTranslations} from "next-intl";
 import {LanguageSwitcher} from "@/components/locale/LanguageSwitcher";
 import { useRouter } from "next/navigation";
 import {
@@ -33,16 +33,19 @@ export function LoginForm({
 }) {
   const router = useRouter();
   const t=useTranslations("login");
+  const preferredLocale=useLocale();
   const toUserError=useLocalizedApiError();
   const [mode, setMode] = useState<Mode>("signin");
 
   useEffect(() => {
-    const message = new URLSearchParams(window.location.search).get("message");
-    if (message) {
-      setError({ headline: message });
-      window.history.replaceState(null, "", "/login");
-    }
-  }, []);
+    const search=new URLSearchParams(window.location.search);
+    const notice=search.get("auth_notice");
+    const legacyMessage=search.get("message");
+    if(notice==="verified")setInfo(t("emailVerified"));
+    else if(notice==="invalid")setError({headline:t("invalidEmailLink")});
+    else if(legacyMessage)setError({headline:legacyMessage});
+    if(notice||legacyMessage)window.history.replaceState(null,"","/login");
+  }, [t]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -108,6 +111,7 @@ export function LoginForm({
               displayName: displayName || email.split("@")[0],
               accessCode: betaRequired ? accessCode : undefined,
               timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              preferredLocale,
             }),
           }),
           AUTH_REQUEST_TIMEOUT_MS
