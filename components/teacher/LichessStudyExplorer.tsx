@@ -1,6 +1,7 @@
 "use client";
 
 import {useState,type FormEvent} from "react";
+import {useTranslations} from "next-intl";
 
 type Study={id:string;name:string;createdAt:number|null;updatedAt:number|null};
 type Chapter={
@@ -13,6 +14,7 @@ type Result={
 
 /** Both the website and MCP use the same server-only Lichess study index. */
 export function LichessStudyExplorer(){
+ const t=useTranslations("lichessExplorer");
  const [query,setQuery]=useState("");
  const [studyId,setStudyId]=useState("");
  const [chapterNumber,setChapterNumber]=useState("");
@@ -31,11 +33,11 @@ export function LichessStudyExplorer(){
     credentials:"same-origin",cache:"no-store",
    });
    const response=await res.json();
-   if(!res.ok)throw new Error(response.error??"Lichess study search failed");
+   if(!res.ok)throw new Error(response.error??t("searchFailed"));
    setResult(response as Result);
   }catch(e){
    setResult(null);
-   setError(e instanceof Error?e.message:"Lichess study search failed");
+   setError(e instanceof Error?e.message:t("searchFailed"));
   }finally{setBusy(false);}
  }
  async function openStudy(id:string){
@@ -46,51 +48,50 @@ export function LichessStudyExplorer(){
     credentials:"same-origin",cache:"no-store",
    });
    const response=await res.json();
-   if(!res.ok)throw new Error(response.error??"Could not load study chapters");
+   if(!res.ok)throw new Error(response.error??t("loadFailed"));
    setResult(response as Result);
-  }catch(e){setResult(null);setError(e instanceof Error?e.message:"Study unavailable");}
+  }catch(e){setResult(null);setError(e instanceof Error?e.message:t("unavailable"));}
   finally{setBusy(false);}
  }
- return <section aria-label="Lichess study and chapter search"
+ return <section aria-label={t("aria")}
   className="space-y-3 rounded-xl border border-border bg-surface p-4">
   <div>
-   <h2 className="text-xl font-semibold">Find Lichess study chapters</h2>
+   <h2 className="text-xl font-semibold">{t("title")}</h2>
    <p className="text-sm text-muted">
-    Search your connected studies by title. Select a study to inspect its PGN
-    metadata, including the 32nd chapter. Private study tokens never leave this server.
+    {t("description")}
    </p>
   </div>
-  <form className="grid gap-3 sm:grid-cols-4" onSubmit={e=>void search(e)}>
-   <label className="text-sm sm:col-span-2">Study or chapter keywords
+  <form className="grid grid-cols-1 gap-3 sm:grid-cols-4" onSubmit={e=>void search(e)}>
+   <label className="text-sm sm:col-span-2">{t("keywords")}
     <input type="search" value={query} onChange={e=>setQuery(e.target.value)}
-     maxLength={120} placeholder="e.g. rook endgame"
-     className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"/>
+     maxLength={120} placeholder={t("keywordExample")}
+     className="mt-1 w-full min-w-0 max-w-full rounded-md border border-border bg-background px-3 py-2"/>
    </label>
-   <label className="text-sm">Study ID (optional)
+   <label className="text-sm">{t("studyId")}
     <input value={studyId} onChange={e=>setStudyId(e.target.value)}
-     maxLength={8} pattern="[a-zA-Z0-9]{8}" placeholder="Eight characters"
-     className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"/>
+     maxLength={8} pattern="[a-zA-Z0-9]{8}" placeholder={t("eightCharacters")}
+     className="mt-1 w-full min-w-0 max-w-full rounded-md border border-border bg-background px-3 py-2"/>
    </label>
-   <label className="text-sm">Chapter number
+   <label className="text-sm">{t("chapterNumber")}
     <input type="number" min={1} max={64} value={chapterNumber}
      onChange={e=>setChapterNumber(e.target.value)} placeholder="32"
      disabled={!studyId.trim()}
-     className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"/>
+     className="mt-1 w-full min-w-0 max-w-full rounded-md border border-border bg-background px-3 py-2"/>
    </label>
    <button type="submit" disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-    {busy?"Searching…":"Search studies"}
+    {busy?t("searching"):t("search")}
    </button>
   </form>
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}
   {result&&<div className="space-y-2">
-   <p className="text-xs text-muted">Connected account: {result.username}
-    {result.truncated?" · More results exist; narrow your search":""}
+   <p className="text-xs text-muted">{t("connected")} <bdi dir="ltr">{result.username}</bdi>
+    {result.truncated?t("truncated"):""}
    </p>
    {!!result.studies.length&&<ul className="space-y-1">
     {result.studies.map(study=><li key={study.id}>
      <button type="button" onClick={()=>void openStudy(study.id)}
       className="text-sm text-primary underline text-start">
-      {study.name} ({study.id})
+      <bdi dir="auto">{study.name}</bdi> (<bdi dir="ltr">{study.id}</bdi>)
      </button>
     </li>)}
    </ul>}
@@ -99,18 +100,18 @@ export function LichessStudyExplorer(){
       className="rounded-md border border-border px-3 py-2 text-sm">
      <a href={chapter.chapterUrl} target="_blank" rel="noopener noreferrer"
       className="font-semibold text-primary underline">
-      Chapter {chapter.chapterNumber}: {chapter.chapterName}
+      {t("chapter",{number:chapter.chapterNumber})}: <bdi dir="auto">{chapter.chapterName}</bdi>
      </a>
      {(chapter.opening||chapter.eco)&&<p className="text-muted">
       {[chapter.eco,chapter.opening].filter(Boolean).join(" · ")}
      </p>}
      {chapter.fen&&<p className="break-all font-mono text-xs text-muted">
-      Initial FEN: {chapter.fen}
+      {t("initialFen")} <bdi dir="ltr">{chapter.fen}</bdi>
      </p>}
     </li>)}
    </ol>}
    {!result.studies.length&&!result.matches.length&&
-    <p className="text-sm text-muted">No matching studies or chapters found.</p>}
+    <p className="text-sm text-muted">{t("noMatches")}</p>}
   </div>}
  </section>;
 }

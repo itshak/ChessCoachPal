@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import {useLocale,useTranslations} from "next-intl";
 import {
   formatHostedPrice,
-  planDisplayName,
   type HostedPlan,
 } from "@/lib/entitlements";
 
@@ -15,6 +15,7 @@ export function HostedLimitBanner({
   monthlyPriceCents: number;
 }) {
   const price = formatHostedPrice(monthlyPriceCents);
+  const t=useTranslations("hosted"),locale=useLocale();
   return (
     <div
       role="status"
@@ -22,9 +23,9 @@ export function HostedLimitBanner({
     >
       <p>
         {message ??
-          `Free hosted plan limit reached. Upgrade to Pro (${price}/mo), or export and self-host.`}{" "}
+          t("limit",{price})}{" "}
         <Link href="/hosting" className="font-semibold text-primary underline">
-          Hosting options
+          {t("options")}
         </Link>
       </p>
     </div>
@@ -54,36 +55,37 @@ export function HostedPlanSummary({
   };
 }) {
   const price = formatHostedPrice(monthlyPriceCents);
+  const t=useTranslations("hosted"),locale=useLocale();
   return (
     <div className="text-sm space-y-2">
       <p>
-        <span className="font-medium">Plan:</span> {planDisplayName(plan)}
+        <span className="font-medium">{t("plan")}</span> {t(plan==="free"?"plans.free":plan==="trial"?"plans.trial":plan==="pro"?"plans.pro":plan==="founding"?"plans.founding":"plans.gifted")}
         {plan === "founding" && foundingNumber != null
           ? ` (#${foundingNumber})`
           : ""}
         {softLimitsApply
-          ? " · free limits apply"
-          : " · no create limits"}
+          ? t("limited")
+          : t("unlimited")}
       </p>
       {plan === "trial" && trialEndsAt && (
         <p className="text-muted text-xs">
-          Trial ends {new Date(trialEndsAt).toLocaleDateString()}
+          {t("trialEnds",{date:new Date(trialEndsAt).toLocaleDateString(locale)})}
         </p>
       )}
       {plan === "gifted" && giftedUntil && (
         <p className="text-muted text-xs">
-          Gifted until {new Date(giftedUntil).toLocaleDateString()}
+          {t("giftedUntil",{date:new Date(giftedUntil).toLocaleDateString(locale)})}
         </p>
       )}
       {softLimitsApply && (
         <ul className="text-xs text-muted space-y-0.5">
           <li>
-            Active students: {usage.students} / {usage.limits.maxStudents}
+            {t("activeStudents",{count:usage.students,limit:usage.limits.maxStudents})}
           </li>
         </ul>
       )}
       <p className="text-xs text-muted">
-        Hosted Pro is {price}/mo.
+        {t("proPrice",{price})}
       </p>
     </div>
   );

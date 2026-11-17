@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ export function StudentNotesEditor({
   initialNotes: string;
 }) {
   const router = useRouter();
+  const t=useTranslations("studentNotes");
   const { showToast } = useToast();
   const [notes, setNotes] = useState(initialNotes);
   const [saving, setSaving] = useState(false);
@@ -28,13 +30,13 @@ export function StudentNotesEditor({
         body:JSON.stringify({teacherNotes:notes}),
       });
       if (!response.ok) {
-        showToast("Failed to save notes. Please try again.", "error");
+        showToast(t("saveFailed"),"error");
         return;
       }
       setDirty(false);
       router.refresh();
     } catch {
-      showToast("Failed to save notes. Check your connection.", "error");
+      showToast(t("connectionFailed"),"error");
     } finally {
       setSaving(false);
     }
@@ -45,15 +47,15 @@ export function StudentNotesEditor({
       <div className="flex items-center justify-between mb-2">
         <div>
           <label className="text-xs text-muted font-medium">
-            Private Notes about Student
+            {t("title")}
           </label>
           <p className="text-[11px] text-muted mt-0.5">
-            You can keep track of specific assignments and things learned. Parents won&apos;t see this.
+            {t("hint")}
           </p>
         </div>
         {dirty && (
           <Button size="sm" variant="primary" onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save"}
+            {saving?t("saving"):t("save")}
           </Button>
         )}
       </div>
@@ -63,7 +65,7 @@ export function StudentNotesEditor({
           setNotes(html);
           setDirty(true);
         }}
-        placeholder="Private notes about this student…"
+        placeholder={t("placeholder")}
         minHeightClass="min-h-[160px]"
       />
     </Card>

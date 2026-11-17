@@ -1,8 +1,10 @@
 "use client";
 import {useState} from "react";
+import {useTranslations} from "next-intl";
 type Board={board:string[][];sideToMove:string;unknownGameState:string[];
  warning:string;continuationMovesVerified:boolean;};
 export function FenReviewPanel(){
+ const t=useTranslations("fenReview");
  const [fen,setFen]=useState("");
  const [pieceToPlace,setPieceToPlace]=useState(".");
  const [source,setSource]=useState<"manual"|"image">("manual");
@@ -24,7 +26,7 @@ export function FenReviewPanel(){
   }).join("/");
   // Never guess active color, castling rights or clocks from a photo.
   const fields=fen.trim().split(/\s+/);
-  if(fields.length!==6){setError("Enter six FEN fields before editing.");return;}
+  if(fields.length!==6){setError(t("sixFields"));return;}
   setFen([placement,...fields.slice(1)].join(" "));
   setBoard(null);setError("");
  }
@@ -36,49 +38,47 @@ export function FenReviewPanel(){
     body:JSON.stringify({fen,source}),
    });
    const body=await res.json();
-   if(!res.ok)throw new Error(body.error??"Invalid FEN");
+   if(!res.ok)throw new Error(body.error??t("invalid"));
    setBoard(body as Board);
-  }catch(e){setError(e instanceof Error?e.message:"FEN check failed");}
+  }catch(e){setError(e instanceof Error?e.message:t("checkFailed"));}
   finally{setBusy(false);}
  }
- return <section aria-label="FEN position validation" className="rounded-xl border border-border bg-surface p-4 space-y-3">
-  <h2 className="text-lg font-semibold">Review a chess position before publishing</h2>
-  <p className="text-sm text-muted">Checks six FEN fields, piece counts, impossible king/check states, castling and en-passant consistency. GigaChess checks the position and each solution move before publication. Images cannot prove turn, castling or clocks.</p>
-  <label className="text-sm block">Reviewed six-field FEN
-   <textarea rows={2} className="w-full border rounded-lg bg-background p-2" maxLength={120}
+ return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-4 space-y-3">
+  <h2 className="text-lg font-semibold">{t("title")}</h2>
+  <p className="text-sm text-muted">{t("description")}</p>
+  <label className="text-sm block">{t("reviewedFen")}
+   <textarea rows={2} className="w-full min-w-0 max-w-full border rounded-lg bg-background p-2 font-mono" dir="ltr" maxLength={120}
     value={fen} onChange={e=>{setFen(e.target.value);setBoard(null);}} />
   </label>
-  <label className="text-sm">FEN source
+  <label className="text-sm">{t("source")}
    <select className="ms-2 border rounded-lg bg-background p-2" value={source}
     onChange={e=>{setSource(e.target.value as "manual"|"image");setBoard(null);}}>
-    <option value="manual">Teacher-entered</option><option value="image">Image-derived proposal</option>
+    <option value="manual">{t("manual")}</option><option value="image">{t("image")}</option>
    </select>
   </label>
   <button type="button" className="rounded-lg bg-primary px-3 py-2 text-white disabled:opacity-50"
    disabled={busy||fen.trim().length<10} onClick={()=>void inspect()}>
-   Validate and review (no provider write)</button>
+   {t("validate")}</button>
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}
   {board&&<div className="space-y-2 text-sm">
-   <label className="block">Square editor — revalidate after every correction
-    <select aria-label="Piece to place" className="ms-2 border rounded-lg bg-background p-2"
+   <label className="block">{t("editor")}
+    <select aria-label={t("pieceToPlace")} className="ms-2 border rounded-lg bg-background p-2"
       value={pieceToPlace} onChange={e=>setPieceToPlace(e.target.value)}>
-      <option value=".">Empty square</option>
+      <option value=".">{t("emptySquare")}</option>
       {["P","N","B","R","Q","K","p","n","b","r","q","k"].map(piece=>
-       <option key={piece} value={piece}>{piece===piece.toUpperCase()?"White":"Black"} {({
-        p:"pawn",n:"knight",b:"bishop",r:"rook",q:"queen",k:"king",
-       } as Record<string,string>)[piece.toLowerCase()]}</option>)}
+       <option key={piece} value={piece}>{t(piece===piece.toUpperCase()?"white":"black")} {t(({p:"pawn",n:"knight",b:"bishop",r:"rook",q:"queen",k:"king"} as Record<string,"pawn"|"knight"|"bishop"|"rook"|"queen"|"king">)[piece.toLowerCase()])}</option>)}
     </select>
    </label>
    <div className="grid grid-cols-8 w-fit border border-border">
     {board.board.flatMap((rank,i)=>rank.map((piece,j)=><button key={i+"-"+j} type="button"
-      aria-label={"Edit "+String.fromCharCode(97+j)+(8-i)}
-      title={"Edit "+String.fromCharCode(97+j)+(8-i)}
+      aria-label={t("editSquare",{square:String.fromCharCode(97+j)+(8-i)})}
+      title={t("editSquare",{square:String.fromCharCode(97+j)+(8-i)})}
       onClick={()=>replaceSquare(i,j)}
       className={"w-9 h-9 flex items-center justify-center "+((i+j)%2?"bg-surface-strong":"bg-background")}>
       {piece||"·"}</button>))}
    </div>
-   <p>Side to move (provided): {board.sideToMove}. {board.warning}</p>
-   {board.unknownGameState.length>0&&<p>Unverified from photo: {board.unknownGameState.join(", ")}</p>}
+   <p>{t("sideToMove",{side:board.sideToMove==="white"?t("white"):t("black")})} {board.warning}</p>
+   {board.unknownGameState.length>0&&<p>{t("unknownPhoto")} <bdi dir="ltr">{board.unknownGameState.join(", ")}</bdi></p>}
   </div>}
  </section>;
 }

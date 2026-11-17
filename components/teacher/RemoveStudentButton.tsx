@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -13,6 +14,7 @@ export function RemoveStudentButton({
   studentName: string;
 }) {
   const router = useRouter();
+  const t=useTranslations("studentRemove");
   const { showToast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -25,19 +27,19 @@ export function RemoveStudentButton({
       const res=await fetch("/api/students/"+studentId+"?deletePreview=true",{cache:"no-store"});
       const impact=await res.json().catch(()=>null);
       if(!res.ok||!impact){
-        showToast(impact?.error??"Could not review deletion impact","error");
+        showToast(impact?.error??t("reviewFailed"),"error");
         return;
       }
       if(!impact.canDelete){
         const refs=Object.entries(impact.blockers as Record<string,number>)
           .filter(([,count])=>count>0).map(([name,count])=>name+": "+count).join(", ");
-        showToast("Student has linked teaching history. Archive instead. "+refs,"error");
+        showToast(t("linkedHistory",{refs}),"error");
         return;
       }
       setRevision(impact.updatedAt);
       setConfirmOpen(true);
     }catch{
-      showToast("Could not review deletion impact","error");
+      showToast(t("reviewFailed"),"error");
     }finally{setChecking(false);}
   }
   async function handleRemove() {
@@ -49,14 +51,14 @@ export function RemoveStudentButton({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
-        showToast(err?.error ?? "Failed to remove student", "error");
+        showToast(err?.error ?? t("removeFailed"), "error");
         setRemoving(false);
         return;
       }
       router.push("/students");
       router.refresh();
     } catch {
-      showToast("Failed to remove student", "error");
+      showToast(t("removeFailed"), "error");
       setRemoving(false);
     }
   }
@@ -70,7 +72,7 @@ export function RemoveStudentButton({
         onClick={() => void reviewRemove()}
         disabled={checking || removing}
       >
-        Remove student
+        {t("removeStudent")}
       </Button>
 
       {confirmOpen && (
@@ -82,9 +84,9 @@ export function RemoveStudentButton({
             className="bg-surface border border-border rounded-xl shadow-lg max-w-sm w-full p-5"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-semibold text-lg mb-1">Remove student?</h3>
+            <h3 className="font-semibold text-lg mb-1">{t("confirmTitle")}</h3>
             <p className="text-muted text-sm mb-4">
-              &quot;{studentName}&quot; has no linked teaching history. This permanently removes their remaining profile information and cannot be undone. Archive to preserve the record.
+              {t("confirmWarning",{name:studentName})}
             </p>
             <div className="flex justify-end gap-2">
               <Button
@@ -93,7 +95,7 @@ export function RemoveStudentButton({
                 onClick={() => setConfirmOpen(false)}
                 disabled={removing}
               >
-                Cancel
+                {t("cancel")}
               </Button>
               <Button
                 variant="error"
@@ -101,7 +103,7 @@ export function RemoveStudentButton({
                 onClick={handleRemove}
                 disabled={removing}
               >
-                {removing ? "Removing…" : "Remove"}
+                {removing?t("removing"):t("remove")}
               </Button>
             </div>
           </div>

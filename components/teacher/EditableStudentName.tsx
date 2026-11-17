@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 
 /**
@@ -14,6 +15,7 @@ export function EditableStudentName({
   initialName: string;
 }) {
   const router = useRouter();
+  const t=useTranslations("studentName");
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(initialName);
   const [saving, setSaving] = useState(false);
@@ -64,7 +66,7 @@ export function EditableStudentName({
           disabled={saving}
           className="text-xs text-primary hover:text-primary-dark font-semibold cursor-pointer shrink-0"
         >
-          {saving ? "..." : "Save"}
+          {saving?"…":t("save")}
         </button>
       </span>
     );
@@ -72,15 +74,15 @@ export function EditableStudentName({
 
   return (
     <h1 className="text-2xl font-bold inline-flex items-center gap-2">
-      <span>{initialName}</span>
+      <bdi dir="auto">{initialName}</bdi>
       <button
         type="button"
         onClick={() => {
           setValue(initialName);
           setEditing(true);
         }}
-        aria-label="Edit student name"
-        title="Edit name"
+        aria-label={t("editStudentName")}
+        title={t("editName")}
         className="p-1 rounded-md text-muted hover:text-foreground hover:bg-surface-dim transition-colors cursor-pointer"
       >
         <svg

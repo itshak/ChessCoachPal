@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -15,6 +16,7 @@ export function ArchiveStudentButton({
   archived: boolean;
 }) {
   const router = useRouter();
+  const t=useTranslations("studentArchive");
   const { showToast } = useToast();
   const [busy, setBusy] = useState(false);
 
@@ -25,17 +27,17 @@ export function ArchiveStudentButton({
         const response = await fetch(`/api/students/${studentId}?archivePreview=true`);
         const preview = await response.json().catch(() => null);
         if (!response.ok || !preview) {
-          showToast(preview?.error ?? "Could not verify student commitments", "error");
+          showToast(preview?.error ?? t("previewFailed"), "error");
           return;
         }
         if (!preview.canArchive) {
           const blockers = Object.entries(preview.blockers as Record<string, number>)
             .filter(([, count]) => count > 0)
             .map(([name, count]) => `${name}: ${count}`).join(", ");
-          showToast("Resolve before archiving: " + blockers, "error");
+          showToast(t("resolveBlockers",{blockers}), "error");
           return;
         }
-        if (!window.confirm("Archive this student? All teaching history will be retained.")) return;
+        if (!window.confirm(t("archiveWarning"))) return;
       }
       const res = await fetch(`/api/students/${studentId}`, {
         method: "PUT",
@@ -44,13 +46,13 @@ export function ArchiveStudentButton({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
-        showToast(err?.error ?? "Failed to update student", "error");
+        showToast(err?.error ?? t("updateFailed"), "error");
         setBusy(false);
         return;
       }
       router.refresh();
     } catch {
-      showToast("Failed to update student", "error");
+      showToast(t("updateFailed"), "error");
     } finally {
       setBusy(false);
     }
@@ -65,11 +67,11 @@ export function ArchiveStudentButton({
       onClick={toggle}
       title={
         archived
-          ? `Restore ${studentName} to active`
-          : `Archive ${studentName} (won't count toward free-plan limits)`
+          ? t("restoreTitle",{name:studentName})
+          : t("archiveTitle",{name:studentName})
       }
     >
-      {busy ? "…" : archived ? "Restore" : "Archive"}
+      {busy?"…":archived?t("restore"):t("archive")}
     </Button>
   );
 }

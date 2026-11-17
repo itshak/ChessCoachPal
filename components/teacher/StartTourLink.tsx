@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { TOUR_START_EVENT, TOUR_STORAGE_KEY } from "@/lib/onboarding";
 
@@ -17,7 +18,8 @@ function markTourRestart() {
 }
 
 export function StartTourLink({ className }: { className?: string }) {
-  const router = useRouter();
+  const t=useTranslations("tourLink");
+  const router=useRouter();
   return (
     <Link
       href="/dashboard?tour=1"
@@ -31,7 +33,7 @@ export function StartTourLink({ className }: { className?: string }) {
         router.push("/dashboard");
       }}
     >
-      Take a short tour of the tabs
+      {t("start")}
     </Link>
   );
 }
