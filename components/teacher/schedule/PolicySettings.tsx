@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
@@ -23,6 +24,7 @@ export function PolicySettings({
   defaultOpen?: boolean;
 }) {
   const router = useRouter();
+  const t=useTranslations("scheduling");
   const [open, setOpen] = useState(defaultOpen);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -54,11 +56,11 @@ export function PolicySettings({
     });
     setBusy(false);
     if (res.ok) {
-      setMessage("Saved");
+      setMessage(t("saved"));
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error ?? "Failed to save");
+      setMessage(data.error ?? t("failed"));
     }
     setTimeout(() => setMessage(null), 2500);
   }
@@ -69,12 +71,12 @@ export function PolicySettings({
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between cursor-pointer"
       >
-        <h2 className="font-semibold">Make-up policy</h2>
+        <h2 className="font-semibold">{t("policyTitle")}</h2>
         <span className="text-muted text-sm">{open ? "▴" : "▾"}</span>
       </button>
       {!open && (
         <p className="text-xs text-muted mt-1">
-          {windowHours}h cancellation window · your rules, not ours.
+          {t("policySummary",{hours:windowHours})}
         </p>
       )}
 
@@ -82,15 +84,15 @@ export function PolicySettings({
         <form onSubmit={handleSave} className="flex flex-col gap-3 mt-3">
           <div className="text-sm">
             <span className="block text-xs font-semibold text-muted mb-1">
-              Studio timezone
+              {t("studioTimezone")}
             </span>
             <p className="px-3 py-2 rounded-lg border border-border bg-surface-dim text-muted text-sm">
               {policy.timezone}
             </p>
             <p className="text-xs text-muted mt-1">
-              Used for schedule times and make-up windows.{" "}
+              {t("timezoneHint")}{" "}
               <Link href="/account" className="text-primary hover:underline">
-                Change in Account settings
+                {t("accountSettings")}
               </Link>
               .
             </p>
@@ -98,7 +100,7 @@ export function PolicySettings({
 
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted mb-1">
-              Cancellation notice window (hours)
+              {t("cancelNotice")}
             </span>
             <input
               type="number"
@@ -109,13 +111,13 @@ export function PolicySettings({
               className={`${inputClass} w-full`}
             />
             <span className="block text-xs text-muted mt-1">
-              Cancellations with less notice than this count as “late.”
+              {t("lateHint")}
             </span>
           </label>
 
           <fieldset>
             <legend className="text-xs font-semibold text-muted mb-1">
-              What earns a make-up credit?
+              {t("makeupEarning")}
             </legend>
             <div className="space-y-1.5 text-sm">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -124,7 +126,7 @@ export function PolicySettings({
                   checked={timelyEarns}
                   onChange={(e) => setTimelyEarns(e.target.checked)}
                 />
-                Student cancels with enough notice
+                {t("timely")}
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -132,7 +134,7 @@ export function PolicySettings({
                   checked={lateEarns}
                   onChange={(e) => setLateEarns(e.target.checked)}
                 />
-                Student cancels late
+                {t("late")}
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -140,7 +142,7 @@ export function PolicySettings({
                   checked={noShowEarns}
                   onChange={(e) => setNoShowEarns(e.target.checked)}
                 />
-                No-show
+                {t("noShow")}
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -148,31 +150,31 @@ export function PolicySettings({
                   checked={teacherEarns}
                   onChange={(e) => setTeacherEarns(e.target.checked)}
                 />
-                Teacher cancels
+                {t("teacherCancel")}
               </label>
             </div>
           </fieldset>
 
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted mb-1">
-              Make-up credits expire after (days)
+              {t("expiryDays")}
             </span>
             <input
               type="number"
               min={1}
-              placeholder="Never"
+              placeholder={t("never")}
               value={expiryDays}
               onChange={(e) => setExpiryDays(e.target.value)}
               className={`${inputClass} w-full`}
             />
             <span className="block text-xs text-muted mt-1">
-              Leave blank for no expiry.
+              {t("expiryHint")}
             </span>
           </label>
 
           <div className="flex items-center gap-3">
             <Button type="submit" size="sm" disabled={busy}>
-              {busy ? "Saving..." : "Save Policy"}
+              {busy ? t("saving") : t("savePolicy")}
             </Button>
             {message && <span className="text-xs text-muted">{message}</span>}
           </div>

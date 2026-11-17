@@ -24,6 +24,8 @@ test("PARITY: teacher language preference persists identically via website and M
     await expect(page.getByLabel("שפת הממשק").first()).toHaveValue("he");
     await page.goto("/schedule");
     await expect(page.getByRole("heading",{name:"לוח שיעורים"})).toBeVisible();
+    await expect(page.getByRole("heading",{name:"שיעורים קבועים"})).toBeVisible();
+    await expect(page.getByRole("heading",{name:"זיכויי שיעורי השלמה"})).toBeVisible();
     await page.getByRole("button",{name:/Private session|שיעור פרטי/}).click();
     await expect(page.getByRole("heading",{name:"קביעת שיעור שחמט פרטי"})).toBeVisible();
     await page.goto("/events");
@@ -45,6 +47,8 @@ test("PARITY: teacher language preference persists identically via website and M
     await expect(page.getByLabel("Язык интерфейса").first()).toHaveValue("ru");
     await page.goto("/schedule");
     await expect(page.getByRole("heading",{name:"Расписание занятий"})).toBeVisible();
+    await expect(page.getByRole("heading",{name:"Повторяющиеся уроки"})).toBeVisible();
+    await expect(page.getByRole("heading",{name:"Кредиты на отработки"})).toBeVisible();
     await page.goto("/events");
     await expect(page.getByRole("heading",{name:"Шахматные мероприятия"})).toBeVisible();
     await page.goto("/families");

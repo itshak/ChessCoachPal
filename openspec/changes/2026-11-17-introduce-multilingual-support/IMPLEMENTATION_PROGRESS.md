@@ -56,3 +56,10 @@
 - Event and portal display dates honor UI language and workplace timezone, while canonical event dates, calendar fields, invoice calculations and existing English email format remain unchanged.
 - Catalog-checker fixed to compare unique ICU interpolation parameters because valid Russian plural rules repeat the same parameter in several branches; new ICU runtime tests added.
 - Local TypeScript, optimized Next.js build, ESLint of touched components, catalog and strict website/MCP parity checks pass. Remaining translated-content/RTL audit, PDF and emails, per-recipient language and full-site completeness remain unverified and OpenSpec stays active.
+
+
+## Recurring teaching slots and make-up settings
+- Localized weekly slot creation/updates/removal, edit forms, date/day and currency-input labels, confirmation text and notices, and cross-workplace timezone-safe weekdays through Intl.
+- Localized historical make-up credit booking and teacher cancellation/make-up policy settings without changing attendance, policy flags, credit redemption, idempotency or save payloads.
+- Added Hebrew/Russian E2E assertions for the schedule's recurring lessons and make-up credits headings. Extended the change's locale catalogs to more than 700 complete en/he/ru key pairs; the JSX English debt audit is still above 1,100.
+- Full acceptance requires exact-head GitHub CI, integration tests with seeded Supabase and visual/manual RTL inspection. Untranslated advanced training, billing, settings, communications, PDFs and legal screens remain open.
