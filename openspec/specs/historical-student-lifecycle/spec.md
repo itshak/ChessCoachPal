@@ -57,3 +57,33 @@ The codebase SHALL retain a single current fresh-install schema for disposable C
 #### Scenario: Existing real teacher records on Coolify
 - **WHEN** the new feature reaches the default branch
 - **THEN** operators SHALL apply only reviewed additive schema/storage changes to the existing database without running a destructive reset, and the feature SHALL be accepted against that running data before teacher use.
+
+### Requirement: Simple teacher-approved dated attendance SHALL be source-neutral across website and MCP
+
+A teacher or delegated assistant SHALL be able to submit a batch with one
+verified workplace UUID, inclusive date range, IANA timezone, optional source
+label, and a list of existing student identities with explicit ISO attendance
+dates. This format SHALL have dedicated preview and reviewed commit operations
+on both website and MCP. The application SHALL never require knowledge of
+third-party marks such as V or X, transpose date-column spreadsheets on behalf
+of the teacher, or infer presence/absence from empty spreadsheet cells. Former
+and archived pupils SHALL remain eligible. The preview and atomic write SHALL
+share the existing historical evidence store and duplicate/idempotency rules.
+
+#### Scenario: Import actual dates extracted from a teacher's sheet
+- **WHEN** a coach verifies that one pupil was present on two real dates and
+  approves a preview applying an existing workplace to both observations
+- **THEN** one historical dated-presence evidence record per exact date SHALL
+  be created with a durable receipt and read back identically from MCP and
+  website, without creating canonical calendar sessions or invented duration.
+- **AND** an ambiguous, unauthorized or unknown student, duplicate date,
+  out-of-range date or invalid calendar date SHALL block the batch.
+
+#### Scenario: Provider notation and transport size
+- **WHEN** a source uses V/X/blank or year headings with an apparent typo
+- **THEN** agents SHALL normalize only source-attested presence dates after
+  teacher review, and the server SHALL reject non-ISO or ambiguous values;
+  it SHALL NOT embed that provider's notation in the public import schema.
+- **AND** a direct request of up to 250 dated observations/256 KiB of input
+  data SHALL fit within the separately bounded 320-KiB JSON-RPC gateway
+  envelope; oversized bodies SHALL be refused without incomplete writes.

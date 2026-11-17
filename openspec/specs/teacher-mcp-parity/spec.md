@@ -99,3 +99,38 @@ The student resolver SHALL distinguish duplicate *roster references to one stude
 - **WHEN** teacher-approved `assigned` material evidence is voided
 - **THEN** history with voids included SHALL retain correction metadata, while default progress excludes the assigned count; a separately recorded `taught` claim SHALL remain and SHALL NOT imply mastery.
 
+
+## Requirement: Every portable teacher data category SHALL export in CSV without credential disclosure
+
+The existing full JSON backup SHALL remain the supported lossless restore
+format. The authenticated website SHALL provide a complete ZIP containing a
+UTF-8 CSV for each supported teacher-owned data category, including archived
+students and source-precise historical attendance. MCP SHALL enumerate the same
+category names and row counts and retrieve each CSV in bounded, pagewise
+content with stable headers. Both adapters SHALL share the same filtered
+projection, remove sensitive portal/credential secrets, and neutralize CSV
+formula-leading values. Large binary ZIP downloads MAY remain an explicit
+browser-only transport boundary; this SHALL NOT hide ordinary data from MCP.
+
+### Scenario: Download or page across interfaces
+- **WHEN** a teacher requests all-data CSV from the website
+- **THEN** one authorized ZIP SHALL contain all supported tables and an
+  explicit manifest, without silently stopping after the database's default
+  1,000-row page.
+- **WHEN** the same teacher requests CSV through MCP
+- **THEN** successive page requests SHALL reconstruct the identical sanitized
+  data for each table without exposing portal tokens or secrets.
+
+## Requirement: MCP initialization SHALL offer accurate version and workflow discovery
+
+The MCP initializer SHALL report the deployed package version, and provide
+concise agent guidance to select the intended date-list, calendar lesson,
+student roster and export tools. JSON-RPC request size SHALL be bounded at
+read time, and SHALL not contradict advertised direct import limits.
+
+### Scenario: A new client reconnects after deploying an import feature
+- **WHEN** a client initializes a fresh MCP session and retrieves tools/list
+- **THEN** it SHALL see the new date-list tool contracts and the current server
+  version, with guidance against guessing student/family column mappings for
+  historical attendance, and SHALL be able to submit a reviewed >32-KiB
+  request up to the documented bounded envelope.

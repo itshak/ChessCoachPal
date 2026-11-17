@@ -122,8 +122,12 @@ async function historicalPrepare(db:SupabaseClient,teacherId:string,
  const mapping={...suggestHistoricalMapping(headers),...input.mapping};
  const keys=new Set<string>();
  for(const [field,header] of Object.entries(mapping)){
-  if(!(field in synonyms)||header!==null&&(!headers.includes(header)||typeof header!=="string"))
-   return historicalFail(400,"INVALID_MAPPING","Mapped source column does not exist");
+  if(!(field in synonyms))
+   return historicalFail(400,"INVALID_MAPPING",
+    `Unknown target '${field}'. Historical mapping uses camelCase studentName, studentId, workplaceName, workplaceId, attendedOn, attendanceStatus (not student_name). For plain dates use ccp_historical_attendance_dates_preview.`);
+  if(header!==null&&(!headers.includes(header)||typeof header!=="string"))
+   return historicalFail(400,"INVALID_MAPPING",
+    `Mapped source column '${header}' for '${field}' does not exist in the provided rows or staged file. Supply an exact source header, or use ccp_historical_attendance_dates_preview for already extracted dates.`);
   if(header){
    if(keys.has(header))return historicalFail(400,"INVALID_MAPPING","A source column cannot map to multiple fields");
    keys.add(header);

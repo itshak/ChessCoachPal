@@ -13,6 +13,9 @@ const infrastructural = new Set([
 ]);
 const browserOnlyExport = new Set([
   "@/lib/server/teacher-transfer-service#teacherExport",
+  // Binary ZIP download is intentionally a signed-in browser transport;
+  // MCP receives the identical sanitized CSV content through bounded pages.
+  "@/lib/server/teacher-csv-export#makeTeacherCsvZip",
   // Uploading multi-megabyte private binary student spreadsheets from a
   // browser is a deliberate approved-credential boundary. The MCP handoff
   // and metadata, preview, commit and cleanup tools remain required and E2E.
