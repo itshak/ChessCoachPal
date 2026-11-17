@@ -719,7 +719,6 @@
     "studentCancelled": "Student cancelled",
     "absence": "Absence",
     "bookMakeup": "Book make-up",
-    "makeupFor": "Make-up lesson for {name}",
     "date": "Date",
     "localTime": "Local time",
     "teachingWorkplace": "Teaching workplace",
@@ -747,6 +746,7 @@
     "expiryHint": "Leave blank for no expiry.",
     "saved": "Saved",
     "failed": "Failed to save",
-    "savePolicy": "Save Policy"
+    "savePolicy": "Save Policy",
+    "makeupLessonFor": "Make-up lesson for {name}"
   }
 }

@@ -719,7 +719,6 @@
     "studentCancelled": "בוטל על ידי התלמיד",
     "absence": "היעדרות",
     "bookMakeup": "קביעת השלמה",
-    "makeupFor": "שיעור השלמה עבור {name}",
     "date": "תאריך",
     "localTime": "זמן מקומי",
     "teachingWorkplace": "מקום עבודה להוראה",
@@ -747,6 +746,7 @@
     "expiryHint": "השאירו ריק ללא תאריך תפוגה.",
     "saved": "נשמר",
     "failed": "השמירה נכשלה",
-    "savePolicy": "שמירת מדיניות"
+    "savePolicy": "שמירת מדיניות",
+    "makeupLessonFor": "שיעור השלמה עבור {name}"
   }
 }

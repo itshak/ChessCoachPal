@@ -719,7 +719,6 @@
     "studentCancelled": "Отменено учеником",
     "absence": "Отсутствие",
     "bookMakeup": "Записать отработку",
-    "makeupFor": "Отработка для {name}",
     "date": "Дата",
     "localTime": "Местное время",
     "teachingWorkplace": "Место проведения",
@@ -747,6 +746,7 @@
     "expiryHint": "Оставьте пустым для бессрочного действия.",
     "saved": "Сохранено",
     "failed": "Не удалось сохранить",
-    "savePolicy": "Сохранить правила"
+    "savePolicy": "Сохранить правила",
+    "makeupLessonFor": "Отработка для {name}"
   }
 }

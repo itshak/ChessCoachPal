@@ -63,3 +63,12 @@
 - Localized historical make-up credit booking and teacher cancellation/make-up policy settings without changing attendance, policy flags, credit redemption, idempotency or save payloads.
 - Added Hebrew/Russian E2E assertions for the schedule's recurring lessons and make-up credits headings. Extended the change's locale catalogs to more than 700 complete en/he/ru key pairs; the JSX English debt audit is still above 1,100.
 - Full acceptance requires exact-head GitHub CI, integration tests with seeded Supabase and visual/manual RTL inspection. Untranslated advanced training, billing, settings, communications, PDFs and legal screens remain open.
+
+
+## ICU test execution audit
+- Discovered the existing Vitest test glob included only lib/**/*.test.ts, so previously added i18n/locales.test.ts and i18n/messages.test.ts compiled but were **not executed** in CI unit tests. Expanded vitest.config.ts include to i18n/**/*.test.ts so actual en/he/ru ICU formatting, pluralization and mixed-language student name assertions are run by standard npm test in GitHub CI. Local remote Vitest binary still crashes with Illegal instruction, so rely on GitHub unit result for acceptance.
+
+
+## CI source guard correction
+- GitHub CI on 90457b3 detected a prohibited legacy financial-field token in the localization-only key makeupFor in CanonicalMakeupPanel; no legacy physical tables or runtime dependencies were introduced. Renamed the UI key to makeupLessonFor across all three catalogs and its UI usage. Reran schema:attendance:strict locally: 0 legacy references and exit 0; TypeScript/catalog/literal checks pass.
+- Exact-head CI and E2E are required after this correction. The active OpenSpec is not complete or archived.

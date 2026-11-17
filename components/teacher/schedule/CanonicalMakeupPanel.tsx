@@ -72,7 +72,7 @@ export function CanonicalMakeupPanel({
      <button className="text-primary hover:underline" onClick={()=>choose(c)}>{t("bookMakeup")}</button>
     </div>)}</div>}
   {selected&&<div className="space-y-3 border-t border-border pt-3">
-   <h3 className="font-medium text-sm">{t("makeupFor",{name:selected.studentName})}</h3>
+   <h3 className="font-medium text-sm">{t("makeupLessonFor",{name:selected.studentName})}</h3>
    <div className="grid sm:grid-cols-2 gap-3">
     <label className="text-sm">{t("date")}
      <input type="date" className={field} value={date}
