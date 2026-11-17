@@ -7,6 +7,7 @@ export type GuardianChange={
   name?:string;familyName?:string|null;email?:string|null;phone?:string|null;
   secondaryName?:string|null;secondaryEmail?:string|null;secondaryPhone?:string|null;
   emailRecipients?:"primary"|"secondary"|"both";
+  preferredLocale?:"en"|"he"|"ru"|null;
   studentIds?:string[];newStudents?:MemberInput[];
   idempotencyKey?:string;
 };
@@ -14,7 +15,7 @@ export class GuardianServiceError extends Error {
   constructor(public status:number,public code:string,message:string){super(message);}
 }
 const failure=(status:number,code:string,message:string)=>new GuardianServiceError(status,code,message);
-const fields="id,name,family_name,email,phone,secondary_name,secondary_email,secondary_phone,email_recipients,portal_token,created_at,students ( id, name )";
+const fields="id,name,family_name,email,phone,secondary_name,secondary_email,secondary_phone,email_recipients,preferred_locale,portal_token,created_at,students ( id, name )";
 /** Same teacher-scoped query as the website family list. Never leak portal_token to MCP. */
 export async function guardiansList(db:Db,teacherId:string) {
   const rows:Record<string,unknown>[]=[];
@@ -42,9 +43,11 @@ export async function guardianDetail(db:Db,teacherId:string,id:string) {
 }
 export function safeGuardian(row:Record<string,unknown>,includeContact=false) {
   const {id,name,family_name,created_at,students,email,phone,secondary_name,
-    secondary_email,secondary_phone,email_recipients}=row;
+    secondary_email,secondary_phone,email_recipients,preferred_locale}=row;
+  // A family's communication-language preference is not confidential contact
+  // data, so an authorized MCP teacher can inspect it without exposing email.
   return includeContact?{id,name,family_name,created_at,students,email,phone,secondary_name,
-    secondary_email,secondary_phone,email_recipients}:{id,name,family_name,created_at,students};
+    secondary_email,secondary_phone,email_recipients,preferred_locale}:{id,name,family_name,created_at,students,preferred_locale};
 }
 async function verifyStudents(db:Db,teacherId:string,ids:string[]) {
   if(!ids.length)return [];
@@ -86,6 +89,7 @@ function guardianFields(input:GuardianChange):Record<string,unknown>{
   if(input.secondaryEmail!==undefined)result.secondary_email=clean(input.secondaryEmail);
   if(input.secondaryPhone!==undefined)result.secondary_phone=clean(input.secondaryPhone);
   if(input.emailRecipients!==undefined)result.email_recipients=input.emailRecipients;
+  if(input.preferredLocale!==undefined)result.preferred_locale=input.preferredLocale;
   return result;
 }
 async function writeGuardian(

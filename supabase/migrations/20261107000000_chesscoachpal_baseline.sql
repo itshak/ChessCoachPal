@@ -606,6 +606,8 @@ CREATE TABLE IF NOT EXISTS "public"."guardians" (
     "secondary_phone" "text",
     "email_recipients" "text" DEFAULT 'primary'::"text" NOT NULL,
     "family_name" "text",
+    "preferred_locale" "text",
+    CONSTRAINT "guardians_preferred_locale_check" CHECK (("preferred_locale" IS NULL OR "preferred_locale" = ANY (ARRAY['en'::"text", 'he'::"text", 'ru'::"text"]))),
     CONSTRAINT "guardians_email_recipients_check" CHECK (("email_recipients" = ANY (ARRAY['primary'::"text", 'secondary'::"text", 'both'::"text"])))
 );
 
@@ -5350,7 +5352,7 @@ BEGIN
        SELECT 1 FROM jsonb_each(p_fields) AS f
        WHERE f.key NOT IN (
          'name','family_name','email','phone','secondary_name',
-         'secondary_email','secondary_phone','email_recipients'
+         'secondary_email','secondary_phone','email_recipients','preferred_locale'
        ) OR (f.value<>'null'::jsonb AND jsonb_typeof(f.value)<>'string')
      )
      OR jsonb_typeof(p_new_students) IS DISTINCT FROM 'array'
@@ -5366,6 +5368,10 @@ BEGIN
   IF p_fields ? 'email_recipients' AND
      p_fields->>'email_recipients' NOT IN ('primary','secondary','both') THEN
     RAISE EXCEPTION 'GUARDIAN_INVALID_RECIPIENTS' USING ERRCODE='22023';
+  END IF;
+  IF p_fields ? 'preferred_locale' AND (p_fields->>'preferred_locale') IS NOT NULL AND
+     (p_fields->>'preferred_locale') NOT IN ('en','he','ru') THEN
+    RAISE EXCEPTION 'GUARDIAN_INVALID_LOCALE' USING ERRCODE='22023';
   END IF;
   -- Serializes concurrent family changes and student capacity reservations.
   -- No elevated UPDATE rights on teachers are required here. Existing
@@ -5395,7 +5401,7 @@ BEGIN
     END IF;
     INSERT INTO public.guardians (
       teacher_id,name,family_name,email,phone,secondary_name,
-      secondary_email,secondary_phone,email_recipients,portal_token
+      secondary_email,secondary_phone,email_recipients,preferred_locale,portal_token
     ) VALUES (
       v_teacher,v_name,nullif(btrim(p_fields->>'family_name'),''),
       nullif(btrim(p_fields->>'email'),''),
@@ -5404,6 +5410,7 @@ BEGIN
       nullif(btrim(p_fields->>'secondary_email'),''),
       nullif(btrim(p_fields->>'secondary_phone'),''),
       coalesce(p_fields->>'email_recipients','primary'),
+      p_fields->>'preferred_locale',
       encode(extensions.gen_random_bytes(24),'hex')
     ) RETURNING * INTO v_guardian;
   ELSE
@@ -5427,7 +5434,9 @@ BEGIN
       secondary_phone=CASE WHEN p_fields ? 'secondary_phone'
         THEN nullif(btrim(p_fields->>'secondary_phone'),'') ELSE secondary_phone END,
       email_recipients=CASE WHEN p_fields ? 'email_recipients'
-        THEN p_fields->>'email_recipients' ELSE email_recipients END
+        THEN p_fields->>'email_recipients' ELSE email_recipients END,
+      preferred_locale=CASE WHEN p_fields ? 'preferred_locale'
+        THEN p_fields->>'preferred_locale' ELSE preferred_locale END
     WHERE id=v_guardian.id AND teacher_id=v_teacher
     RETURNING * INTO v_guardian;
   END IF;

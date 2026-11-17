@@ -120,6 +120,7 @@ export const guardianCreateSchema = z.object({
   secondaryEmail: optionalText(254),
   secondaryPhone: optionalText(50),
   emailRecipients,
+  preferredLocale: z.enum(["en", "he", "ru"]).nullable().optional(),
   studentIds: z.array(z.uuid()).max(200).optional(),
   newStudents: newStudentsList,
   // Optional durable retry receipt shared by website and delegated MCP.

@@ -4,6 +4,8 @@ import { isUniqueViolation, WELCOME_NOTIFICATION } from "@/lib/onboarding";
 import { getPolicy } from "@/lib/server/scheduling";
 import { sendPushToTeacher } from "@/lib/server/push";
 import type { StudioPolicy } from "@/lib/schedule";
+import {isAppLocale} from "@/i18n/locales";
+import {communicationCopy} from "@/lib/server/communication-locales";
 
 export type NotificationType =
   | "portal_cancel"
@@ -78,7 +80,7 @@ export async function createTeacherNotification(
 
   const { data: teacher } = await supabase
     .from("teachers")
-    .select("email, display_name")
+    .select("email, display_name, preferred_locale")
     .eq("id", args.teacherId)
     .single();
 
@@ -86,6 +88,8 @@ export async function createTeacherNotification(
     return { emailed: false, emailError: "No teacher email on file" };
   }
 
+  const locale=isAppLocale(teacher.preferred_locale)?teacher.preferred_locale:"en";
+  const copy=communicationCopy[locale].notification;
   const studio = policy.studio_name || "ChessCoachPal Studio";
   const absoluteHref =
     href && args.origin
@@ -96,10 +100,10 @@ export async function createTeacherNotification(
   const text =
     args.type === "invoice_paid"
       ? [
-          "Payment receipt",
+          copy.receipt,
           "",
           args.body ?? args.title,
-          absoluteHref ? `\nView invoice: ${absoluteHref}` : "",
+          absoluteHref ? `\n${copy.viewInvoice}: ${absoluteHref}` : "",
           `\n${studio}`,
         ]
           .filter((line) => line !== undefined)
@@ -107,14 +111,15 @@ export async function createTeacherNotification(
       : [
           args.title,
           args.body ? `\n${args.body}` : "",
-          absoluteHref ? `\n\nOpen in ChessCoachPal: ${absoluteHref}` : "",
+          absoluteHref ? `\n\n${copy.openInApp}: ${absoluteHref}` : "",
           `\n\n${studio}`,
         ].join("");
 
   const result = await sendEmail({
     to: teacher.email,
-    subject: args.title,
+    subject: args.type==="invoice_paid"?copy.receipt:args.title,
     text,
+    locale,
     fromName: studio,
   });
 

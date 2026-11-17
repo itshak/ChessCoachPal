@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
         guardian_id, status,
         guardians (
           id, name, email, secondary_name, secondary_email,
-          email_recipients, portal_token
+          email_recipients, preferred_locale, portal_token
         )
       )
     `

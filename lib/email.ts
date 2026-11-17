@@ -14,6 +14,8 @@
 
 import { Resend } from "resend";
 import { sendViaSmtp } from "@/lib/server/smtp";
+import {localeDetails,type AppLocale} from "@/i18n/locales";
+import {communicationCopy} from "@/lib/server/communication-locales";
 
 export interface EmailAttachment {
   filename: string;
@@ -26,6 +28,8 @@ export interface SendEmailArgs {
   to: string | string[];
   subject: string;
   text: string;
+  /** Recipient language, not the teacher interface locale. */
+  locale?: AppLocale;
   html?: string;
   /**
    * Optional BCC recipients, e.g. the teacher keeping a copy of family email.
@@ -97,9 +101,16 @@ function normalizeBcc(
 /** Append the family-portal footer to both bodies: every parent/student
  * email links back to the family's personal portal. Exported for tests. */
 export function withPortalFooter(args: SendEmailArgs): SendEmailArgs {
-  if (!args.portalUrl) return args;
+  const locale=args.locale??"en";
+  const copy=communicationCopy[locale];
+  const wrap=(html:string)=>args.locale
+    ? `<div lang="${locale}" dir="${localeDetails[locale].dir}">${html}</div>`
+    : html;
+  if (!args.portalUrl) return args.locale
+    ? {...args,html:wrap(args.html??`<div style="white-space:pre-wrap;">${escapeHtml(args.text)}</div>`)}
+    : args;
 
-  const text = `${args.text}\n\nYour family portal: schedule and teaching notes:\n${args.portalUrl}`;
+  const text = `${args.text}\n\n${copy.portalFooter}\n${args.portalUrl}`;
 
   // Emails so far are plain text; if an HTML body ever exists, append to it,
   // otherwise generate one from the text so the footer link is clickable.
@@ -109,10 +120,10 @@ export function withPortalFooter(args: SendEmailArgs): SendEmailArgs {
   const html = `${baseHtml}
 <hr style="margin:24px 0 12px;border:none;border-top:1px solid #ddd;">
 <p style="font-family:sans-serif;font-size:13px;color:#555;">
-  <a href="${escapeHtml(args.portalUrl)}">Your family portal</a>: schedule and teaching notes.
+  <a href="${escapeHtml(args.portalUrl)}">${copy.portalLink}</a>: ${copy.portalFooter}
 </p>`;
 
-  return { ...args, text, html };
+  return { ...args, text, html:wrap(html) };
 }
 
 export async function sendEmail(rawArgs: SendEmailArgs): Promise<SendEmailResult> {

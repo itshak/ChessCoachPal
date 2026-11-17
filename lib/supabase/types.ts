@@ -129,6 +129,7 @@ export interface Database {
           secondary_email: string | null;
           secondary_phone: string | null;
           email_recipients: EmailRecipients;
+          preferred_locale: "en" | "he" | "ru" | null;
           portal_token: string;
           created_at: string;
         };
@@ -143,6 +144,7 @@ export interface Database {
           secondary_email?: string | null;
           secondary_phone?: string | null;
           email_recipients?: EmailRecipients;
+          preferred_locale?: "en" | "he" | "ru" | null;
           portal_token: string;
           created_at?: string;
         };
@@ -155,6 +157,7 @@ export interface Database {
           secondary_email?: string | null;
           secondary_phone?: string | null;
           email_recipients?: EmailRecipients;
+          preferred_locale?: "en" | "he" | "ru" | null;
           portal_token?: string;
         };
       };

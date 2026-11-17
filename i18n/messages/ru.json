@@ -680,7 +680,11 @@
     "closeEditor": "Закрыть редактор",
     "resetPortal": "Обновить ссылку на портал",
     "resetPortalHint": "Создаст новую ссылку на семейный портал. Старая перестанет работать.",
-    "deleteFamily": "Удалить семью"
+    "deleteFamily": "Удалить семью",
+    "communicationLanguage": "Язык общения с семьёй",
+    "communicationDefault": "По умолчанию: английский",
+    "communicationLanguageHint": "Язык писем и PDF-счетов этой семьи. Не зависит от языка вашего интерфейса.",
+    "languageEnglish": "Английский"
   },
   "scheduling": {
     "recurringTitle": "Повторяющиеся уроки",

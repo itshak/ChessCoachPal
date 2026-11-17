@@ -727,7 +727,7 @@ const catalogue = [
   },
   {
     name:"ccp_guardians_update",
-    description:"Update family contacts, recipient preferences and exact current roster; changing studentIds replaces membership. Require teacher confirmation.",
+    description:"Update family contacts, recipient preferences, preferredLocale communication language (en/he/ru, null=English), and exact current roster; changing studentIds replaces membership. Require teacher confirmation.",
     schema:guardianUpdateSchema.extend({guardianId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },

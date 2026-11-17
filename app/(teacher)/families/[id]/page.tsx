@@ -53,7 +53,7 @@ export default async function FamilyDetailPage({
     supabase
       .from("guardians")
       .select(
-        "id, name, family_name, email, phone, secondary_name, secondary_email, secondary_phone, email_recipients, portal_token, created_at"
+        "id, name, family_name, email, phone, secondary_name, secondary_email, secondary_phone, email_recipients, preferred_locale, portal_token, created_at"
       )
       .eq("id", id)
       .eq("teacher_id", user.id)

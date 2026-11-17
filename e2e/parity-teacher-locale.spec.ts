@@ -1,3 +1,4 @@
+import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
@@ -194,4 +195,54 @@ test("anonymous public try, hosting, password recovery and missing-page texts fo
       }
     }
   }finally{await context.close();}
+});
+
+test("PARITY: family communication locale round-trips website and MCP without changing teacher UI",async({page,request})=>{
+  const call=await delegatedTool(page,request);
+  const initialTeacher=await call("ccp_teacher_profile_get",{});
+  expect(initialTeacher.error).toBeUndefined();
+  const initialLocale=initialTeacher.data.preferredLocale;
+  const created=await call("ccp_guardians_create",{
+    name:"Localized family "+randomUUID(),preferredLocale:"he",confirmed:true,
+  });
+  expect(created.error).toBeUndefined();
+  const id=created.data.id as string;
+  const readWebsite=async()=>{
+    const res=await page.request.get("/api/guardians/"+id);
+    expect(res.status(),await res.text()).toBe(200);
+    return await res.json() as {preferred_locale:string|null};
+  };
+  expect((await readWebsite()).preferred_locale).toBe("he");
+  const safe=await call("ccp_guardians_detail",{guardianId:id});
+  expect(safe.error).toBeUndefined();
+  expect(safe.data.preferred_locale).toBe("he");
+  expect(safe.data.email).toBeUndefined();
+  expect(safe.data.portal_token).toBeUndefined();
+
+  const fromWebsite=await page.request.put("/api/guardians/"+id,{
+    data:{preferredLocale:"ru"},
+  });
+  expect(fromWebsite.status(),await fromWebsite.text()).toBe(200);
+  const fromMcp=await call("ccp_guardians_detail",{guardianId:id});
+  expect(fromMcp.data.preferred_locale).toBe("ru");
+
+  const invalid=await page.request.put("/api/guardians/"+id,{
+    data:{preferredLocale:"de"},
+  });
+  expect(invalid.status()).toBe(400);
+  const modelInvalid=await call("ccp_guardians_update",{
+    guardianId:id,preferredLocale:"de",confirmed:true,
+  });
+  expect(modelInvalid.error?.code).toBe("VALIDATION_ERROR");
+  expect((await readWebsite()).preferred_locale).toBe("ru");
+
+  const cleared=await call("ccp_guardians_update",{
+    guardianId:id,preferredLocale:null,confirmed:true,
+  });
+  expect(cleared.error).toBeUndefined();
+  expect((await readWebsite()).preferred_locale).toBeNull();
+  const afterTeacher=await call("ccp_teacher_profile_get",{});
+  expect(afterTeacher.data.preferredLocale).toBe(initialLocale);
+  const deleted=await call("ccp_guardians_delete",{guardianId:id,confirmed:true});
+  expect(deleted.error).toBeUndefined();
 });

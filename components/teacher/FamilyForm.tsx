@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { EmailRecipients } from "@/lib/supabase/types";
+import type {AppLocale} from "@/i18n/locales";
 
 export interface FamilyGuardian {
   id: string;
@@ -17,6 +18,7 @@ export interface FamilyGuardian {
   secondary_email: string | null;
   secondary_phone: string | null;
   email_recipients: EmailRecipients;
+  preferred_locale: AppLocale | null;
   portal_token: string;
 }
 
@@ -67,6 +69,7 @@ export function FamilyForm({
   const [emailRecipients, setEmailRecipients] = useState<EmailRecipients>(
     guardian?.email_recipients ?? "primary"
   );
+  const [communicationLocale, setCommunicationLocale] = useState<AppLocale | "">(guardian?.preferred_locale ?? "");
   const [showSecondary, setShowSecondary] = useState(
     !!(guardian?.secondary_name || guardian?.secondary_email || guardian?.secondary_phone)
   );
@@ -104,6 +107,7 @@ export function FamilyForm({
       secondaryEmail: secondaryEmail.trim(),
       secondaryPhone: secondaryPhone.trim(),
       emailRecipients,
+      preferredLocale: communicationLocale || null,
       studentIds: memberIds,
       newStudents: newStudents
         .filter((s) => s.name.trim())
@@ -256,6 +260,17 @@ export function FamilyForm({
             {t("addSecond")}
           </button>
         )}
+
+        <label className="text-sm flex flex-col gap-1">
+          <span className="text-xs font-semibold text-muted uppercase tracking-wide">{t("communicationLanguage")}</span>
+          <select value={communicationLocale} onChange={e=>setCommunicationLocale(e.target.value as AppLocale|"")} className={inputClass}>
+            <option value="">{t("communicationDefault")}</option>
+            <option value="en">{t("languageEnglish")}</option>
+            <option value="he">עברית</option>
+            <option value="ru">Русский</option>
+          </select>
+          <span className="text-xs text-muted">{t("communicationLanguageHint")}</span>
+        </label>
 
         <div>
           <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">

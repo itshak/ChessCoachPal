@@ -56,6 +56,31 @@ test("PARITY:PARITY-events-email-preview uses same web/MCP template without leak
  expect(webContacts.status(),await webContacts.text()).toBe(200);
  expect(confirmed.data).toEqual(await webContacts.json());
  expect(JSON.stringify(confirmed.data)).not.toContain(token);
+ // Family-facing invitations must use the family preference on BOTH surfaces,
+ // not the sender's teacher UI locale. The recipient roster is unchanged.
+ const familyHebrew=await page.request.put("/api/guardians/"+id,{
+   data:{preferredLocale:"he"},
+ });
+ expect(familyHebrew.status(),await familyHebrew.text()).toBe(200);
+ const hebrewSite=await page.request.get(path);
+ expect(hebrewSite.status()).toBe(200);
+ const hebrewPreview=await hebrewSite.json();
+ expect(hebrewPreview.drafts[0].locale).toBe("he");
+ expect(hebrewPreview.drafts[0].text).toContain("נא לאשר השתתפות");
+ expect((await call("ccp_events_email_preview",{eventId})).data).toEqual(hebrewPreview);
+ expect(JSON.stringify(hebrewPreview)).not.toContain(token);
+
+ const familyRussian=await call("ccp_guardians_update",{
+   guardianId:id,preferredLocale:"ru",confirmed:true,
+ });
+ expect(familyRussian.error).toBeUndefined();
+ const russianSite=await page.request.get(path);
+ expect(russianSite.status()).toBe(200);
+ const russianPreview=await russianSite.json();
+ expect(russianPreview.drafts[0].locale).toBe("ru");
+ expect(russianPreview.drafts[0].text).toContain("Пожалуйста, подтвердите участие");
+ expect((await call("ccp_events_email_preview",{eventId})).data).toEqual(russianPreview);
+ expect(JSON.stringify(russianPreview)).not.toContain(token);
  const detail=await page.request.get("/api/events/"+eventId);
  expect(detail.status()).toBe(200);
  expect((await detail.json()).event.reminderSentAt).toBeNull();

@@ -680,7 +680,11 @@
     "closeEditor": "סגירת העריכה",
     "resetPortal": "איפוס קישור הפורטל",
     "resetPortalHint": "יצירת קישור חדש לפורטל המשפחה. הקישור הישן יפסיק לפעול.",
-    "deleteFamily": "מחיקת משפחה"
+    "deleteFamily": "מחיקת משפחה",
+    "communicationLanguage": "שפת התקשורת עם המשפחה",
+    "communicationDefault": "ברירת מחדל: אנגלית",
+    "communicationLanguageHint": "השפה להודעות דוא״ל ולחשבוניות PDF של המשפחה. אינה תלויה בשפת הממשק שלך.",
+    "languageEnglish": "אנגלית"
   },
   "scheduling": {
     "recurringTitle": "שיעורים קבועים",

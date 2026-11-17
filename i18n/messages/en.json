@@ -680,7 +680,11 @@
     "closeEditor": "Close Editor",
     "resetPortal": "Reset Portal Link",
     "resetPortalHint": "Generate a new family portal link. The old link will stop working.",
-    "deleteFamily": "Delete Family"
+    "deleteFamily": "Delete Family",
+    "communicationLanguage": "Communication language",
+    "communicationDefault": "Default: English",
+    "communicationLanguageHint": "Used for this family’s emails and invoice PDFs. Independent of your interface language.",
+    "languageEnglish": "English"
   },
   "scheduling": {
     "recurringTitle": "Recurring lessons",

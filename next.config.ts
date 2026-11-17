@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
   // A local `npm run build` now emits .next/standalone as well; nothing reads it
   // outside a container.
   output: process.env.VERCEL ? undefined : "standalone",
+  // Unicode invoice fonts must exist in Vercel functions and standalone images.
+  outputFileTracingIncludes: {"/*": ["./assets/fonts/*.ttf"]},
   turbopack: {
     root: projectRoot,
   },
