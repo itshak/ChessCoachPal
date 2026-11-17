@@ -66,6 +66,23 @@ test("PARITY:PARITY-mcp-completed-group-capture one verified lesson and distinct
   status:"present",note:"Daniel needs more practice on Lucena"});
  expect(rows.find(r=>r.student_id===studentIds[1])).toMatchObject({
   status:"present",note:"Michael followed the worked example"});
+
+ // The ordinary next-lesson briefing must now surface the teacher's
+ // student-specific attendance note without exposing the other learner's note.
+ const briefingInput={studentId:studentIds[0],from:"2046-02-05",to:"2046-02-05"};
+ const briefing=await call("ccp_coach_briefing_get",briefingInput);
+ expect(briefing.error).toBeUndefined();
+ expect(briefing.data.lessonHistory.participantNotes).toEqual([
+  expect.objectContaining({sessionId:receipt.sessionId,status:"present",
+   note:"Daniel needs more practice on Lucena"}),
+ ]);
+ expect(JSON.stringify(briefing.data)).not.toContain(
+  "Michael followed the worked example");
+ const webBriefing=await page.request.get("/api/coaching/briefing?"+
+  new URLSearchParams(briefingInput));
+ expect(webBriefing.status(),await webBriefing.text()).toBe(200);
+ expect(await webBriefing.json()).toEqual(briefing.data);
+
  const changed=await call("ccp_lessons_capture_completed",{
   ...payload,lessonNote:"A changed payload for the same UUID",
  });

@@ -60,6 +60,29 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
   if(observationResult.error)
     throw fail(500,"DATABASE_ERROR","Verified observations unavailable");
 
+  // The latest coaching-session timeline intentionally omits private learner
+  // comments for a general workplace report. Briefing for ONE identified
+  // student may include only that student's own explicitly recorded decision
+  // and note. This avoids requiring another MCP attendance lookup and prevents
+  // a group pupil's private assessment leaking into another pupil's briefing.
+  const recentSessionIds=lessons.entries.filter(item=>item.kind==="coaching")
+    .map(item=>item.id);
+  let participantNotes:Array<{
+    sessionId:string;status:string;note:string;updatedAt:string;
+  }>=[];
+  if(recentSessionIds.length){
+    const {data:notes,error:noteError}=await db.from("session_attendance")
+      .select("session_id,status,note,updated_at")
+      .eq("teacher_id",teacherId).eq("student_id",student.id)
+      .in("session_id",recentSessionIds)
+      .order("session_id").limit(input.limit);
+    if(noteError)throw fail(503,"BRIEFING_UNAVAILABLE","Student-specific lesson notes unavailable");
+    participantNotes=(notes??[]).map(row=>({
+      sessionId:row.session_id,status:row.status,
+      note:row.note??"",updatedAt:row.updated_at,
+    }));
+  }
+
   const known=observationResult.data??[];
   const assignmentsSummary=assignments.assignments.map(a=>{
     const attempts=a.assignment_attempts??[];
@@ -94,6 +117,8 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
     lessonHistory:{
       entries:lessons.entries,total:lessons.total,nextOffset:lessons.nextOffset,
       summary:lessons.summary,summaryScope:lessons.summaryScope,
+      participantNotes,
+      participantNotesTruthBasis:"explicit_student_attendance_records_only",
     },
     materialCoverage:{
       entries:materials.entries.map(row=>({
