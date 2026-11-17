@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useEffect, useState } from "react";
 import {useTranslations} from "next-intl";
 import {LanguageSwitcher} from "@/components/locale/LanguageSwitcher";
@@ -31,9 +33,7 @@ export function LoginForm({
 }) {
   const router = useRouter();
   const t=useTranslations("login");
-  useEffect(() => {
-    document.title = "ChessCoachPal - Login";
-  }, []);
+  const toUserError=useLocalizedApiError();
   const [mode, setMode] = useState<Mode>("signin");
 
   useEffect(() => {
@@ -78,7 +78,7 @@ export function LoginForm({
           AUTH_REQUEST_TIMEOUT_MS
         );
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error ?? t("somethingWrong"));
+        if (!res.ok) throw new Error(toUserError(data, t("somethingWrong")));
         setInfo(t("submitWaitlist"));
         return;
       }
@@ -113,7 +113,7 @@ export function LoginForm({
           AUTH_REQUEST_TIMEOUT_MS
         );
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error ?? t("somethingWrong"));
+        if (!res.ok) throw new Error(toUserError(data, t("somethingWrong")));
         if (data.needsConfirmation) {
           setInfo(
             t("checkEmail")

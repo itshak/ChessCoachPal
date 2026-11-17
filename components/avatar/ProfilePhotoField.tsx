@@ -1,4 +1,6 @@
 "use client";
+
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import {useTranslations} from "next-intl";
 
 import { useEffect, useRef, useState } from "react";
@@ -55,6 +57,7 @@ export function ProfilePhotoField({
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const t=useTranslations("profilePhoto");
+  const toUserError=useLocalizedApiError();
   const [url, setUrl] = useState<string | null>(initialUrl);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -121,7 +124,7 @@ export function ProfilePhotoField({
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(
-          typeof body.error === "string" ? body.error :t("saveFailed")
+          toUserError(body,t("saveFailed"))
         );
       }
 
@@ -133,7 +136,7 @@ export function ProfilePhotoField({
     } catch (err) {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message :t("uploadFailed"),
+        text: toUserError(err, t("uploadFailed")),
       });
     } finally {
       setBusy(false);
@@ -161,7 +164,7 @@ export function ProfilePhotoField({
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(
-          typeof body.error === "string" ? body.error :t("removeFailed")
+          toUserError(body,t("removeFailed"))
         );
       }
 
@@ -171,7 +174,7 @@ export function ProfilePhotoField({
     } catch (err) {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message :t("removeFailed"),
+        text: toUserError(err, t("removeFailed")),
       });
     } finally {
       setBusy(false);

@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useRef, useState } from "react";
 import {useLocale,useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -79,6 +81,7 @@ export function InvoiceDetailClient({
 }) {
   const router = useRouter();
   const t=useTranslations("invoiceDetail");
+  const toUserError=useLocalizedApiError();
   const locale=useLocale();
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
@@ -142,7 +145,7 @@ export function InvoiceDetailClient({
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setFlash({ text: data.error ?? t("saveFailed"), tone: "error" });
+      setFlash({ text: toUserError(data, t("saveFailed")), tone: "error" });
     }
   }
 
@@ -175,7 +178,7 @@ export function InvoiceDetailClient({
     setBusy(false);
     if (!res.ok) {
       if(res.status===409){regenerationReceipt.current=null;router.refresh();}
-      setFlash({ text: data.error ?? t("regenerateFailed"), tone: "error" });
+      setFlash({ text: toUserError(data, t("regenerateFailed")), tone: "error" });
       return;
     }
     regenerationReceipt.current=null;
@@ -240,7 +243,7 @@ export function InvoiceDetailClient({
         method: "POST",
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? t("sendFailed"));
+      if (!res.ok) throw new Error(toUserError(data, t("sendFailed")));
       const base = data.emailed
         ? t("sentEmailed")
         : data.emailError
@@ -254,7 +257,7 @@ export function InvoiceDetailClient({
       router.refresh();
     } catch (error) {
       setFlash({
-        text: error instanceof Error ? error.message : t("sendFailed"),
+        text: toUserError(error, t("sendFailed")),
         tone: "error",
       });
     } finally {
@@ -307,7 +310,7 @@ export function InvoiceDetailClient({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setFlash({ text: data.error ?? t("paymentNotRecorded"), tone: "error" });
+        setFlash({ text: toUserError(data, t("paymentNotRecorded")), tone: "error" });
       } else {
         setFlash({ text:t("paymentFull"), tone: "ok" });
         router.refresh();
@@ -351,7 +354,7 @@ export function InvoiceDetailClient({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setFlash({ text: data.error ?? t("paymentNotRecorded"), tone: "error" });
+        setFlash({ text: toUserError(data, t("paymentNotRecorded")), tone: "error" });
         return;
       }
       pendingManualPayment.current = null;
@@ -391,7 +394,7 @@ export function InvoiceDetailClient({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setFlash({ text: data.error ?? t("failed"), tone: "error" });
+      setFlash({ text: toUserError(data, t("failed")), tone: "error" });
       return;
     }
     setFlash({
@@ -423,7 +426,7 @@ export function InvoiceDetailClient({
     if (res.ok) router.refresh();
     else {
       const data = await res.json().catch(() => ({}));
-      setFlash({ text: data.error ?? t("failed"), tone: "error" });
+      setFlash({ text: toUserError(data, t("failed")), tone: "error" });
     }
   }
 
@@ -436,7 +439,7 @@ export function InvoiceDetailClient({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setFlash({ text: data.error ?? t("checkoutFailed"), tone: "error" });
+      setFlash({ text: toUserError(data, t("checkoutFailed")), tone: "error" });
       return;
     }
     if (data.url) {

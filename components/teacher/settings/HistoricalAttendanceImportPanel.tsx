@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useState,useEffect,useCallback} from "react";
 import {useLocale,useTranslations} from "next-intl";
 import {Card} from "@/components/ui/card";
@@ -20,14 +22,15 @@ type Preview={
 type Roster={id:string;name:string};
 const mappingFields=["studentName","studentId","workplaceName","workplaceId","attendedOn","periodStart","periodEnd","attendanceStatus","lessonCount","mode","sourceTimezone","sourceLabel"] as const;
 const cls="rounded-lg border border-border bg-background p-2 text-sm w-full";
-const errorText=(value:unknown)=>value instanceof Error?value.message:"Request failed";
 async function asJson(res:Response){
  const body=await res.json().catch(()=>({}));
- if(!res.ok)throw new Error(body.error??"Request failed");
+ if(!res.ok)throw Object.assign(new Error(body.error??"Request failed"),
+  {code:typeof body.code==="string"?body.code:undefined});
  return body;
 }
 export function HistoricalAttendanceImportPanel(){
  const t=useTranslations("historyImport");
+  const toUserError=useLocalizedApiError();
  const locale=useLocale();
  const confirm=useConfirm();
  const [busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
@@ -65,7 +68,7 @@ export function HistoricalAttendanceImportPanel(){
    })) as Stage;
    setStage(result);setMapping({});setResolutions({});
    setMessage(t("stagedNotice"));
-  }catch(e){setError(errorText(e));}
+  }catch(e){setError(toUserError(e,t("requestFailed")));}
   finally{setBusy(false);}
  }
  const input=()=>({
@@ -83,7 +86,7 @@ export function HistoricalAttendanceImportPanel(){
    setPreview(result);setMapping(result.mapping);setRequestKey(crypto.randomUUID());
    if(!result.canCommit)setMessage(
     t("reviewIssues"));
-  }catch(e){invalidate();setError(errorText(e));}
+  }catch(e){invalidate();setError(toUserError(e,t("requestFailed")));}
   finally{setBusy(false);}
  }
  async function commit(){
@@ -101,14 +104,14 @@ export function HistoricalAttendanceImportPanel(){
    }));
    setMessage(t("imported",{count:data.count}));
    await loadReport();
-  }catch(e){setError(errorText(e));}
+  }catch(e){setError(toUserError(e,t("requestFailed")));}
   finally{setBusy(false);}
  }
  async function loadReport(){
   try{
    const data=await asJson(await fetch("/api/import/historical/report?limit=50",{cache:"no-store"}));
    setReport(data.records??[]);
-  }catch(e){setError(errorText(e));}
+  }catch(e){setError(toUserError(e,t("requestFailed")));}
  }
  async function deleteStage(){
   if(!stage)return;
@@ -123,7 +126,7 @@ export function HistoricalAttendanceImportPanel(){
     body:JSON.stringify({stageId:stage.stageId}),
    }));
    setStage(null);setPreview(null);setMessage(t("deleted"));
-  }catch(e){setError(errorText(e));}finally{setBusy(false);}
+  }catch(e){setError(toUserError(e,t("requestFailed")));}finally{setBusy(false);}
  }
  const setResolution=(row:number,key:"studentId"|"workplaceId",value:string)=>{
   setResolutions(previous=>({...previous,[row]:{

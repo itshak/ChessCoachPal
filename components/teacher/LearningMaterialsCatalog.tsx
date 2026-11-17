@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {useTranslations} from "next-intl";
 
@@ -16,6 +18,7 @@ const button="rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:
 const kinds:MaterialKind[]=["game","puzzle","drill","study_chapter","external_link"];
 export function LearningMaterialsCatalog(){
   const t=useTranslations("materialCatalog");
+  const toUserError=useLocalizedApiError();
   const labels:Record<MaterialKind,string>={
     game:t("kindGame"),puzzle:t("kindPuzzle"),drill:t("kindDrill"),
     study_chapter:t("kindChapter"),external_link:t("kindExternal")
@@ -93,9 +96,9 @@ export function LearningMaterialsCatalog(){
       const response=await fetch("/api/training/materials/lifecycle?"+
         new URLSearchParams({materialId:material.id}),{cache:"no-store"});
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||t("inspectError"));
+      if(!response.ok)throw new Error(toUserError(data, t("inspectError")));
       setArchivePreview(data);
-    }catch(e){setError(e instanceof Error?e.message:t("archiveUnavailable"));}
+    }catch(e){setError(toUserError(e, t("archiveUnavailable")));}
   }
   async function changeMaterialLifecycle(materialId:string,revision:number,action:"archive"|"restore"){
     setBusy(true);setError("");setStatus("");
@@ -106,10 +109,10 @@ export function LearningMaterialsCatalog(){
           requestId:crypto.randomUUID(),confirmed:true}),
       });
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||t("lifecycleError"));
+      if(!response.ok)throw new Error(toUserError(data, t("lifecycleError")));
       setStatus(action==="archive"?t("archived"):t("restored"));
       setArchivePreview(null);await load();
-    }catch(e){setError(e instanceof Error?e.message:t("lifecycleFailed"));}
+    }catch(e){setError(toUserError(e, t("lifecycleFailed")));}
     finally{setBusy(false);}
   }
   async function selectRelationshipSource(material:Material){
@@ -118,9 +121,9 @@ export function LearningMaterialsCatalog(){
       const response=await fetch("/api/training/materials/relations?"+
         new URLSearchParams({materialId:material.id}),{cache:"no-store"});
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||t("fetchRelations"));
+      if(!response.ok)throw new Error(toUserError(data, t("fetchRelations")));
       setRelations(data.relations??[]);
-    }catch(e){setError(e instanceof Error?e.message:t("fetchRelations"));}
+    }catch(e){setError(toUserError(e, t("fetchRelations")));}
   }
   async function changeRelation(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
@@ -136,11 +139,11 @@ export function LearningMaterialsCatalog(){
         }),
       });
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||t("changeRelation"));
+      if(!response.ok)throw new Error(toUserError(data, t("changeRelation")));
       setStatus(relationAction==="link"?t("relationLinked"):t("relationUnlinked"));
       setRelationSource(null);setRelations([]);setTargetMaterialId("");
       await load();
-    }catch(e){setError(e instanceof Error?e.message:t("relationFailed"));}
+    }catch(e){setError(toUserError(e, t("relationFailed")));}
     finally{setBusy(false);}
   }
   async function create(event:FormEvent<HTMLFormElement>){
@@ -161,13 +164,13 @@ export function LearningMaterialsCatalog(){
         method:editing?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),
       });
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||t("createError"));
+      if(!response.ok)throw new Error(toUserError(data, t("createError")));
       setStatus(editing?t("corrected"):t("saved"));
       setEditing(null);
       setTitle("");setDescription("");setPgn("");setFen("");setInstructions("");
       setSourceUrl("");setStudyId("");setChapterId("");setThemes("");setSolution("");
       await load();
-    }catch(e){setError(e instanceof Error?e.message:t("saveFailed"));}
+    }catch(e){setError(toUserError(e, t("saveFailed")));}
     finally{setBusy(false);}
   }
   return <section className="space-y-4" aria-label={t("aria")}>

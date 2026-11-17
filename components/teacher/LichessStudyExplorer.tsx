@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useState,type FormEvent} from "react";
 import {useTranslations} from "next-intl";
 
@@ -15,6 +17,7 @@ type Result={
 /** Both the website and MCP use the same server-only Lichess study index. */
 export function LichessStudyExplorer(){
  const t=useTranslations("lichessExplorer");
+  const toUserError=useLocalizedApiError();
  const [query,setQuery]=useState("");
  const [studyId,setStudyId]=useState("");
  const [chapterNumber,setChapterNumber]=useState("");
@@ -37,7 +40,7 @@ export function LichessStudyExplorer(){
    setResult(response as Result);
   }catch(e){
    setResult(null);
-   setError(e instanceof Error?e.message:t("searchFailed"));
+   setError(toUserError(e, t("searchFailed")));
   }finally{setBusy(false);}
  }
  async function openStudy(id:string){
@@ -50,7 +53,7 @@ export function LichessStudyExplorer(){
    const response=await res.json();
    if(!res.ok)throw new Error(response.error??t("loadFailed"));
    setResult(response as Result);
-  }catch(e){setResult(null);setError(e instanceof Error?e.message:t("unavailable"));}
+  }catch(e){setResult(null);setError(toUserError(e, t("unavailable")));}
   finally{setBusy(false);}
  }
  return <section aria-label={t("aria")}

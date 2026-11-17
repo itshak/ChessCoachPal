@@ -1,4 +1,6 @@
 "use client";
+
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import {useState} from "react";
 import {useTranslations} from "next-intl";
 type Chapter={study_id:string;chapter_id:string;chapter_number:number;
@@ -11,6 +13,7 @@ const field="w-full min-w-0 max-w-full rounded-lg border border-border bg-backgr
 const button="rounded-lg bg-primary px-3 py-2 text-white font-medium disabled:opacity-50";
 export function StudyChapterEvidencePanel(){
  const t=useTranslations("chapterEvidence");
+  const toUserError=useLocalizedApiError();
  const [studyId,setStudyId]=useState("");
  const [query,setQuery]=useState("");
  const [ordinal,setOrdinal]=useState("");
@@ -31,10 +34,10 @@ export function StudyChapterEvidencePanel(){
     body:JSON.stringify({studyId,confirmedExternal:true}),
    });
    const data=await res.json();
-   if(!res.ok)throw new Error(data.error??t("syncDenied"));
+   if(!res.ok)throw new Error(toUserError(data, t("syncDenied")));
    setNotice(t("syncReceipt",{count:data.chapterCount}));
    await search();
-  }catch(e){setError(e instanceof Error?e.message:t("syncError"));}
+  }catch(e){setError(toUserError(e, t("syncError")));}
   finally{setBusy(false);}
  }
  async function search(){
@@ -46,10 +49,10 @@ export function StudyChapterEvidencePanel(){
    if(ordinal.trim())params.set("chapterNumber",ordinal.trim());
    const res=await fetch("/api/lichess/chapter-index?"+params.toString(),{cache:"no-store"});
    const body=await res.json();
-   if(!res.ok)throw new Error(body.error??t("searchError"));
+   if(!res.ok)throw new Error(toUserError(body, t("searchError")));
    setChapters(body.matches as Chapter[]);setChapterId("");
    if(body.truncated)setNotice(t("truncated"));
-  }catch(e){setError(e instanceof Error?e.message:t("searchFailed"));}
+  }catch(e){setError(toUserError(e, t("searchFailed")));}
  }
  async function inspect(){
   setBusy(true);setError("");invalid();
@@ -59,9 +62,9 @@ export function StudyChapterEvidencePanel(){
     body:JSON.stringify({action:"preview",sessionId,studyId,chapterId,stage,note}),
    });
    const body=await res.json();
-   if(!res.ok)throw new Error(body.error??t("previewError"));
+   if(!res.ok)throw new Error(toUserError(body, t("previewError")));
    setPreview(body as Preview);
-  }catch(e){setError(e instanceof Error?e.message:t("previewFailed"));}
+  }catch(e){setError(toUserError(e, t("previewFailed")));}
   finally{setBusy(false);}
  }
  async function commit(){
@@ -74,10 +77,10 @@ export function StudyChapterEvidencePanel(){
       confirmed:true,requestId:crypto.randomUUID()}),
    });
    const body=await res.json();
-   if(!res.ok)throw new Error(body.error??t("commitDenied"));
+   if(!res.ok)throw new Error(toUserError(body, t("commitDenied")));
    setNotice(t("commitReceipt",{count:body.participantCoverages}));
    setPreview(null);setApproved(false);
-  }catch(e){setError(e instanceof Error?e.message:t("commitFailed"));}
+  }catch(e){setError(toUserError(e, t("commitFailed")));}
   finally{setBusy(false);}
  }
  return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-4 space-y-4">

@@ -455,7 +455,9 @@
     "cancelledByStudent": "Cancelled by student",
     "cancelledByTeacher": "Cancelled by teacher",
     "requestInvalid": "Request failed ({status})",
-    "studioSettingsLink": "Studio settings"
+    "studioSettingsLink": "Studio settings",
+    "notesSavedEmailQueued": "Notes saved; approved family email queued",
+    "cancelSessionConfirm": "Cancel this session for all enrolled students? Attendance and billing evidence will be preserved."
   },
   "materials": {
     "title": "Training & Materials",
@@ -1638,7 +1640,8 @@
       "mode": "Dated/aggregate type (optional)",
       "sourceTimezone": "Source timezone (optional)",
       "sourceLabel": "Source reference (optional)"
-    }
+    },
+    "requestFailed": "Request failed"
   },
   "studioSettings": {
     "needBlock": "Pick at least one time block",
@@ -2494,7 +2497,8 @@
   "newEventPage": {
     "title": "Create Event",
     "events": "Events",
-    "description": "Set the date, invite players, and their families will receive pending RSVPs."
+    "description": "Set the date, invite players, and their families will receive pending RSVPs.",
+    "submitFailed": "Could not create event"
   },
   "studioPage": {
     "title": "Studio",

@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useCallback,useEffect,useMemo,useState} from "react";
 import {createClient} from "@/lib/supabase/client";
 import {useTranslations} from "next-intl";
@@ -11,6 +13,7 @@ type Enrollment={id:string;qr:string;secret:string};
 
 export function AccountMfaSettings(){
  const t=useTranslations("mfa");
+  const toUserError=useLocalizedApiError();
  const confirm=useConfirm();
  const [verified,setVerified]=useState<TotpFactor[]>([]);
  const [unverified,setUnverified]=useState<TotpFactor[]>([]);
@@ -33,9 +36,9 @@ export function AccountMfaSettings(){
   setReady(true);
  },[client]);
  useEffect(()=>{void refresh().catch(e=>{
-  setError(e instanceof Error?e.message:t("statusUnavailable"));
+  setError(toUserError(e, t("statusUnavailable")));
   setReady(true);
- });},[refresh]);
+ });},[refresh,t,toUserError]);
 
  async function enable(){
   setBusy(true);setError("");setNotice("");
@@ -54,7 +57,7 @@ export function AccountMfaSettings(){
     throw new Error(t("setupIncomplete"));
    setEnrollment({id:data.id,qr:data.totp.qr_code,secret:data.totp.secret});
    setCode("");
-  }catch(e){setError(e instanceof Error?e.message:t("setupError"));}
+  }catch(e){setError(toUserError(e, t("setupError")));}
   finally{setBusy(false);}
  }
  async function verify(){
@@ -72,7 +75,7 @@ export function AccountMfaSettings(){
    setEnrollment(null);setCode("");
    await refresh();
    setNotice(t("success"));
-  }catch(e){setError(e instanceof Error?e.message:t("invalidCode"));}
+  }catch(e){setError(toUserError(e, t("invalidCode")));}
   finally{setBusy(false);}
  }
  async function cancel(){
@@ -82,7 +85,7 @@ export function AccountMfaSettings(){
    const {error}=await client.auth.mfa.unenroll({factorId:enrollment.id});
    if(error)throw error;
    setEnrollment(null);setCode("");await refresh();
-  }catch(e){setError(e instanceof Error?e.message:t("cancelError"));}
+  }catch(e){setError(toUserError(e, t("cancelError")));}
   finally{setBusy(false);}
  }
  async function disable(factorId:string){
@@ -104,7 +107,7 @@ export function AccountMfaSettings(){
    if(removeError)throw removeError;
    setCode("");await refresh();
    setNotice(t("removed"));
-  }catch(e){setError(e instanceof Error?e.message:t("removeError"));}
+  }catch(e){setError(toUserError(e, t("removeError")));}
   finally{setBusy(false);}
  }
  return <section id="security" aria-label={t("title")}

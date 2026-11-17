@@ -1,4 +1,6 @@
 "use client";
+
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import {useLocale,useTranslations} from "next-intl";
 import {locales,localeDetails, type AppLocale} from "@/i18n/locales";
 
@@ -22,6 +24,7 @@ function saveReport(filename: string, type: string, data: string) {
 
 export function CoachingReportPanel() {
   const t=useTranslations("reports");
+  const toUserError=useLocalizedApiError();
   const uiLocale=useLocale();
   const [reportOutputLocale,setReportOutputLocale]=useState<""|AppLocale>("");
   const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
@@ -53,11 +56,11 @@ export function CoachingReportPanel() {
       if(reportOutputLocale)query.set("outputLocale",reportOutputLocale);
       const response = await fetch("/api/coaching/report?" + query, { cache: "no-store" });
       const body = await response.json() as ResponseBody;
-      if (!response.ok || !body.report) throw new Error(body.error || t("reportFailed"));
+      if (!response.ok || !body.report) throw new Error(toUserError(body, t("reportFailed")));
       setReport(body.report);
       setPresentation(body.presentation??null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("reportFailed"));
+      setError(toUserError(reason, t("reportFailed")));
     } finally { setBusy(false); }
   }
   return (

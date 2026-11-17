@@ -1,4 +1,6 @@
 "use client";
+
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import {useCallback,useEffect,useState} from "react";
 import {useLocale,useTranslations} from "next-intl";
 
@@ -23,6 +25,7 @@ const button="rounded-lg bg-primary px-3 py-2 text-white font-medium disabled:op
 
 export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
  const t=useTranslations("ratingHistory"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
  const [provider,setProvider]=useState<Provider>("lichess");
  const [control,setControl]=useState<Control>("rapid");
  const [manual,setManual]=useState("");
@@ -52,7 +55,7 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
    if(!res.ok)throw new Error((await res.json()).error??t("manualError"));
    setManual("");setNotice(t("manualSaved"));
    await load();
-  }catch(e){setError(e instanceof Error?e.message:t("saveError"));}
+  }catch(e){setError(toUserError(e, t("saveError")));}
   finally{setBusy(false);}
  }
  async function inspectProvider(){
@@ -64,9 +67,9 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
     body:JSON.stringify({action:"refreshPreview",provider,confirmedExternal:true}),
    });
    const data=await res.json();
-   if(!res.ok)throw new Error(data.error??t("lookupUnavailable"));
+   if(!res.ok)throw new Error(toUserError(data, t("lookupUnavailable")));
    setPreview(data as Preview);setCursor(null);
-  }catch(e){setError(e instanceof Error?e.message:t("lookupFailed"));}
+  }catch(e){setError(toUserError(e, t("lookupFailed")));}
   finally{setBusy(false);}
  }
  async function acceptProvider(){
@@ -83,11 +86,11 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
      confirmedExternal:true}),
    });
    const body=await res.json();
-   if(!res.ok)throw new Error(body.error??t("importRejected"));
+   if(!res.ok)throw new Error(toUserError(body, t("importRejected")));
    setPreview(null);setCursor(null);
    setNotice(t("importSaved"));
    await load();
-  }catch(e){setError(e instanceof Error?e.message:t("importFailed"));}
+  }catch(e){setError(toUserError(e, t("importFailed")));}
   finally{setBusy(false);}
  }
  return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-4 space-y-3">

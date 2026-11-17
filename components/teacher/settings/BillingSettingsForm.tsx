@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useMemo, useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -25,6 +27,7 @@ function durationInputsFromPolicy(
 export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
   const router = useRouter();
   const t=useTranslations("ratesSettings");
+  const toUserError=useLocalizedApiError();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -114,7 +117,7 @@ export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error ?? t("saveError"));
+      setMessage(toUserError(data, t("saveError")));
     }
     setTimeout(() => setMessage(null), 2500);
   }

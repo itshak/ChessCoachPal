@@ -1,10 +1,13 @@
 "use client";
+
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import {useState} from "react";
 import {useTranslations} from "next-intl";
 type Board={board:string[][];sideToMove:string;unknownGameState:string[];
  warning:string;continuationMovesVerified:boolean;};
 export function FenReviewPanel(){
  const t=useTranslations("fenReview");
+  const toUserError=useLocalizedApiError();
  const [fen,setFen]=useState("");
  const [pieceToPlace,setPieceToPlace]=useState(".");
  const [source,setSource]=useState<"manual"|"image">("manual");
@@ -38,9 +41,9 @@ export function FenReviewPanel(){
     body:JSON.stringify({fen,source}),
    });
    const body=await res.json();
-   if(!res.ok)throw new Error(body.error??t("invalid"));
+   if(!res.ok)throw new Error(toUserError(body, t("invalid")));
    setBoard(body as Board);
-  }catch(e){setError(e instanceof Error?e.message:t("checkFailed"));}
+  }catch(e){setError(toUserError(e, t("checkFailed")));}
   finally{setBusy(false);}
  }
  return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-4 space-y-3">

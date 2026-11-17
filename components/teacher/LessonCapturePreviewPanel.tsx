@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {useLocale,useTranslations} from "next-intl";
 import { workplaceLocalToUtc } from "@/lib/coaching-time";
@@ -47,6 +49,7 @@ const button = "rounded-lg bg-primary px-4 py-2 text-white font-semibold disable
  */
 export function LessonCapturePreviewPanel() {
   const t=useTranslations("lessonCapture"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
   const [workplaces,setWorkplaces] = useState<Workplace[]>([]);
   const [workplaceId,setWorkplaceId] = useState("");
   const [names,setNames] = useState("");
@@ -103,7 +106,7 @@ export function LessonCapturePreviewPanel() {
     if(timingMode==="explicit"){
       try {timing={startsAt:workplaceLocalToUtc(localStart,workplace.timezone),
         durationMinutes:duration};}
-      catch(e){setError(e instanceof Error?e.message:t("invalidLocalTime"));return;}
+      catch(e){setError(toUserError(e, t("invalidLocalTime")));return;}
     }else{
       if(!localDate){setError(t("chooseDate"));return;}
       timing={localDate};
@@ -124,7 +127,7 @@ export function LessonCapturePreviewPanel() {
       if(!response.ok)throw new Error(result.error??t("previewUnavailable"));
       setPreview(result);
       requestRef.current=null;
-    }catch(e){setError(e instanceof Error?e.message:t("previewFailed"));}
+    }catch(e){setError(toUserError(e, t("previewFailed")));}
     finally{setBusy(false);}
   }
 
@@ -152,7 +155,7 @@ export function LessonCapturePreviewPanel() {
       linkKeyRef.current=null;
       setPreview(null);setApproved(false);
       requestRef.current=null;
-    }catch(e){setError(e instanceof Error?e.message:t("lessonCreateFailed"));}
+    }catch(e){setError(toUserError(e, t("lessonCreateFailed")));}
     finally{setBusy(false);}
   }
 
@@ -177,13 +180,13 @@ export function LessonCapturePreviewPanel() {
         oneTransaction?:boolean;session?:{id:string};
         evidence?:{participantCoverages:number;inferredMastery:boolean}};
       if(!response.ok||!body.oneTransaction||!body.session?.id)
-        throw new Error(body.error??t("atomicUnavailable"));
+        throw new Error(toUserError(body, t("atomicUnavailable")));
       setReceipt(t("atomicReceipt",{id:body.session.id,count:body.evidence?.participantCoverages??0})+
         (body.replayed?" "+t("safeReplay"):""));
       setPendingLink(null);setLinkReview(null);setLinkApproved(false);
       setPreview(null);setApproved(false);setAtomicApproved(false);
       atomicKeyRef.current=null;
-    }catch(e){setError(e instanceof Error?e.message:t("atomicFailed"));}
+    }catch(e){setError(toUserError(e, t("atomicFailed")));}
     finally{setBusy(false);}
   }
 
@@ -200,9 +203,9 @@ export function LessonCapturePreviewPanel() {
         }),cache:"no-store",
       });
       const data=await response.json() as ChapterLinkPreview&{error?:string};
-      if(!response.ok)throw new Error(data.error??t("chapterUnavailable"));
+      if(!response.ok)throw new Error(toUserError(data, t("chapterUnavailable")));
       setLinkReview(data);
-    }catch(e){setError(e instanceof Error?e.message:t("chapterReviewFailed"));}
+    }catch(e){setError(toUserError(e, t("chapterReviewFailed")));}
     finally{setBusy(false);}
   }
   async function commitChapterAssignment(){
@@ -220,11 +223,11 @@ export function LessonCapturePreviewPanel() {
       const data=await response.json() as {
         participantCoverages?:number;replayed?:boolean;error?:string;
       };
-      if(!response.ok)throw new Error(data.error??t("chapterAssignUnavailable"));
+      if(!response.ok)throw new Error(toUserError(data, t("chapterAssignUnavailable")));
       setLinkedReceipt(t("chapterAssigned",{count:data.participantCoverages??0}));
       setPendingLink(null);setLinkReview(null);setLinkApproved(false);
       linkKeyRef.current=null;
-    }catch(e){setError(e instanceof Error?e.message:t("chapterAssignFailed"));}
+    }catch(e){setError(toUserError(e, t("chapterAssignFailed")));}
     finally{setBusy(false);}
   }
 

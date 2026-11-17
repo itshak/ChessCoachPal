@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useMemo,useState} from "react";
 import {useLocale,useTranslations} from "next-intl";
 import Link from "next/link";
@@ -26,11 +28,11 @@ const DECISIONS:Record<Decision,string>={
  teacher_cancelled:"Teacher cancelled",
 };
 const field="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
-function errText(e:unknown){return e instanceof Error?e.message:"Action could not be saved"}
 async function jsonResponse(res:Response){
  const data=await res.json().catch(()=>null);
- if(!res.ok)throw new Error(data&&typeof data.error==="string"?data.error:
-  "Request failed ("+res.status+")");
+ if(!res.ok)throw Object.assign(new Error(
+  data&&typeof data.error==="string"?data.error:"Request failed ("+res.status+")"),
+  {code:typeof data?.code==="string"?data.code:undefined});
  return data;
 }
 
@@ -47,6 +49,7 @@ export function CanonicalScheduleBoard({
 }){
  const router=useRouter(),{showToast}=useToast();
  const t=useTranslations("calendar");
+ const toUserError=useLocalizedApiError();
  const uiLocale=useLocale();
  const [open,setOpen]=useState<CanonicalCalendarRow|null>(null);
  const [tab,setTab]=useState<"attendance"|"notes"|"schedule">("attendance");
@@ -132,7 +135,7 @@ export function CanonicalScheduleBoard({
    }else{
     setRegister(rows as AttendanceRow[]);loadDecision(first,rows as AttendanceRow[]);
    }
-  }catch(e){showToast(errText(e),"error")}
+  }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
  }
  async function saveAttendance(){
@@ -160,7 +163,7 @@ export function CanonicalScheduleBoard({
    loadDecision(selectedStudent,fresh);
    showToast(result.emailQueued?"Attendance saved; family email queued":"Attendance saved");
    router.refresh();
-  }catch(e){showToast(errText(e),"error")}
+  }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
  }
  async function saveNotes(){
@@ -182,9 +185,9 @@ export function CanonicalScheduleBoard({
     "/api/coaching/sessions/"+open.id+"/notes?includePrivate=true&confirmed=true",
     {cache:"no-store"}));
    setNotes(fresh);loadNote(selectedStudent,fresh);
-   showToast(result.emailQueued?"Notes saved; approved family email queued":"Notes saved");
+   showToast(result.emailQueued?t("notesSavedEmailQueued"):t("notesSaved"));
    router.refresh();
-  }catch(e){showToast(errText(e),"error")}
+  }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
  }
 
@@ -203,12 +206,12 @@ export function CanonicalScheduleBoard({
       expectedUpdatedAt:open.updated_at,idempotencyKey:crypto.randomUUID()}),
    }));
    setOpen(null);showToast(t("rescheduled"));router.refresh();
-  }catch(e){showToast(errText(e),"error")}
+  }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
  }
  async function cancelTeachingSession(){
   if(!open)return;
-  if(!window.confirm("Cancel this session for every frozen participant? Attendance and billing evidence will be preserved."))return;
+  if(!window.confirm(t("cancelSessionConfirm")))return;
   setBusy(true);
   try{
    await jsonResponse(await fetch("/api/coaching/sessions/"+open.id+"/lifecycle",{
@@ -217,7 +220,7 @@ export function CanonicalScheduleBoard({
       expectedUpdatedAt:open.updated_at,idempotencyKey:crypto.randomUUID()}),
    }));
    setOpen(null);showToast(t("sessionCancelled"));router.refresh();
-  }catch(e){showToast(errText(e),"error")}
+  }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
  }
  async function bulkAttendance(){
@@ -243,7 +246,7 @@ export function CanonicalScheduleBoard({
     "/api/coaching/sessions/"+open.id+"/attendance",{cache:"no-store"}));
    setRegister(fresh);loadDecision(selectedStudent,fresh);
    showToast(t("allAttendanceUpdated"));router.refresh();
-  }catch(e){showToast(errText(e),"error")}
+  }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
  }
  async function addPrivateSession(){
@@ -260,7 +263,7 @@ export function CanonicalScheduleBoard({
    }));
    setAddOpen(false);showToast(t("privateSessionScheduled"));
    router.refresh();
-  }catch(e){showToast(errText(e),"error")}
+  }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
  }
  return <div className="space-y-5">

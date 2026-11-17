@@ -1,4 +1,6 @@
 "use client";
+
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import {useEffect,useRef,useState,type FormEvent} from "react";
 import {useTranslations} from "next-intl";
 
@@ -17,6 +19,7 @@ const button="rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:
  */
 export function StudyPreferencesPanel(){
  const t=useTranslations("studyPreferences");
+  const toUserError=useLocalizedApiError();
  const [context,setContext]=useState<Context|null>(null);
  const [students,setStudents]=useState<Student[]>([]);
  const [purpose,setPurpose]=useState<Purpose>("lesson");
@@ -40,9 +43,9 @@ export function StudyPreferencesPanel(){
     setContext(ctx);setScopeId(ctx.teacherId);
     setStudents(roster.students??[]);
     if(roster.nextOffset!==null)setNotice(t("firstHundred"));
-   }).catch(e=>{if(active)setError(e instanceof Error?e.message:t("loadError"));});
+   }).catch(e=>{if(active)setError(toUserError(e, t("loadError")));});
   return()=>{active=false;};
- },[t]);
+ },[t,toUserError]);
  const selectedId=scope==="teacher"?context?.teacherId??"":scopeId;
  useEffect(()=>{
   if(!selectedId)return;
@@ -56,10 +59,10 @@ export function StudyPreferencesPanel(){
     if(!active)return;
     const current=result.preferences[0];
     setStudyId(current?.study_id??"");setRevision(current?.revision??0);
-   }).catch(e=>{if(active)setError(e instanceof Error?e.message:t("unavailable"));})
+   }).catch(e=>{if(active)setError(toUserError(e, t("unavailable")));})
    .finally(()=>{if(active)setLoading(false);});
   return()=>{active=false;};
- },[purpose,scope,selectedId,t]);
+ },[purpose,scope,selectedId,t,toUserError]);
  async function submit(e:FormEvent<HTMLFormElement>){
   e.preventDefault();if(!selectedId||busy)return;
   const payload={purpose,scope,scopeId:selectedId,studyId:studyId.trim()||null,
@@ -83,7 +86,7 @@ export function StudyPreferencesPanel(){
    setNotice(result.studyId?
     t("saved"):
     t("cleared"));
-  }catch(x){setError(x instanceof Error?x.message:t("writeUnavailable"));}
+  }catch(x){setError(toUserError(x, t("writeUnavailable")));}
   finally{setBusy(false);}
  }
  async function resolve(){
@@ -95,11 +98,11 @@ export function StudyPreferencesPanel(){
    const response=await fetch("/api/lichess/study-preferences?"+query,{cache:"no-store"});
    const data=await response.json() as {error?:string;studyId?:string|null;
     selectedScope?:string|null;needsSync?:boolean};
-   if(!response.ok)throw Error(data.error??t("resolutionUnavailable"));
+   if(!response.ok)throw Error(toUserError(data, t("resolutionUnavailable")));
    setEffective(data.studyId?
     t("effective",{studyId:data.studyId,scope:data.selectedScope==="teacher"?t("teacher"):data.selectedScope==="workplace"?t("workplace"):data.selectedScope==="student"?t("student"):data.selectedScope??"",state:data.needsSync?t("needsSync"):t("indexed")}):
     t("noEffective"));
-  }catch(e){setError(e instanceof Error?e.message:t("resolutionFailed"));}
+  }catch(e){setError(toUserError(e, t("resolutionFailed")));}
  }
  return <section aria-label={t("aria")} className="space-y-3 rounded-xl border border-border bg-surface p-5">
   <h2 className="font-semibold text-lg">{t("title")}</h2>

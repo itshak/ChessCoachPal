@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -23,6 +25,7 @@ export function PortalEventRsvp({
 }) {
   const router = useRouter();
   const t=useTranslations("portal");
+  const toUserError=useLocalizedApiError();
   const [status, setStatus] = useState<RespondStatus | null>(
     initialStatus === "pending" ? null : (initialStatus as RespondStatus)
   );
@@ -55,7 +58,7 @@ export function PortalEventRsvp({
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data.error ?? t("couldNotRsvp"));
+      setError(toUserError(data, t("couldNotRsvp")));
       return;
     }
 

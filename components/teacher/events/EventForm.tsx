@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useMemo, useState } from "react";
 import {useLocale,useTranslations} from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -35,6 +37,7 @@ export function EventForm({
   reminderSentAt?: string | null;
 }) {
   const t=useTranslations("eventForm"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
   const [title, setTitle] = useState(initial.title);
   const [startsAt, setStartsAt] = useState(initial.startsAt);
   const [endsAt, setEndsAt] = useState(initial.endsAt);
@@ -106,7 +109,7 @@ export function EventForm({
         repertoireByStudent,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("unknownError"));
+      setError(toUserError(err, t("unknownError")));
     } finally {
       setLoading(false);
     }

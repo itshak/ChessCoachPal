@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useCallback,useEffect,useState,type FormEvent} from "react";
 import {useLocale,useTranslations} from "next-intl";
 
@@ -16,6 +18,7 @@ const button="rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:
 
 export function TrainingHomeworkPanel({fixedStudentId}:{fixedStudentId?:string}){
   const t=useTranslations("homework"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
   const formatOutcome=(value:Attempt["outcome"])=>t(value==="in_progress"?"inProgress":value);
   const formatReview=(value:Review["verdict"])=>t(value==="needs_work"?"needsWork":"reviewed");
   const kindLabel=(kind:string)=> {
@@ -79,9 +82,9 @@ export function TrainingHomeworkPanel({fixedStudentId}:{fixedStudentId?:string})
         method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body),
       });
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||t("updateFailed"));
+      if(!response.ok)throw new Error(toUserError(data, t("updateFailed")));
       await load();setSuccess(successText);return true;
-    }catch(err){setError(err instanceof Error?err.message:t("updateFailed"));return false;}
+    }catch(err){setError(toUserError(err, t("updateFailed")));return false;}
     finally{setBusy(false);}
   }
   async function assign(e:FormEvent){

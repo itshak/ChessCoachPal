@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useState,useEffect,useCallback} from "react";
 import {useTranslations} from "next-intl";
 import {Card} from "@/components/ui/card";
@@ -12,11 +14,13 @@ type Preview={rows:PreviewRow[];previewDigest:string;canCommit:boolean;
  quotaBlocked:boolean;activeStudentCountBefore:number;activeStudentCountAfter:number};
 const asJson=async(res:Response)=>{
  const data=await res.json().catch(()=>({}));
- if(!res.ok)throw new Error(data.error??"Request failed");
+ if(!res.ok)throw Object.assign(new Error(data.error??"Request failed"),
+  {code:typeof data.code==="string"?data.code:undefined});
  return data;
 };
 export function BulkStudentLifecyclePanel(){
  const t=useTranslations("bulkLifecycle");
+  const toUserError=useLocalizedApiError();
  const confirm=useConfirm();
  const [students,setStudents]=useState<Student[]>([]);
  const [chosen,setChosen]=useState<string[]>([]);
@@ -45,7 +49,7 @@ export function BulkStudentLifecyclePanel(){
     body:JSON.stringify({rows:candidates}),
    }));
    setRows(candidates);setPreview(result);setKey(crypto.randomUUID());
-  }catch(e){setError(e instanceof Error?e.message:t("previewFailed"));}
+  }catch(e){setError(toUserError(e,t("previewFailed")));}
   finally{setBusy(false);}
  }
  async function commit(){
@@ -63,7 +67,7 @@ export function BulkStudentLifecyclePanel(){
    }));
    setMessage(t("updated",{count:result.count}));
    setChosen([]);reset();await reload();
-  }catch(e){setError(e instanceof Error?e.message:t("updateFailed"));}
+  }catch(e){setError(toUserError(e,t("updateFailed")));}
   finally{setBusy(false);}
  }
  return <Card id="bulk-student-lifecycle">

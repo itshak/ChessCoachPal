@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {useLocale,useTranslations} from "next-intl";
 
@@ -34,6 +36,7 @@ async function command<T>(action:string,body:Record<string,unknown>={}):Promise<
  */
 export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
   const t=useTranslations("chessLearning"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
   const [students,setStudents]=useState<Student[]>([]);
   const [sessions,setSessions]=useState<Session[]>([]);
   const [categories,setCategories]=useState<Category[]>([]);
@@ -114,7 +117,7 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
   async function run(work:()=>Promise<void>,message:string){
     setBusy(true);setError("");setNotice("");
     try {await work();await Promise.all([refreshHistory(),refreshCategories()]);setNotice(message);}
-    catch(e){setError(e instanceof Error?e.message:t("operationFailed"));}
+    catch(e){setError(toUserError(e, t("operationFailed")));}
     finally {setBusy(false);}
   }
 

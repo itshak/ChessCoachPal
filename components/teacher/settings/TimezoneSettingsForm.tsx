@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -20,6 +22,7 @@ export function TimezoneSettingsForm({
 }) {
   const router = useRouter();
   const t=useTranslations("timezoneForm");
+  const toUserError=useLocalizedApiError();
   const [value, setValue] = useState(timezone);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -40,7 +43,7 @@ export function TimezoneSettingsForm({
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error??t("saveFailed"));
+      setMessage(toUserError(data, t("saveFailed")));
     }
     setTimeout(() => setMessage(null), 2500);
   }

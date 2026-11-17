@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState, type ReactNode } from "react";
 import {useTranslations} from "next-intl";
 import {LanguageSwitcher} from "@/components/locale/LanguageSwitcher";
@@ -31,6 +33,7 @@ export function AccountSettings({
 }) {
   const router = useRouter();
   const t = useTranslations("account");
+  const toUserError=useLocalizedApiError();
 
   const [name, setName] = useState(initialName);
   const [nameSaving, setNameSaving] = useState(false);
@@ -77,7 +80,7 @@ export function AccountSettings({
 
       if (!res.ok) {
         const data = await res.json();
-        setNameMessage({ type: "error", text: data.error ?? "Failed to update name" });
+        setNameMessage({ type: "error", text: toUserError(data,t("nameFailed")) });
       } else {
         setNameMessage({ type: "success", text: t("nameUpdated") });
         router.refresh();
@@ -107,7 +110,7 @@ export function AccountSettings({
         { emailRedirectTo: `${window.location.origin}/auth/confirm?next=/account` }
       );
       if (error) {
-        setEmailMessage({ type: "error", text: error.message });
+        setEmailMessage({ type: "error", text: toUserError(error,t("saveFailed")) });
       } else {
         setEmailMessage({
           type: "success",
@@ -155,7 +158,7 @@ export function AccountSettings({
       const { error } = await supabase.auth.updateUser({ password: newPassword });
 
       if (error) {
-        setPwMessage({ type: "error", text: error.message });
+        setPwMessage({ type: "error", text: toUserError(error,t("saveFailed")) });
       } else {
         setPwMessage({ type: "success", text: t("passwordUpdated") });
         setCurrentPassword("");

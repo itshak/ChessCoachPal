@@ -1,4 +1,6 @@
 "use client";
+
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import {useCallback,useEffect,useState} from "react";
 import {useLocale,useTranslations} from "next-intl";
 
@@ -16,6 +18,7 @@ const field="w-full rounded-lg border border-border bg-background px-3 py-2 text
 const btn="rounded-lg border border-border px-3 py-2 text-sm font-semibold disabled:opacity-50";
 export function StudentTrainingPlansPanel({studentId}:{studentId:string}){
  const t=useTranslations("trainingPlans"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
  const planStatus=(v:Plan["status"])=>t(v);
  const goalStatus=(v:Goal["status"])=>t(v==="in_progress"?"inProgress":v);
  const [plans,setPlans]=useState<Plan[]>([]);
@@ -34,12 +37,12 @@ export function StudentTrainingPlansPanel({studentId}:{studentId:string}){
    const response=await fetch("/api/training/plans?"+
      new URLSearchParams({studentId,includeArchived:String(includeArchived),limit:"50"}),{cache:"no-store"});
    const data=await response.json();
-   if(!response.ok)throw new Error(data.error||t("loadError"));
+   if(!response.ok)throw new Error(toUserError(data, t("loadError")));
    setPlans(data.plans??[]);
- },[studentId,includeArchived,t]);
- useEffect(()=>{let live=true;void load().catch(e=>{if(live)setError(e instanceof Error?e.message:t("unavailable"));});
+ },[studentId,includeArchived,t,toUserError]);
+ useEffect(()=>{let live=true;void load().catch(e=>{if(live)setError(toUserError(e, t("unavailable")));});
    return()=>{live=false;};
- },[load,t]);
+ },[load,t,toUserError]);
  function select(plan:Plan|null){
    setEditing(plan);setTitle(plan?.title??"");setSummary(plan?.summary??"");
    setStatus(plan?.status??"draft");setGoals(plan?plan.goals.map(g=>({...g})):[]);
@@ -64,10 +67,10 @@ export function StudentTrainingPlansPanel({studentId}:{studentId:string}){
        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),
      });
      const data=await response.json();
-     if(!response.ok)throw new Error(data.error||t("saveError"));
+     if(!response.ok)throw new Error(toUserError(data, t("saveError")));
      const message=editing?t("corrected"):t("created");
      select(null);setNotice(message);await load();
-   }catch(e){setError(e instanceof Error?e.message:t("saveFailed"));}
+   }catch(e){setError(toUserError(e, t("saveFailed")));}
    finally{setBusy(false);}
  }
  async function readAudit(plan:Plan){
@@ -76,11 +79,11 @@ export function StudentTrainingPlansPanel({studentId}:{studentId:string}){
      const response=await fetch("/api/training/plans?"+
        new URLSearchParams({planId:plan.id}),{cache:"no-store"});
      const data=await response.json();
-     if(!response.ok)throw new Error(data.error||t("auditUnavailable"));
+     if(!response.ok)throw new Error(toUserError(data, t("auditUnavailable")));
      setEditing(plan);setTitle(plan.title);setSummary(plan.summary);
      setStatus(plan.status);setGoals(plan.goals.map(g=>({...g})));
      setRevisions(data.revisions);
-   }catch(e){setError(e instanceof Error?e.message:t("auditUnavailable"));}
+   }catch(e){setError(toUserError(e, t("auditUnavailable")));}
    finally{setBusy(false);}
  }
  return <section className="rounded-xl border border-border p-4 space-y-4"

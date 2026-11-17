@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -19,6 +21,7 @@ export function NotificationSettingsForm({
 }) {
   const router = useRouter();
   const t=useTranslations("notificationSettings");
+  const toUserError=useLocalizedApiError();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [inApp, setInApp] = useState(policy.notify_in_app);
@@ -64,7 +67,7 @@ export function NotificationSettingsForm({
     setBusy(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error ?? t("saveError"));
+      setMessage(toUserError(data, t("saveError")));
       return;
     }
     setMessage(t("saved"));

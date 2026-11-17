@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useState} from "react";
 import {useTranslations,useLocale} from "next-intl";
 import {useRouter} from "next/navigation";
@@ -14,6 +16,7 @@ export function CanonicalMakeupPanel({
 }:{credits:CanonicalMakeupCredit[];workplaces:Workplace[];timezone:string;today:string}){
  const router=useRouter(),{showToast}=useToast();
  const t=useTranslations("scheduling"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
  const [selected,setSelected]=useState<CanonicalMakeupCredit|null>(null);
  const [date,setDate]=useState(today);
  const [time,setTime]=useState("16:00");
@@ -47,7 +50,7 @@ export function CanonicalMakeupPanel({
    showToast(result.replayed?t("bookingConfirmed"):t("booked"));
    router.refresh();
   }catch(error){
-   showToast(error instanceof Error?error.message:t("cannotSchedule"),"error");
+   showToast(toUserError(error, t("cannotSchedule")),"error");
   }finally{setBusy(false)}
  }
  return <section className="rounded-xl border border-border bg-surface p-4 space-y-3">

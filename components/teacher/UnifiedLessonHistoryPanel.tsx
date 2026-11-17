@@ -1,4 +1,6 @@
 "use client";
+
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import {useCallback,useEffect,useState,type FormEvent} from "react";
 import {useLocale,useTranslations} from "next-intl";
 type Workplace={id:string;name:string};
@@ -17,6 +19,7 @@ function dateLocal(daysAgo:number){
 }
 export function UnifiedLessonHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
  const t=useTranslations("lessonHistory"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
  const statusText=(status:string)=>status==="scheduled"?t("scheduled"):status==="completed"?t("completed"):status==="cancelled"?t("cancelled"):status;
  const [from,setFrom]=useState(()=>dateLocal(30));
  const [to,setTo]=useState(()=>dateLocal(0));
@@ -32,9 +35,9 @@ export function UnifiedLessonHistoryPanel({fixedStudentId}:{fixedStudentId?:stri
   void fetch("/api/agent/v1",{method:"POST",headers:{"Content-Type":"application/json"},
    body:JSON.stringify({action:"workplaces.list"}),cache:"no-store",
   }).then(r=>r.json()).then(data=>{if(active)setWorkplaces(data.data??[]);})
-  .catch(e=>{if(active)setError(e instanceof Error?e.message:t("workplacesUnavailable"));});
+  .catch(e=>{if(active)setError(toUserError(e, t("workplacesUnavailable")));});
   return ()=>{active=false;};
- },[t]);
+ },[t,toUserError]);
  const fetchHistory=useCallback(async(offset=0)=>{
   if(from>to)throw new Error(t("invalidRange"));
   const q=new URLSearchParams({from,to,offset:String(offset),limit:"50"});
@@ -42,14 +45,14 @@ export function UnifiedLessonHistoryPanel({fixedStudentId}:{fixedStudentId?:stri
   if(workplaceId)q.set("workplaceId",workplaceId);
   const response=await fetch("/api/coaching/unified-lessons?"+q,{cache:"no-store"});
   const data=await response.json();
-  if(!response.ok)throw new Error(data.error||t("loadError"));
+  if(!response.ok)throw new Error(toUserError(data, t("loadError")));
   const history=data as Response;
   setRows(old=>offset===0?history.entries:[...old,...history.entries]);
   setResult(history);setNextOffset(history.nextOffset);
- },[fixedStudentId,from,to,workplaceId,t]);
+ },[fixedStudentId,from,to,workplaceId,t,toUserError]);
  async function submit(event:FormEvent<HTMLFormElement>){
   event.preventDefault();setBusy(true);setError("");
-  try{await fetchHistory();}catch(e){setError(e instanceof Error?e.message:t("unavailable"));}
+  try{await fetchHistory();}catch(e){setError(toUserError(e, t("unavailable")));}
   finally{setBusy(false);}
  }
  return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-4 space-y-3">

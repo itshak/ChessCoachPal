@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useEffect,useState,type FormEvent} from "react";
 import {useTranslations} from "next-intl";
 import {useConfirm} from "@/components/ui/confirm-dialog";
@@ -21,6 +23,7 @@ const pieces:Record<string,string>={
  */
 export function LichessPuzzlePublisher(){
  const t=useTranslations("puzzlePublisher");
+  const toUserError=useLocalizedApiError();
  const confirm=useConfirm();
  const [studyId,setStudyId]=useState("");
  const [chapterName,setChapterName]=useState(()=>t("defaultChapter"));
@@ -79,12 +82,12 @@ export function LichessPuzzlePublisher(){
       imageBase64,confirmedExternal:true}),
    });
    const body=await res.json().catch(()=>({}));
-   if(!res.ok)throw new Error(body.error??t("proposalError"));
+   if(!res.ok)throw new Error(toUserError(body, t("proposalError")));
    // A proposal is untrusted input, not an approved board or Lichess action.
    setFen(body.proposedFen);
    setImageWarning(body.warning??t("verifyWarning"));
    setRequestId(null);setPublished(null);setAmbiguous(false);
-  }catch(e){setError(e instanceof Error?e.message:t("imageAnalysisError"));}
+  }catch(e){setError(toUserError(e, t("imageAnalysisError")));}
   finally{setBusy(false);}
  }
  async function review(event:FormEvent){
@@ -95,9 +98,9 @@ export function LichessPuzzlePublisher(){
     body:JSON.stringify(data()),
    });
    const body=await res.json();
-   if(!res.ok)throw new Error(body.error??t("reviewError"));
+   if(!res.ok)throw new Error(toUserError(body, t("reviewError")));
    setPreview(body as Preview);setAmbiguous(false);setRequestId(null);
-  }catch(e){setPreview(null);setError(e instanceof Error?e.message:t("invalidFen"));}
+  }catch(e){setPreview(null);setError(toUserError(e, t("invalidFen")));}
   finally{setBusy(false);}
  }
  async function publish(){
@@ -120,10 +123,10 @@ export function LichessPuzzlePublisher(){
    const body=await res.json();
    if(!res.ok){
     if(body.code==="PROVIDER_RECONCILIATION_REQUIRED")setAmbiguous(true);
-    throw new Error(body.error??t("publishUnconfirmed"));
+    throw new Error(toUserError(body, t("publishUnconfirmed")));
    }
    setPublished(body as Published);
-  }catch(e){setError(e instanceof Error?e.message:t("publishFailed"));}
+  }catch(e){setError(toUserError(e, t("publishFailed")));}
   finally{setBusy(false);}
  }
  return <section aria-label={t("aria")}

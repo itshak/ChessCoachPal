@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useRef, useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -40,6 +42,7 @@ export function PaymentsSettingsForm({
 }) {
   const router = useRouter();
   const t=useTranslations("paymentSettings");
+  const toUserError=useLocalizedApiError();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -79,7 +82,7 @@ export function PaymentsSettingsForm({
       setQrCode(await qrImageToDataUrl(file,{read:t("readImage"),process:t("processImage"),tooDetailed:t("cropImage")}));
       setQrDirty(true);
     } catch (err) {
-      setQrError(err instanceof Error ? err.message : t("readImage"));
+      setQrError(toUserError(err, t("readImage")));
     }
   }
 
@@ -134,7 +137,7 @@ export function PaymentsSettingsForm({
       onSaved?.();
     } else {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error ?? t("saveError"));
+      setMessage(toUserError(data,t("saveError")));
       setTimeout(() => setMessage(null), 2500);
     }
   }

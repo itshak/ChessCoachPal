@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -55,6 +57,7 @@ export function EventDetailClient({
   }[];
 }) {
   const t=useTranslations("eventDetail");
+  const toUserError=useLocalizedApiError();
   const router = useRouter();
   const { showToast } = useToast();
   const [emailBusy, setEmailBusy] = useState(false);
@@ -94,7 +97,7 @@ export function EventDetailClient({
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data.error??t("saveFailed"));
+      throw new Error(toUserError(data, t("saveFailed")));
     }
     router.refresh();
   }
@@ -108,7 +111,7 @@ export function EventDetailClient({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setEmailMessage(data.error??t("sendFailed"));
+        setEmailMessage(toUserError(data, t("sendFailed")));
         return;
       }
       setEmailMessage(

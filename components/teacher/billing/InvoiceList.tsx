@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useMemo, useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -27,6 +29,7 @@ export interface InvoiceListRow {
  */
 export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
   const t=useTranslations("invoiceList");
+  const toUserError=useLocalizedApiError();
   const router = useRouter();
   const confirm = useConfirm();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -139,7 +142,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
 
     const labels = {send:t("send"),delete:t("delete"),void:t("void")};
     if (!res.ok) {
-      setMessage(data.error??t("actionFailed",{action:labels[action]}));
+      setMessage(toUserError(data,t("actionFailed",{action:labels[action]})));
       return;
     }
 

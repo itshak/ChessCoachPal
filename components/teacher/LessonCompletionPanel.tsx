@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 import {useLocale,useTranslations} from "next-intl";
 
@@ -30,6 +32,7 @@ async function api<T>(action:string,args:Record<string,unknown>={},fallback="Una
  */
 export function LessonCompletionPanel(){
  const t=useTranslations("lessonCompletion"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
  const statusName=(status:string)=>status==="scheduled"?t("scheduled"):status==="completed"?t("completed"):status==="cancelled"?t("cancelled"):status;
  const [sessions,setSessions]=useState<Session[]>([]);
  const [sessionId,setSessionId]=useState("");
@@ -59,7 +62,7 @@ export function LessonCompletionPanel(){
   }catch(e){
    // A superseded request must never blank a newer selected lesson.
    if(generation===rosterLoad.current){
-    setRoster(null);setError(e instanceof Error?e.message:t("rosterLoadFailed"));
+    setRoster(null);setError(toUserError(e, t("rosterLoadFailed")));
    }
    return;
   }
@@ -78,7 +81,7 @@ export function LessonCompletionPanel(){
     }];
   })));
   setConfirmed(false);
- },[t]);
+ },[t,toUserError]);
  const refreshSessions=useCallback(async()=>{
   const items=await api<Session[]>("sessions.list",{},t("loadFailed"));
   setSessions(items);
@@ -124,7 +127,7 @@ export function LessonCompletionPanel(){
    setConfirmed(false);
    if(complete)setLessonNote("");
    await refresh(roster.sessionId);
-  }catch(e){setError(e instanceof Error?e.message:t("attendanceFailed"));}
+  }catch(e){setError(toUserError(e, t("attendanceFailed")));}
   finally{setBusy(false);}
  }
 

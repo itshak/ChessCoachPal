@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -19,6 +21,7 @@ export function PortalCancelButton({
 }) {
   const router = useRouter();
   const t=useTranslations("portal");
+  const toUserError=useLocalizedApiError();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,7 +38,7 @@ export function PortalCancelButton({
     setBusy(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data.error ?? t("couldNotCancel"));
+      setError(toUserError(data, t("couldNotCancel")));
       return;
     }
     setOpen(false);

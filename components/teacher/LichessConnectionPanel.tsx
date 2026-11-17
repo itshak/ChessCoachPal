@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useCallback,useEffect,useState} from "react";
 import {useTranslations} from "next-intl";
 import {useConfirm} from "@/components/ui/confirm-dialog";
@@ -15,6 +17,7 @@ type DisconnectResult={
 
 export function LichessConnectionPanel({returnTo="learning"}:{returnTo?:"learning"|"account"}){
  const t=useTranslations("lichessConnection");
+  const toUserError=useLocalizedApiError();
   const returnSuffix=returnTo==="account"?"&returnTo=account":"";
   const [status,setStatus]=useState<Connection|null>(null);
   const [error,setError]=useState("");
@@ -46,7 +49,7 @@ export function LichessConnectionPanel({returnTo="learning"}:{returnTo?:"learnin
       setNotice(result.manualRevokeRequired?
         t("manualRevoke"):t("disconnected"));
       await refresh();
-    }catch(e){setError(e instanceof Error?e.message:t("disconnectFailed"));}
+    }catch(e){setError(toUserError(e, t("disconnectFailed")));}
     finally{setBusy(false);}
   }
   const params=typeof window!=="undefined"?new URLSearchParams(window.location.search):null;

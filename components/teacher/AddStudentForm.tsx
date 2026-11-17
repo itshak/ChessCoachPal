@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -15,6 +17,7 @@ export function AddStudentForm({
 }) {
   const router = useRouter();
   const t=useTranslations("students");
+  const toUserError=useLocalizedApiError();
   const [name, setName] = useState("");
   const [guardianId, setGuardianId] = useState("");
   const [birthdate, setBirthdate] = useState("");
@@ -72,7 +75,7 @@ export function AddStudentForm({
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const base = data.error ?? t("addFailed");
+      const base = toUserError(data, t("addFailed"));
       setError(
         data.code === "HOSTED_LIMIT_REACHED" && data.upgradePath
           ? `${base} See ${data.upgradePath}.`

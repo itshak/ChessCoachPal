@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -25,6 +27,7 @@ export function PolicySettings({
 }) {
   const router = useRouter();
   const t=useTranslations("scheduling");
+  const toUserError=useLocalizedApiError();
   const [open, setOpen] = useState(defaultOpen);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -60,7 +63,7 @@ export function PolicySettings({
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error ?? t("failed"));
+      setMessage(toUserError(data, t("failed")));
     }
     setTimeout(() => setMessage(null), 2500);
   }

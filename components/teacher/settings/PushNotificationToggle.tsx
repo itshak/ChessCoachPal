@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useCallback, useEffect, useState } from "react";
 import {useTranslations} from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -43,6 +45,7 @@ async function activeRegistration(): Promise<ServiceWorkerRegistration | null> {
  */
 export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boolean }) {
   const t=useTranslations("pushNotifications");
+  const toUserError=useLocalizedApiError();
   const [support, setSupport] = useState<PushSupport | null>(null);
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -140,7 +143,7 @@ export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boo
         return {
           ok: false,
           conflict: res.status === 409,
-          error: data.error ?? t("saveError"),
+          error: toUserError(data, t("saveError")),
         };
       }
       return { ok: true, conflict: false };
@@ -164,7 +167,7 @@ export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boo
         attempt = await subscribeOnce();
       }
       if (!attempt.ok) {
-        setMessage(attempt.error ?? t("saveError"));
+        setMessage(toUserError(attempt,t("saveError")));
         return;
       }
 
@@ -182,7 +185,7 @@ export function PushNotificationToggle({ pushConfigured }: { pushConfigured: boo
       setBusy(false);
       await refresh().catch(() => {});
     }
-  }, [refresh, publicKey,t]);
+  }, [refresh, publicKey,t,toUserError]);
 
   const disable = useCallback(async () => {
     setBusy(true);

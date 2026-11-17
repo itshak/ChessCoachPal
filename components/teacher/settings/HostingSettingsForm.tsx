@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
 import {useLocale,useTranslations} from "next-intl";
 import Link from "next/link";
@@ -38,6 +40,7 @@ export function HostingSettingsForm({
 }) {
   const [busy, setBusy] = useState<"checkout" | "portal" | null>(null);
   const t=useTranslations("hostingSettings"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
   const [message, setMessage] = useState<string | null>(null);
 
   const canUpgrade =
@@ -54,7 +57,7 @@ export function HostingSettingsForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMessage(data.error??t("checkoutError"));
+        setMessage(toUserError(data, t("checkoutError")));
         setBusy(null);
         return;
       }
@@ -79,7 +82,7 @@ export function HostingSettingsForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMessage(data.error??t("portalError"));
+        setMessage(toUserError(data, t("portalError")));
         setBusy(null);
         return;
       }

@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useRef, useState } from "react";
 import {useLocale,useTranslations} from "next-intl";
 import Link from "next/link";
@@ -123,6 +125,7 @@ function PackageRow({
   currency: string;
 }) {
   const t=useTranslations("credits"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
   const date=(d:string)=>new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeZone:"UTC"}).format(new Date(d+"T12:00:00Z"));
   const router = useRouter();
   const confirm = useConfirm();
@@ -144,7 +147,7 @@ function PackageRow({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(data.error ?? t("expirySaveError"));
+      setError(toUserError(data,t("expirySaveError")));
       return;
     }
     setEditingExpiry(false);
@@ -166,7 +169,7 @@ function PackageRow({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(data.error ?? t("returnError"));
+      setError(toUserError(data,t("returnError")));
       return;
     }
     router.refresh();
@@ -305,6 +308,7 @@ function SellPackageForm({
   onCancel: () => void;
 }) {
   const t=useTranslations("credits");
+  const toUserError=useLocalizedApiError();
   const router = useRouter();
   // Keep the same request ID for transport retries; server-side RPC returns
   // the original invoice instead of selling duplicate prepaid lessons.
@@ -364,7 +368,7 @@ function SellPackageForm({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(data.error ?? t("packageCreateFailed"));
+      setError(toUserError(data,t("packageCreateFailed")));
       return;
     }
     router.push(`/billing/${data.invoiceId}`);

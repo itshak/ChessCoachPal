@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useState} from "react";
 import {useTranslations,useLocale} from "next-intl";
 import {useRouter} from "next/navigation";
@@ -44,6 +46,7 @@ export function CanonicalSlotManager({
 }:{slots:Slot[];students:Student[];workplaces:Workplace[];today:string;durationOptions:number[]}){
  const router=useRouter(),{showToast}=useToast(),confirm=useConfirm();
  const t=useTranslations("scheduling"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
  const dayLabel=(day:number)=>new Intl.DateTimeFormat(locale,{weekday:"long",timeZone:"UTC"})
    .format(new Date(Date.UTC(2023,0,1+day)));
  const [editing,setEditing]=useState<Slot|null>(null);
@@ -94,7 +97,7 @@ export function CanonicalSlotManager({
     t("updated",{count:Number(body.preservedHistory??0)}):t("created"));
    router.refresh();
   }catch(e){
-   showToast(e instanceof Error?e.message:t("saveError"),"error");
+   showToast(toUserError(e, t("saveError")),"error");
   }finally{setBusy(false)}
  }
  async function remove(slot:Slot){
@@ -113,7 +116,7 @@ export function CanonicalSlotManager({
     }));
    showToast(t("removed",{count:Number(body.preserved??0)}));
    router.refresh();
-  }catch(e){showToast(e instanceof Error?e.message:t("removeError"),"error")}
+  }catch(e){showToast(toUserError(e, t("removeError")),"error")}
   finally{setBusy(false)}
  }
  return <section className="rounded-xl border border-border bg-surface p-4 space-y-4">

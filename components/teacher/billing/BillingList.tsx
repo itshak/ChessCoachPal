@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useRef, useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -33,6 +35,7 @@ export function GenerateInvoicesModal({
 }) {
   const router = useRouter();
   const t=useTranslations("billingList");
+  const toUserError=useLocalizedApiError();
   const [periodStart, setPeriodStart] = useState(defaultStart);
   const [periodEnd, setPeriodEnd] = useState(defaultEnd);
   const [busy, setBusy] = useState(false);
@@ -63,7 +66,7 @@ export function GenerateInvoicesModal({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(data.error ?? t("previewFailed"));
+      setError(toUserError(data,t("previewFailed")));
       return;
     }
     setPreview({
@@ -93,7 +96,7 @@ export function GenerateInvoicesModal({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(data.error ?? t("createFailed"));
+      setError(toUserError(data,t("createFailed")));
       return;
     }
     onClose();

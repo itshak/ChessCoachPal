@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import {useState} from "react";
 import {useLocale,useTranslations} from "next-intl";
 
@@ -25,6 +27,7 @@ type Briefing={
 
 export function CoachBriefingPanel({studentId}:{studentId:string}){
   const t=useTranslations("briefing");
+  const toUserError=useLocalizedApiError();
   const locale=useLocale();
   const date=(iso:string,timezone="UTC")=>{const d=new Date(iso.length===10?iso+"T12:00:00.000Z":iso);return Number.isNaN(d.getTime())?iso:new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeZone:timezone}).format(d);};
   const lessonStatus=(status:string)=>status==="scheduled"?t("scheduled"):status==="completed"?t("completed"):status==="cancelled"?t("cancelled"):status;
@@ -38,9 +41,9 @@ export function CoachBriefingPanel({studentId}:{studentId:string}){
       const response=await fetch("/api/coaching/briefing?"+
         new URLSearchParams({studentId,limit:"20"}),{cache:"no-store"});
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||t("loadError"));
+      if(!response.ok)throw new Error(toUserError(data, t("loadError")));
       setBriefing(data as Briefing);
-    }catch(e){setError(e instanceof Error?e.message:t("unavailable"));}
+    }catch(e){setError(toUserError(e, t("unavailable")));}
     finally{setBusy(false);}
   }
   return <section className="mb-8 rounded-xl border border-border p-4 space-y-4"

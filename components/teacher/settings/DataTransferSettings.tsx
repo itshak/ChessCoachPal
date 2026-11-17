@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useRef, useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -10,6 +12,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 export function DataTransferSettings() {
   const router = useRouter();
   const t=useTranslations("dataTransfer");
+  const toUserError=useLocalizedApiError();
   const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
@@ -25,7 +28,7 @@ export function DataTransferSettings() {
       const res = await fetch("/api/settings/export");
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error??t("exportFailed"));
+        throw new Error(toUserError(data, t("exportFailed")));
       }
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") ?? "";
@@ -39,7 +42,7 @@ export function DataTransferSettings() {
       URL.revokeObjectURL(url);
       setMessage(t("exported"));
     } catch (e) {
-      setError(e instanceof Error ? e.message:t("exportFailed"));
+      setError(toUserError(e, t("exportFailed")));
     } finally {
       setExporting(false);
     }
@@ -85,7 +88,7 @@ export function DataTransferSettings() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.error??t("importFailed"));
+        throw new Error(toUserError(data, t("importFailed")));
       }
       if (data.sha256 !== preview.sha256) {
         throw new Error(t("digestMismatch"));
@@ -95,7 +98,7 @@ export function DataTransferSettings() {
       setMessage(t("imported",{count:imported}));
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message:t("importFailed"));
+      setError(toUserError(e, t("importFailed")));
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";

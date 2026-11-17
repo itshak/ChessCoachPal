@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useRef, useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -23,6 +25,7 @@ export function SpreadsheetImportSettings({
   aiConfigured: boolean;
 }) {
   const t=useTranslations("studentImport");
+  const toUserError=useLocalizedApiError();
   const router=useRouter();
   const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -50,7 +53,7 @@ export function SpreadsheetImportSettings({
         body: form,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error??t("parseFailed"));
+      if (!res.ok) throw new Error(toUserError(data, t("parseFailed")));
 
       setFilename(data.filename);
       setHeaders(data.headers ?? []);
@@ -60,7 +63,7 @@ export function SpreadsheetImportSettings({
       setPreviewTotal(data.previewTotal ?? 0);
       setIssues(data.issues ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message:t("parseFailed"));
+      setError(toUserError(e, t("parseFailed")));
       clearPreview();
     } finally {
       setBusy(false);
@@ -89,12 +92,12 @@ export function SpreadsheetImportSettings({
         body: JSON.stringify({ rows, mapping: nextMapping }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error??t("previewFailed"));
+      if (!res.ok) throw new Error(toUserError(data, t("previewFailed")));
       setPreviewRows(data.previewRows ?? []);
       setPreviewTotal(data.previewTotal ?? 0);
       setIssues(data.issues ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message:t("previewFailed"));
+      setError(toUserError(e, t("previewFailed")));
     } finally {
       setBusy(false);
     }
@@ -121,11 +124,11 @@ export function SpreadsheetImportSettings({
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error??t("suggestFailed"));
+      if (!res.ok) throw new Error(toUserError(data, t("suggestFailed")));
       await refreshPreview({ ...mapping, ...data.mapping });
       if (data.warning) setMessage(data.warning);
     } catch (e) {
-      setError(e instanceof Error ? e.message:t("suggestFailed"));
+      setError(toUserError(e, t("suggestFailed")));
       setBusy(false);
     }
   }
@@ -148,14 +151,14 @@ export function SpreadsheetImportSettings({
         body: JSON.stringify({ rows, mapping }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error??t("importFailed"));
+      if (!res.ok) throw new Error(toUserError(data, t("importFailed")));
       setMessage(
         t("importReceipt",{students:data.studentsCreated,families:data.familiesCreated,skipped:data.studentsSkipped})
       );
       clearPreview();
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message:t("importFailed"));
+      setError(toUserError(e, t("importFailed")));
     } finally {
       setBusy(false);
     }

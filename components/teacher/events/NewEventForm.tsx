@@ -1,5 +1,8 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+import {useTranslations} from "next-intl";
+
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import {
@@ -17,6 +20,8 @@ export function NewEventForm({
   initialStartsAt: string;
 }) {
   const router = useRouter();
+  const t=useTranslations("newEventPage");
+  const toUserError=useLocalizedApiError();
 
   async function handleSubmit(values: EventFormValues) {
     const res = await fetch("/api/events", {
@@ -37,7 +42,7 @@ export function NewEventForm({
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data.error ?? "Failed to create event");
+      throw new Error(toUserError(data,t("submitFailed")));
     }
     router.push(`/events/${data.event.id}`);
     router.refresh();
@@ -57,7 +62,7 @@ export function NewEventForm({
           studentIds: [],
           repertoireByStudent: {},
         }}
-        submitLabel="Create event"
+        submitLabel={t("title")}
         onSubmit={handleSubmit}
       />
     </Card>

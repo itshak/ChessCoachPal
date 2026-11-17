@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -15,6 +17,7 @@ const COMMON_BLOCKS = [15, 20, 30, 45, 60, 90];
 export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
   const router = useRouter();
   const t=useTranslations("studioSettings");
+  const toUserError=useLocalizedApiError();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -77,7 +80,7 @@ export function StudioSettingsForm({ policy }: { policy: StudioPolicy }) {
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error ?? t("saveError"));
+      setMessage(toUserError(data, t("saveError")));
     }
     setTimeout(() => setMessage(null), 2500);
   }

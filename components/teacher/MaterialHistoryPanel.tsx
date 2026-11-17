@@ -1,4 +1,6 @@
 "use client";
+
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import {useCallback,useEffect,useState,type FormEvent} from "react";
 import {useLocale,useTranslations} from "next-intl";
 
@@ -34,6 +36,7 @@ async function json(url:string,init?:RequestInit){
 }
 export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
  const t=useTranslations("materialHistory"),locale=useLocale();
+  const toUserError=useLocalizedApiError();
  const stageLabel=(s:"assigned"|"taught"|"completed")=>
    t(s==="assigned"?"statusAssigned":s==="taught"?"statusTaught":"statusCompleted");
  const [students,setStudents]=useState<Student[]>([]);
@@ -106,7 +109,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
    });
    setStudyLabel("");setStudyUrl("");setStudyNotes("");
    await loadDefaults();setSuccess(t("addedDefault"));
-  }catch(e){setError(e instanceof Error?e.message:t("addDefaultFailed"));}
+  }catch(e){setError(toUserError(e, t("addDefaultFailed")));}
   finally{setBusy(false);}
  }
  async function updateDefault(item:DefaultStudy){
@@ -119,7 +122,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
       url:editDefaultUrl.trim(),notes:editDefaultNotes,confirmed:true}),
    });
    setEditDefaultId("");await loadDefaults();setSuccess(t("updatedDefault"));
-  }catch(e){setError(e instanceof Error?e.message:t("updateDefaultFailed"));}
+  }catch(e){setError(toUserError(e, t("updateDefaultFailed")));}
   finally{setBusy(false);}
  }
  async function archiveDefault(item:DefaultStudy){
@@ -131,7 +134,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
       expectedUpdatedAt:item.updated_at,confirmed:true}),
    });
    await loadDefaults();setSuccess(t("archivedDefault"));
-  }catch(e){setError(e instanceof Error?e.message:t("archiveDefaultFailed"));}
+  }catch(e){setError(toUserError(e, t("archiveDefaultFailed")));}
   finally{setBusy(false);}
  }
  const load=useCallback(async(offset=0)=>{
@@ -169,7 +172,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
      stage,occurredOn,note,requestId:crypto.randomUUID(),confirmed:true}),
    });
    setNote("");await load();setSuccess(t("evidenceSaved"));
-  }catch(e){setError(e instanceof Error?e.message:t("evidenceFailed"));}
+  }catch(e){setError(toUserError(e, t("evidenceFailed")));}
   finally{setBusy(false);}
  }
  async function retract(row:MaterialEntry){
@@ -181,7 +184,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
     body:JSON.stringify({entryId:row.id,expectedUpdatedAt:row.updated_at,reason,confirmed:true}),
    });
    await load();setSuccess(t("retracted"));
-  }catch(e){setError(e instanceof Error?e.message:t("retractFailed"));}
+  }catch(e){setError(toUserError(e, t("retractFailed")));}
   finally{setBusy(false);}
  }
  return <section className="rounded-xl border border-border bg-surface p-4 space-y-4" aria-label={t("aria")}>

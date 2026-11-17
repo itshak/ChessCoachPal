@@ -1,5 +1,7 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+
 import { useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
@@ -56,6 +58,7 @@ export function FamilyForm({
 }) {
   const router = useRouter();
   const t=useTranslations("families");
+  const toUserError=useLocalizedApiError();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,7 +130,7 @@ export function FamilyForm({
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data.error ?? t("error"));
+      setError(toUserError(data, t("error")));
       setBusy(false);
     } else {
       setBusy(false);

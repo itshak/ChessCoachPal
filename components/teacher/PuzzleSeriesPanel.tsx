@@ -1,4 +1,6 @@
 "use client";
+
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import {useCallback,useEffect,useState} from "react";
 import {useTranslations} from "next-intl";
 const field="w-full rounded-lg border border-border bg-background p-2 text-sm text-foreground";
@@ -8,6 +10,7 @@ type Series={nextName:string;nextSuffix:number;studies:Array<{id:string;name:str
 type Capacity={chapterCount:number;availableChapters:number;canPublish:boolean;maxChapters:number;note:string};
 export function PuzzleSeriesPanel(){
  const t=useTranslations("puzzleSeries");
+  const toUserError=useLocalizedApiError();
  const [series,setSeries]=useState<Series|null>(null);
  const [studyId,setStudyId]=useState("");
  const [capacity,setCapacity]=useState<Capacity|null>(null);
@@ -24,9 +27,9 @@ export function PuzzleSeriesPanel(){
   try{
    const res=await fetch("/api/lichess/puzzle-series?studyId="+encodeURIComponent(studyId),{cache:"no-store"});
    const data=await res.json();
-   if(!res.ok)throw new Error(data.error??t("capacityFailed"));
+   if(!res.ok)throw new Error(toUserError(data, t("capacityFailed")));
    setCapacity(data as Capacity);
-  }catch(e){setError(e instanceof Error?e.message:t("capacityLookupFailed"));}
+  }catch(e){setError(toUserError(e, t("capacityLookupFailed")));}
   finally{setBusy(false);}
  }
  async function create(){
@@ -40,11 +43,11 @@ export function PuzzleSeriesPanel(){
      confirmed:true,confirmedExternal:true}),
    });
    const body=await res.json();
-   if(!res.ok)throw new Error((body.error??t("creationUncertain"))+
+   if(!res.ok)throw new Error((toUserError(body, t("creationUncertain")))+
      t("reconcileRequest",{requestId}));
    setNotice(t("created",{name:body.name,id:body.studyId}));
    setApproved(false);await load();
-  }catch(e){setError(e instanceof Error?e.message:t("creationFailed"));}
+  }catch(e){setError(toUserError(e, t("creationFailed")));}
   finally{setBusy(false);}
  }
  async function reconcile(requestId:string){
@@ -55,10 +58,10 @@ export function PuzzleSeriesPanel(){
     body:JSON.stringify({action:"reconcile",requestId,confirmedExternal:true,confirmed:true}),
    });
    const body=await res.json();
-   if(!res.ok)throw new Error(body.error??t("stillAmbiguous"));
+   if(!res.ok)throw new Error(toUserError(body, t("stillAmbiguous")));
    setNotice(t("reconciled",{name:body.name,id:body.studyId}));
    await load();
-  }catch(e){setError(e instanceof Error?e.message:t("reconcileFailed"));}
+  }catch(e){setError(toUserError(e, t("reconcileFailed")));}
   finally{setBusy(false);}
  }
  return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-4 space-y-3">
