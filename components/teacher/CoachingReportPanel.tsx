@@ -67,31 +67,31 @@ export function CoachingReportPanel() {
       <p className="text-sm text-muted-foreground">
         {t("description")}
       </p>
-      <form onSubmit={generate} className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1">{t("workplace")}
+      <form onSubmit={generate} className="flex min-w-0 flex-wrap items-end gap-3">
+        <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-full">{t("workplace")}
           <select value={workplaceId} onChange={event => { setWorkplaceId(event.target.value); setReport(null); }}
-            required className="rounded border border-border bg-surface p-2">
+            required className="w-full min-w-0 max-w-full rounded border border-border bg-surface p-2">
             {workplaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
         </label>
-        <label className="flex flex-col gap-1">{t("from")}
+        <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-full">{t("from")}
           <input type="date" required value={from} onChange={event => setFrom(event.target.value)}
-            className="rounded border border-border bg-surface p-2" />
+            className="w-full min-w-0 max-w-full rounded border border-border bg-surface p-2" />
         </label>
-        <label className="flex flex-col gap-1">{t("to")}
+        <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-full">{t("to")}
           <input type="date" required value={to} onChange={event => setTo(event.target.value)}
-            className="rounded border border-border bg-surface p-2" />
+            className="w-full min-w-0 max-w-full rounded border border-border bg-surface p-2" />
         </label>
         <button type="submit" disabled={busy || !workplaceId}
           className="rounded bg-primary px-4 py-2 text-white disabled:opacity-50">
           {busy ? t("generating") : t("generate")}
         </button>
-        <label className="flex flex-col gap-1">{t("outputLocale")}
+        <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-full">{t("outputLocale")}
           <select value={reportOutputLocale} onChange={event=>{
               setReportOutputLocale(event.target.value as ""|AppLocale);
               setReport(null);setPresentation(null);
             }}
-            className="rounded border border-border bg-surface p-2">
+            className="w-full min-w-0 max-w-full rounded border border-border bg-surface p-2">
             <option value="">{t("workplaceDefault")}</option>
             {locales.map(locale=><option key={locale} value={locale}>{localeDetails[locale].name}</option>)}
           </select>

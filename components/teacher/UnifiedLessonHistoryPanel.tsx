@@ -8,7 +8,7 @@ type Response={entries:Row[];total:number;nextOffset:number|null;summary:{
  bookedInstructorMinutes:number;evidencedInstructorMinutes:number;
  canonicalSessionCount:number;participantAttendanceDecisions:number};
  warnings:string[];filter:{timezone:string}};
-const classes="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground";
+const classes="min-w-0 w-full max-w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground";
 function dateLocal(daysAgo:number){
  const d=new Date();d.setDate(d.getDate()-daysAgo);
  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),
@@ -53,9 +53,9 @@ export function UnifiedLessonHistoryPanel({fixedStudentId}:{fixedStudentId?:stri
   <h2 className="text-lg font-semibold">Complete teaching history</h2>
   <p className="text-sm text-muted">Shows private and group chess lessons in one canonical history. Booked time and evidenced teaching time are calculated without multiplying group sessions by the number of students.</p>
   <form onSubmit={submit} className="flex flex-wrap gap-3 items-end">
-   <label className="text-sm">From <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className={"block "+classes} required/></label>
-   <label className="text-sm">To <input type="date" value={to} onChange={e=>setTo(e.target.value)} className={"block "+classes} required/></label>
-   <label className="text-sm">Workplace
+   <label className="block min-w-0 w-full text-sm sm:w-auto">From <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className={"block "+classes} required/></label>
+   <label className="block min-w-0 w-full text-sm sm:w-auto">To <input type="date" value={to} onChange={e=>setTo(e.target.value)} className={"block "+classes} required/></label>
+   <label className="block min-w-0 w-full text-sm sm:w-auto">Workplace
     <select value={workplaceId} onChange={e=>setWorkplaceId(e.target.value)} className={"block "+classes}>
      <option value="">All, including private</option>
      {workplaces.map(w=><option value={w.id} key={w.id}>{w.name}</option>)}

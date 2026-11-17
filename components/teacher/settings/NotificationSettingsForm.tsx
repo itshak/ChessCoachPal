@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ export function NotificationSettingsForm({
   pushConfigured: boolean;
 }) {
   const router = useRouter();
+  const t=useTranslations("notificationSettings");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [inApp, setInApp] = useState(policy.notify_in_app);
@@ -62,20 +64,18 @@ export function NotificationSettingsForm({
     setBusy(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setMessage(data.error ?? "Save failed");
+      setMessage(data.error ?? t("saveError"));
       return;
     }
-    setMessage("Saved.");
+    setMessage(t("saved"));
     router.refresh();
   }
 
   return (
     <Card>
-      <h2 className="font-semibold text-lg mb-1">Notifications</h2>
+      <h2 className="font-semibold text-lg mb-1">{t("title")}</h2>
       <p className="text-sm text-muted mb-4">
-        In-app bell, optional push to your phone, optional email for family
-        portal cancellations and Stripe payment receipts, and an optional BCC of
-        the family email you send.
+        {t("description")}
       </p>
       <form onSubmit={handleSave} className="space-y-3">
         <label className="flex items-start gap-2 text-sm cursor-pointer">
@@ -86,9 +86,10 @@ export function NotificationSettingsForm({
             onChange={(e) => setInApp(e.target.checked)}
           />
           <span>
-            <span className="font-medium">In-app notifications</span>
+            <span className="font-medium">
+              {t("inApp")}</span>
             <span className="block text-xs text-muted">
-              Show events in the bell in the top bar.
+              {t("inAppDescription")}
             </span>
           </span>
         </label>
@@ -100,9 +101,9 @@ export function NotificationSettingsForm({
             onChange={(e) => setEmailCancel(e.target.checked)}
           />
           <span>
-            <span className="font-medium">Email me when a family cancels</span>
+            <span className="font-medium">{t("emailCancel")}</span>
             <span className="block text-xs text-muted">
-              Portal cancellations only (not teacher-marked cancels).
+              {t("emailCancelHint")}
             </span>
           </span>
         </label>
@@ -114,9 +115,9 @@ export function NotificationSettingsForm({
             onChange={(e) => setEmailPaid(e.target.checked)}
           />
           <span>
-            <span className="font-medium">Email me a receipt when an invoice is paid online</span>
+            <span className="font-medium">{t("emailPaid")}</span>
             <span className="block text-xs text-muted">
-              Stripe Checkout payments. Includes family, amount, and period.
+              {t("emailPaidHint")}
             </span>
           </span>
         </label>
@@ -128,10 +129,9 @@ export function NotificationSettingsForm({
             onChange={(e) => setBccEnabled(e.target.checked)}
           />
           <span>
-            <span className="font-medium">BCC me on family emails</span>
+            <span className="font-medium">{t("bcc")}</span>
             <span className="block text-xs text-muted">
-              Keep your own copy of invoices, notes, assignments, cancellations,
-              and event emails sent to families.
+              {t("bccHint")}
             </span>
           </span>
         </label>
@@ -141,7 +141,7 @@ export function NotificationSettingsForm({
               htmlFor="bcc-email"
               className="block text-xs font-medium text-muted mb-1"
             >
-              BCC address
+              {t("bccAddress")}
             </label>
             <input
               id="bcc-email"
@@ -152,14 +152,13 @@ export function NotificationSettingsForm({
               className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm"
             />
             <p className="text-xs text-muted mt-1">
-              Defaults to your account email. The address is never shown to the
-              family.
+              {t("bccPrivacy")}
             </p>
           </div>
         )}
         <div className="flex items-center gap-3">
           <Button type="submit" size="sm" disabled={busy}>
-            {busy ? "Saving…" : "Save notification settings"}
+            {busy ? t("saving") : t("save")}
           </Button>
           {message && <span className="text-xs text-muted">{message}</span>}
         </div>

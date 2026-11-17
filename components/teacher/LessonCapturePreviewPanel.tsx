@@ -38,7 +38,7 @@ type Preview = {
   review:{ creates:string;instructorMinutes:number|null; attendance:string; writesPerformed:boolean; timeSource:"explicit"|"weekly_slot";slotIds:string[];localDate:string|null;timezone:string|null };
 };
 
-const field = "w-full rounded-lg border border-border bg-surface p-2 text-foreground";
+const field = "w-full min-w-0 max-w-full rounded-lg border border-border bg-surface p-2 text-foreground";
 const button = "rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50";
 
 /**
@@ -236,22 +236,22 @@ export function LessonCapturePreviewPanel() {
       </p>
     </div>
     <form onSubmit={check} className="grid grid-cols-1 gap-3 md:grid-cols-2">
-      <label className="block text-sm">{t("names")}
+      <label className="block min-w-0 text-sm">{t("names")}
         <textarea className={field} rows={3} required value={names}
           onChange={e=>{setNames(e.target.value);invalidate();}} />
       </label>
-      <label className="block text-sm">{t("workplace")}
+      <label className="block min-w-0 text-sm">{t("workplace")}
         <select className={field} required value={workplaceId}
           onChange={e=>{setWorkplaceId(e.target.value);invalidate();}}>
           <option value="">{t("selectWorkplace")}</option>
           {workplaces.map(w=><option key={w.id} value={w.id}>{w.name} ({w.timezone})</option>)}
         </select>
       </label>
-      <label className="block text-sm">{t("lessonTitle")}
+      <label className="block min-w-0 text-sm">{t("lessonTitle")}
         <input className={field} value={title} required maxLength={160}
           onChange={e=>{setTitle(e.target.value);invalidate();}} />
       </label>
-      <label className="block text-sm">{t("timeMode")}
+      <label className="block min-w-0 text-sm">{t("timeMode")}
         <select className={field} value={timingMode} onChange={e=>{
           setTimingMode(e.target.value as "explicit"|"weekly");invalidate();}}>
           <option value="explicit">{t("explicit")}</option>
@@ -259,19 +259,19 @@ export function LessonCapturePreviewPanel() {
         </select>
       </label>
       {timingMode==="explicit"?<>
-        <label className="block text-sm">{t("startTime")}
+        <label className="block min-w-0 text-sm">{t("startTime")}
           <input className={field} type="datetime-local" required value={localStart}
             onChange={e=>{setLocalStart(e.target.value);invalidate();}} />
         </label>
-        <label className="block text-sm">{t("duration")}
+        <label className="block min-w-0 text-sm">{t("duration")}
           <input className={field} type="number" min={15} max={480} required value={duration}
             onChange={e=>{setDuration(Number(e.target.value));invalidate();}} />
         </label>
-      </>:<label className="block text-sm">{t("lessonDate")}
+      </>:<label className="block min-w-0 text-sm">{t("lessonDate")}
         <input className={field} type="date" required value={localDate}
           onChange={e=>{setLocalDate(e.target.value);invalidate();}} />
       </label>}
-      <label className="block text-sm">{t("sharedNote")}
+      <label className="block min-w-0 text-sm">{t("sharedNote")}
         <input className={field} value={lessonNote} maxLength={10000}
           onChange={e=>{setLessonNote(e.target.value);invalidate();}} />
       </label>
@@ -280,24 +280,24 @@ export function LessonCapturePreviewPanel() {
           onChange={e=>{setUseSavedStudy(e.target.checked);setStudyId("");setStudyName("");invalidate();}} />
         {t("resolveSaved")}
       </label>
-      <label className="block text-sm">{t("studyTitle")}
+      <label className="block min-w-0 text-sm">{t("studyTitle")}
         <input className={field} value={studyName} maxLength={160}
           disabled={useSavedStudy||Boolean(studyId.trim())}
           placeholder={t("studyTitleHint")}
           onChange={e=>{setStudyName(e.target.value);invalidate();}} />
       </label>
-      <label className="block text-sm">{t("studyId")}
+      <label className="block min-w-0 text-sm">{t("studyId")}
         <input dir="ltr" className={field} value={studyId} minLength={8} maxLength={8}
           disabled={useSavedStudy||Boolean(studyName.trim())}
           placeholder={t("studyIdHint")} pattern="[A-Za-z0-9]{8}"
           onChange={e=>{setStudyId(e.target.value);invalidate();}} />
       </label>
       {(useSavedStudy||studyId.trim()||studyName.trim())&&<>
-        <label className="block text-sm">{t("chapterNumber")}
+        <label className="block min-w-0 text-sm">{t("chapterNumber")}
           <input className={field} type="number" min={1} max={64} required
             value={chapterNumber} onChange={e=>{setChapterNumber(e.target.value);invalidate();}} />
         </label>
-        <label className="block text-sm">{t("players")}
+        <label className="block min-w-0 text-sm">{t("players")}
           <input className={field} value={expectedPlayers} maxLength={120}
             onChange={e=>{setExpectedPlayers(e.target.value);invalidate();}} />
         </label>

@@ -1,6 +1,7 @@
 "use client";
 
 import {useState,useEffect,useCallback} from "react";
+import {useLocale,useTranslations} from "next-intl";
 import {Card} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
 import {useConfirm} from "@/components/ui/confirm-dialog";
@@ -17,15 +18,7 @@ type Preview={
   mapping:Record<string,string|null>;filename:string;
 };
 type Roster={id:string;name:string};
-const mappingFields:Record<string,string>={
- studentName:"Student name",studentId:"Student ID (optional)",
- workplaceName:"Workplace",workplaceId:"Workplace ID (optional)",
- attendedOn:"Exact lesson date",periodStart:"Aggregate period start",
- periodEnd:"Aggregate period end",attendanceStatus:"Attendance status",
- lessonCount:"Aggregate lesson count",mode:"Dated/aggregate type (optional)",
- sourceTimezone:"Source timezone (optional)",
- sourceLabel:"Source reference (optional)",
-};
+const mappingFields=["studentName","studentId","workplaceName","workplaceId","attendedOn","periodStart","periodEnd","attendanceStatus","lessonCount","mode","sourceTimezone","sourceLabel"] as const;
 const cls="rounded-lg border border-border bg-background p-2 text-sm w-full";
 const errorText=(value:unknown)=>value instanceof Error?value.message:"Request failed";
 async function asJson(res:Response){
@@ -34,6 +27,8 @@ async function asJson(res:Response){
  return body;
 }
 export function HistoricalAttendanceImportPanel(){
+ const t=useTranslations("historyImport");
+ const locale=useLocale();
  const confirm=useConfirm();
  const [busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
  const [message,setMessage]=useState<string|null>(null);
@@ -69,7 +64,7 @@ export function HistoricalAttendanceImportPanel(){
     method:"POST",body:form,
    })) as Stage;
    setStage(result);setMapping({});setResolutions({});
-   setMessage("Private file staged for two hours. Map columns and preview before importing.");
+   setMessage(t("stagedNotice"));
   }catch(e){setError(errorText(e));}
   finally{setBusy(false);}
  }
@@ -87,15 +82,15 @@ export function HistoricalAttendanceImportPanel(){
    })) as Preview;
    setPreview(result);setMapping(result.mapping);setRequestKey(crypto.randomUUID());
    if(!result.canCommit)setMessage(
-    "Review and correct every flagged source row. Nothing has been imported.");
+    t("reviewIssues"));
   }catch(e){invalidate();setError(errorText(e));}
   finally{setBusy(false);}
  }
  async function commit(){
   if(!stage||!preview?.canCommit||!requestKey)return;
-  const approved=await confirm({title:"Import historical attendance evidence?",
-   message:"Import "+preview.previewTotal+" reviewed source rows. Exact dates remain dated observations; aggregate counts never become invented lessons. This is an atomic, auditable operation.",
-   confirmLabel:"Import reviewed history"});
+  const approved=await confirm({title:t("confirmTitle"),
+   message:t("confirmMessage",{count:preview.previewTotal}),
+   confirmLabel:t("importConfirm")});
   if(!approved)return;
   setBusy(true);setError(null);
   try{
@@ -104,7 +99,7 @@ export function HistoricalAttendanceImportPanel(){
     body:JSON.stringify({...input(),previewDigest:preview.previewDigest,
      idempotencyKey:requestKey,confirmed:true}),
    }));
-   setMessage("Imported "+data.count+" historical evidence rows. Saved with a durable receipt.");
+   setMessage(t("imported",{count:data.count}));
    await loadReport();
   }catch(e){setError(errorText(e));}
   finally{setBusy(false);}
@@ -117,9 +112,9 @@ export function HistoricalAttendanceImportPanel(){
  }
  async function deleteStage(){
   if(!stage)return;
-  const approved=await confirm({title:"Remove uploaded spreadsheet?",
-   message:"Delete this private staged file? Imported historical evidence, if any, will remain.",
-   confirmLabel:"Delete staged file"});
+  const approved=await confirm({title:t("deleteTitle"),
+   message:t("deleteWarning"),
+   confirmLabel:t("deleteConfirm")});
   if(!approved)return;
   setBusy(true);
   try{
@@ -127,7 +122,7 @@ export function HistoricalAttendanceImportPanel(){
     method:"DELETE",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({stageId:stage.stageId}),
    }));
-   setStage(null);setPreview(null);setMessage("Private staged file removed");
+   setStage(null);setPreview(null);setMessage(t("deleted"));
   }catch(e){setError(errorText(e));}finally{setBusy(false);}
  }
  const setResolution=(row:number,key:"studentId"|"workplaceId",value:string)=>{
@@ -136,14 +131,12 @@ export function HistoricalAttendanceImportPanel(){
   }}));invalidate();
  };
  return <Card id="historical-attendance-import">
-  <h2 className="font-semibold text-lg">Historical attendance import</h2>
+  <h2 className="font-semibold text-lg">{t("title")}</h2>
   <p className="text-sm text-muted mt-1 mb-3">
-   Restore documented teaching history from a CSV/XLSX file. Exact dated observations
-   and aggregate-only counts remain separate; the importer never invents lesson dates
-   or automatically archives students based on one workplace.
+   {t("description")}
   </p>
   <label className="block text-sm mb-2">
-   <span className="font-medium">Upload private spreadsheet (up to 8 MB / 2,000 rows)</span>
+   <span className="font-medium">{t("upload")}</span>
    <input type="file" accept=".csv,.tsv,.txt,.xlsx,.xls"
     className={cls+" mt-1"} disabled={busy}
     onChange={event=>{const file=event.target.files?.[0];if(file)void upload(file);
@@ -151,101 +144,96 @@ export function HistoricalAttendanceImportPanel(){
   </label>
   {stage&&<>
    <p className="text-xs text-muted mb-3">
-    Staged: {stage.filename} · {stage.rowCount} data rows ·
-    expires {new Date(stage.expiresAt).toLocaleString()} ·
-    reference <code>{stage.stageId}</code> (also usable in ChatGPT/Claude)
+    {t("stageSummary",{filename:stage.filename,count:stage.rowCount,expires:new Date(stage.expiresAt).toLocaleString(locale)})} · {t("reference")} <code dir="ltr">{stage.stageId}</code> {t("chatReference")}
    </p>
-   <div className="grid sm:grid-cols-3 gap-3 mb-3">
-    <label className="text-sm">School-year/range start (required)
+   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+    <label className="text-sm">{t("periodStart")}
      <input type="date" value={start} className={cls}
       onChange={e=>{setStart(e.target.value);invalidate();}}/>
     </label>
-    <label className="text-sm">School-year/range end (required)
+    <label className="text-sm">{t("periodEnd")}
      <input type="date" value={end} className={cls}
       onChange={e=>{setEnd(e.target.value);invalidate();}}/>
     </label>
-    <label className="text-sm">Source timezone (IANA)
+    <label className="text-sm">{t("timezone")}
      <input type="text" value={timezone} className={cls}
       onChange={e=>{setTimezone(e.target.value);invalidate();}}/>
     </label>
    </div>
    <p className="text-xs text-muted mb-2">
-    Map the source headers. Dates must be exact ISO YYYY-MM-DD; undated records
-    need explicit period start/end and lesson count.
+    {t("mapHint")}
    </p>
-   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
-    {Object.entries(mappingFields).map(([field,label])=><label key={field} className="text-xs">
-     <span>{label}</span>
+   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
+    {mappingFields.map((field)=><label key={field} className="text-xs">
+     <span>{t(`fields.${field}`)}</span>
      <select className={cls} value={mapping[field]??""}
       onChange={e=>{setMapping(x=>({...x,[field]:e.target.value||null}));invalidate();}}>
-      <option value="">Not mapped</option>
+      <option value="">{t("notMapped")}</option>
       {stage.headers.map(h=><option key={h} value={h}>{h}</option>)}
      </select>
     </label>)}
    </div>
    <div className="flex flex-wrap gap-2 mb-3">
     <Button type="button" disabled={busy||!start||!end} onClick={()=>void review()}>
-     Preview and resolve
+     {t("preview")}
     </Button>
     <Button type="button" variant="secondary" disabled={busy}
-     onClick={()=>void deleteStage()}>Delete staged file</Button>
+     onClick={()=>void deleteStage()}>{t("deleteStage")}</Button>
    </div>
   </>}
   {preview&&<section className="border-t border-border pt-3 space-y-3">
    <p className="text-sm font-medium">
-    {preview.previewTotal} normalized records ·
-    {preview.issueCount} unresolved source problems ·
-    {preview.canCommit?"ready to confirm":"not ready"}
+    {t("previewSummary",{records:preview.previewTotal,issues:preview.issueCount,state:preview.canCommit?t("ready"):t("notReady")})}
    </p>
    {preview.issues.length>0&&<div className="space-y-2" role="alert">
     {preview.issues.map((issue,i)=><div key={i}
      className="border border-border rounded-lg p-2 text-xs">
-     <span className="font-medium">Row {issue.row}: </span>{issue.message}
+     <span className="font-medium">{t("row",{row:issue.row})} </span>{issue.message}
      {(issue.code.includes("STUDENT"))&&<select className={cls}
        value={resolutions[String(issue.row)]?.studentId??""}
        onChange={e=>setResolution(issue.row,"studentId",e.target.value)}>
-        <option value="">Select verified student ID</option>
+        <option value="">{t("selectStudent")}</option>
         {students.map(s=><option key={s.id} value={s.id}>{s.name} ({s.id.slice(0,8)})</option>)}
       </select>}
      {(issue.code.includes("WORKPLACE"))&&<select className={cls}
        value={resolutions[String(issue.row)]?.workplaceId??""}
        onChange={e=>setResolution(issue.row,"workplaceId",e.target.value)}>
-        <option value="">Select verified workplace ID</option>
+        <option value="">{t("selectWorkplace")}</option>
         {workplaces.map(w=><option key={w.id} value={w.id}>{w.name} ({w.id.slice(0,8)})</option>)}
       </select>}
     </div>)}
     {preview.issueCount>preview.issues.length&&<p className="text-xs text-muted">
-     More unresolved rows exist. Split or correct the source spreadsheet before committing.
+     {t("moreIssues")}
     </p>}
    </div>}
    <div className="overflow-x-auto text-xs">
     <table className="w-full">
      <thead><tr className="text-start border-b border-border">
-      <th>Source row</th><th>Student ID</th><th>Workplace ID</th>
-      <th>Precision</th><th>Date/period</th><th>Status</th><th>Count</th>
+      <th>{t("sourceRow")}</th><th>{t("studentId")}</th><th>{t("workplaceId")}</th>
+      <th>{t("precision")}</th><th>{t("datePeriod")}</th><th>{t("status")}</th><th>{t("count")}</th>
      </tr></thead>
      <tbody>{preview.previewRows.map(r=><tr key={r.sourceRow}
       className="border-b border-border/50">
       <td>{r.sourceRow}</td><td>{r.studentId.slice(0,8)}</td>
-      <td>{r.workplaceId.slice(0,8)}</td><td>{r.mode}</td>
+      <td>{r.workplaceId.slice(0,8)}</td><td>{r.mode==="dated"?t("dated"):t("aggregate")}</td>
       <td>{r.attendedOn??[r.periodStart,r.periodEnd].join(" – ")}</td>
       <td>{r.attendanceStatus}</td><td>{r.lessonCount}</td>
      </tr>)}</tbody>
     </table>
    </div>
    {preview.canCommit&&<Button type="button" disabled={busy}
-     onClick={()=>void commit()}>Confirm historical import</Button>}
+     onClick={()=>void commit()}>{t("confirmImport")}</Button>}
   </section>}
   <div className="mt-4">
    <Button type="button" variant="secondary" disabled={busy}
-    onClick={()=>void loadReport()}>View imported evidence</Button>
+    onClick={()=>void loadReport()}>{t("viewEvidence")}</Button>
    {report&&<div className="mt-2 text-xs">
-    <p>Showing {report.length} recent historical records (dated and aggregate-only labelled).</p>
+    <p>{t("showingRecords",{count:report.length})}</p>
     {report.slice(0,12).map((r,i)=><p key={i} className="border-b border-border py-1">
      {String(r.mode)} · {String(r.attendance_status)} ·
      {r.mode==="dated"?String(r.attended_on):
       String(r.period_start)+" – "+String(r.period_end)} ·
-     {String(r.lesson_count)} count · source row {String(r.source_row)}
+     {t("recordCount",{count:Number(r.lesson_count),row:String(r.source_row)})}
     </p>)}
    </div>}
   </div>
