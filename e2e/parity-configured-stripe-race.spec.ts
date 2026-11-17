@@ -11,6 +11,12 @@ test("PARITY:PARITY-configured-checkout-independent-two-claim-race keeps only on
   "Fixed CI-only loopback provider required; no real payments");
  const minted:string[]=[];
  const expired=new Set<string>();
+ // The two requests must BOTH pass the no-link check and create an external
+ // session before either provider response is released to the database claim.
+ // Promise.all on the callers alone does not guarantee overlapping requests:
+ // one may finish and the other correctly replay the stored checkout link.
+ let releaseProviderPair:(()=>void)|undefined;
+ const providerPairReady=new Promise<void>(resolve=>{releaseProviderPair=resolve;});
  const stripe=createServer(async(req,res)=>{
   const path=(req.url??"").split("?")[0];
   if(!String(req.headers.authorization??"").startsWith("Bearer sk_live_chesscoachpal_ci_")){
@@ -20,6 +26,16 @@ test("PARITY:PARITY-configured-checkout-independent-two-claim-race keeps only on
    for await(const _ of req){/* consume synthetic form request */}
    const id="cs_test_ccp"+String(minted.length+1).padStart(8,"0");
    minted.push(id);
+   if(minted.length===2)releaseProviderPair?.();
+   const bothArrived=await Promise.race([
+     providerPairReady.then(()=>true),
+     new Promise<boolean>(resolve=>setTimeout(()=>resolve(false),15000)),
+   ]);
+   if(!bothArrived){
+     res.writeHead(503,{"Content-Type":"application/json"});
+     res.end(JSON.stringify({error:"Two independent provider requests did not arrive"}));
+     return;
+   }
    res.writeHead(200,{"Content-Type":"application/json"});
    res.end(JSON.stringify({id,object:"checkout.session",status:"open",
     url:"https://checkout.stripe.com/c/pay/"+id}));
