@@ -31,6 +31,10 @@ import {historicalInputSchema,historicalCommitSchema,historicalReportSchema,
  teacherHistoricalAttendanceReport,teacherHistoricalAttendanceSummary} from "@/lib/server/teacher-historical-attendance";
 import {teacherHistoricalStageInfo,teacherHistoricalStageDelete,HistoricalImportError}
  from "@/lib/server/teacher-historical-stage";
+import {historicalDatesInputSchema,historicalDatesCommitSchema,
+ teacherHistoricalDatesPreview,teacherHistoricalDatesCommit}
+ from "@/lib/server/teacher-historical-attendance-dates";
+import {teacherCsvExport} from "@/lib/server/teacher-csv-export";
 
 import {invoiceDraftEditSchema} from "@/lib/server/invoice-draft-schemas";
 import {eventChanges} from "@/lib/server/teacher-event-schemas";
@@ -330,6 +334,16 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_historical_attendance_dates_preview",
+    description:"PREFERRED SIMPLE HISTORICAL ATTENDANCE IMPORT (not spreadsheet column mapping). Use actual attendance dates per pupil; workplace supplied ONCE. Exact example: {workplaceId:'00000000-0000-4000-8000-000000000001',schoolYearStart:'2025-09-01',schoolYearEnd:'2026-08-31',timezone:'Asia/Jerusalem',sourceLabel:'2025-26 register',students:[{studentName:'Example Student',attendanceDates:['2026-01-05','2026-01-12']}]} . Get workplaceId from ccp_workplaces_list, and verify pupil identities including archived pupils. Each input date represents an explicitly attended lesson. If source uses V/X/other markers, interpret them from the original evidence before submitting; do not submit markers, speculate dates or assume blanks mean absence. Do NOT use ccp_import_spreadsheet_suggest, which is for family onboarding, or old historical mapping. Limits: 250 dated observations and 256 KiB per batch. Preview returns digest and issues, never writes. The website offers the identical student/date-list flow.",
+    schema:historicalDatesInputSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_historical_attendance_dates_commit",
+    description:"Commit a previously previewed ccp_historical_attendance_dates_preview request only after explicit teacher approval. Repeat EXACT preview inputs and append previewDigest, confirmed:true, and fresh idempotencyKey UUID. Atomic, owner-scoped, duplicate-safe historical evidence; does not create calendar lessons or teaching durations.",
+    schema:historicalDatesCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_historical_attendance_preview",
     description:"Review dated versus aggregate-only historical attendance, with explicit school-year bounds, source timezone, workplace and exact student alias resolution. Ambiguous, missing and duplicate records block import. Large files use short-lived private stageId; up to 250 directly supplied rows (max 256 KiB) are supported without browser upload; use a private staged file for larger datasets.",
     schema:historicalInputSchema,scope:"coach:read",readOnly:true,
@@ -380,6 +394,14 @@ const catalogue = [
     name:"ccp_settings_export",
     description:"Export teacher-owned chess academy data as portable JSON after explicit approval. Guardian portal credentials and provider secrets are NOT returned. Large backups require a secure browser download.",
     schema:z.object({confirmed:z.literal(true)}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_settings_export_csv",
+    description:"Portable ALL-DATA CSV export with privacy-filtered, per-table pagination. Call with {confirmed:true} and no table to list EVERY exported table and row count; then call with {confirmed:true,table:'students',offset:0,limit:100} (or each other listed table), repeat using nextOffset until null. Returns CSV text with header and UTF-8 data, not secrets/guardian portal credentials. The website can download every table in one ZIP at /api/settings/export?format=csv. Large raw data must never be sent in one MCP response.",
+    schema:z.object({confirmed:z.literal(true),table:z.string().max(80).optional(),
+      offset:z.number().int().min(0).max(20000).default(0),
+      limit:z.number().int().min(1).max(200).default(100)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
@@ -1599,6 +1621,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_historical_import_stage_delete":
         return {data:await teacherHistoricalStageDelete(db,teacherId,
           (args as {stageId:string}).stageId)};
+      case "ccp_historical_attendance_dates_preview":
+        return {data:await teacherHistoricalDatesPreview(db,teacherId,args)};
+      case "ccp_historical_attendance_dates_commit":
+        return {data:await teacherHistoricalDatesCommit(db,teacherId,args)};
       case "ccp_historical_attendance_preview":
         return {data:await teacherHistoricalAttendancePreview(db,teacherId,args)};
       case "ccp_historical_attendance_commit":
@@ -1636,6 +1662,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_settings_export":
         return {data:await teacherSafeExport(db,teacherId)};
+      case "ccp_settings_export_csv":
+        return {data:await teacherCsvExport(db,teacherId,args as {
+          table?:string;offset:number;limit:number})};
       case "ccp_settings_import_preview": {
         const a=args as {payload:unknown};
         const {payload,...preview}=teacherImportPreview(a.payload);

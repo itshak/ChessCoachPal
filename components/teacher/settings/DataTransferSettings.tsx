@@ -15,12 +15,12 @@ export function DataTransferSettings() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleExport() {
+  async function handleExport(format: "json" | "csv") {
     setExporting(true);
     setMessage(null);
     setError(null);
     try {
-      const res = await fetch("/api/settings/export");
+      const res = await fetch("/api/settings/export"+(format==="csv"?"?format=csv":""));
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "Export failed");
@@ -28,7 +28,7 @@ export function DataTransferSettings() {
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") ?? "";
       const match = disposition.match(/filename="([^"]+)"/);
-      const filename = match?.[1] ?? "chesscoachpal-export.json";
+      const filename = match?.[1] ?? (format==="csv"?"chesscoachpal-all-data.zip":"chesscoachpal-export.json");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -111,7 +111,9 @@ export function DataTransferSettings() {
         schedules, coaching sessions, attendance, chess learning observations,
         study links, skills, invoices, events, RSVPs, and settings. Payment and
         AI keys, OAuth credentials, and uploaded binary objects are excluded.
-        Import restores data into this account by upserting matching IDs.
+        Import restores JSON data into this account by upserting matching IDs.
+        Download the CSV ZIP to work with individual datasets in spreadsheets;
+        CSV is not a lossless restore format. Portal credentials are excluded from CSV.
       </p>
 
       <div className="flex flex-wrap gap-2">
@@ -119,9 +121,17 @@ export function DataTransferSettings() {
           size="sm"
           variant="secondary"
           disabled={exporting || importing}
-          onClick={handleExport}
+          onClick={()=>void handleExport("json")}
         >
-          {exporting ? "Exporting…" : "Export all data"}
+          {exporting ? "Exporting…" : "Export JSON backup"}
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={exporting || importing}
+          onClick={()=>void handleExport("csv")}
+        >
+          {exporting ? "Exporting…" : "Export all data as CSV ZIP"}
         </Button>
         <Button
           size="sm"

@@ -68,3 +68,11 @@ The final archived-spec source must independently pass the same matrix before me
 | - [x] | Ambiguous aliases, missing dates, and repeated source evidence fail closed and require reviewed identity resolution | e2e/parity-historical-import.spec.ts#PARITY-history-ambiguous-source |
 | - [x] | Historical evidence preview cannot attach another teacher's pupil to this coach's workplace | e2e/parity-historical-import.spec.ts#PARITY-history-foreign-owner |
 | - [x] | Archived pupils do not count toward hosted active quota; over-cap reactivation is rejected across website and MCP with no partial activation | e2e/parity-historical-import.spec.ts#PARITY-history-hosted-cap |
+
+## Source-neutral attendance dates and complete CSV portability — new acceptance
+
+| Verified | New independent teacher workflow | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [ ] | Source-attested per-student ISO date lists, one selected workplace, archived students, reviewed atomic receipt, idempotent website/MCP replay and student-owned evidence totals | e2e/parity-historical-import.spec.ts#PARITY-history-dates-cross-client |
+| - [ ] | All teacher-owned data tables export as a CSV ZIP on website and as paged credential-redacted CSV through MCP; exact contents and portable JSON backup remain available | e2e/parity-teacher-export.spec.ts#PARITY-teacher-all-csv-export |
+| - [ ] | Authenticated MCP requests above the legacy 32 KiB cap deliver valid 200-observation dated previews, while preserving a bounded 320 KiB server-side streaming limit | e2e/parity-historical-import.spec.ts#PARITY-history-large-mcp-request |

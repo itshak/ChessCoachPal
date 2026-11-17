@@ -33,6 +33,128 @@ async function asJson(res:Response){
  if(!res.ok)throw new Error(body.error??"Request failed");
  return body;
 }
+type DateEntry={studentId:string;datesText:string};
+function HistoricalDatesQuickImport({students,workplaces}:{students:Roster[];workplaces:Roster[]}){
+ const confirm=useConfirm();
+ const [workplaceId,setWorkplaceId]=useState("");
+ const [start,setStart]=useState(""),[end,setEnd]=useState("");
+ const [timezone,setTimezone]=useState("Asia/Jerusalem");
+ const [sourceLabel,setSourceLabel]=useState("");
+ const [entries,setEntries]=useState<DateEntry[]>([{studentId:"",datesText:""}]);
+ const [review,setReview]=useState<Preview|null>(null);
+ const [requestKey,setRequestKey]=useState<string|null>(null);
+ const [busy,setBusy]=useState(false),[message,setMessage]=useState<string|null>(null);
+ const [error,setError]=useState<string|null>(null);
+ const invalidate=()=>{setReview(null);setRequestKey(null);};
+ const setEntry=(index:number,field:keyof DateEntry,value:string)=>{
+  setEntries(previous=>previous.map((entry,i)=>i===index?{...entry,[field]:value}:entry));
+  invalidate();
+ };
+ const payload=()=>{
+  const selected=entries.filter(e=>e.studentId||e.datesText.trim());
+  if(!workplaceId||!start||!end||!selected.length)
+   throw new Error("Choose a workplace, a date range and at least one student with dates.");
+  const rows=selected.map((entry,index)=>{
+   const student=students.find(s=>s.id===entry.studentId);
+   if(!student)throw new Error(`Row ${index+1}: choose a known student from the roster.`);
+   const attendanceDates=entry.datesText.split(/[\s,;]+/).map(s=>s.trim()).filter(Boolean);
+   if(!attendanceDates.length)throw new Error(`Row ${index+1}: enter exact lesson dates.`);
+   return {studentName:student.name,studentId:student.id,attendanceDates};
+  });
+  return {workplaceId,schoolYearStart:start,schoolYearEnd:end,timezone,
+   ...(sourceLabel.trim()?{sourceLabel:sourceLabel.trim()}:{}),students:rows};
+ };
+ async function previewDates(){
+  setBusy(true);setError(null);setMessage(null);invalidate();
+  try{
+   const result=await asJson(await fetch("/api/import/historical/dates",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(payload()),
+   })) as Preview;
+   setReview(result);setRequestKey(crypto.randomUUID());
+   if(!result.canCommit)setMessage("Review source dates and resolve all flagged rows. Nothing was saved.");
+  }catch(e){setError(errorText(e));}finally{setBusy(false);}
+ }
+ async function saveDates(){
+  if(!review?.canCommit||!requestKey)return;
+  const approved=await confirm({title:"Save historical attendance dates?",
+   message:`Save ${review.previewTotal} confirmed dated observations for the selected workplace. This does not create scheduled lessons or assign hours. Digest: ${review.previewDigest}.`,
+   confirmLabel:"Save reviewed dates"});
+  if(!approved)return;
+  setBusy(true);setError(null);
+  try{
+   const result=await asJson(await fetch("/api/import/historical/dates",{
+    method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({...payload(),previewDigest:review.previewDigest,
+     idempotencyKey:requestKey,confirmed:true}),
+   })) as {count:number;replayed?:boolean};
+   setMessage(`${result.replayed?"Previously saved":"Saved"} ${result.count} historical attendance observations.`);
+  }catch(e){setError(errorText(e));}finally{setBusy(false);}
+ }
+ return <section className="border-b border-border pb-5 mb-5" aria-label="Quick import attendance dates">
+  <h3 className="font-medium mb-1">Quick import: students and attended dates</h3>
+  <p className="text-sm text-muted mb-3">Choose one workplace and each student’s real lesson dates.
+   Enter dates as YYYY-MM-DD separated by commas or spaces. A date means the student attended;
+   do not enter unchecked spreadsheet cells or inferred dates. Archived students are supported.
+   For aggregate-only or more complex records use the advanced file importer below.</p>
+  <div className="grid sm:grid-cols-2 gap-3 mb-3">
+   <label className="text-xs">Workplace (applies to every entry)
+    <select className={cls} value={workplaceId}
+     onChange={e=>{setWorkplaceId(e.target.value);invalidate();}}>
+     <option value="">Select workplace</option>
+     {workplaces.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
+    </select>
+   </label>
+   <label className="text-xs">Source label (optional)
+    <input className={cls} value={sourceLabel} placeholder="2025–26 attendance register"
+     onChange={e=>{setSourceLabel(e.target.value);invalidate();}} />
+   </label>
+   <label className="text-xs">Date range start
+    <input className={cls} type="date" value={start}
+     onChange={e=>{setStart(e.target.value);invalidate();}}/>
+   </label>
+   <label className="text-xs">Date range end
+    <input className={cls} type="date" value={end}
+     onChange={e=>{setEnd(e.target.value);invalidate();}}/>
+   </label>
+   <label className="text-xs">Source timezone
+    <input className={cls} value={timezone}
+     onChange={e=>{setTimezone(e.target.value);invalidate();}}/>
+   </label>
+  </div>
+  {entries.map((entry,i)=><div key={i} className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] gap-2 items-end mb-2">
+   <label className="text-xs">Student {i+1}
+    <select className={cls} value={entry.studentId}
+     onChange={e=>setEntry(i,"studentId",e.target.value)}>
+     <option value="">Select verified student</option>
+     {students.map(student=><option key={student.id} value={student.id}>{student.name}</option>)}
+    </select>
+   </label>
+   <label className="text-xs">Attended dates (YYYY-MM-DD, comma separated)
+    <textarea className={cls} rows={2} value={entry.datesText}
+     placeholder="2026-09-07, 2026-09-14"
+     onChange={e=>setEntry(i,"datesText",e.target.value)} />
+   </label>
+   <Button type="button" variant="secondary" disabled={busy||entries.length===1}
+    onClick={()=>{setEntries(rows=>rows.filter((_,j)=>j!==i));invalidate();}}>Remove</Button>
+  </div>)}
+  <div className="flex flex-wrap gap-2 mb-3">
+   <Button type="button" variant="secondary" disabled={busy||entries.length>=250}
+    onClick={()=>{setEntries(rows=>[...rows,{studentId:"",datesText:""}]);invalidate();}}>Add student</Button>
+   <Button type="button" disabled={busy} onClick={()=>void previewDates()}>Preview date import</Button>
+   {review?.canCommit&&<Button type="button" disabled={busy}
+    onClick={()=>void saveDates()}>Confirm date import</Button>}
+  </div>
+  {review&&<p className="text-sm mb-2">Preview: {review.previewTotal} dated observations;
+   {" "}{review.issueCount} issues; {review.canCommit?"ready for review":"cannot commit"}.
+   {review.issues.slice(0,10).map((issue,i)=><span className="block text-error" key={i}>
+    Row {issue.row}: {issue.message}</span>)}
+  </p>}
+  {message&&<p className="text-sm text-muted">{message}</p>}
+  {error&&<p role="alert" className="text-sm text-error">{error}</p>}
+ </section>;
+}
+
 export function HistoricalAttendanceImportPanel(){
  const confirm=useConfirm();
  const [busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
@@ -137,6 +259,7 @@ export function HistoricalAttendanceImportPanel(){
  };
  return <Card id="historical-attendance-import">
   <h2 className="font-semibold text-lg">Historical attendance import</h2>
+  <HistoricalDatesQuickImport students={students} workplaces={workplaces}/>
   <p className="text-sm text-muted mt-1 mb-3">
    Restore documented teaching history from a CSV/XLSX file. Exact dated observations
    and aggregate-only counts remain separate; the importer never invents lesson dates

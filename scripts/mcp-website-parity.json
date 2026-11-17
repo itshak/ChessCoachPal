@@ -31,6 +31,21 @@
       "evidenceTest": "e2e/parity-historical-import.spec.ts"
     },
     {
+      "path": "app/api/import/historical/dates/route.ts",
+      "methods": [
+        "POST",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_historical_attendance_dates_preview",
+        "ccp_historical_attendance_dates_commit"
+      ],
+      "explanation": "Website date-list preview/confirmed atomic commit use the same source-neutral student/date-list schemas and historical teacher-owned domain services as MCP; exact authenticated dual-interface E2E with archived pupils, owner checks and replay.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
+    },
+    {
       "path": "app/api/import/historical/preview/route.ts",
       "methods": [
         "POST"
@@ -1059,9 +1074,10 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_settings_export"
+        "ccp_settings_export",
+        "ccp_settings_export_csv"
       ],
-      "explanation": "Shared teacher-scoped website full backup versus confirmed, size-bounded, model-safe MCP export with portal credentials stripped; accepted in named OAuth/browser E2E 42709042700.",
+      "explanation": "Website full JSON backup and complete per-table CSV ZIP are available; MCP provides privacy-filtered bounded JSON and pageable CSV for EVERY exported table. No portal credentials in any CSV; cross-transport CSV and previous JSON backup behavior verified in authenticated E2E.",
       "evidenceTest": "e2e/parity-teacher-export.spec.ts"
     },
     {
