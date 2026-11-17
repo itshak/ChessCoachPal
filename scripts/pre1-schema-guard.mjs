@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * ADR-0001 mechanical fresh-install contract. This guards against changes
- * reintroducing schema upgrade chains (other than the reviewed live-data
- * additive extension), material compatibility mapping or
+ * reintroducing arbitrary schema upgrade chains (other than the explicitly
+ * reviewed forward-only live data extensions), material compatibility mapping or
  * data-export version negotiation. It does not replace live tenant/RLS tests.
  */
 import {readdirSync,readFileSync} from "node:fs";
@@ -12,14 +12,16 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const read=path=>readFileSync(join(root,path),"utf8");
 const BASELINE="20261107000000_chesscoachpal_baseline.sql";
 const LIVE_EXTENSION="20261117000000_live_historical_lifecycle_extension.sql";
+const FAMILY_LOCALE_EXTENSION="20261117231554_family_communication_locale.sql";
+const APPROVED_SQL_FILES=[BASELINE,LIVE_EXTENSION,FAMILY_LOCALE_EXTENSION];
 
 export function canonicalSchemaErrors({
  sqlFiles,sql,transfer,agent,catalog,studentPage,teacherComponents,strictMaterials=false,
 }){
  const errors=[];
- if(sqlFiles[0]!==BASELINE||sqlFiles.length>2||
-    (sqlFiles.length===2&&sqlFiles[1]!==LIVE_EXTENSION))
-   errors.push("Only the canonical baseline and the approved additive live-data repair are permitted");
+ if(sqlFiles.some((file,index)=>file!==APPROVED_SQL_FILES[index])||
+    sqlFiles.length>APPROVED_SQL_FILES.length)
+   errors.push("Only the canonical baseline and explicitly approved, ordered forward-only live extensions are permitted");
  if(!sql.includes("CREATE TABLE public.learning_materials")||
     !sql.includes("CREATE TABLE public.student_training_plans"))
    errors.push("Canonical snapshot is missing required current typed chess tables");

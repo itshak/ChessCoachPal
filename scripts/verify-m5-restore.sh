@@ -117,6 +117,12 @@ export RESTORE_DATE
 
 echo "==> create second independent Supabase project with distinct ports"
 cp -a "$root/supabase" "$tmp/restore/supabase"
+# Local GoTrue loads custom Auth templates relative to the project root,
+# not relative to config.toml. The second standalone restore project must
+# include these same static EN/HE/RU files or CLI startup fails before the
+# actual protected backup/restore can be verified.
+mkdir -p "$tmp/restore/public"
+cp -a "$root/public/auth-email-templates" "$tmp/restore/public/auth-email-templates"
 # Restore target must be empty; local CLI would otherwise load synthetic seed.sql.
 sed -i '/^\[db.seed\]/,/^\[db.network_restrictions\]/ s/^enabled = true$/enabled = false/' "$tmp/restore/supabase/config.toml"
 sed -i 's/project_id = "chesscoachpal"/project_id = "chesscoachpal_restore"/' \

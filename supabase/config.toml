@@ -228,22 +228,22 @@ otp_expiry = 3600
 
 # Uncomment to customize email template
 [auth.email.template.invite]
-subject = "ChessCoachPal multilingual invite"
+subject = "ChessCoachPal: Invite / הזמנה / Приглашение"
 content_path = "./public/auth-email-templates/invite.html"
 [auth.email.template.confirmation]
-subject = "ChessCoachPal multilingual confirmation"
+subject = "ChessCoachPal: Verify / אימות / Подтверждение"
 content_path = "./public/auth-email-templates/confirmation.html"
 [auth.email.template.recovery]
-subject = "ChessCoachPal multilingual recovery"
+subject = "ChessCoachPal: Reset / איפוס / Сброс пароля"
 content_path = "./public/auth-email-templates/recovery.html"
 [auth.email.template.email_change]
-subject = "ChessCoachPal multilingual email_change"
+subject = "ChessCoachPal: Change email / שינוי דוא״ל / Смена почты"
 content_path = "./public/auth-email-templates/email_change.html"
 [auth.email.template.magic_link]
-subject = "ChessCoachPal multilingual magic_link"
+subject = "ChessCoachPal: Sign in / כניסה / Вход"
 content_path = "./public/auth-email-templates/magic_link.html"
 [auth.email.template.reauthentication]
-subject = "ChessCoachPal multilingual reauthentication"
+subject = "ChessCoachPal: Verification code / קוד אימות / Код подтверждения"
 content_path = "./public/auth-email-templates/reauthentication.html"
 
 # Uncomment to customize notification email template
