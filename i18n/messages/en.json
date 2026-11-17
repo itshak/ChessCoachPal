@@ -153,7 +153,9 @@
     "noAccountQuestion": "Don't have an account?",
     "signUpLink": "Sign up",
     "privacy": "Privacy Policy",
-    "terms": "Terms of Service"
+    "terms": "Terms of Service",
+    "emailVerified": "Email verified. Please sign in.",
+    "invalidEmailLink": "This email link is invalid or has expired. Request a new one. Password-reset links must be opened in the same browser used to request them."
   },
   "common": {
     "save": "Save",
@@ -1672,7 +1674,40 @@
       "sourceTimezone": "Source timezone (optional)",
       "sourceLabel": "Source reference (optional)"
     },
-    "requestFailed": "Request failed"
+    "requestFailed": "Request failed",
+    "quick": {
+      "aria": "Quick import of historical attendance dates",
+      "title": "Quick import: students and attended dates",
+      "description": "Choose one workplace and enter each student’s real attended lesson dates (YYYY-MM-DD, comma or space separated). Only verified actual attendance counts; never infer dates from blank spreadsheet cells. Archived pupils are supported. Use the advanced file importer below for aggregate or complex records.",
+      "workplace": "Workplace (for all entries)",
+      "selectWorkplace": "Select workplace",
+      "sourceLabel": "Source label (optional)",
+      "sourcePlaceholder": "2025–26 attendance register",
+      "dateStart": "Date range start",
+      "dateEnd": "Date range end",
+      "timezone": "Source timezone",
+      "studentIndex": "Student {count}",
+      "selectStudent": "Select verified student",
+      "attendedDates": "Attended dates (YYYY-MM-DD, separated by commas)",
+      "remove": "Remove",
+      "addStudent": "Add student",
+      "previewButton": "Preview date import",
+      "confirmButton": "Confirm date import",
+      "missingSelection": "Choose a workplace, date range, and at least one student with dates.",
+      "unknownStudentRow": "Row {row}: select a verified student from the roster.",
+      "missingDatesRow": "Row {row}: enter exact attended lesson dates.",
+      "reviewIssues": "Review all flagged source dates and rows. Nothing was saved.",
+      "confirmTitle": "Save historical attendance dates?",
+      "confirmMessage": "Save {count} reviewed dated observations for the selected workplace? No scheduled lessons or teaching hours are created. Digest: {digest}.",
+      "confirmSave": "Save reviewed dates",
+      "saved": "Saved {count} historical attendance observations.",
+      "alreadySaved": "Previously saved {count} historical attendance observations.",
+      "requestFailed": "Could not process attendance dates",
+      "previewSummary": "Preview: {count} dated observations, {issues} issues — {status}.",
+      "ready": "ready for review",
+      "cannotCommit": "cannot commit",
+      "issueRow": "Row {row}: {message}"
+    }
   },
   "studioSettings": {
     "needBlock": "Pick at least one time block",
@@ -2356,11 +2391,13 @@
     "digestMismatch": "Import receipt digest did not match the reviewed backup.",
     "imported": "Import complete ({count} rows upserted; reviewed digest verified).",
     "title": "Export & Import all ChessCoachPal data",
-    "description": "Download a full JSON backup of your studio data: students, families, schedules, coaching sessions, attendance, chess learning observations, study links, skills, invoices, events, RSVPs and settings. Payment and AI keys, OAuth credentials and uploaded binary objects are excluded. Import restores data into this account by upserting matching IDs.",
+    "description": "Download a full JSON backup of students, families, schedules, coaching sessions, attendance, learning observations, study links, skills, invoices, events, RSVPs and settings. Payment keys, AI keys, OAuth credentials and uploaded files are excluded. Import restores matching IDs; the CSV ZIP is for spreadsheet analysis, not lossless restore. Portal credentials are excluded from CSV.",
     "exporting": "Exporting…",
     "export": "Export all data",
     "importing": "Importing…",
-    "import": "Import from file…"
+    "import": "Import from file…",
+    "exportJson": "Export JSON backup",
+    "exportCsv": "Export all data as CSV ZIP"
   },
   "paymentModal": {
     "title": "Payment settings",

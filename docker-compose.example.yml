@@ -120,6 +120,21 @@ services:
       GOTRUE_SMTP_USER: ${AUTH_SMTP_USER:-}
       GOTRUE_SMTP_PASS: ${AUTH_SMTP_PASS:-}
       GOTRUE_SMTP_SENDER_NAME: ${AUTH_SMTP_SENDER_NAME:-}
+      # GoTrue fetches these URLs itself. The existing private app service
+      # serves static templates; no extra public port or SMTP credentials.
+      # All templates fall back to English when Auth metadata has no locale.
+      GOTRUE_MAILER_TEMPLATES_INVITE: "${AUTH_EMAIL_TEMPLATES_BASE_URL:-http://app:3000/auth-email-templates}/invite.html"
+      GOTRUE_MAILER_TEMPLATES_CONFIRMATION: "${AUTH_EMAIL_TEMPLATES_BASE_URL:-http://app:3000/auth-email-templates}/confirmation.html"
+      GOTRUE_MAILER_TEMPLATES_RECOVERY: "${AUTH_EMAIL_TEMPLATES_BASE_URL:-http://app:3000/auth-email-templates}/recovery.html"
+      GOTRUE_MAILER_TEMPLATES_EMAIL_CHANGE: "${AUTH_EMAIL_TEMPLATES_BASE_URL:-http://app:3000/auth-email-templates}/email_change.html"
+      GOTRUE_MAILER_TEMPLATES_MAGIC_LINK: "${AUTH_EMAIL_TEMPLATES_BASE_URL:-http://app:3000/auth-email-templates}/magic_link.html"
+      GOTRUE_MAILER_TEMPLATES_REAUTHENTICATION: "${AUTH_EMAIL_TEMPLATES_BASE_URL:-http://app:3000/auth-email-templates}/reauthentication.html"
+      GOTRUE_MAILER_SUBJECTS_INVITE: 'ChessCoachPal: Invite / הזמנה / Приглашение'
+      GOTRUE_MAILER_SUBJECTS_CONFIRMATION: 'ChessCoachPal: Verify / אימות / Подтверждение'
+      GOTRUE_MAILER_SUBJECTS_RECOVERY: 'ChessCoachPal: Reset / איפוס / Сброс пароля'
+      GOTRUE_MAILER_SUBJECTS_EMAIL_CHANGE: 'ChessCoachPal: Change email / שינוי דוא״ל / Смена почты'
+      GOTRUE_MAILER_SUBJECTS_MAGIC_LINK: 'ChessCoachPal: Sign in / כניסה / Вход'
+      GOTRUE_MAILER_SUBJECTS_REAUTHENTICATION: 'ChessCoachPal: Verification code / קוד אימות / Код подтверждения'
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
       interval: 5s
@@ -237,6 +252,7 @@ services:
       args:
         NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_PUBLIC_URL:?}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY:?}
+        NEXT_PUBLIC_BETA_ONLY: ${NEXT_PUBLIC_BETA_ONLY:-false}
     restart: unless-stopped
     depends_on:
       migrate:
@@ -251,6 +267,11 @@ services:
       NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_PUBLIC_URL:?}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY:?}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:?}
+      NEXT_PUBLIC_BETA_ONLY: ${NEXT_PUBLIC_BETA_ONLY:-false}
+      # Must mirror auth.GOTRUE_DISABLE_SIGNUP for private-beta admin signup.
+      BETA_EMAIL_VERIFICATION_ENABLED: ${BETA_EMAIL_VERIFICATION_ENABLED:-false}
+      BETA_GOTRUE_SIGNUP_DISABLED: ${DISABLE_SIGNUP:-false}
+      BETA_GOTRUE_EMAIL_AUTOCONFIRM: ${ENABLE_EMAIL_AUTOCONFIRM:-true}
       NEXT_PUBLIC_SITE_URL: ${APP_URL:-http://localhost:3000}
       # .env.local also holds the stack's own secrets; the app needs none of
       # them, so keep the database password and JWT secret out of it.
@@ -258,7 +279,6 @@ services:
       JWT_SECRET: ""
       S3_PROTOCOL_ACCESS_KEY_ID: ""
       S3_PROTOCOL_ACCESS_KEY_SECRET: ""
-      AUTH_SMTP_PASS: ""
     ports:
       - "${APP_PORT:-3000}:3000"
     extra_hosts:

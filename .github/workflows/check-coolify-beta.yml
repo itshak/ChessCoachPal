@@ -1,12 +1,13 @@
-name: Verify Coolify staging release connection
+name: Verify Coolify canonical-domain private beta release connection
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   verify:
-    name: Check restricted release SSH and staging HTTPS
+    name: Check restricted release SSH and private-beta HTTPS
     runs-on: ubuntu-latest
+    # Legacy credential environment is retained until GitHub secret rotation.
     environment: staging
     timeout-minutes: 10
     steps:
@@ -34,18 +35,21 @@ jobs:
             -o ConnectTimeout=15 \
             "ccpdeploy@$DEPLOY_HOST" status)"
           echo "$output"
+          # Forced-command server script retains its historical status prefix.
           [[ "$output" == staging\ running:* ]]
 
-      - name: Verify staged website, OAuth metadata and Supabase health
+      - name: Verify canonical beta website, OAuth metadata and Supabase health
         shell: bash
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --max-time 20 \
-            https://beta.chesscoachpal.com/ -o /dev/null
+            https://chesscoachpal.com/ -o /dev/null
           curl --fail --silent --show-error --max-time 20 \
-            https://beta.chesscoachpal.com/.well-known/oauth-authorization-server -o /dev/null
+            https://chesscoachpal.com/.well-known/oauth-authorization-server -o /dev/null
           curl --fail --silent --show-error --max-time 20 \
-            https://api-beta.chesscoachpal.com/auth/v1/health -o /dev/null
+            https://api.chesscoachpal.com/auth/v1/health -o /dev/null
           curl --fail --silent --show-error --max-time 20 \
-            https://api-beta.chesscoachpal.com/rest/v1/ -o /dev/null
-          echo "COOLIFY_STAGING_CONNECTION_AND_HTTPS_OK"
+            https://api.chesscoachpal.com/rest/v1/ -o /dev/null
+          curl --fail --silent --show-error --location --max-time 20 \
+            https://www.chesscoachpal.com/ -o /dev/null
+          echo "COOLIFY_BETA_CANONICAL_CONNECTION_AND_HTTPS_OK"

@@ -423,3 +423,82 @@ test("PARITY:PARITY-history-hosted-cap archived former students do not consume c
   expect(restoreError).toBeNull();
  }
 });
+
+test("PARITY:PARITY-history-dates-cross-client exact student/date import for archived learner, preview and receipt",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const studentName=unique("Archived dated source learner");
+ const studentId=await teacherStudent(page,studentName);
+ const workplaceId=await makeWorkplace(call);
+ // Historical records may refer to pupils no longer counted as active.
+ const current=await profile(page,studentId);
+ const archiveRows=[{studentId,archived:true,expectedUpdatedAt:current.updated_at}];
+ const archPreview=(await call("ccp_students_bulk_lifecycle_preview",{rows:archiveRows})).data as
+   {canCommit:boolean;previewDigest:string};
+ expect(archPreview.canCommit).toBe(true);
+ const archived=await call("ccp_students_bulk_lifecycle_commit",{
+   rows:archiveRows,previewDigest:archPreview.previewDigest,
+   idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(archived.error).toBeUndefined();
+ expect((await profile(page,studentId)).archived_at).toBeTruthy();
+ const dates={workplaceId,schoolYearStart:"2025-09-01",schoolYearEnd:"2026-08-31",
+  timezone:"Asia/Jerusalem",sourceLabel:"Verified dated lesson register",
+  students:[{studentName,studentId,attendanceDates:["2025-11-03","2026-01-05"]}]};
+ const sitePreview=await page.request.post("/api/import/historical/dates",{data:dates});
+ expect(sitePreview.status(),await sitePreview.text()).toBe(200);
+ const preview=await sitePreview.json();
+ expect(preview).toMatchObject({format:"student-date-lists",sourceRows:2,
+  previewTotal:2,issueCount:0,canCommit:true});
+ expect(preview.previewRows.map((r:{attendedOn:string})=>r.attendedOn))
+   .toEqual(["2025-11-03","2026-01-05"]);
+ const mcp=await call("ccp_historical_attendance_dates_preview",dates);
+ expect(mcp.error).toBeUndefined();
+ expect(mcp.data).toEqual(preview);
+ const key=randomUUID();
+ const commit=await call("ccp_historical_attendance_dates_commit",{
+  ...dates,previewDigest:preview.previewDigest,idempotencyKey:key,confirmed:true,
+ });
+ expect(commit.error).toBeUndefined();
+ expect(commit.data).toMatchObject({count:2,replayed:false});
+ const replay=await page.request.put("/api/import/historical/dates",{
+  data:{...dates,previewDigest:preview.previewDigest,idempotencyKey:key,confirmed:true},
+ });
+ expect(replay.status(),await replay.text()).toBe(200);
+ expect((await replay.json()).replayed).toBe(true);
+ const summary=(await call("ccp_historical_attendance_summary",{studentId,workplaceId})).data;
+ expect(summary).toMatchObject({datedObservations:2,aggregateDeclaredLessons:0});
+ const duplicate=await call("ccp_historical_attendance_dates_preview",{
+  ...dates,students:[{studentName,studentId,attendanceDates:["2026-01-05","2026-01-05"]}],
+ });
+ expect(duplicate.error).toBeUndefined();
+ expect(duplicate.data.canCommit).toBe(false);
+ expect(duplicate.data.issues).toEqual(expect.arrayContaining([
+  expect.objectContaining({code:"DUPLICATE_EVIDENCE"})]));
+ const noGuess=await call("ccp_historical_attendance_dates_preview",{
+  ...dates,students:[{studentName,attendanceDates:["05.01.2026"]}],
+ });
+ expect(noGuess.error?.code).toBe("VALIDATION_ERROR");
+});
+
+test("PARITY:PARITY-history-large-mcp-request accepts bounded >32KiB dated observations",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const workplaceId=await makeWorkplace(call);
+ // The old RPC body cap (32 KiB) silently contradicted the historical
+ // tool's advertised 250 rows/256 KiB. Validate actual OAuth MCP transport.
+ const students=Array.from({length:200},(_,i)=>({
+  studentName:`Unknown test pupil ${i} `+"x".repeat(190),
+  attendanceDates:["2026-01-05"],
+ }));
+ const payload={workplaceId,schoolYearStart:"2025-09-01",
+  schoolYearEnd:"2026-08-31",timezone:"Asia/Jerusalem",students};
+ expect(Buffer.byteLength(JSON.stringify({jsonrpc:"2.0",method:"tools/call",
+  params:{name:"ccp_historical_attendance_dates_preview",arguments:payload}})))
+   .toBeGreaterThan(32_768);
+ const result=await call("ccp_historical_attendance_dates_preview",payload);
+ expect(result.error).toBeUndefined();
+ expect(result.data).toMatchObject({sourceRows:200,previewTotal:0,canCommit:false});
+ expect(result.data.issueCount).toBe(200);
+ const website=await page.request.post("/api/import/historical/dates",{data:payload});
+ expect(website.status(),await website.text()).toBe(200);
+ expect(await website.json()).toEqual(result.data);
+});

@@ -1,4 +1,5 @@
 import {randomUUID} from "node:crypto";
+import {createClient} from "@supabase/supabase-js";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
@@ -7,6 +8,18 @@ test("PARITY: teacher language preference persists identically via website and M
   const original = await call("ccp_teacher_profile_get",{});
   expect(original.error).toBeUndefined();
   const initial = original.data.preferredLocale as "en"|"he"|"ru";
+  const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+      auth:{persistSession:false,autoRefreshToken:false},
+    });
+  const teacher=await page.request.get("/api/teacher/context");
+  expect(teacher.status()).toBe(200);
+  const teacherId=(await teacher.json()).teacherId as string;
+  const checkAuthEmailLanguage=async(locale:"en"|"he"|"ru")=>{
+    const {data,error}=await admin.auth.admin.getUserById(teacherId);
+    expect(error).toBeNull();
+    expect(data.user?.user_metadata?.preferred_locale).toBe(locale);
+  };
   const readWorkplaceContracts=async()=>{
     const result=await call("ccp_workplaces_list",{});
     expect(result.error).toBeUndefined();
@@ -26,6 +39,7 @@ test("PARITY: teacher language preference persists identically via website and M
     const read = await call("ccp_teacher_profile_get",{});
     expect(read.error).toBeUndefined();
     expect(read.data.preferredLocale).toBe("he");
+    await checkAuthEmailLanguage("he");
     expect(read.data.email).toBeUndefined();
     const context = await call("ccp_teacher_context_get",{});
     expect(context.error).toBeUndefined();
@@ -65,6 +79,7 @@ test("PARITY: teacher language preference persists identically via website and M
     });
     expect(mcp.error).toBeUndefined();
     expect(mcp.data.ok).toBe(true);
+    await checkAuthEmailLanguage("ru");
     await page.goto("/account");
     await expect(page).toHaveTitle(/Настройки аккаунта/);
     await expect(page.locator("html")).toHaveAttribute("lang","ru");
@@ -105,6 +120,7 @@ test("PARITY: teacher language preference persists identically via website and M
       data:{preferredLocale:initial}
     });
     expect(restore.status(),await restore.text()).toBe(200);
+    await checkAuthEmailLanguage(initial);
   }
 });
 

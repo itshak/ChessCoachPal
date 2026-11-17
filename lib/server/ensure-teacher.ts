@@ -3,6 +3,7 @@ import { hostedSignupFields, getDeploymentMode, getHostedLimits } from "@/lib/en
 import { isUniqueViolation } from "@/lib/onboarding";
 import { ensureStudioPolicyRow } from "@/lib/server/ensure-policy";
 import { ensureWelcomeNotification } from "@/lib/server/notifications";
+import {isAppLocale,type AppLocale} from "@/i18n/locales";
 
 /**
  * Ensure a teachers row (+ studio policy) exists for an auth user.
@@ -20,6 +21,7 @@ export async function ensureTeacherForAuthUser(
     email: string;
     displayName?: string | null;
     timezone?: string | null;
+    preferredLocale?: AppLocale;
   }
 ): Promise<{ ok: true; created: boolean } | { ok: false; error: string }> {
   const { data: existing } = await serviceClient
@@ -44,6 +46,7 @@ export async function ensureTeacherForAuthUser(
       id: opts.userId,
       email: opts.email,
       display_name: display,
+      ...(isAppLocale(opts.preferredLocale)?{preferred_locale:opts.preferredLocale}:{}),
       hosted_plan: hosted.hosted_plan,
       trial_ends_at: hosted.trial_ends_at,
       hosted_enforced: hostedEnforced,

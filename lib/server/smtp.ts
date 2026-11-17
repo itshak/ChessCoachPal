@@ -109,13 +109,46 @@ export async function sendViaSmtp(msg: SmtpMessage): Promise<void> {
   }
 }
 
+/** Produce 7-bit MIME headers even for Hebrew and Cyrillic subjects/names.
+ * SMTPUTF8 is not guaranteed by the local Mailpit transport or external SMTP.
+ * A deliberately short UTF-8 chunk keeps each RFC 2047 encoded-word <75 chars.
+ */
+export function encodeMimeHeader(value:string):string{
+  const clean=value.replace(/[\r\n\u0000-\u001f]+/g," ").trim();
+  if(!/[^\x20-\x7e]/.test(clean))return clean;
+  const parts:string[]=[];
+  let chunk="";
+  for(const ch of clean){
+    if(chunk&&Buffer.byteLength(chunk+ch,"utf8")>36){
+      parts.push(`=?UTF-8?B?${Buffer.from(chunk,"utf8").toString("base64")}?=`);
+      chunk="";
+    }
+    chunk+=ch;
+  }
+  if(chunk)parts.push(`=?UTF-8?B?${Buffer.from(chunk,"utf8").toString("base64")}?=`);
+  return parts.join("\r\n ");
+}
+function encodedFromHeader(header:string):string{
+  const safe=header.replace(/[\r\n]+/g," ").trim();
+  const match=/^"([^"]+)"\s*<([^<>]+)>$/.exec(safe);
+  if(!match)return safe;
+  // Only the display name is encoded; the SMTP mailbox stays an address.
+  const name=match[1];
+  return /[^\x20-\x7e]/.test(name)
+    ? `${encodeMimeHeader(name)} <${match[2]}>`
+    : safe;
+}
+function mimeBody(value:string):string{
+  return Buffer.from(value,"utf8").toString("base64").match(/.{1,76}/g)?.join("\r\n")??"";
+}
+
 /** Exported for tests. BCC recipients are intentionally absent from headers. */
 export function buildData(msg: SmtpMessage): string {
   const headers = [
-    `From: ${msg.fromHeader}`,
-    `To: ${Array.isArray(msg.to) ? msg.to.join(", ") : msg.to}`,
-    ...(msg.replyTo ? [`Reply-To: ${msg.replyTo}`] : []),
-    `Subject: ${msg.subject}`,
+    `From: ${encodedFromHeader(msg.fromHeader)}`,
+    `To: ${(Array.isArray(msg.to) ? msg.to.join(", ") : msg.to).replace(/[\r\n]+/g," ")}`,
+    ...(msg.replyTo ? [`Reply-To: ${msg.replyTo.replace(/[\r\n]+/g," ")}`] : []),
+    `Subject: ${encodeMimeHeader(msg.subject)}`,
     `Date: ${new Date().toUTCString()}`,
     "MIME-Version: 1.0",
   ];
@@ -151,17 +184,20 @@ export function buildData(msg: SmtpMessage): string {
     body = [
       `--${boundary}`,
       'Content-Type: text/plain; charset="utf-8"',
+      "Content-Transfer-Encoding: base64",
       "",
-      msg.text,
+      mimeBody(msg.text),
       `--${boundary}`,
       'Content-Type: text/html; charset="utf-8"',
+      "Content-Transfer-Encoding: base64",
       "",
-      msg.html,
+      mimeBody(msg.html),
       `--${boundary}--`,
     ].join("\r\n");
   } else {
     headers.push('Content-Type: text/plain; charset="utf-8"');
-    body = msg.text;
+    headers.push("Content-Transfer-Encoding: base64");
+    body = mimeBody(msg.text);
   }
 
   const data = headers.join("\r\n") + "\r\n\r\n" + body;
@@ -173,8 +209,9 @@ function buildAlternativePart(msg: SmtpMessage): string {
   if (!msg.html) {
     return [
       'Content-Type: text/plain; charset="utf-8"',
+      "Content-Transfer-Encoding: base64",
       "",
-      msg.text,
+      mimeBody(msg.text),
     ].join("\r\n");
   }
   const boundary = `a${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;

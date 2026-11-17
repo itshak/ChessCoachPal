@@ -28,6 +28,129 @@ async function asJson(res:Response){
   {code:typeof body.code==="string"?body.code:undefined});
  return body;
 }
+type DateEntry={studentId:string;datesText:string};
+function HistoricalDatesQuickImport({students,workplaces}:{students:Roster[];workplaces:Roster[]}){
+ const confirm=useConfirm();
+ const t=useTranslations("historyImport.quick");
+ const toUserError=useLocalizedApiError();
+ const [workplaceId,setWorkplaceId]=useState("");
+ const [start,setStart]=useState(""),[end,setEnd]=useState("");
+ const [timezone,setTimezone]=useState("Asia/Jerusalem");
+ const [sourceLabel,setSourceLabel]=useState("");
+ const [entries,setEntries]=useState<DateEntry[]>([{studentId:"",datesText:""}]);
+ const [review,setReview]=useState<Preview|null>(null);
+ const [requestKey,setRequestKey]=useState<string|null>(null);
+ const [busy,setBusy]=useState(false),[message,setMessage]=useState<string|null>(null);
+ const [error,setError]=useState<string|null>(null);
+ const invalidate=()=>{setReview(null);setRequestKey(null);};
+ const setEntry=(index:number,field:keyof DateEntry,value:string)=>{
+  setEntries(previous=>previous.map((entry,i)=>i===index?{...entry,[field]:value}:entry));
+  invalidate();
+ };
+ const payload=()=>{
+  const selected=entries.filter(e=>e.studentId||e.datesText.trim());
+  if(!workplaceId||!start||!end||!selected.length)
+   throw new Error(t("missingSelection"));
+  const rows=selected.map((entry,index)=>{
+   const student=students.find(s=>s.id===entry.studentId);
+   if(!student)throw new Error(t("unknownStudentRow",{row:index+1}));
+   const attendanceDates=entry.datesText.split(/[\s,;]+/).map(s=>s.trim()).filter(Boolean);
+   if(!attendanceDates.length)throw new Error(t("missingDatesRow",{row:index+1}));
+   return {studentName:student.name,studentId:student.id,attendanceDates};
+  });
+  return {workplaceId,schoolYearStart:start,schoolYearEnd:end,timezone,
+   ...(sourceLabel.trim()?{sourceLabel:sourceLabel.trim()}:{}),students:rows};
+ };
+ async function previewDates(){
+  setBusy(true);setError(null);setMessage(null);invalidate();
+  try{
+   const result=await asJson(await fetch("/api/import/historical/dates",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(payload()),
+   })) as Preview;
+   setReview(result);setRequestKey(crypto.randomUUID());
+   if(!result.canCommit)setMessage(t("reviewIssues"));
+  }catch(e){setError(toUserError(e,t("requestFailed")));}finally{setBusy(false);}
+ }
+ async function saveDates(){
+  if(!review?.canCommit||!requestKey)return;
+  const approved=await confirm({title:t("confirmTitle"),
+   message:t("confirmMessage",{count:review.previewTotal,digest:review.previewDigest}),
+   confirmLabel:t("confirmSave")});
+  if(!approved)return;
+  setBusy(true);setError(null);
+  try{
+   const result=await asJson(await fetch("/api/import/historical/dates",{
+    method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({...payload(),previewDigest:review.previewDigest,
+     idempotencyKey:requestKey,confirmed:true}),
+   })) as {count:number;replayed?:boolean};
+   setMessage(t(result.replayed?"alreadySaved":"saved",{count:result.count}));
+  }catch(e){setError(toUserError(e,t("requestFailed")));}finally{setBusy(false);}
+ }
+ return <section className="border-b border-border pb-5 mb-5" aria-label={t("aria")}>
+  <h3 className="font-medium mb-1">{t("title")}</h3>
+  <p className="text-sm text-muted mb-3">{t("description")}</p>
+  <div className="grid sm:grid-cols-2 gap-3 mb-3">
+   <label className="text-xs">{t("workplace")}
+    <select className={cls} value={workplaceId}
+     onChange={e=>{setWorkplaceId(e.target.value);invalidate();}}>
+     <option value="">{t("selectWorkplace")}</option>
+     {workplaces.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
+    </select>
+   </label>
+   <label className="text-xs">{t("sourceLabel")}
+    <input className={cls} value={sourceLabel} placeholder={t("sourcePlaceholder")}
+     onChange={e=>{setSourceLabel(e.target.value);invalidate();}} />
+   </label>
+   <label className="text-xs">{t("dateStart")}
+    <input className={cls} type="date" value={start}
+     onChange={e=>{setStart(e.target.value);invalidate();}}/>
+   </label>
+   <label className="text-xs">{t("dateEnd")}
+    <input className={cls} type="date" value={end}
+     onChange={e=>{setEnd(e.target.value);invalidate();}}/>
+   </label>
+   <label className="text-xs">{t("timezone")}
+    <input className={cls} value={timezone}
+     onChange={e=>{setTimezone(e.target.value);invalidate();}}/>
+   </label>
+  </div>
+  {entries.map((entry,i)=><div key={i} className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] gap-2 items-end mb-2">
+   <label className="text-xs">{t("studentIndex",{count:i+1})}
+    <select className={cls} value={entry.studentId}
+     onChange={e=>setEntry(i,"studentId",e.target.value)}>
+     <option value="">{t("selectStudent")}</option>
+     {students.map(student=><option key={student.id} value={student.id}>{student.name}</option>)}
+    </select>
+   </label>
+   <label className="text-xs">{t("attendedDates")}
+    <textarea className={cls} rows={2} value={entry.datesText}
+     placeholder="2026-09-07, 2026-09-14"
+     onChange={e=>setEntry(i,"datesText",e.target.value)} />
+   </label>
+   <Button type="button" variant="secondary" disabled={busy||entries.length===1}
+    onClick={()=>{setEntries(rows=>rows.filter((_,j)=>j!==i));invalidate();}}>{t("remove")}</Button>
+  </div>)}
+  <div className="flex flex-wrap gap-2 mb-3">
+   <Button type="button" variant="secondary" disabled={busy||entries.length>=250}
+    onClick={()=>{setEntries(rows=>[...rows,{studentId:"",datesText:""}]);invalidate();}}>{t("addStudent")}</Button>
+   <Button type="button" disabled={busy} onClick={()=>void previewDates()}>{t("previewButton")}</Button>
+   {review?.canCommit&&<Button type="button" disabled={busy}
+    onClick={()=>void saveDates()}>{t("confirmButton")}</Button>}
+  </div>
+
+  {review&&<p className="text-sm mb-2">{t("previewSummary",{
+    count:review.previewTotal,issues:review.issueCount,
+    status:review.canCommit?t("ready"):t("cannotCommit")})}
+   {review.issues.slice(0,10).map((issue,i)=><span className="block text-error" key={i}>
+    {t("issueRow",{row:issue.row,message:issue.message})}</span>)}
+  </p>}
+  {message&&<p className="text-sm text-muted">{message}</p>}
+  {error&&<p role="alert" className="text-sm text-error">{error}</p>}
+ </section>;
+}
+
 export function HistoricalAttendanceImportPanel(){
  const t=useTranslations("historyImport");
   const toUserError=useLocalizedApiError();
@@ -135,6 +258,7 @@ export function HistoricalAttendanceImportPanel(){
  };
  return <Card id="historical-attendance-import">
   <h2 className="font-semibold text-lg">{t("title")}</h2>
+  <HistoricalDatesQuickImport students={students} workplaces={workplaces}/>
   <p className="text-sm text-muted mt-1 mb-3">
    {t("description")}
   </p>

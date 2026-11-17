@@ -1,0 +1,25 @@
+{{ if eq .Data.preferred_locale "he" }}
+<div lang="he" dir="rtl" style="font-family:Arial,sans-serif;font-size:16px;line-height:1.6;color:#161923;max-width:560px;margin:0 auto;">
+  <p style="font-weight:700;">ChessCoachPal</p>
+  <h1 style="font-size:22px;">איפוס סיסמה ב-ChessCoachPal</h1>
+  <p>התקבלה בקשה לאיפוס הסיסמה לחשבון ChessCoachPal שלכם. השתמשו בקישור כדי לבחור סיסמה חדשה.</p>
+  <p><a href="{{ .ConfirmationURL }}" style="background:#284f59;color:#ffffff;padding:12px 20px;text-decoration:none;border-radius:6px;display:inline-block;">איפוס הסיסמה</a></p>
+  <p style="font-size:13px;color:#606977;">אם לא ביקשתם איפוס, אל תלחצו על הקישור. הסיסמה לא השתנתה.</p>
+</div>
+{{ else if eq .Data.preferred_locale "ru" }}
+<div lang="ru" dir="ltr" style="font-family:Arial,sans-serif;font-size:16px;line-height:1.6;color:#161923;max-width:560px;margin:0 auto;">
+  <p style="font-weight:700;">ChessCoachPal</p>
+  <h1 style="font-size:22px;">Сброс пароля ChessCoachPal</h1>
+  <p>Получен запрос на сброс пароля вашей учётной записи ChessCoachPal. Перейдите по ссылке, чтобы выбрать новый пароль.</p>
+  <p><a href="{{ .ConfirmationURL }}" style="background:#284f59;color:#ffffff;padding:12px 20px;text-decoration:none;border-radius:6px;display:inline-block;">Сбросить пароль</a></p>
+  <p style="font-size:13px;color:#606977;">Если вы не запрашивали сброс, не нажимайте ссылку. Ваш пароль не изменён.</p>
+</div>
+{{ else }}
+<div lang="en" dir="ltr" style="font-family:Arial,sans-serif;font-size:16px;line-height:1.6;color:#161923;max-width:560px;margin:0 auto;">
+  <p style="font-weight:700;">ChessCoachPal</p>
+  <h1 style="font-size:22px;">Reset your ChessCoachPal password</h1>
+  <p>A password reset was requested for your ChessCoachPal account. Use this link to choose a new password.</p>
+  <p><a href="{{ .ConfirmationURL }}" style="background:#284f59;color:#ffffff;padding:12px 20px;text-decoration:none;border-radius:6px;display:inline-block;">Reset password</a></p>
+  <p style="font-size:13px;color:#606977;">If you did not request this reset, do not click the link. Your password has not changed.</p>
+</div>
+{{ end }}
