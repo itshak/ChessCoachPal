@@ -335,7 +335,9 @@ const catalogue = [
   },
   {
     name:"ccp_historical_attendance_dates_preview",
-    description:"PREFERRED SIMPLE HISTORICAL ATTENDANCE IMPORT (not spreadsheet column mapping). Use actual attendance dates per pupil; workplace supplied ONCE. Exact example: {workplaceId:'00000000-0000-4000-8000-000000000001',schoolYearStart:'2025-09-01',schoolYearEnd:'2026-08-31',timezone:'Asia/Jerusalem',sourceLabel:'2025-26 register',students:[{studentName:'Example Student',attendanceDates:['2026-01-05','2026-01-12']}]} . Get workplaceId from ccp_workplaces_list, and verify pupil identities including archived pupils. Each input date represents an explicitly attended lesson. If source uses V/X/other markers, interpret them from the original evidence before submitting; do not submit markers, speculate dates or assume blanks mean absence. Do NOT use ccp_import_spreadsheet_suggest, which is for family onboarding, or old historical mapping. Limits: 250 dated observations and 256 KiB per batch. Preview returns digest and issues, never writes. The website offers the identical student/date-list flow.",
+    description:`PREFERRED HISTORICAL ATTENDANCE IMPORT, no spreadsheet mapping required. Exact JSON request example:
+{"workplaceId":"00000000-0000-4000-8000-000000000001","schoolYearStart":"2025-09-01","schoolYearEnd":"2026-08-31","timezone":"Asia/Jerusalem","sourceLabel":"2025-26 register","students":[{"studentName":"Example Student","attendanceDates":["2026-01-05","2026-01-12"]}]}
+The common workplaceId must come from ccp_workplaces_list; studentId may be supplied for verified names/aliases, including archived pupils. These are real observed attended dates only (YYYY-MM-DD). If the original spreadsheet uses V, X or other marks, extract VERIFIED dates before calling; never send the marks, invent dates, or treat blanks as absence. ccp_import_spreadsheet_suggest is for student/family onboarding, NOT attendance. Max 250 dates / 256 KiB, with 320 KiB MCP transport bound. Preview returns issues and previewDigest without writes; then ask for approval before ccp_historical_attendance_dates_commit. Same format is offered on the website. Historical observations do not automatically become calendar sessions or teaching hours.`,
     schema:historicalDatesInputSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -345,7 +347,7 @@ const catalogue = [
   },
   {
     name:"ccp_historical_attendance_preview",
-    description:"Review dated versus aggregate-only historical attendance, with explicit school-year bounds, source timezone, workplace and exact student alias resolution. Ambiguous, missing and duplicate records block import. Large files use short-lived private stageId; up to 250 directly supplied rows (max 256 KiB) are supported without browser upload; use a private staged file for larger datasets.",
+    description:"ADVANCED mapped historical import for aggregate/absence/mixed rows or private staged files, NOT the preferred source-neutral date-list importer. Mapping format is targetField -> exact source column header, with camelCase targets: {studentName:'Student Name',workplaceId:'Workplace ID',attendedOn:'Lesson Date',attendanceStatus:'Status'}. Do not use snake_case roster-import suggestions or map a date-matrix heading directly. For plain student plus real attended dates use ccp_historical_attendance_dates_preview instead. Ambiguous, missing or duplicate records block import. Large files use short-lived private stageId; direct rows up to 250 / 256 KiB.",
     schema:historicalInputSchema,scope:"coach:read",readOnly:true,
   },
   {

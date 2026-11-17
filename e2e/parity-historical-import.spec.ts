@@ -498,4 +498,7 @@ test("PARITY:PARITY-history-large-mcp-request accepts bounded >32KiB dated obser
  expect(result.error).toBeUndefined();
  expect(result.data).toMatchObject({sourceRows:200,previewTotal:0,canCommit:false});
  expect(result.data.issueCount).toBe(200);
+ const website=await page.request.post("/api/import/historical/dates",{data:payload});
+ expect(website.status(),await website.text()).toBe(200);
+ expect(await website.json()).toEqual(result.data);
 });
