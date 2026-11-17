@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeBearer } from "@/lib/server/agent-oauth";
 import { oauthOrigin } from "@/lib/server/agent-oauth-core";
-import { exposedTools, runTool } from "@/lib/server/agent-tools";
+import { exposedTools, runTool, toolScopeByName } from "@/lib/server/agent-tools";
 import packageJson from "@/package.json";
 
 export const dynamic = "force-dynamic";
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     if (message.method === "ping") return json(rpc(id, {}));
     if (message.method === "tools/list") return json(rpc(id, { tools:
       exposedTools.filter(t => auth.scopes.includes(
-        t.annotations.readOnlyHint ? "coach:read" : "coach:write")) }));
+        toolScopeByName.get(t.name) ?? "")) }));
     if (message.method === "tools/call") {
       const name = message.params?.name;
       if (typeof name !== "string") return json(rpc(id, undefined, {code:-32602,message:"Missing tool name"}));

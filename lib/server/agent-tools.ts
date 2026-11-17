@@ -1468,11 +1468,33 @@ const catalogue = [
   },
 ] as const;
 
+// OAuth permission is a real operation contract. The readOnly annotation is
+// only a side-effect hint: external vision/rating previews legitimately use a
+// coach:read grant while being annotated non-read-only due to outbound calls.
+// Conflating the two previously hid those tools from read-only tools/list.
+export const toolScopeByName = new Map(catalogue.map(t => [t.name,t.scope]));
+
+const destructiveTool = (name:string,readOnly:boolean) => !readOnly &&
+  (/(?:^|_)(?:delete|void|revoke|rotate|cancel|unlink)(?:_|$)/.test(name) ||
+   ["ccp_students_bulk_lifecycle_commit","ccp_learning_material_lifecycle_change",
+    "ccp_billing_invoices_bulk"].includes(name));
+const externalTool = (name:string) => [
+  "ccp_student_ratings_refresh_preview","ccp_lichess_image_fen_propose",
+  "ccp_lichess_puzzle_publish","ccp_events_email_invites",
+  "ccp_billing_invoice_checkout","ccp_billing_invoice_send",
+  "ccp_billing_invoices_bulk","ccp_materials_chapters_sync",
+  "ccp_import_spreadsheet_suggest",
+].includes(name);
+
 export const exposedTools = catalogue.map(t => ({
   name: t.name, title: t.name,
   description: t.description,
   inputSchema: z.toJSONSchema(t.schema),
-  annotations: { readOnlyHint: t.readOnly, destructiveHint: false, openWorldHint: false },
+  annotations: {
+    readOnlyHint: t.readOnly,
+    destructiveHint: destructiveTool(t.name,t.readOnly),
+    openWorldHint: externalTool(t.name),
+  },
 }));
 
 export function validateCall(name: string, input: unknown) {
@@ -1488,10 +1510,16 @@ export function validateCall(name: string, input: unknown) {
 
 export async function runTool(db: SupabaseClient, teacherId: string,
   name: string, input: unknown, scopes: string[], clientId: string) {
+  // Check the permission *before* parsing input or disclosing validation
+  // details of an operation unavailable to this OAuth grant.
+  const requiredScope=toolScopeByName.get(name);
+  if (!requiredScope) return {error:{code:"NOT_FOUND",message:"Unknown tool"}};
+  if (!scopes.includes(requiredScope))
+    return { error: { code: "FORBIDDEN", message: "Insufficient OAuth scope" } };
   const parsed = validateCall(name, input);
   if ("error" in parsed) return { error: parsed.error };
   const { tool, args } = parsed;
-  if (!scopes.includes(tool!.scope)) return { error: { code: "FORBIDDEN", message: "Insufficient OAuth scope" } };
+  void tool;
   try {
     // Scoped SQL RPC uses the end-user's JWT and RLS, not the service role.
     // It checks expected revision and stores the receipt and domain write in the same transaction.

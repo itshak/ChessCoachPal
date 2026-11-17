@@ -98,3 +98,23 @@ test("PARITY:PARITY-mcp-completed-group-validation rejects missing or duplicated
  });
  expect(foreign.error?.code).toBe("NOT_FOUND");
 });
+
+test("PARITY:PARITY-mcp-tool-scope-discovery read-scoped external preview retains listing",async({page,request})=>{
+ const read=await delegatedTool(page,request,"coach:read");
+ const listed=await read.listTools();
+ const names=listed.map((t:{name:string})=>t.name);
+ expect(names).toContain("ccp_student_ratings_refresh_preview");
+ expect(names).toContain("ccp_lichess_image_fen_propose");
+ expect(names).toContain("ccp_lessons_capture_preview");
+ expect(names).toContain("ccp_materials_lesson_use_preview");
+ expect(names).not.toContain("ccp_lessons_capture_completed");
+ expect(names).not.toContain("ccp_materials_lesson_use_commit");
+ const denied=await read("ccp_lessons_capture_completed",{
+  workplaceId:randomUUID(),studentIds:[randomUUID(),randomUUID()],
+  title:"Unauthorized write",startsAt:"2046-02-05T09:00:00+02:00",
+  durationMinutes:90,lessonNote:"",
+  attendance:[],requestId:randomUUID(),confirmed:true,
+ });
+ // A guessed write remains denied even if the input is invalid.
+ expect(denied.error?.code).toBe("FORBIDDEN");
+});
