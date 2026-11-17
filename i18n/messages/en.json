@@ -2263,5 +2263,59 @@
     "cancel": "Cancel",
     "removing": "Removing…",
     "remove": "Remove"
+  },
+  "calendarFeed": {
+    "title": "Calendar feed",
+    "description": "Subscribe to your lessons and studio events from Google, Apple or Outlook Calendar. The feed is read-only and updates automatically, but anyone with the link can see your schedule — keep it private.",
+    "linkTitle": "Teacher calendar feed",
+    "feedLink": "Feed Link",
+    "download": "Download .ics",
+    "resetWarning": "Generate a new feed link. The old one stops working.",
+    "reset": "Reset Feed Link"
+  },
+  "timezoneForm": {
+    "saved": "Saved",
+    "saveFailed": "Failed to save",
+    "studioTimezone": "Studio timezone",
+    "hint": "Schedule times, make-up windows and lesson reminders use this zone.",
+    "saving": "Saving…",
+    "save": "Save timezone",
+    "title": "Timezone",
+    "studioHint": "Studio schedule times, make-up windows and lesson reminders use this zone."
+  },
+  "hostingSettings": {
+    "checkoutError": "Could not start checkout",
+    "checkoutUrlMissing": "No checkout URL returned",
+    "portalError": "Could not open billing portal",
+    "portalUrlMissing": "No portal URL returned",
+    "title": "Hosting plan",
+    "description": "Your ChessCoachPal subscription on this hosted site. Family tuition (Zelle, Venmo or your own Stripe) is separate — see Billing → Payment settings.",
+    "cancelsOn": "Cancels on {date}",
+    "upgrade": "Upgrade to Pro",
+    "manage": "Manage billing",
+    "options": "Hosting options"
+  },
+  "dataTransfer": {
+    "exportFailed": "Export failed",
+    "exported": "Export downloaded.",
+    "previewFailed": "Could not preview import",
+    "reviewTitle": "Review ChessCoachPal import",
+    "reviewWarning": "Import {total} rows ({bytes} bytes) from {filename}. Existing matching IDs may be overwritten. {warnings} Review digest: {digest}.",
+    "confirmImport": "Import reviewed backup",
+    "importFailed": "Import failed",
+    "digestMismatch": "Import receipt digest did not match the reviewed backup.",
+    "imported": "Import complete ({count} rows upserted; reviewed digest verified).",
+    "title": "Export & Import all ChessCoachPal data",
+    "description": "Download a full JSON backup of your studio data: students, families, schedules, coaching sessions, attendance, chess learning observations, study links, skills, invoices, events, RSVPs and settings. Payment and AI keys, OAuth credentials and uploaded binary objects are excluded. Import restores data into this account by upserting matching IDs.",
+    "exporting": "Exporting…",
+    "export": "Export all data",
+    "importing": "Importing…",
+    "import": "Import from file…"
+  },
+  "paymentModal": {
+    "title": "Payment settings",
+    "description": "Manual payment instructions or your own Stripe account for family tuition.",
+    "help": "Help",
+    "close": "Close"
   }
 }

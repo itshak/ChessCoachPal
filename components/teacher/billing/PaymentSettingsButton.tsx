@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,6 +21,7 @@ export function PaymentSettingsButton({
   initiallyOpen?: boolean;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
+  const t=useTranslations("paymentModal");
 
   return (
     <>
@@ -29,7 +31,7 @@ export function PaymentSettingsButton({
         type="button"
         onClick={() => setOpen(true)}
       >
-        Payment settings
+        {t("title")}
       </Button>
       {open && (
         <div
@@ -48,17 +50,16 @@ export function PaymentSettingsButton({
                   id="payment-settings-title"
                   className="text-lg font-semibold"
                 >
-                  Payment settings
+                  {t("title")}
                 </h2>
                 <p className="text-sm text-muted mt-1">
-                  Manual instructions or your own Stripe account for family
-                  tuition.{" "}
+                  {t("description")}{" "}
                   <Link
                     href="/help#billing-payments"
                     className="text-primary hover:underline"
                     onClick={() => setOpen(false)}
                   >
-                    Help
+                    {t("help")}
                   </Link>
                 </p>
               </div>
@@ -66,7 +67,7 @@ export function PaymentSettingsButton({
                 type="button"
                 onClick={() => setOpen(false)}
                 className="text-muted hover:text-foreground text-sm cursor-pointer shrink-0 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-surface-dim"
-                aria-label="Close"
+                aria-label={t("close")}
               >
                 ✕
               </button>

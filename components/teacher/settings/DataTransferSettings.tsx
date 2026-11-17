@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export function DataTransferSettings() {
   const router = useRouter();
+  const t=useTranslations("dataTransfer");
   const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
@@ -23,7 +25,7 @@ export function DataTransferSettings() {
       const res = await fetch("/api/settings/export");
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Export failed");
+        throw new Error(data.error??t("exportFailed"));
       }
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") ?? "";
@@ -35,9 +37,9 @@ export function DataTransferSettings() {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      setMessage("Export downloaded.");
+      setMessage(t("exported"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Export failed");
+      setError(e instanceof Error ? e.message:t("exportFailed"));
     } finally {
       setExporting(false);
     }
@@ -57,7 +59,7 @@ export function DataTransferSettings() {
       });
       const preview = await previewResponse.json().catch(() => ({}));
       if (!previewResponse.ok) {
-        throw new Error(preview.error ?? "Could not preview import");
+        throw new Error(preview.error??t("previewFailed"));
       }
       const counts = preview.counts as Record<string, number>;
       const total = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -65,13 +67,10 @@ export function DataTransferSettings() {
         ? (preview.warnings as string[])
         : [];
       const reviewed = await confirm({
-        title: "Review ChessCoachPal import",
+        title:t("reviewTitle"),
         message:
-          `Import ${total} rows (${preview.bytes} bytes) from ${file.name}. ` +
-          `Existing matching IDs may be overwritten. ` +
-          warnings.join(" ") +
-          ` Review digest: ${preview.sha256}.`,
-        confirmLabel: "Import reviewed backup",
+          t("reviewWarning",{total,bytes:preview.bytes,filename:file.name,warnings:warnings.join(" "),digest:preview.sha256}),
+        confirmLabel:t("confirmImport"),
       });
       if (!reviewed) return;
 
@@ -86,17 +85,17 @@ export function DataTransferSettings() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.error ?? "Import failed");
+        throw new Error(data.error??t("importFailed"));
       }
       if (data.sha256 !== preview.sha256) {
-        throw new Error("Import receipt digest did not match the reviewed backup.");
+        throw new Error(t("digestMismatch"));
       }
       const imported = Object.values(data.counts as Record<string, number>)
         .reduce((a, b) => a + b, 0);
-      setMessage(`Import complete (${imported} rows upserted; reviewed digest verified).`);
+      setMessage(t("imported",{count:imported}));
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed");
+      setError(e instanceof Error ? e.message:t("importFailed"));
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -105,13 +104,9 @@ export function DataTransferSettings() {
 
   return (
     <Card>
-      <h2 className="font-semibold text-lg mb-1">Export &amp; Import all ChessCoachPal data</h2>
+      <h2 className="font-semibold text-lg mb-1">{t("title")}</h2>
       <p className="text-sm text-muted mb-4">
-        Download a full JSON backup of your studio data: students, families,
-        schedules, coaching sessions, attendance, chess learning observations,
-        study links, skills, invoices, events, RSVPs, and settings. Payment and
-        AI keys, OAuth credentials, and uploaded binary objects are excluded.
-        Import restores data into this account by upserting matching IDs.
+        {t("description")}
       </p>
 
       <div className="flex flex-wrap gap-2">
@@ -121,7 +116,7 @@ export function DataTransferSettings() {
           disabled={exporting || importing}
           onClick={handleExport}
         >
-          {exporting ? "Exporting…" : "Export all data"}
+          {exporting?t("exporting"):t("export")}
         </Button>
         <Button
           size="sm"
@@ -129,7 +124,7 @@ export function DataTransferSettings() {
           disabled={exporting || importing}
           onClick={() => fileRef.current?.click()}
         >
-          {importing ? "Importing…" : "Import from file…"}
+          {importing?t("importing"):t("import")}
         </Button>
         <input
           ref={fileRef}

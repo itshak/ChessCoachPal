@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { CopyLinkClient } from "@/components/teacher/CopyLinkClient";
  */
 export function TeacherCalendarFeed({ token }: { token: string }) {
   const router = useRouter();
+  const t=useTranslations("calendarFeed");
   const [busy, setBusy] = useState(false);
   const feedPath = `/api/feeds/${token}/calendar`;
 
@@ -24,33 +26,31 @@ export function TeacherCalendarFeed({ token }: { token: string }) {
 
   return (
     <Card>
-      <h2 className="font-semibold mb-1">Calendar feed</h2>
+      <h2 className="font-semibold mb-1">{t("title")}</h2>
       <p className="text-sm text-muted mb-3">
-        Subscribe to your lessons and studio events from Google, Apple, or
-        Outlook Calendar. It is read-only and stays up to date, but anyone
-        with the link can see your schedule — keep it private.
+        {t("description")}
       </p>
       <div className="flex items-center gap-2 flex-wrap">
         <CopyLinkClient
           url={feedPath}
-          title="Teacher calendar feed"
-          label="Feed Link"
+          title={t("linkTitle")}
+          label={t("feedLink")}
         />
         <a
           href={feedPath}
           download
           className="inline-flex items-center justify-center font-semibold bg-surface border border-border text-foreground hover:border-primary/50 px-3 py-1.5 text-xs rounded-lg transition-colors"
         >
-          Download .ics
+          {t("download")}
         </a>
         <Button
           size="sm"
           variant="ghost"
           disabled={busy}
           onClick={handleReset}
-          title="Generate a new feed link. The old one stops working."
+          title={t("resetWarning")}
         >
-          Reset Feed Link
+          {t("reset")}
         </Button>
       </div>
     </Card>
