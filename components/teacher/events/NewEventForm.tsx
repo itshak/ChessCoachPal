@@ -1,6 +1,7 @@
 "use client";
 
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+import {LocalizedUiError} from "@/i18n/api-error";
 import {useTranslations} from "next-intl";
 
 import { useRouter } from "next/navigation";
@@ -42,7 +43,7 @@ export function NewEventForm({
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(toUserError(data,t("submitFailed")));
+      throw new LocalizedUiError(toUserError(data,t("submitFailed")));
     }
     router.push(`/events/${data.event.id}`);
     router.refresh();

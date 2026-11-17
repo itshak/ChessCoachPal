@@ -1,5 +1,8 @@
 "use client";
 
+import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
+import {LocalizedUiError} from "@/i18n/api-error";
+
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {useTranslations,useLocale} from "next-intl";
 import Link from "next/link";
@@ -41,7 +44,8 @@ async function operation<T>(action: string, values: Record<string, unknown> = {}
   });
   const result = (await response.json()) as Result<T>;
   if (!response.ok || !result.ok) {
-    throw new Error(result.error?.message ?? result.error?.code ?? "Operation failed");
+    throw Object.assign(new Error(result.error?.message ?? result.error?.code ?? "Operation failed"),
+      {code:result.error?.code});
   }
   return result.data as T;
 }
@@ -54,6 +58,7 @@ function rosterName(row: Roster) {
 export function ChessCoachWorkspace() {
   const t=useTranslations("coaching");
   const lang=useLocale();
+  const toUserError=useLocalizedApiError();
   const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -123,8 +128,8 @@ export function ChessCoachWorkspace() {
   }, [activeStudentSearch]);
 
   useEffect(() => {
-    void refresh().catch(e => setError(String(e)));
-  }, [refresh]);
+    void refresh().catch(e => setError(toUserError(e,t("operationFailed"))));
+  }, [refresh,t,toUserError]);
 
   useEffect(() => {
     let active = true;
@@ -139,11 +144,11 @@ export function ChessCoachWorkspace() {
         operation<Attendance[]>("attendance.list", { sessionId: selectedSessionId }),
         fetch("/api/coaching/sessions/"+encodeURIComponent(selectedSessionId)+"/roster",
           {cache:"no-store"}).then(async response=>{
-          if(!response.ok)throw new Error("Unable to read frozen roster");
+          if(!response.ok)throw new LocalizedUiError(t("rosterReadFailed"));
           return await response.json() as RosterPreview;
         }),
         fetch("/api/students?limit=1000",{cache:"no-store"}).then(async response=>{
-          if(!response.ok)throw new Error("Unable to load teacher student roster");
+          if(!response.ok)throw new LocalizedUiError(t("studentRosterLoadFailed"));
           const result=await response.json() as {students:Student[]};
           return result.students;
         }),
@@ -155,10 +160,10 @@ export function ChessCoachWorkspace() {
           setRosterRevision(preview.updatedAt);
           setRosterCandidates(candidates);
         }
-      }).catch(e=>{if(active)setError(String(e));});
+      }).catch(e=>{if(active)setError(toUserError(e,t("operationFailed")));});
     }
     return () => { active = false; };
-  }, [selectedSessionId]);
+  }, [selectedSessionId,t,toUserError]);
 
   async function perform(work: () => Promise<unknown>, success: string) {
     setBusy(true); setError(""); setNotice("");
@@ -167,7 +172,7 @@ export function ChessCoachWorkspace() {
       await refresh();
       setNotice(success);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Operation failed");
+      setError(toUserError(e,t("operationFailed")));
     } finally {
       setBusy(false);
     }
@@ -178,30 +183,30 @@ export function ChessCoachWorkspace() {
     await perform(async () => {
       await operation("workplaces.create", { name: workplaceName.trim(), timezone, currency, locale });
       setWorkplaceName("");
-    }, "Workplace created.");
+    }, t("workplaceCreated"));
   }
 
   async function updateWorkplace(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const current=workplaces.find(workplace=>workplace.id===workplaceId);
-    if(!current){setError("Reload the workplace before editing.");return;}
+    if(!current){setError(t("reloadWorkplace"));return;}
     await perform(async () => {
       let policy: Record<string, unknown>;
       try {
         const parsed: unknown = JSON.parse(editWorkplacePolicy);
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          throw new Error("Policy must be a JSON object");
+          throw new LocalizedUiError(t("policyMustBeObject"));
         }
         policy = parsed as Record<string, unknown>;
       } catch {
-        throw new Error("Workplace policy must be a valid JSON object");
+        throw new LocalizedUiError(t("invalidWorkplacePolicy"));
       }
       await operation("workplaces.update", {
         workplaceId, name: editWorkplaceName.trim(), timezone: editTimezone,
         currency: editCurrency, locale: editLocale, policy,
         expectedUpdatedAt:current.updated_at,idempotencyKey:crypto.randomUUID(),
       });
-    }, "Workplace saved.");
+    }, t("workplaceSaved"));
   }
 
   async function addStudent(e: FormEvent<HTMLFormElement>) {
@@ -209,17 +214,17 @@ export function ChessCoachWorkspace() {
     await perform(async () => {
       await operation("students.create", { name: newStudentName.trim(), level: newStudentLevel.trim() || null });
       setNewStudentName(""); setNewStudentLevel("");
-    }, "Student created.");
+    }, t("studentCreated"));
   }
 
   async function updateStudent(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const selected=students.find(student=>student.id===editStudentId);
-    if(!selected){setError("Select a current learner and reload before editing.");return;}
+    if(!selected){setError(t("selectCurrentLearner"));return;}
     await perform(() => operation("students.update", {
       studentId: editStudentId, name: editStudentName.trim(), level: editStudentLevel.trim() || null,
       expectedUpdatedAt:selected.updated_at,idempotencyKey:crypto.randomUUID(),
-    }), "Student saved.");
+    }), t("studentSaved"));
   }
 
   async function reloadEnrollments(id: string) {
@@ -233,14 +238,14 @@ export function ChessCoachWorkspace() {
     await perform(async () => {
       await operation("workplaces.enroll", { workplaceId, studentId: workplaceStudentId });
       await reloadEnrollments(workplaceId);
-    }, "Student enrolled in workplace.");
+    }, t("workplaceEnrollmentSaved"));
   }
 
   async function removeFromGroup(student: string) {
     await perform(async () => {
       await operation("groups.unenroll", { groupId, studentId: student });
       await reloadGroupMembers(groupId);
-    }, "Student removed from group. Existing lesson rosters remain unchanged.");
+    }, t("groupStudentRemoved"));
   }
 
   async function reloadGroupMembers(id: string) {
@@ -258,11 +263,11 @@ export function ChessCoachWorkspace() {
   async function updateGroup(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const current=groups.find(group=>group.id===groupId&&group.workplace_id===workplaceId);
-    if(!current){setError("Reload the class group before editing.");return;}
+    if(!current){setError(t("reloadGroup"));return;}
     await perform(() => operation("groups.update", {
       groupId, workplaceId, name: editGroupName.trim(),
       expectedUpdatedAt:current.updated_at,idempotencyKey:crypto.randomUUID(),
-    }), "Class group saved.");
+    }), t("groupSaved"));
   }
 
   async function addGroup(e: FormEvent<HTMLFormElement>) {
@@ -270,7 +275,7 @@ export function ChessCoachWorkspace() {
     await perform(async () => {
       await operation("groups.create", { name: groupName.trim(), workplaceId });
       setGroupName("");
-    }, "Class group created.");
+    }, t("groupCreated"));
   }
 
   async function enroll(e: FormEvent<HTMLFormElement>) {
@@ -279,18 +284,18 @@ export function ChessCoachWorkspace() {
       await operation("groups.enroll", { groupId, studentId });
       await reloadEnrollments(workplaceId);
       await reloadGroupMembers(groupId);
-    }, "Student enrolled.");
+    }, t("studentEnrolled"));
   }
 
   async function schedule(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!start || (mode === "group" ? !groupId : mode === "private" ? !studentId : adHocIds.length<2)) {
-      setError("Choose a time and a class group or student."); return;
+      setError(t("chooseLessonRoster")); return;
     }
     const zone = workplaces.find(w => w.id === workplaceId)?.timezone ?? "UTC";
     let startsAt: string;
     try { startsAt = workplaceLocalToUtc(start, zone); }
-    catch (e) { setError(e instanceof Error ? e.message : "Invalid lesson time"); return; }
+    catch (e) { setError(toUserError(e,t("invalidLessonTime"))); return; }
     const payload = {
       workplaceId, groupId: mode === "group" ? groupId : undefined,
       studentId: mode === "private" ? studentId : undefined,
@@ -307,7 +312,7 @@ export function ChessCoachWorkspace() {
       requestRef.current = null;
       setSelectedSessionId(created.id);
       setTitle(""); setLessonNote(""); setStart(""); setAdHocIds([]);
-    }, "Lesson session created with a frozen attendance roster.");
+    }, t("lessonCreatedFrozen"));
   }
 
   async function updateSession(e: FormEvent<HTMLFormElement>) {
@@ -316,12 +321,12 @@ export function ChessCoachWorkspace() {
     const zone = workplaces.find(w => w.id === current?.workplace_id)?.timezone ?? "UTC";
     let startsAt: string;
     try { startsAt = workplaceLocalToUtc(editStart, zone); }
-    catch (e) { setError(e instanceof Error ? e.message : "Invalid lesson time"); return; }
+    catch (e) { setError(toUserError(e,t("invalidLessonTime"))); return; }
     await perform(() => operation("sessions.update", {
       sessionId: selectedSessionId, title: editSessionTitle.trim(), startsAt,
       durationMinutes: editDuration, lessonNote: editSessionNote,
       ...(editStatus==="completed"?{}:{status:editStatus}),
-    }), "Session changes saved.");
+    }), t("sessionChangesSaved"));
   }
 
   async function correctHistoricalRoster(e:FormEvent<HTMLFormElement>){
@@ -338,10 +343,10 @@ export function ChessCoachWorkspace() {
         }),
       });
       const outcome=await response.json() as {error?:string};
-      if(!response.ok)throw new Error(outcome.error??"Roster correction failed");
+      if(!response.ok)throw new Error(outcome.error??t("rosterCorrectionFailed"));
       const [preview,people,marks]=await Promise.all([
         fetch(url,{cache:"no-store"}).then(async r=>{
-          if(!r.ok)throw new Error("Unable to reload corrected roster");
+          if(!r.ok)throw new LocalizedUiError(t("rosterReloadFailed"));
           return await r.json() as RosterPreview;
         }),
         operation<Roster[]>("sessions.participants",{sessionId:selectedSessionId}),
@@ -350,7 +355,7 @@ export function ChessCoachWorkspace() {
       setRosterEditIds(preview.studentIds);setRosterRevision(preview.updatedAt);
       setRoster(people);setAttendance(marks);setRosterSessionId(selectedSessionId);
       setRosterReason("");setRosterConfirmed(false);setRosterAudit([]);
-    },"Historical roster corrected; removed attendance is retained in the audit log.");
+    },t("rosterCorrectedAudited"));
   }
 
   async function loadRosterAudit(){
@@ -360,10 +365,10 @@ export function ChessCoachWorkspace() {
       const response=await fetch("/api/coaching/sessions/"+
         encodeURIComponent(selectedSessionId)+"/roster?revisions=true",
         {cache:"no-store"});
-      if(!response.ok)throw new Error("Unable to load correction history");
+      if(!response.ok)throw new LocalizedUiError(t("correctionHistoryFailed"));
       const body=await response.json() as {corrections:RosterAudit[]};
       setRosterAudit(body.corrections);
-    }catch(e){setError(e instanceof Error?e.message:"Unable to load correction history");}
+    }catch(e){setError(toUserError(e,t("correctionHistoryFailed")));}
   }
 
   async function record(student: string, status: AttendanceStatus, note: string) {
@@ -372,7 +377,7 @@ export function ChessCoachWorkspace() {
         sessionId: selectedSessionId, studentId: student, status, note,
       });
       setAttendance(await operation<Attendance[]>("attendance.list", { sessionId: selectedSessionId }));
-    }, "Attendance saved.");
+    }, t("attendanceSavedNotice"));
   }
 
   const localGroups = groups.filter(g => g.workplace_id === workplaceId);
@@ -390,7 +395,7 @@ export function ChessCoachWorkspace() {
       setEditCurrency(w.currency); setEditLocale(w.locale);
       setEditWorkplacePolicy(JSON.stringify(w.policy ?? {}, null, 2));
     }
-    void reloadEnrollments(workplaceId).catch(e => setError(String(e)));
+    void reloadEnrollments(workplaceId).catch(e => setError(toUserError(e,t("operationFailed"))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workplaceId, workplaces]);
 
@@ -403,7 +408,7 @@ export function ChessCoachWorkspace() {
   useEffect(() => {
     const g = groups.find(item => item.id === groupId && item.workplace_id === workplaceId);
     setEditGroupName(g?.name ?? "");
-    void reloadGroupMembers(g?.id ?? "").catch(e => setError(String(e)));
+    void reloadGroupMembers(g?.id ?? "").catch(e => setError(toUserError(e,t("operationFailed"))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId, groups, workplaceId]);
 

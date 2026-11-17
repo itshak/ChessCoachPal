@@ -57,7 +57,14 @@ const codeCopy:Record<AppLocale,Record<string,string>>={
   }
 };
 
+/** Explicitly vetted, already translated UI messages may cross a local
+ * component callback; never trust this marker from an HTTP JSON response. */
+export class LocalizedUiError extends Error {
+  constructor(message:string){super(message);this.name="LocalizedUiError";}
+}
+
 export function localizedApiError(payload:unknown,fallback:string,locale:unknown):string{
+  if(payload instanceof LocalizedUiError)return payload.message;
   const selected=isAppLocale(locale)?locale:"en";
   const row=payload&&typeof payload==="object"&&!Array.isArray(payload)
     ?payload as Record<string,unknown>:{error:payload};

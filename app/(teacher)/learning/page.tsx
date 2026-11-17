@@ -16,9 +16,11 @@ export async function generateMetadata(){
   return {title:t("learning")};
 }
 
-export default function LearningPage() {
-  return <main className="max-w-6xl mx-auto px-4 py-8">
+export default async function LearningPage() {
+  const t=await getTranslations("nav");
+  return <div className="max-w-6xl mx-auto px-4 py-8">
+    <h1 className="text-2xl font-bold mb-6">{t("learning")}</h1>
     <div className="space-y-8"><LearningMaterialsCatalog /><TrainingHomeworkPanel /><LichessConnectionPanel /><LichessStudyExplorer /><StudyPreferencesPanel />
       <StudyChapterEvidencePanel /><PuzzleSeriesPanel /><FenReviewPanel /><LichessPuzzlePublisher /><ChessLearningPanel /><MaterialHistoryPanel /></div>
-  </main>;
+  </div>;
 }

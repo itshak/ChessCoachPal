@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {localizedApiError} from "./api-error";
+import {localizedApiError,LocalizedUiError} from "./api-error";
 
 describe("human-facing API error translation",()=>{
   it("preserves English technical diagnostics as an existing-client fallback",()=>{
@@ -16,6 +16,12 @@ describe("human-facing API error translation",()=>{
       "שמירת ההגדרות נכשלה","he")).toBe("שמירת ההגדרות נכשלה (STUDIO_TEMP_UNAVAILABLE)");
     expect(localizedApiError({error:"Backend exploded"},"Ошибка сохранения","ru"))
       .toBe("Ошибка сохранения");
+  });
+  it("preserves only explicitly trusted localized UI errors across component callbacks",()=>{
+    const trusted=new LocalizedUiError("יש לבחור תלמיד");
+    expect(localizedApiError(trusted,"פעולה נכשלה","he")).toBe("יש לבחור תלמיד");
+    expect(localizedApiError({error:trusted.message},"פעולה נכשלה","he"))
+      .toBe("פעולה נכשלה");
   });
   it("handles native provider Errors without echoing English into Hebrew",()=>{
     expect(localizedApiError(new Error("Provider refused the request"),"הפעולה נכשלה","he"))
