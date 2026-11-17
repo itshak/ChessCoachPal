@@ -206,7 +206,6 @@ services:
       JWT_SECRET: ''
       S3_PROTOCOL_ACCESS_KEY_ID: ''
       S3_PROTOCOL_ACCESS_KEY_SECRET: ''
-      AUTH_SMTP_PASS: ''
       MCP_PUBLIC_ORIGIN: ${APP_URL:?}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?Generate a unique 32-byte encryption key}
       MCP_SESSION_ENCRYPTION_KEY: ${MCP_SESSION_ENCRYPTION_KEY:?Generate a separate 32-byte encryption
