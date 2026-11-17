@@ -112,3 +112,20 @@ The staging application is registered in Coolify as resource UUID `wu2pa46yyr4ss
 - Private beta **requires** `NEXT_PUBLIC_BETA_ONLY=true`, a nonempty private `BETA_ACCESS_CODE`, `DISABLE_SIGNUP=true`, `ENABLE_EMAIL_SIGNUP=true`, and the current synthetic-beta `ENABLE_EMAIL_AUTOCONFIRM=true` until real email verification is implemented. Domain `https://beta.chesscoachpal.com` serves the site and `/mcp`; `https://api-beta.chesscoachpal.com` serves Supabase API. Moving canonical DNS or retiring Vercel is a **separate** change; this security fix does not authorize it.
 
 The staging installation is a disposable acceptance environment. A passing smoke test is not a backup/restore rehearsal, and production migration must remain gated on authentication, MCP client testing, a verified encrypted PostgreSQL and Storage backup, and proper rollout controls.
+
+### SMTP password editing in Coolify
+
+Supabase Auth consumes GOTRUE_SMTP_PASS from the Compose reference
+AUTH_SMTP_PASS. The AUTH_SMTP_PASS value must be managed using Coolify's
+Environment Variables UI and kept out of the Compose file, Git history,
+Next.js application container, build logs, and browser-visible environment
+variables. In particular, do not add a literal empty AUTH_SMTP_PASS assignment
+to the web app service: Coolify treats that declaration as Defined in Compose
+and makes the editable, referenced variable appear read-only.
+
+On the existing live private-beta Coolify resource, set the managed
+AUTH_SMTP_PASS value to the SendPulse SMTP password. Only the auth service
+should receive it via GOTRUE_SMTP_PASS. Check sender activation and test
+STARTTLS delivery before enabling email verification. The current beta
+registration flow deliberately auto-confirms accounts and requires a
+separate invitation-protected confirmation implementation before changing it.
