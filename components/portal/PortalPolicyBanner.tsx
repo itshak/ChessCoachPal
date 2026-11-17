@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import {useTranslations} from "next-intl";
 
 /**
  * One-time "studio policies were updated" notice. Dismissal is stored in
@@ -39,6 +40,7 @@ export function PortalPolicyBanner({
   token: string;
   policiesUpdatedAt: string;
 }) {
+  const t=useTranslations("portal");
   const storageKey = `chesscoachpal-policies-seen-${token}`;
   const visible = useSyncExternalStore(
     subscribe,
@@ -63,16 +65,16 @@ export function PortalPolicyBanner({
       className="flex items-start justify-between gap-3 rounded-xl border border-accent/50 bg-accent/10 px-4 py-3"
     >
       <p className="text-sm">
-        <span className="font-semibold">Studio policies were updated.</span>{" "}
+        <span className="font-semibold">{t("policiesUpdated")}</span>{" "}
         <a href="#studio-policies" className="text-primary hover:underline">
-          See the current policies
+          {t("seePolicies")}
         </a>
         .
       </p>
       <button
         type="button"
         onClick={dismiss}
-        aria-label="Dismiss"
+        aria-label={t("dismiss")}
         className="shrink-0 text-muted hover:text-foreground text-lg leading-none cursor-pointer"
       >
         ×

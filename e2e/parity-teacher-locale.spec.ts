@@ -112,3 +112,26 @@ test("RTL mobile login and landing have no horizontal overflow",async({browser})
     await expect(page.getByLabel("שפת הממשק")).toBeFocused();
   }finally{await context.close();}
 });
+
+test("anonymous family portal renders English, Hebrew RTL, and Russian without mutating records",async({browser})=>{
+  const context=await browser.newContext({baseURL:"http://localhost:3000",viewport:{width:390,height:844}});
+  try{
+    const page=await context.newPage();
+    for(const [locale,dir,heading] of [
+      ["en","ltr","Upcoming Lessons"],
+      ["he","rtl","שיעורים קרובים"],
+      ["ru","ltr","Предстоящие уроки"]
+    ] as const){
+      const response=await context.request.post("/api/preferences/locale",{data:{locale}});
+      expect(response.status(),await response.text()).toBe(200);
+      const request=await page.goto("/portal/dev-portal-jordan");
+      expect(request?.status()).toBe(200);
+      await expect(page.locator("html")).toHaveAttribute("lang",locale);
+      await expect(page.locator("html")).toHaveAttribute("dir",dir);
+      await expect(page.getByRole("heading",{name:heading})).toBeVisible();
+      const over=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
+      expect(over, locale+" family portal horizontal overflow").toBeLessThanOrEqual(2);
+    }
+    await expect(page.getByLabel("Язык интерфейса")).toHaveValue("ru");
+  }finally{await context.close();}
+});

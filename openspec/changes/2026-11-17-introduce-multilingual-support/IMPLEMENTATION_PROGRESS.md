@@ -46,3 +46,13 @@
 - The language E2E spec now verifies Hebrew/Russian schedule headings and Hebrew mobile 390px RTL horizontal-overflow, and keyboard focus of the language switcher. These additional tests require exact-head CI confirmation.
 - Added a TypeScript AST-based UI-text inventory and incremental regression guard, included in the standard typecheck pre-step. Baseline tracks approximately 1,330 remaining English labels across about 100 TSX files: these are **untranslated debt**, not acceptable final coverage. The audit does not yet include all server-generated emails or PDF content.
 - Local latest code: TypeScript, optimized Next.js build, touched-file ESLint, catalog parity and strict MCP structural parity pass. Exact-head GitHub authenticated E2E, PDF/email localization and site-wide responsive RTL remain open.
+
+
+## Guest family portal and policy localization checkpoint
+- Full authenticated E2E, CI, security audit, self-host Compose and backup/restore all succeeded on previous commit fc60162. See the GitHub Actions runs for this SHA; no claim for later heads until they are checked.
+- Added en/he/ru translations to portal teacher notes/lesson cards/events, cancellations, RSVPs, prepaid packages, invoices, payment instructions, policy summary and policy-update notice.
+- Retained authenticated/anonymous session and token permissions, stable status enums, original chess notes and sensitive account/payment values, recipient notification opt-ins and formula-safe reporting.
+- Added a family-portal language selector (anonymous cookie only) and Playwright RTL mobile and English/Hebrew/Russian guest portal layout checks.
+- Event and portal display dates honor UI language and workplace timezone, while canonical event dates, calendar fields, invoice calculations and existing English email format remain unchanged.
+- Catalog-checker fixed to compare unique ICU interpolation parameters because valid Russian plural rules repeat the same parameter in several branches; new ICU runtime tests added.
+- Local TypeScript, optimized Next.js build, ESLint of touched components, catalog and strict website/MCP parity checks pass. Remaining translated-content/RTL audit, PDF and emails, per-recipient language and full-site completeness remain unverified and OpenSpec stays active.

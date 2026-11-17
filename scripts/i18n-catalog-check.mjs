@@ -20,8 +20,10 @@ function flatten(value, prefix = "") {
 const flat = Object.fromEntries(langs.map(lang => [lang, flatten(messages[lang])]));
 const base = Object.keys(flat.en).sort();
 const errors = [];
-const params = text => Array.from(text.matchAll(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g))
-  .map(match => match[1]).sort().join(",");
+// ICU plurals may repeat the same placeholder in one/few/many/other branches.
+// Compare the unique variable names, not the number of occurrences.
+const params = text => [...new Set(Array.from(text.matchAll(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g))
+  .map(match => match[1]))].sort().join(",");
 for (const lang of langs) {
   const keys = Object.keys(flat[lang]).sort();
   for (const key of base.filter(key => !(key in flat[lang]))) errors.push(lang + ": missing " + key);

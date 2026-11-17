@@ -1,17 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { RsvpStatus } from "@/lib/supabase/types";
 
 type RespondStatus = "yes" | "no" | "maybe";
-
-const STATUS_LABELS: Record<RespondStatus, string> = {
-  yes: "Yes",
-  maybe: "Maybe",
-  no: "No",
-};
 
 export function PortalEventRsvp({
   token,
@@ -27,6 +22,7 @@ export function PortalEventRsvp({
   initialNote: string;
 }) {
   const router = useRouter();
+  const t=useTranslations("portal");
   const [status, setStatus] = useState<RespondStatus | null>(
     initialStatus === "pending" ? null : (initialStatus as RespondStatus)
   );
@@ -59,7 +55,7 @@ export function PortalEventRsvp({
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Could not save RSVP");
+      setError(data.error ?? t("couldNotRsvp"));
       return;
     }
 
@@ -71,8 +67,8 @@ export function PortalEventRsvp({
     <div className="mt-3 pt-3 border-t border-border space-y-2">
       <p className="text-xs font-medium text-muted">
         {saved && status
-          ? `Your RSVP: ${STATUS_LABELS[status]}`
-          : "Will you attend?"}
+          ? t("rsvpLabel",{answer:t(status==="yes"?"rsvpYes":status==="no"?"rsvpNo":"rsvpMaybe")})
+          : t("rsvpQuestion")}
       </p>
       <div className="flex flex-wrap gap-2">
         {(["yes", "maybe", "no"] as const).map((value) => (
@@ -84,13 +80,13 @@ export function PortalEventRsvp({
             disabled={busy}
             onClick={() => void submit(value)}
           >
-            {STATUS_LABELS[value]}
+            {t(value==="yes"?"rsvpYes":value==="maybe"?"rsvpMaybe":"rsvpNo")}
           </Button>
         ))}
       </div>
       <div className="flex flex-col sm:flex-row gap-2">
         <label className="flex flex-col gap-0.5 text-xs text-muted sm:w-28">
-          Party size
+          {t("rsvpPartySize")}
           <input
             type="number"
             min={1}
@@ -98,17 +94,17 @@ export function PortalEventRsvp({
             inputMode="numeric"
             value={partySize}
             onChange={(e) => setPartySize(e.target.value)}
-            placeholder="Optional"
+            placeholder={t("optional")}
             className="w-full px-3 py-1.5 rounded-lg border border-border bg-background text-sm text-foreground"
           />
         </label>
         <label className="flex flex-col gap-0.5 text-xs text-muted flex-1 min-w-0">
-          Note
+          {t("rsvpNote")}
           <input
             type="text"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Optional note for your teacher"
+            placeholder={t("optionalRsvpNote")}
             className="w-full px-3 py-1.5 rounded-lg border border-border bg-background text-sm text-foreground"
           />
         </label>
@@ -116,8 +112,7 @@ export function PortalEventRsvp({
       {error && <p className="text-xs text-error">{error}</p>}
       {saved && status && (
         <p className="text-xs text-muted">
-          Change your answer anytime. Update party size or note, then tap Yes /
-          Maybe / No again.
+          {t("rsvpHint")}
         </p>
       )}
     </div>

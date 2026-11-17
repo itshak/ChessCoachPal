@@ -16,6 +16,13 @@ describe("reviewed locale ICU messages",()=>{
     expect(russian("events.participants",{count:1})).toBe("1 участник");
     expect(russian("events.participants",{count:2})).toBe("2 участника");
     expect(russian("events.participants",{count:5})).toBe("5 участников");
+    expect(english("portal.creditPackage",{count:1,minutes:45})).toBe("1 × 45-min lesson");
+    expect(hebrew("portal.creditPackage",{count:2,minutes:60})).toContain("2 שיעורים");
+    expect(russian("portal.creditPackage",{count:1,minutes:60})).toContain("1 урок");
+    expect(russian("portal.creditPackage",{count:3,minutes:60})).toContain("3 урока");
+    expect(russian("portal.creditPackage",{count:5,minutes:60})).toContain("5 уроков");
+    expect(hebrew("portal.cancelWarning",{hours:1})).toContain("שעה אחת");
+
   });
   it("preserves multilingual user-provided names in interpolated translations",()=>{
     const hebrew=createTranslator({locale:"he",messages:he});
