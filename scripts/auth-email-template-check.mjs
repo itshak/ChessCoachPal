@@ -18,6 +18,11 @@ for(const flow of flows){
     `${flow}: cannot perform auth flow`);
   assert.doesNotMatch(html,/AUTH_SMTP_PASS|RESEND_API_KEY|BETA_ACCESS_CODE|SERVICE_ROLE_KEY/,
     `${flow}: secret name leaked`);
+  const localConfig=readFileSync(join("supabase","config.toml"),"utf8");
+  assert.ok(localConfig.includes(`[auth.email.template.${flow}]`),
+    `Supabase CLI does not load ${flow} template`);
+  assert.ok(localConfig.includes(`content_path = "./public/auth-email-templates/${flow}.html"`),
+    `Supabase CLI project-root path differs from HTML assets`);
   for(const compose of ["docker-compose.coolify.yml","docker-compose.example.yml"]){
     const yml=readFileSync(compose,"utf8");
     assert.ok(yml.includes(`GOTRUE_MAILER_TEMPLATES_${flow.toUpperCase()}:`),

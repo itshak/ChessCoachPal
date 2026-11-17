@@ -1,6 +1,6 @@
 # Tasks: introduce multilingual support (en, he, ru)
 
-**Active implementation, not yet complete or archived. The user requested NO MERGE into main; F3 and F4 remain intentionally gated by approval and actual full acceptance.** Mark only fully implemented items complete; do not infer full translation/RTL from catalog or structural parity checks. Complete remaining requirements and retain exact-head acceptance links.
+**v0.1.7 final-release candidate integrated with current main (2026-11-18).** The maintainer has explicitly authorized CI-gated merge to main, new annotated version tag and Coolify redeployment. Do not merge, tag or deploy unless the exact candidate CI, authenticated E2E, fresh schema, security, Compose and backup/restore gates pass. Mark only verified work complete; live ChatGPT/Claude tests and a manual screen-reader/legal review remain separately deferred (see docs/RELEASING.md), not falsely checked off.
 
 ## A. Establish the contract and framework
 - [ ] A1. Inventory every visible English literal in teacher, guest/auth, legal, marketing, portal, emails, reports/CSV/PDF, PWA/offline, error states and accessibility text; map surfaces to translation namespaces.
