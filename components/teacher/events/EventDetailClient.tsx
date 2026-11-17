@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,12 +17,7 @@ import {
 } from "@/lib/events";
 import type { RsvpStatus } from "@/lib/supabase/types";
 
-const RSVP_LABELS: Record<RsvpStatus, string> = {
-  pending: "Pending",
-  yes: "Yes",
-  no: "No",
-  maybe: "Maybe",
-};
+
 
 export function EventDetailClient({
   eventId,
@@ -58,6 +54,7 @@ export function EventDetailClient({
     note: string;
   }[];
 }) {
+  const t=useTranslations("eventDetail");
   const router = useRouter();
   const { showToast } = useToast();
   const [emailBusy, setEmailBusy] = useState(false);
@@ -97,7 +94,7 @@ export function EventDetailClient({
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data.error ?? "Failed to save event");
+      throw new Error(data.error??t("saveFailed"));
     }
     router.refresh();
   }
@@ -111,14 +108,11 @@ export function EventDetailClient({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setEmailMessage(data.error ?? "Failed to send emails");
+        setEmailMessage(data.error??t("sendFailed"));
         return;
       }
       setEmailMessage(
-        `Sent to ${data.sent} ${data.sent === 1 ? "family" : "families"}` +
-          (data.skipped
-            ? ` · skipped ${data.skipped} (no email or send failed)`
-            : "")
+        t("sentToFamilies",{count:data.sent,skipped:data.skipped?t("skipped",{count:data.skipped}):""})
       );
       router.refresh();
     } finally {
@@ -132,14 +126,14 @@ export function EventDetailClient({
       const res = await fetch(`/api/events/${eventId}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
-        showToast(err?.error ?? "Failed to delete event", "error");
+        showToast(err?.error??t("deleteFailed"), "error");
         setDeleting(false);
         return;
       }
       router.push("/events");
       router.refresh();
     } catch {
-      showToast("Failed to delete event", "error");
+      showToast(t("deleteFailed"),"error");
       setDeleting(false);
     }
   }
@@ -148,8 +142,8 @@ export function EventDetailClient({
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{title}</h1>
-          <p className="text-muted text-sm mt-1">Edit details, performers, and RSVPs.</p>
+          <h1 className="text-2xl font-bold"><bdi dir="auto">{title}</bdi></h1>
+          <p className="text-muted text-sm mt-1">{t("description")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -158,7 +152,7 @@ export function EventDetailClient({
             onClick={handleEmail}
             disabled={emailBusy || rsvps.length === 0}
           >
-            {emailBusy ? "Sending…" : "Email families"}
+            {emailBusy?t("sending"):t("emailFamilies")}
           </Button>
           <Button
             variant="ghost"
@@ -166,7 +160,7 @@ export function EventDetailClient({
             className="text-error hover:bg-error/10 hover:text-error"
             onClick={() => setConfirmDelete(true)}
           >
-            Delete
+            {t("delete")}
           </Button>
         </div>
       </div>
@@ -176,40 +170,40 @@ export function EventDetailClient({
       )}
 
       <Card>
-        <h2 className="font-semibold mb-4">Event details</h2>
+        <h2 className="font-semibold mb-4">{t("eventDetails")}</h2>
         <EventForm
           key={`${eventId}-${startsAt}-${sendReminder}-${reminderSentAt ?? ""}-${students.map((s) => s.studentId).join(",")}`}
           students={allStudents}
           initial={initial}
-          submitLabel="Save changes"
+          submitLabel={t("saveChanges")}
           onSubmit={handleSave}
           reminderSentAt={reminderSentAt}
         />
       </Card>
 
       <Card>
-        <h2 className="font-semibold mb-3">RSVPs</h2>
+        <h2 className="font-semibold mb-3">{t("rsvps")}</h2>
         {rsvps.length === 0 ? (
           <p className="text-sm text-muted">
-            No families invited yet. Add performers with a family linked to create RSVPs.
+            {t("noFamilies")}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-start text-muted border-b border-border">
-                  <th className="py-2 pe-3 font-medium">Family</th>
-                  <th className="py-2 pe-3 font-medium">Status</th>
-                  <th className="py-2 pe-3 font-medium">Party size</th>
-                  <th className="py-2 font-medium">Note</th>
+                  <th className="py-2 pe-3 font-medium">{t("family")}</th>
+                  <th className="py-2 pe-3 font-medium">{t("status")}</th>
+                  <th className="py-2 pe-3 font-medium">{t("partySize")}</th>
+                  <th className="py-2 font-medium">{t("note")}</th>
                 </tr>
               </thead>
               <tbody>
                 {rsvps.map((rsvp) => (
                   <tr key={rsvp.id} className="border-b border-border last:border-0">
-                    <td className="py-2.5 pe-3 font-medium">{rsvp.guardianName}</td>
+                    <td className="py-2.5 pe-3 font-medium"><bdi dir="auto">{rsvp.guardianName}</bdi></td>
                     <td className="py-2.5 pe-3">
-                      {RSVP_LABELS[rsvp.status] ?? rsvp.status}
+                      {rsvp.status==="pending"?t("pending"):rsvp.status==="yes"?t("yes"):rsvp.status==="no"?t("no"):t("maybe")}
                     </td>
                     <td className="py-2.5 pe-3 tabular-nums">
                       {rsvp.partySize ?? "—"}
@@ -234,9 +228,9 @@ export function EventDetailClient({
             className="bg-surface border border-border rounded-xl shadow-lg max-w-sm w-full p-5"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-semibold text-lg mb-1">Delete event?</h3>
+            <h3 className="font-semibold text-lg mb-1">{t("deleteTitle")}</h3>
             <p className="text-muted text-sm mb-4">
-              &quot;{title}&quot; and its RSVPs will be permanently deleted. This cannot be undone.
+              {t("deleteWarning",{title})}
             </p>
             <div className="flex justify-end gap-2">
               <Button
@@ -245,7 +239,7 @@ export function EventDetailClient({
                 onClick={() => setConfirmDelete(false)}
                 disabled={deleting}
               >
-                Cancel
+                {t("cancel")}
               </Button>
               <Button
                 variant="error"
@@ -253,7 +247,7 @@ export function EventDetailClient({
                 onClick={handleDelete}
                 disabled={deleting}
               >
-                {deleting ? "Deleting…" : "Delete"}
+                {deleting?t("deleting"):t("delete")}
               </Button>
             </div>
           </div>

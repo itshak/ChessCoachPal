@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,24 +9,10 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   IMPORT_FIELDS,
   type ColumnMapping,
-  type ImportField,
   type NormalizedImportRow,
 } from "@/lib/spreadsheet-import";
 
-const FIELD_LABELS: Record<ImportField, string> = {
-  student_name: "Student name",
-  student_birthdate: "Birthdate",
-  level: "Level",
-  teacher_notes: "Teacher notes",
-  archived: "Archived (optional)",
-  guardian_name: "Guardian name",
-  family_name: "Family name",
-  email: "Email",
-  phone: "Phone",
-  secondary_name: "Second guardian",
-  secondary_email: "Second email",
-  secondary_phone: "Second phone",
-};
+
 
 const selectClass =
   "px-2 py-1.5 rounded-lg border border-border bg-background text-sm w-full";
@@ -35,7 +22,8 @@ export function SpreadsheetImportSettings({
 }: {
   aiConfigured: boolean;
 }) {
-  const router = useRouter();
+  const t=useTranslations("studentImport");
+  const router=useRouter();
   const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -62,7 +50,7 @@ export function SpreadsheetImportSettings({
         body: form,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "Parse failed");
+      if (!res.ok) throw new Error(data.error??t("parseFailed"));
 
       setFilename(data.filename);
       setHeaders(data.headers ?? []);
@@ -72,7 +60,7 @@ export function SpreadsheetImportSettings({
       setPreviewTotal(data.previewTotal ?? 0);
       setIssues(data.issues ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Parse failed");
+      setError(e instanceof Error ? e.message:t("parseFailed"));
       clearPreview();
     } finally {
       setBusy(false);
@@ -101,12 +89,12 @@ export function SpreadsheetImportSettings({
         body: JSON.stringify({ rows, mapping: nextMapping }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "Preview failed");
+      if (!res.ok) throw new Error(data.error??t("previewFailed"));
       setPreviewRows(data.previewRows ?? []);
       setPreviewTotal(data.previewTotal ?? 0);
       setIssues(data.issues ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Preview failed");
+      setError(e instanceof Error ? e.message:t("previewFailed"));
     } finally {
       setBusy(false);
     }
@@ -114,9 +102,9 @@ export function SpreadsheetImportSettings({
 
   async function suggestWithAi() {
     const approved = await confirm({
-      title: "Share spreadsheet samples with external AI?",
-      message: "ChessCoachPal will send your column headers and up to five sample rows to your configured external AI provider to suggest a mapping. These rows may contain student or family personal information. You can instead map columns locally without sharing them.",
-      confirmLabel: "Share sample rows",
+      title:t("aiConsentTitle"),
+      message:t("aiConsentWarning"),
+      confirmLabel:t("aiConsentConfirm"),
     });
     if (!approved) return;
     setBusy(true);
@@ -133,20 +121,20 @@ export function SpreadsheetImportSettings({
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "Suggest failed");
+      if (!res.ok) throw new Error(data.error??t("suggestFailed"));
       await refreshPreview({ ...mapping, ...data.mapping });
       if (data.warning) setMessage(data.warning);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Suggest failed");
+      setError(e instanceof Error ? e.message:t("suggestFailed"));
       setBusy(false);
     }
   }
 
   async function commit() {
     const ok = await confirm({
-      title: "Import students?",
-      message: `Import ${previewTotal} student${previewTotal === 1 ? "" : "s"}? Existing students with the same name are skipped.`,
-      confirmLabel: "Import",
+      title:t("confirmImportTitle"),
+      message:t("confirmImportWarning",{count:previewTotal}),
+      confirmLabel:t("import"),
     });
     if (!ok) return;
 
@@ -160,33 +148,42 @@ export function SpreadsheetImportSettings({
         body: JSON.stringify({ rows, mapping }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "Import failed");
+      if (!res.ok) throw new Error(data.error??t("importFailed"));
       setMessage(
-        `Created ${data.studentsCreated} student${data.studentsCreated === 1 ? "" : "s"}, ${data.familiesCreated} famil${data.familiesCreated === 1 ? "y" : "ies"}. Skipped ${data.studentsSkipped}.`
+        t("importReceipt",{students:data.studentsCreated,families:data.familiesCreated,skipped:data.studentsSkipped})
       );
       clearPreview();
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed");
+      setError(e instanceof Error ? e.message:t("importFailed"));
     } finally {
       setBusy(false);
     }
   }
 
+  function displayIssue(message:string):string{
+    if(message==="Missing student name (skipped)")return t("missingName");
+    const birth=message.match(/^Could not parse birthdate "(.+)"$/);
+    if(birth)return t("invalidBirthdate",{value:birth[1]});
+    const archive=message.match(/^Unknown archive status "(.+)" \(row skipped\)$/);
+    if(archive)return t("unknownArchiveStatus",{value:archive[1]});
+    return message;
+  }
+
   function downloadTemplate() {
     const header = [
-      "Student Name",
-      "Parent Name",
-      "Email",
-      "Phone",
-      "Birthdate",
-      "Level",
+      t("template.student"),
+      t("template.parent"),
+      t("template.email"),
+      t("template.phone"),
+      t("template.birthdate"),
+      t("template.level"),
     ].join(",");
     const sample = [
-      "Alex Rivera,Jordan Rivera,jordan@example.com,555-0100,2015-04-12,Faber 2A",
+      "Alex Rivera,Jordan Rivera,jordan@example.com,555-0100,2015-04-12,4",
       "Sam Rivera,Jordan Rivera,jordan@example.com,555-0100,,",
     ].join("\n");
-    const blob = new Blob([`${header}\n${sample}\n`], {
+    const blob = new Blob([`\uFEFF${header}\n${sample}\n`], {
       type: "text/csv;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
@@ -199,11 +196,9 @@ export function SpreadsheetImportSettings({
 
   return (
     <Card>
-      <h2 className="font-semibold text-lg mb-1">Import students from a file</h2>
+      <h2 className="font-semibold text-lg mb-1">{t("title")}</h2>
       <p className="text-sm text-muted mb-4">
-        Upload a CSV or Excel sheet (first sheet only). Map columns, preview,
-        then import. Works without AI; optional AI can suggest mappings if you
-        configured a key under Optional AI.
+        {t("description")}
       </p>
 
       <div className="flex flex-wrap gap-2 mb-3">
@@ -213,7 +208,7 @@ export function SpreadsheetImportSettings({
           disabled={busy}
           onClick={() => fileRef.current?.click()}
         >
-          {busy && !filename ? "Reading…" : "Upload spreadsheet…"}
+          {busy&&!filename?t("reading"):t("upload")}
         </Button>
         <Button
           size="sm"
@@ -221,7 +216,7 @@ export function SpreadsheetImportSettings({
           disabled={busy}
           onClick={downloadTemplate}
         >
-          Download CSV template
+          {t("downloadTemplate")}
         </Button>
         <input
           ref={fileRef}
@@ -241,8 +236,7 @@ export function SpreadsheetImportSettings({
             <span className="font-medium break-all">{filename}</span>
             <span className="text-muted">
               {" "}
-              · {rows.length} row{rows.length === 1 ? "" : "s"} ·{" "}
-              {previewTotal} ready
+              · {t("rowsReady",{rows:rows.length,ready:previewTotal})}
             </span>
           </p>
 
@@ -250,7 +244,7 @@ export function SpreadsheetImportSettings({
             {IMPORT_FIELDS.map((field) => (
               <label key={field} className="text-xs space-y-1">
                 <span className="text-muted font-medium">
-                  {FIELD_LABELS[field]}
+                  {t(`fields.${field}`)}
                   {field === "student_name" ? " *" : ""}
                 </span>
                 <select
@@ -264,7 +258,7 @@ export function SpreadsheetImportSettings({
                     void refreshPreview(next);
                   }}
                 >
-                  <option value="">(not mapped)</option>
+                  <option value="">{t("notMapped")}</option>
                   {headers.map((h) => (
                     <option key={h} value={h}>
                       {h}
@@ -283,7 +277,7 @@ export function SpreadsheetImportSettings({
                 disabled={busy}
                 onClick={() => void suggestWithAi()}
               >
-                Suggest mapping with AI
+                {t("suggestAi")}
               </Button>
             )}
             <Button
@@ -291,7 +285,7 @@ export function SpreadsheetImportSettings({
               disabled={busy || previewTotal === 0}
               onClick={() => void commit()}
             >
-              {busy ? "Working…" : `Import ${previewTotal} students`}
+              {busy?t("working"):t("importCount",{count:previewTotal})}
             </Button>
             <Button
               size="sm"
@@ -299,7 +293,7 @@ export function SpreadsheetImportSettings({
               disabled={busy}
               onClick={clearPreview}
             >
-              Cancel
+              {t("cancel")}
             </Button>
           </div>
 
@@ -308,19 +302,19 @@ export function SpreadsheetImportSettings({
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="text-start text-muted border-b border-border">
-                    <th className="py-1 pe-2">Row</th>
-                    <th className="py-1 pe-2">Student</th>
-                    <th className="py-1 pe-2">Status</th>
-                    <th className="py-1 pe-2">Guardian</th>
-                    <th className="py-1 pe-2">Email</th>
+                    <th className="py-1 pe-2">{t("row")}</th>
+                    <th className="py-1 pe-2">{t("student")}</th>
+                    <th className="py-1 pe-2">{t("status")}</th>
+                    <th className="py-1 pe-2">{t("guardian")}</th>
+                    <th className="py-1 pe-2">{t("email")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {previewRows.slice(0, 12).map((r) => (
                     <tr key={r.sourceRow} className="border-b border-border/60">
                       <td className="py-1 pe-2">{r.sourceRow}</td>
-                      <td className="py-1 pe-2">{r.studentName}</td>
-                      <td className="py-1 pe-2">{r.archived ? "Archived" : "Active"}</td>
+                      <td className="py-1 pe-2"><bdi dir="auto">{r.studentName}</bdi></td>
+                      <td className="py-1 pe-2">{r.archived?t("archived"):t("active")}</td>
                       <td className="py-1 pe-2">
                         {r.guardianName || r.familyName || "—"}
                       </td>
@@ -331,7 +325,7 @@ export function SpreadsheetImportSettings({
               </table>
               {previewTotal > 12 && (
                 <p className="text-muted mt-1">
-                  Showing 12 of {previewTotal}…
+                  {t("showingRows",{count:previewTotal})}
                 </p>
               )}
             </div>
@@ -341,7 +335,7 @@ export function SpreadsheetImportSettings({
             <ul className="text-xs text-muted list-disc list-inside">
               {issues.slice(0, 8).map((i) => (
                 <li key={`${i.row}-${i.message}`}>
-                  Row {i.row}: {i.message}
+                  {t("rowNumber",{row:i.row})} {displayIssue(i.message)}
                 </li>
               ))}
             </ul>

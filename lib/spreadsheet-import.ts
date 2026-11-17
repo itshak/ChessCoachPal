@@ -57,6 +57,7 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "child name",
     "learner",
     "pupil",
+    "שם התלמיד","שם תלמיד","תלמיד","имя ученика","ученик","ученица",
   ],
   student_birthdate: [
     "birthdate",
@@ -65,10 +66,11 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "date of birth",
     "birth date",
     "student birthdate",
+    "תאריך לידה","дата рождения",
   ],
-  level: ["level", "rcm", "grade", "book", "method level"],
-  teacher_notes: ["notes", "teacher notes", "comments", "memo"],
-  archived: ["archived", "former student", "inactive", "student status"],
+  level: ["level","rcm","grade","book","method level","רמה","уровень"],
+  teacher_notes: ["notes","teacher notes","comments","memo","הערות מורה","הערות","заметки тренера","примечания"],
+  archived: ["archived","former student","inactive","student status","בארכיון","מצב תלמיד","в архиве","архив","статус ученика"],
   guardian_name: [
     "guardian",
     "guardian name",
@@ -80,8 +82,10 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "father",
     "contact name",
     "primary contact",
+    "שם ההורה","שם האפוטרופוס","שם אפוטרופוס","הורה",
+    "имя родителя","имя опекуна","родитель","опекун",
   ],
-  family_name: ["family", "family name", "household"],
+  family_name: ["family","family name","household","שם המשפחה","фамилия","название семьи"],
   email: [
     "email",
     "e-mail",
@@ -89,6 +93,7 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "guardian email",
     "contact email",
     "email address",
+    "דוא״ל",'דוא"ל',"אימייל","эл. почта","электронная почта","почта",
   ],
   phone: [
     "phone",
@@ -98,6 +103,7 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "parent phone",
     "guardian phone",
     "contact phone",
+    "טלפון","נייד","телефон","мобильный",
   ],
   secondary_name: [
     "secondary",
@@ -105,9 +111,10 @@ const HEADER_SYNONYMS: Record<ImportField, string[]> = {
     "second guardian",
     "parent 2",
     "other parent",
+    "אפוטרופוס נוסף","הורה נוסף","второй опекун","второй родитель",
   ],
-  secondary_email: ["secondary email", "parent 2 email", "other email"],
-  secondary_phone: ["secondary phone", "parent 2 phone", "other phone"],
+  secondary_email: ["secondary email","parent 2 email","other email","דוא״ל נוסף","электронная почта второго опекуна","дополнительная почта"],
+  secondary_phone: ["secondary phone","parent 2 phone","other phone","טלפון נוסף","дополнительный телефон"],
 };
 
 function normalizeHeader(h: string): string {
@@ -236,8 +243,8 @@ export function normalizeImportRows(
     }
 
     const statusRaw = cell(row, mapping.archived).trim().toLowerCase();
-    const archived = ["true", "yes", "1", "archived", "inactive", "former"].includes(statusRaw);
-    if (statusRaw && !archived && !["false", "no", "0", "active", "current"].includes(statusRaw)) {
+    const archived = ["true","yes","1","archived","inactive","former","כן","בארכיון","לא פעיל","да","в архиве","неактивен"].includes(statusRaw);
+    if (statusRaw && !archived && !["false","no","0","active","current","לא","פעיל","нет","активен"].includes(statusRaw)) {
       issues.push({ row: sourceRow, message: `Unknown archive status "${statusRaw}" (row skipped)` });
       return;
     }

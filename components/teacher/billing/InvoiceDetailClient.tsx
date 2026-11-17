@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import {useLocale,useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -77,6 +78,8 @@ export function InvoiceDetailClient({
   creditPackage?: { studentId: string; studentName: string; label: string } | null;
 }) {
   const router = useRouter();
+  const t=useTranslations("invoiceDetail");
+  const locale=useLocale();
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [notes, setNotes] = useState(initialNotes);
@@ -135,20 +138,20 @@ export function InvoiceDetailClient({
     });
     setBusy(false);
     if (res.ok) {
-      setFlash({ text: "Saved", tone: "ok" });
+      setFlash({ text:t("saved"), tone: "ok" });
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setFlash({ text: data.error ?? "Save failed", tone: "error" });
+      setFlash({ text: data.error ?? t("saveFailed"), tone: "error" });
     }
   }
 
   async function regenerate() {
     const ok = await confirm({
-      title: "Regenerate line items?",
+      title:t("regenerateTitle"),
       message:
-        "Replace line items with a fresh calculation from attendance and your current billing settings? Manual edits on this draft will be lost.",
-      confirmLabel: "Regenerate",
+        t("regenerateWarning"),
+      confirmLabel:t("regenerate"),
     });
     if (!ok) return;
     regenerationReceipt.current??={revision:initialRevision,key:crypto.randomUUID()};
@@ -165,22 +168,22 @@ export function InvoiceDetailClient({
       });
     }catch{
       setBusy(false);
-      setFlash({text:"Connection interrupted. Retry to recover the same regeneration result.",tone:"error"});
+      setFlash({text:t("regenerateConnection"),tone:"error"});
       return;
     }
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
       if(res.status===409){regenerationReceipt.current=null;router.refresh();}
-      setFlash({ text: data.error ?? "Regenerate failed", tone: "error" });
+      setFlash({ text: data.error ?? t("regenerateFailed"), tone: "error" });
       return;
     }
     regenerationReceipt.current=null;
     setFlash({
       text:
         data.itemCount === 0
-          ? "Regenerated; no billable lessons in this period"
-          : `Regenerated ${data.itemCount} line${data.itemCount === 1 ? "" : "s"}`,
+          ? t("regeneratedEmpty")
+          : t("regenerated",{count:data.itemCount}),
       tone: data.itemCount === 0 ? "warn" : "ok",
     });
     router.refresh();
@@ -199,7 +202,7 @@ export function InvoiceDetailClient({
         });
         if (!saved.ok) {
           const failure = await saved.json().catch(() => ({}));
-          throw new Error(failure.error ?? "Could not save draft before sending");
+          throw new Error(failure.error ?? t("saveBeforeSend"));
         }
       }
       const response = await fetch(
@@ -208,41 +211,41 @@ export function InvoiceDetailClient({
       );
       if (!response.ok) {
         const failure = await response.json().catch(() => ({}));
-        throw new Error(failure.error ?? "Could not preview invoice before sending");
+        throw new Error(failure.error ?? t("previewBeforeSend"));
       }
       const preview = await response.json() as {
         messageSubject: string; messagePreview: string; subtotalCents: number;
         currency: string; recipientCount: number; recipients?: string[];
         pdfReady: boolean;
       };
-      if (!preview.pdfReady) throw new Error("Invoice PDF is not ready");
+      if (!preview.pdfReady) throw new Error(t("pdfNotReady"));
       const recipients = preview.recipients?.length
         ? preview.recipients.join(", ")
-        : "No email address on file (portal-only status update)";
+        :t("noEmail");
       const approved = await confirm({
-        title: "Review invoice before sending",
+        title:t("sendTitle"),
         message: [
-          "Amount: " + formatMoney(preview.subtotalCents, preview.currency),
-          "Recipients: " + preview.recipientCount + " (" + recipients + ")",
-          "Subject: " + preview.messageSubject,
+          t("previewAmount",{amount:formatMoney(preview.subtotalCents,preview.currency)}),
+          t("previewRecipients",{count:preview.recipientCount,recipients}),
+          t("previewSubject",{subject:preview.messageSubject}),
           "",
           preview.messagePreview,
           "",
-          "Sending freezes the line items. Confirm this external email action?",
+          t("sendWarning"),
         ].join("\n"),
-        confirmLabel: "Send invoice",
+        confirmLabel:t("sendInvoice"),
       });
       if (!approved) return;
       const res = await fetch("/api/billing/invoices/" + invoiceId + "/send", {
         method: "POST",
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "Send failed");
+      if (!res.ok) throw new Error(data.error ?? t("sendFailed"));
       const base = data.emailed
-        ? "Sent and emailed"
+        ? t("sentEmailed")
         : data.emailError
-          ? "Sent (" + data.emailError + ")"
-          : "Sent";
+          ? t("sentError",{error:data.emailError})
+          : t("sent");
       const text = data.checkoutError ? base + ". " + data.checkoutError : base;
       setFlash({
         text,
@@ -251,7 +254,7 @@ export function InvoiceDetailClient({
       router.refresh();
     } catch (error) {
       setFlash({
-        text: error instanceof Error ? error.message : "Send failed",
+        text: error instanceof Error ? error.message : t("sendFailed"),
         tone: "error",
       });
     } finally {
@@ -278,7 +281,7 @@ export function InvoiceDetailClient({
     });
     if (!saved.ok) {
       const failure = await saved.json().catch(() => ({}));
-      setFlash({ text: failure.error ?? "Save the draft before recording payment", tone: "error" });
+      setFlash({ text: failure.error ?? t("saveBeforePayment"), tone: "error" });
       router.refresh();
       return false;
     }
@@ -288,9 +291,9 @@ export function InvoiceDetailClient({
 
   async function markPaid() {
     const approved = await confirm({
-      title: "Record full payment?",
-      message: `Save this draft and record the full remaining balance of ${formatMoney(liveBalanceCents, currency)}? Nothing will be sent to the family unless you explicitly send the invoice.`,
-      confirmLabel: "Record full payment",
+      title:t("fullPaymentTitle"),
+      message:t("fullPaymentWarning",{amount:formatMoney(liveBalanceCents,currency)}),
+      confirmLabel:t("recordFull"),
     });
     if (!approved) return;
     setBusy(true);
@@ -304,13 +307,13 @@ export function InvoiceDetailClient({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setFlash({ text: data.error ?? "Payment not recorded", tone: "error" });
+        setFlash({ text: data.error ?? t("paymentNotRecorded"), tone: "error" });
       } else {
-        setFlash({ text: "Payment recorded; invoice paid in full", tone: "ok" });
+        setFlash({ text:t("paymentFull"), tone: "ok" });
         router.refresh();
       }
     } catch {
-      setFlash({ text: "Payment request failed; review the ledger before retrying", tone: "error" });
+      setFlash({ text:t("paymentRequestFailed"), tone: "error" });
     } finally {
       setBusy(false);
     }
@@ -320,12 +323,12 @@ export function InvoiceDetailClient({
     if (!paymentForm) return;
     const amountCents = dollarsToCents(paymentForm.amount);
     if (amountCents === null || amountCents <= 0) {
-      setFlash({ text: "Enter an amount greater than zero", tone: "error" });
+      setFlash({ text:t("positiveAmount"), tone: "error" });
       return;
     }
     if (amountCents > liveBalanceCents) {
       setFlash({
-        text: `Amount is more than the ${formatMoney(liveBalanceCents, currency)} due`,
+        text:t("overpayment",{amount:formatMoney(liveBalanceCents,currency)}),
         tone: "error",
       });
       return;
@@ -348,21 +351,21 @@ export function InvoiceDetailClient({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setFlash({ text: data.error ?? "Payment not recorded", tone: "error" });
+        setFlash({ text: data.error ?? t("paymentNotRecorded"), tone: "error" });
         return;
       }
       pendingManualPayment.current = null;
       setPaymentForm(null);
       setFlash({
         text: data.paid
-          ? "Payment recorded; invoice paid in full"
-          : `Payment recorded; ${formatMoney(data.balanceCents ?? 0, currency)} still due`,
+          ? t("paymentFull")
+          : t("paymentPartial",{amount:formatMoney(data.balanceCents??0,currency)}),
         tone: "ok",
       });
       router.refresh();
     } catch {
       setFlash({
-        text: "Unable to confirm payment. Review the ledger, then retry the same request.",
+        text:t("paymentUnconfirmed"),
         tone: "error",
       });
     } finally {
@@ -373,15 +376,9 @@ export function InvoiceDetailClient({
   async function removePayment(payment: { id: string; amountCents: number }) {
     const reopens = status === "paid";
     const ok = await confirm({
-      title: "Remove payment?",
-      message: `Remove the ${formatMoney(payment.amountCents, currency)} payment from this invoice?${
-        reopens
-          ? sentAt
-            ? " The invoice will reopen as sent, and the remaining balance may appear in the family portal."
-            : " The invoice will reopen as a private draft; nothing will appear in the family portal."
-          : ""
-      } Use this to fix a payment recorded by mistake; nothing is sent to the family.`,
-      confirmLabel: "Remove payment",
+      title:t("removePaymentTitle"),
+      message:t("removePaymentWarning",{amount:formatMoney(payment.amountCents,currency),reopens:reopens?(sentAt?t("reopenSent"):t("reopenDraft")):""}),
+      confirmLabel:t("removePayment"),
       variant: "danger",
     });
     if (!ok) return;
@@ -394,14 +391,14 @@ export function InvoiceDetailClient({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setFlash({ text: data.error ?? "Failed", tone: "error" });
+      setFlash({ text: data.error ?? t("failed"), tone: "error" });
       return;
     }
     setFlash({
       text:
         reopens && data.status === "sent"
-          ? "Payment removed; invoice reopened"
-          : "Payment removed",
+          ? t("removedReopened")
+          : t("removed"),
       tone: "ok",
     });
     router.refresh();
@@ -409,12 +406,12 @@ export function InvoiceDetailClient({
 
   async function voidInvoice() {
     const ok = await confirm({
-      title: "Void invoice?",
+      title:t("voidTitle"),
       message:
         paidCents > 0
-          ? "Voiding cancels the charge, so the family should not pay the rest. Payments already recorded stay on the voided invoice and can no longer be removed."
-          : "Voiding cancels the charge, so the family should not pay it.",
-      confirmLabel: "Void",
+          ? t("voidPaidWarning")
+          : t("voidUnpaidWarning"),
+      confirmLabel:t("void"),
       variant: "danger",
     });
     if (!ok) return;
@@ -426,7 +423,7 @@ export function InvoiceDetailClient({
     if (res.ok) router.refresh();
     else {
       const data = await res.json().catch(() => ({}));
-      setFlash({ text: data.error ?? "Failed", tone: "error" });
+      setFlash({ text: data.error ?? t("failed"), tone: "error" });
     }
   }
 
@@ -439,12 +436,12 @@ export function InvoiceDetailClient({
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setFlash({ text: data.error ?? "Checkout failed", tone: "error" });
+      setFlash({ text: data.error ?? t("checkoutFailed"), tone: "error" });
       return;
     }
     if (data.url) {
       await navigator.clipboard.writeText(data.url).catch(() => {});
-      setFlash({ text: "Pay link copied to clipboard", tone: "ok" });
+      setFlash({ text:t("copiedPayLink"), tone: "ok" });
       router.refresh();
     }
   }
@@ -456,7 +453,7 @@ export function InvoiceDetailClient({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold">{familyName}</h1>
+            <h1 className="text-2xl font-bold"><bdi dir="auto">{familyName}</bdi></h1>
             <InvoiceStatusBadge status={status} partiallyPaid={partiallyPaid} />
           </div>
           <p className="text-sm text-muted">
@@ -465,9 +462,9 @@ export function InvoiceDetailClient({
             {partiallyPaid && (
               <>
                 {" "}
-                · {formatMoney(paidCents, currency)} paid ·{" "}
+                · {t("paidAmount",{amount:formatMoney(paidCents,currency)})} ·{" "}
                 <span className="font-semibold text-foreground">
-                  {formatMoney(balanceCents, currency)} due
+                  {t("dueAmount",{amount:formatMoney(balanceCents,currency)})}
                 </span>
               </>
             )}
@@ -483,7 +480,7 @@ export function InvoiceDetailClient({
                   onClick={regenerate}
                   disabled={busy}
                 >
-                  Regenerate
+                  {t("regenerate")}
                 </Button>
               )}
               <Button
@@ -492,16 +489,16 @@ export function InvoiceDetailClient({
                 onClick={saveDraft}
                 disabled={busy}
               >
-                Save draft
+                {t("saveDraft")}
               </Button>
               <Button size="sm" onClick={send} disabled={busy}>
-                Send
+                {t("send")}
               </Button>
             </>
           )}
           {isPaidUnsent && (
             <Button size="sm" onClick={send} disabled={busy}>
-              Send paid invoice
+              {t("sendPaid")}
             </Button>
           )}
           {status === "draft" && (
@@ -511,7 +508,7 @@ export function InvoiceDetailClient({
               onClick={markPaid}
               disabled={busy}
             >
-              Mark paid
+              {t("markPaid")}
             </Button>
           )}
           {(status === "sent" || status === "draft") && liveBalanceCents > 0 && (
@@ -526,7 +523,7 @@ export function InvoiceDetailClient({
               }
               disabled={busy || paymentForm !== null}
             >
-              Record payment
+              {t("recordPayment")}
             </Button>
           )}
           {initialItems.length > 0 && (
@@ -534,14 +531,14 @@ export function InvoiceDetailClient({
               href={`/api/billing/invoices/${invoiceId}/pdf`}
               className="inline-flex items-center justify-center font-semibold bg-surface text-foreground border border-border hover:bg-surface-dim px-3 py-1.5 text-sm rounded-lg transition-colors"
             >
-              Download PDF
+              {t("downloadPdf")}
             </a>
           )}
           {status === "sent" &&
             paymentProvider === "stripe" &&
             stripeConfigured && (
               <Button size="sm" onClick={createCheckout} disabled={busy}>
-                {checkoutUrl ? "Copy pay link" : "Create pay link"}
+                {checkoutUrl?t("copyLink"):t("createLink")}
               </Button>
             )}
           {status !== "paid" && status !== "void" && (
@@ -551,7 +548,7 @@ export function InvoiceDetailClient({
               onClick={voidInvoice}
               disabled={busy}
             >
-              Void
+              {t("void")}
             </Button>
           )}
         </div>
@@ -582,16 +579,14 @@ export function InvoiceDetailClient({
             className="space-y-3"
           >
             <div>
-              <h2 className="font-semibold">Record payment</h2>
+              <h2 className="font-semibold">{t("recordPayment")}</h2>
               <p className="text-xs text-muted">
-                {formatMoney(liveBalanceCents, currency)} due. Enter less for a
-                partial payment; the invoice is marked paid once payments
-                cover the total.
+                {t("partialHint",{amount:formatMoney(liveBalanceCents,currency)})}
               </p>
             </div>
             <div className="flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-xs font-semibold text-muted">Amount</span>
+                <span className="text-xs font-semibold text-muted">{t("amount")}</span>
                 <span className="flex items-center gap-1.5">
                   <span className="text-muted">$</span>
                   <input
@@ -601,14 +596,14 @@ export function InvoiceDetailClient({
                     }
                     inputMode="decimal"
                     className={amountInputClass}
-                    aria-label="Payment amount"
+                    aria-label={t("paymentAmount")}
                     autoFocus
                   />
                 </span>
               </label>
               <label className="flex flex-col gap-1 text-sm flex-1 min-w-[10rem]">
                 <span className="text-xs font-semibold text-muted">
-                  Note (optional)
+                  {t("optionalNote")}
                 </span>
                 <input
                   value={paymentForm.note}
@@ -616,14 +611,14 @@ export function InvoiceDetailClient({
                     setPaymentForm({ ...paymentForm, note: e.target.value })
                   }
                   maxLength={500}
-                  placeholder="e.g. Check #1042"
+                  placeholder={t("notePlaceholder")}
                   className={inputClass}
                 />
               </label>
             </div>
             <div className="flex gap-2">
               <Button size="sm" type="submit" disabled={busy}>
-                Save payment
+                {t("savePayment")}
               </Button>
               <Button
                 size="sm"
@@ -632,7 +627,7 @@ export function InvoiceDetailClient({
                 onClick={() => setPaymentForm(null)}
                 disabled={busy}
               >
-                Cancel
+                {t("cancel")}
               </Button>
             </div>
           </form>
@@ -642,7 +637,7 @@ export function InvoiceDetailClient({
       {checkoutUrl && status === "sent" && (
         <Card padding="sm">
           <div className="text-xs font-semibold text-muted mb-1">
-            Stripe pay link
+            {t("stripeLink")}
           </div>
           <a
             href={checkoutUrl}
@@ -650,7 +645,7 @@ export function InvoiceDetailClient({
             rel="noreferrer"
             className="text-sm text-primary font-medium hover:underline"
           >
-            Pay online
+            {t("payOnline")}
           </a>
         </Card>
       )}
@@ -658,7 +653,7 @@ export function InvoiceDetailClient({
       {creditPackage && (
         <Card padding="sm">
           <p className="text-sm text-muted">
-            Sells {creditPackage.label} for{" "}
+            {t("creditPackageFor",{label:creditPackage.label})}{" "}
             <Link
               href={`/students/${creditPackage.studentId}`}
               className="text-primary hover:underline"
@@ -667,16 +662,16 @@ export function InvoiceDetailClient({
             </Link>
             .{" "}
             {isDraft
-              ? "The credits can be used once this invoice is sent or marked paid."
+              ? t("creditPending")
               : status === "void"
-                ? "This invoice is void, so the credits can't be used."
-                : "Lessons of that length use these credits instead of being invoiced."}
+                ? t("creditVoid")
+                : t("creditApplied")}
           </p>
         </Card>
       )}
 
       <Card padding="sm">
-        <h2 className="font-semibold mb-3">Line items</h2>
+        <h2 className="font-semibold mb-3">{t("lineItems")}</h2>
         <div className="space-y-3">
           {items.map((item, index) => (
             <div
@@ -704,7 +699,7 @@ export function InvoiceDetailClient({
                           }
                         }}
                         className={amountInputClass}
-                        aria-label="Line amount"
+                        aria-label={t("lineAmount")}
                       />
                     </label>
                     <button
@@ -714,7 +709,7 @@ export function InvoiceDetailClient({
                       }
                       className="text-sm text-error hover:underline cursor-pointer px-1"
                     >
-                      Remove
+                      {t("remove")}
                     </button>
                   </div>
                 </>
@@ -736,7 +731,7 @@ export function InvoiceDetailClient({
               setItems((prev) => [
                 ...prev,
                 {
-                  description: "Custom line",
+                  description:t("customLine"),
                   quantity: 1,
                   unitCents: 0,
                   amountCents: 0,
@@ -745,11 +740,11 @@ export function InvoiceDetailClient({
             }
             className="mt-3 text-sm text-primary hover:underline cursor-pointer"
           >
-            + Add line
+            {t("addLine")}
           </button>
         )}
         <div className="mt-4 pt-3 border-t border-border flex justify-between font-semibold">
-          <span>Total</span>
+          <span>{t("total")}</span>
           <span>
             {formatMoney(isDraft ? liveTotal : subtotalCents, currency)}
           </span>
@@ -757,14 +752,14 @@ export function InvoiceDetailClient({
       </Card>
 
       <Card padding="sm">
-        <h2 className="font-semibold mb-2">Notes</h2>
+        <h2 className="font-semibold mb-2">{t("notes")}</h2>
         {isDraft ? (
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             className={`${inputClass} w-full resize-y`}
-            placeholder="Optional note on the invoice"
+            placeholder={t("invoiceNotePlaceholder")}
           />
         ) : (
           <p className="text-sm whitespace-pre-wrap text-muted">
@@ -775,7 +770,7 @@ export function InvoiceDetailClient({
 
       {payments.length > 0 && (
         <Card padding="sm">
-          <h2 className="font-semibold mb-2">Payments</h2>
+          <h2 className="font-semibold mb-2">{t("payments")}</h2>
           <ul className="space-y-2">
             {payments.map((p) => (
               <li
@@ -783,12 +778,12 @@ export function InvoiceDetailClient({
                 className="flex flex-wrap items-baseline justify-between gap-2 text-sm"
               >
                 <div>
-                  <span className="font-medium capitalize">{p.method}</span>
+                  <span className="font-medium capitalize">{p.method==="manual"?t("manual"):p.method==="stripe"?t("stripe"):p.method}</span>
                   {p.note ? (
                     <span className="text-muted"> · {p.note}</span>
                   ) : null}
                   <div className="text-xs text-muted">
-                    {new Date(p.recordedAt).toLocaleString()}
+                    {new Date(p.recordedAt).toLocaleString(locale)}
                   </div>
                 </div>
                 <span className="flex items-baseline gap-3">
@@ -799,7 +794,7 @@ export function InvoiceDetailClient({
                       disabled={busy}
                       className="text-xs text-error hover:underline cursor-pointer disabled:opacity-50"
                     >
-                      Remove
+                      {t("remove")}
                     </button>
                   )}
                   <span className="font-semibold tabular-nums">
@@ -811,7 +806,7 @@ export function InvoiceDetailClient({
           </ul>
           {payments.length > 1 && (
             <div className="mt-3 pt-2 border-t border-border flex justify-between text-sm font-semibold">
-              <span>Total paid</span>
+              <span>{t("totalPaid")}</span>
               <span className="tabular-nums">
                 {formatMoney(paidCents, currency)}
               </span>
@@ -822,7 +817,7 @@ export function InvoiceDetailClient({
 
       {paymentProvider === "manual" && (paymentInstructions || paymentQrCode) && (
         <Card padding="sm">
-          <h2 className="font-semibold mb-2">Payment instructions</h2>
+          <h2 className="font-semibold mb-2">{t("instructions")}</h2>
           {paymentInstructions && (
             <p className="text-sm whitespace-pre-wrap text-muted">
               {paymentInstructions}
@@ -832,7 +827,7 @@ export function InvoiceDetailClient({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={paymentQrCode}
-              alt="Payment QR code"
+              alt={t("qrAlt")}
               className="mt-3 h-36 w-36 rounded-lg border border-border bg-white object-contain p-1"
             />
           )}
