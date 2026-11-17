@@ -1,10 +1,13 @@
-import {useTranslations} from "next-intl";
+import {getTranslations} from "next-intl/server";
 import { CoachingReportPanel } from "@/components/teacher/CoachingReportPanel";
 
-export const metadata = {title: "Chess coaching reports"};
+export async function generateMetadata(){
+  const t=await getTranslations("reports");
+  return {title:t("pageTitle")};
+}
 
-export default function ReportsPage() {
-  const t=useTranslations("reports");
+export default async function ReportsPage() {
+  const t=await getTranslations("reports");
   return <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
     <header>
       <h1 className="text-2xl font-bold">{t("pageTitle")}</h1>

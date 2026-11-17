@@ -17,7 +17,9 @@ export async function GET(request: NextRequest) {
   const requested=request.nextUrl.searchParams.get("outputLocale");
   if(requested!==null && !isAppLocale(requested)) return respond({error:"Unsupported output locale"},400);
   try {
-    return respond(await workplaceTeachingReport(db, user.id, workplaceId, from, to));
+    return respond(await workplaceTeachingReport(
+      db,user.id,workplaceId,from,to,requested??undefined
+    ));
   } catch (reason) {
     if (reason instanceof ReportServiceError)
       return respond({ error: reason.message }, reason.status);

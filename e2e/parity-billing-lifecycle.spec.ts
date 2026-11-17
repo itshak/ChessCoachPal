@@ -551,8 +551,9 @@ test("PARITY:PARITY-billing-draft-partial-payment stays private and reopens to d
  });
  expect(final.error).toBeUndefined();
  expect((await siteInvoice(page,created.id)).status).toBe("paid");
- const hidden=await page.request.get("/portal/"+created.portalToken);
- expect(await hidden.text()).toContain("No invoices yet.");
+ await page.goto("/portal/"+created.portalToken);
+ await expect(page.getByText("No invoices yet.",{exact:true})).toBeVisible();
+ await expect(page.getByText("2027-03-01", {exact:false})).toHaveCount(0);
  const reversal=await page.request.delete(url+"/payments/"+final.data.paymentId);
  expect(reversal.status(),await reversal.text()).toBe(200);
  expect((await reversal.json()).status).toBe("draft");
@@ -622,8 +623,9 @@ test("PARITY:PARITY-billing-send-claim rejects stale payment snapshots before em
  expect(current.status).toBe("draft");
  expect(current.sent_at).toBeNull();
  expect(current.payments).toHaveLength(1);
- const hidden=await page.request.get("/portal/"+created.portalToken);
- expect(await hidden.text()).toContain("No invoices yet.");
+ await page.goto("/portal/"+created.portalToken);
+ await expect(page.getByText("No invoices yet.",{exact:true})).toBeVisible();
+ await expect(page.getByText("2027-03-01", {exact:false})).toHaveCount(0);
  const preview=await call("ccp_billing_invoice_send_preview",{invoiceId:created.id});
  expect(preview.error).toBeUndefined();
  expect(preview.data.balanceCents).toBe(5200);
@@ -646,8 +648,9 @@ test("PARITY:PARITY-billing-paid-before-send remains private until deliberate de
  const before=await siteInvoice(page,created.id);
  expect(before.status).toBe("paid");
  expect(before.sent_at).toBeNull();
- const portalBefore=await page.request.get("/portal/"+created.portalToken);
- expect(await portalBefore.text()).toContain("No invoices yet.");
+ await page.goto("/portal/"+created.portalToken);
+ await expect(page.getByText("No invoices yet.",{exact:true})).toBeVisible();
+ await expect(page.getByText("2027-03-01", {exact:false})).toHaveCount(0);
  const preview=await call("ccp_billing_invoice_send_preview",{
   invoiceId:created.id,confirmed:true,
  });
@@ -659,8 +662,10 @@ test("PARITY:PARITY-billing-paid-before-send remains private until deliberate de
  const delivered=await siteInvoice(page,created.id);
  expect(delivered.status).toBe("paid");
  expect(delivered.sent_at).not.toBeNull();
- const portalAfter=await page.request.get("/portal/"+created.portalToken);
- expect(await portalAfter.text()).not.toContain("No invoices yet.");
+ await page.goto("/portal/"+created.portalToken);
+ await expect(page.getByText("No invoices yet.",{exact:true})).toHaveCount(0);
+ await expect(page.getByText("2027-03-01", {exact:false})).toBeVisible();
+ await expect(page.getByText("Paid",{exact:true}).first()).toBeVisible();
  const duplicate=await call("ccp_billing_invoice_send",{
   invoiceId:created.id,confirmed:true,confirmedEmail:true,
  });

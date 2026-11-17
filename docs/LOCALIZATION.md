@@ -20,3 +20,12 @@ Hebrew sets root `dir=rtl` and loads Hebrew-capable fonts. Use logical Tailwind/
 
 ## Verification
 Check `npm run i18n:check`, `npm run typecheck`, `npm run lint`, `npm run build`, `npm run mcp:parity:strict`, authenticated Playwright E2E and full CI. The new language-parity Playwright spec is `e2e/parity-teacher-locale.spec.ts`. Read `openspec/changes/2026-11-17-introduce-multilingual-support/IMPLEMENTATION_PROGRESS.md` for actual current coverage, required regression gates and outstanding work.
+
+
+## Report language and MCP consistency
+
+The teacher's UI language controls website navigation and the report panel direction. It does **not** depend on the selected workplace locale. A generated report has a separate language choice: explicit validated outputLocale (en/he/ru), else the workplace's supported locale base, else English. JSON returns the stable owner-scoped numeric report and original report.locale alongside an additional localized presentation with language, direction, human-readable labels, numbers, date-only period and timezone. No student names or private lesson notes are included in this aggregate.
+
+Both GET /api/coaching/report and ccp_reports_workplace_summary pass outputLocale into the same shared service. MCP CSV and TXT exports use exactly the same locale formatter as the browser's Download buttons. Raw ISO report date filters, IANA timezone and numeric calculations remain unchanged. CSV retains UTF-8 BOM, escaped quoted cells and formula-injection protection. A teacher can request a Russian report from a Hebrew-language workplace without changing their personal interface or any persisted record. Tests: lib/coaching-report.test.ts, e2e/parity-reports.spec.ts, e2e/parity-rtl-report-ui.spec.ts.
+
+Note for browser tests: Next.js/next-intl embeds the message catalog in streamed React Server Component payloads. Searching raw HTML for strings like "No invoices yet." is not a valid visibility/privacy test; inspect rendered DOM roles/text instead. See e2e/parity-billing-lifecycle.spec.ts. This does not change the portal's server-side invoice filtering by delivery status.

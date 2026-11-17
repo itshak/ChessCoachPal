@@ -1,6 +1,6 @@
 /** Deterministic, tenant-filtered teaching report calculations (no model inference). */
 import {messagesFor} from "@/i18n/messages";
-import {supportedLocale, type AppLocale} from "@/i18n/locales";
+import {supportedLocale, localeDetails, type AppLocale} from "@/i18n/locales";
 export type ReportSession = {
   id: string; starts_at: string; duration_minutes: number;
   status: string;
@@ -102,4 +102,37 @@ export function reportText(r:ReportSummary,outputLocale?:AppLocale):string {
     ...(["present","absent","late","excused","unmarked"] as const)
       .map(status=>t[status]+": "+r.attendance[status])
   ].join("\n")+"\n";
+}
+
+/** Human presentation only: stable machine report fields and dates remain untouched. */
+export type ReportPresentation = {
+  outputLocale:AppLocale; direction:"ltr"|"rtl";
+  heading:string; periodLabel:string; period:string;
+  timezoneLabel:string; timezone:string;
+  metrics:{key:"sessions"|"cancelled"|"teachingMinutes"|"participants";label:string;value:string}[];
+  attendance:{status:ReportStatus;label:string;value:string}[];
+};
+export function reportPresentation(r:ReportSummary, requested?:AppLocale):ReportPresentation {
+  const outputLocale=outputLanguage(r,requested);
+  const t=humanLabels(r,requested), info=localeDetails[outputLocale];
+  const number=new Intl.NumberFormat(info.intl);
+  // Render date-only values at UTC noon; never use the server timezone for
+  // YYYY-MM-DD source dates or convert them into another calendar day.
+  const date=(iso:string)=>new Intl.DateTimeFormat(info.intl,{
+    dateStyle:"medium",timeZone:"UTC"
+  }).format(new Date(iso+"T12:00:00Z"));
+  return {
+    outputLocale,direction:info.dir,heading:t.reportHeading,
+    periodLabel:t.period,period:date(r.from)+" — "+date(r.to),
+    timezoneLabel:t.timezone,timezone:r.timezone,
+    metrics:([
+      ["sessions",t.sessions,r.sessions],
+      ["cancelled",t.cancelled,r.cancelled],
+      ["teachingMinutes",t.teachingMinutes,r.teachingMinutes],
+      ["participants",t.participants,r.participants]
+    ] as const).map(([key,label,value])=>({key,label,value:number.format(value)})),
+    attendance:([
+      "present","absent","late","excused","unmarked"
+    ] as const).map(status=>({status,label:t[status],value:number.format(r.attendance[status])}))
+  };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reportCsv, reportText, summarizeTeaching, validateReportRange } from "./coaching-report";
+import { reportCsv, reportText, reportPresentation, summarizeTeaching, validateReportRange } from "./coaching-report";
 
 describe("deterministic coaching summaries", () => {
   const sessions = [
@@ -26,6 +26,29 @@ describe("deterministic coaching summaries", () => {
     expect(reportCsv(result,"ru")).toContain('"Минут занятий","60"');
     expect(reportText(result,"ru")).toContain("Минут занятий: 60");
     expect(reportCsv(result,"en")).toContain('"Teaching minutes","60"');
+  });
+  it("separates original workplace locale and machine fields from requested output language", () => {
+    const r=summarizeTeaching([sessions[0]],[
+      {session_id:"group",status:"present"},
+      {session_id:"group",status:"absent"}
+    ],"2027-04-01","2027-04-02","Asia/Jerusalem","he");
+    const before=JSON.stringify(r);
+    const hebrew=reportPresentation(r);
+    const russian=reportPresentation(r,"ru");
+    const english=reportPresentation(r,"en");
+    expect(hebrew).toMatchObject({outputLocale:"he",direction:"rtl",timezone:"Asia/Jerusalem"});
+    expect(hebrew.metrics.find(x=>x.key==="teachingMinutes")?.label).toBe("דקות הוראה");
+    expect(russian).toMatchObject({outputLocale:"ru",direction:"ltr"});
+    expect(russian.metrics.find(x=>x.key==="teachingMinutes")?.label).toBe("Минут занятий");
+    expect(english.metrics.find(x=>x.key==="teachingMinutes")?.label).toBe("Teaching minutes");
+    expect(russian.attendance.find(x=>x.status==="absent")?.value).toBe("1");
+    expect(english.period).toMatch(/Apr/);
+    expect(russian.period).not.toBe(english.period);
+    expect(r.locale).toBe("he");
+    expect(JSON.stringify(r)).toBe(before);
+    expect(reportCsv(r,"ru")).toMatch(/^\uFEFF/);
+    expect(reportCsv(r,"ru")).not.toContain("group");
+    expect(reportText(r,"en")).toContain("Teaching minutes: 60");
   });
   it("uses the workplace's local day, not the server's UTC day", () => {
     const rows = [{ id: "late", starts_at: "2027-03-31T22:30:00Z", duration_minutes: 30, status: "scheduled" }];

@@ -72,3 +72,16 @@
 ## CI source guard correction
 - GitHub CI on 90457b3 detected a prohibited legacy financial-field token in the localization-only key makeupFor in CanonicalMakeupPanel; no legacy physical tables or runtime dependencies were introduced. Renamed the UI key to makeupLessonFor across all three catalogs and its UI usage. Reran schema:attendance:strict locally: 0 legacy references and exit 0; TypeScript/catalog/literal checks pass.
 - Exact-head CI and E2E are required after this correction. The active OpenSpec is not complete or archived.
+
+
+## Shared multilingual reports and latest E2E regression
+- On prior pushed SHA 52f1a3a, main CI including the ICU Vitest tests, security history audit, self-host Compose and backup/restore all passed. Authenticated Playwright reported one failure in the invoice delivery privacy test: it searched full raw streamed HTML for the translation-catalog string No invoices yet., which remains serialized in Next.js RSC payloads even when a paid invoice is visibly rendered. This is a test false positive, not a surfaced invoice permission leak.
+- Reworked the invoice test to check the actual DOM both before and after deliberate delivery, with explicit visible invoice period and Paid status. Only delivered invoices should render in the portal. Exact-head E2E re-verification is required.
+- Extended owner-scoped report service with optional outputLocale and additive human-language presentation (labelled counts, attendance, locale, direction and locale-aware date-only period). Retained all numeric report fields, workplace locale, IANA timezone, CSV BOM/escaping/formula safety and private record exclusions. Website and MCP call the same formatter; explicit locale wins over workplace default. Teacher website chrome direction remains independent of report output direction.
+- Added en/he/ru source unit expectations, and browser/delegated-MCP E2E comparing JSON fields, unchanged business numbers, CSV and TXT bytes across three locales and rejecting unsupported locale. Recorded design in ADR-0009 and extended active parity checklist/registry. These changes are implemented locally, not yet CI-accepted.
+
+
+### Verification at this local report slice
+- Passed: npm run typecheck (712 locale keys each; zero new hardcoded literals), npm run build, npm run mcp:parity:strict (93/93 historical scenarios), npm run schema:attendance:strict, ESLint on touched report, API, MCP and Playwright sources (zero errors, two inherited warnings in agent-tools).
+- A full repository npm run lint currently fails with 26 existing errors in untouched legacy E2E helper/spec files and two old public/app components/teacher-events-service.ts (chiefly no-explicit-any, two unescaped JSX apostrophes); that full-repo debt is not fixed by this scoped locale PR. GitHub CI runs a narrower lint gate. Full lint F2 acceptance remains open and must not be claimed green.
+- Local Vitest binary still crashes with Illegal instruction on the remote device; rely on GitHub CI unit tests and exact-head authenticated E2E after push. This report slice, billing DOM test, and ADR require new CI evidence.

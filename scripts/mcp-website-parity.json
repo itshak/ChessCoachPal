@@ -536,7 +536,7 @@
       "existingTools": [
         "ccp_reports_workplace_summary"
       ],
-      "explanation": "Read-only MCP summary and CSV/text exports reuse the same teacher-scoped report service as website GET; authenticated cross-interface/tenant E2E in e2e/agent-mcp.spec.ts",
+      "explanation": "Read-only MCP summary and CSV/text exports reuse the same teacher-scoped report service as website GET. Optional outputLocale (en/he/ru) produces matching human-readable JSON presentation and safe CSV/TXT without modifying numeric report fields; authenticated website/MCP tests: e2e/agent-mcp.spec.ts and e2e/parity-reports.spec.ts.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {

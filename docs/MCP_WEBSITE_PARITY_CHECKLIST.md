@@ -142,6 +142,13 @@ Website reference: `/learning, /coaching, /students/[id]`.
 
 ### Reports / exports
 
+**Supplemental locale acceptance (not an additional numbered historical case):**
+PR #86 adds a delegated website/MCP E2E for explicit en/he/ru outputLocale
+against shared JSON human presentation and byte-identical CSV/TXT,
+unsupported-locale rejection, stable machine fields and exclusion of names.
+Acceptance remains pending exact-head authenticated GitHub E2E.
+The historical 93-case checklist and its strict count remain unchanged.
+
 Website reference: `/coaching /api/coaching/report, /dashboard`.
 
 | Checklist | Test/action | Current evidence / blocker |

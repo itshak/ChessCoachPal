@@ -2065,7 +2065,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_reports_workplace_summary": {
         const a = args as { workplaceId: string; from: string; to: string; format: "json" | "csv" | "text"; outputLocale?:"en"|"he"|"ru" };
         try {
-          const result = await workplaceTeachingReport(db, teacherId, a.workplaceId, a.from, a.to);
+          const result = await workplaceTeachingReport(
+            db,teacherId,a.workplaceId,a.from,a.to,a.outputLocale
+          );
           if (a.format === "csv") return { data: { ...result, format: "csv", export: reportCsv(result.report,a.outputLocale) } };
           if (a.format === "text") return { data: { ...result, format: "text", export: reportText(result.report,a.outputLocale) } };
           return { data: result };

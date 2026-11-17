@@ -50,14 +50,17 @@ test("PARITY:PARITY-reports-hebrew-rtl-csv renders RTL and exports exact MCP-loc
  const region=page.locator('section[aria-label="Teaching activity report"]');
  await expect(region).toBeVisible();
  await region.getByLabel("Report workplace").selectOption(workplaceId);
- await expect(region).toHaveAttribute("dir","rtl");
+ // UI chrome follows the teacher's English preference, not Hebrew workplace.
+ await expect(region).toHaveAttribute("dir","ltr");
  await region.getByLabel("From date").fill(date);
  await region.getByLabel("To date").fill(date);
  await region.getByRole("button",{name:"Generate report"}).click();
  const output=region.locator('[aria-live="polite"]');
  await expect(output).toBeVisible();
- await expect(output).toContainText("Teaching minutes: 50");
- await expect(output).toContainText("Time zone: Asia/Jerusalem");
+ // Report content follows the workplace output locale, independently.
+ await expect(output).toHaveAttribute("dir","rtl");
+ await expect(output).toContainText("דקות הוראה: 50");
+ await expect(output).toContainText("אזור זמן: Asia/Jerusalem");
  const [download]=await Promise.all([
    page.waitForEvent("download"),
    region.getByRole("button",{name:"Export CSV"}).click(),
