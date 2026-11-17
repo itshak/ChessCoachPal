@@ -511,6 +511,19 @@
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {
+      "path": "app/api/coaching/lesson-capture/completed/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_lessons_capture_completed"
+      ],
+      "explanation": "The same teacher-scoped typed website and delegated MCP operation atomically creates one ad-hoc session, records complete frozen-roster attendance with student-specific notes, and marks the session completed. One UUID receipt, replay conflict, no inferred material mastery. Authenticated dual-surface synthetic assertions in parity-mcp-completed-group-capture.spec.ts.",
+      "evidenceTest": "e2e/parity-mcp-completed-group-capture.spec.ts"
+    },
+    {
       "path": "app/api/coaching/lesson-capture/preview/route.ts",
       "methods": [
         "POST"
@@ -522,6 +535,18 @@
       ],
       "explanation": "One owner-scoped read-only website/MCP preview now accepts either an explicit offset start+duration OR a date-only localDate for exactly one common active workplace-scoped weekly slot across 2–50 unambiguously resolved active students. It refuses missing/multiple slot times, date/DST gaps/folds, foreign enrollments and existing canonical lesson intervals. Browser panel shows inferred time and requires confirmation; existing atomic ad-hoc writer remains the only commit authority. Independently named web/delegated OAuth E2E proves week-slot inference, strict input modes, negative cases, DST and retry behavior. Optional chapterSelection study ID and ordinal (1–64) resolve an exact fresh, authorized Lichess PGN metadata chapter including verified PGN players, without claiming that chapter was taught, assigned or even attached; this remains a separate confirmed material-evidence operation after session creation.",
       "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/materials/lesson-use/route.ts",
+      "methods": ["POST", "PUT"],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_materials_lesson_use_preview",
+        "ccp_materials_lesson_use_commit"
+      ],
+      "explanation": "Source-neutral teacher-owned preview and atomic typed material session usage: resolve/create or select an existing material, link it to one completed lesson and record explicitly attested evidence for selected present learners. The same service and source revision are used by website and delegated MCP. Authenticated E2E checks independent read-back, replay and rollback.",
+      "evidenceTest": "e2e/parity-mcp-material-lesson-use.spec.ts"
     },
     {
       "path": "app/api/coaching/materials/route.ts",

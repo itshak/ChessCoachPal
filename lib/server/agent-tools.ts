@@ -21,6 +21,11 @@ import {puzzleSeriesCreateSchema,puzzleSeriesReconcileSchema,puzzleCapacitySchem
 import {PuzzleReviewError} from "@/lib/lichess-puzzles";
 import {teacherFenValidate} from "@/lib/server/fen-validation";
 import {teacherContextGet} from "@/lib/server/teacher-context";
+import {completedGroupCaptureSchema,teacherCompletedGroupCapture,CompletedGroupCaptureError}
+ from "@/lib/server/teacher-completed-group-capture";
+import {materialInLessonPreviewSchema,materialInLessonCommitSchema,
+ teacherMaterialInLessonPreview,teacherMaterialInLessonCommit,MaterialInLessonError}
+ from "@/lib/server/teacher-material-in-lesson";
 
 import {spreadsheetSuggestMcpSchema} from "@/lib/spreadsheet-suggest";
 import {bulkLifecyclePreviewSchema,bulkLifecycleCommitSchema,
@@ -335,9 +340,7 @@ const catalogue = [
   },
   {
     name:"ccp_historical_attendance_dates_preview",
-    description:`PREFERRED HISTORICAL ATTENDANCE IMPORT, no spreadsheet mapping required. Exact JSON request example:
-{"workplaceId":"00000000-0000-4000-8000-000000000001","schoolYearStart":"2025-09-01","schoolYearEnd":"2026-08-31","timezone":"Asia/Jerusalem","sourceLabel":"2025-26 register","students":[{"studentName":"Example Student","attendanceDates":["2026-01-05","2026-01-12"]}]}
-The common workplaceId must come from ccp_workplaces_list; studentId may be supplied for verified names/aliases, including archived pupils. These are real observed attended dates only (YYYY-MM-DD). If the original spreadsheet uses V, X or other marks, extract VERIFIED dates before calling; never send the marks, invent dates, or treat blanks as absence. ccp_import_spreadsheet_suggest is for student/family onboarding, NOT attendance. Max 250 dates / 256 KiB, with 320 KiB MCP transport bound. Preview returns issues and previewDigest without writes; then ask for approval before ccp_historical_attendance_dates_commit. Same format is offered on the website. Historical observations do not automatically become calendar sessions or teaching hours.`,
+    description:"For verified PAST attended dates, preview 1–250 source-attested ISO dates per teacher-owned student under ONE verified workplace and IANA timezone; use ccp_workplaces_list and exact student names/IDs. NOT for normal scheduled/completed lessons or student/family CSV imports. Never guess dates from V/X/blank marks or totals. Returns issues and a digest without writing; after approval use ccp_historical_attendance_dates_commit. For absences/aggregates use advanced ccp_historical_attendance_preview; no teaching hours or mastery inferred.",
     schema:historicalDatesInputSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -1174,6 +1177,16 @@ The common workplaceId must come from ccp_workplaces_list; studentId may be supp
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_materials_lesson_use_preview",
+    description:"Read-only preview for using a known OR newly created typed chess material in an EXISTING COMPLETED lesson. Validates session date, exact frozen participant IDs, documented attendance and explicitly attested assigned/taught/completed stage per chosen learner. Returns a safe proposed commit and current revision; no writes or inferred mastery. Use lesson capture tools first if the session does not yet exist.",
+    schema:materialInLessonPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_materials_lesson_use_commit",
+    description:"After reviewing ccp_materials_lesson_use_preview and confirming exact session, material and selected learners, atomically create/reuse the typed material, link it to the completed session and record individual teacher-attested evidence with a single retry-safe UUID. The server enforces revisions, presence, ownership and rollback; neither a link nor taught status proves mastery.",
+    schema:materialInLessonCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_material_links_list",
     description:"List canonical typed material associations for one teacher-owned student or lesson, including catalog title and source URL.",
     schema:materialLinkListInput,scope:"coach:read",readOnly:true,
@@ -1284,6 +1297,11 @@ The common workplaceId must come from ccp_workplaces_list; studentId may be supp
     name:"ccp_lessons_capture_preview",
     description:"Read-only multi-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. Confirm separately via ccp_sessions_ad_hoc_create.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_lessons_capture_completed",
+    description:"After ccp_lessons_capture_preview resolves the exact enrolled learner IDs, workplace and time, record a COMPLETED group lesson with one explicit attendance decision and independent note for each frozen learner. Backend creates the session AND completes attendance in one owner-scoped SQL transaction, counts teacher minutes once, rejects ambiguities and retries safely. Teacher confirmation and request UUID are mandatory. No material mastery inferred. To SCHEDULE without attendance, use ccp_sessions_ad_hoc_create instead.",
+    schema:completedGroupCaptureSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_sessions_ad_hoc_create",
@@ -2180,6 +2198,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as Parameters<typeof teacherMaterialVoid>[2];
         return {data:await teacherMaterialVoid(db,teacherId,a)};
       }
+      case "ccp_materials_lesson_use_preview":
+        return {data:await teacherMaterialInLessonPreview(db,teacherId,
+          args as Parameters<typeof teacherMaterialInLessonPreview>[2])};
+      case "ccp_materials_lesson_use_commit":
+        return {data:await teacherMaterialInLessonCommit(db,teacherId,
+          args as Parameters<typeof teacherMaterialInLessonCommit>[2])};
       case "ccp_material_links_list": {
         const a=args as Parameters<typeof materialLinksList>[2];
         return {data:await materialLinksList(db,teacherId,a)};
@@ -2206,6 +2230,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_lessons_capture_preview":
         return {data:await teacherLessonCapturePreview(db,teacherId,
           args as Parameters<typeof teacherLessonCapturePreview>[2])};
+      case "ccp_lessons_capture_completed":
+        return {data:await teacherCompletedGroupCapture(db,teacherId,
+          args as Parameters<typeof teacherCompletedGroupCapture>[2])};
       case "ccp_sessions_ad_hoc_create": {
         const a=args as {workplaceId:string;studentIds:string[];title:string;
           startsAt:string;durationMinutes:number;lessonNote:string;idempotencyKey:string};
@@ -2341,6 +2368,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof PuzzleReviewError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LessonTimingError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof MaterialInLessonError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof CompletedGroupCaptureError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof AtomicLessonChapterError)
       return {error:{code:error.code,message:error.message}};

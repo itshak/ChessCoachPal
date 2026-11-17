@@ -12,14 +12,15 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const read=path=>readFileSync(join(root,path),"utf8");
 const BASELINE="20261107000000_chesscoachpal_baseline.sql";
 const LIVE_EXTENSION="20261117000000_live_historical_lifecycle_extension.sql";
+const WORKFLOW_EXTENSION="20261117190000_mcp_workflow_composition.sql";
+const ALLOWED_SQL=[BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION];
 
 export function canonicalSchemaErrors({
  sqlFiles,sql,transfer,agent,catalog,studentPage,teacherComponents,strictMaterials=false,
 }){
  const errors=[];
- if(sqlFiles[0]!==BASELINE||sqlFiles.length>2||
-    (sqlFiles.length===2&&sqlFiles[1]!==LIVE_EXTENSION))
-   errors.push("Only the canonical baseline and the approved additive live-data repair are permitted");
+ if(sqlFiles.some((file,i)=>file!==ALLOWED_SQL[i])||sqlFiles.length>ALLOWED_SQL.length)
+   errors.push("Only the canonical baseline and the specifically approved additive live-data and workflow extensions are permitted");
  if(!sql.includes("CREATE TABLE public.learning_materials")||
     !sql.includes("CREATE TABLE public.student_training_plans"))
    errors.push("Canonical snapshot is missing required current typed chess tables");
