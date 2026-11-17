@@ -10,7 +10,7 @@ The release-only [predecessor](../openspec/changes/archive/2026-11-08-finalize-v
 
 ## Current status
 
-The development snapshot is `0.0.0`. CogNote's inherited `0.1.0` in the package metadata was **not** a published ChessCoachPal release and has been reset. **Do not publish `v0.1.0` until the functional first-release criteria below are met.**
+ChessCoachPal has published pre-1.0 releases; [v0.1.5](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.5) is the current live release before this v0.1.6 change. The first `v0.1.0` release gate was already completed under the explicitly documented deferred manual tasks below. Later releases must retain strict CI, tenant and browser/MCP parity checks, and run only through signed, immutable GitHub release tags. Publishing a source release does **not** certify manual live ChatGPT/Claude workflows.
 
 Each published version is a *reviewed commit on the current `main` branch* with:
 
