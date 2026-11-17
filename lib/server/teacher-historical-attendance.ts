@@ -6,18 +6,22 @@ import {historicalFail,teacherHistoricalStageRead,
 
 const uuid=z.string().uuid();
 const isoDate=z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const MAX_DIRECT_HISTORICAL_ROWS=250;
+export const MAX_DIRECT_HISTORICAL_BYTES=256*1024;
 export const historicalInputSchema=z.object({
   stageId:uuid.optional(),
-  // Small typed direct imports are useful for conversational MCP. Large
-  // inputs must use private staged files and pass only their stageId.
-  rows:z.array(z.record(z.string(),z.string())).min(1).max(50).optional(),
+  // Bound conversational input by both row count and UTF-8 size; larger
+  // inputs use private staged files without leaking their contents to MCP.
+  rows:z.array(z.record(z.string(),z.string())).min(1).max(MAX_DIRECT_HISTORICAL_ROWS).optional(),
   mapping:z.record(z.string(),z.string().nullable()).optional(),
   resolutions:z.record(z.string(),z.object({studentId:uuid.optional(),
     workplaceId:uuid.optional()}).strict()).optional(),
   schoolYearStart:isoDate,schoolYearEnd:isoDate,
   timezone:z.string().min(1).max(100),
 }).strict().refine(x=>Boolean(x.stageId)!==Boolean(x.rows),
-  "Provide either stageId or small direct rows, not both");
+  "Provide either stageId or direct rows, not both")
+  .refine(x=>!x.rows||Buffer.byteLength(JSON.stringify(x.rows),"utf8")<=MAX_DIRECT_HISTORICAL_BYTES,
+    "Direct rows exceed 256 KiB; use private staged file import");
 export const historicalCommitSchema=historicalInputSchema.safeExtend({
   previewDigest:z.string().regex(/^[a-f0-9]{64}$/),
   idempotencyKey:uuid,confirmed:z.literal(true),

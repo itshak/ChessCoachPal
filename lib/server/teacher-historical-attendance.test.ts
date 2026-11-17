@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {suggestHistoricalMapping,historicalInputSchema,
- historicalCommitSchema,historicalReportSchema}
+ historicalCommitSchema,historicalReportSchema,MAX_DIRECT_HISTORICAL_ROWS,MAX_DIRECT_HISTORICAL_BYTES}
  from "@/lib/server/teacher-historical-attendance";
 import {bulkLifecyclePreviewSchema,bulkLifecycleCommitSchema}
  from "@/lib/server/teacher-bulk-lifecycle";
@@ -28,7 +28,15 @@ describe("strict historical spreadsheet field mapping",()=>{
   expect(historicalInputSchema.safeParse({...base,rows:[{"Student Name":"pupil"}]}).success).toBe(true);
   expect(historicalInputSchema.safeParse({...base,stageId:"00000000-0000-4000-8000-000000000002",
    rows:[{"Student Name":"pupil"}]}).success).toBe(false);
-  expect(historicalInputSchema.safeParse({...base,rows:Array.from({length:51},()=>({name:"x"}))}).success).toBe(false);
+  const sample={"Student Name":"test","Workplace":"School","Date":"2026-03-12","Attendance":"present"};
+  expect(MAX_DIRECT_HISTORICAL_ROWS).toBe(250);
+  expect(historicalInputSchema.safeParse({...base,rows:Array.from({length:167},()=>sample)}).success).toBe(true);
+  expect(historicalInputSchema.safeParse({...base,rows:Array.from({length:250},()=>sample)}).success).toBe(true);
+  expect(historicalInputSchema.safeParse({...base,rows:Array.from({length:251},()=>sample)}).success).toBe(false);
+  const oversized=[{"Source note":"x".repeat(MAX_DIRECT_HISTORICAL_BYTES)}];
+  expect(historicalInputSchema.safeParse({...base,rows:oversized}).success).toBe(false);
+  expect(historicalCommitSchema.safeParse({...base,rows:oversized,
+   previewDigest:"a".repeat(64),idempotencyKey:"00000000-0000-4000-8000-000000000002",confirmed:true}).success).toBe(false);
   expect(historicalInputSchema.safeParse({rows:[{name:"X"}]}).success).toBe(false);
  });
  it("requires review digest and explicit write approval",()=>{
