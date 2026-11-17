@@ -2,6 +2,29 @@
 
 **OpenSpec status: IN PROGRESS. Not yet applied or archived.** This change is being implemented on branch `openspec/2026-11-17-multilingual-en-he-ru` in PR #86.
 
+## Latest continuation — PR #86 at 9522a6f (2026-11-17)
+
+**Still IN PROGRESS. Do not merge to main or archive.** The implementation is no longer a proposal-only PR. This is a source-level checkpoint, **not** a declaration that the full OpenSpec acceptance criteria passed.
+
+- Implemented many more reviewed English/Hebrew/Russian translations across teacher lessons/workplaces, attendance history, lesson and study evidence, Lichess connection and publishing, training plans, homework, student profiles/archiving, account/MFA, notifications, hosted settings, billing/payment workflows, events, import/export, PWA install, avatar crop, onboarding steps, shared rich-text editor, skill ratings/charts, all major dashboard headings, legal presentation and profile settings. Kept persisted notes, teacher-authored text, FEN/PGN, OAuth/MCP tool schemas and canonical business enums unchanged.
+- Current catalogs: **2,310 unique message paths per language**, validated by the ICU catalog checker; no missing keys or placeholder mismatches. The incremental AST JSX audit reports **55 remaining English-looking candidates in 27 files**. Most are technical syntax, brand names, URLs, chess notation, class-name fragments or sample IDs; this simplistic AST audit does **not** check all TypeScript string literals, server-side messages, mail, PDFs or accessible runtime surfaces, and must not be counted as complete translation certification.
+- Local exact checkout at 9522a6f passed **npm run typecheck**, **npm run i18n:check**, **npm run build**, **npm run mcp:parity:strict** (75/75 inventory route families, 93/93 historical cases, 34/34 new canonical workflow cases); these structural parity counts are not a replacement for independent browser/MCP multilingual behavior. Remote local Vitest still fails with an Illegal instruction; GitHub CI executes the unit suite.
+- Earlier GitHub PR checks passed standard CI/security/Compose/backup restore; authenticated E2E last failed **one configured Stripe web-vs-MCP checkout race** (275 passed, 5 skipped, 1 failed), a potentially consequential concurrent-payment invariant. The test is **not disabled or weakened**; commit 60a48eb added diagnostics to its original strict assertion. On 9522a6f GitHub had not auto-scheduled PR checks, so CI, E2E and security workflows were manually dispatched on that exact branch commit. Record their results before accepting.
+- Corrected translated license-page source copy to reflect the actual current proprietary/source-visible LICENSE with preserved earlier/third-party MIT rights, rather than the obsolete generic MIT-only page. This is a technical text correction; publication of final legal notices still requires owner review.
+
+### Not yet accepted
+
+1. **Output/communications:** Full locale-aware customer email subject/body/plain-text/HTML, recipient/workplace locale selection, Unicode Hebrew RTL invoice PDF font embedding, end-to-end outputLocale export parity, optional AI drafting and all backend validation messages are not complete.
+2. **Coverage/QA:** The AST JSX inventory is incomplete by design; audit remaining JavaScript error/confirmation strings and real rendered RTL UI. Run desktop/high-zoom/mobile/keyboard/screen-reader, Russian long text, report/PDF Unicode, recipient privacy, multi-tab/cross-device preference and real ChatGPT/Claude user workflows before release.
+3. **Integration:** The PR is currently **conflicting with an advancing main branch**; do not treat an earlier merged-main parity snapshot as current-head mergeability. The user expressly asked not to merge the PR; resolve integration conflicts and run exact integrated-head acceptance only upon authorization. No production schema/deployment change or OpenSpec archive has occurred.
+
+### Source commits from continuation
+
+- ea48129 — Lichess, FEN, coaching profiles, shared UI and student safety
+- 60a48eb — diagnostic strict Stripe concurrency regression
+- 4d901d8 — hosted plan, settings, notification and private data transfer
+- 9522a6f — legal/onboarding, profile, billing/event/dashboard, avatar and skills localization
+
 ## Implemented locally in this slice
 - Added pinned Next.js 16-compatible `next-intl` framework, locale registry and request-scoped catalogs for en/he/ru, browser/cookie/teacher preference resolution, SSR `html lang/dir`, Hebrew/Cyrillic fonts and an accessible three-language control on public/login/account/navigation surfaces.
 - Added additive teacher profile language field to canonical SQL and a **review-only non-destructive migration** for existing databases; no database reset/deployment/application of SQL has occurred.

@@ -1,6 +1,6 @@
 # Tasks: introduce multilingual support (en, he, ru)
 
-**Active implementation, not yet complete or archived.** Mark only fully implemented items complete; do not infer full translation/RTL from catalog or structural parity checks. Complete remaining requirements and retain exact-head acceptance links.
+**Active implementation, not yet complete or archived. The user requested NO MERGE into main; F3 and F4 remain intentionally gated by approval and actual full acceptance.** Mark only fully implemented items complete; do not infer full translation/RTL from catalog or structural parity checks. Complete remaining requirements and retain exact-head acceptance links.
 
 ## A. Establish the contract and framework
 - [ ] A1. Inventory every visible English literal in teacher, guest/auth, legal, marketing, portal, emails, reports/CSV/PDF, PWA/offline, error states and accessibility text; map surfaces to translation namespaces.

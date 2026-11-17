@@ -1,6 +1,6 @@
 # Change: introduce-multilingual-support
 
-**Status: PROPOSED — not implemented or archived.**
+**Status: IMPLEMENTATION IN PROGRESS on PR #86 — not merged, accepted or archived.** The baseline code audit and initial scope below are historical proposal context; consult tasks.md and IMPLEMENTATION_PROGRESS.md for latest implementation and verification.
 **Requested first-class UI languages:** English (en), Hebrew (he), Russian (ru).
 **Architecture:** MCP/ChatGPT/Claude first, optional fully localized website.
 **Source audit:** 2026-11-17, main at 32ea4a0ad33ce66ccf2c18d208004b526d0fb6bf.
