@@ -4,10 +4,10 @@
 
 ## A. Establish the contract and framework
 - [ ] A1. Inventory every visible English literal in teacher, guest/auth, legal, marketing, portal, emails, reports/CSV/PDF, PWA/offline, error states and accessibility text; map surfaces to translation namespaces.
-- [ ] A2. Pin a Next.js 16-compatible next-intl version, configure typed en/he/ru dictionaries, ICU plural/select, shared locale registry, fallback and namespace conventions; verify SSR/client setup without breaking proxy.ts auth.
+- [x] A2. Pin a Next.js 16-compatible next-intl version, configure typed en/he/ru dictionaries, ICU plural/select, shared locale registry, fallback and namespace conventions; verify SSR/client setup without breaking proxy.ts auth.
 - [x] A3. Implement unauthenticated language selector, validated locale cookie and Accept-Language fallback; keep existing URL paths and all API/MCP/OAuth/feed token routes unchanged.
 - [ ] A4. Resolve authenticated teacher preference on the server on first paint and set root html lang/dir, localized metadata, accessible language labels and stable hydration; exercise sign-in/out and multi-tab transitions.
-- [ ] A5. Add CI checks for required keys/placeholders, forbidden missing translations and new user-facing hardcoded literals; document how to add a future locale.
+- [x] A5. Add CI checks for required keys/placeholders, forbidden missing translations and new user-facing hardcoded literals; document how to add a future locale.
 
 ## B. Persist settings with website and MCP parity (deliver together)
 - [ ] B1. Add constrained teachers.preferred_locale with en default in canonical fresh-install schema; write/review additive deployment plan for databases with real data; backup and restore.
@@ -26,7 +26,7 @@
 
 ## D. Locale-aware outputs, communications and AI
 - [ ] D1. Replace hardcoded en-US/uncontrolled Date.toLocaleString() in UI and human-readable exports with centralized Intl formatting; retain IANA timezone and stable ISO/UTC machine contracts.
-- [ ] D2. Extend shared reporting domain and matching website/MCP request with optional outputLocale, deterministic locale precedence and translated JSON presentation/TXT/CSV labels without modifying stable machine fields.
+- [x] D2. Extend shared reporting domain and matching website/MCP request with optional outputLocale, deterministic locale precedence and translated JSON presentation/TXT/CSV labels without modifying stable machine fields.
 - [ ] D3. Preserve UTF-8 BOM, safe CSV escaping/formula injection protection, Unicode and Hebrew PDF embedding; test identical website/MCP exported bytes for same requested locale.
 - [ ] D4. Localize event/reminder/email and portal messages using explicit recipient/workplace/portal language, including HTML lang/dir and plain text, without sending as a side effect of language selection.
 - [ ] D5. Extend optional AI note-drafting to accept reviewed outputLocale while preserving evidence and explicit teacher approval; prevent inferred mastery/ratings or silent translation of persisted notes.

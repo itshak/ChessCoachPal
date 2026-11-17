@@ -56,18 +56,18 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
-        <Card padding="sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-8 min-w-0">
+        <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
           <div className="text-sm text-muted">{t("activeStudents")}</div>
           <div className="text-3xl font-bold mt-1">{activeStudents.length}</div>
           <Link href="/students" className="text-sm text-primary hover:underline">{t("manageStudents")}</Link>
         </Card>
-        <Card padding="sm">
+        <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
           <div className="text-sm text-muted">{t("workplaces")}</div>
           <div className="text-3xl font-bold mt-1">{workplaces?.length ?? 0}</div>
           <Link href="/coaching" className="text-sm text-primary hover:underline">{t("manageWorkplaces")}</Link>
         </Card>
-        <Card padding="sm">
+        <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
           <div className="text-sm text-muted">{t("classGroups")}</div>
           <div className="text-3xl font-bold mt-1">{groups?.length ?? 0}</div>
           <Link href="/coaching" className="text-sm text-primary hover:underline">{t("viewClasses")}</Link>

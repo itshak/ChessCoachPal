@@ -2549,5 +2549,26 @@
   "eventPage": {
     "back": "Events",
     "metadataTitle": "Event"
+  },
+  "oauthConsent": {
+    "title": "Authorize ChessCoachPal AI connector",
+    "heading": "Authorize AI connector",
+    "clientRequests": "requests access to ChessCoachPal.",
+    "redirectDestination": "Redirect destination",
+    "permissions": "Requested permissions",
+    "teacherConnected": "Connected teacher account. Review the request and approve only if you recognize this client.",
+    "notSignedIn": "You are not signed in.",
+    "signIn": "Sign in to ChessCoachPal",
+    "returnReload": "Then return to and reload this page.",
+    "approve": "Authorize",
+    "deny": "Deny",
+    "invalidRequest": "Invalid OAuth authorization request",
+    "forbidden": "Forbidden",
+    "invalidConsent": "Invalid consent session",
+    "invalidDecision": "Invalid decision",
+    "signInFirst": "Sign in first, then retry the connection",
+    "couldNotAuthorize": "Could not authorize this client",
+    "scopeDetailsWrite": "Read access can view teacher-owned students, lessons, attendance, materials, reports, invoices and settings. Write access can create, edit or archive teaching and financial records, manage invoices, and send communications. Sensitive actions may require additional confirmation.",
+    "scopeDetailsRead": "Read-only access can view teacher-owned students, lessons, attendance, materials, reports, invoices and settings. This client has not requested write access."
   }
 }

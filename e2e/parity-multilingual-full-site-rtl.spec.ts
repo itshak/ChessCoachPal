@@ -28,12 +28,32 @@ test("EN/HE/RU: all teacher entrypoints obey saved language and mobile layout di
         expect(res?.status(),`${locale} ${path} HTTP`).toBe(200);
         await expect(page.locator("html"),`${locale} ${path} lang`).toHaveAttribute("lang",locale);
         await expect(page.locator("html"),`${locale} ${path} dir`).toHaveAttribute("dir",dir);
-        const widths=await page.evaluate(()=>({
-          viewport:window.innerWidth,
-          document:document.documentElement.scrollWidth,
-        }));
+        const widths=await page.evaluate(()=>{
+          const viewport=window.innerWidth,documentWidth=document.documentElement.scrollWidth;
+          // Include safe, structural CSS diagnostics on failures. Do not put
+          // user-controlled student names, notes, event titles or private data
+          // into CI logs. The structural widths identify which container leaks.
+          const culprits=documentWidth-viewport>2
+            ?Array.from(document.querySelectorAll<HTMLElement>("body *"))
+              .filter(el=>el.getClientRects().length>0)
+              .map(el=>({
+                tag:el.tagName.toLowerCase(),
+                classes:String(el.className)
+                  .split(/\s+/).slice(0,6).join(" ").slice(0,110),
+                outer:Math.round(el.getBoundingClientRect().width),
+                left:Math.round(el.getBoundingClientRect().left),
+                right:Math.round(el.getBoundingClientRect().right),
+                scroll:el.scrollWidth,client:el.clientWidth,
+              }))
+              .filter(x=>x.scroll-x.client>2||x.left < -2||x.right >viewport+2)
+              .sort((a,b)=>Math.max(b.scroll-b.client,b.right-viewport,-b.left)-
+                             Math.max(a.scroll-a.client,a.right-viewport,-a.left)).slice(0,14)
+            :[];
+          return {viewport,document:documentWidth,culprits};
+        });
         expect(widths.document-widths.viewport,
-          `${locale} ${path} causes document horizontal overflow (pixels)`).toBeLessThanOrEqual(2);
+          `${locale} ${path} causes document horizontal overflow; structural diagnostics: ${JSON.stringify(widths.culprits)}`)
+          .toBeLessThanOrEqual(2);
         await expect(page.locator("h1").first(),`${locale} ${path} must have accessible heading`)
           .toBeVisible();
       }
