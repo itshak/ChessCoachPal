@@ -225,7 +225,9 @@ describe("private beta verified invitation activation", () => {
   });
 
   it("rate-limits approved invitations before any SendPulse email is sent", async () => {
-    mocks.checkRateLimit.mockReturnValue({ ok: false, retryAfterSec: 60 });
+    mocks.checkRateLimit
+      .mockReturnValueOnce({ ok: true }) // initial beta-code rate limit
+      .mockReturnValue({ ok: false, retryAfterSec: 60 }); // invite throttle
     const response = await POST(request("private-test-code"));
     expect(response.status).toBe(429);
     expect(mocks.adminInviteUserByEmail).not.toHaveBeenCalled();

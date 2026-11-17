@@ -114,6 +114,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Validate before sending an irreversible invitation email. Password
+  // checks in GoTrue's admin update alone happen too late for SMTP sends.
+  if (verifiedBetaSignup && password.length < 6) {
+    return NextResponse.json(
+      { error: "Password must be at least 6 characters long." },
+      { status: 400 }
+    );
+  }
+
   const supabase = await createClient();
   const timezoneValue = typeof timezone === "string" ? timezone : undefined;
   const userMetadata = {
