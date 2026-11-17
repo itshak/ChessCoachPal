@@ -1,6 +1,6 @@
 # ChessCoachPal development and release status
 
-**CURRENT RELEASE STATUS — 2026-11-15:** [v0.1.2 published](https://github.com/itshak/ChessCoachPal/releases/tag/v0.1.2). PR #81 post-release hardening is newer than the v0.1.2 tag; the production SHA, full authenticated E2E, real ChatGPT client acceptance, historical privacy/licensing review and GitHub Homepage metadata must be tracked separately. Older 0.0.0/v0.1.0 entries below are retained as a historical development diary, not current facts. Supabase/Coolify migration is an accepted target (hosting ADR-0008), not a completed cutover.
+**CURRENT RELEASE STATUS — 2026-11-17:** v0.1.5 is the live pre-1.0 private-beta release on the existing OVH/Coolify service. A source-neutral per-student dated-attendance import, full-data CSV export, and MCP request-size/discovery repairs were merged through [PR #95](https://github.com/itshak/ChessCoachPal/pull/95) after CI, authenticated E2E, Compose, backup/restore and security acceptance. v0.1.6 is the release candidate for these changes; verify published tag, exact running commit, live MCP catalogue and real ChatGPT/Claude flows before calling it deployed or client-certified. Former students' history is preserved; live operations should never import unverified dates or assume an aggregate attendance total represents calendar sessions. The 2026-11-15 entries below are retained as a dated engineering diary, not current status.
 
 
 ## 2026-11-15 — checkout race and release verification lesson
