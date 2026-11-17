@@ -1,6 +1,6 @@
 # Change: optimize-mcp-coaching-workflows
 
-- **Status:** Implementation candidate on PR #97; acceptance, merged-main verification and OpenSpec archive pending.
+- **Status:** Accepted on merged main `ebb4af8`; archival and applied-spec update included in the follow-up archival commit.
 - **Date:** 2026-11-17
 - **Owner:** ChessCoachPal agent-first product/MCP.
 - **Intent:** Make real chess-coach tasks reliable and economical for AI agents, without removing any teacher business capability from the existing single authenticated `/mcp` connector.
@@ -21,6 +21,10 @@ Research and vendor guidance favor user-goal-oriented tool definitions and progr
 - [OpenAI: design plugin tools around user workflows](https://developers.openai.com/plugins/plan/tools).
 - [OpenAI: plugin tool accuracy and reviewability](https://developers.openai.com/plugins/plugin-guidelines).
 - [MCP tools protocol](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) (verify the negotiated protocol version during implementation).
+
+## What Changes
+
+Introduce two named, shared-domain teacher workflows: an atomically completed ad-hoc group lesson with explicit per-pupil attendance and notes; and a reviewed material-in-completed-lesson operation that creates/reuses a typed resource, links it, and records exactly attested student stages in one local transaction. Improve task-neutral MCP discovery, correct scope-based tool catalog visibility, retain all 195 earlier commands, include private student notes in next-lesson briefing, and enforce a source-derived 198-tool description/dispatcher audit. Retain PR #95 historical evidence import and paginated export. Release/client acceptance and live-schema rollout are separate.
 
 ## Decisions this change proposes
 
