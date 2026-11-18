@@ -228,13 +228,13 @@ export async function teacherStudentDelete(db:Db,teacherId:string,studentId:stri
       "Linked teaching, group, chess progress or financial history exists. Archive the student instead.");
   const {data,error}=await db.from("students").delete().eq("teacher_id",teacherId)
     .eq("id",studentId).eq("updated_at",expectedUpdatedAt)
-    .select("id,guardian_id").maybeSingle();
+    .select("id").maybeSingle();
   if(error?.code==="23503" && error.message?.includes("HISTORY_DEPENDENCIES"))
     throw new StudentProfileError(409,"HISTORY_DEPENDENCIES",
       "Linked teaching, group, chess progress or financial history exists. Archive the student instead.");
   if(error)throw new StudentProfileError(409,"DELETE_BLOCKED","Deletion failed; linked history or concurrent edits may exist");
   if(!data)throw new StudentProfileError(409,"CONFLICT","Student changed or was removed; re-read before deleting");
-  // Preserve the historical family and its portal grant. Ordinary student
-  // deletion is not permission to retire somebody else's contact identity.
+  // Deletion of a student never implies permission to remove an independent
+  // contact identity or revoke a separately authorized scoped portal grant.
   return {deleted:true,studentId:data.id};
 }
