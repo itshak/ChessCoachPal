@@ -1,6 +1,41 @@
 # ChessCoachPal development and release status
 
-**2026-11-18 PLANNING ONLY:** Accepted architectural boundaries and baseline-first live-transition policy are now documented in [ADR-0015](adr/0015-baseline-first-and-one-time-live-transitions.md) and [ADR-0016](adr/0016-chess-coaching-domain-boundaries.md). **Eight new OpenSpec change proposals** with design, unchecked tasks and SHALL/scenario spec deltas are indexed at [openspec/changes/README.md](../openspec/changes/README.md). This documentation-only work did **not** implement features, run a live migration, deploy code, change actual entitlements or certify a real ChatGPT/Claude client. The older dated release notes below remain historical. Validate the true running release independently.
+**2026-11-18 — P0 canonical baseline/live transition foundation merged.**
+The first accepted fix proposal, `2026-11-18-enforce-baseline-live-transition-contract`,
+was implemented in [PR #103](https://github.com/itshak/ChessCoachPal/pull/103)
+and merged to main at
+[`b9c50a3`](https://github.com/itshak/ChessCoachPal/commit/b9c50a3f312309814d9203467af7446e0f2273d0).
+SHA-256 reviewed transition manifest and CI guard, canonical baseline-only
+fresh install, historical populated fixture + five migrations, no-replay,
+transaction rollback, RLS/grants, identity-preserving records and independent
+backup/restore verification are implemented. An explicit function-alignment
+migration closes the two concrete existing-schema drift cases. The same
+source passed PR-head
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/44325023141),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/44325023147),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/44325023221),
+[convergence + restore](https://github.com/itshak/ChessCoachPal/actions/runs/44325023374),
+and [authenticated website↔MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/44325023153)
+(**296 pass / 5 intentional skips plus three schedule repeat passes**).
+**The same source on merged main `b9c50a3f`** passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/44326920655),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/44326920678),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/44326920807),
+[convergence/restore](https://github.com/itshak/ChessCoachPal/actions/runs/44326920541)
+and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/44326920966).
+See [ADR-0015](adr/0015-baseline-first-and-one-time-live-transitions.md)
+and [the operator runbook](SCHEMA_TRANSITION_RUNBOOK.md) for conditions.
+
+**Scope boundary:** No live Coolify database migration, reset, deployment,
+release/tag, production backup validation or real-client certification occurred
+as a result of this source change. The actual live revision and operator
+authorization remain independent private deployment gates. The other seven
+accepted fix proposals are not implemented by this P0 change.
+
+---
+
+
+**2026-11-18 ORIGINAL PLANNING RECORD (SUPERSEDED FOR P0):** Accepted architectural boundaries and baseline-first live-transition policy are now documented in [ADR-0015](adr/0015-baseline-first-and-one-time-live-transitions.md) and [ADR-0016](adr/0016-chess-coaching-domain-boundaries.md). **Eight new OpenSpec change proposals** with design, unchecked tasks and SHALL/scenario spec deltas are indexed at [openspec/changes/README.md](../openspec/changes/README.md). This documentation-only work did **not** implement features, run a live migration, deploy code, change actual entitlements or certify a real ChatGPT/Claude client. The older dated release notes below remain historical. Validate the true running release independently.
 
 **CURRENT RELEASE STATUS — 2026-11-17:** v0.1.5 was the last explicitly recorded live Coolify private-beta version; v0.1.6 is published on GitHub at its original source SHA, but the exact running Coolify deployment was not independently verified in this workflow change. A source-neutral per-student dated-attendance import, full-data CSV export, and MCP request-size/discovery repairs were merged through [PR #95](https://github.com/itshak/ChessCoachPal/pull/95) after CI, authenticated E2E, Compose, backup/restore and security acceptance. Verify the published tag, exact running commit, live MCP catalogue and real ChatGPT/Claude flows before calling any new source code deployed or client-certified. Former students' history is preserved; live operations should never import unverified dates or assume an aggregate attendance total represents calendar sessions. The 2026-11-15 entries below are retained as a dated engineering diary, not current status.
 

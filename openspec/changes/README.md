@@ -1,14 +1,26 @@
 # Active OpenSpec changes and accepted direction
 
-**2026-11-18 decision set: accepted architecture, PROPOSED IMPLEMENTATION only.** No database migration, feature implementation, production deployment, OpenSpec archive, release/tag or test result is implied by these documents. The concurrently active [multilingual-support change](2026-11-17-introduce-multilingual-support/proposal.md) remains separate; implement its current source of truth rather than overwriting it.
+**2026-11-18 status:** The P0 baseline/live-transition implementation has been
+merged in [PR #103](https://github.com/itshak/ChessCoachPal/pull/103) and is
+being archived with source-level acceptance evidence. The **seven remaining**
+fix proposals are still PLANNED, not implemented. No source change, OpenSpec
+archive or synthetic database test authorizes a production migration, release,
+paid feature, or live-user data operation. The concurrently active [multilingual-support change](2026-11-17-introduce-multilingual-support/proposal.md) remains separate; implement its current source of truth rather than overwriting it.
 
-Each proposal below contains four required artifacts: **proposal.md** (scope, motivation, boundaries), **design.md** (canonical schema/service/rollout decisions), **tasks.md** (unchecked verification checklist), and **specs/<capability>/spec.md** (SHALL requirements and WHEN/THEN acceptance cases).
+Each remaining proposal below contains four required artifacts: **proposal.md** (scope, motivation, boundaries), **design.md** (canonical schema/service/rollout decisions), **tasks.md** (unchecked verification checklist), and **specs/<capability>/spec.md** (SHALL requirements and WHEN/THEN acceptance cases).
 
-## Accepted changes and suggested implementation order
+## Delivered foundation (P0)
+
+[Baseline-first canonical schema and one-time live-transition contract](archive/2026-11-18-enforce-baseline-live-transition-contract/ARCHIVE_DECISION.md)
+— source implementation accepted as a prerequisite for the rest of the plan.
+The archived OpenSpec spec is reflected in
+[baseline-live-transition](../specs/baseline-live-transition/spec.md).
+Real deployment requires a separate, operator-approved data-preserving rollout.
+
+## Remaining proposals in suggested implementation order
 
 | Order | Change | Priority | Dependencies / release boundary |
 | --- | --- | --- | --- |
-| 0 | [Canonical baseline and one-time live transitions](2026-11-18-enforce-baseline-live-transition-contract/proposal.md) | P0 | Foundation for every following schema-changing delivery; new installs vs populated beta |
 | 1A | [Replace families with contacts and billing identities](2026-11-18-replace-families-with-contacts/proposal.md) | P0 | Requires 0; coordinate portal and finance cutover before removing guardian relationships |
 | 1B | [FIDE and national federation identities/ratings](2026-11-18-introduce-fide-national-ratings/proposal.md) | P0 FIDE; P0/P1 Israel | Requires 0; Israeli automated adapter is conditional on lawful, reliable access |
 | 1C | [Persistent workplace context and Studio retirement](2026-11-18-add-workplace-context-and-retire-studio/proposal.md) | P0 | Requires 0; preserve current workplaces and Beta entitlements |

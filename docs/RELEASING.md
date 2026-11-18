@@ -53,7 +53,26 @@ This is a deliberate release-policy exception authorized by the maintainer, not 
 
 ## Supported compatibility policy
 
-For `0.x` releases, users may have to reinstall or explicitly reinitialize a development database. We **do not** retain CogNote migrations, API aliases or migration chains for old ChessCoachPal versions solely for compatibility. Never automatically erase a database that might contain real information. Decide the post-`1.0.0` compatibility and migration contract before publishing that milestone.
+For `0.x` releases, **disposable development databases** may be deliberately
+reinitialized. We do **not** keep CogNote compatibility or promise perpetual
+support for old pre-1.0 client/API versions. **A populated private-beta/live
+database is different:** [ADR-0015](adr/0015-baseline-first-and-one-time-live-transitions.md)
+requires canonical fresh-install SQL plus a reviewed one-time forward-only
+migration for every deployment schema change, not a reset or ad hoc SQL patch.
+
+**Mandatory data-bearing release/deployment gate:** prove the baseline and
+approved transitions converge with synthetic preserved users/records, RLS and
+grants through the existing CI/restore workflow; obtain privately reviewed
+source SHA and actual live migration-ledger inventory; verify an **off-host**
+backup successfully restored to a second isolated target; inspect affected
+identity/guardian/portal, historical student, invoice/credit and Storage
+relationships; record explicit operator permission, target, rollout window,
+recovery plan and after-apply reconciliation. Apply the approved transition
+*before* deploying any app code that needs it. A release tag or source merge
+does **not** authorize migrating actual teacher records. See
+[the operator runbook](SCHEMA_TRANSITION_RUNBOOK.md). Decide post-`1.0.0`
+compatibility separately; this guard protects real data without promising
+pre-v1 external API compatibility.
 
 ## Coolify private-beta deployment policy: published releases only
 

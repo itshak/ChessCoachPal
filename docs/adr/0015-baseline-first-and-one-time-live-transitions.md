@@ -32,3 +32,37 @@ These are **existing operational transitions**, not the schema for a clean insta
 - Real private-beta data is protected through targeted one-time transitions rather than an unsafe reset.
 - Baseline SQL remains the single source of truth. Transitions are installation-specific operational history, not a second schema definition.
 - Update AGENTS.md, OpenSpec, architecture docs, schema-guard comments and older ADR cross-references when changing this policy.
+
+## Implemented source enforcement — 2026-11-18
+
+The P0 contract was implemented in [PR #103](https://github.com/itshak/ChessCoachPal/pull/103),
+merged to main at `b9c50a3f312309814d9203467af7446e0f2273d0`.
+`scripts/schema-transition-manifest.json` pins the SHA-256 of the canonical
+baseline and every approved live SQL file, including the new
+`20261118150000_live_baseline_function_alignment.sql`. The last repair was
+required because isolated pre-extension-upgrade verification exposed two
+historically divergent function bodies:
+`ccp_restore_canonical_chess_rows(jsonb)` and
+`ccp_student_capacity_guard()`. It updates those function definitions and
+reasserts existing permissions; it does not reset any data.
+
+The source guard validates hashes, allowed order, target baseline objects and
+risk/predecessor/restore metadata. The existing GitHub Actions M5 restore
+workflow invokes a local-only synthetic convergence smoke: current baseline
+alone versus a pinned pre-extension installation plus the five versioned
+transitions, comparing full public structure, roles/RLS, data identity and
+replay/rollback. The operator checklist is in
+[the transition runbook](../SCHEMA_TRANSITION_RUNBOOK.md).
+
+**Not authorized or verified:** No code merge, passing synthetic check or
+OpenSpec archive establishes the actual production database revision or
+approves applying migrations to live teacher data. Record private backup,
+restore, inventory and operator approval before an eventual deployment.
+
+**Exact merged-main acceptance:** [CI 44326920655](https://github.com/itshak/ChessCoachPal/actions/runs/44326920655),
+[security 44326920678](https://github.com/itshak/ChessCoachPal/actions/runs/44326920678),
+[Compose 44326920807](https://github.com/itshak/ChessCoachPal/actions/runs/44326920807),
+[isolated database convergence and backup/restore 44326920541](https://github.com/itshak/ChessCoachPal/actions/runs/44326920541)
+and [authenticated browser/delegated MCP E2E 44326920966](https://github.com/itshak/ChessCoachPal/actions/runs/44326920966)
+all passed on `b9c50a3f` before archival. The actual production database
+was neither accessed nor migrated.

@@ -38,3 +38,21 @@ The existing `students.guardian_id`, `guardians`, `studio_policies`, `invoices.g
 The [2026-11-18 implementation roadmap](../openspec/changes/README.md) provides eight independently testable OpenSpec changes and shared gates.
 
 **Schema rollout:** [ADR-0015](adr/0015-baseline-first-and-one-time-live-transitions.md) requires every implementation to modify the authoritative canonical fresh-install baseline and, when real private-beta data exists, provide a reviewed one-time live transition with backup/restore and reconciliation. Neither the accepted domain design nor OpenSpec proposals authorize a live migration, reset, deployment or breaking production rollout. The current database and API remain in their inherited form until implementation acceptance.
+
+
+## Authoritative fresh schema and populated-beta transitions (ADR-0015)
+
+The single current-install SQL source is
+`supabase/migrations/20261107000000_chesscoachpal_baseline.sql`.
+`scripts/schema-transition-manifest.json` pins approved forward-only live
+transitions and their reviewed SHA-256 digests. A new installation must converge
+from the baseline alone; a prior populated installation requires explicit
+reviewed one-time migrations and preservation checks, not a reset, legacy dual
+writer or automatic version-compatibility layer. The existing CI
+`m5-restore.yml` tests a frozen historical synthetic source, complete
+schema/role/RLS convergence, replay protection and independent restore.
+[ADR-0015](adr/0015-baseline-first-and-one-time-live-transitions.md) and the
+[operator runbook](SCHEMA_TRANSITION_RUNBOOK.md) require verified off-host
+backup/restore, real deployed ledger inventory and explicit private approval
+**before** any application to a data-bearing instance. A source merge never
+proves that Coolify has run its migration.
