@@ -7,6 +7,8 @@ import {materializeCanonicalSessions} from "@/lib/server/canonical-calendar-serv
 import {canonicalCalendarWindow} from "@/lib/server/canonical-calendar-read";
 import {canonicalSlotsList} from "@/lib/server/canonical-slot-service";
 import {canonicalMakeupCreditsList} from "@/lib/server/canonical-makeup-service";
+import {teacherWorkplaceContextGet} from "@/lib/server/teacher-workplace-context";
+import {workplaceCurrentStudentIds} from "@/lib/server/workplace-student-scope";
 import {CanonicalScheduleBoard} from "@/components/teacher/schedule/CanonicalScheduleBoard";
 import {CanonicalSlotManager,type Slot} from "@/components/teacher/schedule/CanonicalSlotManager";
 import {CanonicalMakeupPanel} from "@/components/teacher/schedule/CanonicalMakeupPanel";
@@ -25,6 +27,9 @@ export default async function SchedulePage({
  if(!user)return null;
  const {week}=await searchParams;
  const policy=await getPolicy(db,user.id);
+ const context=await teacherWorkplaceContextGet(db,user.id);
+ const selection=context.selectedWorkplaceId;
+ const currentStudentIds=selection?await workplaceCurrentStudentIds(db,user.id,selection):null;
  const today=toLocalDateString(new Date(),policy.timezone);
  const weekStart=startOfWeek(week&&/^\d{4}-\d{2}-\d{2}$/.test(week)?week:today);
  const weekEnd=addDays(weekStart,6);
@@ -47,7 +52,7 @@ export default async function SchedulePage({
     .eq("teacher_id",user.id).order("name"),
    db.from("workplaces").select("id,name")
     .eq("teacher_id",user.id).order("created_at").order("id"),
-   db.from("events").select("id,title,starts_at")
+   db.from("events").select("id,title,starts_at,workplace_id")
     .eq("teacher_id",user.id)
     .gte("starts_at",addDays(weekStart,-2)+"T00:00:00Z")
     .lt("starts_at",addDays(weekEnd,3)+"T00:00:00Z")
@@ -56,8 +61,14 @@ export default async function SchedulePage({
  if(studentsRes.error||workplacesRes.error||eventsRes.error)
   throw new Error("Unable to load the canonical teaching schedule");
 
- const students=studentsRes.data??[],workplaces=workplacesRes.data??[];
- const events=(eventsRes.data??[]).map(event=>({
+ const students=(studentsRes.data??[]).filter(s=>!currentStudentIds||currentStudentIds.has(s.id));
+ const workplaces=selection?(workplacesRes.data??[]).filter(w=>w.id===selection):workplacesRes.data??[];
+ // Global context affects presentation only: recurrence generation and frozen
+ // historical lesson attribution are never mutated by changing a filter.
+ const scopedCalendar=selection?calendar.filter(session=>session.workplace_id===selection):calendar;
+ const scopedSlots=selection?slots.filter(slot=>slot.workplace_id===selection):slots;
+ const scopedMakeup=selection?makeup.filter(credit=>credit.workplaceId===selection):makeup;
+ const events=(eventsRes.data??[]).filter(event=>!selection||event.workplace_id===selection).map(event=>({
   id:event.id,title:event.title,startsAt:event.starts_at,
   localDate:formatEventDateKey(event.starts_at,policy.timezone),
  })).filter(event=>event.localDate>=weekStart&&event.localDate<=weekEnd);
@@ -71,14 +82,14 @@ export default async function SchedulePage({
   </header>
   <CanonicalScheduleBoard
    weekStart={weekStart} today={today} timezone={policy.timezone}
-   sessions={calendar} events={events} students={students}
+   sessions={scopedCalendar} events={events} students={students}
    workplaces={workplaces} durationOptions={policy.lesson_duration_options}/>
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-   <CanonicalSlotManager slots={slots as Slot[]}
+   <CanonicalSlotManager slots={scopedSlots as Slot[]}
     students={students} workplaces={workplaces}
     today={today} durationOptions={policy.lesson_duration_options}/>
    <div className="space-y-4">
-    <CanonicalMakeupPanel credits={makeup} timezone={policy.timezone}
+    <CanonicalMakeupPanel credits={scopedMakeup} timezone={policy.timezone}
      today={today} workplaces={workplaces}/>
     <p className="text-muted text-sm">
      {t("policy")}{" "}
