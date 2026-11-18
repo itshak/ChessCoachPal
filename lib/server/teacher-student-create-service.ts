@@ -1,52 +1,10 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { generateShortToken } from "@/lib/token";
-
-export interface CreateGuardianInput {
-  name: string;
-  familyName?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  secondaryName?: string | null;
-  secondaryEmail?: string | null;
-  secondaryPhone?: string | null;
-  emailRecipients?: "primary" | "secondary" | "both";
-}
-
-export async function insertGuardian(
-  supabase: SupabaseClient,
-  teacherId: string,
-  input: CreateGuardianInput
-) {
-  const emailRecipients = ["primary", "secondary", "both"].includes(
-    input.emailRecipients ?? ""
-  )
-    ? input.emailRecipients!
-    : "primary";
-
-  return supabase
-    .from("guardians")
-    .insert({
-      teacher_id: teacherId,
-      name: input.name.trim(),
-      family_name: input.familyName?.trim() || null,
-      email: input.email?.trim() || null,
-      phone: input.phone?.trim() || null,
-      secondary_name: input.secondaryName?.trim() || null,
-      secondary_email: input.secondaryEmail?.trim() || null,
-      secondary_phone: input.secondaryPhone?.trim() || null,
-      email_recipients: emailRecipients,
-      portal_token: generateShortToken(),
-    })
-    .select()
-    .single();
-}
+import type {SupabaseClient} from "@supabase/supabase-js";
 
 export interface CreateStudentInput {
   name: string;
   birthdate?: string | null;
   level?: string | null;
   teacherNotes?: string | null;
-  guardianId?: string | null;
   /** An independent teacher-owned contact; never grants a portal token. */
   contactEmail?: string | null;
   contactPhone?: string | null;
@@ -60,15 +18,15 @@ export interface CreateStudentInput {
 }
 
 /**
- * Create a student with an existing explicitly selected legacy family link or
- * a new independent contact. No automatic portal grants or legal status.
+ * Create a student with optional new independent contact. Zero contacts are
+ * valid; a linked contact is NEVER automatically a portal viewer or payer.
  */
-export async function createStudentWithOptionalFamily(
+export async function createStudentWithOptionalContact(
   supabase: SupabaseClient,
   teacherId: string,
   input: CreateStudentInput
 ): Promise<
-  | { ok: true; student: Record<string, unknown>; createdFamily: boolean; createdContactId: string | null }
+  | { ok: true; student: Record<string, unknown>; createdContactId: string | null }
   | { ok: false; error: string; status: number }
 > {
   const name=input.name?.trim();
@@ -84,7 +42,6 @@ export async function createStudentWithOptionalFamily(
     p_birthdate:input.birthdate||null,
     p_level:input.level??null,
     p_teacher_notes:input.teacherNotes??null,
-    p_guardian_id:input.guardianId||null,
     p_contact_email:input.contactEmail??null,
     p_contact_phone:input.contactPhone??null,
     p_contact_name:input.contactName??null,
@@ -101,17 +58,14 @@ export async function createStudentWithOptionalFamily(
       return {ok:false,error:"Student creation requestId was already used with different details",status:409};
     if(message.includes("STUDENT_ALREADY_DELETED"))
       return {ok:false,error:"Student from this request was permanently deleted",status:409};
-    if(message.includes("GUARDIAN_NOT_FOUND"))
-      return {ok:false,error:"Family not found",status:404};
-    if(/STUDENT_INVALID_INPUT|GUARDIAN_NAME_REQUIRED|GUARDIAN_CONTACT_CHANNEL_REQUIRED|CONTACT_NAME_REQUIRED|CONTACT_AND_LEGACY_FAMILY_CONFLICT/.test(message)||
+    if(/STUDENT_INVALID_INPUT|CONTACT_NAME_REQUIRED/.test(message)||
        ["22023","22007","22008"].includes(error.code??""))
       return {ok:false,error:"Invalid student or independent contact details",status:400};
-    return {ok:false,error:"Student and optional family could not be created",status:500};
+    return {ok:false,error:"Student or optional contact could not be created",status:500};
   }
   if(!data||typeof data!=="object"||Array.isArray(data)||
      !data.student||typeof data.student!=="object")
     return {ok:false,error:"Student transaction returned invalid data",status:500};
   return {ok:true,student:data.student as Record<string,unknown>,
-    createdFamily:Boolean(data.createdFamily),
     createdContactId:typeof data.createdContactId==="string"?data.createdContactId:null};
 }

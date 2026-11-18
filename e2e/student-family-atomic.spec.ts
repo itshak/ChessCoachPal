@@ -40,7 +40,7 @@ test("atomic full student-contact create rolls back orphan contacts on hosted ca
    const refused=await auth.rpc("ccp_student_create_full",{
      p_name:studentName,p_birthdate:"2018-01-01",
      p_level:"Beginner",p_teacher_notes:"",
-     p_guardian_id:null,p_contact_email:"synthetic-"+suffix+"@example.com",
+     p_contact_email:"synthetic-"+suffix+"@example.com",
      p_contact_phone:null,p_contact_name:familyName,
      p_adult_self:false,p_request_id:randomUUID(),
    });
@@ -51,17 +51,13 @@ test("atomic full student-contact create rolls back orphan contacts on hosted ca
      .eq("teacher_id",teacherId).eq("display_name",familyName);
    const linkCheck=await admin.from("student_contacts").select("id")
      .eq("teacher_id",teacherId);
-   const guardianCheck=await admin.from("guardians").select("id")
-     .eq("teacher_id",teacherId).eq("name",familyName);
    const studentCheck=await admin.from("students").select("id")
      .eq("teacher_id",teacherId).eq("name",studentName);
    expect(contactCheck.error).toBeNull();
    expect(linkCheck.error).toBeNull();
-   expect(guardianCheck.error).toBeNull();
    expect(studentCheck.error).toBeNull();
    expect(contactCheck.data).toEqual([]);
    expect(linkCheck.data).toEqual([]);
-   expect(guardianCheck.data).toEqual([]);
    expect(studentCheck.data).toEqual([]);
    const counted=await admin.from("teachers").select("active_student_count")
      .eq("id",teacherId).single();

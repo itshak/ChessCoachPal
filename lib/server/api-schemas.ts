@@ -40,14 +40,13 @@ export const studentCreateSchema = z.object({
   birthdate: optionalDate,
   level: optionalText(120),
   teacherNotes: optionalText(50_000),
-  guardianId: optionalUuid,
   contactEmail: optionalText(254),
   contactPhone: optionalText(50),
   contactName: optionalText(200),
   adultSelf: z.boolean().optional(),
   archived: z.boolean().optional(),
   idempotencyKey: z.uuid().optional(),
-});
+}).strict();
 
 const aliases = z.array(z.string().trim().min(1).max(120)).max(20);
 const chessHandle = z.union([z.string().trim().max(30).regex(/^[A-Za-z0-9_-]*$/), z.null()]);
@@ -81,8 +80,6 @@ export const studentUpdateSchema = z.object({
   teacherNotes: optionalText(50_000),
 
   name: trimmedName.optional(),
-  parentContact: optionalText(500),
-  guardianId: optionalUuid,
   level: optionalText(120),
   birthdate: optionalDate,
   practiceStartDate: optionalDate,

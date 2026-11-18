@@ -93,7 +93,7 @@ import { teacherDashboardSummary, teacherNotificationsList, teacherNotifications
 
 import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, teacherStudentChessHistory, teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, StudentProfileError } from "@/lib/server/student-profile-service";
 import { studentUpdateSchema,studentCreateSchema } from "@/lib/server/api-schemas";
-import { createStudentWithOptionalFamily } from "@/lib/server/families";
+import { createStudentWithOptionalContact } from "@/lib/server/teacher-student-create-service";
 const safeStudentProfile = (row: Record<string,unknown>) => ({
   id:row.id,name:row.name,name_aliases:row.name_aliases,level:row.level,
   strength:row.strength,lichess_username:row.lichess_username,chesscom_username:row.chesscom_username,
@@ -1340,13 +1340,13 @@ const catalogue = [
   },
   {
     name:"ccp_students_create",
-    description:"Create a basic teacher-owned learner with name and optional level. For guardian/contact, birthdate, notes, or family-of-one creation use the full shared student create tool.",
+    description:"Create a basic teacher-owned learner with name and optional level. For an optional independent contact, birthdate, notes, or direct archiving use the full student create tool.",
     schema:z.object({name:shortName,level:z.string().trim().max(120).nullable().optional(),...mutation}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_students_create_full",
-    description:"Create an active or already archived teacher-owned learner with optional owned family, guardian contact, birthdate, level and private teacher notes in ONE atomic website/MCP transaction. archived=true never consumes active quota. Requires an idempotency key and approval; output redacts private notes and contact details.",
+    description:"Create an active or already archived teacher-owned learner with optional independent contact, birthdate, level and private notes in ONE atomic website/MCP transaction. A contact grants neither portal access nor billing authority. archived=true never consumes active quota. Requires an idempotency key and approval; output redacts private notes and contact details.",
     schema:studentCreateSchema.extend({
       idempotencyKey:uuid,confirmed:z.literal(true),
     }).strict(),
@@ -1716,8 +1716,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_learning_material_lifecycle_change":
         return {data:await teacherMaterialLifecycleChange(db,teacherId,args as Parameters<typeof teacherMaterialLifecycleChange>[2])};
       case "ccp_students_create_full": {
-        const a=args as Parameters<typeof createStudentWithOptionalFamily>[2];
-        const result=await createStudentWithOptionalFamily(db,teacherId,a);
+        const a=args as Parameters<typeof createStudentWithOptionalContact>[2];
+        const result=await createStudentWithOptionalContact(db,teacherId,a);
         if(!result.ok)return {error:{
           code:result.status===403?"HOSTED_LIMIT_REACHED":
             result.status===404?"NOT_FOUND":
@@ -1726,7 +1726,6 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           message:result.error,
         }};
         return {data:{...safeStudentProfile(result.student),
-          createdFamily:result.createdFamily,
           createdContactId:result.createdContactId}};
       }
       case "ccp_billing_generation_preview": {

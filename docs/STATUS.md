@@ -1,6 +1,11 @@
 # ChessCoachPal development and release status
 
 
+## 2026-11-18 — contact-only student creation; no legacy linking (draft PR)
+
+The current `ccp_student_create_full` function no longer accepts `p_guardian_id`, has no legacy guardian read/write branch, and produces only student, `createdContactId` and replay metadata. `ccp_student_create_receipts` no longer stores `created_family`. Website `/api/students` and `ccp_students_create_full` use the shared `teacher-student-create-service.ts`, reject an obsolete `guardianId` field and do not infer a portal grant, billing identity or legal guardian role from the optional contact. The historical `lib/server/families.ts` student creation entrypoint has been removed rather than aliased. The test fixture now checks a current contact-first atomic transaction and replay/rollback on each isolated fresh baseline bootstrap, with guest permissions empty. Existing guardian-dependent invoices, events, student exports and old Family routes **remain unconverted**, so the overall OpenSpec and no-legacy release gate are still incomplete; no production DB change is authorized.
+
+
 ## 2026-11-18 — Studio replaced by teacher/business settings (source WIP)
 
 On draft PR #104, the one canonical baseline now uses `teacher_settings` and `business_*` fields in place of obsolete `studio_policies` and `studio_*` branding. The `/studio` page has been retired and `/settings` added; `BusinessSettingsForm` and shared policy services and MCP `ccp_teacher_settings_get/update` and `ccp_teacher_credentials_handoff` are updated without compatibility aliases. en/he/ru settings catalogs and exact website/MCP tool registry were updated together. Local checks passed for TypeScript, lint (43 warnings, zero errors), schema guard (28/28), and strict parity (217 tools, 89/89 current teacher API families). **This is not full workplace-global context or acceptance**: persistent selection/filter semantics and remaining Family/contact/finance dependencies are outstanding. The no-legacy release audit remains red on old guardian paths and baseline. Final real-database cutover still requires separate approval.

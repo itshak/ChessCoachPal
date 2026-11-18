@@ -329,7 +329,6 @@ test("PARITY:PARITY-students-full-atomic-contact-create shares durable website a
  const websiteCreate=await page.request.post("/api/students",{data:another});
  expect(websiteCreate.status(),await websiteCreate.text()).toBe(201);
  const siteStudent=await websiteCreate.json();
- expect(siteStudent.createdFamily).toBe(false);
  expect(siteStudent.createdContactId).toBeTruthy();
  expect(siteStudent.guardian_id).toBeNull();
  const mcpReplay=await callTool("ccp_students_create_full",{

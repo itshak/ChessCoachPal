@@ -16,8 +16,6 @@ export type StudentProfilePatch = {
   chessGoals?: string | null;
   chessRatings?: Record<string,Record<string,number|null>>;
   teacherNotes?: string | null;
-  parentContact?: string | null;
-  guardianId?: string | null;
   level?: string | null;
   birthdate?: string | null;
   practiceStartDate?: string | null;
@@ -122,11 +120,6 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
   const existing = await teacherStudentProfile(db, teacherId, studentId);
   if (expectedUpdatedAt && existing.updated_at !== expectedUpdatedAt)
     throw new StudentProfileError(409,"CONFLICT","Student was modified; reload before editing");
-  if (patch.guardianId) {
-    const {data: guardian} = await db.from("guardians").select("id")
-      .eq("teacher_id",teacherId).eq("id",patch.guardianId).maybeSingle();
-    if (!guardian) throw new StudentProfileError(404,"NOT_FOUND","Family not found");
-  }
   if (patch.archived === false && existing.archived_at) {
     const allowed = await assertWithinHostedLimit(db,teacherId,"students");
     if (!allowed.allowed) {
@@ -175,8 +168,6 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
   // teacher_notes is NOT NULL in the canonical schema. Treat nullable API
   // clearing as an empty note instead of writing SQL NULL and returning 500.
   if (patch.teacherNotes !== undefined) update.teacher_notes = patch.teacherNotes ?? "";
-  if (patch.parentContact !== undefined) update.parent_contact = patch.parentContact;
-  if (patch.guardianId !== undefined) update.guardian_id = patch.guardianId || null;
   if (patch.level !== undefined) update.level = patch.level?.trim() || null;
   if (patch.birthdate !== undefined) update.birthdate = patch.birthdate || null;
   if (patch.practiceStartDate !== undefined) update.practice_start_date = patch.practiceStartDate || null;
@@ -193,9 +184,6 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
     throw new StudentProfileError(409,"FUTURE_COMMITMENTS","Resolve future commitments before archiving");
   if (error) throw new StudentProfileError(500,"DATABASE_ERROR","Student update failed");
   if (!data) throw new StudentProfileError(409,"CONFLICT","Student changed or was deleted; reload before editing");
-  // Unlinking a legacy family must not implicitly erase its portal token,
-  // invoice/communication history or independent contact conversion. Explicit
-  // owner-reviewed deletion is a separate operation.
   return data;
 }
 
