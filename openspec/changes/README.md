@@ -61,6 +61,10 @@ Real deployment requires a separate, operator-approved data-preserving rollout.
 - Automated mastery/strength inference from ratings, homework, games or teacher notes.
 - Public marketing claims that planned Pro features or sync automation already exist.
 
+## Final-cutover no-compatibility source gate
+
+`npm run pre1:final-cutover:audit` verifies the **finished** repository ships only the canonical baseline SQL in the default migrations directory, without inherited guardians/studio physical models, `guardian_id` service readers, Family/Studio API routes or MCP tool names, and with explicit scoped portal grants. Its independent three-case fixture tests are part of `npm run schema:canonical:guard-test`. The **release scan is expected to fail during WIP**, and must have zero violations before the combined changes can be accepted/archived. A passing source scan never replaces portal/RLS, website↔MCP, end-to-end, import or production-operator tests. The final one-time source-to-target migration, if chosen instead of a rebuild/reimport, is a separately controlled operator artifact—not an incremental pre-v1 compatibility chain under `supabase/migrations/`.
+
 ## Non-negotiable delivery gates
 
 Follow controlling [ADR-0017](../../docs/adr/0017-pre-v1-single-final-cutover-no-compatibility.md) and [ADR-0016](../../docs/adr/0016-chess-coaching-domain-boundaries.md). Every schema implementation updates **supabase/migrations/20261107000000_chesscoachpal_baseline.sql**. Final acceptance specifies **one** direct transition from the observed live revision to that target **or** a clean rebuild/reimport, tested against isolated data with RLS/grants, counts, chosen invoices/history, explicit new portal grants and verified recovery. Interim synthetic transition files in the current branch are not a real-deployment upgrade plan. No production database alteration follows automatically from implementation or CI.

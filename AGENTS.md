@@ -18,4 +18,6 @@ ChessCoachPal is **MCP/Plugin-first**; the website is a secondary viewer/editor 
 5. Prove the final fresh-install baseline and candidate **single final cutover or clean reimport** on an isolated restored copy, RLS permissions, CI/typecheck, strict parity, E2E, security, Compose and backup/restore. **Never merge or deploy with red required checks**; verify merged SHA and deployment readiness. No intermediate real-database migrations or legacy compatibility layers.
 6. Document any true client-side acceptance separately: tested Claude Desktop does not certify ChatGPT; actual-client ToolSearch differs from the MCP tool registry.
 
+Final pre-v1 acceptance MUST run `npm run pre1:final-cutover:audit` with zero violations, **in addition** to ordinary schema/parity checks. It currently fails deliberately while the work-in-progress legacy Family/Studio model is still in source. Do not weaken or skip this gate to archive an OpenSpec.
+
 Keep upstream MIT attribution and obey current ChessCoachPal proprietary licensing; see [legal notices](THIRD_PARTY_NOTICES.md).
