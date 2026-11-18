@@ -7,7 +7,7 @@ import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { StudioPolicy } from "@/lib/schedule";
+import type { TeacherPolicy } from "@/lib/schedule";
 import { PushNotificationToggle } from "@/components/teacher/settings/PushNotificationToggle";
 
 export function NotificationSettingsForm({
@@ -15,7 +15,7 @@ export function NotificationSettingsForm({
   accountEmail,
   pushConfigured,
 }: {
-  policy: StudioPolicy;
+  policy: TeacherPolicy;
   accountEmail?: string;
   pushConfigured: boolean;
 }) {
@@ -27,7 +27,7 @@ export function NotificationSettingsForm({
   const [inApp, setInApp] = useState(policy.notify_in_app);
   const [emailCancel, setEmailCancel] = useState(policy.notify_email_portal_cancel);
   const [emailPaid, setEmailPaid] = useState(policy.notify_email_invoice_paid);
-  const [bccEnabled, setBccEnabled] = useState(policy.bcc_family_emails);
+  const [bccEnabled, setBccEnabled] = useState(policy.bcc_contact_emails);
   const [bccEmail, setBccEmail] = useState(
     policy.bcc_email ?? accountEmail ?? ""
   );
@@ -35,15 +35,15 @@ export function NotificationSettingsForm({
   // Re-sync after a save/refresh so the field shows the stored address (the
   // API may have defaulted it to the account email).
   const [prevBcc, setPrevBcc] = useState({
-    enabled: policy.bcc_family_emails,
+    enabled: policy.bcc_contact_emails,
     email: policy.bcc_email,
   });
   if (
-    prevBcc.enabled !== policy.bcc_family_emails ||
+    prevBcc.enabled !== policy.bcc_contact_emails ||
     prevBcc.email !== policy.bcc_email
   ) {
-    setPrevBcc({ enabled: policy.bcc_family_emails, email: policy.bcc_email });
-    setBccEnabled(policy.bcc_family_emails);
+    setPrevBcc({ enabled: policy.bcc_contact_emails, email: policy.bcc_email });
+    setBccEnabled(policy.bcc_contact_emails);
     setBccEmail(policy.bcc_email ?? accountEmail ?? "");
   }
 
@@ -58,7 +58,7 @@ export function NotificationSettingsForm({
         notifyInApp: inApp,
         notifyEmailPortalCancel: emailCancel,
         notifyEmailInvoicePaid: emailPaid,
-        bccFamilyEmails: bccEnabled,
+        bccContactEmails: bccEnabled,
         // Only touch the address while the toggle is on, so saving other
         // notification settings doesn't persist an unused address.
         ...(bccEnabled ? { bccEmail } : {}),

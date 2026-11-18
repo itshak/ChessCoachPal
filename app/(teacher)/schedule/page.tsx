@@ -82,7 +82,7 @@ export default async function SchedulePage({
      today={today} workplaces={workplaces}/>
     <p className="text-muted text-sm">
      {t("policy")}{" "}
-     <Link className="text-primary hover:underline" href="/studio">{t("studioSettingsLink")}</Link>.
+     <Link className="text-primary hover:underline" href="/settings">{t("studioSettingsLink")}</Link>.
     </p>
    </div>
   </div>

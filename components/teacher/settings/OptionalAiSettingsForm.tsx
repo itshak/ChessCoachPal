@@ -7,18 +7,18 @@ import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { StudioPolicy } from "@/lib/schedule";
+import type { TeacherPolicy } from "@/lib/schedule";
 
 const inputClass =
   "px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm w-full";
 
-type AiProvider = StudioPolicy["ai_provider"];
+type AiProvider = TeacherPolicy["ai_provider"];
 
 export function OptionalAiSettingsForm({
   policy,
   aiStatus,
 }: {
-  policy: StudioPolicy;
+  policy: TeacherPolicy;
   aiStatus: { configured: boolean; masked: string | null };
 }) {
   const router = useRouter();

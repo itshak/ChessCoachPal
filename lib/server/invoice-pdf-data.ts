@@ -12,7 +12,7 @@ import { oneToOne } from "@/lib/schedule";
  * identical.
  */
 
-type StudioPolicy = Awaited<ReturnType<typeof getPolicy>>;
+type TeacherPolicy = Awaited<ReturnType<typeof getPolicy>>;
 
 export interface InvoicePdfItemRow {
   description: string;
@@ -47,7 +47,7 @@ export interface InvoicePdfInvoiceRow {
 export interface InvoicePdfBundle {
   invoice: InvoicePdfInvoiceRow;
   family: InvoicePdfFamilyRow;
-  policy: StudioPolicy;
+  policy: TeacherPolicy;
   items: InvoicePdfItemRow[];
   pdfBytes: Uint8Array;
   filename: string;
@@ -149,7 +149,7 @@ export async function loadInvoicePdf(
   try {
     pdfBytes = await buildInvoicePdf({
       locale: familyCommunicationLocale(family),
-      studioName: policy.studio_name,
+      businessName: policy.business_name,
       familyName: familyDisplayName(family),
       periodStart: invoice.period_start,
       periodEnd: invoice.period_end,

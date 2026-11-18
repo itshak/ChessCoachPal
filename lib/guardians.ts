@@ -1,5 +1,5 @@
 import type { EmailRecipients } from "@/lib/supabase/types";
-import type { StudioPolicy } from "@/lib/schedule";
+import type { TeacherPolicy } from "@/lib/schedule";
 import type {AppLocale} from "@/i18n/locales";
 
 /**
@@ -55,10 +55,10 @@ export function familyEmailRecipients(family: FamilyContact): string[] {
  * passed straight to sendEmail's optional `bcc`.
  */
 export function familyEmailBcc(
-  policy: Pick<StudioPolicy, "bcc_family_emails" | "bcc_email">
+  policy: Pick<TeacherPolicy, "bcc_contact_emails" | "bcc_email">
 ): string | undefined {
   const email = policy.bcc_email?.trim();
-  return policy.bcc_family_emails && email ? email : undefined;
+  return policy.bcc_contact_emails && email ? email : undefined;
 }
 
 /**

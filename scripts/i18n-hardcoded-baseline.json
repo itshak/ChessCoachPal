@@ -1450,7 +1450,7 @@
     "ready",
     "row"
   ],
-  "components/teacher/settings/StudioSettingsForm.tsx": [
+  "components/teacher/settings/BusinessSettingsForm.tsx": [
     "Add",
     "Anything families should know: cancellation policy, make-up rules, tuition, tournament dates...",
     "Contact info",

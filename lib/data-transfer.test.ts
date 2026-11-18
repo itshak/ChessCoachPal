@@ -13,7 +13,7 @@ function currentPayload(): StudioDataExport {
   return {
     exportedAt:new Date().toISOString(),
     teacherId:"00000000-0000-0000-0000-000000000001",
-    tables:{studio_policies:null,guardians:[],students:[]},
+    tables:{teacher_settings:null,guardians:[],students:[]},
   };
 }
 
@@ -102,9 +102,9 @@ describe("ChessCoachPal portable backup", () => {
   it("omits policy credentials in the current authenticated restore", async()=>{
     const calls:RpcCall[]=[];
     const payload=currentPayload();
-    payload.tables.studio_policies={teacher_id:"old",timezone:"UTC",stripe_secret_key:"secret",ai_api_key:"secret"};
+    payload.tables.teacher_settings={teacher_id:"old",timezone:"UTC",stripe_secret_key:"secret",ai_api_key:"secret"};
     expect((await importStudioExport(stubSupabase(calls),TEACHER,payload,DIGEST)).ok).toBe(true);
-    expect((calls[0].args.p_tables as StudioDataExport["tables"]).studio_policies)
+    expect((calls[0].args.p_tables as StudioDataExport["tables"]).teacher_settings)
       .toEqual({teacher_id:"old",timezone:"UTC"});
   });
 
@@ -123,7 +123,7 @@ describe("ChessCoachPal portable backup", () => {
     for(const malformed of [
       {students:{id:"incorrect-object"}},
       {payments:"not an array"},
-      {studio_policies:[{id:"must-be-object"}]},
+      {teacher_settings:[{id:"must-be-object"}]},
       {guardians:[[],{id:"g"}]},
     ]) {
       const calls:RpcCall[]=[];

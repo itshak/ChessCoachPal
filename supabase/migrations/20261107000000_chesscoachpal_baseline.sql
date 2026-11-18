@@ -917,7 +917,7 @@ COMMENT ON COLUMN "public"."students"."travel_fee_cents" IS 'Per-student travel 
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."studio_policies" (
+CREATE TABLE IF NOT EXISTS "public"."teacher_settings" (
     "teacher_id" "uuid" NOT NULL,
     "timezone" "text" DEFAULT 'America/Chicago'::"text" NOT NULL,
     "cancellation_window_hours" integer DEFAULT 24 NOT NULL,
@@ -927,11 +927,11 @@ CREATE TABLE IF NOT EXISTS "public"."studio_policies" (
     "teacher_cancel_earns_makeup" boolean DEFAULT true NOT NULL,
     "makeup_credit_expiry_days" integer,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "studio_name" "text" DEFAULT ''::"text" NOT NULL,
+    "business_name" "text" DEFAULT ''::"text" NOT NULL,
     "lesson_duration_options" integer[] DEFAULT '{30,45,60}'::integer[] NOT NULL,
-    "studio_website" "text" DEFAULT ''::"text" NOT NULL,
-    "studio_contact" "text" DEFAULT ''::"text" NOT NULL,
-    "studio_info" "text" DEFAULT ''::"text" NOT NULL,
+    "business_website" "text" DEFAULT ''::"text" NOT NULL,
+    "business_contact" "text" DEFAULT ''::"text" NOT NULL,
+    "business_info" "text" DEFAULT ''::"text" NOT NULL,
     "bill_attended" boolean DEFAULT true NOT NULL,
     "bill_no_show" boolean DEFAULT true NOT NULL,
     "bill_teacher_cancel" boolean DEFAULT false NOT NULL,
@@ -956,90 +956,90 @@ CREATE TABLE IF NOT EXISTS "public"."studio_policies" (
     "duration_rate_cents" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
     "travel_fee_cents" integer,
     "payment_qr_code" "text",
-    "bcc_family_emails" boolean DEFAULT false NOT NULL,
+    "bcc_contact_emails" boolean DEFAULT false NOT NULL,
     "bcc_email" "text",
     "lesson_label" "text" DEFAULT ''::"text" NOT NULL,
-    CONSTRAINT "studio_policies_ai_provider_check" CHECK (("ai_provider" = ANY (ARRAY['none'::"text", 'openai'::"text", 'anthropic'::"text"]))),
-    CONSTRAINT "studio_policies_bcc_email_check" CHECK ((("bcc_email" IS NULL) OR (("length"("bcc_email") <= 320) AND ("bcc_email" ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}$'::"text")))),
-    CONSTRAINT "studio_policies_cancellation_window_hours_check" CHECK (("cancellation_window_hours" >= 0)),
-    CONSTRAINT "studio_policies_default_rate_cents_check" CHECK ((("default_rate_cents" IS NULL) OR ("default_rate_cents" >= 0))),
-    CONSTRAINT "studio_policies_invoice_cadence_check" CHECK (("invoice_cadence" = ANY (ARRAY['monthly'::"text", 'manual'::"text"]))),
-    CONSTRAINT "studio_policies_makeup_credit_expiry_days_check" CHECK (("makeup_credit_expiry_days" > 0)),
-    CONSTRAINT "studio_policies_payment_provider_check" CHECK (("payment_provider" = ANY (ARRAY['manual'::"text", 'stripe'::"text"]))),
-    CONSTRAINT "studio_policies_payment_qr_code_check" CHECK ((("payment_qr_code" IS NULL) OR (("length"("payment_qr_code") <= 400000) AND ("payment_qr_code" ~ '^data:image/(png|jpeg);base64,[A-Za-z0-9+/]+=*$'::"text")))),
-    CONSTRAINT "studio_policies_rate_basis_check" CHECK (("rate_basis" = ANY (ARRAY['per_lesson'::"text", 'per_hour'::"text"]))),
-    CONSTRAINT "studio_policies_travel_fee_cents_check" CHECK ((("travel_fee_cents" IS NULL) OR ("travel_fee_cents" >= 0)))
+    CONSTRAINT "teacher_settings_ai_provider_check" CHECK (("ai_provider" = ANY (ARRAY['none'::"text", 'openai'::"text", 'anthropic'::"text"]))),
+    CONSTRAINT "teacher_settings_bcc_email_check" CHECK ((("bcc_email" IS NULL) OR (("length"("bcc_email") <= 320) AND ("bcc_email" ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}$'::"text")))),
+    CONSTRAINT "teacher_settings_cancellation_window_hours_check" CHECK (("cancellation_window_hours" >= 0)),
+    CONSTRAINT "teacher_settings_default_rate_cents_check" CHECK ((("default_rate_cents" IS NULL) OR ("default_rate_cents" >= 0))),
+    CONSTRAINT "teacher_settings_invoice_cadence_check" CHECK (("invoice_cadence" = ANY (ARRAY['monthly'::"text", 'manual'::"text"]))),
+    CONSTRAINT "teacher_settings_makeup_credit_expiry_days_check" CHECK (("makeup_credit_expiry_days" > 0)),
+    CONSTRAINT "teacher_settings_payment_provider_check" CHECK (("payment_provider" = ANY (ARRAY['manual'::"text", 'stripe'::"text"]))),
+    CONSTRAINT "teacher_settings_payment_qr_code_check" CHECK ((("payment_qr_code" IS NULL) OR (("length"("payment_qr_code") <= 400000) AND ("payment_qr_code" ~ '^data:image/(png|jpeg);base64,[A-Za-z0-9+/]+=*$'::"text")))),
+    CONSTRAINT "teacher_settings_rate_basis_check" CHECK (("rate_basis" = ANY (ARRAY['per_lesson'::"text", 'per_hour'::"text"]))),
+    CONSTRAINT "teacher_settings_travel_fee_cents_check" CHECK ((("travel_fee_cents" IS NULL) OR ("travel_fee_cents" >= 0)))
 );
 
 
-ALTER TABLE "public"."studio_policies" OWNER TO "postgres";
+ALTER TABLE "public"."teacher_settings" OWNER TO "postgres";
 
 
-COMMENT ON COLUMN "public"."studio_policies"."lesson_duration_options" IS 'Template time blocks (minutes) offered when creating slots and one-off lessons.';
-
-
-
-COMMENT ON COLUMN "public"."studio_policies"."studio_info" IS 'Human-readable studio policies/info shown on the family portal (free text).';
+COMMENT ON COLUMN "public"."teacher_settings"."lesson_duration_options" IS 'Template time blocks (minutes) offered when creating slots and one-off lessons.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."bill_attended" IS 'Whether attended lessons appear on invoices.';
+COMMENT ON COLUMN "public"."teacher_settings"."business_info" IS 'Teacher-level business introduction; sharing is always explicit per scoped portal grant.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."default_rate_cents" IS 'Studio-wide fallback rate in cents. Slot rate → student default → this.';
+COMMENT ON COLUMN "public"."teacher_settings"."bill_attended" IS 'Whether attended lessons appear on invoices.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."payment_provider" IS 'manual = mark-as-paid + payment_instructions; stripe = BYO Checkout links.';
+COMMENT ON COLUMN "public"."teacher_settings"."default_rate_cents" IS 'Teacher default fallback rate in cents. Slot rate → student default → this.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."rate_basis" IS 'per_lesson = configured rate is the full lesson charge; per_hour = rate × (minutes/60).';
+COMMENT ON COLUMN "public"."teacher_settings"."payment_provider" IS 'manual = mark-as-paid + payment_instructions; stripe = BYO Checkout links.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."notify_in_app" IS 'Show events in the teacher in-app notification bell.';
+COMMENT ON COLUMN "public"."teacher_settings"."rate_basis" IS 'per_lesson = configured rate is the full lesson charge; per_hour = rate × (minutes/60).';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."notify_email_portal_cancel" IS 'Email the teacher when a family cancels via the portal.';
+COMMENT ON COLUMN "public"."teacher_settings"."notify_in_app" IS 'Show events in the teacher in-app notification bell.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."notify_email_invoice_paid" IS 'Email the teacher when a Stripe invoice is paid online.';
+COMMENT ON COLUMN "public"."teacher_settings"."notify_email_portal_cancel" IS 'Email the teacher when a authorized contact cancels through a scoped guest portal.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."ai_provider" IS 'Optional BYO LLM for assist features (import mapping, future drafts). none = off.';
+COMMENT ON COLUMN "public"."teacher_settings"."notify_email_invoice_paid" IS 'Email the teacher when a Stripe invoice is paid online.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."ai_api_key" IS 'Teacher-provided API key for ai_provider. Never logged; masked in API responses.';
+COMMENT ON COLUMN "public"."teacher_settings"."ai_provider" IS 'Optional BYO LLM for assist features (import mapping, future drafts). none = off.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."duration_rate_cents" IS 'Optional map of duration minutes (as text keys) to flat lesson charge in cents.';
+COMMENT ON COLUMN "public"."teacher_settings"."ai_api_key" IS 'Teacher-provided API key for ai_provider. Never logged; masked in API responses.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."travel_fee_cents" IS 'Studio-wide flat travel fee in cents for home visits; overridden by student.travel_fee_cents.';
+COMMENT ON COLUMN "public"."teacher_settings"."duration_rate_cents" IS 'Optional map of duration minutes (as text keys) to flat lesson charge in cents.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."payment_qr_code" IS 'Optional payment QR image as a data:image/(png|jpeg);base64 URL; shown with manual payment instructions.';
+COMMENT ON COLUMN "public"."teacher_settings"."travel_fee_cents" IS 'Teacher default flat travel fee in cents for home visits; overridden by student.travel_fee_cents.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."bcc_family_emails" IS 'BCC the teacher''s own address on family-facing email when true.';
+COMMENT ON COLUMN "public"."teacher_settings"."payment_qr_code" IS 'Optional payment QR image as a data:image/(png|jpeg);base64 URL; shown with manual payment instructions.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."bcc_email" IS 'Address to BCC on family email when bcc_family_emails is true; defaults to the account email in the UI.';
+COMMENT ON COLUMN "public"."teacher_settings"."bcc_contact_emails" IS 'BCC the teacher''s own address on approved contact-facing email when true.';
 
 
 
-COMMENT ON COLUMN "public"."studio_policies"."lesson_label" IS 'Subject/instrument used in calendar feed titles (e.g. "Piano" -> "Piano lesson — Ann"). Empty = neutral "Lesson".';
+COMMENT ON COLUMN "public"."teacher_settings"."bcc_email" IS 'Address to BCC on approved contact email when bcc_contact_emails is true; defaults to the account email in the UI.';
+
+
+
+COMMENT ON COLUMN "public"."teacher_settings"."lesson_label" IS 'Subject/instrument used in calendar feed titles (e.g. "Chess" -> "Chess lesson — Ann"). Empty = neutral "Lesson".';
 
 
 
@@ -1433,8 +1433,8 @@ ALTER TABLE ONLY "public"."students"
 
 
 
-ALTER TABLE ONLY "public"."studio_policies"
-    ADD CONSTRAINT "studio_policies_pkey" PRIMARY KEY ("teacher_id");
+ALTER TABLE ONLY "public"."teacher_settings"
+    ADD CONSTRAINT "teacher_settings_pkey" PRIMARY KEY ("teacher_id");
 
 
 
@@ -1714,7 +1714,7 @@ CREATE OR REPLACE TRIGGER "payments_rules" BEFORE DELETE OR UPDATE ON "public"."
 
 
 
-CREATE OR REPLACE TRIGGER "studio_policies_updated_at" BEFORE UPDATE ON "public"."studio_policies" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "teacher_settings_updated_at" BEFORE UPDATE ON "public"."teacher_settings" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 
 
 
@@ -2024,8 +2024,8 @@ ALTER TABLE ONLY "public"."students"
 
 
 
-ALTER TABLE ONLY "public"."studio_policies"
-    ADD CONSTRAINT "studio_policies_teacher_id_fkey" FOREIGN KEY ("teacher_id") REFERENCES "public"."teachers"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."teacher_settings"
+    ADD CONSTRAINT "teacher_settings_teacher_id_fkey" FOREIGN KEY ("teacher_id") REFERENCES "public"."teachers"("id") ON DELETE CASCADE;
 
 
 
@@ -2267,10 +2267,10 @@ CREATE POLICY "students_teacher" ON "public"."students" USING (("teacher_id" = (
 
 
 
-ALTER TABLE "public"."studio_policies" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."teacher_settings" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "studio_policies_teacher" ON "public"."studio_policies" USING (("teacher_id" = (select "auth"."uid"())));
+CREATE POLICY "teacher_settings_teacher" ON "public"."teacher_settings" USING (("teacher_id" = (select "auth"."uid"())));
 
 
 
@@ -2521,8 +2521,8 @@ GRANT ALL ON TABLE "public"."students" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."studio_policies" TO "authenticated";
-GRANT ALL ON TABLE "public"."studio_policies" TO "service_role";
+GRANT ALL ON TABLE "public"."teacher_settings" TO "authenticated";
+GRANT ALL ON TABLE "public"."teacher_settings" TO "service_role";
 
 
 
@@ -4303,7 +4303,7 @@ AS $$
 DECLARE
   v_teacher uuid := auth.uid();
   v_student public.students%ROWTYPE;
-  v_policy public.studio_policies%ROWTYPE;
+  v_policy public.teacher_settings%ROWTYPE;
   v_existing public.credit_packages%ROWTYPE;
   v_invoice_id uuid;
   v_package_id uuid;
@@ -4359,7 +4359,7 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';
   END IF;
-  SELECT * INTO v_policy FROM public.studio_policies
+  SELECT * INTO v_policy FROM public.teacher_settings
     WHERE teacher_id=v_teacher;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'POLICY_NOT_FOUND' USING ERRCODE='42501';
@@ -5220,7 +5220,7 @@ BEGIN
   -- Match the portable backup's FK-safe ordering. The list is fixed in SQL;
   -- arbitrary JSON table names are ignored, never interpolated into SQL.
   FOREACH v_table IN ARRAY ARRAY[
-    'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
+    'teacher_settings', 'guardians', 'students', 'workplaces', 'class_groups',
     'workplace_enrollments', 'group_enrollments', 'teacher_study_preferences', 'lesson_slots',
     'teaching_sessions', 'session_participants', 'session_attendance',
     'session_notes', 'chess_skill_categories', 'chess_observations',
@@ -5229,7 +5229,7 @@ BEGIN
     'event_rsvps', 'credit_packages', 'credit_redemptions'
   ] LOOP
     v_source := p_tables -> v_table;
-    IF v_table = 'studio_policies' THEN
+    IF v_table = 'teacher_settings' THEN
       IF v_source IS NULL OR v_source = 'null'::jsonb THEN
         v_rows := '[]'::jsonb;
       ELSIF jsonb_typeof(v_source) = 'object' THEN
@@ -5261,7 +5261,7 @@ BEGIN
         RAISE EXCEPTION 'IMPORT_INVALID_ROW:%', v_table USING ERRCODE='22023';
       END IF;
       IF v_table = ANY(ARRAY[
-        'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
+        'teacher_settings', 'guardians', 'students', 'workplaces', 'class_groups',
         'workplace_enrollments', 'group_enrollments', 'teacher_study_preferences', 'lesson_slots',
         'teaching_sessions', 'session_participants', 'session_attendance',
         'session_notes', 'chess_skill_categories', 'chess_observations',
@@ -5270,7 +5270,7 @@ BEGIN
       ]) THEN
         v_row := jsonb_set(v_row, '{teacher_id}', to_jsonb(v_teacher::text), true);
       END IF;
-      IF v_table = 'studio_policies' THEN
+      IF v_table = 'teacher_settings' THEN
         v_row := v_row - 'stripe_secret_key' - 'stripe_publishable_key'
                  - 'stripe_webhook_secret' - 'ai_api_key';
       END IF;
@@ -6984,7 +6984,7 @@ BEGIN
   -- Match the portable backup's FK-safe ordering. The list is fixed in SQL;
   -- arbitrary JSON table names are ignored, never interpolated into SQL.
   FOREACH v_table IN ARRAY ARRAY[
-    'studio_policies', 'guardians', 'contacts', 'students',
+    'teacher_settings', 'guardians', 'contacts', 'students',
     'student_contacts', 'billing_accounts', 'workplaces', 'class_groups',
     'workplace_enrollments', 'group_enrollments', 'lesson_slots',
     'teaching_sessions', 'session_participants', 'session_attendance',
@@ -6994,7 +6994,7 @@ BEGIN
     'event_rsvps', 'credit_packages', 'credit_redemptions'
   ] LOOP
     v_source := p_tables -> v_table;
-    IF v_table = 'studio_policies' THEN
+    IF v_table = 'teacher_settings' THEN
       IF v_source IS NULL OR v_source = 'null'::jsonb THEN
         v_rows := '[]'::jsonb;
       ELSIF jsonb_typeof(v_source) = 'object' THEN
@@ -7026,7 +7026,7 @@ BEGIN
         RAISE EXCEPTION 'IMPORT_INVALID_ROW:%', v_table USING ERRCODE='22023';
       END IF;
       IF v_table = ANY(ARRAY[
-        'studio_policies', 'guardians', 'contacts', 'students',
+        'teacher_settings', 'guardians', 'contacts', 'students',
     'student_contacts', 'billing_accounts', 'workplaces', 'class_groups',
         'workplace_enrollments', 'group_enrollments', 'lesson_slots',
         'teaching_sessions', 'session_participants', 'session_attendance',
@@ -7036,7 +7036,7 @@ BEGIN
       ]) THEN
         v_row := jsonb_set(v_row, '{teacher_id}', to_jsonb(v_teacher::text), true);
       END IF;
-      IF v_table = 'studio_policies' THEN
+      IF v_table = 'teacher_settings' THEN
         v_row := v_row - 'stripe_secret_key' - 'stripe_publishable_key'
                  - 'stripe_webhook_secret' - 'ai_api_key';
       END IF;
@@ -7421,7 +7421,7 @@ BEGIN
         RAISE EXCEPTION 'CANONICAL_MATERIALIZE_WRONG_PERSONAL_WORKPLACE'
           USING ERRCODE='22023';
       END IF;
-      SELECT timezone INTO v_timezone FROM public.studio_policies
+      SELECT timezone INTO v_timezone FROM public.teacher_settings
         WHERE teacher_id=v_teacher;
       v_timezone := coalesce(nullif(v_timezone,''),v_workplace.timezone);
     END IF;
@@ -7698,7 +7698,7 @@ BEGIN
     'student',p_cancel_reason,v_now,NULL,v_now)
     RETURNING * INTO v_att;
   SELECT coalesce(notify_in_app,true),coalesce(notify_email_portal_cancel,false)
-    INTO v_notify_in_app,v_notify_email FROM public.studio_policies
+    INTO v_notify_in_app,v_notify_email FROM public.teacher_settings
     WHERE teacher_id=v_teacher;
   IF v_notify_in_app THEN
     INSERT INTO public.notifications(teacher_id,type,title,body,href)
@@ -8223,7 +8223,7 @@ BEGIN
    END IF;
    RETURN v_prior.receipt||jsonb_build_object('replayed',true);
  END IF;
- SELECT currency INTO v_currency FROM public.studio_policies
+ SELECT currency INTO v_currency FROM public.teacher_settings
   WHERE teacher_id=v_teacher;
  IF v_currency IS NULL THEN RAISE EXCEPTION 'STUDIO_POLICY_NOT_FOUND' USING ERRCODE='42501'; END IF;
  FOR v_credit IN SELECT value FROM jsonb_array_elements(p_redemptions) LOOP
@@ -8425,7 +8425,7 @@ DECLARE
  v_slot_duration integer;
  v_source public.teaching_sessions%ROWTYPE;
  v_att public.session_attendance%ROWTYPE;
- v_policy public.studio_policies%ROWTYPE;
+ v_policy public.teacher_settings%ROWTYPE;
  v_valid_makeup boolean:=false;
  v_session public.teaching_sessions%ROWTYPE;
  v_previous public.teaching_sessions%ROWTYPE;
@@ -8458,7 +8458,7 @@ BEGIN
  IF NOT FOUND THEN
    RAISE EXCEPTION 'CANONICAL_PRIVATE_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
  END IF;
- SELECT * INTO v_policy FROM public.studio_policies WHERE teacher_id=v_teacher;
+ SELECT * INTO v_policy FROM public.teacher_settings WHERE teacher_id=v_teacher;
  v_timezone:=CASE WHEN p_workplace_id IS NULL THEN
     coalesce(nullif(v_policy.timezone,''),v_workplace.timezone)
   ELSE v_workplace.timezone END;

@@ -4,7 +4,7 @@ import type { AttendanceStatus } from "@/lib/supabase/types";
  * Scheduling helpers.
  *
  * Slots store LOCAL day/time; the studio's IANA timezone lives on
- * studio_policies. Each occurrence is converted to a concrete UTC instant
+ * teacher_settings. Each occurrence is converted to a concrete UTC instant
  * individually, so a 4:00 PM Tuesday lesson stays 4:00 PM local across DST.
  */
 
@@ -12,11 +12,11 @@ export type InvoiceCadence = "monthly" | "manual";
 export type PaymentProvider = "manual" | "stripe";
 export type RateBasis = "per_lesson" | "per_hour";
 
-export interface StudioPolicy {
-  studio_name: string;
-  studio_website: string;
-  studio_contact: string;
-  studio_info: string;
+export interface TeacherPolicy {
+  business_name: string;
+  business_website: string;
+  business_contact: string;
+  business_info: string;
   /** Subject/instrument for calendar feed titles; empty = neutral "Lesson". */
   lesson_label: string;
   timezone: string;
@@ -58,8 +58,8 @@ export interface StudioPolicy {
   notify_email_portal_cancel: boolean;
   notify_email_invoice_paid: boolean;
   /** BCC the teacher's own address on family-facing email. */
-  bcc_family_emails: boolean;
-  /** Address to BCC when `bcc_family_emails` is on; null means the account email. */
+  bcc_contact_emails: boolean;
+  /** Address to BCC when `bcc_contact_emails` is on; null means the account email. */
   bcc_email: string | null;
   /** Optional BYO LLM for assist features (import mapping, future drafts). */
   ai_provider: "none" | "openai" | "anthropic";
@@ -68,11 +68,11 @@ export interface StudioPolicy {
   policies_updated_at: string | null;
 }
 
-export const DEFAULT_POLICY: StudioPolicy = {
-  studio_name: "",
-  studio_website: "",
-  studio_contact: "",
-  studio_info: "",
+export const DEFAULT_POLICY: TeacherPolicy = {
+  business_name: "",
+  business_website: "",
+  business_contact: "",
+  business_info: "",
   lesson_label: "",
   timezone: "America/Chicago",
   lesson_duration_options: [30, 45, 60],
@@ -103,7 +103,7 @@ export const DEFAULT_POLICY: StudioPolicy = {
   notify_in_app: true,
   notify_email_portal_cancel: true,
   notify_email_invoice_paid: true,
-  bcc_family_emails: false,
+  bcc_contact_emails: false,
   bcc_email: null,
   ai_provider: "none",
   ai_api_key: null,
@@ -341,7 +341,7 @@ export function earnsMakeupCredit(
   status: AttendanceStatus,
   noticeAt: string | null,
   lessonStartsAt: string,
-  policy: StudioPolicy
+  policy: TeacherPolicy
 ): boolean {
   switch (status) {
     case "attended":
@@ -362,7 +362,7 @@ export function earnsMakeupCredit(
 }
 
 /** Whether a make-up credit earned at `earnedAt` is still valid under the policy. */
-export function creditIsValid(earnedAt: string, policy: StudioPolicy): boolean {
+export function creditIsValid(earnedAt: string, policy: TeacherPolicy): boolean {
   if (policy.makeup_credit_expiry_days === null) return true;
   const expiresAt =
     new Date(earnedAt).getTime() +

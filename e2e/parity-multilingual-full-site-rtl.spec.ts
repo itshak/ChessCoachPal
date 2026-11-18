@@ -13,7 +13,7 @@ test("EN/HE/RU: all teacher entrypoints obey saved language and mobile layout di
   const original=(await contextReply.json()).preferredLocale as "en"|"he"|"ru";
   await page.setViewportSize({width:390,height:844});
   const paths=[
-    "/dashboard","/account","/studio","/students","/families",
+    "/dashboard","/account","/settings","/students","/families",
     "/schedule","/coaching","/reports","/learning","/events",
     "/billing","/ai-connections","/help",
   ];

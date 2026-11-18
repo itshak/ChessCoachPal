@@ -1717,31 +1717,6 @@
     "noWorkplaces": "No workplaces found for this account. Create a workplace in Coaching before importing attendance.",
     "retryChoices": "Reload students and workplaces"
   },
-  "studioSettings": {
-    "needBlock": "Pick at least one time block",
-    "saved": "Saved",
-    "saveError": "Failed to save",
-    "title": "Studio",
-    "studioName": "Studio name",
-    "studioPlaceholder": "e.g. Downtown Chess Club",
-    "studioHint": "Shown to families on their portal and in emailed lesson notes.",
-    "lessonLabel": "Lesson label",
-    "lessonPlaceholder": "e.g. Chess",
-    "lessonHint": "Names your lessons in calendar feeds — “Chess” shows “Chess lesson”. Leave blank for a neutral “Lesson”.",
-    "website": "Studio website",
-    "contact": "Contact info",
-    "info": "Studio info",
-    "infoPlaceholder": "Anything families should know: cancellation policy, make-up rules, tuition, tournament dates...",
-    "infoHint": "Shown on the family portal along with your website and contact info.",
-    "timeBlocks": "Lesson time blocks",
-    "minutes": "{count} min",
-    "custom": "Custom",
-    "add": "Add",
-    "durationHint": "These durations are offered when creating weekly slots and one-off lessons.",
-    "saving": "Saving...",
-    "save": "Save Studio Settings",
-    "contactPlaceholder": "e.g. (555) 123-4567 · hello@your-studio.com"
-  },
   "ratesSettings": {
     "rateError": "Enter a valid default rate (e.g. 45.00)",
     "travelFeeError": "Enter a valid travel fee (e.g. 10.00)",
@@ -2580,10 +2555,6 @@
     "description": "Set the date, invite players, and their families will receive pending RSVPs.",
     "submitFailed": "Could not create event"
   },
-  "studioPage": {
-    "title": "Studio",
-    "description": "Your studio name, lesson lengths, cancellation and make-up policy, rates and teaching policies. These drive scheduling, invoices and what families see in their portal."
-  },
   "iosInstall": {
     "before": "Install ChessCoachPal: tap Share, then",
     "add": "Add to Home Screen",
@@ -2747,5 +2718,35 @@
     "confirmRevoke": "Revoke this invitation?",
     "created": "Invitation created",
     "confirmCreate": "Confirm invitation"
+  },
+  "teacherSettingsPage": {
+    "title": "Teacher & business settings",
+    "description": "Configure your coaching practice and defaults, independently of workplaces."
+  },
+  "businessSettings": {
+    "needBlock": "Pick at least one time block",
+    "saved": "Saved",
+    "saveError": "Failed to save",
+    "title": "Teaching business",
+    "lessonLabel": "Lesson label",
+    "lessonPlaceholder": "e.g. Chess",
+    "lessonHint": "Names your lessons in calendar feeds — “Chess” shows “Chess lesson”. Leave blank for a neutral “Lesson”.",
+    "website": "Studio website",
+    "contact": "Contact info",
+    "info": "Studio info",
+    "infoPlaceholder": "Anything families should know: cancellation policy, make-up rules, tuition, tournament dates...",
+    "infoHint": "Shown on the family portal along with your website and contact info.",
+    "timeBlocks": "Lesson time blocks",
+    "minutes": "{count} min",
+    "custom": "Custom",
+    "add": "Add",
+    "durationHint": "These durations are offered when creating weekly slots and one-off lessons.",
+    "saving": "Saving...",
+    "save": "Save Studio Settings",
+    "contactPlaceholder": "e.g. (555) 123-4567 · hello@your-studio.com",
+    "businessName": "Business / practice name",
+    "businessPlaceholder": "Your chess coaching practice",
+    "businessHint": "Displayed on coach reports and approved communications.",
+    "websitePlaceholder": "https://chess-coaching.example"
   }
 }

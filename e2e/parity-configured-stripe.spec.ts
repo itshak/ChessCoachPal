@@ -76,7 +76,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    const safePolicy=await configure.json();
    expect(safePolicy.stripe.secretKey.configured).toBe(true);
    expect(JSON.stringify(safePolicy)).not.toContain(secret);
-   const mcpPolicy=await call("ccp_studio_policy_get",{});
+   const mcpPolicy=await call("ccp_teacher_settings_get",{});
    expect(mcpPolicy.error).toBeUndefined();
    expect(JSON.stringify(mcpPolicy.data)).not.toContain(secret);
 

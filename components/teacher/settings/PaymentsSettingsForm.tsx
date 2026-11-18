@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { StudioPolicy, PaymentProvider } from "@/lib/schedule";
+import type { TeacherPolicy, PaymentProvider } from "@/lib/schedule";
 import {
   validateLiveStripeKeys,
   type StripeKeyStatus,
@@ -32,7 +32,7 @@ export function PaymentsSettingsForm({
   embedded = false,
   onSaved,
 }: {
-  policy: StudioPolicy;
+  policy: TeacherPolicy;
   teacherId: string;
   stripeStatus: StripeKeyStatus;
   /** When true, skip outer Card/h2 (used inside Billing payment settings modal). */

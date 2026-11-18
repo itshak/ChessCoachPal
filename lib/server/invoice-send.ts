@@ -100,7 +100,7 @@ export async function sendInvoice(
         amountCents: balanceCents,
         currency: invoice.currency,
         familyName,
-        studioName: policy.studio_name,
+        businessName: policy.business_name,
         periodLabel: `${invoice.period_start} – ${invoice.period_end}`,
         successUrl: `${origin}/portal/${family.portal_token}?paid=1`,
         cancelUrl: `${origin}/portal/${family.portal_token}`,
@@ -140,7 +140,7 @@ export async function sendInvoice(
     const locale=familyCommunicationLocale(family);
     const content=buildInvoiceEmailContent({
       locale,familyGreetingName:familyGreetingNames(family,locale),
-      studioName:policy.studio_name,periodStart:invoice.period_start,
+      businessName:policy.business_name,periodStart:invoice.period_start,
       periodEnd:invoice.period_end,currency:invoice.currency,
       subtotalCents:invoice.subtotal_cents,paidCents,balanceCents,
       paymentInstructions:policy.payment_instructions,
@@ -156,8 +156,8 @@ export async function sendInvoice(
       text: content.text,
       html: content.html,
       locale,
-      fromName: policy.studio_name
-        ? `${policy.studio_name} (via ChessCoachPal)`
+      fromName: policy.business_name
+        ? `${policy.business_name} (via ChessCoachPal)`
         : undefined,
       replyTo: teacherEmail ?? undefined,
       portalUrl: family.portal_token

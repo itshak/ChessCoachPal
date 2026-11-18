@@ -1,6 +1,6 @@
 /**
  * Payment QR codes (PayNow, UPI, PIX, Venmo, etc.) uploaded in payment
- * settings. Stored as a small base64 data URL on `studio_policies` and
+ * settings. Stored as a small base64 data URL on `teacher_settings` and
  * rendered on invoices and the family portal for manual payments.
  */
 
@@ -12,7 +12,7 @@ export const PAYMENT_QR_MAX_INPUT_BYTES = 8 * 1024 * 1024;
 /** Longest edge after downscaling; plenty for a scannable QR. */
 export const PAYMENT_QR_MAX_DIMENSION = 600;
 
-/** Must match the CHECK constraint on studio_policies.payment_qr_code. */
+/** Must match the CHECK constraint on teacher_settings.payment_qr_code. */
 export const PAYMENT_QR_MAX_DATA_URL_LENGTH = 400_000;
 
 const DATA_URL_RE = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+=*)$/;

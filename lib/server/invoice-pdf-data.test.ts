@@ -46,7 +46,7 @@ interface QueryLog {
 /**
  * Fluent stub that records the table and `.eq` predicates per query, so tests
  * can assert tenant scoping. Only `invoices` resolves the fixture; every other
- * table (e.g. `studio_policies`) resolves null.
+ * table (e.g. `teacher_settings`) resolves null.
  */
 function stubSupabase(
   invoice: unknown,

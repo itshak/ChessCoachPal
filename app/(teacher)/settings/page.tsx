@@ -1,14 +1,14 @@
 import {getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPolicy } from "@/lib/server/scheduling";
-import { StudioSettingsForm } from "@/components/teacher/settings/StudioSettingsForm";
+import { BusinessSettingsForm } from "@/components/teacher/settings/BusinessSettingsForm";
 import { PolicySettings } from "@/components/teacher/schedule/PolicySettings";
 import { BillingSettingsForm } from "@/components/teacher/settings/BillingSettingsForm";
 
-export async function generateMetadata(){const t=await getTranslations("studioPage");return {title:t("title")};}
+export async function generateMetadata(){const t=await getTranslations("teacherSettingsPage");return {title:t("title")};}
 
-export default async function StudioPage() {
-  const t=await getTranslations("studioPage");
+export default async function TeacherSettingsPage() {
+  const t=await getTranslations("teacherSettingsPage");
   const supabase = await createClient();
   const {
     data: { user },
@@ -36,7 +36,7 @@ export default async function StudioPage() {
       </div>
 
       <div className="space-y-6">
-        <StudioSettingsForm policy={clientPolicy} />
+        <BusinessSettingsForm policy={clientPolicy} />
         <PolicySettings policy={clientPolicy} defaultOpen />
         <BillingSettingsForm policy={clientPolicy} />
       </div>

@@ -31,7 +31,7 @@ test("PARITY:PARITY-security-no-raw-tools blocks SQL/secret fetch and keeps defa
  expect(rawSql.error?.code).toBe("NOT_FOUND");
  const secretFetch=await call("ccp_secrets_fetch",{name:"SUPABASE_SERVICE_ROLE_KEY"});
  expect(secretFetch.error?.code).toBe("NOT_FOUND");
- const policy=await call("ccp_studio_policy_get",{});
+ const policy=await call("ccp_teacher_settings_get",{});
  expect(policy.error).toBeUndefined();
  expect(policy.data.ai_api_key).toBeNull();
  expect(policy.data.stripe_secret_key).toBeNull();

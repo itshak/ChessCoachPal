@@ -3,7 +3,7 @@ import { sendEmail } from "@/lib/email";
 import { isUniqueViolation, WELCOME_NOTIFICATION } from "@/lib/onboarding";
 import { getPolicy } from "@/lib/server/scheduling";
 import { sendPushToTeacher } from "@/lib/server/push";
-import type { StudioPolicy } from "@/lib/schedule";
+import type { TeacherPolicy } from "@/lib/schedule";
 import {isAppLocale} from "@/i18n/locales";
 import {communicationCopy} from "@/lib/server/communication-locales";
 import {localizedNotificationText,type NotificationPresentation} from "@/lib/server/notification-copy";
@@ -28,7 +28,7 @@ export async function createTeacherNotification(
     href?: string | null;
     /** Absolute origin for email links (e.g. https://chesscoachpal.example) */
     origin?: string | null;
-    policy?: StudioPolicy;
+    policy?: TeacherPolicy;
   }
 ): Promise<{ emailed: boolean; emailError?: string }> {
   const policy = args.policy ?? (await getPolicy(supabase, args.teacherId));
@@ -93,7 +93,7 @@ export async function createTeacherNotification(
     return { emailed: false, emailError: "No teacher email on file" };
   }
 
-  const studio = policy.studio_name || "ChessCoachPal Studio";
+  const studio = policy.business_name || "ChessCoachPal Studio";
   const absoluteHref =
     href && args.origin
       ? `${args.origin.replace(/\/$/, "")}${href.startsWith("/") ? href : `/${href}`}`

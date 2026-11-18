@@ -1,7 +1,7 @@
 /**
  * Payments provider interface (mirrors lib/email.ts).
  *
- * Provider is per-teacher (`studio_policies.payment_provider`), not a
+ * Provider is per-teacher (`teacher_settings.payment_provider`), not a
  * platform env var. Stripe SDK is only constructed when that teacher has
  * BYO keys. Manual is the zero-config default.
  */
@@ -16,7 +16,7 @@ export interface CheckoutSessionArgs {
   amountCents: number;
   currency: string;
   familyName: string;
-  studioName: string;
+  businessName: string;
   periodLabel: string;
   successUrl: string;
   cancelUrl: string;
@@ -45,7 +45,7 @@ export function createStripeClient(secretKey: string): Stripe {
 export function buildCheckoutSessionParams(
   args: Omit<CheckoutSessionArgs, "secretKey">
 ): Stripe.Checkout.SessionCreateParams {
-  const studio = args.studioName.trim() || "Studio";
+  const studio = args.businessName.trim() || "Studio";
   return {
     mode: "payment",
     success_url: args.successUrl,

@@ -1,5 +1,5 @@
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {oneToOne,addDays,toLocalDateString,type StudioPolicy} from "@/lib/schedule";
+import {oneToOne,addDays,toLocalDateString,type TeacherPolicy} from "@/lib/schedule";
 import {
  allocateCredits,summarizeCreditBalances,type CreditPackageInput,
  type CreditPackageBalance,
@@ -113,7 +113,7 @@ export async function recordCanonicalRedemptions(
  return error?error.message:null;
 }
 export async function loadCanonicalCreditBalances(
- db:SupabaseClient,teacherId:string,policy:StudioPolicy,
+ db:SupabaseClient,teacherId:string,policy:TeacherPolicy,
  studentIds:string[],today:string
 ):Promise<CanonicalPackageWithBalance[]>{
  const packages=(await loadCanonicalCreditPackages(db,teacherId,{

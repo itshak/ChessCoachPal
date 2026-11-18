@@ -181,10 +181,10 @@ async function billingActionResponse(result:Response){
 }
 const uuid = z.string().uuid();
 const studioPolicyPatch=z.object({
- studioName:z.string().max(120).optional(),
- studioWebsite:z.string().max(300).optional(),
- studioContact:z.string().max(300).optional(),
- studioInfo:z.string().max(5000).optional(),
+ businessName:z.string().max(120).optional(),
+ businessWebsite:z.string().max(300).optional(),
+ businessContact:z.string().max(300).optional(),
+ businessInfo:z.string().max(5000).optional(),
  lessonLabel:z.string().max(60).optional(),
  lessonDurationOptions:z.array(z.number().int().min(5).max(240)).min(1).max(20).optional(),
  timezone:z.string().max(100).optional(),
@@ -215,7 +215,7 @@ const studioPolicyPatch=z.object({
  notifyInApp:z.boolean().optional(),
  notifyEmailPortalCancel:z.boolean().optional(),
  notifyEmailInvoicePaid:z.boolean().optional(),
- bccFamilyEmails:z.boolean().optional(),
+ bccContactEmails:z.boolean().optional(),
  bccEmail:z.string().max(320).nullable().optional(),
  // Model may select an existing provider or clear a stored key, but may never
  // submit/read raw BYO secrets; entering replacement credentials stays in
@@ -541,7 +541,7 @@ const catalogue = [
       confirmed:z.literal(true)}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_studio_policy_get",
+    name:"ccp_teacher_settings_get",
     description:"Read teacher-owned studio rules, rates and billing settings with secrets redacted. Payment QR image bytes require includePaymentQrCode=true and explicit confirmation; Stripe credentials are never returned.",
     schema:z.object({
       includePaymentQrCode:z.boolean().default(false),
@@ -549,13 +549,13 @@ const catalogue = [
     }).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_studio_credentials_handoff",
+    name:"ccp_teacher_credentials_handoff",
     description:"Start secure browser-only AI or Stripe credential entry without submitting any secret through the model. Returns the authenticated setup URL and current configured status; all raw keys must be entered directly into the website. Explicit teacher confirmation required.",
     schema:z.object({kind:z.enum(["ai","stripe"]),confirmed:z.literal(true)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_studio_policy_update",
+    name:"ccp_teacher_settings_update",
     description:"Edit studio rates, payment provider, approved payment QR and optional AI provider, or clear stored credentials with confirmation. New API keys and Stripe secrets remain browser-only secure inputs, never accepted through MCP.",
     schema:z.object({changes:studioPolicyPatch,confirmed:z.literal(true)}).strict()
       .refine(v=>Object.keys(v.changes).length>0,"Changes required"),
@@ -1914,7 +1914,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const report=await teacherPaymentsExport(db,teacherId,a);
         return {data:{...report,format:"csv"}};
       }
-      case "ccp_studio_policy_get": {
+      case "ccp_teacher_settings_get": {
         const a=args as {includePaymentQrCode:boolean;confirmed?:boolean};
         const p=await teacherPolicyView(db,teacherId);
         return {data:{...p,
@@ -1922,7 +1922,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
             ?p.payment_qr_code:null,
           paymentQrCodeConfigured:Boolean(p.payment_qr_code)}};
       }
-      case "ccp_studio_credentials_handoff": {
+      case "ccp_teacher_credentials_handoff": {
         const a=args as {kind:"ai"|"stripe"};
         const policy=await teacherPolicyView(db,teacherId);
         const isAi=a.kind==="ai";
@@ -1939,7 +1939,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           instruction:"Open the setup URL in your authenticated browser and enter the credentials there. Never paste API keys into AI chat.",
         }};
       }
-      case "ccp_studio_policy_update": {
+      case "ccp_teacher_settings_update": {
         const a=args as {changes:Record<string,unknown>};
         const user=(await db.auth.getUser()).data.user;
         const response=await teacherPolicyUpdate(db,teacherId,user?.email,a.changes);

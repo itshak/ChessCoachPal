@@ -3,7 +3,7 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 
 vi.mock("@/lib/server/scheduling",()=>({
  getPolicy:async()=>({payment_provider:"stripe",
-  stripe_secret_key:"sk_test_internal_do_not_expose",studio_name:"Chess Studio"}),
+  stripe_secret_key:"sk_test_internal_do_not_expose",business_name:"Chess Studio"}),
 }));
 vi.mock("@/lib/payments",()=>({
  createCheckoutSession:async()=>{throw new Error("Provider internal sk_test_internal_do_not_expose");},

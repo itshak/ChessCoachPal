@@ -3,7 +3,7 @@ import type {
   AttendanceStatus,
   InvoiceItemKind,
 } from "@/lib/supabase/types";
-import type { StudioPolicy } from "@/lib/schedule";
+import type { TeacherPolicy } from "@/lib/schedule";
 
 /**
  * Billing derivation.
@@ -111,13 +111,13 @@ export type ResolvedLessonCharge = {
 
 /**
  * Slot → student → duration flat map → studio.
- * Slot/student/studio amounts use rate_basis; duration map amounts are always
+ * Slot/student/teacher defaults use rate_basis; duration map amounts are always
  * flat for that length (studio packaging when no more-specific rate is set).
  */
 export function resolveLessonCharge(
   sources: RateSources,
   durationMinutes: number,
-  rateBasis: StudioPolicy["rate_basis"]
+  rateBasis: TeacherPolicy["rate_basis"]
 ): ResolvedLessonCharge {
   if (sources.slotRateCents != null && sources.slotRateCents >= 0) {
     return {
@@ -186,7 +186,7 @@ export function isBillable(
     BillableLessonInput,
     "attendanceStatus" | "noticeAt" | "startsAt" | "makeupForSessionId"
   >,
-  policy: StudioPolicy
+  policy: TeacherPolicy
 ): boolean {
   if (lesson.makeupForSessionId && !policy.bill_makeup) {
     return false;
@@ -243,7 +243,7 @@ export function formatCalendarDate(dateStr: string): string {
 export function lessonAmountCents(
   rateCents: number,
   durationMinutes: number,
-  rateBasis: StudioPolicy["rate_basis"]
+  rateBasis: TeacherPolicy["rate_basis"]
 ): number {
   if (rateBasis === "per_hour") {
     return Math.round((rateCents * durationMinutes) / 60);
@@ -262,7 +262,7 @@ export function lessonAmountCents(
  */
 export function deriveInvoiceItems(
   lessons: BillableLessonInput[],
-  policy: StudioPolicy,
+  policy: TeacherPolicy,
   options: {
     creditedLessonIds?: ReadonlySet<string>;
     travelInvoicedLessonIds?: ReadonlySet<string>;
@@ -309,7 +309,7 @@ function lessonItem(
   lesson: BillableLessonInput,
   guardianId: string,
   when: string,
-  policy: StudioPolicy
+  policy: TeacherPolicy
 ): InvoiceItemDraft {
   const durationFlat =
     lesson.rate.durationRateCents ??

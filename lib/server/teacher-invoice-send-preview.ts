@@ -31,7 +31,7 @@ export async function teacherInvoiceSendPreview(
  const locale=familyCommunicationLocale(family);
  const content=buildInvoiceEmailContent({
    locale,familyGreetingName:familyGreetingNames(family,locale),
-   studioName:policy.studio_name,periodStart:invoice.period_start,
+   businessName:policy.business_name,periodStart:invoice.period_start,
    periodEnd:invoice.period_end,currency:invoice.currency,
    subtotalCents:invoice.subtotal_cents,paidCents,balanceCents,
    paymentInstructions:policy.payment_instructions,

@@ -72,7 +72,7 @@ test.describe("RLS tenant isolation", () => {
       "class_groups",
       "teaching_sessions",
       "invoices",
-      "studio_policies",
+      "teacher_settings",
     ]) {
       const { data, error } = await teacherB.from(table).select("*").eq("teacher_id", SEED_TEACHER_ID).limit(5);
       expect(error, `${table}: unexpected error`).toBeNull();

@@ -117,22 +117,22 @@ describe("familyGreetingNames", () => {
 describe("familyEmailBcc", () => {
   it("returns the address when the toggle is on", () => {
     expect(
-      familyEmailBcc({ bcc_family_emails: true, bcc_email: "me@example.com" })
+      familyEmailBcc({ bcc_contact_emails: true, bcc_email: "me@example.com" })
     ).toBe("me@example.com");
   });
 
   it("returns undefined when the toggle is off", () => {
     expect(
-      familyEmailBcc({ bcc_family_emails: false, bcc_email: "me@example.com" })
+      familyEmailBcc({ bcc_contact_emails: false, bcc_email: "me@example.com" })
     ).toBeUndefined();
   });
 
   it("returns undefined when no address is set", () => {
     expect(
-      familyEmailBcc({ bcc_family_emails: true, bcc_email: null })
+      familyEmailBcc({ bcc_contact_emails: true, bcc_email: null })
     ).toBeUndefined();
     expect(
-      familyEmailBcc({ bcc_family_emails: true, bcc_email: "   " })
+      familyEmailBcc({ bcc_contact_emails: true, bcc_email: "   " })
     ).toBeUndefined();
   });
 });

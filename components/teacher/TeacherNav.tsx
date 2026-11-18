@@ -25,7 +25,7 @@ const secondaryNavItems = [
   { href: "/contacts", key: "contacts", tour: "families" },
   { href: "/events", key: "events", tour: "events" },
   { href: "/billing", key: "billing", tour: "billing" },
-  { href: "/studio", key: "settings", tour: "studio" },
+  { href: "/settings", key: "settings", tour: "settings" },
 ] as const;
 
 function NavTab({

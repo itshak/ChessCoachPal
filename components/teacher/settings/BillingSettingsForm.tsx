@@ -8,13 +8,13 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { centsToDollarsInput, dollarsToCents } from "@/lib/billing";
-import type { StudioPolicy, InvoiceCadence } from "@/lib/schedule";
+import type { TeacherPolicy, InvoiceCadence } from "@/lib/schedule";
 
 const inputClass =
   "px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm";
 
 function durationInputsFromPolicy(
-  policy: StudioPolicy
+  policy: TeacherPolicy
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const minutes of policy.lesson_duration_options) {
@@ -24,7 +24,7 @@ function durationInputsFromPolicy(
   return out;
 }
 
-export function BillingSettingsForm({ policy }: { policy: StudioPolicy }) {
+export function BillingSettingsForm({ policy }: { policy: TeacherPolicy }) {
   const router = useRouter();
   const t=useTranslations("ratesSettings");
   const toUserError=useLocalizedApiError();

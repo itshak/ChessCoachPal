@@ -407,7 +407,7 @@ export async function teacherBillingCheckout(supabase:SupabaseClient,teacherId:s
       amountCents: balanceCents,
       currency: invoice.currency,
       familyName: familyDisplayName(family),
-      studioName: policy.studio_name,
+      businessName: policy.business_name,
       periodLabel,
       successUrl: `${origin}/billing/${id}?paid=1`,
       cancelUrl: `${origin}/billing/${id}`,

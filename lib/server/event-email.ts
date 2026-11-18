@@ -10,7 +10,7 @@ import {
   familyEmailBcc,
   type FamilyContact,
 } from "@/lib/guardians";
-import { oneToOne, type StudioPolicy } from "@/lib/schedule";
+import { oneToOne, type TeacherPolicy } from "@/lib/schedule";
 import type { RsvpStatus } from "@/lib/supabase/types";
 
 export type EventEmailMode = "invite" | "reminder";
@@ -92,7 +92,7 @@ type PreparedEmail = {
  * Prepare exactly the same messages used by the real send path.
  * An MCP or website preview never returns the portalToken.
  */
-function prepareEventEmails(event:EventEmailRow,policy:StudioPolicy,mode:EventEmailMode){
+function prepareEventEmails(event:EventEmailRow,policy:TeacherPolicy,mode:EventEmailMode){
   const performersByGuardian=new Map<string,{name:string;repertoire:string}[]>();
   for(const row of event.event_students??[]){
     const student=oneToOne(row.students);
@@ -121,14 +121,14 @@ function prepareEventEmails(event:EventEmailRow,policy:StudioPolicy,mode:EventEm
     const intro=mode==="reminder"
       ?copy.introReminder(event.title):copy.introInvite(event.title);
     const cta=mode==="reminder"?copy.reminderCta:copy.inviteCta;
-    const text=`${copy.greeting(familyGreetingNames(family,locale))}\n\n${intro}\n\n${copy.when}: ${when}${locationLine}${descriptionLine}${repertoireLines}\n\n${cta}\n\n${copy.signature(policy.studio_name)}`;
+    const text=`${copy.greeting(familyGreetingNames(family,locale))}\n\n${intro}\n\n${copy.when}: ${when}${locationLine}${descriptionLine}${repertoireLines}\n\n${cta}\n\n${copy.signature(policy.business_name)}`;
     messages.push({guardianId:rsvp.guardian_id,to:recipients,subject,text,portalToken:family.portal_token,locale});
   }
   return {messages,skipped};
 }
 /** Non-mutating, same-template preview. No bearer-visible portal links or credentials. */
 export function previewEventEmails(args:{
- event:EventEmailRow;policy:StudioPolicy;mode:EventEmailMode;includeRecipients?:boolean;
+ event:EventEmailRow;policy:TeacherPolicy;mode:EventEmailMode;includeRecipients?:boolean;
 }){
   const {messages,skipped}=prepareEventEmails(args.event,args.policy,args.mode);
   return {
@@ -143,7 +143,7 @@ export function previewEventEmails(args:{
 }
 export async function sendEventEmails(args:{
   db:SupabaseClient;teacherId:string;
-  event:EventEmailRow;policy:StudioPolicy;teacherEmail?:string|null;
+  event:EventEmailRow;policy:TeacherPolicy;teacherEmail?:string|null;
   origin:string;mode:EventEmailMode;
 }):Promise<{sent:number;skipped:number}>{
   const {messages,skipped:initialSkipped}=prepareEventEmails(args.event,args.policy,args.mode);
@@ -152,8 +152,8 @@ export async function sendEventEmails(args:{
   for(const message of messages){
     const portalUrl=message.portalToken?`${origin}/portal/${message.portalToken}`:undefined;
     const bcc=familyEmailBcc(args.policy);
-    const fromName=args.policy.studio_name
-      ?`${args.policy.studio_name} (via ChessCoachPal)`:undefined;
+    const fromName=args.policy.business_name
+      ?`${args.policy.business_name} (via ChessCoachPal)`:undefined;
     const contentHash=createHash("sha256").update(JSON.stringify({
       to:message.to,bcc,subject:message.subject,text:message.text,locale:message.locale,
       portalUrl,replyTo:args.teacherEmail??null,fromName,

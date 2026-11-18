@@ -1,6 +1,11 @@
 # ChessCoachPal development and release status
 
 
+## 2026-11-18 — Studio replaced by teacher/business settings (source WIP)
+
+On draft PR #104, the one canonical baseline now uses `teacher_settings` and `business_*` fields in place of obsolete `studio_policies` and `studio_*` branding. The `/studio` page has been retired and `/settings` added; `BusinessSettingsForm` and shared policy services and MCP `ccp_teacher_settings_get/update` and `ccp_teacher_credentials_handoff` are updated without compatibility aliases. en/he/ru settings catalogs and exact website/MCP tool registry were updated together. Local checks passed for TypeScript, lint (43 warnings, zero errors), schema guard (28/28), and strict parity (217 tools, 89/89 current teacher API families). **This is not full workplace-global context or acceptance**: persistent selection/filter semantics and remaining Family/contact/finance dependencies are outstanding. The no-legacy release audit remains red on old guardian paths and baseline. Final real-database cutover still requires separate approval.
+
+
 ## 2026-11-18 — canonical baseline only / no staged SQL compatibility (WIP PR)
 
 On draft PR #104, `supabase/migrations/` now contains **only** `20261107000000_chesscoachpal_baseline.sql`. Eight historical development-transition files were removed from the active install path (their history is in Git). The v2 canonical manifest requires one baseline checksum, necessary current domain tables and a separate operator-controlled final cutover. The synthetic M5 schema verification was changed from replaying past migrations to two isolated fresh-baseline installs with RLS/FK/portal-RPC checks and structural equality. M5's **separate second-database backup/restore** is retained and extended to include synthetic contact, payer, per-student/workplace portal grant, event invitation and Storage byte evidence. The local canonical guard and its new 28-case tests pass; the remote GitHub Docker acceptance for this new version remains pending. **No real database, migration ledger, portal link or user data was touched.** The final no-legacy audit still fails until the old physical schema/routes/services are removed.

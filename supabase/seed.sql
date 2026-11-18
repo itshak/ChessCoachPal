@@ -66,10 +66,10 @@ INSERT INTO public.students (id, teacher_id, name, parent_contact, guardian_id,
 ('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000001',
  'Maya', NULL, NULL, NULL, 'Intermediate', NULL, 'Develop calculation habits.', NULL);
 
-INSERT INTO public.studio_policies (
-  teacher_id, studio_name, timezone, cancellation_window_hours, lesson_duration_options,
+INSERT INTO public.teacher_settings (
+  teacher_id, business_name, timezone, cancellation_window_hours, lesson_duration_options,
   default_rate_cents, rate_basis, currency, invoice_cadence,
-  payment_instructions, payment_provider, studio_website, studio_contact, studio_info,
+  payment_instructions, payment_provider, business_website, business_contact, business_info,
   timely_cancel_earns_makeup, teacher_cancel_earns_makeup
 ) VALUES (
   '00000000-0000-0000-0000-000000000001',

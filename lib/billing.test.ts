@@ -18,7 +18,7 @@ import {
   resolveManualPaymentAmount,
   type BillableLessonInput,
 } from "@/lib/billing";
-import { DEFAULT_POLICY, type StudioPolicy } from "@/lib/schedule";
+import { DEFAULT_POLICY, type TeacherPolicy } from "@/lib/schedule";
 
 const baseLesson: BillableLessonInput = {
   lessonId: "lesson-1",
@@ -119,7 +119,7 @@ describe("isBillable", () => {
         DEFAULT_POLICY
       )
     ).toBe(false);
-    const policy: StudioPolicy = { ...DEFAULT_POLICY, bill_makeup: true };
+    const policy: TeacherPolicy = { ...DEFAULT_POLICY, bill_makeup: true };
     expect(
       isBillable(
         { ...baseLesson, makeupForSessionId: "att-1", attendanceStatus: "attended" },
@@ -217,7 +217,7 @@ describe("resolveTravelFeeCents", () => {
 
 describe("deriveInvoiceItems", () => {
   it("creates one line per billable lesson with a rate", () => {
-    const policy: StudioPolicy = {
+    const policy: TeacherPolicy = {
       ...DEFAULT_POLICY,
       rate_basis: "per_lesson",
     };
@@ -234,7 +234,7 @@ describe("deriveInvoiceItems", () => {
   });
 
   it("scales amounts when rate_basis is per_hour", () => {
-    const policy: StudioPolicy = { ...DEFAULT_POLICY, rate_basis: "per_hour" };
+    const policy: TeacherPolicy = { ...DEFAULT_POLICY, rate_basis: "per_hour" };
     const items = deriveInvoiceItems(
       [
         baseLesson, // 30 min @ $40/hr
@@ -252,7 +252,7 @@ describe("deriveInvoiceItems", () => {
   });
 
   it("uses duration flat map instead of hourly default", () => {
-    const policy: StudioPolicy = {
+    const policy: TeacherPolicy = {
       ...DEFAULT_POLICY,
       rate_basis: "per_hour",
       default_rate_cents: 6000,
@@ -271,7 +271,7 @@ describe("deriveInvoiceItems", () => {
   });
 
   it("adds a travel fee line for home visits", () => {
-    const policy: StudioPolicy = {
+    const policy: TeacherPolicy = {
       ...DEFAULT_POLICY,
       rate_basis: "per_hour",
       travel_fee_cents: 500,
@@ -305,7 +305,7 @@ describe("deriveInvoiceItems", () => {
   });
 
   it("rolls travel fees into family subtotals with multiple lessons", () => {
-    const policy: StudioPolicy = {
+    const policy: TeacherPolicy = {
       ...DEFAULT_POLICY,
       rate_basis: "per_hour",
       duration_rate_cents: { 30: 4000 },
@@ -449,7 +449,7 @@ describe("deriveInvoiceItems", () => {
   });
 
   it("groups by guardian and sums totals", () => {
-    const policy: StudioPolicy = {
+    const policy: TeacherPolicy = {
       ...DEFAULT_POLICY,
       rate_basis: "per_lesson",
     };

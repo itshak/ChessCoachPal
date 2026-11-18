@@ -5,7 +5,7 @@ const TEACHER_ROUTE_PREFIXES = [
   "/families",
   "/schedule",
   "/settings",
-  "/studio",
+  "/settings",
   "/account",
   "/billing",
   "/events",

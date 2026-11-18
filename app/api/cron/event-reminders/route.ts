@@ -6,7 +6,7 @@ import {
   type EventEmailRow,
 } from "@/lib/server/event-email";
 import { requestOrigin } from "@/lib/server/http";
-import { DEFAULT_POLICY, type StudioPolicy } from "@/lib/schedule";
+import { DEFAULT_POLICY, type TeacherPolicy } from "@/lib/schedule";
 import { secureCompare } from "@/lib/server/secure-compare";
 import {deliverCanonicalOutbox} from "@/lib/server/canonical-delivery-outbox";
 
@@ -93,18 +93,18 @@ export async function GET(req: NextRequest) {
 
   const [{ data: policies }, { data: teachers }] = await Promise.all([
     supabase
-      .from("studio_policies")
+      .from("teacher_settings")
       .select("*")
       .in("teacher_id", teacherIds),
     supabase.from("teachers").select("id, email").in("id", teacherIds),
   ]);
 
-  const policyByTeacher = new Map<string, StudioPolicy>();
+  const policyByTeacher = new Map<string, TeacherPolicy>();
   for (const row of policies ?? []) {
     policyByTeacher.set(row.teacher_id, {
       ...DEFAULT_POLICY,
       ...row,
-    } as StudioPolicy);
+    } as TeacherPolicy);
   }
   const emailByTeacher = new Map(
     (teachers ?? []).map((t) => [t.id as string, t.email as string])
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
   for (const event of candidates) {
     const teacherId = event.teacher_id as string;
     const policy =
-      policyByTeacher.get(teacherId) ?? ({ ...DEFAULT_POLICY } as StudioPolicy);
+      policyByTeacher.get(teacherId) ?? ({ ...DEFAULT_POLICY } as TeacherPolicy);
 
     if (!isEventReminderDay(event.starts_at, policy.timezone, now)) {
       continue;

@@ -47,19 +47,19 @@ describe("all-data CSV privacy, schema and portability",()=>{
    students:[{id:"student",name:"=HYPERLINK('http://evil')",notes:{level:"+SUM(1)"}}],
    workplaces:[],
    ccp_historical_attendance_evidence:[{attended_on:"2026-01-05",student_id:"student"}],
-   studio_policies:{stripe_secret_key:null,ai_api_key:"PRIVATE_KEY",currency:"ILS"},
+   teacher_settings:{stripe_secret_key:null,ai_api_key:"PRIVATE_KEY",currency:"ILS"},
   }};
  it("makes one CSV per table and excludes credential columns while preserving pedagogical data",()=>{
   const tables=csvTables(sample);
   expect(tables.guardians[0].portal_token).toBeUndefined();
-  expect(tables.studio_policies[0].ai_api_key).toBeUndefined();
+  expect(tables.teacher_settings[0].ai_api_key).toBeUndefined();
   expect(tables.teacher_profile).toEqual([{display_name:"Coach"}]);
   const zip=unzipSync(makeTeacherCsvZip(sample));
   expect(Object.keys(zip)).toEqual(expect.arrayContaining([
    "README.json","guardians.csv","students.csv","workplaces.csv",
    "ccp_historical_attendance_evidence.csv","teacher_profile.csv"]));
   expect(strFromU8(zip["guardians.csv"])).not.toContain("SECRET-PORTAL");
-  expect(strFromU8(zip["studio_policies.csv"])).not.toContain("PRIVATE_KEY");
+  expect(strFromU8(zip["teacher_settings.csv"])).not.toContain("PRIVATE_KEY");
   expect(strFromU8(zip["students.csv"])).toContain("'=HYPERLINK(");
   expect(strFromU8(zip["students.csv"])).toContain('""level""');
   expect(strFromU8(zip["ccp_historical_attendance_evidence.csv"])).toContain("2026-01-05");

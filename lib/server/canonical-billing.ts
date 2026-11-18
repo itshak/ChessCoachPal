@@ -3,7 +3,7 @@ import {
   deriveInvoiceItems,isBillable,type BillableLessonInput,
 } from "@/lib/billing";
 import {allocateCredits,type CreditPackageInput,type CreditCandidate} from "@/lib/credits";
-import {type StudioPolicy,oneToOne} from "@/lib/schedule";
+import {type TeacherPolicy,oneToOne} from "@/lib/schedule";
 import type {AttendanceStatus} from "@/lib/supabase/types";
 import {loadCanonicalBillingParticipants,participantBillingKey}
  from "@/lib/server/canonical-billing-source";
@@ -65,7 +65,7 @@ export async function getInvoicedParticipantKeys(
  */
 export async function deriveCanonicalPeriodItems(
  db:SupabaseClient,teacherId:string,
- periodStart:string,periodEnd:string,policy:StudioPolicy,opts:{
+ periodStart:string,periodEnd:string,policy:TeacherPolicy,opts:{
   guardianId?:string;
   excludeParticipantKeys?:Set<string>;
   travelInvoicedParticipantKeys?:Set<string>;

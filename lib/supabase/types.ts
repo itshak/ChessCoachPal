@@ -161,13 +161,13 @@ export interface Database {
           portal_token?: string;
         };
       };
-      studio_policies: {
+      teacher_settings: {
         Row: {
           teacher_id: string;
-          studio_name: string;
-          studio_website: string;
-          studio_contact: string;
-          studio_info: string;
+          business_name: string;
+          business_website: string;
+          business_contact: string;
+          business_info: string;
           lesson_label: string;
           timezone: string;
           lesson_duration_options: number[];
@@ -198,7 +198,7 @@ export interface Database {
           notify_in_app: boolean;
           notify_email_portal_cancel: boolean;
           notify_email_invoice_paid: boolean;
-          bcc_family_emails: boolean;
+          bcc_contact_emails: boolean;
           bcc_email: string | null;
           ai_provider: "none" | "openai" | "anthropic";
           ai_api_key: string | null;
@@ -206,10 +206,10 @@ export interface Database {
         };
         Insert: {
           teacher_id: string;
-          studio_name?: string;
-          studio_website?: string;
-          studio_contact?: string;
-          studio_info?: string;
+          business_name?: string;
+          business_website?: string;
+          business_contact?: string;
+          business_info?: string;
           lesson_label?: string;
           timezone?: string;
           lesson_duration_options?: number[];
@@ -240,16 +240,16 @@ export interface Database {
           notify_in_app?: boolean;
           notify_email_portal_cancel?: boolean;
           notify_email_invoice_paid?: boolean;
-          bcc_family_emails?: boolean;
+          bcc_contact_emails?: boolean;
           bcc_email?: string | null;
           ai_provider?: "none" | "openai" | "anthropic";
           ai_api_key?: string | null;
         };
         Update: {
-          studio_name?: string;
-          studio_website?: string;
-          studio_contact?: string;
-          studio_info?: string;
+          business_name?: string;
+          business_website?: string;
+          business_contact?: string;
+          business_info?: string;
           lesson_label?: string;
           timezone?: string;
           lesson_duration_options?: number[];
@@ -280,7 +280,7 @@ export interface Database {
           notify_in_app?: boolean;
           notify_email_portal_cancel?: boolean;
           notify_email_invoice_paid?: boolean;
-          bcc_family_emails?: boolean;
+          bcc_contact_emails?: boolean;
           bcc_email?: string | null;
           ai_provider?: "none" | "openai" | "anthropic";
           ai_api_key?: string | null;

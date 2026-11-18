@@ -36,7 +36,7 @@ test("SCHEMA: one canonical session per recurrence identity, no teacher-owned du
   .order("created_at").order("id");
  expect(workError).toBeNull();
  expect(workplaces?.length).toBeGreaterThan(0);
- const {data:policy,error:policyError}=await db.from("studio_policies")
+ const {data:policy,error:policyError}=await db.from("teacher_settings")
   .select("timezone").eq("teacher_id",teacher).maybeSingle();
  expect(policyError).toBeNull();
  const timezone=policy?.timezone ?? "UTC";

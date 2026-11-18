@@ -1253,26 +1253,26 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(eventMissing.status()).toBe(404);
 
   // Studio preferences share the same validation and secret-masking service.
-  for(const toolName of ["ccp_studio_policy_get","ccp_studio_policy_update"])
+  for(const toolName of ["ccp_teacher_settings_get","ccp_teacher_settings_update"])
     expect(names).toContain(toolName);
   const webPolicyResponse=await page.request.get("/api/settings/policy");
   expect(webPolicyResponse.status(),await webPolicyResponse.text()).toBe(200);
   const originalPolicy=await webPolicyResponse.json();
-  const mcpPolicy=(await call("ccp_studio_policy_get",{})).structuredContent.data;
-  expect(mcpPolicy.studio_name).toBe(originalPolicy.studio_name);
+  const mcpPolicy=(await call("ccp_teacher_settings_get",{})).structuredContent.data;
+  expect(mcpPolicy.business_name).toBe(originalPolicy.business_name);
   expect(mcpPolicy.timezone).toBe(originalPolicy.timezone);
   expect(mcpPolicy.stripe_secret_key).toBeNull();
   expect(mcpPolicy.ai_api_key).toBeNull();
   expect(mcpPolicy.payment_qr_code).toBeNull();
-  const updatedPolicy=(await call("ccp_studio_policy_update",{
-    changes:{studioName:"Synthetic chess academy "+suffix},confirmed:true,
+  const updatedPolicy=(await call("ccp_teacher_settings_update",{
+    changes:{businessName:"Synthetic chess academy "+suffix},confirmed:true,
   })).structuredContent;
   expect(updatedPolicy.error).toBeUndefined();
-  expect(updatedPolicy.data.studio_name).toBe("Synthetic chess academy "+suffix);
+  expect(updatedPolicy.data.business_name).toBe("Synthetic chess academy "+suffix);
   const policyBrowser=await page.request.get("/api/settings/policy");
-  expect((await policyBrowser.json()).studio_name).toBe("Synthetic chess academy "+suffix);
+  expect((await policyBrowser.json()).business_name).toBe("Synthetic chess academy "+suffix);
   const restorePolicy=await page.request.put("/api/settings/policy",{
-    data:{studioName:originalPolicy.studio_name},
+    data:{businessName:originalPolicy.business_name},
   });
   expect(restorePolicy.status(),await restorePolicy.text()).toBe(200);
 
@@ -1531,7 +1531,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     idempotencyKey:randomUUID(),confirmed:true,notifyFamily:false,
   })).structuredContent;
   expect(genAttendance.error).toBeUndefined();
-  const configuredGenRate=(await call("ccp_studio_policy_update",{
+  const configuredGenRate=(await call("ccp_teacher_settings_update",{
     changes:{defaultRateCents:4000},confirmed:true,
   })).structuredContent;
   expect(configuredGenRate.error).toBeUndefined();

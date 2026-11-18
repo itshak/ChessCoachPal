@@ -70,7 +70,7 @@ async function deliverOne(db:Db,row:OutboxRow,siteUrl:string):Promise<Delivery>{
  if(teacherError)throw new Error("Teacher lookup failed");
  if(!teacher)return {outcome:"cancelled",failureCode:"teacher_removed"};
  const policy=await getPolicy(db,row.teacher_id);
- const studio=policy.studio_name||teacher.display_name||"ChessCoachPal Studio";
+ const studio=policy.business_name||teacher.display_name||"ChessCoachPal Studio";
  const sessionWhen=(locale:AppLocale)=>new Intl.DateTimeFormat(localeDetails[locale].intl,{
    timeZone:policy.timezone,dateStyle:"full",timeStyle:"short"
   }).format(new Date(session.starts_at));

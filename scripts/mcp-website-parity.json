@@ -1132,9 +1132,9 @@
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
-        "ccp_studio_policy_get",
-        "ccp_studio_policy_update",
-        "ccp_studio_credentials_handoff"
+        "ccp_teacher_settings_get",
+        "ccp_teacher_settings_update",
+        "ccp_teacher_credentials_handoff"
       ],
       "explanation": "Ordinary studio policy fields and explicit nullable clears use the same strict website/MCP service. The four sensitive API/Stripe credential-input fields have a narrowly scoped secure-browser exception: explicitly approved MCP handoff returns only the trusted-origin authenticated form URL, never a secret, while the website handles encrypted secret submission. The MCP tool can read masked configured status and clear stored credentials. Authenticated E2E at source 930a596 passed 213 tests, including direct AI/Stripe setup link, browser secret entry, masked MCP readback, model-visible secret rejection and MCP clearing. No card or live provider is used.",
       "evidenceTest": "e2e/parity-policy-credential-handoff.spec.ts"
@@ -1571,7 +1571,7 @@
     "app/(teacher)/schedule/page.tsx",
     "app/(teacher)/students/[id]/page.tsx",
     "app/(teacher)/students/page.tsx",
-    "app/(teacher)/studio/page.tsx",
+    "app/(teacher)/settings/page.tsx",
     "app/(teacher)/contacts/page.tsx"
   ],
   "teacherComponents": [
@@ -1642,7 +1642,7 @@
     "components/teacher/settings/PaymentsSettingsForm.tsx",
     "components/teacher/settings/PushNotificationToggle.tsx",
     "components/teacher/settings/SpreadsheetImportSettings.tsx",
-    "components/teacher/settings/StudioSettingsForm.tsx",
+    "components/teacher/settings/BusinessSettingsForm.tsx",
     "components/teacher/settings/TeacherCalendarFeed.tsx",
     "components/teacher/settings/TimezoneSettingsForm.tsx",
     "components/teacher/skills/SkillsCharts.tsx",

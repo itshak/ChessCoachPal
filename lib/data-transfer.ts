@@ -18,7 +18,7 @@ const POLICY_SECRET_FIELDS = [
 
 /** Order respects FK dependencies when imported into a different teacher. */
 const IMPORT_ORDER = [
-  "studio_policies", "guardians", "contacts", "students",
+  "teacher_settings", "guardians", "contacts", "students",
   "student_contacts", "billing_accounts", "workplaces",
   "ccp_historical_attendance_evidence", "class_groups",
   "workplace_enrollments", "group_enrollments", "teacher_study_preferences", "lesson_slots",
@@ -97,9 +97,9 @@ export async function buildStudioExport(
   teacherId: string
 ): Promise<StudioDataExport> {
   const tables: StudioDataExport["tables"] = {};
-  const policy = await supabase.from("studio_policies").select("*").eq("teacher_id", teacherId).maybeSingle();
-  if (policy.error) throw new Error(`Export studio_policies: ${policy.error.message}`);
-  tables.studio_policies = policyWithoutSecrets(policy.data as Record<string, unknown> | null);
+  const policy = await supabase.from("teacher_settings").select("*").eq("teacher_id", teacherId).maybeSingle();
+  if (policy.error) throw new Error(`Export teacher_settings: ${policy.error.message}`);
+  tables.teacher_settings = policyWithoutSecrets(policy.data as Record<string, unknown> | null);
 
   for (const table of TEACHER_SCOPED) {
     tables[table]=await readExportPages(table,async(start,end)=>{
@@ -178,7 +178,7 @@ export async function importStudioExport(
   for (const table of IMPORT_ORDER) {
     const source=payload.tables[table];
     if (source===undefined) continue;
-    if (table==="studio_policies" && source && !Array.isArray(source)) {
+    if (table==="teacher_settings" && source && !Array.isArray(source)) {
       const sanitized={...source};
       for(const field of POLICY_SECRET_FIELDS) delete sanitized[field];
       safeTables[table]=sanitized;
@@ -213,7 +213,7 @@ export function parseExportPayload(raw: unknown): StudioDataExport | null {
   for (const table of IMPORT_ORDER) {
     const source = tables[table];
     if (source === undefined) continue;
-    if (table === "studio_policies") {
+    if (table === "teacher_settings") {
       if (source !== null && !isRecord(source)) return null;
     } else if (!Array.isArray(source) || !source.every(isRecord)) {
       return null;

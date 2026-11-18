@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PaymentsSettingsForm } from "@/components/teacher/settings/PaymentsSettingsForm";
-import type { StudioPolicy } from "@/lib/schedule";
+import type { TeacherPolicy } from "@/lib/schedule";
 import type { StripeKeyStatus } from "@/lib/billing";
 
 export function PaymentSettingsButton({
@@ -15,7 +15,7 @@ export function PaymentSettingsButton({
   stripeStatus,
   initiallyOpen=false,
 }: {
-  policy: StudioPolicy;
+  policy: TeacherPolicy;
   teacherId: string;
   stripeStatus: StripeKeyStatus;
   initiallyOpen?: boolean;
