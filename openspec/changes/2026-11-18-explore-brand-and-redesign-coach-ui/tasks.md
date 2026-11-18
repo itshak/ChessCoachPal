@@ -12,10 +12,12 @@
 - [ ] Build functional synthetic Today, Students/profile and Lesson prep/close scenarios; provide side-by-side baseline comparisons.
 - [ ] Support interactive palette, foundation, typography and density switches with dark/light, desktop/mobile, Hebrew RTL and English/Russian stress tests.
 - [ ] Run keyboard, screen-reader/focus, WCAG contrast, responsive, RTL, performance and component integration checks.
-- [ ] Publish screenshots, preview and comparison rubric; obtain explicit user selection or revision requests. **STOP here until approved.**
+- [ ] Include the existing rich knight-teacher/pupil/open-book logo in realistic branded preview pages, retaining original and palette-recolored versions alongside relational and typographic/abstract alternatives; explicitly exclude generic standalone chess-piece finalists.
+- [ ] Publish screenshots, preview and comparison rubric, including logo comparisons; obtain explicit user selection or revision requests. **STOP here until approved.**
 
 ## 2. Approved brand system
-- [ ] Refine knight-teacher/pupil mark and compare monochrome/favicon variants with approved colors.
+- [ ] Compare retained rich knight-teacher/pupil/open-book identity (including recoloring in the selected palette), refined relational concept and typographic/abstract concept; do not preselect a winner or replace the current mark by default.
+- [ ] Test header, marketing, avatar, app-icon and favicon optical-size variants (16/24/32/64 px) in monochrome and approved colors; document distinctiveness and storytelling before user approval.
 - [ ] Select licensed typography with suitable Hebrew/Russian glyphs and build complete semantic tokens, light/dark states and accessible color roles.
 - [ ] Document logo, voice, iconography, spacing, navigation, data density and component standards; align marketing and product identity.
 
