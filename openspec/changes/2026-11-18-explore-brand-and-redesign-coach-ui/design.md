@@ -1,0 +1,39 @@
+# Design: original brand and UI architecture
+
+## Design-lab structure
+Create isolated /design-lab preview or a separately deployed preview with synthetic fixtures, no production writes. Component foundation switcher: Base UI / React Aria / Ariakit. Palette switcher: six or more token sets. Layout switcher: compact rows / editorial workbench / command-first hybrid. Provide deterministic scenario fixtures so differences are visible and comparable.
+
+## Candidate foundation research and decision rubric
+- **Base UI:** unstyled accessible React primitives, high control over styling and composition; test combobox, menus, dialogs and focus handling.
+- **React Aria Components:** broad accessibility/i18n support, localized calendars/forms and RTL; test complexity, styling ergonomics and package cost.
+- **Ariakit:** niche accessible headless React toolkit with strong command/menu/combobox/dialog patterns; test composability, keyboard workflow, active maintenance, compatibility and cost of building full data-entry components.
+Do not select by popularity, niche status or default appearance. Verify actual installed versions, licensing, release cadence and ecosystem at implementation time. Prefer one primary primitive foundation; exceptions require documented reason. Do not assume a library supplies a complete branded design system.
+
+## Design directions and tokens
+Baseline ranked hypotheses:
+1. Slate & Periwinkle: bg #222326, surface #2C2D32, foreground #F4F5F8, accent #A6A7D8.
+2. Graphite & Sage: bg #1E2020, surface #292C2B, foreground #F1F0EA, accent #9BB6A3.
+3. Ink & Parchment: bg #211F1D, surface #302C28, foreground #F1E8D9, accent #C3A982.
+
+Explore at least three additional, visibly distinct families; starting directions (not final hex values): (4) Charcoal & Oxblood/Clay, (5) Mineral Blue-Gray & Soft Copper, (6) Deep Olive & Lilac Stone. Designers should derive and tune complete semantic tokens on actual screens, not mechanically recolor the baseline. Evaluate light counterparts, focus/hover/disabled/error/success, text/number hierarchy, charts, borders and logo use. Reject inaccessible combinations.
+
+## Interface design hypotheses
+- **Compact professional workspace:** dense, scannable rows, precise separators, contextual actions, persistent sidebar and clear keyboard focus.
+- **Editorial teaching desk:** typographic hierarchy, generous but purposeful whitespace, reduced card chrome, reading-oriented lesson evidence.
+- **Command-first hybrid:** compact overview plus detail inspector, command palette, rapid capture and shortcuts without hiding essential functions.
+
+## Representative scenarios
+A. Today: three lessons across two workplaces, one group, one incomplete attendance, one overdue homework item, one unresolved billing item.
+B. Students: active/archived status, aliases, strength, ratings with source, multiple contacts, cross-workplace enrollment, filter/search, timeline.
+C. Lesson: shared lesson objective, participant attendance, verified material, private notes, draft shareable summary and next action. Test keyboard completion, errors and save confirmations.
+
+## Constraints
+- Dark-first but first-class light mode, high contrast and low-chrome layout.
+- WCAG 2.2 AA target for contrast and keyboard use; Hebrew RTL and English/Russian stress tests; desktop and narrow/mobile widths.
+- Synthetic data only in preview. No unapproved user data, secrets or confidential strategy excerpts.
+- No unverified claims about Linear's private internal technology; cite public documentation for inspiration, not implementation assertions.
+- Brand decisions must include icon/favicon at tiny sizes, wordmark, marketing site and in-app UI.
+- Shared domain services and ADR-0003 parity are unaffected by visual experimentation.
+
+## Decision record before rollout
+Publish comparison matrix, screenshots, accessible preview links, component and dependency inventory, proposed palette/token source, font/license and localization review, user feedback and explicit chosen direction. Only then turn approved results into staged implementation tasks.
