@@ -6,23 +6,46 @@ umask 077
 [[ "${M5_SYNTHETIC_RESTORE:-}" == "1" && "${CI:-}" == "true" ]] ||
   { echo "Synthetic GitHub Actions only" >&2; exit 2; }
 
-# ADR-0017: prove deterministic fresh canonical baseline, RLS and portal
-# permissions on a disposable Supabase. This does NOT upgrade old databases.
-echo "==> enforce final single-baseline reproducibility and scoped authorization"
-CCP_SYNTHETIC_SCHEMA=1 bash scripts/verify-schema-transition-convergence.sh
-
+# Only disposable CI fixtures are used. Unrelated software can reserve
+# Supabase's five default loopback ports on GitHub hosts; source AND target
+# must allocate independent sockets rather than try 54322 and fail startup.
 root="$(pwd)"
 tmp="$(mktemp -d)"
+cp "$root/supabase/config.toml" "$tmp/initial-config.toml"
 cleanup() {
-  # The second Supabase project is disposable. Stop its containers before
-  # deleting the temp checkout, so a candidate release can safely run the
-  # separate self-hosted Compose smoke on the same GitHub runner.
   if [[ -d "$tmp/restore/supabase" ]]; then
     (cd "$tmp/restore" && supabase stop --no-backup >/dev/null 2>&1) || true
   fi
+  # Never leave a synthetic Supabase running or modify the normal config.
+  (cd "$root" && supabase stop --no-backup >/dev/null 2>&1) || true
+  cp "$tmp/initial-config.toml" "$root/supabase/config.toml"
   rm -rf "$tmp"
 }
 trap cleanup EXIT
+python3 - "$root/supabase/config.toml" "$tmp/source-ports.json" <<'PORTS'
+import json,re,socket,sys
+from pathlib import Path
+path=Path(sys.argv[1]);content=path.read_text()
+pattern=r'(?<!\d)5432[0-9](?!\d)'
+ports=sorted(set(re.findall(pattern,content)))
+if not ports:raise SystemExit('Expected default disposable Supabase port configuration')
+mapping={};reservations=[]
+try:
+ for port in ports:
+  sock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+  sock.bind(('127.0.0.1',0))
+  reservations.append(sock)
+  mapping[port]=str(sock.getsockname()[1])
+ path.write_text(re.sub(pattern,lambda m:mapping[m.group()],content))
+ Path(sys.argv[2]).write_text(json.dumps(mapping))
+finally:
+ for sock in reservations:sock.close()
+print('Disposable source ports allocated:',len(mapping))
+PORTS
+# ADR-0017: deterministic fresh canonical baseline, RLS and portal permissions
+# on an isolated stack. This does NOT upgrade old databases.
+echo "==> enforce final single-baseline reproducibility and scoped authorization"
+CCP_SYNTHETIC_SCHEMA=1 bash scripts/verify-schema-transition-convergence.sh
 mkdir -p "$tmp/backups" "$tmp/source-files" "$tmp/target-files" "$tmp/restore"
 echo "==> start primary disposable Supabase"
 supabase start
@@ -183,35 +206,28 @@ cp -a "$root/public/auth-email-templates" "$tmp/restore/public/auth-email-templa
 sed -i '/^\[db.seed\]/,/^\[db.network_restrictions\]/ s/^enabled = true$/enabled = false/' "$tmp/restore/supabase/config.toml"
 sed -i 's/project_id = "chesscoachpal"/project_id = "chesscoachpal_restore"/' \
   "$tmp/restore/supabase/config.toml"
-# A fixed textual substitution (5432 -> 5442) can collide with a port already
-# occupied by the CI runner (observed: Mailpit 54424). Pick independent free
-# loopback ports for every Supabase CLI exposed service in this disposable
-# second stack. The source stack keeps its original configured ports.
-python3 - "$tmp/restore/supabase/config.toml" <<'PY'
+# The source allocation was random; choose a second disjoint port for
+# every exposed Supabase service. Replace ONLY the previously selected
+# source-port strings, not arbitrary digits or private filesystem paths.
+python3 - "$tmp/restore/supabase/config.toml" "$tmp/source-ports.json" <<'PORTS'
+import json,re,socket,sys
 from pathlib import Path
-import re
-import socket
-import sys
-
-path = Path(sys.argv[1])
-content = path.read_text()
-ports = sorted(set(re.findall(r'(?<!\d)5432[0-9](?!\d)', content)))
-reserved = []
-mapping = {}
+path=Path(sys.argv[1]);content=path.read_text()
+source=list(json.loads(Path(sys.argv[2]).read_text()).values())
+if not source:raise SystemExit('Missing source port allocation')
+reserved=[];mapping={}
 try:
-    for port in ports:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 0))
-        reserved.append(sock)
-        mapping[port] = str(sock.getsockname()[1])
-    content = re.sub(r'(?<!\d)5432[0-9](?!\d)',
-                     lambda match: mapping[match.group()], content)
-    path.write_text(content)
+ for port in source:
+  sock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+  sock.bind(('127.0.0.1',0))
+  reserved.append(sock)
+  mapping[port]=str(sock.getsockname()[1])
+ pattern=r'(?<!\d)(?:'+'|'.join(re.escape(x) for x in source)+r')(?!\d)'
+ path.write_text(re.sub(pattern,lambda m:mapping[m.group()],content))
 finally:
-    for sock in reserved:
-        sock.close()
-print("Disposable target port allocation:", ", ".join(f"{a}->{b}" for a, b in mapping.items()))
-PY
+ for sock in reserved:sock.close()
+print('Disposable restore ports allocated:',len(mapping))
+PORTS
 (cd "$tmp/restore" && supabase start)
 target_db="supabase_db_chesscoachpal_restore"
 target_storage="supabase_storage_chesscoachpal_restore"
