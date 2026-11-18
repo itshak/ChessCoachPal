@@ -2069,7 +2069,10 @@
     "deleteWarning": "״{title}״ וכל אישורי ההגעה יימחקו לצמיתות. אי אפשר לבטל פעולה זו.",
     "cancel": "ביטול",
     "deleting": "מוחקים…",
-    "contact": "איש קשר"
+    "contact": "איש קשר",
+    "emailContacts": "שליחת דוא״ל לאנשי הקשר שהוזמנו",
+    "sentToContacts": "נשלח אל {count} אנשי קשר מוזמנים. {skipped}",
+    "noContacts": "עדיין אין הזמנות מוגבלות הרשאה."
   },
   "studentImport": {
     "title": "ייבוא תלמידים מקובץ",

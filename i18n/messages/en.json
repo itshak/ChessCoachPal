@@ -2069,7 +2069,10 @@
     "deleteWarning": "“{title}” and its RSVPs will be permanently deleted. This cannot be undone.",
     "cancel": "Cancel",
     "deleting": "Deleting…",
-    "contact": "Contact"
+    "contact": "Contact",
+    "emailContacts": "Email invited contacts",
+    "sentToContacts": "Sent to {count} invited contacts. {skipped}",
+    "noContacts": "No scoped invitations yet."
   },
   "studentImport": {
     "title": "Import students from a file",

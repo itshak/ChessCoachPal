@@ -123,7 +123,7 @@ export function EventDetailClient({
         return;
       }
       setEmailMessage(
-        t("sentToFamilies",{count:data.sent,skipped:data.skipped?t("skipped",{count:data.skipped}):""})
+        t("sentToContacts",{count:data.sent,skipped:data.skipped?t("skipped",{count:data.skipped}):""})
       );
       router.refresh();
     } finally {
@@ -163,7 +163,7 @@ export function EventDetailClient({
             onClick={handleEmail}
             disabled={emailBusy || rsvps.length === 0}
           >
-            {emailBusy?t("sending"):t("emailFamilies")}
+            {emailBusy?t("sending"):t("emailContacts")}
           </Button>
           <Button
             variant="ghost"
@@ -200,7 +200,7 @@ export function EventDetailClient({
         <h2 className="font-semibold mb-3">{t("rsvps")}</h2>
         {rsvps.length === 0 ? (
           <p className="text-sm text-muted">
-            {t("noFamilies")}
+            {t("noContacts")}
           </p>
         ) : (
           <div className="overflow-x-auto">

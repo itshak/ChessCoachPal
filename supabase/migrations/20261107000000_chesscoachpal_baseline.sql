@@ -4404,37 +4404,27 @@ REVOKE ALL ON FUNCTION public.ccp_credit_package_create(
 GRANT EXECUTE ON FUNCTION public.ccp_credit_package_create(
   uuid,integer,integer,integer,date,date,uuid) TO authenticated;
 
--- Durable at-most-once external invitation/reminder send attempt per event,
--- family, mode and reviewed message. No contact addresses or portal secrets
+-- Durable at-most-once explicit contact invitation/reminder send attempt per event,
+-- scoped invite, mode and reviewed message. No contact addresses or portal secrets
 -- are persisted in receipts. A provider timeout is ambiguous: manual review
 -- is required rather than automatically sending a duplicate.
 CREATE TABLE public.event_email_deliveries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
   event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
-  guardian_id uuid NOT NULL REFERENCES public.guardians(id) ON DELETE CASCADE,
+  portal_event_invitation_id uuid NOT NULL,
   mode text NOT NULL CHECK(mode IN ('invite','reminder')),
   content_hash text NOT NULL CHECK(content_hash ~ '^[0-9a-f]{64}$'),
   status text NOT NULL DEFAULT 'attempted'
     CHECK(status IN ('attempted','sent','failed')),
   created_at timestamptz NOT NULL DEFAULT now(),
   sent_at timestamptz,
-  UNIQUE(teacher_id,event_id,guardian_id,mode,content_hash)
+  UNIQUE(teacher_id,event_id,portal_event_invitation_id,mode,content_hash)
 );
 CREATE INDEX ccp_event_email_deliveries_event
   ON public.event_email_deliveries(teacher_id,event_id);
 
 ALTER TABLE public.event_email_deliveries ENABLE ROW LEVEL SECURITY;
-CREATE POLICY ccp_event_email_deliveries_teacher ON public.event_email_deliveries
-  FOR ALL TO authenticated
-  USING (teacher_id=(select auth.uid()))
-  WITH CHECK (
-    teacher_id=(select auth.uid())
-    AND EXISTS(SELECT 1 FROM public.events e
-      WHERE e.id=event_id AND e.teacher_id=(select auth.uid()))
-    AND EXISTS(SELECT 1 FROM public.guardians g
-      WHERE g.id=guardian_id AND g.teacher_id=(select auth.uid()))
-  );
 REVOKE ALL ON public.event_email_deliveries FROM anon, PUBLIC;
 GRANT SELECT, INSERT, UPDATE ON public.event_email_deliveries TO authenticated;
 
@@ -9817,7 +9807,7 @@ CREATE INDEX IF NOT EXISTS "ccp_fk_chess_study_chapters_3dc07959" ON public."che
 CREATE INDEX IF NOT EXISTS "ccp_fk_class_groups_b75f46b4" ON public."class_groups" ("workplace_id","teacher_id");
 CREATE INDEX IF NOT EXISTS "ccp_fk_credit_redemptions_61ee2678" ON public."credit_redemptions" ("teacher_id");
 CREATE INDEX IF NOT EXISTS "ccp_fk_event_email_deliveries_9cefd946" ON public."event_email_deliveries" ("event_id");
-CREATE INDEX IF NOT EXISTS "ccp_fk_event_email_deliveries_8a765951" ON public."event_email_deliveries" ("guardian_id");
+CREATE INDEX IF NOT EXISTS "ccp_fk_event_email_deliveries_invitation" ON public."event_email_deliveries" ("portal_event_invitation_id");
 CREATE INDEX IF NOT EXISTS "ccp_fk_group_enrollments_b979268e" ON public."group_enrollments" ("group_id","teacher_id","workplace_id");
 CREATE INDEX IF NOT EXISTS "ccp_fk_group_enrollments_9fd27e53" ON public."group_enrollments" ("student_id","teacher_id");
 CREATE INDEX IF NOT EXISTS "ccp_fk_group_enrollments_1e9156ce" ON public."group_enrollments" ("teacher_id","workplace_id","student_id");
@@ -10886,6 +10876,21 @@ CREATE TABLE public.portal_event_invitations (
   FOREIGN KEY (portal_grant_id,teacher_id)
     REFERENCES public.portal_access_grants(id,teacher_id) ON DELETE RESTRICT
 );
+CREATE POLICY ccp_event_email_deliveries_teacher ON public.event_email_deliveries
+  FOR ALL TO authenticated
+  USING (teacher_id=(select auth.uid()))
+  WITH CHECK (
+    teacher_id=(select auth.uid())
+    AND EXISTS(SELECT 1 FROM public.events e
+      WHERE e.id=event_id AND e.teacher_id=(select auth.uid()))
+    AND EXISTS(SELECT 1 FROM public.portal_event_invitations pi
+      WHERE pi.id=portal_event_invitation_id AND pi.teacher_id=(select auth.uid()))
+  );
+
+ALTER TABLE public.event_email_deliveries
+  ADD CONSTRAINT event_email_invitation_owner_fk
+  FOREIGN KEY (portal_event_invitation_id,teacher_id)
+  REFERENCES public.portal_event_invitations(id,teacher_id) ON DELETE CASCADE;
 CREATE INDEX portal_event_invite_grant_idx
   ON public.portal_event_invitations(teacher_id,portal_grant_id,event_id);
 ALTER TABLE public.portal_event_invitations ENABLE ROW LEVEL SECURITY;
