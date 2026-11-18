@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { NextRequest } from "next/server";
-import { requestOrigin } from "./http";
+import { browserApiOrigin, requestOrigin } from "./http";
 
 /**
  * requestOrigin touches only `headers` and `nextUrl`, so a stub is enough — and
@@ -25,10 +25,13 @@ function stubRequest(input: {
 
 describe("requestOrigin", () => {
   const saved = process.env.NEXT_PUBLIC_SITE_URL;
+  const savedMcp = process.env.MCP_PUBLIC_ORIGIN;
 
   afterEach(() => {
     if (saved === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
     else process.env.NEXT_PUBLIC_SITE_URL = saved;
+    if (savedMcp === undefined) delete process.env.MCP_PUBLIC_ORIGIN;
+    else process.env.MCP_PUBLIC_ORIGIN = savedMcp;
   });
 
   it("resolves a canonical HTTPS browser Origin behind an internal reverse-proxy URL", () => {
@@ -106,5 +109,39 @@ describe("requestOrigin", () => {
     expect(
       requestOrigin(stubRequest({ url: "http://127.0.0.1:3000/login" }))
     ).toBe("http://127.0.0.1:3000");
+  });
+});
+
+describe("browserApiOrigin", () => {
+  const savedSite = process.env.NEXT_PUBLIC_SITE_URL;
+  const savedMcp = process.env.MCP_PUBLIC_ORIGIN;
+  afterEach(() => {
+    if (savedSite === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = savedSite;
+    if (savedMcp === undefined) delete process.env.MCP_PUBLIC_ORIGIN;
+    else process.env.MCP_PUBLIC_ORIGIN = savedMcp;
+  });
+  it("trusts the canonical Coolify site origin, never internal or forwarded host", () => {
+    process.env.NEXT_PUBLIC_SITE_URL = "https://chesscoachpal.com/";
+    process.env.MCP_PUBLIC_ORIGIN = "https://chesscoachpal.com";
+    const req=stubRequest({url:"http://app:3000/api/agent/v1",
+      host:"app:3000",forwardedHost:"malicious.example",forwardedProto:"http"});
+    expect(browserApiOrigin(req)).toBe("https://chesscoachpal.com");
+  });
+  it("accepts the configured local MCP test origin", () => {
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    process.env.MCP_PUBLIC_ORIGIN = "http://localhost:3000";
+    expect(browserApiOrigin(stubRequest({url:"http://app:3000/api/agent/v1"})))
+      .toBe("http://localhost:3000");
+  });
+  it("falls back to the actual request URL only when no public origin is configured", () => {
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.MCP_PUBLIC_ORIGIN;
+    expect(browserApiOrigin(stubRequest({url:"http://localhost:3000/api/agent/v1"})))
+      .toBe("http://localhost:3000");
+  });
+  it("fails closed for a configured non-local plaintext origin", () => {
+    process.env.NEXT_PUBLIC_SITE_URL = "http://untrusted.example";
+    expect(()=>browserApiOrigin(stubRequest({}))).toThrow("Invalid configured browser API origin");
   });
 });
