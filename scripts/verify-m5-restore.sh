@@ -6,6 +6,12 @@ umask 077
 [[ "${M5_SYNTHETIC_RESTORE:-}" == "1" && "${CI:-}" == "true" ]] ||
   { echo "Synthetic GitHub Actions only" >&2; exit 2; }
 
+# ADR-0015: first prove current baseline vs the pinned historical schema
+# through the normal versioned local migration runner. This step creates and
+# stops its own disposable Supabase stack; no production URL is permitted.
+echo "==> enforce canonical baseline vs populated live-transition convergence"
+CCP_SYNTHETIC_SCHEMA=1 bash scripts/verify-schema-transition-convergence.sh
+
 root="$(pwd)"
 tmp="$(mktemp -d)"
 cleanup() {

@@ -23,6 +23,11 @@ baseline="20261107000000_chesscoachpal_baseline.sql"
 # Frozen source snapshot is part of the public git history. This is not a
 # generic backwards-compatibility promise for arbitrary pre-v1 deployments.
 previous="3a658a0"
+if ! git cat-file -e "$previous^{commit}" 2>/dev/null; then
+  # restore.yml checks out a shallow tree; fetch ONLY the public pinned old
+  # baseline commit, never live data or remote database state.
+  git fetch --quiet --no-tags --depth=1 origin "$previous"
+fi
 git cat-file -e "$previous^{commit}"
 echo "==> disposable Supabase start (synthetic developer fixtures only)"
 supabase start

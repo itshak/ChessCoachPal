@@ -41,7 +41,8 @@ production SQL output, child records, passwords or backup dumps in GitHub.
 - `npm run schema:canonical:guard-test` exercises positive and negative
   contract cases (unlisted files, out-of-order files, changed SQL, incomplete
   approvals, missing target object).
-- `.github/workflows/schema-convergence.yml` builds a disposable local
+- `m5-restore.yml` runs `verify-schema-transition-convergence.sh` before its
+  own independent restore smoke. The convergence subtest builds a disposable local
   Supabase instance in GitHub Actions. It installs **only** the current
   baseline, stores the structural catalog signature, then resets the *local
   synthetic instance* to the frozen pre-extension baseline from commit
