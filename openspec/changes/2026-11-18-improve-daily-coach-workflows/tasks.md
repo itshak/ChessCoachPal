@@ -1,0 +1,12 @@
+# Tasks: daily coaching actions
+
+- [ ] Inventory existing dashboard queries, coach-briefing, lesson capture preview/commit, attendance, homework, materials, historical import receipts, teacher profile/local timezone and current agent tool inventory.
+- [ ] Define teacher-owned daily queue service with workplace filter, date/zone, pagination, stable reason codes and no N+1 student queries; design provider errors and missing evidence states.
+- [ ] Implement website dashboard action cards for next lesson, Prepare/Record/Complete, missing attendance, due homework and failed/stale rating lookups; keep existing summary links.
+- [ ] Reuse deterministic coach briefing for per-student and group preparation; show exact source evidence/unknowns and never expose another student's private notes.
+- [ ] Add fast read-only lesson-close preview and atomic approved commit through canonical session/frozen-roster/attendance/material services; distinguish shared vs participant note and teacher observation vs provider rating.
+- [ ] Add student overview and optional import reconciliation review with explicit alias disambiguation, archived history and provenance preservation; refuse automatic duplicate student merges.
+- [ ] Supply task-oriented ccp_* MCP actions and shared typed root schemas; avoid overwhelming default tool discovery, keep full domain tool parity and independent read-back.
+- [ ] Add website/MCP parity registry and authenticated E2E: upcoming private, school group, ad-hoc multi-student, archived student, school+personal history, missing homework, rating failure and unmarked attendance.
+- [ ] Test timezones/DST, materials assigned vs taught vs mastered, idempotency and stale/replay, cross-tenant denial, group hour deduplication and mixed Hebrew/Russian aliases.
+- [ ] Run typecheck/lint/unit, strict parity, E2E, security, Compose and backup/restore; document exact merged-main evidence before archive.
