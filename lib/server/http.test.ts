@@ -31,6 +31,19 @@ describe("requestOrigin", () => {
     else process.env.NEXT_PUBLIC_SITE_URL = saved;
   });
 
+  it("resolves a canonical HTTPS browser Origin behind an internal reverse-proxy URL", () => {
+    process.env.NEXT_PUBLIC_SITE_URL = "https://chesscoachpal.com";
+    const request = stubRequest({
+      url: "http://app:3000/api/agent/v1",
+      host: "app:3000",
+      forwardedHost: "untrusted-client.example",
+      forwardedProto: "http",
+    });
+    expect(request.nextUrl.origin).toBe("http://app:3000");
+    expect(requestOrigin(request)).toBe("https://chesscoachpal.com");
+    expect(requestOrigin(request)).not.toBe("https://untrusted-client.example");
+  });
+
   it("prefers the configured site URL over the request", () => {
     process.env.NEXT_PUBLIC_SITE_URL = "https://chesscoachpal.example.com";
     expect(

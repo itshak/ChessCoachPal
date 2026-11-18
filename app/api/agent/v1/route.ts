@@ -3,6 +3,7 @@ import { createClient as createAuthClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import { createClient as createCookieClient } from "@/lib/supabase/server";
+import { requestOrigin } from "@/lib/server/http";
 import {
   CoachError,
   attendanceList, attendanceRecord, attendanceBulkRecord,
@@ -201,7 +202,11 @@ export async function POST(req: NextRequest) {
   if (!auth) return json({ error: { code: "UNAUTHENTICATED" } }, 401);
   if (!auth.bearer) {
     const origin = req.headers.get("origin");
-    if (origin && origin !== req.nextUrl.origin) {
+    // Behind Coolify/Traefik, req.nextUrl.origin can be an internal HTTP
+    // service address even for a legitimate HTTPS browser request. Validate
+    // against the configured public site origin instead; never blindly trust
+    // a caller-supplied Host or X-Forwarded-Host in production.
+    if (origin && origin !== requestOrigin(req)) {
       return json({ error: { code: "FORBIDDEN" } }, 403);
     }
   }

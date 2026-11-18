@@ -513,6 +513,22 @@ test("PARITY:PARITY-history-import-form shows actual workplace choices and recov
  const student=quick.locator("select").nth(1);
  const retry=panel.getByTestId("history-import-retry-choices");
 
+ // Regression: the same-origin website POST must work with an explicit Origin
+ // while cross-origin cookie requests remain forbidden. Coolify publishes
+ // NEXT_PUBLIC_SITE_URL, which the server must prefer to its internal URL.
+ await page.goto("/account");
+ const origin=new URL(page.url()).origin;
+ const allowed=await page.request.post("/api/agent/v1",{
+  headers:{Origin:origin},data:{action:"workplaces.list"},
+ });
+ expect(allowed.status(),await allowed.text()).toBe(200);
+ expect((await allowed.json()).data).toEqual(
+  expect.arrayContaining([expect.objectContaining({id:workplaceId})]));
+ const crossSite=await page.request.post("/api/agent/v1",{
+  headers:{Origin:"https://malicious.example"},data:{action:"workplaces.list"},
+ });
+ expect(crossSite.status()).toBe(403);
+
  // A student roster outage must NOT empty the already valid workplace list.
  const studentsRoute="**/api/students?includeArchived=true&limit=1000";
  await page.route(studentsRoute,route=>route.fulfill({
