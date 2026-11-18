@@ -1,45 +1,30 @@
-# ADR-0001: Breaking changes are the default before 1.0.0
+# ADR-0001: Breaking contracts before 1.0.0; canonical schema first
 
-- **Status:** Accepted — binding project policy
-- **Date:** 2026-11-07
-- **Decision scope:** All ChessCoachPal code, API contracts, database schema, configuration, assets, and documentation while the project is prelaunch and below version `1.0.0`
-- **Supersedes:** Compatibility, dual-read/dual-write, migration/backfill and deprecation requirements in existing OpenSpec proposals and docs where they conflict with this ADR
+- **Status:** Accepted — binding; live-data rules clarified by [ADR-0015](0015-baseline-first-and-one-time-live-transitions.md)
+- **Date:** 2026-11-07; policy clarification 2026-11-18
+- **Scope:** ChessCoachPal pre-v1 APIs, database, UX, configuration, and CogNote inheritance
 
 ## Context
 
-ChessCoachPal is still prelaunch and has no stable released data format, API, database schema, installation, or users to support. The CogNote source is a starting point, not a backward-compatible integration contract. Maintaining compatibility would add avoidable code, schema and testing complexity, and preserve music-studio assumptions in a chess-coaching product.
+ChessCoachPal is a chess-first, MCP/Plugin-first product based on CogNote source, not a compatible extension. Its pre-1.0 public contracts are not stable. However, the private-beta deployment **already contains real teacher/student information**. A lack of compatibility guarantees does not permit destroying that data or leaving a running deployment with an un-upgraded schema.
 
 ## Decision
 
-**Two equally binding incompatibility rules:** (a) ChessCoachPal owes **zero compatibility to CogNote** (its data model, route names, settings, UI or upgrade path); and (b) **ChessCoachPal pre-1.0 versions owe zero compatibility to one another**. Existing source may be reused if useful, but never kept solely for compatibility. This covers the entire system, not just databases.
+1. **No CogNote compatibility.** No old CogNote routes, tables, aliases, workflows, or data-conversion support are retained solely for backward compatibility. Preserve upstream licensing notices.
+2. **No contract compatibility promises between ChessCoachPal releases before v1.0.0.** Rename/remove outdated APIs and physical models freely when this clarifies the product. Update browser and MCP together under ADR-0003. A client may need to refresh its tool catalogue after a version update.
+3. **One complete, authoritative current-schema baseline:** `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`. Every schema-changing implementation MUST modify the baseline, bootstrap/seed fixtures, database types, grants and fresh-install tests to describe the **final** structure. Do not build new installations by replaying historical application upgrades or by retaining obsolete models.
+4. **One-time transitions for real deployed records are mandatory when needed.** A reviewed, deployment-specific, versioned, forward-only SQL transition SHALL bring a running private-beta database to the same effective target structure without losing real teacher/student, lesson, finance, consent, access or historical records. It is an operational transition artifact, **not a second canonical schema or a promise of generic pre-v1 upgrade compatibility**. Follow [ADR-0015](0015-baseline-first-and-one-time-live-transitions.md), which takes precedence over any original "no migrations" wording.
+5. **Disposable development environments** MAY reset and reseed explicitly. A database with real or uncertain data MUST NOT be reset or destructively overwritten absent informed operator authorization, tested recovery and a data-preservation plan. Never silently reset a deployment.
+6. **Remove inherited clutter, not useful responsibilities.** Contacts, billing rights and external sharing must survive the retirement of the family/studio naming where needed. Do not retain legacy family-as-household semantics merely because they existed in CogNote.
+7. **Before v1.0.0**, decide stable versioning and migration policy separately; this ADR does not promise automatic upgrades for any pre-1.0 checkout.
 
-**Until the first `1.0.0` release, all internal and external contracts may change incompatibly without migrations or deprecation periods.** Prefer the clearest correct architecture to compatibility with any earlier checkout, development database or inherited CogNote behavior.
+## Acceptance
 
-1. **Schema-first replacement, not incremental upgrade migrations.** Modify the canonical baseline schema and setup/seed files directly. Do **not** add sequential `ALTER TABLE` migrations, backfill jobs, compatibility views, dual reads/writes or adapters to keep older development databases working. Existing legacy CogNote migration files may be consolidated, rewritten or removed as part of the clean pre-1.0 bootstrap. If Supabase CLI still uses a `migrations/` directory as its installation mechanism, treat its consolidated baseline SQL as an **installation snapshot**, not an upgrade history.
-2. **Reset disposable development data.** A new checkout initializes from the current canonical schema; an existing pre-1.0 development installation must drop/reset and reseed its database on breaking changes. Document the required destructive reset prominently. Never silently reset a database or wipe real data without the operator explicitly choosing to do so.
-3. **Remove inherited baggage outright.** Rename, redesign or delete CogNote-specific tables, routes, components, assets, integrations and semantics rather than keep compatibility layers solely for upstream behavior. Retain upstream copyright and applicable open-source license notices.
-4. **APIs/configurations are also unstable.** Freely change endpoints, tool schemas, events, env vars and component interfaces; delete obsolete names and contracts instead of offering aliases or deprecation paths. Mark pre-1.0 interfaces experimental.
-5. **No migrations or backward compatibility acceptance work.** Do not invest in tests or code for data migration from earlier development schemas, maintaining old routes, retaining old PWA identity, or legacy account import. Tests target fresh setup and current contract only.
-6. **Make breaking changes visible.** Update README, setup guide, OpenSpec, tests, CI and release notes for current requirements. On each change, state clearly when a full database reset is needed.
+- Current baseline can bootstrap an empty Supabase/Compose environment, including RLS, owner grants, foreign keys and actual app/MCP reads and writes.
+- Any live transition passes a representative restored-copy test, migration/replay tests, record/relationship/permission reconciliation and an independently recoverable backup before authorized rollout.
+- Website/MCP parity, tenant isolation, history/audit preservation, deterministic billing and external-portal access checks remain mandatory.
+- Documentation, CI schema guards, OpenSpec changes and status/release notes use the same distinction between **canonical baseline** and **one-time live transition**.
 
-## Non-negotiable safeguards
+## Relationship to previous wording
 
-- **Privacy and security still apply.** Pre-1.0 freedom does not permit exposure of student details, secrets, third-party data, or tenant boundaries. Keep authenticated access, RLS and ownership checks in the new schema.
-- **No automatic destructive changes to real data.** If any instance might contain actual user/teacher information, require an explicit operator decision and backup/export before destroying it. The lack of a compatibility promise does not authorize deleting someone else's information.
-- **License obligations still apply.** Keep CogNote's MIT attribution and third-party notices as required.
-- **A future compatibility policy begins at `1.0.0`.** Before the stable release, decide, document and test versioned migrations/deprecation commitments appropriate to supported users.
-
-## Consequences
-
-- Faster simplification and a smaller, coherent chess-specific codebase.
-- Old pre-1.0 deployments and development databases may be incompatible and require manual reset/reinstall.
-- PRs should edit the authoritative schema/source in place and avoid new incremental upgrade migrations. A fresh-install integration test becomes the minimum database validation gate.
-- This ADR takes precedence over conflicting requirements in `openspec/changes/adopt-cognote-chesscoachpal` and `docs/ARCHITECTURE.md` until those documents are revised.
-
-## Current implementation (2026-11-15)
-
-The canonical baseline **has already been consolidated** into `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`. Exactly one installation snapshot and no pre-v1 incremental schema migration or compatibility adapter is permitted. Do not follow obsolete directions referring to the former `20261107000000_chess_coaching_core.sql` addition.
-
-The 2026-11-15 Supabase hardening was folded directly into that baseline, while equivalent transactional SQL was applied **in place** to the authorized disposable test project without deleting its synthetic records. Full destructive resets of any project containing real teachers/students still require explicit operator authorization and backup. Supabase-managed Auth/Storage schemas and policy objects are not part of an app-owned `public` reset.
-
-**Acceptance:** fresh Supabase/Compose install, owner-authenticated write/read, tenant-denial and grant checks, advisors, protected Storage handling, no dual schema, and second-empty-instance backup/restore. See [ADR-0007](0007-mcp-supabase-contract-and-release-evidence.md) and the [runbook](../MCP_SUPABASE_RELIABILITY_PLAYBOOK.md).
+The original 2026-11-07 "no migrations or backward-compatibility acceptance work" rule applied to disposable, pre-release development schemas. It is **superseded for databases containing real private-beta records**. The original November 15 note that exactly one SQL migration file was permitted was later invalidated by actual deployment transitions and is not a permanent migration-count limit. See historical [ADR-0013](ADR-0013-forward-only-live-schema-repair.md) and binding [ADR-0015](0015-baseline-first-and-one-time-live-transitions.md).

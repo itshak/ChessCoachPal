@@ -11,16 +11,19 @@ context: |
   sessions and per-student attendance. No board in v0.1.0.
   Current phase is 0.0.0 development. Use ROADMAP-v0.1.0.md for five
   scoped, testable outcomes (Milestones 1, 2 foundation, 3, 4 and 5 automated self-hosting archived; accepted 2b archived, successor final publication release gate active). All pre-release development acceptance uses automated GitHub Actions with synthetic fixtures. Real Codex MCP search/create/enroll has been demonstrated against the hosted synthetic Supabase demo, but actual ChatGPT/Claude vendor-client acceptance is reserved for the final manual local prepublication v0.1.0 sign-off. Public ChatGPT Plugin Directory publication is a separate future workstream. ADR-0001 overrides inherited compatibility
-  directions: no CogNote compatibility or pre-1.0 data/API upgrade support.
+  directions: no CogNote compatibility or pre-1.0 API promises. ADR-0015 requires baseline-first source changes AND reviewed one-time live transitions when real beta data exists; never reset that data without explicit authorization.
 rules:
   proposal:
     - Separate implemented behavior from proposed functionality.
+    - For accepted architecture, distinguish decision approval from unimplemented acceptance; keep scope specific and dependencies explicit.
+    - Every schema-changing implementation must edit the authoritative baseline and plan an authorized one-time live transition for populated private-beta databases (ADR-0015).
     - Keep each change narrowly scoped with dependencies, acceptance gates and explicit deferrals.
   specs:
     - Use SHALL and WHEN/THEN acceptance scenarios.
     - Cover retries, permissions, ambiguity and AI outages.
   tasks:
     - Require observable verification before checking tasks complete.
+    - Proposals are planning artifacts; do not silently apply database migrations or deploy production resources when writing them.
     - Cite merged commit and passing GitHub Actions test evidence in docs/STATUS.md for development changes.
     - Never require live ChatGPT or Claude accounts in a development spec/task; move live-client acceptance solely to final local v0.1.0 prepublication release gate.
     - Never mark an active change complete based only on an unmerged draft PR.
