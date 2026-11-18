@@ -1,0 +1,26 @@
+# Change: introduce first-class FIDE and national federation ratings
+
+**Status:** Proposed implementation — domain direction accepted; external access feasibility not yet accepted.
+**Priority:** P0 FIDE, P0/P1 Israeli national rating; US Chess data adapter deferred.
+**Depends on:** 2026-11-18-enforce-baseline-live-transition-contract.
+**Related:** 2026-11-18-automate-online-rating-sync shares immutable evidence storage.
+
+## Why
+A chess coach needs FIDE ID, separately tracked official Standard/Rapid/Blitz ratings, national registration and ratings. The current student chess profile has Lichess/Chess.com fields and snapshots limited to those two online providers. One national_rating column cannot represent US Chess Regular/Quick/Blitz or future federation-specific categories. Official ratings are evidence, not a substitute for the teacher's 1–10 strength or assessed chess skills.
+
+## Outcome
+Optional FIDE identity and national-federation memberships, teacher-configurable suggested default national federation, extensible provider/category rating observations, reliable monthly/list-based FIDE synchronization and Israeli Federation player lookup if a compliant source can be verified.
+
+## Scope
+- Add optional students.fide_id and recorded FIDE federation (distinct from a national membership), plus teacher default_national_federation_code (e.g., ISR) with student override or explicitly none.
+- Add student_federation_memberships for 0..N national federations and distinct provider-scoped membership/player IDs; no assertion that default federation means verified membership.
+- Generalize student_rating_snapshots provider, category, official effective_at, fetched_at, source, verification, metadata/version, idempotency, immutable history. Keep existing online provider observations intact.
+- FIDE data adapter for official published rating lists, all three categories, dates, unrated/missing distinctions and schedule aligned with publication. Any retrieval uses fixed trusted endpoints, licensing/rate limits and safe bulk download/storage practices.
+- Israeli Chess Federation adapter discovery/feasibility gate, verified player-ID matching and national rating source; implement automated fetch only if access method/terms are acceptable, otherwise manual source-attributed updates plus profile links and visible unsupported status.
+- Website/student profile, reports, exports, ccp_* MCP read/edit/refresh, provider provenance, stale/error states, teacher consent for public minor-data lookup.
+
+## Exclusions
+Do not automatically equate FIDE or Israeli ratings with strength or mastery. US Chess/other national providers are schema-ready only, not promised first-delivery live connectors. No fuzzy guessing from names, automatic account ownership verification, FIDE login, official title inference or unverified scraping.
+
+## Acceptance
+A FIDE ID with Standard/Rapid/Blitz values remains independent of Lichess and Chess.com. Israeli player ID and national rating are stored with exact source and dates, or visibly remain unavailable if automation is unsupported. Fresh baseline and one-time real-data transition retain all existing online snapshots.
