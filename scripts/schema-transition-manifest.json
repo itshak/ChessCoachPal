@@ -25,6 +25,13 @@
       "20261117190000_mcp_workflow_composition.sql",
       "20261117231554_family_communication_locale.sql",
       "20261118000000_multilingual_teacher_and_family_locale.sql"
+    ],
+    [
+      "20261117000000_live_historical_lifecycle_extension.sql",
+      "20261117190000_mcp_workflow_composition.sql",
+      "20261117231554_family_communication_locale.sql",
+      "20261118000000_multilingual_teacher_and_family_locale.sql",
+      "20261118150000_live_baseline_function_alignment.sql"
     ]
   ],
   "transitions": [
@@ -79,6 +86,18 @@
         "teachers.preferred_locale"
       ],
       "sha256": "9203d73f7f3fc8e79dba36576979ebdd181c2669de2aa2c2d910d127e51dae39"
+    },
+    {
+      "file": "20261118150000_live_baseline_function_alignment.sql",
+      "fromRevision": "20261118000000",
+      "purpose": "Align safe student archiving guard and immutable historical-data restore RPC to canonical fresh schema",
+      "risk": "function-body-only; operator approval required before live update",
+      "requiresVerifiedRestore": true,
+      "baselineObjects": [
+        "ccp_student_capacity_guard",
+        "ccp_restore_canonical_chess_rows"
+      ],
+      "sha256": "4b444cfd0898ac1a2c1092b81dde5dea39746054e3aec90fd3af9de557d349ae"
     }
   ],
   "reviewPolicy": "Update baseline and manifest hashes, review RLS/grants/data map, run isolated synthetic convergence and restore before authorizing production"

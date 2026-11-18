@@ -19,6 +19,11 @@ ordered live transitions, now listed with SHA-256 review pins in
    communication locale and owner-scoped update RPC.
 4. `20261118000000_multilingual_teacher_and_family_locale.sql`: teacher
    UI locale and limited column grant.
+5. `20261118150000_live_baseline_function_alignment.sql`: *new P0 convergence repair*,
+   aligning `ccp_student_capacity_guard()` and
+   `ccp_restore_canonical_chess_rows(jsonb)` to the baseline.
+   The synthetic acceptance suite uncovered the older live definition drift.
+   This **does not imply it has been applied in production**.
 
 The manifest explicitly accepts historical development branches lacking some
 later files, but **does not** promise conversion of arbitrary pre-v1 schemas.
@@ -46,8 +51,8 @@ production SQL output, child records, passwords or backup dumps in GitHub.
   Supabase instance in GitHub Actions. It installs **only** the current
   baseline, stores the structural catalog signature, then resets the *local
   synthetic instance* to the frozen pre-extension baseline from commit
-  `3a658a0bf5540f68c192b1a454bb5cdbc774f51b`. It inserts synthetic preserved records, applies the four
-  migrations via Supabase's local migration ledger, checks counts, relations,
+  `3a658a0bf5540f68c192b1a454bb5cdbc774f51b`. It inserts synthetic preserved records, applies the five
+  reviewed migrations via Supabase's local migration ledger, checks counts, relations,
   locale constraints, owner isolation, failure rollback and no second replay,
   then compares table/column privileges, constraints, indexes, triggers,
   functions, policies and RLS to the fresh baseline.

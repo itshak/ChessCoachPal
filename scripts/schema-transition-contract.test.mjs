@@ -11,7 +11,7 @@ const sqlFiles=readdirSync(join(root,"supabase/migrations")).filter(file=>file.e
 const transitionSources=Object.fromEntries(manifest.transitions.map(item=>
   [item.file,readFileSync(join(root,"supabase/migrations",item.file),"utf8")]));
 const input={sqlFiles,sql,manifest,transitionSources};
-test("ADR-0015 exact checked-in baseline and four ordered transitions are approved",()=>{
+test("ADR-0015 exact checked-in baseline and reviewed ordered transitions are approved",()=>{
   deepStrictEqual(transitionContractErrors(input),[]);
   ok(manifest.transitions.every(item=>item.requiresVerifiedRestore));
   deepStrictEqual(manifest.transitions.map(x=>x.file),sqlFiles.slice(1));
