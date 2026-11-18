@@ -167,19 +167,35 @@ export function HistoricalAttendanceImportPanel(){
  const [requestKey,setRequestKey]=useState<string|null>(null);
  const [students,setStudents]=useState<Roster[]>([]);
  const [workplaces,setWorkplaces]=useState<Roster[]>([]);
+ const [choicesLoading,setChoicesLoading]=useState(true);
+ const [choicesFailed,setChoicesFailed]=useState({students:false,workplaces:false});
  const [report,setReport]=useState<Record<string,unknown>[]|null>(null);
  const invalidate=()=>{setPreview(null);setRequestKey(null);};
  const loadChoices=useCallback(async()=>{
-  try{
-   const [studentsRes,workplacesRes]=await Promise.all([
-    fetch("/api/students?includeArchived=true&limit=1000",{cache:"no-store"}),
-    fetch("/api/agent/v1",{method:"POST",headers:{"Content-Type":"application/json"},
-     body:JSON.stringify({action:"workplaces.list"}),cache:"no-store"}),
-   ]);
-   const s=await asJson(studentsRes),w=await asJson(workplacesRes);
-   setStudents(s.students??[]);
-   setWorkplaces(w.data??[]);
-  }catch{/* Missing choices are still explicitly reviewed, never guessed. */}
+  setChoicesLoading(true);
+  // Load each roster independently: a failure in one API must not hide
+  // the other roster, especially the workplace selector used for date imports.
+  const [studentResult,workplaceResult]=await Promise.allSettled([
+   (async()=>{
+    const data=await asJson(await fetch(
+     "/api/students?includeArchived=true&limit=1000",{cache:"no-store"}));
+    if(!Array.isArray(data.students))throw new Error("Invalid student roster response");
+    return data.students as Roster[];
+   })(),
+   (async()=>{
+    const data=await asJson(await fetch("/api/agent/v1",{
+     method:"POST",headers:{"Content-Type":"application/json"},
+     body:JSON.stringify({action:"workplaces.list"}),cache:"no-store",
+    }));
+    if(!Array.isArray(data.data))throw new Error("Invalid workplace roster response");
+    return data.data as Roster[];
+   })(),
+  ]);
+  if(studentResult.status==="fulfilled")setStudents(studentResult.value);
+  if(workplaceResult.status==="fulfilled")setWorkplaces(workplaceResult.value);
+  setChoicesFailed({students:studentResult.status==="rejected",
+   workplaces:workplaceResult.status==="rejected"});
+  setChoicesLoading(false);
  },[]);
  useEffect(()=>{void loadChoices();},[loadChoices]);
  async function upload(file:File){
@@ -258,6 +274,20 @@ export function HistoricalAttendanceImportPanel(){
  };
  return <Card id="historical-attendance-import">
   <h2 className="font-semibold text-lg">{t("title")}</h2>
+  {choicesLoading&&<p role="status" className="text-sm text-muted">{t("loadingChoices")}</p>}
+  {choicesFailed.workplaces&&<p role="alert" className="text-sm text-error">
+   {t("workplacesLoadFailed")}
+  </p>}
+  {choicesFailed.students&&<p role="alert" className="text-sm text-error">
+   {t("studentsLoadFailed")}
+  </p>}
+  {!choicesLoading&&!choicesFailed.workplaces&&workplaces.length===0&&
+   <p role="status" className="text-sm text-muted">{t("noWorkplaces")}</p>}
+  {!choicesLoading&&(choicesFailed.workplaces||choicesFailed.students||
+   workplaces.length===0)&&
+   <Button type="button" variant="secondary"
+    data-testid="history-import-retry-choices"
+    onClick={()=>void loadChoices()}>{t("retryChoices")}</Button>}
   <HistoricalDatesQuickImport students={students} workplaces={workplaces}/>
   <p className="text-sm text-muted mt-1 mb-3">
    {t("description")}
