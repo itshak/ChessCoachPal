@@ -2840,5 +2840,30 @@
     "fide": "FIDE",
     "sourcePlaceholder": "Official web address (https)",
     "codeExample": "e.g. ISR"
+  },
+  "payerAssignments": {
+    "title": "Who pays for this student?",
+    "disclaimer": "A payer must be explicitly assigned for each workplace and effective date. Contacts, families and portal links never create debt automatically. Existing invoices and payments are not changed by this editor.",
+    "loadFailed": "Unable to load billing assignments",
+    "saveFailed": "Unable to update assigned payer",
+    "saved": "Payer assignment saved",
+    "history": "Payer assignment history",
+    "unknownAccount": "Unknown payer",
+    "otherWorkplace": "Other workplace",
+    "ongoing": "ongoing",
+    "close": "End assignment",
+    "noPayer": "No billing account assigned. No charge can be created without an explicit payer.",
+    "workplace": "Workplace",
+    "selectWorkplace": "Select workplace",
+    "billingAccount": "Billing account",
+    "selectAccount": "Select account",
+    "from": "Effective from",
+    "until": "Effective through (optional)",
+    "saving": "Saving…",
+    "assign": "Confirm payer assignment",
+    "confirmPayer": "Assign this billing account as this student’s payer for the selected workplace and dates? No invoice or charge will be created.",
+    "endPrompt": "Enter the last effective date for this payer (YYYY-MM-DD)",
+    "invalidDate": "Enter a valid YYYY-MM-DD date",
+    "confirmEnd": "End the current payer assignment on this date? History remains available."
   }
 }

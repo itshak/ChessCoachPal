@@ -14,6 +14,7 @@ import { StudentLessonNotes } from "@/components/teacher/StudentLessonNotes";
 import { StudentInfoCard } from "@/components/teacher/StudentInfoCard";
 import { StudentChessProfileEditor } from "@/components/teacher/StudentChessProfileEditor";
 import { StudentContactsPanel } from "@/components/teacher/StudentContactsPanel";
+import {StudentBillingAssignmentsPanel} from "@/components/teacher/StudentBillingAssignmentsPanel";
 import {StudentPortalSharingPanel} from "@/components/teacher/StudentPortalSharingPanel";
 import { StudentRatingHistoryPanel } from "@/components/teacher/StudentRatingHistoryPanel";
 import { StudentFederationsPanel } from "@/components/teacher/StudentFederationsPanel";
@@ -131,6 +132,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialTravelFeeCents={student.travel_fee_cents ?? null}
       />
       <StudentContactsPanel studentId={id} />
+      <StudentBillingAssignmentsPanel studentId={id} workplaces={sharingWorkplaces}/>
       <StudentPortalSharingPanel studentId={id} workplaces={sharingWorkplaces}/>
       <StudentChessProfileEditor
         studentId={id}

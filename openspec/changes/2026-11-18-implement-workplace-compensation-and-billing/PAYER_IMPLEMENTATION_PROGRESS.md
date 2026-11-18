@@ -1,0 +1,5 @@
+# Payer interval implementation checkpoint (draft)
+
+The initial effective-dated student→workplace→Billing Account assignment is now implemented in draft source on PR #104 as a **separate identity relationship**, independent of contacts, guardians, student enrollments and portal grants. It has a one-payer-per-student/workplace/date database constraint, teacher-owned FKs, revision and replay receipts, owner-filtered history, no inferred payer and a read-only as-of-date resolver. Website and MCP share services. The student profile has a localized payer panel. See `docs/EXPLICIT_STUDENT_PAYER.md` for the contract and `e2e/parity-student-billing-assignments.spec.ts` for authenticated acceptance candidates.
+
+**Not finished or accepted:** the old invoice/cancellation/credits/Stripe/CSV/PDF implementation is still guardian-keyed and must be rewritten natively before production. No obligation or payment allocation has been posted by assigning a payer. This subtask does not mark the full compensation OpenSpec checklist complete. The full test matrix, no-legacy audit, final SQL and operator cutover remain required.

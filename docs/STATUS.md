@@ -1,6 +1,10 @@
 # ChessCoachPal development and release status
 
 
+## 2026-11-19 — Explicit student/workplace payer and contact outbox (DRAFT)
+
+PR #104 source now adds teacher-approved effective-dated student/workplace/Billing Account assignments with tenant-enforced single-debtor time ranges, idempotent/revisioned writes, a localized editor, shared browser/MCP services and exact cross-client E2E cases. **This is not invoice posting or money received.** Also the canonical outbox is moving from old guardian/Family email destinations to separately approved active student-linked Contacts; an approved shared note does not inherit all household contacts or return a legacy bearer URL. Read the [payer contract](EXPLICIT_STUDENT_PAYER.md) and [OpenSpec progress](../openspec/changes/2026-11-18-implement-workplace-compensation-and-billing/PAYER_IMPLEMENTATION_PROGRESS.md). Local TypeScript, i18n, schema guard and MCP parity checks pass with 233 tools and 99/99 current teacher-business API route families, **not** proof of authenticated E2E success. Old invoice/finance code still depends on guardian identity; do not merge, archive, deploy or apply a production DB change.
+
 ## 2026-11-19 — Optional federation identity/manual rating evidence (DRAFT)
 
 Draft PR #104 now contains source candidates for FIDE/national IDs, teacher default federation suggestion, separately authorized national membership entries and teacher-manual FIDE/ICF ratings marked UNVERIFIED, with new localized student profile controls, matching website/MCP operations and an authenticated parity scenario. **Official FIDE/ICF provider ingestion is not enabled**; FIDE list-file/permission review and Israeli federation automated-access/terms feasibility are separately outstanding. No new identity or observation changes a teacher's 1–10 strength assessment or implies active federation membership. See [federation design/progress](../openspec/changes/2026-11-18-introduce-fide-national-ratings/IMPLEMENTATION_PROGRESS.md) and [rating evidence boundaries](FEDERATION_RATINGS.md). The exact federation branch CI/E2E has not yet passed; no merger, OpenSpec archive, production DB change or release is authorized.

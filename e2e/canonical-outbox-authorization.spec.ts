@@ -12,10 +12,18 @@ test("SECURITY: approved canonical note intent is durable, private, and unique o
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const family=await call("ccp_guardians_create",{
-  name:"Outbox family "+randomUUID(),studentIds:[studentId],confirmed:true,
+ const contact=await call("ccp_contacts_create",{
+  displayName:"Authorized school contact "+randomUUID(),
+  email:"consented-"+randomUUID()+"@example.invalid",
+  preferredLocale:"en",idempotencyKey:randomUUID(),
  });
- expect(family.error).toBeUndefined();
+ expect(contact.error).toBeUndefined();
+ const linked=await call("ccp_student_contacts_link",{
+  studentId,contactId:contact.data.id,relationshipLabel:"Approved guardian",
+  isLegalGuardian:true,mayReceiveMessages:true,
+  idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(linked.error).toBeUndefined();
  const workplace=await call("ccp_workplaces_create",{
   name:"Outbox studio "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
@@ -67,7 +75,7 @@ test("SECURITY: approved canonical note intent is durable, private, and unique o
  expect(row.error).toBeNull();
  expect(row.data).toHaveLength(1);
  expect(row.data![0]).toMatchObject({
-  event_key:"session-note:"+key,kind:"session_note_family",
+  event_key:"session-note:"+key,kind:"session_note_contacts",
   session_id:sessionId,student_id:studentId,
   state:"pending",attempts:0,
  });

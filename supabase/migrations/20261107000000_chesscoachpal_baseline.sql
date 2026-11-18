@@ -7486,7 +7486,7 @@ CREATE TABLE public.ccp_delivery_outbox (
   session_id uuid NOT NULL REFERENCES public.teaching_sessions(id) ON DELETE RESTRICT,
   student_id uuid,
   event_key text NOT NULL CHECK (char_length(event_key) BETWEEN 12 AND 200),
-  kind text NOT NULL CHECK (kind IN ('session_note_family','session_cancel_family',
+  kind text NOT NULL CHECK (kind IN ('session_note_contacts','session_cancel_contacts',
                                      'portal_cancel_teacher')),
   payload jsonb NOT NULL CHECK (jsonb_typeof(payload)='object'),
   state text NOT NULL DEFAULT 'pending'
@@ -7617,7 +7617,7 @@ BEGIN
     INSERT INTO public.ccp_delivery_outbox(
       teacher_id,session_id,student_id,event_key,kind,payload
     ) VALUES(
-      v_teacher,p_session_id,p_student_id,v_event_key,'session_note_family',
+      v_teacher,p_session_id,p_student_id,v_event_key,'session_note_contacts',
       jsonb_build_object('sessionId',p_session_id,'studentId',p_student_id,
         'body',p_body,'approvedBy',v_teacher,'requestId',p_idempotency_key)
     );
@@ -7855,7 +7855,7 @@ BEGIN
       teacher_id,session_id,student_id,event_key,kind,payload
     ) VALUES(v_teacher,p_session_id,p_student_id,
       'session-cancel:'||p_idempotency_key::text,
-      'session_cancel_family',
+      'session_cancel_contacts',
       jsonb_build_object('sessionId',p_session_id,
         'studentId',p_student_id,'markedAt',v_att.marked_at,
         'cancelReason',p_cancel_reason,'requestId',p_idempotency_key));
@@ -11188,3 +11188,63 @@ GRANT SELECT,INSERT,UPDATE ON public.compensation_agreements TO authenticated,se
 REVOKE ALL ON FUNCTION public.ccp_compensation_agreement_no_overlap() FROM PUBLIC,anon;
 COMMENT ON TABLE public.compensation_agreements IS
   'Approved teacher earnings and customer-charge policies; these records do not post a financial obligation or imply that any money was paid.';
+
+-- One explicit payer per learner/workplace/effective date. A relationship,
+-- legal guardian, portal grant, school or student enrollment never creates
+-- a billable account automatically. Historical assignments are retained.
+CREATE TABLE public.student_billing_assignments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  workplace_id uuid NOT NULL,
+  student_id uuid NOT NULL,
+  billing_account_id uuid NOT NULL,
+  effective_from date NOT NULL,
+  effective_to date,
+  revision bigint NOT NULL DEFAULT 1 CHECK(revision>=1),
+  last_request_id uuid,
+  last_request_hash text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(id,teacher_id),
+  FOREIGN KEY(workplace_id,teacher_id)
+    REFERENCES public.workplaces(id,teacher_id) ON DELETE RESTRICT,
+  FOREIGN KEY(student_id,teacher_id)
+    REFERENCES public.students(id,teacher_id) ON DELETE RESTRICT,
+  FOREIGN KEY(billing_account_id,teacher_id)
+    REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT,
+  CONSTRAINT billing_assignment_date_order CHECK(
+    effective_to IS NULL OR effective_to>=effective_from)
+);
+CREATE INDEX student_billing_assignment_scope ON public.student_billing_assignments
+  (teacher_id,student_id,workplace_id,effective_from,effective_to);
+CREATE INDEX student_billing_assignment_payer ON public.student_billing_assignments
+  (teacher_id,billing_account_id);
+CREATE OR REPLACE FUNCTION public.ccp_billing_assignment_one_payer()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_billing_assignment_one_payer$
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    NEW.teacher_id::text||':billing-payer:'||NEW.student_id::text||':'||NEW.workplace_id::text,0));
+  IF EXISTS(SELECT 1 FROM public.student_billing_assignments a
+    WHERE a.teacher_id=NEW.teacher_id AND a.student_id=NEW.student_id
+      AND a.workplace_id=NEW.workplace_id AND a.id<>NEW.id
+      AND daterange(a.effective_from,a.effective_to,'[]') &&
+          daterange(NEW.effective_from,NEW.effective_to,'[]')) THEN
+    RAISE EXCEPTION 'OVERLAPPING_STUDENT_BILLING_ASSIGNMENT'
+      USING ERRCODE='23505';
+  END IF;
+  RETURN NEW;
+END;
+$ccp_billing_assignment_one_payer$;
+CREATE TRIGGER student_billing_assignment_one_payer
+BEFORE INSERT OR UPDATE ON public.student_billing_assignments
+FOR EACH ROW EXECUTE FUNCTION public.ccp_billing_assignment_one_payer();
+ALTER TABLE public.student_billing_assignments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY student_billing_assignment_teacher ON public.student_billing_assignments
+ FOR ALL TO authenticated USING(teacher_id=(SELECT auth.uid()))
+ WITH CHECK(teacher_id=(SELECT auth.uid()));
+GRANT SELECT,INSERT,UPDATE ON public.student_billing_assignments TO authenticated;
+GRANT ALL ON public.student_billing_assignments TO service_role;
+REVOKE ALL ON FUNCTION public.ccp_billing_assignment_one_payer() FROM PUBLIC,anon;
+COMMENT ON TABLE public.student_billing_assignments IS
+  'Explicit payer allocation by student and workplace over inclusive dates. Does not issue invoices, collect money or grant portal access.';

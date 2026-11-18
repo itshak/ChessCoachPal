@@ -25,7 +25,7 @@ export const communicationCopy: Record<AppLocale,{
     lessonNotesIntro:(studio:string,student:string,when:string)=>string;
     lessonCancelled:(student:string)=>string;
     lessonCancelIntro:(studio:string,student:string,when:string)=>string;
-    reviewPortal:string;};
+    reviewPortal:string;sharedContactGreeting:string;};
 }> = {
   en:{
     portalFooter:"Your family portal: schedule and teaching notes:",
@@ -55,7 +55,8 @@ export const communicationCopy: Record<AppLocale,{
       lessonNotesIntro:(studio,student,when)=>`Here are the notes shared by ${studio} for ${student}'s chess lesson on ${when}:`,
       lessonCancelled:student=>`Chess lesson cancelled — ${student}`,
       lessonCancelIntro:(studio,student,when)=>`${studio} cancelled ${student}'s chess lesson on ${when}`,
-      reviewPortal:"Please review your family portal for the updated schedule."}
+      reviewPortal:"Review the updated schedule using the secure contact portal link your coach shared.",
+      sharedContactGreeting:"Chess student contact"}
   },
   he:{
     portalFooter:"הפורטל המשפחתי: לוח הזמנים והערות השיעור:",portalLink:"הפורטל המשפחתי",
@@ -84,7 +85,8 @@ export const communicationCopy: Record<AppLocale,{
       lessonNotesIntro:(studio,student,when)=>`אלו ההערות ש-${studio} שיתף לגבי שיעור השחמט של ${student} בתאריך ${when}:`,
       lessonCancelled:student=>`שיעור שחמט בוטל — ${student}`,
       lessonCancelIntro:(studio,student,when)=>`${studio} ביטל את שיעור השחמט של ${student} בתאריך ${when}`,
-      reviewPortal:"נא לעיין בפורטל המשפחתי כדי לראות את לוח הזמנים המעודכן."}
+      reviewPortal:"אפשר לעיין בלוח הזמנים המעודכן בקישור הפורטל המאובטח שהמאמן שיתף.",
+      sharedContactGreeting:"איש קשר של תלמיד שחמט"}
   },
   ru:{
     portalFooter:"Семейный портал: расписание и заметки об уроках:",portalLink:"Семейный портал",
@@ -107,12 +109,12 @@ export const communicationCopy: Record<AppLocale,{
       seePortal:"Подробности об оплате доступны в семейном портале.",
       signature:studio=>`— ${studio} (отправлено через ChessCoachPal)`},
     notification:{receipt:"Квитанция об оплате",viewInvoice:"Открыть счёт",openInApp:"Открыть в ChessCoachPal"},
-    outbox:{studentCancelled:"Ученик отменил шахматное занятие",studentCancelNotice:"Уведомление об отмене занятия учеником",
+    outbox:{sharedContactGreeting:"Контакт шахматного ученика",studentCancelled:"Ученик отменил шахматное занятие",studentCancelNotice:"Уведомление об отмене занятия учеником",
       student:"Ученик",when:"Когда",reason:"Причина",reviewAttendance:"Проверьте журнал посещаемости в расписании ChessCoachPal.",
       lessonNotes:student=>`Заметки о шахматном занятии: ${student}`,
       lessonNotesIntro:(studio,student,when)=>`${studio} поделился заметками о шахматном занятии ученика ${student} от ${when}:`,
       lessonCancelled:student=>`Шахматное занятие отменено — ${student}`,
       lessonCancelIntro:(studio,student,when)=>`${studio} отменил шахматное занятие ученика ${student}, назначенное на ${when}`,
-      reviewPortal:"Проверьте обновлённое расписание в семейном портале."}
+      reviewPortal:"Проверьте обновлённое расписание по защищённой ссылке портала от тренера."}
   }
 };

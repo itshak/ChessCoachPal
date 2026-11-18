@@ -134,6 +134,10 @@ import {
  federationDefaultUpdateSchema,federationMembershipCreateSchema,
  federationMembershipUpdateSchema,federationManualRatingSchema,FederationError,
 } from "@/lib/server/student-federations-service";
+import {
+ payerAssignmentCreateSchema,payerAssignmentEndSchema,payerAssignmentListSchema,
+ payerAssignmentsList,payerAssignmentCreate,payerAssignmentEnd,PayerAssignmentError,
+} from "@/lib/server/student-billing-assignments-service";
 import {workplaceContextUpdateSchema,teacherWorkplaceContextGet,
   teacherWorkplaceContextSet,WorkplaceContextError}
   from "@/lib/server/teacher-workplace-context";
@@ -653,6 +657,21 @@ const catalogue = [
     name:"ccp_teacher_federation_default_set",
     description:"Explicitly confirm a change to the teacher's suggested national federation, CAS-guarded against another tab. Never create student membership or verified data from a default.",
     schema:federationDefaultUpdateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_billing_assignments_list",
+    description:"List exact student/workplace historical payer assignment decisions. Never infer a payer from contact, guardian status, family, enrollment, or portal grant.",
+    schema:payerAssignmentListSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_student_billing_assignments_create",
+    description:"After explicit teacher approval, assign one owned active billing account to exactly one owned enrolled student and workplace for an inclusive effective-dated period. Overlaps are prohibited; does NOT create a debt, invoice, receipt, payment or portal grant.",
+    schema:payerAssignmentCreateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_billing_assignments_end",
+    description:"End one exact student payer period on a confirmed effective date with optimistic revision and idempotency. The old assignment remains for historic lessons, never silently retroactively rebills.",
+    schema:payerAssignmentEndSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_student_federations_get",
@@ -2093,6 +2112,18 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as Parameters<typeof federationDefaultSet>[2];
         return {data:await federationDefaultSet(db,teacherId,a)};
       }
+      case "ccp_student_billing_assignments_list": {
+        const a=args as Parameters<typeof payerAssignmentsList>[2];
+        return {data:await payerAssignmentsList(db,teacherId,a)};
+      }
+      case "ccp_student_billing_assignments_create": {
+        const a=args as Parameters<typeof payerAssignmentCreate>[2];
+        return {data:await payerAssignmentCreate(db,teacherId,a)};
+      }
+      case "ccp_student_billing_assignments_end": {
+        const a=args as Parameters<typeof payerAssignmentEnd>[2];
+        return {data:await payerAssignmentEnd(db,teacherId,a)};
+      }
       case "ccp_student_federations_get": {
         const a=args as {studentId:string};
         return {data:await federationStudentSummary(db,teacherId,a.studentId)};
@@ -2773,6 +2804,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CanonicalPrivateSessionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalSlotError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof PayerAssignmentError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof FederationError)
       return {error:{code:error.code,message:error.message}};

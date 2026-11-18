@@ -1351,6 +1351,34 @@
       "evidenceTest": "e2e/parity-skill-dimensions-lifecycle.spec.ts"
     },
     {
+      "path": "app/api/students/[id]/billing-assignments/[assignmentId]/route.ts",
+      "methods": [
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_student_billing_assignments_end"
+      ],
+      "explanation": "Explicit tenant-owned effective-dated payer assignment, overlap denial, revision-guarded end and replay. No contact, portal grant or enrollment automatically creates debt. Same site/delegated MCP service and verified E2E.",
+      "evidenceTest": "e2e/parity-student-billing-assignments.spec.ts"
+    },
+    {
+      "path": "app/api/students/[id]/billing-assignments/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_student_billing_assignments_list",
+        "ccp_student_billing_assignments_create"
+      ],
+      "explanation": "Explicit tenant-owned effective-dated payer assignment, overlap denial, revision-guarded end and replay. No contact, portal grant or enrollment automatically creates debt. Same site/delegated MCP service and verified E2E.",
+      "evidenceTest": "e2e/parity-student-billing-assignments.spec.ts"
+    },
+    {
       "path": "app/api/students/[id]/contacts/[linkId]/route.ts",
       "methods": [
         "DELETE"
@@ -1720,6 +1748,7 @@
     "components/teacher/PuzzleSeriesPanel.tsx",
     "components/teacher/RemoveStudentButton.tsx",
     "components/teacher/StartTourLink.tsx",
+    "components/teacher/StudentBillingAssignmentsPanel.tsx",
     "components/teacher/StudentChessProfileEditor.tsx",
     "components/teacher/StudentContactsPanel.tsx",
     "components/teacher/StudentFederationsPanel.tsx",
