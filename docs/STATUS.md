@@ -1,5 +1,14 @@
 # ChessCoachPal development and release status
 
+
+## 2026-11-18 — FINAL pre-v1 no-compatibility policy (draft implementation, not accepted)
+
+The product owner explicitly reaffirmed **no backward compatibility until v1.0.0** and approved **one final real-database cutover**, with **clean baseline and selective export/reimport** acceptable if a historical data migration is more complex than warranted. [ADR-0017](adr/0017-pre-v1-single-final-cutover-no-compatibility.md) supersedes ADR-0015's earlier per-feature *production* migration cadence. Preserve privacy, tenant isolation, independent portal grants, backups and restore readiness; **do not** retain old guardian/Family/Studio endpoints, dual writers, compatibility views, old MCP aliases or broad legacy portal tokens in the finished product. The final data target is the canonical baseline, with one operator-approved direct source-to-final transformation **or** a separately approved clean rebuild/reimport.
+
+The draft [PR #104](https://github.com/itshak/ChessCoachPal/pull/104) carries this decision and its current implementation. [Commit 16dbd41](https://github.com/itshak/ChessCoachPal/commit/16dbd4109c2b3acb2a20821269af5f055dc79a57) updates ADRs, OpenSpec proposals, canonical baseline policy and operator documentation. [Commit be4164d](https://github.com/itshak/ChessCoachPal/commit/be4164da) adds the explicit `npm run pre1:final-cutover:audit` release gate and three regression tests. Local schema/transition/audit contract tests **33/33 pass**; TypeScript and lint pass (zero lint errors, 42 existing warnings), and strict MCP parity reports **210 named tools, 85/85 inventoried teacher route families and 93/93 historical cases** for the *current unfinished implementation*. This does **not** prove final contact/portal/finance parity. The new final-cutover audit **currently fails with 37 blockers by design**: retained migration chain, old tables and routes, guardian/studio service calls, old MCP names and missing explicit scoped portal grant schema. Do **not** bypass this gate, merge the draft PR, archive dependent OpenSpecs or deploy while these are present. GitHub CI checks must be reevaluated on final exact source and merged main.
+
+**No live database, deployed portal token, customer record, release or production environment was changed.** A source change never authorizes a real reset/migration; the target must be identified privately, with verified independent backup/restore and explicit operator decision before that one final cutover. Historical dated status entries below record earlier accepted development work, not a new compatibility commitment.
+
 **2026-11-18 — P0 canonical baseline/live transition foundation merged.**
 The first accepted fix proposal, `2026-11-18-enforce-baseline-live-transition-contract`,
 was implemented in [PR #103](https://github.com/itshak/ChessCoachPal/pull/103)
