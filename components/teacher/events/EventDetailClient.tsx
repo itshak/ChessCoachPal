@@ -56,7 +56,7 @@ export function EventDetailClient({
   allStudents: EventFormStudent[];
   rsvps: {
     id: string;
-    guardianName: string;
+    contactName: string;
     status: RsvpStatus;
     partySize: number | null;
     note: string;
@@ -207,7 +207,7 @@ export function EventDetailClient({
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-start text-muted border-b border-border">
-                  <th className="py-2 pe-3 font-medium">{t("family")}</th>
+                  <th className="py-2 pe-3 font-medium">{t("contact")}</th>
                   <th className="py-2 pe-3 font-medium">{t("status")}</th>
                   <th className="py-2 pe-3 font-medium">{t("partySize")}</th>
                   <th className="py-2 font-medium">{t("note")}</th>
@@ -216,7 +216,7 @@ export function EventDetailClient({
               <tbody>
                 {rsvps.map((rsvp) => (
                   <tr key={rsvp.id} className="border-b border-border last:border-0">
-                    <td className="py-2.5 pe-3 font-medium"><bdi dir="auto">{rsvp.guardianName}</bdi></td>
+                    <td className="py-2.5 pe-3 font-medium"><bdi dir="auto">{rsvp.contactName}</bdi></td>
                     <td className="py-2.5 pe-3">
                       {rsvp.status==="pending"?t("pending"):rsvp.status==="yes"?t("yes"):rsvp.status==="no"?t("no"):t("maybe")}
                     </td>

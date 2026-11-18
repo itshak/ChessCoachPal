@@ -2068,7 +2068,8 @@
     "deleteTitle": "Delete event?",
     "deleteWarning": "“{title}” and its RSVPs will be permanently deleted. This cannot be undone.",
     "cancel": "Cancel",
-    "deleting": "Deleting…"
+    "deleting": "Deleting…",
+    "contact": "Contact"
   },
   "studentImport": {
     "title": "Import students from a file",

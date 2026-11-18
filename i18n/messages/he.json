@@ -2068,7 +2068,8 @@
     "deleteTitle": "למחוק את האירוע?",
     "deleteWarning": "״{title}״ וכל אישורי ההגעה יימחקו לצמיתות. אי אפשר לבטל פעולה זו.",
     "cancel": "ביטול",
-    "deleting": "מוחקים…"
+    "deleting": "מוחקים…",
+    "contact": "איש קשר"
   },
   "studentImport": {
     "title": "ייבוא תלמידים מקובץ",

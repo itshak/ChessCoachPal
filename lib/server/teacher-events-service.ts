@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateEventEndAfterStart } from "@/lib/events";
 import { oneToOne } from "@/lib/schedule";
-import { familyDisplayName } from "@/lib/guardians";
 import { loadEventForEmail, previewEventEmails, sendEventEmails } from "@/lib/server/event-email";
 import { getPolicy } from "@/lib/server/scheduling";
 import type { RsvpStatus } from "@/lib/supabase/types";
@@ -70,13 +69,13 @@ export async function teacherEventsList(db:Db,teacherId:string){
    id:string;title:string;description:string;location:string;workplace_id:string|null;
    starts_at:string;ends_at:string|null;created_at:string;updated_at:string;
    event_students:{id:string}[]|null;
-   event_rsvps:{status:RsvpStatus}[]|null;
+   portal_event_invitations:{status:RsvpStatus}[]|null;
  }>=[];
  const size=500,maxRows=20000;
  for(let offset=0;;offset+=size){
    const {data,error}=await db.from("events").select(`
    id,title,description,location,workplace_id,starts_at,ends_at,created_at,updated_at,
-   event_students (id), event_rsvps (status)
+   event_students (id), portal_event_invitations (status)
    `).eq("teacher_id",teacherId).order("starts_at",{ascending:false})
      .order("id",{ascending:false}).range(offset,offset+size-1);
    if(error)throw failure(500,"DATABASE_ERROR","Unable to list events");
@@ -87,7 +86,7 @@ export async function teacherEventsList(db:Db,teacherId:string){
    if(rows.length<size)break;
  }
  return {events:all.map(row=>{
-  const statuses=(row.event_rsvps??[]) as {status:RsvpStatus}[];
+  const statuses=(row.portal_event_invitations??[]) as {status:RsvpStatus}[];
   return {
    id:row.id,title:row.title,description:row.description,location:row.location,
    workplaceId:row.workplace_id,
@@ -103,7 +102,7 @@ export async function teacherEventDetail(db:Db,teacherId:string,id:string) {
  const {data:event,error}=await db.from("events").select(`
  id,title,description,location,workplace_id,starts_at,ends_at,send_reminder,reminder_sent_at,created_at,updated_at,
  event_students(id,student_id,repertoire,sort_order,students(id,name)),
- event_rsvps(id,guardian_id,status,party_size,note,responded_at,guardians(id,name,family_name))
+ portal_event_invitations(id,status,party_size,note,responded_at,revoked_at,portal_access_grants(contact_id,contacts(display_name)))
  `).eq("id",id).eq("teacher_id",teacherId).maybeSingle();
  if(error||!event)throw failure(500,"DATABASE_ERROR","Unable to load event");
  const students=((event.event_students??[]) as unknown as {
@@ -113,14 +112,17 @@ export async function teacherEventDetail(db:Db,teacherId:string,id:string) {
   id:x.id,studentId:x.student_id,name:oneToOne(x.students)?.name??"Student",
   repertoire:x.repertoire,sortOrder:x.sort_order,
  })).sort((a,b)=>a.sortOrder-b.sortOrder);
- const rsvps=((event.event_rsvps??[]) as unknown as {
-  id:string;guardian_id:string;status:string;party_size:number|null;note:string;
-  responded_at:string|null;
-  guardians:{id:string;name:string;family_name:string|null}|{id:string;name:string;family_name:string|null}[]|null;
- }[]).map(x=>({
-  id:x.id,guardianId:x.guardian_id,guardianName:oneToOne(x.guardians)?familyDisplayName(oneToOne(x.guardians)!):"Family",
-  status:x.status,partySize:x.party_size,note:x.note,respondedAt:x.responded_at,
- }));
+ const rsvps=((event.portal_event_invitations??[]) as unknown as {
+  id:string;status:string;party_size:number|null;note:string;
+  responded_at:string|null;revoked_at:string|null;
+  portal_access_grants:{contact_id:string;contacts:{display_name:string}|{display_name:string}[]|null}|
+    {contact_id:string;contacts:{display_name:string}|{display_name:string}[]|null}[]|null;
+ }[]).filter(x=>!x.revoked_at).map(x=>{
+  const grant=oneToOne(x.portal_access_grants);
+  return {id:x.id,contactId:grant?.contact_id??null,
+   contactName:oneToOne(grant?.contacts??null)?.display_name??"Contact",
+   status:x.status as RsvpStatus,partySize:x.party_size,note:x.note,respondedAt:x.responded_at};
+ });
  return {event:{
   id:event.id,title:event.title,description:event.description,location:event.location,
   workplaceId:event.workplace_id,startsAt:event.starts_at,endsAt:event.ends_at,sendReminder:event.send_reminder,
@@ -160,7 +162,8 @@ export async function teacherEventDeleteImpact(db:Db,teacherId:string,id:string)
  await ownedEvent(db,teacherId,id);
  const [{count:studentCount,error:sError},{count:rsvpCount,error:rError}]=await Promise.all([
   db.from("event_students").select("id",{count:"exact",head:true}).eq("event_id",id),
-  db.from("event_rsvps").select("id",{count:"exact",head:true}).eq("event_id",id),
+  db.from("portal_event_invitations").select("id",{count:"exact",head:true})
+    .eq("teacher_id",teacherId).eq("event_id",id).is("revoked_at",null),
  ]);
  if(sError||rError)throw failure(500,"DATABASE_ERROR","Unable to preview event deletion");
  return {eventId:id,studentCount:studentCount??0,rsvpCount:rsvpCount??0};
