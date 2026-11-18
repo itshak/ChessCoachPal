@@ -62,7 +62,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       .eq("teacher_id",user.id).eq("student_id",id)
       .order("marked_at",{ascending:false}).limit(500),
     supabase.from("session_notes").select(
-      "id,body,private_body,shared_with_guardian,emailed_at,updated_at,teaching_sessions!session_notes_session_teacher_fkey(starts_at,local_timezone)"
+      "id,body,private_body,shared_with_contacts,emailed_at,updated_at,teaching_sessions!session_notes_session_teacher_fkey(starts_at,local_timezone)"
     ).eq("teacher_id",user.id).eq("student_id",id)
      .order("updated_at",{ascending:false}).limit(100),
     getPolicy(supabase, user.id),
@@ -85,7 +85,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
     if(!session||!(row.body?.trim()||row.private_body?.trim()))return [];
     return [{
       id:row.id,body:row.body??"",privateBody:row.private_body??"",
-      sharedWithParent:row.shared_with_guardian,emailedAt:row.emailed_at,
+      sharedWithContacts:row.shared_with_contacts,emailedAt:row.emailed_at,
       lessonDate:toLocalDateString(new Date(session.starts_at),
         session.local_timezone||policy.timezone),
       updatedAt:row.updated_at,

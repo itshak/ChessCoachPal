@@ -46,7 +46,7 @@ test("SECURITY: canonical note approval queues deduplicated private-safe deliver
  const secret="Private teacher detail "+randomUUID();
  const key=randomUUID();
  const input={sessionId,studentId,body:"Practised rook endings",
-  privateBody:secret,sharedWithGuardian:true,
+  privateBody:secret,sharedWithContacts:true,
   sendEmail:true,confirmedEmail:true,expectedUpdatedAt:null,
   idempotencyKey:key,confirmed:true};
  const site=await page.request.put("/api/coaching/sessions/"+sessionId+"/notes",{

@@ -823,7 +823,7 @@ CREATE TABLE IF NOT EXISTS "public"."session_notes" (
     "student_id" "uuid",
     "body" "text" DEFAULT ''::"text" NOT NULL,
     "private_body" "text" DEFAULT ''::"text" NOT NULL,
-    "shared_with_guardian" boolean DEFAULT false NOT NULL,
+    "shared_with_contacts" boolean DEFAULT false NOT NULL,
     "emailed_at" timestamp with time zone,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
@@ -7529,7 +7529,7 @@ GRANT ALL ON TABLE public.ccp_session_note_audit TO service_role;
 -- guardian-shareable fields can become notification intents.
 CREATE OR REPLACE FUNCTION public.ccp_canonical_session_note_save(
   p_session_id uuid,p_student_id uuid,p_body text,p_private_body text,
-  p_share_with_guardian boolean,p_send_email boolean,
+  p_share_with_contacts boolean,p_send_email boolean,
   p_expected_updated_at timestamptz,p_idempotency_key uuid
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=public,pg_temp AS $ccp_session_note$
@@ -7549,15 +7549,15 @@ BEGIN
   IF p_session_id IS NULL OR p_idempotency_key IS NULL
     OR p_body IS NULL OR p_private_body IS NULL
     OR char_length(p_body)>10000 OR char_length(p_private_body)>10000
-    OR p_share_with_guardian IS NULL OR p_send_email IS NULL
-    OR (p_send_email AND (NOT p_share_with_guardian
+    OR p_share_with_contacts IS NULL OR p_send_email IS NULL
+    OR (p_send_email AND (NOT p_share_with_contacts
                          OR btrim(p_body)=''
                          OR p_student_id IS NULL)) THEN
     RAISE EXCEPTION 'SESSION_NOTE_INVALID_REQUEST' USING ERRCODE='22023';
   END IF;
   v_hash := md5(jsonb_build_array('session.note.save',
     p_session_id,p_student_id,p_body,p_private_body,
-    p_share_with_guardian,p_send_email,p_expected_updated_at)::text);
+    p_share_with_contacts,p_send_email,p_expected_updated_at)::text);
   INSERT INTO public.agent_tool_receipts(
     teacher_id,idempotency_key,operation,request_hash,receipt
   ) VALUES(v_teacher,p_idempotency_key,'session.note.save',v_hash,'{}'::jsonb)
@@ -7592,16 +7592,16 @@ BEGIN
   END IF;
   v_before := CASE WHEN v_note.id IS NULL THEN NULL ELSE
     jsonb_build_object('body',v_note.body,'privateBody',v_note.private_body,
-       'sharedWithGuardian',v_note.shared_with_guardian) END;
+       'sharedWithContacts',v_note.shared_with_contacts) END;
   IF v_note.id IS NULL THEN
     INSERT INTO public.session_notes(
-      teacher_id,session_id,student_id,body,private_body,shared_with_guardian
+      teacher_id,session_id,student_id,body,private_body,shared_with_contacts
     ) VALUES(v_teacher,p_session_id,p_student_id,p_body,p_private_body,
-      p_share_with_guardian) RETURNING * INTO v_note;
+      p_share_with_contacts) RETURNING * INTO v_note;
   ELSE
     UPDATE public.session_notes
       SET body=p_body,private_body=p_private_body,
-        shared_with_guardian=p_share_with_guardian,updated_at=clock_timestamp()
+        shared_with_contacts=p_share_with_contacts,updated_at=clock_timestamp()
       WHERE id=v_note.id RETURNING * INTO v_note;
   END IF;
   INSERT INTO public.ccp_session_note_audit(
@@ -7610,7 +7610,7 @@ BEGIN
   ) VALUES(v_teacher,p_session_id,p_student_id,v_note.id,
     p_idempotency_key,v_before,jsonb_build_object(
       'body',v_note.body,'privateBody',v_note.private_body,
-      'sharedWithGuardian',v_note.shared_with_guardian
+      'sharedWithContacts',v_note.shared_with_contacts
     ));
   IF p_send_email THEN
     v_event_key := 'session-note:' || p_idempotency_key::text;
@@ -7625,7 +7625,7 @@ BEGIN
   v_receipt := jsonb_build_object(
     'sessionId',p_session_id,'studentId',p_student_id,
     'noteId',v_note.id,'revision',v_note.updated_at,
-    'sharedWithGuardian',v_note.shared_with_guardian,
+    'sharedWithContacts',v_note.shared_with_contacts,
     'emailQueued',p_send_email,'idempotencyKey',p_idempotency_key
   );
   UPDATE public.agent_tool_receipts SET receipt=v_receipt
@@ -9148,15 +9148,15 @@ BEGIN
    NULL::public.session_notes,p_source);
   INSERT INTO public.session_notes(
     id,teacher_id,session_id,student_id,body,private_body,
-    shared_with_guardian,emailed_at,created_at,updated_at
+    shared_with_contacts,emailed_at,created_at,updated_at
   ) VALUES(
     coalesce(v_note.id,gen_random_uuid()),v_teacher,v_session,v_student,
     coalesce(v_note.body,''),coalesce(v_note.private_body,''),
-    coalesce(v_note.shared_with_guardian,false),v_note.emailed_at,
+    coalesce(v_note.shared_with_contacts,false),v_note.emailed_at,
     coalesce(v_note.created_at,now()),coalesce(v_note.updated_at,now())
   ) ON CONFLICT (id) DO UPDATE SET
     body=EXCLUDED.body,private_body=EXCLUDED.private_body,
-    shared_with_guardian=EXCLUDED.shared_with_guardian,
+    shared_with_contacts=EXCLUDED.shared_with_contacts,
     emailed_at=EXCLUDED.emailed_at,updated_at=EXCLUDED.updated_at
   WHERE public.session_notes.teacher_id=v_teacher
     AND public.session_notes.session_id=v_session

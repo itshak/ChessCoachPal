@@ -10,7 +10,7 @@ export type SaveSessionNoteInput={
  studentId?:string|null;
  body:string;
  privateBody:string;
- sharedWithGuardian:boolean;
+ sharedWithContacts:boolean;
  sendEmail:boolean;
  confirmedEmail?:boolean;
  expectedUpdatedAt:string|null;
@@ -23,7 +23,7 @@ export function validateSessionNoteInput(input:SaveSessionNoteInput){
    (input.studentId!==undefined&&input.studentId!==null&&!uuid.test(input.studentId))||
    typeof input.body!=="string"||input.body.length>10000||
    typeof input.privateBody!=="string"||input.privateBody.length>10000||
-   typeof input.sharedWithGuardian!=="boolean"||
+   typeof input.sharedWithContacts!=="boolean"||
    typeof input.sendEmail!=="boolean"||
    (input.expectedUpdatedAt!==null&&
      (typeof input.expectedUpdatedAt!=="string"||
@@ -31,9 +31,9 @@ export function validateSessionNoteInput(input:SaveSessionNoteInput){
       !Number.isFinite(Date.parse(input.expectedUpdatedAt)))))
   throw new SessionNoteError("VALIDATION_ERROR",400,"Invalid canonical session note");
  if(input.sendEmail&&(!input.confirmedEmail||!input.studentId||
-   !input.sharedWithGuardian||!input.body.trim()))
+   !input.sharedWithContacts||!input.body.trim()))
   throw new SessionNoteError("CONFIRMATION_REQUIRED",400,
-   "Explicit consent, a frozen participant and a shared note are required before queueing family email");
+   "Explicit consent, a frozen participant and a shared note are required before queueing a scoped contact email");
  return input;
 }
 
@@ -48,13 +48,13 @@ export async function sessionNotesList(db:Db,teacherId:string,
  if(ownError)throw new SessionNoteError("DATABASE_ERROR",500,"Session lookup failed");
  if(!session)throw new SessionNoteError("NOT_FOUND",404,"Teaching session not found");
  const {data,error}=await db.from("session_notes")
-  .select("id,session_id,student_id,body,private_body,shared_with_guardian,emailed_at,created_at,updated_at")
+  .select("id,session_id,student_id,body,private_body,shared_with_contacts,emailed_at,created_at,updated_at")
   .eq("teacher_id",teacherId).eq("session_id",sessionId)
   .order("student_id",{ascending:true,nullsFirst:true});
  if(error)throw new SessionNoteError("DATABASE_ERROR",500,"Session notes unavailable");
  return (data??[]).map(row=>opts.includePrivate?row:{
   id:row.id,session_id:row.session_id,student_id:row.student_id,
-  body:row.body,shared_with_guardian:row.shared_with_guardian,
+  body:row.body,shared_with_contacts:row.shared_with_contacts,
   emailed_at:row.emailed_at,created_at:row.created_at,
   updated_at:row.updated_at,
  });
@@ -68,7 +68,7 @@ export async function sessionNoteSave(db:Db,teacherId:string,sessionId:string,
  const {data,error}=await db.rpc("ccp_canonical_session_note_save",{
   p_session_id:sessionId,p_student_id:input.studentId??null,
   p_body:input.body,p_private_body:input.privateBody,
-  p_share_with_guardian:input.sharedWithGuardian,
+  p_share_with_contacts:input.sharedWithContacts,
   p_send_email:input.sendEmail,
   p_expected_updated_at:input.expectedUpdatedAt,
   p_idempotency_key:input.idempotencyKey,

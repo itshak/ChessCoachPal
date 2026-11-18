@@ -43,7 +43,7 @@ test("SECURITY: approved canonical note intent is durable, private, and unique o
  const key=randomUUID(),shared="Teacher approved family note "+randomUUID();
  const body={
   studentId,body:shared,privateBody:"Do not email this coaching observation",
-  sharedWithGuardian:true,sendEmail:true,confirmedEmail:true,
+  sharedWithContacts:true,sendEmail:true,confirmedEmail:true,
   expectedUpdatedAt:null,idempotencyKey:key,
  };
  const put=await page.request.put("/api/coaching/sessions/"+sessionId+"/notes",{data:body});

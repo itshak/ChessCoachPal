@@ -64,8 +64,8 @@ export async function portalSharedNotesForContext(db:Db,ctx:PortalContext,
   const results:{id:string;sessionId:string;body:string;date:string}[]=[];
   for(let i=0;i<ids.length;i+=80){
     const {data,error}=await db.from("session_notes")
-      .select("id,session_id,student_id,body,shared_with_guardian")
-      .eq("teacher_id",ctx.grant.teacherId).eq("shared_with_guardian",true)
+      .select("id,session_id,student_id,body,shared_with_contacts")
+      .eq("teacher_id",ctx.grant.teacherId).eq("shared_with_contacts",true)
       .in("session_id",ids.slice(i,i+80)).order("updated_at",{ascending:false}).limit(400);
     if(error)throw new Error("Unable to read approved session notes");
     for(const note of data??[]){

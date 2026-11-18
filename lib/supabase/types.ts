@@ -644,16 +644,16 @@ export interface Database {
         Row: {
           id: string; teacher_id: string; session_id: string;
           student_id: string | null; body: string; private_body: string;
-          shared_with_guardian: boolean; emailed_at: string | null;
+          shared_with_contacts: boolean; emailed_at: string | null;
           created_at: string; updated_at: string;
         };
         Insert: {
           id?: string; teacher_id: string; session_id: string;
           student_id?: string | null; body?: string; private_body?: string;
-          shared_with_guardian?: boolean; emailed_at?: string | null;
+          shared_with_contacts?: boolean; emailed_at?: string | null;
         };
         Update: {
-          body?: string; private_body?: string; shared_with_guardian?: boolean;
+          body?: string; private_body?: string; shared_with_contacts?: boolean;
           emailed_at?: string | null; updated_at?: string;
         };
       };

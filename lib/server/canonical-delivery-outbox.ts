@@ -117,8 +117,7 @@ async function deliverOne(db:Db,row:OutboxRow):Promise<Delivery>{
   .eq("may_receive_messages",true);
  if(linkError)throw new Error("Student contact consent lookup failed");
  const today=new Date().toISOString().slice(0,10);
- const allowed=(links??[] as LinkedRecipient[]).filter(x=>x.is_legal_guardian&&
-   x.may_receive_messages&&(!x.active_from||x.active_from<=today)&&
+ const allowed=(links??[] as LinkedRecipient[]).filter(x=>x.may_receive_messages&&(!x.active_from||x.active_from<=today)&&
    (!x.active_to||x.active_to>=today));
  const contactIds=[...new Set(allowed.map(x=>x.contact_id))];
  if(!contactIds.length)return {outcome:"cancelled",failureCode:"no_approved_contacts"};
@@ -155,11 +154,11 @@ async function deliverOne(db:Db,row:OutboxRow):Promise<Delivery>{
   // Re-verify current sharing consent. A teacher retracting or rewriting a
   // note before delivery must never send the stale approved message.
   const {data:note,error:noteError}=await db.from("session_notes")
-   .select("id,body,shared_with_guardian")
+   .select("id,body,shared_with_contacts")
    .eq("teacher_id",row.teacher_id).eq("session_id",row.session_id)
    .eq("student_id",row.student_id).maybeSingle();
   if(noteError)throw new Error("Note sharing check failed");
-  if(!note?.shared_with_guardian||note.body!==requestedBody)
+  if(!note?.shared_with_contacts||note.body!==requestedBody)
    return {outcome:"cancelled",failureCode:"note_not_shared_anymore"};
   subject=copy.outbox.lessonNotes(student.name);
   text=copy.event.greeting(salutation)+"\n\n"+
@@ -191,7 +190,7 @@ async function deliverOne(db:Db,row:OutboxRow):Promise<Delivery>{
  const {data:currentLink,error:linkCheckError}=await db.from("student_contacts")
   .select("id,active_from,active_to").eq("teacher_id",row.teacher_id)
   .eq("student_id",row.student_id).eq("contact_id",recipient.id)
-  .eq("may_receive_messages",true).eq("is_legal_guardian",true)
+  .eq("may_receive_messages",true)
   .limit(1).maybeSingle();
  const {data:currentContact,error:contactCheckError}=await db.from("contacts")
   .select("email,status").eq("teacher_id",row.teacher_id)

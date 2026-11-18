@@ -127,7 +127,7 @@ INSERT INTO public.session_attendance (
  '10000000-0000-0000-0000-000000000001','present',now(),now()
 );
 INSERT INTO public.session_notes (
- teacher_id,session_id,student_id,body,private_body,shared_with_guardian
+ teacher_id,session_id,student_id,body,private_body,shared_with_contacts
 ) VALUES (
  '00000000-0000-0000-0000-000000000001',
  '70000000-0000-0000-0000-000000000001',

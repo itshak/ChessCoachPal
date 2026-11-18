@@ -451,10 +451,10 @@
     "entireRoster": "Entire frozen roster",
     "absentShort": "Absent",
     "applyToAll": "Apply to all {count} participants",
-    "familyNote": "Family-shareable coaching note",
+    "familyNote": "Contact-shareable lesson note",
     "privateNote": "Teacher-private note (never shown in portal)",
-    "shareFamilyNote": "Share the family note in the guardian portal",
-    "queueFamilyNoteEmail": "Queue an explicitly approved email with the shared note",
+    "shareFamilyNote": "Share this note with explicitly authorized contacts in their scoped portal",
+    "queueFamilyNoteEmail": "Email approved student-linked contacts",
     "saveNotes": "Save coaching notes",
     "rescheduleHint": "Rescheduling preserves the original recurring slot and frozen roster history.",
     "saveSessionChanges": "Save session changes",
@@ -492,8 +492,9 @@
     "cancelledByTeacher": "Cancelled by teacher",
     "requestInvalid": "Request failed ({status})",
     "studioSettingsLink": "Studio settings",
-    "notesSavedEmailQueued": "Notes saved; approved family email queued",
-    "cancelSessionConfirm": "Cancel this session for all enrolled students? Attendance and billing evidence will be preserved."
+    "notesSavedEmailQueued": "Notes saved; approved contact emails queued",
+    "cancelSessionConfirm": "Cancel this session for all enrolled students? Attendance and billing evidence will be preserved.",
+    "attendanceSavedEmailQueued": "Attendance saved; approved contact emails queued"
   },
   "materials": {
     "title": "Training & Materials",

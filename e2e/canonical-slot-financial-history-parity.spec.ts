@@ -67,7 +67,7 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
   "/api/coaching/sessions/"+invoiceSession+"/notes",{data:{
    studentId,body:"Reviewed rook endgames",
    privateBody:"Private notes must remain private after deletion",
-   sharedWithGuardian:false,sendEmail:false,
+   sharedWithContacts:false,sendEmail:false,
    expectedUpdatedAt:null,idempotencyKey:randomUUID(),
   }});
  expect(note.status(),await note.text()).toBe(200);
