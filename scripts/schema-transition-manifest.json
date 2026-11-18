@@ -119,7 +119,7 @@
         "billing_accounts",
         "invoices.billing_account_id"
       ],
-      "sha256": "d29a9a3400b8dd2d2c39492f09cf94c7345dc2264d6e8b29f4da20b8bcf71a7b"
+      "sha256": "54b4b16607d69994cb7eac1849f2770a0f0ff956e6af717d1e3833e6c23b4b7e"
     }
   ],
   "reviewPolicy": "Update baseline and manifest hashes, review RLS/grants/data map, run isolated synthetic convergence and restore before authorizing production"

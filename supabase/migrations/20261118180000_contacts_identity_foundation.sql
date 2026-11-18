@@ -2,7 +2,7 @@ BEGIN;
 -- BEGIN ChessCoachPal contact identity foundation (OpenSpec contacts 1A).
 -- Contact relationship, legal authority, communication permission and payer
 -- identity are separate. No portal grants are minted from these records.
-CREATE TABLE public.contacts (
+CREATE TABLE IF NOT EXISTS public.contacts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
   display_name text NOT NULL CHECK (char_length(btrim(display_name)) BETWEEN 1 AND 160),
@@ -18,9 +18,9 @@ CREATE TABLE public.contacts (
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (id,teacher_id)
 );
-CREATE INDEX contacts_teacher_display_idx ON public.contacts(teacher_id,status,display_name,id);
+CREATE INDEX IF NOT EXISTS contacts_teacher_display_idx ON public.contacts(teacher_id,status,display_name,id);
 
-CREATE TABLE public.student_contacts (
+CREATE TABLE IF NOT EXISTS public.student_contacts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
   student_id uuid NOT NULL,
@@ -40,12 +40,12 @@ CREATE TABLE public.student_contacts (
   FOREIGN KEY (contact_id,teacher_id) REFERENCES public.contacts(id,teacher_id) ON DELETE RESTRICT,
   UNIQUE (id,teacher_id)
 );
-CREATE UNIQUE INDEX student_contacts_one_current_link
+CREATE UNIQUE INDEX IF NOT EXISTS student_contacts_one_current_link
   ON public.student_contacts(teacher_id,student_id,contact_id) WHERE active_to IS NULL;
-CREATE INDEX student_contacts_teacher_contact_idx
+CREATE INDEX IF NOT EXISTS student_contacts_teacher_contact_idx
   ON public.student_contacts(teacher_id,contact_id,student_id);
 
-CREATE TABLE public.billing_accounts (
+CREATE TABLE IF NOT EXISTS public.billing_accounts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
   display_name text NOT NULL CHECK (char_length(btrim(display_name)) BETWEEN 1 AND 160),
@@ -60,31 +60,52 @@ CREATE TABLE public.billing_accounts (
   FOREIGN KEY (contact_id,teacher_id) REFERENCES public.contacts(id,teacher_id) ON DELETE RESTRICT,
   UNIQUE (id,teacher_id)
 );
-CREATE INDEX billing_accounts_teacher_name_idx
+CREATE INDEX IF NOT EXISTS billing_accounts_teacher_name_idx
   ON public.billing_accounts(teacher_id,status,display_name,id);
 
 -- During the incremental, reviewed transition, old issued invoices remain
 -- unchanged and retain guardian_id; this extra FK preserves the future payer.
 -- The final legacy-column removal is blocked until finance/portal cutover.
-ALTER TABLE public.invoices ADD COLUMN billing_account_id uuid;
-ALTER TABLE public.invoices ADD CONSTRAINT invoices_owned_billing_account_fk
-  FOREIGN KEY (billing_account_id,teacher_id)
-  REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT;
-CREATE INDEX invoices_teacher_billing_account_idx
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS billing_account_id uuid;
+DO $contacts_invoice_fk$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+     WHERE conrelid='public.invoices'::regclass
+       AND conname='invoices_owned_billing_account_fk') THEN
+    ALTER TABLE public.invoices ADD CONSTRAINT invoices_owned_billing_account_fk
+      FOREIGN KEY (billing_account_id,teacher_id)
+      REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT;
+  END IF;
+END
+$contacts_invoice_fk$;
+CREATE INDEX IF NOT EXISTS invoices_teacher_billing_account_idx
   ON public.invoices(teacher_id,billing_account_id);
 
 ALTER TABLE public.contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_accounts ENABLE ROW LEVEL SECURITY;
-CREATE POLICY contacts_teacher ON public.contacts FOR ALL TO authenticated
-  USING (teacher_id=(select auth.uid()))
-  WITH CHECK (teacher_id=(select auth.uid()));
-CREATE POLICY student_contacts_teacher ON public.student_contacts FOR ALL TO authenticated
-  USING (teacher_id=(select auth.uid()))
-  WITH CHECK (teacher_id=(select auth.uid()));
-CREATE POLICY billing_accounts_teacher ON public.billing_accounts FOR ALL TO authenticated
-  USING (teacher_id=(select auth.uid()))
-  WITH CHECK (teacher_id=(select auth.uid()));
+DO $contacts_policies$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+     WHERE schemaname='public' AND tablename='contacts' AND policyname='contacts_teacher') THEN
+    CREATE POLICY contacts_teacher ON public.contacts FOR ALL TO authenticated
+      USING (teacher_id=(select auth.uid()))
+      WITH CHECK (teacher_id=(select auth.uid()));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+     WHERE schemaname='public' AND tablename='student_contacts' AND policyname='student_contacts_teacher') THEN
+    CREATE POLICY student_contacts_teacher ON public.student_contacts FOR ALL TO authenticated
+      USING (teacher_id=(select auth.uid()))
+      WITH CHECK (teacher_id=(select auth.uid()));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+     WHERE schemaname='public' AND tablename='billing_accounts' AND policyname='billing_accounts_teacher') THEN
+    CREATE POLICY billing_accounts_teacher ON public.billing_accounts FOR ALL TO authenticated
+      USING (teacher_id=(select auth.uid()))
+      WITH CHECK (teacher_id=(select auth.uid()));
+  END IF;
+END
+$contacts_policies$;
 
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.contacts,public.student_contacts,public.billing_accounts TO authenticated;
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.contacts,public.student_contacts,public.billing_accounts TO service_role;
