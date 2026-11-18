@@ -84,7 +84,7 @@ A private Standard Cloudflare R2 bucket can receive encrypted backups once a buc
 
 For a fresh disposable staging database only: run the current single canonical Supabase baseline, verify storage/Auth migrations and schema, perform two-teacher cross-tenant tests, validate signed-in website and MCP CRUD and reports, confirm health/readiness, then test recovery to a **second isolated** instance. Migration/restore tooling must never silently clear a database with real records.
 
-Keep Vercel and the current managed Supabase development instance unchanged during this staged rollout. For a future real-data cutover, migrate Auth identities, teacher tables, Storage objects, grants, encryption secrets and redirect URLs as a coordinated, tested operation. The current repository has pre-v1 breaking-schema constraints; avoid running historic migration chains against live data.
+Keep Vercel and the current managed Supabase development instance unchanged during this staged rollout. For any populated beta/live cutover, follow [ADR-0015](adr/0015-baseline-first-and-one-time-live-transitions.md) and the [baseline/live-transition operator runbook](SCHEMA_TRANSITION_RUNBOOK.md): keep the fresh-install baseline authoritative, apply only reviewed one-time ordered forward transitions after verified off-host backup/restore and explicit operator approval, and reconcile Auth, student history, guardians/portal, financial records, grants/RLS and Storage. The old blanket ban on all live transition scripts is superseded; never reset a populated database or replay already-recorded versions.
 
 ## Operator preflight
 

@@ -8,6 +8,7 @@
 import {readdirSync,readFileSync} from "node:fs";
 import {resolve,dirname,join} from "node:path";
 import {fileURLToPath} from "node:url";
+import {transitionContractErrors} from "./schema-transition-contract.mjs";
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const read=path=>readFileSync(join(root,path),"utf8");
 const BASELINE="20261107000000_chesscoachpal_baseline.sql";
@@ -15,6 +16,7 @@ const LIVE_EXTENSION="20261117000000_live_historical_lifecycle_extension.sql";
 const WORKFLOW_EXTENSION="20261117190000_mcp_workflow_composition.sql";
 const FAMILY_LOCALE_EXTENSION="20261117231554_family_communication_locale.sql";
 const TEACHER_LOCALE_EXTENSION="20261118000000_multilingual_teacher_and_family_locale.sql";
+const BASELINE_ALIGNMENT="20261118150000_live_baseline_function_alignment.sql";
 const APPROVED_PREFIXES=[
  [BASELINE],
  [BASELINE,LIVE_EXTENSION],
@@ -22,13 +24,18 @@ const APPROVED_PREFIXES=[
  [BASELINE,LIVE_EXTENSION,FAMILY_LOCALE_EXTENSION],
  [BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION,FAMILY_LOCALE_EXTENSION],
  [BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION,FAMILY_LOCALE_EXTENSION,TEACHER_LOCALE_EXTENSION],
+ [BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION,FAMILY_LOCALE_EXTENSION,TEACHER_LOCALE_EXTENSION,BASELINE_ALIGNMENT],
 ];
 
 export function canonicalSchemaErrors({
  sqlFiles,sql,transfer,agent,catalog,studentPage,teacherComponents,strictMaterials=false,
+ migrationManifest,transitionSources,
 }){
  const errors=[];
- if(!APPROVED_PREFIXES.some(expected=>
+ if(migrationManifest)errors.push(...transitionContractErrors({
+   sqlFiles,sql,manifest:migrationManifest,transitionSources,
+ }));
+ if(!migrationManifest && !APPROVED_PREFIXES.some(expected=>
    expected.length===sqlFiles.length && expected.every((file,i)=>file===sqlFiles[i])))
    errors.push("Only the canonical baseline and explicitly approved ordered forward-only live extensions are permitted");
  if(!sql.includes("CREATE TABLE public.learning_materials")||
@@ -60,6 +67,9 @@ export function repositoryInputs(){
  const sqlFiles=readdirSync(join(root,"supabase/migrations")).filter(x=>x.endsWith(".sql")).sort();
  const checks={
    sqlFiles,sql:sqlFiles.includes(BASELINE)?read("supabase/migrations/"+BASELINE):"",
+   migrationManifest:JSON.parse(read("scripts/schema-transition-manifest.json")),
+   transitionSources:Object.fromEntries(sqlFiles.filter(x=>x!==BASELINE).map(file=>
+     [file,read("supabase/migrations/"+file)])),
    transfer:read("lib/data-transfer.ts"),
    agent:read("lib/server/agent-tools.ts"),
    catalog:read("scripts/mcp-website-parity.json"),
@@ -75,5 +85,5 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const errors=process.argv.includes("--strict-materials")?
    canonicalSchemaErrors({...repositoryInputs(),strictMaterials:true}):checkRepository();
  if(errors.length){for(const e of errors)console.error("ADR-0001: "+e);process.exitCode=1;}
- else console.log("ADR-0001 fresh-install schema and current backup shape verified.");
+ else console.log("ADR-0001/0015 canonical baseline, reviewed transition hashes and backup contract verified.");
 }
