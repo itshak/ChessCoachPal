@@ -17,19 +17,20 @@ function dateLocal(daysAgo:number){
  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),
   String(d.getDate()).padStart(2,"0")].join("-");
 }
-export function UnifiedLessonHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
+export function UnifiedLessonHistoryPanel({fixedStudentId,initialWorkplaceId}:{fixedStudentId?:string;initialWorkplaceId?:string|null}){
  const t=useTranslations("lessonHistory"),locale=useLocale();
   const toUserError=useLocalizedApiError();
  const statusText=(status:string)=>status==="scheduled"?t("scheduled"):status==="completed"?t("completed"):status==="cancelled"?t("cancelled"):status;
  const [from,setFrom]=useState(()=>dateLocal(30));
  const [to,setTo]=useState(()=>dateLocal(0));
  const [workplaces,setWorkplaces]=useState<Workplace[]>([]);
- const [workplaceId,setWorkplaceId]=useState("");
+ const [workplaceId,setWorkplaceId]=useState(initialWorkplaceId??"");
  const [rows,setRows]=useState<Row[]>([]);
  const [result,setResult]=useState<Response|null>(null);
  const [nextOffset,setNextOffset]=useState<number|null>(null);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
+ useEffect(()=>{setWorkplaceId(initialWorkplaceId??"");setResult(null);setRows([]);setNextOffset(null);},[initialWorkplaceId]);
  useEffect(()=>{
   let active=true;
   void fetch("/api/agent/v1",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -62,7 +63,7 @@ export function UnifiedLessonHistoryPanel({fixedStudentId}:{fixedStudentId?:stri
    <label className="block min-w-0 w-full text-sm sm:w-auto">{t("from")} <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className={"block "+classes} required/></label>
    <label className="block min-w-0 w-full text-sm sm:w-auto">{t("to")} <input type="date" value={to} onChange={e=>setTo(e.target.value)} className={"block "+classes} required/></label>
    <label className="block min-w-0 w-full text-sm sm:w-auto">{t("workplace")}
-    <select value={workplaceId} onChange={e=>setWorkplaceId(e.target.value)} className={"block "+classes}>
+    <select data-testid="history-workplace-select" value={workplaceId} onChange={e=>setWorkplaceId(e.target.value)} className={"block "+classes}>
      <option value="">{t("allWorkplaces")}</option>
      {workplaces.map(w=><option value={w.id} key={w.id}>{w.name}</option>)}
     </select>

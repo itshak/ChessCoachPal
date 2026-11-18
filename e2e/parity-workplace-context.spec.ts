@@ -75,6 +75,10 @@ test("PARITY:PARITY-global workplace context persists across browser and MCP wit
     await page.goto("/dashboard");
     await expect(page.getByText(firstStudentName,{exact:true})).toBeVisible();
     await expect(page.getByText(secondStudentName,{exact:true})).toHaveCount(0);
+    await page.goto("/coaching");
+    await expect(page.getByTestId("coaching-workplace-select")).toHaveValue(aId);
+    await expect(page.getByTestId("report-workplace-select")).toHaveValue(aId);
+    await expect(page.getByTestId("history-workplace-select")).toHaveValue(aId);
     const siteA=await page.request.get("/api/teacher/workplace-context");
     expect((await siteA.json()).selectedWorkplaceId).toBe(aId);
     const retry=await call("ccp_workplace_context_set",{
@@ -96,6 +100,10 @@ test("PARITY:PARITY-global workplace context persists across browser and MCP wit
     await page.goto("/students");
     await expect(page.getByText(secondStudentName,{exact:true})).toBeVisible();
     await expect(page.getByText(firstStudentName,{exact:true})).toHaveCount(0);
+    await page.goto("/coaching");
+    await expect(page.getByTestId("coaching-workplace-select")).toHaveValue(bId);
+    await expect(page.getByTestId("report-workplace-select")).toHaveValue(bId);
+    await expect(page.getByTestId("history-workplace-select")).toHaveValue(bId);
     const toolRead=await call("ccp_workplace_context_get",{});
     expect(toolRead.error).toBeUndefined();
     expect(toolRead.data.selectedWorkplaceId).toBe(bId);
