@@ -283,3 +283,83 @@ test("PARITY:PARITY-contact-student-profile renders localized secondary contact 
   expect(read.data.some((row:{contactId:string;relationshipLabel:string})=>
     row.contactId===contact.data.id&&row.relationshipLabel==="Grandmother")).toBe(true);
 });
+
+test("PARITY:PARITY-contact-transfer current JSON and model-safe CSV preserve contact/link/payer identities",async({page,request})=>{
+  const call=await delegatedTool(page,request);
+  const student=await call("ccp_students_create",{
+    name:"Restore-linked learner "+randomUUID(),idempotencyKey:randomUUID(),
+  });
+  expect(student.error).toBeUndefined();
+  const studentId=student.data.entityId as string;
+  const contactId=randomUUID(),linkId=randomUUID(),billingAccountId=randomUUID();
+  const privateEmail="restore-"+randomUUID()+"@example.invalid";
+  const response=await page.request.get("/api/settings/export");
+  expect(response.status(),await response.text()).toBe(200);
+  const existing=await response.json();
+  const payload={
+    exportedAt:new Date().toISOString(),teacherId:existing.teacherId,
+    tables:{
+      contacts:[{id:contactId,display_name:"Restored synthetic contact",
+        kind:"person",email:privateEmail,phone:"+972-555-0000",
+        status:"active"}],
+      student_contacts:[{id:linkId,student_id:studentId,contact_id:contactId,
+        relationship_label:"Teacher liaison",is_legal_guardian:false,
+        may_receive_messages:false}],
+      billing_accounts:[{id:billingAccountId,contact_id:contactId,
+        display_name:"Independent synthetic payer",account_kind:"person",
+        status:"active"}],
+    },
+  };
+  const preview=await call("ccp_settings_import_preview",{payload});
+  expect(preview.error).toBeUndefined();
+  expect(preview.data.counts).toMatchObject({
+    contacts:1,student_contacts:1,billing_accounts:1,
+  });
+  const applied=await call("ccp_settings_import_apply",{
+    payload,expectedSha256:preview.data.sha256,confirmed:true,
+  });
+  expect(applied.error).toBeUndefined();
+  expect(applied.data.counts).toMatchObject({
+    contacts:1,student_contacts:1,billing_accounts:1,
+  });
+  const replay=await page.request.post("/api/settings/import",{
+    data:{payload,expectedSha256:preview.data.sha256,confirmed:true},
+  });
+  expect(replay.status(),await replay.text()).toBe(200);
+  expect(await replay.json()).toEqual(applied.data);
+  const webContact=await page.request.get("/api/contacts/"+contactId);
+  expect(webContact.status(),await webContact.text()).toBe(200);
+  expect((await webContact.json()).email).toBe(privateEmail);
+  const linked=await call("ccp_student_contacts_list",{studentId});
+  expect(linked.error).toBeUndefined();
+  expect(linked.data.some((row:{id:string;contactId:string})=>
+    row.id===linkId&&row.contactId===contactId)).toBe(true);
+  const payer=await call("ccp_billing_accounts_detail",{
+    billingAccountId,includeContact:true,confirmed:true,
+  });
+  expect(payer.error).toBeUndefined();
+  expect(payer.data.contactId).toBe(contactId);
+
+  const backup=await page.request.get("/api/settings/export");
+  expect(backup.status(),await backup.text()).toBe(200);
+  const data=await backup.json();
+  for(const [table,id] of [
+    ["contacts",contactId],["student_contacts",linkId],
+    ["billing_accounts",billingAccountId],
+  ] as const){
+    expect((data.tables[table] as Array<{id:string}>).some(row=>row.id===id)).toBe(true);
+  }
+  const bulk=await call("ccp_settings_export",{confirmed:true});
+  if(bulk.error)expect(bulk.error.code).toBe("EXPORT_TOO_LARGE");
+  else{
+    expect(bulk.data.contactDetailsExcluded).toBe(true);
+    expect(JSON.stringify(bulk.data.export.tables.contacts)).not.toContain(privateEmail);
+  }
+  const csv=await call("ccp_settings_export_csv",{
+    confirmed:true,table:"contacts",offset:0,limit:200,
+  });
+  expect(csv.error).toBeUndefined();
+  expect(csv.data.contactDetailsExcluded).toBe(true);
+  expect(csv.data.csv).not.toContain(privateEmail);
+  expect(csv.data.csv).not.toContain("phone");
+});

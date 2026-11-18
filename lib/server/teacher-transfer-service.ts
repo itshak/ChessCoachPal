@@ -20,16 +20,23 @@ export async function teacherSafeExport(db:Db,teacherId:string){
  const full=await teacherExport(db,teacherId);
  const raw=full.tables.guardians;
  const familyRows=Array.isArray(raw)?raw as Record<string,unknown>[]:[];
+ const contacts=Array.isArray(full.tables.contacts)
+  ? full.tables.contacts as Record<string,unknown>[] : [];
  const tables={
    ...full.tables,
    guardians:familyRows.map(({portal_token,...safe})=>safe),
+   // Bulk model-visible exports should not disclose every contact's
+   // personal communication details. The authenticated website JSON backup
+   // remains complete and is the lossless owner-controlled export.
+   contacts:contacts.map(({email,phone,...safe})=>safe),
  };
  const payload={...full,tables};
  const encoded=JSON.stringify(payload);
  if(Buffer.byteLength(encoded,"utf8")>MAX_MCP_EXPORT_BYTES)
   throw fail(413,"EXPORT_TOO_LARGE",
    "Export exceeds MCP response limit. Download the full backup securely from /api/settings/export while signed in to ChessCoachPal.");
- return {export:payload,guardianPortalLinksExcluded:true,bytes:Buffer.byteLength(encoded,"utf8")};
+ return {export:payload,guardianPortalLinksExcluded:true,contactDetailsExcluded:true,
+  bytes:Buffer.byteLength(encoded,"utf8")};
 }
 export type TransferPreview={payload:StudioDataExport;sha256:string;counts:Record<string,number>;
  bytes:number;warnings:string[]};

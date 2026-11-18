@@ -6962,7 +6962,8 @@ BEGIN
   -- Match the portable backup's FK-safe ordering. The list is fixed in SQL;
   -- arbitrary JSON table names are ignored, never interpolated into SQL.
   FOREACH v_table IN ARRAY ARRAY[
-    'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
+    'studio_policies', 'guardians', 'contacts', 'students',
+    'student_contacts', 'billing_accounts', 'workplaces', 'class_groups',
     'workplace_enrollments', 'group_enrollments', 'lesson_slots',
     'teaching_sessions', 'session_participants', 'session_attendance',
     'session_notes', 'chess_skill_categories', 'chess_observations',
@@ -7003,7 +7004,8 @@ BEGIN
         RAISE EXCEPTION 'IMPORT_INVALID_ROW:%', v_table USING ERRCODE='22023';
       END IF;
       IF v_table = ANY(ARRAY[
-        'studio_policies', 'guardians', 'students', 'workplaces', 'class_groups',
+        'studio_policies', 'guardians', 'contacts', 'students',
+    'student_contacts', 'billing_accounts', 'workplaces', 'class_groups',
         'workplace_enrollments', 'group_enrollments', 'lesson_slots',
         'teaching_sessions', 'session_participants', 'session_attendance',
         'session_notes', 'chess_skill_categories', 'chess_observations',

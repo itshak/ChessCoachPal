@@ -24,6 +24,13 @@ ordered live transitions, now listed with SHA-256 review pins in
    `ccp_restore_canonical_chess_rows(jsonb)` to the baseline.
    The synthetic acceptance suite uncovered the older live definition drift.
    This **does not imply it has been applied in production**.
+6. `20261118180000_contacts_identity_foundation.sql`: adds contacts,
+   student-contact associations and billing account identities while preserving
+   legacy portal and invoice records. Not a complete family/portal cutover.
+7. `20261118183000_contacts_backup_restore.sql`: adds contact/relationship/
+   billing-account restoration to the same transactional backup RPC. The
+   corresponding full website JSON/CSV exports contain all three categories;
+   model-facing bulk exports redact contact email and phone.
 
 The manifest explicitly accepts historical development branches lacking some
 later files, but **does not** promise conversion of arbitrary pre-v1 schemas.
@@ -51,7 +58,7 @@ production SQL output, child records, passwords or backup dumps in GitHub.
   Supabase instance in GitHub Actions. It installs **only** the current
   baseline, stores the structural catalog signature, then resets the *local
   synthetic instance* to the frozen pre-extension baseline from commit
-  `3a658a0bf5540f68c192b1a454bb5cdbc774f51b`. It inserts synthetic preserved records, applies the five
+  `3a658a0bf5540f68c192b1a454bb5cdbc774f51b`. It inserts synthetic preserved records, applies the seven
   reviewed migrations via Supabase's local migration ledger, checks counts, relations,
   locale constraints, owner isolation, failure rollback and no second replay,
   then compares table/column privileges, constraints, indexes, triggers,

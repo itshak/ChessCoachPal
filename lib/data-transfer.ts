@@ -18,7 +18,8 @@ const POLICY_SECRET_FIELDS = [
 
 /** Order respects FK dependencies when imported into a different teacher. */
 const IMPORT_ORDER = [
-  "studio_policies", "guardians", "students", "workplaces",
+  "studio_policies", "guardians", "contacts", "students",
+  "student_contacts", "billing_accounts", "workplaces",
   "ccp_historical_attendance_evidence", "class_groups",
   "workplace_enrollments", "group_enrollments", "teacher_study_preferences", "lesson_slots",
   "teaching_sessions", "session_participants", "session_attendance",
@@ -35,7 +36,8 @@ const IMPORT_ORDER = [
 ] as const;
 
 const TEACHER_SCOPED = [
-  "guardians", "students", "workplaces", "ccp_historical_attendance_evidence",
+  "guardians", "contacts", "students", "student_contacts", "billing_accounts",
+  "workplaces", "ccp_historical_attendance_evidence",
   "class_groups",
   "workplace_enrollments", "group_enrollments", "teacher_study_preferences", "lesson_slots",
   "teaching_sessions", "session_participants", "session_attendance",

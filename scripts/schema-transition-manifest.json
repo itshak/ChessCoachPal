@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "3b35bb42a753b0e897132428dfbc86e0cd0b920f3ef2094e83330f0ba1d883b5",
+  "baselineSha256": "2309e23af0a92bcad23fd8268bd6d3857033188a7d2284934d5dff73458cd5b4",
   "historicalAllowedSequences": [
     [],
     [
@@ -40,6 +40,15 @@
       "20261118000000_multilingual_teacher_and_family_locale.sql",
       "20261118150000_live_baseline_function_alignment.sql",
       "20261118180000_contacts_identity_foundation.sql"
+    ],
+    [
+      "20261117000000_live_historical_lifecycle_extension.sql",
+      "20261117190000_mcp_workflow_composition.sql",
+      "20261117231554_family_communication_locale.sql",
+      "20261118000000_multilingual_teacher_and_family_locale.sql",
+      "20261118150000_live_baseline_function_alignment.sql",
+      "20261118180000_contacts_identity_foundation.sql",
+      "20261118183000_contacts_backup_restore.sql"
     ]
   ],
   "transitions": [
@@ -120,6 +129,17 @@
         "invoices.billing_account_id"
       ],
       "sha256": "54b4b16607d69994cb7eac1849f2770a0f0ff956e6af717d1e3833e6c23b4b7e"
+    },
+    {
+      "file": "20261118183000_contacts_backup_restore.sql",
+      "fromRevision": "20261118180000",
+      "purpose": "Restore contact identities, student relationships and independent billing account IDs in one owner-scoped teacher backup transaction",
+      "risk": "function-body-only; tenant-safe deterministic import; operator-approved restored-copy rehearsal required before live application",
+      "requiresVerifiedRestore": true,
+      "baselineObjects": [
+        "ccp_teacher_backup_restore"
+      ],
+      "sha256": "aa62839a5ce9a1cde3cfd34af6860865fb82580000450830d452a44c0157a0a8"
     }
   ],
   "reviewPolicy": "Update baseline and manifest hashes, review RLS/grants/data map, run isolated synthetic convergence and restore before authorizing production"

@@ -64,6 +64,27 @@ describe("all-data CSV privacy, schema and portability",()=>{
   expect(strFromU8(zip["students.csv"])).toContain('""level""');
   expect(strFromU8(zip["ccp_historical_attendance_evidence.csv"])).toContain("2026-01-05");
  });
+ it("preserves complete contact identities in a downloaded owner ZIP but redacts model-visible bulk contacts",()=>{
+  const withContacts:StudioDataExport={...sample,tables:{
+   ...sample.tables,
+   contacts:[{id:"contact-1",display_name:"Club coordinator",
+     email:"contact@club.invalid",phone:"+97212345",kind:"person"}],
+   student_contacts:[{id:"link-1",student_id:"student",contact_id:"contact-1",
+     relationship_label:"Coordinator",is_legal_guardian:false}],
+   billing_accounts:[{id:"payer-1",contact_id:"contact-1",
+     display_name:"School payer",account_kind:"organization"}],
+  }};
+  const safe=csvTables(withContacts,{redactContacts:true});
+  expect(safe.contacts[0]).not.toHaveProperty("email");
+  expect(safe.contacts[0]).not.toHaveProperty("phone");
+  expect(safe.contacts[0]).toHaveProperty("display_name","Club coordinator");
+  expect(safe.student_contacts).toHaveLength(1);
+  expect(safe.billing_accounts).toHaveLength(1);
+  const zip=unzipSync(makeTeacherCsvZip(withContacts));
+  expect(strFromU8(zip["contacts.csv"])).toContain("contact@club.invalid");
+  expect(strFromU8(zip["student_contacts.csv"])).toContain("link-1");
+  expect(strFromU8(zip["billing_accounts.csv"])).toContain("payer-1");
+ });
  it("quotes multiline/commas and prevents formula injection even with leading whitespace",()=>{
   expect(tableCsv([{first:"  +SUM(1,1)",second:"one,\\ntwo",third:"משה"}]))
    .toContain("'  +SUM");

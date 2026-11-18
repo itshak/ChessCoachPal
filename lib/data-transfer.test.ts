@@ -67,6 +67,29 @@ describe("ChessCoachPal portable backup", () => {
     }
   });
 
+  it("restores contacts, preserved student relationships and payer identity in the same atomic receipt",async()=>{
+    const calls:RpcCall[]=[];
+    const payload=currentPayload();
+    payload.tables.contacts=[{
+      id:"contact-1",teacher_id:"old",display_name:"Club contact",email:"coach@club.invalid",
+      kind:"organization",status:"active",
+    }];
+    payload.tables.student_contacts=[{
+      id:"link-1",teacher_id:"old",student_id:"student-1",contact_id:"contact-1",
+      relationship_label:"School contact",is_legal_guardian:false,may_receive_messages:false,
+    }];
+    payload.tables.billing_accounts=[{
+      id:"payer-1",teacher_id:"old",display_name:"Chess club",
+      account_kind:"organization",contact_id:"contact-1",
+    }];
+    expect(parseExportPayload(payload)).not.toBeNull();
+    expect((await importStudioExport(stubSupabase(calls),TEACHER,payload,DIGEST)).ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    const restored=calls[0].args.p_tables as StudioDataExport["tables"];
+    for(const table of ["contacts","student_contacts","billing_accounts"])
+      expect(restored[table]).toEqual(payload.tables[table]);
+  });
+
   it("rejects unrecognized table names before any RPC", async()=>{
     const calls:RpcCall[]=[];
     const payload=currentPayload();
@@ -171,6 +194,8 @@ describe("ChessCoachPal portable backup", () => {
     expect(EXPORT_PAGE_SIZE).toBeLessThan(1000);
     expect((backup.tables.students as unknown[])).toHaveLength(1205);
     expect((backup.tables.skill_assessments as unknown[])).toHaveLength(1205);
+    for(const table of ["contacts","student_contacts","billing_accounts"])
+      expect(backup.tables).toHaveProperty(table);
     expect(backup.tables).toHaveProperty("learning_materials");
     expect(backup.tables).toHaveProperty("material_teaching_evidence");
     expect(backup.tables).toHaveProperty("training_assignments");
