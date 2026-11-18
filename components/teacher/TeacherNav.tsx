@@ -12,6 +12,7 @@ import { releasePushSubscription } from "@/lib/push-client";
 import { NotificationBell } from "@/components/teacher/NotificationBell";
 import { useTeacherTheme } from "@/components/teacher/TeacherThemeProvider";
 import { IosInstallHint } from "@/components/pwa/IosInstallHint";
+import {WorkplaceSwitcher} from "@/components/teacher/WorkplaceSwitcher";
 
 const navItems = [
   { href: "/dashboard", key: "today", tour: "dashboard" },
@@ -226,9 +227,13 @@ function AccountMenu({
 export function TeacherNav({
   teacherName,
   avatarUrl,
+  selectedWorkplaceId,
+  workplaces,
 }: {
   teacherName: string;
   avatarUrl: string | null;
+  selectedWorkplaceId:string|null;
+  workplaces:Array<{id:string;name:string}>;
 }) {
   const pathname = usePathname();
   const t = useTranslations("nav");
@@ -285,6 +290,8 @@ export function TeacherNav({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          <WorkplaceSwitcher workplaces={workplaces}
+            selectedWorkplaceId={selectedWorkplaceId}/>
           <NotificationBell />
           <AccountMenu teacherName={teacherName} avatarUrl={avatarUrl} />
           <button

@@ -24,7 +24,10 @@
     "help": "Помощь",
     "signOut": "Выйти",
     "teacherAccount": "Аккаунт тренера",
-    "toggleNavigation": "Открыть меню"
+    "toggleNavigation": "Открыть меню",
+    "workplaceFilter": "Текущее место работы",
+    "allWorkplaces": "Все места работы",
+    "workplaceFilterFailed": "Не удалось изменить место работы; обновите страницу"
   },
   "dashboard": {
     "title": "Панель шахматного тренера",

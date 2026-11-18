@@ -24,7 +24,10 @@
     "help": "Help",
     "signOut": "Sign out",
     "teacherAccount": "Teacher account",
-    "toggleNavigation": "Toggle navigation"
+    "toggleNavigation": "Toggle navigation",
+    "workplaceFilter": "Active workplace context",
+    "allWorkplaces": "All workplaces",
+    "workplaceFilterFailed": "Could not change workplace; reload"
   },
   "dashboard": {
     "title": "Chess coaching dashboard",

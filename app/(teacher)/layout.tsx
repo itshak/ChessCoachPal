@@ -36,7 +36,7 @@ export default async function TeacherLayout({
 
   let { data: teacher } = await supabase
     .from("teachers")
-    .select("display_name, avatar_url, onboarding_tour_completed_at")
+    .select("display_name, avatar_url, onboarding_tour_completed_at, selected_workplace_id")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -50,12 +50,16 @@ export default async function TeacherLayout({
     });
     const retry = await supabase
       .from("teachers")
-      .select("display_name, avatar_url, onboarding_tour_completed_at")
+      .select("display_name, avatar_url, onboarding_tour_completed_at, selected_workplace_id")
       .eq("id", user.id)
       .maybeSingle();
     teacher = retry.data;
   }
 
+  const {data:allWorkplaces}=await supabase.from("workplaces")
+    .select("id,name").eq("teacher_id",user.id).order("name").order("id").limit(1000);
+  const workplaces=allWorkplaces??[];
+  const selectedWorkplaceId=workplaces.find(w=>w.id===teacher?.selected_workplace_id)?.id??null;
   const showTour = teacher != null && teacher.onboarding_tour_completed_at == null;
 
   return (
@@ -64,6 +68,8 @@ export default async function TeacherLayout({
       <TeacherNav
         teacherName={teacher?.display_name ?? user.email ?? "Teacher"}
         avatarUrl={teacher?.avatar_url ?? null}
+        workplaces={workplaces}
+        selectedWorkplaceId={selectedWorkplaceId}
       />
       <OnboardingTour initialShow={showTour} />
       <main className="max-w-6xl mx-auto px-4 py-6 min-w-0">{children}</main>

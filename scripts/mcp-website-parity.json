@@ -1551,6 +1551,21 @@
       ],
       "explanation": "Explicit single-invite revocation with revision/idempotency through same owner-scoped service; never reveal bearer secret.",
       "evidenceTest": "e2e/parity-scoped-event-invitations.spec.ts"
+    },
+    {
+      "path": "app/api/teacher/workplace-context/route.ts",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_workplace_context_get",
+        "ccp_workplace_context_set"
+      ],
+      "explanation": "One owner-bound global workplace selection service for website and MCP. Null means All Workplaces, stale revision fails, foreign workplace rejected. Selection is a filter, never a permission or lesson mutation.",
+      "evidenceTest": "e2e/parity-workplace-context.spec.ts"
     }
   ],
   "teacherPages": [
@@ -1619,6 +1634,7 @@
     "components/teacher/TeacherThemeProvider.tsx",
     "components/teacher/TrainingHomeworkPanel.tsx",
     "components/teacher/UnifiedLessonHistoryPanel.tsx",
+    "components/teacher/WorkplaceSwitcher.tsx",
     "components/teacher/billing/BillingList.tsx",
     "components/teacher/billing/CreditPackagesCard.tsx",
     "components/teacher/billing/InvoiceDetailClient.tsx",
@@ -1634,6 +1650,7 @@
     "components/teacher/schedule/PolicySettings.tsx",
     "components/teacher/settings/BillingSettingsForm.tsx",
     "components/teacher/settings/BulkStudentLifecyclePanel.tsx",
+    "components/teacher/settings/BusinessSettingsForm.tsx",
     "components/teacher/settings/DataTransferSettings.tsx",
     "components/teacher/settings/HistoricalAttendanceImportPanel.tsx",
     "components/teacher/settings/HostingSettingsForm.tsx",
@@ -1642,7 +1659,6 @@
     "components/teacher/settings/PaymentsSettingsForm.tsx",
     "components/teacher/settings/PushNotificationToggle.tsx",
     "components/teacher/settings/SpreadsheetImportSettings.tsx",
-    "components/teacher/settings/BusinessSettingsForm.tsx",
     "components/teacher/settings/TeacherCalendarFeed.tsx",
     "components/teacher/settings/TimezoneSettingsForm.tsx",
     "components/teacher/skills/SkillsCharts.tsx",

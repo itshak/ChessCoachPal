@@ -1057,6 +1057,7 @@ CREATE TABLE IF NOT EXISTS "public"."teachers" (
     "stripe_cancel_at" timestamp with time zone,
     "avatar_url" "text",
     "preferred_locale" "text" DEFAULT 'en'::"text" NOT NULL,
+    "selected_workplace_id" "uuid",
     "onboarding_tour_completed_at" timestamp with time zone,
     "calendar_token" "text" DEFAULT "rtrim"("translate"("encode"("extensions"."gen_random_bytes"(16), 'base64'::"text"), '+/'::"text", '-_'::"text"), '='::"text") NOT NULL,
     CONSTRAINT "teachers_preferred_locale_check" CHECK (("preferred_locale" = ANY (ARRAY['en'::"text", 'he'::"text", 'ru'::"text"]))),
@@ -10974,3 +10975,16 @@ REVOKE ALL ON FUNCTION public.ccp_scoped_portal_rsvp(text,uuid,text,integer,text
  FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.ccp_scoped_portal_rsvp(text,uuid,text,integer,text)
  TO service_role;
+
+-- ADR-0017: global teacher workplace FILTER, not a data-access grant. NULL
+-- means All Workplaces. Tenant ownership is enforced in SQL, independent of
+-- request origin (browser/MCP). Removing a workplace clears only the filter;
+-- original dated lesson/workplace provenance must remain untouched.
+ALTER TABLE public.teachers ADD CONSTRAINT teachers_selected_workplace_owner_fk
+  FOREIGN KEY(selected_workplace_id,id)
+  REFERENCES public.workplaces(id,teacher_id)
+  ON DELETE SET NULL (selected_workplace_id);
+CREATE INDEX teachers_selected_workplace_idx ON public.teachers(selected_workplace_id)
+  WHERE selected_workplace_id IS NOT NULL;
+COMMENT ON COLUMN public.teachers.selected_workplace_id IS
+  'Teacher UI/MCP preferred current workplace. NULL=All Workplaces. Filter only; no permission/lesson-history side effects.';

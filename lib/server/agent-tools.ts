@@ -122,6 +122,9 @@ import {teacherPortalGrantsList,teacherPortalGrantGet,
 import {portalEventInviteCreateSchema,portalEventInviteRevokeSchema,
   teacherPortalEventInvitesList,teacherPortalEventInviteCreate,
   teacherPortalEventInviteRevoke} from "@/lib/server/portal-event-invitations";
+import {workplaceContextUpdateSchema,teacherWorkplaceContextGet,
+  teacherWorkplaceContextSet,WorkplaceContextError}
+  from "@/lib/server/teacher-workplace-context";
 import { guardianCreateSchema, guardianUpdateSchema } from "@/lib/server/api-schemas";
 import { guardiansList, guardianDetail, guardianCreate, guardianUpdate,
  guardianDeleteImpact, guardianDelete, guardianRotatePortalToken, safeGuardian,
@@ -628,6 +631,16 @@ const catalogue = [
     name:"ccp_hosted_subscription_handoff",
     description:"Open the signed-in Account page to review hosting plan, start subscription Checkout or enter Stripe billing portal securely in the browser. MCP cannot collect card data or create a Stripe session without the required browser confirmation.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_workplace_context_get",
+    description:"Read the teacher's globally selected workplace filter (or All Workplaces) and exactly owned locations. This is presentation context only, not an access grant or historical data mutation.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_workplace_context_set",
+    description:"Confirm a global workplace filter change. Requires exact owned workplace UUID or null for All Workplaces and current expected selection; does not reassign students, lessons or financial history.",
+    schema:workplaceContextUpdateSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_teacher_profile_get",
@@ -2006,6 +2019,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           action:"hosted-billing",
           explanation:"On hosted deployments, review the plan and choose Upgrade or Manage billing in your signed-in browser. Payment-card entry and Stripe sessions remain in secure website/provider flows.",
         }};
+      case "ccp_workplace_context_get":
+        return {data:await teacherWorkplaceContextGet(db,teacherId)};
+      case "ccp_workplace_context_set": {
+        const a=args as Parameters<typeof teacherWorkplaceContextSet>[2];
+        return {data:await teacherWorkplaceContextSet(db,teacherId,a)};
+      }
       case "ccp_teacher_profile_get":
         return {data:await teacherProfileGet(db,teacherId)};
       case "ccp_teacher_profile_update": {
@@ -2644,6 +2663,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CanonicalPrivateSessionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalSlotError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof WorkplaceContextError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof PortalGrantError)
       return {error:{code:error.code,message:error.message}};

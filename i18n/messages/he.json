@@ -24,7 +24,10 @@
     "help": "עזרה",
     "signOut": "התנתקות",
     "teacherAccount": "חשבון המאמן",
-    "toggleNavigation": "פתיחת תפריט ניווט"
+    "toggleNavigation": "פתיחת תפריט ניווט",
+    "workplaceFilter": "הקשר מקום העבודה הפעיל",
+    "allWorkplaces": "כל מקומות העבודה",
+    "workplaceFilterFailed": "שינוי מקום העבודה נכשל; רעננו"
   },
   "dashboard": {
     "title": "לוח הבקרה למאמני שחמט",

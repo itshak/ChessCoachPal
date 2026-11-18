@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "mode": "single-canonical-baseline",
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "53dd012f8021d6a1abc3a764a85420e58536932fd826f46fb5add0ae4a244e30",
+  "baselineSha256": "acbc18567aac7b1762c27c1826024f20892b05bb360e2ee3e5abaaac2394c513",
   "operatorCutoverRequired": true,
   "baselineRequiredObjects": [
     "students",
