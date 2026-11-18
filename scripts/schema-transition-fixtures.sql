@@ -16,9 +16,9 @@ INSERT INTO public.group_enrollments(teacher_id,workplace_id,group_id,student_id
 INSERT INTO public.invoices(id,teacher_id,guardian_id,period_start,period_end,status,subtotal_cents)
  VALUES('80000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001',
         '50000000-0000-0000-0000-000000000001','2026-10-01','2026-10-31','draft',6000);
-INSERT INTO public.invoice_items(invoice_id,student_id,description,quantity,unit_cents,amount_cents)
- VALUES('80000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001',
-        'Synthetic chess lesson',1,6000,6000);
+INSERT INTO public.invoice_items(invoice_id,description,kind,quantity,unit_cents,amount_cents)
+ VALUES('80000000-0000-0000-0000-000000000001',
+        'Synthetic prepaid package','credit_package',1,6000,6000);
 INSERT INTO public.credit_packages(teacher_id,student_id,invoice_id,credits,duration_minutes,price_cents,starts_on)
  VALUES('00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001',
         '80000000-0000-0000-0000-000000000001',2,30,6000,'2026-10-01');
