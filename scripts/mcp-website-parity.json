@@ -1470,6 +1470,19 @@
       ],
       "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
       "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
+      "path": "app/api/contacts/[id]/links/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_contacts_links_list"
+      ],
+      "explanation": "Authenticated website and delegated MCP use the same owner-scoped contact relationship history listing; current and ended student links are read back independently.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
     }
   ],
   "teacherPages": [
@@ -1490,7 +1503,8 @@
     "app/(teacher)/schedule/page.tsx",
     "app/(teacher)/students/[id]/page.tsx",
     "app/(teacher)/students/page.tsx",
-    "app/(teacher)/studio/page.tsx"
+    "app/(teacher)/studio/page.tsx",
+    "app/(teacher)/contacts/page.tsx"
   ],
   "teacherComponents": [
     "components/teacher/AccountMfaSettings.tsx",
@@ -1560,6 +1574,7 @@
     "components/teacher/settings/TeacherCalendarFeed.tsx",
     "components/teacher/settings/TimezoneSettingsForm.tsx",
     "components/teacher/skills/SkillsCharts.tsx",
-    "components/teacher/skills/SkillsPanel.tsx"
+    "components/teacher/skills/SkillsPanel.tsx",
+    "components/teacher/ContactsManager.tsx"
   ]
 }

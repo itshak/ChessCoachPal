@@ -110,10 +110,10 @@ import {
  studentContactUnlinkSchema,billingAccountCreateSchema,billingAccountUpdateSchema,
 } from "@/lib/server/contact-schemas";
 import {
- contactsList,contactDetail,contactCreate,contactUpdate,safeContact,
+ contactsList,contactDetail,contactCreate,contactUpdate,safeContact,contactStudentLinksList,
  studentContactsList,studentContactLink,studentContactUnlink,
  billingAccountsList,billingAccountDetail,billingAccountCreate,billingAccountUpdate,
- safeBillingAccount,
+ safeBillingAccount,ContactServiceError,
 } from "@/lib/server/teacher-contacts-service";
 import { guardianCreateSchema, guardianUpdateSchema } from "@/lib/server/api-schemas";
 import { guardiansList, guardianDetail, guardianCreate, guardianUpdate,
@@ -793,6 +793,11 @@ const catalogue = [
     description:"Read one teacher-owned contact. To include email, phone and preferred language, specify includeDetails=true AND confirmed=true. Does not grant portal access.",
     schema:z.object({contactId:uuid,includeDetails:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
     scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_contacts_links_list",
+    description:"Read all explicitly recorded student relationships for one owned contact, including ended historical links, legal-guardian and messaging flags. No portal grants, private notes or payer obligations.",
+    schema:z.object({contactId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_contacts_create",
@@ -2065,6 +2070,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:safeContact(await contactDetail(db,teacherId,a.contactId),
           a.includeDetails&&a.confirmed===true)};
       }
+      case "ccp_contacts_links_list": {
+        const a=args as {contactId:string};
+        return {data:await contactStudentLinksList(db,teacherId,a.contactId)};
+      }
       case "ccp_contacts_create": {
         const a=args as Parameters<typeof contactCreate>[2];
         const created=await contactCreate(db,teacherId,a);
@@ -2563,6 +2572,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CanonicalPrivateSessionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalSlotError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof ContactServiceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof GuardianServiceError)
       return {error:{code:error.code,message:error.message}};

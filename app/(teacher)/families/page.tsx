@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { FamiliesManager } from "@/components/teacher/FamiliesManager";
@@ -35,6 +36,11 @@ export default async function FamiliesPage() {
         <p className="text-muted text-sm mt-1">
           {t("intro")}
         </p>
+      </div>
+      <div className="mb-5">
+        <Link href="/contacts" className="text-sm text-primary underline hover:opacity-80">
+          {t("openContacts")}
+        </Link>
       </div>
       <FamiliesManager guardians={guardians ?? []} students={students ?? []} />
     </div>

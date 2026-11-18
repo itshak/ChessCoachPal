@@ -107,6 +107,11 @@ test("PARITY:PARITY-contact-links preserve student identity and never grant a pa
   }});
   expect(newLink.status(),await newLink.text()).toBe(201);
   expect((await newLink.json()).id).not.toBe(link.data.id);
+  const byContact=await call("ccp_contacts_links_list",{contactId});
+  expect(byContact.error).toBeUndefined();
+  const byBrowser=await page.request.get("/api/contacts/"+contactId+"/links");
+  expect(byBrowser.status(),await byBrowser.text()).toBe(200);
+  expect(byBrowser.json()).resolves.toEqual(byContact.data);
   const noContact=await call("ccp_students_create",{
     name:"Independent adult "+randomUUID(),idempotencyKey:randomUUID(),
   });
@@ -166,4 +171,21 @@ test("PARITY:PARITY-billing-account-identity is separate from contacts and canno
   });
   expect(browserUpdate.status(),await browserUpdate.text()).toBe(200);
   expect((await browserUpdate.json()).status).toBe("archived");
+});
+
+test("PARITY:PARITY-contact-ui shows an MCP-created contact in the localized teacher website",async({page,request})=>{
+  const call=await delegatedTool(page,request);
+  const name="Coach contact "+randomUUID();
+  const created=await call("ccp_contacts_create",{
+    displayName:name,kind:"person",idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(created.error).toBeUndefined();
+  await page.goto("/families");
+  await page.locator('a[href="/contacts"]').click();
+  await page.waitForURL("**/contacts");
+  await expect(page.locator("h1")).toHaveText(/Contacts/);
+  await expect(page.getByText(name)).toBeVisible();
+  await page.getByText(name).click();
+  await expect(page.getByLabel("Display name")).toHaveValue(name);
+  await expect(page.getByText("Linking a contact does not share private teaching notes, grant portal access or make this person a payer.")).toBeVisible();
 });

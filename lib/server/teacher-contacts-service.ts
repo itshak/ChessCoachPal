@@ -105,12 +105,13 @@ async function requireActiveContact(db:DB,teacherId:string,id:string){
   if(row.status!=="active")return fail(409,"CONTACT_ARCHIVED","Contact is archived");
 }
 async function paginated(db:DB,table:"contacts"|"student_contacts"|"billing_accounts",
-  teacherId:string,columns:string,studentId?:string){
+  teacherId:string,columns:string,studentId?:string,contactId?:string){
   const rows:Row[]=[];
   for(let offset=0;offset<20000;offset+=500){
     let query=db.from(table).select(columns).eq("teacher_id",teacherId).order("id")
       .range(offset,offset+499);
     if(studentId)query=query.eq("student_id",studentId);
+    if(contactId)query=query.eq("contact_id",contactId);
     const {data,error}=await query;
     if(error)return dataError("Unable to list contact records");
     rows.push(...((data??[]) as unknown as Row[]));
@@ -155,6 +156,11 @@ export async function contactUpdate(db:DB,teacherId:string,id:string,input:Updat
 export async function studentContactsList(db:DB,teacherId:string,studentId:string){
   await requireStudent(db,teacherId,studentId);
   return (await paginated(db,"student_contacts",teacherId,linkColumns,studentId)).map(safeContactLink);
+}
+export async function contactStudentLinksList(db:DB,teacherId:string,contactId:string){
+  await contactRow(db,teacherId,contactId);
+  return (await paginated(db,"student_contacts",teacherId,linkColumns,undefined,contactId))
+    .map(safeContactLink);
 }
 export async function studentContactLink(db:DB,teacherId:string,studentId:string,input:Link){
   await Promise.all([requireStudent(db,teacherId,studentId),
