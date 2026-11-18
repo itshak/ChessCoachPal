@@ -16,6 +16,7 @@ import { StudentChessProfileEditor } from "@/components/teacher/StudentChessProf
 import { StudentContactsPanel } from "@/components/teacher/StudentContactsPanel";
 import {StudentPortalSharingPanel} from "@/components/teacher/StudentPortalSharingPanel";
 import { StudentRatingHistoryPanel } from "@/components/teacher/StudentRatingHistoryPanel";
+import { StudentFederationsPanel } from "@/components/teacher/StudentFederationsPanel";
 import { UnifiedLessonHistoryPanel } from "@/components/teacher/UnifiedLessonHistoryPanel";
 import { CoachBriefingPanel } from "@/components/teacher/CoachBriefingPanel";
 import { EditableStudentName } from "@/components/teacher/EditableStudentName";
@@ -143,6 +144,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialRatings={student.chess_ratings ?? {}}
       />
       <StudentRatingHistoryPanel studentId={id} />
+      <StudentFederationsPanel studentId={id} />
       <CreditPackagesCard
         studentId={id}
         hasFamily={Boolean(student.guardian_id)}

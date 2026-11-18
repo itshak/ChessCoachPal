@@ -4499,6 +4499,21 @@ REVOKE ALL ON FUNCTION public.ccp_invoice_regeneration_receipt(
 GRANT EXECUTE ON FUNCTION public.ccp_invoice_regeneration_receipt(
  uuid,timestamptz,uuid) TO authenticated;
 
+ALTER TABLE public.teachers
+  ADD COLUMN default_national_federation_code text
+    CHECK (default_national_federation_code IS NULL OR
+       default_national_federation_code ~ '^[A-Z]{3}$');
+ALTER TABLE public.students
+  ADD COLUMN fide_id text CHECK (fide_id IS NULL OR fide_id ~ '^[0-9]{5,12}$'),
+  ADD COLUMN fide_federation_code text
+    CHECK (fide_federation_code IS NULL OR fide_federation_code ~ '^[A-Z]{3}$'),
+  ADD COLUMN national_federation_preference text
+    CHECK (national_federation_preference IS NULL OR
+      national_federation_preference='NONE' OR
+      national_federation_preference ~ '^[A-Z]{3}$');
+CREATE INDEX student_fide_identity_idx ON public.students(teacher_id,fide_id)
+  WHERE fide_id IS NOT NULL;
+
 -- Durable coach-attested chess goals, rating snapshots and profile
 -- corrections. Website and MCP both use the same student update service;
 -- this database trigger captures history even for otherwise direct RLS writes.
@@ -4570,12 +4585,30 @@ BEGIN
     (teacher_id,student_id,field_name,previous_value,next_value)
    VALUES(NEW.teacher_id,NEW.id,'chess_ratings',OLD.chess_ratings,NEW.chess_ratings);
  END IF;
+ IF NEW.fide_id IS DISTINCT FROM OLD.fide_id THEN
+   INSERT INTO public.student_chess_profile_history
+    (teacher_id,student_id,field_name,previous_value,next_value)
+   VALUES(NEW.teacher_id,NEW.id,'fide_id',to_jsonb(OLD.fide_id),to_jsonb(NEW.fide_id));
+ END IF;
+ IF NEW.fide_federation_code IS DISTINCT FROM OLD.fide_federation_code THEN
+   INSERT INTO public.student_chess_profile_history
+    (teacher_id,student_id,field_name,previous_value,next_value)
+   VALUES(NEW.teacher_id,NEW.id,'fide_federation_code',
+     to_jsonb(OLD.fide_federation_code),to_jsonb(NEW.fide_federation_code));
+ END IF;
+ IF NEW.national_federation_preference IS DISTINCT FROM OLD.national_federation_preference THEN
+   INSERT INTO public.student_chess_profile_history
+    (teacher_id,student_id,field_name,previous_value,next_value)
+   VALUES(NEW.teacher_id,NEW.id,'national_federation_preference',
+     to_jsonb(OLD.national_federation_preference),to_jsonb(NEW.national_federation_preference));
+ END IF;
  RETURN NEW;
 END;
 $$;
 CREATE TRIGGER ccp_student_chess_history
  AFTER UPDATE OF strength,chess_goals,chess_ratings,lichess_username,
-  chesscom_username,lichess_rating,chesscom_rating ON public.students
+  chesscom_username,lichess_rating,chesscom_rating,
+  fide_id,fide_federation_code,national_federation_preference ON public.students
  FOR EACH ROW EXECUTE FUNCTION public.ccp_student_chess_history_capture();
 
 -- Explicit teacher-selected default studies for workplaces and optional groups.
@@ -10993,6 +11026,85 @@ CREATE INDEX teachers_selected_workplace_idx ON public.teachers(selected_workpla
   WHERE selected_workplace_id IS NOT NULL;
 COMMENT ON COLUMN public.teachers.selected_workplace_id IS
   'Teacher UI/MCP preferred current workplace. NULL=All Workplaces. Filter only; no permission/lesson-history side effects.';
+
+-- National and FIDE chess ratings are public external observations,
+-- distinct from teacher-assessed strength and educational mastery. FIDE IDs
+-- and national federation memberships are independent identities.
+ALTER TABLE public.student_chess_profile_history
+  DROP CONSTRAINT student_chess_profile_history_field_name_check;
+ALTER TABLE public.student_chess_profile_history
+  ADD CONSTRAINT student_chess_profile_history_field_name_check
+  CHECK(field_name IN ('strength','chess_goals','lichess_username',
+    'chesscom_username','lichess_rating','chesscom_rating','chess_ratings',
+    'fide_id','fide_federation_code','national_federation_preference'));
+CREATE TABLE public.student_federation_memberships (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  student_id uuid NOT NULL,
+  federation_code text NOT NULL CHECK(federation_code ~ '^[A-Z]{3}$'),
+  player_id text NOT NULL CHECK(length(btrim(player_id)) BETWEEN 1 AND 64),
+  membership_status text NOT NULL DEFAULT 'unverified'
+    CHECK (membership_status IN ('unverified','source_matched')),
+  verified_at timestamptz,
+  source_url text CHECK (source_url IS NULL OR length(source_url)<=600),
+  revision bigint NOT NULL DEFAULT 1 CHECK(revision>=1),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_request_id uuid,
+  last_request_hash text,
+  UNIQUE(id,teacher_id),
+  UNIQUE(teacher_id,student_id,federation_code),
+  FOREIGN KEY(student_id,teacher_id)
+    REFERENCES public.students(id,teacher_id) ON DELETE CASCADE,
+  CONSTRAINT federation_source_verified CHECK (
+    (membership_status='unverified' AND verified_at IS NULL) OR
+    (membership_status='source_matched' AND verified_at IS NOT NULL AND source_url IS NOT NULL))
+);
+CREATE INDEX student_federation_memberships_student_idx
+  ON public.student_federation_memberships(teacher_id,student_id);
+ALTER TABLE public.student_federation_memberships ENABLE ROW LEVEL SECURITY;
+CREATE POLICY student_federation_memberships_owner
+  ON public.student_federation_memberships FOR ALL TO authenticated
+  USING(teacher_id=(select auth.uid()))
+  WITH CHECK(teacher_id=(select auth.uid()));
+GRANT SELECT,INSERT,UPDATE ON public.student_federation_memberships TO authenticated;
+GRANT ALL ON public.student_federation_memberships TO service_role;
+
+ALTER TABLE public.student_rating_snapshots
+  DROP CONSTRAINT student_rating_snapshots_provider_check,
+  DROP CONSTRAINT student_rating_snapshots_time_control_check,
+  DROP CONSTRAINT ccp_snapshot_category_check;
+ALTER TABLE public.student_rating_snapshots
+  ADD CONSTRAINT student_rating_snapshots_provider_check
+    CHECK(provider IN ('lichess','chesscom','fide','icf')),
+  ADD CONSTRAINT student_rating_snapshots_time_control_check
+    CHECK(time_control IN ('bullet','blitz','rapid','classical','daily','puzzle',
+      'standard','national')),
+  ADD CONSTRAINT ccp_snapshot_category_check CHECK(
+    (provider='lichess' AND time_control IN ('bullet','blitz','rapid','classical','puzzle'))
+    OR (provider='chesscom' AND time_control IN ('bullet','blitz','rapid','daily','puzzle'))
+    OR (provider='fide' AND time_control IN ('standard','rapid','blitz'))
+    OR (provider='icf' AND time_control='national'));
+ALTER TABLE public.student_rating_snapshots
+  ADD COLUMN effective_at date,
+  ADD COLUMN provider_list_version text CHECK (
+    provider_list_version IS NULL OR length(provider_list_version)<=120),
+  ADD COLUMN source_url text CHECK (source_url IS NULL OR length(source_url)<=600),
+  ADD COLUMN source_digest text CHECK (
+    source_digest IS NULL OR source_digest ~ '^[a-f0-9]{64}$'),
+  ADD COLUMN verification_state text NOT NULL DEFAULT 'unverified'
+    CHECK(verification_state IN ('unverified','provider_published'));
+ALTER TABLE public.student_rating_snapshots
+  ADD CONSTRAINT federation_rating_source_truth CHECK (
+    (provider NOT IN ('fide','icf') AND verification_state='unverified') OR
+    (provider IN ('fide','icf') AND source='teacher_manual' AND
+      verification_state='unverified' AND fetched_at IS NULL) OR
+    (provider IN ('fide','icf') AND source='provider_api' AND
+      verification_state='provider_published' AND effective_at IS NOT NULL AND
+      provider_list_version IS NOT NULL AND source_digest IS NOT NULL));
+CREATE UNIQUE INDEX federation_rating_list_once_idx
+  ON public.student_rating_snapshots
+    (teacher_id,student_id,provider,time_control,provider_list_version)
+  WHERE provider IN ('fide','icf') AND source='provider_api';
 
 -- ChessCoachPal professional finance: native owner-scoped effective-dated
 -- agreements, not inferred debt, invoices, payment receipts or payroll.

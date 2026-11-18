@@ -66,6 +66,9 @@ export const studentUpdateSchema = z.object({
   chesscomUsername: chessHandle.optional(),
   lichessRating: chessRating.optional(),
   chesscomRating: chessRating.optional(),
+  fideId:z.union([z.string().regex(/^[0-9]{5,12}$/),z.null()]).optional(),
+  fideFederationCode:z.union([z.string().regex(/^[A-Z]{3}$/),z.null()]).optional(),
+  nationalFederationPreference:z.union([z.string().regex(/^[A-Z]{3}$/),z.literal("NONE"),z.null()]).optional(),
   chessGoals: optionalText(5000),
   chessRatings: z.object({
     lichess:z.object({

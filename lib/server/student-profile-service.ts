@@ -13,6 +13,9 @@ export type StudentProfilePatch = {
   chesscomUsername?: string | null;
   lichessRating?: number | null;
   chesscomRating?: number | null;
+  fideId?:string|null;
+  fideFederationCode?:string|null;
+  nationalFederationPreference?:string|null;
   chessGoals?: string | null;
   chessRatings?: Record<string,Record<string,number|null>>;
   teacherNotes?: string | null;
@@ -156,6 +159,10 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
   if (patch.chesscomUsername !== undefined) update.chesscom_username = patch.chesscomUsername;
   if (patch.lichessRating !== undefined) update.lichess_rating = patch.lichessRating;
   if (patch.chesscomRating !== undefined) update.chesscom_rating = patch.chesscomRating;
+  if(patch.fideId!==undefined)update.fide_id=patch.fideId;
+  if(patch.fideFederationCode!==undefined)update.fide_federation_code=patch.fideFederationCode;
+  if(patch.nationalFederationPreference!==undefined)
+    update.national_federation_preference=patch.nationalFederationPreference;
   if (patch.chessGoals !== undefined) update.chess_goals = patch.chessGoals ?? "";
   if (patch.chessRatings !== undefined) {
     const existingRatings=(existing.chess_ratings??{}) as Record<string,Record<string,number|null>>;

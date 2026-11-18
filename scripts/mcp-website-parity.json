@@ -1379,6 +1379,47 @@
       "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
     },
     {
+      "path": "app/api/students/[id]/federation-ratings/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_student_federation_ratings_record"
+      ],
+      "explanation": "Source-neutral owned student/FIDE/national identities, unverified rating evidence and teacher federation hint use shared browser/MCP service with strict schema, tenant authorization, replay and explicit consent. e2e/parity-federation-ratings.spec.ts",
+      "evidenceTest": "e2e/parity-federation-ratings.spec.ts"
+    },
+    {
+      "path": "app/api/students/[id]/federations/[membershipId]/route.ts",
+      "methods": [
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_student_federations_update"
+      ],
+      "explanation": "Source-neutral owned student/FIDE/national identities, unverified rating evidence and teacher federation hint use shared browser/MCP service with strict schema, tenant authorization, replay and explicit consent. e2e/parity-federation-ratings.spec.ts",
+      "evidenceTest": "e2e/parity-federation-ratings.spec.ts"
+    },
+    {
+      "path": "app/api/students/[id]/federations/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_student_federations_get",
+        "ccp_student_federations_link"
+      ],
+      "explanation": "Source-neutral owned student/FIDE/national identities, unverified rating evidence and teacher federation hint use shared browser/MCP service with strict schema, tenant authorization, replay and explicit consent. e2e/parity-federation-ratings.spec.ts",
+      "evidenceTest": "e2e/parity-federation-ratings.spec.ts"
+    },
+    {
       "path": "app/api/students/[id]/ratings/route.ts",
       "methods": [
         "GET",
@@ -1502,6 +1543,21 @@
       ],
       "explanation": "Website/MCP share signed-in teacher server clock, configured local date, day-of-week, IANA timezone and owner-filtered workplaces without model date assumptions.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
+    },
+    {
+      "path": "app/api/teacher/federation-default/route.ts",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_teacher_federation_default_get",
+        "ccp_teacher_federation_default_set"
+      ],
+      "explanation": "Source-neutral owned student/FIDE/national identities, unverified rating evidence and teacher federation hint use shared browser/MCP service with strict schema, tenant authorization, replay and explicit consent. e2e/parity-federation-ratings.spec.ts",
+      "evidenceTest": "e2e/parity-federation-ratings.spec.ts"
     },
     {
       "path": "app/api/teacher/workplace-context/route.ts",
@@ -1666,6 +1722,7 @@
     "components/teacher/StartTourLink.tsx",
     "components/teacher/StudentChessProfileEditor.tsx",
     "components/teacher/StudentContactsPanel.tsx",
+    "components/teacher/StudentFederationsPanel.tsx",
     "components/teacher/StudentInfoCard.tsx",
     "components/teacher/StudentLessonNotes.tsx",
     "components/teacher/StudentNotesEditor.tsx",

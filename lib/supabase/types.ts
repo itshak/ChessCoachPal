@@ -83,6 +83,17 @@ export interface Database {
           created_at?:string;updated_at?:string};
         Update:Partial<Database["public"]["Tables"]["portal_event_invitations"]["Insert"]>;
       };
+      student_federation_memberships: {
+        Row:{id:string;teacher_id:string;student_id:string;federation_code:string;
+          player_id:string;membership_status:"unverified"|"source_matched";
+          verified_at:string|null;source_url:string|null;revision:number;
+          created_at:string;last_request_id:string|null;last_request_hash:string|null};
+        Insert:{id?:string;teacher_id:string;student_id:string;federation_code:string;
+          player_id:string;membership_status?:"unverified"|"source_matched";
+          verified_at?:string|null;source_url?:string|null;revision?:number;
+          created_at?:string;last_request_id?:string|null;last_request_hash?:string|null};
+        Update:Partial<Database["public"]["Tables"]["student_federation_memberships"]["Insert"]>;
+      };
       compensation_agreements: {
         Row:{id:string;teacher_id:string;workplace_id:string;student_id:string|null;
           group_id:string|null;billing_account_id:string|null;
@@ -158,6 +169,9 @@ export interface Database {
           teacher_id: string;
           name: string;
           parent_contact: string | null;
+          fide_id:string|null;
+          fide_federation_code:string|null;
+          national_federation_preference:string|null;
           guardian_id: string | null;
           teacher_notes: string;
           level: string | null;
@@ -173,6 +187,9 @@ export interface Database {
           teacher_id: string;
           name: string;
           parent_contact?: string | null;
+          fide_id?:string|null;
+          fide_federation_code?:string|null;
+          national_federation_preference?:string|null;
           guardian_id?: string | null;
           teacher_notes?: string;
           level?: string | null;
@@ -186,6 +203,9 @@ export interface Database {
         Update: {
           name?: string;
           parent_contact?: string | null;
+          fide_id?:string|null;
+          fide_federation_code?:string|null;
+          national_federation_preference?:string|null;
           guardian_id?: string | null;
           teacher_notes?: string;
           level?: string | null;

@@ -128,6 +128,12 @@ import {
  compensationAgreementCreate,compensationAgreementUpdate,
  compensationAgreementPreview,CompensationAgreementError,
 } from "@/lib/server/compensation-agreements-service";
+import {
+ federationStudentSummary,federationMembershipCreate,federationMembershipUpdate,
+ federationManualRatingRecord,federationDefaultGet,federationDefaultSet,
+ federationDefaultUpdateSchema,federationMembershipCreateSchema,
+ federationMembershipUpdateSchema,federationManualRatingSchema,FederationError,
+} from "@/lib/server/student-federations-service";
 import {workplaceContextUpdateSchema,teacherWorkplaceContextGet,
   teacherWorkplaceContextSet,WorkplaceContextError}
   from "@/lib/server/teacher-workplace-context";
@@ -637,6 +643,36 @@ const catalogue = [
     name:"ccp_hosted_subscription_handoff",
     description:"Open the signed-in Account page to review hosting plan, start subscription Checkout or enter Stripe billing portal securely in the browser. MCP cannot collect card data or create a Stripe session without the required browser confirmation.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_teacher_federation_default_get",
+    description:"Read the teacher's suggested national chess federation code, if configured. This is only a preference: it does not imply any pupil is registered.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_teacher_federation_default_set",
+    description:"Explicitly confirm a change to the teacher's suggested national federation, CAS-guarded against another tab. Never create student membership or verified data from a default.",
+    schema:federationDefaultUpdateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_federations_get",
+    description:"Read optional FIDE ID, FIDE federation, national federation suggestion (not membership), registered national IDs and immutable FIDE/Israeli rating evidence for one owned learner. Teacher-entered records are unverified and never change 1–10 assessed strength.",
+    schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_student_federations_link",
+    description:"After explicit teacher confirmation, record one optional national federation player ID on the exact student as UNVERIFIED. A teacher default federation is only a form suggestion; no account match, membership or public search is inferred.",
+    schema:federationMembershipCreateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_federations_update",
+    description:"Revise the exact owned national federation player ID with revision check and idempotency. A changed ID loses prior verification until a compliant provider check is performed.",
+    schema:federationMembershipUpdateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_federation_ratings_record",
+    description:"Teacher-confirmed manual FIDE Standard/Rapid/Blitz or Israeli national rating observation with source URL/date. Stored immutably as UNVERIFIED teacher evidence; never claim official verification or change student strength/mastery.",
+    schema:federationManualRatingSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_compensation_agreements_list",
@@ -2051,6 +2087,28 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           action:"hosted-billing",
           explanation:"On hosted deployments, review the plan and choose Upgrade or Manage billing in your signed-in browser. Payment-card entry and Stripe sessions remain in secure website/provider flows.",
         }};
+      case "ccp_teacher_federation_default_get":
+        return {data:await federationDefaultGet(db,teacherId)};
+      case "ccp_teacher_federation_default_set": {
+        const a=args as Parameters<typeof federationDefaultSet>[2];
+        return {data:await federationDefaultSet(db,teacherId,a)};
+      }
+      case "ccp_student_federations_get": {
+        const a=args as {studentId:string};
+        return {data:await federationStudentSummary(db,teacherId,a.studentId)};
+      }
+      case "ccp_student_federations_link": {
+        const a=args as Parameters<typeof federationMembershipCreate>[2];
+        return {data:await federationMembershipCreate(db,teacherId,a)};
+      }
+      case "ccp_student_federations_update": {
+        const a=args as Parameters<typeof federationMembershipUpdate>[2];
+        return {data:await federationMembershipUpdate(db,teacherId,a)};
+      }
+      case "ccp_student_federation_ratings_record": {
+        const a=args as Parameters<typeof federationManualRatingRecord>[2];
+        return {data:await federationManualRatingRecord(db,teacherId,a)};
+      }
       case "ccp_compensation_agreements_list": {
         const a=args as {workplaceId?:string;includeArchived?:boolean};
         return {data:await compensationAgreementsList(db,teacherId,a)};
@@ -2715,6 +2773,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CanonicalPrivateSessionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalSlotError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof FederationError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CompensationAgreementError)
       return {error:{code:error.code,message:error.message}};
