@@ -5,6 +5,7 @@ import { ChessCoachWorkspace } from "@/components/teacher/ChessCoachWorkspace";
 import { ChessLearningPanel } from "@/components/teacher/ChessLearningPanel";
 import { MaterialHistoryPanel } from "@/components/teacher/MaterialHistoryPanel";
 import { CoachingReportPanel } from "@/components/teacher/CoachingReportPanel";
+import {CompensationAgreementsPanel} from "@/components/teacher/CompensationAgreementsPanel";
 import { UnifiedLessonHistoryPanel } from "@/components/teacher/UnifiedLessonHistoryPanel";
 import { LessonCompletionPanel } from "@/components/teacher/LessonCompletionPanel";
 import { LessonCapturePreviewPanel } from "@/components/teacher/LessonCapturePreviewPanel";
@@ -20,5 +21,5 @@ export default async function CoachingPage() {
   if(!user)return null;
   const context=await teacherWorkplaceContextGet(db,user.id);
   const selected=context.selectedWorkplaceId;
-  return <><ChessCoachWorkspace initialWorkplaceId={selected} /><div className="max-w-6xl mx-auto px-4 py-8 space-y-8"><LessonCapturePreviewPanel /><LessonCompletionPanel /><CoachingReportPanel initialWorkplaceId={selected} /><UnifiedLessonHistoryPanel initialWorkplaceId={selected} /><ChessLearningPanel /><MaterialHistoryPanel /></div></>;
+  return <><ChessCoachWorkspace initialWorkplaceId={selected} /><div className="max-w-6xl mx-auto px-4 py-8 space-y-8"><LessonCapturePreviewPanel /><LessonCompletionPanel /><CoachingReportPanel initialWorkplaceId={selected} /><CompensationAgreementsPanel initialWorkplaceId={selected} /><UnifiedLessonHistoryPanel initialWorkplaceId={selected} /><ChessLearningPanel /><MaterialHistoryPanel /></div></>;
 }

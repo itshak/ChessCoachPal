@@ -24,6 +24,82 @@ export type RsvpStatus = "pending" | "yes" | "no" | "maybe";
 export interface Database {
   public: {
     Tables: {
+      // Current canonical contacts and per-workplace finance model. Old
+      // guardian/Studio generated types below are transitional WIP until the
+      // one final ADR-0017 cutover, never an accepted compatibility surface.
+      contacts: {
+        Row:{id:string;teacher_id:string;display_name:string;kind:"person"|"organization";
+          email:string|null;phone:string|null;preferred_locale:"en"|"he"|"ru"|null;
+          status:"active"|"archived";revision:number;created_at:string;
+          updated_at:string;last_request_id:string|null;last_request_hash:string|null};
+        Insert:{id?:string;teacher_id:string;display_name:string;kind?:"person"|"organization";
+          email?:string|null;phone?:string|null;preferred_locale?:"en"|"he"|"ru"|null;
+          status?:"active"|"archived";revision?:number;last_request_id?:string|null;
+          last_request_hash?:string|null;created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["contacts"]["Insert"]>;
+      };
+      student_contacts: {
+        Row:{id:string;teacher_id:string;student_id:string;contact_id:string;
+          relationship_label:string;is_legal_guardian:boolean;may_receive_messages:boolean;
+          emergency_priority:number|null;active_from:string|null;active_to:string|null;
+          revision:number;created_at:string;last_request_id:string|null;last_request_hash:string|null};
+        Insert:{id?:string;teacher_id:string;student_id:string;contact_id:string;
+          relationship_label:string;is_legal_guardian?:boolean;may_receive_messages?:boolean;
+          emergency_priority?:number|null;active_from?:string|null;active_to?:string|null;
+          revision?:number;created_at?:string;last_request_id?:string|null;last_request_hash?:string|null};
+        Update:Partial<Database["public"]["Tables"]["student_contacts"]["Insert"]>;
+      };
+      billing_accounts: {
+        Row:{id:string;teacher_id:string;display_name:string;account_kind:"person"|"organization";
+          contact_id:string|null;status:"active"|"archived";revision:number;
+          last_request_id:string|null;last_request_hash:string|null;created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;display_name:string;account_kind?:"person"|"organization";
+          contact_id?:string|null;status?:"active"|"archived";revision?:number;
+          last_request_id?:string|null;last_request_hash?:string|null;
+          created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["billing_accounts"]["Insert"]>;
+      };
+      portal_access_grants: {
+        Row:{id:string;teacher_id:string;contact_id:string;student_id:string;workplace_id:string;
+          billing_account_id:string|null;permissions:string[];token_digest:string|null;
+          issued_at:string|null;expires_at:string;revoked_at:string|null;revision:number;
+          last_request_id:string|null;last_request_hash:string|null;created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;contact_id:string;student_id:string;workplace_id:string;
+          billing_account_id?:string|null;permissions:string[];token_digest?:string|null;
+          issued_at?:string|null;expires_at:string;revoked_at?:string|null;revision?:number;
+          last_request_id?:string|null;last_request_hash?:string|null;
+          created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["portal_access_grants"]["Insert"]>;
+      };
+      portal_event_invitations: {
+        Row:{id:string;teacher_id:string;event_id:string;portal_grant_id:string;
+          status:RsvpStatus;party_size:number|null;note:string;responded_at:string|null;
+          revoked_at:string|null;revision:number;last_request_id:string|null;
+          last_request_hash:string|null;created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;event_id:string;portal_grant_id:string;
+          status?:RsvpStatus;party_size?:number|null;note?:string;
+          responded_at?:string|null;revoked_at?:string|null;revision?:number;
+          last_request_id?:string|null;last_request_hash?:string|null;
+          created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["portal_event_invitations"]["Insert"]>;
+      };
+      compensation_agreements: {
+        Row:{id:string;teacher_id:string;workplace_id:string;student_id:string|null;
+          group_id:string|null;billing_account_id:string|null;
+          agreement_role:"coach_earning"|"participant_charge";
+          model:"hourly"|"per_session"|"per_student"|"fixed_period";
+          rate_cents:number;currency:string;effective_from:string;effective_to:string|null;
+          status:"active"|"archived";revision:number;last_request_id:string|null;
+          last_request_hash:string|null;created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;workplace_id:string;student_id?:string|null;
+          group_id?:string|null;billing_account_id?:string|null;
+          agreement_role:"coach_earning"|"participant_charge";
+          model:"hourly"|"per_session"|"per_student"|"fixed_period";
+          rate_cents:number;currency:string;effective_from:string;effective_to?:string|null;
+          status?:"active"|"archived";revision?:number;last_request_id?:string|null;
+          last_request_hash?:string|null;created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["compensation_agreements"]["Insert"]>;
+      };
       teachers: {
         Row: {
           id: string;

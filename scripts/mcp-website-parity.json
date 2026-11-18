@@ -4,93 +4,6 @@
   "policy": "All chess business features, including GigaChess legality, combined session+chapter approval and study preference hierarchy, use shared website/MCP domain operations with tenant authorization. The original 93 historical cases, additional named E2E, strict parity and manual real-client prepublication gates remain mandatory.",
   "apiRoutes": [
     {
-      "path": "app/api/import/historical/report/route.ts",
-      "methods": [
-        "GET"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_historical_attendance_report",
-        "ccp_historical_attendance_summary"
-      ],
-      "explanation": "Teacher-owner filtered historical report and full-source summary separately label dated observations versus aggregate-only counts. Browser and MCP responses are independently compared in e2e/parity-historical-import.spec.ts.",
-      "evidenceTest": "e2e/parity-historical-import.spec.ts"
-    },
-    {
-      "path": "app/api/import/historical/commit/route.ts",
-      "methods": [
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_historical_attendance_commit"
-      ],
-      "explanation": "Reviewed historical evidence commits through one owner-scoped, idempotent SQL transaction, never fabricating calendar sessions. Exact browser and MCP replay and dated versus aggregate results use e2e/parity-historical-import.spec.ts.",
-      "evidenceTest": "e2e/parity-historical-import.spec.ts"
-    },
-    {
-      "path": "app/api/import/historical/dates/route.ts",
-      "methods": [
-        "POST",
-        "PUT"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_historical_attendance_dates_preview",
-        "ccp_historical_attendance_dates_commit"
-      ],
-      "explanation": "Website date-list preview/confirmed atomic commit use the same source-neutral student/date-list schemas and historical teacher-owned domain services as MCP; exact authenticated dual-interface E2E with archived pupils, owner checks and replay.",
-      "evidenceTest": "e2e/parity-historical-import.spec.ts"
-    },
-    {
-      "path": "app/api/import/historical/preview/route.ts",
-      "methods": [
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_historical_attendance_preview"
-      ],
-      "explanation": "Website and delegated MCP share owner-scoped historical evidence preview with exact school year, timezone, matching student names/aliases, workplace resolution, ambiguous match blocker, dated versus aggregate-only classification and stable preview digest, evidenced in e2e/parity-historical-import.spec.ts.",
-      "evidenceTest": "e2e/parity-historical-import.spec.ts"
-    },
-    {
-      "path": "app/api/import/historical/stage/route.ts",
-      "methods": [
-        "POST",
-        "GET",
-        "DELETE"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_historical_import_upload_handoff",
-        "ccp_historical_import_stage_info",
-        "ccp_historical_import_stage_delete"
-      ],
-      "explanation": "Binary spreadsheet upload is an authenticated browser-only secure handoff; MCP exposes the browser handoff, stage metadata and confirmed delete. Both use private two-hour teacher-scoped Supabase Storage references, no model-visible large raw bytes. Cross-client stage info and deletion independently exercised in e2e/parity-historical-import.spec.ts.",
-      "evidenceTest": "e2e/parity-historical-import.spec.ts"
-    },
-    {
-      "path": "app/api/students/bulk-lifecycle/route.ts",
-      "methods": [
-        "POST",
-        "PUT"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_students_bulk_lifecycle_preview",
-        "ccp_students_bulk_lifecycle_commit"
-      ],
-      "explanation": "Reviewed owner-scoped bulk archived/reactivate preview and confirmed atomic, revisioned SQL commit share website and MCP domain services. Current enrollments, future commitments, hosted quota and durable replay are tested as synthetic cross-client cases in e2e/parity-historical-import.spec.ts.",
-      "evidenceTest": "e2e/parity-historical-import.spec.ts"
-    },
-    {
       "path": "app/api/agent/connections/route.ts",
       "methods": [
         "GET",
@@ -208,6 +121,36 @@
       "parity": "not-applicable",
       "existingTools": [],
       "explanation": "Public marketing waitlist, not teacher business management"
+    },
+    {
+      "path": "app/api/billing-accounts/[id]/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_billing_accounts_detail",
+        "ccp_billing_accounts_update"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
+      "path": "app/api/billing-accounts/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_billing_accounts_list",
+        "ccp_billing_accounts_create"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
     },
     {
       "path": "app/api/billing/credit-packages/[id]/route.ts",
@@ -485,19 +428,6 @@
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {
-      "path": "app/api/coaching/lesson-capture/day/route.ts",
-      "methods": [
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_schedule_day_preview"
-      ],
-      "explanation": "Authenticated read-only teacher-owned weekday schedule lookup: exact student UUIDs, workplace, local date, active and enrolled canonical slots, DST-safe common start/duration, existing interval conflict; shared service with delegated MCP. No silent write or enrollment.",
-      "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
-    },
-    {
       "path": "app/api/coaching/lesson-capture/commit/route.ts",
       "methods": [
         "POST"
@@ -522,6 +452,19 @@
       ],
       "explanation": "The same teacher-scoped typed website and delegated MCP operation atomically creates one ad-hoc session, records complete frozen-roster attendance with student-specific notes, and marks the session completed. One UUID receipt, replay conflict, no inferred material mastery. Authenticated dual-surface synthetic assertions in parity-mcp-completed-group-capture.spec.ts.",
       "evidenceTest": "e2e/parity-mcp-completed-group-capture.spec.ts"
+    },
+    {
+      "path": "app/api/coaching/lesson-capture/day/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_schedule_day_preview"
+      ],
+      "explanation": "Authenticated read-only teacher-owned weekday schedule lookup: exact student UUIDs, workplace, local date, active and enrolled canonical slots, DST-safe common start/duration, existing interval conflict; shared service with delegated MCP. No silent write or enrollment.",
+      "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
     },
     {
       "path": "app/api/coaching/lesson-capture/preview/route.ts",
@@ -670,6 +613,92 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/compensation-agreements/[id]/preview/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_compensation_agreements_preview"
+      ],
+      "explanation": "Approved and revisioned owner-scoped compensation terms and read-only expected earnings use the same domain schema and rules via website and named MCP operations. 8-student group time counts once; no external payment/invoice or inferred payer. Exact authenticated parity and negative tests in e2e/parity-compensation-agreements.spec.ts.",
+      "evidenceTest": "e2e/parity-compensation-agreements.spec.ts"
+    },
+    {
+      "path": "app/api/compensation-agreements/[id]/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_compensation_agreements_get",
+        "ccp_compensation_agreements_update"
+      ],
+      "explanation": "Approved and revisioned owner-scoped compensation terms and read-only expected earnings use the same domain schema and rules via website and named MCP operations. 8-student group time counts once; no external payment/invoice or inferred payer. Exact authenticated parity and negative tests in e2e/parity-compensation-agreements.spec.ts.",
+      "evidenceTest": "e2e/parity-compensation-agreements.spec.ts"
+    },
+    {
+      "path": "app/api/compensation-agreements/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_compensation_agreements_list",
+        "ccp_compensation_agreements_create"
+      ],
+      "explanation": "Approved and revisioned owner-scoped compensation terms and read-only expected earnings use the same domain schema and rules via website and named MCP operations. 8-student group time counts once; no external payment/invoice or inferred payer. Exact authenticated parity and negative tests in e2e/parity-compensation-agreements.spec.ts.",
+      "evidenceTest": "e2e/parity-compensation-agreements.spec.ts"
+    },
+    {
+      "path": "app/api/contacts/[id]/links/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_contacts_links_list"
+      ],
+      "explanation": "Authenticated website and delegated MCP use the same owner-scoped contact relationship history listing; current and ended student links are read back independently.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
+      "path": "app/api/contacts/[id]/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_contacts_detail",
+        "ccp_contacts_update"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
+      "path": "app/api/contacts/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_contacts_list",
+        "ccp_contacts_create"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
       "path": "app/api/cron/canonical-outbox/route.ts",
       "methods": [
         "GET",
@@ -718,6 +747,34 @@
       ],
       "explanation": "142-pass real synthetic Mailpit E2E on PR commit 12ec30b verifies identical browser/MCP invitation preview, no token or private recipient leak, explicit MCP external-email approval, one durable PostgreSQL send receipt in a simultaneous cross-client send race, provider delivery once, retries skipped, and 404/NOT_FOUND across both clients for another teacher's event.",
       "evidenceTest": "e2e/parity-event-email-delivery.spec.ts"
+    },
+    {
+      "path": "app/api/events/[id]/portal-invitations/[inviteId]/route.ts",
+      "methods": [
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_events_portal_invitations_revoke"
+      ],
+      "explanation": "Explicit single-invite revocation with revision/idempotency through same owner-scoped service; never reveal bearer secret.",
+      "evidenceTest": "e2e/parity-scoped-event-invitations.spec.ts"
+    },
+    {
+      "path": "app/api/events/[id]/portal-invitations/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_events_portal_invitations_list",
+        "ccp_events_portal_invitations_create"
+      ],
+      "explanation": "Explicit owner/workplace/student/event/grant invitation service; no inferred family grants or emails. Authenticated browser and delegated MCP parity test verifies data readback and revoked access.",
+      "evidenceTest": "e2e/parity-scoped-event-invitations.spec.ts"
     },
     {
       "path": "app/api/events/[id]/route.ts",
@@ -839,6 +896,78 @@
       "explanation": "Subscription webhook (not a teacher chat action)"
     },
     {
+      "path": "app/api/import/historical/commit/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_historical_attendance_commit"
+      ],
+      "explanation": "Reviewed historical evidence commits through one owner-scoped, idempotent SQL transaction, never fabricating calendar sessions. Exact browser and MCP replay and dated versus aggregate results use e2e/parity-historical-import.spec.ts.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
+    },
+    {
+      "path": "app/api/import/historical/dates/route.ts",
+      "methods": [
+        "POST",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_historical_attendance_dates_preview",
+        "ccp_historical_attendance_dates_commit"
+      ],
+      "explanation": "Website date-list preview/confirmed atomic commit use the same source-neutral student/date-list schemas and historical teacher-owned domain services as MCP; exact authenticated dual-interface E2E with archived pupils, owner checks and replay.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
+    },
+    {
+      "path": "app/api/import/historical/preview/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_historical_attendance_preview"
+      ],
+      "explanation": "Website and delegated MCP share owner-scoped historical evidence preview with exact school year, timezone, matching student names/aliases, workplace resolution, ambiguous match blocker, dated versus aggregate-only classification and stable preview digest, evidenced in e2e/parity-historical-import.spec.ts.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
+    },
+    {
+      "path": "app/api/import/historical/report/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_historical_attendance_report",
+        "ccp_historical_attendance_summary"
+      ],
+      "explanation": "Teacher-owner filtered historical report and full-source summary separately label dated observations versus aggregate-only counts. Browser and MCP responses are independently compared in e2e/parity-historical-import.spec.ts.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
+    },
+    {
+      "path": "app/api/import/historical/stage/route.ts",
+      "methods": [
+        "POST",
+        "GET",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_historical_import_upload_handoff",
+        "ccp_historical_import_stage_info",
+        "ccp_historical_import_stage_delete"
+      ],
+      "explanation": "Binary spreadsheet upload is an authenticated browser-only secure handoff; MCP exposes the browser handoff, stage metadata and confirmed delete. Both use private two-hour teacher-scoped Supabase Storage references, no model-visible large raw bytes. Cross-client stage info and deletion independently exercised in e2e/parity-historical-import.spec.ts.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
+    },
+    {
       "path": "app/api/import/spreadsheet/commit/route.ts",
       "methods": [
         "POST"
@@ -888,22 +1017,6 @@
       "parity": "browser-only",
       "existingTools": [],
       "explanation": "Lichess OAuth callback binds encrypted verifier/state, authenticated teacher, and allowlisted return destination (Account Settings or Training & Materials), never exposing access tokens to MCP or website."
-    },
-    {
-      "path": "app/api/lichess/study-preferences/route.ts",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_materials_preferences_list",
-        "ccp_materials_preferences_resolve",
-        "ccp_materials_preferences_set"
-      ],
-      "explanation": "Website and authenticated MCP share exact typed teacher/workplace/student Lichess purpose-specific study preference CRUD, deterministic student>workplace>teacher selection, independent versioned SQL receipt writes and tenant checks. Explicit null clearing preserves history; anonymous/direct unauthorized writes are denied. Provider index freshness is checked server-side; no token or child data leaked. Independent positive/replay/foreign acceptance: e2e/parity-conversational-batch.spec.ts.",
-      "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {
       "path": "app/api/lichess/chapter-index/route.ts",
@@ -1019,6 +1132,22 @@
       "evidenceTest": "e2e/parity-lichess-oauth.spec.ts"
     },
     {
+      "path": "app/api/lichess/study-preferences/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_materials_preferences_list",
+        "ccp_materials_preferences_resolve",
+        "ccp_materials_preferences_set"
+      ],
+      "explanation": "Website and authenticated MCP share exact typed teacher/workplace/student Lichess purpose-specific study preference CRUD, deterministic student>workplace>teacher selection, independent versioned SQL receipt writes and tenant checks. Explicit null clearing preserves history; anonymous/direct unauthorized writes are denied. Provider index freshness is checked server-side; no token or child data leaked. Independent positive/replay/foreign acceptance: e2e/parity-conversational-batch.spec.ts.",
+      "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
+    },
+    {
       "path": "app/api/notifications/route.ts",
       "methods": [
         "GET",
@@ -1042,6 +1171,46 @@
       "parity": "not-applicable",
       "existingTools": [],
       "explanation": "UI tour completion flag, not a teacher business operation"
+    },
+    {
+      "path": "app/api/portal-grants/[id]/issue/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "auth",
+      "parity": "browser-only",
+      "existingTools": [],
+      "explanation": "Sensitive browser-only secret issuance with same-origin CSRF, teacher authentication and explicit revision/confirmation. MCP can create/revoke metadata but never see token, digest or credential URL."
+    },
+    {
+      "path": "app/api/portal-grants/[id]/route.ts",
+      "methods": [
+        "GET",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_portal_grants_get",
+        "ccp_portal_grants_revoke"
+      ],
+      "explanation": "Get/revoke one explicit owner-scoped capability metadata through shared service. Token is invalidated on revocation; no browser secret exposed through MCP.",
+      "evidenceTest": "e2e/parity-scoped-portal-grants.spec.ts"
+    },
+    {
+      "path": "app/api/portal-grants/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_portal_grants_list",
+        "ccp_portal_grants_create"
+      ],
+      "explanation": "Explicit owner/contact/student/workplace and finance-scoped grant metadata, never raw portal tokens. Authenticated browser and delegated MCP use one typed service, consent and revision/idempotency.",
+      "evidenceTest": "e2e/parity-scoped-portal-grants.spec.ts"
     },
     {
       "path": "app/api/portal/[token]/calendar/route.ts",
@@ -1072,6 +1241,16 @@
       "parity": "not-applicable",
       "existingTools": [],
       "explanation": "Guardian token authorizes one canonical session participant cancellation; a coach MCP token cannot impersonate a guardian. SQL validates token and frozen roster inside one transaction; repeat requests are idempotent."
+    },
+    {
+      "path": "app/api/preferences/locale/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "ui",
+      "parity": "not-applicable",
+      "existingTools": [],
+      "explanation": "Unauthenticated language cookie selection changes no teacher-owned business record. Authenticated preferredLocale is a separate owner-scoped profile field with ccp_teacher_profile_get/update parity."
     },
     {
       "path": "app/api/push/config/route.ts",
@@ -1172,6 +1351,34 @@
       "evidenceTest": "e2e/parity-skill-dimensions-lifecycle.spec.ts"
     },
     {
+      "path": "app/api/students/[id]/contacts/[linkId]/route.ts",
+      "methods": [
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_student_contacts_unlink"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
+      "path": "app/api/students/[id]/contacts/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_student_contacts_list",
+        "ccp_student_contacts_link"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
       "path": "app/api/students/[id]/ratings/route.ts",
       "methods": [
         "GET",
@@ -1223,6 +1430,21 @@
       ],
       "explanation": "Shared append-only 1-5 teacher skill assessment service now accepts optional backdated teacher-local assessedOn on both website and MCP, rejects future days and preserves idempotent request receipts across retries at local midnight. Delegated E2E checks dated replay, history pagination, conflicts and cross-tenant restrictions in e2e/parity-skill-assessment-receipts.spec.ts.",
       "evidenceTest": "e2e/parity-skill-assessment-receipts.spec.ts"
+    },
+    {
+      "path": "app/api/students/bulk-lifecycle/route.ts",
+      "methods": [
+        "POST",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_students_bulk_lifecycle_preview",
+        "ccp_students_bulk_lifecycle_commit"
+      ],
+      "explanation": "Reviewed owner-scoped bulk archived/reactivate preview and confirmed atomic, revisioned SQL commit share website and MCP domain services. Current enrollments, future commitments, hosted quota and durable replay are tested as synthetic cross-client cases in e2e/parity-historical-import.spec.ts.",
+      "evidenceTest": "e2e/parity-historical-import.spec.ts"
     },
     {
       "path": "app/api/students/resolve/route.ts",
@@ -1280,6 +1502,21 @@
       ],
       "explanation": "Website/MCP share signed-in teacher server clock, configured local date, day-of-week, IANA timezone and owner-filtered workplaces without model date assumptions.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
+    },
+    {
+      "path": "app/api/teacher/workplace-context/route.ts",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_workplace_context_get",
+        "ccp_workplace_context_set"
+      ],
+      "explanation": "One owner-bound global workplace selection service for website and MCP. Null means All Workplaces, stale revision fails, foreign workplace rejected. Selection is a filter, never a permission or lesson mutation.",
+      "evidenceTest": "e2e/parity-workplace-context.spec.ts"
     },
     {
       "path": "app/api/training/assignments/route.ts",
@@ -1372,200 +1609,6 @@
       "parity": "not-applicable",
       "existingTools": [],
       "explanation": "Payment webhook; never expose as chat tool"
-    },
-    {
-      "path": "app/api/preferences/locale/route.ts",
-      "methods": [
-        "POST"
-      ],
-      "kind": "ui",
-      "parity": "not-applicable",
-      "existingTools": [],
-      "explanation": "Unauthenticated language cookie selection changes no teacher-owned business record. Authenticated preferredLocale is a separate owner-scoped profile field with ccp_teacher_profile_get/update parity."
-    },
-    {
-      "path": "app/api/contacts/route.ts",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_contacts_list",
-        "ccp_contacts_create"
-      ],
-      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
-      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
-    },
-    {
-      "path": "app/api/contacts/[id]/route.ts",
-      "methods": [
-        "GET",
-        "PATCH"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_contacts_detail",
-        "ccp_contacts_update"
-      ],
-      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
-      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
-    },
-    {
-      "path": "app/api/students/[id]/contacts/route.ts",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_student_contacts_list",
-        "ccp_student_contacts_link"
-      ],
-      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
-      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
-    },
-    {
-      "path": "app/api/students/[id]/contacts/[linkId]/route.ts",
-      "methods": [
-        "DELETE"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_student_contacts_unlink"
-      ],
-      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
-      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
-    },
-    {
-      "path": "app/api/billing-accounts/route.ts",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_billing_accounts_list",
-        "ccp_billing_accounts_create"
-      ],
-      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
-      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
-    },
-    {
-      "path": "app/api/billing-accounts/[id]/route.ts",
-      "methods": [
-        "GET",
-        "PATCH"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_billing_accounts_detail",
-        "ccp_billing_accounts_update"
-      ],
-      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
-      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
-    },
-    {
-      "path": "app/api/contacts/[id]/links/route.ts",
-      "methods": [
-        "GET"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_contacts_links_list"
-      ],
-      "explanation": "Authenticated website and delegated MCP use the same owner-scoped contact relationship history listing; current and ended student links are read back independently.",
-      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
-    },
-    {
-      "path": "app/api/portal-grants/route.ts",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_portal_grants_list",
-        "ccp_portal_grants_create"
-      ],
-      "explanation": "Explicit owner/contact/student/workplace and finance-scoped grant metadata, never raw portal tokens. Authenticated browser and delegated MCP use one typed service, consent and revision/idempotency.",
-      "evidenceTest": "e2e/parity-scoped-portal-grants.spec.ts"
-    },
-    {
-      "path": "app/api/portal-grants/[id]/route.ts",
-      "methods": [
-        "GET",
-        "DELETE"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_portal_grants_get",
-        "ccp_portal_grants_revoke"
-      ],
-      "explanation": "Get/revoke one explicit owner-scoped capability metadata through shared service. Token is invalidated on revocation; no browser secret exposed through MCP.",
-      "evidenceTest": "e2e/parity-scoped-portal-grants.spec.ts"
-    },
-    {
-      "path": "app/api/portal-grants/[id]/issue/route.ts",
-      "methods": [
-        "POST"
-      ],
-      "kind": "auth",
-      "parity": "browser-only",
-      "existingTools": [],
-      "explanation": "Sensitive browser-only secret issuance with same-origin CSRF, teacher authentication and explicit revision/confirmation. MCP can create/revoke metadata but never see token, digest or credential URL."
-    },
-    {
-      "path": "app/api/events/[id]/portal-invitations/route.ts",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_events_portal_invitations_list",
-        "ccp_events_portal_invitations_create"
-      ],
-      "explanation": "Explicit owner/workplace/student/event/grant invitation service; no inferred family grants or emails. Authenticated browser and delegated MCP parity test verifies data readback and revoked access.",
-      "evidenceTest": "e2e/parity-scoped-event-invitations.spec.ts"
-    },
-    {
-      "path": "app/api/events/[id]/portal-invitations/[inviteId]/route.ts",
-      "methods": [
-        "DELETE"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_events_portal_invitations_revoke"
-      ],
-      "explanation": "Explicit single-invite revocation with revision/idempotency through same owner-scoped service; never reveal bearer secret.",
-      "evidenceTest": "e2e/parity-scoped-event-invitations.spec.ts"
-    },
-    {
-      "path": "app/api/teacher/workplace-context/route.ts",
-      "methods": [
-        "GET",
-        "PUT"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_workplace_context_get",
-        "ccp_workplace_context_set"
-      ],
-      "explanation": "One owner-bound global workplace selection service for website and MCP. Null means All Workplaces, stale revision fails, foreign workplace rejected. Selection is a filter, never a permission or lesson mutation.",
-      "evidenceTest": "e2e/parity-workplace-context.spec.ts"
     }
   ],
   "teacherPages": [
@@ -1599,6 +1642,7 @@
     "components/teacher/ChessLearningPanel.tsx",
     "components/teacher/CoachBriefingPanel.tsx",
     "components/teacher/CoachingReportPanel.tsx",
+    "components/teacher/CompensationAgreementsPanel.tsx",
     "components/teacher/ContactsManager.tsx",
     "components/teacher/CopyLinkClient.tsx",
     "components/teacher/EditableStudentName.tsx",

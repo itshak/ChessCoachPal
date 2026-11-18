@@ -122,6 +122,12 @@ import {teacherPortalGrantsList,teacherPortalGrantGet,
 import {portalEventInviteCreateSchema,portalEventInviteRevokeSchema,
   teacherPortalEventInvitesList,teacherPortalEventInviteCreate,
   teacherPortalEventInviteRevoke} from "@/lib/server/portal-event-invitations";
+import {
+ compensationAgreementCreateSchema,compensationAgreementUpdateSchema,
+ compensationPreviewSchema,compensationAgreementsList,compensationAgreementGet,
+ compensationAgreementCreate,compensationAgreementUpdate,
+ compensationAgreementPreview,CompensationAgreementError,
+} from "@/lib/server/compensation-agreements-service";
 import {workplaceContextUpdateSchema,teacherWorkplaceContextGet,
   teacherWorkplaceContextSet,WorkplaceContextError}
   from "@/lib/server/teacher-workplace-context";
@@ -631,6 +637,32 @@ const catalogue = [
     name:"ccp_hosted_subscription_handoff",
     description:"Open the signed-in Account page to review hosting plan, start subscription Checkout or enter Stripe billing portal securely in the browser. MCP cannot collect card data or create a Stripe session without the required browser confirmation.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_compensation_agreements_list",
+    description:"Read owner-scoped effective-dated professional compensation terms. Coach expected earnings and participant charges are different policies; no payment, invoice or obligation is posted. Optional workplace filter and archived terms.",
+    schema:z.object({workplaceId:uuid.optional(),includeArchived:z.boolean().default(false)}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_compensation_agreements_get",
+    description:"Read one teacher-owned professional compensation agreement by exact ID, revision, currency, scope and validity dates. Does not disclose finance credentials.",
+    schema:z.object({agreementId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_compensation_agreements_create",
+    description:"After explicit teacher approval, create one agreement for instructor earnings or one customer billing scope. Name the exact owned workplace, model, minor-unit rate, payer when charging, effective dates; ambiguous overlapping agreements are rejected. No cash or invoice is created.",
+    schema:compensationAgreementCreateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_compensation_agreements_update",
+    description:"Confirm an effective-dated rate or status amendment with exact revision and idempotency; updates cannot retroactively rewrite issued invoices or verified financial history.",
+    schema:compensationAgreementUpdateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_compensation_agreements_preview",
+    description:"Read-only deterministic expected coach compensation for verified completed canonical sessions, one group session counted once. Never claim cash received, compliance, invoice issuance or missing lessons as completed; fixed monthly agreements require full calendar months.",
+    schema:compensationPreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_workplace_context_get",
@@ -2019,6 +2051,26 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           action:"hosted-billing",
           explanation:"On hosted deployments, review the plan and choose Upgrade or Manage billing in your signed-in browser. Payment-card entry and Stripe sessions remain in secure website/provider flows.",
         }};
+      case "ccp_compensation_agreements_list": {
+        const a=args as {workplaceId?:string;includeArchived?:boolean};
+        return {data:await compensationAgreementsList(db,teacherId,a)};
+      }
+      case "ccp_compensation_agreements_get": {
+        const a=args as {agreementId:string};
+        return {data:await compensationAgreementGet(db,teacherId,a.agreementId)};
+      }
+      case "ccp_compensation_agreements_create": {
+        const a=args as Parameters<typeof compensationAgreementCreate>[2];
+        return {data:await compensationAgreementCreate(db,teacherId,a)};
+      }
+      case "ccp_compensation_agreements_update": {
+        const a=args as Parameters<typeof compensationAgreementUpdate>[2];
+        return {data:await compensationAgreementUpdate(db,teacherId,a)};
+      }
+      case "ccp_compensation_agreements_preview": {
+        const a=args as Parameters<typeof compensationAgreementPreview>[2];
+        return {data:await compensationAgreementPreview(db,teacherId,a)};
+      }
       case "ccp_workplace_context_get":
         return {data:await teacherWorkplaceContextGet(db,teacherId)};
       case "ccp_workplace_context_set": {
@@ -2663,6 +2715,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CanonicalPrivateSessionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalSlotError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof CompensationAgreementError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof WorkplaceContextError)
       return {error:{code:error.code,message:error.message}};

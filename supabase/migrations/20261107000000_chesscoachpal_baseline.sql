@@ -10993,3 +10993,86 @@ CREATE INDEX teachers_selected_workplace_idx ON public.teachers(selected_workpla
   WHERE selected_workplace_id IS NOT NULL;
 COMMENT ON COLUMN public.teachers.selected_workplace_id IS
   'Teacher UI/MCP preferred current workplace. NULL=All Workplaces. Filter only; no permission/lesson-history side effects.';
+
+-- ChessCoachPal professional finance: native owner-scoped effective-dated
+-- agreements, not inferred debt, invoices, payment receipts or payroll.
+-- One effective agreement per precise student/group/workplace/role scope.
+CREATE TABLE public.compensation_agreements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  workplace_id uuid NOT NULL,
+  student_id uuid,
+  group_id uuid,
+  billing_account_id uuid,
+  agreement_role text NOT NULL CHECK (agreement_role IN ('coach_earning','participant_charge')),
+  model text NOT NULL CHECK (model IN ('hourly','per_session','per_student','fixed_period')),
+  rate_cents bigint NOT NULL CHECK (rate_cents BETWEEN 0 AND 1000000000),
+  currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+  effective_from date NOT NULL,
+  effective_to date,
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
+  revision bigint NOT NULL DEFAULT 1 CHECK (revision >= 1),
+  last_request_id uuid,
+  last_request_hash text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(id,teacher_id),
+  FOREIGN KEY (workplace_id,teacher_id)
+    REFERENCES public.workplaces(id,teacher_id) ON DELETE RESTRICT,
+  FOREIGN KEY (student_id,teacher_id)
+    REFERENCES public.students(id,teacher_id) ON DELETE RESTRICT,
+  FOREIGN KEY (group_id,teacher_id)
+    REFERENCES public.class_groups(id,teacher_id) ON DELETE RESTRICT,
+  FOREIGN KEY (billing_account_id,teacher_id)
+    REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT,
+  CONSTRAINT compensation_effective_date_order CHECK (
+    effective_to IS NULL OR effective_to >= effective_from),
+  CONSTRAINT compensation_role_requires_payer CHECK (
+    (agreement_role='coach_earning' AND billing_account_id IS NULL)
+    OR (agreement_role='participant_charge' AND billing_account_id IS NOT NULL)),
+  CONSTRAINT compensation_scope_one_specificity CHECK (
+    student_id IS NULL OR group_id IS NULL)
+);
+CREATE INDEX compensation_agreement_scope_idx ON public.compensation_agreements
+  (teacher_id,workplace_id,agreement_role,status,effective_from,effective_to);
+CREATE INDEX compensation_agreement_payer_idx ON public.compensation_agreements
+  (teacher_id,billing_account_id) WHERE billing_account_id IS NOT NULL;
+
+-- Rows serialize by teacher and workplace on create/update so the same
+-- effective interval cannot be introduced concurrently by web and MCP.
+CREATE OR REPLACE FUNCTION public.ccp_compensation_agreement_no_overlap()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_compensation_agreement_no_overlap$
+BEGIN
+  IF NEW.status='active' THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended(
+      NEW.teacher_id::text||':compensation:'||NEW.workplace_id::text,0));
+    IF EXISTS (SELECT 1 FROM public.compensation_agreements a
+      WHERE a.teacher_id=NEW.teacher_id
+        AND a.workplace_id=NEW.workplace_id
+        AND a.agreement_role=NEW.agreement_role
+        AND a.student_id IS NOT DISTINCT FROM NEW.student_id
+        AND a.group_id IS NOT DISTINCT FROM NEW.group_id
+        AND a.id<>NEW.id AND a.status='active'
+        AND daterange(a.effective_from,a.effective_to,'[]') &&
+            daterange(NEW.effective_from,NEW.effective_to,'[]')) THEN
+      RAISE EXCEPTION 'OVERLAPPING_COMPENSATION_AGREEMENT'
+        USING ERRCODE='23505';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$ccp_compensation_agreement_no_overlap$;
+CREATE TRIGGER compensation_agreement_no_overlap
+  BEFORE INSERT OR UPDATE ON public.compensation_agreements
+  FOR EACH ROW EXECUTE FUNCTION public.ccp_compensation_agreement_no_overlap();
+
+ALTER TABLE public.compensation_agreements ENABLE ROW LEVEL SECURITY;
+CREATE POLICY compensation_agreements_teacher ON public.compensation_agreements
+  FOR ALL TO authenticated
+  USING (teacher_id=(SELECT auth.uid()))
+  WITH CHECK (teacher_id=(SELECT auth.uid()));
+GRANT SELECT,INSERT,UPDATE ON public.compensation_agreements TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.ccp_compensation_agreement_no_overlap() FROM PUBLIC,anon;
+COMMENT ON TABLE public.compensation_agreements IS
+  'Approved teacher earnings and customer-charge policies; these records do not post a financial obligation or imply that any money was paid.';
