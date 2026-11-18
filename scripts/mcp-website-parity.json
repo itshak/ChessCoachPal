@@ -162,7 +162,7 @@
         "ccp_material_links_unlink_impact",
         "ccp_material_links_unlink"
       ],
-      "explanation": "Exact source c80b85c: 38/38 website gateway actions have independently named authenticated website/delegated MCP evidence. 36 are equivalent owner-scoped MCP operations and two are narrowly approved browser-only teacher-attestation exceptions with negative bearer tests. The action-evidence audit found zero missing; 225 authenticated E2E passed and all five workflow families were green. Legacy calendar vs canonical session double writers and four outstanding historical release cases remain separate blockers. Canonical per-participant cancellation is being implemented through the existing shared session commit, website attendance.record/list and ccp_attendance_record/preview MCP actions. Notice timestamp, initiator and reason are independently checked in e2e/parity-session-completion.spec.ts; these new assertions still require CI confirmation. This is an incremental change only: legacy private-calendar attendance and the unresolved historical parity cases remain strict release blockers.",
+      "explanation": "Exact source c80b85c: 38/38 website gateway actions have independently named authenticated website/delegated MCP evidence. 36 are equivalent owner-scoped MCP operations and two are narrowly approved browser-only teacher-attestation exceptions with negative bearer tests. The action-evidence audit found zero missing; 225 authenticated E2E passed and all five workflow families were green. Legacy calendar vs canonical session double writers and four outstanding historical release cases remain separate blockers. Canonical per-participant cancellation is being implemented through the existing shared session commit, website attendance.record/list and ccp_attendance_record/preview MCP actions. Notice timestamp, initiator and reason are independently checked in e2e/parity-session-completion.spec.ts; these new assertions still require CI confirmation. This is an incremental change only: legacy private-calendar attendance and the unresolved historical parity cases remain strict release blockers. Historical attendance import dropdown reads workplaces.list via this authenticated website action; ccp_workplaces_list uses the same owner-scoped workplacesList service. Browser regression covers independent student/workplace load failures and retry in e2e/parity-historical-import.spec.ts; no new domain capability was added.",
       "evidenceTest": "e2e/parity-gateway-action-coverage.spec.ts"
     },
     {
@@ -538,7 +538,10 @@
     },
     {
       "path": "app/api/coaching/materials/lesson-use/route.ts",
-      "methods": ["POST", "PUT"],
+      "methods": [
+        "POST",
+        "PUT"
+      ],
       "kind": "teacher",
       "parity": "mcp",
       "existingTools": [
@@ -1248,7 +1251,7 @@
         "ccp_students_roster",
         "ccp_students_create_full"
       ],
-      "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes. Direct archived-on-create uses the same confirmed website/MCP SQL receipt and excludes the archived learner from active roster/quota; the candidate exercises archived creation and changed-payload replay in e2e/parity-students.spec.ts.",
+      "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes. Direct archived-on-create uses the same confirmed website/MCP SQL receipt and excludes the archived learner from active roster/quota; the candidate exercises archived creation and changed-payload replay in e2e/parity-students.spec.ts. Historical attendance import reads this explicit includeArchived paginated student roster, equivalent to MCP ccp_students_roster. Its UI now handles this read independently from workplace list errors, with authenticated browser regression in e2e/parity-historical-import.spec.ts.",
       "evidenceTest": "e2e/parity-students.spec.ts"
     },
     {

@@ -220,7 +220,7 @@ const currency = z.string().regex(/^[A-Z]{3}$/);
 const catalogue = [
   {
     name: "ccp_workplaces_list",
-    description: "List the connected teacher's workplaces. Use workplace IDs, never invent names.",
+    description: "List the connected teacher's workplaces with stable owned IDs. For historical attendance date imports, verify the workplace ID for the batch; never guess workplace names or create a workplace from an unverified source label.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
   },
   {

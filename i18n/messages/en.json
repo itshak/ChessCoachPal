@@ -1707,7 +1707,12 @@
       "ready": "ready for review",
       "cannotCommit": "cannot commit",
       "issueRow": "Row {row}: {message}"
-    }
+    },
+    "loadingChoices": "Loading students and workplaces…",
+    "workplacesLoadFailed": "Could not load workplaces. Retry to refresh the list.",
+    "studentsLoadFailed": "Could not load students. Retry to refresh the list.",
+    "noWorkplaces": "No workplaces found for this account. Create a workplace in Coaching before importing attendance.",
+    "retryChoices": "Reload students and workplaces"
   },
   "studioSettings": {
     "needBlock": "Pick at least one time block",
