@@ -376,3 +376,38 @@ test("PARITY:PARITY-contact-transfer current JSON and model-safe CSV preserve co
   expect(csv.data.csv).not.toContain(privateEmail);
   expect(csv.data.csv).not.toContain("phone");
 });
+
+test("PARITY:PARITY-legacy-family-portal-survives-explicit-student-unlink-and-delete",async({page,request})=>{
+  const call=await delegatedTool(page,request);
+  const family=await call("ccp_guardians_create",{
+    name:"Historic legacy portal "+randomUUID(),confirmed:true,
+  });
+  expect(family.error).toBeUndefined();
+  const guardianId=family.data.id as string;
+  const before=await page.request.get("/api/guardians/"+guardianId);
+  expect(before.status(),await before.text()).toBe(200);
+  const legacyToken=(await before.json()).portal_token as string;
+  expect(legacyToken).toBeTruthy();
+  const student=await call("ccp_students_create_full",{
+    name:"Explicit family link "+randomUUID(),guardianId,
+    idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(student.error).toBeUndefined();
+  expect(student.data.guardian_id).toBe(guardianId);
+  expect(student.data.createdContactId).toBeNull();
+  const studentId=student.data.id as string;
+  const profile=await page.request.get("/api/students/"+studentId);
+  expect(profile.status(),await profile.text()).toBe(200);
+  const updatedAt=(await profile.json()).updated_at as string;
+  const impact=await call("ccp_students_delete_impact",{studentId});
+  expect(impact.error).toBeUndefined();
+  expect(impact.data.canDelete).toBe(true);
+  const removed=await page.request.delete("/api/students/"+studentId,{
+    data:{confirmed:true,expectedUpdatedAt:updatedAt},
+  });
+  expect(removed.status(),await removed.text()).toBe(200);
+  expect((await removed.json()).deleted).toBe(true);
+  const preserved=await page.request.get("/api/guardians/"+guardianId);
+  expect(preserved.status(),await preserved.text()).toBe(200);
+  expect((await preserved.json()).portal_token).toBe(legacyToken);
+});
