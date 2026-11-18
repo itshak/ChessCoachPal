@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "baseline": "20261107000000_chesscoachpal_baseline.sql",
+  "baselineSha256": "52eec118a583d536175d393dc1aebaa726dd26c6eff4c4a96c663073ea6aabde",
+  "historicalAllowedSequences": [
+    [],
+    [
+      "20261117000000_live_historical_lifecycle_extension.sql"
+    ],
+    [
+      "20261117000000_live_historical_lifecycle_extension.sql",
+      "20261117190000_mcp_workflow_composition.sql"
+    ],
+    [
+      "20261117000000_live_historical_lifecycle_extension.sql",
+      "20261117231554_family_communication_locale.sql"
+    ],
+    [
+      "20261117000000_live_historical_lifecycle_extension.sql",
+      "20261117190000_mcp_workflow_composition.sql",
+      "20261117231554_family_communication_locale.sql"
+    ],
+    [
+      "20261117000000_live_historical_lifecycle_extension.sql",
+      "20261117190000_mcp_workflow_composition.sql",
+      "20261117231554_family_communication_locale.sql",
+      "20261118000000_multilingual_teacher_and_family_locale.sql"
+    ]
+  ],
+  "transitions": [
+    {
+      "file": "20261117000000_live_historical_lifecycle_extension.sql",
+      "fromRevision": "20261107000000",
+      "purpose": "historical lifecycle and attendance RPCs",
+      "risk": "additive",
+      "requiresVerifiedRestore": true,
+      "baselineObjects": [
+        "ccp_student_bulk_lifecycle",
+        "ccp_student_bulk_lifecycle_replay",
+        "ccp_historical_attendance_evidence",
+        "ccp_historical_import_stages",
+        "ccp_historical_attendance_commit",
+        "ccp_historical_attendance_replay",
+        "ccp_historical_attendance_summary"
+      ],
+      "sha256": "890d90fe927f65e0b02ec0fa8bd04a5745353d775e97c78800153724a47cbb89"
+    },
+    {
+      "file": "20261117190000_mcp_workflow_composition.sql",
+      "fromRevision": "20261117000000",
+      "purpose": "atomic group-lesson and material workflows",
+      "risk": "additive",
+      "requiresVerifiedRestore": true,
+      "baselineObjects": [
+        "ccp_teacher_completed_group_lesson_create",
+        "ccp_teacher_lesson_material_use_commit"
+      ],
+      "sha256": "2ed8d75400a54de9b6161d07e0e0ba6c0ea8a3cb16d8caefbe0e8ae865919d7a"
+    },
+    {
+      "file": "20261117231554_family_communication_locale.sql",
+      "fromRevision": "20261117000000",
+      "purpose": "guardian preferred locale and owner-scoped save",
+      "risk": "additive",
+      "requiresVerifiedRestore": true,
+      "baselineObjects": [
+        "guardians.preferred_locale",
+        "ccp_guardian_save"
+      ],
+      "sha256": "0681bc3bffd239d61029cd99dcc3c266c0fa457cb13f2f7698c899c83e8fd46b"
+    },
+    {
+      "file": "20261118000000_multilingual_teacher_and_family_locale.sql",
+      "fromRevision": "20261117231554",
+      "purpose": "teacher preferred locale and scoped grant",
+      "risk": "additive",
+      "requiresVerifiedRestore": true,
+      "baselineObjects": [
+        "teachers.preferred_locale"
+      ],
+      "sha256": "9203d73f7f3fc8e79dba36576979ebdd181c2669de2aa2c2d910d127e51dae39"
+    }
+  ],
+  "reviewPolicy": "Update baseline and manifest hashes, review RLS/grants/data map, run isolated synthetic convergence and restore before authorizing production"
+}

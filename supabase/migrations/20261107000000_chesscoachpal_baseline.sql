@@ -1,8 +1,8 @@
 -- ChessCoachPal: canonical fresh-install database schema.
--- One installation snapshot, no upgrade chain, compatibility mapping, or
--- historical development-database conversion. Reset disposable prelaunch
--- databases explicitly after changing this schema; never erase actual user
--- data without the operator's informed authorization.
+-- Authoritative schema for new installs. Existing populated installations use
+-- separate, reviewed, forward-only transitions governed by ADR-0015 and
+-- scripts/schema-transition-manifest.json. Never run this baseline against
+-- a populated instance; never reset real teacher data.
 
 -- CHESSCOACHPAL v0.x CANONICAL FRESH-ONLY SCHEMA
 -- Generated from the disposable Supabase stack at Milestone 4.

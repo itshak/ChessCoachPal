@@ -6,6 +6,7 @@ ChessCoachPal is **MCP/Plugin-first**; the website is a secondary viewer/editor 
 - [Accepted architecture and active OpenSpec proposals](openspec/changes/README.md) — product decisions are accepted, implementation is pending; follow dependencies and deferrals.
 - [MCP and Supabase failure-mode playbook](docs/MCP_SUPABASE_RELIABILITY_PLAYBOOK.md) — portable investigation, correct/incorrect patterns, security advisors, CI acceptance.
 - [Pre-v1 schema policy](docs/adr/0001-pre1-breaking-changes.md) and [baseline-first live transition policy](docs/adr/0015-baseline-first-and-one-time-live-transitions.md) — **always update the current canonical baseline**; when a live database has real records, also provide an explicit reviewed, one-time forward-only transition that converges to the same target schema. No CogNote/pre-v1 API compatibility bridge and no destructive reset without operator authorization, verified backup/restore and reconciliation.
+- [Live-transition operator runbook](docs/SCHEMA_TRANSITION_RUNBOOK.md) — manifest integrity, synthetic convergence and required private human deployment approval.
 - [Live MCP contracts](docs/AI_CONNECTORS.md) and [parity registry](scripts/mcp-website-parity.json) — code/tool catalogue, not old proposal tables.
 - [OpenSpec parity requirements](openspec/specs/teacher-mcp-parity/spec.md) and [security requirements](openspec/specs/chess-only-security/spec.md).
 
