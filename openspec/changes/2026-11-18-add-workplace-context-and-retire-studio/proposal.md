@@ -1,5 +1,8 @@
 # Change: persistent workplace context and removal of inherited Studio abstraction
 
+> **ADR-0017 final-cutover override (2026-11-18):** No backward compatibility or legacy dual-writes before v1. The final deliverable uses the clean canonical baseline and current website/MCP contracts. All planned features deploy with **one final** live migration **or** verified clean rebuild/reimport at the operator's choice; no per-feature production migration. Existing data handling is a deliberate one-time import/mapping decision, not an obligation to retain obsolete Family/Studio/guardian APIs or old portal tokens. Security, tenant isolation and explicit new grants remain required.
+
+
 **Status:** Proposed implementation; accepted architectural direction in ADR-0016.
 **Priority:** P0 functional teacher workflow.
 **Depends on:** 2026-11-18-enforce-baseline-live-transition-contract.

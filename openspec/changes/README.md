@@ -7,18 +7,19 @@ and archived. **OpenSpec 1A is IN PROGRESS in draft
 archived.** The branch adds tenant-scoped contacts, independent student-contact
 links and billing-account records, browser/MCP routes and initial E2E, source
 inventory parity, contact-first student creation, and schema-aware transfer /
-backup restore with reviewed **synthetic** migration checks. Historic legacy
-family/guardian portal paths, issued invoice ownership, event notifications and
-full payer migration are **not yet cut over**; deployed-database review,
-operator-approved restored-copy rehearsal and complete E2E acceptance remain
-release blockers. The **other six** domain proposals are still PLANNED and not
-implemented. The separately active [multilingual-support
+backup restore with reviewed **synthetic** migration checks. Old Family/guardian portal paths and issued-invoice/notification consumers
+remain **unfinished implementation**, but they are to be **replaced, not kept as
+compatibility layers**. Existing real records can be migrated once at the final
+cutover or deliberately reimported from a verified backup (ADR-0017). The other six foundational domain proposals plus the recently added
+professional-workflow and design-laboratory proposals are PLANNED, not implemented. The separately active [multilingual-support
 change](2026-11-17-introduce-multilingual-support/proposal.md) is not complete.
 Do not merge partial 1A or archive any unfinished proposal. No source change,
 OpenSpec archive or synthetic database test authorizes a production migration,
 release, paid feature, or live-user data operation.
 
 Each remaining proposal below contains four required artifacts: **proposal.md** (scope, motivation, boundaries), **design.md** (canonical schema/service/rollout decisions), **tasks.md** (unchecked verification checklist), and **specs/<capability>/spec.md** (SHALL requirements and WHEN/THEN acceptance cases).
+
+**2026-11-18 policy correction — binding [ADR-0017](../../docs/adr/0017-pre-v1-single-final-cutover-no-compatibility.md):** No backward compatibility before v1.0.0. All features target one final baseline; no family/studio/guardian compatibility endpoints, views, dual writes or old portal tokens in the accepted app. Development may use isolated fixtures and staged branches, but the real database gets **one final source-to-target migration OR one clean rebuild with deliberate import**, not incremental feature migrations. The owner explicitly permits the rebuild/reimport option. No real reset or migration is authorized by source approval; backup and a target-specific operator gate remain mandatory. New scoped portal grants are never inferred from old family access.
 
 ## Delivered foundation (P0)
 
@@ -40,11 +41,11 @@ Real deployment requires a separate, operator-approved data-preserving rollout.
 | 2C | [Scoped Student & Contact Portal](2026-11-18-scope-student-contact-portal/proposal.md) | P1 | Requires contacts; coordinate workplace filtering and finance access, never widen old token |
 | 2D | [Daily coaching action queue, briefing and lesson closing](2026-11-18-improve-daily-coach-workflows/proposal.md) | P1 | Requires workplace context; independent of elaborate finance and portal |
 
-**Execution order is a dependency plan, not permission to apply all changes in one merge or one live migration.** Prefer independently testable vertical slices. Schema-sensitive changes may share a carefully reviewed one-time deployed transition if introduced together; they must not create competing migrations, partial hard-coded guardian references or divergent fresh-install schema.
+**Execution order is a dependency plan.** Implement independently tested vertical slices, but integrate them into **one final canonical schema and one coordinated production cutover**. A fresh rebuild/reimport is an acceptable alternative to a complex historical SQL transformation. Do not deploy intermediate transition files, keep old guardian endpoints/dual-writers as compatibility, or leave a divergent fresh-install schema.
 
 ## Product decisions (accepted)
 
-1. **Chess-first, not Studio/Family-first.** Teacher/business settings and optional contacts replace studio and household as primary concepts. Existing guardian links, emails, invoices, portal tokens and events must be preserved/transitioned rather than deleted.
+1. **Chess-first, not Studio/Family-first.** Teacher/business settings and optional contacts replace studio and household as primary concepts. The **new** contacts, communications, billing and events features must work; old schema/routes/tokens are retired. Before a final cutover, the operator decides which existing data to migrate or explicitly reimport; prior portal tokens never grant new access.
 2. **Students may have multiple contacts and multiple workplaces.** Contacts may link to multiple students; zero contacts is valid. Contact/guardian relationship ≠ right to see private notes ≠ who pays.
 3. **Groups are teaching rosters within workplaces.** Free includes groups and an implicit Personal Teaching workplace. Additional named workplaces and multi-workplace commercial entitlements are candidate Pro value, **not already implemented or priced**. Archived students retain history and are not counted against active student quotas.
 4. **Financial obligations are lesson/agreement scoped.** School can pay for group teaching, parent for private teaching and federation for sponsorship. Earnings, invoice/receivable and actual payment are distinct. One instructor group session counts once for time-based earnings.
@@ -62,16 +63,16 @@ Real deployment requires a separate, operator-approved data-preserving rollout.
 
 ## Non-negotiable delivery gates
 
-Follow [ADR-0015](../../docs/adr/0015-baseline-first-and-one-time-live-transitions.md) and [ADR-0016](../../docs/adr/0016-chess-coaching-domain-boundaries.md). Every schema implementation updates **supabase/migrations/20261107000000_chesscoachpal_baseline.sql** and, for populated live beta, supplies one reviewed forward-only, data-preserving transition. The manifest and synthetic acceptance suite are specified in [the transition runbook](../../docs/SCHEMA_TRANSITION_RUNBOOK.md). First test both on clean/restored isolated Supabase with counts, RLS/grants, identity/invoice/portal relationships and backup/restore; never reset real data. Update the migration allowlist and CI.
+Follow controlling [ADR-0017](../../docs/adr/0017-pre-v1-single-final-cutover-no-compatibility.md) and [ADR-0016](../../docs/adr/0016-chess-coaching-domain-boundaries.md). Every schema implementation updates **supabase/migrations/20261107000000_chesscoachpal_baseline.sql**. Final acceptance specifies **one** direct transition from the observed live revision to that target **or** a clean rebuild/reimport, tested against isolated data with RLS/grants, counts, chosen invoices/history, explicit new portal grants and verified recovery. Interim synthetic transition files in the current branch are not a real-deployment upgrade plan. No production database alteration follows automatically from implementation or CI.
 
 Teacher-facing website and MCP operations must share domain services, typed schemas, exact field propagation, owned RLS, retries/idempotency, independent persistence read-back, parity registry and authenticated browser↔delegated MCP E2E in the same implementation. Portal guest operations require independent grant/security tests; secure credential handoff is not a license to omit teacher MCP grant management. Required CI/typecheck, strict parity, security, Compose, backup/restore and merged-main evidence must pass before accepting/archiving any implementation. Actual ChatGPT/Claude client checks are separate prepublication gates.
 
 ## Operator questions before live rollout (implementation, not reopened product decisions)
 
-- Identify actual deployed revision, live Supabase migration history and current number of affected students, guardians, invoices, portal-token holders and workplaces **privately**.
+- Identify the actual deployed source revision and selected export/reimport data categories (students, lessons, payments, contacts, etc.) **privately**; a source-to-final migration is optional, not mandatory.
 - Verify a real backup and recovery into an isolated environment with no real child data in GitHub artifacts.
 - Review contact-to-payer mappings, secondary guardians, incomplete national IDs, externally shared portal tokens and existing issued invoices for ambiguous associations.
 - Confirm terms and provenance of Israeli/FIDE external data and parental consent for provider lookups.
-- Review scope/notifications before disabling or reissuing any actively used portal link, and existing-beta entitlement communications before applying any future Pro gate.
+- All existing broad household tokens become invalid at final cutover; issue replacement narrowly scoped links only after teacher approval. Review notification needs and existing-beta entitlement communications before applying Pro gates.
 
 These operational findings should be captured in **private** operator records and relevant tasks; do not commit personal records or confidential strategy/price hypotheses.

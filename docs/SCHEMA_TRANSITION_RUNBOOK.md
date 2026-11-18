@@ -1,3 +1,5 @@
+> **Updated 2026-11-18 — ADR-0017 governs future changes:** The procedure below records historical per-feature migration and synthetic convergence work. **Do not execute that cumulative migration list on the real pre-v1 deployment** as a feature-by-feature upgrade plan. After implementing the full approved target, use one approved direct source-to-final migration, **or** a verified clean baseline and deliberate data export/reimport. Old tokens are revoked and new portal grants require explicit authorization. The real database has not been changed by this documentation update.
+
 # ADR-0015 — Canonical baseline and live-transition operator runbook
 
 **Policy:** The baseline in `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`

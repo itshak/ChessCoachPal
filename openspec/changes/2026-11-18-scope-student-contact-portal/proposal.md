@@ -1,5 +1,8 @@
 # Change: replace guardian-token Family Portal with optional scoped Student & Contact Portal
 
+> **ADR-0017 final-cutover override (2026-11-18):** No backward compatibility or legacy dual-writes before v1. The final deliverable uses the clean canonical baseline and current website/MCP contracts. All planned features deploy with **one final** live migration **or** verified clean rebuild/reimport at the operator's choice; no per-feature production migration. Existing data handling is a deliberate one-time import/mapping decision, not an obligation to retain obsolete Family/Studio/guardian APIs or old portal tokens. Security, tenant isolation and explicit new grants remain required.
+
+
 **Status:** Proposed implementation; approved direction only; public access changes unimplemented.
 **Priority:** P1 privacy/security cutover alongside contacts.
 **Depends on:** 2026-11-18-replace-families-with-contacts and baseline-first transition; coordinate with workplace context and finance agreements.

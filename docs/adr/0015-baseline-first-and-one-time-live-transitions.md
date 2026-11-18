@@ -1,9 +1,11 @@
 # ADR-0015: Baseline-first schema evolution with one-time live data transitions
 
 - **Date:** 2026-11-18
-- **Status:** Accepted — binding
+- **Status:** Historical implementation record; future production cutover cadence superseded by [ADR-0017](0017-pre-v1-single-final-cutover-no-compatibility.md)
 - **Supersedes:** The absolute prohibition on pre-v1 migration scripts in ADR-0001 and the "exactly one exceptional migration" generalization in ADR-0013; does **not** authorize resetting existing databases.
 - **Related:** ADR-0001, ADR-0003, ADR-0005, ADR-0007, ADR-0013
+
+> **Current policy:** ADR-0017 controls all remaining pre-v1 OpenSpec work. Develop against a consolidated baseline; do not deploy individual feature migrations. One final source-to-target transformation **or** a verified clean rebuild/reimport is permitted after separate operator authorization. Historical transitions and CI evidence in this document are not compatibility promises.
 
 ## Context
 

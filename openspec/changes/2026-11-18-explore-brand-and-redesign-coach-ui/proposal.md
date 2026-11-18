@@ -1,5 +1,8 @@
 # Change: evaluate and redesign ChessCoachPal's brand and professional coach interface
 
+> **ADR-0017 final-cutover override (2026-11-18):** No backward compatibility or legacy dual-writes before v1. The final deliverable uses the clean canonical baseline and current website/MCP contracts. All planned features deploy with **one final** live migration **or** verified clean rebuild/reimport at the operator's choice; no per-feature production migration. Existing data handling is a deliberate one-time import/mapping decision, not an obligation to retain obsolete Family/Studio/guardian APIs or old portal tokens. Security, tenant isolation and explicit new grants remain required.
+
+
 **Status:** Proposed; discovery and prototype approval required before production redesign.
 **Priority:** P1, with Stage 1 design laboratory first.
 **Dependencies:** Coordinate with 2026-11-18-improve-daily-coach-workflows, 2026-11-18-add-workplace-context-and-retire-studio, 2026-11-18-extend-professional-coach-workflows and contacts/compensation proposals. ADR-0003 MCP/web parity is binding.
