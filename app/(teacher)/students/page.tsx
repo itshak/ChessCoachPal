@@ -5,6 +5,8 @@ import { Card } from "@/components/ui/card";
 import { AddStudentForm } from "@/components/teacher/AddStudentForm";
 import { HostedLimitBanner } from "@/components/teacher/HostedLimitBanner";
 import { ageFromBirthdate } from "@/lib/students";
+import {teacherWorkplaceContextGet} from "@/lib/server/teacher-workplace-context";
+import {workplaceCurrentStudentIds} from "@/lib/server/workplace-student-scope";
 import { getDeploymentMode, resolveEffectivePlan } from "@/lib/entitlements";
 import {
   countActiveStudents,
@@ -40,6 +42,9 @@ export default async function StudentsPage({
 
   const params = await searchParams;
   const showArchived = params.show === "archived";
+  const context=await teacherWorkplaceContextGet(supabase,user.id);
+  const currentStudentIds=context.selectedWorkplaceId?
+    await workplaceCurrentStudentIds(supabase,user.id,context.selectedWorkplaceId):null;
 
   // The default PostgREST response caps at 1,000 rows. Both the website
   // and MCP must show the complete active/archived roster, not the first
@@ -59,11 +64,12 @@ export default async function StudentsPage({
     const { data, error } = await query.range(offset, offset + pageSize - 1);
     if (error) { rosterError = t("rosterLoadFailed"); break; }
     const chunk = (data ?? []) as unknown as StudentListRow[];
-    if (students.length + chunk.length > maxRows) {
+    if (offset + chunk.length > maxRows) {
       rosterError = t("rosterTooLarge");
       break;
     }
-    students.push(...chunk);
+    students.push(...(currentStudentIds?
+      chunk.filter(student=>currentStudentIds.has(student.id)):chunk));
     if (chunk.length < pageSize) break;
   }
   // Contacts are managed independently on each student profile. A student

@@ -41,6 +41,25 @@ test("PARITY:PARITY-global workplace context persists across browser and MCP wit
     });
     expect(a.error).toBeUndefined();expect(b.error).toBeUndefined();
     const aId=a.data.entityId as string,bId=b.data.entityId as string;
+    // The global selection must actually scope daily teacher screens. A
+    // learner can be enrolled in both places without duplicating their ID.
+    const firstStudentName="Scoped learner A "+randomUUID();
+    const secondStudentName="Scoped learner B "+randomUUID();
+    const learnerA=await call("ccp_students_create",{
+      name:firstStudentName,idempotencyKey:randomUUID(),
+    });
+    const learnerB=await call("ccp_students_create",{
+      name:secondStudentName,idempotencyKey:randomUUID(),
+    });
+    expect(learnerA.error).toBeUndefined();expect(learnerB.error).toBeUndefined();
+    const learnerAId=learnerA.data.entityId as string;
+    const learnerBId=learnerB.data.entityId as string;
+    for(const [workplaceId,studentId] of [[aId,learnerAId],[bId,learnerBId]]){
+      const enrolled=await call("ccp_workplaces_enroll",{
+        workplaceId,studentId,idempotencyKey:randomUUID(),
+      });
+      expect(enrolled.error).toBeUndefined();
+    }
     const foreign=await call("ccp_workplace_context_set",{
       selectedWorkplaceId:randomUUID(),expectedSelectedWorkplaceId:null,confirmed:true,
     });
@@ -50,6 +69,12 @@ test("PARITY:PARITY-global workplace context persists across browser and MCP wit
     });
     expect(toolSet.error).toBeUndefined();
     expect(toolSet.data).toMatchObject({selectedWorkplaceId:aId,replayed:false});
+    await page.goto("/students");
+    await expect(page.getByText(firstStudentName,{exact:true})).toBeVisible();
+    await expect(page.getByText(secondStudentName,{exact:true})).toHaveCount(0);
+    await page.goto("/dashboard");
+    await expect(page.getByText(firstStudentName,{exact:true})).toBeVisible();
+    await expect(page.getByText(secondStudentName,{exact:true})).toHaveCount(0);
     const siteA=await page.request.get("/api/teacher/workplace-context");
     expect((await siteA.json()).selectedWorkplaceId).toBe(aId);
     const retry=await call("ccp_workplace_context_set",{
@@ -68,6 +93,9 @@ test("PARITY:PARITY-global workplace context persists across browser and MCP wit
     });
     expect(updated.status(),await updated.text()).toBe(200);
     expect((await updated.json()).selectedWorkplaceId).toBe(bId);
+    await page.goto("/students");
+    await expect(page.getByText(secondStudentName,{exact:true})).toBeVisible();
+    await expect(page.getByText(firstStudentName,{exact:true})).toHaveCount(0);
     const toolRead=await call("ccp_workplace_context_get",{});
     expect(toolRead.error).toBeUndefined();
     expect(toolRead.data.selectedWorkplaceId).toBe(bId);
@@ -87,6 +115,9 @@ test("PARITY:PARITY-global workplace context persists across browser and MCP wit
       const response=await page.request.get("/api/teacher/workplace-context");
       return (await response.json()).selectedWorkplaceId;
     }).toBeNull();
+    await page.goto("/students");
+    await expect(page.getByText(firstStudentName,{exact:true})).toBeVisible();
+    await expect(page.getByText(secondStudentName,{exact:true})).toBeVisible();
     const cleared=await call("ccp_workplace_context_get",{});
     expect(cleared.data.selectedWorkplaceId).toBeNull();
 
