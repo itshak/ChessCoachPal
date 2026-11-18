@@ -29,11 +29,10 @@ export default async function NewEventPage({
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: students } = await supabase
-    .from("students")
-    .select("id, name")
-    .eq("teacher_id", user.id)
-    .order("name");
+  const [{data:students},{data:workplaces}] = await Promise.all([
+    supabase.from("students").select("id,name").eq("teacher_id",user.id).order("name"),
+    supabase.from("workplaces").select("id,name").eq("teacher_id",user.id).order("name"),
+  ]);
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -51,6 +50,7 @@ export default async function NewEventPage({
       </div>
       <NewEventForm
         students={students ?? []}
+        workplaces={workplaces ?? []}
         initialStartsAt={defaultStartsAt(params.date)}
       />
     </div>

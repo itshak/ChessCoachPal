@@ -1523,6 +1523,34 @@
       "parity": "browser-only",
       "existingTools": [],
       "explanation": "Sensitive browser-only secret issuance with same-origin CSRF, teacher authentication and explicit revision/confirmation. MCP can create/revoke metadata but never see token, digest or credential URL."
+    },
+    {
+      "path": "app/api/events/[id]/portal-invitations/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_events_portal_invitations_list",
+        "ccp_events_portal_invitations_create"
+      ],
+      "explanation": "Explicit owner/workplace/student/event/grant invitation service; no inferred family grants or emails. Authenticated browser and delegated MCP parity test verifies data readback and revoked access.",
+      "evidenceTest": "e2e/parity-scoped-event-invitations.spec.ts"
+    },
+    {
+      "path": "app/api/events/[id]/portal-invitations/[inviteId]/route.ts",
+      "methods": [
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_events_portal_invitations_revoke"
+      ],
+      "explanation": "Explicit single-invite revocation with revision/idempotency through same owner-scoped service; never reveal bearer secret.",
+      "evidenceTest": "e2e/parity-scoped-event-invitations.spec.ts"
     }
   ],
   "teacherPages": [
@@ -1582,6 +1610,7 @@
     "components/teacher/StudentInfoCard.tsx",
     "components/teacher/StudentLessonNotes.tsx",
     "components/teacher/StudentNotesEditor.tsx",
+    "components/teacher/StudentPortalSharingPanel.tsx",
     "components/teacher/StudentRatingHistoryPanel.tsx",
     "components/teacher/StudentTrainingPlansPanel.tsx",
     "components/teacher/StudyChapterEvidencePanel.tsx",
@@ -1597,6 +1626,7 @@
     "components/teacher/billing/PaymentSettingsButton.tsx",
     "components/teacher/events/EventDetailClient.tsx",
     "components/teacher/events/EventForm.tsx",
+    "components/teacher/events/EventPortalInvitationPanel.tsx",
     "components/teacher/events/NewEventForm.tsx",
     "components/teacher/schedule/CanonicalMakeupPanel.tsx",
     "components/teacher/schedule/CanonicalScheduleBoard.tsx",

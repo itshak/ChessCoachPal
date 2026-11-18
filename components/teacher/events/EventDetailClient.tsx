@@ -6,11 +6,13 @@ import { useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import {EventPortalInvitationPanel} from "@/components/teacher/events/EventPortalInvitationPanel";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import {
   EventForm,
   type EventFormStudent,
+  type EventFormWorkplace,
   type EventFormValues,
 } from "@/components/teacher/events/EventForm";
 import {
@@ -30,6 +32,8 @@ export function EventDetailClient({
   endsAt,
   sendReminder,
   reminderSentAt,
+  workplaceId,
+  workplaces,
   students,
   allStudents,
   rsvps,
@@ -42,6 +46,8 @@ export function EventDetailClient({
   endsAt: string | null;
   sendReminder: boolean;
   reminderSentAt: string | null;
+  workplaceId:string|null;
+  workplaces:EventFormWorkplace[];
   students: {
     studentId: string;
     name: string;
@@ -72,6 +78,7 @@ export function EventDetailClient({
     location,
     description,
     sendReminder,
+    workplaceId,
     studentIds: students.map((s) => s.studentId),
     repertoireByStudent: Object.fromEntries(
       students.map((s) => [s.studentId, s.repertoire])
@@ -91,6 +98,7 @@ export function EventDetailClient({
           ? fromDatetimeLocalValue(values.endsAt)
           : null,
         sendReminder: values.sendReminder,
+        workplaceId:values.workplaceId,
         studentIds: values.studentIds,
         repertoireByStudent: values.repertoireByStudent,
       }),
@@ -177,12 +185,16 @@ export function EventDetailClient({
         <EventForm
           key={`${eventId}-${startsAt}-${sendReminder}-${reminderSentAt ?? ""}-${students.map((s) => s.studentId).join(",")}`}
           students={allStudents}
+          workplaces={workplaces}
           initial={initial}
           submitLabel={t("saveChanges")}
           onSubmit={handleSave}
           reminderSentAt={reminderSentAt}
         />
       </Card>
+
+      <EventPortalInvitationPanel eventId={eventId} workplaceId={workplaceId}
+        studentIds={students.map(s=>s.studentId)}/>
 
       <Card>
         <h2 className="font-semibold mb-3">{t("rsvps")}</h2>

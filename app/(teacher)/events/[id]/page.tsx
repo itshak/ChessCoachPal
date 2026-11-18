@@ -25,12 +25,12 @@ export default async function EventDetailPage({
   if (!user) return null;
   const t=await getTranslations("eventPage");
 
-  const [{ data: event }, { data: allStudents }] = await Promise.all([
+  const [{ data: event }, { data: allStudents }, {data:workplaces}] = await Promise.all([
     supabase
       .from("events")
       .select(
         `
-        id, title, description, location, starts_at, ends_at,
+        id, title, description, location, workplace_id, starts_at, ends_at,
         send_reminder, reminder_sent_at,
         event_students (
           student_id, repertoire, sort_order,
@@ -50,6 +50,7 @@ export default async function EventDetailPage({
       .select("id, name")
       .eq("teacher_id", user.id)
       .order("name"),
+    supabase.from("workplaces").select("id,name").eq("teacher_id",user.id).order("name"),
   ]);
 
   if (!event) notFound();
@@ -113,6 +114,8 @@ export default async function EventDetailPage({
           endsAt={event.ends_at}
           sendReminder={event.send_reminder}
           reminderSentAt={event.reminder_sent_at}
+          workplaceId={event.workplace_id}
+          workplaces={workplaces??[]}
           students={students}
           allStudents={allStudents ?? []}
           rsvps={rsvps}

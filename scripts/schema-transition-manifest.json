@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "815655ae9dd042ef3f1643c45a53dd1bba481a1d074d79aa96020ebfb10568c9",
+  "baselineSha256": "f5f0003a10934d866fb7868733ea980446db60efbeaf6c5f7f124d5fe8daf1dc",
   "historicalAllowedSequences": [
     [],
     [

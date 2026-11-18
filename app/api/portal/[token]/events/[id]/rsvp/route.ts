@@ -1,117 +1,42 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/server";
-import { getPolicy } from "@/lib/server/scheduling";
-import { createTeacherNotification } from "@/lib/server/notifications";
-import { familyDisplayName } from "@/lib/guardians";
-import { requestOrigin } from "@/lib/server/http";
-import type { RsvpStatus } from "@/lib/supabase/types";
-
-const RESPONDABLE: ReadonlySet<string> = new Set(["yes", "no", "maybe"]);
-
-/**
- * Family portal: RSVP to an invited studio event.
- */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ token: string; id: string }> }
-) {
-  const { token, id: eventId } = await params;
-  const supabase = createServiceClient();
-
-  const { data: guardian } = await supabase
-    .from("guardians")
-    .select("id, name, family_name, teacher_id")
-    .eq("portal_token", token)
-    .single();
-
-  if (!guardian) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+import {NextRequest,NextResponse} from "next/server";
+import {z} from "zod";
+import {createServiceClient} from "@/lib/supabase/server";
+import {rejectIfTokenLookupsBlocked,recordTokenLookupFailure}
+  from "@/lib/server/token-guard";
+import {portalAuthorizeToken} from "@/lib/server/portal-grants-service";
+export const dynamic="force-dynamic";
+const schema=z.object({
+  status:z.enum(["yes","no","maybe"]),
+  partySize:z.number().int().min(1).max(99).nullable().default(null),
+  note:z.string().max(1000).default(""),
+}).strict();
+const headers={"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"};
+/** Guest can RSVP only to an explicit, future, workplace-scoped invitation. */
+export async function POST(req:NextRequest,{params}:{params:Promise<{token:string;id:string}>}){
+  const blocked=rejectIfTokenLookupsBlocked(req);
+  if(blocked)return blocked;
+  const {token,id}=await params;
+  const parsed=schema.safeParse(await req.json().catch(()=>null));
+  if(!parsed.success)return NextResponse.json({error:"VALIDATION_ERROR"},{status:400,headers});
+  const db=createServiceClient();
+  const grant=await portalAuthorizeToken(db,token);
+  if(!grant||!grant.permissions.has("event_rsvp")){
+    recordTokenLookupFailure(req);
+    return NextResponse.json({error:"NOT_FOUND"},{status:404,headers});
   }
-
-  const { data: event } = await supabase
-    .from("events")
-    .select("id, title, teacher_id")
-    .eq("id", eventId)
-    .eq("teacher_id", guardian.teacher_id)
-    .single();
-
-  if (!event) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  const { data: existingRsvp } = await supabase
-    .from("event_rsvps")
-    .select("id")
-    .eq("event_id", eventId)
-    .eq("guardian_id", guardian.id)
-    .maybeSingle();
-
-  if (!existingRsvp) {
-    return NextResponse.json(
-      { error: "Your family is not invited to this event" },
-      { status: 403 }
-    );
-  }
-
-  const body = await req.json().catch(() => ({}));
-  const status = typeof body.status === "string" ? body.status : "";
-  if (!RESPONDABLE.has(status)) {
-    return NextResponse.json(
-      { error: "status must be yes, no, or maybe" },
-      { status: 400 }
-    );
-  }
-
-  let partySize: number | null = null;
-  if (body.partySize !== undefined && body.partySize !== null && body.partySize !== "") {
-    const n = Number(body.partySize);
-    if (!Number.isInteger(n) || n < 1 || n > 99) {
-      return NextResponse.json(
-        { error: "partySize must be a whole number between 1 and 99" },
-        { status: 400 }
-      );
-    }
-    partySize = n;
-  }
-
-  const note =
-    typeof body.note === "string" ? body.note.trim().slice(0, 1000) : "";
-  const respondedAt = new Date().toISOString();
-
-  const { error } = await supabase
-    .from("event_rsvps")
-    .update({
-      status: status as Exclude<RsvpStatus, "pending">,
-      party_size: partySize,
-      note,
-      responded_at: respondedAt,
-    })
-    .eq("id", existingRsvp.id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  const policy = await getPolicy(supabase, guardian.teacher_id);
-  const family = familyDisplayName(guardian);
-  const statusLabel =
-    status === "yes" ? "Yes" : status === "no" ? "No" : "Maybe";
-
-  await createTeacherNotification(supabase, {
-    teacherId: guardian.teacher_id,
-    type: "event_rsvp",
-    presentation:{kind:"event_rsvp",family,eventTitle:event.title,status,partySize,note},
-    title: `${family} RSVP’d ${statusLabel} to ${event.title}`,
-    body: [
-      partySize != null ? `Party size: ${partySize}` : null,
-      note ? `Note: ${note}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-    href: `/events/${eventId}`,
-    origin: requestOrigin(req),
-    policy,
+  const {data,error}=await db.rpc("ccp_scoped_portal_rsvp",{
+    p_portal_token:token,p_event_id:id,p_status:parsed.data.status,
+    p_party_size:parsed.data.partySize,p_note:parsed.data.note.trim(),
   });
-
-  return NextResponse.json({ ok: true });
+  if(error){
+    if(error.code==="42501"||error.message.includes("PORTAL_NOT_FOUND")){
+      recordTokenLookupFailure(req);
+      return NextResponse.json({error:"NOT_FOUND"},{status:404,headers});
+    }
+    if(error.code==="22023"||error.message.includes("PORTAL_INVALID_RSVP"))
+      return NextResponse.json({error:"VALIDATION_ERROR"},{status:400,headers});
+    return NextResponse.json({error:"RSVP_UNAVAILABLE"},{status:503,headers});
+  }
+  return NextResponse.json({ok:!!data?.ok,replayed:!!data?.replayed},
+    {headers});
 }

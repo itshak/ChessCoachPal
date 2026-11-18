@@ -119,6 +119,9 @@ import {portalGrantCreateSchema,portalGrantRevokeSchema} from "@/lib/server/port
 import {teacherPortalGrantsList,teacherPortalGrantGet,
  teacherPortalGrantCreate,teacherPortalGrantRevoke,PortalGrantError}
  from "@/lib/server/portal-grants-service";
+import {portalEventInviteCreateSchema,portalEventInviteRevokeSchema,
+  teacherPortalEventInvitesList,teacherPortalEventInviteCreate,
+  teacherPortalEventInviteRevoke} from "@/lib/server/portal-event-invitations";
 import { guardianCreateSchema, guardianUpdateSchema } from "@/lib/server/api-schemas";
 import { guardiansList, guardianDetail, guardianCreate, guardianUpdate,
  guardianDeleteImpact, guardianDelete, guardianRotatePortalToken, safeGuardian,
@@ -596,6 +599,22 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_events_portal_invitations_list",
+    description:"List manually approved contact/student/workplace event invitations and response statuses for an owned event. Never return guest secret URLs or private RSVP notes.",
+    schema:z.object({eventId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_events_portal_invitations_create",
+    description:"Invite one explicitly shared portal contact to a workplace-scoped future event. The student must be in the event roster, the grant must have event_rsvp permission, and teacher confirmation is required. Does NOT send an email.",
+    schema:portalEventInviteCreateSchema.extend({eventId:uuid}).strict(),scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_events_portal_invitations_revoke",
+    description:"Revoke one specific event invitation without changing the event or other grant recipients. Exact revision, idempotency and teacher confirmation required.",
+    schema:portalEventInviteRevokeSchema.extend({eventId:uuid,inviteId:uuid}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_reports_student_progress",
     description:"Read factual teacher-attested student progress: 1–10 strength, optional chess platform ratings, latest skill assessments with assessment counts, and full non-voided material evidence coverage. No inferred mastery or guardian/private notes.",
     schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
@@ -858,7 +877,7 @@ const catalogue = [
   {
     name:"ccp_portal_grants_list",
     description:"List explicit scoped guest sharing metadata for the teacher. Each grant binds exactly one contact, student and workplace; never returns any link secret, token digest or unauthorized child data.",
-    schema:z.object({contactId:uuid.optional()}).strict(),scope:"coach:read",readOnly:true,
+    schema:z.object({contactId:uuid.optional(),studentId:uuid.optional()}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_portal_grants_get",
@@ -1958,6 +1977,19 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {eventId:string};
         return {data:await teacherEventDelete(db,teacherId,a.eventId)};
       }
+      case "ccp_events_portal_invitations_list": {
+        const a=args as {eventId:string};
+        return {data:await teacherPortalEventInvitesList(db,teacherId,a.eventId)};
+      }
+      case "ccp_events_portal_invitations_create": {
+        const {eventId,...input}=args as {eventId:string}&Parameters<typeof teacherPortalEventInviteCreate>[3];
+        return {data:await teacherPortalEventInviteCreate(db,teacherId,eventId,input)};
+      }
+      case "ccp_events_portal_invitations_revoke": {
+        const {eventId,inviteId,...input}=args as {eventId:string;inviteId:string}&
+          Parameters<typeof teacherPortalEventInviteRevoke>[4];
+        return {data:await teacherPortalEventInviteRevoke(db,teacherId,eventId,inviteId,input)};
+      }
       case "ccp_reports_student_progress":
         return {data:await teacherStudentProgressReport(
           db,teacherId,(args as {studentId:string}).studentId)};
@@ -2139,8 +2171,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:{...updated,contactId:undefined}};
       }
       case "ccp_portal_grants_list": {
-        const a=args as {contactId?:string};
-        return {data:await teacherPortalGrantsList(db,teacherId,a.contactId)};
+        const a=args as {contactId?:string;studentId?:string};
+        return {data:await teacherPortalGrantsList(db,teacherId,a.contactId,a.studentId)};
       }
       case "ccp_portal_grants_get": {
         const a=args as {grantId:string};
@@ -2151,8 +2183,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherPortalGrantCreate(db,teacherId,a)};
       }
       case "ccp_portal_grants_revoke": {
-        const a=args as Parameters<typeof teacherPortalGrantRevoke>[3]&{grantId:string};
-        return {data:await teacherPortalGrantRevoke(db,teacherId,a.grantId,a)};
+        const {grantId,...input}=args as {grantId:string}&Parameters<typeof teacherPortalGrantRevoke>[3];
+        return {data:await teacherPortalGrantRevoke(db,teacherId,grantId,input)};
       }
       case "ccp_skill_dimensions_list":
         return {data:await skillDimensionsList(db,teacherId)};

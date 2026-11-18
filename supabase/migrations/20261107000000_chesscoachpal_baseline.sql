@@ -565,7 +565,8 @@ CREATE TABLE IF NOT EXISTS "public"."events" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "send_reminder" boolean DEFAULT false NOT NULL,
-    "reminder_sent_at" timestamp with time zone
+    "reminder_sent_at" timestamp with time zone,
+    "workplace_id" uuid
 );
 
 
@@ -5522,7 +5523,8 @@ BEGIN
     OR pg_column_size(p_fields)>16384 OR pg_column_size(p_repertoire)>2097152
     OR EXISTS (SELECT 1 FROM jsonb_each(p_fields) AS f
        WHERE f.key NOT IN (
-         'title','description','location','starts_at','ends_at','send_reminder'
+         'title','description','location','starts_at','ends_at','send_reminder',
+         'workplace_id'
        )) THEN
     RAISE EXCEPTION 'EVENT_INVALID_INPUT' USING ERRCODE='22023';
   END IF;
@@ -5561,11 +5563,12 @@ BEGIN
       RAISE EXCEPTION 'EVENT_END_BEFORE_START' USING ERRCODE='22023';
     END IF;
     INSERT INTO public.events(
-      teacher_id,title,description,location,starts_at,ends_at,send_reminder
+      teacher_id,title,description,location,starts_at,ends_at,send_reminder,workplace_id
     ) VALUES(
       v_teacher,v_title,coalesce(p_fields->>'description',''),
       coalesce(p_fields->>'location',''),v_start,v_end,
-      coalesce((p_fields->>'send_reminder')::boolean,false)
+      coalesce((p_fields->>'send_reminder')::boolean,false),
+      nullif(p_fields->>'workplace_id','')::uuid
     ) RETURNING * INTO v_event;
     -- An empty roster is valid for a brand-new event.
     p_student_ids:=coalesce(p_student_ids,ARRAY[]::uuid[]);
@@ -5597,6 +5600,8 @@ BEGIN
       ends_at=v_end,
       send_reminder=CASE WHEN p_fields ? 'send_reminder'
         THEN (p_fields->>'send_reminder')::boolean ELSE send_reminder END,
+      workplace_id=CASE WHEN p_fields ? 'workplace_id'
+        THEN nullif(p_fields->>'workplace_id','')::uuid ELSE workplace_id END,
       reminder_sent_at=CASE WHEN v_start IS DISTINCT FROM v_event.starts_at
         THEN NULL ELSE reminder_sent_at END,
       updated_at=now()
@@ -10761,3 +10766,214 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON public.portal_access_grants TO authenticate
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.portal_access_grants TO service_role;
 COMMENT ON TABLE public.portal_access_grants IS
   'Narrow, explicit per-contact/student/workplace guest sharing. Raw tokens never stored. No legacy guardian token grants.';
+
+-- New per-grant portal cancellation; atomic authorization and mutation.
+-- Revoking/rotating a grant locks the same portal_access_grants row, so a
+-- concurrent guest write cannot pass a stale grant after revocation commits.
+CREATE OR REPLACE FUNCTION public.ccp_scoped_portal_cancel(
+  p_portal_token text,p_session_id uuid,p_student_id uuid,p_cancel_reason text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_scoped_portal_cancel$
+DECLARE
+  v_teacher uuid;
+  v_student_name text;
+  v_start timestamptz;
+  v_status text;
+  v_att public.session_attendance%ROWTYPE;
+  v_now timestamptz;
+  v_notify_email boolean:=false;
+BEGIN
+  IF p_portal_token IS NULL OR p_portal_token !~ '^[A-Za-z0-9_-]{43}$'
+    OR p_session_id IS NULL OR p_student_id IS NULL THEN
+    RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+  END IF;
+  IF p_cancel_reason IS NULL OR char_length(p_cancel_reason)>1000 THEN
+    RAISE EXCEPTION 'PORTAL_INVALID_NOTE' USING ERRCODE='22023';
+  END IF;
+  SELECT g.teacher_id,st.name,s.starts_at,s.status
+    INTO v_teacher,v_student_name,v_start,v_status
+    FROM public.portal_access_grants g
+    JOIN public.contacts c ON c.id=g.contact_id AND c.teacher_id=g.teacher_id
+      AND c.status='active'
+    JOIN public.teaching_sessions s ON s.id=p_session_id
+      AND s.teacher_id=g.teacher_id AND s.workplace_id=g.workplace_id
+    JOIN public.session_participants sp ON sp.session_id=s.id
+      AND sp.teacher_id=s.teacher_id AND sp.student_id=g.student_id
+    JOIN public.students st ON st.id=sp.student_id
+      AND st.teacher_id=g.teacher_id
+   WHERE g.token_digest=encode(extensions.digest(p_portal_token,'sha256'),'hex')
+     AND g.student_id=p_student_id AND g.revoked_at IS NULL
+     AND g.expires_at>clock_timestamp() AND 'cancel'=ANY(g.permissions)
+   FOR UPDATE OF g,s;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+  END IF;
+  SELECT * INTO v_att FROM public.session_attendance
+   WHERE teacher_id=v_teacher AND session_id=p_session_id
+     AND student_id=p_student_id FOR UPDATE;
+  IF v_att.id IS NOT NULL THEN
+    IF v_att.status='student_cancelled' THEN
+      RETURN jsonb_build_object('ok',true,'replayed',true,
+        'noticeAt',v_att.notice_at,'sessionId',p_session_id,
+        'studentId',p_student_id,'teacherId',v_teacher);
+    END IF;
+    RAISE EXCEPTION 'PORTAL_ALREADY_MARKED' USING ERRCODE='23514';
+  END IF;
+  IF v_status<>'scheduled' OR v_start<=clock_timestamp() THEN
+    RAISE EXCEPTION 'PORTAL_TOO_LATE' USING ERRCODE='22023';
+  END IF;
+  v_now:=clock_timestamp();
+  INSERT INTO public.session_attendance(
+    teacher_id,session_id,student_id,status,notice_at,
+    cancelled_by,cancel_reason,marked_at,marked_by,updated_at
+  ) VALUES(v_teacher,p_session_id,p_student_id,'student_cancelled',v_now,
+    'student',p_cancel_reason,v_now,NULL,v_now) RETURNING * INTO v_att;
+  INSERT INTO public.notifications(teacher_id,type,title,body,href)
+    VALUES(v_teacher,'portal_cancel','Student cancelled a chess lesson',
+      v_student_name||' cancelled the lesson on '||v_start::text,'/schedule');
+  -- Optional per-workplace message preference; a missing/invalid policy
+  -- never permits broader access or overrides the persisted cancellation.
+  SELECT CASE WHEN jsonb_typeof(w.policy->'notifyEmailPortalCancel')='boolean'
+    THEN (w.policy->>'notifyEmailPortalCancel')::boolean ELSE false END
+    INTO v_notify_email FROM public.workplaces w
+   WHERE w.id=(SELECT g.workplace_id FROM public.portal_access_grants g
+     WHERE g.token_digest=encode(extensions.digest(p_portal_token,'sha256'),'hex'))
+     AND w.teacher_id=v_teacher;
+  IF coalesce(v_notify_email,false) THEN
+    INSERT INTO public.ccp_delivery_outbox(
+      teacher_id,session_id,student_id,event_key,kind,payload
+    ) VALUES(v_teacher,p_session_id,p_student_id,
+      'portal-cancel:'||p_session_id::text||':'||p_student_id::text,
+      'portal_cancel_teacher',jsonb_build_object(
+       'sessionId',p_session_id,'studentId',p_student_id,
+       'studentName',v_student_name,'startsAt',v_start,
+       'cancelReason',p_cancel_reason,'noticeAt',v_now));
+  END IF;
+  RETURN jsonb_build_object('ok',true,'replayed',false,
+    'noticeAt',v_att.notice_at,'sessionId',p_session_id,
+    'studentId',p_student_id,'teacherId',v_teacher);
+END;
+$ccp_scoped_portal_cancel$;
+REVOKE ALL ON FUNCTION public.ccp_scoped_portal_cancel(text,uuid,uuid,text)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_scoped_portal_cancel(text,uuid,uuid,text)
+  TO service_role;
+
+-- Events with no explicitly selected workplace remain teacher-private. A
+-- sharing grant can reveal only an event with this exact named workplace.
+ALTER TABLE public.events ADD CONSTRAINT events_owned_workplace_fk
+  FOREIGN KEY (workplace_id,teacher_id)
+  REFERENCES public.workplaces(id,teacher_id) ON DELETE RESTRICT;
+CREATE INDEX events_owned_workplace_idx ON public.events(teacher_id,workplace_id,starts_at);
+
+-- A contact is NOT invited merely because the student belongs to the event.
+-- An invite is explicitly teacher-approved against an existing narrowly scoped
+-- event_rsvp portal grant, preserving one student/workplace/audience boundary.
+ALTER TABLE public.events ADD CONSTRAINT events_id_teacher_id_key UNIQUE (id,teacher_id);
+CREATE TABLE public.portal_event_invitations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  event_id uuid NOT NULL,
+  portal_grant_id uuid NOT NULL,
+  status public.rsvp_status NOT NULL DEFAULT 'pending',
+  party_size integer CHECK (party_size IS NULL OR party_size BETWEEN 1 AND 99),
+  note text NOT NULL DEFAULT '' CHECK (char_length(note)<=1000),
+  responded_at timestamptz,
+  revoked_at timestamptz,
+  revision bigint NOT NULL DEFAULT 1 CHECK (revision>=1),
+  last_request_id uuid,
+  last_request_hash text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(id,teacher_id),
+  UNIQUE(teacher_id,event_id,portal_grant_id),
+  FOREIGN KEY (event_id,teacher_id) REFERENCES public.events(id,teacher_id) ON DELETE CASCADE,
+  FOREIGN KEY (portal_grant_id,teacher_id)
+    REFERENCES public.portal_access_grants(id,teacher_id) ON DELETE RESTRICT
+);
+CREATE INDEX portal_event_invite_grant_idx
+  ON public.portal_event_invitations(teacher_id,portal_grant_id,event_id);
+ALTER TABLE public.portal_event_invitations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY portal_event_invitation_owner ON public.portal_event_invitations FOR ALL
+  TO authenticated USING(teacher_id=(select auth.uid()))
+  WITH CHECK(teacher_id=(select auth.uid()));
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.portal_event_invitations TO authenticated,service_role;
+
+-- Full guest RSVP validation and mutation in ONE transaction. Old guardian
+-- tokens can never satisfy the hash-scoped capability join.
+CREATE OR REPLACE FUNCTION public.ccp_scoped_portal_rsvp(
+ p_portal_token text,p_event_id uuid,p_status text,p_party_size integer,p_note text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_scoped_portal_rsvp$
+DECLARE
+ v_grant public.portal_access_grants%ROWTYPE;
+ v_invite public.portal_event_invitations%ROWTYPE;
+ v_event public.events%ROWTYPE;
+ v_contact_name text;
+BEGIN
+ IF p_portal_token IS NULL OR p_portal_token !~ '^[A-Za-z0-9_-]{43}$'
+   OR p_event_id IS NULL THEN
+   RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF p_status IS NULL OR p_status NOT IN ('yes','no','maybe')
+   OR p_note IS NULL OR char_length(p_note)>1000
+   OR (p_party_size IS NOT NULL AND (p_party_size<1 OR p_party_size>99)) THEN
+   RAISE EXCEPTION 'PORTAL_INVALID_RSVP' USING ERRCODE='22023';
+ END IF;
+ SELECT g.* INTO v_grant FROM public.portal_access_grants g
+ JOIN public.contacts c ON c.id=g.contact_id AND c.teacher_id=g.teacher_id
+ JOIN public.students s ON s.id=g.student_id AND s.teacher_id=g.teacher_id
+ JOIN public.student_contacts sc ON sc.contact_id=g.contact_id
+   AND sc.student_id=g.student_id AND sc.teacher_id=g.teacher_id
+ JOIN public.workplace_enrollments we ON we.student_id=g.student_id
+   AND we.workplace_id=g.workplace_id AND we.teacher_id=g.teacher_id
+ WHERE g.token_digest=encode(extensions.digest(p_portal_token,'sha256'),'hex')
+   AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp()
+   AND c.status='active' AND s.archived_at IS NULL
+   AND sc.active_to IS NULL AND (sc.active_from IS NULL OR sc.active_from<=current_date)
+   AND 'event_rsvp'=ANY(g.permissions)
+ LIMIT 1 FOR UPDATE OF g;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_event FROM public.events
+ WHERE id=p_event_id AND teacher_id=v_grant.teacher_id
+   AND workplace_id=v_grant.workplace_id FOR UPDATE;
+ IF NOT FOUND OR v_event.starts_at<=clock_timestamp() THEN
+   RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ PERFORM 1 FROM public.event_students WHERE event_id=v_event.id
+   AND student_id=v_grant.student_id;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_invite FROM public.portal_event_invitations
+ WHERE teacher_id=v_grant.teacher_id AND event_id=v_event.id
+   AND portal_grant_id=v_grant.id AND revoked_at IS NULL FOR UPDATE;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF v_invite.status=p_status::public.rsvp_status
+   AND v_invite.party_size IS NOT DISTINCT FROM p_party_size
+   AND v_invite.note=p_note THEN
+   RETURN jsonb_build_object('ok',true,'replayed',true,'eventId',p_event_id,
+     'status',v_invite.status,'partySize',v_invite.party_size);
+ END IF;
+ UPDATE public.portal_event_invitations SET status=p_status::public.rsvp_status,
+   party_size=p_party_size,note=p_note,responded_at=clock_timestamp(),
+   updated_at=clock_timestamp(),revision=revision+1
+ WHERE id=v_invite.id;
+ SELECT c.display_name INTO v_contact_name FROM public.contacts c
+ WHERE c.id=v_grant.contact_id AND c.teacher_id=v_grant.teacher_id;
+ INSERT INTO public.notifications(teacher_id,type,title,body,href)
+ VALUES(v_grant.teacher_id,'event_rsvp','Event RSVP updated',
+  coalesce(v_contact_name,'Contact')||' responded '||p_status||' to '||v_event.title,
+  '/events/'||v_event.id::text);
+ RETURN jsonb_build_object('ok',true,'replayed',false,'eventId',p_event_id,
+    'status',p_status,'partySize',p_party_size);
+END;
+$ccp_scoped_portal_rsvp$;
+REVOKE ALL ON FUNCTION public.ccp_scoped_portal_rsvp(text,uuid,text,integer,text)
+ FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_scoped_portal_rsvp(text,uuid,text,integer,text)
+ TO service_role;

@@ -13,6 +13,7 @@ export const eventChanges=z.object({
  startsAt:z.string().datetime({offset:true}).optional(),
  endsAt:z.string().datetime({offset:true}).nullable().optional(),
  sendReminder:z.boolean().optional(),
+ workplaceId:uuid.nullable().optional(),
  studentIds:z.array(uuid).max(200).optional(),
  repertoireByStudent:z.record(uuid,z.string().max(10000)).optional(),
  idempotencyKey:uuid.optional(),

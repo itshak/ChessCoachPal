@@ -52,12 +52,13 @@ async function grant(db:Db,teacherId:string,id:string){
   if(!data)fail(404,"NOT_FOUND","Portal grant not found");
   return data as unknown as GrantRow;
 }
-export async function teacherPortalGrantsList(db:Db,teacherId:string,contactId?:string){
+export async function teacherPortalGrantsList(db:Db,teacherId:string,contactId?:string,studentId?:string){
   const rows:PortalGrantView[]=[];
   for(let offset=0;offset<10000;offset+=250){
     let query=db.from("portal_access_grants").select(columns)
       .eq("teacher_id",teacherId).order("created_at",{ascending:false}).range(offset,offset+249);
     if(contactId)query=query.eq("contact_id",contactId);
+    if(studentId)query=query.eq("student_id",studentId);
     const {data,error}=await query;
     if(error)fail(500,"DATABASE_ERROR","Cannot list portal grants");
     rows.push(...(data??[]).map(safePortalGrant));
@@ -77,15 +78,18 @@ export async function teacherPortalGrantCreate(db:Db,teacherId:string,input:Inpu
     fail(400,"INVALID_EXPIRY","Portal grants must expire within one year");
   const [contact,student,workplace]=await Promise.all([
     owned(db,teacherId,"contacts",value.contactId,"id,status"),
-    owned(db,teacherId,"students",value.studentId),
+    owned(db,teacherId,"students",value.studentId,"id,archived_at"),
     owned(db,teacherId,"workplaces",value.workplaceId),
   ]);
   if(contact.status!=="active")fail(409,"CONTACT_ARCHIVED","Cannot grant an archived contact access");
+  if(student.archived_at)fail(409,"STUDENT_ARCHIVED","Reactivate the student before sharing");
   // Explicit relationship is required to avoid giving an unrelated person a
   // direct secret merely by knowing valid tenant object IDs.
   const {data:link,error:linkError}=await db.from("student_contacts").select("id")
     .eq("teacher_id",teacherId).eq("student_id",value.studentId)
-    .eq("contact_id",value.contactId).is("active_to",null).limit(1).maybeSingle();
+    .eq("contact_id",value.contactId).is("active_to",null)
+    .or(`active_from.is.null,active_from.lte.${new Date().toISOString().slice(0,10)}`)
+    .limit(1).maybeSingle();
   if(linkError)fail(500,"DATABASE_ERROR","Cannot verify contact relationship");
   if(!link)fail(403,"CONTACT_NOT_LINKED","Link the contact explicitly before sharing");
   if(value.billingAccountId){
@@ -163,10 +167,30 @@ export async function portalAuthorizeToken(db:Db,rawToken:string):Promise<Portal
     .is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
   if(error||!data)return null;
   const row=data as GrantRow;
-  const {data:contact,error:contactError}=await db.from("contacts")
-    .select("id,status").eq("id",String(row.contact_id))
-    .eq("teacher_id",String(row.teacher_id)).maybeSingle();
-  if(contactError||contact?.status!=="active")return null;
+  // Recheck current authority for EVERY guest request. Deleting an enrollment,
+  // archiving the student/payer or ending a relationship must immediately
+  // invalidate the grant even when its token has not reached expiry.
+  const [contact,student,link,enrollment,payer]=await Promise.all([
+    db.from("contacts").select("id,status").eq("id",String(row.contact_id))
+      .eq("teacher_id",String(row.teacher_id)).maybeSingle(),
+    db.from("students").select("id,archived_at").eq("id",String(row.student_id))
+      .eq("teacher_id",String(row.teacher_id)).maybeSingle(),
+    db.from("student_contacts").select("id")
+      .eq("teacher_id",String(row.teacher_id)).eq("student_id",String(row.student_id))
+      .eq("contact_id",String(row.contact_id)).is("active_to",null)
+      .or(`active_from.is.null,active_from.lte.${new Date().toISOString().slice(0,10)}`)
+      .limit(1).maybeSingle(),
+    db.from("workplace_enrollments").select("id")
+      .eq("teacher_id",String(row.teacher_id)).eq("student_id",String(row.student_id))
+      .eq("workplace_id",String(row.workplace_id)).maybeSingle(),
+    row.billing_account_id?db.from("billing_accounts").select("id,status")
+      .eq("teacher_id",String(row.teacher_id)).eq("id",String(row.billing_account_id))
+      .maybeSingle():Promise.resolve({data:null,error:null}),
+  ]);
+  if(contact.error||contact.data?.status!=="active"||student.error||
+    !student.data||student.data.archived_at||link.error||!link.data||
+    enrollment.error||!enrollment.data||payer.error||
+    (row.billing_account_id&&payer.data?.status!=="active"))return null;
   return {id:String(row.id),teacherId:String(row.teacher_id),contactId:String(row.contact_id),
     studentId:String(row.student_id),workplaceId:String(row.workplace_id),
     billingAccountId:row.billing_account_id?String(row.billing_account_id):null,

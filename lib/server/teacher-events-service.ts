@@ -13,11 +13,11 @@ export class TeacherEventError extends Error {
 const failure=(s:number,c:string,m:string)=>new TeacherEventError(s,c,m);
 export type TeacherEventInput={
  title?:string;description?:string;location?:string;startsAt?:string;
- endsAt?:string|null;sendReminder?:boolean;studentIds?:string[];
+ endsAt?:string|null;sendReminder?:boolean;workplaceId?:string|null;studentIds?:string[];
  repertoireByStudent?:Record<string,string>;idempotencyKey?:string;
 };
 const validDate=(v:string|undefined)=>!!v&&!Number.isNaN(Date.parse(v));
-const info="id,title,description,location,starts_at,ends_at,send_reminder,reminder_sent_at,created_at,updated_at";
+const info="id,title,description,location,starts_at,ends_at,send_reminder,reminder_sent_at,workplace_id,created_at,updated_at";
 async function ownedEvent(db:Db,teacherId:string,id:string) {
  const {data,error}=await db.from("events").select(info)
   .eq("teacher_id",teacherId).eq("id",id).maybeSingle();
@@ -34,6 +34,7 @@ async function saveEvent(db:Db,teacherId:string,id:string|null,input:TeacherEven
   if(input.startsAt!==undefined)fields.starts_at=input.startsAt;
   if(input.endsAt!==undefined)fields.ends_at=input.endsAt||null;
   if(input.sendReminder!==undefined)fields.send_reminder=input.sendReminder;
+  if(input.workplaceId!==undefined)fields.workplace_id=input.workplaceId;
   if(input.idempotencyKey!==undefined&&
      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.idempotencyKey))
     throw failure(400,"VALIDATION_ERROR","Event idempotencyKey must be a UUID");
@@ -59,14 +60,14 @@ async function saveEvent(db:Db,teacherId:string,id:string|null,input:TeacherEven
   // The RPC uses the same canonical event row as the regular events table.
   // Cast only the documented result shape, never a blanket `any` dictionary.
   return data as {
-    id:string;title:string;description:string;location:string;
+    id:string;title:string;description:string;location:string;workplace_id:string|null;
     starts_at:string;ends_at:string|null;send_reminder:boolean;
     reminder_sent_at:string|null;created_at:string;updated_at:string;
   };
 }
 export async function teacherEventsList(db:Db,teacherId:string){
  const all:Array<{
-   id:string;title:string;description:string;location:string;
+   id:string;title:string;description:string;location:string;workplace_id:string|null;
    starts_at:string;ends_at:string|null;created_at:string;updated_at:string;
    event_students:{id:string}[]|null;
    event_rsvps:{status:RsvpStatus}[]|null;
@@ -74,7 +75,7 @@ export async function teacherEventsList(db:Db,teacherId:string){
  const size=500,maxRows=20000;
  for(let offset=0;;offset+=size){
    const {data,error}=await db.from("events").select(`
-   id,title,description,location,starts_at,ends_at,created_at,updated_at,
+   id,title,description,location,workplace_id,starts_at,ends_at,created_at,updated_at,
    event_students (id), event_rsvps (status)
    `).eq("teacher_id",teacherId).order("starts_at",{ascending:false})
      .order("id",{ascending:false}).range(offset,offset+size-1);
@@ -89,6 +90,7 @@ export async function teacherEventsList(db:Db,teacherId:string){
   const statuses=(row.event_rsvps??[]) as {status:RsvpStatus}[];
   return {
    id:row.id,title:row.title,description:row.description,location:row.location,
+   workplaceId:row.workplace_id,
    startsAt:row.starts_at,endsAt:row.ends_at,createdAt:row.created_at,updatedAt:row.updated_at,
    studentCount:(row.event_students as {id:string}[]|null)?.length??0,
    rsvpCount:statuses.length,rsvpYesCount:statuses.filter(r=>r.status==="yes").length,
@@ -99,7 +101,7 @@ export async function teacherEventsList(db:Db,teacherId:string){
 export async function teacherEventDetail(db:Db,teacherId:string,id:string) {
  await ownedEvent(db,teacherId,id);
  const {data:event,error}=await db.from("events").select(`
- id,title,description,location,starts_at,ends_at,send_reminder,reminder_sent_at,created_at,updated_at,
+ id,title,description,location,workplace_id,starts_at,ends_at,send_reminder,reminder_sent_at,created_at,updated_at,
  event_students(id,student_id,repertoire,sort_order,students(id,name)),
  event_rsvps(id,guardian_id,status,party_size,note,responded_at,guardians(id,name,family_name))
  `).eq("id",id).eq("teacher_id",teacherId).maybeSingle();
@@ -121,7 +123,7 @@ export async function teacherEventDetail(db:Db,teacherId:string,id:string) {
  }));
  return {event:{
   id:event.id,title:event.title,description:event.description,location:event.location,
-  startsAt:event.starts_at,endsAt:event.ends_at,sendReminder:event.send_reminder,
+  workplaceId:event.workplace_id,startsAt:event.starts_at,endsAt:event.ends_at,sendReminder:event.send_reminder,
   reminderSentAt:event.reminder_sent_at,createdAt:event.created_at,updatedAt:event.updated_at,
   students,rsvps,
  }};
@@ -136,7 +138,7 @@ export async function teacherEventCreate(db:Db,teacherId:string,input:TeacherEve
  const event=await saveEvent(db,teacherId,null,input);
  return {event:{
    id:event.id,title:event.title,description:event.description,location:event.location,
-   startsAt:event.starts_at,endsAt:event.ends_at,sendReminder:event.send_reminder,
+   workplaceId:event.workplace_id,startsAt:event.starts_at,endsAt:event.ends_at,sendReminder:event.send_reminder,
    reminderSentAt:event.reminder_sent_at,createdAt:event.created_at,updatedAt:event.updated_at,
  }};
 }

@@ -13,9 +13,12 @@ export async function GET(req:NextRequest){
   const db=await createClient(),{data:{user}}=await db.auth.getUser();
   if(!user)return NextResponse.json({error:"UNAUTHENTICATED"},{status:401});
   const contactId=req.nextUrl.searchParams.get("contactId")??undefined;
+  const studentId=req.nextUrl.searchParams.get("studentId")??undefined;
   if(contactId&&!/^[0-9a-f]{8}-[0-9a-f-]{27,36}$/i.test(contactId))
     return NextResponse.json({error:"INVALID_CONTACT"},{status:400});
-  try{return NextResponse.json(await teacherPortalGrantsList(db,user.id,contactId),opts);}
+  if(studentId&&!/^[0-9a-f]{8}-[0-9a-f-]{27,36}$/i.test(studentId))
+    return NextResponse.json({error:"INVALID_STUDENT"},{status:400});
+  try{return NextResponse.json(await teacherPortalGrantsList(db,user.id,contactId,studentId),opts);}
   catch(e){return failure(e);}
 }
 export async function POST(req:NextRequest){

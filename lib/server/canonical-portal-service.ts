@@ -1,6 +1,6 @@
 import type {SupabaseClient} from "@supabase/supabase-js";
 
-/** Guardian capability + frozen participant are checked atomically in SQL.
+/** Scoped contact/student/workplace capability + frozen participant are checked atomically in SQL.
  * Never let a portal token authorize a teacher-scoped attendance RPC.
  */
 export class CanonicalPortalError extends Error {
@@ -16,7 +16,7 @@ export async function cancelCanonicalParticipant(
   throw new CanonicalPortalError("NOT_FOUND",404,"Not found");
  if(typeof reason!=="string"||reason.length>1000)
   throw new CanonicalPortalError("VALIDATION_ERROR",400,"Cancellation note is too long");
- const {data,error}=await serviceDb.rpc("ccp_canonical_portal_cancel",{
+ const {data,error}=await serviceDb.rpc("ccp_scoped_portal_cancel",{
   p_portal_token:token,p_session_id:sessionId,
   p_student_id:studentId,p_cancel_reason:reason.trim(),
  });

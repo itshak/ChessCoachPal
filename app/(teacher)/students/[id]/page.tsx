@@ -14,6 +14,7 @@ import { StudentLessonNotes } from "@/components/teacher/StudentLessonNotes";
 import { StudentInfoCard } from "@/components/teacher/StudentInfoCard";
 import { StudentChessProfileEditor } from "@/components/teacher/StudentChessProfileEditor";
 import { StudentContactsPanel } from "@/components/teacher/StudentContactsPanel";
+import {StudentPortalSharingPanel} from "@/components/teacher/StudentPortalSharingPanel";
 import { StudentRatingHistoryPanel } from "@/components/teacher/StudentRatingHistoryPanel";
 import { UnifiedLessonHistoryPanel } from "@/components/teacher/UnifiedLessonHistoryPanel";
 import { CoachBriefingPanel } from "@/components/teacher/CoachBriefingPanel";
@@ -96,6 +97,14 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       .eq("student_id", id).eq("active", true).order("start_date", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
+  const [{data:enrollmentRows},{data:workplaceRows}]=await Promise.all([
+    supabase.from("workplace_enrollments").select("workplace_id")
+      .eq("teacher_id",user.id).eq("student_id",id),
+    supabase.from("workplaces").select("id,name").eq("teacher_id",user.id).order("name"),
+  ]);
+  const enrolledIds=new Set((enrollmentRows??[]).map(x=>x.workplace_id));
+  const sharingWorkplaces=(workplaceRows??[]).filter(w=>enrolledIds.has(w.id));
+
   return (
     <div>
       <Link href="/students" className="inline-block mb-6 text-muted hover:text-foreground"><span aria-hidden="true" className="inline-block rtl:rotate-180">←</span>{" "}{t("back")}</Link>
@@ -131,6 +140,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialTravelFeeCents={student.travel_fee_cents ?? null}
       />
       <StudentContactsPanel studentId={id} />
+      <StudentPortalSharingPanel studentId={id} workplaces={sharingWorkplaces}/>
       <StudentChessProfileEditor
         studentId={id}
         initialAliases={student.name_aliases ?? []}

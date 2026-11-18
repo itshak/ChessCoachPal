@@ -9,15 +9,18 @@ import { Card } from "@/components/ui/card";
 import {
   EventForm,
   type EventFormStudent,
+  type EventFormWorkplace,
   type EventFormValues,
 } from "@/components/teacher/events/EventForm";
 import { fromDatetimeLocalValue } from "@/lib/events";
 
 export function NewEventForm({
   students,
+  workplaces,
   initialStartsAt,
 }: {
   students: EventFormStudent[];
+  workplaces:EventFormWorkplace[];
   initialStartsAt: string;
 }) {
   const router = useRouter();
@@ -37,6 +40,7 @@ export function NewEventForm({
           ? fromDatetimeLocalValue(values.endsAt)
           : undefined,
         sendReminder: values.sendReminder,
+        workplaceId:values.workplaceId,
         studentIds: values.studentIds,
         repertoireByStudent: values.repertoireByStudent,
       }),
@@ -53,6 +57,7 @@ export function NewEventForm({
     <Card>
       <EventForm
         students={students}
+        workplaces={workplaces}
         initial={{
           title: "",
           startsAt: initialStartsAt,
@@ -60,6 +65,7 @@ export function NewEventForm({
           location: "",
           description: "",
           sendReminder: false,
+          workplaceId:null,
           studentIds: [],
           repertoireByStudent: {},
         }}
