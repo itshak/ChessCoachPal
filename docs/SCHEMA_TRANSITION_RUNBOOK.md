@@ -31,6 +31,12 @@ ordered live transitions, now listed with SHA-256 review pins in
    billing-account restoration to the same transactional backup RPC. The
    corresponding full website JSON/CSV exports contain all three categories;
    model-facing bulk exports redact contact email and phone.
+8. `20261118190000_contacts_student_creation.sql`: switches new optional
+   student contact creation from automatic legacy portal families to a
+   transactionally linked independent contact. Existing explicit legacy
+   guardian links, invoices and replay receipts are preserved. New contact
+   records carry no inferred legal status, messaging permission, portal
+   token or billing authority.
 
 The manifest explicitly accepts historical development branches lacking some
 later files, but **does not** promise conversion of arbitrary pre-v1 schemas.
@@ -58,7 +64,7 @@ production SQL output, child records, passwords or backup dumps in GitHub.
   Supabase instance in GitHub Actions. It installs **only** the current
   baseline, stores the structural catalog signature, then resets the *local
   synthetic instance* to the frozen pre-extension baseline from commit
-  `3a658a0bf5540f68c192b1a454bb5cdbc774f51b`. It inserts synthetic preserved records, applies the seven
+  `3a658a0bf5540f68c192b1a454bb5cdbc774f51b`. It inserts synthetic preserved records, applies the eight
   reviewed migrations via Supabase's local migration ledger, checks counts, relations,
   locale constraints, owner isolation, failure rollback and no second replay,
   then compares table/column privileges, constraints, indexes, triggers,

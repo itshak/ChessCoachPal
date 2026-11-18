@@ -6000,9 +6000,10 @@ REVOKE ALL ON FUNCTION public.ccp_manual_payment_commit(
 GRANT EXECUTE ON FUNCTION public.ccp_manual_payment_commit(
  uuid,integer,text,uuid,text) TO authenticated;
 
--- Atomic full-feature student creation, including optional family of one.
--- Both browser and delegated MCP use this authenticated transaction instead of
--- separate guardian+student POSTs that could leave orphaned portal families.
+-- Atomic full-feature student creation. A new person is an independent
+-- student contact with NO portal grant, legal authority or debtor role.
+-- Existing legacy family links can still be selected explicitly during the
+-- guarded finance/portal migration. All writes share one tenant transaction.
 -- Student-capacity triggers serialize and enforce hosted quotas inside INSERT.
 CREATE TABLE IF NOT EXISTS public.ccp_student_create_receipts(
  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
@@ -6010,6 +6011,7 @@ CREATE TABLE IF NOT EXISTS public.ccp_student_create_receipts(
  mutation_hash text NOT NULL,
  student_id uuid NOT NULL,
  created_family boolean NOT NULL,
+ created_contact_id uuid,
  created_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(teacher_id,request_id)
 );
@@ -6032,6 +6034,7 @@ DECLARE
  v_student public.students%ROWTYPE;
  v_guardian_id uuid:=p_guardian_id;
  v_created_family boolean:=false;
+ v_created_contact_id uuid;
  v_name text:=btrim(p_name);
  v_email text:=nullif(btrim(p_contact_email),'');
  v_phone text:=nullif(btrim(p_contact_phone),'');
@@ -6047,7 +6050,9 @@ BEGIN
     OR length(coalesce(p_teacher_notes,''))>50000
     OR length(coalesce(v_email,''))>254
     OR length(coalesce(v_phone,''))>50
-    OR length(coalesce(v_contact,''))>200 THEN
+    OR length(coalesce(v_contact,''))>160
+    OR (coalesce(p_adult_self,false) AND length(v_name)>160
+        AND v_contact IS NULL) THEN
    RAISE EXCEPTION 'STUDENT_INVALID_INPUT' USING ERRCODE='22023';
  END IF;
  IF p_request_id IS NOT NULL THEN
@@ -6071,33 +6076,33 @@ BEGIN
        RAISE EXCEPTION 'STUDENT_ALREADY_DELETED' USING ERRCODE='23514';
      END IF;
      RETURN jsonb_build_object('student',to_jsonb(v_student),
-       'createdFamily',v_previous.created_family,'replayed',true);
+       'createdFamily',v_previous.created_family,
+       'createdContactId',v_previous.created_contact_id,'replayed',true);
    END IF;
  END IF;
+ -- Existing portal-linked families remain explicitly selectable during the
+ -- reviewed transition. New contact details NEVER create a portal grant.
  IF v_guardian_id IS NOT NULL THEN
+   IF v_email IS NOT NULL OR v_phone IS NOT NULL OR v_contact IS NOT NULL
+      OR coalesce(p_adult_self,false) THEN
+     RAISE EXCEPTION 'CONTACT_AND_LEGACY_FAMILY_CONFLICT'
+       USING ERRCODE='22023';
+   END IF;
    PERFORM 1 FROM public.guardians
      WHERE id=v_guardian_id AND teacher_id=v_teacher;
    IF NOT FOUND THEN
      RAISE EXCEPTION 'GUARDIAN_NOT_FOUND' USING ERRCODE='42501';
    END IF;
- ELSE
-   IF v_email IS NOT NULL OR v_phone IS NOT NULL
+ ELSIF v_email IS NOT NULL OR v_phone IS NOT NULL OR v_contact IS NOT NULL
       OR coalesce(p_adult_self,false) THEN
-     IF NOT coalesce(p_adult_self,false) AND v_contact IS NULL THEN
-       RAISE EXCEPTION 'GUARDIAN_NAME_REQUIRED' USING ERRCODE='22023';
-     END IF;
-     INSERT INTO public.guardians(
-       teacher_id,name,family_name,email,phone,email_recipients,portal_token
-     ) VALUES (
-       v_teacher,coalesce(v_contact,v_name),
-       CASE WHEN coalesce(p_adult_self,false) THEN v_name ELSE NULL END,
-       v_email,v_phone,'primary',
-       encode(extensions.gen_random_bytes(24),'hex')
-     ) RETURNING id INTO v_guardian_id;
-     v_created_family:=true;
-   ELSIF v_contact IS NOT NULL THEN
-     RAISE EXCEPTION 'GUARDIAN_CONTACT_CHANNEL_REQUIRED' USING ERRCODE='22023';
+   IF NOT coalesce(p_adult_self,false) AND v_contact IS NULL THEN
+     RAISE EXCEPTION 'CONTACT_NAME_REQUIRED' USING ERRCODE='22023';
    END IF;
+   INSERT INTO public.contacts(
+     teacher_id,display_name,kind,email,phone,status
+   ) VALUES(
+     v_teacher,coalesce(v_contact,v_name),'person',v_email,v_phone,'active'
+   ) RETURNING id INTO v_created_contact_id;
  END IF;
  INSERT INTO public.students(
    teacher_id,name,guardian_id,birthdate,level,teacher_notes,archived_at
@@ -6106,15 +6111,27 @@ BEGIN
    nullif(btrim(p_level),''),coalesce(btrim(p_teacher_notes),''),
    CASE WHEN coalesce(p_archived,false) THEN clock_timestamp() ELSE NULL END
  ) RETURNING * INTO v_student;
+ IF v_created_contact_id IS NOT NULL THEN
+   INSERT INTO public.student_contacts(
+     teacher_id,student_id,contact_id,relationship_label,
+     is_legal_guardian,may_receive_messages
+   ) VALUES(
+     v_teacher,v_student.id,v_created_contact_id,
+     CASE WHEN coalesce(p_adult_self,false) THEN 'Self'
+          ELSE 'Unverified contact' END,
+     false,false
+   );
+ END IF;
  IF p_request_id IS NOT NULL THEN
    INSERT INTO public.ccp_student_create_receipts(
-     teacher_id,request_id,mutation_hash,student_id,created_family
+     teacher_id,request_id,mutation_hash,student_id,created_family,created_contact_id
    ) VALUES(
-     v_teacher,p_request_id,v_hash,v_student.id,v_created_family
+     v_teacher,p_request_id,v_hash,v_student.id,v_created_family,v_created_contact_id
    );
  END IF;
  RETURN jsonb_build_object('student',to_jsonb(v_student),
-   'createdFamily',v_created_family,'replayed',false);
+   'createdFamily',v_created_family,
+   'createdContactId',v_created_contact_id,'replayed',false);
 END;
 $$;
 REVOKE ALL ON FUNCTION public.ccp_student_create_full(

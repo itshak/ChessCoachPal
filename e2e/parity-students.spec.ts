@@ -273,7 +273,7 @@ test("PARITY:PARITY-students-archived-on-create-website-MCP-no-active-roster",as
  expect((await browserProfile(page,browserId)).archived_at).toBeTruthy();
 });
 
-test("PARITY:PARITY-students-full-atomic-family-create shares durable website and MCP receipts",async({page,request})=>{
+test("PARITY:PARITY-students-full-atomic-contact-create shares durable website and MCP receipts",async({page,request})=>{
  const callTool=await delegatedTool(page,request);
  const name=unique("Full family student");
  const contactEmail="parity-"+randomUUID()+"@example.com";
@@ -293,13 +293,22 @@ test("PARITY:PARITY-students-full-atomic-family-create shares durable website an
  const browser=await browserProfile(page,id);
  expect(browser.name).toBe(name);
  expect(browser.teacher_notes).toBe(payload.teacherNotes);
- expect(browser.guardian_id).toBeTruthy();
+ expect(browser.guardian_id).toBeNull();
+ const createdContactId=(model.data as {createdContactId:string}).createdContactId;
+ expect(createdContactId).toBeTruthy();
+ const webContact=await page.request.get("/api/contacts/"+createdContactId);
+ expect(webContact.status(),await webContact.text()).toBe(200);
+ expect((await webContact.json()).email).toBe(contactEmail);
+ const links=await page.request.get("/api/students/"+id+"/contacts");
+ expect(links.status(),await links.text()).toBe(200);
+ expect(await links.json()).toEqual(expect.arrayContaining([
+   expect.objectContaining({contactId:createdContactId,
+     isLegalGuardian:false,mayReceiveMessages:false}),
+ ]));
  const replay=await page.request.post("/api/students",{data:payload});
  expect(replay.status(),await replay.text()).toBe(201);
  expect((await replay.json()).id).toBe(id);
- const family=await page.request.get("/api/guardians/"+browser.guardian_id);
- expect(family.status(),await family.text()).toBe(200);
- expect((await family.json()).students.filter((s:{id:string})=>s.id===id)).toHaveLength(1);
+ expect((await replay.json()).createdContactId).toBe(createdContactId);
 
  const changed=await page.request.post("/api/students",{data:{
    ...payload,name:name+" conflicting",
@@ -314,15 +323,40 @@ test("PARITY:PARITY-students-full-atomic-family-create shares durable website an
  const websiteCreate=await page.request.post("/api/students",{data:another});
  expect(websiteCreate.status(),await websiteCreate.text()).toBe(201);
  const siteStudent=await websiteCreate.json();
- expect(siteStudent.createdFamily).toBe(true);
+ expect(siteStudent.createdFamily).toBe(false);
+ expect(siteStudent.createdContactId).toBeTruthy();
+ expect(siteStudent.guardian_id).toBeNull();
  const mcpReplay=await callTool("ccp_students_create_full",{
    ...another,confirmed:true,
  });
  expect(mcpReplay.error).toBeUndefined();
  expect((mcpReplay.data as {id:string}).id).toBe(siteStudent.id);
- const originalFamily=await page.request.get("/api/guardians/"+siteStudent.guardian_id);
- expect(originalFamily.status()).toBe(200);
- expect((await originalFamily.json()).students).toHaveLength(1);
+ expect((mcpReplay.data as {createdContactId:string}).createdContactId)
+   .toBe(siteStudent.createdContactId);
+ const independentContact=await callTool("ccp_contacts_detail",{
+   contactId:siteStudent.createdContactId,includeDetails:true,confirmed:true,
+ });
+ expect(independentContact.error).toBeUndefined();
+ expect(independentContact.data.email).toBe(another.contactEmail);
+
+ // New person-only relationships are valid without a channel, and do not
+ // create an implied legal guardianship, debtor identity or portal family.
+ const namedOnly=await page.request.post("/api/students",{data:{
+   name:unique("Name-only independent contact student"),
+   contactName:"Teacher assistant",idempotencyKey:randomUUID(),
+ }});
+ expect(namedOnly.status(),await namedOnly.text()).toBe(201);
+ const namedOnlyStudent=await namedOnly.json();
+ expect(namedOnlyStudent.guardian_id).toBeNull();
+ expect(namedOnlyStudent.createdContactId).toBeTruthy();
+ const namedOnlyLinks=await callTool("ccp_student_contacts_list",{
+   studentId:namedOnlyStudent.id,
+ });
+ expect(namedOnlyLinks.error).toBeUndefined();
+ expect(namedOnlyLinks.data).toEqual(expect.arrayContaining([
+   expect.objectContaining({contactId:namedOnlyStudent.createdContactId,
+     isLegalGuardian:false,mayReceiveMessages:false}),
+ ]));
 
  const foreignGuardian=await callTool("ccp_students_create_full",{
    name:unique("Foreign family denied"),guardianId:randomUUID(),

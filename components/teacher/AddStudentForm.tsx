@@ -29,9 +29,10 @@ export function AddStudentForm({
   const [error, setError] = useState<string | null>(null);
 
   const linkExisting = Boolean(guardianId);
-  const wantsPortal =
+  const wantsContact =
     !linkExisting &&
-    (adultSelf || Boolean(contactEmail.trim()) || Boolean(contactPhone.trim()));
+    (adultSelf || Boolean(contactEmail.trim()) || Boolean(contactPhone.trim()) ||
+      Boolean(contactName.trim()));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,12 +46,6 @@ export function AddStudentForm({
       if ((email || phone) && !adultSelf && !parent) {
         setError(
           t("guardianRequiredError")
-        );
-        return;
-      }
-      if (parent && !adultSelf && !email && !phone) {
-        setError(
-          t("guardianContactError")
         );
         return;
       }
@@ -137,14 +132,14 @@ export function AddStudentForm({
             placeholder={
               adultSelf
                 ? t("contactNameOptional")
-                : wantsPortal
+                : wantsContact
                   ? t("guardianNameRequired")
                   : t("guardianName")
             }
             value={contactName}
             onChange={(e) => setContactName(e.target.value)}
             className={inputClass}
-            required={wantsPortal && !adultSelf}
+            required={wantsContact && !adultSelf}
           />
           <input
             type="email"

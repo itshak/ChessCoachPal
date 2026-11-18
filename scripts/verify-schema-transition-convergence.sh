@@ -95,12 +95,14 @@ echo "==> verify contact/billing identity preservation and tenant isolation"
 sql < scripts/schema-transition-contacts.sql >/dev/null
 echo "==> assert contact backup/restore is atomic and tenant-scoped"
 sql < scripts/schema-transition-contacts-backup.sql >/dev/null
+echo "==> verify contact-first student creation preserves legacy portal access"
+sql < scripts/schema-transition-contact-student-create.sql >/dev/null
 echo "==> repeat runner: version ledger prevents replay and duplicate records"
 supabase migration up --local
 sql < scripts/schema-transition-preservation.sql > "$scratch/replayed-records.txt"
 diff -u "$scratch/before-records.txt" "$scratch/replayed-records.txt"
-[[ "$(sql <<< "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version IN ('20261117000000','20261117190000','20261117231554','20261118000000','20261118150000','20261118180000','20261118183000');")" == "7" ]] ||
-  { echo "Expected exactly seven recorded live migrations" >&2; exit 1; }
+[[ "$(sql <<< "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version IN ('20261117000000','20261117190000','20261117231554','20261118000000','20261118150000','20261118180000','20261118183000','20261118190000');")" == "8" ]] ||
+  { echo "Expected exactly eight recorded live migrations" >&2; exit 1; }
 echo "==> reject unsafe locale state and cross-tenant student reads"
 sql >/dev/null <<'SQL'
 DO $test$

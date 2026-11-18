@@ -47,11 +47,11 @@ export interface CreateStudentInput {
   level?: string | null;
   teacherNotes?: string | null;
   guardianId?: string | null;
-  /** Create a singleton family when set (and no guardianId). */
+  /** An independent teacher-owned contact; never grants a portal token. */
   contactEmail?: string | null;
   contactPhone?: string | null;
   contactName?: string | null;
-  /** Family named after the student; contact is the student. */
+  /** Contact identity is the student; no implied portal or payer role. */
   adultSelf?: boolean;
   /** Create former students without temporarily consuming active quota. */
   archived?: boolean;
@@ -60,15 +60,15 @@ export interface CreateStudentInput {
 }
 
 /**
- * Create a student, optionally linking an existing family or auto-creating a
- * singleton "family of one" when contact info / adultSelf is provided.
+ * Create a student with an existing explicitly selected legacy family link or
+ * a new independent contact. No automatic portal grants or legal status.
  */
 export async function createStudentWithOptionalFamily(
   supabase: SupabaseClient,
   teacherId: string,
   input: CreateStudentInput
 ): Promise<
-  | { ok: true; student: Record<string, unknown>; createdFamily: boolean }
+  | { ok: true; student: Record<string, unknown>; createdFamily: boolean; createdContactId: string | null }
   | { ok: false; error: string; status: number }
 > {
   const name=input.name?.trim();
@@ -76,10 +76,9 @@ export async function createStudentWithOptionalFamily(
   if(input.idempotencyKey!==undefined&&
      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.idempotencyKey))
     return {ok:false,error:"idempotencyKey must be a UUID",status:400};
-  // The legacy two-POST create could leave a portal family without its
-  // student when a later quota/FK/validation check failed. A single SQL
-  // transaction now owns both rows and a durable replay receipt; the
-  // hosted active-student trigger protects quota at insert time.
+  // Student, independent contact and student-contact association are one
+  // transaction plus a durable replay receipt. The hosted student-capacity
+  // trigger protects quota, and a failed write rolls back all created rows.
   const {data,error}=await supabase.rpc("ccp_student_create_full",{
     p_name:name,
     p_birthdate:input.birthdate||null,
@@ -104,16 +103,17 @@ export async function createStudentWithOptionalFamily(
       return {ok:false,error:"Student from this request was permanently deleted",status:409};
     if(message.includes("GUARDIAN_NOT_FOUND"))
       return {ok:false,error:"Family not found",status:404};
-    if(/STUDENT_INVALID_INPUT|GUARDIAN_NAME_REQUIRED|GUARDIAN_CONTACT_CHANNEL_REQUIRED/.test(message)||
+    if(/STUDENT_INVALID_INPUT|GUARDIAN_NAME_REQUIRED|GUARDIAN_CONTACT_CHANNEL_REQUIRED|CONTACT_NAME_REQUIRED|CONTACT_AND_LEGACY_FAMILY_CONFLICT/.test(message)||
        ["22023","22007","22008"].includes(error.code??""))
-      return {ok:false,error:"Invalid student or family contact details",status:400};
+      return {ok:false,error:"Invalid student or independent contact details",status:400};
     return {ok:false,error:"Student and optional family could not be created",status:500};
   }
   if(!data||typeof data!=="object"||Array.isArray(data)||
      !data.student||typeof data.student!=="object")
     return {ok:false,error:"Student transaction returned invalid data",status:500};
   return {ok:true,student:data.student as Record<string,unknown>,
-    createdFamily:Boolean(data.createdFamily)};
+    createdFamily:Boolean(data.createdFamily),
+    createdContactId:typeof data.createdContactId==="string"?data.createdContactId:null};
 }
 
 /**

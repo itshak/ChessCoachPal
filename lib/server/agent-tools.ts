@@ -1683,7 +1683,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           message:result.error,
         }};
         return {data:{...safeStudentProfile(result.student),
-          createdFamily:result.createdFamily}};
+          createdFamily:result.createdFamily,
+          createdContactId:result.createdContactId}};
       }
       case "ccp_billing_generation_preview": {
         const a=args as {periodStart:string;periodEnd:string};

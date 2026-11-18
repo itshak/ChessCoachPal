@@ -89,7 +89,8 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(
-    { ...result.student, createdFamily: result.createdFamily },
+    { ...result.student, createdFamily: result.createdFamily,
+      createdContactId: result.createdContactId },
     { status: 201 }
   );
 }

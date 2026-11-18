@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "2309e23af0a92bcad23fd8268bd6d3857033188a7d2284934d5dff73458cd5b4",
+  "baselineSha256": "ee3bb5fabb4b9eed39d4166f024e7673b9884dd847d2a693086050838fa68a6f",
   "historicalAllowedSequences": [
     [],
     [
@@ -49,6 +49,16 @@
       "20261118150000_live_baseline_function_alignment.sql",
       "20261118180000_contacts_identity_foundation.sql",
       "20261118183000_contacts_backup_restore.sql"
+    ],
+    [
+      "20261117000000_live_historical_lifecycle_extension.sql",
+      "20261117190000_mcp_workflow_composition.sql",
+      "20261117231554_family_communication_locale.sql",
+      "20261118000000_multilingual_teacher_and_family_locale.sql",
+      "20261118150000_live_baseline_function_alignment.sql",
+      "20261118180000_contacts_identity_foundation.sql",
+      "20261118183000_contacts_backup_restore.sql",
+      "20261118190000_contacts_student_creation.sql"
     ]
   ],
   "transitions": [
@@ -140,6 +150,18 @@
         "ccp_teacher_backup_restore"
       ],
       "sha256": "aa62839a5ce9a1cde3cfd34af6860865fb82580000450830d452a44c0157a0a8"
+    },
+    {
+      "file": "20261118190000_contacts_student_creation.sql",
+      "fromRevision": "20261118183000",
+      "purpose": "Contact-first atomic student enrollment with no implicit legacy portal family, deterministic creation receipts and existing family-link preservation",
+      "risk": "function-body + additive nullable receipt column; operator must pause affected writes, verify live ledger and restored-copy rehearsal",
+      "requiresVerifiedRestore": true,
+      "baselineObjects": [
+        "ccp_student_create_full",
+        "ccp_student_create_receipts.created_contact_id"
+      ],
+      "sha256": "a62f55bfe461129b86afa81f6d67f28f096f3873fb86e4084cee72ecfc1ffef6"
     }
   ],
   "reviewPolicy": "Update baseline and manifest hashes, review RLS/grants/data map, run isolated synthetic convergence and restore before authorizing production"
