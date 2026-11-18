@@ -6,6 +6,17 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 _Changes for the next release go here._
 
+## [0.1.8] - 2026-11-18
+
+### Fixed
+- Historical attendance import now loads workplace and student rosters independently, so failure of one API no longer empties both dropdowns. Invalid response payloads and missing workplace configuration are explicitly distinguished from request failures.
+- Provide translated loading and retry feedback in English, Hebrew and Russian for the historical attendance importer, including workplace and archived-student selection.
+
+### Verification
+- Authenticated browser regression verifies the selected teacher's workplace appears in Quick Import, students and workplaces survive independent simulated API outages, and retry restores both lists.
+- Preserve unchanged website/MCP attendance import contracts and tenant isolation. Existing strict MCP parity, CI, browser E2E, security, Compose and backup/restore checks passed on PR #100; release publication and Coolify deployment require their own exact-tag gates.
+
+
 ## [0.1.7] - 2026-11-18
 
 ### Added
