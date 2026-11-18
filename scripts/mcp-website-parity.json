@@ -1483,6 +1483,46 @@
       ],
       "explanation": "Authenticated website and delegated MCP use the same owner-scoped contact relationship history listing; current and ended student links are read back independently.",
       "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
+      "path": "app/api/portal-grants/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_portal_grants_list",
+        "ccp_portal_grants_create"
+      ],
+      "explanation": "Explicit owner/contact/student/workplace and finance-scoped grant metadata, never raw portal tokens. Authenticated browser and delegated MCP use one typed service, consent and revision/idempotency.",
+      "evidenceTest": "e2e/parity-scoped-portal-grants.spec.ts"
+    },
+    {
+      "path": "app/api/portal-grants/[id]/route.ts",
+      "methods": [
+        "GET",
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_portal_grants_get",
+        "ccp_portal_grants_revoke"
+      ],
+      "explanation": "Get/revoke one explicit owner-scoped capability metadata through shared service. Token is invalidated on revocation; no browser secret exposed through MCP.",
+      "evidenceTest": "e2e/parity-scoped-portal-grants.spec.ts"
+    },
+    {
+      "path": "app/api/portal-grants/[id]/issue/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "auth",
+      "parity": "browser-only",
+      "existingTools": [],
+      "explanation": "Sensitive browser-only secret issuance with same-origin CSRF, teacher authentication and explicit revision/confirmation. MCP can create/revoke metadata but never see token, digest or credential URL."
     }
   ],
   "teacherPages": [

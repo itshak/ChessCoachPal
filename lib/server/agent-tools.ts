@@ -115,6 +115,10 @@ import {
  billingAccountsList,billingAccountDetail,billingAccountCreate,billingAccountUpdate,
  safeBillingAccount,ContactServiceError,
 } from "@/lib/server/teacher-contacts-service";
+import {portalGrantCreateSchema,portalGrantRevokeSchema} from "@/lib/server/portal-grant-schemas";
+import {teacherPortalGrantsList,teacherPortalGrantGet,
+ teacherPortalGrantCreate,teacherPortalGrantRevoke,PortalGrantError}
+ from "@/lib/server/portal-grants-service";
 import { guardianCreateSchema, guardianUpdateSchema } from "@/lib/server/api-schemas";
 import { guardiansList, guardianDetail, guardianCreate, guardianUpdate,
  guardianDeleteImpact, guardianDelete, guardianRotatePortalToken, safeGuardian,
@@ -850,6 +854,26 @@ const catalogue = [
     description:"Update an identified billing-account name, type, associated contact or active status; require expected revision, idempotency and explicit confirmation. Does not retroactively reassign invoices.",
     schema:billingAccountUpdateSchema.safeExtend({billingAccountId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_portal_grants_list",
+    description:"List explicit scoped guest sharing metadata for the teacher. Each grant binds exactly one contact, student and workplace; never returns any link secret, token digest or unauthorized child data.",
+    schema:z.object({contactId:uuid.optional()}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_portal_grants_get",
+    description:"Read metadata and current revoke/expiry state of one teacher-owned portal grant; never disclose a secret link.",
+    schema:z.object({grantId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_portal_grants_create",
+    description:"With teacher confirmation create an explicit limited contact/student/workplace sharing grant, requiring exact permissions and expiration. This DOES NOT issue a secret URL. Use the authenticated website for link issuance; contact relationship alone is never a grant.",
+    schema:portalGrantCreateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_portal_grants_revoke",
+    description:"Explicitly revoke a scoped portal grant using expected revision and request ID. Invalidates any previously issued token; no secret or URL returned.",
+    schema:portalGrantRevokeSchema.extend({grantId:uuid}).strict(),scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_skill_dimensions_list",
@@ -2114,6 +2138,22 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const updated=await billingAccountUpdate(db,teacherId,a.billingAccountId,a);
         return {data:{...updated,contactId:undefined}};
       }
+      case "ccp_portal_grants_list": {
+        const a=args as {contactId?:string};
+        return {data:await teacherPortalGrantsList(db,teacherId,a.contactId)};
+      }
+      case "ccp_portal_grants_get": {
+        const a=args as {grantId:string};
+        return {data:await teacherPortalGrantGet(db,teacherId,a.grantId)};
+      }
+      case "ccp_portal_grants_create": {
+        const a=args as Parameters<typeof teacherPortalGrantCreate>[2];
+        return {data:await teacherPortalGrantCreate(db,teacherId,a)};
+      }
+      case "ccp_portal_grants_revoke": {
+        const a=args as Parameters<typeof teacherPortalGrantRevoke>[3]&{grantId:string};
+        return {data:await teacherPortalGrantRevoke(db,teacherId,a.grantId,a)};
+      }
       case "ccp_skill_dimensions_list":
         return {data:await skillDimensionsList(db,teacherId)};
       case "ccp_skill_dimensions_create": {
@@ -2573,6 +2613,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof CanonicalPrivateSessionError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalSlotError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof PortalGrantError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof ContactServiceError)
       return {error:{code:error.code,message:error.message}};

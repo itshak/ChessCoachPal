@@ -10713,3 +10713,51 @@ CREATE POLICY billing_accounts_teacher ON public.billing_accounts FOR ALL TO aut
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.contacts,public.student_contacts,public.billing_accounts TO authenticated;
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.contacts,public.student_contacts,public.billing_accounts TO service_role;
 -- END ChessCoachPal contact identity foundation.
+
+-- ADR-0017 / scoped Student & Contact Portal. This is the only target model:
+-- old guardian portal tokens shall not be mapped to these grants or accepted.
+-- One grant binds exactly one student, one workplace, one contact and a limited
+-- set of explicit operations. Billing access additionally binds one payer.
+CREATE TABLE public.portal_access_grants (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  contact_id uuid NOT NULL,
+  student_id uuid NOT NULL,
+  workplace_id uuid NOT NULL,
+  billing_account_id uuid,
+  permissions text[] NOT NULL,
+  token_digest text UNIQUE CHECK (token_digest IS NULL OR token_digest ~ '^[a-f0-9]{64}$'),
+  issued_at timestamptz,
+  expires_at timestamptz NOT NULL,
+  revoked_at timestamptz,
+  revision bigint NOT NULL DEFAULT 1 CHECK (revision>=1),
+  last_request_id uuid,
+  last_request_hash text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(id,teacher_id),
+  CONSTRAINT portal_permissions_nonempty CHECK (
+    cardinality(permissions) BETWEEN 1 AND 5 AND
+    permissions <@ ARRAY['calendar','cancel','shared_notes','event_rsvp','finance']::text[]),
+  CONSTRAINT portal_finance_exact_payer CHECK (
+    (billing_account_id IS NOT NULL) = ('finance'=ANY(permissions))),
+  CONSTRAINT portal_expiry_after_creation CHECK (expires_at>created_at),
+  CONSTRAINT portal_student_owner_fk FOREIGN KEY (student_id,teacher_id)
+    REFERENCES public.students(id,teacher_id) ON DELETE CASCADE,
+  CONSTRAINT portal_contact_owner_fk FOREIGN KEY (contact_id,teacher_id)
+    REFERENCES public.contacts(id,teacher_id) ON DELETE RESTRICT,
+  CONSTRAINT portal_workplace_owner_fk FOREIGN KEY (workplace_id,teacher_id)
+    REFERENCES public.workplaces(id,teacher_id) ON DELETE RESTRICT,
+  CONSTRAINT portal_account_owner_fk FOREIGN KEY (billing_account_id,teacher_id)
+    REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT
+);
+CREATE INDEX portal_grants_contact_idx ON public.portal_access_grants(teacher_id,contact_id,student_id);
+CREATE INDEX portal_grants_expires_idx ON public.portal_access_grants(expires_at)
+  WHERE revoked_at IS NULL AND token_digest IS NOT NULL;
+ALTER TABLE public.portal_access_grants ENABLE ROW LEVEL SECURITY;
+CREATE POLICY portal_grants_teacher ON public.portal_access_grants FOR ALL TO authenticated
+  USING (teacher_id=(SELECT auth.uid())) WITH CHECK (teacher_id=(SELECT auth.uid()));
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.portal_access_grants TO authenticated;
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.portal_access_grants TO service_role;
+COMMENT ON TABLE public.portal_access_grants IS
+  'Narrow, explicit per-contact/student/workplace guest sharing. Raw tokens never stored. No legacy guardian token grants.';
