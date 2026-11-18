@@ -68,7 +68,26 @@ supabase migration up --local
 sql < scripts/schema-transition-preservation.sql > "$scratch/after-records.txt"
 diff -u "$scratch/before-records.txt" "$scratch/after-records.txt"
 sql < scripts/schema-state-fingerprint.sql > "$scratch/upgraded-schema.json"
-if ! diff -u "$scratch/fresh-schema.json" "$scratch/upgraded-schema.json"; then
+if ! cmp -s "$scratch/fresh-schema.json" "$scratch/upgraded-schema.json"; then
+  python3 - "$scratch/fresh-schema.json" "$scratch/upgraded-schema.json" <<'PY_DIFF'
+import json,sys
+from pathlib import Path
+fresh=json.loads(Path(sys.argv[1]).read_text())
+live=json.loads(Path(sys.argv[2]).read_text())
+keys={'relations':lambda x:x[0], 'columns':lambda x:f'{x[0]}.{x[1]}',
+      'constraints':lambda x:f'{x[1]}.{x[0]}', 'indexes':lambda x:x[0],
+      'triggers':lambda x:f'{x[1]}.{x[0]}', 'routines':lambda x:x[0],
+      'policies':lambda x:f'{x[1]}.{x[2]}', 'storage_policies':lambda x:f'{x[0]}.{x[1]}'}
+for label,key in keys.items():
+    fa={key(x):x for x in fresh.get(label) or []}
+    la={key(x):x for x in live.get(label) or []}
+    for name in sorted(fa.keys()|la.keys()):
+        if fa.get(name)!=la.get(name):
+            print(f'ADR-0015 structural drift: {label} / {name}',file=sys.stderr)
+            if label=='routines':
+                print('  fresh definition digest:',(fa.get(name) or ['']*5)[-1],file=sys.stderr)
+                print('  migrated definition digest:',(la.get(name) or ['']*5)[-1],file=sys.stderr)
+PY_DIFF
   echo "ADR-0015: fresh-install and upgraded app-owned schema/RLS/grants diverge" >&2
   exit 1
 fi

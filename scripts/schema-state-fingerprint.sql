@@ -11,7 +11,7 @@ WITH footprint AS (
    'columns',(SELECT jsonb_agg(jsonb_build_array(c.relname,a.attname,
       format_type(a.atttypid,a.atttypmod),a.attnotnull,
       coalesce(pg_get_expr(d.adbin,d.adrelid),''),coalesce(a.attacl::text,''))
-      ORDER BY c.relname,a.attnum)
+      ORDER BY c.relname,a.attname)
       FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
       JOIN pg_namespace n ON n.oid=c.relnamespace
       LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
