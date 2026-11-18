@@ -133,9 +133,13 @@ export async function contactCreate(db:DB,teacherId:string,input:Create){
   const {data,error}=await db.from("contacts").insert(row).select(contactColumns).maybeSingle();
   if(!error&&data)return {...safeContact(data,true),replayed:false};
   if(error?.code==="23505"){
-    const existing=await contactRow(db,teacherId,input.idempotencyKey);
-    if(replay(existing,input.idempotencyKey,requestHash))return {...safeContact(existing,true),replayed:true};
-    return fail(409,"IDEMPOTENCY_CONFLICT","Contact request ID was used for different details");
+    const {data:existing, error:lookupError}=await db.from("contacts")
+      .select(contactColumns).eq("teacher_id",teacherId)
+      .eq("id",input.idempotencyKey).maybeSingle();
+    if(lookupError)return dataError("Contact replay lookup unavailable");
+    if(existing&&replay(existing,input.idempotencyKey,requestHash))
+      return {...safeContact(existing,true),replayed:true};
+    return fail(409,"IDEMPOTENCY_CONFLICT","Contact request ID was used for different details or a unique contact already exists");
   }
   return dataError("Unable to create contact");
 }
@@ -231,10 +235,13 @@ export async function billingAccountCreate(db:DB,teacherId:string,input:BillingC
   }).select(billingColumns).maybeSingle();
   if(!error&&data)return {...safeBillingAccount(data,true),replayed:false};
   if(error?.code==="23505"){
-    const old=await billingRow(db,teacherId,input.idempotencyKey);
-    if(replay(old,input.idempotencyKey,requestHash))
+    const {data:old,error:lookupError}=await db.from("billing_accounts")
+      .select(billingColumns).eq("teacher_id",teacherId)
+      .eq("id",input.idempotencyKey).maybeSingle();
+    if(lookupError)return dataError("Billing account replay lookup unavailable");
+    if(old&&replay(old,input.idempotencyKey,requestHash))
       return {...safeBillingAccount(old,true),replayed:true};
-    return fail(409,"IDEMPOTENCY_CONFLICT","Billing account request ID reused");
+    return fail(409,"IDEMPOTENCY_CONFLICT","Billing account request ID reused or account conflicts");
   }
   return dataError("Unable to create billing account");
 }

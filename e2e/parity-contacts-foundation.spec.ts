@@ -189,3 +189,72 @@ test("PARITY:PARITY-contact-ui shows an MCP-created contact in the localized tea
   await expect(page.getByLabel("Display name")).toHaveValue(name);
   await expect(page.getByText("Linking a contact does not share private teaching notes, grant portal access or make this person a payer.")).toBeVisible();
 });
+
+test("PARITY:PARITY-contact-safety archived contact cannot be newly linked, existing history survives",async({page,request})=>{
+  const call=await delegatedTool(page,request);
+  const contact=await call("ccp_contacts_create",{
+    displayName:"Archive contact "+randomUUID(),idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(contact.error).toBeUndefined();
+  const student=await call("ccp_students_create",{
+    name:"Archive student "+randomUUID(),idempotencyKey:randomUUID(),
+  });
+  expect(student.error).toBeUndefined();
+  const studentId=student.data.entityId as string;
+  const linked=await call("ccp_student_contacts_link",{
+    studentId,contactId:contact.data.id,relationshipLabel:"Tutor",
+    idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(linked.error).toBeUndefined();
+  const archived=await call("ccp_contacts_update",{
+    contactId:contact.data.id,status:"archived",expectedRevision:1,
+    idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(archived.error).toBeUndefined();
+  expect(archived.data.status).toBe("archived");
+  const blocked=await page.request.post("/api/students/"+studentId+"/contacts",{
+    data:{contactId:contact.data.id,relationshipLabel:"New tutor",
+      idempotencyKey:randomUUID()},
+  });
+  expect(blocked.status()).toBe(409);
+  expect((await blocked.json()).code).toBe("CONTACT_ARCHIVED");
+  const history=await call("ccp_contacts_links_list",{contactId:contact.data.id});
+  expect(history.error).toBeUndefined();
+  expect(history.data.some((row:{id:string})=>row.id===linked.data.id)).toBe(true);
+  const other=await call("ccp_students_create",{
+    name:"Other teacher-owned student "+randomUUID(),idempotencyKey:randomUUID(),
+  });
+  expect(other.error).toBeUndefined();
+  const cross=await call("ccp_student_contacts_link",{
+    studentId:other.data.entityId,contactId:contact.data.id,
+    relationshipLabel:"Relative",idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(cross.error?.code).toBe("CONTACT_ARCHIVED");
+});
+
+test("PARITY:PARITY-contact-safety requires explicit MCP confirmation and optimistic concurrency",async({page,request})=>{
+  const call=await delegatedTool(page,request);
+  const name="Consent contact "+randomUUID();
+  const unconfirmed=await call("ccp_contacts_create",{
+    displayName:name,idempotencyKey:randomUUID(),
+  });
+  expect(unconfirmed.error).toBeDefined();
+  const created=await call("ccp_contacts_create",{
+    displayName:name,idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(created.error).toBeUndefined();
+  const contactId=created.data.id as string;
+  const first=await call("ccp_contacts_update",{
+    contactId,expectedRevision:1,idempotencyKey:randomUUID(),
+    displayName:name+" updated",confirmed:true,
+  });
+  expect(first.error).toBeUndefined();
+  const stale=await call("ccp_contacts_update",{
+    contactId,expectedRevision:1,idempotencyKey:randomUUID(),
+    displayName:name+" stale",confirmed:true,
+  });
+  expect(stale.error?.code).toBe("STALE_REVISION");
+  const read=await page.request.get("/api/contacts/"+contactId);
+  expect(read.status()).toBe(200);
+  expect((await read.json()).displayName).toBe(name+" updated");
+});
