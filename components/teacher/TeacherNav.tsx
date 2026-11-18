@@ -22,7 +22,7 @@ const navItems = [
   { href: "/reports", key: "reports", tour: "reports" },
 ] as const;
 const secondaryNavItems = [
-  { href: "/families", key: "contacts", tour: "families" },
+  { href: "/contacts", key: "contacts", tour: "families" },
   { href: "/events", key: "events", tour: "events" },
   { href: "/billing", key: "billing", tour: "billing" },
   { href: "/studio", key: "settings", tour: "studio" },

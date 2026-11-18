@@ -190,6 +190,19 @@ test("PARITY:PARITY-contact-ui shows an MCP-created contact in the localized tea
   await expect(page.getByText("Linking a contact does not share private teaching notes, grant portal access or make this person a payer.")).toBeVisible();
 });
 
+test("PARITY:PARITY-contact-navigation prefers contacts while keeping existing portal family editor reachable",async({page})=>{
+  await page.goto("/dashboard");
+  const more=page.getByRole("button",{name:"More",exact:true});
+  await more.click();
+  await page.locator('nav a[href="/contacts"]').click();
+  await expect(page).toHaveURL(/\/contacts$/);
+  await expect(page.locator("h1")).toContainText("Contacts");
+  // The old family management screen is reachable only as an intentional
+  // historical/portal transition, not the main navigation destination.
+  await page.locator('a[href="/families"]').click();
+  await expect(page).toHaveURL(/\/families$/);
+});
+
 test("PARITY:PARITY-contact-safety archived contact cannot be newly linked, existing history survives",async({page,request})=>{
   const call=await delegatedTool(page,request);
   const contact=await call("ccp_contacts_create",{
