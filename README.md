@@ -33,6 +33,8 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 
 ## Documentation
 
+- **[2026-11-18 accepted architecture and eight implementation OpenSpec proposals](openspec/changes/README.md)** — source-linked scope, dependencies, deferrals, baseline/live migration and website/MCP acceptance gates
+
 - [Hosting architecture and Coolify deployment plan](docs/HOSTING_ARCHITECTURE.md) — trimmed self-hosted Supabase target, capacity and recovery gates
 - [ADR-0008: Retain trimmed self-hosted Supabase](docs/adr/0008-self-hosted-supabase-on-coolify.md) — hosting choice and alternatives
 
@@ -68,14 +70,14 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 **Proprietary for original ChessCoachPal material going forward**, with MIT-licensed CogNote and previously licensed components retained under their respective terms. See [LICENSE](LICENSE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and [ADR-0002](docs/adr/0002-proprietary-licensing.md). Earlier MIT grants are not revoked. Public repository access does not authorize redistribution or hosted deployment of proprietary portions. ChessCoachPal is independent of the original CogNote project.
 
 
-## Planned full chess-trainer experience — NOT implemented
+## Earlier chess-trainer roadmap (historical snapshot)
 
 A separate [OpenSpec proposal](openspec/changes/archive/2026-11-15-support-conversational-lesson-and-lichess-workflows/proposal.md) covers “Today I taught Armond, Shushana and David Zaruk 13:00–14:30; we studied Classic Games 2, chapter 32”: resolve Hebrew/English student aliases, use scheduled hours only when explicit hours are absent, create **one** historical multi-student lesson and verified per-student study links without inventing comprehension assessments. It also plans website Lichess Study selection and reviewed image→FEN→PGN puzzle publishing with safe chapter rollover. Student profiles will gain Hebrew report names, English aliases, teacher strength 1–10, Lichess/Chess.com accounts and separate provider/time-control rating snapshots. Public official ChatGPT Plugin Directory listing is tentatively deferred until a hosted multi-teacher SaaS is launched at/after v1.0.0; semantic version is not a technical gate and an earlier security-reviewed beta is possible. See [strategy](docs/PUBLIC_PLUGIN_SUBMISSION.md).
 
 
-## MCP-first complete feature parity — REQUIRED, not achieved
+## MCP-first website parity — binding ongoing rule
 
-All teacher-business website features and ordinary editable fields, including material history and **reports**, must be accessible through the existing authenticated **/mcp** connector. Changing a website form without providing the corresponding MCP operation/tests is incomplete. Sensitive actions require scoped approvals and may hand off to secure web consent, but cannot be silently omitted. The [93-scenario website/MCP checklist](docs/MCP_WEBSITE_PARITY_CHECKLIST.md) and [automated source inventory](scripts/mcp-website-parity.json) document today's 40 missing + 3 partial teacher-business API route parity gaps (of 43; 61 API routes/17 teacher pages/49 components). The normal CI inventory audit is green only when coverage claims match code; the release's **strict** parity command intentionally fails until the gaps and real website↔MCP behavioral tests are resolved. Existing live Codex student/workplace creation is a successful subset, not full parity.
+The previously audited merged-main source (2026-11-14) accepted **59/59 teacher route families, 93/93 historic website/MCP cases and 26/26 additional scenarios** with synthetic authenticated E2E evidence. This is not a guarantee that newer changes or the exact running deployment are certified and does not replace independent real ChatGPT/Claude client acceptance. Every *new* ordinary website business field/action must have an equivalent authenticated MCP operation, same business service, registry update and behavioral parity test in the implementation change; secure browser-only credentials and approvals remain narrowly justified exceptions. [Details](docs/MCP_WEBSITE_PARITY_CHECKLIST.md).
 
 ## Database schema and safe private-beta transitions
 
