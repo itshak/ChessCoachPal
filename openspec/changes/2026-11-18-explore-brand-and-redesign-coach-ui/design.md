@@ -17,6 +17,14 @@ Baseline ranked hypotheses:
 
 Explore at least three additional, visibly distinct families; starting directions (not final hex values): (4) Charcoal & Oxblood/Clay, (5) Mineral Blue-Gray & Soft Copper, (6) Deep Olive & Lilac Stone. Designers should derive and tune complete semantic tokens on actual screens, not mechanically recolor the baseline. Evaluate light counterparts, focus/hover/disabled/error/success, text/number hierarchy, charts, borders and logo use. Reject inaccessible combinations.
 
+## Logo comparison protocol
+- **Candidate A — retained current identity:** rich knight-teacher, small pupil pawn and open book. Keep the original as baseline and render palette-recolored variants once candidate colors are available; the final palette is not selected yet. Preserve the distinctive teaching narrative rather than treating detail as a defect.
+- **Candidate B — relational refinement:** redesigned knight-teacher/pupil interaction; test meaningful variations, not generic knight clipart. Candidate remains undecided.
+- **Candidate C — typographic/abstract mark:** evaluate whether a more minimal mark communicates chess coaching and is recognizable without losing the human teaching relationship. Candidate remains undecided.
+- **Rejected:** standalone simple chess piece or generic chess knight silhouette. Do not include as a finalist or quietly reintroduce it.
+- Test all candidates at header, landing page, avatar, app icon and 16/24/32/64 px favicon scales, both monochrome and in every shortlisted palette. Allow an optical-size small icon derived from the rich primary logo if needed; do not replace the primary mark merely because favicon reduction is hard.
+- Compare visual distinctiveness, meaning, legibility, memorability, color compatibility, and coherence with typography. Record explicit user selection; none is preapproved.
+
 ## Interface design hypotheses
 - **Compact professional workspace:** dense, scannable rows, precise separators, contextual actions, persistent sidebar and clear keyboard focus.
 - **Editorial teaching desk:** typographic hierarchy, generous but purposeful whitespace, reduced card chrome, reading-oriented lesson evidence.
