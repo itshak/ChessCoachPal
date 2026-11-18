@@ -6,10 +6,9 @@ umask 077
 [[ "${M5_SYNTHETIC_RESTORE:-}" == "1" && "${CI:-}" == "true" ]] ||
   { echo "Synthetic GitHub Actions only" >&2; exit 2; }
 
-# ADR-0015: first prove current baseline vs the pinned historical schema
-# through the normal versioned local migration runner. This step creates and
-# stops its own disposable Supabase stack; no production URL is permitted.
-echo "==> enforce canonical baseline vs populated live-transition convergence"
+# ADR-0017: prove deterministic fresh canonical baseline, RLS and portal
+# permissions on a disposable Supabase. This does NOT upgrade old databases.
+echo "==> enforce final single-baseline reproducibility and scoped authorization"
 CCP_SYNTHETIC_SCHEMA=1 bash scripts/verify-schema-transition-convergence.sh
 
 root="$(pwd)"
@@ -73,6 +72,57 @@ BEGIN
 END
 $block$;
 SQL
+
+echo "==> create explicit synthetic contact, payer, guest grant and event RSVP evidence"
+docker exec -i "$source_db" psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+INSERT INTO public.contacts (id,teacher_id,display_name,email,preferred_locale)
+VALUES('a0000000-0000-4000-8000-000000000001',
+       '00000000-0000-0000-0000-000000000001',
+       'Synthetic contact only','synthetic-contact@example.invalid','en');
+INSERT INTO public.student_contacts
+ (teacher_id,student_id,contact_id,relationship_label,is_legal_guardian,may_receive_messages)
+VALUES('00000000-0000-0000-0000-000000000001',
+       '10000000-0000-0000-0000-000000000001',
+       'a0000000-0000-4000-8000-000000000001',
+       'Synthetic school contact',false,false);
+INSERT INTO public.billing_accounts (id,teacher_id,display_name,account_kind,contact_id)
+VALUES('d0000000-0000-4000-8000-000000000001',
+       '00000000-0000-0000-0000-000000000001',
+       'Synthetic payer only','person','a0000000-0000-4000-8000-000000000001');
+INSERT INTO public.portal_access_grants
+ (id,teacher_id,contact_id,student_id,workplace_id,billing_account_id,
+  permissions,expires_at,token_digest)
+SELECT 'c0000000-0000-4000-8000-000000000001',
+       '00000000-0000-0000-0000-000000000001',
+       'a0000000-0000-4000-8000-000000000001',
+       '10000000-0000-0000-0000-000000000001',
+       id,'d0000000-0000-4000-8000-000000000001',
+       ARRAY['calendar','event_rsvp','finance']::text[],
+       '2030-04-01T00:00:00Z'::timestamptz,
+       encode(extensions.digest('test-only-private-demo-key','sha256'),'hex')
+FROM public.workplaces WHERE teacher_id='00000000-0000-0000-0000-000000000001'
+ORDER BY id LIMIT 1;
+INSERT INTO public.events(id,teacher_id,workplace_id,title,starts_at)
+SELECT 'b0000000-0000-4000-8000-000000000001',
+       '00000000-0000-0000-0000-000000000001',id,
+       'Synthetic event invitation','2027-04-02T16:00:00Z'::timestamptz
+FROM public.workplaces WHERE teacher_id='00000000-0000-0000-0000-000000000001'
+ORDER BY id LIMIT 1;
+INSERT INTO public.event_students(event_id,student_id,repertoire)
+VALUES('b0000000-0000-4000-8000-000000000001',
+       '10000000-0000-0000-0000-000000000001','Synthetic repertoire');
+INSERT INTO public.portal_event_invitations
+ (id,teacher_id,event_id,portal_grant_id,status,party_size,note,responded_at)
+VALUES('e0000000-0000-4000-8000-000000000001',
+       '00000000-0000-0000-0000-000000000001',
+       'b0000000-0000-4000-8000-000000000001',
+       'c0000000-0000-4000-8000-000000000001',
+       'yes',2,'Synthetic approved guest response','2026-11-18T12:00:00Z'::timestamptz);
+SQL
+
+echo "==> verify exact seeded guest sharing exists and old family tokens were never used"
+docker exec "$source_db" psql -U postgres -d postgres -tAc \
+  "SELECT count(*) FROM public.portal_event_invitations WHERE event_id='b0000000-0000-4000-8000-000000000001' AND status='yes'" | grep -qx 1
 
 echo "==> upload actual synthetic PNG through Storage API"
 printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==' |
@@ -184,13 +234,19 @@ docker run --rm --network "container:$target_db" \
 echo "==> compare synthetic row counts and actual uploaded bytes"
 for table in auth.users public.teachers public.workplaces public.students public.class_groups \
   public.group_enrollments public.teaching_sessions public.session_participants \
-  public.session_attendance storage.objects; do
+  public.session_attendance public.contacts public.student_contacts \
+  public.billing_accounts public.portal_access_grants \
+  public.events public.event_students public.portal_event_invitations storage.objects; do
   a="$(docker exec "$source_db" psql -U postgres -d postgres -tAc "SELECT count(*) FROM $table")"
   b="$(docker exec "$target_db" psql -U postgres -d postgres -tAc "SELECT count(*) FROM $table")"
   [[ "$a" == "$b" ]] || { echo "Count mismatch: $table" >&2; exit 1; }
 done
 docker exec "$target_db" psql -U postgres -d postgres -tAc \
   "SELECT count(*) FROM public.session_attendance a JOIN public.teaching_sessions s ON s.id=a.session_id WHERE s.title='Restore smoke lesson' AND a.status='present'" | grep -qx 1
+docker exec "$target_db" psql -U postgres -d postgres -tAc \
+  "SELECT count(*) FROM public.portal_event_invitations WHERE status='yes' AND party_size=2" | grep -qx 1
+docker exec "$target_db" psql -U postgres -d postgres -tAc \
+  "SELECT count(*) FROM public.portal_access_grants WHERE token_digest=encode(extensions.digest('test-only-private-demo-key','sha256'),'hex')" | grep -qx 1
 diff -qr "$tmp/source-files" "$tmp/target-files"
 echo "==> assert the destructive restore guard rejects a second run on populated target"
 if docker run --rm --network "container:$target_db" \

@@ -1,6 +1,11 @@
 # ChessCoachPal development and release status
 
 
+## 2026-11-18 — canonical baseline only / no staged SQL compatibility (WIP PR)
+
+On draft PR #104, `supabase/migrations/` now contains **only** `20261107000000_chesscoachpal_baseline.sql`. Eight historical development-transition files were removed from the active install path (their history is in Git). The v2 canonical manifest requires one baseline checksum, necessary current domain tables and a separate operator-controlled final cutover. The synthetic M5 schema verification was changed from replaying past migrations to two isolated fresh-baseline installs with RLS/FK/portal-RPC checks and structural equality. M5's **separate second-database backup/restore** is retained and extended to include synthetic contact, payer, per-student/workplace portal grant, event invitation and Storage byte evidence. The local canonical guard and its new 28-case tests pass; the remote GitHub Docker acceptance for this new version remains pending. **No real database, migration ledger, portal link or user data was touched.** The final no-legacy audit still fails until the old physical schema/routes/services are removed.
+
+
 ## 2026-11-18 — scoped portal replacement slice (draft branch, NOT accepted)
 
 Draft PR [#104](https://github.com/itshak/ChessCoachPal/pull/104) is replacing inherited guardian/Family Portal contracts rather than preserving backward compatibility. Explicit one-contact/one-student/one-workplace grants have teacher-controlled permissions, expiry, safe link issue/reissue and revoke; new guest page/calendar/lesson cancellation, narrow finance visibility, teacher-approved event invitations and RSVP use the new scoped model. The website student and event panels, authenticated REST and named MCP commands share typed services. No implicit contact, payer, student enrollment or old household token provides portal access. New UI strings are supplied in en/he/ru. Source-level local checks passed for TypeScript, lint (warnings remain), schema guard fixture tests (33/33) and strict current MCP catalogue/route parity (217 tools, 89/89 teacher route families, historical 93/93 scenarios). **These are not acceptance of the new behavior**, and the untested/unmerged draft may still have CI/E2E defects.

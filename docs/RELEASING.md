@@ -53,26 +53,9 @@ This is a deliberate release-policy exception authorized by the maintainer, not 
 
 ## Supported compatibility policy
 
-For `0.x` releases, **disposable development databases** may be deliberately
-reinitialized. We do **not** keep CogNote compatibility or promise perpetual
-support for old pre-1.0 client/API versions. **A populated private-beta/live
-database is different:** [ADR-0015](adr/0015-baseline-first-and-one-time-live-transitions.md)
-requires canonical fresh-install SQL plus a reviewed one-time forward-only
-migration for every deployment schema change, not a reset or ad hoc SQL patch.
+**Controlling pre-v1 policy (2026-11-18):** [ADR-0017](adr/0017-pre-v1-single-final-cutover-no-compatibility.md) requires **NO compatibility layers** for CogNote or earlier ChessCoachPal versions. The final source has one canonical fresh-install SQL baseline and no incremental upgrade chain in `supabase/migrations`. Browser and MCP current-domain operations must remain in functional parity; obsolete Family/Studio/guardian routes, tools, physical tables and broad portal tokens are removed, not aliased.
 
-**Mandatory data-bearing release/deployment gate:** prove the baseline and
-approved transitions converge with synthetic preserved users/records, RLS and
-grants through the existing CI/restore workflow; obtain privately reviewed
-source SHA and actual live migration-ledger inventory; verify an **off-host**
-backup successfully restored to a second isolated target; inspect affected
-identity/guardian/portal, historical student, invoice/credit and Storage
-relationships; record explicit operator permission, target, rollout window,
-recovery plan and after-apply reconciliation. Apply the approved transition
-*before* deploying any app code that needs it. A release tag or source merge
-does **not** authorize migrating actual teacher records. See
-[the operator runbook](SCHEMA_TRANSITION_RUNBOOK.md). Decide post-`1.0.0`
-compatibility separately; this guard protects real data without promising
-pre-v1 external API compatibility.
+**One final production cutover, separately approved:** after all planned accepted OpenSpec work is integrated, the authorized operator chooses **either** (A) one direct source-to-final mapping **or** (B) a verified empty target and deliberate export/reimport. No individual feature branch runs a production migration, and a release/tag/CI job never authorizes an existing-data reset. Test the canonical baseline on isolated synthetic data, prove a separate off-host backup restores, get target-specific private approval, revoke old broad tokens, independently verify all selected records and client actions, and then switch once. See [the final-cutover runbook](SCHEMA_TRANSITION_RUNBOOK.md). Do not archive or publish if `npm run pre1:final-cutover:audit` reports legacy-contract violations. Post-v1 compatibility is a separate future decision.
 
 ## Coolify private-beta deployment policy: published releases only
 

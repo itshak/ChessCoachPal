@@ -1,139 +1,42 @@
-> **Updated 2026-11-18 — ADR-0017 governs future changes:** The procedure below records historical per-feature migration and synthetic convergence work. **Do not execute that cumulative migration list on the real pre-v1 deployment** as a feature-by-feature upgrade plan. After implementing the full approved target, use one approved direct source-to-final migration, **or** a verified clean baseline and deliberate data export/reimport. Old tokens are revoked and new portal grants require explicit authorization. The real database has not been changed by this documentation update. Before accepting the finished combined implementation, run `npm run pre1:final-cutover:audit` (no legacy routes/models/tools; only the canonical baseline SQL). Its current nonzero result is a **deliberate incomplete-implementation warning**, not permission to bypass the final gate.
+# ChessCoachPal pre-v1 — one final database cutover / reimport runbook
 
-# ADR-0015 — Canonical baseline and live-transition operator runbook
+**Policy:** [ADR-0017](adr/0017-pre-v1-single-final-cutover-no-compatibility.md).
+**Status:** Future **operator-controlled** procedure; this document does not approve, execute, schedule, or guarantee an actual migration, production reset, deployment or data deletion. There is **no backward compatibility before v1.0.0**. The public repository never stores real customer, child, parent, payment or portal credential data.
 
-**Policy:** The baseline in `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`
-is the *entire* new-install schema. Only already-populated deployments use reviewed
-forward-only versioned migrations. A source merge does **not** authorize a live
-database upgrade or reset. Never run the baseline against an existing database.
+## Current development model
 
-## Inventory of the current supported development path
+- **One** fully consolidated fresh-install SQL: `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`. No historical incremental migration files, compatibility views, dual writers, legacy guardian/Family/Studio APIs or old portal tokens may remain in the **accepted final** app. The old migration history is available in Git as dated evidence; it is **not** an installation path.
+- `scripts/schema-transition-manifest.json` (v2) pins the current baseline checksum, required objects and `operatorCutoverRequired` decision. `npm run schema:canonical:guard` rejects any additional pre-v1 SQL migration in `supabase/migrations`. `npm run pre1:final-cutover:audit` **must pass** before final OpenSpec acceptance; it currently fails until all legacy runtime and schema consumers are removed.
+- `m5-restore.yml` executes a **synthetic, GitHub-only** clean-baseline reproducibility and authorization test, then backs up a disposable Supabase database (including new scoped contacts/portal records and Storage bytes) and restores it to a **second empty** disposable project. It NEVER inspects or migrates the live beta.
+- Existing source-level `supabase/seed.sql` and synthetic test credentials are development-only and **must not** populate a real customer database.
+- Website ↔ MCP parity, authorization, tenant/RLS isolation, portal-scope checks, exact group-session semantics and idempotency must be retested on the **final** source SHA. Do not treat the current draft route/tool count as behavioral acceptance.
 
-The original fresh-install revision predates the following historical, strictly
-ordered live transitions, now listed with SHA-256 review pins in
-`scripts/schema-transition-manifest.json`:
+## One final cutover — choose exactly one path
 
-1. `20261117000000_live_historical_lifecycle_extension.sql`: student
-   lifecycle and historical attendance evidence/RPCs.
-2. `20261117190000_mcp_workflow_composition.sql`: one canonical group
-   lesson and teacher-approved material-commit workflows.
-3. `20261117231554_family_communication_locale.sql`: independent guardian
-   communication locale and owner-scoped update RPC.
-4. `20261118000000_multilingual_teacher_and_family_locale.sql`: teacher
-   UI locale and limited column grant.
-5. `20261118150000_live_baseline_function_alignment.sql`: *new P0 convergence repair*,
-   aligning `ccp_student_capacity_guard()` and
-   `ccp_restore_canonical_chess_rows(jsonb)` to the baseline.
-   The synthetic acceptance suite uncovered the older live definition drift.
-   This **does not imply it has been applied in production**.
-6. `20261118180000_contacts_identity_foundation.sql`: adds contacts,
-   student-contact associations and billing account identities while preserving
-   legacy portal and invoice records. Not a complete family/portal cutover.
-7. `20261118183000_contacts_backup_restore.sql`: adds contact/relationship/
-   billing-account restoration to the same transactional backup RPC. The
-   corresponding full website JSON/CSV exports contain all three categories;
-   model-facing bulk exports redact contact email and phone.
-8. `20261118190000_contacts_student_creation.sql`: switches new optional
-   student contact creation from automatic legacy portal families to a
-   transactionally linked independent contact. Existing explicit legacy
-   guardian links, invoices and replay receipts are preserved. New contact
-   records carry no inferred legal status, messaging permission, portal
-   token or billing authority.
+The product owner accepts both options. Neither is automatically selected by checking source into Git.
 
-The manifest explicitly accepts historical development branches lacking some
-later files, but **does not** promise conversion of arbitrary pre-v1 schemas.
-The relevant baseline objects are pinned and must be present on a clean install.
-Existing migration versions are immutable: editing a recorded version is never
-a way to deploy a new schema. To change the effective schema, update the
-baseline and append a new **reviewed** transition, manifest entry and test.
+### Path A: one direct, reviewed source-to-final transformation
 
-**Not verified from repository source:** the actual production/Coolify
-migration ledger, last deployed commit, real affected record counts and
-presence of older partial migrations. This information must be collected
-**privately by the authorized operator** before a live rollout. Do not put
-production SQL output, child records, passwords or backup dumps in GitHub.
+Use only if the actual observed deployment has meaningful records the teacher cannot readily reimport. Inspect its private schema and migration ledger without copying private rows to GitHub. Prepare **one** source-to-final transformation into the complete final canonical target, with explicit owner, student alias, learning history, lesson/attendance, compensation/invoice/payment and record ID mappings. All obsolete tables and old portal tokens are dropped only when the selected records are safely reconciled in the target. Do **not** replay the historical per-feature migration chain. Never infer new contact portal grants from old guardian relationships or old bearer links.
 
-## Developer and CI verification
+The direct operator script, if required, belongs in a **restricted, separately reviewed operator package**, not as an extra default fresh-install migration. All SQL, staging and before/after reconciliation must use an isolated restored copy first. Reject ambiguous mappings rather than guessing. Maintain the exact source/target checklist privately.
 
-- `npm run schema:canonical:guard` checks the baseline review digest, every
-  transition digest, filename order and expected app-owned objects, as well
-  as the older pre-v1 current-schema policy.
-- `npm run schema:canonical:guard-test` exercises positive and negative
-  contract cases (unlisted files, out-of-order files, changed SQL, incomplete
-  approvals, missing target object).
-- `m5-restore.yml` runs `verify-schema-transition-convergence.sh` before its
-  own independent restore smoke. The convergence subtest builds a disposable local
-  Supabase instance in GitHub Actions. It installs **only** the current
-  baseline, stores the structural catalog signature, then resets the *local
-  synthetic instance* to the frozen pre-extension baseline from commit
-  `3a658a0bf5540f68c192b1a454bb5cdbc774f51b`. It inserts synthetic preserved records, applies the eight
-  reviewed migrations via Supabase's local migration ledger, checks counts, relations,
-  locale constraints, owner isolation, failure rollback and no second replay,
-  then compares table/column privileges, constraints, indexes, triggers,
-  functions, policies and RLS to the fresh baseline.
-- `m5-restore.yml` separately verifies a backup/restore into a **second
-  distinct disposable Supabase** and checks uploaded storage bytes.
-  `m5-compose.yml`, security, CI and authenticated browser/MCP E2E remain
-  mandatory acceptance gates on the exact PR head and merged main.
+### Path B (preferable if genuinely simpler): verified fresh baseline + explicit reimport
 
-No tool runs this workflow against a live or remote database. The script
-`scripts/verify-schema-transition-convergence.sh` refuses execution without
-the synthetic GitHub CI controls and refuses externally supplied DB URLs.
-The synthetic benchmark does not constitute a real production restore test.
+Safeguard an encrypted off-host export of the existing database and uploaded files. In a separate **empty** deployment target install the **final** canonical baseline exactly once. Reimport the specifically selected current teacher-owned records with documented field/ID mapping and independent checks of student aliases, active/archived state, workplace/group/lesson/attendance links, session notes/materials, billing and amounts actually received. Do not import legacy household credentials or implicit access grants. If any development data is intentionally omitted, record that decision with the operator before switching traffic. Identity/authorization and new scoped portal grants are created afresh.
 
-## Required review of *every later* schema change
+A fresh target is not a license to wipe the existing live database prematurely. Keep the prior installation recoverable and offline until the new target and complete selected data are verified and authorized for switchover.
 
-1. **Before review:** identify the current source SHA; what tables, grants,
-   functions, policies, schema owners and on-disk/Storage data change; list
-   destructive behavior, data mapping and potential race conditions. Determine
-   the **privately observed** live ledger state and which records are affected.
-2. **Fresh install:** update the canonical baseline and generated/types/API
-   contracts in the same change. Verify it with the new-transition scripts
-   temporarily omitted; SQL function bodies and schema grants must be valid.
-3. **Populated transition:** add a monotonically ordered filename, predecessor,
-   affected baseline objects, risk and checksum to the reviewed manifest.
-   Use explicit preconditions, a bounded batch strategy when needed, idempotent
-   replay where feasible and definitive postconditions. Never silently drop
-   guardian relations, invoices, portal grants, archived students or evidence.
-4. **Staging:** copy a **verified backup** of the live database and Storage into
-   an isolated authorized environment with access restrictions; reconcile
-   before/after counts, relationship keys, historical student IDs,
-   invoice/credit linkage, portal-token access, per-tenant RLS, role grants
-   and website/MCP operations. Do not upload real-user fixtures or backup
-   artifacts to GitHub Actions. Confirm failed/partial states and replay safety.
-5. **Human gate:** record private operator authorization with source SHA,
-   exact target, timestamp, verified restore reference, migration manifest,
-   dry-run/fixture results, rollout window, app compatibility window and
-   designated recovery operator. Neither a passing CI run nor an OpenSpec
-   archive substitutes for this approval.
-6. **Deploy:** take and verify a new encrypted off-host pre-deploy backup.
-   Prevent conflicting writes while applying approved forward-only
-   transitions; check the **specific target/project**, migrations ledger and
-   postconditions before deploying dependent application code. Do not use
-   an implicit Supabase project link or `db push` target.
-7. **Post-deploy:** reconcile affected record counts and hashes privately,
-   verify RLS/role grants, Auth, Storage, portal access, dated histories,
-   browser/MCP read/write/parity and delegated scopes. Monitor errors.
-   A migration exit code alone is insufficient.
-8. **Recovery:** stop dependent rollout and freeze risky writes. If the
-   transition is safely resumable, use the reviewed recovery plan only after
-   verifying the migration ledger and data state. For failed/destructive
-   cutovers, restore the independently verified off-host snapshot into an
-   isolated target and coordinate app rollback/reconciliation. Never guess
-   an inverse SQL migration or reset an existing database.
+## Private execution and safety gates (both paths)
 
-## Production approval record (PRIVATE — not a repository document)
+1. **Pin exact release candidate:** approved commit/PR, current authoritative schema checksum, full relevant tests green on that SHA, no obsolete Family/Studio/guardian contracts, all OpenSpec changes in scope accepted, refreshed MCP catalogue and authenticated website actions verified.
+2. **Inventory current live data privately:** deployed version, schema ledger, auth identities, teacher/student/contact/archived counts, history, events, payment/credit totals, file storage, and previously used portal tokens/links. Never paste real records or secrets into GitHub issues, PRs, Actions, logs or AI prompts.
+3. **Verify recoverability:** encrypted **off-host** backup of DB, Auth and Storage; restore into an isolated access-controlled environment, verify the data and referenced uploaded bytes before proceeding. A downloadable dump without a tested restore is not sufficient.
+4. **Approve target and choice:** record the operator, exact source and destination databases, chosen Path A or B, included/excluded data sets, mapping rules, environment variables, cutover window, credential/token invalidation, notification and incident/rollback owner. No default env/CLI project link, `db push` assumption or shared development connection is sufficient.
+5. **Rehearse:** compare canonical counts/IDs and sampled relationships, date/timezone/DST, idempotent imports, finance balances, grant denial, replay, unexpected errors, tenant/RLS isolation, full website/MCP business field readback and newly issued portal link revocation. Exercise recovery from a failed/partial operation.
+6. **Quiesce writes, execute once:** take a fresh verified backup, block conflicting writes and apply only the approved direct cutover or fresh reimport on the explicit target. No old portal link may survive as a valid new grant. Avoid a period of parallel old/new writers.
+7. **Verify before traffic:** reconcile records, amounts, Auth, Storage, RLS/grants, user permissions, no-store/referrer security, narrow external portal, website and MCP reads/writes, group lesson one-hour rules and correct production-domain revision. Reissue only explicitly teacher-approved scoped portal links; notify affected viewers where needed.
+8. **Failure recovery:** halt new writes and traffic, preserve logs privately, and restore the independently verified previous snapshot or return to the preserved old service according to the approved plan. Do not improvise reverse SQL or delete the sole recovered copy.
+9. **Close operational record privately:** final deployed SHA and schema hash, selected path, actual record reconciliation, backup/restore proof, unsupported cases, operator approval and open privacy/client acceptance issues. GitHub documentation should contain sanitized proof only.
 
-Maintain a private operator record containing: deployed SHA and migration
-versions; schema-level preflight checks; counts and anonymized discrepancy
-totals; backup identity, integrity and restore proof; approval identity and
-time; explicit target/project; window, recovery plan and final reconciliation.
-Keep it out of issues, CI logs and public release artifacts.
-
-## Boundaries
-
-This P0 contract **does not run any live migration** and does not certify a
-currently deployed version. Later contacts, national ratings, workplace,
-compensation, student portal and daily-workflow changes each require their own
-reviewed schema implementation and acceptance. The old pre-v1 policy permits
-breaking *source* changes but never authorizes destroying live teacher data.
+**Not authorized by this runbook:** live data deletion/reset, any automatic background migration, production deployment on a code push, retroactive claims of client certification, unrestricted sharing or accounting document issuance.

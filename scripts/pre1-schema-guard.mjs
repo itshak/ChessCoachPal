@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * ADR-0001 mechanical fresh-install contract. This guards against changes
- * reintroducing arbitrary schema upgrade chains (other than the explicitly
- * reviewed forward-only live data extensions), material compatibility mapping or
+ * ADR-0001/0017 mechanical fresh-install contract. This guards against
+ * reintroducing pre-v1 incremental upgrade chains, material compatibility mapping or
  * data-export version negotiation. It does not replace live tenant/RLS tests.
  */
 import {readdirSync,readFileSync} from "node:fs";
@@ -12,20 +11,7 @@ import {transitionContractErrors} from "./schema-transition-contract.mjs";
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const read=path=>readFileSync(join(root,path),"utf8");
 const BASELINE="20261107000000_chesscoachpal_baseline.sql";
-const LIVE_EXTENSION="20261117000000_live_historical_lifecycle_extension.sql";
-const WORKFLOW_EXTENSION="20261117190000_mcp_workflow_composition.sql";
-const FAMILY_LOCALE_EXTENSION="20261117231554_family_communication_locale.sql";
-const TEACHER_LOCALE_EXTENSION="20261118000000_multilingual_teacher_and_family_locale.sql";
-const BASELINE_ALIGNMENT="20261118150000_live_baseline_function_alignment.sql";
-const APPROVED_PREFIXES=[
- [BASELINE],
- [BASELINE,LIVE_EXTENSION],
- [BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION],
- [BASELINE,LIVE_EXTENSION,FAMILY_LOCALE_EXTENSION],
- [BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION,FAMILY_LOCALE_EXTENSION],
- [BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION,FAMILY_LOCALE_EXTENSION,TEACHER_LOCALE_EXTENSION],
- [BASELINE,LIVE_EXTENSION,WORKFLOW_EXTENSION,FAMILY_LOCALE_EXTENSION,TEACHER_LOCALE_EXTENSION,BASELINE_ALIGNMENT],
-];
+const APPROVED_PREFIXES=[[BASELINE]];
 
 export function canonicalSchemaErrors({
  sqlFiles,sql,transfer,agent,catalog,studentPage,teacherComponents,strictMaterials=false,
@@ -37,7 +23,7 @@ export function canonicalSchemaErrors({
  }));
  if(!migrationManifest && !APPROVED_PREFIXES.some(expected=>
    expected.length===sqlFiles.length && expected.every((file,i)=>file===sqlFiles[i])))
-   errors.push("Only the canonical baseline and explicitly approved ordered forward-only live extensions are permitted");
+   errors.push("Only the one final canonical baseline is permitted; no pre-v1 compatibility migrations");
  if(!sql.includes("CREATE TABLE public.learning_materials")||
     !sql.includes("CREATE TABLE public.student_training_plans"))
    errors.push("Canonical snapshot is missing required current typed chess tables");
@@ -85,5 +71,5 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const errors=process.argv.includes("--strict-materials")?
    canonicalSchemaErrors({...repositoryInputs(),strictMaterials:true}):checkRepository();
  if(errors.length){for(const e of errors)console.error("ADR-0001: "+e);process.exitCode=1;}
- else console.log("ADR-0001/0015 canonical baseline, reviewed transition hashes and backup contract verified.");
+ else console.log("ADR-0001/0017 one canonical baseline checksum, no compatibility chain, and operator cutover contract verified.");
 }
