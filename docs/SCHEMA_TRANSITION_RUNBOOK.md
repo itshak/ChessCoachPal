@@ -46,7 +46,7 @@ production SQL output, child records, passwords or backup dumps in GitHub.
   Supabase instance in GitHub Actions. It installs **only** the current
   baseline, stores the structural catalog signature, then resets the *local
   synthetic instance* to the frozen pre-extension baseline from commit
-  `3a658a0`. It inserts synthetic preserved records, applies the four
+  `3a658a0bf5540f68c192b1a454bb5cdbc774f51b`. It inserts synthetic preserved records, applies the four
   migrations via Supabase's local migration ledger, checks counts, relations,
   locale constraints, owner isolation, failure rollback and no second replay,
   then compares table/column privileges, constraints, indexes, triggers,

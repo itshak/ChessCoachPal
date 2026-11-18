@@ -22,7 +22,7 @@ trap cleanup EXIT
 baseline="20261107000000_chesscoachpal_baseline.sql"
 # Frozen source snapshot is part of the public git history. This is not a
 # generic backwards-compatibility promise for arbitrary pre-v1 deployments.
-previous="3a658a0"
+previous="3a658a0bf5540f68c192b1a454bb5cdbc774f51b"
 if ! git cat-file -e "$previous^{commit}" 2>/dev/null; then
   # restore.yml checks out a shallow tree; fetch ONLY the public pinned old
   # baseline commit, never live data or remote database state.
