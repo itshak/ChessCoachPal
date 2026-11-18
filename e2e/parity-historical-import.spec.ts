@@ -502,3 +502,49 @@ test("PARITY:PARITY-history-large-mcp-request accepts bounded >32KiB dated obser
  expect(website.status(),await website.text()).toBe(200);
  expect(await website.json()).toEqual(result.data);
 });
+
+test("PARITY:PARITY-history-import-form shows actual workplace choices and recovers independently from roster failures",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const studentId=await teacherStudent(page,unique("Historic import UI student"));
+ const workplaceId=await makeWorkplace(call);
+ const panel=page.locator("#historical-attendance-import");
+ const quick=panel.locator("section[aria-label]");
+ const workplace=quick.locator("select").first();
+ const student=quick.locator("select").nth(1);
+ const retry=panel.getByTestId("history-import-retry-choices");
+
+ // A student roster outage must NOT empty the already valid workplace list.
+ const studentsRoute="**/api/students?includeArchived=true&limit=1000";
+ await page.route(studentsRoute,route=>route.fulfill({
+  status:503,contentType:"application/json",
+  body:JSON.stringify({error:"Synthetic student roster outage"}),
+ }));
+ await page.goto("/account");
+ await expect(workplace.locator(`option[value="${workplaceId}"]`)).toHaveCount(1);
+ await expect(student.locator(`option[value="${studentId}"]`)).toHaveCount(0);
+ await expect(panel.getByRole("alert")).toHaveCount(1);
+ await page.unroute(studentsRoute);
+ await retry.click();
+ await expect(student.locator(`option[value="${studentId}"]`)).toHaveCount(1);
+ await expect(panel.getByRole("alert")).toHaveCount(0);
+
+ // A workplace roster outage must show an error and keep student choices.
+ const workplacesRoute="**/api/agent/v1";
+ await page.route(workplacesRoute,async route=>{
+  const body=route.request().postDataJSON() as {action?:string}|null;
+  if(route.request().method()==="POST"&&body?.action==="workplaces.list"){
+   await route.fulfill({status:503,contentType:"application/json",
+    body:JSON.stringify({error:{code:"DATABASE_ERROR",message:"Synthetic workplace outage"}})});
+  }else await route.continue();
+ });
+ await page.reload();
+ await expect(student.locator(`option[value="${studentId}"]`)).toHaveCount(1);
+ await expect(workplace.locator(`option[value="${workplaceId}"]`)).toHaveCount(0);
+ await expect(panel.getByRole("alert")).toHaveCount(1);
+ await page.unroute(workplacesRoute);
+ await retry.click();
+ await expect(workplace.locator(`option[value="${workplaceId}"]`)).toHaveCount(1);
+ await expect(panel.getByRole("alert")).toHaveCount(0);
+ await workplace.selectOption(workplaceId);
+ await expect(workplace).toHaveValue(workplaceId);
+});
