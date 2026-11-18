@@ -258,3 +258,28 @@ test("PARITY:PARITY-contact-safety requires explicit MCP confirmation and optimi
   expect(read.status()).toBe(200);
   expect((await read.json()).displayName).toBe(name+" updated");
 });
+
+test("PARITY:PARITY-contact-student-profile renders localized secondary contact actions with MCP readback",async({page,request})=>{
+  const call=await delegatedTool(page,request);
+  const student=await call("ccp_students_create",{
+    name:"Profile contact pupil "+randomUUID(),idempotencyKey:randomUUID(),
+  });
+  expect(student.error).toBeUndefined();
+  const studentId=student.data.entityId as string;
+  const contactName="Profile contact "+randomUUID();
+  const contact=await call("ccp_contacts_create",{
+    displayName:contactName,idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(contact.error).toBeUndefined();
+  await page.goto("/students/"+studentId);
+  const section=page.getByRole("heading",{name:"Student relationships"}).locator("..");
+  await expect(section).toBeVisible();
+  await page.getByRole("combobox",{name:"Contact details"}).selectOption(contact.data.id);
+  await page.getByRole("textbox",{name:"Relationship"}).fill("Grandmother");
+  await page.getByRole("button",{name:"Link to student"}).click();
+  await expect(page.getByText(contactName,{exact:true})).toBeVisible();
+  const read=await call("ccp_student_contacts_list",{studentId});
+  expect(read.error).toBeUndefined();
+  expect(read.data.some((row:{contactId:string;relationshipLabel:string})=>
+    row.contactId===contact.data.id&&row.relationshipLabel==="Grandmother")).toBe(true);
+});

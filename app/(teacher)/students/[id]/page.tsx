@@ -13,6 +13,7 @@ import { StudentNotesEditor } from "@/components/teacher/StudentNotesEditor";
 import { StudentLessonNotes } from "@/components/teacher/StudentLessonNotes";
 import { StudentInfoCard } from "@/components/teacher/StudentInfoCard";
 import { StudentChessProfileEditor } from "@/components/teacher/StudentChessProfileEditor";
+import { StudentContactsPanel } from "@/components/teacher/StudentContactsPanel";
 import { StudentRatingHistoryPanel } from "@/components/teacher/StudentRatingHistoryPanel";
 import { UnifiedLessonHistoryPanel } from "@/components/teacher/UnifiedLessonHistoryPanel";
 import { CoachBriefingPanel } from "@/components/teacher/CoachBriefingPanel";
@@ -129,6 +130,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialDefaultRateCents={student.default_rate_cents ?? null}
         initialTravelFeeCents={student.travel_fee_cents ?? null}
       />
+      <StudentContactsPanel studentId={id} />
       <StudentChessProfileEditor
         studentId={id}
         initialAliases={student.name_aliases ?? []}
