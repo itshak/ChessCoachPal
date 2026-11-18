@@ -105,6 +105,16 @@ import {
  skillDimensionsList, skillDimensionsCreate, skillDimensionsUpdate, skillDimensionsDeleteImpact, skillDimensionsDelete,
  studentSkillAssessmentsList, studentSkillAssessmentsRecord, TeacherSkillsError,
 } from "@/lib/server/teacher-skills-service";
+import {
+ contactCreateSchema,contactUpdateSchema,studentContactLinkSchema,
+ studentContactUnlinkSchema,billingAccountCreateSchema,billingAccountUpdateSchema,
+} from "@/lib/server/contact-schemas";
+import {
+ contactsList,contactDetail,contactCreate,contactUpdate,safeContact,
+ studentContactsList,studentContactLink,studentContactUnlink,
+ billingAccountsList,billingAccountDetail,billingAccountCreate,billingAccountUpdate,
+ safeBillingAccount,
+} from "@/lib/server/teacher-contacts-service";
 import { guardianCreateSchema, guardianUpdateSchema } from "@/lib/server/api-schemas";
 import { guardiansList, guardianDetail, guardianCreate, guardianUpdate,
  guardianDeleteImpact, guardianDelete, guardianRotatePortalToken, safeGuardian,
@@ -772,6 +782,69 @@ const catalogue = [
     name:"ccp_guardians_rotate_portal_token",
     description:"Invalidate an existing family-portal link and create a fresh one. Optional requestId safely replays a confirmed rotation across website/MCP retries. New secret is NEVER returned to the model; view the URL securely on the website.",
     schema:z.object({guardianId:uuid,requestId:uuid.optional(),confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_contacts_list",
+    description:"Find teacher-owned contact identities. Contacts are not portal audiences or payers. Email/phone are redacted in lists; select one by ID for confirmed details.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_contacts_detail",
+    description:"Read one teacher-owned contact. To include email, phone and preferred language, specify includeDetails=true AND confirmed=true. Does not grant portal access.",
+    schema:z.object({contactId:uuid,includeDetails:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_contacts_create",
+    description:"Create one independent person/organization contact, without assigning lessons, student links, portal privileges or payment responsibility. Explicit teacher confirmation and UUID idempotency key required.",
+    schema:contactCreateSchema.extend({confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_contacts_update",
+    description:"Update identified contact fields with exact revision, idempotency and explicit teacher confirmation. Archiving does not erase history or grant access.",
+    schema:contactUpdateSchema.safeExtend({contactId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_contacts_list",
+    description:"Read contact links and independent role/communication flags for one owned student; never assume a contact can view private notes or invoices.",
+    schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_student_contacts_link",
+    description:"Link an existing owned contact to exactly one owned student with explicit relationship, legal-guardian and messaging flags. Does not create debt or portal grants; require explicit confirmation.",
+    schema:studentContactLinkSchema.extend({studentId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_contacts_unlink",
+    description:"End one existing student-contact relationship without deleting the person or historic link; require correct revision, idempotency and teacher confirmation.",
+    schema:studentContactUnlinkSchema.extend({studentId:uuid,linkId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_billing_accounts_list",
+    description:"List teacher-owned payer identities. Contact relationships do NOT establish a payer and no invoice is created by listing.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_billing_accounts_detail",
+    description:"Read an identified payer account, with contactId only after explicit confirmed request. Reading never charges, invoices or shares anything.",
+    schema:z.object({billingAccountId:uuid,includeContact:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_billing_accounts_create",
+    description:"Create an independent person/organization billing identity, optionally referring to an existing owned contact. Does NOT generate an invoice; require confirmation and idempotency key.",
+    schema:billingAccountCreateSchema.extend({confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_billing_accounts_update",
+    description:"Update an identified billing-account name, type, associated contact or active status; require expected revision, idempotency and explicit confirmation. Does not retroactively reassign invoices.",
+    schema:billingAccountUpdateSchema.safeExtend({billingAccountId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_skill_dimensions_list",
@@ -1984,6 +2057,52 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const rotated=await guardianRotatePortalToken(db,teacherId,a.guardianId,a.requestId);
         return {data:{ok:true,id:rotated.id,replayed:rotated.replayed,
           secretNotReturned:true}};
+      }
+      case "ccp_contacts_list":
+        return {data:await contactsList(db,teacherId)};
+      case "ccp_contacts_detail": {
+        const a=args as {contactId:string;includeDetails:boolean;confirmed?:boolean};
+        return {data:safeContact(await contactDetail(db,teacherId,a.contactId),
+          a.includeDetails&&a.confirmed===true)};
+      }
+      case "ccp_contacts_create": {
+        const a=args as Parameters<typeof contactCreate>[2];
+        const created=await contactCreate(db,teacherId,a);
+        return {data:{...created,email:undefined,phone:undefined,preferredLocale:undefined}};
+      }
+      case "ccp_contacts_update": {
+        const a=args as Parameters<typeof contactUpdate>[3] & {contactId:string};
+        const updated=await contactUpdate(db,teacherId,a.contactId,a);
+        return {data:{...updated,email:undefined,phone:undefined,preferredLocale:undefined}};
+      }
+      case "ccp_student_contacts_list": {
+        const a=args as {studentId:string};
+        return {data:await studentContactsList(db,teacherId,a.studentId)};
+      }
+      case "ccp_student_contacts_link": {
+        const a=args as Parameters<typeof studentContactLink>[3] & {studentId:string};
+        return {data:await studentContactLink(db,teacherId,a.studentId,a)};
+      }
+      case "ccp_student_contacts_unlink": {
+        const a=args as Parameters<typeof studentContactUnlink>[4] & {studentId:string;linkId:string};
+        return {data:await studentContactUnlink(db,teacherId,a.studentId,a.linkId,a)};
+      }
+      case "ccp_billing_accounts_list":
+        return {data:await billingAccountsList(db,teacherId)};
+      case "ccp_billing_accounts_detail": {
+        const a=args as {billingAccountId:string;includeContact:boolean;confirmed?:boolean};
+        return {data:safeBillingAccount(await billingAccountDetail(db,teacherId,a.billingAccountId),
+          a.includeContact&&a.confirmed===true)};
+      }
+      case "ccp_billing_accounts_create": {
+        const a=args as Parameters<typeof billingAccountCreate>[2];
+        const created=await billingAccountCreate(db,teacherId,a);
+        return {data:{...created,contactId:undefined}};
+      }
+      case "ccp_billing_accounts_update": {
+        const a=args as Parameters<typeof billingAccountUpdate>[3] & {billingAccountId:string};
+        const updated=await billingAccountUpdate(db,teacherId,a.billingAccountId,a);
+        return {data:{...updated,contactId:undefined}};
       }
       case "ccp_skill_dimensions_list":
         return {data:await skillDimensionsList(db,teacherId)};

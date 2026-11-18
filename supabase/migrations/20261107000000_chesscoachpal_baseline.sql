@@ -10603,3 +10603,94 @@ REVOKE ALL ON FUNCTION public.ccp_teacher_lesson_material_use_commit(
  uuid,timestamptz,uuid,jsonb,jsonb,date,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_lesson_material_use_commit(
  uuid,timestamptz,uuid,jsonb,jsonb,date,uuid) TO authenticated;
+
+-- BEGIN ChessCoachPal contact identity foundation (OpenSpec contacts 1A).
+-- Contact relationship, legal authority, communication permission and payer
+-- identity are separate. No portal grants are minted from these records.
+CREATE TABLE public.contacts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  display_name text NOT NULL CHECK (char_length(btrim(display_name)) BETWEEN 1 AND 160),
+  kind text NOT NULL DEFAULT 'person' CHECK (kind IN ('person','organization')),
+  email text CHECK (email IS NULL OR char_length(email) BETWEEN 3 AND 320),
+  phone text CHECK (phone IS NULL OR char_length(phone) BETWEEN 1 AND 80),
+  preferred_locale text CHECK (preferred_locale IS NULL OR preferred_locale IN ('en','he','ru')),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
+  revision bigint NOT NULL DEFAULT 1 CHECK (revision >= 1),
+  last_request_id uuid,
+  last_request_hash text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (id,teacher_id)
+);
+CREATE INDEX contacts_teacher_display_idx ON public.contacts(teacher_id,status,display_name,id);
+
+CREATE TABLE public.student_contacts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  student_id uuid NOT NULL,
+  contact_id uuid NOT NULL,
+  relationship_label text NOT NULL CHECK (char_length(btrim(relationship_label)) BETWEEN 1 AND 80),
+  is_legal_guardian boolean NOT NULL DEFAULT false,
+  may_receive_messages boolean NOT NULL DEFAULT false,
+  emergency_priority smallint CHECK (emergency_priority BETWEEN 1 AND 20),
+  active_from date,
+  active_to date,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  revision bigint NOT NULL DEFAULT 1 CHECK (revision >= 1),
+  last_request_id uuid,
+  last_request_hash text,
+  CHECK (active_from IS NULL OR active_to IS NULL OR active_to >= active_from),
+  FOREIGN KEY (student_id,teacher_id) REFERENCES public.students(id,teacher_id) ON DELETE CASCADE,
+  FOREIGN KEY (contact_id,teacher_id) REFERENCES public.contacts(id,teacher_id) ON DELETE RESTRICT,
+  UNIQUE (id,teacher_id)
+);
+CREATE UNIQUE INDEX student_contacts_one_current_link
+  ON public.student_contacts(teacher_id,student_id,contact_id) WHERE active_to IS NULL;
+CREATE INDEX student_contacts_teacher_contact_idx
+  ON public.student_contacts(teacher_id,contact_id,student_id);
+
+CREATE TABLE public.billing_accounts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  display_name text NOT NULL CHECK (char_length(btrim(display_name)) BETWEEN 1 AND 160),
+  account_kind text NOT NULL DEFAULT 'person' CHECK (account_kind IN ('person','organization')),
+  contact_id uuid,
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
+  revision bigint NOT NULL DEFAULT 1 CHECK (revision >= 1),
+  last_request_id uuid,
+  last_request_hash text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  FOREIGN KEY (contact_id,teacher_id) REFERENCES public.contacts(id,teacher_id) ON DELETE RESTRICT,
+  UNIQUE (id,teacher_id)
+);
+CREATE INDEX billing_accounts_teacher_name_idx
+  ON public.billing_accounts(teacher_id,status,display_name,id);
+
+-- During the incremental, reviewed transition, old issued invoices remain
+-- unchanged and retain guardian_id; this extra FK preserves the future payer.
+-- The final legacy-column removal is blocked until finance/portal cutover.
+ALTER TABLE public.invoices ADD COLUMN billing_account_id uuid;
+ALTER TABLE public.invoices ADD CONSTRAINT invoices_owned_billing_account_fk
+  FOREIGN KEY (billing_account_id,teacher_id)
+  REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT;
+CREATE INDEX invoices_teacher_billing_account_idx
+  ON public.invoices(teacher_id,billing_account_id);
+
+ALTER TABLE public.contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.student_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.billing_accounts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY contacts_teacher ON public.contacts FOR ALL TO authenticated
+  USING (teacher_id=(select auth.uid()))
+  WITH CHECK (teacher_id=(select auth.uid()));
+CREATE POLICY student_contacts_teacher ON public.student_contacts FOR ALL TO authenticated
+  USING (teacher_id=(select auth.uid()))
+  WITH CHECK (teacher_id=(select auth.uid()));
+CREATE POLICY billing_accounts_teacher ON public.billing_accounts FOR ALL TO authenticated
+  USING (teacher_id=(select auth.uid()))
+  WITH CHECK (teacher_id=(select auth.uid()));
+
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.contacts,public.student_contacts,public.billing_accounts TO authenticated;
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.contacts,public.student_contacts,public.billing_accounts TO service_role;
+-- END ChessCoachPal contact identity foundation.

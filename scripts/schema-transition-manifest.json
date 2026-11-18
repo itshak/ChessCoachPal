@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "52eec118a583d536175d393dc1aebaa726dd26c6eff4c4a96c663073ea6aabde",
+  "baselineSha256": "3b35bb42a753b0e897132428dfbc86e0cd0b920f3ef2094e83330f0ba1d883b5",
   "historicalAllowedSequences": [
     [],
     [
@@ -32,6 +32,14 @@
       "20261117231554_family_communication_locale.sql",
       "20261118000000_multilingual_teacher_and_family_locale.sql",
       "20261118150000_live_baseline_function_alignment.sql"
+    ],
+    [
+      "20261117000000_live_historical_lifecycle_extension.sql",
+      "20261117190000_mcp_workflow_composition.sql",
+      "20261117231554_family_communication_locale.sql",
+      "20261118000000_multilingual_teacher_and_family_locale.sql",
+      "20261118150000_live_baseline_function_alignment.sql",
+      "20261118180000_contacts_identity_foundation.sql"
     ]
   ],
   "transitions": [
@@ -98,6 +106,20 @@
         "ccp_restore_canonical_chess_rows"
       ],
       "sha256": "4b444cfd0898ac1a2c1092b81dde5dea39746054e3aec90fd3af9de557d349ae"
+    },
+    {
+      "file": "20261118180000_contacts_identity_foundation.sql",
+      "fromRevision": "20261118150000",
+      "purpose": "Preserving legacy family identities as independent contacts, student links and invoice billing accounts (staged cutover)",
+      "risk": "additive; teacher/portal cutover deliberately deferred until separate acceptance",
+      "requiresVerifiedRestore": true,
+      "baselineObjects": [
+        "contacts",
+        "student_contacts",
+        "billing_accounts",
+        "invoices.billing_account_id"
+      ],
+      "sha256": "d29a9a3400b8dd2d2c39492f09cf94c7345dc2264d6e8b29f4da20b8bcf71a7b"
     }
   ],
   "reviewPolicy": "Update baseline and manifest hashes, review RLS/grants/data map, run isolated synthetic convergence and restore before authorizing production"

@@ -91,12 +91,14 @@ PY_DIFF
   echo "ADR-0015: fresh-install and upgraded app-owned schema/RLS/grants diverge" >&2
   exit 1
 fi
+echo "==> verify contact/billing identity preservation and tenant isolation"
+sql < scripts/schema-transition-contacts.sql >/dev/null
 echo "==> repeat runner: version ledger prevents replay and duplicate records"
 supabase migration up --local
 sql < scripts/schema-transition-preservation.sql > "$scratch/replayed-records.txt"
 diff -u "$scratch/before-records.txt" "$scratch/replayed-records.txt"
-[[ "$(sql <<< "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version IN ('20261117000000','20261117190000','20261117231554','20261118000000','20261118150000');")" == "5" ]] ||
-  { echo "Expected exactly five recorded live migrations" >&2; exit 1; }
+[[ "$(sql <<< "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version IN ('20261117000000','20261117190000','20261117231554','20261118000000','20261118150000','20261118180000');")" == "6" ]] ||
+  { echo "Expected exactly six recorded live migrations" >&2; exit 1; }
 echo "==> reject unsafe locale state and cross-tenant student reads"
 sql >/dev/null <<'SQL'
 DO $test$

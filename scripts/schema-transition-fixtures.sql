@@ -2,6 +2,11 @@
 -- The existing local seed creates teacher, guardians, pupils and private lesson.
 UPDATE public.students SET archived_at='2026-11-01T00:00:00Z'
  WHERE id='10000000-0000-0000-0000-000000000005';
+-- Secondary-contact fixture for the contacts identity transition. Never a legal
+-- guardian or portal audience by inference.
+UPDATE public.guardians SET secondary_name='Synthetic second contact',
+  secondary_email='synthetic-secondary@example.invalid',email_recipients='both'
+WHERE id='50000000-0000-0000-0000-000000000001';
 INSERT INTO public.workplaces(teacher_id,name,timezone,currency)
  VALUES('00000000-0000-0000-0000-000000000001','Synthetic second workplace','UTC','USD');
 INSERT INTO public.class_groups(teacher_id,workplace_id,name)

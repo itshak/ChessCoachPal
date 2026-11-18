@@ -1382,6 +1382,94 @@
       "parity": "not-applicable",
       "existingTools": [],
       "explanation": "Unauthenticated language cookie selection changes no teacher-owned business record. Authenticated preferredLocale is a separate owner-scoped profile field with ccp_teacher_profile_get/update parity."
+    },
+    {
+      "path": "app/api/contacts/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_contacts_list",
+        "ccp_contacts_create"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
+      "path": "app/api/contacts/[id]/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_contacts_detail",
+        "ccp_contacts_update"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
+      "path": "app/api/students/[id]/contacts/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_student_contacts_list",
+        "ccp_student_contacts_link"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
+      "path": "app/api/students/[id]/contacts/[linkId]/route.ts",
+      "methods": [
+        "DELETE"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_student_contacts_unlink"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
+      "path": "app/api/billing-accounts/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_billing_accounts_list",
+        "ccp_billing_accounts_create"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+    },
+    {
+      "path": "app/api/billing-accounts/[id]/route.ts",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_billing_accounts_detail",
+        "ccp_billing_accounts_update"
+      ],
+      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
     }
   ],
   "teacherPages": [
