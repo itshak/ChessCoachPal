@@ -3,6 +3,7 @@ import { createClient as createAuthClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import { createClient as createCookieClient } from "@/lib/supabase/server";
+import { browserApiOrigin } from "@/lib/server/http";
 import {
   CoachError,
   attendanceList, attendanceRecord, attendanceBulkRecord,
@@ -201,7 +202,10 @@ export async function POST(req: NextRequest) {
   if (!auth) return json({ error: { code: "UNAUTHENTICATED" } }, 401);
   if (!auth.bearer) {
     const origin = req.headers.get("origin");
-    if (origin && origin !== req.nextUrl.origin) {
+    // Behind Coolify/Traefik, req.nextUrl.origin can be internal HTTP. Use
+    // the configured canonical public origin, never client-controlled proxy
+    // headers, and retain strict cross-site cookie request rejection.
+    if (origin && origin !== browserApiOrigin(req)) {
       return json({ error: { code: "FORBIDDEN" } }, 403);
     }
   }

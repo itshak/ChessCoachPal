@@ -6,6 +6,14 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 _Changes for the next release go here._
 
+## [0.1.9] - 2026-11-18
+
+### Fixed
+- Validate same-site browser requests to the website agent gateway using the configured canonical HTTPS origin rather than Next.js's internal reverse-proxy request origin. This prevents spurious `FORBIDDEN` responses when loading workplace choices on the Coolify-hosted historical attendance importer, without relaxing cross-origin cookie write protection.
+
+### Verification
+- Regression tests cover canonical HTTPS origin behind internal proxy headers, accepted same-origin workplace-list requests, and rejected cross-site requests. Release only after strict website/MCP parity, authenticated E2E, security, Compose and backup/restore checks pass.
+
 ## [0.1.8] - 2026-11-18
 
 ### Fixed
