@@ -2,12 +2,11 @@ import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
 
-/** Real authenticated SQL rollback: family creation succeeds inside the
- * function, then the student-capacity trigger fails. Neither partial family
- * nor student may survive the transaction. No service-role mutation is used
- * for the RPC itself.
+/** Real authenticated SQL rollback: contact creation succeeds inside the
+ * function, then the student-capacity trigger fails. Neither partial contact,
+ * relationship nor student may survive. The RPC uses the teacher session.
  */
-test("atomic full student-family create rolls back orphan guardians on hosted capacity failure",async()=>{
+test("atomic full student-contact create rolls back orphan contacts on hosted capacity failure",async()=>{
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
  const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
    auth:{persistSession:false,autoRefreshToken:false},
@@ -48,12 +47,20 @@ test("atomic full student-family create rolls back orphan guardians on hosted ca
    expect(refused.error).not.toBeNull();
    expect(refused.error?.message).toContain("HOSTED_LIMIT_REACHED");
 
+   const contactCheck=await admin.from("contacts").select("id")
+     .eq("teacher_id",teacherId).eq("display_name",familyName);
+   const linkCheck=await admin.from("student_contacts").select("id")
+     .eq("teacher_id",teacherId);
    const guardianCheck=await admin.from("guardians").select("id")
      .eq("teacher_id",teacherId).eq("name",familyName);
    const studentCheck=await admin.from("students").select("id")
      .eq("teacher_id",teacherId).eq("name",studentName);
+   expect(contactCheck.error).toBeNull();
+   expect(linkCheck.error).toBeNull();
    expect(guardianCheck.error).toBeNull();
    expect(studentCheck.error).toBeNull();
+   expect(contactCheck.data).toEqual([]);
+   expect(linkCheck.data).toEqual([]);
    expect(guardianCheck.data).toEqual([]);
    expect(studentCheck.data).toEqual([]);
    const counted=await admin.from("teachers").select("active_student_count")
