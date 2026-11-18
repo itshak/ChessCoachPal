@@ -10795,6 +10795,16 @@ BEGIN
     FROM public.portal_access_grants g
     JOIN public.contacts c ON c.id=g.contact_id AND c.teacher_id=g.teacher_id
       AND c.status='active'
+    JOIN public.students student ON student.id=g.student_id
+      AND student.teacher_id=g.teacher_id AND student.archived_at IS NULL
+    JOIN public.student_contacts sc ON sc.contact_id=g.contact_id
+      AND sc.student_id=g.student_id AND sc.teacher_id=g.teacher_id
+      AND sc.active_to IS NULL
+      AND (sc.active_from IS NULL OR sc.active_from<=current_date)
+    JOIN public.workplace_enrollments we ON we.student_id=g.student_id
+      AND we.workplace_id=g.workplace_id AND we.teacher_id=g.teacher_id
+    LEFT JOIN public.billing_accounts payer ON payer.id=g.billing_account_id
+      AND payer.teacher_id=g.teacher_id AND payer.status='active'
     JOIN public.teaching_sessions s ON s.id=p_session_id
       AND s.teacher_id=g.teacher_id AND s.workplace_id=g.workplace_id
     JOIN public.session_participants sp ON sp.session_id=s.id
@@ -10804,6 +10814,7 @@ BEGIN
    WHERE g.token_digest=encode(extensions.digest(p_portal_token,'sha256'),'hex')
      AND g.student_id=p_student_id AND g.revoked_at IS NULL
      AND g.expires_at>clock_timestamp() AND 'cancel'=ANY(g.permissions)
+     AND (g.billing_account_id IS NULL OR payer.id IS NOT NULL)
    FOR UPDATE OF g,s;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
@@ -10927,11 +10938,14 @@ BEGIN
    AND sc.student_id=g.student_id AND sc.teacher_id=g.teacher_id
  JOIN public.workplace_enrollments we ON we.student_id=g.student_id
    AND we.workplace_id=g.workplace_id AND we.teacher_id=g.teacher_id
+ LEFT JOIN public.billing_accounts payer ON payer.id=g.billing_account_id
+   AND payer.teacher_id=g.teacher_id AND payer.status='active'
  WHERE g.token_digest=encode(extensions.digest(p_portal_token,'sha256'),'hex')
    AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp()
    AND c.status='active' AND s.archived_at IS NULL
    AND sc.active_to IS NULL AND (sc.active_from IS NULL OR sc.active_from<=current_date)
    AND 'event_rsvp'=ANY(g.permissions)
+   AND (g.billing_account_id IS NULL OR payer.id IS NOT NULL)
  LIMIT 1 FOR UPDATE OF g;
  IF NOT FOUND THEN
    RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';

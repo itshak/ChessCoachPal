@@ -905,7 +905,8 @@
     "attendanceRate": "Доля посещений",
     "studentCancellations": "Отмены учеником",
     "teacherCancellations": "Отмены тренером",
-    "noShows": "Неявки"
+    "noShows": "Неявки",
+    "contacts": "Контакты"
   },
   "studentInfo": {
     "level": "Уровень",

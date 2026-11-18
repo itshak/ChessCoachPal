@@ -905,7 +905,8 @@
     "attendanceRate": "Attendance rate",
     "studentCancellations": "Student cancellations",
     "teacherCancellations": "Teacher cancellations",
-    "noShows": "No-shows"
+    "noShows": "No-shows",
+    "contacts": "Contacts"
   },
   "studentInfo": {
     "level": "Level",

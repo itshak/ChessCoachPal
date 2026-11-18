@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { AddStudentForm } from "@/components/teacher/AddStudentForm";
 import { HostedLimitBanner } from "@/components/teacher/HostedLimitBanner";
-import { familyDisplayName } from "@/lib/guardians";
 import { ageFromBirthdate } from "@/lib/students";
 import { getDeploymentMode, resolveEffectivePlan } from "@/lib/entitlements";
 import {
@@ -22,10 +21,8 @@ interface StudentListRow {
   name: string;
   level: string | null;
   birthdate: string | null;
-  parent_contact: string | null;
   archived_at: string | null;
   created_at: string;
-  guardians: { name: string; family_name: string | null } | { name: string; family_name: string | null }[] | null;
 }
 
 export default async function StudentsPage({
@@ -49,13 +46,12 @@ export default async function StudentsPage({
   // thousand learners silently. Stable secondary ordering prevents ties at
   // page boundaries; oversized rosters fail visibly instead of truncating.
   const students: StudentListRow[] = [];
-  const guardians: Array<{id:string;name:string;family_name:string|null}> = [];
   const pageSize = 500;
   const maxRows = 20_000;
   let rosterError: string | null = null;
   for (let offset = 0; offset <= maxRows; offset += pageSize) {
     let query = supabase.from("students")
-      .select("id, name, level, birthdate, parent_contact, archived_at, created_at, guardians ( name, family_name )")
+      .select("id, name, level, birthdate, archived_at, created_at")
       .eq("teacher_id", user.id).order("name").order("id");
     query = showArchived
       ? query.not("archived_at", "is", null)
@@ -70,26 +66,9 @@ export default async function StudentsPage({
     students.push(...chunk);
     if (chunk.length < pageSize) break;
   }
-  for (let offset = 0; offset <= maxRows && !rosterError; offset += pageSize) {
-    const {data,error} = await supabase.from("guardians")
-      .select("id,name,family_name").eq("teacher_id",user.id)
-      .order("name").order("id").range(offset,offset+pageSize-1);
-    if(error){rosterError=t("familiesLoadFailed");break;}
-    const chunk=data??[];
-    if(guardians.length+chunk.length>maxRows){
-      rosterError=t("familiesTooLarge");
-      break;
-    }
-    guardians.push(...chunk);
-    if(chunk.length<pageSize)break;
-  }
-  // Never represent a truncated result as the full roster.
+  // Contacts are managed independently on each student profile. A student
+  // does not need a household/guardian, and no household grants portal rights.
   if(rosterError)students.length=0;
-
-  const guardianOptions = guardians.map((g) => ({
-    id: g.id,
-    name: familyDisplayName(g),
-  }));
 
   let limitBanner: React.ReactNode = null;
   if (getDeploymentMode() === "hosted") {
@@ -159,15 +138,7 @@ export default async function StudentsPage({
                   student.birthdate != null
                     ? ageFromBirthdate(student.birthdate)
                     : null;
-                const guardianRow = Array.isArray(student.guardians)
-                  ? student.guardians[0]
-                  : student.guardians;
-                const familyLine = guardianRow
-                  ? familyDisplayName(guardianRow)
-                  : student.parent_contact || null;
-                const subtitle = [familyLine, age !== null ? t("age",{age}) : null]
-                  .filter(Boolean)
-                  .join(" · ");
+                const subtitle=age!==null?t("age",{age}):null;
 
                 return (
                   <Link
@@ -210,7 +181,7 @@ export default async function StudentsPage({
         <div>
           <Card>
             <h2 className="font-semibold mb-3">{t("addButton")}</h2>
-            <AddStudentForm guardians={guardianOptions} />
+            <AddStudentForm />
           </Card>
         </div>
       </div>

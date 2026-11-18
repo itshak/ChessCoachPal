@@ -24,7 +24,6 @@ import { CreditPackagesCard } from "@/components/teacher/billing/CreditPackagesC
 import { getOrSeedDimensions } from "@/lib/server/skills";
 import { getPolicy } from "@/lib/server/scheduling";
 import {loadCanonicalCreditBalances} from "@/lib/server/canonical-credits";
-import { familyDisplayName } from "@/lib/guardians";
 import { oneToOne, toLocalDateString } from "@/lib/schedule";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -52,7 +51,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
     { data: lessonNoteRows },
     policy,
   ] = await Promise.all([
-    supabase.from("students").select("*, guardians ( id, name, family_name, email )")
+    supabase.from("students").select("*")
       .eq("id", id).eq("teacher_id", user.id).single(),
     getOrSeedDimensions(supabase, user.id),
     supabase.from("skill_assessments").select("id, dimension_id, rating, assessed_on, created_at")
@@ -111,18 +110,9 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <EditableStudentName studentId={id} initialName={student.name} />
-          {student.guardians ? (
-            <p className="text-muted text-sm">
-              {t("family")}{" "}
-              <Link href={`/families/${student.guardians.id}`} className="hover:text-primary transition-colors">
-                <bdi dir="auto">{familyDisplayName(student.guardians)}</bdi>
-              </Link>
-            </p>
-          ) : student.parent_contact ? (
-            <p className="text-muted text-sm">{student.parent_contact}</p>
-          ) : (
-            <Link href="/families" className="text-sm text-primary hover:underline">{t("linkFamily")}</Link>
-          )}
+          <a href="#student-contacts" className="text-sm text-primary hover:underline">
+            {t("contacts")}
+          </a>
         </div>
         <div className="flex flex-wrap gap-2">
           <ArchiveStudentButton studentId={id} studentName={student.name} archived={Boolean(student.archived_at)} />

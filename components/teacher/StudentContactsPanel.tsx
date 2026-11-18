@@ -69,7 +69,7 @@ export function StudentContactsPanel({studentId}:{studentId:string}){
   }
   const available=contacts.filter(c=>c.status==="active"&&
     !links.some(l=>l.contactId===c.id&&!l.activeTo));
-  return <Card className="mt-6 space-y-4">
+  return <Card id="student-contacts" className="mt-6 space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 className="text-lg font-semibold">{t("studentLinks")}</h2>
       <Link className="text-sm text-primary hover:underline" href="/contacts">{t("openContacts")}</Link>

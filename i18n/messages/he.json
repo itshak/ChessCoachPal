@@ -905,7 +905,8 @@
     "attendanceRate": "שיעור נוכחות",
     "studentCancellations": "ביטולים על ידי התלמיד",
     "teacherCancellations": "ביטולים על ידי המאמן",
-    "noShows": "היעדרויות ללא הודעה"
+    "noShows": "היעדרויות ללא הודעה",
+    "contacts": "אנשי קשר"
   },
   "studentInfo": {
     "level": "רמה",
