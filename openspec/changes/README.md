@@ -1,11 +1,22 @@
 # Active OpenSpec changes and accepted direction
 
-**2026-11-18 status:** The P0 baseline/live-transition implementation has been
-merged in [PR #103](https://github.com/itshak/ChessCoachPal/pull/103) and is
-being archived with source-level acceptance evidence. The **seven remaining**
-fix proposals are still PLANNED, not implemented. No source change, OpenSpec
-archive or synthetic database test authorizes a production migration, release,
-paid feature, or live-user data operation. The concurrently active [multilingual-support change](2026-11-17-introduce-multilingual-support/proposal.md) remains separate; implement its current source of truth rather than overwriting it.
+**2026-11-18 implementation status:** The P0 baseline/live-transition
+contract was merged as [PR #103](https://github.com/itshak/ChessCoachPal/pull/103)
+and archived. **OpenSpec 1A is IN PROGRESS in draft
+[PR #104](https://github.com/itshak/ChessCoachPal/pull/104), not accepted or
+archived.** The branch adds tenant-scoped contacts, independent student-contact
+links and billing-account records, browser/MCP routes and initial E2E, source
+inventory parity, contact-first student creation, and schema-aware transfer /
+backup restore with reviewed **synthetic** migration checks. Historic legacy
+family/guardian portal paths, issued invoice ownership, event notifications and
+full payer migration are **not yet cut over**; deployed-database review,
+operator-approved restored-copy rehearsal and complete E2E acceptance remain
+release blockers. The **other six** domain proposals are still PLANNED and not
+implemented. The separately active [multilingual-support
+change](2026-11-17-introduce-multilingual-support/proposal.md) is not complete.
+Do not merge partial 1A or archive any unfinished proposal. No source change,
+OpenSpec archive or synthetic database test authorizes a production migration,
+release, paid feature, or live-user data operation.
 
 Each remaining proposal below contains four required artifacts: **proposal.md** (scope, motivation, boundaries), **design.md** (canonical schema/service/rollout decisions), **tasks.md** (unchecked verification checklist), and **specs/<capability>/spec.md** (SHALL requirements and WHEN/THEN acceptance cases).
 

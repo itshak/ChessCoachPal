@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertWithinHostedLimit, limitReachedResponse } from "@/lib/server/entitlements";
-import { retireEmptyGuardians } from "@/lib/server/families";
 
 type Db = SupabaseClient;
 export class StudentProfileError extends Error {
@@ -194,8 +193,9 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
     throw new StudentProfileError(409,"FUTURE_COMMITMENTS","Resolve future commitments before archiving");
   if (error) throw new StudentProfileError(500,"DATABASE_ERROR","Student update failed");
   if (!data) throw new StudentProfileError(409,"CONFLICT","Student changed or was deleted; reload before editing");
-  if (existing.guardian_id && patch.guardianId !== undefined && existing.guardian_id !== (patch.guardianId || null))
-    await retireEmptyGuardians(db,teacherId,[existing.guardian_id]);
+  // Unlinking a legacy family must not implicitly erase its portal token,
+  // invoice/communication history or independent contact conversion. Explicit
+  // owner-reviewed deletion is a separate operation.
   return data;
 }
 
@@ -214,6 +214,7 @@ export async function teacherStudentDeleteImpact(db: Db, teacherId: string, stud
     ["typedHomework","training_assignments",true],
     ["trainingPlans","student_training_plans",true],
     ["historicalAttendance","ccp_historical_attendance_evidence",true],
+    ["studentContactLinks","student_contacts",true],
   ] as const;
   const counts=await Promise.all(references.map(([,table,scope])=>{
     let query=db.from(table).select("student_id",{count:"exact",head:true}).eq("student_id",studentId);
@@ -245,6 +246,7 @@ export async function teacherStudentDelete(db:Db,teacherId:string,studentId:stri
       "Linked teaching, group, chess progress or financial history exists. Archive the student instead.");
   if(error)throw new StudentProfileError(409,"DELETE_BLOCKED","Deletion failed; linked history or concurrent edits may exist");
   if(!data)throw new StudentProfileError(409,"CONFLICT","Student changed or was removed; re-read before deleting");
-  if(data.guardian_id)await retireEmptyGuardians(db,teacherId,[data.guardian_id]);
+  // Preserve the historical family and its portal grant. Ordinary student
+  // deletion is not permission to retire somebody else's contact identity.
   return {deleted:true,studentId:data.id};
 }

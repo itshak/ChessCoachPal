@@ -305,6 +305,12 @@ test("PARITY:PARITY-students-full-atomic-contact-create shares durable website a
    expect.objectContaining({contactId:createdContactId,
      isLegalGuardian:false,mayReceiveMessages:false}),
  ]));
+ const impact=await page.request.get("/api/students/"+id+"?deletePreview=true");
+ expect(impact.status(),await impact.text()).toBe(200);
+ expect((await impact.json()).blockers.studentContactLinks).toBeGreaterThan(0);
+ const mcpImpact=await callTool("ccp_students_delete_impact",{studentId:id});
+ expect(mcpImpact.error).toBeUndefined();
+ expect(mcpImpact.data.blockers.studentContactLinks).toBeGreaterThan(0);
  const replay=await page.request.post("/api/students",{data:payload});
  expect(replay.status(),await replay.text()).toBe(201);
  expect((await replay.json()).id).toBe(id);
