@@ -28,15 +28,19 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
    auth:{persistSession:false,autoRefreshToken:false},
  });
  expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();
+ const workplaceId=key();
+ expect((await admin.from("workplaces").insert({
+   id:workplaceId,teacher_id:id,name:"Synthetic workplace",
+ })).error).toBeNull();
  const idempotencyKey=key();
  const name1="Atomic learner one "+key(),name2="Atomic learner two "+key();
- const rows=[row(name1,2),row(name2,3)];
+ const rows=[{...row(name1,2),workplaceId},{...row(name2,3),workplaceId}];
  const failed=await auth.rpc("ccp_teacher_spreadsheet_commit",{
    p_rows:rows,p_idempotency_key:idempotencyKey,
  });
  expect(failed.error?.code).toBe("23514");
  expect(failed.error?.message).toContain("HOSTED_LIMIT_REACHED");
- for(const table of ["students","contacts","teacher_spreadsheet_import_receipts"]){
+ for(const table of ["students","contacts","workplace_enrollments","teacher_spreadsheet_import_receipts"]){
    const {count,error}=await admin.from(table).select("*",{head:true,count:"exact"})
      .eq("teacher_id",id);
    expect(error).toBeNull();
@@ -50,6 +54,7 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
  expect(allowed.error).toBeNull();
  expect(allowed.data.studentsCreated).toBe(1);
  expect(allowed.data.contactsCreated).toBe(0);
+ expect(allowed.data.enrollmentsCreated).toBe(1);
  expect(allowed.data.receiptId).toBe(idempotencyKey);
  const repeated=await auth.rpc("ccp_teacher_spreadsheet_commit",{
    p_rows:[rows[0]],p_idempotency_key:idempotencyKey,
@@ -65,6 +70,9 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
    .eq("teacher_id",id);
  expect(students).toHaveLength(1);
  expect(students![0].name).toBe(name1);
+ const {data:enrollments}=await admin.from("workplace_enrollments").select("student_id,workplace_id").eq("teacher_id",id);
+ expect(enrollments).toHaveLength(1);
+ expect(enrollments![0].workplace_id).toBe(workplaceId);
  const {data:contacts,error:contactsError}=await admin.from("contacts").select("id")
    .eq("teacher_id",id);
  expect(contactsError).toBeNull();
