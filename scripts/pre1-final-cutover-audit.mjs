@@ -18,6 +18,9 @@ const LEGACY_ROUTES=[
  "app/api/families", "app/api/studio",
 ];
 const LEGACY_RUNTIME=/\bguardian_id\b|\bstudio_policies\b|\.from\(["'`]guardians["'`]\)/gi;
+const LEGACY_SQL_ROUTINE=/\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:"?public"?\.)?"?ccp_(?:guardian|guardians|families|studio)_[a-z\d_]+"?\s*\(/gi;
+const LEGACY_PORTAL_SECRET=/\bportal_token\b/gi;
+const LEGACY_RPC=/\.rpc\(\s*['"]ccp_(?:guardian|guardians|families|studio)_[a-z\d_]+['"]/gi;
 const LEGACY_MCP=/\bccp_(?:guardians|families|studio)_[a-z\d_]+\b/gi;
 
 /** Accepts in-memory inputs so CI tests can verify the scanner without wiping anything. */
@@ -30,6 +33,10 @@ export function finalCutoverIssues({baseline,migrationFiles,paths,runtimeSources
  if(oldTables)issues.push(`Final baseline still creates ${oldTables} inherited guardian/studio tables`);
  if(/\bguardian_id\b|\bstudio_policies\b/i.test(baseline))
    issues.push("Final baseline still uses old guardian_id/studio_policies names");
+ const obsoleteRoutines=[...baseline.matchAll(LEGACY_SQL_ROUTINE)].length;
+ if(obsoleteRoutines)issues.push(`Final baseline still defines ${obsoleteRoutines} obsolete guardian/Family/Studio SQL routines`);
+ if(LEGACY_PORTAL_SECRET.test(baseline))
+   issues.push("Final baseline still stores legacy household portal_token");
  const canonical=[...baseline.matchAll(FRESH_CONTACT)].map(m=>m[0].match(/(?:contacts|student_contacts|billing_accounts)/)?.[0]);
  for(const name of ["contacts","student_contacts","billing_accounts"])
    if(!canonical.includes(name))issues.push(`Final baseline missing ${name} table`);
@@ -37,7 +44,7 @@ export function finalCutoverIssues({baseline,migrationFiles,paths,runtimeSources
  for(const route of LEGACY_ROUTES)if(paths.includes(route)||paths.some(p=>p.startsWith(route+"/")))
    issues.push(`Obsolete Family/Studio/guardian route remains: ${route}`);
  for(const [file,source] of Object.entries(runtimeSources)) {
-   const matches=[...source.matchAll(LEGACY_RUNTIME)];
+   const matches=[...source.matchAll(LEGACY_RUNTIME),...source.matchAll(LEGACY_RPC)];
    if(matches.length)issues.push(`${file} has ${matches.length} references to legacy guardian_id/studio_policies/guardians storage`);
  }
  const legacyTools=[...catalog.matchAll(LEGACY_MCP)].map(m=>m[0]);
