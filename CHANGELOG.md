@@ -4,6 +4,13 @@ All published ChessCoachPal versions appear here and on [GitHub Releases](https:
 
 ## [Unreleased]
 
+### Added
+- Draft canonical finance posting, teacher-confirmed payment allocation and immutable reversal/correction workflows with matching website/MCP endpoints, bounded approval controls and synthetic tenant/RLS tests (not yet production-ready).
+
+### Security
+- Release metadata validation now rejects the remaining final pre-v1 guardian/Family/Studio cutover violations, without requiring broader GitHub Actions workflow-edit permission.
+
+
 _Changes for the next release go here._
 
 ## [0.1.9] - 2026-11-18

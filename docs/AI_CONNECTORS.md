@@ -52,3 +52,8 @@ A full student name and alias may refer to the same UUID. The resolver should re
 | Previously created evidence disappears from default aggregates | Check whether it was **voided**; use audit `includeVoided:true` for preserved history |
 
 For robust investigation and Supabase reset/security hazards, read the [reusable engineering playbook](MCP_SUPABASE_RELIABILITY_PLAYBOOK.md), [OpenSpec parity](../openspec/specs/teacher-mcp-parity/spec.md) and [ADR-0007](adr/0007-mcp-supabase-contract-and-release-evidence.md). Do not expose private student data or tokens in GitHub evidence.
+
+
+## Draft native finance operations (not yet release-accepted, 2026-11-19)
+
+The immutable financial ledger candidate has individually named MCP operations ccp_finance_ledger_list, ccp_finance_obligation_approve, ccp_finance_payment_record, ccp_finance_allocation_record and ccp_finance_reversal_record; matching website endpoints are under /api/finance-ledger. Read-only scopes expose only the list operation. The new write operations require teacher-owned scope and an explicitly confirmed exact request; they cannot initiate provider charges or refunds. Teacher-confirmed manual receipts are distinct from provider-verified funds. See docs/NATIVE_FINANCE_LEDGER.md and the active compensation OpenSpec. The old guardian-based invoice tools remain unaccepted and must be retired/rebuilt before v1 cutover.

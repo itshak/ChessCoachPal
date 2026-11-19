@@ -11376,7 +11376,6 @@ CREATE TABLE public.payment_allocations (
  request_id uuid NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(id,teacher_id),
- UNIQUE(teacher_id,received_payment_id,obligation_id),
  UNIQUE(teacher_id,request_id),
  FOREIGN KEY(received_payment_id,teacher_id)
   REFERENCES public.received_payments(id,teacher_id) ON DELETE RESTRICT,
@@ -11485,3 +11484,547 @@ BEFORE UPDATE ON public.compensation_agreements
 FOR EACH ROW EXECUTE FUNCTION public.ccp_compensation_posted_history_guard();
 REVOKE ALL ON FUNCTION public.ccp_compensation_posted_history_guard()
  FROM PUBLIC,anon;
+
+-- Append-only corrections/refunds are first-class audited facts. A refund
+-- requires explicit teacher confirmation and first unwinds any allocations.
+-- No original obligation, payment or allocation can ever be edited.
+CREATE TABLE public.financial_reversals (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ kind text NOT NULL CHECK(kind IN ('allocation_reversal','payment_refund','obligation_correction')),
+ allocation_id uuid,
+ received_payment_id uuid,
+ obligation_id uuid,
+ amount_cents bigint NOT NULL CHECK(amount_cents BETWEEN 1 AND 1000000000),
+ request_id uuid NOT NULL,
+ request_hash text NOT NULL CHECK(request_hash ~ '^[0-9a-f]{64}$'),
+ reason text NOT NULL CHECK(char_length(btrim(reason)) BETWEEN 3 AND 1000),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(id,teacher_id),
+ UNIQUE(teacher_id,request_id),
+ FOREIGN KEY(allocation_id,teacher_id)
+   REFERENCES public.payment_allocations(id,teacher_id) ON DELETE RESTRICT,
+ FOREIGN KEY(received_payment_id,teacher_id)
+   REFERENCES public.received_payments(id,teacher_id) ON DELETE RESTRICT,
+ FOREIGN KEY(obligation_id,teacher_id)
+   REFERENCES public.financial_obligations(id,teacher_id) ON DELETE RESTRICT,
+ CONSTRAINT financial_reversal_exact_target CHECK (
+  (kind='allocation_reversal' AND allocation_id IS NOT NULL
+     AND received_payment_id IS NULL AND obligation_id IS NULL)
+  OR (kind='payment_refund' AND allocation_id IS NULL
+     AND received_payment_id IS NOT NULL AND obligation_id IS NULL)
+  OR (kind='obligation_correction' AND allocation_id IS NULL
+     AND received_payment_id IS NULL AND obligation_id IS NOT NULL)
+ )
+);
+CREATE INDEX financial_reversals_allocation_idx
+ ON public.financial_reversals(teacher_id,allocation_id) WHERE allocation_id IS NOT NULL;
+CREATE INDEX financial_reversals_payment_idx
+ ON public.financial_reversals(teacher_id,received_payment_id) WHERE received_payment_id IS NOT NULL;
+CREATE INDEX financial_reversals_obligation_idx
+ ON public.financial_reversals(teacher_id,obligation_id) WHERE obligation_id IS NOT NULL;
+ALTER TABLE public.financial_reversals ENABLE ROW LEVEL SECURITY;
+CREATE POLICY financial_reversals_teacher_read ON public.financial_reversals
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON public.financial_reversals FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.financial_reversals TO authenticated;
+GRANT ALL ON public.financial_reversals TO service_role;
+CREATE TRIGGER financial_reversal_immutable
+ BEFORE UPDATE OR DELETE ON public.financial_reversals
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_financial_ledger_append_only();
+
+-- A net allocation is the original confirmed allocation less explicitly
+-- approved allocation reversals. All three cap checks share the same
+-- payment/obligation row locks as posting to close concurrent overspend races.
+CREATE OR REPLACE FUNCTION public.ccp_financial_reversal_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_financial_reversal_guard$
+DECLARE
+ v_allocation public.payment_allocations%ROWTYPE;
+ v_payment public.received_payments%ROWTYPE;
+ v_obligation public.financial_obligations%ROWTYPE;
+ v_prior bigint;
+ v_net bigint;
+BEGIN
+ IF NEW.kind='allocation_reversal' THEN
+   SELECT * INTO v_allocation FROM public.payment_allocations
+    WHERE id=NEW.allocation_id AND teacher_id=NEW.teacher_id;
+   IF NOT FOUND THEN RAISE EXCEPTION 'ALLOCATION_NOT_OWNED' USING ERRCODE='42501'; END IF;
+   SELECT * INTO v_payment FROM public.received_payments
+    WHERE id=v_allocation.received_payment_id AND teacher_id=NEW.teacher_id FOR UPDATE;
+   SELECT * INTO v_obligation FROM public.financial_obligations
+    WHERE id=v_allocation.obligation_id AND teacher_id=NEW.teacher_id FOR UPDATE;
+   PERFORM 1 FROM public.payment_allocations
+    WHERE id=v_allocation.id AND teacher_id=NEW.teacher_id FOR UPDATE;
+   SELECT coalesce(sum(amount_cents),0) INTO v_prior
+     FROM public.financial_reversals
+     WHERE teacher_id=NEW.teacher_id AND allocation_id=NEW.allocation_id;
+   IF v_prior+NEW.amount_cents>v_allocation.amount_cents THEN
+     RAISE EXCEPTION 'ALLOCATION_REVERSAL_EXCEEDS_POSTED_AMOUNT' USING ERRCODE='23514';
+   END IF;
+ ELSIF NEW.kind='payment_refund' THEN
+   SELECT * INTO v_payment FROM public.received_payments
+     WHERE id=NEW.received_payment_id AND teacher_id=NEW.teacher_id FOR UPDATE;
+   IF NOT FOUND THEN RAISE EXCEPTION 'PAYMENT_NOT_OWNED' USING ERRCODE='42501';END IF;
+   SELECT coalesce(sum(amount_cents),0) INTO v_prior FROM public.financial_reversals
+     WHERE teacher_id=NEW.teacher_id AND kind='payment_refund'
+       AND received_payment_id=NEW.received_payment_id;
+   SELECT coalesce(sum(a.amount_cents-coalesce((
+     SELECT sum(r.amount_cents) FROM public.financial_reversals r
+     WHERE r.teacher_id=a.teacher_id AND r.allocation_id=a.id),0)),0)
+     INTO v_net FROM public.payment_allocations a
+     WHERE a.teacher_id=NEW.teacher_id AND a.received_payment_id=NEW.received_payment_id;
+   IF v_prior+v_net+NEW.amount_cents>v_payment.amount_cents THEN
+     RAISE EXCEPTION 'PAYMENT_REFUND_EXCEEDS_UNALLOCATED_BALANCE' USING ERRCODE='23514';
+   END IF;
+ ELSIF NEW.kind='obligation_correction' THEN
+   SELECT * INTO v_obligation FROM public.financial_obligations
+     WHERE id=NEW.obligation_id AND teacher_id=NEW.teacher_id FOR UPDATE;
+   IF NOT FOUND THEN RAISE EXCEPTION 'OBLIGATION_NOT_OWNED' USING ERRCODE='42501';END IF;
+   SELECT coalesce(sum(amount_cents),0) INTO v_prior FROM public.financial_reversals
+     WHERE teacher_id=NEW.teacher_id AND kind='obligation_correction'
+       AND obligation_id=NEW.obligation_id;
+   SELECT coalesce(sum(a.amount_cents-coalesce((
+     SELECT sum(r.amount_cents) FROM public.financial_reversals r
+     WHERE r.teacher_id=a.teacher_id AND r.allocation_id=a.id),0)),0)
+     INTO v_net FROM public.payment_allocations a
+     WHERE a.teacher_id=NEW.teacher_id AND a.obligation_id=NEW.obligation_id;
+   IF v_prior+v_net+NEW.amount_cents>v_obligation.amount_cents THEN
+     RAISE EXCEPTION 'OBLIGATION_CORRECTION_EXCEEDS_UNSETTLED_BALANCE'
+       USING ERRCODE='23514';
+   END IF;
+ ELSE
+   RAISE EXCEPTION 'INVALID_FINANCIAL_REVERSAL' USING ERRCODE='22023';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_financial_reversal_guard$;
+CREATE TRIGGER financial_reversal_guard
+ BEFORE INSERT ON public.financial_reversals
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_financial_reversal_guard();
+REVOKE ALL ON FUNCTION public.ccp_financial_reversal_guard() FROM PUBLIC,anon;
+COMMENT ON TABLE public.financial_reversals IS
+ 'Append-only, tenant-owned corrections of settled allocations, confirmed refund events and unallocated obligation corrections; not a tax refund document or external payout.';
+
+
+-- Allocation cap now respects audited partial reversals, obligation
+-- corrections and refunds; never derives settlement from session completion.
+CREATE OR REPLACE FUNCTION public.ccp_payment_allocation_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_payment_allocation_guard$
+DECLARE
+ v_payment public.received_payments%ROWTYPE;
+ v_obligation public.financial_obligations%ROWTYPE;
+ v_payment_allocated bigint;
+ v_obligation_allocated bigint;
+ v_refunded bigint;
+ v_corrected bigint;
+BEGIN
+ SELECT * INTO v_payment FROM public.received_payments
+  WHERE id=NEW.received_payment_id AND teacher_id=NEW.teacher_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'PAYMENT_NOT_OWNED' USING ERRCODE='42501'; END IF;
+ SELECT * INTO v_obligation FROM public.financial_obligations
+  WHERE id=NEW.obligation_id AND teacher_id=NEW.teacher_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'OBLIGATION_NOT_OWNED' USING ERRCODE='42501'; END IF;
+ IF v_payment.billing_account_id IS DISTINCT FROM v_obligation.billing_account_id
+   OR v_payment.currency IS DISTINCT FROM v_obligation.currency THEN
+   RAISE EXCEPTION 'PAYMENT_COUNTERPARTY_OR_CURRENCY_MISMATCH' USING ERRCODE='23514';
+ END IF;
+ SELECT coalesce(sum(a.amount_cents-coalesce((
+     SELECT sum(r.amount_cents) FROM public.financial_reversals r
+     WHERE r.teacher_id=a.teacher_id AND r.allocation_id=a.id),0)),0)
+   INTO v_payment_allocated
+   FROM public.payment_allocations a
+   WHERE a.teacher_id=NEW.teacher_id AND a.received_payment_id=NEW.received_payment_id;
+ SELECT coalesce(sum(a.amount_cents-coalesce((
+     SELECT sum(r.amount_cents) FROM public.financial_reversals r
+     WHERE r.teacher_id=a.teacher_id AND r.allocation_id=a.id),0)),0)
+   INTO v_obligation_allocated
+   FROM public.payment_allocations a
+   WHERE a.teacher_id=NEW.teacher_id AND a.obligation_id=NEW.obligation_id;
+ SELECT coalesce(sum(amount_cents),0) INTO v_refunded FROM public.financial_reversals
+   WHERE teacher_id=NEW.teacher_id AND received_payment_id=NEW.received_payment_id
+     AND kind='payment_refund';
+ SELECT coalesce(sum(amount_cents),0) INTO v_corrected FROM public.financial_reversals
+   WHERE teacher_id=NEW.teacher_id AND obligation_id=NEW.obligation_id
+     AND kind='obligation_correction';
+ IF v_payment_allocated+v_refunded+NEW.amount_cents>v_payment.amount_cents
+  OR v_obligation_allocated+v_corrected+NEW.amount_cents>v_obligation.amount_cents THEN
+   RAISE EXCEPTION 'PAYMENT_OVERALLOCATION' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_payment_allocation_guard$;
+
+-- A financial writer can only act as the authenticated teacher; no caller
+-- chooses tenant IDs and no direct INSERT is granted to web/MCP sessions.
+CREATE UNIQUE INDEX received_payments_external_ref_unique
+ ON public.received_payments(teacher_id,method,external_reference)
+ WHERE external_reference IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.ccp_finance_record_payment(
+ p_billing_account_id uuid,p_currency text,p_amount_cents bigint,
+ p_received_at timestamptz,p_method text,p_external_reference text,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_finance_record_payment$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_old public.received_payments%ROWTYPE;
+ v_row public.received_payments%ROWTYPE;
+ v_hash text;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501';END IF;
+ IF p_request_id IS NULL OR p_billing_account_id IS NULL OR
+    p_amount_cents IS NULL OR p_amount_cents<1 OR p_amount_cents>1000000000 OR
+    p_currency IS NULL OR p_currency !~ '^[A-Z]{3}$' OR
+    p_method NOT IN ('cash','bank_transfer','card','other') OR
+    p_received_at IS NULL OR p_received_at>clock_timestamp()+interval '5 minutes' OR
+    p_external_reference IS NOT NULL AND char_length(p_external_reference)>240 THEN
+   RAISE EXCEPTION 'INVALID_PAYMENT_CONFIRMATION' USING ERRCODE='22023';
+ END IF;
+ PERFORM 1 FROM public.billing_accounts
+  WHERE teacher_id=v_teacher AND id=p_billing_account_id AND status='active'
+  FOR KEY SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'BILLING_ACCOUNT_NOT_ACTIVE_OR_OWNED'
+  USING ERRCODE='42501';END IF;
+ v_hash:=encode(extensions.digest(
+   jsonb_build_object('account',p_billing_account_id,'currency',p_currency,
+    'amount',p_amount_cents,'receivedAt',p_received_at,'method',p_method,
+    'reference',p_external_reference)::text,'sha256'),'hex');
+ SELECT * INTO v_old FROM public.received_payments
+  WHERE teacher_id=v_teacher AND request_id=p_request_id;
+ IF FOUND THEN
+   IF v_old.request_hash<>v_hash THEN RAISE EXCEPTION 'PAYMENT_REQUEST_CONFLICT'
+     USING ERRCODE='23505';END IF;
+   RETURN jsonb_build_object('payment',to_jsonb(v_old),'replayed',true);
+ END IF;
+ INSERT INTO public.received_payments(teacher_id,billing_account_id,currency,
+   amount_cents,received_at,method,provenance,external_reference,request_id,request_hash)
+ VALUES(v_teacher,p_billing_account_id,p_currency,p_amount_cents,p_received_at,
+   p_method,'teacher_confirmed',p_external_reference,p_request_id,v_hash)
+ ON CONFLICT(teacher_id,request_id) DO NOTHING RETURNING * INTO v_row;
+ IF v_row.id IS NULL THEN
+   SELECT * INTO v_row FROM public.received_payments
+    WHERE teacher_id=v_teacher AND request_id=p_request_id;
+   IF v_row.request_hash<>v_hash THEN RAISE EXCEPTION 'PAYMENT_REQUEST_CONFLICT'
+     USING ERRCODE='23505';END IF;
+   RETURN jsonb_build_object('payment',to_jsonb(v_row),'replayed',true);
+ END IF;
+ RETURN jsonb_build_object('payment',to_jsonb(v_row),'replayed',false);
+END;
+$ccp_finance_record_payment$;
+REVOKE ALL ON FUNCTION public.ccp_finance_record_payment(
+ uuid,text,bigint,timestamptz,text,text,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_finance_record_payment(
+ uuid,text,bigint,timestamptz,text,text,uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.ccp_finance_allocate_payment(
+ p_received_payment_id uuid,p_obligation_id uuid,p_amount_cents bigint,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_finance_allocate_payment$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_row public.payment_allocations%ROWTYPE;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501';END IF;
+ IF p_request_id IS NULL OR p_received_payment_id IS NULL OR p_obligation_id IS NULL
+  OR p_amount_cents IS NULL OR p_amount_cents<1 OR p_amount_cents>1000000000 THEN
+   RAISE EXCEPTION 'INVALID_ALLOCATION_CONFIRMATION' USING ERRCODE='22023';
+ END IF;
+ SELECT * INTO v_row FROM public.payment_allocations
+   WHERE teacher_id=v_teacher AND request_id=p_request_id;
+ IF FOUND THEN
+   IF v_row.received_payment_id<>p_received_payment_id
+    OR v_row.obligation_id<>p_obligation_id
+    OR v_row.amount_cents<>p_amount_cents THEN
+     RAISE EXCEPTION 'ALLOCATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN jsonb_build_object('allocation',to_jsonb(v_row),'replayed',true);
+ END IF;
+ -- The allocation trigger owns payer/currency, caps and concurrent row locks.
+ INSERT INTO public.payment_allocations(teacher_id,received_payment_id,
+   obligation_id,amount_cents,request_id)
+ VALUES(v_teacher,p_received_payment_id,p_obligation_id,p_amount_cents,p_request_id)
+ ON CONFLICT(teacher_id,request_id) DO NOTHING RETURNING * INTO v_row;
+ IF v_row.id IS NULL THEN
+   SELECT * INTO v_row FROM public.payment_allocations
+     WHERE teacher_id=v_teacher AND request_id=p_request_id;
+   IF v_row.received_payment_id<>p_received_payment_id
+    OR v_row.obligation_id<>p_obligation_id
+    OR v_row.amount_cents<>p_amount_cents THEN
+     RAISE EXCEPTION 'ALLOCATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN jsonb_build_object('allocation',to_jsonb(v_row),'replayed',true);
+ END IF;
+ RETURN jsonb_build_object('allocation',to_jsonb(v_row),'replayed',false);
+END;
+$ccp_finance_allocate_payment$;
+REVOKE ALL ON FUNCTION public.ccp_finance_allocate_payment(
+ uuid,uuid,bigint,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_finance_allocate_payment(
+ uuid,uuid,bigint,uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.ccp_finance_reverse(
+ p_kind text,p_target_id uuid,p_amount_cents bigint,p_reason text,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_finance_reverse$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_old public.financial_reversals%ROWTYPE;
+ v_row public.financial_reversals%ROWTYPE;
+ v_hash text;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501';END IF;
+ IF p_request_id IS NULL OR p_target_id IS NULL OR p_kind IS NULL OR
+   p_kind NOT IN ('allocation_reversal','payment_refund','obligation_correction')
+   OR p_amount_cents IS NULL OR p_amount_cents<1 OR p_amount_cents>1000000000
+   OR p_reason IS NULL OR char_length(btrim(p_reason))<3
+   OR char_length(p_reason)>1000 THEN
+    RAISE EXCEPTION 'INVALID_FINANCIAL_REVERSAL' USING ERRCODE='22023';
+ END IF;
+ v_hash:=encode(extensions.digest(
+  jsonb_build_object('kind',p_kind,'target',p_target_id,
+   'amount',p_amount_cents,'reason',p_reason)::text,'sha256'),'hex');
+ SELECT * INTO v_old FROM public.financial_reversals
+  WHERE teacher_id=v_teacher AND request_id=p_request_id;
+ IF FOUND THEN
+   IF v_old.request_hash<>v_hash THEN RAISE EXCEPTION 'REVERSAL_REQUEST_CONFLICT'
+      USING ERRCODE='23505';END IF;
+   RETURN jsonb_build_object('reversal',to_jsonb(v_old),'replayed',true);
+ END IF;
+ INSERT INTO public.financial_reversals(teacher_id,kind,allocation_id,
+   received_payment_id,obligation_id,amount_cents,reason,request_id,request_hash)
+ VALUES(v_teacher,p_kind,
+   CASE WHEN p_kind='allocation_reversal' THEN p_target_id END,
+   CASE WHEN p_kind='payment_refund' THEN p_target_id END,
+   CASE WHEN p_kind='obligation_correction' THEN p_target_id END,
+   p_amount_cents,p_reason,p_request_id,v_hash)
+ ON CONFLICT(teacher_id,request_id) DO NOTHING RETURNING * INTO v_row;
+ IF v_row.id IS NULL THEN
+  SELECT * INTO v_row FROM public.financial_reversals
+   WHERE teacher_id=v_teacher AND request_id=p_request_id;
+  IF v_row.request_hash<>v_hash THEN RAISE EXCEPTION 'REVERSAL_REQUEST_CONFLICT'
+    USING ERRCODE='23505';END IF;
+  RETURN jsonb_build_object('reversal',to_jsonb(v_row),'replayed',true);
+ END IF;
+ RETURN jsonb_build_object('reversal',to_jsonb(v_row),'replayed',false);
+END;
+$ccp_finance_reverse$;
+REVOKE ALL ON FUNCTION public.ccp_finance_reverse(
+ text,uuid,bigint,text,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_finance_reverse(
+ text,uuid,bigint,text,uuid) TO authenticated;
+
+
+-- Approval is independent of preview. Re-read the exact canonical lesson and
+-- agreement under a transaction, require explicit amount/revision confirmation,
+-- prove complete attendance, and atomically freeze the source. A model cannot
+-- directly INSERT or infer approval from the calendar.
+CREATE OR REPLACE FUNCTION public.ccp_finance_post_obligation(
+ p_agreement_id uuid,p_expected_revision bigint,p_expected_amount_cents bigint,
+ p_session_id uuid,p_student_id uuid,p_period_start date,p_period_end date,
+ p_request_id uuid,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_finance_post_obligation$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_terms public.compensation_agreements%ROWTYPE;
+ v_session public.teaching_sessions%ROWTYPE;
+ v_row public.financial_obligations%ROWTYPE;
+ v_account public.billing_accounts%ROWTYPE;
+ v_workplace_timezone text;
+ v_local_date date;
+ v_roster_count integer;
+ v_marked_count integer;
+ v_attended_count integer;
+ v_student_attended boolean;
+ v_roster_hash text;
+ v_amount bigint;
+ v_kind text;
+ v_source_key text;
+ v_source_hash text;
+ v_snapshot jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501'; END IF;
+ IF p_request_id IS NULL OR p_agreement_id IS NULL OR p_confirmed IS DISTINCT FROM true
+  OR p_expected_revision IS NULL OR p_expected_revision<1 OR
+  p_expected_amount_cents IS NULL OR p_expected_amount_cents<1 OR
+  p_expected_amount_cents>1000000000 THEN
+   RAISE EXCEPTION 'INVALID_OBLIGATION_APPROVAL' USING ERRCODE='22023';
+ END IF;
+ SELECT * INTO v_row FROM public.financial_obligations
+   WHERE teacher_id=v_teacher AND approval_request_id=p_request_id;
+ IF FOUND THEN
+   IF v_row.agreement_id<>p_agreement_id OR
+     v_row.agreement_revision<>p_expected_revision OR
+     v_row.amount_cents<>p_expected_amount_cents OR
+     v_row.session_id IS DISTINCT FROM p_session_id OR
+     v_row.student_id IS DISTINCT FROM p_student_id OR
+     v_row.period_start IS DISTINCT FROM p_period_start OR
+     v_row.period_end IS DISTINCT FROM p_period_end THEN
+       RAISE EXCEPTION 'OBLIGATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN jsonb_build_object('obligation',to_jsonb(v_row),'replayed',true);
+ END IF;
+ SELECT * INTO v_terms FROM public.compensation_agreements
+  WHERE id=p_agreement_id AND teacher_id=v_teacher FOR KEY SHARE;
+ IF NOT FOUND OR v_terms.status<>'active' THEN
+   RAISE EXCEPTION 'AGREEMENT_NOT_ACTIVE_OR_OWNED' USING ERRCODE='42501';
+ END IF;
+ IF v_terms.revision<>p_expected_revision THEN
+   RAISE EXCEPTION 'STALE_AGREEMENT_REVISION' USING ERRCODE='23514';
+ END IF;
+ SELECT * INTO v_account FROM public.billing_accounts
+  WHERE id=v_terms.billing_account_id AND teacher_id=v_teacher
+    AND status='active' FOR KEY SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'BILLING_ACCOUNT_NOT_ACTIVE_OR_OWNED'
+   USING ERRCODE='42501';END IF;
+ IF v_terms.model='fixed_period' THEN
+   IF p_session_id IS NOT NULL OR p_student_id IS NOT NULL
+    OR p_period_start IS NULL OR p_period_end IS NULL
+    OR extract(day FROM p_period_start)<>1
+    OR p_period_end<>(date_trunc('month',p_period_start::timestamp)+
+         interval '1 month - 1 day')::date THEN
+      RAISE EXCEPTION 'FIXED_PERIOD_MONTH_REQUIRED' USING ERRCODE='22023';
+   END IF;
+   v_local_date:=p_period_start;
+   IF p_period_start<v_terms.effective_from OR
+     (v_terms.effective_to IS NOT NULL AND p_period_end>v_terms.effective_to) THEN
+     RAISE EXCEPTION 'AGREEMENT_NOT_EFFECTIVE' USING ERRCODE='23514';
+   END IF;
+   v_kind:='period_compensation';
+   v_amount:=v_terms.rate_cents;
+   v_source_key:='agreement:'||p_agreement_id::text||':month:'||
+     to_char(p_period_start,'YYYY-MM');
+   v_roster_hash:=NULL;
+ ELSE
+   IF p_session_id IS NULL THEN
+     RAISE EXCEPTION 'CANONICAL_SESSION_REQUIRED' USING ERRCODE='22023';
+   END IF;
+   SELECT * INTO v_session FROM public.teaching_sessions
+    WHERE id=p_session_id AND teacher_id=v_teacher
+      AND workplace_id=v_terms.workplace_id FOR SHARE;
+   IF NOT FOUND OR v_session.status<>'completed' THEN
+     RAISE EXCEPTION 'COMPLETED_SESSION_NOT_OWNED' USING ERRCODE='23514';
+   END IF;
+   IF v_terms.group_id IS NOT NULL AND
+     v_session.group_id IS DISTINCT FROM v_terms.group_id THEN
+     RAISE EXCEPTION 'AGREEMENT_GROUP_MISMATCH' USING ERRCODE='23514';
+   END IF;
+   SELECT timezone INTO v_workplace_timezone FROM public.workplaces
+    WHERE id=v_terms.workplace_id AND teacher_id=v_teacher;
+   v_local_date:=(v_session.starts_at AT TIME ZONE coalesce(
+      v_session.local_timezone,v_workplace_timezone,'UTC'))::date;
+   IF p_period_start IS DISTINCT FROM v_local_date OR
+     p_period_end IS DISTINCT FROM v_local_date OR
+     v_local_date<v_terms.effective_from OR
+     (v_terms.effective_to IS NOT NULL AND v_local_date>v_terms.effective_to) THEN
+     RAISE EXCEPTION 'AGREEMENT_DATE_MISMATCH' USING ERRCODE='23514';
+   END IF;
+   SELECT count(*)::integer,
+     count(sa.id)::integer,
+     count(*) FILTER(WHERE sa.status IN ('present','late'))::integer,
+     coalesce(bool_or(sp.student_id=p_student_id AND
+       sa.status IN ('present','late')),false),
+     encode(extensions.digest(coalesce(string_agg(
+       sp.student_id::text||':'||coalesce(sa.status::text,'unmarked'),
+       ';' ORDER BY sp.student_id),'none'),'sha256'),'hex')
+    INTO v_roster_count,v_marked_count,v_attended_count,v_student_attended,v_roster_hash
+    FROM public.session_participants sp
+    LEFT JOIN public.session_attendance sa
+      ON sa.session_id=sp.session_id AND sa.student_id=sp.student_id
+        AND sa.teacher_id=v_teacher
+    WHERE sp.session_id=p_session_id AND sp.teacher_id=v_teacher;
+   IF v_roster_count=0 OR v_marked_count<>v_roster_count OR v_attended_count=0 THEN
+      RAISE EXCEPTION 'UNCONFIRMED_OR_NO_SHOW_ATTENDANCE' USING ERRCODE='23514';
+   END IF;
+   IF v_terms.student_id IS NOT NULL THEN
+     PERFORM 1 FROM public.session_attendance
+       WHERE teacher_id=v_teacher AND session_id=p_session_id
+       AND student_id=v_terms.student_id AND status IN ('present','late');
+     IF NOT FOUND THEN RAISE EXCEPTION 'AGREEMENT_STUDENT_NOT_ATTENDED'
+       USING ERRCODE='23514'; END IF;
+     v_attended_count:=1;
+   END IF;
+   IF v_terms.agreement_role='participant_charge' THEN
+     IF p_student_id IS NULL OR NOT v_student_attended OR
+       (v_terms.student_id IS NOT NULL AND v_terms.student_id<>p_student_id) THEN
+         RAISE EXCEPTION 'PARTICIPANT_CHARGE_REQUIRES_ATTENDED_STUDENT'
+           USING ERRCODE='23514';
+     END IF;
+     -- An explicit student/workplace/date payer assignment is required; a
+     -- family relationship or agreement policy does not create liability.
+     PERFORM 1 FROM public.student_billing_assignments ba
+      WHERE ba.teacher_id=v_teacher AND ba.workplace_id=v_terms.workplace_id
+       AND ba.student_id=p_student_id
+       AND ba.billing_account_id=v_terms.billing_account_id
+       AND ba.effective_from<=v_local_date
+       AND (ba.effective_to IS NULL OR ba.effective_to>=v_local_date);
+     IF NOT FOUND THEN RAISE EXCEPTION 'EXPLICIT_PAYER_ASSIGNMENT_REQUIRED'
+       USING ERRCODE='23514';END IF;
+     v_kind:='participant_charge';
+     v_source_key:='session:'||p_session_id::text||':student:'||p_student_id::text;
+   ELSE
+     IF p_student_id IS NOT NULL THEN
+       RAISE EXCEPTION 'COACH_OCCURRENCE_HAS_NO_STUDENT_CHARGE'
+         USING ERRCODE='22023';
+     END IF;
+     v_kind:='coach_earning';
+     v_source_key:='session:'||p_session_id::text||':coach';
+   END IF;
+   CASE v_terms.model
+    WHEN 'hourly' THEN
+      v_amount:=(v_terms.rate_cents*v_session.duration_minutes+30)/60;
+    WHEN 'per_session' THEN
+      v_amount:=v_terms.rate_cents;
+    WHEN 'per_student' THEN
+      IF v_kind='coach_earning' THEN
+       v_amount:=v_terms.rate_cents*v_attended_count;
+      ELSE v_amount:=v_terms.rate_cents; END IF;
+    ELSE RAISE EXCEPTION 'UNKNOWN_COMPENSATION_MODEL' USING ERRCODE='22023';
+   END CASE;
+ END IF;
+ IF v_amount IS NULL OR v_amount<>p_expected_amount_cents OR
+   v_amount<1 OR v_amount>1000000000 THEN
+   RAISE EXCEPTION 'OBLIGATION_AMOUNT_CHANGED_REPREVIEW' USING ERRCODE='23514';
+ END IF;
+ v_snapshot:=jsonb_build_object('agreementId',p_agreement_id,
+   'revision',v_terms.revision,'role',v_terms.agreement_role,
+   'model',v_terms.model,'rateCents',v_terms.rate_cents,
+   'billingAccountId',v_terms.billing_account_id,
+   'workplaceId',v_terms.workplace_id,'currency',v_terms.currency,
+   'sourceDate',v_local_date,'rosterHash',v_roster_hash,
+   'durationMinutes',CASE WHEN p_session_id IS NULL THEN NULL
+                           ELSE v_session.duration_minutes END,
+   'attendedCount',v_attended_count,'amountCents',v_amount);
+ v_source_hash:=encode(extensions.digest(v_snapshot::text,'sha256'),'hex');
+ INSERT INTO public.financial_obligations(teacher_id,workplace_id,billing_account_id,
+  agreement_id,agreement_revision,agreement_snapshot,session_id,student_id,
+  period_start,period_end,kind,amount_cents,currency,source_key,source_hash,
+  approval_request_id)
+ VALUES(v_teacher,v_terms.workplace_id,v_terms.billing_account_id,
+  p_agreement_id,p_expected_revision,v_snapshot,p_session_id,p_student_id,
+  p_period_start,p_period_end,v_kind,v_amount,v_terms.currency,v_source_key,
+  v_source_hash,p_request_id)
+ ON CONFLICT(teacher_id,approval_request_id) DO NOTHING RETURNING * INTO v_row;
+ IF v_row.id IS NULL THEN
+   SELECT * INTO v_row FROM public.financial_obligations
+    WHERE teacher_id=v_teacher AND approval_request_id=p_request_id;
+   IF v_row.agreement_id<>p_agreement_id OR
+     v_row.agreement_revision<>p_expected_revision OR
+     v_row.amount_cents<>p_expected_amount_cents OR
+     v_row.session_id IS DISTINCT FROM p_session_id OR
+     v_row.student_id IS DISTINCT FROM p_student_id OR
+     v_row.period_start IS DISTINCT FROM p_period_start OR
+     v_row.period_end IS DISTINCT FROM p_period_end THEN
+       RAISE EXCEPTION 'OBLIGATION_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN jsonb_build_object('obligation',to_jsonb(v_row),'replayed',true);
+ END IF;
+ RETURN jsonb_build_object('obligation',to_jsonb(v_row),'replayed',false);
+END;
+$ccp_finance_post_obligation$;
+REVOKE ALL ON FUNCTION public.ccp_finance_post_obligation(
+ uuid,bigint,bigint,uuid,uuid,date,date,uuid,boolean) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_finance_post_obligation(
+ uuid,bigint,bigint,uuid,uuid,date,date,uuid,boolean) TO authenticated;

@@ -129,6 +129,12 @@ import {
  compensationAgreementPreview,CompensationAgreementError,
 } from "@/lib/server/compensation-agreements-service";
 import {
+ financialObligationApproveSchema,receivedPaymentRecordSchema,
+ paymentAllocationSchema,financialReversalSchema,
+ financeLedgerList,financialObligationApprove,receivedPaymentRecord,
+ paymentAllocate,financialReverse,FinanceLedgerError,
+} from "@/lib/server/finance-ledger-service";
+import {
  federationStudentSummary,federationMembershipCreate,federationMembershipUpdate,
  federationManualRatingRecord,federationDefaultGet,federationDefaultSet,
  federationDefaultUpdateSchema,federationMembershipCreateSchema,
@@ -718,6 +724,31 @@ const catalogue = [
     name:"ccp_compensation_agreements_preview",
     description:"Read-only deterministic expected coach compensation for verified completed canonical sessions, one group session counted once. Never claim cash received, compliance, invoice issuance or missing lessons as completed; fixed monthly agreements require full calendar months.",
     schema:compensationPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_finance_ledger_list",
+    description:"Read up to 100 latest teacher-owned immutable financial obligations, confirmed manual receipts, explicit allocations and correction/refund entries. Net paid balances depend on reversals; this is not an issued invoice or official tax receipt.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_finance_obligation_approve",
+    description:"Explicitly approve one frozen teacher-owned session or complete-month obligation against an exact agreement revision, amount, specific payer and canonical attendance. Reject stale rate, unconfirmed pupil, duplicate coach time or invented cash. Replay safely with idempotency.",
+    schema:financialObligationApproveSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_finance_payment_record",
+    description:"After teacher confirms real received money, record a manual cash/bank/card/other receipt from an explicitly owned Billing Account; this NEVER initiates or verifies a card charge, creates an invoice, or marks any obligation paid without allocation.",
+    schema:receivedPaymentRecordSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_finance_allocation_record",
+    description:"Teacher-approved partial/full allocation of an existing actual received payment to one immutable obligation from the same payer/currency, with transactionally enforced remaining balances and idempotency. Never generate receipt money from lessons.",
+    schema:paymentAllocationSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_finance_reversal_record",
+    description:"Append an explicitly approved reversal of an allocation, a confirmed manual refund event, or an unsettled obligation correction with precise source ID, amount, reason and idempotency. Original postings remain immutable; no external refund is initiated.",
+    schema:financialReversalSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_workplace_context_get",
@@ -2160,6 +2191,24 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as Parameters<typeof compensationAgreementPreview>[2];
         return {data:await compensationAgreementPreview(db,teacherId,a)};
       }
+      case "ccp_finance_ledger_list":
+        return {data:await financeLedgerList(db,teacherId)};
+      case "ccp_finance_obligation_approve": {
+        const a=args as Parameters<typeof financialObligationApprove>[2];
+        return {data:await financialObligationApprove(db,teacherId,a)};
+      }
+      case "ccp_finance_payment_record": {
+        const a=args as Parameters<typeof receivedPaymentRecord>[2];
+        return {data:await receivedPaymentRecord(db,teacherId,a)};
+      }
+      case "ccp_finance_allocation_record": {
+        const a=args as Parameters<typeof paymentAllocate>[2];
+        return {data:await paymentAllocate(db,teacherId,a)};
+      }
+      case "ccp_finance_reversal_record": {
+        const a=args as Parameters<typeof financialReverse>[2];
+        return {data:await financialReverse(db,teacherId,a)};
+      }
       case "ccp_workplace_context_get":
         return {data:await teacherWorkplaceContextGet(db,teacherId)};
       case "ccp_workplace_context_set": {
@@ -2810,6 +2859,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof FederationError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CompensationAgreementError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof FinanceLedgerError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof WorkplaceContextError)
       return {error:{code:error.code,message:error.message}};

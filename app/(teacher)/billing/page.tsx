@@ -12,6 +12,7 @@ import { oneToOne } from "@/lib/schedule";
 import { Card } from "@/components/ui/card";
 import { BillingListActions } from "@/components/teacher/billing/BillingList";
 import { InvoiceList } from "@/components/teacher/billing/InvoiceList";
+import { NativeFinanceLedgerPanel } from "@/components/teacher/NativeFinanceLedgerPanel";
 import { PaymentSettingsButton } from "@/components/teacher/billing/PaymentSettingsButton";
 
 export async function generateMetadata(){const t=await getTranslations("billingPage");return {title:t("title")};}
@@ -97,6 +98,7 @@ export default async function BillingPage({
         </div>
       </div>
 
+      <NativeFinanceLedgerPanel />
       <Card padding="sm">
         {!rows.length ? (
           <p className="text-sm text-muted py-4 text-center">

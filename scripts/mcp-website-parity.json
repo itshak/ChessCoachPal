@@ -1693,6 +1693,71 @@
       "parity": "not-applicable",
       "existingTools": [],
       "explanation": "Payment webhook; never expose as chat tool"
+    },
+    {
+      "path": "app/api/finance-ledger/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_finance_ledger_list"
+      ],
+      "explanation": "Native tenant-owned immutable financial ledger uses identical shared website/delegated MCP services, signed-in tenant binding and transaction-level SQL approval guards. Manual receipts are never provider-verified or inferred; partial allocations and explicit append-only refunds/corrections require approval and replay safety. End-to-end acceptance: e2e/parity-finance-ledger.spec.ts.",
+      "evidenceTest": "e2e/parity-finance-ledger.spec.ts"
+    },
+    {
+      "path": "app/api/finance-ledger/obligations/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_finance_obligation_approve"
+      ],
+      "explanation": "Native tenant-owned immutable financial ledger uses identical shared website/delegated MCP services, signed-in tenant binding and transaction-level SQL approval guards. Manual receipts are never provider-verified or inferred; partial allocations and explicit append-only refunds/corrections require approval and replay safety. End-to-end acceptance: e2e/parity-finance-ledger.spec.ts.",
+      "evidenceTest": "e2e/parity-finance-ledger.spec.ts"
+    },
+    {
+      "path": "app/api/finance-ledger/payments/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_finance_payment_record"
+      ],
+      "explanation": "Native tenant-owned immutable financial ledger uses identical shared website/delegated MCP services, signed-in tenant binding and transaction-level SQL approval guards. Manual receipts are never provider-verified or inferred; partial allocations and explicit append-only refunds/corrections require approval and replay safety. End-to-end acceptance: e2e/parity-finance-ledger.spec.ts.",
+      "evidenceTest": "e2e/parity-finance-ledger.spec.ts"
+    },
+    {
+      "path": "app/api/finance-ledger/allocations/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_finance_allocation_record"
+      ],
+      "explanation": "Native tenant-owned immutable financial ledger uses identical shared website/delegated MCP services, signed-in tenant binding and transaction-level SQL approval guards. Manual receipts are never provider-verified or inferred; partial allocations and explicit append-only refunds/corrections require approval and replay safety. End-to-end acceptance: e2e/parity-finance-ledger.spec.ts.",
+      "evidenceTest": "e2e/parity-finance-ledger.spec.ts"
+    },
+    {
+      "path": "app/api/finance-ledger/reversals/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_finance_reversal_record"
+      ],
+      "explanation": "Native tenant-owned immutable financial ledger uses identical shared website/delegated MCP services, signed-in tenant binding and transaction-level SQL approval guards. Manual receipts are never provider-verified or inferred; partial allocations and explicit append-only refunds/corrections require approval and replay safety. End-to-end acceptance: e2e/parity-finance-ledger.spec.ts.",
+      "evidenceTest": "e2e/parity-finance-ledger.spec.ts"
     }
   ],
   "teacherPages": [
@@ -1742,6 +1807,7 @@
     "components/teacher/LichessPuzzlePublisher.tsx",
     "components/teacher/LichessStudyExplorer.tsx",
     "components/teacher/MaterialHistoryPanel.tsx",
+    "components/teacher/NativeFinanceLedgerPanel.tsx",
     "components/teacher/NotificationBell.tsx",
     "components/teacher/OnboardingTour.tsx",
     "components/teacher/PushOwnership.tsx",
