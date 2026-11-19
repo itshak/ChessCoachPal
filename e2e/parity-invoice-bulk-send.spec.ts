@@ -1,3 +1,4 @@
+import {insertTestBillingAccount,prepareSendableInvoice} from "./helpers/canonical-payer";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
@@ -23,13 +24,10 @@ test("PARITY:PARITY-billing-send-bulk-reviewed uses previews and at-most-once we
   for (let i = 0; i < 4; i++) {
     const email = "bulk-invoice-" + randomUUID() + "@example.com";
     const cents = 4100 + 1000 * i;
-    const family = await admin.from("guardians").insert({
-      teacher_id: teacherId, name: "Bulk recipient " + randomUUID(),
-      email, portal_token: randomUUID(),
-    }).select("id,portal_token").single();
+    const family = await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Bulk recipient " + randomUUID(),email:email});
     expect(family.error).toBeNull();
     const invoice = await admin.from("invoices").insert({
-      teacher_id: teacherId, guardian_id: family.data!.id, status: "draft",
+      teacher_id: teacherId, billing_account_id: family.data!.id, status: "draft",
       period_start: "2042-08-01", period_end: "2042-08-31",
       currency: "USD", subtotal_cents: cents,
     }).select("id").single();
@@ -41,6 +39,9 @@ test("PARITY:PARITY-billing-send-bulk-reviewed uses previews and at-most-once we
       quantity: 1, unit_cents: cents, amount_cents: cents, sort_order: 0,
     });
     expect(line.error).toBeNull();
+    await prepareSendableInvoice(admin,{teacherId,invoiceId,
+      billingAccountId:family.data!.id,contactId:family.data!.contactId!,
+      periodStart:"2042-08-01"});
     const previewPath = "/api/billing/invoices/" + invoiceId + "/send";
     const browserPreview = await page.request.get(previewPath + "?includeRecipients=true");
     expect(browserPreview.status(), await browserPreview.text()).toBe(200);
@@ -53,7 +54,7 @@ test("PARITY:PARITY-billing-send-bulk-reviewed uses previews and at-most-once we
     expect(site.subtotalCents).toBe(cents);
     expect(site.recipients).toEqual([email]);
     expect(site.deliveryPossible).toBe(true);
-    expect(JSON.stringify(modelPreview.data)).not.toContain(family.data!.portal_token);
+    expect(JSON.stringify(modelPreview.data)).not.toMatch(/token_digest|portal_token/i);
     invoices.push({id: invoiceId, email, cents});
   }
 

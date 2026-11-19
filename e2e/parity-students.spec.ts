@@ -293,7 +293,7 @@ test("PARITY:PARITY-students-full-atomic-contact-create shares durable website a
  const browser=await browserProfile(page,id);
  expect(browser.name).toBe(name);
  expect(browser.teacher_notes).toBe(payload.teacherNotes);
- expect(browser.guardian_id).toBeNull();
+ expect(browser).not.toHaveProperty("guardian_id");
  const createdContactId=(model.data as {createdContactId:string}).createdContactId;
  expect(createdContactId).toBeTruthy();
  const webContact=await page.request.get("/api/contacts/"+createdContactId);
@@ -330,7 +330,7 @@ test("PARITY:PARITY-students-full-atomic-contact-create shares durable website a
  expect(websiteCreate.status(),await websiteCreate.text()).toBe(201);
  const siteStudent=await websiteCreate.json();
  expect(siteStudent.createdContactId).toBeTruthy();
- expect(siteStudent.guardian_id).toBeNull();
+ expect(siteStudent).not.toHaveProperty("guardian_id");
  const mcpReplay=await callTool("ccp_students_create_full",{
    ...another,confirmed:true,
  });
@@ -352,7 +352,7 @@ test("PARITY:PARITY-students-full-atomic-contact-create shares durable website a
  }});
  expect(namedOnly.status(),await namedOnly.text()).toBe(201);
  const namedOnlyStudent=await namedOnly.json();
- expect(namedOnlyStudent.guardian_id).toBeNull();
+ expect(namedOnlyStudent).not.toHaveProperty("guardian_id");
  expect(namedOnlyStudent.createdContactId).toBeTruthy();
  const namedOnlyLinks=await callTool("ccp_student_contacts_list",{
    studentId:namedOnlyStudent.id,

@@ -180,8 +180,7 @@ test("PARITY:PARITY-contact-ui shows an MCP-created contact in the localized tea
     displayName:name,kind:"person",idempotencyKey:randomUUID(),confirmed:true,
   });
   expect(created.error).toBeUndefined();
-  await page.goto("/families");
-  await page.locator('a[href="/contacts"]').click();
+  await page.goto("/contacts");
   await page.waitForURL("**/contacts");
   await expect(page.locator("h1")).toHaveText(/Contacts/);
   await expect(page.getByText(name)).toBeVisible();
@@ -190,7 +189,7 @@ test("PARITY:PARITY-contact-ui shows an MCP-created contact in the localized tea
   await expect(page.getByText("Linking a contact does not share private teaching notes, grant portal access or make this person a payer.")).toBeVisible();
 });
 
-test("PARITY:PARITY-contact-navigation prefers contacts while legacy family editor remains reachable",async({page})=>{
+test("PARITY:PARITY-contact-navigation has no legacy Family editor",async({page})=>{
   await page.goto("/dashboard");
   // Desktop navigation may render the secondary links inline instead of a
   // More popover, depending on viewport. Assert the destination, not layout.
@@ -198,9 +197,9 @@ test("PARITY:PARITY-contact-navigation prefers contacts while legacy family edit
   await expect(page.locator('nav a[href="/families"]')).toHaveCount(0);
   await page.goto("/contacts");
   await expect(page.locator("h1")).toContainText("Contacts");
-  // Existing portal-family management remains reachable by its legacy URL.
-  await page.goto("/families");
-  await expect(page).toHaveURL(/\/families$/);
+  // No compatibility UI survives the pre-v1 cutover.
+  const obsolete=await page.request.get("/families");
+  expect(obsolete.status()).toBe(404);
 });
 
 test("PARITY:PARITY-contact-safety archived contact cannot be newly linked, existing history survives",async({page,request})=>{

@@ -1,3 +1,4 @@
+import {insertTestBillingAccount} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -17,14 +18,10 @@ test("PARITY:PARITY-invoice-pdf-multipage-private-export preserves 150 line item
  expect((await teacher.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
  const teacherId=(await teacher.auth.getUser()).data.user!.id;
  const portalToken=randomUUID();
- const guardian=await admin.from("guardians").insert({
-  teacher_id:teacherId,name:"Multi-page family "+randomUUID(),
-  email:"multipage-"+randomUUID()+"@example.com",
-  portal_token:portalToken,
- }).select("id").single();
+ const guardian=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Multi-page family "+randomUUID(),email:"multipage-"+randomUUID()+"@example.com"});
  expect(guardian.error).toBeNull();
  const inv=await admin.from("invoices").insert({
-  teacher_id:teacherId,guardian_id:guardian.data!.id,
+  teacher_id:teacherId,billing_account_id:guardian.data!.id,
   period_start:"2056-02-01",period_end:"2056-02-28",
   currency:"USD",status:"sent",subtotal_cents:15000,
   notes:"Exam preparation and tournament games. ".repeat(80),
@@ -69,12 +66,10 @@ test("PARITY:PARITY-invoice-pdf-multipage-private-export preserves 150 line item
    id:foreignTeacherId,email,display_name:"Other PDF teacher",
    hosted_enforced:false,
   })).error).toBeNull();
-  const otherFamily=await admin.from("guardians").insert({
-   teacher_id:foreignTeacherId,name:"Other family",portal_token:randomUUID(),
-  }).select("id").single();
+  const otherFamily=await insertTestBillingAccount(admin,{teacherId:foreignTeacherId,displayName:"Other family"});
   expect(otherFamily.error).toBeNull();
   const otherInvoice=await admin.from("invoices").insert({
-   teacher_id:foreignTeacherId,guardian_id:otherFamily.data!.id,
+   teacher_id:foreignTeacherId,billing_account_id:otherFamily.data!.id,
    period_start:"2056-03-01",period_end:"2056-03-31",
    status:"draft",currency:"USD",subtotal_cents:200,
   }).select("id").single();
@@ -109,15 +104,11 @@ test("PARITY: Hebrew and Russian recipient preferences select the SAME valid pri
  expect((await db.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
  const teacherId=(await db.auth.getUser()).data.user!.id;
  for(const locale of ["he","ru"] as const){
-  const family=await admin.from("guardians").insert({
-   teacher_id:teacherId,name:"יוסף Петров "+randomUUID(),
-   preferred_locale:locale,email:"locale-pdf-"+randomUUID()+"@example.com",
-   portal_token:randomUUID(),
-  }).select("id").single();
+  const family=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"יוסף Петров "+randomUUID(),email:"locale-pdf-"+randomUUID()+"@example.com",preferredLocale:locale});
   expect(family.error).toBeNull();
   const id=family.data!.id;
   const invoice=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:id,period_start:"2055-01-01",
+   teacher_id:teacherId,billing_account_id:id,period_start:"2055-01-01",
    period_end:"2055-01-31",currency:"ILS",status:"draft",
    subtotal_cents:12345,notes:"הערה Русский notes",
   }).select("id").single();

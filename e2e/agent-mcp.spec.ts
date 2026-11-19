@@ -1,3 +1,4 @@
+import {insertTestBillingAccount} from "./helpers/canonical-payer";
 import { createHash, randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
@@ -1147,64 +1148,50 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent.data;
   expect(intactDimension).toMatchObject({assessmentCount:1,canDelete:false});
 
-  // Guardian/contact lifecycle parity with secret redaction and cross-tenant denial.
-  for(const toolName of ["ccp_guardians_list","ccp_guardians_detail",
-    "ccp_guardians_create","ccp_guardians_update",
-    "ccp_guardians_delete_impact","ccp_guardians_delete",
-    "ccp_guardians_rotate_portal_token"])expect(names).toContain(toolName);
-  const newFamily=(await call("ccp_guardians_create",{
-    name:"Synthetic chess family "+suffix,email:"synthetic-"+suffix+"@example.com",
-    confirmed:true,
+  // Canonical Contacts lifecycle with redaction; legacy household operations
+  // are ABSENT rather than compatibility adapters.
+  for(const toolName of [
+    "ccp_contacts_list","ccp_contacts_detail","ccp_contacts_create",
+    "ccp_contacts_update","ccp_contacts_links_list",
+    "ccp_billing_accounts_list","ccp_billing_accounts_create",
+  ])expect(names).toContain(toolName);
+  for(const oldName of ["ccp_guardians_list","ccp_guardians_create",
+    "ccp_guardians_update","ccp_guardians_rotate_portal_token"])
+    expect(names).not.toContain(oldName);
+  const addedContact=(await call("ccp_contacts_create",{
+    displayName:"Synthetic chess contact "+suffix,
+    email:"synthetic-"+suffix+"@example.com",
+    idempotencyKey:randomUUID(),confirmed:true,
   })).structuredContent;
-  expect(newFamily.error).toBeUndefined();
-  expect(newFamily.data.portal_token).toBeUndefined();
-  expect(newFamily.data.email).toBeUndefined();
-  const gid=newFamily.data.id as string;
-  const familyWebsite=await page.request.get("/api/guardians/"+gid);
-  expect(familyWebsite.status()).toBe(200);
-  const originalPortal=(await familyWebsite.json()).portal_token as string;
-  expect(originalPortal).toBeTruthy();
-  const contact=(await call("ccp_guardians_detail",{
-    guardianId:gid,includeContacts:true,confirmed:true,
+  expect(addedContact.error).toBeUndefined();
+  expect(addedContact.data.email).toBeUndefined();
+  const contactId=addedContact.data.id as string;
+  const websiteContact=await page.request.get("/api/contacts/"+contactId);
+  expect(websiteContact.status(),await websiteContact.text()).toBe(200);
+  expect((await websiteContact.json()).email).toContain("synthetic-");
+  const fullContact=(await call("ccp_contacts_detail",{
+    contactId,includeDetails:true,confirmed:true,
   })).structuredContent.data;
-  expect(contact.email).toContain("synthetic-");
-  expect(contact.portal_token).toBeUndefined();
-  const editFamily=await page.request.put("/api/guardians/"+gid,{
-    data:{familyName:"Chess academy test "+suffix},
+  expect(fullContact.email).toContain("synthetic-");
+  expect(JSON.stringify(fullContact)).not.toContain("token_digest");
+  const updateContact=await page.request.patch("/api/contacts/"+contactId,{
+    data:{displayName:"Chess academy test "+suffix,
+      expectedRevision:1,idempotencyKey:randomUUID()},
   });
-  expect(editFamily.status(),await editFamily.text()).toBe(200);
-  const familyFromMcp=(await call("ccp_guardians_detail",{
-    guardianId:gid,
+  expect(updateContact.status(),await updateContact.text()).toBe(200);
+  const contactFromMcp=(await call("ccp_contacts_detail",{
+    contactId,
   })).structuredContent.data;
-  expect(familyFromMcp.family_name).toBe("Chess academy test "+suffix);
-  const rotation=(await call("ccp_guardians_rotate_portal_token",{
-    guardianId:gid,confirmed:true,
+  expect(contactFromMcp.displayName).toBe("Chess academy test "+suffix);
+  const {data:foreignContact,error:foreignContactError}=await admin
+    .from("contacts").insert({teacher_id:otherId,
+      display_name:"Other coach contact "+suffix}).select("id").single();
+  expect(foreignContactError).toBeNull();
+  const unreadable=(await call("ccp_contacts_detail",{
+    contactId:foreignContact!.id,includeDetails:true,confirmed:true,
   })).structuredContent;
-  expect(rotation.error).toBeUndefined();
-  expect(rotation.data.secretNotReturned).toBe(true);
-  expect(rotation.data.portal_token).toBeUndefined();
-  const afterRotation=await page.request.get("/api/guardians/"+gid);
-  expect((await afterRotation.json()).portal_token).not.toBe(originalPortal);
-  const impact=(await call("ccp_guardians_delete_impact",{
-    guardianId:gid,
-  })).structuredContent.data;
-  expect(impact.studentCount).toBe(0);
-  expect(impact.invoiceCount).toBe(0);
-  const deleteFamily=(await call("ccp_guardians_delete",{
-    guardianId:gid,confirmed:true,
-  })).structuredContent;
-  expect(deleteFamily.error).toBeUndefined();
-  const afterFamilyDelete=await page.request.get("/api/guardians/"+gid);
-  expect(afterFamilyDelete.status()).toBe(404);
-  // No model-visible family portal secrets, even for a foreign teacher UUID.
-  const {data:otherFamily,error:otherFamilyError}=await admin.from("guardians").insert({
-    teacher_id:otherId,name:"Other coach guardian "+suffix,portal_token:randomUUID(),
-  }).select("id").single();
-  expect(otherFamilyError).toBeNull();
-  const foreignFamily=(await call("ccp_guardians_detail",{
-    guardianId:otherFamily!.id,includeContacts:true,confirmed:true,
-  })).structuredContent;
-  expect(foreignFamily.error.code).toBe("NOT_FOUND");
+  expect(unreadable.error.code).toBe("NOT_FOUND");
+  expect((await page.request.get("/api/guardians")).status()).toBe(404);
 
   // Canonical calendar operations are independently exercised by the
   // named authenticated parity suites. Never re-introduce legacy actions.
@@ -1281,13 +1268,10 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   for(const toolName of ["ccp_billing_invoices_list",
     "ccp_billing_invoice_detail","ccp_billing_payments_export"])
     expect(names).toContain(toolName);
-  const {data:acctGuardian,error:acctGError}=await admin.from("guardians").insert({
-    teacher_id:session!.user.id,name:"Accounting family "+suffix,
-    email:"accounting-"+suffix+"@example.com",portal_token:randomUUID(),
-  }).select("id").single();
+  const {data:acctGuardian,error:acctGError}=await insertTestBillingAccount(admin,{teacherId:session!.user.id,displayName:"Accounting family "+suffix,email:"accounting-"+suffix+"@example.com"});
   expect(acctGError).toBeNull();
   const {data:acctInvoice,error:acctIError}=await admin.from("invoices").insert({
-    teacher_id:session!.user.id,guardian_id:acctGuardian!.id,status:"sent",
+    teacher_id:session!.user.id,billing_account_id:acctGuardian!.id,status:"sent",
     period_start:"2026-11-01",period_end:"2026-11-30",currency:"USD",subtotal_cents:12500,
   }).select("id").single();
   expect(acctIError).toBeNull();
@@ -1298,20 +1282,20 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const websiteBill=await page.request.get("/api/billing/invoices/"+acctInvoice!.id);
   expect(websiteBill.status(),await websiteBill.text()).toBe(200);
   const originalBill=await websiteBill.json();
-  expect(originalBill.guardians.portal_token).toBeTruthy();
+  expect(originalBill.billingAccount.displayName).toContain("Accounting family");
   const safeBill=(await call("ccp_billing_invoice_detail",{
     invoiceId:acctInvoice!.id,
   })).structuredContent.data;
   expect(safeBill.id).toBe(originalBill.id);
-  expect(safeBill.guardians.portal_token).toBeUndefined();
+  expect(JSON.stringify(safeBill)).not.toMatch(/token_digest|portal_token/i);
   expect(safeBill.stripe_checkout_url).toBeUndefined();
-  expect(safeBill.guardians.email).toBeUndefined();
+  expect(safeBill.billingAccount).toMatchObject({id:acctGuardian!.id});
   expect(safeBill.payments[0].note).toBeUndefined();
   const confirmedBill=(await call("ccp_billing_invoice_detail",{
     invoiceId:acctInvoice!.id,includePrivate:true,confirmed:true,
   })).structuredContent.data;
-  expect(confirmedBill.guardians.email).toContain("accounting-");
-  expect(confirmedBill.guardians.portal_token).toBeUndefined();
+  expect(confirmedBill.billingAccount.contactId).toBe(acctGuardian!.contactId);
+  expect(JSON.stringify(confirmedBill)).not.toMatch(/token_digest|portal_token/i);
   const billPage=(await call("ccp_billing_invoices_list",{limit:100,offset:0}))
     .structuredContent.data.invoices;
   expect(billPage.some((x:{id:string})=>x.id===acctInvoice!.id)).toBe(true);
@@ -1329,7 +1313,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     "ccp_billing_invoice_void","ccp_billing_invoice_delete",
     "ccp_billing_invoice_send"])expect(names).toContain(toolName);
   const {data:mutableInvoice,error:mutableError}=await admin.from("invoices").insert({
-    teacher_id:session!.user.id,guardian_id:acctGuardian!.id,status:"draft",
+    teacher_id:session!.user.id,billing_account_id:acctGuardian!.id,status:"draft",
     period_start:"2027-01-01",period_end:"2027-01-31",currency:"USD",subtotal_cents:0,
   }).select("id").single();
   expect(mutableError).toBeNull();
@@ -1434,11 +1418,11 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const websiteBackup=await webBackup.json();
   const transferExport=(await call("ccp_settings_export",{confirmed:true})).structuredContent;
   expect(transferExport.error).toBeUndefined();
-  expect(transferExport.data.guardianPortalLinksExcluded).toBe(true);
+  expect(transferExport.data.portalCredentialsExcluded).toBe(true);
   const safeBackup=transferExport.data.export;
   expect(safeBackup.version).toBe(websiteBackup.version);
   expect(safeBackup.tables.students.length).toBe(websiteBackup.tables.students.length);
-  expect(safeBackup.tables.guardians.every((g:{portal_token?:string})=>g.portal_token===undefined)).toBe(true);
+  expect(JSON.stringify(safeBackup.tables.portal_access_grants??[])).not.toContain("token_digest");
   const importedId=randomUUID();
   const importPayload={
     exportedAt:"2026-11-08T00:00:00.000Z",teacherId:session!.user.id,
@@ -1544,7 +1528,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     generationDates)).structuredContent;
   expect(generationMcp.error).toBeUndefined();
   expect(generationMcp.data.totalCents).toBe((await generationWeb.json()).totalCents);
-  expect(generationMcp.data.totalFamilies).toBe(1);
+  expect(generationMcp.data.totalBillingAccounts).toBe(1);
   const generated=(await call("ccp_billing_generation_commit",{
     ...generationDates,confirmed:true,
   })).structuredContent;

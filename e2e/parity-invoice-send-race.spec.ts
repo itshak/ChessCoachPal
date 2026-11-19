@@ -1,3 +1,4 @@
+import {insertTestBillingAccount,prepareSendableInvoice} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -17,13 +18,10 @@ test("PARITY:PARITY-billing-send-concurrent-claim rejects duplicate website/MCP 
  const signed=await auth.auth.signInWithPassword(SEED_TEACHER);
  expect(signed.error).toBeNull();
  const recipient="send-once-"+randomUUID()+"@example.com";
- const guardian=await admin.from("guardians").insert({
-   teacher_id:signed.data.user!.id,name:"Send-once family "+randomUUID(),
-   email:recipient,portal_token:randomUUID(),
- }).select("id").single();
+ const guardian=await insertTestBillingAccount(admin,{teacherId:signed.data.user!.id,displayName:"Send-once family "+randomUUID(),email:recipient});
  expect(guardian.error).toBeNull();
  const invoice=await admin.from("invoices").insert({
-   teacher_id:signed.data.user!.id,guardian_id:guardian.data!.id,
+   teacher_id:signed.data.user!.id,billing_account_id:guardian.data!.id,
    status:"draft",period_start:"2042-11-01",period_end:"2042-11-30",
    currency:"USD",subtotal_cents:12000,
  }).select("id").single();
@@ -35,6 +33,11 @@ test("PARITY:PARITY-billing-send-concurrent-claim rejects duplicate website/MCP 
    amount_cents:12000,sort_order:0,
  });
  expect(item.error).toBeNull();
+ await prepareSendableInvoice(admin,{
+   teacherId:signed.data.user!.id,invoiceId,
+   billingAccountId:guardian.data!.id,contactId:guardian.data!.contactId!,
+   periodStart:"2042-11-01",
+ });
  const previewSite=await page.request.get("/api/billing/invoices/"+invoiceId+"/send");
  expect(previewSite.status(),await previewSite.text()).toBe(200);
  const previewMcp=await call("ccp_billing_invoice_send_preview",{invoiceId});

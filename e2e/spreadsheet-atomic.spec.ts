@@ -36,7 +36,7 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
  });
  expect(failed.error?.code).toBe("23514");
  expect(failed.error?.message).toContain("HOSTED_LIMIT_REACHED");
- for(const table of ["students","guardians","teacher_spreadsheet_import_receipts"]){
+ for(const table of ["students","contacts","teacher_spreadsheet_import_receipts"]){
    const {count,error}=await admin.from(table).select("*",{head:true,count:"exact"})
      .eq("teacher_id",id);
    expect(error).toBeNull();
@@ -49,7 +49,7 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
  });
  expect(allowed.error).toBeNull();
  expect(allowed.data.studentsCreated).toBe(1);
- expect(allowed.data.familiesCreated).toBe(1);
+ expect(allowed.data.contactsCreated).toBe(0);
  expect(allowed.data.receiptId).toBe(idempotencyKey);
  const repeated=await auth.rpc("ccp_teacher_spreadsheet_commit",{
    p_rows:[rows[0]],p_idempotency_key:idempotencyKey,
@@ -65,11 +65,11 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
    .eq("teacher_id",id);
  expect(students).toHaveLength(1);
  expect(students![0].name).toBe(name1);
- const {data:families}=await admin.from("guardians").select("portal_token")
+ const {data:contacts,error:contactsError}=await admin.from("contacts").select("id")
    .eq("teacher_id",id);
- expect(families).toHaveLength(1);
- expect(families![0].portal_token.length).toBeGreaterThan(20);
- expect(JSON.stringify(allowed.data)).not.toContain(families![0].portal_token);
+ expect(contactsError).toBeNull();
+ expect(contacts).toEqual([]);
+ expect(JSON.stringify(allowed.data)).not.toMatch(/portal_token|token_digest/);
  const unsafeRead=await auth.from("teacher_spreadsheet_import_receipts")
    .select("request_hash,receipt").eq("teacher_id",id);
  expect(unsafeRead.error).not.toBeNull();
@@ -85,7 +85,7 @@ test("website spreadsheet import retries have stable tenant-scoped receipts",asy
  expect(first.status(),await first.text()).toBe(200);
  const result=await first.json();
  expect(result.studentsCreated).toBe(1);
- expect(result.familiesCreated).toBe(1);
+ expect(result.contactsCreated).toBe(1);
  expect(result.receiptId).toMatch(/^[0-9a-f-]{36}$/);
  const replay=await page.request.post("/api/import/spreadsheet/commit",{data:body});
  expect(replay.status(),await replay.text()).toBe(200);

@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {createAssignedPayer} from "./helpers/canonical-payer";
 
 test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendance and changed lesson rates",async({page,request})=>{
  const call=await delegatedTool(page,request);
@@ -9,11 +10,6 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const family=await call("ccp_guardians_create",{
-   name:"Invoice-rate family "+randomUUID(),studentIds:[studentId],
-   confirmed:true,
- });
- expect(family.error).toBeUndefined();
  const rate=await page.request.put("/api/students/"+studentId,{
    data:{defaultRateCents:6000},
  });
@@ -28,6 +24,7 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
   workplaceId,studentId,idempotencyKey:randomUUID(),
  });
  expect(enrolled.error).toBeUndefined();
+ await createAssignedPayer(call,{studentId,workplaceId,effectiveFrom:"2040-01-01"});
  const lesson=await call("ccp_sessions_create",{
    workplaceId,studentId,title:"Rate-driven individual lesson",
    startsAt:"2042-10-15T13:00:00Z",durationMinutes:60,
@@ -50,7 +47,7 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
  const mcpPreview=await call("ccp_billing_generation_preview",period);
  expect(mcpPreview.error).toBeUndefined();
  expect(mcpPreview.data).toEqual(preview);
- expect(preview.totalFamilies).toBe(1);
+ expect(preview.totalBillingAccounts).toBe(1);
  expect(preview.totalCents).toBe(6000);
  expect(preview.drafts[0].missingRateCount).toBe(0);
  expect(preview.drafts[0].creditedLessonCount).toBe(0);
@@ -108,6 +105,6 @@ test("PARITY:PARITY-billing-generation-regeneration reconciles period, attendanc
  expect(doubleBill.status()).toBe(400);
  const check=await call("ccp_billing_generation_preview",period);
  expect(check.error).toBeUndefined();
- expect(check.data.totalFamilies).toBe(0);
+ expect(check.data.totalBillingAccounts).toBe(0);
  expect(check.data.skippedAlreadyInvoiced).toBeGreaterThan(0);
 });

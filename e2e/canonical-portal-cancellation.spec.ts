@@ -3,22 +3,15 @@ import {createClient} from "@supabase/supabase-js";
 import {expect,test} from "@playwright/test";
 import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {createScopedPortalAccess} from "./helpers/canonical-payer";
 
-test("PARITY:PARITY-canonical-portal-atomic-replay guardian cancels one frozen canonical participant, with atomic replay and no teacher impersonation",async({page,request})=>{
+test("PARITY:PARITY-canonical-portal-atomic-replay scoped contact cancels one frozen canonical participant, with atomic replay and no teacher impersonation",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const student=await call("ccp_students_create",{
   name:"Guardian canonical cancellation "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const guardian=await call("ccp_guardians_create",{
-  name:"Guardian "+randomUUID(),studentIds:[studentId],confirmed:true,
- });
- expect(guardian.error).toBeUndefined();
- const guardianDetails=await page.request.get("/api/guardians/"+guardian.data.id);
- expect(guardianDetails.status(),await guardianDetails.text()).toBe(200);
- const portalToken=(await guardianDetails.json()).portal_token as string;
- expect(portalToken.length).toBeGreaterThanOrEqual(32);
  const workplace=await call("ccp_workplaces_create",{
   name:"Guardian workplace "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
@@ -28,6 +21,9 @@ test("PARITY:PARITY-canonical-portal-atomic-replay guardian cancels one frozen c
  expect((await call("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
+ const {token:portalToken}=await createScopedPortalAccess(call,page,{
+  studentId,workplaceId,permissions:["cancel"],
+ });
  const created=await call("ccp_sessions_create",{
   workplaceId,studentId,title:"Upcoming private lesson",
   startsAt:"2059-07-09T15:00:00Z",durationMinutes:60,
@@ -77,21 +73,13 @@ test("PARITY:PARITY-canonical-portal-atomic-replay guardian cancels one frozen c
 });
 
 
-test("PARITY:PARITY-canonical-portal-marked-and-past-guard denies a guardian overwrite or retroactive cancellation",async({page,request})=>{
+test("PARITY:PARITY-canonical-portal-marked-and-past-guard denies a guest overwrite or retroactive cancellation",async({page,request})=>{
  const tool=await delegatedTool(page,request);
  const learner=await tool("ccp_students_create",{
   name:"Portal conflict learner "+randomUUID(),idempotencyKey:randomUUID(),
  });
  expect(learner.error).toBeUndefined();
  const studentId=learner.data.entityId as string;
- const family=await tool("ccp_guardians_create",{
-  name:"Portal conflict family "+randomUUID(),studentIds:[studentId],confirmed:true,
- });
- expect(family.error).toBeUndefined();
- const guardian=await page.request.get("/api/guardians/"+family.data.id);
- expect(guardian.status()).toBe(200);
- const token=(await guardian.json()).portal_token as string;
- expect(token.length).toBeGreaterThanOrEqual(32);
  const work=await tool("ccp_workplaces_create",{
   name:"Portal historical classroom "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
@@ -101,6 +89,9 @@ test("PARITY:PARITY-canonical-portal-marked-and-past-guard denies a guardian ove
  expect((await tool("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
+ const {token}=await createScopedPortalAccess(tool,page,{
+  studentId,workplaceId,permissions:["cancel"],
+ });
  const create=async (startsAt:string,title:string)=>{
   const created=await tool("ccp_sessions_create",{
    workplaceId,studentId,startsAt,title,durationMinutes:45,

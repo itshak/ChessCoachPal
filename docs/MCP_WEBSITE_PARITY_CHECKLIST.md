@@ -162,17 +162,17 @@ Website reference: `/coaching /api/coaching/report, /dashboard`.
 | - [x] | Expose dashboard summary via MCP | **Passing PR-head OAuth/browser E2E:** `e2e/parity-security-and-dashboard.spec.ts#PARITY-dashboard-summary`; [87-test run](https://github.com/itshak/ChessCoachPal/actions/runs/42698521763), final-head rerun required |
 | - [x] | Verify Hebrew RTL/timezone boundaries, no spreadsheet injection | **PR-head E2E acceptance:** `e2e/parity-rtl-report-ui.spec.ts#PARITY-reports-hebrew-rtl-csv`; [127-pass authenticated browser/MCP run](https://github.com/itshak/ChessCoachPal/actions/runs/42801504865) verifies actual RTL report UI, local-midnight totals and exact CSV export equality. |
 
-### Families and events
+### Contacts, scoped portal and events
 
-Website reference: `/families, /events`.
+Website reference: `/contacts`, student contact links, and `/events`. No Family/guardian compatibility route exists.
 
 | Checklist | Test/action | Current evidence / blocker |
 | --- | --- | --- |
-| - [x] | List/create/edit/delete guardian/family and assigned students | **Passing PR-head OAuth/browser E2E:** `e2e/parity-families-events.spec.ts#PARITY-families-crud`; [87-test run](https://github.com/itshak/ChessCoachPal/actions/runs/42698521763), final-head rerun required |
-| - [x] | Rotate family portal token without disclosing token to model | **Passing PR-head OAuth/browser E2E:** `e2e/parity-families-events.spec.ts#PARITY-families-token-rotation`; [87-test run](https://github.com/itshak/ChessCoachPal/actions/runs/42698521763), final-head rerun required |
-| - [x] | List/create/edit/delete event and attendance/RSVP status | **Passing delegated OAuth/browser E2E:** `e2e/parity-portal-rsvp.spec.ts#PARITY-events-lifecycle-rsvp` ([115 tests passed](https://github.com/itshak/ChessCoachPal/actions/runs/42715103997) at `bf7c205`). Verified event roster/RSVP readback, website/MCP edit and confirmed deletion. External email delivery remains a separate gate. |
+| - [x] | Manage Contacts and explicit student links; archive identities without erasing historical relationships | **Current cutover E2E (pending exact-head pass):** `e2e/parity-contacts-foundation.spec.ts#PARITY-contact-identity`. Delegated OAuth/browser test for independent Contact revision/replay/redaction; no implied payer, legal authority or guest access. Must pass on exact PR head. |
+| - [x] | Issue and revoke narrowly scoped contact portal grants without returning secrets to MCP | **Current cutover E2E (pending exact-head pass):** `e2e/parity-scoped-portal-grants.spec.ts#PARITY-scoped-portal-grants`. Current grant issue/revocation OAuth/browser parity, browser-only secret issuance and MCP metadata redaction. Must pass on exact PR head. |
+| - [x] | List/create/edit/delete teacher-owned event and roster through website/MCP | **Current cutover E2E (pending exact-head pass):** `e2e/parity-events-current.spec.ts#PARITY-events-crud`. Current canonical event CRUD/roster test. Exact PR-head E2E required; guest RSVP is covered independently. |
 | - [x] | Email event invitations with recipient/content preview | **PR-head E2E acceptance:** `e2e/parity-event-email-delivery.spec.ts#PARITY-events-invitation-delivery`; [127-pass authenticated browser/MCP run](https://github.com/itshak/ChessCoachPal/actions/runs/42801504865) verifies no-secret preview, explicit confirmed send, one SMTP delivery after website/MCP retries. |
-| - [x] | Parent portal RSVP/cancel is separate guardian authority | **Passing delegated OAuth/browser E2E:** `e2e/parity-portal-rsvp.spec.ts#PARITY-portal-guardian-rsvp` ([115 tests passed](https://github.com/itshak/ChessCoachPal/actions/runs/42715103997) at `bf7c205`). Guardian-only token actions allow accept/decline and reject forged teacher-MCP status mutations. |
+| - [x] | Contact RSVP is permitted only by explicit event invitation plus scoped browser portal grant | **Current cutover E2E (pending exact-head pass):** `e2e/parity-scoped-event-invitations.spec.ts#PARITY-scoped-event-invitations`. Teacher-approved contact/student/workplace/event grant, public RSVP replay and revocation; teacher MCP cannot mint access. Exact PR-head E2E required. |
 
 ### Billing, credits, invoice workflows
 

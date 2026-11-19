@@ -1,3 +1,4 @@
+import {insertTestBillingAccount} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -14,13 +15,10 @@ test("PARITY:PARITY-billing-invoice-list-detail reads owned totals and redacts c
  const login=await auth.auth.signInWithPassword(SEED_TEACHER);
  expect(login.error).toBeNull();
  const teacherId=login.data.user!.id,stamp=randomUUID().slice(0,9);
- const family=await admin.from("guardians").insert({
-   teacher_id:teacherId,name:"Statement family "+stamp,
-   email:"statement-"+stamp+"@example.com",portal_token:randomUUID(),
- }).select("id").single();
+ const family=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Statement family "+stamp,email:"statement-"+stamp+"@example.com"});
  expect(family.error).toBeNull();
  const invoice=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:family.data!.id,
+   teacher_id:teacherId,billing_account_id:family.data!.id,
    status:"sent",period_start:"2042-04-01",period_end:"2042-04-30",
    currency:"ILS",subtotal_cents:18750,
  }).select("id").single();
@@ -30,7 +28,7 @@ test("PARITY:PARITY-billing-invoice-list-detail reads owned totals and redacts c
  expect(browser.status(),await browser.text()).toBe(200);
  const site=await browser.json() as {
    subtotal_cents:number;currency:string;
-   guardians:{email:string|null;portal_token:string|null};
+   billingAccount:{id:string;displayName:string};
  };
  expect(site.subtotal_cents).toBe(18750);
  expect(site.currency).toBe("ILS");
@@ -39,10 +37,10 @@ test("PARITY:PARITY-billing-invoice-list-detail reads owned totals and redacts c
  expect(detail.data).toMatchObject({
    id:invoiceId,status:"sent",currency:"ILS",subtotal_cents:18750,
  });
- expect(detail.data.guardians.email).toBeUndefined();
- expect(detail.data.guardians.portal_token).toBeUndefined();
+ expect(detail.data.billingAccount).toMatchObject({id:family.data!.id});
+ expect(JSON.stringify(detail.data)).not.toMatch(/token_digest|portal_token/i);
  expect(detail.data.stripe_checkout_url).toBeUndefined();
- expect(site.guardians.email).toContain("@example.com");
+ expect(site.billingAccount.displayName).toContain("Statement family");
  const list=await call("ccp_billing_invoices_list",{
    status:"sent",limit:100,offset:0,
  });
@@ -55,6 +53,6 @@ test("PARITY:PARITY-billing-invoice-list-detail reads owned totals and redacts c
    invoiceId,includePrivate:true,confirmed:true,
  });
  expect(privateDetail.error).toBeUndefined();
- expect(privateDetail.data.guardians.email).toBe(site.guardians.email);
- expect(privateDetail.data.guardians.portal_token).toBeUndefined();
+ expect(privateDetail.data.billingAccount.contactId).toBe(family.data!.contactId);
+ expect(JSON.stringify(privateDetail.data)).not.toMatch(/token_digest|portal_token/i);
 });

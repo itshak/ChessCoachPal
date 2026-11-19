@@ -791,8 +791,8 @@
         "ccp_events_delete_impact",
         "ccp_events_delete"
       ],
-      "explanation": "Accepted current-schema teacher event list/create/detail/update/impact/delete via shared atomic service. Authenticated website ↔ delegated MCP scenarios in parity-families-events plus event-atomic confirm roster/repertoire corrections, stable request replay, rollback and no accidental invitations; 188 passing E2E on verified SHA a3af159. External invite email is independently tracked; broader contact roles are not resolved.",
-      "evidenceTest": "e2e/parity-families-events.spec.ts"
+      "explanation": "Verified teacher event CRUD/list parity on current Contacts/scoped-portal schema; browser ↔ delegated MCP event scenarios plus event-atomic rollback and explicit portal invitation/revocation checks. Prior guardian-token scenarios are superseded by the scoped event E2E suites, never accepted as compatibility.",
+      "evidenceTest": "e2e/parity-events-current.spec.ts"
     },
     {
       "path": "app/api/events/route.ts",
@@ -806,8 +806,8 @@
         "ccp_events_list",
         "ccp_events_create"
       ],
-      "explanation": "Accepted current-schema teacher event list/create/detail/update/impact/delete via shared atomic service. Authenticated website ↔ delegated MCP scenarios in parity-families-events plus event-atomic confirm roster/repertoire corrections, stable request replay, rollback and no accidental invitations; 188 passing E2E on verified SHA a3af159. External invite email is independently tracked; broader contact roles are not resolved.",
-      "evidenceTest": "e2e/parity-families-events.spec.ts"
+      "explanation": "Verified teacher event CRUD/list parity on current Contacts/scoped-portal schema; browser ↔ delegated MCP event scenarios plus event-atomic rollback and explicit portal invitation/revocation checks. Prior guardian-token scenarios are superseded by the scoped event E2E suites, never accepted as compatibility.",
+      "evidenceTest": "e2e/parity-events-current.spec.ts"
     },
     {
       "path": "app/api/feeds/[token]/calendar/route.ts",

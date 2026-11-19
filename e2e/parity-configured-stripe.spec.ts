@@ -1,3 +1,4 @@
+import {insertTestBillingAccount} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {createServer,type Server} from "node:http";
 import {expect,test} from "@playwright/test";
@@ -91,13 +92,10 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    expect(login.error).toBeNull();
    const teacherId=login.data.user!.id;
    const id=randomUUID();
-   const guardian=await admin.from("guardians").insert({
-     teacher_id:teacherId,name:"Checkout synthetic "+id.slice(0,8),
-     email:"checkout-"+id+"@example.com",portal_token:randomUUID(),
-   }).select("id").single();
+   const guardian=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Checkout synthetic "+id.slice(0,8),email:"checkout-"+id+"@example.com"});
    expect(guardian.error).toBeNull();
    const invoice=await admin.from("invoices").insert({
-     teacher_id:teacherId,guardian_id:guardian.data!.id,status:"sent",
+     teacher_id:teacherId,billing_account_id:guardian.data!.id,status:"sent",
      period_start:"2045-04-01",period_end:"2045-04-30",
      currency:"USD",subtotal_cents:4800,
    }).select("id").single();
@@ -136,7 +134,7 @@ test("PARITY:PARITY-configured-checkout-pdf-ledger creates one safe provider ses
    // distinct sessions for concurrent same-invoice requests. Only one may
    // become payable; the loser must be expired, never overwrite the winner.
    const rival=await admin.from("invoices").insert({
-     teacher_id:teacherId,guardian_id:guardian.data!.id,status:"sent",
+     teacher_id:teacherId,billing_account_id:guardian.data!.id,status:"sent",
      period_start:"2045-05-01",period_end:"2045-05-31",
      currency:"USD",subtotal_cents:3600,
    }).select("id").single();

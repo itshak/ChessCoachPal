@@ -1,8 +1,10 @@
+import {insertTestBillingAccount} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
 import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {createAssignedPayer} from "./helpers/canonical-payer";
 
 test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns credits on both surfaces",async({page,request})=>{
  const call=await delegatedTool(page,request);
@@ -11,12 +13,20 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const family=await call("ccp_guardians_create",{
-   name:"Credit family "+randomUUID(),studentIds:[studentId],confirmed:true,
+ const location=await call("ccp_workplaces_create",{
+   name:"Prepaid package workplace "+randomUUID(),timezone:"UTC",
+   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
  });
- expect(family.error).toBeUndefined();
+ expect(location.error).toBeUndefined();
+ const workplaceId=location.data.entityId as string;
+ expect((await call("ccp_workplaces_enroll",{
+   workplaceId,studentId,idempotencyKey:randomUUID(),
+ })).error).toBeUndefined();
+ await createAssignedPayer(call,{
+   studentId,workplaceId,effectiveFrom:"2040-01-01",
+ });
  const payload={
-   studentId,credits:2,durationMinutes:45,priceCents:9000,
+   studentId,workplaceId,credits:2,durationMinutes:45,priceCents:9000,
    startsOn:"2042-07-01",expiresOn:"2042-08-01",
  };
  const requestId=randomUUID();
@@ -99,15 +109,7 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
    .eq("teacher_id",signed.data.user!.id);
  expect(countAfter.error).toBeNull();
  expect(countAfter.count).toBe(countBefore.count);
- const workplace=await call("ccp_workplaces_create",{
-   name:"Prepaid package workplace "+randomUUID(),timezone:"UTC",
-   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
- });
- expect(workplace.error).toBeUndefined();
- const workplaceId=workplace.data.entityId as string;
- expect((await call("ccp_workplaces_enroll",{
-   workplaceId,studentId,idempotencyKey:randomUUID(),
- })).error).toBeUndefined();
+
  const lesson=await call("ccp_sessions_create",{
    workplaceId,studentId,title:"Prepaid private coaching",
    startsAt:"2042-07-10T10:00:00Z",durationMinutes:45,
@@ -251,23 +253,36 @@ test("PARITY:PARITY-credits-tenant-scope denies foreign package reads creates an
   expect((await admin.from("teachers").insert({
    id:teacherId,email,display_name:"Foreign prepaid credit coach",
   })).error).toBeNull();
-  const family=await admin.from("guardians").insert({
-   teacher_id:teacherId,name:"Private family",portal_token:randomUUID(),
-  }).select("id").single();
+  const family=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Private family"});
   expect(family.error).toBeNull();
   const student=await admin.from("students").insert({
-   teacher_id:teacherId,name:"Foreign chess pupil",guardian_id:family.data!.id,
+   teacher_id:teacherId,name:"Foreign chess pupil",
   }).select("id").single();
   expect(student.error).toBeNull();
   const foreignStudentId=student.data!.id as string;
+  const place=await admin.from("workplaces").insert({
+    teacher_id:teacherId,name:"Foreign private workplace "+randomUUID(),
+    timezone:"UTC",currency:"USD",locale:"en",policy:{},
+  }).select("id").single();
+  expect(place.error).toBeNull();
+  const foreignWorkplaceId=place.data!.id as string;
+  expect((await admin.from("workplace_enrollments").insert({
+    teacher_id:teacherId,student_id:foreignStudentId,workplace_id:foreignWorkplaceId,
+  })).error).toBeNull();
+  expect((await admin.from("student_billing_assignments").insert({
+    teacher_id:teacherId,student_id:foreignStudentId,
+    workplace_id:foreignWorkplaceId,billing_account_id:family.data!.id,
+    effective_from:"2040-01-01",
+  })).error).toBeNull();
   const invoice=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:family.data!.id,status:"draft",
+   teacher_id:teacherId,billing_account_id:family.data!.id,status:"draft",
    period_start:"2042-01-01",period_end:"2042-01-31",
    currency:"USD",subtotal_cents:7500,
   }).select("id").single();
   expect(invoice.error).toBeNull();
   const pkg=await admin.from("credit_packages").insert({
-   teacher_id:teacherId,student_id:foreignStudentId,invoice_id:invoice.data!.id,
+   teacher_id:teacherId,student_id:foreignStudentId,
+   workplace_id:foreignWorkplaceId,invoice_id:invoice.data!.id,
    credits:5,duration_minutes:45,price_cents:7500,
    starts_on:"2042-01-01",expires_on:"2042-12-31",
   }).select("id").single();
@@ -284,11 +299,13 @@ test("PARITY:PARITY-credits-tenant-scope denies foreign package reads creates an
    studentId:foreignStudentId,
   })).error?.code).toBe("NOT_FOUND");
   expect((await page.request.post("/api/billing/credit-packages",{
-   data:{studentId:foreignStudentId,credits:2,durationMinutes:45,
+   data:{studentId:foreignStudentId,workplaceId:foreignWorkplaceId,
+    credits:2,durationMinutes:45,
     priceCents:4000,startsOn:"2042-02-01",requestId:randomUUID()},
   })).status()).toBe(404);
   expect((await call("ccp_credits_package_create",{
-   studentId:foreignStudentId,credits:2,durationMinutes:45,
+   studentId:foreignStudentId,workplaceId:foreignWorkplaceId,
+   credits:2,durationMinutes:45,
    priceCents:4000,startsOn:"2042-02-01",requestId:randomUUID(),confirmed:true,
   })).error?.code).toBe("NOT_FOUND");
   expect((await page.request.patch("/api/billing/credit-packages/"+packageId,{

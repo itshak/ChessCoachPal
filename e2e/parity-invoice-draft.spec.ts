@@ -1,3 +1,4 @@
+import {insertTestBillingAccount} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -10,11 +11,10 @@ async function draftInvoice(){
      auth:{persistSession:false,autoRefreshToken:false},
    });
  const name="Atomic invoice family "+randomUUID().slice(0,8);
- const {data:guardian,error:guardianError}=await admin.from("guardians")
-   .insert({teacher_id:teacherId,name,portal_token:randomUUID()}).select("id").single();
+ const {data:guardian,error:guardianError}=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:name});
  expect(guardianError).toBeNull();
  const {data:invoice,error:invoiceError}=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:guardian!.id,period_start:"2041-05-01",
+   teacher_id:teacherId,billing_account_id:guardian!.id,period_start:"2041-05-01",
    period_end:"2041-05-31",status:"draft",subtotal_cents:1400,
    currency:"ILS",notes:"Before replacement",
  }).select("id,updated_at").single();

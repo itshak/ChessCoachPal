@@ -1,3 +1,4 @@
+import {insertTestBillingAccount} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -24,13 +25,10 @@ async function invoice(status:"sent"|"draft",subtotal=12500){
  const teacherId=login.data.user!.id;
  const suffix=randomUUID().slice(0,9);
  const portalToken=randomUUID();
- const guardian=await admin.from("guardians").insert({
-   teacher_id:teacherId,name:"Billing family "+suffix,
-   email:"billing-"+suffix+"@example.com",portal_token:portalToken,
- }).select("id").single();
+ const guardian=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Billing family "+suffix,email:"billing-"+suffix+"@example.com"});
  expect(guardian.error).toBeNull();
  const made=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:guardian.data!.id,status,
+   teacher_id:teacherId,billing_account_id:guardian.data!.id,status,
    period_start:"2027-03-01",period_end:"2027-03-31",
    currency:"USD",subtotal_cents:subtotal,
     ...(status==="sent"?{sent_at:new Date().toISOString()}:{}),
@@ -54,8 +52,9 @@ test("PARITY:PARITY-billing-invoice-read-list mirrors owned totals and masks fam
  expect(detail.error).toBeUndefined();
  expect(detail.data.id).toBe(website.id);
  expect(detail.data.subtotal_cents).toBe(website.subtotal_cents);
- expect(detail.data.guardians.portal_token).toBeUndefined();
- expect(detail.data.guardians.email).toBeUndefined();
+ expect(JSON.stringify(detail.data)).not.toMatch(/token_digest|portal_token/i);
+ expect(detail.data.billingAccount).toBeTruthy();
+ expect(detail.data.billingAccount.contactId).toBeUndefined();
  const list=await call("ccp_billing_invoices_list",{status:"sent",limit:100,offset:0});
  expect(list.error).toBeUndefined();
  expect(list.data.invoices.some((x:{id:string;subtotal_cents:number})=>
@@ -282,13 +281,10 @@ test("PARITY:PARITY-billing-manual-payment-foreign-tenant-denial blocks website 
    id:teacherId,email,display_name:"Unrelated finance teacher",
    hosted_enforced:false,
   })).error).toBeNull();
-  const guardian=await admin.from("guardians").insert({
-   teacher_id:teacherId,name:"Other studio family",
-   portal_token:randomUUID(),
-  }).select("id").single();
+  const guardian=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Other studio family"});
   expect(guardian.error).toBeNull();
   const invoice=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:guardian.data!.id,
+   teacher_id:teacherId,billing_account_id:guardian.data!.id,
    status:"sent",subtotal_cents:5600,currency:"USD",
    period_start:"2040-01-01",period_end:"2040-01-31",
   }).select("id").single();

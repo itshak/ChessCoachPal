@@ -3,6 +3,7 @@ import {createClient} from "@supabase/supabase-js";
 import {expect,test} from "@playwright/test";
 import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {createAssignedPayer} from "./helpers/canonical-payer";
 
 test("FINANCE: group session bills distinct frozen students once and locks paid teaching history",async({page,request})=>{
  const call=await delegatedTool(page,request);
@@ -12,7 +13,7 @@ test("FINANCE: group session bills distinct frozen students once and locks paid 
  });
  expect(w.error).toBeUndefined();
  const workplaceId=w.data.entityId as string;
- const students:string[]=[],guardians:string[]=[];
+ const students:string[]=[],billingAccounts:string[]=[];
  for(let i=0;i<2;i++){
   const s=await call("ccp_students_create",{
    name:"Billing student "+randomUUID(),idempotencyKey:randomUUID(),
@@ -23,11 +24,11 @@ test("FINANCE: group session bills distinct frozen students once and locks paid 
   expect((await call("ccp_workplaces_enroll",{
    workplaceId,studentId,idempotencyKey:randomUUID(),
   })).error).toBeUndefined();
-  const guardian=await call("ccp_guardians_create",{
-   name:"Billing family "+randomUUID(),studentIds:[studentId],confirmed:true,
+  const {billingAccountId}=await createAssignedPayer(call,{
+   workplaceId,studentId,effectiveFrom:"2080-01-01",
+   displayName:"Billing account "+randomUUID(),
   });
-  expect(guardian.error).toBeUndefined();
-  guardians.push(guardian.data.id as string);
+  billingAccounts.push(billingAccountId);
  }
  const group=await call("ccp_groups_create",{
   workplaceId,name:"Group lesson "+randomUUID(),idempotencyKey:randomUUID(),
@@ -58,7 +59,7 @@ test("FINANCE: group session bills distinct frozen students once and locks paid 
  const invoiceIds:string[]=[];
  for(let i=0;i<2;i++){
   const {data:invoice,error:invoiceErr}=await db.from("invoices").insert({
-   teacher_id:teacher,guardian_id:guardians[i],period_start:date,
+   teacher_id:teacher,billing_account_id:billingAccounts[i],period_start:date,
    period_end:date,status:"draft",subtotal_cents:3000,currency:"USD",
   }).select("id").single();
   expect(invoiceErr).toBeNull();

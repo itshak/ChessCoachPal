@@ -15,7 +15,7 @@ test("SECURITY: approved canonical note intent is durable, private, and unique o
  const contact=await call("ccp_contacts_create",{
   displayName:"Authorized school contact "+randomUUID(),
   email:"consented-"+randomUUID()+"@example.invalid",
-  preferredLocale:"en",idempotencyKey:randomUUID(),
+  preferredLocale:"en",idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(contact.error).toBeUndefined();
  const linked=await call("ccp_student_contacts_link",{

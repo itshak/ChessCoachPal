@@ -2,6 +2,7 @@ import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
 import {delegatedTool,type TestMcpReply} from "./helpers/delegated-mcp";
+import {createAssignedPayer} from "./helpers/canonical-payer";
 
 type Call=(name:string,args:Record<string,unknown>)=>Promise<TestMcpReply>;
 async function billableLesson(page:import("@playwright/test").Page,call:Call,month:string){
@@ -10,10 +11,6 @@ async function billableLesson(page:import("@playwright/test").Page,call:Call,mon
   });
   expect(student.error).toBeUndefined();
   const studentId=student.data.entityId as string;
-  const guardian=await call("ccp_guardians_create",{
-    name:"Finance parity household "+randomUUID(),studentIds:[studentId],confirmed:true,
-  });
-  expect(guardian.error).toBeUndefined();
   const rate=await page.request.put("/api/students/"+studentId,{
     data:{defaultRateCents:6200},
   });
@@ -28,6 +25,9 @@ async function billableLesson(page:import("@playwright/test").Page,call:Call,mon
     workplaceId,studentId,idempotencyKey:randomUUID(),
   });
   expect(enrolled.error).toBeUndefined();
+  await createAssignedPayer(call,{
+   studentId,workplaceId,effectiveFrom:"2040-01-01",
+  });
   const lesson=await call("ccp_sessions_create",{
     workplaceId,studentId,title:"Finance parity lesson",
     startsAt:month+"-15T13:15:00Z",durationMinutes:60,

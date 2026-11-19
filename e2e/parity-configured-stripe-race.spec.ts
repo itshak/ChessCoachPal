@@ -1,3 +1,4 @@
+import {insertTestBillingAccount} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {createServer,type Server} from "node:http";
 import {expect,test} from "@playwright/test";
@@ -81,13 +82,10 @@ test("PARITY:PARITY-configured-checkout-independent-two-claim-race keeps only on
   const login=await client.auth.signInWithPassword(SEED_TEACHER);
   expect(login.error).toBeNull();
   const teacherId=login.data.user!.id;
-  const guardian=await admin.from("guardians").insert({
-   teacher_id:teacherId,name:"Racing provider family "+randomUUID(),
-   portal_token:randomUUID(),email:"race-"+randomUUID()+"@example.com",
-  }).select("id").single();
+  const guardian=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Racing provider family "+randomUUID(),email:"race-"+randomUUID()+"@example.com"});
   expect(guardian.error).toBeNull();
   const invoice=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:guardian.data!.id,status:"sent",
+   teacher_id:teacherId,billing_account_id:guardian.data!.id,status:"sent",
    currency:"USD",period_start:"2058-11-01",period_end:"2058-11-30",
    subtotal_cents:6100,
   }).select("id").single();
