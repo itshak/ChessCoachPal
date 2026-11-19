@@ -47,6 +47,16 @@ describe("spreadsheet workplace fail-closed contract",()=>{
   } as unknown as SupabaseClient;
   return {db,calls:()=>rpcCalls};
  };
+ it("rejects a partially invalid spreadsheet instead of skipping pupils",async()=>{
+  const {db,calls}=mock([{id:"a",name:"Yatmo"}]);
+  const res=await teacherSpreadsheetCommit(db,"teacher",{
+    rows:[{"Student Name":"Learner"},{"Student Name":"","Notes":"Needs review"}],
+    mapping:{student_name:"Student Name"},
+  });
+  expect(res.status).toBe(422);
+  expect((await res.json()).code).toBe("IMPORT_REVIEW_REQUIRED");
+  expect(calls()).toBe(0);
+ });
  it("requires explicit workplace when two choices exist; no writes",async()=>{
   const {db,calls}=mock([{id:"a",name:"Yatmo"},{id:"b",name:"Other"}]);
   const res=await teacherSpreadsheetCommit(db,"teacher",body);
