@@ -51,6 +51,22 @@ BEGIN
     'synthetic-session-earning-two',repeat('b',64),
     'fa000000-0000-4000-8000-000000000022');
   BEGIN
+    UPDATE public.compensation_agreements SET rate_cents=12500
+      WHERE id=agreement;
+    RAISE EXCEPTION 'RETROACTIVE_RATE_UPDATE_NOT_ENFORCED';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM NOT LIKE '%POSTED_COMPENSATION_HISTORY_IMMUTABLE%'
+      THEN RAISE; END IF;
+  END;
+  BEGIN
+    UPDATE public.compensation_agreements SET effective_to='2026-10-31'
+      WHERE id=agreement;
+    RAISE EXCEPTION 'POSTED_PERIOD_TRUNCATION_NOT_ENFORCED';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM NOT LIKE '%POSTED_COMPENSATION_HISTORY_IMMUTABLE%'
+      THEN RAISE; END IF;
+  END;
+  BEGIN
     INSERT INTO public.financial_obligations(id,teacher_id,workplace_id,
       billing_account_id,agreement_id,agreement_revision,agreement_snapshot,
       session_id,period_start,period_end,kind,amount_cents,currency,

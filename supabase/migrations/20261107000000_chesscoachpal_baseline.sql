@@ -11449,3 +11449,39 @@ REVOKE ALL ON FUNCTION public.ccp_payment_allocation_guard() FROM PUBLIC,anon;
 REVOKE ALL ON FUNCTION public.ccp_financial_ledger_append_only() FROM PUBLIC,anon;
 COMMENT ON TABLE public.payment_allocations IS
  'Append-only received-money-to-obligation allocations with tenant-owned FK, exact currency/counterparty match and concurrent over-allocation rejection. No direct browser/agent posting.';
+
+-- After the first financial posting, a contract may be archived or closed
+-- after the last posted period. It cannot rewrite the rate, counterparties,
+-- model, start date, currency or teacher scope on which obligations relied.
+-- A new future-dated agreement is the correct way to revise compensation.
+CREATE OR REPLACE FUNCTION public.ccp_compensation_posted_history_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_compensation_posted_history_guard$
+DECLARE
+ v_latest_posted date;
+BEGIN
+ IF TG_OP<>'UPDATE' THEN RETURN NEW; END IF;
+ SELECT max(period_end) INTO v_latest_posted
+ FROM public.financial_obligations
+ WHERE teacher_id=OLD.teacher_id AND agreement_id=OLD.id;
+ IF v_latest_posted IS NULL THEN RETURN NEW; END IF;
+ IF (NEW.teacher_id,NEW.workplace_id,NEW.billing_account_id,
+     NEW.student_id,NEW.group_id,NEW.agreement_role,NEW.model,
+     NEW.rate_cents,NEW.currency,NEW.effective_from)
+    IS DISTINCT FROM
+    (OLD.teacher_id,OLD.workplace_id,OLD.billing_account_id,
+     OLD.student_id,OLD.group_id,OLD.agreement_role,OLD.model,
+     OLD.rate_cents,OLD.currency,OLD.effective_from)
+   OR (NEW.effective_to IS NOT NULL AND NEW.effective_to<v_latest_posted)
+ THEN
+  RAISE EXCEPTION 'POSTED_COMPENSATION_HISTORY_IMMUTABLE'
+    USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_compensation_posted_history_guard$;
+CREATE TRIGGER compensation_posted_history_guard
+BEFORE UPDATE ON public.compensation_agreements
+FOR EACH ROW EXECUTE FUNCTION public.ccp_compensation_posted_history_guard();
+REVOKE ALL ON FUNCTION public.ccp_compensation_posted_history_guard()
+ FROM PUBLIC,anon;

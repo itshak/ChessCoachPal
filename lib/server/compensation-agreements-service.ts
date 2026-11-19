@@ -173,6 +173,8 @@ export async function compensationAgreementUpdate(db:Db,teacherId:string,
   }).eq("teacher_id",teacherId).eq("id",value.id).eq("revision",value.expectedRevision)
     .select(cols).maybeSingle();
   if(error?.code==="23505")fail(409,"AGREEMENT_CONFLICT","Overlapping compensation agreement");
+  if(error?.code==="23514"&&error.message.includes("POSTED_COMPENSATION_HISTORY_IMMUTABLE"))
+    fail(409,"POSTED_FINANCIAL_HISTORY","The agreement has posted obligations; end it after the final posting and create a new future-dated agreement");
   if(error)fail(500,"DATABASE_ERROR","Cannot update compensation terms");
   if(updated)return {...safeCompensationAgreement(updated),replayed:false};
   const old=await get(db,teacherId,value.id);
