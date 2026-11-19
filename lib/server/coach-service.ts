@@ -411,12 +411,44 @@ export async function workplacesEnroll(
       .eq("teacher_id", teacherId).is("archived_at", null).maybeSingle(),
   ]);
   if (!workplace || !student) throw notFound();
+  // Memberships are dated intervals, not a unique (teacher, workplace,
+  // student) row. An upsert targeting that retired unique constraint fails
+  // with PostgreSQL 42P10 and breaks both website and MCP parity.
+  const { data: settings, error: settingsError } = await db.from("teacher_settings")
+    .select("timezone").eq("teacher_id", teacherId).maybeSingle();
+  if (settingsError) throw problem();
+  const timezone = settings?.timezone ?? "UTC";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const datePart = (key: string) => parts.find(part => part.type === key)?.value;
+  const today = `${datePart("year")}-${datePart("month")}-${datePart("day")}`;
+  const current = () => db.from("workplace_enrollments")
+    .select("id,workplace_id,student_id")
+    .eq("teacher_id", teacherId).eq("workplace_id", workplaceId)
+    .eq("student_id", studentId).is("cancelled_at", null)
+    .or(`starts_on.is.null,starts_on.lte.${today}`)
+    .or(`ends_on.is.null,ends_on.gte.${today}`)
+    .maybeSingle();
+  const { data: already, error: readError } = await current();
+  if (readError) throw problem();
+  if (already) return { workplace_id: workplaceId, student_id: studentId };
+
+  // The SQL BEFORE INSERT trigger sets the exact teacher-local start date.
+  // A GiST exclusion constraint protects concurrent overlapping writes.
   const { data, error } = await db.from("workplace_enrollments")
-    .upsert({ teacher_id: teacherId, workplace_id: workplaceId, student_id: studentId }, {
-      onConflict: "teacher_id,workplace_id,student_id", ignoreDuplicates: true,
-    }).select("workplace_id,student_id").maybeSingle();
+    .insert({ teacher_id: teacherId, workplace_id: workplaceId,
+      student_id: studentId, source: "manual" })
+    .select("workplace_id,student_id").single();
+  if (error?.code === "23P01") {
+    const { data: raced, error: raceError } = await current();
+    if (raceError) throw problem();
+    if (raced) return { workplace_id: workplaceId, student_id: studentId };
+    throw new CoachError("CONFLICT", 409,
+      "Membership dates overlap an existing or future enrollment period");
+  }
   if (error) throw problem();
-  return data ?? { workplace_id: workplaceId, student_id: studentId };
+  return data;
 }
 
 
