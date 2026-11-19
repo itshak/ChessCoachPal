@@ -1,5 +1,12 @@
 # ChessCoachPal development and release status
 
+## 2026-11-19 — PR #104 latest exact-head E2E review (acceptance BLOCKED)
+
+On source candidate `6cef8c5`, GitHub CI, security history, self-host Compose and disposable backup/restore passed; the full authenticated Playwright run [44519553963](https://github.com/itshak/ChessCoachPal/actions/runs/44519553963) had **297 passing and 12 failing** cases. The previous `0c540bd` run had 273 passing and 35 failing. The remaining failures involve repeated OAuth sign-in test setup, an incorrect raw-MCP fixture adapter, a 100-workplace UI list cap, invoice contact-consent provenance, redacted MCP CSV expectations, 404 streaming/translation assertions, and unresolved credit-balance read behavior. These are not all cosmetic; guest authorization and finance must remain deny-by-default. Corrections require new exact-head runtime checks.
+
+**Status remains DRAFT, unmerged and unarchived.** The no-legacy source audit is now zero (not the historical 18/37 blockers below), but source-only checks cannot certify full website/MCP parity or deployed security. The ADR-0017 target-specific, operator-approved one-time cutover with independently restored/reconciled real historical financial/portal data has **not** been performed or authorized. Never silently migrate, reset, publish, deliver financial messages or start a paid release because a PR or smoke test succeeds.
+
+
 ## 2026-11-19 — PR #104 final-cutover audit and CI remediation (WIP; NO MERGE/ARCHIVE)
 
 The contacts/Billing Account/scoped-portal candidate remains on draft PR #104, with no live database operation. The **binding** `npm run pre1:final-cutover:audit` now passes with zero legacy family/guardian/Studio violations (without weakening the audit). Local TypeScript, en/he/ru catalog checks and strict MCP source parity pass (231 live tools, 101/101 inventoried teacher route families, 42/42 new canonical workflows and historical 93/93 checklist in source inventory). This is source-based coverage, **not** a substitute for the authenticated browser/MCP suite or exact deployed behavior.
