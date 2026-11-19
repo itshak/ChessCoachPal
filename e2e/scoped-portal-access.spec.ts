@@ -32,8 +32,9 @@ test("PARITY:PARITY-scoped-guest-calendar and cancellation cannot access the sam
     workplaceId:school.data.entityId,studentId,title:"School chess",startsAt:future(8),
     durationMinutes:50,lessonNote:"Shared school",idempotencyKey:randomUUID(),
   });
+  const privateLessonTitle="Private coaching "+randomUUID();
   const privateLesson=await call("ccp_sessions_create",{
-    workplaceId:privatePlace.data.entityId,studentId,title:"Private chess",startsAt:future(9),
+    workplaceId:privatePlace.data.entityId,studentId,title:privateLessonTitle,startsAt:future(9),
     durationMinutes:45,lessonNote:"Private coaching",idempotencyKey:randomUUID(),
   });
   expect(schoolLesson.error).toBeUndefined();
@@ -68,7 +69,7 @@ test("PARITY:PARITY-scoped-guest-calendar and cancellation cannot access the sam
   const content=await ics.text();
   expect(content).toContain("BEGIN:VCALENDAR");
   expect(content).not.toContain("Private practice");
-  expect(content).not.toContain("Private coaching");
+  expect(content).not.toContain(privateLessonTitle);
   const wrong="/api/portal/"+encodeURIComponent(secret)+"/sessions/"+
     privateLesson.data.entityId+"/students/"+studentId+"/cancel";
   const forbidden=await page.request.post(wrong,{data:{note:"Unauthorised private lesson"}});
@@ -92,6 +93,8 @@ test("PARITY:PARITY-scoped-guest-calendar and cancellation cannot access the sam
   // access denial by content, not only the streaming response status.
   const blockedBody=await old.text();
   expect(blockedBody).not.toContain("School chess");
-  expect(blockedBody).not.toContain("Private chess");
+  // The 404 RSC stream contains generic translated text "Private chess
+  // lesson"; only the unique private lesson title would prove a data leak.
+  expect(blockedBody).not.toContain(privateLessonTitle);
   expect(blockedBody).not.toContain("School liaison");
 });
