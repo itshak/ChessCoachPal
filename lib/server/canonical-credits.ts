@@ -136,7 +136,9 @@ export async function loadCanonicalCreditBalances(
    getInvoicedParticipantKeys(db,teacherId),
   ]);
   const result=await deriveCanonicalPeriodItems(db,teacherId,earliest,end,policy,{
-   excludeParticipantKeys:exclude,
+   // Do not make this student's credit history depend on unrelated
+   // workplace lessons and their independent payer arrangements.
+   studentIds,excludeParticipantKeys:exclude,
    credits:{packages:usable,redeemedParticipantKeys:redeemed},
   });
   pending=result.newRedemptions;
