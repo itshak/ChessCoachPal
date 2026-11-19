@@ -193,8 +193,9 @@ test("anonymous explicitly scoped portal renders English, Hebrew RTL, Russian wi
     workplaceId,studentId,idempotencyKey:randomUUID(),
   });
   expect(enrolled.error).toBeUndefined();
+  const scopedContactName="Portal locale parent "+randomUUID();
   const contact=await call("ccp_contacts_create",{
-    displayName:"Portal locale parent "+randomUUID(),
+    displayName:scopedContactName,
     idempotencyKey:randomUUID(),confirmed:true,
   });
   expect(contact.error).toBeUndefined();
@@ -237,8 +238,11 @@ test("anonymous explicitly scoped portal renders English, Hebrew RTL, Russian wi
       expect(await guest.locator("body").innerText()).toContain("Portal locale parent");
     }
     await expect(guest.getByLabel("Язык интерфейса")).toHaveValue("ru");
-    // Old broad household tokens do not authorize anything.
-    expect((await context.request.get("/portal/dev-portal-jordan")).status()).toBe(404);
+    // Streaming Next.js notFound may carry HTTP 200, but must not expose the
+    // actual grant subject. The non-streamed guest API must reject the token.
+    const invalid=await context.request.get("/portal/dev-portal-jordan");
+    expect(await invalid.text()).not.toContain(scopedContactName);
+    expect((await context.request.get("/api/portal/dev-portal-jordan/calendar")).status()).toBe(404);
   }finally{await context.close();}
 });
 
