@@ -1346,7 +1346,9 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   for(const toolName of ["ccp_credits_packages_list","ccp_credits_package_create",
     "ccp_credits_package_expiry","ccp_credits_redemption_return"])
     expect(names).toContain(toolName);
-  await createAssignedPayer(call,{
+  // This older MCP harness returns the complete JSON-RPC result. Normalize
+  // to the same structured reply used by the delegated parity helper.
+  await createAssignedPayer(async(name,args)=>(await call(name,args)).structuredContent,{
     studentId:profileId,workplaceId:madeWorkplace.entityId,
     effectiveFrom:"2020-01-01",
   });
