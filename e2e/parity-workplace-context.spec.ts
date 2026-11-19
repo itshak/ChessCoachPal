@@ -22,6 +22,12 @@ test("PARITY:PARITY-global workplace context persists across browser and MCP wit
     });
     expect(inserted.error).toBeNull();
     const call=await delegatedTool(page,request,"coach:read coach:write",{email,password});
+    // This synthetic teacher is new: the onboarding tour deliberately routes
+    // visitors to its current step (Dashboard), overriding /coaching. Finish
+    // the tour before testing cross-page workplace context, without disabling
+    // the production onboarding behavior.
+    await page.goto("/dashboard");
+    await page.getByRole("button",{name:"Skip",exact:true}).click();
     const initialBrowser=await page.request.get("/api/teacher/workplace-context");
     expect(initialBrowser.status(),await initialBrowser.text()).toBe(200);
     const initial=await initialBrowser.json() as {selectedWorkplaceId:string|null;
