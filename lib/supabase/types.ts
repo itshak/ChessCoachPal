@@ -507,12 +507,54 @@ export interface Database {
           sort_order?: number;
         };
       };
+      // Temporal periods are the one canonical workplace-membership history.
+      workplace_enrollments: {
+        Row: {
+          id: string; teacher_id: string; workplace_id: string; student_id: string;
+          created_at: string; starts_on: string | null; ends_on: string | null;
+          start_date_unknown: boolean; cancelled_at: string | null;
+          cancel_reason: string | null; end_reason: string | null;
+          source: "manual" | "spreadsheet" | "group" | "reimport" | "legacy_operator";
+          revision: number; updated_at: string;
+        };
+        Insert: {
+          id?: string; teacher_id: string; workplace_id: string; student_id: string;
+          created_at?: string; starts_on?: string | null; ends_on?: string | null;
+          start_date_unknown?: boolean; cancelled_at?: string | null;
+          cancel_reason?: string | null; end_reason?: string | null;
+          source?: "manual" | "spreadsheet" | "group" | "reimport" | "legacy_operator";
+          revision?: number; updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["workplace_enrollments"]["Insert"]>;
+      };
+      credit_adjustment_events: {
+        Row: {
+          id: string; teacher_id: string; student_id: string; package_id: string;
+          kind: "manual_grant" | "forfeiture" | "refund_entitlement" |
+            "transfer_out" | "transfer_in" | "expiry_extension";
+          credits_delta: number; transfer_id: string | null;
+          new_expires_on: string | null; source_payment_id: string | null;
+          approved_request_id: string; approval_reason: string;
+          evidence: Record<string, unknown>; recorded_at: string;
+        };
+        Insert: {
+          id?: string; teacher_id: string; student_id: string; package_id: string;
+          kind: Database["public"]["Tables"]["credit_adjustment_events"]["Row"]["kind"];
+          credits_delta: number; transfer_id?: string | null;
+          new_expires_on?: string | null; source_payment_id?: string | null;
+          approved_request_id: string; approval_reason: string;
+          evidence?: Record<string, unknown>; recorded_at?: string;
+        };
+        Update: Record<string, never>;
+      };
       credit_packages: {
         Row: {
           id: string;
           teacher_id: string;
           student_id: string;
           invoice_id: string;
+          workplace_id: string;
+          request_id: string | null;
           credits: number;
           duration_minutes: number;
           price_cents: number;
@@ -525,6 +567,8 @@ export interface Database {
           teacher_id: string;
           student_id: string;
           invoice_id: string;
+          workplace_id: string;
+          request_id?: string | null;
           credits: number;
           duration_minutes: number;
           price_cents: number;
