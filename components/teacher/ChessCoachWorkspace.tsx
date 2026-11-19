@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import {useTranslations,useLocale} from "next-intl";
 import Link from "next/link";
 import { workplaceLocalToUtc, utcToWorkplaceLocal } from "@/lib/coaching-time";
+import {WorkplaceMembershipEndPanel} from "@/components/teacher/WorkplaceMembershipEndPanel";
 
 type Workplace = { id: string; name: string; timezone: string; currency: string; locale: string; policy: Record<string, unknown>; updated_at:string };
 type Student = { id: string; name: string; level: string | null; updated_at:string };
@@ -572,6 +573,10 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
             <button className={button} disabled={busy || !workplaceId}>{t("enrollWorkplaceButton")}</button>
           </form>
           <p className="text-sm text-muted">{t("enrolledWorkplace",{count:enrolledIds.length})}</p>
+          {workplaceId&&<WorkplaceMembershipEndPanel
+            key={workplaceId} workplaceId={workplaceId} students={students}
+            enrolledIds={enrolledIds} onEnded={refresh}/>}
+
         </section>
         <section className={panel}>
           <h2 className="text-lg font-semibold">{t("classGroups")}</h2>
