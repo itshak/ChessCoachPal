@@ -157,7 +157,7 @@ export function SpreadsheetImportSettings({
       const data = await res.json().catch(() => ({}));
       if(data.code==="WORKPLACE_REQUIRED"){
         setWorkplaceChoices(data.workplaces??[]);
-        throw new Error(data.error??"Select a workplace before importing.");
+        throw new Error(data.error??t("workplaceRequired"));
       }
       if (!res.ok) throw new Error(toUserError(data, t("importFailed")));
       setMessage(
@@ -281,9 +281,9 @@ export function SpreadsheetImportSettings({
           </div>
 
           {workplaceChoices.length>0 && <label className="block text-sm space-y-1">
-            <span className="font-medium">Workplace for imported students (required)</span>
+            <span className="font-medium">{t("workplaceLabel")}</span>
             <select className={selectClass} value={workplaceId} onChange={e=>setWorkplaceId(e.target.value)}>
-              <option value="">Choose a workplace</option>
+              <option value="">{t("workplacePlaceholder")}</option>
               {workplaceChoices.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </label>}
