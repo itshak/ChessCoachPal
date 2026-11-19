@@ -4,7 +4,6 @@ import { getPolicy } from "@/lib/server/scheduling";
 import { constructWebhookEvent } from "@/lib/payments";
 import { createTeacherNotification } from "@/lib/server/notifications";
 import { formatMoney, summarizePayments } from "@/lib/billing";
-import { familyDisplayName } from "@/lib/guardians";
 import { requestOrigin } from "@/lib/server/http";
 import { oneToOne } from "@/lib/schedule";
 
@@ -67,7 +66,7 @@ export async function POST(
       .select(
         `
         id, status, subtotal_cents, currency, teacher_id, period_start, period_end,
-        guardians ( name, family_name ),
+        billing_accounts ( display_name ),
         payments ( amount_cents, external_id )
       `
       )
@@ -134,15 +133,9 @@ export async function POST(
         .eq("id", invoiceId)
         .eq("teacher_id", teacherId);
 
-      const guardian = oneToOne(
-        invoice.guardians as
-          | { name: string; family_name: string | null }
-          | { name: string; family_name: string | null }[]
-          | null
-      );
-      const familyLabel = guardian
-        ? familyDisplayName(guardian)
-        : "Family";
+      const account=oneToOne(invoice.billing_accounts as
+        {display_name:string}|{display_name:string}[]|null);
+      const accountLabel=account?.display_name??"Billing account";
       const amountLabel = formatMoney(amount, invoice.currency);
       const periodLabel = `${invoice.period_start} to ${invoice.period_end}`;
 
@@ -151,12 +144,12 @@ export async function POST(
         type: "invoice_paid",
         title: `Payment received: ${amountLabel}`,
         body: [
-          `Family: ${familyLabel}`,
+          `Billing account: ${accountLabel}`,
           `Amount: ${amountLabel}`,
           `Period: ${periodLabel}`,
           "Method: Stripe (paid online)",
         ].join("\n"),
-        presentation:{kind:"invoice_paid",family:familyLabel,amount:amountLabel,
+        presentation:{kind:"invoice_paid",family:accountLabel,amount:amountLabel,
           periodStart:invoice.period_start,periodEnd:invoice.period_end},
         href: `/billing/${invoiceId}`,
         origin: requestOrigin(req),

@@ -3,8 +3,8 @@ import {isAppLocale, type AppLocale} from "@/i18n/locales";
 /** Family-facing communications are NOT controlled by the teacher's UI cookie.
  * This family-level explicit choice may be null; English is then the
  * documented, deterministic studio-communications default. */
-export function familyCommunicationLocale(family: {preferred_locale?: string|null}): AppLocale {
-  return isAppLocale(family.preferred_locale) ? family.preferred_locale : "en";
+export function contactCommunicationLocale(contact: {preferred_locale?: string|null}): AppLocale {
+  return isAppLocale(contact.preferred_locale) ? contact.preferred_locale : "en";
 }
 
 export const communicationCopy: Record<AppLocale,{
@@ -39,14 +39,14 @@ export const communicationCopy: Record<AppLocale,{
       greeting:name=>`Hi ${name},`,
       signature:studio=>studio?`— ${studio} (sent via ChessCoachPal)`:
         "— Sent via ChessCoachPal"},
-    invoice:{heading:"Invoice",continued:"Invoice (continued)",family:"Family",period:"Period",studioFallback:"your studio",
+    invoice:{heading:"Invoice",continued:"Invoice (continued)",family:"Billing account",period:"Period",studioFallback:"your studio",
       description:"Description",amount:"Amount",total:"Total",paid:"Paid",balance:"Balance due",
       paymentInstructions:"Payment instructions",notes:"Notes",scanToPay:"Scan to pay",
       subject:(period,studio)=>`Invoice for ${period} - ${studio}`,
       greeting:name=>`Hi ${name},`,attached:period=>`Please find attached your invoice for ${period}.`,
       totalDue:"Total due",paymentReceived:"Payment received in full. No further payment is due.",
       payOnline:"Pay online",qrNote:"A payment QR code is included on the attached invoice.",
-      seePortal:"See your family portal for payment details.",
+      seePortal:"Contact your coach for payment instructions.",
       signature:studio=>`— ${studio} (sent via ChessCoachPal)`},
     notification:{receipt:"Payment receipt",viewInvoice:"View invoice",openInApp:"Open in ChessCoachPal"},
     outbox:{studentCancelled:"Chess lesson cancelled by a student",studentCancelNotice:"Student cancellation notice",
@@ -69,14 +69,14 @@ export const communicationCopy: Record<AppLocale,{
       greeting:name=>`שלום ${name},`,
       signature:studio=>studio?`— ${studio} (נשלח באמצעות ChessCoachPal)`:
         "— נשלח באמצעות ChessCoachPal"},
-    invoice:{heading:"חשבונית",continued:"חשבונית (המשך)",family:"משפחה",period:"תקופה",studioFallback:"הסטודיו שלכם",
+    invoice:{heading:"חשבונית",continued:"חשבונית (המשך)",family:"חשבון חיוב",period:"תקופה",studioFallback:"הסטודיו שלכם",
       description:"תיאור",amount:"סכום",total:"סך הכול",paid:"שולם",balance:"יתרה לתשלום",
       paymentInstructions:"הוראות תשלום",notes:"הערות",scanToPay:"סריקה לתשלום",
       subject:(period,studio)=>`חשבונית לתקופה ${period} — ${studio}`,
       greeting:name=>`שלום ${name},`,attached:period=>`מצורפת חשבונית לתקופה ${period}.`,
       totalDue:"סכום לתשלום",paymentReceived:"התשלום התקבל במלואו. אין יתרה לתשלום.",
       payOnline:"תשלום מקוון",qrNote:"קוד QR לתשלום מופיע בחשבונית המצורפת.",
-      seePortal:"פרטי התשלום זמינים בפורטל המשפחתי.",
+      seePortal:"למידע על אפשרויות תשלום יש לפנות למאמן.",
       signature:studio=>`— ${studio} (נשלח באמצעות ChessCoachPal)`},
     notification:{receipt:"אישור תשלום",viewInvoice:"צפייה בחשבונית",openInApp:"פתיחה ב-ChessCoachPal"},
     outbox:{studentCancelled:"תלמיד ביטל שיעור שחמט",studentCancelNotice:"הודעה על ביטול שיעור מצד התלמיד",
@@ -99,14 +99,14 @@ export const communicationCopy: Record<AppLocale,{
       greeting:name=>`Здравствуйте, ${name}!`,
       signature:studio=>studio?`— ${studio} (отправлено через ChessCoachPal)`:
         "— Отправлено через ChessCoachPal"},
-    invoice:{heading:"Счёт",continued:"Счёт (продолжение)",family:"Семья",period:"Период",studioFallback:"ваша школа",
+    invoice:{heading:"Счёт",continued:"Счёт (продолжение)",family:"Плательщик",period:"Период",studioFallback:"ваша школа",
       description:"Описание",amount:"Сумма",total:"Итого",paid:"Оплачено",balance:"Остаток к оплате",
       paymentInstructions:"Инструкции по оплате",notes:"Примечания",scanToPay:"Сканируйте для оплаты",
       subject:(period,studio)=>`Счёт за ${period} — ${studio}`,
       greeting:name=>`Здравствуйте, ${name}!`,attached:period=>`Во вложении счёт за период ${period}.`,
       totalDue:"К оплате",paymentReceived:"Оплата получена полностью. Доплата не требуется.",
       payOnline:"Оплатить онлайн",qrNote:"QR-код для оплаты находится в приложенном счёте.",
-      seePortal:"Подробности об оплате доступны в семейном портале.",
+      seePortal:"Свяжитесь с тренером для получения инструкций по оплате.",
       signature:studio=>`— ${studio} (отправлено через ChessCoachPal)`},
     notification:{receipt:"Квитанция об оплате",viewInvoice:"Открыть счёт",openInApp:"Открыть в ChessCoachPal"},
     outbox:{sharedContactGreeting:"Контакт шахматного ученика",studentCancelled:"Ученик отменил шахматное занятие",studentCancelNotice:"Уведомление об отмене занятия учеником",

@@ -1,9 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPolicy } from "@/lib/server/scheduling";
 import { buildInvoicePdf } from "@/lib/server/invoice-pdf";
-import {familyCommunicationLocale} from "@/lib/server/communication-locales";
-import { familyDisplayName, type FamilyContact } from "@/lib/guardians";
 import { oneToOne } from "@/lib/schedule";
+import {isAppLocale} from "@/i18n/locales";
+import type {InvoiceBillingContact} from "@/lib/server/invoice-contact-authorization";
 
 /**
  * Shared invoice -> PDF assembly. The send path (email attachment) and the
@@ -22,11 +22,6 @@ export interface InvoicePdfItemRow {
   sort_order: number;
 }
 
-export interface InvoicePdfFamilyRow extends FamilyContact {
-  family_name: string | null;
-  portal_token: string | null;
-}
-
 export interface InvoicePdfInvoiceRow {
   id: string;
   status: string;
@@ -39,14 +34,14 @@ export interface InvoicePdfInvoiceRow {
   stripe_checkout_url: string | null;
   stripe_checkout_session_id: string | null;
   sent_at: string | null;
-  guardians: InvoicePdfFamilyRow | InvoicePdfFamilyRow[] | null;
+  billing_accounts: InvoiceBillingContact | InvoiceBillingContact[] | null;
   invoice_items: InvoicePdfItemRow[] | null;
   payments: { amount_cents: number }[] | null;
 }
 
 export interface InvoicePdfBundle {
   invoice: InvoicePdfInvoiceRow;
-  family: InvoicePdfFamilyRow;
+  billingAccount: InvoiceBillingContact;
   policy: TeacherPolicy;
   items: InvoicePdfItemRow[];
   pdfBytes: Uint8Array;
@@ -57,7 +52,7 @@ export type LoadInvoicePdfErrorCode =
   | "not_found"
   | "not_draft"
   | "no_items"
-  | "no_family"
+  | "no_billing_account"
   | "pdf_failed"
   | "db_error";
 
@@ -108,9 +103,9 @@ export async function loadInvoicePdf(
     .select(
       `
       *,
-      guardians (
-        id, name, family_name, email, secondary_name, secondary_email,
-        email_recipients, preferred_locale, portal_token
+      billing_accounts (
+        id, display_name, account_kind, contact_id,
+        contacts ( id, display_name, email, preferred_locale, status )
       ),
       invoice_items ( * ),
       payments ( amount_cents )
@@ -140,17 +135,19 @@ export async function loadInvoicePdf(
   if (items.length === 0) return { ok: false, code: "no_items" };
 
   const policy = await getPolicy(supabase, teacherId);
-  const family = oneToOne(invoice.guardians);
-  if (!family) return { ok: false, code: "no_family" };
+  const billingAccount = oneToOne(invoice.billing_accounts);
+  if (!billingAccount) return {ok:false,code:"no_billing_account"};
 
   const alreadyPaidCents = (invoice.payments ?? [])
     .reduce((sum, payment) => sum + payment.amount_cents, 0);
   let pdfBytes: Uint8Array;
   try {
     pdfBytes = await buildInvoicePdf({
-      locale: familyCommunicationLocale(family),
+      locale: isAppLocale(oneToOne(billingAccount.contacts)?.preferred_locale)
+        ? oneToOne(billingAccount.contacts)!.preferred_locale as "en"|"he"|"ru"
+        : "en",
       businessName: policy.business_name,
-      familyName: familyDisplayName(family),
+      familyName: billingAccount.display_name,
       periodStart: invoice.period_start,
       periodEnd: invoice.period_end,
       currency: invoice.currency,
@@ -180,7 +177,7 @@ export async function loadInvoicePdf(
     ok: true,
     data: {
       invoice,
-      family,
+      billingAccount,
       policy,
       items,
       pdfBytes,

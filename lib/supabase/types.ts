@@ -172,7 +172,6 @@ export interface Database {
           fide_id:string|null;
           fide_federation_code:string|null;
           national_federation_preference:string|null;
-          guardian_id: string | null;
           teacher_notes: string;
           level: string | null;
           birthdate: string | null;
@@ -190,7 +189,6 @@ export interface Database {
           fide_id?:string|null;
           fide_federation_code?:string|null;
           national_federation_preference?:string|null;
-          guardian_id?: string | null;
           teacher_notes?: string;
           level?: string | null;
           birthdate?: string | null;
@@ -206,7 +204,6 @@ export interface Database {
           fide_id?:string|null;
           fide_federation_code?:string|null;
           national_federation_preference?:string|null;
-          guardian_id?: string | null;
           teacher_notes?: string;
           level?: string | null;
           birthdate?: string | null;
@@ -214,50 +211,6 @@ export interface Database {
           default_rate_cents?: number | null;
           travel_fee_cents?: number | null;
           archived_at?: string | null;
-        };
-      };
-      guardians: {
-        Row: {
-          id: string;
-          teacher_id: string;
-          name: string;
-          family_name: string | null;
-          email: string | null;
-          phone: string | null;
-          secondary_name: string | null;
-          secondary_email: string | null;
-          secondary_phone: string | null;
-          email_recipients: EmailRecipients;
-          preferred_locale: "en" | "he" | "ru" | null;
-          portal_token: string;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          teacher_id: string;
-          name: string;
-          family_name?: string | null;
-          email?: string | null;
-          phone?: string | null;
-          secondary_name?: string | null;
-          secondary_email?: string | null;
-          secondary_phone?: string | null;
-          email_recipients?: EmailRecipients;
-          preferred_locale?: "en" | "he" | "ru" | null;
-          portal_token: string;
-          created_at?: string;
-        };
-        Update: {
-          name?: string;
-          family_name?: string | null;
-          email?: string | null;
-          phone?: string | null;
-          secondary_name?: string | null;
-          secondary_email?: string | null;
-          secondary_phone?: string | null;
-          email_recipients?: EmailRecipients;
-          preferred_locale?: "en" | "he" | "ru" | null;
-          portal_token?: string;
         };
       };
       teacher_settings: {
@@ -428,7 +381,7 @@ export interface Database {
         Row: {
           id: string;
           teacher_id: string;
-          guardian_id: string;
+          billing_account_id: string;
           period_start: string;
           period_end: string;
           status: InvoiceStatus;
@@ -446,7 +399,7 @@ export interface Database {
         Insert: {
           id?: string;
           teacher_id: string;
-          guardian_id: string;
+          billing_account_id: string;
           period_start: string;
           period_end: string;
           status?: InvoiceStatus;
@@ -784,34 +737,6 @@ export interface Database {
         Update: {
           repertoire?: string;
           sort_order?: number;
-        };
-      };
-      event_rsvps: {
-        Row: {
-          id: string;
-          event_id: string;
-          guardian_id: string;
-          status: RsvpStatus;
-          party_size: number | null;
-          note: string;
-          responded_at: string | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          event_id: string;
-          guardian_id: string;
-          status?: RsvpStatus;
-          party_size?: number | null;
-          note?: string;
-          responded_at?: string | null;
-          created_at?: string;
-        };
-        Update: {
-          status?: RsvpStatus;
-          party_size?: number | null;
-          note?: string;
-          responded_at?: string | null;
         };
       };
     };

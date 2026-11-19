@@ -18,36 +18,52 @@ const POLICY_SECRET_FIELDS = [
 
 /** Order respects FK dependencies when imported into a different teacher. */
 const IMPORT_ORDER = [
-  "teacher_settings", "guardians", "contacts", "students",
-  "student_contacts", "billing_accounts", "workplaces",
-  "ccp_historical_attendance_evidence", "class_groups",
-  "workplace_enrollments", "group_enrollments", "teacher_study_preferences", "lesson_slots",
-  "teaching_sessions", "session_participants", "session_attendance",
-  "session_notes", "chess_skill_categories", "chess_observations",
-  "skill_dimensions", "skill_assessments",
-  "invoices", "invoice_items", "payments", "events", "event_students",
-  "event_rsvps", "credit_packages", "credit_redemptions",
-  // Canonical chess catalog and student-first learning history. Restore order
-  // respects material root/subtypes → relations → homework/reviews → plans.
-  "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
-  "chess_study_chapters", "learning_material_relations",
-  "material_links", "material_teaching_evidence", "training_assignments", "assignment_attempts", "assignment_reviews",
-  "student_training_plans", "student_training_plan_revisions",
+  "teacher_settings","contacts","students","student_contacts","billing_accounts",
+  "workplaces","ccp_historical_attendance_evidence",
+  "class_groups","workplace_enrollments","group_enrollments",
+  "student_billing_assignments","compensation_agreements",
+  "teacher_study_preferences","lesson_slots","teaching_sessions",
+  "session_participants","session_attendance","session_notes",
+  "chess_skill_categories","chess_observations","skill_dimensions",
+  "skill_assessments","student_federation_memberships",
+  "invoices","invoice_items","payments","events","event_students",
+  "portal_access_grants","portal_event_invitations",
+  "credit_packages","credit_redemptions",
+  "learning_materials","chess_games","chess_puzzles","chess_drills",
+  "chess_study_chapters","learning_material_relations",
+  "material_links","material_teaching_evidence","training_assignments",
+  "assignment_attempts","assignment_reviews",
+  "student_training_plans","student_training_plan_revisions",
 ] as const;
 
-const TEACHER_SCOPED = [
-  "guardians", "contacts", "students", "student_contacts", "billing_accounts",
-  "workplaces", "ccp_historical_attendance_evidence",
-  "class_groups",
-  "workplace_enrollments", "group_enrollments", "teacher_study_preferences", "lesson_slots",
-  "teaching_sessions", "session_participants", "session_attendance",
-  "session_notes", "chess_skill_categories", "chess_observations",
-  "skill_dimensions", "invoices", "events", "credit_packages", "credit_redemptions",
-  "learning_materials", "chess_games", "chess_puzzles", "chess_drills",
-  "chess_study_chapters", "learning_material_relations",
-  "material_links", "material_teaching_evidence", "training_assignments", "assignment_attempts", "assignment_reviews",
-  "student_training_plans", "student_training_plan_revisions",
+/** Immutable cash/earnings and confirmed external side-effects can be backed
+ * up but may NEVER be imported by a normal teacher with fabricated provenance.
+ * An independently approved operator cutover uses verified source receipts. */
+export const OPERATOR_RESTORE_ONLY=[
+  "financial_obligations","received_payments","payment_allocations",
+  "financial_reversals","event_email_deliveries",
 ] as const;
+
+
+const TEACHER_SCOPED = [
+  "contacts","students","student_contacts","billing_accounts","workplaces",
+  "ccp_historical_attendance_evidence",
+  "class_groups","workplace_enrollments","group_enrollments",
+  "student_billing_assignments","compensation_agreements",
+  "teacher_study_preferences","lesson_slots","teaching_sessions",
+  "session_participants","session_attendance","session_notes",
+  "chess_skill_categories","chess_observations","skill_dimensions",
+  "student_federation_memberships",
+  "invoices","events","portal_access_grants","portal_event_invitations",
+  "credit_packages","credit_redemptions",
+  ...OPERATOR_RESTORE_ONLY,
+  "learning_materials","chess_games","chess_puzzles","chess_drills",
+  "chess_study_chapters","learning_material_relations",
+  "material_links","material_teaching_evidence","training_assignments",
+  "assignment_attempts","assignment_reviews",
+  "student_training_plans","student_training_plan_revisions",
+] as const;
+
 
 function asRows(data: unknown): Record<string, unknown>[] {
   return (data as Record<string, unknown>[] | null) ?? [];
@@ -151,6 +167,12 @@ export async function buildStudioExport(
     .from("teachers").select("display_name").eq("id", teacherId).maybeSingle();
   if (profileError) throw new Error(`Export profile: ${profileError.message}`);
 
+  // The raw guest secret is never stored. Even its digest is removed from
+  // portable backups, so restoring a contact record NEVER reissues a portal.
+  const grants=tables.portal_access_grants;
+  if(Array.isArray(grants))
+    tables.portal_access_grants=grants.map(({token_digest,issued_at,...rest})=>
+      ({...rest,token_digest:null,issued_at:null}));
   return {
     exportedAt: new Date().toISOString(),
     teacherId,
@@ -173,7 +195,14 @@ export async function importStudioExport(
   // The invoker's auth.uid() is authoritative inside the RPC; never pass a
   // writable teacher_id argument that an MCP or website client could spoof.
   if (!teacherId) return {ok:false,error:"Authenticated teacher is required"};
-  // Validate the exact current table allowlist before any database writes.
+  // Never silently discard immutable financial/event-delivery evidence.
+  // Restoring the verified ledger requires an operator attestation and
+  // provenance-preserving import, not an ordinary teacher-owned data POST.
+  for(const table of OPERATOR_RESTORE_ONLY){
+    if(Array.isArray(payload.tables[table])&&payload.tables[table].length>0)
+      return {ok:false,error:"Operator-verified restore required for "+table+
+        "; no partial restore was attempted"};
+  }
   const safeTables:StudioDataExport["tables"]={};
   for (const table of IMPORT_ORDER) {
     const source=payload.tables[table];
@@ -208,9 +237,9 @@ export function parseExportPayload(raw: unknown): StudioDataExport | null {
   const rootKeys=new Set(["exportedAt","teacherId","teacher_profile","tables"]);
   if(Object.keys(raw).some(key=>!rootKeys.has(key))) return null;
   const tables=raw.tables;
-  const allowedTables=new Set<string>(IMPORT_ORDER);
+  const allowedTables=new Set<string>([...IMPORT_ORDER,...OPERATOR_RESTORE_ONLY]);
   if(Object.keys(tables).some(table=>!allowedTables.has(table))) return null;
-  for (const table of IMPORT_ORDER) {
+  for (const table of [...IMPORT_ORDER,...OPERATOR_RESTORE_ONLY]) {
     const source = tables[table];
     if (source === undefined) continue;
     if (table === "teacher_settings") {

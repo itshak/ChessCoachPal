@@ -1,18 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
 import { loadInvoicePdf } from "@/lib/server/invoice-pdf-data";
-import {familyCommunicationLocale} from "@/lib/server/communication-locales";
+import {approvedInvoiceRecipient} from "@/lib/server/invoice-contact-authorization";
 import { isValidPaymentQrDataUrl } from "@/lib/payment-qr";
 import {buildInvoiceEmailContent} from "@/lib/server/invoice-email-content";
 import { summarizePayments } from "@/lib/billing";
 import { createCheckoutSession, expireCheckoutSession } from "@/lib/payments";
-import {
-  familyEmailRecipients,
-  familyDisplayName,
-  familyGreetingNames,
-  familyEmailBcc,
-  stripeCheckoutPrefillEmail,
-} from "@/lib/guardians";
+
 
 export interface SendInvoiceResult {
   ok: boolean;
@@ -53,8 +47,8 @@ export async function sendInvoice(
         return { ok: false, error: "Only unsent drafts or never-sent paid invoices can be sent" };
       case "no_items":
         return { ok: false, error: "Add at least one line item before sending" };
-      case "no_family":
-        return { ok: false, error: "Family not found" };
+      case "no_billing_account":
+        return { ok: false, error: "Billing account not found" };
       case "pdf_failed":
         return {
           ok: false,
@@ -66,7 +60,15 @@ export async function sendInvoice(
     }
   }
 
-  const { invoice, family, policy, pdfBytes } = loaded.data;
+  const {invoice,billingAccount,policy,pdfBytes}=loaded.data;
+  let recipient:Awaited<ReturnType<typeof approvedInvoiceRecipient>>;
+  try{
+    recipient=await approvedInvoiceRecipient(supabase,teacherId,id,billingAccount);
+  }catch{
+    return {ok:false,error:"Unable to verify invoice recipient permissions"};
+  }
+  if(!recipient)return {ok:false,
+    error:"No approved contact is permitted to receive every line of this invoice; review student contact messaging permissions"};
   const {paidCents,balanceCents} = summarizePayments(invoice.subtotal_cents,
     (invoice.payments ?? []).map(payment => ({amountCents:payment.amount_cents})));
   // One request must claim this draft BEFORE creating any Stripe checkout
@@ -81,7 +83,7 @@ export async function sendInvoice(
     });
   if(claimError||!claimed)return {ok:false,
     error:"Invoice or payment balance changed before sending; refresh the draft and retry"};
-  const familyName = familyDisplayName(family);
+  const familyName = billingAccount.display_name;
 
   let checkoutUrl: string | null = invoice.stripe_checkout_url;
   let checkoutError: string | undefined;
@@ -102,9 +104,10 @@ export async function sendInvoice(
         familyName,
         businessName: policy.business_name,
         periodLabel: `${invoice.period_start} – ${invoice.period_end}`,
-        successUrl: `${origin}/portal/${family.portal_token}?paid=1`,
-        cancelUrl: `${origin}/portal/${family.portal_token}`,
-        customerEmail: stripeCheckoutPrefillEmail(family),
+        // Payment never grants a contact access to private lesson information.
+        successUrl: origin+"/?payment=completed",
+        cancelUrl: origin+"/?payment=cancelled",
+        customerEmail: recipient.email,
       });
       // Claim exactly the unchanged outstanding balance. This serializes
       // against fresh payments and editing even after the send claim.
@@ -129,51 +132,31 @@ export async function sendInvoice(
     }
   }
 
-  const recipients = familyEmailRecipients(family);
-  let emailed = false;
-  let emailError: string | undefined;
-
-  if (recipients.length === 0) {
-    emailError =
-      "No family email on file; invoice marked sent for the portal";
-  } else {
-    const locale=familyCommunicationLocale(family);
-    const content=buildInvoiceEmailContent({
-      locale,familyGreetingName:familyGreetingNames(family,locale),
-      businessName:policy.business_name,periodStart:invoice.period_start,
-      periodEnd:invoice.period_end,currency:invoice.currency,
-      subtotalCents:invoice.subtotal_cents,paidCents,balanceCents,
-      paymentInstructions:policy.payment_instructions,
-      paymentProvider:policy.payment_provider,
-      hasPaymentQrCode:isValidPaymentQrDataUrl(policy.payment_qr_code),
-      checkoutUrl,
-    });
-
-    const result = await sendEmail({
-      to: recipients,
-      bcc: familyEmailBcc(policy),
-      subject: content.subject,
-      text: content.text,
-      html: content.html,
-      locale,
-      fromName: policy.business_name
-        ? `${policy.business_name} (via ChessCoachPal)`
-        : undefined,
-      replyTo: teacherEmail ?? undefined,
-      portalUrl: family.portal_token
-        ? `${origin}/portal/${family.portal_token}`
-        : undefined,
-      attachments: [
-        {
-          filename: `invoice-${invoice.period_start}.pdf`,
-          content: pdfBytes,
-          contentType: "application/pdf",
-        },
-      ],
-    });
-    emailed = result.sent;
-    emailError = result.error;
-  }
+  const locale=recipient.locale;
+  const content=buildInvoiceEmailContent({
+    locale,familyGreetingName:recipient.displayName,
+    businessName:policy.business_name,periodStart:invoice.period_start,
+    periodEnd:invoice.period_end,currency:invoice.currency,
+    subtotalCents:invoice.subtotal_cents,paidCents,balanceCents,
+    paymentInstructions:policy.payment_instructions,
+    paymentProvider:policy.payment_provider,
+    hasPaymentQrCode:isValidPaymentQrDataUrl(policy.payment_qr_code),
+    checkoutUrl,
+  });
+  const bcc=policy.bcc_contact_emails&&policy.bcc_email?.trim()
+    ? policy.bcc_email.trim():undefined;
+  const result=await sendEmail({
+    to:[recipient.email],bcc,
+    subject:content.subject,text:content.text,html:content.html,
+    locale,fromName:policy.business_name
+      ? policy.business_name+" (via ChessCoachPal)":undefined,
+    replyTo:teacherEmail??undefined,
+    // No portal credential is automatically minted or sent.
+    attachments:[{filename:"invoice-"+invoice.period_start+".pdf",
+      content:pdfBytes,contentType:"application/pdf"}],
+  });
+  const emailed=result.sent;
+  const emailError=result.error;
 
   return { ok: true, emailed, emailError, checkoutUrl, checkoutError };
 }

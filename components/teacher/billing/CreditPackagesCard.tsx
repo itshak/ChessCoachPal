@@ -47,7 +47,8 @@ const STATE_STYLES:Record<CreditPackageState,string>={
  */
 export function CreditPackagesCard({
   studentId,
-  hasFamily,
+  hasBillingAccount,
+  workplaces,
   currency,
   packages,
   defaultDurationMinutes,
@@ -56,7 +57,8 @@ export function CreditPackagesCard({
   rateBasis,
 }: {
   studentId: string;
-  hasFamily: boolean;
+  hasBillingAccount: boolean;
+  workplaces:{id:string;name:string}[];
   currency: string;
   packages: CreditPackageView[];
   defaultDurationMinutes: number;
@@ -86,8 +88,8 @@ export function CreditPackagesCard({
             size="sm"
             variant="secondary"
             onClick={() => setSelling(true)}
-            disabled={!hasFamily}
-            title={hasFamily?undefined:t("linkFamilyFirst")}
+            disabled={!hasBillingAccount||workplaces.length===0}
+            title={hasBillingAccount?undefined:t("assignBillingFirst")}
           >
             {t("sellPackage")}
           </Button>
@@ -97,6 +99,7 @@ export function CreditPackagesCard({
       {selling && (
         <SellPackageForm
           studentId={studentId}
+          workplaces={workplaces}
           currency={currency}
           defaultDurationMinutes={defaultDurationMinutes}
           rate={rate}
@@ -292,6 +295,7 @@ function PackageRow({
 
 function SellPackageForm({
   studentId,
+  workplaces,
   currency,
   defaultDurationMinutes,
   rate,
@@ -300,6 +304,7 @@ function SellPackageForm({
   onCancel,
 }: {
   studentId: string;
+  workplaces:{id:string;name:string}[];
   currency: string;
   defaultDurationMinutes: number;
   rate: Omit<RateSources, "durationRateCents">;
@@ -325,6 +330,7 @@ function SellPackageForm({
       : centsToDollarsInput(charge.amountCents * credits);
   }
 
+  const [workplaceId,setWorkplaceId]=useState(workplaces[0]?.id??"");
   const [credits, setCredits] = useState("10");
   const [duration, setDuration] = useState(String(defaultDurationMinutes));
   const [price, setPrice] = useState(
@@ -358,6 +364,7 @@ function SellPackageForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         studentId,
+        workplaceId,
         requestId: requestId.current ?? (requestId.current = crypto.randomUUID()),
         credits: Number(credits),
         durationMinutes: Number(duration),
@@ -379,6 +386,13 @@ function SellPackageForm({
       onSubmit={submit}
       className="border border-border rounded-lg p-3 mt-2 space-y-3"
     >
+      <label className="block text-sm">
+        <span className="block text-xs font-semibold text-muted mb-1">{t("workplace")}</span>
+        <select className={inputClass+" w-full"} required value={workplaceId}
+          onChange={e=>{setWorkplaceId(e.target.value);requestId.current=null;}}>
+          {workplaces.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
+        </select>
+      </label>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <label className="text-sm">
           <span className="block text-xs font-semibold text-muted mb-1">

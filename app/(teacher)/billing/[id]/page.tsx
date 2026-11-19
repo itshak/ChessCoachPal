@@ -4,7 +4,6 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getPolicy } from "@/lib/server/scheduling";
 import { isValidPaymentQrDataUrl } from "@/lib/payment-qr";
-import { familyDisplayName } from "@/lib/guardians";
 import { oneToOne } from "@/lib/schedule";
 import { InvoiceDetailClient } from "@/components/teacher/billing/InvoiceDetailClient";
 import { describeCreditPackage } from "@/lib/credits";
@@ -42,7 +41,7 @@ export default async function InvoiceDetailPage({
       .select(
         `
         *,
-        guardians ( name, family_name ),
+        billing_accounts ( display_name ),
         invoice_items ( * ),
         payments ( id, amount_cents, method, note, recorded_at ),
         credit_packages ( student_id, credits, duration_minutes, students ( name ) )
@@ -55,12 +54,8 @@ export default async function InvoiceDetailPage({
 
   if (!invoice) notFound();
 
-  const family = oneToOne(
-    invoice.guardians as
-      | { name: string; family_name: string | null }
-      | { name: string; family_name: string | null }[]
-      | null
-  );
+  const account=oneToOne(invoice.billing_accounts as
+    {display_name:string}|{display_name:string}[]|null);
 
   const pkg = oneToOne(
     invoice.credit_packages as
@@ -137,7 +132,7 @@ export default async function InvoiceDetailPage({
         currency={invoice.currency}
         initialItems={items}
         initialNotes={invoice.notes ?? ""}
-        familyName={family ? familyDisplayName(family) : t("family")}
+        billingAccountName={account?.display_name??t("family")}
         periodStart={invoice.period_start}
         periodEnd={invoice.period_end}
         subtotalCents={invoice.subtotal_cents}

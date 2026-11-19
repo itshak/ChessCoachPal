@@ -1,14 +1,14 @@
 import {describe,it,expect} from "vitest";
-import {communicationCopy,familyCommunicationLocale} from "@/lib/server/communication-locales";
+import {communicationCopy,contactCommunicationLocale} from "@/lib/server/communication-locales";
 import {invoiceFormatPeriod,invoiceVisualRuns} from "@/lib/server/invoice-pdf";
 
 describe("recipient communication language",()=>{
-  it("defaults to English when a family has no explicit preference, not the teacher UI locale",()=>{
-    expect(familyCommunicationLocale({preferred_locale:null})).toBe("en");
-    expect(familyCommunicationLocale({preferred_locale:""})).toBe("en");
-    expect(familyCommunicationLocale({preferred_locale:"es"})).toBe("en");
-    expect(familyCommunicationLocale({preferred_locale:"he"})).toBe("he");
-    expect(familyCommunicationLocale({preferred_locale:"ru"})).toBe("ru");
+  it("defaults to English when a contact has no explicit preference, not the teacher UI locale",()=>{
+    expect(contactCommunicationLocale({preferred_locale:null})).toBe("en");
+    expect(contactCommunicationLocale({preferred_locale:""})).toBe("en");
+    expect(contactCommunicationLocale({preferred_locale:"es"})).toBe("en");
+    expect(contactCommunicationLocale({preferred_locale:"he"})).toBe("he");
+    expect(contactCommunicationLocale({preferred_locale:"ru"})).toBe("ru");
   });
   it("keeps dates, amounts, portal notices and event templates locale specific",()=>{
     expect(communicationCopy.he.invoice.heading).toBe("חשבונית");

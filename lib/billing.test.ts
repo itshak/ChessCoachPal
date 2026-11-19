@@ -6,7 +6,7 @@ import {
   isBillable,
   deriveInvoiceItems,
   lessonAmountCents,
-  groupItemsByGuardian,
+  groupItemsByBillingAccount,
   sumAmountCents,
   formatMoney,
   dollarsToCents,
@@ -24,7 +24,8 @@ const baseLesson: BillableLessonInput = {
   lessonId: "lesson-1",
   studentId: "s-1",
   studentName: "Gloria",
-  guardianId: "g-1",
+  workplaceId: "w-1",
+  billingAccountId: "g-1",
   lessonDate: "2026-06-15",
   startsAt: "2026-06-15T21:00:00.000Z", // 4 PM CDT
   durationMinutes: 30,
@@ -224,7 +225,7 @@ describe("deriveInvoiceItems", () => {
     const items = deriveInvoiceItems([baseLesson], policy);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
-      guardianId: "g-1",
+      billingAccountId: "g-1",
       unitCents: 4000,
       amountCents: 4000,
       missingRate: false,
@@ -293,7 +294,7 @@ describe("deriveInvoiceItems", () => {
     expect(items[0].amountCents).toBe(2000);
     expect(items[1]).toMatchObject({
       lessonId: "lesson-1",
-      guardianId: "g-1",
+      billingAccountId: "g-1",
       description: expect.stringContaining("Travel fee"),
       amountCents: 500,
       missingRate: false,
@@ -336,7 +337,7 @@ describe("deriveInvoiceItems", () => {
     );
     // Gloria: $40 flat + $7 travel; Nico: $40 flat, no travel
     expect(items).toHaveLength(3);
-    const groups = groupItemsByGuardian(items);
+    const groups = groupItemsByBillingAccount(items);
     expect(sumAmountCents(groups.get("g-1")!)).toBe(8700);
   });
 
@@ -441,7 +442,7 @@ describe("deriveInvoiceItems", () => {
     const items = deriveInvoiceItems(
       [
         { ...baseLesson, attendanceStatus: "teacher_cancel" },
-        { ...baseLesson, lessonId: "l2", guardianId: null },
+        { ...baseLesson, lessonId: "l2", billingAccountId: null },
       ],
       DEFAULT_POLICY
     );
@@ -461,14 +462,14 @@ describe("deriveInvoiceItems", () => {
           lessonId: "l2",
           studentId: "s-2",
           studentName: "Nico",
-          guardianId: "g-1",
+          billingAccountId: "g-1",
         },
         {
           ...baseLesson,
           lessonId: "l3",
           studentId: "s-3",
           studentName: "Stella",
-          guardianId: "g-2",
+          billingAccountId: "g-2",
           rate: {
             slotRateCents: 5000,
             studentDefaultRateCents: null,
@@ -478,7 +479,7 @@ describe("deriveInvoiceItems", () => {
       ],
       policy
     );
-    const groups = groupItemsByGuardian(items);
+    const groups = groupItemsByBillingAccount(items);
     expect(groups.size).toBe(2);
     expect(sumAmountCents(groups.get("g-1")!)).toBe(8000);
     expect(sumAmountCents(groups.get("g-2")!)).toBe(5000);

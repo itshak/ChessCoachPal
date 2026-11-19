@@ -8,7 +8,7 @@ export class CreditServiceError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);}
 }
 const fail=(s:number,c:string,m:string)=>new CreditServiceError(s,c,m);
-export type CreateCreditInput={studentId:string;credits:number;durationMinutes:number;
+export type CreateCreditInput={studentId:string;workplaceId:string;credits:number;durationMinutes:number;
  priceCents:number;startsOn?:string;expiresOn?:string|null;requestId?:string};
 export async function teacherCreditPackagesList(db:Db,teacherId:string,studentId?:string){
  const policy=await getPolicy(db,teacherId);
@@ -37,6 +37,7 @@ export async function teacherCreditPackageCreate(db:Db,teacherId:string,input:Cr
  if(invalid)throw fail(400,"VALIDATION_ERROR",invalid);
  const {data,error}=await db.rpc("ccp_credit_package_create",{
   p_student_id:input.studentId,
+  p_workplace_id:input.workplaceId,
   p_credits:request.credits,
   p_duration_minutes:request.durationMinutes,
   p_price_cents:request.priceCents,
@@ -49,12 +50,14 @@ export async function teacherCreditPackageCreate(db:Db,teacherId:string,input:Cr
     throw fail(409,"CONFLICT","This request ID was already used for different package terms");
   if(error.message.includes("ARCHIVED_STUDENT"))
     throw fail(409,"ARCHIVED","Reactivate student before selling prepaid lessons");
-  if(error.message.includes("FAMILY_REQUIRED"))
-    throw fail(400,"VALIDATION_ERROR","Link the student to a family before selling credits");
+  if(error.message.includes("CREDIT_EXPLICIT_PAYER_REQUIRED"))
+    throw fail(409,"PAYER_REQUIRED","Assign one effective-dated Billing Account to the selected workplace before selling credits");
+  if(error.message.includes("CREDIT_WORKPLACE_ENROLLMENT_REQUIRED"))
+    throw fail(409,"WORKPLACE_REQUIRED","Enroll the student in the selected workplace before selling credits");
   if(error.message.includes("INVALID_CREDIT_PACKAGE"))
     throw fail(400,"VALIDATION_ERROR","Invalid prepaid package terms");
   if(/NOT_FOUND|POLICY_NOT_FOUND/.test(error.message))
-    throw fail(404,"NOT_FOUND","Student, family or studio policy not found");
+    throw fail(404,"NOT_FOUND","Student, workplace or billing policy not found");
   throw fail(500,"DATABASE_ERROR","Prepaid package could not be created; no partial invoice was left behind");
  }
  return data as {packageId:string;invoiceId:string;replayed:boolean};

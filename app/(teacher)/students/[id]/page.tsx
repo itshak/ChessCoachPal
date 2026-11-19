@@ -105,6 +105,17 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
   ]);
   const enrolledIds=new Set((enrollmentRows??[]).map(x=>x.workplace_id));
   const sharingWorkplaces=(workplaceRows??[]).filter(w=>enrolledIds.has(w.id));
+  // The UI can offer purchase only with a dated, explicitly attested payer.
+  // Database RPC independently rechecks workplace, payer, and date atomically.
+  const {data:payerAssignments,error:payerReadError}=await supabase
+    .from("student_billing_assignments")
+    .select("workplace_id,effective_from,effective_to")
+    .eq("teacher_id",user.id).eq("student_id",id);
+  const today=toLocalDateString(new Date(),policy.timezone);
+  const activePayers=new Set((payerAssignments??[])
+    .filter(a=>a.effective_from<=today&&(a.effective_to===null||a.effective_to>=today))
+    .map(a=>a.workplace_id));
+  const creditWorkplaces=sharingWorkplaces.filter(w=>activePayers.has(w.id));
 
   return (
     <div>
@@ -149,7 +160,8 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       <StudentFederationsPanel studentId={id} />
       <CreditPackagesCard
         studentId={id}
-        hasFamily={false}
+        hasBillingAccount={!payerReadError&&creditWorkplaces.length>0}
+        workplaces={creditWorkplaces}
         currency={policy.currency}
         packages={creditPackages.map(pkg => ({
           id: pkg.id, invoiceId: pkg.invoiceId,

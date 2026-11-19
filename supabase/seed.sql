@@ -33,38 +33,52 @@ INSERT INTO auth.identities (
 INSERT INTO public.teachers (id, email, display_name, hosted_plan, onboarding_tour_completed_at) VALUES
 ('00000000-0000-0000-0000-000000000001', 'teacher@example.com', 'Chess Coach', 'pro', now());
 
-INSERT INTO public.guardians (id, teacher_id, name, family_name, email, portal_token,
-  secondary_name, secondary_email, email_recipients) VALUES
-('50000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001',
- 'Jordan Parent', 'Chen', 'jordan.parent@example.com', 'dev-portal-jordan',
- 'Alex Parent', 'alex.parent@example.com', 'both'),
-('50000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001',
- 'Sam Guardian', 'Rivera', 'sam.guardian@example.com', 'dev-portal-sam', NULL, NULL, 'primary'),
-('50000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001',
- 'Noah Adult', 'Noah Adult', 'noah.adult@example.com', 'dev-portal-noah', NULL, NULL, 'primary');
+-- Synthetic identities, distinct from payer accounts and portal grants.
+-- No capability tokens are stored or issued from seed contacts.
+INSERT INTO public.contacts(id,teacher_id,display_name,email) VALUES
+('50000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Jordan Parent','jordan.parent@example.com'),
+('50000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Sam Guardian','sam.guardian@example.com'),
+('50000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','Noah Adult','noah.adult@example.com'),
+('50000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000001','Alex Parent','alex.parent@example.com');
 
-INSERT INTO public.students (id, teacher_id, name, parent_contact, guardian_id,
+INSERT INTO public.billing_accounts(id,teacher_id,display_name,account_kind,contact_id) VALUES
+('b0000000-0000-4000-8000-000000000001','00000000-0000-0000-0000-000000000001','Chen household','person','50000000-0000-0000-0000-000000000001'),
+('b0000000-0000-4000-8000-000000000002','00000000-0000-0000-0000-000000000001','Sam Rivera','person','50000000-0000-0000-0000-000000000002'),
+('b0000000-0000-4000-8000-000000000003','00000000-0000-0000-0000-000000000001','Noah Adult','person','50000000-0000-0000-0000-000000000003');
+
+INSERT INTO public.students (id, teacher_id, name, parent_contact,
   birthdate, level, practice_start_date, teacher_notes, default_rate_cents) VALUES
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001',
- 'Emma', 'emma.parent@example.com', '50000000-0000-0000-0000-000000000001',
+ 'Emma', 'emma.parent@example.com',
  (CURRENT_DATE - interval '9 years')::date, 'Beginner',
  date_trunc('year', CURRENT_DATE - interval '2 years')::date,
  'Tactics: forks; introduce simple checkmate patterns.', NULL),
 ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001',
- 'Liam', 'liam.parent@example.com', '50000000-0000-0000-0000-000000000001',
+ 'Liam', 'liam.parent@example.com',
  (CURRENT_DATE - interval '7 years')::date, 'Beginner',
  date_trunc('year', CURRENT_DATE - interval '1 year')::date,
  'Practice piece safety and board vision.', NULL),
 ('10000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001',
- 'Sophia', NULL, '50000000-0000-0000-0000-000000000002',
+ 'Sophia', NULL,
  (CURRENT_DATE - interval '11 years')::date, 'Intermediate', NULL,
  'King and pawn endgames.', 5000),
 ('10000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000001',
- 'Noah', 'noah.adult@example.com', '50000000-0000-0000-0000-000000000003',
- (CURRENT_DATE - interval '34 years')::date, 'Adult beginner', (CURRENT_DATE - interval '6 months')::date,
+ 'Noah', 'noah.adult@example.com',
+ (CURRENT_DATE - interval '34 years')::date, 'Adult beginner',
+ (CURRENT_DATE - interval '6 months')::date,
  'Review legal moves and basic tactics.', 6000),
 ('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000001',
- 'Maya', NULL, NULL, NULL, 'Intermediate', NULL, 'Develop calculation habits.', NULL);
+ 'Maya', NULL, NULL, 'Intermediate', NULL, 'Develop calculation habits.', NULL);
+
+INSERT INTO public.student_contacts(
+ teacher_id,student_id,contact_id,relationship_label,is_legal_guardian,may_receive_messages
+) VALUES
+('00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000001','parent',true,true),
+('00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000002','50000000-0000-0000-0000-000000000001','parent',true,true),
+('00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000004','parent',true,true),
+('00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000002','50000000-0000-0000-0000-000000000004','parent',true,true),
+('00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000003','50000000-0000-0000-0000-000000000002','parent',true,true),
+('00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000004','50000000-0000-0000-0000-000000000003','self',false,true);
 
 INSERT INTO public.teacher_settings (
   teacher_id, business_name, timezone, cancellation_window_hours, lesson_duration_options,
@@ -100,6 +114,26 @@ JOIN LATERAL (
 ) w ON true
 WHERE s.teacher_id='00000000-0000-0000-0000-000000000001'
 ON CONFLICT DO NOTHING;
+
+-- Explicit workplace/date-specific billing contracts, never inferred from
+-- contacts. The fifth learner has intentionally no payer.
+INSERT INTO public.student_billing_assignments(
+  teacher_id,student_id,workplace_id,billing_account_id,effective_from
+)
+SELECT e.teacher_id,e.student_id,e.workplace_id,
+  CASE e.student_id
+    WHEN '10000000-0000-0000-0000-000000000001' THEN 'b0000000-0000-4000-8000-000000000001'::uuid
+    WHEN '10000000-0000-0000-0000-000000000002' THEN 'b0000000-0000-4000-8000-000000000001'::uuid
+    WHEN '10000000-0000-0000-0000-000000000003' THEN 'b0000000-0000-4000-8000-000000000002'::uuid
+    WHEN '10000000-0000-0000-0000-000000000004' THEN 'b0000000-0000-4000-8000-000000000003'::uuid
+  END,(CURRENT_DATE - interval '10 years')::date
+FROM public.workplace_enrollments e
+WHERE e.teacher_id='00000000-0000-0000-0000-000000000001'
+  AND e.student_id IN (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000003',
+  '10000000-0000-0000-0000-000000000004');
 
 -- The one synthetic completed private lesson exists ONLY as a canonical
 -- teaching_session; the INSERT trigger freezes its student participant.

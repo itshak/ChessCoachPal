@@ -94,46 +94,12 @@ export const studentUpdateSchema = z.object({
   archived: z.boolean().optional(),
 });
 
-// ── Families / guardians ────────────────────────────────────────────────────
-
-const emailRecipients = z
-  .enum(["primary", "secondary", "both"])
-  .optional()
-  .catch(undefined);
-
-const newStudentsList = z
-  .array(
-    z.object({
-      name: z.string().max(200),
-      birthdate: optionalDate,
-    })
-  )
-  .max(50)
-  .optional();
-
-export const guardianCreateSchema = z.object({
-  name: trimmedName,
-  familyName: optionalText(200),
-  email: optionalText(254),
-  phone: optionalText(50),
-  secondaryName: optionalText(200),
-  secondaryEmail: optionalText(254),
-  secondaryPhone: optionalText(50),
-  emailRecipients,
-  preferredLocale: z.enum(["en", "he", "ru"]).nullable().optional(),
-  studentIds: z.array(z.uuid()).max(200).optional(),
-  newStudents: newStudentsList,
-  // Optional durable retry receipt shared by website and delegated MCP.
-  idempotencyKey: z.uuid().optional(),
-});
-
-export const guardianUpdateSchema = guardianCreateSchema.partial();
-
 // ── Prepaid credits ─────────────────────────────────────────────────────────
 // Value rules (ranges, expiry after start) live in lib/credits.ts.
 
 export const creditPackageCreateSchema = z.object({
   studentId: z.guid(),
+  workplaceId: z.guid(),
   credits: z.number().int(),
   durationMinutes: z.number().int(),
   priceCents: z.number().int(),

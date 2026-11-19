@@ -479,7 +479,7 @@ const catalogue = [
   },
   {
     name:"ccp_credits_package_create",
-    description:"Sell a confirmed set of prepaid lesson credits by creating a draft invoice linked to an owned student and family. No payment or email is sent by this tool.",
+    description:"Sell prepaid credits for one student in one explicitly selected workplace and a verified effective-dated Billing Account, creating one draft invoice. No payment or email is sent. No payment or email is sent by this tool.",
     schema:creditPackageCreateSchema.extend({confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },

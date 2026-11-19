@@ -10,12 +10,12 @@ type Session={
  makeup_for_session_id:string|null;makeup_for_student_id:string|null;
 };
 type Student={
- id:string;name:string;guardian_id:string|null;
+ id:string;name:string;
  default_rate_cents:number|null;travel_fee_cents:number|null;
 };
 export type CanonicalBillingParticipant={
  sessionId:string;studentId:string;studentName:string;
- guardianId:string|null;lessonDate:string;startsAt:string;
+ workplaceId:string;billingAccountId:string|null;lessonDate:string;startsAt:string;
  durationMinutes:number;status:string;makeupForSessionId:string|null;
  isHomeVisit:boolean;slotRateCents:number|null;
  studentDefaultRateCents:number|null;studentTravelFeeCents:number|null;
@@ -81,7 +81,7 @@ export async function loadCanonicalBillingParticipants(
  const students:Student[]=[];
  for(const group of chunks(studentIds,100)){
   const {data,error}=await db.from("students")
-   .select("id,name,guardian_id,default_rate_cents,travel_fee_cents")
+   .select("id,name,default_rate_cents,travel_fee_cents")
    .eq("teacher_id",teacherId).in("id",group);
   if(error)throw new Error("Unable to load students for billing");
   students.push(...(data??[]));
@@ -93,6 +93,28 @@ export async function loadCanonicalBillingParticipants(
    .eq("teacher_id",teacherId).in("id",group);
   if(error)throw new Error("Unable to load workplace timezones");
   workplaces.push(...(data??[]));
+ }
+ // Resolve the teacher-attested payer at the *original* lesson workplace and
+ // studio-local occurrence date. Never infer a payer from a contact, household
+ // link or present-day student settings; ambiguity fails the entire preview.
+ type Assignment={student_id:string;workplace_id:string;billing_account_id:string;
+  effective_from:string;effective_to:string|null};
+ const assignments:Assignment[]=[];
+ for(const group of chunks(studentIds,100)){
+  assignments.push(...await pages<Assignment>(
+   (lo,hi)=>db.from("student_billing_assignments")
+    .select("student_id,workplace_id,billing_account_id,effective_from,effective_to")
+    .eq("teacher_id",teacherId).in("student_id",group)
+    .lte("effective_from",periodEnd)
+    .or(`effective_to.is.null,effective_to.gte.${periodStart}`)
+    .order("student_id").order("effective_from").order("billing_account_id")
+    .range(lo,hi),MAX_PARTICIPANTS,"dated payer assignments"));
+ }
+ const payerByStudentWorkplace=new Map<string,Assignment[]>();
+ for(const assignment of assignments){
+  const key=assignment.student_id+":"+assignment.workplace_id;
+  const list=payerByStudentWorkplace.get(key)??[];
+  list.push(assignment);payerByStudentWorkplace.set(key,list);
  }
  const studentById=new Map(students.map(x=>[x.id,x])),
   sessionById=new Map(sessions.map(x=>[x.id,x])),
@@ -111,9 +133,15 @@ export async function loadCanonicalBillingParticipants(
   const localDate=toLocalDateString(new Date(session.starts_at),zone);
   if(localDate<periodStart||localDate>periodEnd)continue;
   const att=attByKey.get(key);
+  const payerMatches=(payerByStudentWorkplace.get(student.id+":"+session.workplace_id)??[])
+    .filter(a=>a.effective_from<=localDate&&
+      (a.effective_to===null||a.effective_to>=localDate));
+  if(payerMatches.length>1)throw new Error(
+    "Ambiguous payer assignment for canonical lesson "+session.id+"/"+student.id);
   result.push({
    sessionId:session.id,studentId:student.id,studentName:student.name,
-   guardianId:student.guardian_id,lessonDate:localDate,
+   workplaceId:session.workplace_id,
+   billingAccountId:payerMatches[0]?.billing_account_id??null,lessonDate:localDate,
    startsAt:session.starts_at,durationMinutes:session.duration_minutes,
    status:session.status,makeupForSessionId:session.makeup_for_session_id,
    isHomeVisit:Boolean(session.is_home_visit),

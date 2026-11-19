@@ -6,7 +6,6 @@ import {deriveCanonicalPeriodItems,getInvoicedParticipantKeys} from "@/lib/serve
 import {loadCanonicalCreditInputs} from "@/lib/server/canonical-credits";
 import {sumAmountCents,summarizePayments} from "@/lib/billing";
 import {createCheckoutSession,expireCheckoutSession} from "@/lib/payments";
-import {familyDisplayName,stripeCheckoutPrefillEmail} from "@/lib/guardians";
 import {oneToOne} from "@/lib/schedule";
 import {sendInvoice} from "@/lib/server/invoice-send";
 import {teacherInvoiceSendPreview} from "@/lib/server/teacher-invoice-send-preview";
@@ -82,44 +81,37 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  const { items, skippedAlreadyInvoiced, newRedemptions, creditedByGuardian } =
+  const { items, skippedAlreadyInvoiced, newRedemptions, creditedByBillingAccount } =
     result;
   // Charges are per immutable (sessionId,studentId) roster identity.
   // A group teaching occurrence is never duplicated in the instructor ledger.
   const groups = new Map<string, typeof items>();
   for(const item of items){
-    const group=groups.get(item.guardianId)??[];
+    const group=groups.get(item.billingAccountId)??[];
     group.push(item);
-    groups.set(item.guardianId,group);
+    groups.set(item.billingAccountId,group);
   }
-  const guardianIds = [...groups.keys()];
-
-  const { data: guardians } = guardianIds.length
-    ? await supabase
-        .from("guardians")
-        .select("id, name, family_name")
-        .eq("teacher_id", teacherId)
-        .in("id", guardianIds)
-    : { data: [] };
-
-  const nameById = new Map(
-    (guardians ?? []).map((g) => [
-      g.id,
-      (g.family_name?.trim() || g.name) as string,
-    ])
-  );
-
-  const drafts = guardianIds.map((guardianId) => {
-    const lineItems = groups.get(guardianId)!;
+  const accountIds = [...groups.keys()];
+  const {data:accounts,error:accountError}=accountIds.length
+    ? await supabase.from("billing_accounts").select("id,display_name,status")
+        .eq("teacher_id",teacherId).in("id",accountIds)
+    : {data:[],error:null};
+  if(accountError||accounts?.length!==accountIds.length||
+      accounts.some(x=>x.status!=="active"))
+    return NextResponse.json({error:"A billing account is missing or archived; review payer assignments"},
+      {status:409});
+  const nameById=new Map((accounts??[]).map(a=>[a.id,a.display_name]));
+  const drafts = accountIds.map((billingAccountId) => {
+    const lineItems = groups.get(billingAccountId)!;
     return {
-      guardianId,
-      familyName: nameById.get(guardianId) ?? "Family",
+      billingAccountId,
+      billingAccountName: nameById.get(billingAccountId) ?? "Billing account",
       periodStart,
       periodEnd,
       currency: policy.currency,
       subtotalCents: sumAmountCents(lineItems),
       missingRateCount: lineItems.filter((i) => i.missingRate).length,
-      creditedLessonCount: creditedByGuardian.get(guardianId) ?? 0,
+      creditedLessonCount: creditedByBillingAccount.get(billingAccountId) ?? 0,
       items: lineItems,
     };
   });
@@ -129,7 +121,7 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
       periodStart,
       periodEnd,
       drafts,
-      totalFamilies: drafts.length,
+      totalBillingAccounts: drafts.length,
       totalCents: drafts.reduce((s, d) => s + d.subtotalCents, 0),
       skippedAlreadyInvoiced,
       creditsToUse: newRedemptions.size,
@@ -157,7 +149,7 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
     }, {status:400});
   }
 
-  // The database validates teacher/family/lesson ownership and writes ALL
+  // The database validates teacher/billing-account/lesson ownership and writes ALL
   // related invoices, lines and credit redemptions in one transaction.
   // Any failure rolls back the complete period rather than leaving partly
   // issued invoices or spent credits visible to the website or MCP.
@@ -205,7 +197,7 @@ export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId
   }
   const { data: invoice } = await supabase
     .from("invoices")
-    .select("id, status, guardian_id, period_start, period_end, currency, updated_at, stripe_checkout_session_id, stripe_checkout_url, stripe_payment_intent_id")
+    .select("id, status, billing_account_id, period_start, period_end, currency, updated_at, stripe_checkout_session_id, stripe_checkout_url, stripe_payment_intent_id")
     .eq("id", id)
     .eq("teacher_id", teacherId)
     .single();
@@ -278,7 +270,7 @@ export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId
       invoice.period_end,
       policy,
       {
-        guardianId: invoice.guardian_id,
+        billingAccountId: invoice.billing_account_id,
         excludeParticipantKeys,
         travelInvoicedParticipantKeys,
         credits,
@@ -326,8 +318,8 @@ export async function teacherBillingCheckout(supabase:SupabaseClient,teacherId:s
     .select(
       `
       *,
-      guardians (
-        id, name, family_name, email, secondary_email, email_recipients
+      billing_accounts (
+        id, display_name, contact_id, contacts ( email )
       ),
       payments ( amount_cents )
     `
@@ -375,27 +367,16 @@ export async function teacherBillingCheckout(supabase:SupabaseClient,teacherId:s
     },{status:409});
   }
 
-  const family = oneToOne(
-    invoice.guardians as
-      | {
-          name: string;
-          family_name: string | null;
-          email: string | null;
-          secondary_email: string | null;
-          email_recipients: "primary" | "secondary" | "both" | null;
-        }
-      | {
-          name: string;
-          family_name: string | null;
-          email: string | null;
-          secondary_email: string | null;
-          email_recipients: "primary" | "secondary" | "both" | null;
-        }[]
-      | null
-  );
-  if (!family) {
-    return NextResponse.json({ error: "Family not found" }, { status: 400 });
-  }
+  const account=oneToOne(invoice.billing_accounts as
+    {id:string;display_name:string;contact_id:string|null;
+     contacts:{email:string|null}|{email:string|null}[]|null}|
+    {id:string;display_name:string;contact_id:string|null;
+     contacts:{email:string|null}|{email:string|null}[]|null}[]|null);
+  if(!account)return NextResponse.json({error:"Billing account not found"},{status:409});
+  const billingContact=oneToOne(account.contacts);
+  // The payer identity is selected explicitly; no unrelated guardian email,
+  // broad household portal credential or inferred marketing contact is used.
+  const customerEmail=billingContact?.email??undefined;
 
   const periodLabel = `${invoice.period_start} – ${invoice.period_end}`;
 
@@ -406,12 +387,12 @@ export async function teacherBillingCheckout(supabase:SupabaseClient,teacherId:s
       teacherId: teacherId,
       amountCents: balanceCents,
       currency: invoice.currency,
-      familyName: familyDisplayName(family),
+      familyName: account.display_name,
       businessName: policy.business_name,
       periodLabel,
       successUrl: `${origin}/billing/${id}?paid=1`,
       cancelUrl: `${origin}/billing/${id}`,
-      customerEmail: stripeCheckoutPrefillEmail(family),
+      customerEmail,
     });
 
     // A provider-created session is not yet an invoice checkout link. The
@@ -482,7 +463,7 @@ export async function teacherBillingBulkPreview(
   try{
    const item=await teacherInvoiceSendPreview(db,teacherId,id,true);
    if(!item.deliveryPossible){
-     results.push({id,ok:false,error:"Family has no email recipients"});
+     results.push({id,ok:false,error:"Billing account has no approved email recipients"});
    }else{
      results.push({id,ok:true,preview:item});
    }

@@ -108,11 +108,11 @@ CREATE OR REPLACE FUNCTION "public"."enforce_credit_package_immutability"() RETU
     SET search_path TO public, pg_temp
     AS $$
 BEGIN
-  IF (NEW.id, NEW.teacher_id, NEW.student_id, NEW.invoice_id, NEW.credits,
-      NEW.duration_minutes, NEW.price_cents, NEW.starts_on, NEW.created_at)
+  IF (NEW.id, NEW.teacher_id, NEW.student_id, NEW.invoice_id, NEW.workplace_id,
+      NEW.credits,NEW.duration_minutes,NEW.price_cents,NEW.starts_on,NEW.created_at)
      IS DISTINCT FROM
-     (OLD.id, OLD.teacher_id, OLD.student_id, OLD.invoice_id, OLD.credits,
-      OLD.duration_minutes, OLD.price_cents, OLD.starts_on, OLD.created_at)
+     (OLD.id,OLD.teacher_id,OLD.student_id,OLD.invoice_id,OLD.workplace_id,
+      OLD.credits,OLD.duration_minutes,OLD.price_cents,OLD.starts_on,OLD.created_at)
   THEN
     RAISE EXCEPTION 'Only a credit package''s expiry date can be changed';
   END IF;
@@ -164,7 +164,7 @@ BEGIN
 
   IF OLD.status <> 'draft' THEN
     IF NEW.teacher_id    IS DISTINCT FROM OLD.teacher_id
-    OR NEW.guardian_id   IS DISTINCT FROM OLD.guardian_id
+    OR NEW.billing_account_id IS DISTINCT FROM OLD.billing_account_id
     OR NEW.period_start  IS DISTINCT FROM OLD.period_start
     OR NEW.period_end    IS DISTINCT FROM OLD.period_end
     OR NEW.subtotal_cents IS DISTINCT FROM OLD.subtotal_cents
@@ -487,6 +487,7 @@ CREATE TABLE IF NOT EXISTS "public"."credit_packages" (
     "teacher_id" "uuid" NOT NULL,
     "student_id" "uuid" NOT NULL,
     "invoice_id" "uuid" NOT NULL,
+    "workplace_id" uuid NOT NULL,
     "credits" integer NOT NULL,
     "duration_minutes" integer NOT NULL,
     "price_cents" integer NOT NULL,
@@ -527,19 +528,10 @@ COMMENT ON TABLE "public"."credit_redemptions" IS 'One frozen session participan
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."event_rsvps" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "event_id" "uuid" NOT NULL,
-    "guardian_id" "uuid" NOT NULL,
-    "status" "public"."rsvp_status" DEFAULT 'pending'::"public"."rsvp_status" NOT NULL,
-    "party_size" integer,
-    "note" "text" DEFAULT ''::"text" NOT NULL,
-    "responded_at" timestamp with time zone,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
-);
 
 
-ALTER TABLE "public"."event_rsvps" OWNER TO "postgres";
+
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."event_students" (
@@ -594,29 +586,13 @@ CREATE TABLE IF NOT EXISTS "public"."group_enrollments" (
 ALTER TABLE "public"."group_enrollments" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."guardians" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "teacher_id" "uuid" NOT NULL,
-    "name" "text" NOT NULL,
-    "email" "text",
-    "phone" "text",
-    "portal_token" "text" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "secondary_name" "text",
-    "secondary_email" "text",
-    "secondary_phone" "text",
-    "email_recipients" "text" DEFAULT 'primary'::"text" NOT NULL,
-    "family_name" "text",
-    "preferred_locale" "text",
-    CONSTRAINT "guardians_preferred_locale_check" CHECK (("preferred_locale" IS NULL OR "preferred_locale" = ANY (ARRAY['en'::"text", 'he'::"text", 'ru'::"text"]))),
-    CONSTRAINT "guardians_email_recipients_check" CHECK (("email_recipients" = ANY (ARRAY['primary'::"text", 'secondary'::"text", 'both'::"text"])))
-);
 
 
-ALTER TABLE "public"."guardians" OWNER TO "postgres";
 
 
-COMMENT ON COLUMN "public"."guardians"."email_recipients" IS 'Which guardian(s) receive family emails: primary, secondary, or both.';
+
+
+
 
 
 
@@ -648,7 +624,7 @@ COMMENT ON COLUMN "public"."invoice_items"."kind" IS 'lesson = a lesson charge; 
 CREATE TABLE IF NOT EXISTS "public"."invoices" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "teacher_id" "uuid" NOT NULL,
-    "guardian_id" "uuid" NOT NULL,
+    "billing_account_id" "uuid" NOT NULL,
     "period_start" "date" NOT NULL,
     "period_end" "date" NOT NULL,
     "status" "text" DEFAULT 'draft'::"text" NOT NULL,
@@ -870,7 +846,6 @@ CREATE TABLE IF NOT EXISTS "public"."students" (
     "parent_contact" "text",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "teacher_notes" "text" DEFAULT ''::"text" NOT NULL,
-    "guardian_id" "uuid",
     "level" "text",
     "birthdate" "date",
     "default_rate_cents" integer,
@@ -885,11 +860,10 @@ CREATE TABLE IF NOT EXISTS "public"."students" (
 ALTER TABLE "public"."students" OWNER TO "postgres";
 
 
-COMMENT ON COLUMN "public"."students"."parent_contact" IS 'DEPRECATED: legacy freeform contact, superseded by guardian_id. Kept for reference until fully migrated.';
+COMMENT ON COLUMN "public"."students"."parent_contact" IS 'Teacher-only unstructured notes from a historical source; does not establish contact access or payer obligations.';
 
 
 
-COMMENT ON COLUMN "public"."students"."guardian_id" IS 'v1: single guardian per student, on purpose. Split households need a student_guardians join table (known v2 item).';
 
 
 
@@ -1279,13 +1253,11 @@ ALTER TABLE ONLY "public"."credit_redemptions"
 
 
 
-ALTER TABLE ONLY "public"."event_rsvps"
-    ADD CONSTRAINT "event_rsvps_event_id_guardian_id_key" UNIQUE ("event_id", "guardian_id");
 
 
 
-ALTER TABLE ONLY "public"."event_rsvps"
-    ADD CONSTRAINT "event_rsvps_pkey" PRIMARY KEY ("id");
+
+
 
 
 
@@ -1314,13 +1286,11 @@ ALTER TABLE ONLY "public"."group_enrollments"
 
 
 
-ALTER TABLE ONLY "public"."guardians"
-    ADD CONSTRAINT "guardians_pkey" PRIMARY KEY ("id");
 
 
 
-ALTER TABLE ONLY "public"."guardians"
-    ADD CONSTRAINT "guardians_portal_token_key" UNIQUE ("portal_token");
+
+
 
 
 
@@ -1538,7 +1508,7 @@ CREATE INDEX "idx_credit_redemptions_package" ON "public"."credit_redemptions" U
 
 
 
-CREATE INDEX "idx_event_rsvps_guardian" ON "public"."event_rsvps" USING "btree" ("guardian_id");
+
 
 
 
@@ -1550,11 +1520,11 @@ CREATE INDEX "idx_events_teacher_starts" ON "public"."events" USING "btree" ("te
 
 
 
-CREATE INDEX "idx_guardians_portal_token" ON "public"."guardians" USING "btree" ("portal_token");
 
 
 
-CREATE INDEX "idx_guardians_teacher" ON "public"."guardians" USING "btree" ("teacher_id");
+
+
 
 
 
@@ -1562,7 +1532,7 @@ CREATE INDEX "idx_invoice_items_invoice" ON "public"."invoice_items" USING "btre
 
 
 
-CREATE INDEX "idx_invoices_guardian" ON "public"."invoices" USING "btree" ("guardian_id");
+
 
 
 
@@ -1619,7 +1589,7 @@ CREATE INDEX "idx_skill_dimensions_teacher" ON "public"."skill_dimensions" USING
 
 
 
-CREATE INDEX "idx_students_guardian" ON "public"."students" USING "btree" ("guardian_id");
+
 
 
 
@@ -1825,13 +1795,11 @@ ALTER TABLE ONLY "public"."credit_redemptions"
 
 
 
-ALTER TABLE ONLY "public"."event_rsvps"
-    ADD CONSTRAINT "event_rsvps_event_id_fkey" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE CASCADE;
 
 
 
-ALTER TABLE ONLY "public"."event_rsvps"
-    ADD CONSTRAINT "event_rsvps_guardian_id_fkey" FOREIGN KEY ("guardian_id") REFERENCES "public"."guardians"("id") ON DELETE CASCADE;
+
+
 
 
 
@@ -1870,8 +1838,7 @@ ALTER TABLE ONLY "public"."group_enrollments"
 
 
 
-ALTER TABLE ONLY "public"."guardians"
-    ADD CONSTRAINT "guardians_teacher_id_fkey" FOREIGN KEY ("teacher_id") REFERENCES "public"."teachers"("id") ON DELETE CASCADE;
+
 
 
 
@@ -1889,8 +1856,7 @@ ALTER TABLE ONLY "public"."invoice_items"
 
 
 
-ALTER TABLE ONLY "public"."invoices"
-    ADD CONSTRAINT "invoices_guardian_id_fkey" FOREIGN KEY ("guardian_id") REFERENCES "public"."guardians"("id") ON DELETE RESTRICT;
+
 
 
 
@@ -2015,8 +1981,7 @@ ALTER TABLE ONLY "public"."skill_dimensions"
 
 
 
-ALTER TABLE ONLY "public"."students"
-    ADD CONSTRAINT "students_guardian_id_fkey" FOREIGN KEY ("guardian_id") REFERENCES "public"."guardians"("id") ON DELETE SET NULL;
+
 
 
 
@@ -2126,14 +2091,10 @@ CREATE POLICY "credit_redemptions_teacher" ON "public"."credit_redemptions" USIN
 
 
 
-ALTER TABLE "public"."event_rsvps" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "event_rsvps_teacher" ON "public"."event_rsvps" USING ((EXISTS ( SELECT 1
-   FROM "public"."events" "e"
-  WHERE (("e"."id" = "event_rsvps"."event_id") AND ("e"."teacher_id" = (select "auth"."uid"())))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM "public"."events" "e"
-  WHERE (("e"."id" = "event_rsvps"."event_id") AND ("e"."teacher_id" = (select "auth"."uid"()))))));
+
+
 
 
 
@@ -2162,10 +2123,10 @@ CREATE POLICY "group_enrollments_teacher" ON "public"."group_enrollments" TO "au
 
 
 
-ALTER TABLE "public"."guardians" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "guardians_teacher" ON "public"."guardians" USING (("teacher_id" = (select "auth"."uid"())));
+
+
 
 
 
@@ -2431,8 +2392,8 @@ GRANT ALL ON TABLE "public"."credit_redemptions" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."event_rsvps" TO "authenticated";
-GRANT ALL ON TABLE "public"."event_rsvps" TO "service_role";
+
+
 
 
 
@@ -2451,8 +2412,8 @@ GRANT ALL ON TABLE "public"."group_enrollments" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."guardians" TO "authenticated";
-GRANT ALL ON TABLE "public"."guardians" TO "service_role";
+
+
 
 
 
@@ -3568,8 +3529,8 @@ DECLARE
  v_teacher uuid:=auth.uid();
  v_row jsonb; v_digest text; v_saved public.teacher_spreadsheet_import_receipts%ROWTYPE;
  v_names jsonb:='{}'::jsonb; v_group_ids jsonb:='{}'::jsonb;
- v_name text; v_key text; v_email text; v_guardian uuid; v_parent text;
- v_created integer:=0; v_skipped integer:=0; v_families integer:=0;
+ v_name text; v_key text; v_email text; v_contact uuid; v_student_id uuid; v_parent text;
+ v_created integer:=0; v_skipped integer:=0; v_contacts integer:=0;
  v_skipped_rows jsonb:='[]'::jsonb; v_result jsonb;
  v_row_number integer;
 BEGIN
@@ -3623,50 +3584,55 @@ BEGIN
      CONTINUE;
    END IF;
 
-   v_guardian:=NULL;
+   -- Contacts are identities only. An imported row never creates a payer,
+   -- portal grant or legal/communication authority. Adults with no explicit
+   -- contact remain valid students without an automatically invented person.
+   v_contact:=NULL;
+   v_email:=lower(nullif(btrim(v_row->>'email'),''));
    IF v_group_ids ? v_key THEN
-     v_guardian:=(v_group_ids->>v_key)::uuid;
-   ELSE
-     v_email:=lower(nullif(btrim(v_row->>'email'),''));
+     v_contact:=(v_group_ids->>v_key)::uuid;
+   ELSIF v_email IS NOT NULL
+       OR nullif(btrim(v_row->>'guardianName'),'') IS NOT NULL
+       OR nullif(btrim(v_row->>'phone'),'') IS NOT NULL THEN
      IF v_email IS NOT NULL THEN
-       SELECT id INTO v_guardian FROM public.guardians
+       SELECT id INTO v_contact FROM public.contacts
        WHERE teacher_id=v_teacher AND lower(btrim(email))=v_email
-       ORDER BY created_at,id LIMIT 1;
+         AND status='active' ORDER BY created_at,id LIMIT 1;
      END IF;
-     IF v_guardian IS NULL THEN
+     IF v_contact IS NULL THEN
        v_parent:=coalesce(nullif(btrim(v_row->>'guardianName'),''),
-           nullif(btrim(v_row->>'familyName'),''),
-           CASE WHEN v_email IS NOT NULL
-              OR nullif(btrim(v_row->>'phone'),'') IS NOT NULL
-             THEN 'Parent of '||v_name ELSE v_name END);
-       INSERT INTO public.guardians(
-         teacher_id,name,family_name,email,phone,
-         secondary_name,secondary_email,secondary_phone,portal_token
-       ) VALUES(
-         v_teacher,v_parent,nullif(btrim(v_row->>'familyName'),''),
-         nullif(btrim(v_row->>'email'),''),nullif(btrim(v_row->>'phone'),''),
-         nullif(btrim(v_row->>'secondaryName'),''),
-         nullif(btrim(v_row->>'secondaryEmail'),''),
-         nullif(btrim(v_row->>'secondaryPhone'),''),
-         encode(extensions.gen_random_bytes(24),'hex')
-       ) RETURNING id INTO v_guardian;
-       v_families:=v_families+1;
+         nullif(btrim(v_row->>'familyName'),''),
+         CASE WHEN v_email IS NOT NULL OR nullif(btrim(v_row->>'phone'),'') IS NOT NULL
+           THEN 'Contact for '||v_name END);
+       IF v_parent IS NULL THEN
+         RAISE EXCEPTION 'IMPORT_CONTACT_NAME_REQUIRED' USING ERRCODE='22023';
+       END IF;
+       INSERT INTO public.contacts(teacher_id,display_name,email,phone)
+       VALUES(v_teacher,v_parent,v_email,nullif(btrim(v_row->>'phone'),''))
+       RETURNING id INTO v_contact;
+       v_contacts:=v_contacts+1;
      END IF;
-     v_group_ids:=jsonb_set(v_group_ids,ARRAY[v_key],to_jsonb(v_guardian::text),true);
+     v_group_ids:=jsonb_set(v_group_ids,ARRAY[v_key],to_jsonb(v_contact::text),true);
    END IF;
-
    INSERT INTO public.students(
-     teacher_id,name,guardian_id,birthdate,level,teacher_notes,archived_at
+     teacher_id,name,birthdate,level,teacher_notes,archived_at
    ) VALUES (
-     v_teacher,v_name,v_guardian,nullif(v_row->>'birthdate','')::date,
+     v_teacher,v_name,nullif(v_row->>'birthdate','')::date,
      nullif(v_row->>'level',''),coalesce(v_row->>'teacherNotes',''),
-     CASE WHEN coalesce(v_row->>'archived','false')='true' THEN clock_timestamp() ELSE NULL END
-   );
+     CASE WHEN coalesce(v_row->>'archived','false')='true'
+       THEN clock_timestamp() ELSE NULL END
+   ) RETURNING id INTO v_student_id;
+   IF v_contact IS NOT NULL THEN
+     INSERT INTO public.student_contacts(
+       teacher_id,student_id,contact_id,relationship_label,
+       is_legal_guardian,may_receive_messages
+     ) VALUES(v_teacher,v_student_id,v_contact,'Imported contact',false,false);
+   END IF;
    v_created:=v_created+1;
  END LOOP;
  v_result:=jsonb_build_object(
    'studentsCreated',v_created,'studentsSkipped',v_skipped,
-   'familiesCreated',v_families,'skipped',v_skipped_rows,
+   'contactsCreated',v_contacts,'skipped',v_skipped_rows,
    'receiptId',p_idempotency_key
  );
  UPDATE public.teacher_spreadsheet_import_receipts
@@ -4291,6 +4257,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ccp_credit_packages_teacher_request
 
 CREATE OR REPLACE FUNCTION public.ccp_credit_package_create(
   p_student_id uuid,
+  p_workplace_id uuid,
   p_credits integer,
   p_duration_minutes integer,
   p_price_cents integer,
@@ -4308,6 +4275,8 @@ DECLARE
   v_existing public.credit_packages%ROWTYPE;
   v_invoice_id uuid;
   v_package_id uuid;
+  v_billing_account uuid;
+  v_payer_count integer;
   v_today date;
   v_description text;
 BEGIN
@@ -4315,7 +4284,7 @@ BEGIN
     RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
   END IF;
 
-  IF p_credits IS NULL OR p_credits NOT BETWEEN 1 AND 200 OR
+  IF p_workplace_id IS NULL OR p_credits IS NULL OR p_credits NOT BETWEEN 1 AND 200 OR
      p_duration_minutes IS NULL OR p_duration_minutes NOT BETWEEN 5 AND 480 OR
      p_price_cents IS NULL OR p_price_cents < 0 OR
      p_starts_on IS NULL OR
@@ -4332,6 +4301,7 @@ BEGIN
       WHERE teacher_id=v_teacher AND request_id=p_request_id;
     IF FOUND THEN
       IF v_existing.student_id IS DISTINCT FROM p_student_id OR
+         v_existing.workplace_id IS DISTINCT FROM p_workplace_id OR
          v_existing.credits IS DISTINCT FROM p_credits OR
          v_existing.duration_minutes IS DISTINCT FROM p_duration_minutes OR
          v_existing.price_cents IS DISTINCT FROM p_price_cents OR
@@ -4352,13 +4322,24 @@ BEGIN
   IF v_student.archived_at IS NOT NULL THEN
     RAISE EXCEPTION 'ARCHIVED_STUDENT' USING ERRCODE='23514';
   END IF;
-  IF v_student.guardian_id IS NULL THEN
-    RAISE EXCEPTION 'FAMILY_REQUIRED' USING ERRCODE='22023';
+  IF NOT EXISTS(
+    SELECT 1 FROM public.workplace_enrollments e
+    WHERE e.teacher_id=v_teacher AND e.student_id=p_student_id
+      AND e.workplace_id=p_workplace_id
+  ) THEN
+    RAISE EXCEPTION 'CREDIT_WORKPLACE_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
   END IF;
-  PERFORM 1 FROM public.guardians
-    WHERE id=v_student.guardian_id AND teacher_id=v_teacher FOR KEY SHARE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';
+  SELECT count(*),max(billing_account_id)
+    INTO v_payer_count,v_billing_account
+    FROM public.student_billing_assignments b
+    JOIN public.billing_accounts a
+      ON a.id=b.billing_account_id AND a.teacher_id=b.teacher_id
+    WHERE b.teacher_id=v_teacher AND b.student_id=p_student_id
+      AND b.workplace_id=p_workplace_id AND a.status='active'
+      AND b.effective_from<=p_starts_on
+      AND (b.effective_to IS NULL OR b.effective_to>=p_starts_on);
+  IF v_payer_count<>1 THEN
+    RAISE EXCEPTION 'CREDIT_EXPLICIT_PAYER_REQUIRED' USING ERRCODE='23514';
   END IF;
   SELECT * INTO v_policy FROM public.teacher_settings
     WHERE teacher_id=v_teacher;
@@ -4371,10 +4352,10 @@ BEGIN
     CASE WHEN p_credits=1 THEN '' ELSE 's' END || ' - ' || v_student.name;
 
   INSERT INTO public.invoices (
-    teacher_id,guardian_id,period_start,period_end,status,
+    teacher_id,billing_account_id,period_start,period_end,status,
     subtotal_cents,currency
   ) VALUES (
-    v_teacher,v_student.guardian_id,v_today,v_today,'draft',
+    v_teacher,v_billing_account,v_today,v_today,'draft',
     p_price_cents,v_policy.currency
   ) RETURNING id INTO v_invoice_id;
 
@@ -4387,10 +4368,10 @@ BEGIN
   );
 
   INSERT INTO public.credit_packages (
-    teacher_id,student_id,invoice_id,credits,duration_minutes,
+    teacher_id,student_id,invoice_id,workplace_id,credits,duration_minutes,
     price_cents,starts_on,expires_on,request_id
   ) VALUES (
-    v_teacher,p_student_id,v_invoice_id,p_credits,p_duration_minutes,
+    v_teacher,p_student_id,v_invoice_id,p_workplace_id,p_credits,p_duration_minutes,
     p_price_cents,p_starts_on,p_expires_on,p_request_id
   ) RETURNING id INTO v_package_id;
 
@@ -4400,9 +4381,9 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.ccp_credit_package_create(
-  uuid,integer,integer,integer,date,date,uuid) FROM PUBLIC, anon;
+  uuid,uuid,integer,integer,integer,date,date,uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ccp_credit_package_create(
-  uuid,integer,integer,integer,date,date,uuid) TO authenticated;
+  uuid,uuid,integer,integer,integer,date,date,uuid) TO authenticated;
 
 -- Durable at-most-once explicit contact invitation/reminder send attempt per event,
 -- scoped invite, mode and reviewed message. No contact addresses or portal secrets
@@ -5198,328 +5179,10 @@ CREATE POLICY teacher_backup_receipts_owner ON public.teacher_backup_import_rece
 REVOKE ALL ON public.teacher_backup_import_receipts FROM PUBLIC, anon;
 GRANT SELECT, INSERT, UPDATE(result) ON public.teacher_backup_import_receipts TO authenticated;
 
-CREATE OR REPLACE FUNCTION public.ccp_teacher_backup_restore(
-  p_tables jsonb, p_display_name text, p_digest text
-) RETURNS jsonb
-LANGUAGE plpgsql SECURITY INVOKER
-SET search_path = public, pg_temp AS $$
-DECLARE
-  v_teacher uuid := auth.uid();
-  v_table text;
-  v_source jsonb;
-  v_row jsonb;
-  v_rows jsonb;
-  v_columns text;
-  v_updates text;
-  v_pkeys text;
-  v_count integer;
-  v_updated integer;
-  v_counts jsonb := '{}'::jsonb;
-  v_result jsonb;
-BEGIN
-  IF v_teacher IS NULL THEN
-    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE = '42501';
-  END IF;
-  IF jsonb_typeof(p_tables) IS DISTINCT FROM 'object'
-    OR p_digest !~ '^[a-f0-9]{64}$' OR p_digest IS NULL
-    OR pg_column_size(p_tables) > 2097152 THEN
-    RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE = '22023';
-  END IF;
-
-  -- Independent backups for the same teacher cannot interleave; the receipt
-  -- insert also serializes concurrent retries of an identical approved digest.
-  PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text, 0));
-  PERFORM set_config('ccp.backup_import_teacher',v_teacher::text,true);
-  INSERT INTO public.teacher_backup_import_receipts (teacher_id, digest, result)
-  VALUES (v_teacher, p_digest, '{}'::jsonb) ON CONFLICT DO NOTHING;
-  IF NOT FOUND THEN
-    SELECT result INTO v_result FROM public.teacher_backup_import_receipts
-    WHERE teacher_id = v_teacher AND digest = p_digest;
-    IF v_result IS NULL THEN
-      RAISE EXCEPTION 'IMPORT_RECEIPT_CONFLICT' USING ERRCODE = '23505';
-    END IF;
-    RETURN v_result;
-  END IF;
-
-  -- Match the portable backup's FK-safe ordering. The list is fixed in SQL;
-  -- arbitrary JSON table names are ignored, never interpolated into SQL.
-  FOREACH v_table IN ARRAY ARRAY[
-    'teacher_settings', 'guardians', 'students', 'workplaces', 'class_groups',
-    'workplace_enrollments', 'group_enrollments', 'teacher_study_preferences', 'lesson_slots',
-    'teaching_sessions', 'session_participants', 'session_attendance',
-    'session_notes', 'chess_skill_categories', 'chess_observations',
-    'skill_dimensions', 'skill_assessments',
-    'invoices', 'invoice_items', 'payments', 'events', 'event_students',
-    'event_rsvps', 'credit_packages', 'credit_redemptions'
-  ] LOOP
-    v_source := p_tables -> v_table;
-    IF v_table = 'teacher_settings' THEN
-      IF v_source IS NULL OR v_source = 'null'::jsonb THEN
-        v_rows := '[]'::jsonb;
-      ELSIF jsonb_typeof(v_source) = 'object' THEN
-        v_rows := jsonb_build_array(v_source);
-      ELSE
-        RAISE EXCEPTION 'IMPORT_INVALID_TABLE:%', v_table USING ERRCODE='22023';
-      END IF;
-    ELSIF v_source IS NULL THEN
-      v_rows := '[]'::jsonb;
-    ELSIF jsonb_typeof(v_source) = 'array' THEN
-      v_rows := v_source;
-    ELSE
-      RAISE EXCEPTION 'IMPORT_INVALID_TABLE:%', v_table USING ERRCODE='22023';
-    END IF;
-
-    v_count := 0;
-    SELECT string_agg(format('%I', a.attname), ', ' ORDER BY key_cols.ordinality)
-      INTO v_pkeys
-    FROM pg_index i
-    CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS key_cols(attnum, ordinality)
-    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = key_cols.attnum
-    WHERE i.indrelid = format('public.%I', v_table)::regclass AND i.indisprimary;
-    IF v_pkeys IS NULL THEN
-      RAISE EXCEPTION 'IMPORT_UNSUPPORTED_TABLE:%', v_table USING ERRCODE='22023';
-    END IF;
-
-    FOR v_row IN SELECT value FROM jsonb_array_elements(v_rows) LOOP
-      IF jsonb_typeof(v_row) IS DISTINCT FROM 'object' THEN
-        RAISE EXCEPTION 'IMPORT_INVALID_ROW:%', v_table USING ERRCODE='22023';
-      END IF;
-      IF v_table = ANY(ARRAY[
-        'teacher_settings', 'guardians', 'students', 'workplaces', 'class_groups',
-        'workplace_enrollments', 'group_enrollments', 'teacher_study_preferences', 'lesson_slots',
-        'teaching_sessions', 'session_participants', 'session_attendance',
-        'session_notes', 'chess_skill_categories', 'chess_observations',
-        'skill_dimensions', 'invoices', 'events', 'credit_packages',
-        'credit_redemptions'
-      ]) THEN
-        v_row := jsonb_set(v_row, '{teacher_id}', to_jsonb(v_teacher::text), true);
-      END IF;
-      IF v_table = 'teacher_settings' THEN
-        v_row := v_row - 'stripe_secret_key' - 'stripe_publishable_key'
-                 - 'stripe_webhook_secret' - 'ai_api_key';
-      END IF;
-      IF v_table = 'guardians'
-        AND nullif(btrim(v_row ->> 'portal_token'), '') IS NULL THEN
-        v_row := jsonb_set(v_row, '{portal_token}', to_jsonb(
-          rtrim(translate(encode(extensions.gen_random_bytes(16), 'base64'), '+/', '-_'), '=')
-        ), true);
-      END IF;
-
-      -- Insert only supplied columns so database defaults survive sparse
-      -- portable exports. PostgreSQL performs the whole operation under RLS:
-      -- a foreign owner's ID cannot be overwritten or attached via child FK.
-      SELECT string_agg(format('%I', field), ', ' ORDER BY field),
-             string_agg(format('%I = EXCLUDED.%I', field, field), ', ' ORDER BY field)
-        INTO v_columns, v_updates
-      FROM jsonb_object_keys(v_row) AS keys(field);
-      IF v_columns IS NULL THEN
-        RAISE EXCEPTION 'IMPORT_EMPTY_ROW:%', v_table USING ERRCODE='22023';
-      END IF;
-      IF v_table IN ('session_attendance','session_notes') THEN
-        PERFORM public.ccp_backup_upsert_protected(v_table,v_row);
-      ELSE
-      EXECUTE format(
-        'INSERT INTO public.%I (%s) SELECT %s FROM jsonb_populate_record(NULL::public.%I, $1) ON CONFLICT (%s) DO UPDATE SET %s',
-        v_table, v_columns, v_columns, v_table, v_pkeys, v_updates
-      ) USING v_row;
-      END IF;
-      v_count := v_count + 1;
-    END LOOP;
-    v_counts := jsonb_set(v_counts, ARRAY[v_table], to_jsonb(v_count), true);
-  END LOOP;
-
-  IF nullif(btrim(p_display_name), '') IS NOT NULL THEN
-    UPDATE public.teachers SET display_name = btrim(p_display_name)
-    WHERE id = v_teacher AND nullif(btrim(display_name), '') IS NULL;
-    GET DIAGNOSTICS v_updated = ROW_COUNT;
-    IF v_updated = 1 THEN
-      v_counts := jsonb_set(v_counts, '{teacher_profile}', '1'::jsonb, true);
-    END IF;
-  END IF;
-  v_result := jsonb_build_object('counts', v_counts);
-  UPDATE public.teacher_backup_import_receipts SET result = v_result
-  WHERE teacher_id = v_teacher AND digest = p_digest;
-  RETURN v_result;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_teacher_backup_restore(jsonb, text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.ccp_teacher_backup_restore(jsonb, text, text) TO authenticated;
-
 -- Every website/MCP family + member mutation is one owner-scoped transaction.
 -- Previously a successful guardian insert could survive failed student creation,
 -- or a partial member reassignment could detach only some students.
 -- Direct RPC calls are also validated: no arbitrary owner or foreign student IDs.
-CREATE OR REPLACE FUNCTION public.ccp_guardian_save(
-  p_guardian_id uuid,
-  p_fields jsonb,
-  p_student_ids uuid[],
-  p_replace_members boolean,
-  p_new_students jsonb
-) RETURNS jsonb
-LANGUAGE plpgsql SECURITY INVOKER
-SET search_path=public,pg_temp AS $$
-DECLARE
-  v_teacher uuid := auth.uid();
-  v_guardian public.guardians%ROWTYPE;
-  v_name text;
-  v_new jsonb;
-  v_existing_ids integer;
-  v_assigned integer;
-  v_prior_guardians uuid[];
-  v_old uuid;
-BEGIN
-  IF v_teacher IS NULL THEN
-    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
-  END IF;
-  IF jsonb_typeof(p_fields) IS DISTINCT FROM 'object'
-     OR pg_column_size(p_fields)>16384
-     OR EXISTS (
-       SELECT 1 FROM jsonb_each(p_fields) AS f
-       WHERE f.key NOT IN (
-         'name','family_name','email','phone','secondary_name',
-         'secondary_email','secondary_phone','email_recipients','preferred_locale'
-       ) OR (f.value<>'null'::jsonb AND jsonb_typeof(f.value)<>'string')
-     )
-     OR jsonb_typeof(p_new_students) IS DISTINCT FROM 'array'
-     OR jsonb_array_length(p_new_students)>50 THEN
-    RAISE EXCEPTION 'GUARDIAN_INVALID_INPUT' USING ERRCODE='22023';
-  END IF;
-  IF p_fields ? 'name' THEN
-    v_name:=btrim(p_fields->>'name');
-    IF v_name IS NULL OR length(v_name) NOT BETWEEN 1 AND 200 THEN
-      RAISE EXCEPTION 'GUARDIAN_INVALID_NAME' USING ERRCODE='22023';
-    END IF;
-  END IF;
-  IF p_fields ? 'email_recipients' AND
-     p_fields->>'email_recipients' NOT IN ('primary','secondary','both') THEN
-    RAISE EXCEPTION 'GUARDIAN_INVALID_RECIPIENTS' USING ERRCODE='22023';
-  END IF;
-  IF p_fields ? 'preferred_locale' AND (p_fields->>'preferred_locale') IS NOT NULL AND
-     (p_fields->>'preferred_locale') NOT IN ('en','he','ru') THEN
-    RAISE EXCEPTION 'GUARDIAN_INVALID_LOCALE' USING ERRCODE='22023';
-  END IF;
-  -- Serializes concurrent family changes and student capacity reservations.
-  -- No elevated UPDATE rights on teachers are required here. Existing
-  -- student-capacity triggers serialize inserts on the teacher row, while
-  -- family/event rows and PostgreSQL foreign keys protect their own writes.
-  PERFORM 1 FROM public.teachers WHERE id=v_teacher;
-  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501'; END IF;
-
-  -- Validate the complete replacement roster before creating or editing it.
-  IF p_replace_members THEN
-    IF p_student_ids IS NULL OR cardinality(p_student_ids)>200
-       OR cardinality(p_student_ids) <> (
-         SELECT count(DISTINCT x) FROM unnest(p_student_ids) AS x
-       ) THEN
-      RAISE EXCEPTION 'GUARDIAN_INVALID_ROSTER' USING ERRCODE='22023';
-    END IF;
-    SELECT count(*) INTO v_existing_ids FROM public.students
-      WHERE teacher_id=v_teacher AND id=ANY(p_student_ids);
-    IF v_existing_ids<>cardinality(p_student_ids) THEN
-      RAISE EXCEPTION 'GUARDIAN_STUDENT_NOT_FOUND' USING ERRCODE='42501';
-    END IF;
-  END IF;
-
-  IF p_guardian_id IS NULL THEN
-    IF v_name IS NULL THEN
-      RAISE EXCEPTION 'GUARDIAN_INVALID_NAME' USING ERRCODE='22023';
-    END IF;
-    INSERT INTO public.guardians (
-      teacher_id,name,family_name,email,phone,secondary_name,
-      secondary_email,secondary_phone,email_recipients,preferred_locale,portal_token
-    ) VALUES (
-      v_teacher,v_name,nullif(btrim(p_fields->>'family_name'),''),
-      nullif(btrim(p_fields->>'email'),''),
-      nullif(btrim(p_fields->>'phone'),''),
-      nullif(btrim(p_fields->>'secondary_name'),''),
-      nullif(btrim(p_fields->>'secondary_email'),''),
-      nullif(btrim(p_fields->>'secondary_phone'),''),
-      coalesce(p_fields->>'email_recipients','primary'),
-      p_fields->>'preferred_locale',
-      encode(extensions.gen_random_bytes(24),'hex')
-    ) RETURNING * INTO v_guardian;
-  ELSE
-    SELECT * INTO v_guardian FROM public.guardians
-      WHERE id=p_guardian_id AND teacher_id=v_teacher FOR UPDATE;
-    IF NOT FOUND THEN
-      RAISE EXCEPTION 'GUARDIAN_NOT_FOUND' USING ERRCODE='42501';
-    END IF;
-    UPDATE public.guardians SET
-      name=CASE WHEN p_fields ? 'name' THEN v_name ELSE name END,
-      family_name=CASE WHEN p_fields ? 'family_name'
-        THEN nullif(btrim(p_fields->>'family_name'),'') ELSE family_name END,
-      email=CASE WHEN p_fields ? 'email'
-        THEN nullif(btrim(p_fields->>'email'),'') ELSE email END,
-      phone=CASE WHEN p_fields ? 'phone'
-        THEN nullif(btrim(p_fields->>'phone'),'') ELSE phone END,
-      secondary_name=CASE WHEN p_fields ? 'secondary_name'
-        THEN nullif(btrim(p_fields->>'secondary_name'),'') ELSE secondary_name END,
-      secondary_email=CASE WHEN p_fields ? 'secondary_email'
-        THEN nullif(btrim(p_fields->>'secondary_email'),'') ELSE secondary_email END,
-      secondary_phone=CASE WHEN p_fields ? 'secondary_phone'
-        THEN nullif(btrim(p_fields->>'secondary_phone'),'') ELSE secondary_phone END,
-      email_recipients=CASE WHEN p_fields ? 'email_recipients'
-        THEN p_fields->>'email_recipients' ELSE email_recipients END,
-      preferred_locale=CASE WHEN p_fields ? 'preferred_locale'
-        THEN p_fields->>'preferred_locale' ELSE preferred_locale END
-    WHERE id=v_guardian.id AND teacher_id=v_teacher
-    RETURNING * INTO v_guardian;
-  END IF;
-
-  IF p_replace_members THEN
-    SELECT array_agg(DISTINCT guardian_id) INTO v_prior_guardians
-      FROM public.students WHERE teacher_id=v_teacher
-        AND id=ANY(p_student_ids) AND guardian_id IS NOT NULL
-        AND guardian_id<>v_guardian.id;
-    UPDATE public.students SET guardian_id=NULL
-      WHERE teacher_id=v_teacher AND guardian_id=v_guardian.id
-        AND NOT (id=ANY(p_student_ids));
-    UPDATE public.students SET guardian_id=v_guardian.id
-      WHERE teacher_id=v_teacher AND id=ANY(p_student_ids);
-    GET DIAGNOSTICS v_assigned = ROW_COUNT;
-    -- A student may have disappeared between preflight and the write.
-    -- Never acknowledge a partly reassigned roster.
-    IF v_assigned<>cardinality(p_student_ids) THEN
-      RAISE EXCEPTION 'GUARDIAN_ROSTER_CHANGED' USING ERRCODE='40001';
-    END IF;
-  END IF;
-
-  FOR v_new IN SELECT value FROM jsonb_array_elements(p_new_students) LOOP
-    v_name:=btrim(v_new->>'name');
-    IF jsonb_typeof(v_new) IS DISTINCT FROM 'object'
-      OR v_name IS NULL OR length(v_name) NOT BETWEEN 1 AND 200
-      OR (v_new ? 'birthdate' AND v_new->'birthdate'<>'null'::jsonb
-        AND jsonb_typeof(v_new->'birthdate')<>'string') THEN
-      RAISE EXCEPTION 'GUARDIAN_INVALID_STUDENT' USING ERRCODE='22023';
-    END IF;
-    INSERT INTO public.students(teacher_id,guardian_id,name,birthdate)
-    VALUES(v_teacher,v_guardian.id,v_name,nullif(v_new->>'birthdate','')::date);
-  END LOOP;
-
-  -- Preserve the previous optional cleanup, without allowing any FK conflict
-  -- from an unrelated historic record to roll back a successful roster edit.
-  IF v_prior_guardians IS NOT NULL THEN
-    FOREACH v_old IN ARRAY v_prior_guardians LOOP
-      BEGIN
-        DELETE FROM public.guardians g
-          WHERE g.id=v_old AND g.teacher_id=v_teacher
-            AND NOT EXISTS (SELECT 1 FROM public.students s
-              WHERE s.teacher_id=v_teacher AND s.guardian_id=g.id)
-            AND NOT EXISTS (SELECT 1 FROM public.invoices i
-              WHERE i.teacher_id=v_teacher AND i.guardian_id=g.id);
-      EXCEPTION WHEN foreign_key_violation THEN
-        NULL;
-      END;
-    END LOOP;
-  END IF;
-  RETURN to_jsonb(v_guardian);
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_guardian_save(uuid,jsonb,uuid[],boolean,jsonb)
-  FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_guardian_save(uuid,jsonb,uuid[],boolean,jsonb)
-  TO authenticated;
-
 -- Event master record, frozen invitees and RSVP reconciliation are one
 -- transaction for both signed-in website and delegated OAuth/MCP callers.
 -- No emailed invitations are sent by this function.
@@ -5667,21 +5330,9 @@ BEGIN
         sort_order=EXCLUDED.sort_order;
     END LOOP;
 
-    -- Keep existing responses for families still invited; add new pending
-    -- responses and remove only families no longer represented in the roster.
-    DELETE FROM public.event_rsvps r WHERE r.event_id=v_event.id
-      AND NOT EXISTS (
-        SELECT 1 FROM public.event_students es
-        JOIN public.students s ON s.id=es.student_id
-        WHERE es.event_id=v_event.id AND s.guardian_id=r.guardian_id
-      );
-    INSERT INTO public.event_rsvps(event_id,guardian_id,status)
-      SELECT DISTINCT v_event.id,s.guardian_id,'pending'::public.rsvp_status
-      FROM public.event_students es
-      JOIN public.students s ON s.id=es.student_id
-      WHERE es.event_id=v_event.id AND s.guardian_id IS NOT NULL
-      ON CONFLICT(event_id,guardian_id) DO NOTHING;
-  ELSE
+    -- Invitations remain explicitly approved per contact + workplace grant.
+    -- Roster edits never mint/revoke access or create automatic RSVP records.
+    ELSE
     -- Editing repertoire alone must not be ignored: the website editor and
     -- MCP both permit patches without replacing the whole student roster.
     -- Validate all keys before writing anything; unknown roster IDs fail
@@ -5713,84 +5364,9 @@ GRANT EXECUTE ON FUNCTION public.ccp_teacher_event_save(uuid,jsonb,uuid[],jsonb)
 -- A concurrent student reassignment cannot evade the preflight preview:
 -- PostgreSQL's FK KEY SHARE locks serialize against the guardian row DELETE.
 -- Privileged service-role tenant erasure remains an explicit separate flow.
-CREATE OR REPLACE FUNCTION public.ccp_guardian_delete_restrict()
- RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
- SET search_path=public,pg_temp AS $$
-BEGIN
- IF current_user='authenticated' THEN
-   IF auth.uid() IS NULL OR auth.uid() IS DISTINCT FROM OLD.teacher_id THEN
-     RAISE EXCEPTION 'GUARDIAN_NOT_FOUND' USING ERRCODE='42501';
-   END IF;
-   IF EXISTS(SELECT 1 FROM public.students s
-     WHERE s.guardian_id=OLD.id)
-     OR EXISTS(SELECT 1 FROM public.invoices i
-       WHERE i.guardian_id=OLD.id) THEN
-     RAISE EXCEPTION 'GUARDIAN_HAS_LINKED_HISTORY' USING ERRCODE='23503';
-   END IF;
- END IF;
- RETURN OLD;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_guardian_delete_restrict()
- FROM PUBLIC,anon,authenticated;
-DROP TRIGGER IF EXISTS ccp_guardian_delete_restrict ON public.guardians;
-CREATE TRIGGER ccp_guardian_delete_restrict
- BEFORE DELETE ON public.guardians
- FOR EACH ROW EXECUTE FUNCTION public.ccp_guardian_delete_restrict();
 
 -- Shared website/MCP family portal rotation with a durable replay key.
 -- A delayed network retry must not rotate the already-new link a second time.
--- The secret stays browser-only; MCP adapters discard portal_token.
-ALTER TABLE public.guardians
- ADD COLUMN IF NOT EXISTS portal_rotation_request_id uuid;
-CREATE UNIQUE INDEX IF NOT EXISTS ccp_guardians_owner_portal_rotation_request
- ON public.guardians(teacher_id,portal_rotation_request_id)
- WHERE portal_rotation_request_id IS NOT NULL;
-
-CREATE OR REPLACE FUNCTION public.ccp_guardian_rotate_portal_token(
-  p_guardian_id uuid, p_request_id uuid DEFAULT NULL
-) RETURNS jsonb
-LANGUAGE plpgsql SECURITY INVOKER
-SET search_path=public,pg_temp
-AS $$
-DECLARE
-  v_teacher uuid:=auth.uid();
-  v_guardian public.guardians%ROWTYPE;
-BEGIN
-  IF v_teacher IS NULL THEN
-    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
-  END IF;
-  SELECT * INTO v_guardian FROM public.guardians
-   WHERE id=p_guardian_id AND teacher_id=v_teacher FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';
-  END IF;
-  IF p_request_id IS NOT NULL
-     AND v_guardian.portal_rotation_request_id=p_request_id THEN
-    RETURN jsonb_build_object('id',v_guardian.id,
-     'portal_token',v_guardian.portal_token,'replayed',true);
-  END IF;
-  IF p_request_id IS NOT NULL AND EXISTS(
-    SELECT 1 FROM public.guardians
-     WHERE teacher_id=v_teacher AND portal_rotation_request_id=p_request_id
-       AND id<>p_guardian_id
-  ) THEN
-    RAISE EXCEPTION 'PORTAL_ROTATION_REQUEST_CONFLICT' USING ERRCODE='23505';
-  END IF;
-  UPDATE public.guardians SET
-    portal_token=encode(extensions.gen_random_bytes(24),'hex'),
-    portal_rotation_request_id=p_request_id
-    WHERE id=p_guardian_id AND teacher_id=v_teacher
-    RETURNING * INTO v_guardian;
-  RETURN jsonb_build_object('id',v_guardian.id,
-    'portal_token',v_guardian.portal_token,'replayed',false);
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_guardian_rotate_portal_token(uuid,uuid)
- FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_guardian_rotate_portal_token(uuid,uuid)
- TO authenticated;
-
 -- Durable per-teacher event request receipts for browser ↔ delegated MCP replay.
 -- The existing ccp_teacher_event_save transaction owns event/roster/RSVP;
 -- this wrapper locks one request key BEFORE calling it and records its
@@ -5861,71 +5437,11 @@ GRANT EXECUTE ON FUNCTION public.ccp_teacher_event_save_replay(
 -- Prevents duplicate children/families when the teacher's browser and agent
 -- retry the same confirmed mutation after a timeout. Sensitive portal links
 -- are never copied into receipt rows; they remain on the guardian record.
-CREATE TABLE IF NOT EXISTS public.ccp_guardian_request_receipts(
-  teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
-  request_id uuid NOT NULL,
-  mutation_hash text NOT NULL,
-  guardian_id uuid NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY(teacher_id,request_id)
-);
-ALTER TABLE public.ccp_guardian_request_receipts ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS ccp_guardian_receipts_owner ON public.ccp_guardian_request_receipts;
-CREATE POLICY ccp_guardian_receipts_owner ON public.ccp_guardian_request_receipts
-  FOR ALL TO authenticated
-  USING (teacher_id=(select auth.uid())) WITH CHECK(teacher_id=(select auth.uid()));
-REVOKE ALL ON public.ccp_guardian_request_receipts FROM PUBLIC,anon;
-GRANT SELECT,INSERT ON public.ccp_guardian_request_receipts TO authenticated;
 
-CREATE OR REPLACE FUNCTION public.ccp_guardian_save_replay(
-  p_guardian_id uuid,p_fields jsonb,p_student_ids uuid[],
-  p_replace_members boolean,p_new_students jsonb,p_request_id uuid DEFAULT NULL
-) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER
-SET search_path=public,pg_temp AS $$
-DECLARE
-  v_teacher uuid:=auth.uid();
-  v_hash text;
-  v_previous public.ccp_guardian_request_receipts%ROWTYPE;
-  v_result jsonb;
-BEGIN
-  IF v_teacher IS NULL THEN
-    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
-  END IF;
-  IF p_request_id IS NULL THEN
-    RETURN public.ccp_guardian_save(
-      p_guardian_id,p_fields,p_student_ids,p_replace_members,p_new_students);
-  END IF;
-  v_hash:=md5(jsonb_build_object(
-    'guardianId',p_guardian_id,'fields',p_fields,
-    'studentIds',p_student_ids,'replaceMembers',p_replace_members,
-    'newStudents',p_new_students)::text);
-  PERFORM pg_advisory_xact_lock(hashtextextended(
-    v_teacher::text||':guardian:'||p_request_id::text,0));
-  SELECT * INTO v_previous FROM public.ccp_guardian_request_receipts
-    WHERE teacher_id=v_teacher AND request_id=p_request_id;
-  IF FOUND THEN
-    IF v_previous.mutation_hash<>v_hash THEN
-      RAISE EXCEPTION 'GUARDIAN_REQUEST_CONFLICT' USING ERRCODE='23505';
-    END IF;
-    SELECT to_jsonb(g) INTO v_result FROM public.guardians g
-      WHERE g.teacher_id=v_teacher AND g.id=v_previous.guardian_id;
-    IF v_result IS NULL THEN
-      RAISE EXCEPTION 'GUARDIAN_ALREADY_DELETED' USING ERRCODE='23514';
-    END IF;
-    RETURN v_result||jsonb_build_object('replayed',true);
-  END IF;
-  v_result:=public.ccp_guardian_save(
-    p_guardian_id,p_fields,p_student_ids,p_replace_members,p_new_students);
-  INSERT INTO public.ccp_guardian_request_receipts(
-    teacher_id,request_id,mutation_hash,guardian_id
-  ) VALUES(v_teacher,p_request_id,v_hash,(v_result->>'id')::uuid);
-  RETURN v_result||jsonb_build_object('replayed',false);
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_guardian_save_replay(
- uuid,jsonb,uuid[],boolean,jsonb,uuid) FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_guardian_save_replay(
- uuid,jsonb,uuid[],boolean,jsonb,uuid) TO authenticated;
+
+
+
+
 
 -- Browser and MCP manual-payment writes must never leave payment rows
 -- without their paid invoice status, or overpay after a concurrent retry.
@@ -6991,14 +6507,15 @@ BEGIN
   -- Match the portable backup's FK-safe ordering. The list is fixed in SQL;
   -- arbitrary JSON table names are ignored, never interpolated into SQL.
   FOREACH v_table IN ARRAY ARRAY[
-    'teacher_settings', 'guardians', 'contacts', 'students',
-    'student_contacts', 'billing_accounts', 'workplaces', 'class_groups',
-    'workplace_enrollments', 'group_enrollments', 'lesson_slots',
-    'teaching_sessions', 'session_participants', 'session_attendance',
-    'session_notes', 'chess_skill_categories', 'chess_observations',
-    'skill_dimensions', 'skill_assessments',
-    'invoices', 'invoice_items', 'payments', 'events', 'event_students',
-    'event_rsvps', 'credit_packages', 'credit_redemptions'
+    'teacher_settings','contacts','students','student_contacts','billing_accounts',
+    'workplaces','class_groups','workplace_enrollments','group_enrollments',
+    'student_billing_assignments','compensation_agreements',
+    'lesson_slots','teaching_sessions','session_participants','session_attendance',
+    'session_notes','chess_skill_categories','chess_observations',
+    'skill_dimensions','skill_assessments','student_federation_memberships',
+    'invoices','invoice_items','payments','events','event_students',
+    'portal_access_grants','portal_event_invitations',
+    'credit_packages','credit_redemptions'
   ] LOOP
     v_source := p_tables -> v_table;
     IF v_table = 'teacher_settings' THEN
@@ -7033,13 +6550,15 @@ BEGIN
         RAISE EXCEPTION 'IMPORT_INVALID_ROW:%', v_table USING ERRCODE='22023';
       END IF;
       IF v_table = ANY(ARRAY[
-        'teacher_settings', 'guardians', 'contacts', 'students',
-    'student_contacts', 'billing_accounts', 'workplaces', 'class_groups',
-        'workplace_enrollments', 'group_enrollments', 'lesson_slots',
-        'teaching_sessions', 'session_participants', 'session_attendance',
-        'session_notes', 'chess_skill_categories', 'chess_observations',
-        'skill_dimensions', 'invoices', 'events', 'credit_packages',
-        'credit_redemptions'
+        'teacher_settings','contacts','students','student_contacts',
+        'billing_accounts','workplaces','class_groups',
+        'workplace_enrollments','group_enrollments','student_billing_assignments',
+        'compensation_agreements','lesson_slots','teaching_sessions',
+        'session_participants','session_attendance','session_notes',
+        'chess_skill_categories','chess_observations','skill_dimensions',
+        'student_federation_memberships','invoices','events',
+        'portal_access_grants','portal_event_invitations',
+        'credit_packages','credit_redemptions'
       ]) THEN
         v_row := jsonb_set(v_row, '{teacher_id}', to_jsonb(v_teacher::text), true);
       END IF;
@@ -7047,11 +6566,12 @@ BEGIN
         v_row := v_row - 'stripe_secret_key' - 'stripe_publishable_key'
                  - 'stripe_webhook_secret' - 'ai_api_key';
       END IF;
-      IF v_table = 'guardians'
-        AND nullif(btrim(v_row ->> 'portal_token'), '') IS NULL THEN
-        v_row := jsonb_set(v_row, '{portal_token}', to_jsonb(
-          rtrim(translate(encode(extensions.gen_random_bytes(16), 'base64'), '+/', '-_'), '=')
-        ), true);
+      IF v_table='portal_access_grants' THEN
+        -- A copied backup is not authority to mint a shared link. Even a
+        -- manually crafted digest is discarded before the authenticated
+        -- teacher can restore a record; browser-only reissue required.
+        v_row:=jsonb_set(jsonb_set(v_row,'{token_digest}','null'::jsonb,true),
+          '{issued_at}','null'::jsonb,true);
       END IF;
 
       -- Insert only supplied columns so database defaults survive sparse
@@ -7646,98 +7166,6 @@ GRANT EXECUTE ON FUNCTION public.ccp_canonical_session_note_save(
 -- the shared teaching occurrence or silently consume a make-up credit.
 -- Token ownership, the session lock, attendance insert and notification
 -- intents all occur inside one transaction, with no teacher impersonation.
-CREATE OR REPLACE FUNCTION public.ccp_canonical_portal_cancel(
-  p_portal_token text,p_session_id uuid,p_student_id uuid,p_cancel_reason text
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=public,pg_temp AS $ccp_portal_cancel$
-DECLARE
-  v_teacher uuid;
-  v_student_name text;
-  v_start timestamptz;
-  v_status text;
-  v_att public.session_attendance%ROWTYPE;
-  v_now timestamptz;
-  v_notify_in_app boolean := true;
-  v_notify_email boolean := false;
-BEGIN
-  IF p_portal_token IS NULL OR length(p_portal_token) NOT BETWEEN 32 AND 256
-     OR p_session_id IS NULL OR p_student_id IS NULL THEN
-    RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
-  END IF;
-  IF p_cancel_reason IS NULL OR char_length(p_cancel_reason)>1000 THEN
-    RAISE EXCEPTION 'PORTAL_INVALID_NOTE' USING ERRCODE='22023';
-  END IF;
-  SELECT s.teacher_id,st.name,s.starts_at,s.status
-    INTO v_teacher,v_student_name,v_start,v_status
-    FROM public.teaching_sessions s
-    JOIN public.session_participants sp ON sp.session_id=s.id
-      AND sp.teacher_id=s.teacher_id AND sp.student_id=p_student_id
-    JOIN public.students st ON st.id=sp.student_id
-      AND st.teacher_id=s.teacher_id
-    JOIN public.guardians g ON g.id=st.guardian_id
-      AND g.teacher_id=s.teacher_id
-   WHERE s.id=p_session_id AND g.portal_token=p_portal_token
-   FOR UPDATE OF s,st,g;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
-  END IF;
-  SELECT * INTO v_att FROM public.session_attendance
-   WHERE teacher_id=v_teacher AND session_id=p_session_id
-     AND student_id=p_student_id FOR UPDATE;
-  IF v_att.id IS NOT NULL THEN
-    IF v_att.status='student_cancelled' THEN
-      RETURN jsonb_build_object('ok',true,'replayed',true,
-        'noticeAt',v_att.notice_at,'cancelReason',v_att.cancel_reason,
-        'teacherId',v_teacher,'studentName',v_student_name,
-        'startsAt',v_start,'sessionId',p_session_id,
-        'studentId',p_student_id);
-    END IF;
-    RAISE EXCEPTION 'PORTAL_ALREADY_MARKED' USING ERRCODE='23514';
-  END IF;
-  IF v_status <> 'scheduled' OR v_start <= clock_timestamp() THEN
-    RAISE EXCEPTION 'PORTAL_TOO_LATE' USING ERRCODE='22023';
-  END IF;
-  v_now := clock_timestamp();
-  INSERT INTO public.session_attendance(
-    teacher_id,session_id,student_id,status,notice_at,
-    cancelled_by,cancel_reason,marked_at,marked_by,updated_at
-  ) VALUES(v_teacher,p_session_id,p_student_id,'student_cancelled',v_now,
-    'student',p_cancel_reason,v_now,NULL,v_now)
-    RETURNING * INTO v_att;
-  SELECT coalesce(notify_in_app,true),coalesce(notify_email_portal_cancel,false)
-    INTO v_notify_in_app,v_notify_email FROM public.teacher_settings
-    WHERE teacher_id=v_teacher;
-  IF v_notify_in_app THEN
-    INSERT INTO public.notifications(teacher_id,type,title,body,href)
-    VALUES(v_teacher,'portal_cancel','Student cancelled a chess lesson',
-      v_student_name||' cancelled the lesson on '||v_start::text,
-      '/schedule');
-  END IF;
-  IF v_notify_email THEN
-    INSERT INTO public.ccp_delivery_outbox(
-      teacher_id,session_id,student_id,event_key,kind,payload
-    ) VALUES(
-      v_teacher,p_session_id,p_student_id,
-      'portal-cancel:'||p_session_id::text||':'||p_student_id::text,
-      'portal_cancel_teacher',
-      jsonb_build_object('sessionId',p_session_id,'studentId',p_student_id,
-        'studentName',v_student_name,'startsAt',v_start,
-        'cancelReason',p_cancel_reason,'noticeAt',v_now)
-    );
-  END IF;
-  RETURN jsonb_build_object('ok',true,'replayed',false,
-    'noticeAt',v_att.notice_at,'cancelReason',v_att.cancel_reason,
-    'teacherId',v_teacher,'studentName',v_student_name,
-    'startsAt',v_start,'sessionId',p_session_id,
-    'studentId',p_student_id);
-END;
-$ccp_portal_cancel$;
-REVOKE ALL ON FUNCTION public.ccp_canonical_portal_cancel(
- text,uuid,uuid,text) FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.ccp_canonical_portal_cancel(
- text,uuid,uuid,text) TO service_role;
-
-
 -- Canonical participant-attendance correction and clear. The session row
 -- serializes web, delegated MCP, and guardian-originated decisions. The
 -- idempotency receipt and every mutation commit (or roll back) together.
@@ -7971,7 +7399,8 @@ SET search_path=public,pg_temp AS $ccp_invoice_line$
 DECLARE
  v_invoice public.invoices%ROWTYPE;
  v_session public.teaching_sessions%ROWTYPE;
- v_guardian uuid;
+ v_billing_account uuid;
+ v_payer_matches integer;
  v_student_teacher uuid;
  v_date date;
 BEGIN
@@ -7997,17 +7426,26 @@ BEGIN
  ) THEN
    RAISE EXCEPTION 'FINANCE_PARTICIPANT_NOT_FOUND' USING ERRCODE='42501';
  END IF;
- SELECT guardian_id,teacher_id INTO v_guardian,v_student_teacher
+ SELECT teacher_id INTO v_student_teacher
   FROM public.students WHERE id=NEW.student_id;
- IF v_guardian IS DISTINCT FROM v_invoice.guardian_id
-    OR v_student_teacher IS DISTINCT FROM v_invoice.teacher_id THEN
-   RAISE EXCEPTION 'FINANCE_WRONG_GUARDIAN' USING ERRCODE='42501';
- END IF;
  v_date:=(v_session.starts_at AT TIME ZONE
   coalesce(nullif(v_session.local_timezone,''),
     (SELECT w.timezone FROM public.workplaces w
       WHERE w.id=v_session.workplace_id
         AND w.teacher_id=v_session.teacher_id),'UTC'))::date;
+ SELECT count(*),max(billing_account_id)
+   INTO v_payer_matches,v_billing_account
+   FROM public.student_billing_assignments b
+   WHERE b.teacher_id=v_invoice.teacher_id
+     AND b.student_id=NEW.student_id
+     AND b.workplace_id=v_session.workplace_id
+     AND b.effective_from<=v_date
+     AND (b.effective_to IS NULL OR b.effective_to>=v_date);
+ IF v_student_teacher IS DISTINCT FROM v_invoice.teacher_id
+   OR v_payer_matches<>1
+   OR v_billing_account IS DISTINCT FROM v_invoice.billing_account_id THEN
+   RAISE EXCEPTION 'FINANCE_PAYER_ASSIGNMENT_REQUIRED' USING ERRCODE='42501';
+ END IF;
  IF v_date NOT BETWEEN v_invoice.period_start AND v_invoice.period_end THEN
    RAISE EXCEPTION 'FINANCE_OUTSIDE_INVOICE_PERIOD' USING ERRCODE='22023';
  END IF;
@@ -8062,6 +7500,7 @@ BEGIN
    WHERE id=NEW.session_id AND teacher_id=NEW.teacher_id FOR NO KEY UPDATE;
  IF NOT FOUND OR v_package.teacher_id<>NEW.teacher_id
    OR v_package.student_id<>NEW.student_id
+   OR v_package.workplace_id<>v_session.workplace_id
    OR NOT EXISTS(
      SELECT 1 FROM public.session_participants
       WHERE session_id=NEW.session_id AND student_id=NEW.student_id
@@ -8196,7 +7635,7 @@ SET search_path=public,pg_temp AS $ccp_canonical_invoice_generate$
 DECLARE
  v_teacher uuid:=auth.uid();v_currency text;
  v_draft jsonb;v_line jsonb;v_credit jsonb;
- v_invoice uuid;v_session uuid;v_student uuid;v_guardian uuid;
+ v_invoice uuid;v_session uuid;v_student uuid;v_billing_account uuid;
  v_package uuid;v_kind text;v_description text;
  v_quantity integer;v_unit integer;v_amount integer;
  v_subtotal bigint;v_sort integer;
@@ -8246,16 +7685,16 @@ BEGIN
    v_credits:=v_credits+1;
  END LOOP;
  FOR v_draft IN SELECT value FROM jsonb_array_elements(p_drafts) LOOP
-   v_guardian:=(v_draft->>'guardianId')::uuid;
-   IF v_guardian IS NULL OR NOT EXISTS(
-     SELECT 1 FROM public.guardians WHERE id=v_guardian AND teacher_id=v_teacher
+   v_billing_account:=(v_draft->>'billingAccountId')::uuid;
+   IF v_billing_account IS NULL OR NOT EXISTS(
+     SELECT 1 FROM public.billing_accounts WHERE id=v_billing_account AND teacher_id=v_teacher
    ) OR jsonb_typeof(v_draft->'items') IS DISTINCT FROM 'array'
      OR jsonb_array_length(v_draft->'items') NOT BETWEEN 1 AND 2000
-   THEN RAISE EXCEPTION 'INVALID_BILLING_FAMILY' USING ERRCODE='22023'; END IF;
+   THEN RAISE EXCEPTION 'INVALID_BILLING_ACCOUNT' USING ERRCODE='22023'; END IF;
    INSERT INTO public.invoices(
-    teacher_id,guardian_id,period_start,period_end,status,
+    teacher_id,billing_account_id,period_start,period_end,status,
     subtotal_cents,currency
-   ) VALUES(v_teacher,v_guardian,p_period_start,p_period_end,'draft',0,v_currency)
+   ) VALUES(v_teacher,v_billing_account,p_period_start,p_period_end,'draft',0,v_currency)
    RETURNING id INTO v_invoice;
    v_subtotal:=0;v_sort:=0;
    FOR v_line IN SELECT value FROM jsonb_array_elements(v_draft->'items') LOOP
@@ -10699,10 +10138,13 @@ CREATE TABLE public.billing_accounts (
 CREATE INDEX billing_accounts_teacher_name_idx
   ON public.billing_accounts(teacher_id,status,display_name,id);
 
--- During the incremental, reviewed transition, old issued invoices remain
--- unchanged and retain guardian_id; this extra FK preserves the future payer.
--- The final legacy-column removal is blocked until finance/portal cutover.
-ALTER TABLE public.invoices ADD COLUMN billing_account_id uuid;
+-- The canonical debtor column exists from the first CREATE TABLE.
+-- A tenant-composite FK prevents cross-teacher invoices at rest.
+ALTER TABLE public.credit_packages ADD CONSTRAINT credit_package_workplace_owner_fk
+  FOREIGN KEY(workplace_id,teacher_id)
+  REFERENCES public.workplaces(id,teacher_id) ON DELETE RESTRICT;
+CREATE INDEX credit_packages_teacher_workplace_idx ON public.credit_packages(teacher_id,workplace_id);
+
 ALTER TABLE public.invoices ADD CONSTRAINT invoices_owned_billing_account_fk
   FOREIGN KEY (billing_account_id,teacher_id)
   REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT;
@@ -10778,7 +10220,7 @@ COMMENT ON TABLE public.portal_access_grants IS
 -- Revoking/rotating a grant locks the same portal_access_grants row, so a
 -- concurrent guest write cannot pass a stale grant after revocation commits.
 CREATE OR REPLACE FUNCTION public.ccp_scoped_portal_cancel(
-  p_portal_token text,p_session_id uuid,p_student_id uuid,p_cancel_reason text
+  p_grant_secret text,p_session_id uuid,p_student_id uuid,p_cancel_reason text
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=public,pg_temp AS $ccp_scoped_portal_cancel$
 DECLARE
@@ -10790,7 +10232,7 @@ DECLARE
   v_now timestamptz;
   v_notify_email boolean:=false;
 BEGIN
-  IF p_portal_token IS NULL OR p_portal_token !~ '^[A-Za-z0-9_-]{43}$'
+  IF p_grant_secret IS NULL OR p_grant_secret !~ '^[A-Za-z0-9_-]{43}$'
     OR p_session_id IS NULL OR p_student_id IS NULL THEN
     RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
   END IF;
@@ -10818,7 +10260,7 @@ BEGIN
       AND sp.teacher_id=s.teacher_id AND sp.student_id=g.student_id
     JOIN public.students st ON st.id=sp.student_id
       AND st.teacher_id=g.teacher_id
-   WHERE g.token_digest=encode(extensions.digest(p_portal_token,'sha256'),'hex')
+   WHERE g.token_digest=encode(extensions.digest(p_grant_secret,'sha256'),'hex')
      AND g.student_id=p_student_id AND g.revoked_at IS NULL
      AND g.expires_at>clock_timestamp() AND 'cancel'=ANY(g.permissions)
      AND (g.billing_account_id IS NULL OR payer.id IS NOT NULL)
@@ -10855,7 +10297,7 @@ BEGIN
     THEN (w.policy->>'notifyEmailPortalCancel')::boolean ELSE false END
     INTO v_notify_email FROM public.workplaces w
    WHERE w.id=(SELECT g.workplace_id FROM public.portal_access_grants g
-     WHERE g.token_digest=encode(extensions.digest(p_portal_token,'sha256'),'hex'))
+     WHERE g.token_digest=encode(extensions.digest(p_grant_secret,'sha256'),'hex'))
      AND w.teacher_id=v_teacher;
   IF coalesce(v_notify_email,false) THEN
     INSERT INTO public.ccp_delivery_outbox(
@@ -10935,7 +10377,7 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON public.portal_event_invitations TO authenti
 -- Full guest RSVP validation and mutation in ONE transaction. Old guardian
 -- tokens can never satisfy the hash-scoped capability join.
 CREATE OR REPLACE FUNCTION public.ccp_scoped_portal_rsvp(
- p_portal_token text,p_event_id uuid,p_status text,p_party_size integer,p_note text
+ p_grant_secret text,p_event_id uuid,p_status text,p_party_size integer,p_note text
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=public,pg_temp AS $ccp_scoped_portal_rsvp$
 DECLARE
@@ -10944,7 +10386,7 @@ DECLARE
  v_event public.events%ROWTYPE;
  v_contact_name text;
 BEGIN
- IF p_portal_token IS NULL OR p_portal_token !~ '^[A-Za-z0-9_-]{43}$'
+ IF p_grant_secret IS NULL OR p_grant_secret !~ '^[A-Za-z0-9_-]{43}$'
    OR p_event_id IS NULL THEN
    RAISE EXCEPTION 'PORTAL_NOT_FOUND' USING ERRCODE='42501';
  END IF;
@@ -10962,7 +10404,7 @@ BEGIN
    AND we.workplace_id=g.workplace_id AND we.teacher_id=g.teacher_id
  LEFT JOIN public.billing_accounts payer ON payer.id=g.billing_account_id
    AND payer.teacher_id=g.teacher_id AND payer.status='active'
- WHERE g.token_digest=encode(extensions.digest(p_portal_token,'sha256'),'hex')
+ WHERE g.token_digest=encode(extensions.digest(p_grant_secret,'sha256'),'hex')
    AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp()
    AND c.status='active' AND s.archived_at IS NULL
    AND sc.active_to IS NULL AND (sc.active_from IS NULL OR sc.active_from<=current_date)

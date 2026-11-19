@@ -1951,6 +1951,8 @@
     "title": "Prepaid lessons",
     "creditsLeft": "{count, plural, one {# credit} other {# credits}} left. Billable lessons of a package's length use a credit instead of being invoiced.",
     "description": "Sell a package of lessons up front. Billable lessons use a credit instead of being invoiced, and bill as usual once credits run out.",
+    "workplace": "Workplace",
+    "assignBillingFirst": "Assign a billing account for this student and workplace first",
     "linkFamilyFirst": "Link a family first",
     "sellPackage": "Sell package",
     "packageDescription": "{count} prepaid lessons · {minutes} min each",
@@ -2555,7 +2557,7 @@
     "title": "Billing",
     "description": "Typical month: Generate for last month → review drafts → select all → Send. Rates and billability live in Studio; configure Stripe or payment instructions via Payment settings.",
     "empty": "No invoices yet. Mark attendance for a period, then generate drafts.",
-    "family": "Family"
+    "family": "Billing account"
   },
   "newEventPage": {
     "title": "Create Event",
@@ -2576,7 +2578,7 @@
   },
   "invoicePage": {
     "back": "Billing",
-    "family": "Family",
+    "family": "Billing account",
     "metadataTitle": "Invoice"
   },
   "eventPage": {

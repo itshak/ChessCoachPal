@@ -10,7 +10,7 @@ import {loadCanonicalBillingParticipants,participantBillingKey}
 
 export type CanonicalInvoiceItem={
  kind:"lesson"|"travel";sessionId:string;studentId:string;
- guardianId:string;description:string;quantity:number;
+ billingAccountId:string;description:string;quantity:number;
  unitCents:number;amountCents:number;missingRate:boolean;
 };
 export type CanonicalCreditInputs={
@@ -21,7 +21,7 @@ export type CanonicalDerivedPeriod={
  items:CanonicalInvoiceItem[];
  skippedAlreadyInvoiced:number;
  newRedemptions:Map<string,string>;
- creditedByGuardian:Map<string,number>;
+ creditedByBillingAccount:Map<string,number>;
 };
 export function canonicalBillableStatus(status:string|null):AttendanceStatus|null{
  switch(status){
@@ -66,7 +66,7 @@ export async function getInvoicedParticipantKeys(
 export async function deriveCanonicalPeriodItems(
  db:SupabaseClient,teacherId:string,
  periodStart:string,periodEnd:string,policy:TeacherPolicy,opts:{
-  guardianId?:string;
+  billingAccountId?:string;
   excludeParticipantKeys?:Set<string>;
   travelInvoicedParticipantKeys?:Set<string>;
   credits?:CanonicalCreditInputs;
@@ -82,13 +82,20 @@ export async function deriveCanonicalPeriodItems(
  for(const row of rows){
   const status=canonicalBillableStatus(row.attendanceStatus);
   if(!status)continue;
-  if(opts.guardianId&&row.guardianId!==opts.guardianId)continue;
+  if(opts.billingAccountId&&row.billingAccountId!==opts.billingAccountId)continue;
+  if(isBillable({
+    attendanceStatus:status,noticeAt:row.noticeAt,startsAt:row.startsAt,
+    makeupForSessionId:row.makeupForSessionId,
+  },policy)&&!row.billingAccountId)
+    throw new Error("Explicit billing account assignment required for "+
+      row.studentName+" at "+row.lessonDate+" / workplace "+row.workplaceId);
   const key=participantBillingKey(row.sessionId,row.studentId);
   if(exclude.has(key)){skippedAlreadyInvoiced++;continue;}
   participants.set(key,{sessionId:row.sessionId,studentId:row.studentId});
   inputs.push({
    lessonId:key,studentId:row.studentId,studentName:row.studentName,
-   guardianId:row.guardianId,lessonDate:row.lessonDate,
+   workplaceId:row.workplaceId,
+   billingAccountId:row.billingAccountId,lessonDate:row.lessonDate,
    startsAt:row.startsAt,durationMinutes:row.durationMinutes,
    makeupForSessionId:row.makeupForSessionId,attendanceStatus:status,
    noticeAt:row.noticeAt,isHomeVisit:row.isHomeVisit,
@@ -106,18 +113,18 @@ export async function deriveCanonicalPeriodItems(
  }
  const redeemed=opts.credits?.redeemedParticipantKeys??new Set<string>();
  const candidates:CreditCandidate[]=inputs.filter(x=>
-   x.guardianId&&isBillable(x,policy)&&!redeemed.has(x.lessonId))
+   x.billingAccountId&&isBillable(x,policy)&&!redeemed.has(x.lessonId))
  .map(x=>({
-  lessonId:x.lessonId,studentId:x.studentId,
+  lessonId:x.lessonId,studentId:x.studentId,workplaceId:x.workplaceId,
   lessonDate:x.lessonDate,startsAt:x.startsAt,durationMinutes:x.durationMinutes,
  }));
  const newRedemptions=opts.credits
    ?allocateCredits(candidates,opts.credits.packages)
    :new Map<string,string>();
- const creditedByGuardian=new Map<string,number>();
+ const creditedByBillingAccount=new Map<string,number>();
  for(const x of inputs){
-  if(!x.guardianId||!newRedemptions.has(x.lessonId))continue;
-  creditedByGuardian.set(x.guardianId,(creditedByGuardian.get(x.guardianId)??0)+1);
+  if(!x.billingAccountId||!newRedemptions.has(x.lessonId))continue;
+  creditedByBillingAccount.set(x.billingAccountId,(creditedByBillingAccount.get(x.billingAccountId)??0)+1);
  }
  const drafts=deriveInvoiceItems(inputs,policy,{
   creditedLessonIds:new Set([...redeemed,...newRedemptions.keys()]),
@@ -128,9 +135,9 @@ export async function deriveCanonicalPeriodItems(
   if(!participant)throw new Error("Orphaned canonical invoice draft");
   return {
    kind:d.kind,sessionId:participant.sessionId,studentId:participant.studentId,
-   guardianId:d.guardianId,description:d.description,quantity:d.quantity,
+   billingAccountId:d.billingAccountId,description:d.description,quantity:d.quantity,
    unitCents:d.unitCents,amountCents:d.amountCents,missingRate:d.missingRate,
   };
  });
- return {items,skippedAlreadyInvoiced,newRedemptions,creditedByGuardian};
+ return {items,skippedAlreadyInvoiced,newRedemptions,creditedByBillingAccount};
 }

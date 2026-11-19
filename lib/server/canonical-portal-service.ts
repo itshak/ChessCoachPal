@@ -17,7 +17,7 @@ export async function cancelCanonicalParticipant(
  if(typeof reason!=="string"||reason.length>1000)
   throw new CanonicalPortalError("VALIDATION_ERROR",400,"Cancellation note is too long");
  const {data,error}=await serviceDb.rpc("ccp_scoped_portal_cancel",{
-  p_portal_token:token,p_session_id:sessionId,
+  p_grant_secret:token,p_session_id:sessionId,
   p_student_id:studentId,p_cancel_reason:reason.trim(),
  });
  if(error){

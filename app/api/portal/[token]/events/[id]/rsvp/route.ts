@@ -25,7 +25,7 @@ export async function POST(req:NextRequest,{params}:{params:Promise<{token:strin
     return NextResponse.json({error:"NOT_FOUND"},{status:404,headers});
   }
   const {data,error}=await db.rpc("ccp_scoped_portal_rsvp",{
-    p_portal_token:token,p_event_id:id,p_status:parsed.data.status,
+    p_grant_secret:token,p_event_id:id,p_status:parsed.data.status,
     p_party_size:parsed.data.partySize,p_note:parsed.data.note.trim(),
   });
   if(error){

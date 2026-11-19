@@ -13,7 +13,7 @@ import { InvoiceStatusBadge } from "@/components/teacher/billing/BillingList";
 
 export interface InvoiceListRow {
   id: string;
-  familyName: string;
+  billingAccountName: string;
   periodStart: string;
   periodEnd: string;
   status: string;
@@ -97,7 +97,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
             subtotalCents:number;currency:string;};
         })=>{
           const invoice=actionable.find(row=>row.id===item.id);
-          return (invoice?.familyName??item.id)+": "+
+          return (invoice?.billingAccountName??item.id)+": "+
             (item.preview.recipients.length?
               item.preview.recipients.join(", "):t("noEmail"))+
             " · "+formatMoney(item.preview.subtotalCents,item.preview.currency);
@@ -230,7 +230,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
               type="checkbox"
               checked={checked}
               onChange={() => toggle(inv.id)}
-              aria-label={t("selectFamily",{name:inv.familyName})}
+              aria-label={t("selectFamily",{name:inv.billingAccountName})}
               className="cursor-pointer shrink-0"
               onClick={(e) => e.stopPropagation()}
             />
@@ -239,7 +239,7 @@ export function InvoiceList({ invoices }: { invoices: InvoiceListRow[] }) {
               className="flex flex-1 items-center justify-between gap-3 min-w-0"
             >
               <div className="min-w-0">
-                <div className="font-medium truncate"><bdi dir="auto">{inv.familyName}</bdi></div>
+                <div className="font-medium truncate"><bdi dir="auto">{inv.billingAccountName}</bdi></div>
                 <div className="text-xs text-muted">
                   {inv.periodStart} → {inv.periodEnd}
                 </div>

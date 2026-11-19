@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
-import {buildStudioExport,importStudioExport,parseExportPayload,type StudioDataExport} from "@/lib/data-transfer";
+import {buildStudioExport,importStudioExport,parseExportPayload,OPERATOR_RESTORE_ONLY,type StudioDataExport} from "@/lib/data-transfer";
 
 type Db=SupabaseClient;
 export class TeacherTransferError extends Error {
@@ -9,33 +9,30 @@ export class TeacherTransferError extends Error {
 const fail=(status:number,code:string,message:string)=>new TeacherTransferError(status,code,message);
 export const MAX_MCP_EXPORT_BYTES=512*1024;
 export const MAX_MCP_IMPORT_BYTES=2*1024*1024;
-/** Full website backups may preserve portal links. Model-visible exports never
- * include guardian portal credentials, provider credentials or OAuth sessions.
- * Importing a sanitized backup rotates the family's portal token.
+/** Portable exports never include portal capability digests or raw secrets.
+ * Native financial evidence is backed up in full but cannot be forged by a
+ * teacher import: supervised operator reconciliation remains mandatory.
  */
 export async function teacherExport(db:Db,teacherId:string){
  return await buildStudioExport(db,teacherId);
 }
 export async function teacherSafeExport(db:Db,teacherId:string){
  const full=await teacherExport(db,teacherId);
- const raw=full.tables.guardians;
- const familyRows=Array.isArray(raw)?raw as Record<string,unknown>[]:[];
  const contacts=Array.isArray(full.tables.contacts)
   ? full.tables.contacts as Record<string,unknown>[] : [];
+ const received=Array.isArray(full.tables.received_payments)
+  ? full.tables.received_payments as Record<string,unknown>[] : [];
  const tables={
    ...full.tables,
-   guardians:familyRows.map(({portal_token,...safe})=>safe),
-   // Bulk model-visible exports should not disclose every contact's
-   // personal communication details. The authenticated website JSON backup
-   // remains complete and is the lossless owner-controlled export.
    contacts:contacts.map(({email,phone,...safe})=>safe),
+   received_payments:received.map(({external_reference,...safe})=>safe),
  };
  const payload={...full,tables};
  const encoded=JSON.stringify(payload);
  if(Buffer.byteLength(encoded,"utf8")>MAX_MCP_EXPORT_BYTES)
   throw fail(413,"EXPORT_TOO_LARGE",
    "Export exceeds MCP response limit. Download the full backup securely from /api/settings/export while signed in to ChessCoachPal.");
- return {export:payload,guardianPortalLinksExcluded:true,contactDetailsExcluded:true,
+ return {export:payload,portalCredentialsExcluded:true,contactDetailsExcluded:true,
   bytes:Buffer.byteLength(encoded,"utf8")};
 }
 export type TransferPreview={payload:StudioDataExport;sha256:string;counts:Record<string,number>;
@@ -50,11 +47,15 @@ export function teacherImportPreview(raw:unknown,maxBytes=MAX_MCP_IMPORT_BYTES):
  for(const [name,entries] of Object.entries(payload.tables)){
   counts[name]=Array.isArray(entries)?entries.length:entries?1:0;
  }
- const guardians=payload.tables.guardians;
- const missingToken=Array.isArray(guardians)&&guardians.some(x=>!x.portal_token);
+ const protectedKinds=OPERATOR_RESTORE_ONLY.filter(table=>
+    Array.isArray(payload.tables[table])&&payload.tables[table].length>0);
  const warnings=[
-  "Preview changes no records. Applying the exact approved SHA-256 runs as one transaction: any invalid or unauthorized record rolls back the entire import. Matching IDs may still update existing teaching and financial data.",
-  ...(missingToken?["Imported guardians without portal links receive freshly generated links. Existing portal links for those records will be invalidated."]:[]),
+  "Preview changes no records. Import requires a SHA-256-reviewed, one-transaction tenant-scoped source and never mints guest portal access.",
+  "Scoped portal grants in the portable backup contain no token digests; teachers must explicitly reissue grants after restore.",
+  ...(protectedKinds.length?[(
+    "This backup includes immutable financial or delivery history ("+
+    protectedKinds.join(", ")+"). Automatic restore is blocked until a separately authorized operator preserves and verifies that evidence."
+  )]:[]),
  ];
  return {payload,sha256:createHash("sha256").update(serialized).digest("hex"),counts,bytes,warnings};
 }

@@ -43,7 +43,8 @@ describe("generic attendance by-date MCP contract",()=>{
 describe("all-data CSV privacy, schema and portability",()=>{
  const sample:StudioDataExport={exportedAt:"2026-11-17T09:00:00.000Z",
   teacherId:studentId,teacher_profile:{display_name:"Coach"},tables:{
-   guardians:[{id:"parent",name:"מורה",portal_token:"SECRET-PORTAL",email:"x@y.tld"}],
+   portal_access_grants:[{id:"grant",contact_id:"person",token_digest:"SECRET-DIGEST"}],
+   contacts:[{id:"person",display_name:"מורה",email:"x@y.tld"}],
    students:[{id:"student",name:"=HYPERLINK('http://evil')",notes:{level:"+SUM(1)"}}],
    workplaces:[],
    ccp_historical_attendance_evidence:[{attended_on:"2026-01-05",student_id:"student"}],
@@ -51,14 +52,14 @@ describe("all-data CSV privacy, schema and portability",()=>{
   }};
  it("makes one CSV per table and excludes credential columns while preserving pedagogical data",()=>{
   const tables=csvTables(sample);
-  expect(tables.guardians[0].portal_token).toBeUndefined();
+  expect(tables.portal_access_grants[0].token_digest).toBeUndefined();
   expect(tables.teacher_settings[0].ai_api_key).toBeUndefined();
   expect(tables.teacher_profile).toEqual([{display_name:"Coach"}]);
   const zip=unzipSync(makeTeacherCsvZip(sample));
   expect(Object.keys(zip)).toEqual(expect.arrayContaining([
-   "README.json","guardians.csv","students.csv","workplaces.csv",
+   "README.json","portal_access_grants.csv","students.csv","workplaces.csv",
    "ccp_historical_attendance_evidence.csv","teacher_profile.csv"]));
-  expect(strFromU8(zip["guardians.csv"])).not.toContain("SECRET-PORTAL");
+  expect(strFromU8(zip["portal_access_grants.csv"])).not.toContain("SECRET-DIGEST");
   expect(strFromU8(zip["teacher_settings.csv"])).not.toContain("PRIVATE_KEY");
   expect(strFromU8(zip["students.csv"])).toContain("'=HYPERLINK(");
   expect(strFromU8(zip["students.csv"])).toContain('""level""');
