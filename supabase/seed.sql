@@ -105,8 +105,10 @@ INSERT INTO public.lesson_slots (
 
 -- Synthetic students belong to the teacher's initial private-coaching
 -- workplace. Canonical private sessions validate frozen roster and enrollment.
-INSERT INTO public.workplace_enrollments (teacher_id,workplace_id,student_id)
-SELECT s.teacher_id,w.id,s.id
+-- Explicitly date synthetic-only membership before its synthetic completed lesson.
+-- Never infer the start of historical membership from that lesson in real data.
+INSERT INTO public.workplace_enrollments (teacher_id,workplace_id,student_id,starts_on,source)
+SELECT s.teacher_id,w.id,s.id,(CURRENT_DATE - interval '30 days')::date,'reimport'
 FROM public.students s
 JOIN LATERAL (
  SELECT id FROM public.workplaces w
