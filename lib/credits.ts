@@ -20,6 +20,8 @@ export interface CreditPackageInput {
   credits: number;
   /** Credits already written to the redemption ledger. */
   usedCredits: number;
+  /** Explicit, reviewed entitlement changes; grants positive, forfeitures and transfers out negative. */
+  adjustmentCredits?: number;
   /** YYYY-MM-DD; the first lesson date the package can cover. */
   startsOn: string;
   /** YYYY-MM-DD, inclusive; null = never expires. */
@@ -78,7 +80,7 @@ export function allocateCredits(
   packages: CreditPackageInput[]
 ): Map<string, string> {
   const remaining = new Map(
-    packages.map((p) => [p.id, Math.max(0, p.credits - p.usedCredits)])
+    packages.map((p) => [p.id, Math.max(0, p.credits + (p.adjustmentCredits ?? 0) - p.usedCredits)])
   );
   const ordered = [...packages].sort(comparePackages);
   const sortedLessons = [...lessons].sort((a, b) =>
@@ -133,7 +135,7 @@ export function summarizeCreditBalances(
     const pendingCredits = pendingByPackage.get(pkg.id) ?? 0;
     const remainingCredits = Math.max(
       0,
-      pkg.credits - pkg.usedCredits - pendingCredits
+      pkg.credits + (pkg.adjustmentCredits ?? 0) - pkg.usedCredits - pendingCredits
     );
     let state: CreditPackageState;
     if (!pkg.active) state = "pending";
