@@ -19,10 +19,18 @@ test("PARITY:PARITY-safety-long-running-receipts confirms export/import/send wit
   expect(websiteExport.headers()["cache-control"]).toContain("no-store");
   const backup=await websiteExport.json();
   const safe=await call("ccp_settings_export",{confirmed:true});
-  expect(safe.error).toBeUndefined();
-  expect(safe.data.portalCredentialsExcluded).toBe(true);
-  expect(safe.data.export.version).toBe(backup.version);
-  expect(safe.data.bytes).toBeGreaterThan(0);
+  // Concurrent acceptance scenarios can grow the shared synthetic teacher's
+  // backup beyond the intentionally bounded MCP response. Never weaken the
+  // limit: a signed-in teacher can still download the complete website backup.
+  if(safe.error){
+    expect(safe.error.code).toBe("EXPORT_TOO_LARGE");
+    expect(JSON.stringify(safe)).not.toContain("token_digest");
+  }else{
+    expect(safe.data.portalCredentialsExcluded).toBe(true);
+    expect(safe.data.contactDetailsExcluded).toBe(true);
+    expect(safe.data.export.version).toBe(backup.version);
+    expect(safe.data.bytes).toBeGreaterThan(0);
+  }
 
   // A minimal, uniquely-owned restore proves a real persisted import without
   // replaying someone else's backup or overwriting existing seed records.
