@@ -11663,8 +11663,8 @@ CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;
 -- delete frozen rosters or historical lessons).
 ALTER TABLE public.group_enrollments
  DROP CONSTRAINT group_enrollments_teacher_id_workplace_id_student_id_fkey;
-ALTER TABLE public.teaching_sessions
- DROP CONSTRAINT teaching_sessions_teacher_id_workplace_id_student_id_fkey;
+-- The baseline has already dropped this composite FK above in favor of
+-- ccp_direct_session_enrollment_guard. Keep one single removal only.
 ALTER TABLE public.workplace_enrollments
  DROP CONSTRAINT workplace_enrollments_teacher_id_workplace_id_student_id_key;
 ALTER TABLE public.teaching_sessions
