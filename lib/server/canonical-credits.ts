@@ -41,6 +41,29 @@ export async function loadCanonicalCreditPackages(db:SupabaseClient,teacherId:st
   if(all.length>20000)throw new RangeError("Credit packages exceed safe inventory");
   if((data?.length??0)<PAGE)break;
  }
+ // A package's canonical remaining amount includes every approved
+ // entitlement event. Use one tenant-bound, paginated ledger read; a
+ // post-archive package still participates in reporting and redemptions.
+ const adjustmentTotal=new Map<string,number>();
+ const extension=new Map<string,string>();
+ const packageIds=new Set(all.map(x=>x.id));
+ for(let offset=0;;offset+=PAGE){
+  const {data,error}=await db.from("credit_adjustment_events")
+   .select("id,package_id,kind,credits_delta,new_expires_on,recorded_at")
+   .eq("teacher_id",teacherId)
+   .order("recorded_at",{ascending:true}).order("id")
+   .range(offset,offset+PAGE-1);
+  if(error)throw new Error("Unable to load canonical credit adjustments");
+  for(const row of data??[]){
+   if(!packageIds.has(row.package_id))continue;
+   adjustmentTotal.set(row.package_id,
+    (adjustmentTotal.get(row.package_id)??0)+row.credits_delta);
+   if(row.kind==="expiry_extension"&&row.new_expires_on)
+    extension.set(row.package_id,row.new_expires_on);
+  }
+  if(offset>100000)throw new RangeError("Credit adjustments exceed safe inventory");
+  if((data?.length??0)<PAGE)break;
+ }
  const ids=[...new Set(all.flatMap(x=>(x.credit_redemptions??[])
    .flatMap(r=>r.session_id?[r.session_id]:[])))];
  const starts=new Map<string,{starts_at:string;local_timezone:string|null;workplace_id:string}>();
@@ -65,7 +88,8 @@ export async function loadCanonicalCreditPackages(db:SupabaseClient,teacherId:st
   return {
    id:row.id,studentId:row.student_id,workplaceId:row.workplace_id,durationMinutes:row.duration_minutes,
    credits:row.credits,usedCredits:redemptions.length,
-   startsOn:row.starts_on,expiresOn:row.expires_on,
+   adjustmentCredits:adjustmentTotal.get(row.id)??0,
+   startsOn:row.starts_on,expiresOn:extension.get(row.id)??row.expires_on,
    active:invoiceStatus==="sent"||invoiceStatus==="paid",
    invoiceId:row.invoice_id,invoiceStatus,priceCents:row.price_cents,
    createdAt:row.created_at,redemptions,
