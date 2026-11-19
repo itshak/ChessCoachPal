@@ -4360,7 +4360,9 @@ BEGIN
   IF NOT EXISTS(
     SELECT 1 FROM public.workplace_enrollments e
     WHERE e.teacher_id=v_teacher AND e.student_id=p_student_id
-      AND e.workplace_id=p_workplace_id
+      AND e.workplace_id=p_workplace_id AND e.cancelled_at IS NULL
+      AND (e.starts_on IS NULL OR e.starts_on<=p_starts_on)
+      AND (e.ends_on IS NULL OR e.ends_on>=p_starts_on)
   ) THEN
     RAISE EXCEPTION 'CREDIT_WORKPLACE_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
   END IF;
@@ -7515,6 +7517,8 @@ DECLARE
  v_session public.teaching_sessions%ROWTYPE;
  v_status text;
  v_used integer;
+ v_adjusted bigint;
+ v_extended date;
  v_date date;
 BEGIN
  IF NEW.session_id IS NULL THEN
@@ -7551,8 +7555,14 @@ BEGIN
     (SELECT w.timezone FROM public.workplaces w
       WHERE w.id=v_session.workplace_id
         AND w.teacher_id=v_session.teacher_id),'UTC'))::date;
+ SELECT e.new_expires_on INTO v_extended
+ FROM public.credit_adjustment_events e
+ WHERE e.teacher_id=v_package.teacher_id AND e.package_id=v_package.id
+   AND e.kind='expiry_extension'
+ ORDER BY e.recorded_at DESC,e.id DESC LIMIT 1;
  IF v_date<v_package.starts_on OR
-   (v_package.expires_on IS NOT NULL AND v_date>v_package.expires_on) THEN
+   (coalesce(v_extended,v_package.expires_on) IS NOT NULL
+     AND v_date>coalesce(v_extended,v_package.expires_on)) THEN
    RAISE EXCEPTION 'CREDIT_OUTSIDE_PACKAGE_DATES' USING ERRCODE='23514';
  END IF;
  SELECT status INTO v_status FROM public.invoices
@@ -7562,7 +7572,10 @@ BEGIN
  END IF;
  SELECT count(*) INTO v_used FROM public.credit_redemptions
    WHERE package_id=v_package.id AND id<>NEW.id;
- IF v_used>=v_package.credits THEN
+ SELECT coalesce(sum(credits_delta),0) INTO v_adjusted
+ FROM public.credit_adjustment_events
+ WHERE package_id=v_package.id AND teacher_id=v_package.teacher_id;
+ IF v_used>=v_package.credits+v_adjusted THEN
    RAISE EXCEPTION 'CREDIT_PACKAGE_EXHAUSTED' USING ERRCODE='23514';
  END IF;
  IF EXISTS(
@@ -12050,3 +12063,284 @@ REVOKE ALL ON FUNCTION public.ccp_workplace_enrollment_end_commit(
  uuid,uuid,bigint,uuid,text,boolean) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_workplace_enrollment_end_commit(
  uuid,uuid,bigint,uuid,text,boolean) TO authenticated;
+
+-- Every credit entitlement adjustment is an explicit owner-approved event,
+-- separate from the legacy invoice and current received-payment ledgers.
+-- No unrecorded cash movement, automatic transfer or archive side effect.
+ALTER TABLE public.credit_adjustment_events
+ ADD COLUMN refund_reversal_id uuid;
+ALTER TABLE public.credit_adjustment_events
+ ADD CONSTRAINT credit_adjustment_refund_reversal_owner
+ FOREIGN KEY(refund_reversal_id,teacher_id)
+ REFERENCES public.financial_reversals(id,teacher_id) ON DELETE RESTRICT;
+CREATE UNIQUE INDEX credit_adjustment_refund_reversal_exactly_once
+ ON public.credit_adjustment_events(teacher_id,refund_reversal_id)
+ WHERE refund_reversal_id IS NOT NULL;
+ALTER TABLE public.credit_adjustment_events
+ ADD CONSTRAINT credit_adjustment_funding_shape CHECK(
+   (kind='refund_entitlement' AND source_payment_id IS NOT NULL
+       AND refund_reversal_id IS NOT NULL)
+   OR (kind<>'refund_entitlement' AND source_payment_id IS NULL
+       AND refund_reversal_id IS NULL));
+COMMENT ON TABLE public.credit_adjustment_events IS
+ 'Append-only teacher-approved entitlement changes. Refund entitlement requires a separate recorded payment refund reversal; this table does not move cash.';
+
+CREATE OR REPLACE FUNCTION public.ccp_credit_adjustment_preview(
+ p_package_id uuid
+) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=public,pg_temp AS $credit_adjustment_preview$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_package public.credit_packages%ROWTYPE;
+ v_invoice public.invoices%ROWTYPE;
+ v_used bigint;v_delta bigint;v_paid bigint;
+ v_expiry date;
+BEGIN
+ IF v_teacher IS NULL OR p_package_id IS NULL THEN
+  RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_package FROM public.credit_packages
+  WHERE id=p_package_id AND teacher_id=v_teacher;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ SELECT * INTO v_invoice FROM public.invoices
+  WHERE id=v_package.invoice_id AND teacher_id=v_teacher;
+ IF NOT FOUND THEN RAISE EXCEPTION 'INVOICE_NOT_OWNED' USING ERRCODE='42501';END IF;
+ SELECT count(*) INTO v_used FROM public.credit_redemptions
+  WHERE teacher_id=v_teacher AND package_id=p_package_id;
+ SELECT coalesce(sum(credits_delta),0) INTO v_delta
+  FROM public.credit_adjustment_events
+  WHERE teacher_id=v_teacher AND package_id=p_package_id;
+ SELECT coalesce(sum(amount_cents),0) INTO v_paid
+  FROM public.payments WHERE invoice_id=v_invoice.id;
+ SELECT new_expires_on INTO v_expiry
+  FROM public.credit_adjustment_events
+  WHERE teacher_id=v_teacher AND package_id=p_package_id
+    AND kind='expiry_extension'
+  ORDER BY recorded_at DESC,id DESC LIMIT 1;
+ RETURN jsonb_build_object(
+  'packageId',v_package.id,'studentId',v_package.student_id,
+  'workplaceId',v_package.workplace_id,'durationMinutes',v_package.duration_minutes,
+  'purchasedCredits',v_package.credits,'redeemedCredits',v_used,
+  'adjustmentCredits',v_delta,
+  'availableCredits',v_package.credits+v_delta-v_used,
+  'startsOn',v_package.starts_on,
+  'expiresOn',coalesce(v_expiry,v_package.expires_on),
+  'invoiceId',v_invoice.id,'invoiceStatus',v_invoice.status,
+  'invoiceAmountCents',v_package.price_cents,'receivedOnInvoiceCents',v_paid,
+  'fullyFunded',(v_invoice.status='paid' AND
+    v_paid>=v_package.price_cents));
+END;
+$credit_adjustment_preview$;
+REVOKE ALL ON FUNCTION public.ccp_credit_adjustment_preview(uuid)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_credit_adjustment_preview(uuid)
+ TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.ccp_credit_adjustment_commit(
+ p_package_id uuid,p_kind text,p_credits integer,p_expected_balance bigint,
+ p_destination_package_id uuid,p_new_expires_on date,
+ p_source_payment_id uuid,p_refund_reversal_id uuid,
+ p_request_id uuid,p_reason text,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $credit_adjustment_commit$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_src public.credit_packages%ROWTYPE;
+ v_dst public.credit_packages%ROWTYPE;
+ v_invoice public.invoices%ROWTYPE;
+ v_dst_invoice public.invoices%ROWTYPE;
+ v_refund public.financial_reversals%ROWTYPE;
+ v_payment public.received_payments%ROWTYPE;
+ v_old public.agent_tool_receipts%ROWTYPE;
+ v_hash text;v_used bigint;v_delta bigint;v_balance bigint;
+ v_dst_used bigint;v_dst_delta bigint;v_paid bigint;v_dst_paid bigint;
+ v_original_expiry date;v_min_refund bigint;
+ v_event uuid;v_receipt jsonb;v_lock record;v_today date;v_timezone text;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_package_id IS NULL OR p_request_id IS NULL OR
+   p_kind NOT IN ('manual_grant','forfeiture','refund_entitlement',
+                  'transfer','expiry_extension') OR p_kind IS NULL OR
+   p_confirmed IS DISTINCT FROM true OR
+   p_reason IS NULL OR length(btrim(p_reason)) NOT BETWEEN 8 AND 1000 OR
+   p_expected_balance IS NULL OR p_expected_balance<0 OR
+   ((p_kind='expiry_extension' AND (p_credits<>0 OR p_new_expires_on IS NULL))
+    OR (p_kind<>'expiry_extension' AND (p_credits IS NULL OR p_credits NOT BETWEEN 1 AND 200
+                                      OR p_new_expires_on IS NOT NULL))) OR
+   ((p_kind='transfer' AND (p_destination_package_id IS NULL OR
+                            p_destination_package_id=p_package_id))
+    OR (p_kind<>'transfer' AND p_destination_package_id IS NOT NULL)) OR
+   ((p_kind='refund_entitlement' AND
+      (p_refund_reversal_id IS NULL OR p_source_payment_id IS NULL))
+    OR (p_kind<>'refund_entitlement' AND
+      (p_refund_reversal_id IS NOT NULL OR p_source_payment_id IS NOT NULL))) THEN
+   RAISE EXCEPTION 'INVALID_CREDIT_ADJUSTMENT' USING ERRCODE='22023';
+ END IF;
+ -- Teacher row lock serializes requests from both transports; the package
+ -- row locks serialize a refund/transfer/forfeit with a concurrent redemption.
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ v_hash:=md5(jsonb_build_array('credit.adjust',p_package_id,p_kind,p_credits,
+   p_expected_balance,p_destination_package_id,p_new_expires_on,
+   p_source_payment_id,p_refund_reversal_id,p_reason,p_confirmed)::text);
+ SELECT * INTO v_old FROM public.agent_tool_receipts
+ WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ IF FOUND THEN
+  IF v_old.operation<>'credit.adjust' OR v_old.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'CREDIT_REQUEST_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_old.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ FOR v_lock IN SELECT id FROM public.credit_packages
+ WHERE teacher_id=v_teacher AND
+  (id=p_package_id OR id=p_destination_package_id)
+ ORDER BY id FOR UPDATE LOOP
+  NULL;
+ END LOOP;
+ SELECT * INTO v_src FROM public.credit_packages
+ WHERE id=p_package_id AND teacher_id=v_teacher;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ SELECT * INTO v_invoice FROM public.invoices
+ WHERE teacher_id=v_teacher AND id=v_src.invoice_id;
+ IF NOT FOUND OR v_invoice.status='void' THEN
+  RAISE EXCEPTION 'CREDIT_INVOICE_NOT_OWNED_OR_VOID'
+   USING ERRCODE='42501';
+ END IF;
+ SELECT count(*) INTO v_used FROM public.credit_redemptions
+ WHERE teacher_id=v_teacher AND package_id=p_package_id;
+ SELECT coalesce(sum(credits_delta),0) INTO v_delta
+ FROM public.credit_adjustment_events
+ WHERE teacher_id=v_teacher AND package_id=p_package_id;
+ v_balance:=v_src.credits+v_delta-v_used;
+ IF v_balance<>p_expected_balance THEN
+  RAISE EXCEPTION 'CREDIT_BALANCE_CHANGED' USING ERRCODE='23505';
+ END IF;
+ IF p_kind IN ('forfeiture','refund_entitlement','transfer')
+   AND v_balance<p_credits THEN
+  RAISE EXCEPTION 'INSUFFICIENT_CREDIT_BALANCE' USING ERRCODE='23514';
+ END IF;
+ SELECT coalesce(sum(amount_cents),0) INTO v_paid
+ FROM public.payments WHERE invoice_id=v_src.invoice_id;
+ IF p_kind IN ('transfer','refund_entitlement') AND
+   (v_invoice.status<>'paid' OR v_paid<v_src.price_cents) THEN
+  RAISE EXCEPTION 'CREDIT_INVOICE_NOT_FUNDED' USING ERRCODE='23514';
+ END IF;
+ IF p_kind='transfer' THEN
+  SELECT * INTO v_dst FROM public.credit_packages
+  WHERE id=p_destination_package_id AND teacher_id=v_teacher;
+  IF NOT FOUND THEN RAISE EXCEPTION 'DESTINATION_PACKAGE_NOT_OWNED'
+    USING ERRCODE='42501';END IF;
+  SELECT * INTO v_dst_invoice FROM public.invoices
+  WHERE id=v_dst.invoice_id AND teacher_id=v_teacher;
+  IF NOT FOUND OR v_invoice.billing_account_id<>v_dst_invoice.billing_account_id
+    OR v_invoice.currency<>v_dst_invoice.currency
+    OR v_src.duration_minutes<>v_dst.duration_minutes
+    OR v_dst_invoice.status NOT IN ('sent','paid') THEN
+    RAISE EXCEPTION 'TRANSFER_PAYER_CURRENCY_OR_DURATION_MISMATCH'
+       USING ERRCODE='23514';
+  END IF;
+  SELECT coalesce(sum(amount_cents),0) INTO v_dst_paid
+  FROM public.payments WHERE invoice_id=v_dst.invoice_id;
+  IF v_dst.price_cents>0 AND (v_dst_invoice.status<>'paid'
+     OR v_dst_paid<v_dst.price_cents) THEN
+    RAISE EXCEPTION 'DESTINATION_PACKAGE_NOT_FUNDED'
+       USING ERRCODE='23514';
+  END IF;
+  SELECT timezone INTO v_timezone FROM public.teacher_settings
+    WHERE teacher_id=v_teacher;
+  v_today:=(clock_timestamp() AT TIME ZONE coalesce(v_timezone,'UTC'))::date;
+  IF NOT EXISTS(SELECT 1 FROM public.workplace_enrollments e
+   WHERE e.teacher_id=v_teacher AND e.student_id=v_dst.student_id
+     AND e.workplace_id=v_dst.workplace_id AND e.cancelled_at IS NULL
+     AND (e.starts_on IS NULL OR e.starts_on<=v_today)
+     AND (e.ends_on IS NULL OR e.ends_on>=v_today)) THEN
+   RAISE EXCEPTION 'DESTINATION_ENROLLMENT_NOT_ACTIVE'
+      USING ERRCODE='23514';
+  END IF;
+  SELECT count(*) INTO v_dst_used FROM public.credit_redemptions
+   WHERE teacher_id=v_teacher AND package_id=v_dst.id;
+  SELECT coalesce(sum(credits_delta),0) INTO v_dst_delta
+   FROM public.credit_adjustment_events
+   WHERE teacher_id=v_teacher AND package_id=v_dst.id;
+  IF v_dst.credits+v_dst_delta-v_dst_used<0 THEN
+   RAISE EXCEPTION 'DESTINATION_BALANCE_INVALID' USING ERRCODE='23514';
+  END IF;
+ END IF;
+ IF p_kind='expiry_extension' THEN
+  SELECT new_expires_on INTO v_original_expiry
+  FROM public.credit_adjustment_events
+  WHERE teacher_id=v_teacher AND package_id=p_package_id
+    AND kind='expiry_extension'
+  ORDER BY recorded_at DESC,id DESC LIMIT 1;
+  v_original_expiry:=coalesce(v_original_expiry,v_src.expires_on);
+  IF v_original_expiry IS NULL OR p_new_expires_on<=v_original_expiry THEN
+    RAISE EXCEPTION 'EXPIRY_EXTENSION_MUST_EXTEND'
+       USING ERRCODE='23514';
+  END IF;
+ END IF;
+ IF p_kind='refund_entitlement' THEN
+  SELECT * INTO v_refund FROM public.financial_reversals
+  WHERE id=p_refund_reversal_id AND teacher_id=v_teacher
+   AND kind='payment_refund' AND received_payment_id=p_source_payment_id
+  FOR KEY SHARE;
+  SELECT * INTO v_payment FROM public.received_payments
+  WHERE id=p_source_payment_id AND teacher_id=v_teacher
+  FOR KEY SHARE;
+  IF v_refund.id IS NULL OR v_payment.id IS NULL OR
+    v_payment.billing_account_id<>v_invoice.billing_account_id OR
+    v_payment.currency<>v_invoice.currency OR
+    v_src.price_cents<=0 THEN
+    RAISE EXCEPTION 'REFUND_PAYMENT_EVIDENCE_MISMATCH'
+      USING ERRCODE='23514';
+  END IF;
+  v_min_refund:=ceil(v_src.price_cents::numeric*p_credits/v_src.credits)::bigint;
+  IF v_refund.amount_cents<v_min_refund THEN
+    RAISE EXCEPTION 'REFUND_PROVENANCE_TOO_SMALL'
+      USING ERRCODE='23514';
+  END IF;
+ END IF;
+ INSERT INTO public.credit_adjustment_events(
+  teacher_id,student_id,package_id,kind,credits_delta,transfer_id,
+  new_expires_on,source_payment_id,refund_reversal_id,
+  approved_request_id,approval_reason,evidence
+ ) VALUES(
+  v_teacher,v_src.student_id,v_src.id,
+  CASE WHEN p_kind='transfer' THEN 'transfer_out' ELSE p_kind END,
+  CASE WHEN p_kind='expiry_extension' THEN 0
+       WHEN p_kind='manual_grant' THEN p_credits ELSE -p_credits END,
+  CASE WHEN p_kind='transfer' THEN p_request_id END,
+  p_new_expires_on,p_source_payment_id,p_refund_reversal_id,
+  p_request_id,btrim(p_reason),
+  jsonb_build_object('approvedBy',v_teacher,
+   'cashMoved',false,'fundedInvoice',v_invoice.status='paid' AND
+    v_paid>=v_src.price_cents,
+   'funding','teacher_concession_or_existing_entitlement')
+ ) RETURNING id INTO v_event;
+ IF p_kind='transfer' THEN
+  INSERT INTO public.credit_adjustment_events(
+   teacher_id,student_id,package_id,kind,credits_delta,transfer_id,
+   approved_request_id,approval_reason,evidence
+  ) VALUES(v_teacher,v_dst.student_id,v_dst.id,'transfer_in',
+   p_credits,p_request_id,gen_random_uuid(),btrim(p_reason),
+   jsonb_build_object('approvedBy',v_teacher,'cashMoved',false,
+     'pairedSourceEvent',v_event,'sourcePackageId',v_src.id));
+ END IF;
+ v_receipt:=jsonb_build_object('eventId',v_event,
+  'packageId',v_src.id,'kind',p_kind,'credits',p_credits,
+  'balanceBefore',v_balance,
+  'balanceAfter',v_balance+CASE WHEN p_kind='manual_grant'
+    THEN p_credits WHEN p_kind='expiry_extension' THEN 0 ELSE -p_credits END,
+  'destinationPackageId',p_destination_package_id,
+  'cashMoved',false,'idempotencyKey',p_request_id);
+ INSERT INTO public.agent_tool_receipts(
+  teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_request_id,'credit.adjust',v_hash,v_receipt);
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$credit_adjustment_commit$;
+REVOKE ALL ON FUNCTION public.ccp_credit_adjustment_commit(
+ uuid,text,integer,bigint,uuid,date,uuid,uuid,uuid,text,boolean)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_credit_adjustment_commit(
+ uuid,text,integer,bigint,uuid,date,uuid,uuid,uuid,text,boolean)
+ TO authenticated;
