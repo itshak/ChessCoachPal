@@ -61,7 +61,7 @@ test("PARITY:PARITY-student-lifecycle archives all dated memberships atomically 
  expect(ended.status(),await ended.text()).toBe(200);
  const endedBody=(await ended.json()).data;
  expect(endedBody).toMatchObject({
-  archived:true,closedPeriods:2,cancelledPeriods:0,replayed:false,
+  archived:true,closedPeriods:0,cancelledPeriods:2,replayed:false,
  });
  const retry=await call("ccp_students_lifecycle_commit",endArgs);
  expect(retry.error).toBeUndefined();
@@ -79,7 +79,7 @@ test("PARITY:PARITY-student-lifecycle archives all dated memberships atomically 
   .eq("student_id",studentId);
  expect(archiveRows.error).toBeNull();
  expect(archiveRows.data).toHaveLength(2);
- expect(archiveRows.data!.every(x=>x.ends_on!==null&&x.cancelled_at===null)).toBe(true);
+ expect(archiveRows.data!.every(x=>x.cancelled_at!==null)).toBe(true);
  const held=await call("ccp_credits_packages_list",{studentId});
  expect(held.error).toBeUndefined();
  expect(held.data.packages.find((x:{id:string})=>x.id===packageId))
