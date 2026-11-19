@@ -1,5 +1,8 @@
 # Tasks: replace families with contacts
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 **Incremental implementation note (2026-11-18; draft PR #104, NOT an acceptance
 decision):** The first contact/billing-account domain service and website/MCP
 operations, independent student relationship editor, primary Contacts

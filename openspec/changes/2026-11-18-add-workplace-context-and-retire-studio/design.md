@@ -1,5 +1,8 @@
 # Design: durable workplace context without duplicate domain identities
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 ## Existing touchpoints
 components/teacher/TeacherNav.tsx and app/(teacher)/layout.tsx render navigation without persistent workplace selector. app/(teacher)/dashboard/page.tsx uses global data; components/teacher/ChessCoachWorkspace.tsx, CoachingReportPanel.tsx and UnifiedLessonHistoryPanel.tsx maintain separate local selections. app/(teacher)/schedule/page.tsx, students/page.tsx and Learning surfaces must participate. Workplaces currently have id/name/timezone/currency/locale/policy; groups require workplace_id; student memberships use workplace_enrollments. studio_policies are teacher-global.
 

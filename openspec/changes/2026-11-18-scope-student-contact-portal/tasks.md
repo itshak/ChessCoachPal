@@ -1,5 +1,8 @@
 # Tasks: scoped Student & Contact Portal
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 - [ ] Inventory /portal page, calendar, cancel RPC, event RSVP, notes, invoice/credits/payment QR/Checkout, token rotation, all email templates, logs, shared-note flags and available live tokens.
 - [ ] Specify grant audience and per-resource scope by contact/student/workplace/financial-account; ensure school contact never sees private lessons/invoices and parent access is explicitly approved.
 - [ ] Update canonical baseline for grants/token digests/audit, tenant RLS, secure token mint/revoke and RPC authorization; prepare the final one-time cutover or clean rebuild/reimport plan: old tokens must be invalid, new grants explicitly approved and narrowly scoped.

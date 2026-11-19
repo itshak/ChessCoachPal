@@ -1,5 +1,8 @@
 # Design: original brand and UI architecture
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 ## Design-lab structure
 Create isolated /design-lab preview or a separately deployed preview with synthetic fixtures, no production writes. Component foundation switcher: Base UI / React Aria / Ariakit. Palette switcher: six or more token sets. Layout switcher: compact rows / editorial workbench / command-first hybrid. Provide deterministic scenario fixtures so differences are visible and comparable.
 

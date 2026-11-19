@@ -21,7 +21,11 @@ ADR-0017 requires one final authoritative fresh-install schema and **one separat
 | `2026-11-18-replace-families-with-contacts` | Existing candidate: contacts, student links, billing accounts; final cutover/reconciliation pending | Legacy mapping and financial preservation remain explicit release gates. |
 | `2026-11-18-scope-student-contact-portal` | Existing candidate: scoped grants and revocations; acceptance pending | Guest/RLS denial and restore/reconciliation gates must pass before acceptance. |
 
-## Dependency and release sequence
+## Mandatory schema-first execution gate
+
+[Unified SaaS schema and regression repair](2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md) is now **the first remaining implementation change**. It collects all schema requirements from every active proposal, finalizes one baseline and fixes schema-induced regressions before any downstream feature work. All other active proposals depend on its reviewed freeze and exact-head checks; their previous per-feature schema instructions are requirements handed to this foundation, not separate DDL phases.
+
+## Historical planning sequence (superseded by schema-first gate)
 
 1. Accept Contacts/Billing, Portal, Workplace Context and Compensation candidate code only after exact-head CI, full authenticated browser/MCP E2E, security, restore and OpenSpec acceptance. Historical invoices, payments, credits, packages, event RSVPs and Storage must be independently reconciled. This is **not** a live cutover.
 2. Before finalizing the schema, resolve the FIDE/national-rating data model and automatic online rating consent/job/evidence model together, sharing snapshot provenance and provider abstractions without duplicate tables.

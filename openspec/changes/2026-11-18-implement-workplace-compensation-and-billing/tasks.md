@@ -1,5 +1,8 @@
 # Tasks: compensation and billing contracts
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 - [ ] Inventory current studio rates, slots, student rates, group canonical billing, invoices, credits, payment records and employer/source-of-funds assumptions.
 - [ ] Define typed agreements, applicability/precedence, effective dates, cancellation/makeup rules, currencies and one-payer-per-charge policy; document unmatched/ambiguous fallback.
 - [ ] Define financial_obligations/earnings and payment allocations avoiding double-counted teacher hours, double-invoices, incorrect partial payments and retroactive rate rewriting.

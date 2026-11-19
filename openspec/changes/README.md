@@ -21,6 +21,10 @@ Each remaining proposal below contains four required artifacts: **proposal.md** 
 
 **2026-11-18 policy correction — binding [ADR-0017](../../docs/adr/0017-pre-v1-single-final-cutover-no-compatibility.md):** No backward compatibility before v1.0.0. All features target one final baseline; no family/studio/guardian compatibility endpoints, views, dual writes or old portal tokens in the accepted app. Development may use isolated fixtures and staged branches, but the real database gets **one final source-to-target migration OR one clean rebuild with deliberate import**, not incremental feature migrations. The owner explicitly permits the rebuild/reimport option. No real reset or migration is authorized by source approval; backup and a target-specific operator gate remain mandatory. New scoped portal grants are never inferred from old family access.
 
+## Mandatory first remaining implementation: unified schema and regression repair
+
+**NEW P0 execution gate:** [Freeze unified operator-only SaaS schema and repair regressions](2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md) MUST be implemented and verified **before** the remaining functionality in any active proposal. It owns all canonical SQL changes, tenant UUID/RLS/FK/index rules, rating consent/jobs/evidence, lesson lifecycle persistence, generated types, and repairs to existing website/MCP consumers. Subsequent proposals implement features against this frozen schema, with no planned schema DDL. The already drafted PR #104 is candidate groundwork, not proof that this schema-first change is complete. No real-data transition is authorized. [ADR-0018](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md) makes ChessCoachPal exclusively operator-run SaaS; customer self-hosting is not a product option.
+
 ## Delivered foundation (P0)
 
 [Baseline-first canonical schema and one-time live-transition contract](archive/2026-11-18-enforce-baseline-live-transition-contract/ARCHIVE_DECISION.md)
@@ -29,7 +33,7 @@ The archived OpenSpec spec is reflected in
 [baseline-live-transition](../specs/baseline-live-transition/spec.md).
 Real deployment requires a separate, operator-approved data-preserving rollout.
 
-## Remaining proposals in suggested implementation order
+## Downstream feature proposals (all blocked by schema-first acceptance)
 
 | Order | Change | Priority | Dependencies / release boundary |
 | --- | --- | --- | --- |

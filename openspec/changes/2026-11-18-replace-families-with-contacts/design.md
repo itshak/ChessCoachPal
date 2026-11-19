@@ -1,5 +1,8 @@
 # Design: person/organization relationships without households
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 ## Existing dependencies
 Current physical model: guardians(id, teacher_id, name, family_name, email/phone, secondary_*, email_recipients, preferred_locale, portal_token); students.guardian_id; invoices.guardian_id; event_rsvps.guardian_id; event_email_deliveries.guardian_id; direct create/import RPCs and public portal page. Enumerate actual references with a migration inventory before writing any DDL.
 

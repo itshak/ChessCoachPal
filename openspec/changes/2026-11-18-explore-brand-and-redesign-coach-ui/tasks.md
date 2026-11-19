@@ -1,5 +1,8 @@
 # Tasks
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 ## 0. Audit and research
 - [ ] Inventory current app shell, design tokens, fonts, UI dependencies and representative routes; document existing generic UI issues with reproducible screenshots.
 - [ ] Validate Base UI, React Aria and Ariakit current licensing, release/maintenance health, framework compatibility and accessibility feature coverage; cite sources.

@@ -1,5 +1,8 @@
 # Design: deterministic teacher workflow, AI-optional presentation
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 ## Existing source and evidence
 app/(teacher)/dashboard/page.tsx shows global counts/upcoming/recent. lib/server/coach-briefing.ts already computes student-specific briefings; components/teacher/CoachBriefingPanel.tsx renders them manually. Canonical lesson and frozen attendance live in teaching_sessions/session_participants/session_attendance; lesson capture preview/commit and student training plan services exist. Current spreadsheet imports and historical attendance distinguish synthetic/aggregate historic evidence from actual canonical sessions.
 
