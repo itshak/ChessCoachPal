@@ -14,9 +14,9 @@ export const SEED = {
 
 export async function signInAsTeacher(page: Page) {
   await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(SEED_TEACHER.email);
-  await page.getByPlaceholder("Password").fill(SEED_TEACHER.password);
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page.locator('form input[type="email"]').fill(SEED_TEACHER.email);
+  await page.locator('form input[type="password"]').fill(SEED_TEACHER.password);
+  await page.locator('form button[type="submit"]').click();
 
   // Fail fast with the on-page error (empty "{}" often means Auth/Kong 502
   // right after db reset — restart local Supabase and retry).

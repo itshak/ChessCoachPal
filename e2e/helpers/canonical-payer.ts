@@ -164,9 +164,10 @@ export async function prepareSendableInvoice(db:SupabaseClient,input:{
    title:"Synthetic billed chess lesson "+randomUUID(),
    starts_at:startsAt,duration_minutes:60,local_timezone:"UTC",
   });
-  const {error:freezeError}=await db.from("session_participants").insert({
+  // The session trigger may have frozen this participant already.
+  const {error:freezeError}=await db.from("session_participants").upsert({
    teacher_id:input.teacherId,session_id:sessionId,student_id:studentId,
-  });
+  },{onConflict:"session_id,student_id",ignoreDuplicates:true});
   if(freezeError)throw new Error("Invoice participant fixture: "+freezeError.message);
   if(item.id){
    const {error:updateError}=await db.from("invoice_items").update({

@@ -29,9 +29,9 @@ export async function delegatedTool(page: Page, request: APIRequestContext, scop
   const clientId = (await registration.json()).client_id as string;
   if(credentials){
     await page.goto("/login");
-    await page.getByPlaceholder("Email").fill(credentials.email);
-    await page.getByPlaceholder("Password").fill(credentials.password);
-    await page.getByRole("button",{name:"Sign In"}).click();
+    await page.locator('form input[type="email"]').fill(credentials.email);
+    await page.locator('form input[type="password"]').fill(credentials.password);
+    await page.locator('form button[type="submit"]').click();
     await page.waitForURL("**/dashboard",{timeout:20000});
   }else await signInAsTeacher(page);
   const qs = new URLSearchParams({

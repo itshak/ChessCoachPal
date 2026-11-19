@@ -88,5 +88,10 @@ test("PARITY:PARITY-scoped-guest-calendar and cancellation cannot access the sam
   const after=await page.request.post(correct,{data:{note:"Revoked"}});
   expect(after.status()).toBe(404);
   const old=await page.request.get("/portal/"+"f".repeat(48));
-  expect(old.status()).toBe(404);
+  // Next.js may stream an async notFound response with HTTP 200. Verify
+  // access denial by content, not only the streaming response status.
+  const blockedBody=await old.text();
+  expect(blockedBody).not.toContain("School chess");
+  expect(blockedBody).not.toContain("Private chess");
+  expect(blockedBody).not.toContain("School liaison");
 });

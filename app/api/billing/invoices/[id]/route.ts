@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {teacherInvoiceDelete,teacherInvoiceDraftUpdate,InvoiceActionError,type InvoiceDraftEdit} from "@/lib/server/teacher-invoice-actions";
-import { teacherInvoiceDetail,TeacherBillingError } from "@/lib/server/teacher-billing-read-service";
+import { teacherInvoiceDetail,safeInvoice,TeacherBillingError } from "@/lib/server/teacher-billing-read-service";
 import {invoiceDraftEditSchema} from "@/lib/server/invoice-draft-schemas";
 
 export async function GET(_req:NextRequest,{params}:{params:Promise<{id:string}>}){
@@ -9,7 +9,12 @@ export async function GET(_req:NextRequest,{params}:{params:Promise<{id:string}>
   const db=await createClient();
   const {data:{user}}=await db.auth.getUser();
   if(!user)return NextResponse.json({error:"Unauthorized"},{status:401});
-  try{return NextResponse.json(await teacherInvoiceDetail(db,user.id,id));}
+  try{
+    const invoice=await teacherInvoiceDetail(db,user.id,id);
+    // Keep established website fields while providing the canonical payer
+    // projection shared with the MCP invoice detail response.
+    return NextResponse.json({...invoice,billingAccount:safeInvoice(invoice,true).billingAccount});
+  }
   catch(error){return NextResponse.json({error:error instanceof TeacherBillingError?error.message:"Invoice unavailable"},{
     status:error instanceof TeacherBillingError?error.status:500,
   });}

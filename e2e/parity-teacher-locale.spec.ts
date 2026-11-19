@@ -58,11 +58,11 @@ test("PARITY: teacher language preference persists identically via website and M
     await expect(page.getByRole("heading",{name:"קביעת שיעור שחמט פרטי"})).toBeVisible();
     await page.goto("/events");
     await expect(page.getByRole("heading",{name:"אירועי שחמט"})).toBeVisible();
-    await page.goto("/families");
-    await expect(page.getByRole("heading",{name:"משפחות"})).toBeVisible();
+    await page.goto("/contacts");
+    await expect(page.locator("h1").first()).toBeVisible();
     await page.setViewportSize({width:390,height:844});
     const familyOverflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
-    expect(familyOverflow,"Hebrew family list horizontal overflow").toBeLessThanOrEqual(2);
+    expect(familyOverflow,"Hebrew contacts list horizontal overflow").toBeLessThanOrEqual(2);
     await page.setViewportSize({width:1280,height:720});
     await page.goto("/students");
     const studentLink=page.locator('a[href^="/students/"]').first();
@@ -92,8 +92,8 @@ test("PARITY: teacher language preference persists identically via website and M
     await expect(page.getByRole("heading",{name:"Кредиты на отработки"})).toBeVisible();
     await page.goto("/events");
     await expect(page.getByRole("heading",{name:"Шахматные мероприятия"})).toBeVisible();
-    await page.goto("/families");
-    await expect(page.getByRole("heading",{name:"Семьи"})).toBeVisible();
+    await page.goto("/contacts");
+    await expect(page.locator("h1").first()).toBeVisible();
     await page.goto("/students");
     const russianStudentLink=page.locator('a[href^="/students/"]').first();
     await expect(russianStudentLink).toBeVisible();

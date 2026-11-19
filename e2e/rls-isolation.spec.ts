@@ -42,6 +42,12 @@ test.describe("RLS tenant isolation", () => {
       password: SEED_TEACHER.password,
     });
     expect(signInA.error).toBeNull();
+    // Each RLS test must remain independent even if a prior test fails and
+    // Playwright restarts the worker. Resolve the exact seed row before tests.
+    const initial=await teacherA.from("students").select("id")
+      .eq("teacher_id",SEED_TEACHER_ID).order("id").limit(1).single();
+    expect(initial.error).toBeNull();
+    studentIdOfA=initial.data!.id;
 
     // Teacher B: a brand-new account with no studio (local auth autoconfirms).
     teacherB = anonClient();
@@ -67,7 +73,9 @@ test.describe("RLS tenant isolation", () => {
   test("another teacher cannot read the seed studio's rows", async () => {
     for (const table of [
       "students",
-      "guardians",
+      "contacts",
+      "student_contacts","billing_accounts","student_billing_assignments",
+      "portal_access_grants",
       "workplaces",
       "class_groups",
       "teaching_sessions",

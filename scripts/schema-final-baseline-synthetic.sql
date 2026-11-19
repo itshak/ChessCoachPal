@@ -26,6 +26,14 @@ BEGIN
       RAISE EXCEPTION 'Canonical RLS not enabled: %',object_name;
     END IF;
   END LOOP;
+  -- The global workplace filter is the ONLY new writable teacher column;
+  -- full teacher records and hosted caps must remain inaccessible.
+  IF NOT has_column_privilege('authenticated','public.teachers','selected_workplace_id','UPDATE')
+    OR has_column_privilege('authenticated','public.teachers','hosted_max_active_students','UPDATE')
+    OR has_column_privilege('authenticated','public.teachers','hosted_enforced','UPDATE')
+    OR has_table_privilege('authenticated','public.teachers','UPDATE') THEN
+    RAISE EXCEPTION 'Unsafe/absent teacher workplace filter column grant';
+  END IF;
   -- Neither the school nor a student's legal guardian is an inferred
   -- financial counterparty. A compensation contract always names one.
   IF (SELECT a.attnotnull FROM pg_attribute a
@@ -101,6 +109,36 @@ BEGIN
   END IF;
 END
 $baseline$;
+
+-- Prove actual auth-role behavior, not only pg_acl metadata. All changes are
+-- rolled back; no synthetic teacher preference or hosted cap persists.
+BEGIN;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub',
+  '00000000-0000-0000-0000-000000000001',true);
+DO $workplace_filter_authority$
+DECLARE v_workplace uuid;
+BEGIN
+ SELECT id INTO v_workplace FROM public.workplaces
+  WHERE teacher_id=auth.uid() ORDER BY id LIMIT 1;
+ IF v_workplace IS NULL THEN
+   RAISE EXCEPTION 'Seed teacher has no workplace for scope test';
+ END IF;
+ UPDATE public.teachers SET selected_workplace_id=v_workplace
+   WHERE id=auth.uid();
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'Authenticated teacher cannot update selected workplace';
+ END IF;
+ BEGIN
+   UPDATE public.teachers SET hosted_max_active_students=99999
+     WHERE id=auth.uid();
+   RAISE EXCEPTION 'Authenticated user changed hosted subscription caps';
+ EXCEPTION WHEN insufficient_privilege THEN
+   NULL; -- safe: hosted billing administration remains server-only
+ END;
+END;
+$workplace_filter_authority$;
+ROLLBACK;
 
 -- Injected failure must not leave a partial change on the disposable instance.
 BEGIN;

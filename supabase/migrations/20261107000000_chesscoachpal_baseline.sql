@@ -2503,6 +2503,9 @@ GRANT UPDATE("display_name") ON TABLE "public"."teachers" TO "authenticated";
 
 GRANT UPDATE("avatar_url") ON TABLE "public"."teachers" TO "authenticated";
 GRANT UPDATE("preferred_locale") ON TABLE "public"."teachers" TO "authenticated";
+-- A workplace selection is a presentation filter, never a tenant capability.
+-- Grant only the filter column; RLS and tenant-composite FK still apply.
+GRANT UPDATE("selected_workplace_id") ON TABLE "public"."teachers" TO "authenticated";
 
 
 
@@ -3416,7 +3419,7 @@ UPDATE public.teachers SET hosted_enforced=true
 -- The existing migration grants only safe teacher-profile columns to authenticated.
 -- Restate that security invariant so raw PostgREST requests cannot falsify caps.
 REVOKE UPDATE ON TABLE public.teachers FROM PUBLIC,anon,authenticated;
-GRANT UPDATE(email,display_name,avatar_url,preferred_locale,onboarding_tour_completed_at,calendar_token)
+GRANT UPDATE(email,display_name,avatar_url,preferred_locale,selected_workplace_id,onboarding_tour_completed_at,calendar_token)
  ON TABLE public.teachers TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.ccp_student_capacity_guard()
@@ -4329,7 +4332,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'CREDIT_WORKPLACE_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
   END IF;
-  SELECT count(*),max(billing_account_id)
+  SELECT count(*),(array_agg(billing_account_id ORDER BY billing_account_id))[1]
     INTO v_payer_count,v_billing_account
     FROM public.student_billing_assignments b
     JOIN public.billing_accounts a
@@ -7433,7 +7436,7 @@ BEGIN
     (SELECT w.timezone FROM public.workplaces w
       WHERE w.id=v_session.workplace_id
         AND w.teacher_id=v_session.teacher_id),'UTC'))::date;
- SELECT count(*),max(billing_account_id)
+ SELECT count(*),(array_agg(billing_account_id ORDER BY billing_account_id))[1]
    INTO v_payer_matches,v_billing_account
    FROM public.student_billing_assignments b
    WHERE b.teacher_id=v_invoice.teacher_id
