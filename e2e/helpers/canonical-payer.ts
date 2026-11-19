@@ -156,9 +156,14 @@ export async function prepareSendableInvoice(db:SupabaseClient,input:{
  for(let index=0;index<items.length;index++){
   const item=items[index];
   if(item.kind==="credit_package")throw new Error("Credit package needs its real provenance fixture");
-  const startsAt=invoice.period_start+"T"+
-    String(10+Math.floor(index/60)).padStart(2,"0")+":"+
-    String(index%60).padStart(2,"0")+":00Z";
+  // Spread synthetic lessons over deterministic, fixture-private slots.
+  // Multiple invoice-send cases run against the same teacher in CI; all
+  // starting at 10:00 on the first day violates the teacher overlap guard.
+  const slot=randomUUID().replaceAll("-","");
+  const day=1+(parseInt(slot.slice(0,4),16)%26);
+  const hour=8+(parseInt(slot.slice(4,8),16)%11);
+  const startsAt=invoice.period_start.slice(0,8)+String(day).padStart(2,"0")+
+    "T"+String(hour).padStart(2,"0")+":00:00Z";
   const sessionId=await add("teaching_sessions",{
    teacher_id:input.teacherId,workplace_id:workplaceId,student_id:studentId,
    title:"Synthetic billed chess lesson "+randomUUID(),
