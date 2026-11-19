@@ -9,7 +9,8 @@ import {
   attendanceList, attendanceRecord, attendanceBulkRecord,
   groupsCreate, groupsEnroll, groupsUnenroll, groupsList, groupsMembers,
   sessionsCreate, sessionsAdHocCreate, sessionsList, sessionsParticipants, studentsSearch,
-  workplacesCreate, workplacesList, workplacesEnroll, workplacesUnenroll, workplacesEnrollments,
+  workplacesCreate, workplacesList, workplacesEnroll, workplacesUnenroll,
+  workplacesUnenrollPreview, workplacesEnrollments,
   studentsCreate, sessionsUpdate, sessionsComplete, assertTimezone,
 } from "@/lib/server/coach-service";
 
@@ -47,7 +48,13 @@ const calls = z.discriminatedUnion("action", [
     message:"At least one workplace field must change",
   }),
   z.object({ action: z.literal("workplaces.enroll"), workplaceId: uuid, studentId: uuid }),
-  z.object({ action: z.literal("workplaces.unenroll"), workplaceId: uuid, studentId: uuid, confirmed: z.literal(true) }),
+  z.object({ action: z.literal("workplaces.unenrollPreview"), workplaceId: uuid, studentId: uuid }),
+  z.object({ action: z.literal("workplaces.unenroll"), workplaceId: uuid,
+    studentId: uuid, confirmed: z.literal(true),
+    expectedRevision: z.number().int().positive().optional(),
+    idempotencyKey: uuid.optional(),
+    reason: z.string().trim().min(8).max(1000).optional(),
+  }).strict(),
   z.object({ action: z.literal("workplaces.enrollments"), workplaceId: uuid }),
   z.object({ action: z.literal("students.create"), name: shortName,
     level: z.string().trim().max(120).nullable().optional() }),
@@ -125,7 +132,8 @@ const calls = z.discriminatedUnion("action", [
 ]);
 
 const toolNames = [
-  "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll", "workplaces.unenroll", "workplaces.enrollments",
+  "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll",
+  "workplaces.unenrollPreview", "workplaces.unenroll", "workplaces.enrollments",
   "students.search", "students.create", "students.update",
   "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
   "sessions.list", "sessions.create", "sessions.createAdHoc", "sessions.update", "sessions.complete", "sessions.participants",
@@ -247,8 +255,13 @@ export async function POST(req: NextRequest) {
       }
       case "workplaces.enroll":
         result = await workplacesEnroll(db, teacherId, call.workplaceId, call.studentId); break;
+      case "workplaces.unenrollPreview":
+        result = await workplacesUnenrollPreview(db,teacherId,call.workplaceId,call.studentId); break;
       case "workplaces.unenroll":
-        result = await workplacesUnenroll(db, teacherId, call.workplaceId, call.studentId); break;
+        result = await workplacesUnenroll(db, teacherId, call.workplaceId, call.studentId, {
+          expectedRevision:call.expectedRevision,
+          idempotencyKey:call.idempotencyKey,reason:call.reason,
+        }); break;
       case "workplaces.enrollments":
         result = await workplacesEnrollments(db, teacherId, call.workplaceId); break;
       case "students.search":
