@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {signInAsTeacher} from "./helpers/auth";
 
 test("PARITY:PARITY-contact-identity website/MCP create, read, revision, replay and safe disclosure",async({page,request})=>{
   const call=await delegatedTool(page,request);
@@ -190,7 +191,9 @@ test("PARITY:PARITY-contact-ui shows an MCP-created contact in the localized tea
 });
 
 test("PARITY:PARITY-contact-navigation has no legacy Family editor",async({page})=>{
+  await signInAsTeacher(page);
   await page.goto("/dashboard");
+  await page.locator("nav button[aria-expanded]").first().click();
   // Desktop navigation may render the secondary links inline instead of a
   // More popover, depending on viewport. Assert the destination, not layout.
   await expect(page.locator('nav a[href="/contacts"]').first()).toBeAttached();

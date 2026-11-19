@@ -367,7 +367,8 @@ test("PARITY:PARITY-students-full-atomic-contact-create shares durable website a
    name:unique("Foreign family denied"),guardianId:randomUUID(),
    idempotencyKey:randomUUID(),confirmed:true,
  });
- expect(foreignGuardian.error?.code).toBe("NOT_FOUND");
+ // Legacy guardianId is an unsupported pre-v1 field, not a valid contact link.
+ expect(foreignGuardian.error?.code).toBe("VALIDATION_ERROR");
 });
 
 /** Route-family audit companion: students/[id] also exposes historical chess

@@ -55,9 +55,10 @@ test("PARITY:PARITY-teacher-all-csv-export website ZIP equals paged MCP sanitize
  const name="CSV student "+randomUUID();
  const created=await page.request.post("/api/students",{data:{name}});
  expect(created.status(),await created.text()).toBe(201);
+ const exportedContactEmail="test-export-"+randomUUID()+"@example.com";
  const contact=await call("ccp_contacts_create",{
   displayName:"Sanitized contact "+randomUUID(),
-  email:"test-export-"+randomUUID()+"@example.com",
+  email:exportedContactEmail,
   idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(contact.error).toBeUndefined();
@@ -77,7 +78,8 @@ test("PARITY:PARITY-teacher-all-csv-export website ZIP equals paged MCP sanitize
  ]));
  const contactsCsv=strFromU8(zip["contacts.csv"]);
  expect(contactsCsv).not.toMatch(/token_digest|portal_token/i);
- expect(contactsCsv).not.toContain("test-export-");
+ // Explicit owner-initiated portability includes their contact email, not grant secrets.
+ expect(contactsCsv).toContain(exportedContactEmail);
  const studentsCsv=strFromU8(zip["students.csv"]);
  expect(studentsCsv).toContain(name);
  const manifest=JSON.parse(strFromU8(zip["README.json"]));
@@ -106,5 +108,5 @@ test("PARITY:PARITY-teacher-all-csv-export website ZIP equals paged MCP sanitize
  });
  expect(contacts.error).toBeUndefined();
  expect(contacts.data.csv).not.toMatch(/token_digest|portal_token/i);
- expect(contacts.data.csv).not.toContain("test-export-");
+ expect(contacts.data.csv).toContain(exportedContactEmail);
 });

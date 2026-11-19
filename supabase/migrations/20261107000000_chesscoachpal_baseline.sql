@@ -10388,6 +10388,10 @@ DECLARE
  v_invite public.portal_event_invitations%ROWTYPE;
  v_event public.events%ROWTYPE;
  v_contact_name text;
+ v_locale text;
+ v_status_label text;
+ v_notification_title text;
+ v_notification_body text;
 BEGIN
  IF p_grant_secret IS NULL OR p_grant_secret !~ '^[A-Za-z0-9_-]{43}$'
    OR p_event_id IS NULL THEN
@@ -10446,9 +10450,28 @@ BEGIN
  WHERE id=v_invite.id;
  SELECT c.display_name INTO v_contact_name FROM public.contacts c
  WHERE c.id=v_grant.contact_id AND c.teacher_id=v_grant.teacher_id;
+ -- Guest actions emit teacher-localized notifications at the source. This
+ -- RPC is also callable without a signed-in browser, so no client-localized
+ -- message may be trusted as the notification source.
+ SELECT coalesce(t.preferred_locale,'en') INTO v_locale
+   FROM public.teachers t WHERE t.id=v_grant.teacher_id;
+ v_status_label:=CASE v_locale
+   WHEN 'he' THEN CASE p_status WHEN 'yes' THEN 'כן' WHEN 'no' THEN 'לא' ELSE 'אולי' END
+   WHEN 'ru' THEN CASE p_status WHEN 'yes' THEN 'Да' WHEN 'no' THEN 'Нет' ELSE 'Возможно' END
+   ELSE CASE p_status WHEN 'yes' THEN 'Yes' WHEN 'no' THEN 'No' ELSE 'Maybe' END
+ END;
+ v_notification_title:=CASE v_locale
+   WHEN 'he' THEN coalesce(v_contact_name,'איש קשר')||' השיבו להזמנה לאירוע '||v_event.title||': '||v_status_label
+   WHEN 'ru' THEN coalesce(v_contact_name,'Контакт')||': ответ на приглашение «'||v_event.title||'» — '||v_status_label
+   ELSE coalesce(v_contact_name,'Contact')||' RSVP’d '||v_status_label||' to '||v_event.title
+ END;
+ v_notification_body:=concat_ws(E'\n',
+   CASE WHEN p_party_size IS NULL THEN NULL ELSE
+     CASE v_locale WHEN 'he' THEN 'מספר משתתפים' WHEN 'ru' THEN 'Количество участников' ELSE 'Party size' END||': '||p_party_size::text END,
+   CASE WHEN nullif(p_note,'') IS NULL THEN NULL ELSE
+     CASE v_locale WHEN 'he' THEN 'הערה' WHEN 'ru' THEN 'Примечание' ELSE 'Note' END||': '||p_note END);
  INSERT INTO public.notifications(teacher_id,type,title,body,href)
- VALUES(v_grant.teacher_id,'event_rsvp','Event RSVP updated',
-  coalesce(v_contact_name,'Contact')||' responded '||p_status||' to '||v_event.title,
+ VALUES(v_grant.teacher_id,'event_rsvp',v_notification_title,v_notification_body,
   '/events/'||v_event.id::text);
  RETURN jsonb_build_object('ok',true,'replayed',false,'eventId',p_event_id,
     'status',p_status,'partySize',p_party_size);

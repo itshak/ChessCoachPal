@@ -1,5 +1,11 @@
 # ChessCoachPal development and release status
 
+## 2026-11-19 — PR #104 final-cutover audit and CI remediation (WIP; NO MERGE/ARCHIVE)
+
+The contacts/Billing Account/scoped-portal candidate remains on draft PR #104, with no live database operation. The **binding** `npm run pre1:final-cutover:audit` now passes with zero legacy family/guardian/Studio violations (without weakening the audit). Local TypeScript, en/he/ru catalog checks and strict MCP source parity pass (231 live tools, 101/101 inventoried teacher route families, 42/42 new canonical workflows and historical 93/93 checklist in source inventory). This is source-based coverage, **not** a substitute for the authenticated browser/MCP suite or exact deployed behavior.
+
+GitHub CI and security audit passed on `4fbd566` (the first repair commit); E2E failed at local Supabase bootstrap because runner port `54322` was already allocated, **before any Playwright test ran**. A separate rerun was requested. Earlier exact-head Playwright on `0c540bd` ran 273 passing / 35 failing cases, so full behavior acceptance is *not* demonstrated. The follow-up candidate changes update the canonical UUID payer selection, localized RSVP notifications and outdated test fixtures; they require a new exact-head full run. Database cutover/reimport, financial-history reconciliation, independent restored-copy verification, and production migration still need separately authorized operator action. **Keep OpenSpec changes active and PR in draft. Do not merge, archive, deploy, release, or touch production until ADR-0017 acceptance gates are met.**
+
 
 ## 2026-11-19 — Immutable financial-ledger schema foundation (DRAFT, NOT POSTING)
 

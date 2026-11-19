@@ -426,8 +426,19 @@ test("PARITY:PARITY-billing-invoice-void-credit-guard refuses to orphan issued p
   teacher_id:row.data!.teacher_id,name:"Prepaid student "+randomUUID(),
  }).select("id").single();
  expect(student.error).toBeNull();
+ const workplace=await seeded.admin.from("workplaces").insert({
+  teacher_id:row.data!.teacher_id,name:"Prepaid workplace "+randomUUID(),
+  timezone:"UTC",currency:"ILS",locale:"en",policy:{},
+ }).select("id").single();
+ expect(workplace.error).toBeNull();
+ const enrollment=await seeded.admin.from("workplace_enrollments").insert({
+  teacher_id:row.data!.teacher_id,student_id:student.data!.id,
+  workplace_id:workplace.data!.id,
+ });
+ expect(enrollment.error).toBeNull();
  const packageRow=await seeded.admin.from("credit_packages").insert({
   teacher_id:row.data!.teacher_id,student_id:student.data!.id,
+  workplace_id:workplace.data!.id,
   invoice_id:seeded.id,credits:5,duration_minutes:45,
   price_cents:12000,starts_on:"2049-01-01",
  }).select("id").single();
