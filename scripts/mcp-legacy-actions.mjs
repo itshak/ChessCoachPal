@@ -10,6 +10,8 @@ export const legacyActionTools=Object.freeze({
   "workplaces.unenrollPreview":"ccp_workplaces_unenroll_preview",
   "workplaces.unenroll":"ccp_workplaces_unenroll",
   "workplaces.enrollments":"ccp_workplaces_enrollments",
+  "credits.adjustmentPreview":"ccp_credits_adjustment_preview",
+  "credits.adjustmentCommit":"ccp_credits_adjustment_commit",
   "students.create":"ccp_students_create",
   "students.update":"ccp_students_update",
   "students.search":"ccp_students_search",
