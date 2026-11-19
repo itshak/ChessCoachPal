@@ -40,6 +40,8 @@ export function SpreadsheetImportSettings({
   const [previewTotal, setPreviewTotal] = useState(0);
   const [issues, setIssues] = useState<{ row: number; message: string }[]>([]);
   const [filename, setFilename] = useState<string | null>(null);
+  const [workplaceId,setWorkplaceId]=useState("");
+  const [workplaceChoices,setWorkplaceChoices]=useState<Array<{id:string;name:string}>>([]);
 
   async function handleFile(file: File) {
     setBusy(true);
@@ -79,6 +81,8 @@ export function SpreadsheetImportSettings({
     setPreviewRows([]);
     setPreviewTotal(0);
     setIssues([]);
+    setWorkplaceChoices([]);
+    setWorkplaceId("");
   }
 
   async function refreshPreview(nextMapping: ColumnMapping) {
@@ -148,9 +152,13 @@ export function SpreadsheetImportSettings({
       const res = await fetch("/api/import/spreadsheet/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows, mapping }),
+        body: JSON.stringify({ rows, mapping,workplaceId:workplaceId||undefined }),
       });
       const data = await res.json().catch(() => ({}));
+      if(data.code==="WORKPLACE_REQUIRED"){
+        setWorkplaceChoices(data.workplaces??[]);
+        throw new Error(data.error??"Select a workplace before importing.");
+      }
       if (!res.ok) throw new Error(toUserError(data, t("importFailed")));
       setMessage(
         t("importReceipt",{students:data.studentsCreated,families:data.familiesCreated,skipped:data.studentsSkipped})
@@ -272,6 +280,13 @@ export function SpreadsheetImportSettings({
             ))}
           </div>
 
+          {workplaceChoices.length>0 && <label className="block text-sm space-y-1">
+            <span className="font-medium">Workplace for imported students (required)</span>
+            <select className={selectClass} value={workplaceId} onChange={e=>setWorkplaceId(e.target.value)}>
+              <option value="">Choose a workplace</option>
+              {workplaceChoices.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </label>}
           <div className="flex flex-wrap gap-2">
             {aiConfigured && (
               <Button
@@ -285,7 +300,7 @@ export function SpreadsheetImportSettings({
             )}
             <Button
               size="sm"
-              disabled={busy || previewTotal === 0}
+              disabled={busy || previewTotal === 0 || (workplaceChoices.length>0&&!workplaceId)}
               onClick={() => void commit()}
             >
               {busy?t("working"):t("importCount",{count:previewTotal})}
