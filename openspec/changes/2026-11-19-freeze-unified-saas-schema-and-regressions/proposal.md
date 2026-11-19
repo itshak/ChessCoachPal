@@ -1,3 +1,5 @@
+> **Execution reconciliation (2026-11-19):** Follow [the reconciled execution sequence](../../../docs/OPENSPEC_RECONCILED_EXECUTION_SEQUENCE_2026-11-19.md). The new [temporal enrollment and credit-safe lifecycle change](../2026-11-19-temporal-enrollment-credit-safe-lifecycle/proposal.md) must be included in the canonical schema **before final freeze acceptance**. Earlier "schema freeze first" wording means governance and inventory first, not final approval before this amendment. No per-feature production migration; this proposal's feature implementation follows its stage dependencies.
+
 # Change: freeze unified operator-only SaaS schema and repair regressions FIRST
 
 **Status:** Proposed; mandatory implementation prerequisite, not accepted or deployed. **Priority:** P0, first remaining implementation change. **Depends on:** archived baseline-first contract, ADR-0017 and ADR-0018. **Blocks:** every remaining active feature/UI/locale/portal/rating/finance/professional OpenSpec implementation phase until schema and regression gates are green.
