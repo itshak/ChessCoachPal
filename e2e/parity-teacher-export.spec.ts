@@ -108,5 +108,8 @@ test("PARITY:PARITY-teacher-all-csv-export website ZIP equals paged MCP sanitize
  });
  expect(contacts.error).toBeUndefined();
  expect(contacts.data.csv).not.toMatch(/token_digest|portal_token/i);
- expect(contacts.data.csv).toContain(exportedContactEmail);
+ // Browser-initiated ZIP is full owner export; the smaller MCP preview is
+ // deliberately redacted so AI tools cannot disclose contact addresses.
+ expect(contacts.data.contactDetailsExcluded).toBe(true);
+ expect(contacts.data.csv).not.toContain(exportedContactEmail);
 });
