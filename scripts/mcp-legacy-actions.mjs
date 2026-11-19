@@ -15,6 +15,8 @@ export const legacyActionTools=Object.freeze({
   "students.create":"ccp_students_create",
   "students.update":"ccp_students_update",
   "students.search":"ccp_students_search",
+  "students.lifecyclePreview":"ccp_students_lifecycle_preview",
+  "students.lifecycleCommit":"ccp_students_lifecycle_commit",
   "groups.list":"ccp_groups_list",
   "groups.create":"ccp_groups_create",
   "groups.update":"ccp_groups_update",
