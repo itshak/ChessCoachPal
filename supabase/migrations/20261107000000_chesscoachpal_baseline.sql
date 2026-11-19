@@ -12344,3 +12344,240 @@ REVOKE ALL ON FUNCTION public.ccp_credit_adjustment_commit(
 GRANT EXECUTE ON FUNCTION public.ccp_credit_adjustment_commit(
  uuid,text,integer,bigint,uuid,date,uuid,uuid,uuid,text,boolean)
  TO authenticated;
+
+-- Reviewed, atomic student archive and reactivation. The archive closes
+-- all currently applicable periods and cancels future periods, but never
+-- deletes historical memberships, sessions or financial entitlements.
+-- Reactivation inserts only separately selected, previously evidenced
+-- workplace IDs as new periods; it does not schedule lessons or consume credit.
+CREATE OR REPLACE FUNCTION public.ccp_student_lifecycle_preview(
+ p_student_id uuid
+) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_student_lifecycle_preview$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_timezone text;v_today date;
+ v_student public.students%ROWTYPE;
+ v_groups integer;v_slots integer;v_future integer;
+ v_current jsonb;v_future_periods jsonb;v_previous jsonb;
+ v_credits jsonb;
+BEGIN
+ IF v_teacher IS NULL OR p_student_id IS NULL THEN
+  RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_student FROM public.students
+ WHERE teacher_id=v_teacher AND id=p_student_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ SELECT timezone INTO v_timezone FROM public.teacher_settings
+ WHERE teacher_id=v_teacher;
+ v_today:=(clock_timestamp() AT TIME ZONE coalesce(v_timezone,'UTC'))::date;
+ SELECT coalesce(jsonb_agg(jsonb_build_object(
+  'membershipId',e.id,'workplaceId',e.workplace_id,
+  'startsOn',e.starts_on,'endsOn',e.ends_on,'revision',e.revision)
+  ORDER BY e.workplace_id,e.starts_on),'[]'::jsonb)
+ INTO v_current FROM public.workplace_enrollments e
+ WHERE e.teacher_id=v_teacher AND e.student_id=p_student_id
+   AND e.cancelled_at IS NULL
+   AND (e.starts_on IS NULL OR e.starts_on<=v_today)
+   AND (e.ends_on IS NULL OR e.ends_on>=v_today);
+ SELECT coalesce(jsonb_agg(jsonb_build_object(
+  'membershipId',e.id,'workplaceId',e.workplace_id,
+  'startsOn',e.starts_on,'endsOn',e.ends_on,'revision',e.revision)
+  ORDER BY e.workplace_id,e.starts_on),'[]'::jsonb)
+ INTO v_future_periods FROM public.workplace_enrollments e
+ WHERE e.teacher_id=v_teacher AND e.student_id=p_student_id
+   AND e.cancelled_at IS NULL AND e.starts_on>v_today;
+ SELECT coalesce(jsonb_agg(DISTINCT e.workplace_id),'[]'::jsonb)
+ INTO v_previous FROM public.workplace_enrollments e
+ JOIN public.workplaces w ON w.id=e.workplace_id AND w.teacher_id=e.teacher_id
+ WHERE e.teacher_id=v_teacher AND e.student_id=p_student_id;
+ SELECT count(*)::integer INTO v_groups FROM public.group_enrollments
+ WHERE teacher_id=v_teacher AND student_id=p_student_id;
+ SELECT count(*)::integer INTO v_slots FROM public.lesson_slots
+ WHERE teacher_id=v_teacher AND student_id=p_student_id AND active;
+ SELECT count(DISTINCT sess.id)::integer INTO v_future
+ FROM public.teaching_sessions sess
+ WHERE sess.teacher_id=v_teacher AND sess.status='scheduled'
+  AND sess.starts_at>=clock_timestamp()
+  AND (sess.student_id=p_student_id OR EXISTS(
+   SELECT 1 FROM public.session_participants sp
+    WHERE sp.teacher_id=v_teacher AND sp.session_id=sess.id
+      AND sp.student_id=p_student_id));
+ SELECT coalesce(jsonb_agg(jsonb_build_object(
+  'packageId',cp.id,'workplaceId',cp.workplace_id,
+  'purchasedCredits',cp.credits,
+  'redeemedCredits',(SELECT count(*)::integer FROM public.credit_redemptions cr
+    WHERE cr.teacher_id=v_teacher AND cr.package_id=cp.id),
+  'adjustmentCredits',(SELECT coalesce(sum(cae.credits_delta),0)
+     FROM public.credit_adjustment_events cae
+     WHERE cae.teacher_id=v_teacher AND cae.package_id=cp.id),
+  'expiresOn',coalesce((SELECT cae.new_expires_on
+    FROM public.credit_adjustment_events cae
+    WHERE cae.teacher_id=v_teacher AND cae.package_id=cp.id
+      AND cae.kind='expiry_extension'
+    ORDER BY cae.recorded_at DESC,cae.id DESC LIMIT 1),cp.expires_on),
+  'invoiceId',inv.id,'invoiceStatus',inv.status,
+  'recordedLegacyInvoicePaymentsCents',(SELECT coalesce(sum(p.amount_cents),0)
+     FROM public.payments p WHERE p.invoice_id=inv.id))
+  ORDER BY cp.starts_on,cp.id),'[]'::jsonb)
+ INTO v_credits FROM public.credit_packages cp
+ JOIN public.invoices inv ON inv.id=cp.invoice_id AND inv.teacher_id=cp.teacher_id
+ WHERE cp.teacher_id=v_teacher AND cp.student_id=p_student_id;
+ RETURN jsonb_build_object(
+  'studentId',p_student_id,'archived',v_student.archived_at IS NOT NULL,
+  'archivedAt',v_student.archived_at,'expectedUpdatedAt',v_student.updated_at,
+  'teacherLocalToday',v_today,'currentMemberships',v_current,
+  'futureMemberships',v_future_periods,'previousWorkplaceIds',v_previous,
+  'activeGroupMemberships',v_groups,'activeRecurringSlots',v_slots,
+  'futureSessions',v_future,'creditPackages',v_credits,
+  'canArchive',(v_student.archived_at IS NULL AND
+    v_groups=0 AND v_slots=0 AND v_future=0),
+  'canReactivate',v_student.archived_at IS NOT NULL,
+  'creditPolicy','hold_without_refund_transfer_or_expiry_change',
+  'commitPolicy','current_memberships_closed_future_memberships_cancelled');
+END;
+$ccp_student_lifecycle_preview$;
+REVOKE ALL ON FUNCTION public.ccp_student_lifecycle_preview(uuid)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_student_lifecycle_preview(uuid)
+ TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.ccp_student_lifecycle_commit(
+ p_student_id uuid,p_mode text,p_expected_updated_at timestamptz,
+ p_selected_workplaces uuid[],p_request_id uuid,p_reason text,
+ p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_student_lifecycle_commit$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_timezone text;v_today date;v_student public.students%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_hash text;v_result jsonb;
+ v_workplace uuid;v_groups integer;v_slots integer;v_future integer;
+ v_active integer;v_cancelled integer;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF p_student_id IS NULL OR p_request_id IS NULL OR
+   p_mode NOT IN ('archive','reactivate') OR p_mode IS NULL OR
+   p_expected_updated_at IS NULL OR p_confirmed IS DISTINCT FROM true OR
+   p_reason IS NULL OR length(btrim(p_reason)) NOT BETWEEN 8 AND 1000 OR
+   (p_mode='archive' AND coalesce(cardinality(p_selected_workplaces),0)<>0) OR
+   coalesce(cardinality(p_selected_workplaces),0)>50 THEN
+   RAISE EXCEPTION 'LIFECYCLE_REQUIRES_REVIEW' USING ERRCODE='22023';
+ END IF;
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ v_hash:=md5(jsonb_build_array(p_student_id,p_mode,p_expected_updated_at,
+  p_selected_workplaces,p_reason,p_confirmed)::text);
+ SELECT * INTO v_saved FROM public.agent_tool_receipts
+ WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ IF FOUND THEN
+  IF v_saved.operation<>'student.lifecycle' OR v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'LIFECYCLE_REQUEST_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_student FROM public.students
+ WHERE teacher_id=v_teacher AND id=p_student_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF v_student.updated_at<>p_expected_updated_at THEN
+  RAISE EXCEPTION 'LIFECYCLE_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ SELECT timezone INTO v_timezone FROM public.teacher_settings
+ WHERE teacher_id=v_teacher;
+ v_today:=(clock_timestamp() AT TIME ZONE coalesce(v_timezone,'UTC'))::date;
+ -- Lock the periods BEFORE checking scheduling conflicts. Group/session guards
+ -- take SHARE locks on the same rows; no concurrent child can sneak past the
+ -- blocker scan and survive after the period is closed.
+ PERFORM 1 FROM public.workplace_enrollments e
+ WHERE e.teacher_id=v_teacher AND e.student_id=p_student_id
+   AND e.cancelled_at IS NULL
+ ORDER BY e.id FOR UPDATE;
+ IF p_mode='archive' THEN
+  IF v_student.archived_at IS NOT NULL THEN
+   RAISE EXCEPTION 'STUDENT_ALREADY_ARCHIVED' USING ERRCODE='23505';
+  END IF;
+  SELECT count(*)::integer INTO v_groups FROM public.group_enrollments
+   WHERE teacher_id=v_teacher AND student_id=p_student_id;
+  SELECT count(*)::integer INTO v_slots FROM public.lesson_slots
+   WHERE teacher_id=v_teacher AND student_id=p_student_id AND active;
+  SELECT count(DISTINCT sess.id)::integer INTO v_future
+   FROM public.teaching_sessions sess
+   WHERE sess.teacher_id=v_teacher AND sess.status='scheduled'
+    AND sess.starts_at>=clock_timestamp()
+    AND (sess.student_id=p_student_id OR EXISTS(
+     SELECT 1 FROM public.session_participants sp
+      WHERE sp.teacher_id=v_teacher AND sp.session_id=sess.id
+       AND sp.student_id=p_student_id));
+  IF v_groups>0 OR v_slots>0 OR v_future>0 THEN
+   RAISE EXCEPTION 'FUTURE_COMMITMENTS' USING ERRCODE='23503';
+  END IF;
+  UPDATE public.workplace_enrollments
+   SET cancelled_at=clock_timestamp(),cancel_reason=btrim(p_reason)
+   WHERE teacher_id=v_teacher AND student_id=p_student_id
+    AND cancelled_at IS NULL AND starts_on>=v_today
+    AND (ends_on IS NULL OR ends_on>=v_today);
+  GET DIAGNOSTICS v_cancelled=ROW_COUNT;
+  UPDATE public.workplace_enrollments
+   SET ends_on=v_today-1,end_reason=btrim(p_reason)
+   WHERE teacher_id=v_teacher AND student_id=p_student_id
+    AND cancelled_at IS NULL AND (starts_on IS NULL OR starts_on<v_today)
+    AND (ends_on IS NULL OR ends_on>=v_today);
+  GET DIAGNOSTICS v_active=ROW_COUNT;
+  UPDATE public.students SET archived_at=clock_timestamp()
+  WHERE teacher_id=v_teacher AND id=p_student_id
+  RETURNING * INTO v_student;
+  v_result:=jsonb_build_object(
+   'studentId',p_student_id,'mode',p_mode,'archived',true,
+   'closedPeriods',v_active,'cancelledPeriods',v_cancelled,
+   'creditPolicy','hold_without_refund_transfer_or_expiry_change',
+   'expectedUpdatedAt',v_student.updated_at);
+ ELSE
+  IF v_student.archived_at IS NULL THEN
+   RAISE EXCEPTION 'STUDENT_NOT_ARCHIVED' USING ERRCODE='23505';
+  END IF;
+  IF (SELECT count(*) FROM unnest(coalesce(p_selected_workplaces,'{}'::uuid[])) x)
+    <> (SELECT count(DISTINCT x) FROM unnest(coalesce(p_selected_workplaces,'{}'::uuid[])) x)
+  THEN RAISE EXCEPTION 'DUPLICATE_WORKPLACE_SELECTION' USING ERRCODE='22023';
+  END IF;
+  -- Historical evidence must exist for every selected workplace. The
+  -- student-to-workplace link is NOT inferred from attendance materials.
+  FOREACH v_workplace IN ARRAY coalesce(p_selected_workplaces,'{}'::uuid[]) LOOP
+   IF NOT EXISTS(SELECT 1 FROM public.workplaces w
+     WHERE w.id=v_workplace AND w.teacher_id=v_teacher)
+    OR NOT EXISTS(SELECT 1 FROM public.workplace_enrollments e
+     WHERE e.workplace_id=v_workplace AND e.teacher_id=v_teacher
+      AND e.student_id=p_student_id) THEN
+    RAISE EXCEPTION 'WORKPLACE_NOT_PREVIOUSLY_VERIFIED'
+     USING ERRCODE='42501';
+   END IF;
+   IF EXISTS(SELECT 1 FROM public.workplace_enrollments e
+     WHERE e.workplace_id=v_workplace AND e.teacher_id=v_teacher
+      AND e.student_id=p_student_id AND e.cancelled_at IS NULL
+      AND (e.ends_on IS NULL OR e.ends_on>=v_today)) THEN
+    RAISE EXCEPTION 'WORKPLACE_OVERLAP' USING ERRCODE='23505';
+   END IF;
+  END LOOP;
+  UPDATE public.students SET archived_at=NULL
+  WHERE teacher_id=v_teacher AND id=p_student_id RETURNING * INTO v_student;
+  FOREACH v_workplace IN ARRAY coalesce(p_selected_workplaces,'{}'::uuid[]) LOOP
+   INSERT INTO public.workplace_enrollments
+    (teacher_id,student_id,workplace_id,starts_on,source)
+   VALUES(v_teacher,p_student_id,v_workplace,v_today,'manual');
+  END LOOP;
+  v_result:=jsonb_build_object(
+   'studentId',p_student_id,'mode',p_mode,'archived',false,
+   'restoredWorkplaces',to_jsonb(coalesce(p_selected_workplaces,'{}'::uuid[])),
+   'creditPolicy','hold_released_no_automatic_redemption_or_expiry_extension',
+   'expectedUpdatedAt',v_student.updated_at);
+ END IF;
+ INSERT INTO public.agent_tool_receipts
+ (teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_request_id,'student.lifecycle',v_hash,v_result);
+ RETURN v_result||jsonb_build_object('replayed',false);
+END;
+$ccp_student_lifecycle_commit$;
+REVOKE ALL ON FUNCTION public.ccp_student_lifecycle_commit(
+ uuid,text,timestamptz,uuid[],uuid,text,boolean) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_student_lifecycle_commit(
+ uuid,text,timestamptz,uuid[],uuid,text,boolean) TO authenticated;
