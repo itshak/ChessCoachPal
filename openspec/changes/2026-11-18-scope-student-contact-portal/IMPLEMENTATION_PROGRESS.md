@@ -20,3 +20,11 @@
 - Complete remaining associated Contacts, workplace context, finance, events, tests and professional workflows. Archive only when required exact-head and merged-main GitHub CI, E2E, security, Compose and restore acceptance pass, then separately verify real-client and operator gates.
 
 Historical PR #104 source was previously at 210 tools / 85 route families; new metadata/event operations update this inventory. Retest against the latest exact commit before recording completion.
+
+## 2026-11-19 security fixes (still unaccepted)
+
+- Commit `823fa97` applies the failed-token lookup guard to the primary guest portal page as well as the existing API/ICS endpoints. The current in-process limiter is **best-effort**, not sufficient evidence of distributed brute-force resilience in multi-instance hosting; finish shared enforcement before acceptance.
+- Explicitly teacher-shared **session-wide** notes are now visible to a contact only when the original frozen roster contains exactly one learner. For multi-student groups only notes attributed to the granted student can appear. The query reads the frozen roster per scoped session instead of trusting the portal's already filtered calendar data.
+- Added `lib/server/portal-scope-service.test.ts` coverage for group, one-to-one, wrong-learner and missing-roster cases. Local TypeScript + targeted ESLint passed. The remote host's Vitest binary exited with SIGILL (132); GitHub CI must verify actual test execution.
+- Follow-up commit `b2f1045` removes a dead redirect from the genuine `/settings` page to the empty `/studio` route and removes the Contacts UI's legacy Family escape link.
+- These targeted security/navigation corrections do **not** complete the one-time contact/finance/portal cutover: the strict final-cutover source audit still reports **18** categories of legacy dependencies. All associated OpenSpec tasks remain unchecked; do not archive or merge based on passing ordinary parity and TypeScript checks.
