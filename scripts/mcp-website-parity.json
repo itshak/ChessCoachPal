@@ -820,52 +820,6 @@
       "explanation": "Tokenized ICS feed for calendar software; chat may manage token but should not expose it"
     },
     {
-      "path": "app/api/guardians/[id]/rotate-token/route.ts",
-      "methods": [
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_guardians_rotate_portal_token"
-      ],
-      "explanation": "Accepted teacher-owned portal-link rotation in website and delegated MCP. Secret never enters model, repeat request returns stable receipt, changed cross-client request rejects, and prior token invalidation is verified by parity-families-events on green E2E SHA a3af159. Guardian role redesign remains separate.",
-      "evidenceTest": "e2e/parity-families-events.spec.ts"
-    },
-    {
-      "path": "app/api/guardians/[id]/route.ts",
-      "methods": [
-        "GET",
-        "PUT",
-        "DELETE"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_guardians_detail",
-        "ccp_guardians_update",
-        "ccp_guardians_delete_impact",
-        "ccp_guardians_delete"
-      ],
-      "explanation": "Accepted current family list/create/detail/contact update/member replacement/deletion-impact and guarded delete via shared tenant and atomic idempotent services. Authenticated parity-families-events and guardian-atomic cover approval, sensitive-data redaction, bulk roster replacement, rollback, changed-key replay and child ownership on verified E2E a3af159. Independent permission roles remain unimplemented.",
-      "evidenceTest": "e2e/parity-families-events.spec.ts"
-    },
-    {
-      "path": "app/api/guardians/route.ts",
-      "methods": [
-        "GET",
-        "POST"
-      ],
-      "kind": "teacher",
-      "parity": "mcp",
-      "existingTools": [
-        "ccp_guardians_list",
-        "ccp_guardians_create"
-      ],
-      "explanation": "Accepted current family list/create/detail/contact update/member replacement/deletion-impact and guarded delete via shared tenant and atomic idempotent services. Authenticated parity-families-events and guardian-atomic cover approval, sensitive-data redaction, bulk roster replacement, rollback, changed-key replay and child ownership on verified E2E a3af159. Independent permission roles remain unimplemented.",
-      "evidenceTest": "e2e/parity-families-events.spec.ts"
-    },
-    {
       "path": "app/api/hosted-billing/checkout/route.ts",
       "methods": [
         "POST"
@@ -1770,8 +1724,6 @@
     "app/(teacher)/events/[id]/page.tsx",
     "app/(teacher)/events/new/page.tsx",
     "app/(teacher)/events/page.tsx",
-    "app/(teacher)/families/[id]/page.tsx",
-    "app/(teacher)/families/page.tsx",
     "app/(teacher)/help/page.tsx",
     "app/(teacher)/learning/page.tsx",
     "app/(teacher)/reports/page.tsx",
@@ -1795,9 +1747,6 @@
     "components/teacher/ContactsManager.tsx",
     "components/teacher/CopyLinkClient.tsx",
     "components/teacher/EditableStudentName.tsx",
-    "components/teacher/FamiliesManager.tsx",
-    "components/teacher/FamilyDetailActions.tsx",
-    "components/teacher/FamilyForm.tsx",
     "components/teacher/FenReviewPanel.tsx",
     "components/teacher/HostedLimitBanner.tsx",
     "components/teacher/LearningMaterialsCatalog.tsx",

@@ -149,7 +149,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       <StudentFederationsPanel studentId={id} />
       <CreditPackagesCard
         studentId={id}
-        hasFamily={Boolean(student.guardian_id)}
+        hasFamily={false}
         currency={policy.currency}
         packages={creditPackages.map(pkg => ({
           id: pkg.id, invoiceId: pkg.invoiceId,

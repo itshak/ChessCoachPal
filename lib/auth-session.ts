@@ -2,7 +2,6 @@ const TEACHER_ROUTE_PREFIXES = [
   "/dashboard",
   "/students",
   "/lessons",
-  "/families", // Retain authentication until the legacy pages are removed.
   "/contacts",
   "/coaching",
   "/learning",

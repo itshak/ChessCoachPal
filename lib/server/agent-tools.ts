@@ -147,11 +147,6 @@ import {
 import {workplaceContextUpdateSchema,teacherWorkplaceContextGet,
   teacherWorkplaceContextSet,WorkplaceContextError}
   from "@/lib/server/teacher-workplace-context";
-import { guardianCreateSchema, guardianUpdateSchema } from "@/lib/server/api-schemas";
-import { guardiansList, guardianDetail, guardianCreate, guardianUpdate,
- guardianDeleteImpact, guardianDelete, guardianRotatePortalToken, safeGuardian,
- GuardianServiceError,
-} from "@/lib/server/teacher-guardian-service";
 import {canonicalMakeupCreditsList} from "@/lib/server/canonical-makeup-service";
 import {sessionNotesList,sessionNoteSave,SessionNoteError,
  type SaveSessionNoteInput} from "@/lib/server/canonical-session-notes";
@@ -898,44 +893,6 @@ const catalogue = [
     description:"Atomically delete only canonical scheduling intent. Future unprotected lessons may be removed; protected teaching records remain. Requires explicit confirmation and idempotency key.",
     schema:canonicalSlotDeleteSchema.extend({slotId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_guardians_list",
-    description:"List teacher-owned families with student names. Contact details and portal credentials are redacted; use an identified detail read and explicit confirmation for contact data.",
-    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
-  },
-  {
-    name:"ccp_guardians_detail",
-    description:"Read one identified family. Contact details require includeContacts=true plus confirmed=true; never disclose the portal token.",
-    schema:z.object({guardianId:uuid,includeContacts:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
-    scope:"coach:read",readOnly:true,
-  },
-  {
-    name:"ccp_guardians_create",
-    description:"Create a family, optionally linking existing students or creating named children. Requires explicit teacher confirmation; never return family portal tokens or contact info to the model.",
-    schema:guardianCreateSchema.extend({confirmed:z.literal(true)}).strict(),
-    scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_guardians_update",
-    description:"Update family contacts, recipient preferences, preferredLocale communication language (en/he/ru, null=English), and exact current roster; changing studentIds replaces membership. Require teacher confirmation.",
-    schema:guardianUpdateSchema.extend({guardianId:uuid,confirmed:z.literal(true)}).strict(),
-    scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_guardians_delete_impact",
-    description:"Preview student and invoice obligations that block family deletion.",
-    schema:z.object({guardianId:uuid}).strict(),scope:"coach:read",readOnly:true,
-  },
-  {
-    name:"ccp_guardians_delete",
-    description:"Permanently remove an empty family only with explicit approval; student or invoice dependencies block deletion.",
-    schema:z.object({guardianId:uuid,confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
-  },
-  {
-    name:"ccp_guardians_rotate_portal_token",
-    description:"Invalidate an existing family-portal link and create a fresh one. Optional requestId safely replays a confirmed rotation across website/MCP retries. New secret is NEVER returned to the model; view the URL securely on the website.",
-    schema:z.object({guardianId:uuid,requestId:uuid.optional(),confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_contacts_list",
@@ -2295,39 +2252,6 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           idempotencyKey:a.idempotencyKey,
         })};
       }
-      case "ccp_guardians_list": {
-        const rows=await guardiansList(db,teacherId);
-        return {data:rows.map(row=>safeGuardian(row))};
-      }
-      case "ccp_guardians_detail": {
-        const a=args as {guardianId:string;includeContacts:boolean;confirmed?:boolean};
-        const row=await guardianDetail(db,teacherId,a.guardianId);
-        return {data:safeGuardian(row,a.includeContacts&&a.confirmed===true)};
-      }
-      case "ccp_guardians_create": {
-        const a=args as Parameters<typeof guardianCreate>[2];
-        const row=await guardianCreate(db,teacherId,a);
-        return {data:safeGuardian(row)};
-      }
-      case "ccp_guardians_update": {
-        const a=args as Parameters<typeof guardianUpdate>[3] & {guardianId:string};
-        const row=await guardianUpdate(db,teacherId,a.guardianId,a);
-        return {data:safeGuardian(row)};
-      }
-      case "ccp_guardians_delete_impact": {
-        const a=args as {guardianId:string};
-        return {data:await guardianDeleteImpact(db,teacherId,a.guardianId)};
-      }
-      case "ccp_guardians_delete": {
-        const a=args as {guardianId:string};
-        return {data:await guardianDelete(db,teacherId,a.guardianId)};
-      }
-      case "ccp_guardians_rotate_portal_token": {
-        const a=args as {guardianId:string;requestId?:string};
-        const rotated=await guardianRotatePortalToken(db,teacherId,a.guardianId,a.requestId);
-        return {data:{ok:true,id:rotated.id,replayed:rotated.replayed,
-          secretNotReturned:true}};
-      }
       case "ccp_contacts_list":
         return {data:await contactsList(db,teacherId)};
       case "ccp_contacts_detail": {
@@ -2867,8 +2791,6 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof PortalGrantError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof ContactServiceError)
-      return {error:{code:error.code,message:error.message}};
-    if (error instanceof GuardianServiceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LichessPuzzleError)
       return {error:{code:error.code,message:error.message}};
