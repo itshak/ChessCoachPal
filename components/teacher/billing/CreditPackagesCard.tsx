@@ -17,6 +17,7 @@ import {
   type RateSources,
 } from "@/lib/billing";
 import {type CreditPackageState} from "@/lib/credits";
+import {CreditAdjustmentPanel} from "@/components/teacher/billing/CreditAdjustmentPanel";
 
 const inputClass =
   "px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm";
@@ -30,6 +31,7 @@ export interface CreditPackageView {
   startsOn: string;
   expiresOn: string | null;
   usedCredits: number;
+  adjustmentCredits?: number;
   pendingCredits: number;
   remainingCredits: number;
   state: CreditPackageState;
@@ -208,7 +210,7 @@ function PackageRow({
             {pkg.remainingCredits}
             <span className="text-sm font-normal text-muted">
               {" "}
-              / {t("remainingTotal",{count:pkg.credits})}
+              / {t("remainingTotal",{count:pkg.credits+(pkg.adjustmentCredits??0)})}
             </span>
           </div>
           {pkg.pendingCredits > 0 && (
@@ -288,6 +290,7 @@ function PackageRow({
         </ul>
       )}
 
+      <CreditAdjustmentPanel packageId={pkg.id} />
       {error && <p className="text-error text-xs mt-2">{error}</p>}
     </div>
   );
