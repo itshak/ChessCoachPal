@@ -9,14 +9,18 @@ BEGIN
   FOREACH object_name IN ARRAY ARRAY[
     'students','workplaces','workplace_enrollments','teaching_sessions',
     'contacts','student_contacts','billing_accounts',
-    'portal_access_grants','portal_event_invitations'] LOOP
+    'portal_access_grants','portal_event_invitations',
+    'compensation_agreements','financial_obligations','received_payments',
+    'payment_allocations'] LOOP
     IF to_regclass('public.'||object_name) IS NULL THEN
       RAISE EXCEPTION 'Missing canonical table: %',object_name;
     END IF;
   END LOOP;
   FOREACH object_name IN ARRAY ARRAY[
     'students','contacts','student_contacts','billing_accounts',
-    'portal_access_grants','portal_event_invitations'] LOOP
+    'portal_access_grants','portal_event_invitations',
+    'compensation_agreements','financial_obligations','received_payments',
+    'payment_allocations'] LOOP
     IF (SELECT c.relrowsecurity FROM pg_class c
         WHERE c.oid=to_regclass('public.'||object_name)) IS DISTINCT FROM true THEN
       RAISE EXCEPTION 'Canonical RLS not enabled: %',object_name;
@@ -46,6 +50,30 @@ BEGIN
         AND array_length(c.conkey,1)=2) THEN
       RAISE EXCEPTION 'Compensation counterparty must use tenant-composite FK';
     END IF;
+  END IF;
+  -- Future financial tables are readable to their own teacher only; all
+  -- mutations remain service-only until audited explicit approval/posting.
+  FOREACH object_name IN ARRAY ARRAY[
+    'financial_obligations','received_payments','payment_allocations'] LOOP
+    IF NOT has_table_privilege('authenticated','public.'||object_name,'SELECT') OR
+       has_table_privilege('authenticated','public.'||object_name,'INSERT') OR
+       has_table_privilege('authenticated','public.'||object_name,'UPDATE') OR
+       has_table_privilege('authenticated','public.'||object_name,'DELETE') OR
+       has_table_privilege('anon','public.'||object_name,'SELECT') THEN
+      RAISE EXCEPTION 'Unsafe public/teacher write permissions for future financial ledger: %',object_name;
+    END IF;
+    IF NOT EXISTS(SELECT 1 FROM pg_trigger t WHERE t.tgrelid=
+      to_regclass('public.'||object_name) AND NOT t.tgisinternal
+      AND t.tgname=CASE object_name
+        WHEN 'financial_obligations' THEN 'financial_obligation_immutable'
+        WHEN 'received_payments' THEN 'received_payment_immutable'
+        ELSE 'payment_allocation_immutable' END) THEN
+      RAISE EXCEPTION 'Ledger table lacks immutable-history trigger: %',object_name;
+    END IF;
+  END LOOP;
+  IF NOT EXISTS(SELECT 1 FROM pg_trigger t WHERE t.tgrelid=
+    'public.payment_allocations'::regclass AND t.tgname='payment_allocation_guard') THEN
+    RAISE EXCEPTION 'Payment allocation must reject cross-account and over-limit transfers';
   END IF;
   IF to_regprocedure('public.ccp_scoped_portal_cancel(text,uuid,uuid,text)') IS NULL
     OR to_regprocedure('public.ccp_scoped_portal_rsvp(text,uuid,text,integer,text)') IS NULL THEN

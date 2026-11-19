@@ -1,6 +1,10 @@
 # ChessCoachPal development and release status
 
 
+## 2026-11-19 — Immutable financial-ledger schema foundation (DRAFT, NOT POSTING)
+
+Draft PR #104 adds a future `financial_obligations`/`received_payments`/`payment_allocations` **schema-only** slice in the single canonical baseline. Owner/workplace/payer/occurrence FKs, immutable-history triggers, single instructor/participant charge indexes and same-payer/currency bounded allocation checks exist. A synthetic, fully rolled-back SQL fixture checks an illustrative 18,000-minor-unit obligation with 6,000 allocated and 12,000 still outstanding (NOT a computation of lesson earnings), wrong counterparty/over-allocation denial and duplicate coach earning guards on clean CI installs. Authenticated clients have **no direct write permission**, and no website/MCP posting action or Stripe bank receipt sync is exposed; posting obligations, actual payment/partial allocation services, reversal/refund, and old guardian finance retirement remain unfinished. See [professional compensation](PROFESSIONAL_COMPENSATION.md). Local schema-source audit and type checks are not DB runtime proof. No production data touched; no merge/archive/release.
+
 ## 2026-11-19 — Contract counterparty and completed-attendance hardening (DRAFT)
 
 The existing effective-dated compensation agreement model was strengthened (not duplicated): **both coach earnings and participant-charge contracts must name one owned, active Billing Account**. A school paying the instructor is a financial counterparty, never the default derived from a student or a workplace label. The read-only projection now excludes completed sessions with unmarked or partially marked frozen attendance and reports `unconfirmedSessionCount`; it does not imply income was received. The contact notification worker now refuses an ambiguous multi-contact audience rather than broadcasting or retrying partially sent messages. Source TypeScript and canonical schema guard pass locally; full browser/MCP runtime/CI must still be proven. This remains an unmerged implementation with no financial postings or live database changes.

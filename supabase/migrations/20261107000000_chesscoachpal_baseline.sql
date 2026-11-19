@@ -11245,3 +11245,207 @@ GRANT ALL ON public.student_billing_assignments TO service_role;
 REVOKE ALL ON FUNCTION public.ccp_billing_assignment_one_payer() FROM PUBLIC,anon;
 COMMENT ON TABLE public.student_billing_assignments IS
   'Explicit payer allocation by student and workplace over inclusive dates. Does not issue invoices, collect money or grant portal access.';
+
+-- The two immutable financial identities are scoped not only by teacher but
+-- by the EXACT workplace and counterparty. These expanded unique FKs cannot
+-- reparent a school contract or private-lesson earning into another campus.
+ALTER TABLE public.teaching_sessions
+  ADD CONSTRAINT teaching_sessions_id_teacher_workplace_finance_key
+  UNIQUE(id,teacher_id,workplace_id);
+ALTER TABLE public.compensation_agreements
+  ADD CONSTRAINT compensation_id_owner_workplace_payer_key
+  UNIQUE(id,teacher_id,workplace_id,billing_account_id);
+
+-- Native future cash/obligation ledger, deliberately NOT connected to the
+-- inherited invoice/payments writer. Rows can be posted only after a separate
+-- reviewed teacher approval RPC is implemented; no direct authenticated
+-- INSERT/UPDATE/DELETE grants, so preview cannot manufacture money.
+CREATE TABLE public.financial_obligations (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ workplace_id uuid NOT NULL,
+ billing_account_id uuid NOT NULL,
+ agreement_id uuid NOT NULL,
+ agreement_revision bigint NOT NULL CHECK(agreement_revision>=1),
+ agreement_snapshot jsonb NOT NULL CHECK(jsonb_typeof(agreement_snapshot)='object'),
+ session_id uuid,
+ student_id uuid,
+ period_start date NOT NULL,
+ period_end date NOT NULL,
+ kind text NOT NULL CHECK(kind IN ('coach_earning','participant_charge','period_compensation')),
+ amount_cents bigint NOT NULL CHECK(amount_cents BETWEEN 0 AND 1000000000),
+ currency text NOT NULL CHECK(currency ~ '^[A-Z]{3}$'),
+ source_key text NOT NULL CHECK(char_length(source_key) BETWEEN 12 AND 220),
+ source_hash text NOT NULL CHECK(source_hash ~ '^[0-9a-f]{64}$'),
+ approval_request_id uuid NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(id,teacher_id),
+ UNIQUE(teacher_id,approval_request_id),
+ UNIQUE(teacher_id,agreement_id,source_key),
+ FOREIGN KEY(workplace_id,teacher_id)
+  REFERENCES public.workplaces(id,teacher_id) ON DELETE RESTRICT,
+ FOREIGN KEY(billing_account_id,teacher_id)
+  REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT,
+ FOREIGN KEY(agreement_id,teacher_id,workplace_id,billing_account_id)
+  REFERENCES public.compensation_agreements
+   (id,teacher_id,workplace_id,billing_account_id) ON DELETE RESTRICT,
+ FOREIGN KEY(session_id,teacher_id,workplace_id)
+  REFERENCES public.teaching_sessions(id,teacher_id,workplace_id) ON DELETE RESTRICT,
+ FOREIGN KEY(student_id,teacher_id)
+  REFERENCES public.students(id,teacher_id) ON DELETE RESTRICT,
+ FOREIGN KEY(session_id,student_id)
+  REFERENCES public.session_participants(session_id,student_id) ON DELETE RESTRICT,
+ CONSTRAINT financial_obligation_period CHECK(period_end>=period_start),
+ CONSTRAINT financial_obligation_source CHECK(
+  (kind='coach_earning' AND session_id IS NOT NULL AND student_id IS NULL
+    AND period_start=period_end)
+  OR (kind='participant_charge' AND session_id IS NOT NULL AND student_id IS NOT NULL
+    AND period_start=period_end)
+  OR (kind='period_compensation' AND session_id IS NULL AND student_id IS NULL
+    AND extract(day from period_start)=1 AND
+    period_end=(date_trunc('month',period_start::timestamp)+interval '1 month - 1 day')::date))
+);
+-- A group session has at most ONE coach-earning entry, irrespective of the
+-- number of students or competing contracts. A pupil can be charged at most
+-- once for this occurrence. This is enforced even if a caller invents a
+-- different source_key/approval_request_id.
+CREATE UNIQUE INDEX financial_obligations_one_coach_occurrence
+ ON public.financial_obligations(teacher_id,session_id)
+ WHERE kind='coach_earning';
+CREATE UNIQUE INDEX financial_obligations_one_participant_charge
+ ON public.financial_obligations(teacher_id,session_id,student_id)
+ WHERE kind='participant_charge';
+CREATE UNIQUE INDEX financial_obligations_one_period
+ ON public.financial_obligations(teacher_id,agreement_id,period_start,period_end)
+ WHERE kind='period_compensation';
+
+CREATE INDEX financial_obligations_counterparty_idx ON public.financial_obligations
+ (teacher_id,billing_account_id,currency,created_at,id);
+CREATE INDEX financial_obligations_occurrence_idx ON public.financial_obligations
+ (teacher_id,session_id,student_id) WHERE session_id IS NOT NULL;
+ALTER TABLE public.financial_obligations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY financial_obligations_teacher_read ON public.financial_obligations
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON public.financial_obligations FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.financial_obligations TO authenticated;
+GRANT ALL ON public.financial_obligations TO service_role;
+COMMENT ON TABLE public.financial_obligations IS
+ 'Append-only teacher-approved obligations, not automatically generated by lessons, reports, agreements or invoices. Source and agreement rates are snapshotted at posting.';
+
+-- Recorded funds are a distinct event from instructor work and invoicing.
+-- No Stripe provider state is invented by writing a lesson or credit.
+CREATE TABLE public.received_payments (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ billing_account_id uuid NOT NULL,
+ currency text NOT NULL CHECK(currency ~ '^[A-Z]{3}$'),
+ amount_cents bigint NOT NULL CHECK(amount_cents BETWEEN 1 AND 1000000000),
+ received_at timestamptz NOT NULL,
+ method text NOT NULL CHECK(method IN ('cash','bank_transfer','card','stripe','other')),
+ provenance text NOT NULL CHECK(provenance IN ('teacher_confirmed','provider_verified')),
+ external_reference text CHECK(external_reference IS NULL OR length(external_reference)<=240),
+ request_id uuid NOT NULL,
+ request_hash text NOT NULL CHECK(request_hash ~ '^[0-9a-f]{64}$'),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(id,teacher_id),
+ UNIQUE(teacher_id,request_id),
+ FOREIGN KEY(billing_account_id,teacher_id)
+  REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT
+);
+CREATE INDEX received_payments_counterparty_idx ON public.received_payments
+ (teacher_id,billing_account_id,received_at,id);
+ALTER TABLE public.received_payments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY received_payments_teacher_read ON public.received_payments
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON public.received_payments FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.received_payments TO authenticated;
+GRANT ALL ON public.received_payments TO service_role;
+COMMENT ON TABLE public.received_payments IS
+ 'Actual confirmed/verified received money only. Does not imply invoice issuance, tax receipts or automated payment provider interaction.';
+
+-- One actual received payment may settle several obligations, but never
+-- those of a different account/currency and never beyond either remaining
+-- balance. A trigger serializes concurrent allocations; no client can write
+-- a partial batch without a later reviewed single-transaction service RPC.
+CREATE TABLE public.payment_allocations (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ received_payment_id uuid NOT NULL,
+ obligation_id uuid NOT NULL,
+ amount_cents bigint NOT NULL CHECK(amount_cents BETWEEN 1 AND 1000000000),
+ request_id uuid NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(id,teacher_id),
+ UNIQUE(teacher_id,received_payment_id,obligation_id),
+ UNIQUE(teacher_id,request_id),
+ FOREIGN KEY(received_payment_id,teacher_id)
+  REFERENCES public.received_payments(id,teacher_id) ON DELETE RESTRICT,
+ FOREIGN KEY(obligation_id,teacher_id)
+  REFERENCES public.financial_obligations(id,teacher_id) ON DELETE RESTRICT
+);
+CREATE INDEX payment_allocations_obligation_idx ON public.payment_allocations
+ (teacher_id,obligation_id,created_at);
+CREATE OR REPLACE FUNCTION public.ccp_payment_allocation_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_payment_allocation_guard$
+DECLARE
+ v_payment public.received_payments%ROWTYPE;
+ v_obligation public.financial_obligations%ROWTYPE;
+ v_spent_on_payment bigint;
+ v_spent_on_obligation bigint;
+BEGIN
+ SELECT * INTO v_payment FROM public.received_payments
+ WHERE id=NEW.received_payment_id AND teacher_id=NEW.teacher_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'PAYMENT_NOT_OWNED' USING ERRCODE='42501';END IF;
+ SELECT * INTO v_obligation FROM public.financial_obligations
+ WHERE id=NEW.obligation_id AND teacher_id=NEW.teacher_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'OBLIGATION_NOT_OWNED' USING ERRCODE='42501';END IF;
+ IF v_payment.billing_account_id IS DISTINCT FROM v_obligation.billing_account_id
+    OR v_payment.currency IS DISTINCT FROM v_obligation.currency THEN
+   RAISE EXCEPTION 'PAYMENT_COUNTERPARTY_OR_CURRENCY_MISMATCH'
+     USING ERRCODE='23514';
+ END IF;
+ SELECT coalesce(sum(amount_cents),0) INTO v_spent_on_payment
+ FROM public.payment_allocations
+ WHERE teacher_id=NEW.teacher_id AND received_payment_id=NEW.received_payment_id;
+ SELECT coalesce(sum(amount_cents),0) INTO v_spent_on_obligation
+ FROM public.payment_allocations
+ WHERE teacher_id=NEW.teacher_id AND obligation_id=NEW.obligation_id;
+ IF v_spent_on_payment+NEW.amount_cents>v_payment.amount_cents OR
+   v_spent_on_obligation+NEW.amount_cents>v_obligation.amount_cents THEN
+   RAISE EXCEPTION 'PAYMENT_OVERALLOCATION' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_payment_allocation_guard$;
+CREATE TRIGGER payment_allocation_guard BEFORE INSERT ON public.payment_allocations
+FOR EACH ROW EXECUTE FUNCTION public.ccp_payment_allocation_guard();
+
+-- Corrections must be recorded separately, never by editing/deleting an
+-- issued obligation or received amount; refund/reversal writer is pending.
+CREATE OR REPLACE FUNCTION public.ccp_financial_ledger_append_only()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_financial_ledger_append_only$
+BEGIN
+ RAISE EXCEPTION 'IMMUTABLE_FINANCIAL_LEDGER' USING ERRCODE='23514';
+END;
+$ccp_financial_ledger_append_only$;
+CREATE TRIGGER financial_obligation_immutable
+BEFORE UPDATE OR DELETE ON public.financial_obligations
+FOR EACH ROW EXECUTE FUNCTION public.ccp_financial_ledger_append_only();
+CREATE TRIGGER received_payment_immutable
+BEFORE UPDATE OR DELETE ON public.received_payments
+FOR EACH ROW EXECUTE FUNCTION public.ccp_financial_ledger_append_only();
+CREATE TRIGGER payment_allocation_immutable
+BEFORE UPDATE OR DELETE ON public.payment_allocations
+FOR EACH ROW EXECUTE FUNCTION public.ccp_financial_ledger_append_only();
+ALTER TABLE public.payment_allocations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY payment_allocations_teacher_read ON public.payment_allocations
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON public.payment_allocations FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.payment_allocations TO authenticated;
+GRANT ALL ON public.payment_allocations TO service_role;
+REVOKE ALL ON FUNCTION public.ccp_payment_allocation_guard() FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.ccp_financial_ledger_append_only() FROM PUBLIC,anon;
+COMMENT ON TABLE public.payment_allocations IS
+ 'Append-only received-money-to-obligation allocations with tenant-owned FK, exact currency/counterparty match and concurrent over-allocation rejection. No direct browser/agent posting.';
