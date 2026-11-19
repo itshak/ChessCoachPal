@@ -11496,3 +11496,129 @@ REVOKE ALL ON FUNCTION public.ccp_finance_post_obligation(
  uuid,bigint,bigint,uuid,uuid,date,date,uuid,boolean) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_finance_post_obligation(
  uuid,bigint,bigint,uuid,uuid,date,date,uuid,boolean) TO authenticated;
+
+-- Unified SaaS schema freeze: explicit online-rating consent, durable bounded
+-- refresh queue and immutable attempt receipts. This does NOT enable a worker,
+-- contact providers, grant consent or alter the live deployed database.
+CREATE TABLE public.student_rating_sync_consents (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ student_id uuid NOT NULL,
+ provider text NOT NULL CHECK (provider IN ('lichess','chesscom')),
+ source_username text NOT NULL CHECK (source_username=btrim(source_username)
+   AND char_length(source_username) BETWEEN 2 AND 30),
+ handle_revision bigint NOT NULL DEFAULT 1 CHECK(handle_revision>=1),
+ enabled boolean NOT NULL DEFAULT false,
+ consented_at timestamptz,
+ revoked_at timestamptz,
+ revision bigint NOT NULL DEFAULT 1 CHECK(revision>=1),
+ last_request_id uuid,
+ last_request_hash text CHECK(last_request_hash IS NULL OR last_request_hash ~ '^[a-f0-9]{64}$'),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(id,teacher_id),
+ UNIQUE(id,teacher_id,student_id,provider),
+ UNIQUE(teacher_id,student_id,provider),
+ FOREIGN KEY(student_id,teacher_id) REFERENCES public.students(id,teacher_id) ON DELETE CASCADE,
+ CONSTRAINT rating_sync_explicit_consent CHECK(
+   (enabled AND consented_at IS NOT NULL AND revoked_at IS NULL)
+   OR (NOT enabled AND (consented_at IS NULL OR revoked_at IS NOT NULL)))
+);
+CREATE INDEX rating_sync_consent_owner_idx ON public.student_rating_sync_consents
+ (teacher_id,enabled,student_id,provider);
+ALTER TABLE public.student_rating_sync_consents ENABLE ROW LEVEL SECURITY;
+CREATE POLICY rating_sync_consent_read ON public.student_rating_sync_consents
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON TABLE public.student_rating_sync_consents FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON TABLE public.student_rating_sync_consents TO authenticated;
+GRANT ALL ON TABLE public.student_rating_sync_consents TO service_role;
+COMMENT ON TABLE public.student_rating_sync_consents IS
+ 'Server-authorized explicit provider-specific consent; account handle changes invalidate old job revisions.';
+
+CREATE TABLE public.student_rating_refresh_jobs (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ student_id uuid NOT NULL,
+ consent_id uuid NOT NULL,
+ provider text NOT NULL CHECK (provider IN ('lichess','chesscom')),
+ source_username text NOT NULL CHECK (source_username=btrim(source_username)
+   AND char_length(source_username) BETWEEN 2 AND 30),
+ handle_revision bigint NOT NULL CHECK(handle_revision>=1),
+ input_digest text NOT NULL CHECK(input_digest ~ '^[a-f0-9]{64}$'),
+ idempotency_key uuid NOT NULL,
+ trigger_kind text NOT NULL CHECK(trigger_kind IN
+   ('profile_save','manual','scheduled','history_backfill')),
+ status text NOT NULL DEFAULT 'pending' CHECK(status IN
+   ('pending','running','retry','succeeded','stale','failed','cancelled')),
+ attempt_count integer NOT NULL DEFAULT 0 CHECK(attempt_count BETWEEN 0 AND 30),
+ run_after timestamptz NOT NULL DEFAULT now(),
+ lease_token uuid,
+ lease_until timestamptz,
+ last_error_code text CHECK(last_error_code IS NULL OR
+  (char_length(last_error_code) BETWEEN 1 AND 80 AND last_error_code ~ '^[A-Z0-9_]+$')),
+ finished_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(id,teacher_id),
+ UNIQUE(id,teacher_id,student_id),
+ UNIQUE(teacher_id,idempotency_key),
+ UNIQUE(teacher_id,consent_id,handle_revision,input_digest,trigger_kind),
+ FOREIGN KEY(student_id,teacher_id) REFERENCES public.students(id,teacher_id) ON DELETE CASCADE,
+ FOREIGN KEY(consent_id,teacher_id,student_id,provider)
+   REFERENCES public.student_rating_sync_consents(id,teacher_id,student_id,provider) ON DELETE CASCADE,
+ CONSTRAINT rating_job_lease_pair CHECK((lease_token IS NULL)=(lease_until IS NULL)),
+ CONSTRAINT rating_job_running_lease CHECK(status<>'running' OR lease_until IS NOT NULL),
+ CONSTRAINT rating_job_terminal_time CHECK(
+  (status IN ('succeeded','stale','failed','cancelled'))=(finished_at IS NOT NULL))
+);
+CREATE INDEX rating_refresh_jobs_due_idx ON public.student_rating_refresh_jobs
+ (status,run_after,created_at) WHERE status IN ('pending','retry');
+CREATE INDEX rating_refresh_jobs_owner_idx ON public.student_rating_refresh_jobs
+ (teacher_id,student_id,created_at DESC);
+CREATE INDEX rating_refresh_jobs_lease_idx ON public.student_rating_refresh_jobs
+ (lease_until) WHERE status='running';
+ALTER TABLE public.student_rating_refresh_jobs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY rating_refresh_jobs_read ON public.student_rating_refresh_jobs
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON TABLE public.student_rating_refresh_jobs FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON TABLE public.student_rating_refresh_jobs TO authenticated;
+GRANT ALL ON TABLE public.student_rating_refresh_jobs TO service_role;
+COMMENT ON TABLE public.student_rating_refresh_jobs IS
+ 'Future worker MUST recheck owner, active student, current consent, handle revision and provider limits before fetch and snapshot commit.';
+
+CREATE TABLE public.student_rating_refresh_receipts (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ student_id uuid NOT NULL,
+ job_id uuid NOT NULL,
+ attempt_number integer NOT NULL CHECK(attempt_number BETWEEN 1 AND 30),
+ outcome text NOT NULL CHECK(outcome IN ('succeeded','stale','retry','failed','cancelled')),
+ source_username text NOT NULL CHECK(char_length(btrim(source_username)) BETWEEN 2 AND 30),
+ input_digest text NOT NULL CHECK(input_digest ~ '^[a-f0-9]{64}$'),
+ evidence_digest text CHECK(evidence_digest IS NULL OR evidence_digest ~ '^[a-f0-9]{64}$'),
+ snapshots_written integer NOT NULL DEFAULT 0 CHECK(snapshots_written BETWEEN 0 AND 1000),
+ error_code text CHECK(error_code IS NULL OR
+  (char_length(error_code) BETWEEN 1 AND 80 AND error_code ~ '^[A-Z0-9_]+$')),
+ observed_at timestamptz,
+ fetched_at timestamptz,
+ recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(id,teacher_id),
+ UNIQUE(teacher_id,job_id,attempt_number),
+ FOREIGN KEY(student_id,teacher_id) REFERENCES public.students(id,teacher_id) ON DELETE CASCADE,
+ FOREIGN KEY(job_id,teacher_id,student_id)
+   REFERENCES public.student_rating_refresh_jobs(id,teacher_id,student_id) ON DELETE CASCADE,
+ CONSTRAINT rating_receipt_success_evidence CHECK(
+  outcome<>'succeeded' OR (evidence_digest IS NOT NULL AND fetched_at IS NOT NULL))
+);
+CREATE INDEX rating_refresh_receipts_owner_idx ON public.student_rating_refresh_receipts
+ (teacher_id,student_id,recorded_at DESC);
+ALTER TABLE public.student_rating_refresh_receipts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY rating_refresh_receipts_read ON public.student_rating_refresh_receipts
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON TABLE public.student_rating_refresh_receipts FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON TABLE public.student_rating_refresh_receipts TO authenticated;
+-- Override default service-role ALL grants to preserve append-only receipt ACL.
+REVOKE ALL ON TABLE public.student_rating_refresh_receipts FROM service_role;
+GRANT SELECT,INSERT ON TABLE public.student_rating_refresh_receipts TO service_role;
+COMMENT ON TABLE public.student_rating_refresh_receipts IS
+ 'Append-only worker attempt evidence; no service-role UPDATE/DELETE and no inference of consent.';
