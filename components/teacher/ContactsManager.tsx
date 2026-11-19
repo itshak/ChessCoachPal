@@ -2,7 +2,6 @@
 
 import {useCallback,useEffect,useState,type FormEvent} from "react";
 import {useTranslations} from "next-intl";
-import Link from "next/link";
 import {Card} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
 
@@ -401,10 +400,5 @@ export function ContactsManager(){
         </form>
       </Card>}
     </div>}
-    <p className="text-sm text-muted">
-      <Link className="underline hover:text-primary" href="/families">
-        {t("legacyFamilyManagement")}
-      </Link>
-    </p>
   </div>;
 }
