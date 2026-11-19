@@ -50,6 +50,15 @@ export function CreditAdjustmentPanel({packageId}:{packageId:string}){
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const retryRequestId=useRef<string|null>(null);
+ const kindLabel=(value:Kind)=>{
+  switch(value){
+   case "manual_grant":return t("adjustment_manual_grant");
+   case "forfeiture":return t("adjustment_forfeiture");
+   case "transfer":return t("adjustment_transfer");
+   case "refund_entitlement":return t("adjustment_refund_entitlement");
+   case "expiry_extension":return t("adjustment_expiry_extension");
+  }
+ };
  const invalidate=()=>{setPreview(null);setError("");setNotice("");retryRequestId.current=null;};
  const review=async()=>{
   setBusy(true);setError("");setNotice("");setPreview(null);
@@ -99,7 +108,7 @@ export function CreditAdjustmentPanel({packageId}:{packageId:string}){
     <select className={field} value={kind} disabled={busy}
      onChange={e=>{setKind(e.target.value as Kind);invalidate();}}>
      {(["manual_grant","forfeiture","transfer","refund_entitlement","expiry_extension"] as Kind[])
-       .map(value=><option key={value} value={value}>{t("adjustment_"+value)}</option>)}
+       .map(value=><option key={value} value={value}>{kindLabel(value)}</option>)}
     </select>
    </label>
    {kind!=="expiry_extension"&&<label className="block">{t("adjustmentCredits")}
@@ -108,7 +117,7 @@ export function CreditAdjustmentPanel({packageId}:{packageId:string}){
    </label>}
    {kind==="transfer"&&<label className="block">{t("adjustmentDestination")}
     <input className={field} value={destinationPackageId} disabled={busy}
-     placeholder="UUID" onChange={e=>{setDestinationPackageId(e.target.value);invalidate();}}/>
+     onChange={e=>{setDestinationPackageId(e.target.value);invalidate();}}/>
    </label>}
    {kind==="expiry_extension"&&<label className="block">{t("adjustmentExpires")}
     <input className={field} type="date" value={newExpiresOn} disabled={busy}
@@ -117,11 +126,11 @@ export function CreditAdjustmentPanel({packageId}:{packageId:string}){
    {kind==="refund_entitlement"&&<>
     <label className="block">{t("adjustmentRefundPayment")}
      <input className={field} value={sourcePaymentId} disabled={busy}
-      placeholder="UUID" onChange={e=>{setSourcePaymentId(e.target.value);invalidate();}}/>
+      onChange={e=>{setSourcePaymentId(e.target.value);invalidate();}}/>
     </label>
     <label className="block">{t("adjustmentRefundReversal")}
      <input className={field} value={refundReversalId} disabled={busy}
-      placeholder="UUID" onChange={e=>{setRefundReversalId(e.target.value);invalidate();}}/>
+      onChange={e=>{setRefundReversalId(e.target.value);invalidate();}}/>
     </label>
    </>}
    <label className="block">{t("adjustmentReason")}
