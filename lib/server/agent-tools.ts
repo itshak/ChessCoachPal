@@ -28,6 +28,9 @@ import {materialInLessonPreviewSchema,materialInLessonCommitSchema,
  from "@/lib/server/teacher-material-in-lesson";
 
 import {spreadsheetSuggestMcpSchema} from "@/lib/spreadsheet-suggest";
+import {creditAdjustmentCommitSchema,creditAdjustmentPreviewSchema,
+ teacherCreditAdjustmentPreview,teacherCreditAdjustmentCommit}
+ from "@/lib/server/credit-adjustments";
 import {bulkLifecyclePreviewSchema,bulkLifecycleCommitSchema,
  teacherBulkLifecyclePreview,teacherBulkLifecycleCommit,BulkLifecycleError}
  from "@/lib/server/teacher-bulk-lifecycle";
@@ -1477,6 +1480,16 @@ const catalogue = [
     schema:z.object({workplaceId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_credits_adjustment_preview",
+    description:"Inspect an exact teacher-owned purchased credit package, remaining entitlements, redemptions, adjustments, expiry, invoice payment status and funding. Never infer a cash refund or transfer from archival.",
+    schema:creditAdjustmentPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_credits_adjustment_commit",
+    description:"Explicitly approve a credit grant, forfeiture, transfer between compatible owned paid packages, expiry extension, or refund entitlement backed by an independently recorded payment refund reversal. No cash is moved. Requires reason, exact package ID, expected credit balance, confirmed true and a durable unique retry ID. Call preview first; do not improvise finance evidence.",
+    schema:creditAdjustmentCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_groups_create",
     description:"Create a class group inside one identified authorized workplace.",
     schema:z.object({workplaceId:uuid,name:shortName,...mutation}).strict(),
@@ -2590,6 +2603,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_workplaces_enrollments":
         return {data:await workplacesEnrollments(db,teacherId,(args as {workplaceId:string}).workplaceId)};
+      case "ccp_credits_adjustment_preview":
+        return {data:await teacherCreditAdjustmentPreview(db,teacherId,
+          args as Parameters<typeof teacherCreditAdjustmentPreview>[2])};
+      case "ccp_credits_adjustment_commit":
+        return {data:await teacherCreditAdjustmentCommit(db,teacherId,
+          args as Parameters<typeof teacherCreditAdjustmentCommit>[2])};
       case "ccp_workplaces_unenroll_preview": {
         const a=args as {workplaceId:string;studentId:string};
         return {data:await workplacesUnenrollPreview(db,teacherId,a.workplaceId,a.studentId)};
