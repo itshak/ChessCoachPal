@@ -291,12 +291,16 @@ export async function POST(req: NextRequest) {
         result = await workplacesEnrollments(db, teacherId, call.workplaceId); break;
       case "credits.adjustmentPreview":
         result = await teacherCreditAdjustmentPreview(db,teacherId,{packageId:call.packageId}); break;
-      case "credits.adjustmentCommit":
-        result = await teacherCreditAdjustmentCommit(db,teacherId,call); break;
+      case "credits.adjustmentCommit": {
+        const {action: _action, ...payload}=call;
+        result = await teacherCreditAdjustmentCommit(db,teacherId,payload); break;
+      }
       case "students.lifecyclePreview":
         result=await studentLifecyclePreview(db,teacherId,{studentId:call.studentId}); break;
-      case "students.lifecycleCommit":
-        result=await studentLifecycleCommit(db,teacherId,call); break;
+      case "students.lifecycleCommit": {
+        const {action: _action, ...payload}=call;
+        result=await studentLifecycleCommit(db,teacherId,payload); break;
+      }
       case "students.search":
         result = await studentsSearch(db, teacherId, call.query); break;
       case "students.create":
