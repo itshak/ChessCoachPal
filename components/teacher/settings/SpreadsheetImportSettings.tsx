@@ -161,7 +161,7 @@ export function SpreadsheetImportSettings({
       }
       if (!res.ok) throw new Error(toUserError(data, t("importFailed")));
       setMessage(
-        t("importReceipt",{students:data.studentsCreated,families:data.familiesCreated,skipped:data.studentsSkipped})
+        t("importReceipt",{students:data.studentsCreated,families:data.contactsCreated??0,skipped:data.studentsSkipped})
       );
       clearPreview();
       router.refresh();
