@@ -81,6 +81,9 @@ export async function teacherSpreadsheetCommit(
   if(body.rows.length<1||body.rows.length>500)
     return NextResponse.json({error:"Import requires 1–500 rows"},{status:400});
   const {rows,issues}=normalizeImportRows(body.rows,body.mapping);
+  if(issues.length)return NextResponse.json({
+    code:"IMPORT_REVIEW_REQUIRED",error:"Review and correct every spreadsheet row issue before committing. No rows were imported.",issues,
+  },{status:422});
   if(!rows.length)return NextResponse.json({
     error:"No valid student rows to import",issues,
   },{status:400});
