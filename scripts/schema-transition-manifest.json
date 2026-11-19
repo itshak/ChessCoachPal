@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "mode": "single-canonical-baseline",
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "35d2166ebd03b5a2281c9f081a69602aeb64a7bbb9f1e1692ac7aa9fbbf159a4",
+  "baselineSha256": "da3e8449ea6621b5c2d082f21ae93f4233c5c0ce8fd3900a2ea23189bb283561",
   "operatorCutoverRequired": true,
   "baselineRequiredObjects": [
     "students",
@@ -36,6 +36,8 @@
     "student_rating_refresh_receipts",
     "credit_adjustment_events",
     "ccp_workplace_enrollment_end_preview",
-    "ccp_workplace_enrollment_end_commit"
+    "ccp_workplace_enrollment_end_commit",
+    "ccp_credit_adjustment_preview",
+    "ccp_credit_adjustment_commit"
   ]
 }
