@@ -66,6 +66,9 @@ export async function getInvoicedParticipantKeys(
 export async function deriveCanonicalPeriodItems(
  db:SupabaseClient,teacherId:string,
  periodStart:string,periodEnd:string,policy:TeacherPolicy,opts:{
+  // Narrow read-only prepaid-balance projections to their actual students;
+  // an unrelated learner lacking a payer must not break another's balance.
+  studentIds?:string[];
   billingAccountId?:string;
   excludeParticipantKeys?:Set<string>;
   travelInvoicedParticipantKeys?:Set<string>;
@@ -73,7 +76,7 @@ export async function deriveCanonicalPeriodItems(
  }={}
 ):Promise<CanonicalDerivedPeriod>{
  const rows=await loadCanonicalBillingParticipants(
-  db,teacherId,periodStart,periodEnd,policy.timezone);
+  db,teacherId,periodStart,periodEnd,policy.timezone,{studentIds:opts.studentIds});
  const exclude=opts.excludeParticipantKeys??new Set<string>();
  const travelInvoiced=opts.travelInvoicedParticipantKeys??new Set<string>();
  const inputs:BillableLessonInput[]=[];
