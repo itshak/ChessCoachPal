@@ -4,6 +4,11 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 
 test("PARITY:PARITY-spreadsheet-preview-commit-replay shares mapping and deduplicated receipt",async({page,request})=>{
  const call=await delegatedTool(page,request);
+ const list=await page.request.post("/api/agent/v1",{data:{action:"workplaces.list"}});
+ expect(list.status(),await list.text()).toBe(200);
+ const owned=(await list.json()).data as Array<{id:string;name:string}>;
+ const workplaceId=owned.find(w=>w.name==="Private coaching")?.id??owned[0]?.id;
+ expect(workplaceId).toBeTruthy();
  const name="CSV chess learner "+randomUUID(),parent="Guardian "+randomUUID().slice(0,7);
  const csv="Student Name,Guardian Name\n"+name+","+parent+"\n";
  const filename="parity-pupils.csv";
@@ -29,13 +34,13 @@ test("PARITY:PARITY-spreadsheet-preview-commit-replay shares mapping and dedupli
  expect(modelPreview.data).toEqual(await webPreview.json());
  const idempotencyKey=randomUUID();
  const write=await call("ccp_import_spreadsheet_commit",{
-   rows,mapping,idempotencyKey,confirmed:true,
+   rows,mapping,idempotencyKey,workplaceId,confirmed:true,
  });
  expect(write.error).toBeUndefined();
  expect(write.data.studentsCreated).toBe(1);
  expect(write.data.receiptId).toBe(idempotencyKey);
  const webReplay=await page.request.post("/api/import/spreadsheet/commit",{
-   data:{rows,mapping,idempotencyKey},
+   data:{rows,mapping,idempotencyKey,workplaceId},
  });
  expect(webReplay.status(),await webReplay.text()).toBe(200);
  expect(await webReplay.json()).toEqual(write.data);
@@ -48,6 +53,11 @@ test("PARITY:PARITY-spreadsheet-preview-commit-replay shares mapping and dedupli
 
 test("PARITY:PARITY-spreadsheet-archived-status-website-MCP-atomic-roundtrip",async({page,request})=>{
  const call=await delegatedTool(page,request);
+ const list=await page.request.post("/api/agent/v1",{data:{action:"workplaces.list"}});
+ expect(list.status(),await list.text()).toBe(200);
+ const owned=(await list.json()).data as Array<{id:string;name:string}>;
+ const workplaceId=owned.find(w=>w.name==="Private coaching")?.id??owned[0]?.id;
+ expect(workplaceId).toBeTruthy();
  const historicalName="Archived imported chess learner "+randomUUID();
  const currentName="Active imported chess learner "+randomUUID();
  const csv="Student Name,Archived\n"+historicalName+",inactive\n"+currentName+",active\n";
@@ -67,13 +77,13 @@ test("PARITY:PARITY-spreadsheet-archived-status-website-MCP-atomic-roundtrip",as
  expect(modelPreview.data).toEqual(await browserPreview.json());
  const key=randomUUID();
  const browserCommit=await page.request.post("/api/import/spreadsheet/commit",{
-   data:{rows,mapping,idempotencyKey:key},
+   data:{rows,mapping,idempotencyKey:key,workplaceId},
  });
  expect(browserCommit.status(),await browserCommit.text()).toBe(200);
  const committed=await browserCommit.json();
  expect(committed.studentsCreated).toBe(2);
  const mcpReplay=await call("ccp_import_spreadsheet_commit",{
-   rows,mapping,idempotencyKey:key,confirmed:true,
+   rows,mapping,idempotencyKey:key,workplaceId,confirmed:true,
  });
  expect(mcpReplay.error).toBeUndefined();
  expect(mcpReplay.data).toEqual(committed);
