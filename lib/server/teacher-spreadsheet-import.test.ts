@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {teacherSpreadsheetSuggest} from "@/lib/server/teacher-spreadsheet-import";
+import {teacherSpreadsheetSuggest,teacherSpreadsheetCommit} from "@/lib/server/teacher-spreadsheet-import";
 
 const noDb={} as SupabaseClient;
 describe("external AI spreadsheet mapping privacy boundary",()=>{
@@ -31,5 +31,39 @@ describe("external AI spreadsheet mapping privacy boundary",()=>{
     headers:["Name"],sampleRows,useAi:true,confirmedExternal:true,
    })).rejects.toMatchObject({status:400,code:"VALIDATION_ERROR"});
   }
+ });
+});
+
+describe("spreadsheet workplace fail-closed contract",()=>{
+ const body={rows:[{"Student Name":"Learner"}],mapping:{student_name:"Student Name"}};
+ const mock=(workplaces:Array<{id:string;name:string}>)=>{
+  let rpcCalls=0;
+  const db={
+   from:(table:string)=>{
+    expect(table).toBe("workplaces");
+    return {select:()=>({eq:async()=>({data:workplaces,error:null})})};
+   },
+   rpc:async()=>{rpcCalls++;return {data:{studentsCreated:1},error:null};},
+  } as unknown as SupabaseClient;
+  return {db,calls:()=>rpcCalls};
+ };
+ it("requires explicit workplace when two choices exist; no writes",async()=>{
+  const {db,calls}=mock([{id:"a",name:"Yatmo"},{id:"b",name:"Other"}]);
+  const res=await teacherSpreadsheetCommit(db,"teacher",body);
+  expect(res.status).toBe(422);
+  expect((await res.json()).code).toBe("WORKPLACE_REQUIRED");
+  expect(calls()).toBe(0);
+ });
+ it("requires workplace creation if no workplaces exist",async()=>{
+  const {db,calls}=mock([]);
+  const res=await teacherSpreadsheetCommit(db,"teacher",body);
+  expect(res.status).toBe(422);
+  expect(calls()).toBe(0);
+ });
+ it("rejects an unknown or foreign workplace without writing",async()=>{
+  const {db,calls}=mock([{id:"a",name:"Yatmo"}]);
+  const res=await teacherSpreadsheetCommit(db,"teacher",{...body,workplaceId:"b"});
+  expect(res.status).toBe(422);
+  expect(calls()).toBe(0);
  });
 });
