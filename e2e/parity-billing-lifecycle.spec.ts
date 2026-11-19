@@ -1,4 +1,4 @@
-import {insertTestBillingAccount} from "./helpers/canonical-payer";
+import {insertTestBillingAccount,prepareSendableInvoice} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -34,7 +34,8 @@ async function invoice(status:"sent"|"draft",subtotal=12500){
     ...(status==="sent"?{sent_at:new Date().toISOString()}:{}),
  }).select("id").single();
  expect(made.error).toBeNull();
- return {id:made.data!.id as string,guardianId:guardian.data!.id as string,portalToken,admin};
+ return {id:made.data!.id as string,guardianId:guardian.data!.id as string,
+  contactId:guardian.data!.contactId!,teacherId,portalToken,admin};
 }
 /** Any household-wide pre-v1 link is invalid after the single final cutover.
  * A delivered invoice does not reinstate broad guest access. Scoped portal
@@ -656,6 +657,13 @@ test("PARITY:PARITY-billing-paid-before-send remains private until deliberate de
   quantity:1,unit_cents:5400,amount_cents:5400,sort_order:0,
  });
  expect(item.error).toBeNull();
+ // Sending a paid-but-never-delivered invoice still requires a real lesson
+ // attribution, the dated payer and explicit student/contact message consent.
+ await prepareSendableInvoice(created.admin,{
+   teacherId:created.teacherId,invoiceId:created.id,
+   billingAccountId:created.guardianId,contactId:created.contactId,
+   periodStart:"2027-03-01",
+ });
  const url="/api/billing/invoices/"+created.id;
  const payment=await page.request.post(url+"/mark-paid",{
   data:{amountCents:5400,note:"Cash received before email",
