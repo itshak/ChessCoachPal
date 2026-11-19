@@ -3445,7 +3445,12 @@ BEGIN
    ELSIF OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL THEN
      v_delta:=-1;
      IF EXISTS(SELECT 1 FROM public.workplace_enrollments
-               WHERE teacher_id=v_teacher AND student_id=NEW.id)
+               WHERE teacher_id=v_teacher AND student_id=NEW.id
+                 AND cancelled_at IS NULL
+                 AND (ends_on IS NULL OR ends_on >=
+                   (clock_timestamp() AT TIME ZONE coalesce(
+                     (SELECT timezone FROM public.teacher_settings WHERE teacher_id=v_teacher),
+                     'UTC'))::date))
        OR EXISTS(SELECT 1 FROM public.lesson_slots
                WHERE teacher_id=v_teacher AND student_id=NEW.id AND active)
        OR EXISTS(SELECT 1 FROM public.teaching_sessions
@@ -9415,7 +9420,12 @@ BEGIN
   END IF;
   IF v_archive AND v_student.archived_at IS NULL THEN
    IF EXISTS(SELECT 1 FROM public.workplace_enrollments
-      WHERE teacher_id=v_teacher AND student_id=v_id) THEN
+      WHERE teacher_id=v_teacher AND student_id=v_id
+        AND cancelled_at IS NULL
+        AND (ends_on IS NULL OR ends_on >=
+          (clock_timestamp() AT TIME ZONE coalesce(
+            (SELECT timezone FROM public.teacher_settings WHERE teacher_id=v_teacher),
+            'UTC'))::date)) THEN
     RAISE EXCEPTION 'ACTIVE_WORKPLACE' USING ERRCODE='23503';
    END IF;
    IF EXISTS(SELECT 1 FROM public.group_enrollments
@@ -11792,7 +11802,7 @@ BEGIN
    AND e.cancelled_at IS NULL
    AND (e.starts_on IS NULL OR e.starts_on<=v_local_date)
    AND (e.ends_on IS NULL OR e.ends_on>=v_local_date)
- FOR KEY SHARE OF e;
+ FOR SHARE OF e;
  IF NOT FOUND THEN
    RAISE EXCEPTION 'STUDENT_NOT_ENROLLED' USING ERRCODE='23503';
  END IF;
@@ -11852,3 +11862,191 @@ GRANT SELECT ON TABLE public.credit_adjustment_events TO authenticated;
 GRANT SELECT,INSERT ON TABLE public.credit_adjustment_events TO service_role;
 COMMENT ON TABLE public.credit_adjustment_events IS
  'Immutable approved entitlement adjustments; not a payment or invoice source. No direct client writes; balance/funding/replay/pair checks belong to one transactional writer in the downstream credit lifecycle change.';
+
+-- Temporal lifecycle acceptance: end a workplace relationship without deleting
+-- historical periods, frozen session participants or financial entitlements.
+-- The preview is advisory; the commit repeats every blocker under row locks.
+-- Concurrent group/session insertion takes a SHARE lock on the membership.
+CREATE OR REPLACE FUNCTION public.ccp_group_enrollment_period_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_group_period_locked$
+DECLARE v_date date; v_timezone text; v_membership uuid;
+BEGIN
+ SELECT timezone INTO v_timezone FROM public.teacher_settings
+   WHERE teacher_id=NEW.teacher_id;
+ v_date:=(clock_timestamp() AT TIME ZONE coalesce(v_timezone,'UTC'))::date;
+ SELECT e.id INTO v_membership FROM public.workplace_enrollments e
+ WHERE e.teacher_id=NEW.teacher_id AND e.student_id=NEW.student_id
+   AND e.workplace_id=NEW.workplace_id AND e.cancelled_at IS NULL
+   AND (e.starts_on IS NULL OR e.starts_on<=v_date)
+   AND (e.ends_on IS NULL OR e.ends_on>=v_date)
+ FOR SHARE OF e;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'STUDENT_NOT_CURRENTLY_ENROLLED' USING ERRCODE='23503';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_group_period_locked$;
+
+DROP TRIGGER IF EXISTS ccp_direct_session_enrollment_guard
+ ON public.teaching_sessions;
+CREATE TRIGGER ccp_direct_session_enrollment_guard
+ BEFORE INSERT OR UPDATE OF student_id,workplace_id,starts_at
+ ON public.teaching_sessions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_direct_session_enrollment_guard();
+
+CREATE OR REPLACE FUNCTION public.ccp_restrict_workplace_unenroll()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $ccp_retain_enrollment_history$
+BEGIN
+ IF auth.uid() IS NOT NULL THEN
+   RAISE EXCEPTION 'USE_REVIEWED_MEMBERSHIP_END'
+     USING ERRCODE='23514';
+ END IF;
+ RETURN OLD;
+END;
+$ccp_retain_enrollment_history$;
+
+-- Editing, cancelling or deleting a membership cannot bypass the reviewed RPC.
+-- The SECURITY DEFINER function writes on behalf of the authenticated owner.
+REVOKE UPDATE,DELETE ON public.workplace_enrollments
+ FROM PUBLIC,anon,authenticated;
+
+CREATE OR REPLACE FUNCTION public.ccp_workplace_enrollment_end_preview(
+ p_workplace_id uuid,p_student_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_enrollment_end_preview$
+DECLARE
+ v_teacher uuid:=auth.uid();v_timezone text;v_today date;
+ v_row public.workplace_enrollments%ROWTYPE;
+ v_groups integer;v_future integer;v_slots integer;
+BEGIN
+ IF v_teacher IS NULL OR p_workplace_id IS NULL OR p_student_id IS NULL THEN
+   RAISE EXCEPTION 'INVALID_ENROLLMENT_PREVIEW' USING ERRCODE='42501';
+ END IF;
+ SELECT timezone INTO v_timezone FROM public.teacher_settings
+   WHERE teacher_id=v_teacher;
+ v_today:=(clock_timestamp() AT TIME ZONE coalesce(v_timezone,'UTC'))::date;
+ SELECT * INTO v_row FROM public.workplace_enrollments e
+ WHERE e.teacher_id=v_teacher AND e.workplace_id=p_workplace_id
+   AND e.student_id=p_student_id AND e.cancelled_at IS NULL
+   AND (e.starts_on IS NULL OR e.starts_on<=v_today)
+   AND (e.ends_on IS NULL OR e.ends_on>=v_today)
+ ORDER BY e.starts_on DESC NULLS LAST LIMIT 1;
+ IF NOT FOUND THEN RAISE EXCEPTION 'ACTIVE_ENROLLMENT_NOT_FOUND'
+   USING ERRCODE='42501';END IF;
+ SELECT count(*)::integer INTO v_groups FROM public.group_enrollments
+  WHERE teacher_id=v_teacher AND student_id=p_student_id
+    AND workplace_id=p_workplace_id;
+ SELECT count(*)::integer INTO v_future
+ FROM public.teaching_sessions sess
+ WHERE sess.teacher_id=v_teacher AND sess.workplace_id=p_workplace_id
+   AND sess.status='scheduled' AND sess.starts_at>=clock_timestamp()
+   AND (sess.student_id=p_student_id OR EXISTS(
+     SELECT 1 FROM public.session_participants sp
+      WHERE sp.teacher_id=v_teacher AND sp.session_id=sess.id
+        AND sp.student_id=p_student_id));
+ SELECT count(*)::integer INTO v_slots FROM public.lesson_slots
+ WHERE teacher_id=v_teacher AND student_id=p_student_id
+   AND active AND (workplace_id=p_workplace_id);
+ RETURN jsonb_build_object(
+  'membershipId',v_row.id,'workplaceId',p_workplace_id,'studentId',p_student_id,
+  'startsOn',v_row.starts_on,'revision',v_row.revision,
+  'activeGroups',v_groups,'futureSessions',v_future,'activeSlots',v_slots,
+  'canEnd',(v_groups=0 AND v_future=0 AND v_slots=0),
+  'creditPolicy','hold_without_refund_transfer_or_expiry_change',
+  'endOn',CASE WHEN v_row.starts_on IS NULL OR v_row.starts_on<v_today
+     THEN v_today-1 ELSE v_today END,
+  'sameDayCancellation',v_row.starts_on>=v_today);
+END;
+$ccp_enrollment_end_preview$;
+REVOKE ALL ON FUNCTION public.ccp_workplace_enrollment_end_preview(uuid,uuid)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_workplace_enrollment_end_preview(uuid,uuid)
+ TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.ccp_workplace_enrollment_end_commit(
+ p_workplace_id uuid,p_student_id uuid,p_expected_revision bigint,
+ p_request_id uuid,p_reason text,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_enrollment_end_commit$
+DECLARE
+ v_teacher uuid:=auth.uid();v_timezone text;v_today date;
+ v_row public.workplace_enrollments%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_hash text;v_result jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED'
+   USING ERRCODE='42501';END IF;
+ IF p_workplace_id IS NULL OR p_student_id IS NULL OR p_expected_revision IS NULL
+  OR p_expected_revision<1 OR p_request_id IS NULL
+  OR p_confirmed IS DISTINCT FROM true OR p_reason IS NULL
+  OR length(btrim(p_reason)) NOT BETWEEN 8 AND 1000 THEN
+   RAISE EXCEPTION 'ENROLLMENT_END_REQUIRES_REVIEW'
+      USING ERRCODE='22023';
+ END IF;
+ v_hash:=md5(jsonb_build_array('membership.end',p_workplace_id,p_student_id,
+   p_expected_revision,p_reason,p_confirmed)::text);
+ PERFORM pg_advisory_xact_lock(hashtextextended(
+   v_teacher::text||':membership-end:'||p_request_id::text,0));
+ SELECT * INTO v_saved FROM public.agent_tool_receipts
+ WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ IF FOUND THEN
+   IF v_saved.operation<>'membership.end' OR v_saved.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'MEMBERSHIP_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT timezone INTO v_timezone FROM public.teacher_settings
+   WHERE teacher_id=v_teacher;
+ v_today:=(clock_timestamp() AT TIME ZONE coalesce(v_timezone,'UTC'))::date;
+ SELECT * INTO v_row FROM public.workplace_enrollments e
+ WHERE e.teacher_id=v_teacher AND e.workplace_id=p_workplace_id
+   AND e.student_id=p_student_id AND e.cancelled_at IS NULL
+   AND (e.starts_on IS NULL OR e.starts_on<=v_today)
+   AND (e.ends_on IS NULL OR e.ends_on>=v_today)
+ ORDER BY e.starts_on DESC NULLS LAST LIMIT 1 FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'ACTIVE_ENROLLMENT_NOT_FOUND'
+   USING ERRCODE='42501'; END IF;
+ IF v_row.revision<>p_expected_revision THEN
+   RAISE EXCEPTION 'MEMBERSHIP_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.group_enrollments
+   WHERE teacher_id=v_teacher AND workplace_id=p_workplace_id
+     AND student_id=p_student_id)
+ OR EXISTS(SELECT 1 FROM public.lesson_slots
+   WHERE teacher_id=v_teacher AND student_id=p_student_id
+     AND workplace_id=p_workplace_id AND active)
+ OR EXISTS(SELECT 1 FROM public.teaching_sessions sess
+   WHERE sess.teacher_id=v_teacher AND sess.workplace_id=p_workplace_id
+    AND sess.status='scheduled' AND sess.starts_at>=clock_timestamp()
+    AND (sess.student_id=p_student_id OR EXISTS (
+      SELECT 1 FROM public.session_participants sp
+      WHERE sp.teacher_id=v_teacher AND sp.session_id=sess.id
+        AND sp.student_id=p_student_id))) THEN
+   RAISE EXCEPTION 'FUTURE_COMMITMENTS' USING ERRCODE='23503';
+ END IF;
+ IF v_row.starts_on IS NOT NULL AND v_row.starts_on>=v_today THEN
+   UPDATE public.workplace_enrollments SET
+     cancelled_at=clock_timestamp(),cancel_reason=p_reason
+    WHERE id=v_row.id AND teacher_id=v_teacher RETURNING * INTO v_row;
+ ELSE
+   UPDATE public.workplace_enrollments SET
+     ends_on=v_today-1,end_reason=p_reason
+    WHERE id=v_row.id AND teacher_id=v_teacher RETURNING * INTO v_row;
+ END IF;
+ v_result:=jsonb_build_object('membershipId',v_row.id,
+  'workplaceId',v_row.workplace_id,'studentId',v_row.student_id,
+  'revision',v_row.revision,'endsOn',v_row.ends_on,
+  'cancelledAt',v_row.cancelled_at,'removed',true,
+  'creditPolicy','hold_without_refund_transfer_or_expiry_change');
+ INSERT INTO public.agent_tool_receipts
+ (teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_request_id,'membership.end',v_hash,v_result);
+ RETURN v_result||jsonb_build_object('replayed',false);
+END;
+$ccp_enrollment_end_commit$;
+REVOKE ALL ON FUNCTION public.ccp_workplace_enrollment_end_commit(
+ uuid,uuid,bigint,uuid,text,boolean) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_workplace_enrollment_end_commit(
+ uuid,uuid,bigint,uuid,text,boolean) TO authenticated;
