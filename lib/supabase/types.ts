@@ -534,6 +534,7 @@ export interface Database {
             "transfer_out" | "transfer_in" | "expiry_extension";
           credits_delta: number; transfer_id: string | null;
           new_expires_on: string | null; source_payment_id: string | null;
+          refund_reversal_id: string | null;
           approved_request_id: string; approval_reason: string;
           evidence: Record<string, unknown>; recorded_at: string;
         };
@@ -542,6 +543,7 @@ export interface Database {
           kind: Database["public"]["Tables"]["credit_adjustment_events"]["Row"]["kind"];
           credits_delta: number; transfer_id?: string | null;
           new_expires_on?: string | null; source_payment_id?: string | null;
+          refund_reversal_id?: string | null;
           approved_request_id: string; approval_reason: string;
           evidence?: Record<string, unknown>; recorded_at?: string;
         };
