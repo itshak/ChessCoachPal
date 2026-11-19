@@ -54,6 +54,16 @@ export async function portalCalendarForContext(db:Db,ctx:PortalContext,from:stri
           person.studentId===ctx.grant.studentId),
       })).filter(session=>session.participants.length>0);
 }
+/** Shared session-wide notes are not safe for group participants:
+ * even an approved note can discuss other children. Require student scope
+ * for every multi-participant lesson and deny an unknown original roster. */
+export function portalSharedNoteVisible(
+  noteStudentId:string|null,studentId:string,frozenParticipantCount:number
+):boolean{
+  if(frozenParticipantCount<1)return false;
+  return noteStudentId===studentId||
+    (noteStudentId===null&&frozenParticipantCount===1);
+}
 export async function portalSharedNotesForContext(db:Db,ctx:PortalContext,
   lessons:CanonicalCalendarRow[]){
   if(!ctx.grant.permissions.has("shared_notes"))return [];
@@ -62,6 +72,24 @@ export async function portalSharedNotesForContext(db:Db,ctx:PortalContext,
   if(!ids.length)return [];
   const allowed=new Map(scoped.map(s=>[s.id,s]));
   const results:{id:string;sessionId:string;body:string;date:string}[]=[];
+  // A teacher-approved session-wide note may describe the whole group.
+  // It is safe to display without a student attribution only when the
+  // original frozen roster contains exactly this one learner.
+  const participantCounts=new Map<string,number>();
+  for(let i=0;i<ids.length;i+=80){
+    const batch=ids.slice(i,i+80);
+    for(let offset=0;;offset+=500){
+      const {data,error}=await db.from("session_participants")
+        .select("session_id,student_id").eq("teacher_id",ctx.grant.teacherId)
+        .in("session_id",batch).order("session_id").order("student_id")
+        .range(offset,offset+499);
+      if(error)throw new Error("Cannot verify the original note audience");
+      for(const row of data??[])
+        participantCounts.set(row.session_id,(participantCounts.get(row.session_id)??0)+1);
+      if((data?.length??0)<500)break;
+      if(offset>=10000)throw new RangeError("Original note audience exceeds safe limit");
+    }
+  }
   for(let i=0;i<ids.length;i+=80){
     const {data,error}=await db.from("session_notes")
       .select("id,session_id,student_id,body,shared_with_contacts")
@@ -71,7 +99,8 @@ export async function portalSharedNotesForContext(db:Db,ctx:PortalContext,
     for(const note of data??[]){
       const session=allowed.get(note.session_id);
       if(!session||session.workplace_id!==ctx.grant.workplaceId||
-        (note.student_id!==null&&note.student_id!==ctx.grant.studentId))continue;
+        !portalSharedNoteVisible(note.student_id,ctx.grant.studentId,
+          participantCounts.get(note.session_id)??0))continue;
       results.push({id:note.id,sessionId:session.id,body:note.body,
         date:toLocalDateString(new Date(session.starts_at),ctx.workplace.timezone)});
     }

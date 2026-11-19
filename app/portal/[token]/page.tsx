@@ -1,5 +1,6 @@
 import type {Metadata} from "next";
 import {notFound} from "next/navigation";
+import {headers} from "next/headers";
 import {getLocale,getTranslations} from "next-intl/server";
 import {createServiceClient} from "@/lib/supabase/server";
 import {toLocalDateString,addDays} from "@/lib/schedule";
@@ -13,6 +14,7 @@ import {PortalEventRsvp} from "@/components/portal/PortalEventRsvp";
 import {resolvePortalContext,portalCalendarForContext,
   portalSharedNotesForContext,portalEventsForContext} from "@/lib/server/portal-scope-service";
 import {portalScopedInvoices} from "@/lib/server/portal-finance-scope";
+import {rejectIfTokenLookupsBlocked,recordTokenLookupFailure} from "@/lib/server/token-guard";
 
 export const dynamic="force-dynamic";
 export const revalidate=0;
@@ -28,9 +30,13 @@ export async function generateMetadata():Promise<Metadata>{
  * cross-workplace invoice totals are queried or rendered.
  */
 export default async function PortalPage({params}:{params:Promise<{token:string}>}){
+  // Apply the same failed-token brute-force guard as the ICS and guest
+  // mutation endpoints. Do not disclose whether a grant existed or expired.
+  const request=new Request("https://portal.invalid/",{headers:await headers()});
+  if(rejectIfTokenLookupsBlocked(request))notFound();
   const {token}=await params,db=createServiceClient();
   const ctx=await resolvePortalContext(db,token);
-  if(!ctx)notFound();
+  if(!ctx){recordTokenLookupFailure(request);notFound();}
   const t=await getTranslations("portal"),locale=await getLocale();
   const timezone=ctx.workplace.timezone;
   const today=toLocalDateString(new Date(),timezone);
