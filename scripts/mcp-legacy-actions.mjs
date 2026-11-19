@@ -7,6 +7,7 @@ export const legacyActionTools=Object.freeze({
   "workplaces.create":"ccp_workplaces_create",
   "workplaces.update":"ccp_workplaces_update",
   "workplaces.enroll":"ccp_workplaces_enroll",
+  "workplaces.unenrollPreview":"ccp_workplaces_unenroll_preview",
   "workplaces.unenroll":"ccp_workplaces_unenroll",
   "workplaces.enrollments":"ccp_workplaces_enrollments",
   "students.create":"ccp_students_create",
