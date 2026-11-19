@@ -3,6 +3,7 @@
 // Preparing changes local files, but never creates a tag or release.
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import {repositoryCutoverIssues} from "./pre1-final-cutover-audit.mjs";
 
 const VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const HEADER_RE = /^## \[(Unreleased|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\](?: - (\d{4}-\d{2}-\d{2}))?[ \t]*$/gm;
@@ -71,6 +72,19 @@ export function prepareChangelog(markdown, version, date) {
     heading + "\n\n_Changes for the next release go here._\n\n## [" + version + "] - " + date);
 }
 
+/** This is the source-level pre-v1 release block used by the existing
+ * Publish GitHub Release workflow. It does not require altering workflow YAML
+ * (and therefore works without OAuth workflow-write permission).
+ * This audit is necessary, not sufficient: runtime parity, RLS, restore and
+ * operator-approved live data cutover remain independent release conditions.
+ */
+export function assertFinalCutoverReady(check = repositoryCutoverIssues) {
+  const violations = check();
+  if (violations.length) {
+    throw new Error(`Final pre-v1 cutover blocked (${violations.length} legacy violation${violations.length===1?"":"s"}): ${violations.slice(0, 4).join("; ")}`);
+  }
+}
+
 function readJson(path) { return JSON.parse(readFileSync(path, "utf8")); }
 function writeJson(path, object) { writeFileSync(path, JSON.stringify(object, null, 2) + "\n"); }
 
@@ -108,6 +122,9 @@ export function main(command, version) {
       ". Review changelog, commit, and merge to main to publish after checks.\n");
     return;
   }
+  // Both validate and notes are invoked by the automatic release workflow;
+  // fail closed before any tag can be published while old data contracts exist.
+  assertFinalCutoverReady();
   assertPackageVersions(version);
   if (version === "0.1.0" && !firstReleaseReady(readFileSync("docs/RELEASING.md", "utf8"))) {
     throw new Error("v0.1.0 is blocked until every first-functional-release checklist item is checked");

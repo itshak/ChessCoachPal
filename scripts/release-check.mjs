@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  validVersion, compareVersions, section, hasChanges, prepareChangelog, firstReleaseReady,
+  validVersion, compareVersions, section, hasChanges, prepareChangelog, firstReleaseReady, assertFinalCutoverReady,
 } from "./release.mjs";
 
 const sample = "# Changelog\n\n## [Unreleased]\n\n### Added\n- A workflow\n- Chess sessions\n\n## [0.0.9] - 2026-11-01\n\n- Earlier work\n";
@@ -52,4 +52,11 @@ test("v0.1.0 requires every first-functional-release checklist item", () => {
   assert.equal(firstReleaseReady("## Other heading\n- [x] criterion"), false);
   assert.equal(firstReleaseReady(prefix + five + "\n\n**Deferred manual tasks — open after publication**\n- [ ] real client acceptance"), true);
   assert.equal(firstReleaseReady(prefix + five + "\n- [x] extra criterion"), false);
+});
+
+
+test("automatic release validation fails closed on any final-cutover violation", () => {
+  assert.doesNotThrow(() => assertFinalCutoverReady(() => []));
+  assert.throws(() => assertFinalCutoverReady(() => ["guardian route remains"]),
+    /Final pre-v1 cutover blocked \(1 legacy violation\): guardian route remains/);
 });
