@@ -73,7 +73,7 @@ export async function teacherSpreadsheetSuggest(db:SupabaseClient,teacherId:stri
  */
 export async function teacherSpreadsheetCommit(
   supabase:SupabaseClient,teacherId:string,
-  body:{rows?:Record<string,string>[];mapping?:ColumnMapping;idempotencyKey?:string},
+  body:{rows?:Record<string,string>[];mapping?:ColumnMapping;idempotencyKey?:string;workplaceId?:string},
 ):Promise<NextResponse>{
   void teacherId; // The SQL function independently authorizes auth.uid().
   if(!Array.isArray(body.rows)||!body.mapping)
@@ -84,7 +84,27 @@ export async function teacherSpreadsheetCommit(
   if(!rows.length)return NextResponse.json({
     error:"No valid student rows to import",issues,
   },{status:400});
-  const prepared=rows.map(row=>({...row,familyKey:familyGroupKey(row)}));
+  // A student imported into the coaching CRM must have a current workplace.
+  // Never infer one when several workplaces exist: ask the agent to clarify.
+  const {data:workplaces,error:workplaceError}=await supabase
+    .from("workplaces").select("id,name").eq("teacher_id",teacherId);
+  if(workplaceError)return NextResponse.json({
+    code:"WORKPLACE_LOOKUP_FAILED",error:"Could not verify workplaces; import was not committed",
+  },{status:503});
+  const choices=workplaces??[];
+  const selected=body.workplaceId
+    ?choices.find(w=>w.id===body.workplaceId)
+    :choices.length===1?choices[0]:undefined;
+  if(!selected)return NextResponse.json({
+    code:"WORKPLACE_REQUIRED",
+    error:choices.length===0
+      ?"Create a workplace before importing students."
+      :"Specify workplaceId for this import. No students were created or changed.",
+    workplaces:choices.map(w=>({id:w.id,name:w.name})),
+    issues,
+  },{status:422});
+  const prepared=rows.map(row=>({...row,familyKey:familyGroupKey(row),
+    workplaceId:selected.id}));
   const digest=createHash("sha256").update(JSON.stringify(prepared)).digest("hex");
   const defaultKey=digest.slice(0,8)+"-"+digest.slice(8,12)+"-5"+
     digest.slice(13,16)+"-a"+digest.slice(17,20)+"-"+digest.slice(20,32);
