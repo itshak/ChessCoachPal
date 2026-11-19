@@ -86,9 +86,14 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
 
 test("website spreadsheet import retries have stable tenant-scoped receipts",async({page})=>{
  await signInAsTeacher(page);
+ const list=await page.request.post("/api/agent/v1",{data:{action:"workplaces.list"}});
+ expect(list.status(),await list.text()).toBe(200);
+ const owned=(await list.json()).data as Array<{id:string;name:string}>;
+ const workplaceId=owned.find(w=>w.name==="Private coaching")?.id??owned[0]?.id;
+ expect(workplaceId).toBeTruthy();
  const name="Web import replay "+key();
  const body={rows:[{"Student Name":name,"Guardian Name":"Parent of "+name}],
-   mapping:{student_name:"Student Name",guardian_name:"Guardian Name"}};
+   mapping:{student_name:"Student Name",guardian_name:"Guardian Name"},workplaceId};
  const first=await page.request.post("/api/import/spreadsheet/commit",{data:body});
  expect(first.status(),await first.text()).toBe(200);
  const result=await first.json();
