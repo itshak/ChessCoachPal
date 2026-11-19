@@ -3580,6 +3580,11 @@ BEGIN
    END IF;
    -- Historical/archived student names are preserved, not recreated.
    -- Holding the teacher lock makes this check consistent with other imports.
+   -- Names are not unique identifiers. Never silently choose one of several.
+   IF (SELECT count(*) FROM public.students
+       WHERE teacher_id=v_teacher AND lower(btrim(name))=lower(v_name))>1 THEN
+     RAISE EXCEPTION 'STUDENT_MATCH_AMBIGUOUS' USING ERRCODE='22023';
+   END IF;
    SELECT id INTO v_student_id FROM public.students
      WHERE teacher_id=v_teacher AND lower(btrim(name))=lower(v_name)
      ORDER BY created_at,id LIMIT 1;
