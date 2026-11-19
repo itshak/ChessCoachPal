@@ -175,3 +175,42 @@ BEGIN
  END IF;
 END
 $guest$;
+
+-- Unified rating worker schema freeze, on disposable Supabase only.
+DO $rating_freeze$
+DECLARE tbl text;
+BEGIN
+ FOREACH tbl IN ARRAY ARRAY['student_rating_sync_consents',
+ 'student_rating_refresh_jobs','student_rating_refresh_receipts'] LOOP
+  IF to_regclass('public.'||tbl) IS NULL THEN RAISE EXCEPTION 'Missing %',tbl; END IF;
+  IF (SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.'||tbl))
+    IS DISTINCT FROM true THEN RAISE EXCEPTION 'RLS missing %',tbl; END IF;
+  IF NOT has_table_privilege('authenticated','public.'||tbl,'SELECT') OR
+    has_table_privilege('authenticated','public.'||tbl,'INSERT') OR
+    has_table_privilege('authenticated','public.'||tbl,'UPDATE') OR
+    has_table_privilege('authenticated','public.'||tbl,'DELETE') OR
+    has_table_privilege('anon','public.'||tbl,'SELECT') THEN
+      RAISE EXCEPTION 'Unsafe rating ACL on %',tbl; END IF;
+  IF NOT EXISTS(SELECT 1 FROM pg_constraint
+    WHERE conrelid=to_regclass('public.'||tbl) AND contype='f'
+    AND confrelid='public.students'::regclass AND array_length(conkey,1)=2) THEN
+      RAISE EXCEPTION 'Missing composite student owner FK on %',tbl; END IF;
+ END LOOP;
+ IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE
+   conrelid='public.student_rating_refresh_jobs'::regclass AND contype='f'
+   AND confrelid='public.student_rating_sync_consents'::regclass
+   AND array_length(conkey,1)=4) THEN
+   RAISE EXCEPTION 'Rating job consent FK must pin student, provider and teacher';
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE
+   conrelid='public.student_rating_refresh_receipts'::regclass AND contype='f'
+   AND confrelid='public.student_rating_refresh_jobs'::regclass
+   AND array_length(conkey,1)=3) THEN
+   RAISE EXCEPTION 'Rating receipt job FK must pin student and teacher';
+ END IF;
+ IF has_table_privilege('service_role','public.student_rating_refresh_receipts','UPDATE')
+ OR has_table_privilege('service_role','public.student_rating_refresh_receipts','DELETE') THEN
+   RAISE EXCEPTION 'Rating receipts must be append-only';
+ END IF;
+END;
+$rating_freeze$;

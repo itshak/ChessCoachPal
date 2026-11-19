@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "mode": "single-canonical-baseline",
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "946c556694e51b832387ba5c99085c0b7dc2fae44e04e3b5a4021e9d4d3884fb",
+  "baselineSha256": "46d839fd4f947bbb3674d5b3922f26164f582feafff8335f12cc1ff889c420bd",
   "operatorCutoverRequired": true,
   "baselineRequiredObjects": [
     "students",
@@ -30,6 +30,9 @@
     "ccp_finance_post_obligation",
     "ccp_finance_record_payment",
     "ccp_finance_allocate_payment",
-    "ccp_finance_reverse"
+    "ccp_finance_reverse",
+    "student_rating_sync_consents",
+    "student_rating_refresh_jobs",
+    "student_rating_refresh_receipts"
   ]
 }

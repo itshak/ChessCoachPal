@@ -24,6 +24,52 @@ export type RsvpStatus = "pending" | "yes" | "no" | "maybe";
 export interface Database {
   public: {
     Tables: {
+      // Unified schema only; provider-sync API/workers require separate OpenSpec.
+      student_rating_sync_consents: {
+        Row:{id:string;teacher_id:string;student_id:string;provider:"lichess"|"chesscom";
+          source_username:string;handle_revision:number;enabled:boolean;
+          consented_at:string|null;revoked_at:string|null;revision:number;
+          last_request_id:string|null;last_request_hash:string|null;
+          created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;student_id:string;provider:"lichess"|"chesscom";
+          source_username:string;handle_revision?:number;enabled?:boolean;
+          consented_at?:string|null;revoked_at?:string|null;revision?:number;
+          last_request_id?:string|null;last_request_hash?:string|null;
+          created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["student_rating_sync_consents"]["Insert"]>;
+      };
+      student_rating_refresh_jobs: {
+        Row:{id:string;teacher_id:string;student_id:string;consent_id:string;
+          provider:"lichess"|"chesscom";source_username:string;handle_revision:number;
+          input_digest:string;idempotency_key:string;
+          trigger_kind:"profile_save"|"manual"|"scheduled"|"history_backfill";
+          status:"pending"|"running"|"retry"|"succeeded"|"stale"|"failed"|"cancelled";
+          attempt_count:number;run_after:string;lease_token:string|null;
+          lease_until:string|null;last_error_code:string|null;
+          finished_at:string|null;created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;student_id:string;consent_id:string;
+          provider:"lichess"|"chesscom";source_username:string;handle_revision:number;
+          input_digest:string;idempotency_key:string;
+          trigger_kind:"profile_save"|"manual"|"scheduled"|"history_backfill";
+          status?:"pending"|"running"|"retry"|"succeeded"|"stale"|"failed"|"cancelled";
+          attempt_count?:number;run_after?:string;lease_token?:string|null;
+          lease_until?:string|null;last_error_code?:string|null;
+          finished_at?:string|null;created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["student_rating_refresh_jobs"]["Insert"]>;
+      };
+      student_rating_refresh_receipts: {
+        Row:{id:string;teacher_id:string;student_id:string;job_id:string;
+          attempt_number:number;outcome:"succeeded"|"stale"|"retry"|"failed"|"cancelled";
+          source_username:string;input_digest:string;evidence_digest:string|null;
+          snapshots_written:number;error_code:string|null;observed_at:string|null;
+          fetched_at:string|null;recorded_at:string};
+        Insert:{id?:string;teacher_id:string;student_id:string;job_id:string;
+          attempt_number:number;outcome:"succeeded"|"stale"|"retry"|"failed"|"cancelled";
+          source_username:string;input_digest:string;evidence_digest?:string|null;
+          snapshots_written?:number;error_code?:string|null;observed_at?:string|null;
+          fetched_at?:string|null;recorded_at?:string};
+        Update:Partial<Database["public"]["Tables"]["student_rating_refresh_receipts"]["Insert"]>;
+      };
       // Current canonical contacts and per-workplace finance model. Old
       // guardian/Studio generated types below are transitional WIP until the
       // one final ADR-0017 cutover, never an accepted compatibility surface.
