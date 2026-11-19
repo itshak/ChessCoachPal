@@ -117,18 +117,25 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
   const [notice, setNotice] = useState("");
 
   const refresh = useCallback(async () => {
-    const [w, g, s, l] = await Promise.all([
-      operation<Workplace[]>("workplaces.list"),
-      operation<Group[]>("groups.list"),
-      operation<Student[]>("students.search", { query: activeStudentSearch }),
-      operation<Session[]>("sessions.list"),
-    ]);
-    setWorkplaces(w); setGroups(g); setStudents(s); setSessions(l);
+    // Workplace context must remain usable even if an unrelated roster,
+    // student search, or session request fails. Load the selector independently.
+    const w = await operation<Workplace[]>("workplaces.list");
+    setWorkplaces(w);
     setWorkplaceId(old=>{
       if(initialWorkplaceId&&w.some(item=>item.id===initialWorkplaceId))
         return initialWorkplaceId;
       return old&&w.some(item=>item.id===old)?old:w[0]?.id??"";
     });
+    const [g, s, l] = await Promise.allSettled([
+      operation<Group[]>("groups.list"),
+      operation<Student[]>("students.search", { query: activeStudentSearch }),
+      operation<Session[]>("sessions.list"),
+    ]);
+    if(g.status==="fulfilled")setGroups(g.value);
+    if(s.status==="fulfilled")setStudents(s.value);
+    if(l.status==="fulfilled")setSessions(l.value);
+    const failed=[g,s,l].find(result=>result.status==="rejected");
+    if(failed?.status==="rejected")throw failed.reason;
   }, [activeStudentSearch,initialWorkplaceId]);
 
   useEffect(()=>{
