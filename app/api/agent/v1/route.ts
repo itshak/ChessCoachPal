@@ -27,6 +27,8 @@ import {materialLinksList,materialLinksCreate,materialLinksUpdate,
 import {lessonCompletionSchema,attendanceBulkRecordSchema} from "@/lib/lesson-completion";
 import {teacherCreditAdjustmentPreview,teacherCreditAdjustmentCommit}
  from "@/lib/server/credit-adjustments";
+import {studentLifecyclePreview,studentLifecycleCommit}
+ from "@/lib/server/student-lifecycle-service";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +79,14 @@ const calls = z.discriminatedUnion("action", [
   }).strict().refine(v=>v.name!==undefined||v.level!==undefined,{
     message:"At least one student field must change",
   }),
+  z.object({action:z.literal("students.lifecyclePreview"),studentId:uuid}).strict(),
+  z.object({action:z.literal("students.lifecycleCommit"),studentId:uuid,
+    mode:z.enum(["archive","reactivate"]),
+    expectedUpdatedAt:z.string().min(10).max(80),
+    selectedWorkplaceIds:z.array(uuid).max(50).default([]),
+    requestId:uuid,reason:z.string().trim().min(8).max(1000),
+    confirmed:z.literal(true),
+  }).strict(),
   z.object({ action: z.literal("students.search"),
     query: z.string().trim().max(80).default("") }),
   z.object({ action: z.literal("groups.list") }),
@@ -149,6 +159,7 @@ const toolNames = [
   "workplaces.unenrollPreview", "workplaces.unenroll", "workplaces.enrollments",
   "credits.adjustmentPreview","credits.adjustmentCommit",
   "students.search", "students.create", "students.update",
+  "students.lifecyclePreview","students.lifecycleCommit",
   "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
   "sessions.list", "sessions.create", "sessions.createAdHoc", "sessions.update", "sessions.complete", "sessions.participants",
   "attendance.list", "attendance.record", "attendance.bulkRecord",
@@ -282,6 +293,10 @@ export async function POST(req: NextRequest) {
         result = await teacherCreditAdjustmentPreview(db,teacherId,{packageId:call.packageId}); break;
       case "credits.adjustmentCommit":
         result = await teacherCreditAdjustmentCommit(db,teacherId,call); break;
+      case "students.lifecyclePreview":
+        result=await studentLifecyclePreview(db,teacherId,{studentId:call.studentId}); break;
+      case "students.lifecycleCommit":
+        result=await studentLifecycleCommit(db,teacherId,call); break;
       case "students.search":
         result = await studentsSearch(db, teacherId, call.query); break;
       case "students.create":
