@@ -3591,7 +3591,7 @@ BEGIN
    IF v_student_id IS NOT NULL THEN
      INSERT INTO public.workplace_enrollments(teacher_id,student_id,workplace_id)
      VALUES(v_teacher,v_student_id,v_workplace)
-     ON CONFLICT (teacher_id,workplace_id,student_id) DO NOTHING;
+     ON CONFLICT DO NOTHING;
      IF FOUND THEN v_enrolled:=v_enrolled+1; END IF;
      v_skipped:=v_skipped+1;
      IF jsonb_array_length(v_skipped_rows)<50 THEN
@@ -3647,7 +3647,7 @@ BEGIN
    END IF;
    INSERT INTO public.workplace_enrollments(teacher_id,student_id,workplace_id)
    VALUES(v_teacher,v_student_id,v_workplace)
-   ON CONFLICT (teacher_id,workplace_id,student_id) DO NOTHING;
+   ON CONFLICT DO NOTHING;
    IF FOUND THEN v_enrolled:=v_enrolled+1; END IF;
    v_created:=v_created+1;
  END LOOP;
@@ -8006,7 +8006,7 @@ BEGIN
   INSERT INTO public.workplace_enrollments(
    teacher_id,workplace_id,student_id
   ) VALUES(v_teacher,v_workplace.id,p_student_id)
-  ON CONFLICT (teacher_id,workplace_id,student_id) DO NOTHING;
+  ON CONFLICT DO NOTHING;
  END IF;
  IF NOT EXISTS(
    SELECT 1 FROM public.workplace_enrollments
@@ -11641,3 +11641,206 @@ REVOKE ALL ON TABLE public.student_rating_refresh_receipts FROM service_role;
 GRANT SELECT,INSERT ON TABLE public.student_rating_refresh_receipts TO service_role;
 COMMENT ON TABLE public.student_rating_refresh_receipts IS
  'Append-only worker attempt evidence; no service-role UPDATE/DELETE and no inference of consent.';
+-- Schema-only OpenSpec amendment: canonical temporal workplace enrollment.
+-- Existing membership rows have no trustworthy start date. Only an operator's
+-- separately approved data transition may import start_date_unknown=true.
+-- The normal website/MCP INSERT path derives NEW membership's actual
+-- effective calendar day from the teacher's configured time zone.
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;
+
+-- History may contain multiple nonoverlapping periods per teacher/student/
+-- workplace. Group and lesson history refer to immutable student identities,
+-- not one particular membership period (ending a period must not cascade
+-- delete frozen rosters or historical lessons).
+ALTER TABLE public.group_enrollments
+ DROP CONSTRAINT group_enrollments_teacher_id_workplace_id_student_id_fkey;
+ALTER TABLE public.teaching_sessions
+ DROP CONSTRAINT teaching_sessions_teacher_id_workplace_id_student_id_fkey;
+ALTER TABLE public.workplace_enrollments
+ DROP CONSTRAINT workplace_enrollments_teacher_id_workplace_id_student_id_key;
+ALTER TABLE public.teaching_sessions
+ ADD CONSTRAINT ccp_session_student_owner_fk
+ FOREIGN KEY(student_id,teacher_id)
+ REFERENCES public.students(id,teacher_id) ON DELETE RESTRICT;
+
+ALTER TABLE public.workplace_enrollments
+ ADD COLUMN starts_on date,
+ ADD COLUMN ends_on date,
+ ADD COLUMN start_date_unknown boolean NOT NULL DEFAULT false,
+ ADD COLUMN cancelled_at timestamptz,
+ ADD COLUMN cancel_reason text,
+ ADD COLUMN end_reason text,
+ ADD COLUMN source text NOT NULL DEFAULT 'manual',
+ ADD COLUMN revision bigint NOT NULL DEFAULT 1,
+ ADD COLUMN updated_at timestamptz NOT NULL DEFAULT now(),
+ ADD CONSTRAINT workplace_enrollment_date_bounds CHECK(
+   starts_on IS NULL OR ends_on IS NULL OR ends_on>=starts_on),
+ ADD CONSTRAINT workplace_enrollment_legacy_unknown CHECK(
+   (starts_on IS NULL)=start_date_unknown),
+ ADD CONSTRAINT workplace_enrollment_cancellation_reason CHECK(
+   (cancelled_at IS NULL AND cancel_reason IS NULL)
+   OR (cancelled_at IS NOT NULL AND length(btrim(coalesce(cancel_reason,''))) BETWEEN 8 AND 1000)),
+ ADD CONSTRAINT workplace_enrollment_end_reason CHECK(
+   end_reason IS NULL OR (ends_on IS NOT NULL AND length(btrim(end_reason)) BETWEEN 8 AND 1000)),
+ ADD CONSTRAINT workplace_enrollment_source CHECK(
+   source IN ('manual','spreadsheet','group','reimport','legacy_operator')),
+ ADD CONSTRAINT workplace_enrollment_revision_positive CHECK(revision>=1),
+ ADD CONSTRAINT workplace_enrollment_legacy_provenance CHECK(
+   NOT start_date_unknown OR source='legacy_operator'),
+ ADD CONSTRAINT workplace_enrollment_owner_id_key UNIQUE(id,teacher_id);
+
+-- The interval is [starts_on, ends_on + 1); a NULL lower bound represents
+-- genuinely unknown legacy start, not a fabricated historical date. A NULL
+-- upper bound represents ongoing membership; cancelled future rows are kept
+-- for audit but do not block a subsequently approved period.
+ALTER TABLE public.workplace_enrollments
+ ADD CONSTRAINT workplace_enrollment_no_overlap
+ EXCLUDE USING gist (
+   teacher_id WITH =, student_id WITH =, workplace_id WITH =,
+   daterange(starts_on,CASE WHEN ends_on IS NULL THEN NULL ELSE ends_on+1 END,'[)') WITH &&
+ ) WHERE (cancelled_at IS NULL);
+
+CREATE INDEX workplace_enrollments_owner_period_idx
+ ON public.workplace_enrollments(teacher_id,student_id,workplace_id,starts_on DESC,created_at DESC);
+CREATE INDEX workplace_enrollments_owner_open_idx
+ ON public.workplace_enrollments(teacher_id,workplace_id,student_id)
+ WHERE cancelled_at IS NULL AND ends_on IS NULL;
+
+CREATE OR REPLACE FUNCTION public.ccp_workplace_enrollment_revision_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_temporal_enrollment$
+DECLARE v_timezone text;
+BEGIN
+ IF TG_OP='INSERT' THEN
+   IF NEW.start_date_unknown THEN
+     IF auth.uid() IS NOT NULL OR NEW.source<>'legacy_operator' THEN
+       RAISE EXCEPTION 'LEGACY_ENROLLMENT_OPERATOR_ONLY' USING ERRCODE='42501';
+     END IF;
+   ELSIF NEW.starts_on IS NULL THEN
+     SELECT timezone INTO v_timezone FROM public.teacher_settings
+       WHERE teacher_id=NEW.teacher_id;
+     NEW.starts_on:=(clock_timestamp() AT TIME ZONE coalesce(v_timezone,'UTC'))::date;
+   END IF;
+ ELSIF TG_OP='UPDATE' THEN
+   IF (NEW.id,NEW.teacher_id,NEW.student_id,NEW.workplace_id,NEW.created_at,
+       NEW.starts_on,NEW.source,NEW.start_date_unknown)
+     IS DISTINCT FROM
+      (OLD.id,OLD.teacher_id,OLD.student_id,OLD.workplace_id,OLD.created_at,
+       OLD.starts_on,OLD.source,OLD.start_date_unknown) THEN
+     RAISE EXCEPTION 'ENROLLMENT_IDENTITY_OR_START_IMMUTABLE' USING ERRCODE='23514';
+   END IF;
+   NEW.revision:=OLD.revision+1;
+   NEW.updated_at:=clock_timestamp();
+ END IF;
+ RETURN NEW;
+END;
+$ccp_temporal_enrollment$;
+REVOKE ALL ON FUNCTION public.ccp_workplace_enrollment_revision_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_workplace_enrollment_revision_guard
+ BEFORE INSERT OR UPDATE ON public.workplace_enrollments
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_workplace_enrollment_revision_guard();
+
+-- Removing the composite FK is safe only with a replacement owner and
+-- membership guard; the historical rows must never be silently deleted.
+CREATE OR REPLACE FUNCTION public.ccp_group_enrollment_period_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_group_enrollment_period$
+DECLARE v_date date; v_timezone text;
+BEGIN
+ SELECT timezone INTO v_timezone FROM public.teacher_settings
+  WHERE teacher_id=NEW.teacher_id;
+ v_date:=(clock_timestamp() AT TIME ZONE coalesce(v_timezone,'UTC'))::date;
+ IF NOT EXISTS(
+   SELECT 1 FROM public.workplace_enrollments e
+   WHERE e.teacher_id=NEW.teacher_id AND e.student_id=NEW.student_id
+     AND e.workplace_id=NEW.workplace_id AND e.cancelled_at IS NULL
+     AND (e.starts_on IS NULL OR e.starts_on<=v_date)
+     AND (e.ends_on IS NULL OR e.ends_on>=v_date)
+ ) THEN
+   RAISE EXCEPTION 'STUDENT_NOT_CURRENTLY_ENROLLED' USING ERRCODE='23503';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_group_enrollment_period$;
+REVOKE ALL ON FUNCTION public.ccp_group_enrollment_period_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_group_enrollment_period_guard
+ BEFORE INSERT OR UPDATE OF student_id,workplace_id ON public.group_enrollments
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_group_enrollment_period_guard();
+
+CREATE OR REPLACE FUNCTION public.ccp_direct_session_enrollment_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_session_period$
+DECLARE v_enrollment uuid; v_local_date date; v_timezone text;
+BEGIN
+ IF NEW.student_id IS NULL THEN RETURN NEW; END IF;
+ SELECT timezone INTO v_timezone FROM public.teacher_settings
+   WHERE teacher_id=NEW.teacher_id;
+ v_local_date:=(NEW.starts_at AT TIME ZONE coalesce(v_timezone,'UTC'))::date;
+ SELECT e.id INTO v_enrollment
+ FROM public.workplace_enrollments e
+ JOIN public.students s ON s.id=e.student_id AND s.teacher_id=e.teacher_id
+ WHERE e.teacher_id=NEW.teacher_id AND e.workplace_id=NEW.workplace_id
+   AND e.student_id=NEW.student_id AND s.archived_at IS NULL
+   AND e.cancelled_at IS NULL
+   AND (e.starts_on IS NULL OR e.starts_on<=v_local_date)
+   AND (e.ends_on IS NULL OR e.ends_on>=v_local_date)
+ FOR KEY SHARE OF e;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'STUDENT_NOT_ENROLLED' USING ERRCODE='23503';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_session_period$;
+
+-- Credit adjustments are *entitlement* events, not cash transactions or
+-- duplicate financial obligations. A future separately reviewed writer
+-- must verify the paid amount and available credits transactionally before
+-- recording a refund/transfer/forfeiture. Merely archiving a learner never
+-- inserts a credit event and never extends the package expiry.
+ALTER TABLE public.credit_packages
+ ADD CONSTRAINT credit_packages_owner_student_id_key UNIQUE(id,teacher_id,student_id);
+
+CREATE TABLE public.credit_adjustment_events (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ student_id uuid NOT NULL,
+ package_id uuid NOT NULL,
+ kind text NOT NULL CHECK(kind IN (
+   'manual_grant','forfeiture','refund_entitlement',
+   'transfer_out','transfer_in','expiry_extension')),
+ credits_delta integer NOT NULL CHECK(credits_delta BETWEEN -100000 AND 100000),
+ transfer_id uuid,
+ new_expires_on date,
+ source_payment_id uuid,
+ approved_request_id uuid NOT NULL,
+ approval_reason text NOT NULL CHECK(length(btrim(approval_reason)) BETWEEN 8 AND 1000),
+ evidence jsonb NOT NULL DEFAULT '{}'::jsonb CHECK(jsonb_typeof(evidence)='object'),
+ recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(id,teacher_id),
+ UNIQUE(teacher_id,approved_request_id),
+ FOREIGN KEY(package_id,teacher_id,student_id)
+   REFERENCES public.credit_packages(id,teacher_id,student_id) ON DELETE RESTRICT,
+ FOREIGN KEY(source_payment_id,teacher_id)
+   REFERENCES public.received_payments(id,teacher_id) ON DELETE RESTRICT,
+ CONSTRAINT credit_adjustment_kind_shape CHECK(
+   (kind='expiry_extension' AND credits_delta=0 AND new_expires_on IS NOT NULL AND transfer_id IS NULL)
+   OR (kind='manual_grant' AND credits_delta>0 AND new_expires_on IS NULL AND transfer_id IS NULL)
+   OR (kind IN ('forfeiture','refund_entitlement') AND credits_delta<0
+       AND new_expires_on IS NULL AND transfer_id IS NULL)
+   OR (kind='transfer_out' AND credits_delta<0 AND transfer_id IS NOT NULL AND new_expires_on IS NULL)
+   OR (kind='transfer_in' AND credits_delta>0 AND transfer_id IS NOT NULL AND new_expires_on IS NULL))
+);
+CREATE INDEX credit_adjustment_owner_package_idx
+ ON public.credit_adjustment_events(teacher_id,package_id,recorded_at DESC);
+CREATE INDEX credit_adjustment_transfer_idx
+ ON public.credit_adjustment_events(teacher_id,transfer_id)
+ WHERE transfer_id IS NOT NULL;
+ALTER TABLE public.credit_adjustment_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY credit_adjustment_events_owner_read
+ ON public.credit_adjustment_events FOR SELECT TO authenticated
+ USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON TABLE public.credit_adjustment_events FROM PUBLIC,anon,authenticated,service_role;
+GRANT SELECT ON TABLE public.credit_adjustment_events TO authenticated;
+GRANT SELECT,INSERT ON TABLE public.credit_adjustment_events TO service_role;
+COMMENT ON TABLE public.credit_adjustment_events IS
+ 'Immutable approved entitlement adjustments; not a payment or invoice source. No direct client writes; balance/funding/replay/pair checks belong to one transactional writer in the downstream credit lifecycle change.';
