@@ -27,3 +27,5 @@ Do not automatically equate FIDE or Israeli ratings with strength or mastery. US
 
 ## Acceptance
 A FIDE ID with Standard/Rapid/Blitz values remains independent of Lichess and Chess.com. Israeli player ID and national rating are stored with exact source and dates, or visibly remain unavailable if automation is unsupported. Fresh baseline and one-time real-data transition retain all existing online snapshots.
+
+> **Cross-change schema coordination (2026-11-19):** Future schema REQUIRED: federation identities/memberships, official category/source evidence and generalized rating snapshots. Do not duplicate consent/job primitives planned for automatic online rating sync. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

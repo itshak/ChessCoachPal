@@ -43,3 +43,5 @@ Each phase may ship independently only with its own web/MCP parity and automated
 - Missing, ambiguous and provider-unavailable data remain visibly unknown; retries cannot double-close a lesson, duplicate a charge or double-allocate a payment.
 - Every teacher website field/action has a same-PR MCP counterpart, registry change and authenticated parity test; strict 93-scenario browser/MCP baseline remains green with zero business-route gaps.
 - Database changes update authoritative baseline and document reviewed one-time live transitions under ADR-0015. No production migration or deployment is authorized by this proposal.
+
+> **Cross-change schema coordination (2026-11-19):** Potential additional schema: lifecycle exceptions, audit and recurrence; confirm in inventory before design. Reuse existing native finance ledger; do not introduce a second obligation/payment model. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

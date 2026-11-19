@@ -58,3 +58,5 @@ Implement in independently reviewable vertical slices (framework/settings/MCP, R
 - specs/teacher-interface-localization/spec.md — website/settings/RTL requirements.
 - specs/localized-output/spec.md — reporting, export, communication and provider output requirements.
 - specs/multilingual-mcp-experience/spec.md — agent behavior, compatibility, parity and testing.
+
+> **Cross-change schema coordination (2026-11-19):** Existing candidate: teacher preferred-locale field; verify current baseline and finish acceptance. Existing locale column is not evidence that all locale UX and parity gates passed. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

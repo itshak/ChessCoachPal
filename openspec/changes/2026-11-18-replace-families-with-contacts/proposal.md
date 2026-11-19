@@ -26,3 +26,5 @@ No dedicated minor/student login, portal access by mere contact membership, mult
 
 ## Acceptance
 A student with zero contacts and two contacts can be created and edited by both website and MCP. Mother and school contact coexist without changing lesson identity; school does not inherit private billing. Historical invoices are preserved. New schema is in the baseline; one-time live migration and coordinated portal cutover are independently approved and tested.
+
+> **Cross-change schema coordination (2026-11-19):** Existing candidate: contacts, student links, billing accounts; final cutover/reconciliation pending. Legacy mapping and financial preservation remain explicit release gates. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

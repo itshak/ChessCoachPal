@@ -42,3 +42,5 @@ No production redesign before design-lab approval; no requirement to copy Linear
 
 ## Acceptance
 The user can inspect working Base UI, React Aria and Ariakit implementations, six or more clearly different palette options, three distinct interface architectures, dark/light, mobile and Hebrew RTL on identical realistic coaching scenarios; evaluate and request changes before a final library is chosen. Approved designs preserve accessible keyboard interactions and verified MCP parity for every teacher business action.
+
+> **Cross-change schema coordination (2026-11-19):** No database schema change planned. Do not change database as a byproduct of design work. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

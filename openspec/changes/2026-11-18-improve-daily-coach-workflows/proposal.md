@@ -26,3 +26,5 @@ No mandatory LLM-generated coaching claims, autonomous student messages, AI mast
 
 ## Acceptance
 A completed group session appears once as teacher work and as participant-specific evidence, with no invented attendance or mastery. Website and MCP agree on exactly which actions remain. An empty/missing provider/assignment is labeled unknown, not silently inferred.
+
+> **Cross-change schema coordination (2026-11-19):** No committed new table yet; may require persisted queue state after inventory. Prefer derived queues from canonical sessions and students where practical. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

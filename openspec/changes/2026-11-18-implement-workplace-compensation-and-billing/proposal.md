@@ -27,3 +27,5 @@ No two payers splitting one new lesson obligation, household debt splitting, rea
 
 ## Acceptance
 One completed 90-minute eight-person school group at 120 ILS/hour produces one expected teacher earning of 180 ILS, not eight duplicates, and no received payment until entered. A sponsored private lesson charges its explicitly assigned payer, not the student's mother or school by default. Prior settled invoices are preserved.
+
+> **Cross-change schema coordination (2026-11-19):** Existing candidate: agreements, obligations, payments and allocation ledger; acceptance pending. No final financial reconciliation or live cutover authorized. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

@@ -26,3 +26,5 @@ Independent parent/student accounts, SSO, student homework submissions, full che
 
 ## Acceptance
 Teacher can grant a mother private lesson calendar and own invoices, and a school authorized person school-only event view; each sees only their permitted records. A leaked/revoked token cannot access data; child notes remain private unless explicitly shared. Teacher-side grant management has web/MCP parity, while token credentials and external sensitive actions remain on secure browser handoff.
+
+> **Cross-change schema coordination (2026-11-19):** Existing candidate: scoped grants and revocations; acceptance pending. Guest/RLS denial and restore/reconciliation gates must pass before acceptance. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

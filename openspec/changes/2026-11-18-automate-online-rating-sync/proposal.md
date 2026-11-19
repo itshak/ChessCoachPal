@@ -26,3 +26,5 @@ No private API token/student password request, mandatory daily sync of all stude
 
 ## Acceptance
 Consented new handle fetches without extra click; denied consent does not. Archived excluded from recurring jobs, sync failure preserves last good snapshot, retries are deduplicated, and website/MCP display identical provenance.
+
+> **Cross-change schema coordination (2026-11-19):** Future schema REQUIRED: consent, queued refresh jobs, receipts, provider status and tenant grants. Not included in the accepted baseline solely because the contacts/finance PR passes. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

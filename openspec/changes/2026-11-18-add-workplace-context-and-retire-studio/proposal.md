@@ -30,3 +30,5 @@ Not a second database/tenant per workplace, not group-as-workplace, not blanket 
 
 ## Acceptance
 Switching to School shows its student enrollments, group sessions, schedule and reports; switching to Personal shows private lessons. All shows complete teacher history. One student appearing in both contexts remains one canonical record. No historic lesson is relabeled; website and MCP filters agree.
+
+> **Cross-change schema coordination (2026-11-19):** Existing candidate: teacher workplace selection and scoped ownership; verify current baseline and acceptance. The workplace selector E2E was failing on eaef867 parent; recheck exact-head E2E. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.
