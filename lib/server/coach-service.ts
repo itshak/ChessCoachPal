@@ -30,7 +30,7 @@ export async function workplacesList(db: Db, teacherId: string) {
     .eq("teacher_id", teacherId).order("name").order("id").limit(1000);
   if (error) throw problem();
   if ((data?.length ?? 0) >= 1000)
-    throw new CoachError("TOO_MANY_WORKPLACES",413,"Workplace inventory exceeds the supported list limit");
+    throw new CoachError("VALIDATION_ERROR",413,"Workplace inventory exceeds the supported list limit");
   return data;
 }
 
