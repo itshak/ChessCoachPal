@@ -52,7 +52,9 @@ import {teacherImageFenPropose,imageFenInputSchema,ImageFenError} from "@/lib/se
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, attendanceRecord, attendanceBulkRecord, groupsList, groupsMembers,
-  sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, sessionsComplete, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
+  sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, sessionsComplete,
+  studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
+  workplacesUnenrollPreview,
 } from "@/lib/server/coach-service";
 
 import {
@@ -1455,9 +1457,18 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_workplaces_unenroll_preview",
+    description:"Preview ending the exact owned dated workplace membership. Returns membership revision, active group/slot/future lesson blockers, historical-preserving end date and the explicit hold-only credit policy. Read the preview before confirming an end.",
+    schema:z.object({workplaceId:uuid,studentId:uuid}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_workplaces_unenroll",
-    description:"Remove an explicitly identified current workplace enrollment after confirmation and commitment checks. WARNING: this deletes the current link; there is not yet a durable last-enrollment ledger. Do not tell a teacher that reactivation can automatically restore this workplace. Historic attendance remains untouched.",
-    schema:z.object({workplaceId:uuid,studentId:uuid,confirmed:z.literal(true)}).strict(),
+    description:"Confirm ending a workplace membership without deleting any historical periods, frozen lessons or credits. Check the preview first and resolve active group/recurrence/future-session blockers. This never refunds or transfers credits.",
+    schema:z.object({workplaceId:uuid,studentId:uuid,confirmed:z.literal(true),
+      expectedRevision:z.number().int().positive().optional(),
+      idempotencyKey:uuid.optional(),reason:z.string().trim().min(8).max(1000).optional(),
+    }).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -2579,9 +2590,16 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_workplaces_enrollments":
         return {data:await workplacesEnrollments(db,teacherId,(args as {workplaceId:string}).workplaceId)};
-      case "ccp_workplaces_unenroll": {
+      case "ccp_workplaces_unenroll_preview": {
         const a=args as {workplaceId:string;studentId:string};
-        return {data:await workplacesUnenroll(db,teacherId,a.workplaceId,a.studentId)};
+        return {data:await workplacesUnenrollPreview(db,teacherId,a.workplaceId,a.studentId)};
+      }
+      case "ccp_workplaces_unenroll": {
+        const a=args as {workplaceId:string;studentId:string;
+          expectedRevision?:number;idempotencyKey?:string;reason?:string};
+        return {data:await workplacesUnenroll(db,teacherId,a.workplaceId,a.studentId,{
+          expectedRevision:a.expectedRevision,idempotencyKey:a.idempotencyKey,reason:a.reason,
+        })};
       }
       case "ccp_schedule_day_preview":
         return {data:await teacherScheduleDayPreview(db,teacherId,
