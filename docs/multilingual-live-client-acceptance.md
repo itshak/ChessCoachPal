@@ -1,5 +1,7 @@
 # Multilingual release acceptance — real ChatGPT, Claude and assistive technology
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 **Status: pending. This checklist is a manual, owner-authorized prepublication gate; no live client results are implied.** It complements automated delegated OAuth MCP tests, not a substitute for them. Do not mark OpenSpec E5/F2/F3/F4 complete based only on a model's plausible answer.
 
 ## Environment and privacy prerequisites

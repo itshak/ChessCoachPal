@@ -1,5 +1,7 @@
 # Existing chess-coaching and tutoring management solutions
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 Research checked **2026-11-06**. This document compares public solutions and informs the capabilities of a free, self-hostable chess-coaching assistant. Prices/features may change and should be rechecked before citing.
 
 | Solution | Public offering | Relevant capabilities | Differences from ChessCoachPal |

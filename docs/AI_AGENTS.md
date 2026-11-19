@@ -1,5 +1,7 @@
 # AI/MCP integration — current architecture and acceptance
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 ## Workflow-oriented tool choice (PR #97 implementation candidate)
 
 **One connector; no mandatory skill.** Every authorized granular edit remains in the existing `/mcp` tool catalogue. Prefer the following typed outcomes over orchestrating many low-level writes, but never silently infer a student's knowledge, attendance or permission to publish/send/pay. The client decides whether and how to defer tool discovery; the server cannot force model context to load only selected departments.

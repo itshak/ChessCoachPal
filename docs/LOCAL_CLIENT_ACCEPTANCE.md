@@ -1,5 +1,7 @@
 # Real Claude and ChatGPT MCP acceptance — independent client checks
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 **Updated 2026-11-15.** This is a **living acceptance procedure**, not a claim of complete external-client certification. The earlier statement “neither client has ever been tested” is superseded: **Claude Desktop has successfully performed a synthetic end-to-end material workflow on the deployed website**. **ChatGPT has not been confirmed through an equivalent real-client test.** A passing synthetic browser/delegated OAuth test also does not establish real-client behavior.
 
 The original v0.1.0 GitHub release was already published before this exercise. Do not describe these tests as a prerequisite that is still blocking an already-published tag; treat missing external-client evidence as a separately tracked post-release acceptance gap.

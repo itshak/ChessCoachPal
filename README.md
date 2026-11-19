@@ -1,5 +1,7 @@
 # ChessCoachPal
 
+**Deployment policy:** ChessCoachPal is exclusively a centrally operated SaaS. Coaches use the hosted website and MCP; there is **no customer self-hosting edition**. Docker/Coolify/Supabase deployment and recovery instructions are for ChessCoachPal operators and CI only. See [ADR-0018](docs/adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 **MCP tool naming:** The single HTTPS `/mcp` connector exposes `ccp_<domain>_<action>` tools (no `ccp_v1_*` compatibility aliases before 1.0.0). After a release adds tools, refresh the tool catalogue or start a new client conversation; disconnect/reconnect only if the client still caches an outdated catalogue. See [client instructions](docs/AI_CONNECTORS.md).
 
 **Release status:** Private beta on the existing OVH/Coolify server. Use [GitHub Releases](https://github.com/itshak/ChessCoachPal/releases) for the published version and deployable source; the [release procedure](docs/RELEASING.md) describes the approved tagged-only deployment. Automated tests are extensive, but the real-client ChatGPT/Claude beta exercises and remaining operational/privacy sign-offs must be evaluated separately.
@@ -17,7 +19,7 @@ The project is built from [CogNote](https://github.com/andresjmorales/cognote), 
 - **Workplaces:** schools, clubs, online classes and private practice with independent policies.
 - **Group and private lessons:** per-student attendance, shared teaching notes, instructor time counted once per class.
 - **Chess learning history:** verified teacher observations, reviewable AI suggestions, selected Lichess Study and HTTPS learning links (rating synchronization is deferred).
-- **Private and portable:** Docker deployment for authorized operators, PostgreSQL, guarded backup/restore, deterministic workplace reports and exports, strong permission boundaries.
+- **Private and portable:** operator-managed Docker infrastructure, PostgreSQL, guarded backup/restore, deterministic workplace reports and exports, strong permission boundaries.
 
 ## Status
 
@@ -35,8 +37,8 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 
 - **[2026-11-18 accepted architecture and eight implementation OpenSpec proposals](openspec/changes/README.md)** — source-linked scope, dependencies, deferrals, baseline/live migration and website/MCP acceptance gates
 
-- [Hosting architecture and Coolify deployment plan](docs/HOSTING_ARCHITECTURE.md) — trimmed self-hosted Supabase target, capacity and recovery gates
-- [ADR-0008: Retain trimmed self-hosted Supabase](docs/adr/0008-self-hosted-supabase-on-coolify.md) — hosting choice and alternatives
+- [Hosting architecture and Coolify deployment plan](docs/HOSTING_ARCHITECTURE.md) — operator-managed Supabase target, capacity and recovery gates
+- [ADR-0008: Retain operator-managed Supabase](docs/adr/0008-self-hosted-supabase-on-coolify.md) — hosting choice and alternatives
 
 - **[v0.1.0 OpenSpec roadmap](openspec/ROADMAP-v0.1.0.md)** — archived implementation milestones; separate active publication and new proposed chess-trainer workflow development
 - [Complete coaching workflows](openspec/changes/archive/2026-11-07-complete-coaching-workflows/proposal.md)
@@ -51,7 +53,7 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 - [MCP trainer workflow and student model roadmap](docs/MCP_WORKFLOW_ROADMAP.md)
 - [Official ChatGPT plugin roadmap (target after public SaaS)](docs/PUBLIC_PLUGIN_SUBMISSION.md)
 - [Archived, incomplete original plan](openspec/changes/archive/2026-11-07-adopt-cognote-chesscoachpal/proposal.md)
-- [New-install self-hosting, protected backup and second-instance restore](docs/SELF_HOSTING.md)
+- [Operator-only installation, protected backup and second-instance restore](docs/SELF_HOSTING.md)
 - [Synthetic chess coach walkthrough](docs/CHESS_COACH_TUTORIAL.md)
 - [Chess learning (observations, approval, Lichess study links)](docs/CHESS_LEARNING.md)
 - [Agent interface](docs/AI_AGENTS.md)

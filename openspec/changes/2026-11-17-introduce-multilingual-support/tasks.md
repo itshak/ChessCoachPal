@@ -1,5 +1,7 @@
 # Tasks: introduce multilingual support (en, he, ru)
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 **v0.1.7 final-release candidate integrated with current main (2026-11-18).** The maintainer has explicitly authorized CI-gated merge to main, new annotated version tag and Coolify redeployment. Do not merge, tag or deploy unless the exact candidate CI, authenticated E2E, fresh schema, security, Compose and backup/restore gates pass. Mark only verified work complete; live ChatGPT/Claude tests and a manual screen-reader/legal review remain separately deferred (see docs/RELEASING.md), not falsely checked off.
 
 ## A. Establish the contract and framework

@@ -1,5 +1,8 @@
 # ChessCoachPal — current architecture
 
+> **Current product policy (ADR-0018, 2026-11-19):** ChessCoachPal is exclusively an operator-run SaaS. Customers/teachers cannot deploy, install, operate or self-host ChessCoachPal. In older text, "self-hosted" refers solely to ChessCoachPal operating its own infrastructure (including Supabase/PostgreSQL), not to a customer deployment. Historical/archived plans are evidence of past decisions, not current product support. See [ADR-0018](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
+
 **Hosting decision (accepted 2026-11-15, not yet deployed):** Retain the existing trimmed Supabase stack (GoTrue, PostgreSQL/RLS, PostgREST and Storage), with a controlled future Coolify hosting cutover for the Next.js website and `/mcp`. Vercel/managed Supabase remain in use while security, recovery and capacity gates are verified. See [hosting architecture](HOSTING_ARCHITECTURE.md) and [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md). Do not introduce a second PostgreSQL or SuperTokens without a new evidence-backed decision.
 
 **As of 2026-11-15:** ChessCoachPal is a pre-v1.0.0 **MCP-first, self-hostable chess coaching workspace**. The released v0.1.x line is not a stable v1 data/API contract. The website is optional for business management; provider credentials, passwords, MFA and some high-risk approvals remain in secure browser-only workflows.

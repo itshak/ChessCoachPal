@@ -1,4 +1,7 @@
-# Self-hosting and recovery for ChessCoachPal
+# Operator-managed infrastructure and recovery for ChessCoachPal
+
+> **Current product policy (ADR-0018, 2026-11-19):** ChessCoachPal is exclusively an operator-run SaaS. Customers/teachers cannot deploy, install, operate or self-host ChessCoachPal. In older text, "self-hosted" refers solely to ChessCoachPal operating its own infrastructure (including Supabase/PostgreSQL), not to a customer deployment. Historical/archived plans are evidence of past decisions, not current product support. See [ADR-0018](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 
 Current pre-1.0 fresh-install schema only (ADR-0001). A teacher can use the website without ChatGPT, Claude, Notion, Google or Lichess accounts. PostgreSQL/Supabase is required. Keep real student details out of GitHub, logs, screenshots and CI.
 
@@ -8,7 +11,7 @@ Current pre-1.0 fresh-install schema only (ADR-0001). A teacher can use the webs
 
 [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md) selects the trimmed existing Supabase Compose stack as the future Coolify-managed backend, with Next.js website and `/mcp` sharing the same services. See [HOSTING_ARCHITECTURE.md](HOSTING_ARCHITECTURE.md) for alternatives, disk estimates and rollout gates. This does not imply the managed backend or Vercel has already migrated. Before a real cutover: isolate database/Auth/Storage and service-role credentials from public ports, configure HTTPS and Google OAuth/SMTP where applicable, measure real image/volume capacity, verify RLS and delegated MCP consent/refresh/revocation, and restore off-host encrypted backups into a second empty installation.
 
-## Initial setup (new empty installation)
+## Operator-only initial setup (new empty installation)
 
 Install Docker Engine, Compose v2 and Buildx. Make ports 3000 (app) and 8000 (API gateway) available. Clone the ChessCoachPal repository, then run:
 

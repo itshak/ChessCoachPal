@@ -1,5 +1,7 @@
 # v0.1.0 prepublication handoff — automated preparation vs manual release authority
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 > **2026-11-15 release-policy update:** The maintainer directed publication of v0.1.0 before manual live ChatGPT/Claude tests and historical privacy/licensing review. The five automated release gates are evidenced; the manual items remain open and are **not attested as passed**. See [RELEASING.md](RELEASING.md). This explicit release exception supersedes the older prepublication hold language below. GitHub Actions and Vercel token checks remain hard requirements.\n\n**Prepared:** 2026-11-15 · **target:** v0.1.0 · **current package version:** `0.0.0` (unreleased) · **publication:** BLOCKED
 
 This report is a **handoff**, not a sign-off. Do not set `0.1.0`, create `v0.1.0`, publish a GitHub Release, or check the seven readiness boxes on the strength of synthetic tests alone. The last real-client check must be done by the maintainer on their own computer with **both** ChatGPT and Claude, immediately before the release PR. See [LOCAL_CLIENT_ACCEPTANCE.md](LOCAL_CLIENT_ACCEPTANCE.md).

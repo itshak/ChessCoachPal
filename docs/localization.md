@@ -1,5 +1,7 @@
 # Localization and language contracts
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 ChessCoachPal supports English (`en`), Hebrew (`he`) and Russian (`ru`).
 This product is **MCP/AI-assistant first**: the website and MCP share business
 services, permissions and record schemas. A new language changes *presentation*,

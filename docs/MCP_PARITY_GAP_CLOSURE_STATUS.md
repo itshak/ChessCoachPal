@@ -1,5 +1,7 @@
 # MCP↔website parity closure: evidence-based implementation ledger
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 ## 2026-11-14 — implemented and archived after merged-main acceptance
 
 Source [merged-main `07ebb4d2e1ea92aca72fb0c231b5bf9092aea5e0`](https://github.com/itshak/ChessCoachPal/commit/07ebb4d2e1ea92aca72fb0c231b5bf9092aea5e0): [strict CI](https://github.com/itshak/ChessCoachPal/actions/runs/43617008893), [authenticated browser/delegated MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43617008841) (**235 passed, 5 intentionally skipped, zero failed**), [security history audit](https://github.com/itshak/ChessCoachPal/actions/runs/43617008878), [self-host Compose](https://github.com/itshak/ChessCoachPal/actions/runs/43617008758), and [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/43617008870), all successful. The branch-source acceptance also passed [236 browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/43616266395) and [strict CI](https://github.com/itshak/ChessCoachPal/actions/runs/43616266397).

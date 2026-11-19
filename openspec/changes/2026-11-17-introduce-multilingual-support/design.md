@@ -1,5 +1,7 @@
 # Design: extensible internationalization, complete RTL and language-aware MCP
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 **Decision status:** Proposed implementation plan, not accepted implementation evidence.
 
 ## 1. Language/locale domain model

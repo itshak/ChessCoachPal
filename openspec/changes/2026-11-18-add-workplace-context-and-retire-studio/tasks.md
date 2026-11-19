@@ -1,5 +1,7 @@
 # Tasks: workplace context and Studio retirement
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 - [ ] Inventory workplace filters and every studio_policies/Studio route/setting consumer including portal, billing, emails, scheduling, imports, reports, MCP, backup/export and current beta data.
 - [ ] Specify typed teacher-global defaults versus workplace-local policy/branding settings and override hierarchy; prohibit policy JSON from silently granting financial behavior.
 - [ ] Update canonical baseline for teacher selected_workplace_id preference, typed settings/storage as needed, owner FKs/RLS, Personal Teaching default and clean removal of obsolete Studio-specific physical concepts.

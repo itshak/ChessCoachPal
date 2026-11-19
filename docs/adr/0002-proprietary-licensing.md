@@ -1,5 +1,7 @@
 # ADR-0002: Proprietary licensing for ChessCoachPal development
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](0018-operator-only-saas-and-tenant-scaling.md).
+
 - **Status:** Accepted
 - **Date:** 2026-11-08
 - **Decision:** Distribute original ChessCoachPal work under proprietary terms going forward, while preserving required prior and third-party licensing rights.

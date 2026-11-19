@@ -32,3 +32,7 @@ ADR-0017 requires one final authoritative fresh-install schema and **one separat
 ## Evidence status
 
 On commit `eaef867`, CI, security history, Compose and backup/restore checks were reported successful; E2E was still running at the time of this roadmap update. This file makes no claim of a passing E2E or completed historical reconciliation.
+
+## Binding SaaS and tenant architecture (2026-11-19)
+
+[ADR-0018](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md) establishes operator-only SaaS (no customer self-hosting), shared canonical PostgreSQL schema, authenticated teacher UUID ownership, RLS and composite tenant-aware foreign keys, and shard-compatible design **without** implementing sharding now. All schema-first proposals must preserve these constraints; no live-data migration is authorized.
