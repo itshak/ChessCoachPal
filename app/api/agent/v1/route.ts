@@ -25,6 +25,8 @@ import { chessUuid, categoryName, observationText, observationInput, observedAt,
 import {materialLinksList,materialLinksCreate,materialLinksUpdate,
  materialLinksUnlinkImpact,materialLinksUnlink} from "@/lib/server/material-links";
 import {lessonCompletionSchema,attendanceBulkRecordSchema} from "@/lib/lesson-completion";
+import {teacherCreditAdjustmentPreview,teacherCreditAdjustmentCommit}
+ from "@/lib/server/credit-adjustments";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +58,17 @@ const calls = z.discriminatedUnion("action", [
     reason: z.string().trim().min(8).max(1000).optional(),
   }).strict(),
   z.object({ action: z.literal("workplaces.enrollments"), workplaceId: uuid }),
+  z.object({action:z.literal("credits.adjustmentPreview"),packageId:uuid}).strict(),
+  z.object({
+    action:z.literal("credits.adjustmentCommit"),packageId:uuid,
+    kind:z.enum(["manual_grant","forfeiture","refund_entitlement","transfer","expiry_extension"]),
+    credits:z.number().int().min(0).max(200),
+    expectedBalance:z.number().int().nonnegative(),
+    destinationPackageId:uuid.optional(),
+    newExpiresOn:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    sourcePaymentId:uuid.optional(),refundReversalId:uuid.optional(),
+    requestId:uuid,reason:z.string().trim().min(8).max(1000),confirmed:z.literal(true),
+  }).strict(),
   z.object({ action: z.literal("students.create"), name: shortName,
     level: z.string().trim().max(120).nullable().optional() }),
   z.object({ action: z.literal("students.update"), studentId: uuid,
@@ -134,6 +147,7 @@ const calls = z.discriminatedUnion("action", [
 const toolNames = [
   "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll",
   "workplaces.unenrollPreview", "workplaces.unenroll", "workplaces.enrollments",
+  "credits.adjustmentPreview","credits.adjustmentCommit",
   "students.search", "students.create", "students.update",
   "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
   "sessions.list", "sessions.create", "sessions.createAdHoc", "sessions.update", "sessions.complete", "sessions.participants",
@@ -264,6 +278,10 @@ export async function POST(req: NextRequest) {
         }); break;
       case "workplaces.enrollments":
         result = await workplacesEnrollments(db, teacherId, call.workplaceId); break;
+      case "credits.adjustmentPreview":
+        result = await teacherCreditAdjustmentPreview(db,teacherId,{packageId:call.packageId}); break;
+      case "credits.adjustmentCommit":
+        result = await teacherCreditAdjustmentCommit(db,teacherId,call); break;
       case "students.search":
         result = await studentsSearch(db, teacherId, call.query); break;
       case "students.create":
