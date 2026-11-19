@@ -6,7 +6,7 @@ const agreement:CompensationAgreement={id:"agreement-1",workplaceId:"club",model
 const pupils=Array.from({length:8},(_,i)=>`student-${i}`);
 const session:CompensationOccurrence={id:"session-1",workplaceId:"club",
  lessonDate:"2026-11-18",durationMinutes:90,status:"completed",
- participantIds:pupils,attendedStudentIds:pupils};
+ participantIds:pupils,markedStudentIds:pupils,attendedStudentIds:pupils};
 const calculate=(a=agreement,s=[session])=>
  calculateExpectedCompensation(a,s,"2026-11-01","2026-11-30");
 describe("provider-independent expected coach compensation",()=>{
@@ -21,6 +21,24 @@ describe("provider-independent expected coach compensation",()=>{
  it("per-student rates use only explicit attendance, not an inferred full group",()=>{
   expect(calculate({...agreement,model:"per_student",rateCents:1000},
     [{...session,attendedStudentIds:pupils.slice(0,3)}]).expectedCents).toBe(3000);
+ });
+ it("completed but unmarked or partly marked roster is not teacher-verified income",()=>{
+  const unmarked={...session,id:"unmarked",markedStudentIds:[],attendedStudentIds:[]};
+  const partlyMarked={...session,id:"partial",markedStudentIds:pupils.slice(0,3),
+   attendedStudentIds:pupils.slice(0,3)};
+  const noShowOnly={...session,id:"no-show",attendedStudentIds:[]};
+  const result=calculate(agreement,[unmarked,partlyMarked,noShowOnly]);
+  expect(result).toMatchObject({eligibleSessionCount:0,
+   eligibleParticipantCount:0,eligibleInstructorMinutes:0,
+   expectedCents:0,unconfirmedSessionCount:3});
+ });
+ it("rejects invented, duplicate or off-roster attendance marks",()=>{
+  expect(()=>calculate(agreement,[{...session,markedStudentIds:[...pupils,pupils[0]]}]))
+   .toThrow("Duplicate marked attendance");
+  expect(()=>calculate(agreement,[{...session,markedStudentIds:["foreign"],attendedStudentIds:[]}]))
+   .toThrow("Unrecognized pupil in marked attendance");
+  expect(()=>calculate(agreement,[{...session,attendedStudentIds:["foreign"]}]))
+   .toThrow("Unrecognized pupil in recorded attendance");
  });
  it("cancelled or merely scheduled sessions accrue no earned work",()=>{
   const sessions=[{...session,status:"scheduled" as const},

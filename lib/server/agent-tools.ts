@@ -706,7 +706,7 @@ const catalogue = [
   },
   {
     name:"ccp_compensation_agreements_create",
-    description:"After explicit teacher approval, create one agreement for instructor earnings or one customer billing scope. Name the exact owned workplace, model, minor-unit rate, payer when charging, effective dates; ambiguous overlapping agreements are rejected. No cash or invoice is created.",
+    description:"After explicit teacher approval, create one agreement for instructor earnings or one customer billing scope. Name the exact owned workplace, model, minor-unit rate, explicitly owned billing-account counterparty for both coach earnings and charges, effective dates; ambiguous overlapping agreements are rejected. No cash or invoice is created.",
     schema:compensationAgreementCreateSchema,scope:"coach:write",readOnly:false,
   },
   {

@@ -8,7 +8,7 @@ type Student={id:string;name:string};
 type Group={id:string;name:string;workplace_id:string};
 type Payer={id:string;displayName:string;status:string};
 type Agreement={id:string;workplaceId:string;studentId:string|null;groupId:string|null;
- billingAccountId:string|null;agreementRole:"coach_earning"|"participant_charge";
+ billingAccountId:string;agreementRole:"coach_earning"|"participant_charge";
  model:"hourly"|"per_session"|"per_student"|"fixed_period";
  rateCents:number;currency:string;effectiveFrom:string;effectiveTo:string|null;
  status:"active"|"archived";revision:number};
@@ -86,10 +86,10 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
     currency:workplace.currency,effectiveFrom:start,effectiveTo:end||null,
     studentId:scope==="student"?scopedId:null,
     groupId:scope==="group"?scopedId:null,
-    billingAccountId:role==="participant_charge"?payerId:null,
+    billingAccountId:payerId,
     idempotencyKey:crypto.randomUUID(),confirmed:true};
    if(scope!=="workplace"&&!scopedId)throw new Error(t("chooseScope"));
-   if(role==="participant_charge"&&!payerId)throw new Error(t("choosePayer"));
+   if(!payerId)throw new Error(t("chooseCounterparty"));
    await getJson("/api/compensation-agreements",{
     method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),
    });
@@ -163,12 +163,12 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
        .map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
     </select>
    </label>}
-   {role==="participant_charge"&&<label className="text-xs">{t("payer")}
+   <label className="text-xs">{t("counterparty")}
     <select className={field} value={payerId} onChange={e=>setPayerId(e.target.value)} required>
-     <option value="">{t("choosePayer")}</option>
+     <option value="">{t("chooseCounterparty")}</option>
      {payers.map(p=><option key={p.id} value={p.id}>{p.displayName}</option>)}
     </select>
-   </label>}
+   </label>
    <label className="text-xs">{t("validFrom")}
     <input className={field} type="date" value={start} onChange={e=>setStart(e.target.value)} required/>
    </label>

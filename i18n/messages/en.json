@@ -2798,7 +2798,9 @@
     "sessions": "{count} completed sessions",
     "minutes": "{count} instructor minutes",
     "people": "{count} recorded attending pupils",
-    "previewNotice": "Read-only estimate. Does not post an obligation, invoice, salary payment or customer receipt."
+    "previewNotice": "Read-only estimate. Does not post an obligation, invoice, salary payment or customer receipt.",
+    "counterparty": "Financial counterparty",
+    "chooseCounterparty": "Select a billing account for this workplace"
   },
   "federationRatings": {
     "title": "Federation IDs and official rating history",

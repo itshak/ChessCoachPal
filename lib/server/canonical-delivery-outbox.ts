@@ -133,12 +133,15 @@ async function deliverOne(db:Db,row:OutboxRow):Promise<Delivery>{
   if(!recipients.has(email.toLowerCase()))recipients.set(email.toLowerCase(),contact);
  }
  if(!recipients.size)return {outcome:"cancelled",failureCode:"no_approved_contact_email"};
- // Each contact receives their own localized message; no To:/BCC exchange
- // between unrelated contact identities and no old shared household portal
- // token. Provider request IDs remain stable across retries of this intent.
+ // A student can have many separately legitimate contacts; a generic note
+ // approval is NOT permission to broadcast to all of them. Until the note
+ // editor captures an exact teacher-confirmed recipient ID and the outbox
+ // persists a per-recipient delivery receipt, fail closed for ambiguity.
+ // In particular an SMTP partial failure after delivering to contact A must
+ // never cause a best-effort retry to duplicate A while sending to B.
+ if(recipients.size!==1)
+  return {outcome:"cancelled",failureCode:"explicit_contact_recipient_required"};
  const destinations=[...recipients.values()];
- if(destinations.length>20)
-  return {outcome:"cancelled",failureCode:"too_many_approved_contacts"};
  for(const recipient of destinations){
   const locale=isAppLocale(recipient.preferred_locale)?recipient.preferred_locale:"en";
   const copy=communicationCopy[locale],when=sessionWhen(locale);

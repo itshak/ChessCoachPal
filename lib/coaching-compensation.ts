@@ -16,13 +16,18 @@ export type CompensationOccurrence={
  id:string;workplaceId:string;lessonDate:string;
  durationMinutes:number;status:"scheduled"|"completed"|"cancelled";
  participantIds:string[];
- /** Explicit teacher-verified attendance only. No show or unknown is never assumed. */
+ /** Student-specific attendance is recorded explicitly, even for absence. A
+  * completed calendar session alone never proves its participant outcomes. */
+ markedStudentIds:string[];
+ /** Only teacher-confirmed present or late marks, always a subset of marked. */
  attendedStudentIds:string[];
 };
 export type CompensationSummary={
  agreementId:string;currency:string;model:CompensationModel;
  eligibleSessionCount:number;eligibleInstructorMinutes:number;
  eligibleParticipantCount:number;expectedCents:number;
+ /** Completed sessions with missing/partial attendance, never billed/earned. */
+ unconfirmedSessionCount:number;
  periodStart:string;periodEnd:string;
 };
 function date(value:string){
@@ -74,7 +79,7 @@ export function calculateExpectedCompensation(
    throw new Error("Fixed-period compensation must use exactly its approved period");
  }
  let eligibleSessionCount=0,eligibleInstructorMinutes=0;
- let eligibleParticipantCount=0,expectedCents=0;
+ let eligibleParticipantCount=0,expectedCents=0,unconfirmedSessionCount=0;
  const ids=new Set<string>();
  for(const occurrence of occurrences){
   if(ids.has(occurrence.id))throw new Error("Duplicate canonical session ID");
@@ -89,9 +94,21 @@ export function calculateExpectedCompensation(
      (agreement.effectiveTo&&occurrence.lessonDate>agreement.effectiveTo))continue;
   if(occurrence.status!=="completed")continue;
   const roster=unique(occurrence.participantIds,"canonical frozen roster participant");
+  const marked=unique(occurrence.markedStudentIds,"marked attendance decision");
   const attended=unique(occurrence.attendedStudentIds,"attendance decision");
+  for(const pupil of marked){
+   if(!roster.has(pupil))throw new Error("Unrecognized pupil in marked attendance");
+  }
   for(const pupil of attended){
-   if(!roster.has(pupil))throw new Error("Unrecognized pupil in recorded attendance");
+   if(!roster.has(pupil)||!marked.has(pupil))
+    throw new Error("Unrecognized pupil in recorded attendance");
+  }
+  // A teacher can complete a calendar occurrence without actually completing
+  // its pupil-by-pupil attendance. That status is not permission to accrue an
+  // invoice or a wage. Also do not auto-charge cancelled/no-show-only events:
+  // these require a separate explicitly agreed cancellation policy.
+  if(roster.size===0||marked.size!==roster.size||attended.size===0){
+   unconfirmedSessionCount++;continue;
   }
   eligibleSessionCount++;
   eligibleInstructorMinutes=safePlus(eligibleInstructorMinutes,occurrence.durationMinutes);
@@ -110,5 +127,5 @@ export function calculateExpectedCompensation(
  if(agreement.model==="fixed_period")expectedCents=agreement.rateCents;
  return {agreementId:agreement.id,currency:agreement.currency,model:agreement.model,
   eligibleSessionCount,eligibleInstructorMinutes,eligibleParticipantCount,
-  expectedCents,periodStart:from,periodEnd:to};
+  expectedCents,unconfirmedSessionCount,periodStart:from,periodEnd:to};
 }

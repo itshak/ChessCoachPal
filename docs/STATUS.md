@@ -1,6 +1,10 @@
 # ChessCoachPal development and release status
 
 
+## 2026-11-19 — Contract counterparty and completed-attendance hardening (DRAFT)
+
+The existing effective-dated compensation agreement model was strengthened (not duplicated): **both coach earnings and participant-charge contracts must name one owned, active Billing Account**. A school paying the instructor is a financial counterparty, never the default derived from a student or a workplace label. The read-only projection now excludes completed sessions with unmarked or partially marked frozen attendance and reports `unconfirmedSessionCount`; it does not imply income was received. The contact notification worker now refuses an ambiguous multi-contact audience rather than broadcasting or retrying partially sent messages. Source TypeScript and canonical schema guard pass locally; full browser/MCP runtime/CI must still be proven. This remains an unmerged implementation with no financial postings or live database changes.
+
 ## 2026-11-19 — Explicit student/workplace payer and contact outbox (DRAFT)
 
 PR #104 source now adds teacher-approved effective-dated student/workplace/Billing Account assignments with tenant-enforced single-debtor time ranges, idempotent/revisioned writes, a localized editor, shared browser/MCP services and exact cross-client E2E cases. **This is not invoice posting or money received.** Also the canonical outbox is moving from old guardian/Family email destinations to separately approved active student-linked Contacts; an approved shared note does not inherit all household contacts or return a legacy bearer URL. Read the [payer contract](EXPLICIT_STUDENT_PAYER.md) and [OpenSpec progress](../openspec/changes/2026-11-18-implement-workplace-compensation-and-billing/PAYER_IMPLEMENTATION_PROGRESS.md). Local TypeScript, i18n, schema guard and MCP parity checks pass with 233 tools and 99/99 current teacher-business API route families, **not** proof of authenticated E2E success. Old invoice/finance code still depends on guardian identity; do not merge, archive, deploy or apply a production DB change.

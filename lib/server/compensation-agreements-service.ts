@@ -15,7 +15,7 @@ const rate=z.number().int().min(0).max(1000000000);
 const agreementFields=z.object({
   workplaceId:uuid,
   studentId:uuid.nullable().default(null),groupId:uuid.nullable().default(null),
-  billingAccountId:uuid.nullable().default(null),
+  billingAccountId:uuid,
   agreementRole:role,model,rateCents:rate,
   currency:z.string().regex(/^[A-Z]{3}$/),
   effectiveFrom:date,effectiveTo:date.nullable().default(null),
@@ -23,8 +23,8 @@ const agreementFields=z.object({
 }).strict().superRefine((value,ctx)=>{
   if(value.studentId&&value.groupId)
     ctx.addIssue({code:"custom",path:["studentId"],message:"Choose student or group, not both"});
-  if(Boolean(value.billingAccountId)!==(value.agreementRole==="participant_charge"))
-    ctx.addIssue({code:"custom",path:["billingAccountId"],message:"Charges require a payer; coach earnings do not"});
+  // Both coach earnings and participant charges require a separately owned
+  // financial counterparty. A workplace/student/contact is not a debtor.
   if(value.effectiveTo&&value.effectiveTo<value.effectiveFrom)
     ctx.addIssue({code:"custom",path:["effectiveTo"],message:"Effective end is before start"});
 });
@@ -103,10 +103,9 @@ async function authorizeTerms(db:Db,teacherId:string,value:z.infer<typeof agreem
     if(group.workplace_id!==value.workplaceId)
       fail(409,"GROUP_WORKPLACE_MISMATCH","Group belongs to a different workplace");
   }
-  if(value.billingAccountId){
-    const account=await owned(db,teacherId,"billing_accounts",value.billingAccountId,"id,status");
-    if(account.status!=="active")fail(409,"PAYER_ARCHIVED","Billing account must be active");
-  }
+  const account=await owned(db,teacherId,"billing_accounts",value.billingAccountId,"id,status");
+  if(account.status!=="active"&&value.status==="active")
+    fail(409,"PAYER_ARCHIVED","Billing account must be active for new or active agreements");
 }
 export async function compensationAgreementsList(db:Db,teacherId:string,
   opts:{workplaceId?:string;includeArchived?:boolean}={}){
@@ -153,7 +152,7 @@ export async function compensationAgreementUpdate(db:Db,teacherId:string,
     workplaceId:String(current.workplace_id),
     studentId:current.student_id?String(current.student_id):null,
     groupId:current.group_id?String(current.group_id):null,
-    billingAccountId:current.billing_account_id?String(current.billing_account_id):null,
+    billingAccountId:String(current.billing_account_id),
     agreementRole:current.agreement_role,
     model:current.model,
     rateCents:value.changes.rateCents??Number(current.rate_cents),
@@ -219,6 +218,9 @@ export async function compensationAgreementPreview(db:Db,teacherId:string,
     durationMinutes:s.duration_minutes,
     status:s.status as CompensationOccurrence["status"],
     participantIds:s.participants.map(p=>p.studentId),
+    markedStudentIds:s.participants.filter(p=>
+      ["present","late","absent","excused","student_cancelled","teacher_cancelled"]
+      .includes(p.attendanceStatus??"")).map(p=>p.studentId),
     attendedStudentIds:s.participants.filter(p=>["present","late"].includes(p.attendanceStatus??"")&&
       (!terms.studentId||p.studentId===terms.studentId)).map(p=>p.studentId),
   }));

@@ -11,6 +11,12 @@ test("PARITY:PARITY-compensation-agreements exact scopes, 8-pupil group counted 
  });
  expect(workplace.error).toBeUndefined();
  const workplaceId=workplace.data.entityId as string;
+ const counterparty=await call("ccp_billing_accounts_create",{
+  displayName:"Compensation school finance "+randomUUID(),
+  accountKind:"organization",idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(counterparty.error).toBeUndefined();
+ const counterpartyId=counterparty.data.id as string;
  const studentIds:string[]=[];
  for(let i=0;i<8;i++){
   const student=await call("ccp_students_create",{
@@ -35,12 +41,13 @@ test("PARITY:PARITY-compensation-agreements exact scopes, 8-pupil group counted 
   instructorMinutes:90,replayed:false});
  const requestId=randomUUID();
  const input={idempotencyKey:requestId,workplaceId,agreementRole:"coach_earning",
-  model:"hourly",rateCents:12000,currency:"ILS",effectiveFrom:"2046-01-01",
+  model:"hourly",rateCents:12000,currency:"ILS",billingAccountId:counterpartyId,
+  effectiveFrom:"2046-01-01",
   effectiveTo:null,confirmed:true};
  const created=await call("ccp_compensation_agreements_create",input);
  expect(created.error).toBeUndefined();
  expect(created.data).toMatchObject({workplaceId,model:"hourly",rateCents:12000,
-  agreementRole:"coach_earning",replayed:false});
+  agreementRole:"coach_earning",billingAccountId:counterpartyId,replayed:false});
  const id=created.data.id as string;
  const website=await page.request.get("/api/compensation-agreements?workplaceId="+workplaceId);
  expect(website.status(),await website.text()).toBe(200);
@@ -95,15 +102,28 @@ test("PARITY:PARITY-compensation-agreements do not invent missing payer, salary 
  });
  expect(place.error).toBeUndefined();
  const workplaceId=place.data.entityId as string;
+ const counterparty=await call("ccp_billing_accounts_create",{
+  displayName:"Monthly school sponsor "+randomUUID(),accountKind:"organization",
+  idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(counterparty.error).toBeUndefined();
+ const counterpartyId=counterparty.data.id as string;
  const refused=await call("ccp_compensation_agreements_create",{
   workplaceId,agreementRole:"participant_charge",model:"per_student",
   rateCents:5000,currency:"USD",effectiveFrom:"2046-01-01",
   idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(refused.error?.code).toBe("VALIDATION_ERROR");
+ const noCoachPayer=await call("ccp_compensation_agreements_create",{
+  workplaceId,agreementRole:"coach_earning",model:"hourly",
+  rateCents:12000,currency:"USD",effectiveFrom:"2046-01-01",
+  idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(noCoachPayer.error?.code).toBe("VALIDATION_ERROR");
  const agreement=await call("ccp_compensation_agreements_create",{
   workplaceId,agreementRole:"coach_earning",model:"fixed_period",
-  rateCents:750000,currency:"USD",effectiveFrom:"2046-01-01",
+  rateCents:750000,currency:"USD",billingAccountId:counterpartyId,
+  effectiveFrom:"2046-01-01",
   idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(agreement.error).toBeUndefined();

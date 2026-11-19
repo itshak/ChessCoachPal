@@ -11115,7 +11115,7 @@ CREATE TABLE public.compensation_agreements (
   workplace_id uuid NOT NULL,
   student_id uuid,
   group_id uuid,
-  billing_account_id uuid,
+  billing_account_id uuid NOT NULL,
   agreement_role text NOT NULL CHECK (agreement_role IN ('coach_earning','participant_charge')),
   model text NOT NULL CHECK (model IN ('hourly','per_session','per_student','fixed_period')),
   rate_cents bigint NOT NULL CHECK (rate_cents BETWEEN 0 AND 1000000000),
@@ -11139,16 +11139,13 @@ CREATE TABLE public.compensation_agreements (
     REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT,
   CONSTRAINT compensation_effective_date_order CHECK (
     effective_to IS NULL OR effective_to >= effective_from),
-  CONSTRAINT compensation_role_requires_payer CHECK (
-    (agreement_role='coach_earning' AND billing_account_id IS NULL)
-    OR (agreement_role='participant_charge' AND billing_account_id IS NOT NULL)),
   CONSTRAINT compensation_scope_one_specificity CHECK (
     student_id IS NULL OR group_id IS NULL)
 );
 CREATE INDEX compensation_agreement_scope_idx ON public.compensation_agreements
   (teacher_id,workplace_id,agreement_role,status,effective_from,effective_to);
 CREATE INDEX compensation_agreement_payer_idx ON public.compensation_agreements
-  (teacher_id,billing_account_id) WHERE billing_account_id IS NOT NULL;
+  (teacher_id,billing_account_id);
 
 -- Rows serialize by teacher and workplace on create/update so the same
 -- effective interval cannot be introduced concurrently by web and MCP.
