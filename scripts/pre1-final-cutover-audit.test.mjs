@@ -17,6 +17,17 @@ describe("ADR-0017 single final-cutover source gate",()=>{
    assert.match(issues.join("\n"),/inherited guardian\/studio tables/);
    assert.match(issues.join("\n"),/old guardian_id\/studio_policies names/);
  });
+ it("rejects old SQL guardian routines and unscoped household portal tokens",()=>{
+   const issues=finalCutoverIssues({...valid,
+     baseline:baseline+'\nCREATE OR REPLACE FUNCTION public.ccp_guardian_save() RETURNS void AS $ BEGIN END $ LANGUAGE plpgsql;\nALTER TABLE public.students ADD COLUMN portal_token text;'});
+   assert.match(issues.join("\n"),/obsolete guardian\/Family\/Studio SQL routines/);
+   assert.match(issues.join("\n"),/legacy household portal_token/);
+ });
+ it("rejects direct calls to obsolete guardian RPCs without table references",()=>{
+   const issues=finalCutoverIssues({...valid,
+     runtimeSources:{"lib/server/transitional.ts":'db.rpc("ccp_guardian_save_replay", {});'}});
+   assert.match(issues.join("\n"),/legacy guardian_id\/studio_policies\/guardians storage/);
+ });
  it("rejects old family routes, guardian database readers and MCP contracts",()=>{
    const issues=finalCutoverIssues({...valid,
      paths:["app/(teacher)/families","app/api/guardians/route.ts"],
