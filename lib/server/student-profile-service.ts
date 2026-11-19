@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertWithinHostedLimit, limitReachedResponse } from "@/lib/server/entitlements";
+import {getPolicy} from "@/lib/server/scheduling";
+import {toLocalDateString} from "@/lib/schedule";
 
 type Db = SupabaseClient;
 export class StudentProfileError extends Error {
@@ -82,6 +84,9 @@ export async function teacherStudentChessHistory(db:Db,teacherId:string,studentI
 export async function teacherStudentArchivePreview(db: Db, teacherId: string, studentId: string) {
   const student = await teacherStudentProfile(db, teacherId, studentId);
   const now = new Date().toISOString();
+  // Archived historical periods are not current membership blockers.
+  const policy=await getPolicy(db,teacherId);
+  const today=toLocalDateString(new Date(),policy.timezone);
   const checks = await Promise.all([
     db.from("lesson_slots").select("id", {count:"exact", head:true})
       .eq("teacher_id",teacherId).eq("student_id",studentId).eq("active",true),
@@ -104,7 +109,10 @@ export async function teacherStudentArchivePreview(db: Db, teacherId: string, st
     db.from("group_enrollments").select("id", {count:"exact",head:true})
       .eq("teacher_id",teacherId).eq("student_id",studentId),
     db.from("workplace_enrollments").select("id",{count:"exact",head:true})
-      .eq("teacher_id",teacherId).eq("student_id",studentId),
+      .eq("teacher_id",teacherId).eq("student_id",studentId)
+      .is("cancelled_at",null)
+      .or(`starts_on.is.null,starts_on.lte.${today}`)
+      .or(`ends_on.is.null,ends_on.gte.${today}`),
   ]);
   if (checks.some(({error})=>error))
     throw new StudentProfileError(503,"PREVIEW_UNAVAILABLE","Cannot verify future commitments; archive was not performed");
@@ -114,7 +122,9 @@ export async function teacherStudentArchivePreview(db: Db, teacherId: string, st
   const blockers = {recurringSlots,futurePrivateLessons,futureDirectSessions,
     futureGroupSessions,activeGroupMemberships,currentWorkplaceEnrollments};
   return {studentId,archived:Boolean(student.archived_at),updatedAt:student.updated_at,
-    blockers,canArchive:Object.values(blockers).every(count=>count===0)};
+    blockers,canArchive:Object.values(blockers).every(count=>count===0),
+    creditPolicy:"hold_without_refund_transfer_or_expiry_change",
+    membershipPolicy:"historical_periods_retained_no_automatic_reenrollment"};
 }
 
 /** Website and MCP execute this exact code with the same RLS-bound teacher database client. */
