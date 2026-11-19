@@ -373,10 +373,12 @@ export async function teacherBillingCheckout(supabase:SupabaseClient,teacherId:s
     {id:string;display_name:string;contact_id:string|null;
      contacts:{email:string|null}|{email:string|null}[]|null}[]|null);
   if(!account)return NextResponse.json({error:"Billing account not found"},{status:409});
+  // An account contact alone is not consent to send personal invoice data.
+  // Checkout may proceed without email, but prefill only when *every* line is
+  // authorized for this contact; this is independently rechecked on send.
   const billingContact=oneToOne(account.contacts);
-  // The payer identity is selected explicitly; no unrelated guardian email,
-  // broad household portal credential or inferred marketing contact is used.
-  const customerEmail=billingContact?.email??undefined;
+  const customerEmail=undefined; // no implied recipient in direct checkout
+  void billingContact;
 
   const periodLabel = `${invoice.period_start} – ${invoice.period_end}`;
 
@@ -390,8 +392,8 @@ export async function teacherBillingCheckout(supabase:SupabaseClient,teacherId:s
       familyName: account.display_name,
       businessName: policy.business_name,
       periodLabel,
-      successUrl: `${origin}/billing/${id}?paid=1`,
-      cancelUrl: `${origin}/billing/${id}`,
+      successUrl: `${origin}/?payment=completed`,
+      cancelUrl: `${origin}/?payment=cancelled`,
       customerEmail,
     });
 

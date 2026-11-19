@@ -161,7 +161,6 @@ export async function buildStudioExport(
   await children("invoice_items", "invoice_id", ids(asRows(tables.invoices)));
   await children("payments", "invoice_id", ids(asRows(tables.invoices)));
   await children("event_students", "event_id", ids(asRows(tables.events)));
-  await children("event_rsvps", "event_id", ids(asRows(tables.events)));
 
   const { data: profile, error: profileError } = await supabase
     .from("teachers").select("display_name").eq("id", teacherId).maybeSingle();

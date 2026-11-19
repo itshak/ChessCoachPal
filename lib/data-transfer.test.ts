@@ -13,7 +13,7 @@ function currentPayload(): StudioDataExport {
   return {
     exportedAt:new Date().toISOString(),
     teacherId:"00000000-0000-0000-0000-000000000001",
-    tables:{teacher_settings:null,guardians:[],students:[]},
+    tables:{teacher_settings:null,contacts:[],students:[]},
   };
 }
 
@@ -24,7 +24,7 @@ function stubSupabase(calls:RpcCall[], failure?:string):SupabaseClient {
       calls.push({name,args});
       return Promise.resolve(failure
         ? {data:null,error:{message:failure}}
-        : {data:{counts:{guardians:0,students:1}},error:null});
+        : {data:{counts:{contacts:0,students:1}},error:null});
     },
   } as unknown as SupabaseClient;
 }
@@ -53,7 +53,7 @@ describe("ChessCoachPal portable backup", () => {
     payload.tables.student_training_plans=[{id:"tp1",teacher_id:"old",title:"Endgames",goals:[]}];
     payload.tables.student_training_plan_revisions=[{plan_id:"tp1",teacher_id:"old",revision:1}];
     const result=await importStudioExport(stubSupabase(calls),TEACHER,payload,DIGEST);
-    expect(result).toEqual({ok:true,counts:{guardians:0,students:1}});
+    expect(result).toEqual({ok:true,counts:{contacts:0,students:1}});
     expect(calls).toHaveLength(1);
     expect(calls[0].name).toBe("ccp_teacher_backup_restore");
     expect(calls[0].args.p_digest).toBe(DIGEST);
@@ -124,7 +124,7 @@ describe("ChessCoachPal portable backup", () => {
       {students:{id:"incorrect-object"}},
       {payments:"not an array"},
       {teacher_settings:[{id:"must-be-object"}]},
-      {guardians:[[],{id:"g"}]},
+      {contacts:[[],{id:"g"}]},
     ]) {
       const calls:RpcCall[]=[];
       const payload=currentPayload();
