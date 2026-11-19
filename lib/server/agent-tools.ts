@@ -31,6 +31,9 @@ import {spreadsheetSuggestMcpSchema} from "@/lib/spreadsheet-suggest";
 import {creditAdjustmentCommitSchema,creditAdjustmentPreviewSchema,
  teacherCreditAdjustmentPreview,teacherCreditAdjustmentCommit}
  from "@/lib/server/credit-adjustments";
+import {lifecyclePreviewSchema,lifecycleCommitSchema,
+ studentLifecyclePreview,studentLifecycleCommit}
+ from "@/lib/server/student-lifecycle-service";
 import {bulkLifecyclePreviewSchema,bulkLifecycleCommitSchema,
  teacherBulkLifecyclePreview,teacherBulkLifecycleCommit,BulkLifecycleError}
  from "@/lib/server/teacher-bulk-lifecycle";
@@ -1211,6 +1214,16 @@ const catalogue = [
     schema:z.object({studentId:uuid,expectedUpdatedAt:instant,changes:studentUpdateSchema,
       confirmed:z.literal(true)}).strict().refine(v=>Object.keys(v.changes).length>0,"Changes required"),
     scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_students_lifecycle_preview",
+    description:"Preview an exact owned learner's current, future and previous workplace periods, recurring/future-session blockers and all remaining prepaid credits with funding/expiry. Required before archive or reactivation, never assume an old workplace is active.",
+    schema:lifecyclePreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_students_lifecycle_commit",
+    description:"Teacher-confirmed, idempotent atomic archive or reactivation with a stable student ID and exact expectedUpdatedAt from preview. Archiving closes current membership periods, cancels future periods and holds credits without refunds, but blocks unresolved groups, slots and future lessons. Reactivation creates ONLY explicitly selected previously verified workplace periods, never guesses lesson or credit activity.",
+    schema:lifecycleCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
     name: "ccp_students_search",
@@ -2680,6 +2693,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_workplaces_list":
         return { data: await workplacesList(db, teacherId) };
+      case "ccp_students_lifecycle_preview":
+        return {data:await studentLifecyclePreview(db,teacherId,
+          args as Parameters<typeof studentLifecyclePreview>[2])};
+      case "ccp_students_lifecycle_commit":
+        return {data:await studentLifecycleCommit(db,teacherId,
+          args as Parameters<typeof studentLifecycleCommit>[2])};
       case "ccp_students_search": {
         const a = args as {query:string};
         const result = await teacherStudentsRoster(db,teacherId,{query:a.query,includeArchived:true,limit:100});
