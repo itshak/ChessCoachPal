@@ -1,4 +1,4 @@
-import {insertTestBillingAccount} from "./helpers/canonical-payer";
+import {insertTestBillingAccount,createAssignedPayer} from "./helpers/canonical-payer";
 import { createHash, randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
@@ -1346,12 +1346,13 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   for(const toolName of ["ccp_credits_packages_list","ccp_credits_package_create",
     "ccp_credits_package_expiry","ccp_credits_redemption_return"])
     expect(names).toContain(toolName);
-  const linkForCredits=await page.request.put("/api/students/"+profileId,{
-    data:{guardianId:acctGuardian!.id},
+  await createAssignedPayer(call,{
+    studentId:profileId,workplaceId:madeWorkplace.entityId,
+    effectiveFrom:"2020-01-01",
   });
-  expect(linkForCredits.status(),await linkForCredits.text()).toBe(200);
   const prepaidPackage=(await call("ccp_credits_package_create",{
-    studentId:profileId,credits:4,durationMinutes:45,priceCents:10000,
+    studentId:profileId,workplaceId:madeWorkplace.entityId,
+    credits:4,durationMinutes:45,priceCents:10000,
     startsOn:"2026-11-08",expiresOn:"2027-03-31",confirmed:true,
   })).structuredContent;
   expect(prepaidPackage.error).toBeUndefined();
