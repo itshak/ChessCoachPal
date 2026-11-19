@@ -3567,7 +3567,15 @@ BEGIN
    v_name:=btrim(v_row->>'studentName');
    v_key:=v_row->>'familyKey';
    IF (v_row->>'workplaceId') IS NULL OR (v_row->>'workplaceId') !~
-     '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}
+     '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN
+     RAISE EXCEPTION 'IMPORT_WORKPLACE_REQUIRED' USING ERRCODE='22023';
+   END IF;
+   v_workplace:=(v_row->>'workplaceId')::uuid;
+   PERFORM 1 FROM public.workplaces
+     WHERE id=v_workplace AND teacher_id=v_teacher;
+   IF NOT FOUND THEN
+     RAISE EXCEPTION 'WORKPLACE_NOT_OWNED' USING ERRCODE='42501';
+   END IF;
    v_row_number:=(v_row->>'sourceRow')::integer;
    IF jsonb_typeof(v_row)<>'object' OR v_name IS NULL
       OR length(v_name) NOT BETWEEN 1 AND 200
