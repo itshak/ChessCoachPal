@@ -11617,6 +11617,8 @@ CREATE POLICY rating_refresh_receipts_read ON public.student_rating_refresh_rece
  FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
 REVOKE ALL ON TABLE public.student_rating_refresh_receipts FROM PUBLIC,anon,authenticated;
 GRANT SELECT ON TABLE public.student_rating_refresh_receipts TO authenticated;
+-- Override default service-role ALL grants to preserve append-only receipt ACL.
+REVOKE ALL ON TABLE public.student_rating_refresh_receipts FROM service_role;
 GRANT SELECT,INSERT ON TABLE public.student_rating_refresh_receipts TO service_role;
 COMMENT ON TABLE public.student_rating_refresh_receipts IS
  'Append-only worker attempt evidence; no service-role UPDATE/DELETE and no inference of consent.';
