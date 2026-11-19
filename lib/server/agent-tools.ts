@@ -427,10 +427,10 @@ const catalogue = [
   },
   {
     name:"ccp_import_spreadsheet_commit",
-    description:"Atomically import up to 500 reviewed student/family rows, including optional archived status, with explicit approval and idempotent receipts. A failed batch rolls back all student and family writes. Archived names are deduplicated.",
+    description:"Import reviewed students AND enroll them in a verified workplace atomically. Pass workplaceId explicitly when more than one workplace exists; otherwise the only workplace is selected. If WORKPLACE_REQUIRED is returned, ask the teacher to choose from workplaces and retry. Existing students gain the enrollment without duplication; historical attendance is separate.",
     schema:z.object({rows:z.array(z.record(z.string(),z.string())).min(1).max(500),
       mapping:z.record(z.string(),z.string().nullable()),confirmed:z.literal(true),
-      idempotencyKey:uuid.optional()}).strict(),
+      idempotencyKey:uuid.optional(),workplaceId:uuid.optional()}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1910,13 +1910,13 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherSpreadsheetSuggest(db,teacherId,a)};
       }
       case "ccp_import_spreadsheet_commit": {
-        const a=args as {rows:Record<string,string>[];mapping:ColumnMapping;idempotencyKey?:string};
+        const a=args as {rows:Record<string,string>[];mapping:ColumnMapping;idempotencyKey?:string;workplaceId?:string};
         const response=await teacherSpreadsheetCommit(db,teacherId,a);
         const data=await response.json();
         if(!response.ok)
           return {error:{code:response.status===403?"HOSTED_LIMIT_REACHED":
-            response.status===409?"CONFLICT":"VALIDATION_ERROR",
-            message:data.error??"Spreadsheet import failed"}};
+            response.status===409?"CONFLICT":data.code??"VALIDATION_ERROR",
+            message:data.error??"Spreadsheet import failed",workplaces:data.workplaces}};
         return {data};
       }
       case "ccp_settings_export":
