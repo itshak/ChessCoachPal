@@ -83,6 +83,16 @@ describe("allocateCredits", () => {
     expect([...allocation.keys()]).toEqual(["l1"]);
   });
 
+  it("allocates only approved credits after additions, forfeitures or transfers", () => {
+    const lessons=[lesson("l1","2026-10-05"),lesson("l2","2026-10-06"),
+      lesson("l3","2026-10-07"),lesson("l4","2026-10-08")];
+    expect(allocateCredits(lessons,[{...pkg,usedCredits:1,adjustmentCredits:2}]).size)
+      .toBe(4);
+    expect(allocateCredits(lessons,[{...pkg,usedCredits:1,adjustmentCredits:-1}]).size)
+      .toBe(1);
+    expect(allocateCredits(lessons,[{...pkg,usedCredits:1,adjustmentCredits:-2}]).size)
+      .toBe(0);
+  });
   it("uses the package that expires soonest first", () => {
     const later = { ...pkg, id: "later", expiresOn: "2027-06-30" };
     const sooner = { ...pkg, id: "sooner", credits: 1, expiresOn: "2026-12-31" };
@@ -145,6 +155,20 @@ describe("summarizeCreditBalances", () => {
     });
   });
 
+  it("matches the SQL entitlement ledger including pending lessons", () => {
+    const [balance]=summarizeCreditBalances([
+      {...pkg,credits:3,usedCredits:1,adjustmentCredits:2},
+    ],new Map([["l9","p1"]]),"2026-10-19");
+    expect(balance).toMatchObject({
+      usedCredits:1,pendingCredits:1,remainingCredits:3,state:"active",
+    });
+    const [forfeited]=summarizeCreditBalances([
+      {...pkg,credits:3,usedCredits:1,adjustmentCredits:-2},
+    ],new Map(),"2026-10-19");
+    expect(forfeited).toMatchObject({
+      remainingCredits:0,state:"used_up",
+    });
+  });
   it("labels pending, used-up and expired packages", () => {
     const balances = summarizeCreditBalances(
       [
