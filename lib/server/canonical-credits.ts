@@ -1,5 +1,5 @@
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {oneToOne,addDays,toLocalDateString,type StudioPolicy} from "@/lib/schedule";
+import {oneToOne,addDays,toLocalDateString,type TeacherPolicy} from "@/lib/schedule";
 import {
  allocateCredits,summarizeCreditBalances,type CreditPackageInput,
  type CreditPackageBalance,
@@ -18,7 +18,7 @@ export interface CanonicalPackageWithBalance extends CanonicalPackageRecord{
  balance:CreditPackageBalance;
 }
 type PackageRow={
- id:string;student_id:string;invoice_id:string;credits:number;
+ id:string;student_id:string;workplace_id:string;invoice_id:string;credits:number;
  duration_minutes:number;price_cents:number;starts_on:string;
  expires_on:string|null;created_at:string;
  invoices:{status:InvoiceStatus}|{status:InvoiceStatus}[]|null;
@@ -31,7 +31,7 @@ export async function loadCanonicalCreditPackages(db:SupabaseClient,teacherId:st
  const all:PackageRow[]=[];
  for(let offset=0;;offset+=PAGE){
   let q=db.from("credit_packages").select(
-   "id,student_id,invoice_id,credits,duration_minutes,price_cents,starts_on,expires_on,created_at,invoices(status),credit_redemptions(id,session_id,student_id)"
+   "id,student_id,workplace_id,invoice_id,credits,duration_minutes,price_cents,starts_on,expires_on,created_at,invoices(status),credit_redemptions(id,session_id,student_id)"
   ).eq("teacher_id",teacherId).order("created_at",{ascending:false}).order("id")
    .range(offset,offset+PAGE-1);
   if(opts.studentIds)q=q.in("student_id",opts.studentIds);
@@ -63,7 +63,7 @@ export async function loadCanonicalCreditPackages(db:SupabaseClient,teacherId:st
    }];
   }).sort((a,b)=>(a.lessonDate??"").localeCompare(b.lessonDate??""));
   return {
-   id:row.id,studentId:row.student_id,durationMinutes:row.duration_minutes,
+   id:row.id,studentId:row.student_id,workplaceId:row.workplace_id,durationMinutes:row.duration_minutes,
    credits:row.credits,usedCredits:redemptions.length,
    startsOn:row.starts_on,expiresOn:row.expires_on,
    active:invoiceStatus==="sent"||invoiceStatus==="paid",
@@ -113,7 +113,7 @@ export async function recordCanonicalRedemptions(
  return error?error.message:null;
 }
 export async function loadCanonicalCreditBalances(
- db:SupabaseClient,teacherId:string,policy:StudioPolicy,
+ db:SupabaseClient,teacherId:string,policy:TeacherPolicy,
  studentIds:string[],today:string
 ):Promise<CanonicalPackageWithBalance[]>{
  const packages=(await loadCanonicalCreditPackages(db,teacherId,{
@@ -136,7 +136,9 @@ export async function loadCanonicalCreditBalances(
    getInvoicedParticipantKeys(db,teacherId),
   ]);
   const result=await deriveCanonicalPeriodItems(db,teacherId,earliest,end,policy,{
-   excludeParticipantKeys:exclude,
+   // Do not make this student's credit history depend on unrelated
+   // workplace lessons and their independent payer arrangements.
+   studentIds,excludeParticipantKeys:exclude,
    credits:{packages:usable,redeemedParticipantKeys:redeemed},
   });
   pending=result.newRedemptions;

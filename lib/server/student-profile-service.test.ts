@@ -98,7 +98,7 @@ describe("complete owner-scoped student paging",()=>{
 describe("teacher student monetary field parity",()=>{
  function fakeProfileDb(writes:Record<string,unknown>[]){
   const student={id:"student-one",teacher_id:"teacher-one",name:"Student One",
-   updated_at:"2099-01-01T00:00:00Z",guardian_id:null,archived_at:null};
+   updated_at:"2099-01-01T00:00:00Z",archived_at:null};
   return {from(table:string){
    expect(table).toBe("students");
    let patch:Record<string,unknown>|null=null;

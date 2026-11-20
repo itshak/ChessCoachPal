@@ -19,8 +19,8 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await expect(workspace.getByRole("status")).toContainText("Workplace created.");
   await page.getByLabel("New workplace name").fill(workplaceB);
   await page.getByRole("button", { name: "Create workplace" }).click();
-  await expect(page.getByLabel("Active workplace")).toContainText(workplaceB);
-  await page.getByLabel("Active workplace").selectOption({ label: workplaceA });
+  await expect(page.getByTestId("coaching-workplace-select")).toContainText(workplaceB);
+  await page.getByTestId("coaching-workplace-select").selectOption({ label: workplaceA });
   await page.getByLabel("Workplace policy (JSON)").fill('{"cancellationHours":24}');
   await page.getByRole("button", { name: "Save workplace" }).click();
   await expect(workspace.getByRole("status")).toContainText("Workplace saved.");
@@ -85,13 +85,13 @@ test("fresh website workflow: two workplaces, canonical student, group/private l
   await expect(page.getByText(/Instructor time in this workplace/)).toContainText("60 minutes");
 
   // The same student identity may enroll elsewhere; no duplicate student is created.
-  await page.getByLabel("Active workplace").selectOption({ label: workplaceB });
+  await page.getByTestId("coaching-workplace-select").selectOption({ label: workplaceB });
   await page.getByLabel("Student for workplace").selectOption({ label: student });
   await page.getByRole("button", { name: "Enroll in workplace" }).click();
   await expect(workspace.getByRole("status")).toContainText("Student enrolled in workplace.");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Chess coaching" })).toBeVisible();
-  await page.getByLabel("Active workplace").selectOption({ label: workplaceA });
+  await page.getByTestId("coaching-workplace-select").selectOption({ label: workplaceA });
   await expect(page.getByLabel("Workplace policy (JSON)")).toHaveValue(/cancellationHours/);
   const lesson = page.getByRole("combobox", { name: "Lesson", exact: true });
   // Native <option> text filters can be unreliable in headless Chromium.

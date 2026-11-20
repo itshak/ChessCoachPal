@@ -17,7 +17,7 @@ interface EventListRow {
   starts_at: string;
   ends_at: string | null;
   event_students: { id: string }[] | null;
-  event_rsvps: { status: RsvpStatus }[] | null;
+  portal_event_invitations: { status: RsvpStatus;revoked_at:string|null }[] | null;
 }
 
 type EventRow = ReturnType<typeof buildEventRows>[number];
@@ -25,7 +25,7 @@ type EventRow = ReturnType<typeof buildEventRows>[number];
 function buildEventRows(events: EventListRow[], timezone: string, locale:"en"|"he"|"ru") {
   const now = Date.now();
   return events.map((event) => {
-    const rsvps = event.event_rsvps ?? [];
+    const rsvps = (event.portal_event_invitations ?? []).filter(r=>!r.revoked_at);
     return {
       id: event.id,
       title: event.title,
@@ -92,7 +92,7 @@ export default async function EventsPage() {
       `
       id, title, location, starts_at, ends_at,
       event_students ( id ),
-      event_rsvps ( status )
+      portal_event_invitations ( status, revoked_at )
     `
     )
     .eq("teacher_id", user.id)

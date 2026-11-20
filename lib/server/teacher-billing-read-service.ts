@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { familyDisplayName } from "@/lib/guardians";
 import { oneToOne } from "@/lib/schedule";
 
 type Db=SupabaseClient;
@@ -11,7 +10,7 @@ export async function teacherInvoicesList(db:Db,teacherId:string,
   opts:{status?:string;offset?:number;limit?:number}={}){
   const limit=Math.min(100,Math.max(1,opts.limit??50)),offset=Math.max(0,opts.offset??0);
   let q=db.from("invoices").select(
-    "id,status,subtotal_cents,currency,period_start,period_end,created_at,sent_at,paid_at,guardian_id,guardians(name,family_name)"
+    "id,status,subtotal_cents,currency,period_start,period_end,created_at,sent_at,paid_at,billing_account_id,billing_accounts(display_name)"
   ).eq("teacher_id",teacherId).order("created_at",{ascending:false})
     .range(offset,offset+limit);
   if(opts.status)q=q.eq("status",opts.status);
@@ -25,7 +24,7 @@ export async function teacherInvoicesList(db:Db,teacherId:string,
 export async function teacherInvoiceDetail(db:Db,teacherId:string,id:string){
   const {data,error}=await db.from("invoices").select(`
     *,
-    guardians (id,name,family_name,email,secondary_email,email_recipients,portal_token),
+    billing_accounts (id,display_name,account_kind,contact_id,contacts (email)),
     invoice_items (*),
     payments (*)
   `).eq("id",id).eq("teacher_id",teacherId).maybeSingle();
@@ -35,17 +34,16 @@ export async function teacherInvoiceDetail(db:Db,teacherId:string,id:string){
 }
 export function safeInvoice(invoice:Record<string,unknown>,showPrivate=false) {
   const {stripe_checkout_session_id,stripe_payment_intent_id,stripe_checkout_url,
-    guardians,payments,...rest}=invoice;
-  const family=oneToOne(guardians as Record<string,unknown>|Record<string,unknown>[]|null);
-  const safeFamily=family?({
-    id:family.id,name:family.name,family_name:family.family_name,
-    ...(showPrivate?{email:family.email,secondary_email:family.secondary_email,
-      email_recipients:family.email_recipients}:{}),
+    billing_accounts,payments,...rest}=invoice;
+  const payer=oneToOne(billing_accounts as Record<string,unknown>|Record<string,unknown>[]|null);
+  const safeAccount=payer?({
+    id:payer.id,displayName:payer.display_name,accountKind:payer.account_kind,
+    ...(showPrivate?{contactId:payer.contact_id}:{}),
   }):null;
   const paymentList=(payments??[]) as Record<string,unknown>[];
   const sanitizedPayments=paymentList.map(({external_id,note,...summary})=>
     showPrivate?{...summary,external_id,note}:summary);
-  return {...rest,guardians:safeFamily,payments:sanitizedPayments};
+  return {...rest,billingAccount:safeAccount,payments:sanitizedPayments};
 }
 const datePattern=/^\d{4}-\d{2}-\d{2}$/;
 function csvValue(input:unknown){
@@ -56,20 +54,20 @@ function csvValue(input:unknown){
   return value;
 }
 type InvoiceEmbed={id:string;period_start:string;period_end:string;currency:string;
-  guardians:{name:string;family_name:string|null}|{name:string;family_name:string|null}[]|null};
+  billing_accounts:{display_name:string}|{display_name:string}[]|null};
 export async function teacherPaymentsExport(db:Db,teacherId:string,opts:{from?:string;to?:string}={}){
   if((opts.from&&!datePattern.test(opts.from))||(opts.to&&!datePattern.test(opts.to))||
     (opts.from&&opts.to&&opts.from>opts.to))
     throw failure(400,"VALIDATION_ERROR","Provide an ordered YYYY-MM-DD accounting date range");
   const rows:string[]=[[
-    "recorded_at","family","period_start","period_end","amount","currency",
+    "recorded_at","billing_account","period_start","period_end","amount","currency",
     "method","external_id","note","invoice_id",
   ].join(",")];
   let offset=0,rowCount=0;
   for(;;){
     let query=db.from("payments").select(`
       id,amount_cents,method,external_id,recorded_at,note,
-      invoices!inner(id,period_start,period_end,currency,teacher_id,guardians(name,family_name))
+      invoices!inner(id,period_start,period_end,currency,teacher_id,billing_accounts(display_name))
     `).eq("invoices.teacher_id",teacherId).order("recorded_at",{ascending:false})
       .order("id",{ascending:true}).range(offset,offset+499);
     if(opts.from)query=query.gte("recorded_at",opts.from+"T00:00:00.000Z");
@@ -79,9 +77,9 @@ export async function teacherPaymentsExport(db:Db,teacherId:string,opts:{from?:s
     for(const payment of data??[]){
       const invoice=oneToOne(payment.invoices as InvoiceEmbed|InvoiceEmbed[]|null);
       if(!invoice)continue;
-      const family=oneToOne(invoice.guardians);
+      const billingAccount=oneToOne(invoice.billing_accounts);
       rows.push([
-        payment.recorded_at,family?familyDisplayName(family):"",
+        payment.recorded_at,billingAccount?.display_name??"",
         invoice.period_start,invoice.period_end,(payment.amount_cents/100).toFixed(2),
         invoice.currency,payment.method,payment.external_id??"",payment.note??"",invoice.id,
       ].map(csvValue).join(","));

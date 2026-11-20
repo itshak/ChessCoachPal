@@ -32,7 +32,7 @@ test("PARITY:PARITY-canonical-session-private-shared-notes canonical session not
  const key=randomUUID();
  const note={studentId,body:"Worked on forks and skewers",
   privateBody:"Needs extra queen-endgame support",
-  sharedWithGuardian:false,sendEmail:false,
+  sharedWithContacts:false,sendEmail:false,
   expectedUpdatedAt:null,idempotencyKey:key};
  const website=await page.request.put(base,{data:note});
  expect(website.status(),await website.text()).toBe(200);

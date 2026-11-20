@@ -1,5 +1,8 @@
 # Tasks: automatic online ratings
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 - [ ] Inventory current chess username editing, preview/commit consent, provider readers, student_rating_snapshots, chart/report projections and cron/queue infrastructure.
 - [ ] Define provider-scoped durable permission and revision-trigger semantics; UI setting defaults safe/off for existing profiles, with explicit teacher enable/disable.
 - [ ] Add consent/job/receipt/status schema to canonical baseline and approved live transition, tenant RLS/grants and generated types; preserve old snapshots.

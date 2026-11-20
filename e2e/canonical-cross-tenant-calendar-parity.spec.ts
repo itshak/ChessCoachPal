@@ -28,7 +28,7 @@ test("PARITY:PARITY-canonical-calendar-all-operations-foreign-coach denies calen
  const sessionId=lesson.data.entityId as string;
  const note=await page.request.put("/api/coaching/sessions/"+sessionId+"/notes",{
   data:{studentId,body:"Family-safe teaching memory",
-   privateBody:"Never cross tenant",sharedWithGuardian:false,
+   privateBody:"Never cross tenant",sharedWithContacts:false,
    sendEmail:false,expectedUpdatedAt:null,idempotencyKey:randomUUID()},
  });
  expect(note.status(),await note.text()).toBe(200);

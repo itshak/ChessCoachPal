@@ -11,7 +11,7 @@ import {
 
 const pkg: CreditPackageInput = {
   id: "p1",
-  studentId: "s1",
+  workplaceId:"00000000-0000-4000-8000-000000000010",studentId: "s1",
   durationMinutes: 30,
   credits: 3,
   usedCredits: 0,
@@ -27,7 +27,7 @@ function lesson(
 ): CreditCandidate {
   return {
     lessonId: id,
-    studentId: "s1",
+    workplaceId:"00000000-0000-4000-8000-000000000010",studentId: "s1",
     lessonDate: date,
     startsAt: `${date}T21:00:00.000Z`,
     durationMinutes: 30,
@@ -39,7 +39,7 @@ describe("packageCoversLesson", () => {
   it("matches student, length and dates", () => {
     expect(packageCoversLesson(pkg, lesson("l1", "2026-10-05"))).toBe(true);
     expect(
-      packageCoversLesson(pkg, lesson("l1", "2026-10-05", { studentId: "s2" }))
+      packageCoversLesson(pkg, lesson("l1", "2026-10-05", { workplaceId:"00000000-0000-4000-8000-000000000010",studentId: "s2" }))
     ).toBe(false);
     expect(
       packageCoversLesson(pkg, lesson("l1", "2026-10-05", { durationMinutes: 45 }))

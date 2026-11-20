@@ -18,17 +18,17 @@ test("PARITY:PARITY-optional-ai-settings masks browser-entered key and permits c
    expect(website.ai_api_key).toBeNull();
    expect(website.ai.apiKey.configured).toBe(true);
    expect(JSON.stringify(website)).not.toContain(secret);
-   const model=await call("ccp_studio_policy_get",{});
+   const model=await call("ccp_teacher_settings_get",{});
    expect(model.error).toBeUndefined();
    expect(model.data.ai_provider).toBe("openai");
    expect(model.data.ai_api_key).toBeNull();
    expect(model.data.ai.apiKey.configured).toBe(true);
    expect(JSON.stringify(model.data)).not.toContain(secret);
-   const rejected=await call("ccp_studio_policy_update",{
+   const rejected=await call("ccp_teacher_settings_update",{
      changes:{aiApiKey:"model-cannot-write-secrets"},confirmed:true,
    });
    expect(rejected.error?.code).toBe("VALIDATION_ERROR");
-   const cleared=await call("ccp_studio_policy_update",{
+   const cleared=await call("ccp_teacher_settings_update",{
      changes:{aiProvider:"none",clearAiApiKey:true},confirmed:true,
    });
    expect(cleared.error).toBeUndefined();

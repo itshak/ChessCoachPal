@@ -15,6 +15,7 @@
 export interface CreditPackageInput {
   id: string;
   studentId: string;
+  workplaceId: string;
   durationMinutes: number;
   credits: number;
   /** Credits already written to the redemption ledger. */
@@ -30,6 +31,7 @@ export interface CreditPackageInput {
 export interface CreditCandidate {
   lessonId: string;
   studentId: string;
+  workplaceId: string;
   /** YYYY-MM-DD, studio-local. */
   lessonDate: string;
   startsAt: string;
@@ -44,6 +46,7 @@ export function packageCoversLesson(
   return (
     pkg.active &&
     pkg.studentId === lesson.studentId &&
+    pkg.workplaceId === lesson.workplaceId &&
     pkg.durationMinutes === lesson.durationMinutes &&
     lesson.lessonDate >= pkg.startsOn &&
     (pkg.expiresOn == null || lesson.lessonDate <= pkg.expiresOn)

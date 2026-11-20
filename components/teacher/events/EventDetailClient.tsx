@@ -6,11 +6,13 @@ import { useState } from "react";
 import {useTranslations} from "next-intl";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import {EventPortalInvitationPanel} from "@/components/teacher/events/EventPortalInvitationPanel";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import {
   EventForm,
   type EventFormStudent,
+  type EventFormWorkplace,
   type EventFormValues,
 } from "@/components/teacher/events/EventForm";
 import {
@@ -30,6 +32,8 @@ export function EventDetailClient({
   endsAt,
   sendReminder,
   reminderSentAt,
+  workplaceId,
+  workplaces,
   students,
   allStudents,
   rsvps,
@@ -42,6 +46,8 @@ export function EventDetailClient({
   endsAt: string | null;
   sendReminder: boolean;
   reminderSentAt: string | null;
+  workplaceId:string|null;
+  workplaces:EventFormWorkplace[];
   students: {
     studentId: string;
     name: string;
@@ -50,7 +56,7 @@ export function EventDetailClient({
   allStudents: EventFormStudent[];
   rsvps: {
     id: string;
-    guardianName: string;
+    contactName: string;
     status: RsvpStatus;
     partySize: number | null;
     note: string;
@@ -72,6 +78,7 @@ export function EventDetailClient({
     location,
     description,
     sendReminder,
+    workplaceId,
     studentIds: students.map((s) => s.studentId),
     repertoireByStudent: Object.fromEntries(
       students.map((s) => [s.studentId, s.repertoire])
@@ -91,6 +98,7 @@ export function EventDetailClient({
           ? fromDatetimeLocalValue(values.endsAt)
           : null,
         sendReminder: values.sendReminder,
+        workplaceId:values.workplaceId,
         studentIds: values.studentIds,
         repertoireByStudent: values.repertoireByStudent,
       }),
@@ -115,7 +123,7 @@ export function EventDetailClient({
         return;
       }
       setEmailMessage(
-        t("sentToFamilies",{count:data.sent,skipped:data.skipped?t("skipped",{count:data.skipped}):""})
+        t("sentToContacts",{count:data.sent,skipped:data.skipped?t("skipped",{count:data.skipped}):""})
       );
       router.refresh();
     } finally {
@@ -155,7 +163,7 @@ export function EventDetailClient({
             onClick={handleEmail}
             disabled={emailBusy || rsvps.length === 0}
           >
-            {emailBusy?t("sending"):t("emailFamilies")}
+            {emailBusy?t("sending"):t("emailContacts")}
           </Button>
           <Button
             variant="ghost"
@@ -177,6 +185,7 @@ export function EventDetailClient({
         <EventForm
           key={`${eventId}-${startsAt}-${sendReminder}-${reminderSentAt ?? ""}-${students.map((s) => s.studentId).join(",")}`}
           students={allStudents}
+          workplaces={workplaces}
           initial={initial}
           submitLabel={t("saveChanges")}
           onSubmit={handleSave}
@@ -184,18 +193,21 @@ export function EventDetailClient({
         />
       </Card>
 
+      <EventPortalInvitationPanel eventId={eventId} workplaceId={workplaceId}
+        studentIds={students.map(s=>s.studentId)}/>
+
       <Card>
         <h2 className="font-semibold mb-3">{t("rsvps")}</h2>
         {rsvps.length === 0 ? (
           <p className="text-sm text-muted">
-            {t("noFamilies")}
+            {t("noContacts")}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-start text-muted border-b border-border">
-                  <th className="py-2 pe-3 font-medium">{t("family")}</th>
+                  <th className="py-2 pe-3 font-medium">{t("contact")}</th>
                   <th className="py-2 pe-3 font-medium">{t("status")}</th>
                   <th className="py-2 pe-3 font-medium">{t("partySize")}</th>
                   <th className="py-2 font-medium">{t("note")}</th>
@@ -204,7 +216,7 @@ export function EventDetailClient({
               <tbody>
                 {rsvps.map((rsvp) => (
                   <tr key={rsvp.id} className="border-b border-border last:border-0">
-                    <td className="py-2.5 pe-3 font-medium"><bdi dir="auto">{rsvp.guardianName}</bdi></td>
+                    <td className="py-2.5 pe-3 font-medium"><bdi dir="auto">{rsvp.contactName}</bdi></td>
                     <td className="py-2.5 pe-3">
                       {rsvp.status==="pending"?t("pending"):rsvp.status==="yes"?t("yes"):rsvp.status==="no"?t("no"):t("maybe")}
                     </td>

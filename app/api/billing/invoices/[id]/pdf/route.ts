@@ -8,7 +8,7 @@ import {
 const ERROR_MESSAGES: Record<DownloadableInvoicePdfErrorCode, string> = {
   not_found: "Not found",
   no_items: "Add at least one line item before downloading",
-  no_family: "Family not found",
+  no_billing_account: "Billing account not found",
   pdf_failed:
     "Could not build the invoice PDF. Try removing emoji from names or notes.",
   db_error: "Could not load the invoice. Try again.",
@@ -16,7 +16,7 @@ const ERROR_MESSAGES: Record<DownloadableInvoicePdfErrorCode, string> = {
 
 const ERROR_STATUS: Record<DownloadableInvoicePdfErrorCode, number> = {
   not_found: 404,
-  no_family: 404,
+  no_billing_account: 404,
   no_items: 400,
   pdf_failed: 500,
   db_error: 500,

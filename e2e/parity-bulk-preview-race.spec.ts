@@ -1,3 +1,4 @@
+import {insertTestBillingAccount,prepareSendableInvoice} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -18,13 +19,10 @@ test("PARITY:PARITY-bulk-preview-recipient-revision-race requires reviewed fresh
  const teacherId=(await signed.auth.getUser()).data.user!.id;
  const firstEmail="preview-first-"+randomUUID()+"@example.com";
  const finalEmail="preview-final-"+randomUUID()+"@example.com";
- const family=await admin.from("guardians").insert({
-  teacher_id:teacherId,name:"Preview family "+randomUUID(),email:firstEmail,
-  portal_token:randomUUID(),
- }).select("id").single();
+ const family=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Preview family "+randomUUID(),email:firstEmail});
  expect(family.error).toBeNull();
  const row=await admin.from("invoices").insert({
-  teacher_id:teacherId,guardian_id:family.data!.id,status:"draft",
+  teacher_id:teacherId,billing_account_id:family.data!.id,status:"draft",
   period_start:"2059-05-01",period_end:"2059-05-31",
   subtotal_cents:5000,currency:"USD",
  }).select("id").single();
@@ -35,6 +33,10 @@ test("PARITY:PARITY-bulk-preview-recipient-revision-race requires reviewed fresh
   description:"Synthetic bishop training",quantity:1,unit_cents:5000,
   amount_cents:5000,sort_order:0,
  })).error).toBeNull();
+ await prepareSendableInvoice(admin,{teacherId,invoiceId:id,
+   billingAccountId:family.data!.id,contactId:family.data!.contactId!,
+   periodStart:"2059-05-01",
+ });
  const first=await page.request.post("/api/billing/invoices/bulk",{
   data:{action:"preview",ids:[id],includeRecipients:true},
  });
@@ -61,8 +63,8 @@ test("PARITY:PARITY-bulk-preview-recipient-revision-race requires reviewed fresh
   previewDigest:anonymousView.data.previewDigest,
  });
  expect(noReviewedDigest.error?.code).toBe("VALIDATION_ERROR");
- expect((await admin.from("guardians").update({email:finalEmail})
-  .eq("id",family.data!.id)).error).toBeNull();
+ expect((await admin.from("contacts").update({email:finalEmail})
+  .eq("id",family.data!.contactId!)).error).toBeNull();
  const stale=await call("ccp_billing_invoices_bulk",{
   ids:[id],action:"send",previewDigest:snapshot.previewDigest,
   confirmed:true,confirmedEmail:true,

@@ -7,18 +7,18 @@ test("PARITY:PARITY-studio-policy covers timezone scheduling rates invoices and 
  const first=await page.request.get("/api/settings/policy");
  expect(first.status(),await first.text()).toBe(200);
  const original=await first.json() as Record<string,unknown>;
- const mcpOriginal=await call("ccp_studio_policy_get",{});
+ const mcpOriginal=await call("ccp_teacher_settings_get",{});
  expect(mcpOriginal.error).toBeUndefined();
  expect(mcpOriginal.data.timezone).toBe(original.timezone);
  expect(mcpOriginal.data.ai_api_key).toBeNull();
  expect(mcpOriginal.data.stripe_secret_key).toBeNull();
  const changes={
-   studioName:"Parity chess academy "+randomUUID().slice(0,9),
+   businessName:"Parity chess academy "+randomUUID().slice(0,9),
    timezone:"Asia/Jerusalem",cancellationWindowHours:13,
    defaultRateCents:5400,invoiceCadence:"manual",notifyInApp:false,
  };
  try{
-   const updated=await call("ccp_studio_policy_update",{
+   const updated=await call("ccp_teacher_settings_update",{
      changes,confirmed:true,
    });
    expect(updated.error).toBeUndefined();
@@ -26,7 +26,7 @@ test("PARITY:PARITY-studio-policy covers timezone scheduling rates invoices and 
    expect(website.status(),await website.text()).toBe(200);
    const view=await website.json();
    expect(view).toMatchObject({
-     studio_name:changes.studioName,timezone:changes.timezone,
+     business_name:changes.businessName,timezone:changes.timezone,
      cancellation_window_hours:13,default_rate_cents:5400,
      invoice_cadence:"manual",notify_in_app:false,
    });
@@ -34,13 +34,13 @@ test("PARITY:PARITY-studio-policy covers timezone scheduling rates invoices and 
      defaultRateCents:5800,notifyInApp:true,
    }});
    expect(browserEdit.status(),await browserEdit.text()).toBe(200);
-   const mcpFinal=await call("ccp_studio_policy_get",{});
+   const mcpFinal=await call("ccp_teacher_settings_get",{});
    expect(mcpFinal.error).toBeUndefined();
    expect(mcpFinal.data.default_rate_cents).toBe(5800);
    expect(mcpFinal.data.notify_in_app).toBe(true);
  }finally{
    const restore=await page.request.put("/api/settings/policy",{data:{
-     studioName:original.studio_name,
+     businessName:original.business_name,
      timezone:original.timezone,
      cancellationWindowHours:original.cancellation_window_hours,
      defaultRateCents:original.default_rate_cents,
@@ -60,7 +60,7 @@ test("PARITY:PARITY-studio-payment-qr-provider-fields makes every approved payme
  const qr="data:image/png;base64,"+
    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+p+6UAAAAASUVORK5CYII=";
  try{
-   const changed=await call("ccp_studio_policy_update",{
+   const changed=await call("ccp_teacher_settings_update",{
      changes:{paymentProvider:"manual",paymentQrCode:qr},confirmed:true,
    });
    expect(changed.error).toBeUndefined();
@@ -70,22 +70,22 @@ test("PARITY:PARITY-studio-payment-qr-provider-fields makes every approved payme
    expect(webPolicy.payment_provider).toBe("manual");
    expect(webPolicy.payment_qr_code).toBe(qr);
 
-   const ordinary=await call("ccp_studio_policy_get",{});
+   const ordinary=await call("ccp_teacher_settings_get",{});
    expect(ordinary.error).toBeUndefined();
    expect(ordinary.data.payment_qr_code).toBeNull();
    expect(ordinary.data.paymentQrCodeConfigured).toBe(true);
-   const noConsent=await call("ccp_studio_policy_get",{
+   const noConsent=await call("ccp_teacher_settings_get",{
      includePaymentQrCode:true,
    });
    expect(noConsent.error).toBeUndefined();
    expect(noConsent.data.payment_qr_code).toBeNull();
-   const approved=await call("ccp_studio_policy_get",{
+   const approved=await call("ccp_teacher_settings_get",{
      includePaymentQrCode:true,confirmed:true,
    });
    expect(approved.error).toBeUndefined();
    expect(approved.data.payment_qr_code).toBe(qr);
 
-   const rejectSecrets=await call("ccp_studio_policy_update",{
+   const rejectSecrets=await call("ccp_teacher_settings_update",{
      changes:{stripeSecretKey:"sk_live_must_not_enter_model"},confirmed:true,
    });
    expect(rejectSecrets.error?.code).toBe("VALIDATION_ERROR");
@@ -93,7 +93,7 @@ test("PARITY:PARITY-studio-payment-qr-provider-fields makes every approved payme
      paymentQrCode:null,
    }});
    expect(cleared.status(),await cleared.text()).toBe(200);
-   const modelFinal=await call("ccp_studio_policy_get",{});
+   const modelFinal=await call("ccp_teacher_settings_get",{});
    expect(modelFinal.error).toBeUndefined();
    expect(modelFinal.data.paymentQrCodeConfigured).toBe(false);
  }finally{
@@ -121,7 +121,7 @@ test("PARITY:PARITY-policy-invalid-field-validation rejects coercion equally on 
  ]){
    const browser=await page.request.put("/api/settings/policy",{data:changes});
    expect(browser.status(),await browser.text()).toBe(400);
-   const mcp=await call("ccp_studio_policy_update",{changes,confirmed:true});
+   const mcp=await call("ccp_teacher_settings_update",{changes,confirmed:true});
    expect(mcp.error?.code).toBe("VALIDATION_ERROR");
  }
  const after=await page.request.get("/api/settings/policy");
@@ -139,8 +139,8 @@ test("PARITY:PARITY-studio-policy-fields-all preserves ordinary profile, rate an
  const original=await initial.json() as Record<string,unknown>;
  const newWebsite="https://chesscoachpal.example/"+randomUUID().slice(0,8);
  const changes={
-  studioWebsite:newWebsite,studioContact:"Academy desk "+randomUUID().slice(0,5),
-  studioInfo:"Test coaching studio",lessonLabel:"Chess class",
+  businessWebsite:newWebsite,businessContact:"Academy desk "+randomUUID().slice(0,5),
+  businessInfo:"Test coaching studio",lessonLabel:"Chess class",
   lessonDurationOptions:[30,45,60],
   travelFeeCents:2100,rateBasis:"per_hour" as const,
   billNoShow:true,notifyEmailInvoicePaid:false,
@@ -148,42 +148,42 @@ test("PARITY:PARITY-studio-policy-fields-all preserves ordinary profile, rate an
   bccEmail:"coach-parity@example.org",
  };
  try{
-  const updated=await call("ccp_studio_policy_update",{changes,confirmed:true});
+  const updated=await call("ccp_teacher_settings_update",{changes,confirmed:true});
   expect(updated.error).toBeUndefined();
   const site=await page.request.get("/api/settings/policy");
   expect(site.status(),await site.text()).toBe(200);
   expect(await site.json()).toMatchObject({
-   studio_website:changes.studioWebsite,studio_contact:changes.studioContact,
-   studio_info:changes.studioInfo,lesson_label:changes.lessonLabel,
+   business_website:changes.businessWebsite,business_contact:changes.businessContact,
+   business_info:changes.businessInfo,lesson_label:changes.lessonLabel,
    lesson_duration_options:[30,45,60],
    travel_fee_cents:2100,rate_basis:"per_hour",bill_no_show:true,
    notify_email_invoice_paid:false,payment_instructions:changes.paymentInstructions,
    bcc_email:changes.bccEmail,
   });
   const cleared=await page.request.put("/api/settings/policy",{data:{
-   studioWebsite:"https://chesscoachpal.example/edited",
-   studioInfo:"Updated by website",travelFeeCents:null,
+   businessWebsite:"https://chesscoachpal.example/edited",
+   businessInfo:"Updated by website",travelFeeCents:null,
    defaultRateCents:null,makeupCreditExpiryDays:null,bccEmail:null,
   }});
   expect(cleared.status(),await cleared.text()).toBe(200);
-  const read=await call("ccp_studio_policy_get",{});
+  const read=await call("ccp_teacher_settings_get",{});
   expect(read.error).toBeUndefined();
   expect(read.data).toMatchObject({
-   studio_website:"https://chesscoachpal.example/edited",
-   studio_info:"Updated by website",
+   business_website:"https://chesscoachpal.example/edited",
+   business_info:"Updated by website",
    travel_fee_cents:null,default_rate_cents:null,
    makeup_credit_expiry_days:null,bcc_email:null,
   });
-  const bad=await call("ccp_studio_policy_update",{
+  const bad=await call("ccp_teacher_settings_update",{
    changes:{stripeSecretKey:"sk_live_secret_must_never_reach_mcp"},
    confirmed:true,
   });
   expect(bad.error?.code).toBe("VALIDATION_ERROR");
  }finally{
   const back=await page.request.put("/api/settings/policy",{data:{
-   studioWebsite:original.studio_website??"",
-   studioContact:original.studio_contact??"",
-   studioInfo:original.studio_info??"",
+   businessWebsite:original.business_website??"",
+   businessContact:original.business_contact??"",
+   businessInfo:original.business_info??"",
    lessonLabel:original.lesson_label,
    lessonDurationOptions:original.lesson_duration_options,
    travelFeeCents:original.travel_fee_cents,
@@ -205,8 +205,8 @@ test("PARITY:PARITY-studio-policy-ordinary-fields-roundtrip persists every coach
  expect(current.status(),await current.text()).toBe(200);
  const original=await current.json() as Record<string,unknown>;
  const mapping=[
-  ["studioName","studio_name"],["studioWebsite","studio_website"],
-  ["studioContact","studio_contact"],["studioInfo","studio_info"],
+  ["businessName","business_name"],["businessWebsite","business_website"],
+  ["businessContact","business_contact"],["businessInfo","business_info"],
   ["lessonLabel","lesson_label"],["lessonDurationOptions","lesson_duration_options"],
   ["timezone","timezone"],["cancellationWindowHours","cancellation_window_hours"],
   ["timelyCancelEarnsMakeup","timely_cancel_earns_makeup"],
@@ -225,13 +225,13 @@ test("PARITY:PARITY-studio-policy-ordinary-fields-roundtrip persists every coach
   ["paymentProvider","payment_provider"],["notifyInApp","notify_in_app"],
   ["notifyEmailPortalCancel","notify_email_portal_cancel"],
   ["notifyEmailInvoicePaid","notify_email_invoice_paid"],
-  ["bccFamilyEmails","bcc_family_emails"],["bccEmail","bcc_email"],
+  ["bccContactEmails","bcc_contact_emails"],["bccEmail","bcc_email"],
   ["aiProvider","ai_provider"],
  ] as const;
  const changes={
-  studioName:"Verified chess club "+randomUUID().slice(0,8),
-  studioWebsite:"https://academy.chesscoachpal.example",
-  studioContact:"Coaching front desk",studioInfo:"Teacher reviewed studio description",
+  businessName:"Verified chess club "+randomUUID().slice(0,8),
+  businessWebsite:"https://academy.chesscoachpal.example",
+  businessContact:"Coaching front desk",businessInfo:"Teacher reviewed studio description",
   lessonLabel:"Coaching lesson",lessonDurationOptions:[30,45,60],
   timezone:"Europe/London",cancellationWindowHours:24,
   timelyCancelEarnsMakeup:true,lateCancelEarnsMakeup:false,
@@ -245,17 +245,17 @@ test("PARITY:PARITY-studio-policy-ordinary-fields-roundtrip persists every coach
   paymentInstructions:"Payment instructions confirmed by teacher",
   paymentProvider:"manual",notifyInApp:false,
   notifyEmailPortalCancel:false,notifyEmailInvoicePaid:false,
-  bccFamilyEmails:false,bccEmail:null,aiProvider:"none",
+  bccContactEmails:false,bccEmail:null,aiProvider:"none",
  };
  const restoration=Object.fromEntries(mapping.map(([client,db])=>{
   const value=original[db];
   // Website accepts empty text for fields that are nullable at rest.
-  const emptyText=["studioName","studioWebsite","studioContact","studioInfo",
+  const emptyText=["businessName","businessWebsite","businessContact","businessInfo",
    "lessonLabel","paymentInstructions"];
   return [client,value??(emptyText.includes(client)?"":null)];
  }));
  try{
-  const mcpSave=await call("ccp_studio_policy_update",{
+  const mcpSave=await call("ccp_teacher_settings_update",{
    changes,confirmed:true,
   });
   expect(mcpSave.error).toBeUndefined();
@@ -272,7 +272,7 @@ test("PARITY:PARITY-studio-policy-ordinary-fields-roundtrip persists every coach
     travelFeeCents:null,bccEmail:null},
   });
   expect(webEdit.status(),await webEdit.text()).toBe(200);
-  const mcpRead=await call("ccp_studio_policy_get",{});
+  const mcpRead=await call("ccp_teacher_settings_get",{});
   expect(mcpRead.error).toBeUndefined();
   expect(mcpRead.data).toMatchObject({
    lesson_label:"Reviewed website lesson",cancellation_window_hours:12,

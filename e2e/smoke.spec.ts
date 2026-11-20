@@ -25,13 +25,16 @@ test.describe("ChessCoachPal core browser flows", () => {
     await expect(page.getByLabel("Chess learning")).toBeVisible();
   });
 
-  test("family portal contains schedule and no deleted practice-score links", async ({ page }) => {
-    await page.goto(`/portal/${SEED.portalTokenJordan}`);
-    await expect(page.getByText("Family Portal")).toBeVisible();
-    await expect(page.getByText(/Welcome,/i)).toBeVisible();
-    await expect(page.getByRole("heading",{name:"Upcoming Lessons"})).toBeVisible();
+  test("legacy family portal credentials never grant student records",async({page})=>{
+    // The pre-v1 cutover invalidates all household-wide shared URLs. New
+    // sharing requires a student/contact/workplace-scoped approved grant.
+    const response=await page.goto("/portal/"+SEED.portalTokenJordan);
+    const body=await page.locator("body").innerText();
+    expect(response?.status()).toBeLessThan(500);
+    expect(body).not.toContain("Upcoming Lessons");
+    expect(body).not.toContain("Emma");
+    expect(body).not.toContain("Private teaching notes");
     await expect(page.getByRole("heading",{name:"Sheet Music"})).toHaveCount(0);
-    await expect(page.getByRole("heading",{name:"Practice",exact:true})).toHaveCount(0);
   });
 
   test("teacher manages the retained scheduling and attendance flow", async ({ page }) => {

@@ -1,5 +1,8 @@
 # Privacy, secrets and publication safety
 
+> **Current product policy (ADR-0018, 2026-11-19):** ChessCoachPal is exclusively an operator-run SaaS. Customers/teachers cannot deploy, install, operate or self-host ChessCoachPal. In older text, "self-hosted" refers solely to ChessCoachPal operating its own infrastructure (including Supabase/PostgreSQL), not to a customer deployment. Historical/archived plans are evidence of past decisions, not current product support. See [ADR-0018](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
+
 ## Private beta signup defense in depth (2026-11-16)
 
 **Confirmed vulnerability before fix:** the live self-hosted GoTrue Auth server advertised `disable_signup=false` while the Next.js `/api/auth/signup` route required a `BETA_ACCESS_CODE`. A direct call to the public GoTrue `/auth/v1/signup` endpoint could therefore create an identity without passing the site's invite-code check. The teacher setup endpoint's existing guard limits some provisioning but does **not** secure Auth identity creation by itself.

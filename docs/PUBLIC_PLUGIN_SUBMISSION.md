@@ -1,5 +1,7 @@
 # Future public ChatGPT Plugin Directory route — ChessCoachPal
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 **Status:** future SaaS/public-directory distribution, **NOT** submitted or approved; updated 2026-11-08.
 
 This is distinct from the working disposable Vercel + Supabase Codex demo, from using a private custom MCP server, and from the eventual v0.1.0 GitHub Release. The directory was migrated into the **universal Plugin Directory shared by ChatGPT and Codex** in July 2026. A public plugin may package an MCP server alone, with no UI or bundled skill. It must go through OpenAI review and approval, and the publisher chooses when to publish afterward.

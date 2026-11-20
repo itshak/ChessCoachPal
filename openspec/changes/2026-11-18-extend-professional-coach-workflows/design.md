@@ -1,5 +1,8 @@
 # Design: professional tutor workflow integration
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 ## Principles
 - Canonical lesson occurrence is distinct from each participant's attendance and from financial obligation/teacher earning.
 - The lesson is a teaching record; billing is a derived, versioned consequence of an explicit policy and confirmation.

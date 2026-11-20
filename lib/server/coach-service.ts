@@ -7,7 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 export class CoachError extends Error {
   constructor(
-    public code: "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR" | "DATABASE_ERROR",
+    public code: "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR" | "DATABASE_ERROR" | "TOO_MANY_WORKPLACES",
     public status: number,
     message: string
   ) {
@@ -22,9 +22,15 @@ const notFound = () => new CoachError("NOT_FOUND", 404, "Record not found");
 const conflict = () => new CoachError("CONFLICT", 409, "Request conflicts with an existing record");
 
 export async function workplacesList(db: Db, teacherId: string) {
+  // This shared website/MCP list must include a coach's current selection.
+  // A 100-row cap silently hid recently created workplaces (and broke all
+  // reporting/lesson selectors) after a realistic long-lived teacher history.
   const { data, error } = await db.from("workplaces")
-    .select("id,name,timezone,currency,locale,policy,updated_at").eq("teacher_id", teacherId).order("name").limit(100);
+    .select("id,name,timezone,currency,locale,policy,updated_at")
+    .eq("teacher_id", teacherId).order("name").order("id").limit(1000);
   if (error) throw problem();
+  if ((data?.length ?? 0) >= 1000)
+    throw new CoachError("VALIDATION_ERROR",413,"Workplace inventory exceeds the supported list limit");
   return data;
 }
 

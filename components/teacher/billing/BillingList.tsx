@@ -14,8 +14,8 @@ const inputClass =
   "px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm";
 
 interface PreviewDraft {
-  guardianId: string;
-  familyName: string;
+  billingAccountId: string;
+  billingAccountName: string;
   subtotalCents: number;
   missingRateCount: number;
   creditedLessonCount: number;
@@ -183,11 +183,11 @@ export function GenerateInvoicesModal({
                 </p>
                 {preview.drafts.map((d) => (
                   <div
-                    key={d.guardianId}
+                    key={d.billingAccountId}
                     className="border border-border rounded-lg p-3 text-sm"
                   >
                     <div className="flex justify-between font-medium mb-1">
-                      <span>{d.familyName}</span>
+                      <span>{d.billingAccountName}</span>
                       <span>{formatMoney(d.subtotalCents, currency)}</span>
                     </div>
                     {d.creditedLessonCount > 0 && (
@@ -297,7 +297,7 @@ export function InvoiceStatusBadge({
 
 export function InvoiceRowLink({
   id,
-  familyName,
+  billingAccountName,
   periodStart,
   periodEnd,
   status,
@@ -305,7 +305,7 @@ export function InvoiceRowLink({
   currency,
 }: {
   id: string;
-  familyName: string;
+  billingAccountName: string;
   periodStart: string;
   periodEnd: string;
   status: string;
@@ -318,7 +318,7 @@ export function InvoiceRowLink({
       className="flex items-center justify-between gap-3 py-3 px-1 border-b border-border last:border-0 hover:bg-surface-dim/50 transition-colors rounded"
     >
       <div className="min-w-0">
-        <div className="font-medium truncate"><bdi dir="auto">{familyName}</bdi></div>
+        <div className="font-medium truncate"><bdi dir="auto">{billingAccountName}</bdi></div>
         <div className="text-xs text-muted">
           {periodStart} → {periodEnd}
         </div>

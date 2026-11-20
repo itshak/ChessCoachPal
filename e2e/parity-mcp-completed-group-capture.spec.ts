@@ -23,7 +23,13 @@ test("PARITY:PARITY-mcp-completed-group-capture one verified lesson and distinct
   expect(enrollment.error).toBeUndefined();
  }
  const title="Lucena completed "+tag;
- const startsAt="2046-02-05T09:00:00+02:00";
+ // Prior E2E sessions are retained on the seeded teacher. Use a unique
+ // verified instructor interval instead of colliding with the finance group
+ // suites that exercise the same 2046-02-05 timestamp.
+ const offset=Number.parseInt(randomUUID().slice(0,8),16)%1000;
+ const localDate=new Date(Date.UTC(2095,0,1)+offset*86400000)
+  .toISOString().slice(0,10);
+ const startsAt=localDate+"T09:00:00+02:00";
  const previewRequest={names,workplaceId,title,startsAt,durationMinutes:90,
   lessonNote:"Group rook endings, explicit individual note below"};
  const webPreview=await page.request.post("/api/coaching/lesson-capture/preview",{data:previewRequest});
@@ -69,7 +75,7 @@ test("PARITY:PARITY-mcp-completed-group-capture one verified lesson and distinct
 
  // The ordinary next-lesson briefing must now surface the teacher's
  // student-specific attendance note without exposing the other learner's note.
- const briefingInput={studentId:studentIds[0],from:"2046-02-05",to:"2046-02-05"};
+ const briefingInput={studentId:studentIds[0],from:localDate,to:localDate};
  const briefing=await call("ccp_coach_briefing_get",briefingInput);
  expect(briefing.error).toBeUndefined();
  expect(briefing.data.lessonHistory.participantNotes).toEqual([

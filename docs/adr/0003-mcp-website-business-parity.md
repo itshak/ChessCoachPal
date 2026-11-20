@@ -1,5 +1,7 @@
 # ADR-0003: Every teacher website feature has equivalent MCP functionality
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](0018-operator-only-saas-and-tenant-scaling.md).
+
 - **Status:** Accepted — binding policy
 - **Date:** 2026-11-08
 - **Scope:** All teacher-owned business functionality, fields, data, queries, actions, reports, exports and future feature PRs

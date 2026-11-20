@@ -1,7 +1,7 @@
 import {describe,it,expect} from "vitest";
 import {buildInvoiceEmailContent} from "@/lib/server/invoice-email-content";
 
-const base={familyGreetingName:"כהן Петров",studioName:"Knight Chess",
+const base={familyGreetingName:"כהן Петров",businessName:"Knight Chess",
   periodStart:"2026-11-01",periodEnd:"2026-11-30",currency:"ILS",
   subtotalCents:12345,paidCents:2345,balanceCents:10000,
   paymentInstructions:"Банк & <X>",paymentProvider:"manual",hasPaymentQrCode:true};

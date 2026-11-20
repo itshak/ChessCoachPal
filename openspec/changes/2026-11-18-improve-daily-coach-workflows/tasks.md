@@ -1,5 +1,8 @@
 # Tasks: daily coaching actions
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 - [ ] Inventory existing dashboard queries, coach-briefing, lesson capture preview/commit, attendance, homework, materials, historical import receipts, teacher profile/local timezone and current agent tool inventory.
 - [ ] Define teacher-owned daily queue service with workplace filter, date/zone, pagination, stable reason codes and no N+1 student queries; design provider errors and missing evidence states.
 - [ ] Implement website dashboard action cards for next lesson, Prepare/Record/Complete, missing attendance, due homework and failed/stale rating lookups; keep existing summary links.

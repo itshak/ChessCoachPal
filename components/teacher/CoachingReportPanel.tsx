@@ -22,13 +22,13 @@ function saveReport(filename: string, type: string, data: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function CoachingReportPanel() {
+export function CoachingReportPanel({initialWorkplaceId}:{initialWorkplaceId?:string|null}) {
   const t=useTranslations("reports");
   const toUserError=useLocalizedApiError();
   const uiLocale=useLocale();
   const [reportOutputLocale,setReportOutputLocale]=useState<""|AppLocale>("");
   const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
-  const [workplaceId, setWorkplaceId] = useState("");
+  const [workplaceId, setWorkplaceId] = useState(initialWorkplaceId??"");
   const [from, setFrom] = useState(today.slice(0, 7) + "-01");
   const [to, setTo] = useState(today);
   const [report, setReport] = useState<ReportSummary | null>(null);
@@ -44,10 +44,14 @@ export function CoachingReportPanel() {
       if (!body.ok) throw new Error(t("loadFailed"));
       const options = body.data as Workplace[];
       setWorkplaces(options);
-      setWorkplaceId(current => current || options[0]?.id || "");
+      setWorkplaceId(current => {
+        if(initialWorkplaceId&&options.some(w=>w.id===initialWorkplaceId))
+          return initialWorkplaceId;
+        return current||options[0]?.id||"";
+      });
     }).catch(() => { if (!cancelled) setError(t("loadFailed")); });
     return () => { cancelled = true; };
-  }, [t]);
+  }, [t,initialWorkplaceId]);
   async function generate(event: FormEvent) {
     event.preventDefault();
     setBusy(true); setError(""); setReport(null);setPresentation(null);
@@ -72,7 +76,7 @@ export function CoachingReportPanel() {
       </p>
       <form onSubmit={generate} className="flex min-w-0 flex-wrap items-end gap-3">
         <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-full">{t("workplace")}
-          <select value={workplaceId} onChange={event => { setWorkplaceId(event.target.value); setReport(null); }}
+          <select data-testid="report-workplace-select" value={workplaceId} onChange={event => { setWorkplaceId(event.target.value); setReport(null); }}
             required className="w-full min-w-0 max-w-full rounded border border-border bg-surface p-2">
             {workplaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>

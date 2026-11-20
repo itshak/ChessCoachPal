@@ -29,7 +29,7 @@ test("PARITY:PARITY-students-teaching-memory reads canonical private notes, atte
  const sessionId=modern.data.entityId as string;
  const noteInput={studentId,body:"Practiced knight forks",
    privateBody:"Coach: review calculation discipline",
-   sharedWithGuardian:false,sendEmail:false,
+   sharedWithContacts:false,sendEmail:false,
    expectedUpdatedAt:null,idempotencyKey:randomUUID()};
  const siteNoteSave=await page.request.put(
    "/api/coaching/sessions/"+sessionId+"/notes",{data:noteInput});

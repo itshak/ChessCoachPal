@@ -13,12 +13,12 @@ async function invalid(body:Record<string,unknown>,fragment:string){
 describe("studio policy website/MCP field validation",()=>{
  it("rejects unknown fields and invalid studio strings before persistence",async()=>{
   await invalid({imaginaryPolicy:"ignored"},"Unsupported policy field");
-  await invalid({studioName:{value:"Not a string"}},"studioName");
-  await invalid({studioWebsite:"x".repeat(301)},"studioWebsite");
+  await invalid({businessName:{value:"Not a string"}},"businessName");
+  await invalid({businessWebsite:"x".repeat(301)},"businessWebsite");
   await invalid({lessonLabel:42},"lessonLabel");
  });
  it("does not turn string false into a true billing, reminder or notification flag",async()=>{
-  for(const field of ["billAttended","notifyInApp","teacherCancelEarnsMakeup","bccFamilyEmails"]){
+  for(const field of ["billAttended","notifyInApp","teacherCancelEarnsMakeup","bccContactEmails"]){
    await invalid({[field]:"false"},field);
   }
  });

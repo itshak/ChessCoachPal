@@ -3,10 +3,10 @@ import { isEventReminderDay } from "@/lib/events";
 import { createServiceClient } from "@/lib/supabase/server";
 import {
   sendEventEmails,
-  type EventEmailRow,
+  loadEventForEmail,
 } from "@/lib/server/event-email";
 import { requestOrigin } from "@/lib/server/http";
-import { DEFAULT_POLICY, type StudioPolicy } from "@/lib/schedule";
+import { DEFAULT_POLICY, type TeacherPolicy } from "@/lib/schedule";
 import { secureCompare } from "@/lib/server/secure-compare";
 import {deliverCanonicalOutbox} from "@/lib/server/canonical-delivery-outbox";
 
@@ -28,7 +28,7 @@ function cronOrigin(req: NextRequest): string {
 }
 
 /**
- * Daily job (Hobby allows once/day): email families the studio-local day
+ * Daily job: email explicitly invited contacts on the teacher-local day
  * before events with send_reminder enabled. Secure with CRON_SECRET
  * (Vercel Cron sends it). Schedule: 14:00 UTC ≈ morning US Central.
  */
@@ -54,22 +54,7 @@ export async function GET(req: NextRequest) {
 
   const { data: events, error } = await supabase
     .from("events")
-    .select(
-      `
-      id, teacher_id, title, description, location, starts_at, ends_at,
-      event_students (
-        repertoire, sort_order,
-        students ( id, name, guardian_id )
-      ),
-      event_rsvps (
-        guardian_id, status,
-        guardians (
-          id, name, email, secondary_name, secondary_email,
-          email_recipients, preferred_locale, portal_token
-        )
-      )
-    `
-    )
+    .select("id,teacher_id,starts_at")
     .eq("send_reminder", true)
     .is("reminder_sent_at", null)
     .gt("starts_at", now.toISOString());
@@ -93,18 +78,18 @@ export async function GET(req: NextRequest) {
 
   const [{ data: policies }, { data: teachers }] = await Promise.all([
     supabase
-      .from("studio_policies")
+      .from("teacher_settings")
       .select("*")
       .in("teacher_id", teacherIds),
     supabase.from("teachers").select("id, email").in("id", teacherIds),
   ]);
 
-  const policyByTeacher = new Map<string, StudioPolicy>();
+  const policyByTeacher = new Map<string, TeacherPolicy>();
   for (const row of policies ?? []) {
     policyByTeacher.set(row.teacher_id, {
       ...DEFAULT_POLICY,
       ...row,
-    } as StudioPolicy);
+    } as TeacherPolicy);
   }
   const emailByTeacher = new Map(
     (teachers ?? []).map((t) => [t.id as string, t.email as string])
@@ -117,22 +102,14 @@ export async function GET(req: NextRequest) {
   for (const event of candidates) {
     const teacherId = event.teacher_id as string;
     const policy =
-      policyByTeacher.get(teacherId) ?? ({ ...DEFAULT_POLICY } as StudioPolicy);
+      policyByTeacher.get(teacherId) ?? ({ ...DEFAULT_POLICY } as TeacherPolicy);
 
     if (!isEventReminderDay(event.starts_at, policy.timezone, now)) {
       continue;
     }
 
-    const emailEvent: EventEmailRow = {
-      id: event.id,
-      title: event.title,
-      description: event.description,
-      location: event.location,
-      starts_at: event.starts_at,
-      ends_at: event.ends_at,
-      event_students: (event.event_students ?? null) as EventEmailRow["event_students"],
-      event_rsvps: (event.event_rsvps ?? null) as EventEmailRow["event_rsvps"],
-    };
+    const emailEvent=await loadEventForEmail(supabase,event.id,teacherId);
+    if(!emailEvent){continue;}
 
     const { sent, skipped } = await sendEventEmails({
       db:supabase,

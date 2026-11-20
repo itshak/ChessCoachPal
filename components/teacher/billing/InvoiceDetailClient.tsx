@@ -41,7 +41,7 @@ export function InvoiceDetailClient({
   currency,
   initialItems,
   initialNotes,
-  familyName,
+  billingAccountName,
   periodStart,
   periodEnd,
   subtotalCents,
@@ -60,7 +60,7 @@ export function InvoiceDetailClient({
   currency: string;
   initialItems: LineItem[];
   initialNotes: string;
-  familyName: string;
+  billingAccountName: string;
   periodStart: string;
   periodEnd: string;
   subtotalCents: number;
@@ -456,7 +456,7 @@ export function InvoiceDetailClient({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold"><bdi dir="auto">{familyName}</bdi></h1>
+            <h1 className="text-2xl font-bold"><bdi dir="auto">{billingAccountName}</bdi></h1>
             <InvoiceStatusBadge status={status} partiallyPaid={partiallyPaid} />
           </div>
           <p className="text-sm text-muted">

@@ -1,5 +1,8 @@
 # Tasks: FIDE and Israeli national ratings
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 - [ ] Inventory current students.chess_ratings, student_rating_snapshots, profile history, reports, exports, direct DB writes and source provenance in website and MCP.
 - [ ] Specify federation registry, FIDE ID validation, default national-federation suggestion/explicit none and per-student multiple national memberships; distinguish FIDE federation from membership.
 - [ ] Modify canonical baseline, snapshot source/category checks, history triggers, indexes, RLS/grants, generated types and tenant composite constraints.

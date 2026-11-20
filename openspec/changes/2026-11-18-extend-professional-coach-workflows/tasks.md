@@ -1,5 +1,8 @@
 # Tasks
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 ## 0. Inventory and scope
 - [ ] Compare existing implementation and active OpenSpec changes for lesson close, recurrence, reports, contacts, credits, compensation, and MCP registry; classify implemented/planned/gap/deferred.
 - [ ] Document state transition matrix, cancellation/no-show billing policy, group attendance semantics, contact sharing grants, package accounting and failure modes before implementation.

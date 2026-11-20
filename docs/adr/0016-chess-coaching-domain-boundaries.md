@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Status:** Accepted product architecture — implementation pending OpenSpec changes
-- **Related:** ADR-0003, ADR-0004, ADR-0005, ADR-0015
+- **Related:** ADR-0003, ADR-0004, ADR-0005, ADR-0017
 
 ## Context
 
@@ -20,4 +20,4 @@ The inherited studio/guardian/family model cannot faithfully represent a student
 
 ## Execution policy
 
-Implement via separate OpenSpec changes with design/tasks/spec deltas. Existing live guardians/invoices/portal tokens/lesson history must be inventoried and safely transitioned per ADR-0015. MCP teacher-business parity, owner boundaries, legal-minor privacy and language/RTL behavior are mandatory. This ADR does not claim that the target is implemented or enable externally shareable access by itself.
+Implement via separate OpenSpec changes with design/tasks/spec deltas. Before a single final cutover, existing live data must be backed up and explicitly mapped to the final schema or deliberately reimported into a clean baseline per ADR-0017. Retire rather than translate old household portal tokens: **no old token or relationship automatically conveys a new sharing grant**. Do not retain compatibility endpoints, dual writers, tables or aliases. MCP teacher-business parity, owner boundaries, legal-minor privacy and language/RTL behavior are mandatory. This ADR does not claim that the target is implemented or enable externally shareable access by itself.

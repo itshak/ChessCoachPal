@@ -19,7 +19,7 @@ type AttendanceRow={
 };
 type NoteRow={
  id:string;student_id:string|null;body:string;private_body?:string;
- shared_with_guardian:boolean;updated_at:string;emailed_at:string|null;
+ shared_with_contacts:boolean;updated_at:string;emailed_at:string|null;
 };
 type Decision="present"|"late"|"absent"|"excused"|"student_cancelled"|"teacher_cancelled";
 const DECISIONS:Record<Decision,string>={
@@ -68,8 +68,8 @@ export function CanonicalScheduleBoard({
  const [notifyFamily,setNotifyFamily]=useState(false);
  const [body,setBody]=useState("");
  const [privateBody,setPrivateBody]=useState("");
- const [shareWithGuardian,setShareWithGuardian]=useState(false);
- const [emailGuardian,setEmailGuardian]=useState(false);
+ const [shareWithContacts,setShareWithContacts]=useState(false);
+ const [emailContacts,setEmailContacts]=useState(false);
  const [busy,setBusy]=useState(false);
  const [addOpen,setAddOpen]=useState(false);
  const [addStudent,setAddStudent]=useState("");
@@ -105,8 +105,8 @@ export function CanonicalScheduleBoard({
   setSelectedStudent(studentId);
   setBody(item?.body??"");
   setPrivateBody(item?.private_body??"");
-  setShareWithGuardian(item?.shared_with_guardian??false);
-  setEmailGuardian(false);
+  setShareWithContacts(item?.shared_with_contacts??false);
+  setEmailContacts(false);
  }
  async function openSession(session:CanonicalCalendarRow,section:"attendance"|"notes"|"schedule"){
   setBusy(true);
@@ -161,7 +161,7 @@ export function CanonicalScheduleBoard({
     "/api/coaching/sessions/"+open.id+"/attendance",{cache:"no-store"}));
    setRegister(fresh);
    loadDecision(selectedStudent,fresh);
-   showToast(result.emailQueued?"Attendance saved; family email queued":"Attendance saved");
+   showToast(result.emailQueued?t("attendanceSavedEmailQueued"):"Attendance saved");
    router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
@@ -175,8 +175,8 @@ export function CanonicalScheduleBoard({
      method:"PUT",headers:{"Content-Type":"application/json"},
      body:JSON.stringify({
       studentId:selectedStudent,body,privateBody,
-      sharedWithGuardian:shareWithGuardian,sendEmail:emailGuardian,
-      confirmedEmail:emailGuardian,
+      sharedWithContacts:shareWithContacts,sendEmail:emailContacts,
+      confirmedEmail:emailContacts,
       expectedUpdatedAt:chosenNote?.updated_at??null,
       idempotencyKey:crypto.randomUUID(),
      }),
@@ -415,12 +415,12 @@ export function CanonicalScheduleBoard({
       onChange={e=>setPrivateBody(e.target.value)}/>
     </label>
     <label className="flex gap-2 items-center text-sm">
-     <input type="checkbox" checked={shareWithGuardian}
-      onChange={e=>{setShareWithGuardian(e.target.checked);if(!e.target.checked)setEmailGuardian(false)}}/>
+     <input type="checkbox" checked={shareWithContacts}
+      onChange={e=>{setShareWithContacts(e.target.checked);if(!e.target.checked)setEmailContacts(false)}}/>
      {t("shareFamilyNote")}
     </label>
-    {shareWithGuardian&&<label className="flex gap-2 items-center text-sm">
-     <input type="checkbox" checked={emailGuardian} onChange={e=>setEmailGuardian(e.target.checked)}/>
+    {shareWithContacts&&<label className="flex gap-2 items-center text-sm">
+     <input type="checkbox" checked={emailContacts} onChange={e=>setEmailContacts(e.target.checked)}/>
      {t("queueFamilyNoteEmail")}
     </label>}
     <button disabled={busy} onClick={saveNotes}

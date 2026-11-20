@@ -1,5 +1,8 @@
 # Releasing ChessCoachPal
 
+> **Current product policy (ADR-0018, 2026-11-19):** ChessCoachPal is exclusively an operator-run SaaS. Customers/teachers cannot deploy, install, operate or self-host ChessCoachPal. In older text, "self-hosted" refers solely to ChessCoachPal operating its own infrastructure (including Supabase/PostgreSQL), not to a customer deployment. Historical/archived plans are evidence of past decisions, not current product support. See [ADR-0018](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
+
 **Policy:** There is no compatibility guarantee with CogNote or between any two ChessCoachPal versions prior to `1.0.0`. See [ADR-0001](adr/0001-pre1-breaking-changes.md). Release notes must call out destructive reset requirements and significant breaking changes.
 
 ## OpenSpec release plan
@@ -53,26 +56,12 @@ This is a deliberate release-policy exception authorized by the maintainer, not 
 
 ## Supported compatibility policy
 
-For `0.x` releases, **disposable development databases** may be deliberately
-reinitialized. We do **not** keep CogNote compatibility or promise perpetual
-support for old pre-1.0 client/API versions. **A populated private-beta/live
-database is different:** [ADR-0015](adr/0015-baseline-first-and-one-time-live-transitions.md)
-requires canonical fresh-install SQL plus a reviewed one-time forward-only
-migration for every deployment schema change, not a reset or ad hoc SQL patch.
+**Controlling pre-v1 policy (2026-11-18):** [ADR-0017](adr/0017-pre-v1-single-final-cutover-no-compatibility.md) requires **NO compatibility layers** for CogNote or earlier ChessCoachPal versions. The final source has one canonical fresh-install SQL baseline and no incremental upgrade chain in `supabase/migrations`. Browser and MCP current-domain operations must remain in functional parity; obsolete Family/Studio/guardian routes, tools, physical tables and broad portal tokens are removed, not aliased.
 
-**Mandatory data-bearing release/deployment gate:** prove the baseline and
-approved transitions converge with synthetic preserved users/records, RLS and
-grants through the existing CI/restore workflow; obtain privately reviewed
-source SHA and actual live migration-ledger inventory; verify an **off-host**
-backup successfully restored to a second isolated target; inspect affected
-identity/guardian/portal, historical student, invoice/credit and Storage
-relationships; record explicit operator permission, target, rollout window,
-recovery plan and after-apply reconciliation. Apply the approved transition
-*before* deploying any app code that needs it. A release tag or source merge
-does **not** authorize migrating actual teacher records. See
-[the operator runbook](SCHEMA_TRANSITION_RUNBOOK.md). Decide post-`1.0.0`
-compatibility separately; this guard protects real data without promising
-pre-v1 external API compatibility.
+**One final production cutover, separately approved:** after all planned accepted OpenSpec work is integrated, the authorized operator chooses **either** (A) one direct source-to-final mapping **or** (B) a verified empty target and deliberate export/reimport. No individual feature branch runs a production migration, and a release/tag/CI job never authorizes an existing-data reset. Test the canonical baseline on isolated synthetic data, prove a separate off-host backup restores, get target-specific private approval, revoke old broad tokens, independently verify all selected records and client actions, and then switch once. See [the final-cutover runbook](SCHEMA_TRANSITION_RUNBOOK.md). Do not archive or publish if `npm run pre1:final-cutover:audit` reports legacy-contract violations. Post-v1 compatibility is a separate future decision.
+
+**Automatic final-cutover release interlock (2026-11-19):** The already-installed `Publish GitHub Release` job invokes `node scripts/release.mjs validate "$VERSION"` before tagging or publication. That command now runs the exact `repositoryCutoverIssues()` rules from `scripts/pre1-final-cutover-audit.mjs` and fails closed while any legacy cutover violation remains; `release.mjs notes` enforces the same check as an additional defense. Unit coverage is in `scripts/release-check.mjs`. This does **not** waive authenticated runtime/MCP parity, RLS, restore evidence, billing-ledger acceptance or the operator's separate real-data cutover approval. The release gate was attached through the existing version script, **without editing GitHub Actions workflow YAML** because the current repository connector lacks the required `workflow` scope. A future workflow-file edit would still require an independently authorized credential. The working branch is deliberately blocked while the inherited Family/guardian findings remain.
+
 
 ## Coolify private-beta deployment policy: published releases only
 

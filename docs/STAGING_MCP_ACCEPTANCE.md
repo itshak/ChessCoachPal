@@ -1,5 +1,7 @@
 # Disposable hosted MCP acceptance — Vercel + Supabase (v0.1.0 final gate)
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 **Run only immediately before release, from the maintainer's own computer.** This is an optional alternative to a local synthetic Docker instance exposed through a temporary HTTPS tunnel. The hosting is *staging*, not a v0.1.0 GitHub release or evidence of production suitability. Keep package version at 0.0.0, use fictional students and a separate Supabase database, and do not touch a real user database.
 
 ## Before starting

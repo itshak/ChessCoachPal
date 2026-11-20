@@ -1,4 +1,7 @@
-# ADR-0008: Retain Supabase and target a trimmed self-hosted deployment on Coolify
+# ADR-0008: Retain Supabase and target an operator-managed deployment on Coolify
+
+> **Current product policy (ADR-0018, 2026-11-19):** ChessCoachPal is exclusively an operator-run SaaS. Customers/teachers cannot deploy, install, operate or self-host ChessCoachPal. In older text, "self-hosted" refers solely to ChessCoachPal operating its own infrastructure (including Supabase/PostgreSQL), not to a customer deployment. Historical/archived plans are evidence of past decisions, not current product support. See [ADR-0018](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 
 - **Status:** Accepted
 - **Date:** 2026-11-15

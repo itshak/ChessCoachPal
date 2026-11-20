@@ -58,11 +58,11 @@ test("PARITY: teacher language preference persists identically via website and M
     await expect(page.getByRole("heading",{name:"קביעת שיעור שחמט פרטי"})).toBeVisible();
     await page.goto("/events");
     await expect(page.getByRole("heading",{name:"אירועי שחמט"})).toBeVisible();
-    await page.goto("/families");
-    await expect(page.getByRole("heading",{name:"משפחות"})).toBeVisible();
+    await page.goto("/contacts");
+    await expect(page.locator("h1").first()).toBeVisible();
     await page.setViewportSize({width:390,height:844});
     const familyOverflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
-    expect(familyOverflow,"Hebrew family list horizontal overflow").toBeLessThanOrEqual(2);
+    expect(familyOverflow,"Hebrew contacts list horizontal overflow").toBeLessThanOrEqual(2);
     await page.setViewportSize({width:1280,height:720});
     await page.goto("/students");
     const studentLink=page.locator('a[href^="/students/"]').first();
@@ -92,8 +92,8 @@ test("PARITY: teacher language preference persists identically via website and M
     await expect(page.getByRole("heading",{name:"Кредиты на отработки"})).toBeVisible();
     await page.goto("/events");
     await expect(page.getByRole("heading",{name:"Шахматные мероприятия"})).toBeVisible();
-    await page.goto("/families");
-    await expect(page.getByRole("heading",{name:"Семьи"})).toBeVisible();
+    await page.goto("/contacts");
+    await expect(page.locator("h1").first()).toBeVisible();
     await page.goto("/students");
     const russianStudentLink=page.locator('a[href^="/students/"]').first();
     await expect(russianStudentLink).toBeVisible();
@@ -176,26 +176,73 @@ test("RTL mobile login and landing have no horizontal overflow",async({browser})
   }finally{await context.close();}
 });
 
-test("anonymous family portal renders English, Hebrew RTL, and Russian without mutating records",async({browser})=>{
-  const context=await browser.newContext({baseURL:"http://localhost:3000",viewport:{width:390,height:844}});
+test("anonymous explicitly scoped portal renders English, Hebrew RTL, Russian without leaking other learners",async({page,request,browser})=>{
+  const call=await delegatedTool(page,request);
+  const student=await call("ccp_students_create",{
+    name:"Portal language learner "+randomUUID(),idempotencyKey:randomUUID(),
+  });
+  expect(student.error).toBeUndefined();
+  const studentId=student.data.entityId as string;
+  const workplace=await call("ccp_workplaces_create",{
+    name:"Localized portal classroom "+randomUUID(),timezone:"UTC",
+    currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
+  });
+  expect(workplace.error).toBeUndefined();
+  const workplaceId=workplace.data.entityId as string;
+  const enrolled=await call("ccp_workplaces_enroll",{
+    workplaceId,studentId,idempotencyKey:randomUUID(),
+  });
+  expect(enrolled.error).toBeUndefined();
+  const scopedContactName="Portal locale parent "+randomUUID();
+  const contact=await call("ccp_contacts_create",{
+    displayName:scopedContactName,
+    idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(contact.error).toBeUndefined();
+  const linked=await call("ccp_student_contacts_link",{
+    studentId,contactId:contact.data.id,relationshipLabel:"Parent",
+    idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(linked.error).toBeUndefined();
+  const grant=await call("ccp_portal_grants_create",{
+    studentId,contactId:contact.data.id,workplaceId,
+    permissions:["calendar"],expiresAt:new Date(Date.now()+20*86400000).toISOString(),
+    idempotencyKey:randomUUID(),confirmed:true,
+  });
+  expect(grant.error).toBeUndefined();
+  const issued=await page.request.post("/api/portal-grants/"+grant.data.id+"/issue",{
+    headers:{origin:"http://localhost:3000"},
+    data:{expectedRevision:1,confirmed:true},
+  });
+  expect(issued.status(),await issued.text()).toBe(200);
+  const pathname=new URL((await issued.json()).url).pathname;
+  const context=await browser.newContext({
+    baseURL:"http://localhost:3000",viewport:{width:390,height:844},
+  });
   try{
-    const page=await context.newPage();
+    const guest=await context.newPage();
     for(const [locale,dir,heading] of [
       ["en","ltr","Upcoming Lessons"],
       ["he","rtl","שיעורים קרובים"],
       ["ru","ltr","Предстоящие уроки"]
     ] as const){
-      const response=await context.request.post("/api/preferences/locale",{data:{locale}});
-      expect(response.status(),await response.text()).toBe(200);
-      const request=await page.goto("/portal/dev-portal-jordan");
-      expect(request?.status()).toBe(200);
-      await expect(page.locator("html")).toHaveAttribute("lang",locale);
-      await expect(page.locator("html")).toHaveAttribute("dir",dir);
-      await expect(page.getByRole("heading",{name:heading})).toBeVisible();
-      const over=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
-      expect(over, locale+" family portal horizontal overflow").toBeLessThanOrEqual(2);
+      const setting=await context.request.post("/api/preferences/locale",{data:{locale}});
+      expect(setting.status(),await setting.text()).toBe(200);
+      const response=await guest.goto(pathname);
+      expect(response?.status()).toBe(200);
+      await expect(guest.locator("html")).toHaveAttribute("lang",locale);
+      await expect(guest.locator("html")).toHaveAttribute("dir",dir);
+      await expect(guest.getByRole("heading",{name:heading})).toBeVisible();
+      const over=await guest.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
+      expect(over,locale+" portal horizontal overflow").toBeLessThanOrEqual(2);
+      expect(await guest.locator("body").innerText()).toContain("Portal locale parent");
     }
-    await expect(page.getByLabel("Язык интерфейса")).toHaveValue("ru");
+    await expect(guest.getByLabel("Язык интерфейса")).toHaveValue("ru");
+    // Streaming Next.js notFound may carry HTTP 200, but must not expose the
+    // actual grant subject. The non-streamed guest API must reject the token.
+    const invalid=await context.request.get("/portal/dev-portal-jordan");
+    expect(await invalid.text()).not.toContain(scopedContactName);
+    expect((await context.request.get("/api/portal/dev-portal-jordan/calendar")).status()).toBe(404);
   }finally{await context.close();}
 });
 
@@ -235,54 +282,53 @@ test("anonymous public try, hosting, password recovery and missing-page texts fo
   }finally{await context.close();}
 });
 
-test("PARITY: family communication locale round-trips website and MCP without changing teacher UI",async({page,request})=>{
+test("PARITY: contact communication locale round-trips website/MCP independently of teacher UI",async({page,request})=>{
   const call=await delegatedTool(page,request);
   const initialTeacher=await call("ccp_teacher_profile_get",{});
   expect(initialTeacher.error).toBeUndefined();
   const initialLocale=initialTeacher.data.preferredLocale;
-  const created=await call("ccp_guardians_create",{
-    name:"Localized family "+randomUUID(),preferredLocale:"he",confirmed:true,
+  const created=await call("ccp_contacts_create",{
+    displayName:"Localized contact "+randomUUID(),preferredLocale:"he",
+    idempotencyKey:randomUUID(),confirmed:true,
   });
   expect(created.error).toBeUndefined();
-  const id=created.data.id as string;
+  const contactId=created.data.id as string;
   const readWebsite=async()=>{
-    const res=await page.request.get("/api/guardians/"+id);
+    const res=await page.request.get("/api/contacts/"+contactId);
     expect(res.status(),await res.text()).toBe(200);
-    return await res.json() as {preferred_locale:string|null};
+    return await res.json() as {preferredLocale:string|null;revision:number};
   };
-  expect((await readWebsite()).preferred_locale).toBe("he");
-  const safe=await call("ccp_guardians_detail",{guardianId:id});
+  expect((await readWebsite()).preferredLocale).toBe("he");
+  const safe=await call("ccp_contacts_detail",{contactId});
   expect(safe.error).toBeUndefined();
-  expect(safe.data.preferred_locale).toBe("he");
+  expect(safe.data.preferredLocale).toBeUndefined();
   expect(safe.data.email).toBeUndefined();
-  expect(safe.data.portal_token).toBeUndefined();
-
-  const fromWebsite=await page.request.put("/api/guardians/"+id,{
-    data:{preferredLocale:"ru"},
+  const fromWebsite=await page.request.patch("/api/contacts/"+contactId,{
+    data:{preferredLocale:"ru",expectedRevision:1,idempotencyKey:randomUUID()},
   });
   expect(fromWebsite.status(),await fromWebsite.text()).toBe(200);
-  const fromMcp=await call("ccp_guardians_detail",{guardianId:id});
-  expect(fromMcp.data.preferred_locale).toBe("ru");
-
-  const invalid=await page.request.put("/api/guardians/"+id,{
-    data:{preferredLocale:"de"},
+  const fromMcp=await call("ccp_contacts_detail",{
+    contactId,includeDetails:true,confirmed:true,
+  });
+  expect(fromMcp.data.preferredLocale).toBe("ru");
+  const invalid=await page.request.patch("/api/contacts/"+contactId,{
+    data:{preferredLocale:"de",expectedRevision:2,idempotencyKey:randomUUID()},
   });
   expect(invalid.status()).toBe(400);
-  const modelInvalid=await call("ccp_guardians_update",{
-    guardianId:id,preferredLocale:"de",confirmed:true,
+  const modelInvalid=await call("ccp_contacts_update",{
+    contactId,preferredLocale:"de",expectedRevision:2,
+    idempotencyKey:randomUUID(),confirmed:true,
   });
   expect(modelInvalid.error?.code).toBe("VALIDATION_ERROR");
-  expect((await readWebsite()).preferred_locale).toBe("ru");
-
-  const cleared=await call("ccp_guardians_update",{
-    guardianId:id,preferredLocale:null,confirmed:true,
+  expect((await readWebsite()).preferredLocale).toBe("ru");
+  const cleared=await call("ccp_contacts_update",{
+    contactId,preferredLocale:null,expectedRevision:2,
+    idempotencyKey:randomUUID(),confirmed:true,
   });
   expect(cleared.error).toBeUndefined();
-  expect((await readWebsite()).preferred_locale).toBeNull();
+  expect((await readWebsite()).preferredLocale).toBeNull();
   const afterTeacher=await call("ccp_teacher_profile_get",{});
   expect(afterTeacher.data.preferredLocale).toBe(initialLocale);
-  const deleted=await call("ccp_guardians_delete",{guardianId:id,confirmed:true});
-  expect(deleted.error).toBeUndefined();
 });
 
 test("LANGUAGE: changing interface language in one authenticated tab reloads another tab with the same SSR direction",async({page})=>{

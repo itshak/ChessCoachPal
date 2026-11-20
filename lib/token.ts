@@ -33,7 +33,7 @@ function base64urlDecode(str: string): Buffer {
 
 /**
  * At-rest encryption for per-teacher secrets (BYO Stripe and AI API keys)
- * stored in studio_policies. Only authenticated encrypted values are accepted;
+ * stored in teacher_settings. Only authenticated encrypted values are accepted;
  * pre-1.0 plaintext compatibility is intentionally unsupported.
  */
 const SECRET_PREFIX = "enc.v1.";

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createStudentWithOptionalFamily } from "@/lib/server/families";
+import { createStudentWithOptionalContact } from "@/lib/server/teacher-student-create-service";
 import { parseBody, studentCreateSchema } from "@/lib/server/api-schemas";
 import { teacherStudentsRoster, StudentProfileError } from "@/lib/server/student-profile-service";
 
@@ -67,12 +67,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const result = await createStudentWithOptionalFamily(supabase, user.id, {
+  const result = await createStudentWithOptionalContact(supabase, user.id, {
     name: body.name,
     birthdate: body.birthdate ?? null,
     level: body.level ?? null,
     teacherNotes: body.teacherNotes ?? null,
-    guardianId: body.guardianId ?? null,
     contactEmail: body.contactEmail ?? null,
     contactPhone: body.contactPhone ?? null,
     contactName: body.contactName ?? null,
@@ -89,7 +88,7 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(
-    { ...result.student, createdFamily: result.createdFamily },
+    { ...result.student, createdContactId: result.createdContactId },
     { status: 201 }
   );
 }

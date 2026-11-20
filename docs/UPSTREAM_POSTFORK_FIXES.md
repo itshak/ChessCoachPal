@@ -1,5 +1,7 @@
 # Technical disposition — upstream CogNote PRs #142–#145
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 **ChessCoachPal change:** `selectively-adopt-cognote-post-fork-fixes` · **Date:** 2026-11-15
 
 These upstream changes were reviewed against ChessCoachPal's current canonical schema and shared teacher website/MCP domain operations. No CogNote code history, private commercial strategy or backward-compatibility shims have been merged.

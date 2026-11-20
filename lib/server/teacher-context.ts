@@ -9,11 +9,12 @@ import {isAppLocale} from "@/i18n/locales";
 export async function teacherContextGet(db:SupabaseClient,teacherId:string){
  const [policy,workplaces,teacher]=await Promise.all([
   getPolicy(db,teacherId),workplacesList(db,teacherId),
-  db.from("teachers").select("preferred_locale").eq("id",teacherId).maybeSingle(),
+  db.from("teachers").select("preferred_locale,selected_workplace_id").eq("id",teacherId).maybeSingle(),
  ]);
  const localDate=toLocalDateString(new Date(),policy.timezone);
  return {teacherId,localDate,dayOfWeek:dayOfWeek(localDate),timezone:policy.timezone,
   preferredLocale:isAppLocale(teacher.data?.preferred_locale)?teacher.data.preferred_locale:"en",
   utcNow:new Date().toISOString(),workplaces,
+  selectedWorkplaceId:workplaces.some(w=>w.id===teacher.data?.selected_workplace_id)?teacher.data?.selected_workplace_id:null,
   note:"Respect the teacher's explicit message language for prose; otherwise default to preferredLocale (en/he/ru). Preserve names, aliases and chess notation verbatim. The teacher's local date and workplace timezones are authoritative. Context does not imply attendance or consent."};
 }

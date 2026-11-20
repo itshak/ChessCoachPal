@@ -1,6 +1,6 @@
 /**
  * Platform Stripe for ChessCoachPal Hosted Pro subscriptions.
- * Separate from teachers' BYO lesson-payment keys in studio_policies.
+ * Separate from teachers' BYO lesson-payment keys in teacher_settings.
  */
 
 import Stripe from "stripe";

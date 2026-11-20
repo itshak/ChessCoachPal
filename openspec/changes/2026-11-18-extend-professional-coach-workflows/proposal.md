@@ -1,5 +1,11 @@
 # Change: complete professional coaching workflows across lessons, schedules, reports and finance
 
+> **Schema-first execution gate (2026-11-19):** [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md) is the **mandatory first implementation change**. All schema DDL, tenant/RLS/FK/index work, generated DB types and schema-induced regressions belong to that change; this proposal must wait for its reviewed schema freeze and passing exact-head gates before implementing its remaining business functionality. Its existing schema statements describe requirements for the foundation, **not** permission to add per-feature DDL later. Operator-only SaaS and future shard-compatible UUID/RLS design follow [ADR-0018](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md); no customer self-hosting or live cutover is authorized.
+
+
+> **ADR-0017 final-cutover override (2026-11-18):** No backward compatibility or legacy dual-writes before v1. The final deliverable uses the clean canonical baseline and current website/MCP contracts. All planned features deploy with **one final** live migration **or** verified clean rebuild/reimport at the operator's choice; no per-feature production migration. Existing data handling is a deliberate one-time import/mapping decision, not an obligation to retain obsolete Family/Studio/guardian APIs or old portal tokens. Security, tenant isolation and explicit new grants remain required.
+
+
 **Status:** Proposed only; no application code, schema or production data changed.
 **Priority:** P1 incremental workflow integration, with release slicing after prerequisite domain changes.
 **Depends on:** 2026-11-18-add-workplace-context-and-retire-studio; 2026-11-18-improve-daily-coach-workflows; 2026-11-18-replace-families-with-contacts. Financial extensions depend additionally on 2026-11-18-implement-workplace-compensation-and-billing; contact-facing sharing depends on 2026-11-18-scope-student-contact-portal.
@@ -40,3 +46,5 @@ Each phase may ship independently only with its own web/MCP parity and automated
 - Missing, ambiguous and provider-unavailable data remain visibly unknown; retries cannot double-close a lesson, duplicate a charge or double-allocate a payment.
 - Every teacher website field/action has a same-PR MCP counterpart, registry change and authenticated parity test; strict 93-scenario browser/MCP baseline remains green with zero business-route gaps.
 - Database changes update authoritative baseline and document reviewed one-time live transitions under ADR-0015. No production migration or deployment is authorized by this proposal.
+
+> **Cross-change schema coordination (2026-11-19):** Potential additional schema: lifecycle exceptions, audit and recurrence; confirm in inventory before design. Reuse existing native finance ledger; do not introduce a second obligation/payment model. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

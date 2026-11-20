@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertWithinHostedLimit, limitReachedResponse } from "@/lib/server/entitlements";
-import { retireEmptyGuardians } from "@/lib/server/families";
 
 type Db = SupabaseClient;
 export class StudentProfileError extends Error {
@@ -14,11 +13,12 @@ export type StudentProfilePatch = {
   chesscomUsername?: string | null;
   lichessRating?: number | null;
   chesscomRating?: number | null;
+  fideId?:string|null;
+  fideFederationCode?:string|null;
+  nationalFederationPreference?:string|null;
   chessGoals?: string | null;
   chessRatings?: Record<string,Record<string,number|null>>;
   teacherNotes?: string | null;
-  parentContact?: string | null;
-  guardianId?: string | null;
   level?: string | null;
   birthdate?: string | null;
   practiceStartDate?: string | null;
@@ -123,11 +123,6 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
   const existing = await teacherStudentProfile(db, teacherId, studentId);
   if (expectedUpdatedAt && existing.updated_at !== expectedUpdatedAt)
     throw new StudentProfileError(409,"CONFLICT","Student was modified; reload before editing");
-  if (patch.guardianId) {
-    const {data: guardian} = await db.from("guardians").select("id")
-      .eq("teacher_id",teacherId).eq("id",patch.guardianId).maybeSingle();
-    if (!guardian) throw new StudentProfileError(404,"NOT_FOUND","Family not found");
-  }
   if (patch.archived === false && existing.archived_at) {
     const allowed = await assertWithinHostedLimit(db,teacherId,"students");
     if (!allowed.allowed) {
@@ -164,6 +159,10 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
   if (patch.chesscomUsername !== undefined) update.chesscom_username = patch.chesscomUsername;
   if (patch.lichessRating !== undefined) update.lichess_rating = patch.lichessRating;
   if (patch.chesscomRating !== undefined) update.chesscom_rating = patch.chesscomRating;
+  if(patch.fideId!==undefined)update.fide_id=patch.fideId;
+  if(patch.fideFederationCode!==undefined)update.fide_federation_code=patch.fideFederationCode;
+  if(patch.nationalFederationPreference!==undefined)
+    update.national_federation_preference=patch.nationalFederationPreference;
   if (patch.chessGoals !== undefined) update.chess_goals = patch.chessGoals ?? "";
   if (patch.chessRatings !== undefined) {
     const existingRatings=(existing.chess_ratings??{}) as Record<string,Record<string,number|null>>;
@@ -176,8 +175,6 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
   // teacher_notes is NOT NULL in the canonical schema. Treat nullable API
   // clearing as an empty note instead of writing SQL NULL and returning 500.
   if (patch.teacherNotes !== undefined) update.teacher_notes = patch.teacherNotes ?? "";
-  if (patch.parentContact !== undefined) update.parent_contact = patch.parentContact;
-  if (patch.guardianId !== undefined) update.guardian_id = patch.guardianId || null;
   if (patch.level !== undefined) update.level = patch.level?.trim() || null;
   if (patch.birthdate !== undefined) update.birthdate = patch.birthdate || null;
   if (patch.practiceStartDate !== undefined) update.practice_start_date = patch.practiceStartDate || null;
@@ -194,8 +191,6 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
     throw new StudentProfileError(409,"FUTURE_COMMITMENTS","Resolve future commitments before archiving");
   if (error) throw new StudentProfileError(500,"DATABASE_ERROR","Student update failed");
   if (!data) throw new StudentProfileError(409,"CONFLICT","Student changed or was deleted; reload before editing");
-  if (existing.guardian_id && patch.guardianId !== undefined && existing.guardian_id !== (patch.guardianId || null))
-    await retireEmptyGuardians(db,teacherId,[existing.guardian_id]);
   return data;
 }
 
@@ -214,6 +209,7 @@ export async function teacherStudentDeleteImpact(db: Db, teacherId: string, stud
     ["typedHomework","training_assignments",true],
     ["trainingPlans","student_training_plans",true],
     ["historicalAttendance","ccp_historical_attendance_evidence",true],
+    ["studentContactLinks","student_contacts",true],
   ] as const;
   const counts=await Promise.all(references.map(([,table,scope])=>{
     let query=db.from(table).select("student_id",{count:"exact",head:true}).eq("student_id",studentId);
@@ -239,12 +235,13 @@ export async function teacherStudentDelete(db:Db,teacherId:string,studentId:stri
       "Linked teaching, group, chess progress or financial history exists. Archive the student instead.");
   const {data,error}=await db.from("students").delete().eq("teacher_id",teacherId)
     .eq("id",studentId).eq("updated_at",expectedUpdatedAt)
-    .select("id,guardian_id").maybeSingle();
+    .select("id").maybeSingle();
   if(error?.code==="23503" && error.message?.includes("HISTORY_DEPENDENCIES"))
     throw new StudentProfileError(409,"HISTORY_DEPENDENCIES",
       "Linked teaching, group, chess progress or financial history exists. Archive the student instead.");
   if(error)throw new StudentProfileError(409,"DELETE_BLOCKED","Deletion failed; linked history or concurrent edits may exist");
   if(!data)throw new StudentProfileError(409,"CONFLICT","Student changed or was removed; re-read before deleting");
-  if(data.guardian_id)await retireEmptyGuardians(db,teacherId,[data.guardian_id]);
+  // Deletion of a student never implies permission to remove an independent
+  // contact identity or revoke a separately authorized scoped portal grant.
   return {deleted:true,studentId:data.id};
 }

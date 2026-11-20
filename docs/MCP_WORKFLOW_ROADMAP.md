@@ -1,5 +1,7 @@
 # ChessCoachPal chess-trainer MCP workflows — implementation roadmap
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
 **Status: specification design only, not deployed.** Updated 2026-11-08. Proposed work is tracked in [support-conversational-lesson-and-lichess-workflows](../openspec/changes/support-conversational-lesson-and-lichess-workflows/proposal.md), with [full current/proposed MCP tool catalogue](../openspec/changes/support-conversational-lesson-and-lichess-workflows/tool-catalog.md). The independent first-release gate remains [complete-v0-1-0-release-gates](../openspec/changes/complete-v0-1-0-release-gates/tasks.md) and package version remains `0.0.0`.
 
 ## What already works on main

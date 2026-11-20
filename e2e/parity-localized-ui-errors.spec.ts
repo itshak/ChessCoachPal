@@ -15,7 +15,7 @@ test("PARITY: teacher UI maps canonical server errors to Hebrew and Russian with
         data:{preferredLocale:locale},
       });
       expect(updated.status(),await updated.text()).toBe(200);
-      await page.goto("/studio");
+      await page.goto("/settings");
       await expect(page.locator("html")).toHaveAttribute("lang",locale);
       await expect(page.locator("html")).toHaveAttribute("dir",dir);
       let intercepted=0;

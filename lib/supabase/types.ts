@@ -24,12 +24,146 @@ export type RsvpStatus = "pending" | "yes" | "no" | "maybe";
 export interface Database {
   public: {
     Tables: {
+      // Unified schema only; provider-sync API/workers require separate OpenSpec.
+      student_rating_sync_consents: {
+        Row:{id:string;teacher_id:string;student_id:string;provider:"lichess"|"chesscom";
+          source_username:string;handle_revision:number;enabled:boolean;
+          consented_at:string|null;revoked_at:string|null;revision:number;
+          last_request_id:string|null;last_request_hash:string|null;
+          created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;student_id:string;provider:"lichess"|"chesscom";
+          source_username:string;handle_revision?:number;enabled?:boolean;
+          consented_at?:string|null;revoked_at?:string|null;revision?:number;
+          last_request_id?:string|null;last_request_hash?:string|null;
+          created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["student_rating_sync_consents"]["Insert"]>;
+      };
+      student_rating_refresh_jobs: {
+        Row:{id:string;teacher_id:string;student_id:string;consent_id:string;
+          provider:"lichess"|"chesscom";source_username:string;handle_revision:number;
+          input_digest:string;idempotency_key:string;
+          trigger_kind:"profile_save"|"manual"|"scheduled"|"history_backfill";
+          status:"pending"|"running"|"retry"|"succeeded"|"stale"|"failed"|"cancelled";
+          attempt_count:number;run_after:string;lease_token:string|null;
+          lease_until:string|null;last_error_code:string|null;
+          finished_at:string|null;created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;student_id:string;consent_id:string;
+          provider:"lichess"|"chesscom";source_username:string;handle_revision:number;
+          input_digest:string;idempotency_key:string;
+          trigger_kind:"profile_save"|"manual"|"scheduled"|"history_backfill";
+          status?:"pending"|"running"|"retry"|"succeeded"|"stale"|"failed"|"cancelled";
+          attempt_count?:number;run_after?:string;lease_token?:string|null;
+          lease_until?:string|null;last_error_code?:string|null;
+          finished_at?:string|null;created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["student_rating_refresh_jobs"]["Insert"]>;
+      };
+      student_rating_refresh_receipts: {
+        Row:{id:string;teacher_id:string;student_id:string;job_id:string;
+          attempt_number:number;outcome:"succeeded"|"stale"|"retry"|"failed"|"cancelled";
+          source_username:string;input_digest:string;evidence_digest:string|null;
+          snapshots_written:number;error_code:string|null;observed_at:string|null;
+          fetched_at:string|null;recorded_at:string};
+        Insert:{id?:string;teacher_id:string;student_id:string;job_id:string;
+          attempt_number:number;outcome:"succeeded"|"stale"|"retry"|"failed"|"cancelled";
+          source_username:string;input_digest:string;evidence_digest?:string|null;
+          snapshots_written?:number;error_code?:string|null;observed_at?:string|null;
+          fetched_at?:string|null;recorded_at?:string};
+        Update:Partial<Database["public"]["Tables"]["student_rating_refresh_receipts"]["Insert"]>;
+      };
+      // Current canonical contacts and per-workplace finance model. Old
+      // guardian/Studio generated types below are transitional WIP until the
+      // one final ADR-0017 cutover, never an accepted compatibility surface.
+      contacts: {
+        Row:{id:string;teacher_id:string;display_name:string;kind:"person"|"organization";
+          email:string|null;phone:string|null;preferred_locale:"en"|"he"|"ru"|null;
+          status:"active"|"archived";revision:number;created_at:string;
+          updated_at:string;last_request_id:string|null;last_request_hash:string|null};
+        Insert:{id?:string;teacher_id:string;display_name:string;kind?:"person"|"organization";
+          email?:string|null;phone?:string|null;preferred_locale?:"en"|"he"|"ru"|null;
+          status?:"active"|"archived";revision?:number;last_request_id?:string|null;
+          last_request_hash?:string|null;created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["contacts"]["Insert"]>;
+      };
+      student_contacts: {
+        Row:{id:string;teacher_id:string;student_id:string;contact_id:string;
+          relationship_label:string;is_legal_guardian:boolean;may_receive_messages:boolean;
+          emergency_priority:number|null;active_from:string|null;active_to:string|null;
+          revision:number;created_at:string;last_request_id:string|null;last_request_hash:string|null};
+        Insert:{id?:string;teacher_id:string;student_id:string;contact_id:string;
+          relationship_label:string;is_legal_guardian?:boolean;may_receive_messages?:boolean;
+          emergency_priority?:number|null;active_from?:string|null;active_to?:string|null;
+          revision?:number;created_at?:string;last_request_id?:string|null;last_request_hash?:string|null};
+        Update:Partial<Database["public"]["Tables"]["student_contacts"]["Insert"]>;
+      };
+      billing_accounts: {
+        Row:{id:string;teacher_id:string;display_name:string;account_kind:"person"|"organization";
+          contact_id:string|null;status:"active"|"archived";revision:number;
+          last_request_id:string|null;last_request_hash:string|null;created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;display_name:string;account_kind?:"person"|"organization";
+          contact_id?:string|null;status?:"active"|"archived";revision?:number;
+          last_request_id?:string|null;last_request_hash?:string|null;
+          created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["billing_accounts"]["Insert"]>;
+      };
+      portal_access_grants: {
+        Row:{id:string;teacher_id:string;contact_id:string;student_id:string;workplace_id:string;
+          billing_account_id:string|null;permissions:string[];token_digest:string|null;
+          issued_at:string|null;expires_at:string;revoked_at:string|null;revision:number;
+          last_request_id:string|null;last_request_hash:string|null;created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;contact_id:string;student_id:string;workplace_id:string;
+          billing_account_id?:string|null;permissions:string[];token_digest?:string|null;
+          issued_at?:string|null;expires_at:string;revoked_at?:string|null;revision?:number;
+          last_request_id?:string|null;last_request_hash?:string|null;
+          created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["portal_access_grants"]["Insert"]>;
+      };
+      portal_event_invitations: {
+        Row:{id:string;teacher_id:string;event_id:string;portal_grant_id:string;
+          status:RsvpStatus;party_size:number|null;note:string;responded_at:string|null;
+          revoked_at:string|null;revision:number;last_request_id:string|null;
+          last_request_hash:string|null;created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;event_id:string;portal_grant_id:string;
+          status?:RsvpStatus;party_size?:number|null;note?:string;
+          responded_at?:string|null;revoked_at?:string|null;revision?:number;
+          last_request_id?:string|null;last_request_hash?:string|null;
+          created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["portal_event_invitations"]["Insert"]>;
+      };
+      student_federation_memberships: {
+        Row:{id:string;teacher_id:string;student_id:string;federation_code:string;
+          player_id:string;membership_status:"unverified"|"source_matched";
+          verified_at:string|null;source_url:string|null;revision:number;
+          created_at:string;last_request_id:string|null;last_request_hash:string|null};
+        Insert:{id?:string;teacher_id:string;student_id:string;federation_code:string;
+          player_id:string;membership_status?:"unverified"|"source_matched";
+          verified_at?:string|null;source_url?:string|null;revision?:number;
+          created_at?:string;last_request_id?:string|null;last_request_hash?:string|null};
+        Update:Partial<Database["public"]["Tables"]["student_federation_memberships"]["Insert"]>;
+      };
+      compensation_agreements: {
+        Row:{id:string;teacher_id:string;workplace_id:string;student_id:string|null;
+          group_id:string|null;billing_account_id:string;
+          agreement_role:"coach_earning"|"participant_charge";
+          model:"hourly"|"per_session"|"per_student"|"fixed_period";
+          rate_cents:number;currency:string;effective_from:string;effective_to:string|null;
+          status:"active"|"archived";revision:number;last_request_id:string|null;
+          last_request_hash:string|null;created_at:string;updated_at:string};
+        Insert:{id?:string;teacher_id:string;workplace_id:string;student_id?:string|null;
+          group_id?:string|null;billing_account_id:string;
+          agreement_role:"coach_earning"|"participant_charge";
+          model:"hourly"|"per_session"|"per_student"|"fixed_period";
+          rate_cents:number;currency:string;effective_from:string;effective_to?:string|null;
+          status?:"active"|"archived";revision?:number;last_request_id?:string|null;
+          last_request_hash?:string|null;created_at?:string;updated_at?:string};
+        Update:Partial<Database["public"]["Tables"]["compensation_agreements"]["Insert"]>;
+      };
       teachers: {
         Row: {
           id: string;
           email: string;
           display_name: string;
           avatar_url: string | null;
+          selected_workplace_id: string | null;
           created_at: string;
           hosted_plan: string;
           trial_ends_at: string | null;
@@ -46,6 +180,7 @@ export interface Database {
           email: string;
           display_name: string;
           avatar_url?: string | null;
+          selected_workplace_id?: string | null;
           created_at?: string;
           hosted_plan?: string;
           trial_ends_at?: string | null;
@@ -62,6 +197,7 @@ export interface Database {
           email?: string;
           display_name?: string;
           avatar_url?: string | null;
+          selected_workplace_id?: string | null;
           hosted_plan?: string;
           trial_ends_at?: string | null;
           gifted_until?: string | null;
@@ -79,7 +215,9 @@ export interface Database {
           teacher_id: string;
           name: string;
           parent_contact: string | null;
-          guardian_id: string | null;
+          fide_id:string|null;
+          fide_federation_code:string|null;
+          national_federation_preference:string|null;
           teacher_notes: string;
           level: string | null;
           birthdate: string | null;
@@ -94,7 +232,9 @@ export interface Database {
           teacher_id: string;
           name: string;
           parent_contact?: string | null;
-          guardian_id?: string | null;
+          fide_id?:string|null;
+          fide_federation_code?:string|null;
+          national_federation_preference?:string|null;
           teacher_notes?: string;
           level?: string | null;
           birthdate?: string | null;
@@ -107,7 +247,9 @@ export interface Database {
         Update: {
           name?: string;
           parent_contact?: string | null;
-          guardian_id?: string | null;
+          fide_id?:string|null;
+          fide_federation_code?:string|null;
+          national_federation_preference?:string|null;
           teacher_notes?: string;
           level?: string | null;
           birthdate?: string | null;
@@ -117,57 +259,13 @@ export interface Database {
           archived_at?: string | null;
         };
       };
-      guardians: {
-        Row: {
-          id: string;
-          teacher_id: string;
-          name: string;
-          family_name: string | null;
-          email: string | null;
-          phone: string | null;
-          secondary_name: string | null;
-          secondary_email: string | null;
-          secondary_phone: string | null;
-          email_recipients: EmailRecipients;
-          preferred_locale: "en" | "he" | "ru" | null;
-          portal_token: string;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          teacher_id: string;
-          name: string;
-          family_name?: string | null;
-          email?: string | null;
-          phone?: string | null;
-          secondary_name?: string | null;
-          secondary_email?: string | null;
-          secondary_phone?: string | null;
-          email_recipients?: EmailRecipients;
-          preferred_locale?: "en" | "he" | "ru" | null;
-          portal_token: string;
-          created_at?: string;
-        };
-        Update: {
-          name?: string;
-          family_name?: string | null;
-          email?: string | null;
-          phone?: string | null;
-          secondary_name?: string | null;
-          secondary_email?: string | null;
-          secondary_phone?: string | null;
-          email_recipients?: EmailRecipients;
-          preferred_locale?: "en" | "he" | "ru" | null;
-          portal_token?: string;
-        };
-      };
-      studio_policies: {
+      teacher_settings: {
         Row: {
           teacher_id: string;
-          studio_name: string;
-          studio_website: string;
-          studio_contact: string;
-          studio_info: string;
+          business_name: string;
+          business_website: string;
+          business_contact: string;
+          business_info: string;
           lesson_label: string;
           timezone: string;
           lesson_duration_options: number[];
@@ -198,7 +296,7 @@ export interface Database {
           notify_in_app: boolean;
           notify_email_portal_cancel: boolean;
           notify_email_invoice_paid: boolean;
-          bcc_family_emails: boolean;
+          bcc_contact_emails: boolean;
           bcc_email: string | null;
           ai_provider: "none" | "openai" | "anthropic";
           ai_api_key: string | null;
@@ -206,10 +304,10 @@ export interface Database {
         };
         Insert: {
           teacher_id: string;
-          studio_name?: string;
-          studio_website?: string;
-          studio_contact?: string;
-          studio_info?: string;
+          business_name?: string;
+          business_website?: string;
+          business_contact?: string;
+          business_info?: string;
           lesson_label?: string;
           timezone?: string;
           lesson_duration_options?: number[];
@@ -240,16 +338,16 @@ export interface Database {
           notify_in_app?: boolean;
           notify_email_portal_cancel?: boolean;
           notify_email_invoice_paid?: boolean;
-          bcc_family_emails?: boolean;
+          bcc_contact_emails?: boolean;
           bcc_email?: string | null;
           ai_provider?: "none" | "openai" | "anthropic";
           ai_api_key?: string | null;
         };
         Update: {
-          studio_name?: string;
-          studio_website?: string;
-          studio_contact?: string;
-          studio_info?: string;
+          business_name?: string;
+          business_website?: string;
+          business_contact?: string;
+          business_info?: string;
           lesson_label?: string;
           timezone?: string;
           lesson_duration_options?: number[];
@@ -280,7 +378,7 @@ export interface Database {
           notify_in_app?: boolean;
           notify_email_portal_cancel?: boolean;
           notify_email_invoice_paid?: boolean;
-          bcc_family_emails?: boolean;
+          bcc_contact_emails?: boolean;
           bcc_email?: string | null;
           ai_provider?: "none" | "openai" | "anthropic";
           ai_api_key?: string | null;
@@ -329,7 +427,7 @@ export interface Database {
         Row: {
           id: string;
           teacher_id: string;
-          guardian_id: string;
+          billing_account_id: string;
           period_start: string;
           period_end: string;
           status: InvoiceStatus;
@@ -347,7 +445,7 @@ export interface Database {
         Insert: {
           id?: string;
           teacher_id: string;
-          guardian_id: string;
+          billing_account_id: string;
           period_start: string;
           period_end: string;
           status?: InvoiceStatus;
@@ -545,16 +643,16 @@ export interface Database {
         Row: {
           id: string; teacher_id: string; session_id: string;
           student_id: string | null; body: string; private_body: string;
-          shared_with_guardian: boolean; emailed_at: string | null;
+          shared_with_contacts: boolean; emailed_at: string | null;
           created_at: string; updated_at: string;
         };
         Insert: {
           id?: string; teacher_id: string; session_id: string;
           student_id?: string | null; body?: string; private_body?: string;
-          shared_with_guardian?: boolean; emailed_at?: string | null;
+          shared_with_contacts?: boolean; emailed_at?: string | null;
         };
         Update: {
-          body?: string; private_body?: string; shared_with_guardian?: boolean;
+          body?: string; private_body?: string; shared_with_contacts?: boolean;
           emailed_at?: string | null; updated_at?: string;
         };
       };
@@ -685,34 +783,6 @@ export interface Database {
         Update: {
           repertoire?: string;
           sort_order?: number;
-        };
-      };
-      event_rsvps: {
-        Row: {
-          id: string;
-          event_id: string;
-          guardian_id: string;
-          status: RsvpStatus;
-          party_size: number | null;
-          note: string;
-          responded_at: string | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          event_id: string;
-          guardian_id: string;
-          status?: RsvpStatus;
-          party_size?: number | null;
-          note?: string;
-          responded_at?: string | null;
-          created_at?: string;
-        };
-        Update: {
-          status?: RsvpStatus;
-          party_size?: number | null;
-          note?: string;
-          responded_at?: string | null;
         };
       };
     };

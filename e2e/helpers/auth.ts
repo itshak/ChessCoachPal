@@ -14,9 +14,17 @@ export const SEED = {
 
 export async function signInAsTeacher(page: Page) {
   await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(SEED_TEACHER.email);
-  await page.getByPlaceholder("Password").fill(SEED_TEACHER.password);
-  await page.getByRole("button", { name: "Sign In" }).click();
+  // Multiple independent delegated OAuth connections may be created in one
+  // scenario. The app redirects an already-authenticated teacher straight
+  // back to the dashboard, so a second password-form fill would hang.
+  if (new URL(page.url()).pathname === "/dashboard") {
+    const current = await page.request.get("/api/teacher/context");
+    if (!current.ok()) throw new Error("Expected an authenticated teacher session");
+    return;
+  }
+  await page.locator('form input[type="email"]').fill(SEED_TEACHER.email);
+  await page.locator('form input[type="password"]').fill(SEED_TEACHER.password);
+  await page.locator('form button[type="submit"]').click();
 
   // Fail fast with the on-page error (empty "{}" often means Auth/Kong 502
   // right after db reset — restart local Supabase and retry).

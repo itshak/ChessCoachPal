@@ -5,18 +5,26 @@ import {teacherExport,TeacherTransferError} from "@/lib/server/teacher-transfer-
 
 // Binary ZIPs are website downloads; MCP returns only bounded, individually
 // pageable UTF-8 CSV strings. Both use this same sanitized export projection.
-const privateColumn=/^(portal_token|access_token|refresh_token|password|password_hash|client_secret|api_key|ai_api_key|stripe_secret_key|stripe_publishable_key|stripe_webhook_secret|oauth_token|token_encrypted|encrypted_.*)$/i;
+const privateColumn=/^(portal_token|token_digest|access_token|refresh_token|password|password_hash|client_secret|api_key|ai_api_key|stripe_secret_key|stripe_publishable_key|stripe_webhook_secret|oauth_token|token_encrypted|encrypted_.*)$/i;
 export const MAX_MCP_CSV_BYTES=192*1024;
 
 function safeRow(row:Record<string,unknown>){
  return Object.fromEntries(Object.entries(row).filter(([key])=>!privateColumn.test(key)));
 }
-export function csvTables(payload:StudioDataExport){
+export function csvTables(payload:StudioDataExport,opts:{redactContacts?:boolean}={}){
  const tables:Record<string,Record<string,unknown>[]>={};
  for(const [key,value] of Object.entries(payload.tables)){
   if(!/^[a-z][a-z0-9_]{0,79}$/.test(key))
    throw new Error("Unsafe CSV table name");
-  tables[key]=Array.isArray(value)?value.map(safeRow):value?[safeRow(value)]:[];
+  const safe=(row:Record<string,unknown>)=>{
+   const columns=safeRow(row);
+   if(key==="contacts"&&opts.redactContacts){
+     delete columns.email;
+     delete columns.phone;
+   }
+   return columns;
+  };
+  tables[key]=Array.isArray(value)?value.map(safe):value?[safe(value)]:[];
  }
  tables.teacher_profile=payload.teacher_profile?[safeRow(payload.teacher_profile)]:[];
  return tables;
@@ -41,7 +49,7 @@ export function makeTeacherCsvZip(payload:StudioDataExport){
  const tables=csvTables(payload),files:Record<string,Uint8Array>={};
  const manifest={exportedAt:payload.exportedAt,
   format:"UTF-8 CSV, one data category per file",
-  caveat:"Sensitive credentials and family portal tokens are excluded. For lossless restore use the authenticated JSON export, not this CSV archive.",
+  caveat:"Sensitive credentials and portal capability digests are excluded. For lossless restore use the authenticated JSON export, not this CSV archive.",
   tables:Object.fromEntries(Object.entries(tables).map(([key,rows])=>[key,rows.length])),
  };
  files["README.json"]=strToU8(JSON.stringify(manifest,null,2));
@@ -53,7 +61,7 @@ export function makeTeacherCsvZip(payload:StudioDataExport){
 }
 export async function teacherCsvExport(db:SupabaseClient,teacherId:string,
  opts:{table?:string;offset:number;limit:number}){
- const all=csvTables(await teacherExport(db,teacherId));
+ const all=csvTables(await teacherExport(db,teacherId),{redactContacts:true});
  if(!opts.table)return {format:"csv",tables:Object.fromEntries(
   Object.entries(all).map(([name,rows])=>[name,{rowCount:rows.length}])),
   instructions:"Read each table by name using this tool with offset/limit. The website provides a single full ZIP download."};
@@ -75,5 +83,5 @@ export async function teacherCsvExport(db:SupabaseClient,teacherId:string,
    "One CSV row exceeds the safe MCP response size. Download the authenticated website ZIP instead.");
  return {format:"csv",table:opts.table,csv,returnedRows:end-start,
   totalRows:rows.length,offset:start,nextOffset:end<rows.length?end:null,
-  guardianPortalCredentialsExcluded:true};
+  portalCredentialsExcluded:true,contactDetailsExcluded:true};
 }

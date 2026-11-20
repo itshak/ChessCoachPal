@@ -9,6 +9,12 @@ describe("isTeacherRoute", () => {
   it("matches teacher prefixes and nested paths", () => {
     expect(isTeacherRoute("/dashboard")).toBe(true);
     expect(isTeacherRoute("/students/abc")).toBe(true);
+    for (const route of ["/contacts", "/contacts/example", "/coaching",
+      "/learning", "/reports", "/ai-connections"]) {
+      expect(isTeacherRoute(route)).toBe(true);
+      expect(resolveSessionGate({pathname: route, hasUser: false, authUnreachable: false})).toBe("login");
+      expect(resolveSessionGate({pathname: route, hasUser: true, authUnreachable: true})).toBe("login");
+    }
     expect(isTeacherRoute("/login")).toBe(false);
     expect(isTeacherRoute("/try")).toBe(false);
     expect(isTeacherRoute("/hosting")).toBe(false);

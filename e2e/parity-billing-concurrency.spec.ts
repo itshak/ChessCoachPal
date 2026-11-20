@@ -3,6 +3,7 @@ import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
 import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {createAssignedPayer} from "./helpers/canonical-payer";
 
 test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and rolls back invalid regeneration",async({page,request})=>{
  const call=await delegatedTool(page,request);
@@ -11,11 +12,6 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
  });
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const family=await call("ccp_guardians_create",{
-   name:"Concurrent billing household "+randomUUID(),
-   studentIds:[studentId],confirmed:true,
- });
- expect(family.error).toBeUndefined();
  expect((await page.request.put("/api/students/"+studentId,{
    data:{defaultRateCents:6200},
  })).status()).toBe(200);
@@ -28,6 +24,7 @@ test("PARITY:PARITY-billing-generation-concurrent-commit permits one invoice and
  expect((await call("ccp_workplaces_enroll",{
    workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
+ await createAssignedPayer(call,{studentId,workplaceId,effectiveFrom:"2040-01-01"});
  const lesson=await call("ccp_sessions_create",{
    workplaceId,studentId,title:"Concurrent invoice lesson",
    startsAt:"2043-03-19T15:00:00Z",durationMinutes:60,

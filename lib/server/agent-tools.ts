@@ -93,7 +93,7 @@ import { teacherDashboardSummary, teacherNotificationsList, teacherNotifications
 
 import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, teacherStudentChessHistory, teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, StudentProfileError } from "@/lib/server/student-profile-service";
 import { studentUpdateSchema,studentCreateSchema } from "@/lib/server/api-schemas";
-import { createStudentWithOptionalFamily } from "@/lib/server/families";
+import { createStudentWithOptionalContact } from "@/lib/server/teacher-student-create-service";
 const safeStudentProfile = (row: Record<string,unknown>) => ({
   id:row.id,name:row.name,name_aliases:row.name_aliases,level:row.level,
   strength:row.strength,lichess_username:row.lichess_username,chesscom_username:row.chesscom_username,
@@ -105,11 +105,48 @@ import {
  skillDimensionsList, skillDimensionsCreate, skillDimensionsUpdate, skillDimensionsDeleteImpact, skillDimensionsDelete,
  studentSkillAssessmentsList, studentSkillAssessmentsRecord, TeacherSkillsError,
 } from "@/lib/server/teacher-skills-service";
-import { guardianCreateSchema, guardianUpdateSchema } from "@/lib/server/api-schemas";
-import { guardiansList, guardianDetail, guardianCreate, guardianUpdate,
- guardianDeleteImpact, guardianDelete, guardianRotatePortalToken, safeGuardian,
- GuardianServiceError,
-} from "@/lib/server/teacher-guardian-service";
+import {
+ contactCreateSchema,contactUpdateSchema,studentContactLinkSchema,
+ studentContactUnlinkSchema,billingAccountCreateSchema,billingAccountUpdateSchema,
+} from "@/lib/server/contact-schemas";
+import {
+ contactsList,contactDetail,contactCreate,contactUpdate,safeContact,contactStudentLinksList,
+ studentContactsList,studentContactLink,studentContactUnlink,
+ billingAccountsList,billingAccountDetail,billingAccountCreate,billingAccountUpdate,
+ safeBillingAccount,ContactServiceError,
+} from "@/lib/server/teacher-contacts-service";
+import {portalGrantCreateSchema,portalGrantRevokeSchema} from "@/lib/server/portal-grant-schemas";
+import {teacherPortalGrantsList,teacherPortalGrantGet,
+ teacherPortalGrantCreate,teacherPortalGrantRevoke,PortalGrantError}
+ from "@/lib/server/portal-grants-service";
+import {portalEventInviteCreateSchema,portalEventInviteRevokeSchema,
+  teacherPortalEventInvitesList,teacherPortalEventInviteCreate,
+  teacherPortalEventInviteRevoke} from "@/lib/server/portal-event-invitations";
+import {
+ compensationAgreementCreateSchema,compensationAgreementUpdateSchema,
+ compensationPreviewSchema,compensationAgreementsList,compensationAgreementGet,
+ compensationAgreementCreate,compensationAgreementUpdate,
+ compensationAgreementPreview,CompensationAgreementError,
+} from "@/lib/server/compensation-agreements-service";
+import {
+ financialObligationApproveSchema,receivedPaymentRecordSchema,
+ paymentAllocationSchema,financialReversalSchema,
+ financeLedgerList,financialObligationApprove,receivedPaymentRecord,
+ paymentAllocate,financialReverse,FinanceLedgerError,
+} from "@/lib/server/finance-ledger-service";
+import {
+ federationStudentSummary,federationMembershipCreate,federationMembershipUpdate,
+ federationManualRatingRecord,federationDefaultGet,federationDefaultSet,
+ federationDefaultUpdateSchema,federationMembershipCreateSchema,
+ federationMembershipUpdateSchema,federationManualRatingSchema,FederationError,
+} from "@/lib/server/student-federations-service";
+import {
+ payerAssignmentCreateSchema,payerAssignmentEndSchema,payerAssignmentListSchema,
+ payerAssignmentsList,payerAssignmentCreate,payerAssignmentEnd,PayerAssignmentError,
+} from "@/lib/server/student-billing-assignments-service";
+import {workplaceContextUpdateSchema,teacherWorkplaceContextGet,
+  teacherWorkplaceContextSet,WorkplaceContextError}
+  from "@/lib/server/teacher-workplace-context";
 import {canonicalMakeupCreditsList} from "@/lib/server/canonical-makeup-service";
 import {sessionNotesList,sessionNoteSave,SessionNoteError,
  type SaveSessionNoteInput} from "@/lib/server/canonical-session-notes";
@@ -164,10 +201,10 @@ async function billingActionResponse(result:Response){
 }
 const uuid = z.string().uuid();
 const studioPolicyPatch=z.object({
- studioName:z.string().max(120).optional(),
- studioWebsite:z.string().max(300).optional(),
- studioContact:z.string().max(300).optional(),
- studioInfo:z.string().max(5000).optional(),
+ businessName:z.string().max(120).optional(),
+ businessWebsite:z.string().max(300).optional(),
+ businessContact:z.string().max(300).optional(),
+ businessInfo:z.string().max(5000).optional(),
  lessonLabel:z.string().max(60).optional(),
  lessonDurationOptions:z.array(z.number().int().min(5).max(240)).min(1).max(20).optional(),
  timezone:z.string().max(100).optional(),
@@ -198,7 +235,7 @@ const studioPolicyPatch=z.object({
  notifyInApp:z.boolean().optional(),
  notifyEmailPortalCancel:z.boolean().optional(),
  notifyEmailInvoicePaid:z.boolean().optional(),
- bccFamilyEmails:z.boolean().optional(),
+ bccContactEmails:z.boolean().optional(),
  bccEmail:z.string().max(320).nullable().optional(),
  // Model may select an existing provider or clear a stored key, but may never
  // submit/read raw BYO secrets; entering replacement credentials stays in
@@ -442,7 +479,7 @@ const catalogue = [
   },
   {
     name:"ccp_credits_package_create",
-    description:"Sell a confirmed set of prepaid lesson credits by creating a draft invoice linked to an owned student and family. No payment or email is sent by this tool.",
+    description:"Sell prepaid credits for one student in one explicitly selected workplace and a verified effective-dated Billing Account, creating one draft invoice. No payment or email is sent. No payment or email is sent by this tool.",
     schema:creditPackageCreateSchema.extend({confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
@@ -524,7 +561,7 @@ const catalogue = [
       confirmed:z.literal(true)}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_studio_policy_get",
+    name:"ccp_teacher_settings_get",
     description:"Read teacher-owned studio rules, rates and billing settings with secrets redacted. Payment QR image bytes require includePaymentQrCode=true and explicit confirmation; Stripe credentials are never returned.",
     schema:z.object({
       includePaymentQrCode:z.boolean().default(false),
@@ -532,13 +569,13 @@ const catalogue = [
     }).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_studio_credentials_handoff",
+    name:"ccp_teacher_credentials_handoff",
     description:"Start secure browser-only AI or Stripe credential entry without submitting any secret through the model. Returns the authenticated setup URL and current configured status; all raw keys must be entered directly into the website. Explicit teacher confirmation required.",
     schema:z.object({kind:z.enum(["ai","stripe"]),confirmed:z.literal(true)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_studio_policy_update",
+    name:"ccp_teacher_settings_update",
     description:"Edit studio rates, payment provider, approved payment QR and optional AI provider, or clear stored credentials with confirmation. New API keys and Stripe secrets remain browser-only secure inputs, never accepted through MCP.",
     schema:z.object({changes:studioPolicyPatch,confirmed:z.literal(true)}).strict()
       .refine(v=>Object.keys(v.changes).length>0,"Changes required"),
@@ -582,6 +619,22 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_events_portal_invitations_list",
+    description:"List manually approved contact/student/workplace event invitations and response statuses for an owned event. Never return guest secret URLs or private RSVP notes.",
+    schema:z.object({eventId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_events_portal_invitations_create",
+    description:"Invite one explicitly shared portal contact to a workplace-scoped future event. The student must be in the event roster, the grant must have event_rsvp permission, and teacher confirmation is required. Does NOT send an email.",
+    schema:portalEventInviteCreateSchema.extend({eventId:uuid}).strict(),scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_events_portal_invitations_revoke",
+    description:"Revoke one specific event invitation without changing the event or other grant recipients. Exact revision, idempotency and teacher confirmation required.",
+    schema:portalEventInviteRevokeSchema.extend({eventId:uuid,inviteId:uuid}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_reports_student_progress",
     description:"Read factual teacher-attested student progress: 1–10 strength, optional chess platform ratings, latest skill assessments with assessment counts, and full non-voided material evidence coverage. No inferred mastery or guardian/private notes.",
     schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
@@ -595,6 +648,112 @@ const catalogue = [
     name:"ccp_hosted_subscription_handoff",
     description:"Open the signed-in Account page to review hosting plan, start subscription Checkout or enter Stripe billing portal securely in the browser. MCP cannot collect card data or create a Stripe session without the required browser confirmation.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_teacher_federation_default_get",
+    description:"Read the teacher's suggested national chess federation code, if configured. This is only a preference: it does not imply any pupil is registered.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_teacher_federation_default_set",
+    description:"Explicitly confirm a change to the teacher's suggested national federation, CAS-guarded against another tab. Never create student membership or verified data from a default.",
+    schema:federationDefaultUpdateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_billing_assignments_list",
+    description:"List exact student/workplace historical payer assignment decisions. Never infer a payer from contact, guardian status, family, enrollment, or portal grant.",
+    schema:payerAssignmentListSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_student_billing_assignments_create",
+    description:"After explicit teacher approval, assign one owned active billing account to exactly one owned enrolled student and workplace for an inclusive effective-dated period. Overlaps are prohibited; does NOT create a debt, invoice, receipt, payment or portal grant.",
+    schema:payerAssignmentCreateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_billing_assignments_end",
+    description:"End one exact student payer period on a confirmed effective date with optimistic revision and idempotency. The old assignment remains for historic lessons, never silently retroactively rebills.",
+    schema:payerAssignmentEndSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_federations_get",
+    description:"Read optional FIDE ID, FIDE federation, national federation suggestion (not membership), registered national IDs and immutable FIDE/Israeli rating evidence for one owned learner. Teacher-entered records are unverified and never change 1–10 assessed strength.",
+    schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_student_federations_link",
+    description:"After explicit teacher confirmation, record one optional national federation player ID on the exact student as UNVERIFIED. A teacher default federation is only a form suggestion; no account match, membership or public search is inferred.",
+    schema:federationMembershipCreateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_federations_update",
+    description:"Revise the exact owned national federation player ID with revision check and idempotency. A changed ID loses prior verification until a compliant provider check is performed.",
+    schema:federationMembershipUpdateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_federation_ratings_record",
+    description:"Teacher-confirmed manual FIDE Standard/Rapid/Blitz or Israeli national rating observation with source URL/date. Stored immutably as UNVERIFIED teacher evidence; never claim official verification or change student strength/mastery.",
+    schema:federationManualRatingSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_compensation_agreements_list",
+    description:"Read owner-scoped effective-dated professional compensation terms. Coach expected earnings and participant charges are different policies; no payment, invoice or obligation is posted. Optional workplace filter and archived terms.",
+    schema:z.object({workplaceId:uuid.optional(),includeArchived:z.boolean().default(false)}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_compensation_agreements_get",
+    description:"Read one teacher-owned professional compensation agreement by exact ID, revision, currency, scope and validity dates. Does not disclose finance credentials.",
+    schema:z.object({agreementId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_compensation_agreements_create",
+    description:"After explicit teacher approval, create one agreement for instructor earnings or one customer billing scope. Name the exact owned workplace, model, minor-unit rate, explicitly owned billing-account counterparty for both coach earnings and charges, effective dates; ambiguous overlapping agreements are rejected. No cash or invoice is created.",
+    schema:compensationAgreementCreateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_compensation_agreements_update",
+    description:"Confirm an effective-dated rate or status amendment with exact revision and idempotency; updates cannot retroactively rewrite issued invoices or verified financial history.",
+    schema:compensationAgreementUpdateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_compensation_agreements_preview",
+    description:"Read-only deterministic expected coach compensation for verified completed canonical sessions, one group session counted once. Never claim cash received, compliance, invoice issuance or missing lessons as completed; fixed monthly agreements require full calendar months.",
+    schema:compensationPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_finance_ledger_list",
+    description:"Read up to 100 latest teacher-owned immutable financial obligations, confirmed manual receipts, explicit allocations and correction/refund entries. Net paid balances depend on reversals; this is not an issued invoice or official tax receipt.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_finance_obligation_approve",
+    description:"Explicitly approve one frozen teacher-owned session or complete-month obligation against an exact agreement revision, amount, specific payer and canonical attendance. Reject stale rate, unconfirmed pupil, duplicate coach time or invented cash. Replay safely with idempotency.",
+    schema:financialObligationApproveSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_finance_payment_record",
+    description:"After teacher confirms real received money, record a manual cash/bank/card/other receipt from an explicitly owned Billing Account; this NEVER initiates or verifies a card charge, creates an invoice, or marks any obligation paid without allocation.",
+    schema:receivedPaymentRecordSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_finance_allocation_record",
+    description:"Teacher-approved partial/full allocation of an existing actual received payment to one immutable obligation from the same payer/currency, with transactionally enforced remaining balances and idempotency. Never generate receipt money from lessons.",
+    schema:paymentAllocationSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_finance_reversal_record",
+    description:"Append an explicitly approved reversal of an allocation, a confirmed manual refund event, or an unsettled obligation correction with precise source ID, amount, reason and idempotency. Original postings remain immutable; no external refund is initiated.",
+    schema:financialReversalSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_workplace_context_get",
+    description:"Read the teacher's globally selected workplace filter (or All Workplaces) and exactly owned locations. This is presentation context only, not an access grant or historical data mutation.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_workplace_context_set",
+    description:"Confirm a global workplace filter change. Requires exact owned workplace UUID or null for All Workplaces and current expected selection; does not reassign students, lessons or financial history.",
+    schema:workplaceContextUpdateSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_teacher_profile_get",
@@ -695,12 +854,12 @@ const catalogue = [
     description:"Write one canonical session or participant note with optimistic revision, idempotency key, and audit. Family email needs explicit confirmedEmail and queues a durable approved intent; not immediate delivery.",
     schema:z.object({sessionId:uuid,studentId:uuid.nullable().optional(),
       body:z.string().max(10000),privateBody:z.string().max(10000),
-      sharedWithGuardian:z.boolean(),sendEmail:z.boolean().default(false),
+      sharedWithContacts:z.boolean(),sendEmail:z.boolean().default(false),
       confirmedEmail:z.literal(true).optional(),
       expectedUpdatedAt:z.string().datetime({offset:true}).nullable(),
       idempotencyKey:uuid,confirmed:z.literal(true),
     }).strict().refine(x=>!x.sendEmail||
-       (x.confirmedEmail===true&&!!x.studentId&&x.sharedWithGuardian&&!!x.body.trim()),
+       (x.confirmedEmail===true&&!!x.studentId&&x.sharedWithContacts&&!!x.body.trim()),
         "Email requires explicit confirmation, participant and shared note"),
     scope:"coach:write",readOnly:false,
   },
@@ -736,42 +895,92 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_guardians_list",
-    description:"List teacher-owned families with student names. Contact details and portal credentials are redacted; use an identified detail read and explicit confirmation for contact data.",
+    name:"ccp_contacts_list",
+    description:"Find teacher-owned contact identities. Contacts are not portal audiences or payers. Email/phone are redacted in lists; select one by ID for confirmed details.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_guardians_detail",
-    description:"Read one identified family. Contact details require includeContacts=true plus confirmed=true; never disclose the portal token.",
-    schema:z.object({guardianId:uuid,includeContacts:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
+    name:"ccp_contacts_detail",
+    description:"Read one teacher-owned contact. To include email, phone and preferred language, specify includeDetails=true AND confirmed=true. Does not grant portal access.",
+    schema:z.object({contactId:uuid,includeDetails:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_guardians_create",
-    description:"Create a family, optionally linking existing students or creating named children. Requires explicit teacher confirmation; never return family portal tokens or contact info to the model.",
-    schema:guardianCreateSchema.extend({confirmed:z.literal(true)}).strict(),
+    name:"ccp_contacts_links_list",
+    description:"Read all explicitly recorded student relationships for one owned contact, including ended historical links, legal-guardian and messaging flags. No portal grants, private notes or payer obligations.",
+    schema:z.object({contactId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_contacts_create",
+    description:"Create one independent person/organization contact, without assigning lessons, student links, portal privileges or payment responsibility. Explicit teacher confirmation and UUID idempotency key required.",
+    schema:contactCreateSchema.extend({confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_guardians_update",
-    description:"Update family contacts, recipient preferences, preferredLocale communication language (en/he/ru, null=English), and exact current roster; changing studentIds replaces membership. Require teacher confirmation.",
-    schema:guardianUpdateSchema.extend({guardianId:uuid,confirmed:z.literal(true)}).strict(),
+    name:"ccp_contacts_update",
+    description:"Update identified contact fields with exact revision, idempotency and explicit teacher confirmation. Archiving does not erase history or grant access.",
+    schema:contactUpdateSchema.safeExtend({contactId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_guardians_delete_impact",
-    description:"Preview student and invoice obligations that block family deletion.",
-    schema:z.object({guardianId:uuid}).strict(),scope:"coach:read",readOnly:true,
+    name:"ccp_student_contacts_list",
+    description:"Read contact links and independent role/communication flags for one owned student; never assume a contact can view private notes or invoices.",
+    schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
-    name:"ccp_guardians_delete",
-    description:"Permanently remove an empty family only with explicit approval; student or invoice dependencies block deletion.",
-    schema:z.object({guardianId:uuid,confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+    name:"ccp_student_contacts_link",
+    description:"Link an existing owned contact to exactly one owned student with explicit relationship, legal-guardian and messaging flags. Does not create debt or portal grants; require explicit confirmation.",
+    schema:studentContactLinkSchema.extend({studentId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
   },
   {
-    name:"ccp_guardians_rotate_portal_token",
-    description:"Invalidate an existing family-portal link and create a fresh one. Optional requestId safely replays a confirmed rotation across website/MCP retries. New secret is NEVER returned to the model; view the URL securely on the website.",
-    schema:z.object({guardianId:uuid,requestId:uuid.optional(),confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
+    name:"ccp_student_contacts_unlink",
+    description:"End one existing student-contact relationship without deleting the person or historic link; require correct revision, idempotency and teacher confirmation.",
+    schema:studentContactUnlinkSchema.extend({studentId:uuid,linkId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_billing_accounts_list",
+    description:"List teacher-owned payer identities. Contact relationships do NOT establish a payer and no invoice is created by listing.",
+    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_billing_accounts_detail",
+    description:"Read an identified payer account, with contactId only after explicit confirmed request. Reading never charges, invoices or shares anything.",
+    schema:z.object({billingAccountId:uuid,includeContact:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_billing_accounts_create",
+    description:"Create an independent person/organization billing identity, optionally referring to an existing owned contact. Does NOT generate an invoice; require confirmation and idempotency key.",
+    schema:billingAccountCreateSchema.extend({confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_billing_accounts_update",
+    description:"Update an identified billing-account name, type, associated contact or active status; require expected revision, idempotency and explicit confirmation. Does not retroactively reassign invoices.",
+    schema:billingAccountUpdateSchema.safeExtend({billingAccountId:uuid,confirmed:z.literal(true)}).strict(),
+    scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_portal_grants_list",
+    description:"List explicit scoped guest sharing metadata for the teacher. Each grant binds exactly one contact, student and workplace; never returns any link secret, token digest or unauthorized child data.",
+    schema:z.object({contactId:uuid.optional(),studentId:uuid.optional()}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_portal_grants_get",
+    description:"Read metadata and current revoke/expiry state of one teacher-owned portal grant; never disclose a secret link.",
+    schema:z.object({grantId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_portal_grants_create",
+    description:"With teacher confirmation create an explicit limited contact/student/workplace sharing grant, requiring exact permissions and expiration. This DOES NOT issue a secret URL. Use the authenticated website for link issuance; contact relationship alone is never a grant.",
+    schema:portalGrantCreateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_portal_grants_revoke",
+    description:"Explicitly revoke a scoped portal grant using expected revision and request ID. Invalidates any previously issued token; no secret or URL returned.",
+    schema:portalGrantRevokeSchema.extend({grantId:uuid}).strict(),scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_skill_dimensions_list",
@@ -1219,13 +1428,13 @@ const catalogue = [
   },
   {
     name:"ccp_students_create",
-    description:"Create a basic teacher-owned learner with name and optional level. For guardian/contact, birthdate, notes, or family-of-one creation use the full shared student create tool.",
+    description:"Create a basic teacher-owned learner with name and optional level. For an optional independent contact, birthdate, notes, or direct archiving use the full student create tool.",
     schema:z.object({name:shortName,level:z.string().trim().max(120).nullable().optional(),...mutation}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_students_create_full",
-    description:"Create an active or already archived teacher-owned learner with optional owned family, guardian contact, birthdate, level and private teacher notes in ONE atomic website/MCP transaction. archived=true never consumes active quota. Requires an idempotency key and approval; output redacts private notes and contact details.",
+    description:"Create an active or already archived teacher-owned learner with optional independent contact, birthdate, level and private notes in ONE atomic website/MCP transaction. A contact grants neither portal access nor billing authority. archived=true never consumes active quota. Requires an idempotency key and approval; output redacts private notes and contact details.",
     schema:studentCreateSchema.extend({
       idempotencyKey:uuid,confirmed:z.literal(true),
     }).strict(),
@@ -1595,8 +1804,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_learning_material_lifecycle_change":
         return {data:await teacherMaterialLifecycleChange(db,teacherId,args as Parameters<typeof teacherMaterialLifecycleChange>[2])};
       case "ccp_students_create_full": {
-        const a=args as Parameters<typeof createStudentWithOptionalFamily>[2];
-        const result=await createStudentWithOptionalFamily(db,teacherId,a);
+        const a=args as Parameters<typeof createStudentWithOptionalContact>[2];
+        const result=await createStudentWithOptionalContact(db,teacherId,a);
         if(!result.ok)return {error:{
           code:result.status===403?"HOSTED_LIMIT_REACHED":
             result.status===404?"NOT_FOUND":
@@ -1605,7 +1814,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           message:result.error,
         }};
         return {data:{...safeStudentProfile(result.student),
-          createdFamily:result.createdFamily}};
+          createdContactId:result.createdContactId}};
       }
       case "ccp_billing_generation_preview": {
         const a=args as {periodStart:string;periodEnd:string};
@@ -1792,7 +2001,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const report=await teacherPaymentsExport(db,teacherId,a);
         return {data:{...report,format:"csv"}};
       }
-      case "ccp_studio_policy_get": {
+      case "ccp_teacher_settings_get": {
         const a=args as {includePaymentQrCode:boolean;confirmed?:boolean};
         const p=await teacherPolicyView(db,teacherId);
         return {data:{...p,
@@ -1800,7 +2009,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
             ?p.payment_qr_code:null,
           paymentQrCodeConfigured:Boolean(p.payment_qr_code)}};
       }
-      case "ccp_studio_credentials_handoff": {
+      case "ccp_teacher_credentials_handoff": {
         const a=args as {kind:"ai"|"stripe"};
         const policy=await teacherPolicyView(db,teacherId);
         const isAi=a.kind==="ai";
@@ -1817,7 +2026,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           instruction:"Open the setup URL in your authenticated browser and enter the credentials there. Never paste API keys into AI chat.",
         }};
       }
-      case "ccp_studio_policy_update": {
+      case "ccp_teacher_settings_update": {
         const a=args as {changes:Record<string,unknown>};
         const user=(await db.auth.getUser()).data.user;
         const response=await teacherPolicyUpdate(db,teacherId,user?.email,a.changes);
@@ -1855,6 +2064,19 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {eventId:string};
         return {data:await teacherEventDelete(db,teacherId,a.eventId)};
       }
+      case "ccp_events_portal_invitations_list": {
+        const a=args as {eventId:string};
+        return {data:await teacherPortalEventInvitesList(db,teacherId,a.eventId)};
+      }
+      case "ccp_events_portal_invitations_create": {
+        const {eventId,...input}=args as {eventId:string}&Parameters<typeof teacherPortalEventInviteCreate>[3];
+        return {data:await teacherPortalEventInviteCreate(db,teacherId,eventId,input)};
+      }
+      case "ccp_events_portal_invitations_revoke": {
+        const {eventId,inviteId,...input}=args as {eventId:string;inviteId:string}&
+          Parameters<typeof teacherPortalEventInviteRevoke>[4];
+        return {data:await teacherPortalEventInviteRevoke(db,teacherId,eventId,inviteId,input)};
+      }
       case "ccp_reports_student_progress":
         return {data:await teacherStudentProgressReport(
           db,teacherId,(args as {studentId:string}).studentId)};
@@ -1872,6 +2094,84 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           action:"hosted-billing",
           explanation:"On hosted deployments, review the plan and choose Upgrade or Manage billing in your signed-in browser. Payment-card entry and Stripe sessions remain in secure website/provider flows.",
         }};
+      case "ccp_teacher_federation_default_get":
+        return {data:await federationDefaultGet(db,teacherId)};
+      case "ccp_teacher_federation_default_set": {
+        const a=args as Parameters<typeof federationDefaultSet>[2];
+        return {data:await federationDefaultSet(db,teacherId,a)};
+      }
+      case "ccp_student_billing_assignments_list": {
+        const a=args as Parameters<typeof payerAssignmentsList>[2];
+        return {data:await payerAssignmentsList(db,teacherId,a)};
+      }
+      case "ccp_student_billing_assignments_create": {
+        const a=args as Parameters<typeof payerAssignmentCreate>[2];
+        return {data:await payerAssignmentCreate(db,teacherId,a)};
+      }
+      case "ccp_student_billing_assignments_end": {
+        const a=args as Parameters<typeof payerAssignmentEnd>[2];
+        return {data:await payerAssignmentEnd(db,teacherId,a)};
+      }
+      case "ccp_student_federations_get": {
+        const a=args as {studentId:string};
+        return {data:await federationStudentSummary(db,teacherId,a.studentId)};
+      }
+      case "ccp_student_federations_link": {
+        const a=args as Parameters<typeof federationMembershipCreate>[2];
+        return {data:await federationMembershipCreate(db,teacherId,a)};
+      }
+      case "ccp_student_federations_update": {
+        const a=args as Parameters<typeof federationMembershipUpdate>[2];
+        return {data:await federationMembershipUpdate(db,teacherId,a)};
+      }
+      case "ccp_student_federation_ratings_record": {
+        const a=args as Parameters<typeof federationManualRatingRecord>[2];
+        return {data:await federationManualRatingRecord(db,teacherId,a)};
+      }
+      case "ccp_compensation_agreements_list": {
+        const a=args as {workplaceId?:string;includeArchived?:boolean};
+        return {data:await compensationAgreementsList(db,teacherId,a)};
+      }
+      case "ccp_compensation_agreements_get": {
+        const a=args as {agreementId:string};
+        return {data:await compensationAgreementGet(db,teacherId,a.agreementId)};
+      }
+      case "ccp_compensation_agreements_create": {
+        const a=args as Parameters<typeof compensationAgreementCreate>[2];
+        return {data:await compensationAgreementCreate(db,teacherId,a)};
+      }
+      case "ccp_compensation_agreements_update": {
+        const a=args as Parameters<typeof compensationAgreementUpdate>[2];
+        return {data:await compensationAgreementUpdate(db,teacherId,a)};
+      }
+      case "ccp_compensation_agreements_preview": {
+        const a=args as Parameters<typeof compensationAgreementPreview>[2];
+        return {data:await compensationAgreementPreview(db,teacherId,a)};
+      }
+      case "ccp_finance_ledger_list":
+        return {data:await financeLedgerList(db,teacherId)};
+      case "ccp_finance_obligation_approve": {
+        const a=args as Parameters<typeof financialObligationApprove>[2];
+        return {data:await financialObligationApprove(db,teacherId,a)};
+      }
+      case "ccp_finance_payment_record": {
+        const a=args as Parameters<typeof receivedPaymentRecord>[2];
+        return {data:await receivedPaymentRecord(db,teacherId,a)};
+      }
+      case "ccp_finance_allocation_record": {
+        const a=args as Parameters<typeof paymentAllocate>[2];
+        return {data:await paymentAllocate(db,teacherId,a)};
+      }
+      case "ccp_finance_reversal_record": {
+        const a=args as Parameters<typeof financialReverse>[2];
+        return {data:await financialReverse(db,teacherId,a)};
+      }
+      case "ccp_workplace_context_get":
+        return {data:await teacherWorkplaceContextGet(db,teacherId)};
+      case "ccp_workplace_context_set": {
+        const a=args as Parameters<typeof teacherWorkplaceContextSet>[2];
+        return {data:await teacherWorkplaceContextSet(db,teacherId,a)};
+      }
       case "ccp_teacher_profile_get":
         return {data:await teacherProfileGet(db,teacherId)};
       case "ccp_teacher_profile_update": {
@@ -1952,38 +2252,71 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           idempotencyKey:a.idempotencyKey,
         })};
       }
-      case "ccp_guardians_list": {
-        const rows=await guardiansList(db,teacherId);
-        return {data:rows.map(row=>safeGuardian(row))};
+      case "ccp_contacts_list":
+        return {data:await contactsList(db,teacherId)};
+      case "ccp_contacts_detail": {
+        const a=args as {contactId:string;includeDetails:boolean;confirmed?:boolean};
+        return {data:safeContact(await contactDetail(db,teacherId,a.contactId),
+          a.includeDetails&&a.confirmed===true)};
       }
-      case "ccp_guardians_detail": {
-        const a=args as {guardianId:string;includeContacts:boolean;confirmed?:boolean};
-        const row=await guardianDetail(db,teacherId,a.guardianId);
-        return {data:safeGuardian(row,a.includeContacts&&a.confirmed===true)};
+      case "ccp_contacts_links_list": {
+        const a=args as {contactId:string};
+        return {data:await contactStudentLinksList(db,teacherId,a.contactId)};
       }
-      case "ccp_guardians_create": {
-        const a=args as Parameters<typeof guardianCreate>[2];
-        const row=await guardianCreate(db,teacherId,a);
-        return {data:safeGuardian(row)};
+      case "ccp_contacts_create": {
+        const a=args as Parameters<typeof contactCreate>[2];
+        const created=await contactCreate(db,teacherId,a);
+        return {data:{...created,email:undefined,phone:undefined,preferredLocale:undefined}};
       }
-      case "ccp_guardians_update": {
-        const a=args as Parameters<typeof guardianUpdate>[3] & {guardianId:string};
-        const row=await guardianUpdate(db,teacherId,a.guardianId,a);
-        return {data:safeGuardian(row)};
+      case "ccp_contacts_update": {
+        const a=args as Parameters<typeof contactUpdate>[3] & {contactId:string};
+        const updated=await contactUpdate(db,teacherId,a.contactId,a);
+        return {data:{...updated,email:undefined,phone:undefined,preferredLocale:undefined}};
       }
-      case "ccp_guardians_delete_impact": {
-        const a=args as {guardianId:string};
-        return {data:await guardianDeleteImpact(db,teacherId,a.guardianId)};
+      case "ccp_student_contacts_list": {
+        const a=args as {studentId:string};
+        return {data:await studentContactsList(db,teacherId,a.studentId)};
       }
-      case "ccp_guardians_delete": {
-        const a=args as {guardianId:string};
-        return {data:await guardianDelete(db,teacherId,a.guardianId)};
+      case "ccp_student_contacts_link": {
+        const a=args as Parameters<typeof studentContactLink>[3] & {studentId:string};
+        return {data:await studentContactLink(db,teacherId,a.studentId,a)};
       }
-      case "ccp_guardians_rotate_portal_token": {
-        const a=args as {guardianId:string;requestId?:string};
-        const rotated=await guardianRotatePortalToken(db,teacherId,a.guardianId,a.requestId);
-        return {data:{ok:true,id:rotated.id,replayed:rotated.replayed,
-          secretNotReturned:true}};
+      case "ccp_student_contacts_unlink": {
+        const a=args as Parameters<typeof studentContactUnlink>[4] & {studentId:string;linkId:string};
+        return {data:await studentContactUnlink(db,teacherId,a.studentId,a.linkId,a)};
+      }
+      case "ccp_billing_accounts_list":
+        return {data:await billingAccountsList(db,teacherId)};
+      case "ccp_billing_accounts_detail": {
+        const a=args as {billingAccountId:string;includeContact:boolean;confirmed?:boolean};
+        return {data:safeBillingAccount(await billingAccountDetail(db,teacherId,a.billingAccountId),
+          a.includeContact&&a.confirmed===true)};
+      }
+      case "ccp_billing_accounts_create": {
+        const a=args as Parameters<typeof billingAccountCreate>[2];
+        const created=await billingAccountCreate(db,teacherId,a);
+        return {data:{...created,contactId:undefined}};
+      }
+      case "ccp_billing_accounts_update": {
+        const a=args as Parameters<typeof billingAccountUpdate>[3] & {billingAccountId:string};
+        const updated=await billingAccountUpdate(db,teacherId,a.billingAccountId,a);
+        return {data:{...updated,contactId:undefined}};
+      }
+      case "ccp_portal_grants_list": {
+        const a=args as {contactId?:string;studentId?:string};
+        return {data:await teacherPortalGrantsList(db,teacherId,a.contactId,a.studentId)};
+      }
+      case "ccp_portal_grants_get": {
+        const a=args as {grantId:string};
+        return {data:await teacherPortalGrantGet(db,teacherId,a.grantId)};
+      }
+      case "ccp_portal_grants_create": {
+        const a=args as Parameters<typeof teacherPortalGrantCreate>[2];
+        return {data:await teacherPortalGrantCreate(db,teacherId,a)};
+      }
+      case "ccp_portal_grants_revoke": {
+        const {grantId,...input}=args as {grantId:string}&Parameters<typeof teacherPortalGrantRevoke>[3];
+        return {data:await teacherPortalGrantRevoke(db,teacherId,grantId,input)};
       }
       case "ccp_skill_dimensions_list":
         return {data:await skillDimensionsList(db,teacherId)};
@@ -2445,7 +2778,19 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalSlotError)
       return {error:{code:error.code,message:error.message}};
-    if (error instanceof GuardianServiceError)
+    if (error instanceof PayerAssignmentError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof FederationError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof CompensationAgreementError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof FinanceLedgerError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof WorkplaceContextError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof PortalGrantError)
+      return {error:{code:error.code,message:error.message}};
+    if (error instanceof ContactServiceError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof LichessPuzzleError)
       return {error:{code:error.code,message:error.message}};

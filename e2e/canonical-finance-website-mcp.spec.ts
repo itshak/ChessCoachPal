@@ -3,6 +3,7 @@ import {createClient} from "@supabase/supabase-js";
 import {expect,test} from "@playwright/test";
 import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {createAssignedPayer} from "./helpers/canonical-payer";
 
 test("PARITY: group charge generation uses one canonical occurrence, two frozen students and browser/MCP replay",async({page,request})=>{
  const call=await delegatedTool(page,request);
@@ -20,15 +21,11 @@ test("PARITY: group charge generation uses one canonical occurrence, two frozen 
   expect(student.error).toBeUndefined();
   const studentId=student.data.entityId as string;
   studentIds.push(studentId);
-  const guardian=await call("ccp_guardians_create",{
-   name:"Canonical finance guardian "+randomUUID(),studentIds:[studentId],
-   confirmed:true,
-  });
-  expect(guardian.error).toBeUndefined();
   const enrol=await call("ccp_workplaces_enroll",{
    workplaceId,studentId,idempotencyKey:randomUUID(),
   });
   expect(enrol.error).toBeUndefined();
+  await createAssignedPayer(call,{workplaceId,studentId,effectiveFrom:"2090-01-01"});
   const rate=await page.request.put("/api/students/"+studentId,{
    data:{defaultRateCents:3000},
   });
@@ -74,7 +71,7 @@ test("PARITY: group charge generation uses one canonical occurrence, two frozen 
  const modelPreview=await call("ccp_billing_generation_preview",period);
  expect(modelPreview.error).toBeUndefined();
  expect(modelPreview.data).toEqual(preview);
- expect(preview.totalFamilies).toBe(2);
+ expect(preview.totalBillingAccounts).toBe(2);
  expect(preview.totalCents).toBe(6000);
  expect(preview.drafts).toHaveLength(2);
  expect(preview.drafts.flatMap((x:{items:unknown[]})=>x.items)).toHaveLength(2);

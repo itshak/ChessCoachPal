@@ -1,5 +1,8 @@
 # Design: separate coaching earnings, receivables, invoices and money received
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 ## Current implementation boundaries
 lib/billing.ts derives canonical participant charges via slot -> student -> global studio rate. lib/server/canonical-billing-source.ts obtains session, frozen roster, attendance, student.guardian_id and studio policy; lib/server/teacher-billing-operations.ts groups drafts by guardian. Existing teaching_sessions/workplace_id and immutable attendance are canonical. Do not duplicate the lesson source or use current group enrollment for historic billing.
 

@@ -1,3 +1,4 @@
+import {insertTestBillingAccount} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -16,13 +17,10 @@ test("PARITY:PARITY-billing-export-escaped-ledger compares CSV and prevents form
  const signed=await auth.auth.signInWithPassword(SEED_TEACHER);
  expect(signed.error).toBeNull();
  const teacherId=signed.data.user!.id,marker=randomUUID();
- const guardian=await admin.from("guardians").insert({
-   teacher_id:teacherId,name:"משפחת שחמט "+marker.slice(0,6),
-   portal_token:randomUUID(),
- }).select("id").single();
+ const guardian=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"משפחת שחמט "+marker.slice(0,6)});
  expect(guardian.error).toBeNull();
  const invoice=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:guardian.data!.id,status:"sent",
+   teacher_id:teacherId,billing_account_id:guardian.data!.id,status:"sent",
    period_start:"2042-05-01",period_end:"2042-05-31",currency:"ILS",
    subtotal_cents:8500,
  }).select("id").single();

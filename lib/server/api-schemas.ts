@@ -40,14 +40,13 @@ export const studentCreateSchema = z.object({
   birthdate: optionalDate,
   level: optionalText(120),
   teacherNotes: optionalText(50_000),
-  guardianId: optionalUuid,
   contactEmail: optionalText(254),
   contactPhone: optionalText(50),
   contactName: optionalText(200),
   adultSelf: z.boolean().optional(),
   archived: z.boolean().optional(),
   idempotencyKey: z.uuid().optional(),
-});
+}).strict();
 
 const aliases = z.array(z.string().trim().min(1).max(120)).max(20);
 const chessHandle = z.union([z.string().trim().max(30).regex(/^[A-Za-z0-9_-]*$/), z.null()]);
@@ -67,6 +66,9 @@ export const studentUpdateSchema = z.object({
   chesscomUsername: chessHandle.optional(),
   lichessRating: chessRating.optional(),
   chesscomRating: chessRating.optional(),
+  fideId:z.union([z.string().regex(/^[0-9]{5,12}$/),z.null()]).optional(),
+  fideFederationCode:z.union([z.string().regex(/^[A-Z]{3}$/),z.null()]).optional(),
+  nationalFederationPreference:z.union([z.string().regex(/^[A-Z]{3}$/),z.literal("NONE"),z.null()]).optional(),
   chessGoals: optionalText(5000),
   chessRatings: z.object({
     lichess:z.object({
@@ -81,8 +83,6 @@ export const studentUpdateSchema = z.object({
   teacherNotes: optionalText(50_000),
 
   name: trimmedName.optional(),
-  parentContact: optionalText(500),
-  guardianId: optionalUuid,
   level: optionalText(120),
   birthdate: optionalDate,
   practiceStartDate: optionalDate,
@@ -94,46 +94,12 @@ export const studentUpdateSchema = z.object({
   archived: z.boolean().optional(),
 });
 
-// ── Families / guardians ────────────────────────────────────────────────────
-
-const emailRecipients = z
-  .enum(["primary", "secondary", "both"])
-  .optional()
-  .catch(undefined);
-
-const newStudentsList = z
-  .array(
-    z.object({
-      name: z.string().max(200),
-      birthdate: optionalDate,
-    })
-  )
-  .max(50)
-  .optional();
-
-export const guardianCreateSchema = z.object({
-  name: trimmedName,
-  familyName: optionalText(200),
-  email: optionalText(254),
-  phone: optionalText(50),
-  secondaryName: optionalText(200),
-  secondaryEmail: optionalText(254),
-  secondaryPhone: optionalText(50),
-  emailRecipients,
-  preferredLocale: z.enum(["en", "he", "ru"]).nullable().optional(),
-  studentIds: z.array(z.uuid()).max(200).optional(),
-  newStudents: newStudentsList,
-  // Optional durable retry receipt shared by website and delegated MCP.
-  idempotencyKey: z.uuid().optional(),
-});
-
-export const guardianUpdateSchema = guardianCreateSchema.partial();
-
 // ── Prepaid credits ─────────────────────────────────────────────────────────
 // Value rules (ranges, expiry after start) live in lib/credits.ts.
 
 export const creditPackageCreateSchema = z.object({
   studentId: z.guid(),
+  workplaceId: z.guid(),
   credits: z.number().int(),
   durationMinutes: z.number().int(),
   priceCents: z.number().int(),

@@ -1,5 +1,8 @@
 # ChessCoachPal — current architecture
 
+> **Current product policy (ADR-0018, 2026-11-19):** ChessCoachPal is exclusively an operator-run SaaS. Customers/teachers cannot deploy, install, operate or self-host ChessCoachPal. In older text, "self-hosted" refers solely to ChessCoachPal operating its own infrastructure (including Supabase/PostgreSQL), not to a customer deployment. Historical/archived plans are evidence of past decisions, not current product support. See [ADR-0018](adr/0018-operator-only-saas-and-tenant-scaling.md).
+
+
 **Hosting decision (accepted 2026-11-15, not yet deployed):** Retain the existing trimmed Supabase stack (GoTrue, PostgreSQL/RLS, PostgREST and Storage), with a controlled future Coolify hosting cutover for the Next.js website and `/mcp`. Vercel/managed Supabase remain in use while security, recovery and capacity gates are verified. See [hosting architecture](HOSTING_ARCHITECTURE.md) and [ADR-0008](adr/0008-self-hosted-supabase-on-coolify.md). Do not introduce a second PostgreSQL or SuperTokens without a new evidence-backed decision.
 
 **As of 2026-11-15:** ChessCoachPal is a pre-v1.0.0 **MCP-first, self-hostable chess coaching workspace**. The released v0.1.x line is not a stable v1 data/API contract. The website is optional for business management; provider credentials, passwords, MFA and some high-risk approvals remain in secure browser-only workflows.
@@ -37,22 +40,8 @@ The existing `students.guardian_id`, `guardians`, `studio_policies`, `invoices.g
 
 The [2026-11-18 implementation roadmap](../openspec/changes/README.md) provides eight independently testable OpenSpec changes and shared gates.
 
-**Schema rollout:** [ADR-0015](adr/0015-baseline-first-and-one-time-live-transitions.md) requires every implementation to modify the authoritative canonical fresh-install baseline and, when real private-beta data exists, provide a reviewed one-time live transition with backup/restore and reconciliation. Neither the accepted domain design nor OpenSpec proposals authorize a live migration, reset, deployment or breaking production rollout. The current database and API remain in their inherited form until implementation acceptance.
+**Schema rollout:** [ADR-0017](adr/0017-pre-v1-single-final-cutover-no-compatibility.md) now governs: all accepted pre-v1 implementations share **one final canonical fresh-install baseline**, and the current private beta is cut over **once** by an operator choosing direct mapping or clean target + verified export/reimport. Do not ship old Family/Studio/guardian models, compat endpoints or historic transition chains. No code merge or synthetic test authorizes live DB writes.
 
+## Authoritative fresh schema and single final cutover (ADR-0017)
 
-## Authoritative fresh schema and populated-beta transitions (ADR-0015)
-
-The single current-install SQL source is
-`supabase/migrations/20261107000000_chesscoachpal_baseline.sql`.
-`scripts/schema-transition-manifest.json` pins approved forward-only live
-transitions and their reviewed SHA-256 digests. A new installation must converge
-from the baseline alone; a prior populated installation requires explicit
-reviewed one-time migrations and preservation checks, not a reset, legacy dual
-writer or automatic version-compatibility layer. The existing CI
-`m5-restore.yml` tests a frozen historical synthetic source, complete
-schema/role/RLS convergence, replay protection and independent restore.
-[ADR-0015](adr/0015-baseline-first-and-one-time-live-transitions.md) and the
-[operator runbook](SCHEMA_TRANSITION_RUNBOOK.md) require verified off-host
-backup/restore, real deployed ledger inventory and explicit private approval
-**before** any application to a data-bearing instance. A source merge never
-proves that Coolify has run its migration.
+The source of truth is `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`. `scripts/schema-transition-manifest.json` v2 pins its SHA-256 and required current tables/functions; `npm run schema:canonical:guard` rejects any extra pre-v1 SQL chain. `npm run pre1:final-cutover:audit` is the stricter **final acceptance** gate that rejects remaining inherited guardian/Studio runtime and physical models. The M5 restore workflow tests deterministic isolated Supabase bootstrap, scoped grants and a second-database backup/restore with Storage bytes; it does **not** implement or approve a migration of the real beta. Follow [the operator runbook](SCHEMA_TRANSITION_RUNBOOK.md) for the one eventual cutover choice and private approvals.

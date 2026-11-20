@@ -1,5 +1,7 @@
 # ADR-0007: MCP client discoverability and Supabase canonical-contract release gates
 
+> **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](0018-operator-only-saas-and-tenant-scaling.md).
+
 - **Status:** Accepted as pre-v1 development contract (proposed in [PR #81](https://github.com/itshak/ChessCoachPal/pull/81); code acceptance requires green PR and merged-main checks)
 - **Date:** 2026-11-15
 - **Scope:** New/changed MCP tools, browser APIs and shared services, Supabase RLS/RPC/schema/storage, CI and releases

@@ -1,5 +1,8 @@
 # Design: scoped capability grants, not guardian-as-identity
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 ## Current source inventory
 app/portal/[token]/page.tsx uses createServiceClient() and guardians.portal_token to list every linked student; derives canonicalCalendarWindow across workplaces. app/api/portal/[token]/calendar/route.ts, .../sessions/[id]/students/[studentId]/cancel, .../events/[id]/rsvp and lib/server/canonical-portal-service.ts authorize token/guardian, not a per-contact/student/workplace permission grant. components/teacher/FamilyDetailActions.tsx copies/rotates portal token. External access must be redesigned before deleting the old guardian model.
 

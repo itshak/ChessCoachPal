@@ -55,7 +55,7 @@ function rosterName(row: Roster) {
   return student?.name ?? row.student_id;
 }
 
-export function ChessCoachWorkspace() {
+export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:string|null}) {
   const t=useTranslations("coaching");
   const lang=useLocale();
   const toUserError=useLocalizedApiError();
@@ -86,7 +86,7 @@ export function ChessCoachWorkspace() {
   const [groupMembers, setGroupMembers] = useState<Roster[]>([]);
   const [groupMembersId, setGroupMembersId] = useState("");
   const groupLoadRef = useRef(0);
-  const [workplaceId, setWorkplaceId] = useState("");
+  const [workplaceId, setWorkplaceId] = useState(initialWorkplaceId??"");
   const [groupId, setGroupId] = useState("");
   const [studentId, setStudentId] = useState("");
   const [mode, setMode] = useState<"group" | "private" | "ad_hoc">("group");
@@ -117,15 +117,31 @@ export function ChessCoachWorkspace() {
   const [notice, setNotice] = useState("");
 
   const refresh = useCallback(async () => {
-    const [w, g, s, l] = await Promise.all([
-      operation<Workplace[]>("workplaces.list"),
+    // Workplace context must remain usable even if an unrelated roster,
+    // student search, or session request fails. Load the selector independently.
+    const w = await operation<Workplace[]>("workplaces.list");
+    setWorkplaces(w);
+    setWorkplaceId(old=>{
+      if(initialWorkplaceId&&w.some(item=>item.id===initialWorkplaceId))
+        return initialWorkplaceId;
+      return old&&w.some(item=>item.id===old)?old:w[0]?.id??"";
+    });
+    const [g, s, l] = await Promise.allSettled([
       operation<Group[]>("groups.list"),
       operation<Student[]>("students.search", { query: activeStudentSearch }),
       operation<Session[]>("sessions.list"),
     ]);
-    setWorkplaces(w); setGroups(g); setStudents(s); setSessions(l);
-    setWorkplaceId(old => old && w.some(item => item.id === old) ? old : w[0]?.id ?? "");
-  }, [activeStudentSearch]);
+    if(g.status==="fulfilled")setGroups(g.value);
+    if(s.status==="fulfilled")setStudents(s.value);
+    if(l.status==="fulfilled")setSessions(l.value);
+    const failed=[g,s,l].find(result=>result.status==="rejected");
+    if(failed?.status==="rejected")throw failed.reason;
+  }, [activeStudentSearch,initialWorkplaceId]);
+
+  useEffect(()=>{
+    if(initialWorkplaceId&&workplaces.some(w=>w.id===initialWorkplaceId))
+      setWorkplaceId(initialWorkplaceId);
+  },[initialWorkplaceId,workplaces]);
 
   useEffect(() => {
     void refresh().catch(e => setError(toUserError(e,t("operationFailed"))));
@@ -434,7 +450,7 @@ export function ChessCoachWorkspace() {
       {error && <div role="alert" className="rounded-lg border border-red-500 p-3 text-sm">{error}</div>}
       {notice && <div role="status" className="rounded-lg border border-border p-3 text-sm">{notice}</div>}
       <label className="block text-sm max-w-lg">{t("activeWorkplace")}
-        <select className={field} value={workplaceId} onChange={e => {
+        <select data-testid="coaching-workplace-select" className={field} value={workplaceId} onChange={e => {
           setWorkplaceId(e.target.value); setGroupId(""); setSelectedSessionId("");
         }}>
           {workplaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}

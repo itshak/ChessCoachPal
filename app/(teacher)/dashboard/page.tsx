@@ -2,6 +2,8 @@ import Link from "next/link";
 import {getLocale,getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
+import {teacherWorkplaceContextGet} from "@/lib/server/teacher-workplace-context";
+import {workplaceCurrentStudentIds} from "@/lib/server/workplace-student-scope";
 
 export async function generateMetadata() {const t=await getTranslations("dashboard");return {title:t("title")};}
 
@@ -12,6 +14,8 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
+  const context=await teacherWorkplaceContextGet(supabase,user.id);
+  const selectedWorkplaceId=context.selectedWorkplaceId;
   const [
     { data: students },
     { data: workplaces },
@@ -23,19 +27,27 @@ export default async function DashboardPage() {
     supabase.from("students").select("id, name, level, archived_at")
       .eq("teacher_id", user.id).order("name"),
     supabase.from("workplaces").select("id, name").eq("teacher_id", user.id),
-    supabase.from("class_groups").select("id, name").eq("teacher_id", user.id),
+    supabase.from("class_groups").select("id, name").eq("teacher_id", user.id)
+      .match(selectedWorkplaceId?{workplace_id:selectedWorkplaceId}:{}),
     supabase.from("teaching_sessions")
       .select("id, title, starts_at, duration_minutes")
-      .eq("teacher_id", user.id).gte("starts_at", new Date().toISOString())
+      .eq("teacher_id", user.id)
+      .match(selectedWorkplaceId?{workplace_id:selectedWorkplaceId}:{})
+      .gte("starts_at", new Date().toISOString())
       .order("starts_at").limit(6),
     supabase.from("teaching_sessions")
       .select("id, title, starts_at, duration_minutes")
-      .eq("teacher_id", user.id).lt("starts_at", new Date().toISOString())
+      .eq("teacher_id", user.id)
+      .match(selectedWorkplaceId?{workplace_id:selectedWorkplaceId}:{})
+      .lt("starts_at", new Date().toISOString())
       .order("starts_at", { ascending: false }).limit(5),
     supabase.from("teachers").select("display_name").eq("id", user.id).maybeSingle(),
   ]);
 
-  const activeStudents = (students ?? []).filter(s => !s.archived_at);
+  const currentStudentIds=selectedWorkplaceId?
+    await workplaceCurrentStudentIds(supabase,user.id,selectedWorkplaceId):null;
+  const activeStudents = (students ?? []).filter(s => !s.archived_at &&
+    (!currentStudentIds||currentStudentIds.has(s.id)));
   const dateLabel = (iso: string) => new Intl.DateTimeFormat(locale, {
     dateStyle: "medium", timeStyle: "short",
   }).format(new Date(iso));
@@ -64,7 +76,7 @@ export default async function DashboardPage() {
         </Card>
         <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
           <div className="text-sm text-muted">{t("workplaces")}</div>
-          <div className="text-3xl font-bold mt-1">{workplaces?.length ?? 0}</div>
+          <div className="text-3xl font-bold mt-1">{selectedWorkplaceId?1:(workplaces?.length ?? 0)}</div>
           <Link href="/coaching" className="text-sm text-primary hover:underline">{t("manageWorkplaces")}</Link>
         </Card>
         <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">

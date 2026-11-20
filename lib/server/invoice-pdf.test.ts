@@ -4,7 +4,7 @@ import { buildInvoicePdf } from "@/lib/server/invoice-pdf";
 describe("buildInvoicePdf", () => {
   it("builds a PDF when a line item includes emoji in the student name", async () => {
     const bytes = await buildInvoicePdf({
-      studioName: "Chess Teacher Example",
+      businessName: "Chess Teacher Example",
       familyName: "Morales family",
       periodStart: "2026-08-01",
       periodEnd: "2026-08-10",
@@ -32,7 +32,7 @@ describe("buildInvoicePdf", () => {
     const { PDFDocument } = await import("pdf-lib");
     const build = (itemCount: number) =>
       buildInvoicePdf({
-        studioName: "Studio",
+        businessName: "Studio",
         familyName: "Lim family",
         periodStart: "2026-09-01",
         periodEnd: "2026-09-30",
@@ -57,7 +57,7 @@ describe("buildInvoicePdf", () => {
   it("paginates all long invoice line items and notes rather than clipping",async()=>{
     const {PDFDocument}=await import("pdf-lib");
     const render=(count:number)=>buildInvoicePdf({
-      studioName:"Synthetic chess studio",
+      businessName:"Synthetic chess studio",
       familyName:"Knight family",
       periodStart:"2047-01-01",periodEnd:"2047-01-31",
       currency:"USD",items:Array.from({length:count},(_,i)=>({
@@ -75,7 +75,7 @@ describe("buildInvoicePdf", () => {
 
   it("ignores an invalid payment QR value", async () => {
     const bytes = await buildInvoicePdf({
-      studioName: "Studio",
+      businessName: "Studio",
       familyName: "Lim family",
       periodStart: "2026-09-01",
       periodEnd: "2026-09-30",
@@ -90,7 +90,7 @@ describe("buildInvoicePdf", () => {
   it("renders a valid PDF with paid and outstanding balance lines",async()=>{
     const {PDFDocument}=await import("pdf-lib");
     const invoice={
-      studioName:"Chess Academy",familyName:"Knight Family",
+      businessName:"Chess Academy",familyName:"Knight Family",
       periodStart:"2048-03-01",periodEnd:"2048-03-31",currency:"USD",
       items:[{description:"Chess instruction",quantity:1,unitCents:9000,amountCents:9000}],
       subtotalCents:9000,paymentInstructions:"",
@@ -107,7 +107,7 @@ describe("multilingual Unicode invoice delivery artifact",()=>{
   it.each(["en","he","ru"] as const)("embeds a valid %s PDF with mixed Hebrew/Cyrillic/Latin family names and financial values",async(locale)=>{
     const {PDFDocument}=await import("pdf-lib");
     const bytes=await buildInvoicePdf({
-      locale,studioName:"ChessCoachPal Шахматы שחמט",
+      locale,businessName:"ChessCoachPal Шахматы שחמט",
       familyName:"יוסף Петров Knight",
       periodStart:"2026-11-01",periodEnd:"2026-11-30",currency:"ILS",
       items:[{description:"שיעור chess Иван — lesson",quantity:1,unitCents:12345,amountCents:12345}],

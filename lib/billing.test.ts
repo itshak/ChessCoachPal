@@ -6,7 +6,7 @@ import {
   isBillable,
   deriveInvoiceItems,
   lessonAmountCents,
-  groupItemsByGuardian,
+  groupItemsByBillingAccount,
   sumAmountCents,
   formatMoney,
   dollarsToCents,
@@ -18,13 +18,14 @@ import {
   resolveManualPaymentAmount,
   type BillableLessonInput,
 } from "@/lib/billing";
-import { DEFAULT_POLICY, type StudioPolicy } from "@/lib/schedule";
+import { DEFAULT_POLICY, type TeacherPolicy } from "@/lib/schedule";
 
 const baseLesson: BillableLessonInput = {
   lessonId: "lesson-1",
   studentId: "s-1",
   studentName: "Gloria",
-  guardianId: "g-1",
+  workplaceId: "w-1",
+  billingAccountId: "g-1",
   lessonDate: "2026-06-15",
   startsAt: "2026-06-15T21:00:00.000Z", // 4 PM CDT
   durationMinutes: 30,
@@ -119,7 +120,7 @@ describe("isBillable", () => {
         DEFAULT_POLICY
       )
     ).toBe(false);
-    const policy: StudioPolicy = { ...DEFAULT_POLICY, bill_makeup: true };
+    const policy: TeacherPolicy = { ...DEFAULT_POLICY, bill_makeup: true };
     expect(
       isBillable(
         { ...baseLesson, makeupForSessionId: "att-1", attendanceStatus: "attended" },
@@ -217,14 +218,14 @@ describe("resolveTravelFeeCents", () => {
 
 describe("deriveInvoiceItems", () => {
   it("creates one line per billable lesson with a rate", () => {
-    const policy: StudioPolicy = {
+    const policy: TeacherPolicy = {
       ...DEFAULT_POLICY,
       rate_basis: "per_lesson",
     };
     const items = deriveInvoiceItems([baseLesson], policy);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
-      guardianId: "g-1",
+      billingAccountId: "g-1",
       unitCents: 4000,
       amountCents: 4000,
       missingRate: false,
@@ -234,7 +235,7 @@ describe("deriveInvoiceItems", () => {
   });
 
   it("scales amounts when rate_basis is per_hour", () => {
-    const policy: StudioPolicy = { ...DEFAULT_POLICY, rate_basis: "per_hour" };
+    const policy: TeacherPolicy = { ...DEFAULT_POLICY, rate_basis: "per_hour" };
     const items = deriveInvoiceItems(
       [
         baseLesson, // 30 min @ $40/hr
@@ -252,7 +253,7 @@ describe("deriveInvoiceItems", () => {
   });
 
   it("uses duration flat map instead of hourly default", () => {
-    const policy: StudioPolicy = {
+    const policy: TeacherPolicy = {
       ...DEFAULT_POLICY,
       rate_basis: "per_hour",
       default_rate_cents: 6000,
@@ -271,7 +272,7 @@ describe("deriveInvoiceItems", () => {
   });
 
   it("adds a travel fee line for home visits", () => {
-    const policy: StudioPolicy = {
+    const policy: TeacherPolicy = {
       ...DEFAULT_POLICY,
       rate_basis: "per_hour",
       travel_fee_cents: 500,
@@ -293,7 +294,7 @@ describe("deriveInvoiceItems", () => {
     expect(items[0].amountCents).toBe(2000);
     expect(items[1]).toMatchObject({
       lessonId: "lesson-1",
-      guardianId: "g-1",
+      billingAccountId: "g-1",
       description: expect.stringContaining("Travel fee"),
       amountCents: 500,
       missingRate: false,
@@ -305,7 +306,7 @@ describe("deriveInvoiceItems", () => {
   });
 
   it("rolls travel fees into family subtotals with multiple lessons", () => {
-    const policy: StudioPolicy = {
+    const policy: TeacherPolicy = {
       ...DEFAULT_POLICY,
       rate_basis: "per_hour",
       duration_rate_cents: { 30: 4000 },
@@ -336,7 +337,7 @@ describe("deriveInvoiceItems", () => {
     );
     // Gloria: $40 flat + $7 travel; Nico: $40 flat, no travel
     expect(items).toHaveLength(3);
-    const groups = groupItemsByGuardian(items);
+    const groups = groupItemsByBillingAccount(items);
     expect(sumAmountCents(groups.get("g-1")!)).toBe(8700);
   });
 
@@ -441,7 +442,7 @@ describe("deriveInvoiceItems", () => {
     const items = deriveInvoiceItems(
       [
         { ...baseLesson, attendanceStatus: "teacher_cancel" },
-        { ...baseLesson, lessonId: "l2", guardianId: null },
+        { ...baseLesson, lessonId: "l2", billingAccountId: null },
       ],
       DEFAULT_POLICY
     );
@@ -449,7 +450,7 @@ describe("deriveInvoiceItems", () => {
   });
 
   it("groups by guardian and sums totals", () => {
-    const policy: StudioPolicy = {
+    const policy: TeacherPolicy = {
       ...DEFAULT_POLICY,
       rate_basis: "per_lesson",
     };
@@ -461,14 +462,14 @@ describe("deriveInvoiceItems", () => {
           lessonId: "l2",
           studentId: "s-2",
           studentName: "Nico",
-          guardianId: "g-1",
+          billingAccountId: "g-1",
         },
         {
           ...baseLesson,
           lessonId: "l3",
           studentId: "s-3",
           studentName: "Stella",
-          guardianId: "g-2",
+          billingAccountId: "g-2",
           rate: {
             slotRateCents: 5000,
             studentDefaultRateCents: null,
@@ -478,7 +479,7 @@ describe("deriveInvoiceItems", () => {
       ],
       policy
     );
-    const groups = groupItemsByGuardian(items);
+    const groups = groupItemsByBillingAccount(items);
     expect(groups.size).toBe(2);
     expect(sumAmountCents(groups.get("g-1")!)).toBe(8000);
     expect(sumAmountCents(groups.get("g-2")!)).toBe(5000);

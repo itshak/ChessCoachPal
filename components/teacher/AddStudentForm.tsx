@@ -10,16 +10,11 @@ import { Button } from "@/components/ui/button";
 const inputClass =
   "w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm";
 
-export function AddStudentForm({
-  guardians = [],
-}: {
-  guardians?: { id: string; name: string }[];
-}) {
+export function AddStudentForm() {
   const router = useRouter();
   const t=useTranslations("students");
   const toUserError=useLocalizedApiError();
   const [name, setName] = useState("");
-  const [guardianId, setGuardianId] = useState("");
   const [birthdate, setBirthdate] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -28,16 +23,15 @@ export function AddStudentForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const linkExisting = Boolean(guardianId);
-  const wantsPortal =
-    !linkExisting &&
-    (adultSelf || Boolean(contactEmail.trim()) || Boolean(contactPhone.trim()));
+  const wantsContact =
+    adultSelf || Boolean(contactEmail.trim()) || Boolean(contactPhone.trim()) ||
+    Boolean(contactName.trim());
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
 
-    if (!linkExisting) {
+    {
       const email = contactEmail.trim();
       const phone = contactPhone.trim();
       const parent = contactName.trim();
@@ -45,12 +39,6 @@ export function AddStudentForm({
       if ((email || phone) && !adultSelf && !parent) {
         setError(
           t("guardianRequiredError")
-        );
-        return;
-      }
-      if (parent && !adultSelf && !email && !phone) {
-        setError(
-          t("guardianContactError")
         );
         return;
       }
@@ -65,11 +53,10 @@ export function AddStudentForm({
       body: JSON.stringify({
         name: name.trim(),
         birthdate: birthdate || null,
-        guardianId: guardianId || null,
-        contactEmail: linkExisting ? null : contactEmail.trim() || null,
-        contactPhone: linkExisting ? null : contactPhone.trim() || null,
-        contactName: linkExisting ? null : contactName.trim() || null,
-        adultSelf: linkExisting ? false : adultSelf,
+        contactEmail: contactEmail.trim() || null,
+        contactPhone: contactPhone.trim() || null,
+        contactName: contactName.trim() || null,
+        adultSelf,
       }),
     });
 
@@ -86,7 +73,6 @@ export function AddStudentForm({
     }
 
     setName("");
-    setGuardianId("");
     setBirthdate("");
     setContactEmail("");
     setContactPhone("");
@@ -106,21 +92,7 @@ export function AddStudentForm({
         className={inputClass}
         required
       />
-      <select
-        value={guardianId}
-        onChange={(e) => setGuardianId(e.target.value)}
-        className={inputClass}
-      >
-        <option value="">{t("contactOption")}</option>
-        {guardians.map((g) => (
-          <option key={g.id} value={g.id}>
-            {g.name}
-          </option>
-        ))}
-      </select>
-
-      {!linkExisting && (
-        <div className="space-y-2 rounded-lg border border-border p-3">
+      <div className="space-y-2 rounded-lg border border-border p-3">
           <p className="text-xs text-muted">
             {t("contactHint")}
           </p>
@@ -137,14 +109,14 @@ export function AddStudentForm({
             placeholder={
               adultSelf
                 ? t("contactNameOptional")
-                : wantsPortal
+                : wantsContact
                   ? t("guardianNameRequired")
                   : t("guardianName")
             }
             value={contactName}
             onChange={(e) => setContactName(e.target.value)}
             className={inputClass}
-            required={wantsPortal && !adultSelf}
+            required={wantsContact && !adultSelf}
           />
           <input
             type="email"
@@ -160,8 +132,7 @@ export function AddStudentForm({
             onChange={(e) => setContactPhone(e.target.value)}
             className={inputClass}
           />
-        </div>
-      )}
+      </div>
 
       <label className="flex flex-col gap-1 text-xs text-muted">
         {t("birthday")}

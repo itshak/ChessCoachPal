@@ -1,5 +1,11 @@
 # Change: persistent workplace context and removal of inherited Studio abstraction
 
+> **Schema-first execution gate (2026-11-19):** [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md) is the **mandatory first implementation change**. All schema DDL, tenant/RLS/FK/index work, generated DB types and schema-induced regressions belong to that change; this proposal must wait for its reviewed schema freeze and passing exact-head gates before implementing its remaining business functionality. Its existing schema statements describe requirements for the foundation, **not** permission to add per-feature DDL later. Operator-only SaaS and future shard-compatible UUID/RLS design follow [ADR-0018](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md); no customer self-hosting or live cutover is authorized.
+
+
+> **ADR-0017 final-cutover override (2026-11-18):** No backward compatibility or legacy dual-writes before v1. The final deliverable uses the clean canonical baseline and current website/MCP contracts. All planned features deploy with **one final** live migration **or** verified clean rebuild/reimport at the operator's choice; no per-feature production migration. Existing data handling is a deliberate one-time import/mapping decision, not an obligation to retain obsolete Family/Studio/guardian APIs or old portal tokens. Security, tenant isolation and explicit new grants remain required.
+
+
 **Status:** Proposed implementation; accepted architectural direction in ADR-0016.
 **Priority:** P0 functional teacher workflow.
 **Depends on:** 2026-11-18-enforce-baseline-live-transition-contract.
@@ -27,3 +33,5 @@ Not a second database/tenant per workplace, not group-as-workplace, not blanket 
 
 ## Acceptance
 Switching to School shows its student enrollments, group sessions, schedule and reports; switching to Personal shows private lessons. All shows complete teacher history. One student appearing in both contexts remains one canonical record. No historic lesson is relabeled; website and MCP filters agree.
+
+> **Cross-change schema coordination (2026-11-19):** Existing candidate: teacher workplace selection and scoped ownership; verify current baseline and acceptance. The workplace selector E2E was failing on eaef867 parent; recheck exact-head E2E. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

@@ -18,7 +18,7 @@ export interface InvoicePdfItem {
 export interface InvoicePdfInput {
   /** Family communication language, independent of teacher browser locale. */
   locale?: AppLocale;
-  studioName: string;
+  businessName: string;
   familyName: string;
   periodStart: string; // YYYY-MM-DD
   periodEnd: string;
@@ -131,7 +131,7 @@ export async function buildInvoicePdf(
     return prefix;
   };
 
-  const studio = input.studioName.trim() || "Studio";
+  const studio = input.businessName.trim() || "Studio";
   draw(studio, { size: 18, font: bold });
   y -= 22;
   draw(labels.heading, { size: 14, font: bold, color: rgb(0.3, 0.3, 0.3) });

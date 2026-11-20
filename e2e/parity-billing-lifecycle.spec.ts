@@ -1,3 +1,4 @@
+import {insertTestBillingAccount,prepareSendableInvoice} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -24,20 +25,33 @@ async function invoice(status:"sent"|"draft",subtotal=12500){
  const teacherId=login.data.user!.id;
  const suffix=randomUUID().slice(0,9);
  const portalToken=randomUUID();
- const guardian=await admin.from("guardians").insert({
-   teacher_id:teacherId,name:"Billing family "+suffix,
-   email:"billing-"+suffix+"@example.com",portal_token:portalToken,
- }).select("id").single();
+ const guardian=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Billing family "+suffix,email:"billing-"+suffix+"@example.com"});
  expect(guardian.error).toBeNull();
  const made=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:guardian.data!.id,status,
+   teacher_id:teacherId,billing_account_id:guardian.data!.id,status,
    period_start:"2027-03-01",period_end:"2027-03-31",
    currency:"USD",subtotal_cents:subtotal,
     ...(status==="sent"?{sent_at:new Date().toISOString()}:{}),
  }).select("id").single();
  expect(made.error).toBeNull();
- return {id:made.data!.id as string,guardianId:guardian.data!.id as string,portalToken,admin};
+ return {id:made.data!.id as string,guardianId:guardian.data!.id as string,
+  contactId:guardian.data!.contactId!,teacherId,portalToken,admin};
 }
+/** Any household-wide pre-v1 link is invalid after the single final cutover.
+ * A delivered invoice does not reinstate broad guest access. Scoped portal
+ * grants are covered separately by the authorized-grant E2E suite.
+ */
+async function expectLegacyPortalDenied(page:import("@playwright/test").Page,
+ token:string, invoiceId:string){
+ const response=await page.goto("/portal/"+token);
+ expect(response?.status()).toBeLessThan(500);
+ const body=await page.locator("body").innerText();
+ expect(body).not.toContain(invoiceId);
+ expect(body).not.toContain("Billing family");
+ expect(body).not.toContain("2027-03-01");
+ expect(body).not.toContain("Paid chess lesson");
+}
+
 async function siteInvoice(page:import("@playwright/test").Page,id:string){
  const r=await page.request.get("/api/billing/invoices/"+id);
  expect(r.status(),await r.text()).toBe(200);
@@ -54,8 +68,9 @@ test("PARITY:PARITY-billing-invoice-read-list mirrors owned totals and masks fam
  expect(detail.error).toBeUndefined();
  expect(detail.data.id).toBe(website.id);
  expect(detail.data.subtotal_cents).toBe(website.subtotal_cents);
- expect(detail.data.guardians.portal_token).toBeUndefined();
- expect(detail.data.guardians.email).toBeUndefined();
+ expect(JSON.stringify(detail.data)).not.toMatch(/token_digest|portal_token/i);
+ expect(detail.data.billingAccount).toBeTruthy();
+ expect(detail.data.billingAccount.contactId).toBeUndefined();
  const list=await call("ccp_billing_invoices_list",{status:"sent",limit:100,offset:0});
  expect(list.error).toBeUndefined();
  expect(list.data.invoices.some((x:{id:string;subtotal_cents:number})=>
@@ -282,13 +297,10 @@ test("PARITY:PARITY-billing-manual-payment-foreign-tenant-denial blocks website 
    id:teacherId,email,display_name:"Unrelated finance teacher",
    hosted_enforced:false,
   })).error).toBeNull();
-  const guardian=await admin.from("guardians").insert({
-   teacher_id:teacherId,name:"Other studio family",
-   portal_token:randomUUID(),
-  }).select("id").single();
+  const guardian=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Other studio family"});
   expect(guardian.error).toBeNull();
   const invoice=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:guardian.data!.id,
+   teacher_id:teacherId,billing_account_id:guardian.data!.id,
    status:"sent",subtotal_cents:5600,currency:"USD",
    period_start:"2040-01-01",period_end:"2040-01-31",
   }).select("id").single();
@@ -430,8 +442,19 @@ test("PARITY:PARITY-billing-invoice-void-credit-guard refuses to orphan issued p
   teacher_id:row.data!.teacher_id,name:"Prepaid student "+randomUUID(),
  }).select("id").single();
  expect(student.error).toBeNull();
+ const workplace=await seeded.admin.from("workplaces").insert({
+  teacher_id:row.data!.teacher_id,name:"Prepaid workplace "+randomUUID(),
+  timezone:"UTC",currency:"ILS",locale:"en",policy:{},
+ }).select("id").single();
+ expect(workplace.error).toBeNull();
+ const enrollment=await seeded.admin.from("workplace_enrollments").insert({
+  teacher_id:row.data!.teacher_id,student_id:student.data!.id,
+  workplace_id:workplace.data!.id,
+ });
+ expect(enrollment.error).toBeNull();
  const packageRow=await seeded.admin.from("credit_packages").insert({
   teacher_id:row.data!.teacher_id,student_id:student.data!.id,
+  workplace_id:workplace.data!.id,
   invoice_id:seeded.id,credits:5,duration_minutes:45,
   price_cents:12000,starts_on:"2049-01-01",
  }).select("id").single();
@@ -528,9 +551,7 @@ test("PARITY:PARITY-billing-draft-partial-payment stays private and reopens to d
  expect(result.paymentId).toBe(model.data.paymentId);
  expect(Number(Boolean(result.replayed))+Number(Boolean(model.data.replayed))).toBe(1);
  expect((await siteInvoice(page,created.id)).status).toBe("draft");
- await page.goto("/portal/"+created.portalToken);
- await expect(page.getByText("No invoices yet.",{exact:true})).toBeVisible();
- await expect(page.getByText("2027-03-01",{exact:false})).toHaveCount(0);
+ await expectLegacyPortalDenied(page,created.portalToken,created.id);
  const before=await siteInvoice(page,created.id);
  const refused=await page.request.put(url,{data:{
   items:[{description:"Adjusted",quantity:1,unitCents:1000,amountCents:1000}],
@@ -552,9 +573,7 @@ test("PARITY:PARITY-billing-draft-partial-payment stays private and reopens to d
  });
  expect(final.error).toBeUndefined();
  expect((await siteInvoice(page,created.id)).status).toBe("paid");
- await page.goto("/portal/"+created.portalToken);
- await expect(page.getByText("No invoices yet.",{exact:true})).toBeVisible();
- await expect(page.getByText("2027-03-01", {exact:false})).toHaveCount(0);
+ await expectLegacyPortalDenied(page,created.portalToken,created.id);
  const reversal=await page.request.delete(url+"/payments/"+final.data.paymentId);
  expect(reversal.status(),await reversal.text()).toBe(200);
  expect((await reversal.json()).status).toBe("draft");
@@ -624,9 +643,7 @@ test("PARITY:PARITY-billing-send-claim rejects stale payment snapshots before em
  expect(current.status).toBe("draft");
  expect(current.sent_at).toBeNull();
  expect(current.payments).toHaveLength(1);
- await page.goto("/portal/"+created.portalToken);
- await expect(page.getByText("No invoices yet.",{exact:true})).toBeVisible();
- await expect(page.getByText("2027-03-01", {exact:false})).toHaveCount(0);
+ await expectLegacyPortalDenied(page,created.portalToken,created.id);
  const preview=await call("ccp_billing_invoice_send_preview",{invoiceId:created.id});
  expect(preview.error).toBeUndefined();
  expect(preview.data.balanceCents).toBe(5200);
@@ -640,6 +657,13 @@ test("PARITY:PARITY-billing-paid-before-send remains private until deliberate de
   quantity:1,unit_cents:5400,amount_cents:5400,sort_order:0,
  });
  expect(item.error).toBeNull();
+ // Sending a paid-but-never-delivered invoice still requires a real lesson
+ // attribution, the dated payer and explicit student/contact message consent.
+ await prepareSendableInvoice(created.admin,{
+   teacherId:created.teacherId,invoiceId:created.id,
+   billingAccountId:created.guardianId,contactId:created.contactId,
+   periodStart:"2027-03-01",
+ });
  const url="/api/billing/invoices/"+created.id;
  const payment=await page.request.post(url+"/mark-paid",{
   data:{amountCents:5400,note:"Cash received before email",
@@ -649,9 +673,7 @@ test("PARITY:PARITY-billing-paid-before-send remains private until deliberate de
  const before=await siteInvoice(page,created.id);
  expect(before.status).toBe("paid");
  expect(before.sent_at).toBeNull();
- await page.goto("/portal/"+created.portalToken);
- await expect(page.getByText("No invoices yet.",{exact:true})).toBeVisible();
- await expect(page.getByText("2027-03-01", {exact:false})).toHaveCount(0);
+ await expectLegacyPortalDenied(page,created.portalToken,created.id);
  const preview=await call("ccp_billing_invoice_send_preview",{
   invoiceId:created.id,confirmed:true,
  });
@@ -663,10 +685,9 @@ test("PARITY:PARITY-billing-paid-before-send remains private until deliberate de
  const delivered=await siteInvoice(page,created.id);
  expect(delivered.status).toBe("paid");
  expect(delivered.sent_at).not.toBeNull();
- await page.goto("/portal/"+created.portalToken);
- await expect(page.getByText("No invoices yet.",{exact:true})).toHaveCount(0);
- await expect(page.getByText("2027-03-01", {exact:false})).toBeVisible();
- await expect(page.getByText("Paid",{exact:true}).first()).toBeVisible();
+ // Delivery to a named approved contact must not grant any old household
+ // token access; only a separately issued explicit scoped grant may do so.
+ await expectLegacyPortalDenied(page,created.portalToken,created.id);
  const duplicate=await call("ccp_billing_invoice_send",{
   invoiceId:created.id,confirmed:true,confirmedEmail:true,
  });

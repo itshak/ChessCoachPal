@@ -7,11 +7,11 @@ import {
   stripeStatusFromPolicy,
   sumAmountCents,
 } from "@/lib/billing";
-import { familyDisplayName } from "@/lib/guardians";
 import { oneToOne } from "@/lib/schedule";
 import { Card } from "@/components/ui/card";
 import { BillingListActions } from "@/components/teacher/billing/BillingList";
 import { InvoiceList } from "@/components/teacher/billing/InvoiceList";
+import { NativeFinanceLedgerPanel } from "@/components/teacher/NativeFinanceLedgerPanel";
 import { PaymentSettingsButton } from "@/components/teacher/billing/PaymentSettingsButton";
 
 export async function generateMetadata(){const t=await getTranslations("billingPage");return {title:t("title")};}
@@ -37,21 +37,17 @@ export default async function BillingPage({
   const { data: invoices } = await supabase
     .from("invoices")
     .select(
-      "id, period_start, period_end, status, subtotal_cents, currency, created_at, guardians ( name, family_name ), payments ( amount_cents )"
+      "id, period_start, period_end, status, subtotal_cents, currency, created_at, billing_accounts ( display_name ), payments ( amount_cents )"
     )
     .eq("teacher_id", user.id)
     .order("created_at", { ascending: false });
 
   const rows = (invoices ?? []).map((inv) => {
-    const family = oneToOne(
-      inv.guardians as
-        | { name: string; family_name: string | null }
-        | { name: string; family_name: string | null }[]
-        | null
-    );
+    const account=oneToOne(inv.billing_accounts as
+      {display_name:string}|{display_name:string}[]|null);
     return {
       id: inv.id,
-      familyName: family ? familyDisplayName(family) : t("family"),
+      billingAccountName: account?.display_name??t("family"),
       periodStart: inv.period_start,
       periodEnd: inv.period_end,
       status: inv.status,
@@ -97,6 +93,7 @@ export default async function BillingPage({
         </div>
       </div>
 
+      <NativeFinanceLedgerPanel />
       <Card padding="sm">
         {!rows.length ? (
           <p className="text-sm text-muted py-4 text-center">

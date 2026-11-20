@@ -62,7 +62,7 @@ export async function GET(
       .order("starts_at"),
   ]);
 
-  const calName = policy.studio_name || "Lessons";
+  const calName = policy.business_name || "Lessons";
 
   const lessonEvents:EventAttributes[]=lessons.filter(l=>
     l.status!=="cancelled"&&l.participants.some(p=>

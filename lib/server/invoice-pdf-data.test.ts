@@ -16,14 +16,13 @@ function baseInvoice(overrides: Record<string, unknown> = {}) {
     stripe_checkout_url: null,
     stripe_checkout_session_id: null,
     sent_at: "2026-09-01T00:00:00Z",
-    guardians: {
-      name: "Jordan Lee",
-      family_name: "Lee",
-      email: "jordan@example.com",
-      secondary_name: null,
-      secondary_email: null,
-      email_recipients: "primary",
-      portal_token: "portal-token",
+    billing_accounts: {
+      id: "billing-1",
+      display_name: "Jordan Lee",
+      account_kind: "person",
+      contact_id: "contact-1",
+      contacts: {id:"contact-1",display_name:"Jordan",
+        email:"jordan@example.com",preferred_locale:"en",status:"active"},
     },
     invoice_items: [
       {
@@ -46,7 +45,7 @@ interface QueryLog {
 /**
  * Fluent stub that records the table and `.eq` predicates per query, so tests
  * can assert tenant scoping. Only `invoices` resolves the fixture; every other
- * table (e.g. `studio_policies`) resolves null.
+ * table (e.g. `teacher_settings`) resolves null.
  */
 function stubSupabase(
   invoice: unknown,
@@ -135,13 +134,13 @@ describe("loadInvoicePdf", () => {
     expect(result).toEqual({ ok: false, code: "not_found" });
   });
 
-  it("reports a missing family", async () => {
-    const { client } = stubSupabase(baseInvoice({ guardians: null }));
+  it("reports a missing Billing Account", async () => {
+    const { client } = stubSupabase(baseInvoice({ billing_accounts: null }));
     const result = await loadInvoicePdf(client, {
       invoiceId: "invoice-1",
       teacherId: TEACHER_ID,
     });
-    expect(result).toEqual({ ok: false, code: "no_family" });
+    expect(result).toEqual({ ok: false, code: "no_billing_account" });
   });
 
   it("reports a database error distinctly from not found", async () => {

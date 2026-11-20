@@ -1,3 +1,4 @@
+import {insertTestBillingAccount,prepareSendableInvoice} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -17,13 +18,10 @@ test("PARITY:PARITY-billing-send-preview checks totals and contacts without emai
    auth:{persistSession:false,autoRefreshToken:false},
  });
  const email="preview-invoice-"+randomUUID()+"@example.com";
- const family=await admin.from("guardians").insert({
-   teacher_id:teacherId,name:"Invoice preview household",
-   email,portal_token:randomUUID(),
- }).select("id,portal_token").single();
+ const family=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Invoice preview household",email:email});
  expect(family.error).toBeNull();
  const invoice=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:family.data!.id,status:"draft",
+   teacher_id:teacherId,billing_account_id:family.data!.id,status:"draft",
    period_start:"2042-06-01",period_end:"2042-06-30",currency:"ILS",
    subtotal_cents:0,
  }).select("id").single();
@@ -35,6 +33,10 @@ test("PARITY:PARITY-billing-send-preview checks totals and contacts without emai
    }]},confirmed:true,
  });
  expect(reviewed.error).toBeUndefined();
+ await prepareSendableInvoice(admin,{teacherId,invoiceId,
+   billingAccountId:family.data!.id,contactId:family.data!.contactId!,
+   periodStart:"2042-06-01",
+ });
  const path="/api/billing/invoices/"+invoiceId+"/send";
  const website=await page.request.get(path);
  expect(website.status(),await website.text()).toBe(200);
@@ -49,7 +51,7 @@ test("PARITY:PARITY-billing-send-preview checks totals and contacts without emai
  const mcp=await call("ccp_billing_invoice_send_preview",{invoiceId});
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(preview);
- expect(JSON.stringify(mcp.data)).not.toContain(family.data!.portal_token);
+ expect(JSON.stringify(mcp.data)).not.toMatch(/token_digest|portal_token/i);
  const refused=await call("ccp_billing_invoice_send_preview",{
    invoiceId,includeRecipients:true,
  });

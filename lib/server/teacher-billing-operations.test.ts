@@ -3,7 +3,7 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 
 vi.mock("@/lib/server/scheduling",()=>({
  getPolicy:async()=>({payment_provider:"stripe",
-  stripe_secret_key:"sk_test_internal_do_not_expose",studio_name:"Chess Studio"}),
+  stripe_secret_key:"sk_test_internal_do_not_expose",business_name:"Chess Studio"}),
 }));
 vi.mock("@/lib/payments",()=>({
  createCheckoutSession:async()=>{throw new Error("Provider internal sk_test_internal_do_not_expose");},
@@ -19,9 +19,8 @@ describe("invoice checkout provider secrecy",()=>{
      single:async()=>({data:{
       id:"invoice-one",status:"draft",subtotal_cents:5000,
       currency:"USD",period_start:"2045-01-01",period_end:"2045-01-31",
-      stripe_checkout_url:null,payments:[],guardians:{
-       name:"Synthetic family",family_name:null,email:null,
-       secondary_email:null,email_recipients:"primary",
+      stripe_checkout_url:null,payments:[],billing_accounts:{
+       id:"account-one",display_name:"Synthetic payer",contact_id:null,contacts:null,
       },
      },error:null})};
     return q;

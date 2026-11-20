@@ -3,6 +3,7 @@ import {createClient} from "@supabase/supabase-js";
 import {expect,test} from "@playwright/test";
 import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {createAssignedPayer} from "./helpers/canonical-payer";
 
 test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes keeps frozen financial history on website and MCP deletion replay",async({page,request})=>{
  const tool=await delegatedTool(page,request);
@@ -11,11 +12,6 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
  });
  expect(learner.error).toBeUndefined();
  const studentId=learner.data.entityId as string;
- const guardian=await tool("ccp_guardians_create",{
-  name:"Financial slot payer "+randomUUID(),studentIds:[studentId],confirmed:true,
- });
- expect(guardian.error).toBeUndefined();
- const guardianId=guardian.data.id as string;
  const work=await tool("ccp_workplaces_create",{
   name:"Preserve paid coaching "+randomUUID(),timezone:"UTC",
   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID(),
@@ -25,6 +21,9 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
  expect((await tool("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
+ const {billingAccountId}=await createAssignedPayer(tool,{
+  studentId,workplaceId,effectiveFrom:"2020-01-01",
+ });
  const today=Date.parse(new Date().toISOString().slice(0,10)+"T00:00:00Z");
  // Isolate Playwright retries from prior partially written teaching occurrences.
  const dayOffset=randomInt(14,22);
@@ -67,7 +66,7 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
   "/api/coaching/sessions/"+invoiceSession+"/notes",{data:{
    studentId,body:"Reviewed rook endgames",
    privateBody:"Private notes must remain private after deletion",
-   sharedWithGuardian:false,sendEmail:false,
+   sharedWithContacts:false,sendEmail:false,
    expectedUpdatedAt:null,idempotencyKey:randomUUID(),
   }});
  expect(note.status(),await note.text()).toBe(200);
@@ -82,7 +81,7 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
    auth:{persistSession:false,autoRefreshToken:false},
   });
  const invoiceA=await admin.from("invoices").insert({
-  teacher_id:teacherId,guardian_id:guardianId,period_start:firstDate,
+  teacher_id:teacherId,billing_account_id:billingAccountId,period_start:firstDate,
   period_end:firstDate,status:"draft",subtotal_cents:7000,currency:"USD",
  }).select("id").single();
  expect(invoiceA.error).toBeNull();
@@ -93,12 +92,12 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
  }).select("id").single();
  expect(line.error).toBeNull();
  const invoiceB=await admin.from("invoices").insert({
-  teacher_id:teacherId,guardian_id:guardianId,period_start:secondDate,
+  teacher_id:teacherId,billing_account_id:billingAccountId,period_start:secondDate,
   period_end:secondDate,status:"sent",subtotal_cents:9000,currency:"USD",
  }).select("id").single();
  expect(invoiceB.error).toBeNull();
  const credits=await admin.from("credit_packages").insert({
-  teacher_id:teacherId,student_id:studentId,invoice_id:invoiceB.data!.id,
+  teacher_id:teacherId,student_id:studentId,workplace_id:workplaceId,invoice_id:invoiceB.data!.id,
   credits:2,duration_minutes:60,price_cents:9000,
   starts_on:firstDate,expires_on:null,
  }).select("id").single();

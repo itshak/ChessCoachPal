@@ -1,3 +1,4 @@
+import {insertTestBillingAccount} from "./helpers/canonical-payer";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -27,13 +28,10 @@ test("PARITY:PARITY-billing-pdf-ledger-checkout-preflight compares real browser 
  expect(signed.error).toBeNull();
  const teacherId=signed.data.user!.id;
  const marker=randomUUID();
- const guardian=await admin.from("guardians").insert({
-   teacher_id:teacherId,name:"Billing preview "+marker.slice(0,8),
-   email:"billing-parity-"+marker+"@example.com",portal_token:randomUUID(),
- }).select("id,portal_token").single();
+ const guardian=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Billing preview "+marker.slice(0,8),email:"billing-parity-"+marker+"@example.com"});
  expect(guardian.error).toBeNull();
  const invoice=await admin.from("invoices").insert({
-   teacher_id:teacherId,guardian_id:guardian.data!.id,status:"sent",
+   teacher_id:teacherId,billing_account_id:guardian.data!.id,status:"sent",
    period_start:"2045-03-01",period_end:"2045-03-31",currency:"USD",
    subtotal_cents:6300,
  }).select("id").single();
@@ -78,7 +76,7 @@ test("PARITY:PARITY-billing-pdf-ledger-checkout-preflight compares real browser 
  expect(row(csvText)).toBeTruthy();
  expect(row(exportByModel.data.csv as string)).toBe(row(csvText));
  expect(JSON.stringify({pdf:pdf.data,ledger:exportByModel.data}))
-   .not.toContain(guardian.data!.portal_token);
+   .not.toContain("token_digest");
 
  // An unconfirmed AI request cannot start a checkout, regardless of whether
  // the studio happens to have a payment provider configured.

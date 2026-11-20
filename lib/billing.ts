@@ -3,7 +3,7 @@ import type {
   AttendanceStatus,
   InvoiceItemKind,
 } from "@/lib/supabase/types";
-import type { StudioPolicy } from "@/lib/schedule";
+import type { TeacherPolicy } from "@/lib/schedule";
 
 /**
  * Billing derivation.
@@ -33,7 +33,8 @@ export interface BillableLessonInput {
   lessonId: string;
   studentId: string;
   studentName: string;
-  guardianId: string | null;
+  workplaceId: string;
+  billingAccountId: string | null;
   lessonDate: string;
   startsAt: string;
   durationMinutes: number;
@@ -49,7 +50,7 @@ export interface InvoiceItemDraft {
   kind: Exclude<InvoiceItemKind, "credit_package">;
   lessonId: string;
   studentId: string;
-  guardianId: string;
+  billingAccountId: string;
   description: string;
   quantity: number;
   unitCents: number;
@@ -111,13 +112,13 @@ export type ResolvedLessonCharge = {
 
 /**
  * Slot → student → duration flat map → studio.
- * Slot/student/studio amounts use rate_basis; duration map amounts are always
+ * Slot/student/teacher defaults use rate_basis; duration map amounts are always
  * flat for that length (studio packaging when no more-specific rate is set).
  */
 export function resolveLessonCharge(
   sources: RateSources,
   durationMinutes: number,
-  rateBasis: StudioPolicy["rate_basis"]
+  rateBasis: TeacherPolicy["rate_basis"]
 ): ResolvedLessonCharge {
   if (sources.slotRateCents != null && sources.slotRateCents >= 0) {
     return {
@@ -186,7 +187,7 @@ export function isBillable(
     BillableLessonInput,
     "attendanceStatus" | "noticeAt" | "startsAt" | "makeupForSessionId"
   >,
-  policy: StudioPolicy
+  policy: TeacherPolicy
 ): boolean {
   if (lesson.makeupForSessionId && !policy.bill_makeup) {
     return false;
@@ -243,7 +244,7 @@ export function formatCalendarDate(dateStr: string): string {
 export function lessonAmountCents(
   rateCents: number,
   durationMinutes: number,
-  rateBasis: StudioPolicy["rate_basis"]
+  rateBasis: TeacherPolicy["rate_basis"]
 ): number {
   if (rateBasis === "per_hour") {
     return Math.round((rateCents * durationMinutes) / 60);
@@ -262,7 +263,7 @@ export function lessonAmountCents(
  */
 export function deriveInvoiceItems(
   lessons: BillableLessonInput[],
-  policy: StudioPolicy,
+  policy: TeacherPolicy,
   options: {
     creditedLessonIds?: ReadonlySet<string>;
     travelInvoicedLessonIds?: ReadonlySet<string>;
@@ -273,11 +274,11 @@ export function deriveInvoiceItems(
   const travelInvoiced = options.travelInvoicedLessonIds ?? new Set<string>();
 
   for (const lesson of lessons) {
-    if (!lesson.guardianId) continue;
+    if (!lesson.billingAccountId) continue;
     if (!isBillable(lesson, policy)) continue;
     const when = formatCalendarDate(lesson.lessonDate);
     if (!credited.has(lesson.lessonId)) {
-      items.push(lessonItem(lesson, lesson.guardianId, when, policy));
+      items.push(lessonItem(lesson, lesson.billingAccountId, when, policy));
     }
 
     if (
@@ -291,7 +292,7 @@ export function deriveInvoiceItems(
           kind: "travel",
           lessonId: lesson.lessonId,
           studentId: lesson.studentId,
-          guardianId: lesson.guardianId,
+          billingAccountId: lesson.billingAccountId,
           description: `Travel fee - ${lesson.studentName}, ${when}`,
           quantity: 1,
           unitCents: travelFee,
@@ -307,9 +308,9 @@ export function deriveInvoiceItems(
 
 function lessonItem(
   lesson: BillableLessonInput,
-  guardianId: string,
+  billingAccountId: string,
   when: string,
-  policy: StudioPolicy
+  policy: TeacherPolicy
 ): InvoiceItemDraft {
   const durationFlat =
     lesson.rate.durationRateCents ??
@@ -334,7 +335,7 @@ function lessonItem(
     kind: "lesson",
     lessonId: lesson.lessonId,
     studentId: lesson.studentId,
-    guardianId,
+    billingAccountId,
     description: `${label}${makeup} - ${lesson.studentName}, ${when} (${lesson.durationMinutes} min${rateNote})`,
     quantity: 1,
     unitCents: charge.amountCents,
@@ -343,15 +344,15 @@ function lessonItem(
   };
 }
 
-/** Group draft items by guardian for one invoice per family. */
-export function groupItemsByGuardian(
+/** Group draft items by billing account for one invoice per billing account. */
+export function groupItemsByBillingAccount(
   items: InvoiceItemDraft[]
 ): Map<string, InvoiceItemDraft[]> {
   const map = new Map<string, InvoiceItemDraft[]>();
   for (const item of items) {
-    const list = map.get(item.guardianId) ?? [];
+    const list = map.get(item.billingAccountId) ?? [];
     list.push(item);
-    map.set(item.guardianId, list);
+    map.set(item.billingAccountId, list);
   }
   return map;
 }

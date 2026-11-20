@@ -39,7 +39,7 @@ test("PARITY: canonical attendance, cancellation provenance and teacher-private 
  const noteKey=randomUUID(),privateText="Teacher-only strategy "+randomUUID();
  const note=await call("ccp_session_notes_save",{
   sessionId,studentId,body:"Guardian-facing endgame advice",
-  privateBody:privateText,sharedWithGuardian:false,
+  privateBody:privateText,sharedWithContacts:false,
   sendEmail:false,expectedUpdatedAt:null,
   idempotencyKey:noteKey,confirmed:true,
  });
@@ -67,7 +67,7 @@ test("PARITY: canonical attendance, cancellation provenance and teacher-private 
  expect(corrected.error).toBeUndefined();
  const noteChanged=await call("ccp_session_notes_save",{
   sessionId,studentId,body:"Temporary overwrite",
-  privateBody:"Replaceable temporary note",sharedWithGuardian:false,
+  privateBody:"Replaceable temporary note",sharedWithContacts:false,
   sendEmail:false,expectedUpdatedAt:note.data.revision,
   idempotencyKey:randomUUID(),confirmed:true,
  });

@@ -13,7 +13,7 @@ import type { AiProviderId } from "@/lib/ai/provider";
 import { isValidPaymentQrDataUrl } from "@/lib/payment-qr";
 
 /**
- * Must match the CHECK constraint on studio_policies.bcc_email. The allowed
+ * Must match the CHECK constraint on teacher_settings.bcc_email. The allowed
  * set keeps characters that would break an SMTP RCPT TO (`<`, `>`, `,`, etc.)
  * out of the stored address.
  */
@@ -81,7 +81,7 @@ export async function teacherPolicyUpdate(
   // save while silently discarding them. Website-only provider credentials
   // are individually allowlisted but never permitted in the MCP schema.
   const allowed=new Set([
-    "studioName","studioWebsite","studioContact","studioInfo","lessonLabel",
+    "businessName","businessWebsite","businessContact","businessInfo","lessonLabel",
     "lessonDurationOptions","timezone","cancellationWindowHours",
     "timelyCancelEarnsMakeup","lateCancelEarnsMakeup","noShowEarnsMakeup",
     "teacherCancelEarnsMakeup","makeupCreditExpiryDays","billAttended",
@@ -90,7 +90,7 @@ export async function teacherPolicyUpdate(
     "durationRateCents","travelFeeCents","rateBasis","currency",
     "invoiceCadence","paymentInstructions","paymentQrCode","paymentProvider",
     "notifyInApp","notifyEmailPortalCancel","notifyEmailInvoicePaid",
-    "bccFamilyEmails","bccEmail","aiProvider","aiApiKey",
+    "bccContactEmails","bccEmail","aiProvider","aiApiKey",
     "clearAiApiKey","stripeSecretKey","stripePublishableKey",
     "stripeWebhookSecret","clearStripeSecretKey",
     "clearStripePublishableKey","clearStripeWebhookSecret",
@@ -100,8 +100,8 @@ export async function teacherPolicyUpdate(
       return NextResponse.json({error:"Unsupported policy field: "+key},{status:400});
   }
   const textFields:[string,number][]=[
-    ["studioName",120],["studioWebsite",300],["studioContact",300],
-    ["studioInfo",5000],["lessonLabel",60],["paymentInstructions",2000],
+    ["businessName",120],["businessWebsite",300],["businessContact",300],
+    ["businessInfo",5000],["lessonLabel",60],["paymentInstructions",2000],
   ];
   for(const [key,max] of textFields){
     if(body[key]!==undefined&&(typeof body[key]!=="string" ||
@@ -116,7 +116,7 @@ export async function teacherPolicyUpdate(
     "teacherCancelEarnsMakeup","billAttended","billNoShow",
     "billTeacherCancel","billTimelyStudentCancel","billLateStudentCancel",
     "billMakeup","notifyInApp","notifyEmailPortalCancel",
-    "notifyEmailInvoicePaid","bccFamilyEmails",
+    "notifyEmailInvoicePaid","bccContactEmails",
   ];
   for(const key of booleanFields){
     if(body[key]!==undefined&&typeof body[key]!=="boolean")
@@ -251,7 +251,7 @@ export async function teacherPolicyUpdate(
     );
   }
 
-  const bccFamilyEmails = body.bccFamilyEmails as boolean | undefined;
+  const bccContactEmails = body.bccContactEmails as boolean | undefined;
   let bccEmail: string | null | undefined;
   if (body.bccEmail !== undefined) {
     const trimmed = body.bccEmail === null ? "" : String(body.bccEmail).trim();
@@ -272,17 +272,17 @@ export async function teacherPolicyUpdate(
 
   const upsert: Record<string, unknown> = {
     teacher_id: user.id,
-    ...(body.studioName !== undefined && {
-      studio_name: String(body.studioName).trim().slice(0, 120),
+    ...(body.businessName !== undefined && {
+      business_name: String(body.businessName).trim().slice(0, 120),
     }),
-    ...(body.studioWebsite !== undefined && {
-      studio_website: String(body.studioWebsite).trim().slice(0, 300),
+    ...(body.businessWebsite !== undefined && {
+      business_website: String(body.businessWebsite).trim().slice(0, 300),
     }),
-    ...(body.studioContact !== undefined && {
-      studio_contact: String(body.studioContact).trim().slice(0, 300),
+    ...(body.businessContact !== undefined && {
+      business_contact: String(body.businessContact).trim().slice(0, 300),
     }),
-    ...(body.studioInfo !== undefined && {
-      studio_info: String(body.studioInfo).trim().slice(0, 5000),
+    ...(body.businessInfo !== undefined && {
+      business_info: String(body.businessInfo).trim().slice(0, 5000),
     }),
     ...(body.lessonLabel !== undefined && {
       lesson_label: String(body.lessonLabel).trim().slice(0, 60),
@@ -362,8 +362,8 @@ export async function teacherPolicyUpdate(
     ...(body.notifyEmailInvoicePaid !== undefined && {
       notify_email_invoice_paid: Boolean(body.notifyEmailInvoicePaid),
     }),
-    ...(bccFamilyEmails !== undefined && {
-      bcc_family_emails: Boolean(bccFamilyEmails),
+    ...(bccContactEmails !== undefined && {
+      bcc_contact_emails: Boolean(bccContactEmails),
     }),
     ...(bccEmail !== undefined && { bcc_email: bccEmail }),
     ...(aiProvider !== undefined && { ai_provider: aiProvider }),
@@ -379,7 +379,7 @@ export async function teacherPolicyUpdate(
 
   // Default the BCC address to the account email when the toggle is turned on
   // without an explicit address, so one click yields a usable setting.
-  const bccEnabled = bccFamilyEmails ?? currentPolicy.bcc_family_emails;
+  const bccEnabled = bccContactEmails ?? currentPolicy.bcc_contact_emails;
   const nextBccEmail =
     "bcc_email" in upsert
       ? (upsert.bcc_email as string | null)
@@ -474,7 +474,7 @@ export async function teacherPolicyUpdate(
   }
 
   const { error } = await supabase
-    .from("studio_policies")
+    .from("teacher_settings")
     .upsert(upsert, { onConflict: "teacher_id" })
     .select()
     .single();

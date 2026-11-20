@@ -6,24 +6,46 @@ umask 077
 [[ "${M5_SYNTHETIC_RESTORE:-}" == "1" && "${CI:-}" == "true" ]] ||
   { echo "Synthetic GitHub Actions only" >&2; exit 2; }
 
-# ADR-0015: first prove current baseline vs the pinned historical schema
-# through the normal versioned local migration runner. This step creates and
-# stops its own disposable Supabase stack; no production URL is permitted.
-echo "==> enforce canonical baseline vs populated live-transition convergence"
-CCP_SYNTHETIC_SCHEMA=1 bash scripts/verify-schema-transition-convergence.sh
-
+# Only disposable CI fixtures are used. Unrelated software can reserve
+# Supabase's five default loopback ports on GitHub hosts; source AND target
+# must allocate independent sockets rather than try 54322 and fail startup.
 root="$(pwd)"
 tmp="$(mktemp -d)"
+cp "$root/supabase/config.toml" "$tmp/initial-config.toml"
 cleanup() {
-  # The second Supabase project is disposable. Stop its containers before
-  # deleting the temp checkout, so a candidate release can safely run the
-  # separate self-hosted Compose smoke on the same GitHub runner.
   if [[ -d "$tmp/restore/supabase" ]]; then
     (cd "$tmp/restore" && supabase stop --no-backup >/dev/null 2>&1) || true
   fi
+  # Never leave a synthetic Supabase running or modify the normal config.
+  (cd "$root" && supabase stop --no-backup >/dev/null 2>&1) || true
+  cp "$tmp/initial-config.toml" "$root/supabase/config.toml"
   rm -rf "$tmp"
 }
 trap cleanup EXIT
+python3 - "$root/supabase/config.toml" "$tmp/source-ports.json" <<'PORTS'
+import json,re,socket,sys
+from pathlib import Path
+path=Path(sys.argv[1]);content=path.read_text()
+pattern=r'(?<!\d)5432[0-9](?!\d)'
+ports=sorted(set(re.findall(pattern,content)))
+if not ports:raise SystemExit('Expected default disposable Supabase port configuration')
+mapping={};reservations=[]
+try:
+ for port in ports:
+  sock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+  sock.bind(('127.0.0.1',0))
+  reservations.append(sock)
+  mapping[port]=str(sock.getsockname()[1])
+ path.write_text(re.sub(pattern,lambda m:mapping[m.group()],content))
+ Path(sys.argv[2]).write_text(json.dumps(mapping))
+finally:
+ for sock in reservations:sock.close()
+print('Disposable source ports allocated:',len(mapping))
+PORTS
+# ADR-0017: deterministic fresh canonical baseline, RLS and portal permissions
+# on an isolated stack. This does NOT upgrade old databases.
+echo "==> enforce final single-baseline reproducibility and scoped authorization"
+CCP_SYNTHETIC_SCHEMA=1 bash scripts/verify-schema-transition-convergence.sh
 mkdir -p "$tmp/backups" "$tmp/source-files" "$tmp/target-files" "$tmp/restore"
 echo "==> start primary disposable Supabase"
 supabase start
@@ -73,6 +95,57 @@ BEGIN
 END
 $block$;
 SQL
+
+echo "==> create explicit synthetic contact, payer, guest grant and event RSVP evidence"
+docker exec -i "$source_db" psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+INSERT INTO public.contacts (id,teacher_id,display_name,email,preferred_locale)
+VALUES('a0000000-0000-4000-8000-000000000001',
+       '00000000-0000-0000-0000-000000000001',
+       'Synthetic contact only','synthetic-contact@example.invalid','en');
+INSERT INTO public.student_contacts
+ (teacher_id,student_id,contact_id,relationship_label,is_legal_guardian,may_receive_messages)
+VALUES('00000000-0000-0000-0000-000000000001',
+       '10000000-0000-0000-0000-000000000001',
+       'a0000000-0000-4000-8000-000000000001',
+       'Synthetic school contact',false,false);
+INSERT INTO public.billing_accounts (id,teacher_id,display_name,account_kind,contact_id)
+VALUES('d0000000-0000-4000-8000-000000000001',
+       '00000000-0000-0000-0000-000000000001',
+       'Synthetic payer only','person','a0000000-0000-4000-8000-000000000001');
+INSERT INTO public.portal_access_grants
+ (id,teacher_id,contact_id,student_id,workplace_id,billing_account_id,
+  permissions,expires_at,token_digest)
+SELECT 'c0000000-0000-4000-8000-000000000001',
+       '00000000-0000-0000-0000-000000000001',
+       'a0000000-0000-4000-8000-000000000001',
+       '10000000-0000-0000-0000-000000000001',
+       id,'d0000000-0000-4000-8000-000000000001',
+       ARRAY['calendar','event_rsvp','finance']::text[],
+       '2030-04-01T00:00:00Z'::timestamptz,
+       encode(extensions.digest('test-only-private-demo-key','sha256'),'hex')
+FROM public.workplaces WHERE teacher_id='00000000-0000-0000-0000-000000000001'
+ORDER BY id LIMIT 1;
+INSERT INTO public.events(id,teacher_id,workplace_id,title,starts_at)
+SELECT 'b0000000-0000-4000-8000-000000000001',
+       '00000000-0000-0000-0000-000000000001',id,
+       'Synthetic event invitation','2027-04-02T16:00:00Z'::timestamptz
+FROM public.workplaces WHERE teacher_id='00000000-0000-0000-0000-000000000001'
+ORDER BY id LIMIT 1;
+INSERT INTO public.event_students(event_id,student_id,repertoire)
+VALUES('b0000000-0000-4000-8000-000000000001',
+       '10000000-0000-0000-0000-000000000001','Synthetic repertoire');
+INSERT INTO public.portal_event_invitations
+ (id,teacher_id,event_id,portal_grant_id,status,party_size,note,responded_at)
+VALUES('e0000000-0000-4000-8000-000000000001',
+       '00000000-0000-0000-0000-000000000001',
+       'b0000000-0000-4000-8000-000000000001',
+       'c0000000-0000-4000-8000-000000000001',
+       'yes',2,'Synthetic approved guest response','2026-11-18T12:00:00Z'::timestamptz);
+SQL
+
+echo "==> verify exact seeded guest sharing exists and old family tokens were never used"
+docker exec "$source_db" psql -U postgres -d postgres -tAc \
+  "SELECT count(*) FROM public.portal_event_invitations WHERE event_id='b0000000-0000-4000-8000-000000000001' AND status='yes'" | grep -qx 1
 
 echo "==> upload actual synthetic PNG through Storage API"
 printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==' |
@@ -133,35 +206,28 @@ cp -a "$root/public/auth-email-templates" "$tmp/restore/public/auth-email-templa
 sed -i '/^\[db.seed\]/,/^\[db.network_restrictions\]/ s/^enabled = true$/enabled = false/' "$tmp/restore/supabase/config.toml"
 sed -i 's/project_id = "chesscoachpal"/project_id = "chesscoachpal_restore"/' \
   "$tmp/restore/supabase/config.toml"
-# A fixed textual substitution (5432 -> 5442) can collide with a port already
-# occupied by the CI runner (observed: Mailpit 54424). Pick independent free
-# loopback ports for every Supabase CLI exposed service in this disposable
-# second stack. The source stack keeps its original configured ports.
-python3 - "$tmp/restore/supabase/config.toml" <<'PY'
+# The source allocation was random; choose a second disjoint port for
+# every exposed Supabase service. Replace ONLY the previously selected
+# source-port strings, not arbitrary digits or private filesystem paths.
+python3 - "$tmp/restore/supabase/config.toml" "$tmp/source-ports.json" <<'PORTS'
+import json,re,socket,sys
 from pathlib import Path
-import re
-import socket
-import sys
-
-path = Path(sys.argv[1])
-content = path.read_text()
-ports = sorted(set(re.findall(r'(?<!\d)5432[0-9](?!\d)', content)))
-reserved = []
-mapping = {}
+path=Path(sys.argv[1]);content=path.read_text()
+source=list(json.loads(Path(sys.argv[2]).read_text()).values())
+if not source:raise SystemExit('Missing source port allocation')
+reserved=[];mapping={}
 try:
-    for port in ports:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 0))
-        reserved.append(sock)
-        mapping[port] = str(sock.getsockname()[1])
-    content = re.sub(r'(?<!\d)5432[0-9](?!\d)',
-                     lambda match: mapping[match.group()], content)
-    path.write_text(content)
+ for port in source:
+  sock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+  sock.bind(('127.0.0.1',0))
+  reserved.append(sock)
+  mapping[port]=str(sock.getsockname()[1])
+ pattern=r'(?<!\d)(?:'+'|'.join(re.escape(x) for x in source)+r')(?!\d)'
+ path.write_text(re.sub(pattern,lambda m:mapping[m.group()],content))
 finally:
-    for sock in reserved:
-        sock.close()
-print("Disposable target port allocation:", ", ".join(f"{a}->{b}" for a, b in mapping.items()))
-PY
+ for sock in reserved:sock.close()
+print('Disposable restore ports allocated:',len(mapping))
+PORTS
 (cd "$tmp/restore" && supabase start)
 target_db="supabase_db_chesscoachpal_restore"
 target_storage="supabase_storage_chesscoachpal_restore"
@@ -184,13 +250,19 @@ docker run --rm --network "container:$target_db" \
 echo "==> compare synthetic row counts and actual uploaded bytes"
 for table in auth.users public.teachers public.workplaces public.students public.class_groups \
   public.group_enrollments public.teaching_sessions public.session_participants \
-  public.session_attendance storage.objects; do
+  public.session_attendance public.contacts public.student_contacts \
+  public.billing_accounts public.portal_access_grants \
+  public.events public.event_students public.portal_event_invitations storage.objects; do
   a="$(docker exec "$source_db" psql -U postgres -d postgres -tAc "SELECT count(*) FROM $table")"
   b="$(docker exec "$target_db" psql -U postgres -d postgres -tAc "SELECT count(*) FROM $table")"
   [[ "$a" == "$b" ]] || { echo "Count mismatch: $table" >&2; exit 1; }
 done
 docker exec "$target_db" psql -U postgres -d postgres -tAc \
   "SELECT count(*) FROM public.session_attendance a JOIN public.teaching_sessions s ON s.id=a.session_id WHERE s.title='Restore smoke lesson' AND a.status='present'" | grep -qx 1
+docker exec "$target_db" psql -U postgres -d postgres -tAc \
+  "SELECT count(*) FROM public.portal_event_invitations WHERE status='yes' AND party_size=2" | grep -qx 1
+docker exec "$target_db" psql -U postgres -d postgres -tAc \
+  "SELECT count(*) FROM public.portal_access_grants WHERE token_digest=encode(extensions.digest('test-only-private-demo-key','sha256'),'hex')" | grep -qx 1
 diff -qr "$tmp/source-files" "$tmp/target-files"
 echo "==> assert the destructive restore guard rejects a second run on populated target"
 if docker run --rm --network "container:$target_db" \

@@ -1,5 +1,8 @@
 # Design: federation identities and immutable published ratings
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 ## Current source boundaries
 Student profile: students.strength (teacher), students.chess_ratings/manual fields, student_chess_profile_history, student_rating_snapshots with provider IN (lichess,chesscom) and source (teacher_manual,provider_api). Preserve those records, avoid dual truth and align this change with online sync.
 

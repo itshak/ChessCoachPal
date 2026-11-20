@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hostedSignupFields, getDeploymentMode, getHostedLimits } from "@/lib/entitlements";
 import { isUniqueViolation } from "@/lib/onboarding";
-import { ensureStudioPolicyRow } from "@/lib/server/ensure-policy";
+import { ensureTeacherPolicyRow } from "@/lib/server/ensure-policy";
 import { ensureWelcomeNotification } from "@/lib/server/notifications";
 import {isAppLocale,type AppLocale} from "@/i18n/locales";
 
@@ -77,7 +77,7 @@ export async function ensureTeacherForAuthUser(
     if(capacityError)return {ok:false,error:"Failed to verify hosted capacity"};
   }
 
-  await ensureStudioPolicyRow(
+  await ensureTeacherPolicyRow(
     serviceClient,
     opts.userId,
     opts.timezone ?? null

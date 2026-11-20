@@ -1,5 +1,8 @@
 # Design: public online-rating refresh without per-click friction
 
+> **Execution prerequisite:** First complete [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
+
+
 ## Current implementation
 lib/chess-public-ratings.ts reads official public profile/stats; lib/server/student-rating-snapshots.ts offers refreshPreview/refreshCommit, manually recordable snapshots; components/teacher/StudentChessProfileEditor.tsx and StudentRatingHistoryPanel.tsx expose a multi-click workflow; app/api/cron currently has no rating refresh job.
 

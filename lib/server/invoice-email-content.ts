@@ -4,7 +4,7 @@ import {invoiceFormatPeriod} from "@/lib/server/invoice-pdf";
 import {communicationCopy} from "@/lib/server/communication-locales";
 
 export type InvoiceEmailContentInput={
-  locale:AppLocale;familyGreetingName:string;studioName:string;
+  locale:AppLocale;familyGreetingName:string;businessName:string;
   periodStart:string;periodEnd:string;currency:string;
   subtotalCents:number;paidCents:number;balanceCents:number;
   paymentInstructions:string;paymentProvider:string;
@@ -19,7 +19,7 @@ export function buildInvoiceEmailContent(input:InvoiceEmailContentInput){
   const {locale}=input;
   const copy=communicationCopy[locale].invoice;
   const periodLabel=invoiceFormatPeriod(input.periodStart,input.periodEnd,locale);
-  const studio=input.studioName.trim()||copy.studioFallback;
+  const studio=input.businessName.trim()||copy.studioFallback;
   const total=formatMoney(input.subtotalCents,input.currency,locale);
   const paid=formatMoney(input.paidCents,input.currency,locale);
   const balance=formatMoney(input.balanceCents,input.currency,locale);

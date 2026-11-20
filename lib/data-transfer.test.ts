@@ -13,7 +13,7 @@ function currentPayload(): StudioDataExport {
   return {
     exportedAt:new Date().toISOString(),
     teacherId:"00000000-0000-0000-0000-000000000001",
-    tables:{studio_policies:null,guardians:[],students:[]},
+    tables:{teacher_settings:null,contacts:[],students:[]},
   };
 }
 
@@ -24,7 +24,7 @@ function stubSupabase(calls:RpcCall[], failure?:string):SupabaseClient {
       calls.push({name,args});
       return Promise.resolve(failure
         ? {data:null,error:{message:failure}}
-        : {data:{counts:{guardians:0,students:1}},error:null});
+        : {data:{counts:{contacts:0,students:1}},error:null});
     },
   } as unknown as SupabaseClient;
 }
@@ -53,7 +53,7 @@ describe("ChessCoachPal portable backup", () => {
     payload.tables.student_training_plans=[{id:"tp1",teacher_id:"old",title:"Endgames",goals:[]}];
     payload.tables.student_training_plan_revisions=[{plan_id:"tp1",teacher_id:"old",revision:1}];
     const result=await importStudioExport(stubSupabase(calls),TEACHER,payload,DIGEST);
-    expect(result).toEqual({ok:true,counts:{guardians:0,students:1}});
+    expect(result).toEqual({ok:true,counts:{contacts:0,students:1}});
     expect(calls).toHaveLength(1);
     expect(calls[0].name).toBe("ccp_teacher_backup_restore");
     expect(calls[0].args.p_digest).toBe(DIGEST);
@@ -65,6 +65,29 @@ describe("ChessCoachPal portable backup", () => {
       "student_training_plans","student_training_plan_revisions"]) {
       expect(tables[table]).toEqual(payload.tables[table]);
     }
+  });
+
+  it("restores contacts, preserved student relationships and payer identity in the same atomic receipt",async()=>{
+    const calls:RpcCall[]=[];
+    const payload=currentPayload();
+    payload.tables.contacts=[{
+      id:"contact-1",teacher_id:"old",display_name:"Club contact",email:"coach@club.invalid",
+      kind:"organization",status:"active",
+    }];
+    payload.tables.student_contacts=[{
+      id:"link-1",teacher_id:"old",student_id:"student-1",contact_id:"contact-1",
+      relationship_label:"School contact",is_legal_guardian:false,may_receive_messages:false,
+    }];
+    payload.tables.billing_accounts=[{
+      id:"payer-1",teacher_id:"old",display_name:"Chess club",
+      account_kind:"organization",contact_id:"contact-1",
+    }];
+    expect(parseExportPayload(payload)).not.toBeNull();
+    expect((await importStudioExport(stubSupabase(calls),TEACHER,payload,DIGEST)).ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    const restored=calls[0].args.p_tables as StudioDataExport["tables"];
+    for(const table of ["contacts","student_contacts","billing_accounts"])
+      expect(restored[table]).toEqual(payload.tables[table]);
   });
 
   it("rejects unrecognized table names before any RPC", async()=>{
@@ -79,9 +102,9 @@ describe("ChessCoachPal portable backup", () => {
   it("omits policy credentials in the current authenticated restore", async()=>{
     const calls:RpcCall[]=[];
     const payload=currentPayload();
-    payload.tables.studio_policies={teacher_id:"old",timezone:"UTC",stripe_secret_key:"secret",ai_api_key:"secret"};
+    payload.tables.teacher_settings={teacher_id:"old",timezone:"UTC",stripe_secret_key:"secret",ai_api_key:"secret"};
     expect((await importStudioExport(stubSupabase(calls),TEACHER,payload,DIGEST)).ok).toBe(true);
-    expect((calls[0].args.p_tables as StudioDataExport["tables"]).studio_policies)
+    expect((calls[0].args.p_tables as StudioDataExport["tables"]).teacher_settings)
       .toEqual({teacher_id:"old",timezone:"UTC"});
   });
 
@@ -100,8 +123,8 @@ describe("ChessCoachPal portable backup", () => {
     for(const malformed of [
       {students:{id:"incorrect-object"}},
       {payments:"not an array"},
-      {studio_policies:[{id:"must-be-object"}]},
-      {guardians:[[],{id:"g"}]},
+      {teacher_settings:[{id:"must-be-object"}]},
+      {contacts:[[],{id:"g"}]},
     ]) {
       const calls:RpcCall[]=[];
       const payload=currentPayload();
@@ -171,6 +194,8 @@ describe("ChessCoachPal portable backup", () => {
     expect(EXPORT_PAGE_SIZE).toBeLessThan(1000);
     expect((backup.tables.students as unknown[])).toHaveLength(1205);
     expect((backup.tables.skill_assessments as unknown[])).toHaveLength(1205);
+    for(const table of ["contacts","student_contacts","billing_accounts"])
+      expect(backup.tables).toHaveProperty(table);
     expect(backup.tables).toHaveProperty("learning_materials");
     expect(backup.tables).toHaveProperty("material_teaching_evidence");
     expect(backup.tables).toHaveProperty("training_assignments");

@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { StudioPolicy } from "@/lib/schedule";
+import type { TeacherPolicy } from "@/lib/schedule";
 
 const inputClass =
   "px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm";
@@ -22,7 +22,7 @@ export function PolicySettings({
   policy,
   defaultOpen = false,
 }: {
-  policy: StudioPolicy;
+  policy: TeacherPolicy;
   defaultOpen?: boolean;
 }) {
   const router = useRouter();

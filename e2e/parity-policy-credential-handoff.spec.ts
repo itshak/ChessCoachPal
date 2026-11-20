@@ -10,9 +10,9 @@ test("PARITY:PARITY-policy-secret-handoff-website-mcp uses authenticated private
  const beforeResponse=await page.request.get("/api/settings/policy");
  expect(beforeResponse.status(),await beforeResponse.text()).toBe(200);
  const original=await beforeResponse.json();
- const noConsent=await call("ccp_studio_credentials_handoff",{kind:"ai"});
+ const noConsent=await call("ccp_teacher_credentials_handoff",{kind:"ai"});
  expect(noConsent.error?.code).toBe("VALIDATION_ERROR");
- const ai=await call("ccp_studio_credentials_handoff",{
+ const ai=await call("ccp_teacher_credentials_handoff",{
   kind:"ai",confirmed:true,
  });
  expect(ai.error).toBeUndefined();
@@ -23,7 +23,7 @@ test("PARITY:PARITY-policy-secret-handoff-website-mcp uses authenticated private
  expect(ai.data.credentialValuesIncluded).toBe(false);
  await page.goto(ai.data.setupPath);
  await expect(page.getByRole("heading",{name:"Optional AI"})).toBeVisible();
- const stripe=await call("ccp_studio_credentials_handoff",{
+ const stripe=await call("ccp_teacher_credentials_handoff",{
   kind:"stripe",confirmed:true,
  });
  expect(stripe.error).toBeUndefined();
@@ -31,7 +31,7 @@ test("PARITY:PARITY-policy-secret-handoff-website-mcp uses authenticated private
  expect(stripe.data.credentialValuesIncluded).toBe(false);
  await page.goto(stripe.data.setupPath);
  await expect(page.getByRole("dialog",{name:"Payment settings"})).toBeVisible();
- const cannotSendThroughModel=await call("ccp_studio_policy_update",{
+ const cannotSendThroughModel=await call("ccp_teacher_settings_update",{
   changes:{aiApiKey:"sk_test_never_pass_sensitive_keys_to_model"},
   confirmed:true,
  });
@@ -47,18 +47,18 @@ test("PARITY:PARITY-policy-secret-handoff-website-mcp uses authenticated private
   const websiteValue=await updated.json();
   expect(websiteValue.ai.apiKey.configured).toBe(true);
   expect(JSON.stringify(websiteValue)).not.toContain(secret);
-  const model=await call("ccp_studio_policy_get",{});
+  const model=await call("ccp_teacher_settings_get",{});
   expect(model.error).toBeUndefined();
   expect(model.data.ai.apiKey.configured).toBe(true);
   expect(model.data.ai_api_key).toBeNull();
   expect(JSON.stringify(model)).not.toContain(secret);
-  const updatedHandoff=await call("ccp_studio_credentials_handoff",{
+  const updatedHandoff=await call("ccp_teacher_credentials_handoff",{
    kind:"ai",confirmed:true,
   });
   expect(updatedHandoff.error).toBeUndefined();
   expect(updatedHandoff.data.configured).toBe(true);
   expect(JSON.stringify(updatedHandoff)).not.toContain(secret);
-  const cleared=await call("ccp_studio_policy_update",{
+  const cleared=await call("ccp_teacher_settings_update",{
    changes:{aiProvider:"none",clearAiApiKey:true},confirmed:true,
   });
   expect(cleared.error).toBeUndefined();

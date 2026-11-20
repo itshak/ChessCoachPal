@@ -12,6 +12,7 @@ import { releasePushSubscription } from "@/lib/push-client";
 import { NotificationBell } from "@/components/teacher/NotificationBell";
 import { useTeacherTheme } from "@/components/teacher/TeacherThemeProvider";
 import { IosInstallHint } from "@/components/pwa/IosInstallHint";
+import {WorkplaceSwitcher} from "@/components/teacher/WorkplaceSwitcher";
 
 const navItems = [
   { href: "/dashboard", key: "today", tour: "dashboard" },
@@ -22,10 +23,10 @@ const navItems = [
   { href: "/reports", key: "reports", tour: "reports" },
 ] as const;
 const secondaryNavItems = [
-  { href: "/families", key: "contacts", tour: "families" },
+  { href: "/contacts", key: "contacts", tour: "families" },
   { href: "/events", key: "events", tour: "events" },
   { href: "/billing", key: "billing", tour: "billing" },
-  { href: "/studio", key: "settings", tour: "studio" },
+  { href: "/settings", key: "settings", tour: "settings" },
 ] as const;
 
 function NavTab({
@@ -226,9 +227,13 @@ function AccountMenu({
 export function TeacherNav({
   teacherName,
   avatarUrl,
+  selectedWorkplaceId,
+  workplaces,
 }: {
   teacherName: string;
   avatarUrl: string | null;
+  selectedWorkplaceId:string|null;
+  workplaces:Array<{id:string;name:string}>;
 }) {
   const pathname = usePathname();
   const t = useTranslations("nav");
@@ -285,6 +290,8 @@ export function TeacherNav({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          <WorkplaceSwitcher workplaces={workplaces}
+            selectedWorkplaceId={selectedWorkplaceId}/>
           <NotificationBell />
           <AccountMenu teacherName={teacherName} avatarUrl={avatarUrl} />
           <button

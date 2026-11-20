@@ -21,7 +21,7 @@
     "schema:attendance:inventory": "node scripts/canonical-cutover-audit.mjs",
     "schema:attendance:strict": "node scripts/canonical-cutover-audit.mjs --strict",
     "schema:canonical:guard": "node scripts/pre1-schema-guard.mjs",
-    "schema:canonical:guard-test": "node --test scripts/pre1-schema-guard.test.mjs scripts/schema-transition-contract.test.mjs scripts/canonical-cutover-audit.test.mjs scripts/canonical-lessons-guard.test.mjs",
+    "schema:canonical:guard-test": "node --test scripts/pre1-schema-guard.test.mjs scripts/schema-transition-contract.test.mjs scripts/canonical-cutover-audit.test.mjs scripts/canonical-lessons-guard.test.mjs scripts/pre1-final-cutover-audit.test.mjs scripts/unified-schema-freeze.test.mjs",
     "schema:transitions:contract": "node scripts/pre1-schema-guard.mjs && node --test scripts/schema-transition-contract.test.mjs",
     "schema:canonical:strict": "node scripts/pre1-schema-guard.mjs --strict-materials",
     "start": "next start",
@@ -29,7 +29,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pre1:final-cutover:audit": "node scripts/pre1-final-cutover-audit.mjs"
   },
   "dependencies": {
     "@floating-ui/dom": "^1.8.0",

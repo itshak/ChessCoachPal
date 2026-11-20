@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_POLICY,
   normalizeDurationRates,
-  type StudioPolicy,
+  type TeacherPolicy,
 } from "@/lib/schedule";
 
 /**
@@ -15,9 +15,9 @@ import {
 export async function getPolicy(
   supabase: SupabaseClient,
   teacherId: string
-): Promise<StudioPolicy> {
+): Promise<TeacherPolicy> {
   const { data } = await supabase
-    .from("studio_policies")
+    .from("teacher_settings")
     .select("*")
     .eq("teacher_id", teacherId)
     .maybeSingle();

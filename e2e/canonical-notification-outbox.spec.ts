@@ -5,7 +5,7 @@ import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
 /** One approved teacher note queues exactly one immutable intent; neither an
- * unapproved family note nor teacher-private notes ever enter its payload.
+ * unapproved contact note nor teacher-private notes ever enter its payload.
  * The delivery worker uses only service-role SQL claims, never delegated MCP.
  */
 test("SECURITY: canonical note approval queues deduplicated private-safe delivery, not direct email",async({page,request})=>{
@@ -15,10 +15,18 @@ test("SECURITY: canonical note approval queues deduplicated private-safe deliver
  }));
  expect(student.error).toBeUndefined();
  const studentId=student.data.entityId as string;
- const guardian=await call("ccp_guardians_create",{
-  name:"Outbox guardian "+randomUUID(),studentIds:[studentId],confirmed:true,
+ const contact=await call("ccp_contacts_create",{
+  displayName:"Authorized school contact "+randomUUID(),
+  email:"consented-"+randomUUID()+"@example.invalid",
+  preferredLocale:"en",idempotencyKey:randomUUID(),confirmed:true,
  });
- expect(guardian.error).toBeUndefined();
+ expect(contact.error).toBeUndefined();
+ const linked=await call("ccp_student_contacts_link",{
+  studentId,contactId:contact.data.id,relationshipLabel:"Approved guardian",
+  isLegalGuardian:true,mayReceiveMessages:true,
+  idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(linked.error).toBeUndefined();
  const workplace=await call("ccp_workplaces_create",{
   name:"Outbox workplace "+randomUUID(),timezone:"UTC",currency:"USD",
   locale:"en",policy:{},idempotencyKey:randomUUID(),
@@ -38,7 +46,7 @@ test("SECURITY: canonical note approval queues deduplicated private-safe deliver
  const secret="Private teacher detail "+randomUUID();
  const key=randomUUID();
  const input={sessionId,studentId,body:"Practised rook endings",
-  privateBody:secret,sharedWithGuardian:true,
+  privateBody:secret,sharedWithContacts:true,
   sendEmail:true,confirmedEmail:true,expectedUpdatedAt:null,
   idempotencyKey:key,confirmed:true};
  const site=await page.request.put("/api/coaching/sessions/"+sessionId+"/notes",{
@@ -69,7 +77,7 @@ test("SECURITY: canonical note approval queues deduplicated private-safe deliver
  expect(lookup).toBeNull();
  expect(queued).toHaveLength(1);
  expect(queued![0]).toMatchObject({
-  event_key:"session-note:"+key,kind:"session_note_family",
+  event_key:"session-note:"+key,kind:"session_note_contacts",
   state:"pending",attempts:0,
  });
  const serialized=JSON.stringify(queued![0].payload);

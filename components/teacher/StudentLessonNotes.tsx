@@ -9,7 +9,7 @@ export type StudentLessonNote = {
   id: string;
   body: string;
   privateBody: string;
-  sharedWithParent: boolean;
+  sharedWithContacts: boolean;
   emailedAt: string | null;
   lessonDate: string;
   updatedAt: string;

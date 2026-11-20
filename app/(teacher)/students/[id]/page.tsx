@@ -13,7 +13,11 @@ import { StudentNotesEditor } from "@/components/teacher/StudentNotesEditor";
 import { StudentLessonNotes } from "@/components/teacher/StudentLessonNotes";
 import { StudentInfoCard } from "@/components/teacher/StudentInfoCard";
 import { StudentChessProfileEditor } from "@/components/teacher/StudentChessProfileEditor";
+import { StudentContactsPanel } from "@/components/teacher/StudentContactsPanel";
+import {StudentBillingAssignmentsPanel} from "@/components/teacher/StudentBillingAssignmentsPanel";
+import {StudentPortalSharingPanel} from "@/components/teacher/StudentPortalSharingPanel";
 import { StudentRatingHistoryPanel } from "@/components/teacher/StudentRatingHistoryPanel";
+import { StudentFederationsPanel } from "@/components/teacher/StudentFederationsPanel";
 import { UnifiedLessonHistoryPanel } from "@/components/teacher/UnifiedLessonHistoryPanel";
 import { CoachBriefingPanel } from "@/components/teacher/CoachBriefingPanel";
 import { EditableStudentName } from "@/components/teacher/EditableStudentName";
@@ -22,7 +26,6 @@ import { CreditPackagesCard } from "@/components/teacher/billing/CreditPackagesC
 import { getOrSeedDimensions } from "@/lib/server/skills";
 import { getPolicy } from "@/lib/server/scheduling";
 import {loadCanonicalCreditBalances} from "@/lib/server/canonical-credits";
-import { familyDisplayName } from "@/lib/guardians";
 import { oneToOne, toLocalDateString } from "@/lib/schedule";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -50,7 +53,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
     { data: lessonNoteRows },
     policy,
   ] = await Promise.all([
-    supabase.from("students").select("*, guardians ( id, name, family_name, email )")
+    supabase.from("students").select("*")
       .eq("id", id).eq("teacher_id", user.id).single(),
     getOrSeedDimensions(supabase, user.id),
     supabase.from("skill_assessments").select("id, dimension_id, rating, assessed_on, created_at")
@@ -59,7 +62,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       .eq("teacher_id",user.id).eq("student_id",id)
       .order("marked_at",{ascending:false}).limit(500),
     supabase.from("session_notes").select(
-      "id,body,private_body,shared_with_guardian,emailed_at,updated_at,teaching_sessions!session_notes_session_teacher_fkey(starts_at,local_timezone)"
+      "id,body,private_body,shared_with_contacts,emailed_at,updated_at,teaching_sessions!session_notes_session_teacher_fkey(starts_at,local_timezone)"
     ).eq("teacher_id",user.id).eq("student_id",id)
      .order("updated_at",{ascending:false}).limit(100),
     getPolicy(supabase, user.id),
@@ -82,7 +85,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
     if(!session||!(row.body?.trim()||row.private_body?.trim()))return [];
     return [{
       id:row.id,body:row.body??"",privateBody:row.private_body??"",
-      sharedWithParent:row.shared_with_guardian,emailedAt:row.emailed_at,
+      sharedWithContacts:row.shared_with_contacts,emailedAt:row.emailed_at,
       lessonDate:toLocalDateString(new Date(session.starts_at),
         session.local_timezone||policy.timezone),
       updatedAt:row.updated_at,
@@ -95,24 +98,34 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       .eq("student_id", id).eq("active", true).order("start_date", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
+  const [{data:enrollmentRows},{data:workplaceRows}]=await Promise.all([
+    supabase.from("workplace_enrollments").select("workplace_id")
+      .eq("teacher_id",user.id).eq("student_id",id),
+    supabase.from("workplaces").select("id,name").eq("teacher_id",user.id).order("name"),
+  ]);
+  const enrolledIds=new Set((enrollmentRows??[]).map(x=>x.workplace_id));
+  const sharingWorkplaces=(workplaceRows??[]).filter(w=>enrolledIds.has(w.id));
+  // The UI can offer purchase only with a dated, explicitly attested payer.
+  // Database RPC independently rechecks workplace, payer, and date atomically.
+  const {data:payerAssignments,error:payerReadError}=await supabase
+    .from("student_billing_assignments")
+    .select("workplace_id,effective_from,effective_to")
+    .eq("teacher_id",user.id).eq("student_id",id);
+  const today=toLocalDateString(new Date(),policy.timezone);
+  const activePayers=new Set((payerAssignments??[])
+    .filter(a=>a.effective_from<=today&&(a.effective_to===null||a.effective_to>=today))
+    .map(a=>a.workplace_id));
+  const creditWorkplaces=sharingWorkplaces.filter(w=>activePayers.has(w.id));
+
   return (
     <div>
       <Link href="/students" className="inline-block mb-6 text-muted hover:text-foreground"><span aria-hidden="true" className="inline-block rtl:rotate-180">←</span>{" "}{t("back")}</Link>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <EditableStudentName studentId={id} initialName={student.name} />
-          {student.guardians ? (
-            <p className="text-muted text-sm">
-              {t("family")}{" "}
-              <Link href={`/families/${student.guardians.id}`} className="hover:text-primary transition-colors">
-                <bdi dir="auto">{familyDisplayName(student.guardians)}</bdi>
-              </Link>
-            </p>
-          ) : student.parent_contact ? (
-            <p className="text-muted text-sm">{student.parent_contact}</p>
-          ) : (
-            <Link href="/families" className="text-sm text-primary hover:underline">{t("linkFamily")}</Link>
-          )}
+          <a href="#student-contacts" className="text-sm text-primary hover:underline">
+            {t("contacts")}
+          </a>
         </div>
         <div className="flex flex-wrap gap-2">
           <ArchiveStudentButton studentId={id} studentName={student.name} archived={Boolean(student.archived_at)} />
@@ -129,6 +142,9 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialDefaultRateCents={student.default_rate_cents ?? null}
         initialTravelFeeCents={student.travel_fee_cents ?? null}
       />
+      <StudentContactsPanel studentId={id} />
+      <StudentBillingAssignmentsPanel studentId={id} workplaces={sharingWorkplaces}/>
+      <StudentPortalSharingPanel studentId={id} workplaces={sharingWorkplaces}/>
       <StudentChessProfileEditor
         studentId={id}
         initialAliases={student.name_aliases ?? []}
@@ -141,9 +157,11 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         initialRatings={student.chess_ratings ?? {}}
       />
       <StudentRatingHistoryPanel studentId={id} />
+      <StudentFederationsPanel studentId={id} />
       <CreditPackagesCard
         studentId={id}
-        hasFamily={Boolean(student.guardian_id)}
+        hasBillingAccount={!payerReadError&&creditWorkplaces.length>0}
+        workplaces={creditWorkplaces}
         currency={policy.currency}
         packages={creditPackages.map(pkg => ({
           id: pkg.id, invoiceId: pkg.invoiceId,

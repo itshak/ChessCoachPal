@@ -10,6 +10,7 @@ const inputClass =
   "min-w-0 max-w-full w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm";
 
 export type EventFormStudent = { id: string; name: string };
+export type EventFormWorkplace = { id: string; name: string };
 
 export type EventFormValues = {
   title: string;
@@ -18,18 +19,21 @@ export type EventFormValues = {
   location: string;
   description: string;
   sendReminder: boolean;
+  workplaceId: string | null;
   studentIds: string[];
   repertoireByStudent: Record<string, string>;
 };
 
 export function EventForm({
   students,
+  workplaces,
   initial,
   submitLabel,
   onSubmit,
   reminderSentAt = null,
 }: {
   students: EventFormStudent[];
+  workplaces: EventFormWorkplace[];
   initial: EventFormValues;
   submitLabel: string;
   onSubmit: (values: EventFormValues) => Promise<void>;
@@ -44,6 +48,7 @@ export function EventForm({
   const [location, setLocation] = useState(initial.location);
   const [description, setDescription] = useState(initial.description);
   const [sendReminder, setSendReminder] = useState(initial.sendReminder);
+  const [workplaceId,setWorkplaceId] = useState(initial.workplaceId ?? "");
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(initial.studentIds)
   );
@@ -105,6 +110,7 @@ export function EventForm({
         location: location.trim(),
         description: description.trim(),
         sendReminder,
+        workplaceId:workplaceId || null,
         studentIds,
         repertoireByStudent,
       });
@@ -151,6 +157,17 @@ export function EventForm({
             onChange={(e) => setEndsAt(e.target.value)}
           />
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="event-workplace-id" className="block text-sm font-medium mb-1">
+          {t("workplace")}
+        </label>
+        <select id="event-workplace-id" className={inputClass}
+          value={workplaceId} onChange={(e)=>setWorkplaceId(e.target.value)}>
+          <option value="">{t("noWorkplace")}</option>
+          {workplaces.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
+        </select>
       </div>
 
       <div>

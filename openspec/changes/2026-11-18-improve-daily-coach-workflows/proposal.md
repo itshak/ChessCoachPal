@@ -1,5 +1,11 @@
 # Change: action-oriented daily coach dashboard and lesson preparation/completion
 
+> **Schema-first execution gate (2026-11-19):** [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md) is the **mandatory first implementation change**. All schema DDL, tenant/RLS/FK/index work, generated DB types and schema-induced regressions belong to that change; this proposal must wait for its reviewed schema freeze and passing exact-head gates before implementing its remaining business functionality. Its existing schema statements describe requirements for the foundation, **not** permission to add per-feature DDL later. Operator-only SaaS and future shard-compatible UUID/RLS design follow [ADR-0018](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md); no customer self-hosting or live cutover is authorized.
+
+
+> **ADR-0017 final-cutover override (2026-11-18):** No backward compatibility or legacy dual-writes before v1. The final deliverable uses the clean canonical baseline and current website/MCP contracts. All planned features deploy with **one final** live migration **or** verified clean rebuild/reimport at the operator's choice; no per-feature production migration. Existing data handling is a deliberate one-time import/mapping decision, not an obligation to retain obsolete Family/Studio/guardian APIs or old portal tokens. Security, tenant isolation and explicit new grants remain required.
+
+
 **Status:** Proposed implementation; product-direction approved, no UI/app code changed.
 **Priority:** P1 after workplace context, can proceed separately from full finance/portal.
 **Depends on:** 2026-11-18-add-workplace-context-and-retire-studio.
@@ -23,3 +29,5 @@ No mandatory LLM-generated coaching claims, autonomous student messages, AI mast
 
 ## Acceptance
 A completed group session appears once as teacher work and as participant-specific evidence, with no invented attendance or mastery. Website and MCP agree on exactly which actions remain. An empty/missing provider/assignment is labeled unknown, not silently inferred.
+
+> **Cross-change schema coordination (2026-11-19):** No committed new table yet; may require persisted queue state after inventory. Prefer derived queues from canonical sessions and students where practical. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.

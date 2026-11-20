@@ -1,8 +1,10 @@
 # ADR-0001: Breaking contracts before 1.0.0; canonical schema first
 
-- **Status:** Accepted — binding; live-data rules clarified by [ADR-0015](0015-baseline-first-and-one-time-live-transitions.md)
+- **Status:** Accepted — binding; final-cutover policy now clarified by [ADR-0017](0017-pre-v1-single-final-cutover-no-compatibility.md)
 - **Date:** 2026-11-07; policy clarification 2026-11-18
 - **Scope:** ChessCoachPal pre-v1 APIs, database, UX, configuration, and CogNote inheritance
+
+> **2026-11-18 controlling clarification:** ADR-0017 requires one final cutover or clean export/reimport, not repeated per-feature live migrations. Historic ADR-0015 evidence remains recorded below; do not read it as authorization for compatibility code or real database changes.
 
 ## Context
 

@@ -1,5 +1,11 @@
 # Change: automate consented public Lichess and Chess.com rating synchronization
 
+> **Schema-first execution gate (2026-11-19):** [`2026-11-19-freeze-unified-saas-schema-and-regressions`](../2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md) is the **mandatory first implementation change**. All schema DDL, tenant/RLS/FK/index work, generated DB types and schema-induced regressions belong to that change; this proposal must wait for its reviewed schema freeze and passing exact-head gates before implementing its remaining business functionality. Its existing schema statements describe requirements for the foundation, **not** permission to add per-feature DDL later. Operator-only SaaS and future shard-compatible UUID/RLS design follow [ADR-0018](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md); no customer self-hosting or live cutover is authorized.
+
+
+> **ADR-0017 final-cutover override (2026-11-18):** No backward compatibility or legacy dual-writes before v1. The final deliverable uses the clean canonical baseline and current website/MCP contracts. All planned features deploy with **one final** live migration **or** verified clean rebuild/reimport at the operator's choice; no per-feature production migration. Existing data handling is a deliberate one-time import/mapping decision, not an obligation to retain obsolete Family/Studio/guardian APIs or old portal tokens. Security, tenant isolation and explicit new grants remain required.
+
+
 **Status:** Proposed implementation, not currently automatic.
 **Priority:** P1; follows the federation snapshot model.
 **Depends on:** 2026-11-18-introduce-fide-national-ratings for shared provider-neutral snapshots.
@@ -23,3 +29,5 @@ No private API token/student password request, mandatory daily sync of all stude
 
 ## Acceptance
 Consented new handle fetches without extra click; denied consent does not. Archived excluded from recurring jobs, sync failure preserves last good snapshot, retries are deduplicated, and website/MCP display identical provenance.
+
+> **Cross-change schema coordination (2026-11-19):** Future schema REQUIRED: consent, queued refresh jobs, receipts, provider status and tenant grants. Not included in the accepted baseline solely because the contacts/finance PR passes. See [`../SCHEMA_ROADMAP.md`](../SCHEMA_ROADMAP.md) for shared dependencies and ADR-0017 single-final-cutover rules. Passing the Contacts/Finance PR does not automatically accept this proposal.
