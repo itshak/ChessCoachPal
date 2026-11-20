@@ -108,3 +108,24 @@ test("unified canonical owner isolation and typed finance schema stays synchroni
     ).test(sql), "No RLS policy for " + name);
   }
 });
+
+test("payer assignment SQL and TypeScript contracts reject unproven enrollment dates",()=>{
+ const fn=sql.split("CREATE OR REPLACE FUNCTION public.ccp_billing_assignment_one_payer()")[1]
+  ?.split("$ccp_billing_assignment_one_payer$;")[0];
+ ok(fn,"Missing canonical payer assignment guard");
+ for(const marker of [
+  "FOR SHARE OF e","e.start_date_unknown=false",
+  "e.starts_on<=NEW.effective_from","NEW.effective_to IS NULL AND e.ends_on IS NULL",
+  "STUDENT_PAYER_OUTSIDE_ENROLLMENT",
+  "PAYER_ASSIGNMENT_IDENTITY_IMMUTABLE",
+  "PAYER_ASSIGNMENT_CANNOT_EXTEND_HISTORY"
+ ])ok(fn.includes(marker),"Payer guard missing "+marker);
+ ok(types.includes("      student_billing_assignments: {"));
+ ok(manifest.baselineRequiredObjects.includes("student_billing_assignments"));
+ const service=read("lib/server/student-billing-assignments-service.ts");
+ for(const marker of [
+  'type Row=Database["public"]["Tables"]["student_billing_assignments"]["Row"]',
+  'PAYER_ENROLLMENT_RANGE_REQUIRED', '.eq("start_date_unknown",false)',
+  '.is("cancelled_at",null)', '.lte("starts_on",x.effectiveFrom)'
+ ])ok(service.includes(marker),"Payer service missing "+marker);
+});

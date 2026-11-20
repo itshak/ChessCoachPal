@@ -10747,6 +10747,39 @@ SET search_path=public,pg_temp AS $ccp_billing_assignment_one_payer$
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended(
     NEW.teacher_id::text||':billing-payer:'||NEW.student_id::text||':'||NEW.workplace_id::text,0));
+  -- A payer contract must be justified by one known, non-cancelled enrollment
+  -- covering its complete date range. A historical/unknown legacy start does
+  -- not prove coverage. Lock the period so concurrent unenrollment waits.
+  PERFORM 1 FROM public.workplace_enrollments e
+   WHERE e.teacher_id=NEW.teacher_id
+     AND e.student_id=NEW.student_id AND e.workplace_id=NEW.workplace_id
+     AND e.cancelled_at IS NULL AND e.start_date_unknown=false
+     AND e.starts_on<=NEW.effective_from
+     AND ((NEW.effective_to IS NULL AND e.ends_on IS NULL)
+       OR (NEW.effective_to IS NOT NULL AND
+           (e.ends_on IS NULL OR e.ends_on>=NEW.effective_to)))
+   FOR SHARE OF e;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'STUDENT_PAYER_OUTSIDE_ENROLLMENT'
+      USING ERRCODE='23503';
+  END IF;
+  -- Payer, student, workplace and start date are financial provenance. Only
+  -- explicit end-date corrections may modify a contract after creation.
+  IF TG_OP='UPDATE' THEN
+    IF (NEW.id,NEW.teacher_id,NEW.student_id,NEW.workplace_id,
+        NEW.billing_account_id,NEW.effective_from,NEW.created_at)
+       IS DISTINCT FROM
+       (OLD.id,OLD.teacher_id,OLD.student_id,OLD.workplace_id,
+        OLD.billing_account_id,OLD.effective_from,OLD.created_at) THEN
+      RAISE EXCEPTION 'PAYER_ASSIGNMENT_IDENTITY_IMMUTABLE'
+        USING ERRCODE='23514';
+    END IF;
+    IF OLD.effective_to IS NOT NULL AND
+       (NEW.effective_to IS NULL OR NEW.effective_to>OLD.effective_to) THEN
+      RAISE EXCEPTION 'PAYER_ASSIGNMENT_CANNOT_EXTEND_HISTORY'
+        USING ERRCODE='23514';
+    END IF;
+  END IF;
   IF EXISTS(SELECT 1 FROM public.student_billing_assignments a
     WHERE a.teacher_id=NEW.teacher_id AND a.student_id=NEW.student_id
       AND a.workplace_id=NEW.workplace_id AND a.id<>NEW.id

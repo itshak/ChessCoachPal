@@ -1,6 +1,7 @@
 import {createHash} from "node:crypto";
 import {z} from "zod";
 import type {SupabaseClient} from "@supabase/supabase-js";
+import type {Database} from "@/lib/supabase/types";
 import {teacherStudentProfile,StudentProfileError} from "./student-profile-service";
 
 /** Payer selection requires an explicit teacher-attested contract. Never infer
@@ -27,7 +28,7 @@ const fail=(status:number,code:string,message:string):never=>{
  throw new PayerAssignmentError(status,code,message);
 };
 type Db=SupabaseClient;
-type Row=Record<string,unknown>;
+type Row=Database["public"]["Tables"]["student_billing_assignments"]["Row"];
 const columns="id,student_id,workplace_id,billing_account_id,effective_from,effective_to,revision,last_request_id,last_request_hash,created_at,updated_at";
 const hash=(v:unknown)=>createHash("sha256").update(JSON.stringify(v)).digest("hex");
 function safe(r:Row){
@@ -73,21 +74,38 @@ export async function payerAssignmentCreate(db:Db,teacherId:string,
    .eq("id",x.workplaceId).maybeSingle();
  if(workplace.error)fail(503,"PAYER_ASSIGNMENT_UNAVAILABLE","Workplace lookup failed");
  if(!workplace.data)fail(404,"NOT_FOUND","Workplace not owned by teacher");
- const {data:enrolled,error:enrollError}=await db.from("workplace_enrollments").select("id")
-   .eq("teacher_id",teacherId).eq("student_id",x.studentId)
-   .eq("workplace_id",x.workplaceId).limit(1).maybeSingle();
- if(enrollError)fail(503,"PAYER_ASSIGNMENT_UNAVAILABLE","Enrollment lookup failed");
- if(!enrolled)fail(409,"NOT_ENROLLED","Enroll the student in this workplace first");
- const payer=await checkOwner(db,teacherId,"billing_accounts",x.billingAccountId);
- if(payer.status!=="active")fail(409,"PAYER_ARCHIVED","Payer account is not active");
+ // Replays keep their original receipt even if enrollment subsequently ended.
+ // New contracts must fit inside a single reviewed dated enrollment period.
  const fields={teacher_id:teacherId,student_id:x.studentId,
   workplace_id:x.workplaceId,billing_account_id:x.billingAccountId,
   effective_from:x.effectiveFrom,effective_to:x.effectiveTo};
  const digest=hash(fields);
+ const {data:existing,error:existingError}=await db.from("student_billing_assignments")
+  .select(columns).eq("teacher_id",teacherId).eq("id",x.idempotencyKey).maybeSingle();
+ if(existingError)fail(503,"PAYER_ASSIGNMENT_UNAVAILABLE","Cannot verify prior payer request");
+ if(existing){
+  if(existing.last_request_id===x.idempotencyKey&&existing.last_request_hash===digest)
+   return {...safe(existing),replayed:true};
+  fail(409,"PAYER_OVERLAP","Request ID was already used for different payer terms");
+ }
+ let enrollment=db.from("workplace_enrollments").select("id")
+  .eq("teacher_id",teacherId).eq("student_id",x.studentId)
+  .eq("workplace_id",x.workplaceId).eq("start_date_unknown",false)
+  .is("cancelled_at",null).lte("starts_on",x.effectiveFrom);
+ if(x.effectiveTo===null)enrollment=enrollment.is("ends_on",null);
+ else enrollment=enrollment.or(`ends_on.is.null,ends_on.gte.${x.effectiveTo}`);
+ const {data:enrolled,error:enrollError}=await enrollment.limit(1).maybeSingle();
+ if(enrollError)fail(503,"PAYER_ASSIGNMENT_UNAVAILABLE","Enrollment lookup failed");
+ if(!enrolled)fail(409,"PAYER_ENROLLMENT_RANGE_REQUIRED",
+  "Payer dates must fit within one verified workplace enrollment period");
+ const payer=await checkOwner(db,teacherId,"billing_accounts",x.billingAccountId);
+ if(payer.status!=="active")fail(409,"PAYER_ARCHIVED","Payer account is not active");
  const {data,error}=await db.from("student_billing_assignments").insert({
   id:x.idempotencyKey,...fields,last_request_id:x.idempotencyKey,last_request_hash:digest,
  }).select(columns).maybeSingle();
  if(!error&&data)return {...safe(data),replayed:false};
+ if(error?.code==="23503")fail(409,"PAYER_ENROLLMENT_RANGE_REQUIRED",
+  "Payer dates are no longer covered by an eligible enrollment");
  if(error?.code==="23505"){
   const {data:prior,error:readError}=await db.from("student_billing_assignments")
    .select(columns).eq("teacher_id",teacherId).eq("id",x.idempotencyKey).maybeSingle();
@@ -119,6 +137,10 @@ export async function payerAssignmentEnd(db:Db,teacherId:string,
    .eq("id",x.assignmentId).eq("revision",x.expectedRevision)
    .select(columns).maybeSingle();
  if(error?.code==="23505")fail(409,"PAYER_OVERLAP","Payer period overlaps another assignment");
+ if(error?.code==="23503")fail(409,"PAYER_ENROLLMENT_RANGE_REQUIRED",
+  "Payer end date must fit within its verified enrollment");
+ if(error?.code==="23514")fail(409,"INVALID_END_DATE",
+  "Payer history may only be shortened, not reassigned or extended");
  if(error)fail(503,"PAYER_ASSIGNMENT_UNAVAILABLE","Cannot end payer assignment");
  if(data)return {...safe(data),replayed:false};
  const {data:latest,error:laterError}=await db.from("student_billing_assignments")
@@ -133,6 +155,14 @@ export async function payerForStudentAt(db:Db,teacherId:string,
  studentId:string,workplaceId:string,localDate:string):Promise<string|null>{
  if(!z.iso.date().safeParse(localDate).success)
   fail(400,"INVALID_DATE","Use an exact local lesson date");
+ // A payer alone is not authority to bill a lesson after enrollment ended.
+ const {data:enrolled,error:enrollError}=await db.from("workplace_enrollments")
+  .select("id").eq("teacher_id",teacherId).eq("student_id",studentId)
+  .eq("workplace_id",workplaceId).eq("start_date_unknown",false)
+  .is("cancelled_at",null).lte("starts_on",localDate)
+  .or(`ends_on.is.null,ends_on.gte.${localDate}`).limit(1).maybeSingle();
+ if(enrollError)fail(503,"PAYER_ASSIGNMENT_UNAVAILABLE","Cannot verify dated enrollment");
+ if(!enrolled)return null;
  const {data,error}=await db.from("student_billing_assignments")
   .select("billing_account_id").eq("teacher_id",teacherId)
   .eq("student_id",studentId).eq("workplace_id",workplaceId)

@@ -70,6 +70,38 @@ test("temporal memberships allow separate periods, reject overlap and preserve u
     expect(unknown).toMatchObject({
       starts_on: null, start_date_unknown: true, source: "legacy_operator",
     });
+    // A payer must fit inside a single verified period, even when a student
+    // has attended the same workplace in two adjacent historical periods.
+    const { data: billing, error: billingError } = await admin.from("billing_accounts")
+      .insert({ teacher_id: first.id, display_name: "Synthetic school payer" })
+      .select("id").single();
+    expect(billingError).toBeNull();
+    const payer = { teacher_id: first.id, student_id: studentId,
+      workplace_id: first.workplaceId, billing_account_id: billing!.id as string };
+    const { data: validPayer, error: validPayerError } =
+      await admin.from("student_billing_assignments")
+        .insert({ ...payer, effective_from: "2026-01-10", effective_to: "2026-01-20" })
+        .select("id").single();
+    expect(validPayerError).toBeNull();
+    expect(validPayer?.id).toBeTruthy();
+    const { error: acrossPeriodError } = await admin.from("student_billing_assignments")
+      .insert({ ...payer, effective_from: "2026-01-22", effective_to: "2026-02-15" });
+    expect(acrossPeriodError?.code).toBe("23503");
+    const { error: afterPeriodError } = await admin.from("student_billing_assignments")
+      .insert({ ...payer, effective_from: "2027-01-01", effective_to: "2027-01-31" });
+    expect(afterPeriodError?.code).toBe("23503");
+    const { error: changePayerError } = await admin.from("student_billing_assignments")
+      .update({ billing_account_id: billing!.id, effective_from: "2026-01-09" })
+      .eq("id", validPayer!.id);
+    expect(changePayerError?.code).toBe("23514");
+    const { error: legacyUnknownPayerError } =
+      await admin.from("student_billing_assignments").insert({
+        teacher_id: first.id, student_id: other!.id,
+        workplace_id: first.workplaceId, billing_account_id: billing!.id,
+        effective_from: "2025-12-01", effective_to: "2025-12-10",
+      });
+    expect(legacyUnknownPayerError?.code).toBe("23503");
+
     const { data: adjusted, error: adjustError } = await admin.from("workplace_enrollments")
       .update({ ends_on: "2026-12-31" }).eq("id", feb!.id)
       .select("revision,ends_on").single();

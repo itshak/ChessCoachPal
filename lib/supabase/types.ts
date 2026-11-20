@@ -198,6 +198,31 @@ export interface Database {
           created_at?:string;updated_at?:string};
         Update:Partial<Database["public"]["Tables"]["billing_accounts"]["Insert"]>;
       };
+      // Date-scoped payer contracts: financial identity is immutable after
+      // creation. Only the reviewed end-date operation can shorten a period.
+      student_billing_assignments: {
+        Row: {
+          id: string; teacher_id: string; workplace_id: string;
+          student_id: string; billing_account_id: string;
+          effective_from: string; effective_to: string | null;
+          revision: number; last_request_id: string | null;
+          last_request_hash: string | null;
+          created_at: string; updated_at: string;
+        };
+        Insert: {
+          id?: string; teacher_id: string; workplace_id: string;
+          student_id: string; billing_account_id: string;
+          effective_from: string; effective_to?: string | null;
+          revision?: number; last_request_id?: string | null;
+          last_request_hash?: string | null;
+          created_at?: string; updated_at?: string;
+        };
+        Update: {
+          effective_to?: string | null; revision?: number;
+          last_request_id?: string | null; last_request_hash?: string | null;
+          updated_at?: string;
+        };
+      };
       portal_access_grants: {
         Row:{id:string;teacher_id:string;contact_id:string;student_id:string;workplace_id:string;
           billing_account_id:string|null;permissions:string[];token_digest:string|null;
