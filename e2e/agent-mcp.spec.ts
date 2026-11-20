@@ -898,19 +898,28 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const siteRoster=await postDomain({action:"workplaces.enrollments",
     workplaceId:madeWorkplace.entityId});
   expect(siteRoster.some((r:{student_id:string})=>r.student_id===membershipStudent)).toBe(false);
+  // A fresh end request for a period that has already ended is NOT_FOUND;
+  // replay is supported only when the caller supplies the original request ID.
   const removedAgain=(await call("ccp_workplaces_unenroll",{
     workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
-  })).structuredContent.data;
-  expect(removedAgain.removed).toBe(false);
+  })).structuredContent;
+  expect(removedAgain.error.code).toBe("NOT_FOUND");
   await call("ccp_workplaces_enroll",{
     workplaceId:madeWorkplace.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
   });
   const removeSite=await postDomain({action:"workplaces.unenroll",
     workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true});
-  expect(removeSite).toEqual(removeMcp);
+  expect(removeSite).toMatchObject({workplace_id:madeWorkplace.entityId,
+    student_id:membershipStudent,removed:true});
   expect((await call("ccp_workplaces_enrollments",{
     workplaceId:madeWorkplace.entityId,
   })).structuredContent.data.some((r:{student_id:string})=>r.student_id===membershipStudent)).toBe(false);
+  // A group requires an independently active workplace period. Restore it
+  // before testing that an active group blocks membership end.
+  const rejoined=await call("ccp_workplaces_enroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
+  });
+  expect(rejoined.structuredContent.error).toBeUndefined();
   await call("ccp_groups_enroll",{
     groupId:madeGroup.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
   });

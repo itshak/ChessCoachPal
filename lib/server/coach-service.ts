@@ -125,7 +125,9 @@ export async function groupsMembers(db: Db, teacherId: string, groupId: string) 
 export async function sessionsList(db: Db, teacherId: string) {
   const { data, error } = await db.from("teaching_sessions")
     .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
-    .eq("teacher_id", teacherId).order("starts_at", { ascending: false }).limit(100);
+    .eq("teacher_id", teacherId)
+    .order("starts_at", { ascending: false })
+    .order("id", { ascending: true }).limit(100);
   if (error) throw problem();
   return data;
 }

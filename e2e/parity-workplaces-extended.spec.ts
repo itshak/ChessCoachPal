@@ -1,4 +1,6 @@
 import {randomUUID} from "node:crypto";
+import {createClient} from "@supabase/supabase-js";
+import {SEED_TEACHER} from "./helpers/auth";
 import {expect,test,type Page} from "@playwright/test";
 import {delegatedTool, type TestMcpReply} from "./helpers/delegated-mcp";
 
@@ -137,13 +139,29 @@ test("PARITY:PARITY-workplaces-unenroll-history preserves frozen lessons across 
   expect((await callTool("ccp_workplaces_enroll",{
     workplaceId:id,studentId:learner,idempotencyKey:randomUUID(),
   })).error).toBeUndefined();
+  // Put a separately verified historical period on this same student before
+  // the current one. Using a fresh historical date avoids competing with
+  // another synthetic lesson at UTC midnight and leaves no future blocker.
+  const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+  });
+  const signed=await auth.auth.signInWithPassword(SEED_TEACHER);
+  expect(signed.error).toBeNull();
+  const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+  });
+  const historicalPeriod=await admin.from("workplace_enrollments").insert({
+    teacher_id:signed.data.user!.id,student_id:learner,workplace_id:id,
+    starts_on:"2010-01-01",ends_on:"2010-12-31",source:"legacy_operator",
+  });
+  expect(historicalPeriod.error).toBeNull();
+  const day=2+parseInt(randomUUID().slice(0,8),16)%300;
+  const historicalAt=new Date(Date.UTC(2010,0,day,14,0,0)).toISOString();
   const lesson=await callTool("ccp_sessions_create",{
     workplaceId:id,studentId:learner,title:unique("Historical standalone lesson"),
-    // Dated new memberships begin today in this synthetic UTC workplace.
-    // A completed/historical session on the same date remains viewable after end.
-    startsAt:new Date(new Date().toISOString().slice(0,10)+"T00:00:00.000Z").toISOString(),
-    durationMinutes:45,lessonNote:"Preserve this teaching snapshot",
-    idempotencyKey:randomUUID(),
+    startsAt:historicalAt,durationMinutes:45,
+    lessonNote:"Preserve this teaching snapshot",idempotencyKey:randomUUID(),
   });
   expect(lesson.error).toBeUndefined();
   const sessionId=lesson.data.entityId as string;

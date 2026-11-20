@@ -180,9 +180,16 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  expect(mcpWrongExpiry.error?.code).toBe("CONFLICT");
  // Database-level invariant also rejects direct or concurrently racing
  // expiry edits, not just the preflight in the website/MCP service.
+ // A direct *extension* would have been allowed by the historical guard;
+ // the reviewed-only database trigger must reject it without a ledger event.
+ const directExtension=await admin.from("credit_packages")
+   .update({expires_on:"2043-06-01"}).eq("id",packageId);
+ expect(directExtension.error?.message).toContain("CREDIT_EXPIRY_REVIEW_REQUIRED");
+ // Shortening is also rejected, possibly by the earlier history guard first.
  const directViolation=await admin.from("credit_packages")
    .update({expires_on:"2042-07-09"}).eq("id",packageId);
- expect(directViolation.error?.message).toContain("CREDIT_EXPIRY_REVIEW_REQUIRED");
+ expect(directViolation.error?.message).toMatch(
+   /CREDIT_EXPIRY_(REVIEW_REQUIRED|HISTORY_CONFLICT)/);
  const afterDenied=await admin.from("credit_packages").select("expires_on")
    .eq("id",packageId).single();
  expect(afterDenied.error).toBeNull();
