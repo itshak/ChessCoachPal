@@ -21,6 +21,21 @@ All website, MCP, import, group and lesson writes SHALL resolve the exact owned 
 #### Scenario: Another tenant's student
 **WHEN** a teacher supplies a student or workplace UUID belonging to another teacher **THEN** tenant-safe keys and business authorization SHALL reject the operation and SHALL not reveal private record data.
 
+### Requirement: Archive and reactivation require reviewed, atomic lifecycle transactions
+The system SHALL provide matching website and MCP preview/commit operations that enumerate active and future workplace periods, recurring commitments, historical verified workplaces and independently held prepaid entitlements. A commit SHALL verify student revision, explicit teacher confirmation, owner identity and idempotency in one database transaction.
+
+#### Scenario: Archive closes periods, never deletes student identity
+**WHEN** the teacher confirms archiving and no unresolved active groups, future sessions or recurring slots remain **THEN** current periods SHALL be closed as of the teacher-local calendar date, never-started future periods SHALL be cancelled with audit, and the same canonical student and teaching/finance history SHALL remain. Unused credits SHALL retain their original funding and expiration state.
+
+#### Scenario: Race with direct enrollment of an archived learner
+**WHEN** an authenticated or privileged SQL client attempts to insert an enrollment for an archived student, including during a concurrent archive **THEN** the transaction SHALL reject the insert; the previously archived student SHALL NOT silently become enrolled.
+
+#### Scenario: Explicit return, no guessed school
+**WHEN** the student is reactivated **THEN** the teacher SHALL select zero or more previously verified workplace IDs. The backend SHALL create fresh dated intervals only for those choices, reject overlapping or never-verified relationships, retain the same student ID and complete history and enforce hosted active-student capacity atomically. Cancelled future memberships SHALL NOT be suggested as past attendance.
+
+#### Scenario: Existing future obligations block archive
+**WHEN** future sessions, active group membership or recurring lessons still exist **THEN** the preview SHALL identify blockers and a commit SHALL refuse partial archival rather than deleting attendance or changing invoices.
+
 ### Requirement: Credit changes are explicitly authorized entitlement events
 The system SHALL preserve purchased packages and redemptions separately from received payments, invoice obligations and credit adjustment events. Credit refunds, transfers, grants, forfeitures and expiry exceptions SHALL be explicit and audited, with at-most-once requests, valid balances and financial reconciliation. Archiving a student SHALL NOT automatically refund, transfer, forfeit, pause or extend existing credits.
 
