@@ -21,7 +21,7 @@ type Db=SupabaseClient;
 function fail(error:{code?:string}):never{
  if(error.code==="42501")throw new CoachError("NOT_FOUND",404,"Student or historical workplace was not found");
  if(error.code==="23505")throw new CoachError("CONFLICT",409,"Student was changed or lifecycle request ID was reused");
- if(error.code==="23503")throw new CoachError("FUTURE_COMMITMENTS",409,
+ if(error.code==="23503")throw new CoachError("CONFLICT",409,
   "Resolve group enrollments, future scheduled lessons and recurring slots before archiving");
  if(error.code==="22023")throw new CoachError("VALIDATION_ERROR",400,"A reviewed lifecycle request is required");
  if(error.code==="23514")throw new CoachError("CONFLICT",409,"Student lifecycle policy blocks the requested change");
