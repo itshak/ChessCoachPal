@@ -3,6 +3,8 @@ import { getPolicy } from "@/lib/server/scheduling";
 import {loadCanonicalCreditBalances,loadCanonicalCreditPackages} from "@/lib/server/canonical-credits";
 import { validateCreditPackage } from "@/lib/credits";
 import {toLocalDateString} from "@/lib/schedule";
+import {teacherCreditAdjustmentCommit} from "@/lib/server/credit-adjustments";
+import {CoachError} from "@/lib/server/coach-service";
 type Db=SupabaseClient;
 export class CreditServiceError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);}
@@ -62,26 +64,22 @@ export async function teacherCreditPackageCreate(db:Db,teacherId:string,input:Cr
  }
  return data as {packageId:string;invoiceId:string;replayed:boolean};
 }
-export async function teacherCreditPackageExpiry(db:Db,teacherId:string,id:string,expiresOn:string|null){
- const policy=await getPolicy(db,teacherId);
- const packages=await loadCanonicalCreditPackages(db,teacherId,{
-  timezone:policy.timezone,
- });
- const existing=packages.find(p=>p.id===id);
- if(!existing)throw fail(404,"NOT_FOUND","Prepaid package not found");
- if(expiresOn&&!/^\d{4}-\d{2}-\d{2}$/.test(expiresOn))
-  throw fail(400,"VALIDATION_ERROR","Expiry date must be YYYY-MM-DD");
- if(expiresOn&&expiresOn<existing.startsOn)
-  throw fail(400,"VALIDATION_ERROR","Expiry cannot precede package start");
- const latest=existing.redemptions.flatMap(x=>x.lessonDate?[x.lessonDate]:[]).sort().at(-1);
- if(expiresOn&&latest&&expiresOn<latest)
-  throw fail(409,"CONFLICT",`A credit was used for a lesson on ${latest}`);
- const {error}=await db.from("credit_packages").update({expires_on:expiresOn})
-  .eq("id",id).eq("teacher_id",teacherId);
- if(error?.message.includes("CREDIT_EXPIRY_HISTORY_CONFLICT"))
-  throw fail(409,"CONFLICT","Expiry would invalidate a lesson already paid with these credits");
- if(error)throw fail(500,"DATABASE_ERROR","Unable to change package expiry");
- return {ok:true};
+/** Prepaid expiry is changed only by a reviewed, replay-safe entitlement event.
+ * Shortening or clearing a contract date requires a separately approved policy.
+ */
+export async function teacherCreditPackageExpiry(db:Db,teacherId:string,id:string,
+ expiresOn:string,review:{expectedBalance:number;requestId:string;reason:string}
+){
+ try{
+  return await teacherCreditAdjustmentCommit(db,teacherId,{
+   packageId:id,kind:"expiry_extension",credits:0,newExpiresOn:expiresOn,
+   expectedBalance:review.expectedBalance,requestId:review.requestId,
+   reason:review.reason,confirmed:true,
+  });
+ }catch(error){
+  if(error instanceof CoachError)throw fail(error.status,error.code,error.message);
+  throw error;
+ }
 }
 export async function teacherCreditRedemptionReturn(db:Db,teacherId:string,id:string){
  // No direct DELETE: a one-shot REST delete would make cross-client retries

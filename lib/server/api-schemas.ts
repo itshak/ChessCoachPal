@@ -108,6 +108,11 @@ export const creditPackageCreateSchema = z.object({
   requestId: z.uuid().optional(),
 });
 
+// Reviewed extension: no unconfirmed, unaudited date mutation.
 export const creditPackageUpdateSchema = z.object({
-  expiresOn: z.union([dateString, z.literal(""), z.null()]),
-});
+  expiresOn: dateString,
+  expectedBalance: z.number().int().min(0),
+  requestId: z.uuid(),
+  reason: z.string().trim().min(8).max(1000),
+  confirmed: z.literal(true),
+}).strict();

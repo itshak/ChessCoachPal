@@ -12607,3 +12607,24 @@ REVOKE ALL ON FUNCTION public.ccp_student_lifecycle_commit(
  uuid,text,timestamptz,uuid[],uuid,text,boolean) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_student_lifecycle_commit(
  uuid,text,timestamptz,uuid[],uuid,text,boolean) TO authenticated;
+
+-- A prepaid package expiry belongs to its original financial contract.
+-- Later extensions live only in reviewed, append-only entitlement events.
+-- This guard prevents an older API, direct authenticated update or service
+-- role utility from bypassing the independent approval ledger.
+CREATE OR REPLACE FUNCTION public.ccp_credit_package_expiry_event_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_expiry_event_guard$
+BEGIN
+ IF NEW.expires_on IS DISTINCT FROM OLD.expires_on THEN
+   RAISE EXCEPTION 'CREDIT_EXPIRY_REVIEW_REQUIRED' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_expiry_event_guard$;
+REVOKE ALL ON FUNCTION public.ccp_credit_package_expiry_event_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_credit_package_expiry_event_guard
+ BEFORE UPDATE OF expires_on ON public.credit_packages
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_credit_package_expiry_event_guard();
+REVOKE UPDATE ON public.credit_packages FROM anon,authenticated;

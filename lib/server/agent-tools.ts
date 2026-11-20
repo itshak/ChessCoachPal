@@ -493,8 +493,10 @@ const catalogue = [
   },
   {
     name:"ccp_credits_package_expiry",
-    description:"Change or clear the expiry of an owned prepaid package, never before its start or dates of already redeemed lessons.",
-    schema:z.object({packageId:uuid,expiresOn:z.string().date().nullable(),
+    description:"Audited extension only: read package balance with ccp_credits_adjustment_preview, then supply expectedBalance, reason, durable requestId, confirmation. Cannot shorten or clear expiry.",
+    schema:z.object({packageId:uuid,expiresOn:z.string().date(),
+      expectedBalance:z.number().int().min(0),requestId:uuid,
+      reason:z.string().trim().min(8).max(1000),
       confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
@@ -1987,8 +1989,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherCreditPackageCreate(db,teacherId,a)};
       }
       case "ccp_credits_package_expiry": {
-        const a=args as {packageId:string;expiresOn:string|null};
-        return {data:await teacherCreditPackageExpiry(db,teacherId,a.packageId,a.expiresOn)};
+        const a=args as {packageId:string;expiresOn:string;expectedBalance:number;requestId:string;reason:string};
+        return {data:await teacherCreditPackageExpiry(db,teacherId,a.packageId,a.expiresOn,{
+          expectedBalance:a.expectedBalance,requestId:a.requestId,reason:a.reason,
+        })};
       }
       case "ccp_credits_redemption_return": {
         const a=args as {redemptionId:string};
