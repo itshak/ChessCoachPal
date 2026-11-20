@@ -87,9 +87,10 @@ test("temporal memberships allow separate periods, reject overlap and preserve u
     const { error: acrossPeriodError } = await admin.from("student_billing_assignments")
       .insert({ ...payer, effective_from: "2026-01-22", effective_to: "2026-02-15" });
     expect(acrossPeriodError?.code).toBe("23503");
-    const { error: afterPeriodError } = await admin.from("student_billing_assignments")
-      .insert({ ...payer, effective_from: "2027-01-01", effective_to: "2027-01-31" });
-    expect(afterPeriodError?.code).toBe("23503");
+    // An open February enrollment legitimately covers future dates.
+    const { error: beforePeriodError } = await admin.from("student_billing_assignments")
+      .insert({ ...payer, effective_from: "2025-12-01", effective_to: "2025-12-31" });
+    expect(beforePeriodError?.code).toBe("23503");
     const { error: changePayerError } = await admin.from("student_billing_assignments")
       .update({ billing_account_id: billing!.id, effective_from: "2026-01-09" })
       .eq("id", validPayer!.id);

@@ -1409,7 +1409,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   // to the same structured reply used by the delegated parity helper.
   await createAssignedPayer(async(name,args)=>(await call(name,args)).structuredContent,{
     studentId:profileId,workplaceId:madeWorkplace.entityId,
-    effectiveFrom:"2020-01-01",
+    effectiveFrom:new Date().toISOString().slice(0,10),
   });
   const prepaidPackage=(await call("ccp_credits_package_create",{
     studentId:profileId,workplaceId:madeWorkplace.entityId,

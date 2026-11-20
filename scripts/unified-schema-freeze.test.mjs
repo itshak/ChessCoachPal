@@ -129,3 +129,14 @@ test("payer assignment SQL and TypeScript contracts reject unproven enrollment d
   '.is("cancelled_at",null)', '.lte("starts_on",x.effectiveFrom)'
  ])ok(service.includes(marker),"Payer service missing "+marker);
 });
+
+test("workplace current student filter excludes future, ended, cancelled and archived entries",()=>{
+ const source=read("lib/server/workplace-student-scope.ts");
+ for(const marker of [
+  'toLocalDateString(new Date(),policy.timezone)',
+  '.is("cancelled_at",null)',
+  'starts_on.is.null,starts_on.lte.',
+  'ends_on.is.null,ends_on.gte.',
+  '.is("archived_at",null)',
+ ])ok(source.includes(marker),"Current workplace view missing "+marker);
+});

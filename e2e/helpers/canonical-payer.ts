@@ -42,7 +42,7 @@ export async function createAssignedPayer(call:TestMcpInvoke,input:{
  const billingAccountId=payer.data.id as string;
  const assigned=await call("ccp_student_billing_assignments_create",{
   studentId:input.studentId,workplaceId:input.workplaceId,billingAccountId,
-  effectiveFrom:input.effectiveFrom??"2020-01-01",
+  effectiveFrom:input.effectiveFrom??new Date().toISOString().slice(0,10),
   effectiveTo:input.effectiveTo??null,
   idempotencyKey:randomUUID(),confirmed:true,
  });
@@ -135,13 +135,16 @@ export async function prepareSendableInvoice(db:SupabaseClient,input:{
  const workplaceId=await add("workplaces",{teacher_id:input.teacherId,
   name:"Invoice attendance workplace "+randomUUID(),timezone:"UTC",
   currency:"USD",locale:"en",policy:{}});
- await add("workplace_enrollments",{teacher_id:input.teacherId,workplace_id:workplaceId,student_id:studentId});
+ // Fixture-only: the generated lesson must be within verified attendance.
+ // Never backdate a payer more than the explicit synthetic enrollment.
+ await add("workplace_enrollments",{teacher_id:input.teacherId,workplace_id:workplaceId,
+  student_id:studentId,starts_on:input.periodStart});
  await add("student_contacts",{teacher_id:input.teacherId,contact_id:input.contactId,
   student_id:studentId,relationship_label:"Invoice authorized recipient",
   may_receive_messages:true,is_legal_guardian:false});
  await add("student_billing_assignments",{teacher_id:input.teacherId,
   workplace_id:workplaceId,student_id:studentId,billing_account_id:input.billingAccountId,
-  effective_from:"2000-01-01"});
+  effective_from:input.periodStart});
  const {data:invoice,error:invoiceError}=await db.from("invoices")
   .select("period_start,subtotal_cents,currency").eq("teacher_id",input.teacherId)
   .eq("id",input.invoiceId).single();
