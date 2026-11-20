@@ -124,7 +124,7 @@ test("payer assignment SQL and TypeScript contracts reject unproven enrollment d
  ok(manifest.baselineRequiredObjects.includes("student_billing_assignments"));
  const service=read("lib/server/student-billing-assignments-service.ts");
  for(const marker of [
-  'type Row=Database["public"]["Tables"]["student_billing_assignments"]["Row"]',
+  'type Row=Omit<Database["public"]["Tables"]["student_billing_assignments"]["Row"],"teacher_id">',
   'PAYER_ENROLLMENT_RANGE_REQUIRED', '.eq("start_date_unknown",false)',
   '.is("cancelled_at",null)', '.lte("starts_on",x.effectiveFrom)'
  ])ok(service.includes(marker),"Payer service missing "+marker);
