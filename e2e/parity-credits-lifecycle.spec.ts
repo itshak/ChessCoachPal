@@ -94,13 +94,13 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  };
  const later=await call("ccp_credits_package_expiry",modelExpiryRequest);
  expect(later.error).toBeUndefined();
- const replay=await page.request.patch("/api/billing/credit-packages/"+packageId,{
+ const expiryReplay=await page.request.patch("/api/billing/credit-packages/"+packageId,{
    data:{expiresOn:modelExpiryRequest.expiresOn,
     expectedBalance:modelExpiryRequest.expectedBalance,reason:modelExpiryRequest.reason,
     requestId:modelExpiryRequest.requestId,confirmed:true},
  });
- expect(replay.status(),await replay.text()).toBe(200);
- expect((await replay.json()).replayed).toBe(true);
+ expect(expiryReplay.status(),await expiryReplay.text()).toBe(200);
+ expect((await expiryReplay.json()).replayed).toBe(true);
  const webLater=await page.request.get("/api/billing/credit-packages?studentId="+studentId);
  expect(webLater.status(),await webLater.text()).toBe(200);
  expect((await webLater.json()).packages.find((x:{id:string})=>x.id===packageId).expiresOn)
