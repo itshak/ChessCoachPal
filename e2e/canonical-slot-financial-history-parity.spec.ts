@@ -21,8 +21,10 @@ test("PARITY:PARITY-canonical-slot-delete-preserves-invoice-credit-private-notes
  expect((await tool("ccp_workplaces_enroll",{
   workplaceId,studentId,idempotencyKey:randomUUID(),
  })).error).toBeUndefined();
+ // This fixture enrolls the student today. The payer assignment must start
+ // within that verified membership, not years before it.
  const {billingAccountId}=await createAssignedPayer(tool,{
-  studentId,workplaceId,effectiveFrom:"2020-01-01",
+  studentId,workplaceId,
  });
  const today=Date.parse(new Date().toISOString().slice(0,10)+"T00:00:00Z");
  // Isolate Playwright retries from prior partially written teaching occurrences.
