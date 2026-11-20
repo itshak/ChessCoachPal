@@ -892,7 +892,8 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const removeMcp=(await call("ccp_workplaces_unenroll",{
     workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
   })).structuredContent.data;
-  expect(removeMcp).toEqual({workplace_id:madeWorkplace.entityId,
+  // Reviewed membership end now returns its persistent audit receipt too.
+  expect(removeMcp).toMatchObject({workplace_id:madeWorkplace.entityId,
     student_id:membershipStudent,removed:true});
   const siteRoster=await postDomain({action:"workplaces.enrollments",
     workplaceId:madeWorkplace.entityId});

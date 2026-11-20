@@ -101,7 +101,10 @@ test("PARITY:PARITY-canonical-portal-marked-and-past-guard denies a guest overwr
   return created.data.entityId as string;
  };
  const future=await create("2090-06-19T13:00:00Z","Portal locked after teacher marking");
- const past=await create("2020-05-19T13:00:00Z","Past session cannot be cancelled");
+ // A newly created enrollment starts today in this UTC workplace; construct
+ // a past-time session on that same local date, not before the enrollment.
+ const past=await create(new Date().toISOString().slice(0,10)+
+   "T00:00:00Z","Past session cannot be cancelled");
  const marked=await tool("ccp_session_attendance_set",{
   sessionId:future,studentId,status:"present",note:"Lesson already marked",
   noticeAt:null,cancelReason:"",expectedUpdatedAt:null,

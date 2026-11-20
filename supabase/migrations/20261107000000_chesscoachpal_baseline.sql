@@ -3602,10 +3602,14 @@ BEGIN
      WHERE teacher_id=v_teacher AND lower(btrim(name))=lower(v_name)
      ORDER BY created_at,id LIMIT 1;
    IF v_student_id IS NOT NULL THEN
-     INSERT INTO public.workplace_enrollments(teacher_id,student_id,workplace_id)
-     VALUES(v_teacher,v_student_id,v_workplace)
-     ON CONFLICT DO NOTHING;
-     IF FOUND THEN v_enrolled:=v_enrolled+1; END IF;
+     -- Existing historical profiles must not be enrolled while archived.
+     IF EXISTS(SELECT 1 FROM public.students
+       WHERE id=v_student_id AND teacher_id=v_teacher AND archived_at IS NULL) THEN
+       INSERT INTO public.workplace_enrollments(teacher_id,student_id,workplace_id)
+       VALUES(v_teacher,v_student_id,v_workplace)
+       ON CONFLICT DO NOTHING;
+       IF FOUND THEN v_enrolled:=v_enrolled+1; END IF;
+     END IF;
      v_skipped:=v_skipped+1;
      IF jsonb_array_length(v_skipped_rows)<50 THEN
        v_skipped_rows:=v_skipped_rows||jsonb_build_array(
@@ -3658,10 +3662,13 @@ BEGIN
        is_legal_guardian,may_receive_messages
      ) VALUES(v_teacher,v_student_id,v_contact,'Imported contact',false,false);
    END IF;
-   INSERT INTO public.workplace_enrollments(teacher_id,student_id,workplace_id)
-   VALUES(v_teacher,v_student_id,v_workplace)
-   ON CONFLICT DO NOTHING;
-   IF FOUND THEN v_enrolled:=v_enrolled+1; END IF;
+   -- Preserve archived imports without inventing a present-day enrollment.
+   IF coalesce(v_row->>'archived','false')<>'true' THEN
+     INSERT INTO public.workplace_enrollments(teacher_id,student_id,workplace_id)
+     VALUES(v_teacher,v_student_id,v_workplace)
+     ON CONFLICT DO NOTHING;
+     IF FOUND THEN v_enrolled:=v_enrolled+1; END IF;
+   END IF;
    v_created:=v_created+1;
  END LOOP;
  v_result:=jsonb_build_object(
@@ -11748,9 +11755,14 @@ BEGIN
    -- row lock acquired by archive and preserves tenant ownership.
    PERFORM 1 FROM public.students learner
     WHERE learner.id=NEW.student_id AND learner.teacher_id=NEW.teacher_id
-      AND learner.archived_at IS NULL
     FOR SHARE OF learner;
    IF NOT FOUND THEN
+     -- Foreign-tenant and unknown IDs are indistinguishable.
+     RAISE EXCEPTION 'STUDENT_NOT_OWNED' USING ERRCODE='23503';
+   END IF;
+   IF EXISTS(SELECT 1 FROM public.students learner
+      WHERE learner.id=NEW.student_id AND learner.teacher_id=NEW.teacher_id
+        AND learner.archived_at IS NOT NULL) THEN
      RAISE EXCEPTION 'ARCHIVED_STUDENT_ENROLLMENT' USING ERRCODE='23514';
    END IF;
    IF NEW.start_date_unknown THEN
