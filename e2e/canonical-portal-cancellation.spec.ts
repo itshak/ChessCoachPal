@@ -101,10 +101,26 @@ test("PARITY:PARITY-canonical-portal-marked-and-past-guard denies a guest overwr
   return created.data.entityId as string;
  };
  const future=await create("2090-06-19T13:00:00Z","Portal locked after teacher marking");
- // A newly created enrollment starts today in this UTC workplace; construct
- // a past-time session on that same local date, not before the enrollment.
- const past=await create(new Date().toISOString().slice(0,10)+
-   "T00:00:00Z","Past session cannot be cancelled");
+ // A synthetic historical period avoids colliding with another parallel
+ // scheduling test at the seed teacher's midnight.
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ const signed=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ expect((await signed.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
+ const teacherId=(await signed.auth.getUser()).data.user!.id;
+ const oldPeriod=await admin.from("workplace_enrollments").insert({
+  teacher_id:teacherId,student_id:studentId,workplace_id:workplaceId,
+  starts_on:"2010-01-01",ends_on:"2010-12-31",source:"legacy_operator",
+ });
+ expect(oldPeriod.error).toBeNull();
+ const day=2+parseInt(randomUUID().slice(0,8),16)%300;
+ const past=await create(new Date(Date.UTC(2010,0,day,12,0,0)).toISOString(),
+   "Past session cannot be cancelled");
  const marked=await tool("ccp_session_attendance_set",{
   sessionId:future,studentId,status:"present",note:"Lesson already marked",
   noticeAt:null,cancelReason:"",expectedUpdatedAt:null,

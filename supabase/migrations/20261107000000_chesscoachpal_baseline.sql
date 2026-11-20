@@ -12628,3 +12628,24 @@ CREATE TRIGGER ccp_credit_package_expiry_event_guard
  BEFORE UPDATE OF expires_on ON public.credit_packages
  FOR EACH ROW EXECUTE FUNCTION public.ccp_credit_package_expiry_event_guard();
 REVOKE UPDATE ON public.credit_packages FROM anon,authenticated;
+
+-- Student lifecycle status is only mutable by an owned SECURITY DEFINER
+-- reviewed transaction, never by general profile edits or raw PostgREST
+-- UPDATE (including service_role). The function owner is postgres on the
+-- canonical fresh-install schema; postgres maintenance itself is trusted.
+CREATE OR REPLACE FUNCTION public.ccp_student_archive_write_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_archive_write_guard$
+BEGIN
+ IF NEW.archived_at IS DISTINCT FROM OLD.archived_at
+    AND current_user <> 'postgres' THEN
+   RAISE EXCEPTION 'USE_REVIEWED_STUDENT_LIFECYCLE' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_archive_write_guard$;
+REVOKE ALL ON FUNCTION public.ccp_student_archive_write_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_student_archive_write_guard
+ BEFORE UPDATE OF archived_at ON public.students
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_student_archive_write_guard();

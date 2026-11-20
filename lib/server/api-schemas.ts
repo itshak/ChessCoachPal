@@ -91,8 +91,7 @@ export const studentUpdateSchema = z.object({
   // the same numeric semantics through its stricter structured schema.
   defaultRateCents: optionalStudentCents,
   travelFeeCents: optionalStudentCents,
-  archived: z.boolean().optional(),
-});
+}).strict();
 
 // ── Prepaid credits ─────────────────────────────────────────────────────────
 // Value rules (ranges, expiry after start) live in lib/credits.ts.

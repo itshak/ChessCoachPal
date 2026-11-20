@@ -193,7 +193,12 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  const afterDenied=await admin.from("credit_packages").select("expires_on")
    .eq("id",packageId).single();
  expect(afterDenied.error).toBeNull();
- expect(afterDenied.data?.expires_on).toBe("2042-09-30");
+ // The original package remains immutable; reviewed extensions are event-ledger state.
+ expect(afterDenied.data?.expires_on).toBe("2042-08-01");
+ const effective=await call("ccp_credits_packages_list",{studentId});
+ expect(effective.error).toBeUndefined();
+ expect(effective.data.packages.find((p:{id:string})=>p.id===packageId).expiresOn)
+   .toBe("2042-09-30");
 
  // A separate authenticated teacher cannot delete another coach's redeemed
  // lesson or read a successful-return receipt. The RPC derives auth.uid().

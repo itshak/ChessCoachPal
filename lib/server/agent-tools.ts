@@ -1212,7 +1212,7 @@ const catalogue = [
   },
   {
     name: "ccp_students_profile_edit",
-    description: "Edit one student's chess handles, aliases, strength (1-10), teacher-entered ratings, lesson rates, private notes, birthdate, family, or archive state. Use the latest updated_at revision and confirm any privacy-sensitive change; reconcile future commitments before archiving. Reload after conflicts; do not automatically retry a mutation.",
+    description: "Edit one student's chess handles, aliases, strength (1-10), teacher-entered ratings, lesson rates, private notes and birthdate. Archiving/reactivation requires the separate reviewed ccp_students_lifecycle_preview and ccp_students_lifecycle_commit; this general profile tool cannot change lifecycle state. Reload after conflicts; never blindly retry.",
     schema:z.object({studentId:uuid,expectedUpdatedAt:instant,changes:studentUpdateSchema,
       confirmed:z.literal(true)}).strict().refine(v=>Object.keys(v.changes).length>0,"Changes required"),
     scope:"coach:write",readOnly:false,

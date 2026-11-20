@@ -1022,23 +1022,48 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     studentId:foreignStudent!.id,
   })).structuredContent;
   expect(foreignPreview.error.code).toBe("NOT_FOUND");
-  const archive=(await call("ccp_students_profile_edit",{
+  const genericArchive=(await call("ccp_students_profile_edit",{
     studentId:profileId,expectedUpdatedAt:actualProfile.updated_at,confirmed:true,
     changes:{archived:true},
   })).structuredContent;
+  expect(genericArchive.error).toBeDefined();
+  const archiveReview=(await call("ccp_students_lifecycle_preview",{
+    studentId:profileId,
+  })).structuredContent;
+  expect(archiveReview.error).toBeUndefined();
+  const archive=(await call("ccp_students_lifecycle_commit",{
+    studentId:profileId,mode:"archive",selectedWorkplaceIds:[],
+    expectedUpdatedAt:archiveReview.data.expectedUpdatedAt,
+    requestId:randomUUID(),
+    reason:"Teacher explicitly reviewed archived student commitments",
+    confirmed:true,
+  })).structuredContent;
   expect(archive.error).toBeUndefined();
-  expect(archive.data.archived_at).toBeTruthy();
+  expect(archive.data.archived).toBe(true);
   const activeRoster=(await call("ccp_students_roster",{
     includeArchived:false,limit:100,
   })).structuredContent.data.students;
   expect(activeRoster.some((row:{id:string})=>row.id===profileId)).toBe(false);
   const archivedFromWebsite=await page.request.get("/api/students/"+profileId);
   expect((await archivedFromWebsite.json()).archived_at).toBeTruthy();
-  const restore=(await page.request.put("/api/students/"+profileId,{
+  const legacyRestore=await page.request.put("/api/students/"+profileId,{
     data:{archived:false},
-  }));
+  });
+  expect(legacyRestore.status()).toBe(400);
+  const restoreReview=(await call("ccp_students_lifecycle_preview",{
+    studentId:profileId,
+  })).structuredContent;
+  expect(restoreReview.error).toBeUndefined();
+  const restore=await page.request.post("/api/agent/v1",{data:{
+    action:"students.lifecycleCommit",studentId:profileId,mode:"reactivate",
+    selectedWorkplaceIds:[],expectedUpdatedAt:restoreReview.data.expectedUpdatedAt,
+    requestId:randomUUID(),reason:"Teacher reviewed student return without workplace",
+    confirmed:true,
+  },headers:{Authorization:"Bearer "+session!.access_token}});
   expect(restore.status(),await restore.text()).toBe(200);
-  expect((await restore.json()).archived_at).toBeNull();
+  expect((await restore.json()).data.archived).toBe(false);
+  expect((await page.request.get("/api/students/"+profileId).then(r=>r.json())).archived_at)
+    .toBeNull();
   // Reactivation does not silently restore historical workplace membership.
   // Re-enroll explicitly before this longer scenario creates a new lesson.
   const rejoined=(await call("ccp_workplaces_enroll",{
@@ -1088,16 +1113,40 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   });
   expect(staleWebsiteDelete.status()).toBe(409);
   expect((await staleWebsiteDelete.json()).code).toBe("HISTORY_DEPENDENCIES");
+  // Direct membership deletion must not destroy evidence or unblock profile erasure.
   const {error:membershipRemovalError}=await userClient.from("workplace_enrollments")
     .delete().eq("teacher_id",session!.user.id)
     .eq("workplace_id",madeWorkplace.entityId).eq("student_id",empty.entityId);
-  expect(membershipRemovalError).toBeNull();
+  expect(membershipRemovalError?.code).toBe("42501");
+  const endReview=(await call("ccp_workplaces_unenroll_preview",{
+    workplaceId:madeWorkplace.entityId,studentId:empty.entityId,
+  })).structuredContent;
+  expect(endReview.error).toBeUndefined();
+  const endedEmpty=(await call("ccp_workplaces_unenroll",{
+    workplaceId:madeWorkplace.entityId,studentId:empty.entityId,
+    expectedRevision:endReview.data.revision,idempotencyKey:randomUUID(),
+    reason:"Teacher reviewed and closed the synthetic workplace membership",
+    confirmed:true,
+  })).structuredContent;
+  expect(endedEmpty.error).toBeUndefined();
+  const retained=(await call("ccp_students_delete_impact",{
+    studentId:empty.entityId,
+  })).structuredContent.data;
+  expect(retained.blockers.workplaceMemberships).toBeGreaterThan(0);
+
+  const trulyEmpty=(await call("ccp_students_create",{
+    name:"Truly unlinked deletion test "+suffix,idempotencyKey:randomUUID(),
+  })).structuredContent.data;
+  const genuinelyEmptyImpact=(await call("ccp_students_delete_impact",{
+    studentId:trulyEmpty.entityId,
+  })).structuredContent.data;
+  expect(genuinelyEmptyImpact.canDelete).toBe(true);
   const removedStudent=(await call("ccp_students_delete",{
-    studentId:empty.entityId,expectedUpdatedAt:studentDeleteImpact.updatedAt,confirmed:true,
+    studentId:trulyEmpty.entityId,expectedUpdatedAt:genuinelyEmptyImpact.updatedAt,confirmed:true,
   })).structuredContent;
   expect(removedStudent.error).toBeUndefined();
   expect(removedStudent.data.deleted).toBe(true);
-  expect((await page.request.get("/api/students/"+empty.entityId)).status()).toBe(404);
+  expect((await page.request.get("/api/students/"+trulyEmpty.entityId)).status()).toBe(404);
 
   // Skill dimensions and append-only assessments use the same scoped
   // website/MCP service. Never delete seed dimensions or another coach's data.

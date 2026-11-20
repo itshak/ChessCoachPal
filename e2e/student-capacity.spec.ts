@@ -50,21 +50,37 @@ test("concurrent hosted student inserts cannot overbook one teacher", async () =
   expect(countError).toBeNull();
   expect(count).toBe(2);
 
-  const date=new Date().toISOString();
-  const archived=await auth.from("students").update({archived_at:date})
-    .eq("id",successful[0].id).select("id,archived_at").single();
+  // Direct authenticated or privileged edits must not bypass the reviewed
+  // lifecycle transaction (or its atomically serialized active-student cap).
+  const directArchive=await auth.from("students").update({
+    archived_at:new Date().toISOString(),
+  }).eq("id",successful[0].id);
+  expect(directArchive.error?.message).toContain("USE_REVIEWED_STUDENT_LIFECYCLE");
+  const privilegedArchive=await admin.from("students").update({
+    archived_at:new Date().toISOString(),
+  }).eq("id",successful[0].id);
+  expect(privilegedArchive.error?.message).toContain("USE_REVIEWED_STUDENT_LIFECYCLE");
+  const lifecycle=async(studentId:string,mode:"archive"|"reactivate")=>{
+    const preview=await auth.rpc("ccp_student_lifecycle_preview",{p_student_id:studentId});
+    expect(preview.error).toBeNull();
+    return auth.rpc("ccp_student_lifecycle_commit",{
+      p_student_id:studentId,p_mode:mode,
+      p_expected_updated_at:preview.data.expectedUpdatedAt,
+      p_selected_workplaces:[],p_request_id:randomUUID(),
+      p_reason:"Synthetic teacher reviewed hosted capacity lifecycle",
+      p_confirmed:true,
+    });
+  };
+  const archived=await lifecycle(successful[0].id,"archive");
   expect(archived.error).toBeNull();
   const third=await auth.from("students").insert({teacher_id:id,
     name:"Third student "+randomUUID()}).select("id").single();
   expect(third.error).toBeNull();
-  const blockedReturn=await auth.from("students").update({archived_at:null})
-    .eq("id",successful[0].id).select("id").single();
+  const blockedReturn=await lifecycle(successful[0].id,"reactivate");
   expect(blockedReturn.error?.code).toBe("23514");
-  const archivedThird=await auth.from("students").update({archived_at:date})
-    .eq("id",third.data!.id).select("id").single();
+  const archivedThird=await lifecycle(third.data!.id,"archive");
   expect(archivedThird.error).toBeNull();
-  const allowedReturn=await auth.from("students").update({archived_at:null})
-    .eq("id",successful[0].id).select("id").single();
+  const allowedReturn=await lifecycle(successful[0].id,"reactivate");
   expect(allowedReturn.error).toBeNull();
 
   // Authenticated teachers cannot increase their own hosted capacity.

@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { assertWithinHostedLimit, limitReachedResponse } from "@/lib/server/entitlements";
 import {getPolicy} from "@/lib/server/scheduling";
 import {toLocalDateString} from "@/lib/schedule";
 
@@ -26,7 +25,6 @@ export type StudentProfilePatch = {
   practiceStartDate?: string | null;
   defaultRateCents?: number | string | null;
   travelFeeCents?: number | string | null;
-  archived?: boolean;
 };
 /** Bounded, navigable roster. Archived students remain accessible via explicit filter. */
 export async function teacherStudentsRoster(db: Db, teacherId: string,
@@ -133,19 +131,6 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
   const existing = await teacherStudentProfile(db, teacherId, studentId);
   if (expectedUpdatedAt && existing.updated_at !== expectedUpdatedAt)
     throw new StudentProfileError(409,"CONFLICT","Student was modified; reload before editing");
-  if (patch.archived === false && existing.archived_at) {
-    const allowed = await assertWithinHostedLimit(db,teacherId,"students");
-    if (!allowed.allowed) {
-      const result = limitReachedResponse(allowed);
-      throw new StudentProfileError(403,result.code,result.error);
-    }
-  }
-  if (patch.archived === true && !existing.archived_at) {
-    const preview=await teacherStudentArchivePreview(db,teacherId,studentId);
-    if (!preview.canArchive)
-      throw new StudentProfileError(409,"FUTURE_COMMITMENTS",
-        "Resolve recurring slots, future private/group lessons and current group membership before archiving");
-  }
   // Never round, clamp, or silently coerce malformed monetary inputs.
   // Shared website/MCP service enforces the same integer-cent invariant.
   const cents = (value:number|string|null) => {
@@ -190,7 +175,6 @@ export async function teacherStudentPatch(db: Db, teacherId: string, studentId: 
   if (patch.practiceStartDate !== undefined) update.practice_start_date = patch.practiceStartDate || null;
   if (patch.defaultRateCents !== undefined) update.default_rate_cents = cents(patch.defaultRateCents);
   if (patch.travelFeeCents !== undefined) update.travel_fee_cents = cents(patch.travelFeeCents);
-  if (patch.archived !== undefined) update.archived_at = patch.archived ? existing.archived_at ?? new Date().toISOString() : null;
   if (!Object.keys(update).length) throw new StudentProfileError(400,"VALIDATION_ERROR","No profile changes specified");
   let request = db.from("students").update(update).eq("teacher_id",teacherId).eq("id",studentId);
   if (expectedUpdatedAt) request = request.eq("updated_at",expectedUpdatedAt);

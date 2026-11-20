@@ -30,6 +30,20 @@ async function updateProfile(callTool:(name:string,args:Record<string,unknown>)=
  return await browserProfile(page,id);
 }
 
+async function reviewedLifecycle(callTool:(name:string,args:Record<string,unknown>)=>Promise<{
+ data?:unknown;error?:{code:string;message:string};
+}>,studentId:string,mode:"archive"|"reactivate"){
+ const preview=await callTool("ccp_students_lifecycle_preview",{studentId});
+ expect(preview.error).toBeUndefined();
+ const updated=await callTool("ccp_students_lifecycle_commit",{
+  studentId,mode,expectedUpdatedAt:(preview.data as {expectedUpdatedAt:string}).expectedUpdatedAt,
+  selectedWorkplaceIds:[],requestId:randomUUID(),confirmed:true,
+  reason:"Teacher explicitly reviewed synthetic student lifecycle",
+ });
+ expect(updated.error).toBeUndefined();
+ return updated.data;
+}
+
 test("PARITY:PARITY-students-roster pages complete and archived rosters consistently",async({page,request})=>{
  const callTool=await delegatedTool(page,request);
  const website=await page.request.get("/api/students?limit=2&offset=0&activeOnly=true");
@@ -49,7 +63,7 @@ test("PARITY:PARITY-students-roster pages complete and archived rosters consiste
  expect((await second.json()).students.map((x:{id:string})=>x.id))
    .toEqual(other.students.map(x=>x.id));
  const historic=await mcpStudent(callTool,unique("Historical learner"));
- await updateProfile(callTool,page,historic,{archived:true});
+ await reviewedLifecycle(callTool,historic,"archive");
  const activeOnly=await page.request.get("/api/students?limit=50&query="+
    encodeURIComponent("Historical learner"));
  expect(activeOnly.status()).toBe(200);
@@ -167,14 +181,26 @@ test("PARITY:PARITY-students-archive shares blocker preflight and preserves arch
  expect(website.status()).toBe(200);
  expect(await website.json()).toEqual(preview);
  expect(preview.canArchive).toBe(true);
- const archived=await callTool("ccp_students_profile_edit",{
+ const rejected=await callTool("ccp_students_profile_edit",{
    studentId:id,changes:{archived:true},expectedUpdatedAt:preview.updatedAt,
    confirmed:true,
  });
- expect(archived.error).toBeUndefined();
+ expect(rejected.error).toBeDefined();
+ const archived=await reviewedLifecycle(callTool,id,"archive");
+ expect(archived).toMatchObject({archived:true});
  expect((await browserProfile(page,id)).archived_at).toBeTruthy();
- const restored=await page.request.put("/api/students/"+id,{data:{archived:false}});
- expect(restored.status()).toBe(200);
+ const legacyRestore=await page.request.put("/api/students/"+id,{data:{archived:false}});
+ expect(legacyRestore.status()).toBe(400);
+ const beforeRestore=(await callTool("ccp_students_lifecycle_preview",{
+   studentId:id,
+ })).data as {expectedUpdatedAt:string};
+ const restored=await page.request.post("/api/agent/v1",{data:{
+   action:"students.lifecycleCommit",studentId:id,mode:"reactivate",
+   expectedUpdatedAt:beforeRestore.expectedUpdatedAt,selectedWorkplaceIds:[],
+   requestId:randomUUID(),reason:"Teacher confirmed return through website lifecycle",
+   confirmed:true,
+ }});
+ expect(restored.status(),await restored.text()).toBe(200);
  expect((await callTool("ccp_students_profile",{studentId:id})).data)
    .toMatchObject({id,archived_at:null});
 });
