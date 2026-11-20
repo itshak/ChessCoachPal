@@ -49,3 +49,9 @@
 - PR #107 import protection is green in CI, authenticated E2E, security, Compose and backup/restore on exact commit `da9958156390cfc3115c45c34ef3dedd3e4da753`.
 - PR #108 stages temporal workplace membership, enrollment interval constraints, typed credit adjustment evidence, schema manifest and OpenSpec delta; a schema-only candidate is **not** end-to-end credit-safe lifecycle completion.
 - OpenSpec implementation/verification remains active. See `docs/SCHEMA_CANDIDATE_ACCEPTANCE_2026-11-19.md` for unverified operations and cutover gates; do not archive the umbrella or temporal proposal until independently accepted.
+
+## 2026-11-20 follow-through (not source freeze)
+
+Draft PR #108 now implements candidate shared temporal membership end, archived-student-safe reactivation, explicitly audited credit adjustments, revised credit allocation and English/Hebrew/Russian teacher review panels, with browser/MCP parity tests. The source changes are **not yet an accepted feature**, and no OpenSpec was archived in this step. The database refuses direct enrollment into an archived student's period, even if a client bypasses normal application checks. The last checks and the unresolved expiry-edit bypass are recorded in `docs/SCHEMA_CANDIDATE_ACCEPTANCE_2026-11-19.md`.
+
+The correct sequence remains **#104 (Contacts/payer foundation) → #107 (workplace-safe import) → #108 (temporal/credit lifecycle)**. Before final schema freeze, reconcile old direct expiry edits with audited credit event semantics, all amendment owner/security rules and exact-head authenticated E2E; then inventory, test and approve the forward-only populated-data transition separately. Empty-install green checks never authorize a live data reset or OpenSpec archival while unchecked implementation tasks remain.
