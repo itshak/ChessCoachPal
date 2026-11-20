@@ -1414,7 +1414,9 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const prepaidPackage=(await call("ccp_credits_package_create",{
     studentId:profileId,workplaceId:madeWorkplace.entityId,
     credits:4,durationMinutes:45,priceCents:10000,
-    startsOn:"2026-11-08",expiresOn:"2027-03-31",confirmed:true,
+    // The funded contract must begin within an active workplace period.
+    startsOn:new Date().toISOString().slice(0,10),
+    expiresOn:"2027-03-31",confirmed:true,
   })).structuredContent;
   expect(prepaidPackage.error).toBeUndefined();
   const prepaidId=prepaidPackage.data.packageId as string;
@@ -1430,8 +1432,15 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent.data.packages;
   expect(prepaidMcpList).toEqual(prepaidWebList);
   expect(prepaidMcpList.some((x:{id:string})=>x.id===prepaidId)).toBe(true);
+  const adjustmentPreview=(await call("ccp_credits_adjustment_preview",{
+    packageId:prepaidId,
+  })).structuredContent;
+  expect(adjustmentPreview.error).toBeUndefined();
   const expiryChanged=await page.request.patch("/api/billing/credit-packages/"+prepaidId,{
-    data:{expiresOn:"2027-04-30"},
+    data:{expiresOn:"2027-04-30",
+      expectedBalance:adjustmentPreview.data.availableCredits,
+      requestId:randomUUID(),reason:"Teacher reviewed additional validity for prepaid credits",
+      confirmed:true},
   });
   expect(expiryChanged.status(),await expiryChanged.text()).toBe(200);
   const prepaidAfterChange=(await call("ccp_credits_packages_list",{
