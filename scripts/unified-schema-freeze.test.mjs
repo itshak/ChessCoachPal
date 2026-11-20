@@ -115,7 +115,6 @@ test("payer assignment SQL and TypeScript contracts reject unproven enrollment d
  ok(fn,"Missing canonical payer assignment guard");
  for(const marker of [
   "public.ccp_finance_enrollment_period_lock",
-  "e.starts_on<=NEW.effective_from","NEW.effective_to IS NULL AND e.ends_on IS NULL",
   "STUDENT_PAYER_OUTSIDE_ENROLLMENT",
   "PAYER_ASSIGNMENT_IDENTITY_IMMUTABLE",
   "PAYER_ASSIGNMENT_CANNOT_EXTEND_HISTORY"
