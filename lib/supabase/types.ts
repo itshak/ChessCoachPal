@@ -70,6 +70,99 @@ export interface Database {
           fetched_at?:string|null;recorded_at?:string};
         Update:Partial<Database["public"]["Tables"]["student_rating_refresh_receipts"]["Insert"]>;
       };
+      // Canonical rating and finance tables, modeled from the single
+      // fresh-install SQL baseline. Runtime RLS/ledger functions enforce writes.
+      student_rating_snapshots: {
+        Row: {
+          id: string; teacher_id: string; student_id: string;
+          provider: "lichess" | "chesscom";
+          time_control: "bullet" | "blitz" | "rapid" | "classical" | "daily" | "puzzle";
+          rating: number; rating_deviation: number | null; provisional: boolean | null;
+          games: number | null; source: "teacher_manual" | "provider_api";
+          observed_at: string; fetched_at: string | null;
+          request_id: string; created_at: string;
+        };
+        Insert: {
+          id?: string; teacher_id: string; student_id: string;
+          provider: "lichess" | "chesscom";
+          time_control: "bullet" | "blitz" | "rapid" | "classical" | "daily" | "puzzle";
+          rating: number; rating_deviation?: number | null; provisional?: boolean | null;
+          games?: number | null; source: "teacher_manual" | "provider_api";
+          observed_at: string; fetched_at?: string | null;
+          request_id: string; created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["student_rating_snapshots"]["Insert"]>;
+      };
+      financial_obligations: {
+        Row: {
+          id: string; teacher_id: string; workplace_id: string;
+          billing_account_id: string; agreement_id: string; agreement_revision: number;
+          agreement_snapshot: Json; session_id: string | null; student_id: string | null;
+          period_start: string; period_end: string;
+          kind: "coach_earning" | "participant_charge" | "period_compensation";
+          amount_cents: number; currency: string; source_key: string;
+          source_hash: string; approval_request_id: string; created_at: string;
+        };
+        Insert: {
+          id?: string; teacher_id: string; workplace_id: string;
+          billing_account_id: string; agreement_id: string; agreement_revision: number;
+          agreement_snapshot: Json; session_id?: string | null; student_id?: string | null;
+          period_start: string; period_end: string;
+          kind: "coach_earning" | "participant_charge" | "period_compensation";
+          amount_cents: number; currency: string; source_key: string;
+          source_hash: string; approval_request_id: string; created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["financial_obligations"]["Insert"]>;
+      };
+      received_payments: {
+        Row: {
+          id: string; teacher_id: string; billing_account_id: string;
+          currency: string; amount_cents: number; received_at: string;
+          method: "cash" | "bank_transfer" | "card" | "stripe" | "other";
+          provenance: "teacher_confirmed" | "provider_verified";
+          external_reference: string | null; request_id: string;
+          request_hash: string; created_at: string;
+        };
+        Insert: {
+          id?: string; teacher_id: string; billing_account_id: string;
+          currency: string; amount_cents: number; received_at: string;
+          method: "cash" | "bank_transfer" | "card" | "stripe" | "other";
+          provenance: "teacher_confirmed" | "provider_verified";
+          external_reference?: string | null; request_id: string;
+          request_hash: string; created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["received_payments"]["Insert"]>;
+      };
+      payment_allocations: {
+        Row: {
+          id: string; teacher_id: string; received_payment_id: string;
+          obligation_id: string; amount_cents: number; request_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string; teacher_id: string; received_payment_id: string;
+          obligation_id: string; amount_cents: number; request_id: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["payment_allocations"]["Insert"]>;
+      };
+      financial_reversals: {
+        Row: {
+          id: string; teacher_id: string;
+          kind: "allocation_reversal" | "payment_refund" | "obligation_correction";
+          allocation_id: string | null; received_payment_id: string | null;
+          obligation_id: string | null; amount_cents: number;
+          request_id: string; request_hash: string; reason: string; created_at: string;
+        };
+        Insert: {
+          id?: string; teacher_id: string;
+          kind: "allocation_reversal" | "payment_refund" | "obligation_correction";
+          allocation_id?: string | null; received_payment_id?: string | null;
+          obligation_id?: string | null; amount_cents: number;
+          request_id: string; request_hash: string; reason: string; created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["financial_reversals"]["Insert"]>;
+      };
       // Current canonical contacts and per-workplace finance model. Old
       // guardian/Studio generated types below are transitional WIP until the
       // one final ADR-0017 cutover, never an accepted compatibility surface.
