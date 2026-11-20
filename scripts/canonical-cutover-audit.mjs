@@ -70,7 +70,12 @@ export function inventory(){
  files.sort((a,b)=>a.path.localeCompare(b.path));
  financialFieldConsumers.sort((a,b)=>a.path.localeCompare(b.path));
  return {physicalTables:physicalLegacyTableDefinitions(sql),sqlPath,
-  sqlReferences:directOldSourceReferences(sql),consumers:files,
+  // SQL comments are not executable references. The strict audit must catch
+  // real FROM/JOIN/UPDATE references, not documentation such as
+  // "not inferred from attendance" in a comment.
+  sqlReferences:directOldSourceReferences(
+   sql.replace(/\/\*[\s\S]*?\*\//g,"").replace(/--[^\r\n]*/g,"")
+  ),consumers:files,
   financialFieldConsumers,oldRpcs};
 }
 const invoked=process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url);
