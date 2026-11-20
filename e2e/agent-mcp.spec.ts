@@ -916,10 +916,10 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent.data.some((r:{student_id:string})=>r.student_id===membershipStudent)).toBe(false);
   // A group requires an independently active workplace period. Restore it
   // before testing that an active group blocks membership end.
-  const rejoined=await call("ccp_workplaces_enroll",{
+  const periodRejoined=await call("ccp_workplaces_enroll",{
     workplaceId:madeWorkplace.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
   });
-  expect(rejoined.structuredContent.error).toBeUndefined();
+  expect(periodRejoined.structuredContent.error).toBeUndefined();
   await call("ccp_groups_enroll",{
     groupId:madeGroup.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
   });
