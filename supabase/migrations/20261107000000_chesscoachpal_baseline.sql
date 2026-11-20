@@ -11743,6 +11743,16 @@ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
 DECLARE v_timezone text;
 BEGIN
  IF TG_OP='INSERT' THEN
+   -- Prevent a direct authenticated INSERT (or a racing enrollment) from
+   -- silently reactivating archived learners. FOR SHARE conflicts with the
+   -- row lock acquired by archive and preserves tenant ownership.
+   PERFORM 1 FROM public.students learner
+    WHERE learner.id=NEW.student_id AND learner.teacher_id=NEW.teacher_id
+      AND learner.archived_at IS NULL
+    FOR SHARE OF learner;
+   IF NOT FOUND THEN
+     RAISE EXCEPTION 'ARCHIVED_STUDENT_ENROLLMENT' USING ERRCODE='23514';
+   END IF;
    IF NEW.start_date_unknown THEN
      IF auth.uid() IS NOT NULL OR NEW.source<>'legacy_operator' THEN
        RAISE EXCEPTION 'LEGACY_ENROLLMENT_OPERATOR_ONLY' USING ERRCODE='42501';
@@ -12390,7 +12400,10 @@ BEGIN
  SELECT coalesce(jsonb_agg(DISTINCT e.workplace_id),'[]'::jsonb)
  INTO v_previous FROM public.workplace_enrollments e
  JOIN public.workplaces w ON w.id=e.workplace_id AND w.teacher_id=e.teacher_id
- WHERE e.teacher_id=v_teacher AND e.student_id=p_student_id;
+ WHERE e.teacher_id=v_teacher AND e.student_id=p_student_id
+   -- A cancelled future period is not proof that the learner ever attended
+   -- this workplace; suggestions must be historical, not guessed.
+   AND (e.starts_on IS NULL OR e.starts_on<=v_today);
  SELECT count(*)::integer INTO v_groups FROM public.group_enrollments
  WHERE teacher_id=v_teacher AND student_id=p_student_id;
  SELECT count(*)::integer INTO v_slots FROM public.lesson_slots
@@ -12547,7 +12560,8 @@ BEGIN
      WHERE w.id=v_workplace AND w.teacher_id=v_teacher)
     OR NOT EXISTS(SELECT 1 FROM public.workplace_enrollments e
      WHERE e.workplace_id=v_workplace AND e.teacher_id=v_teacher
-      AND e.student_id=p_student_id) THEN
+      AND e.student_id=p_student_id
+      AND (e.starts_on IS NULL OR e.starts_on<=v_today)) THEN
     RAISE EXCEPTION 'WORKPLACE_NOT_PREVIOUSLY_VERIFIED'
      USING ERRCODE='42501';
    END IF;
