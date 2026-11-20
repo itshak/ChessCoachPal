@@ -75,11 +75,19 @@ test("PARITY:PARITY-student-lifecycle archives all dated memberships atomically 
   auth:{persistSession:false,autoRefreshToken:false},
  });
  const archiveRows=await admin.from("workplace_enrollments")
-  .select("workplace_id,ends_on,cancelled_at")
+  .select("teacher_id,workplace_id,ends_on,cancelled_at")
   .eq("student_id",studentId);
  expect(archiveRows.error).toBeNull();
  expect(archiveRows.data).toHaveLength(2);
  expect(archiveRows.data!.every(x=>x.cancelled_at!==null)).toBe(true);
+ // A direct SQL or racing browser enrollment cannot silently bypass archive:
+ // tenant-scoped foreign keys alone do not protect lifecycle state.
+ const bypass=await admin.from("workplace_enrollments").insert({
+  teacher_id:archiveRows.data![0]?.teacher_id??undefined,
+  workplace_id:places[0],student_id:studentId,source:"manual",
+ });
+ expect(bypass.error?.message).toContain("ARCHIVED_STUDENT_ENROLLMENT");
+
  const held=await call("ccp_credits_packages_list",{studentId});
  expect(held.error).toBeUndefined();
  expect(held.data.packages.find((x:{id:string})=>x.id===packageId))
