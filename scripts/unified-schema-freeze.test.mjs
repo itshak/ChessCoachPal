@@ -140,3 +140,21 @@ test("workplace current student filter excludes future, ended, cancelled and arc
   '.is("archived_at",null)',
  ])ok(source.includes(marker),"Current workplace view missing "+marker);
 });
+
+test("student-specific compensation agreements require teacher-owned dated enrollment",()=>{
+ const clause=sql.split("CREATE OR REPLACE FUNCTION public.ccp_compensation_agreement_no_overlap()")[1]
+  ?.split("$ccp_compensation_agreement_no_overlap$;")[0];
+ ok(clause,"Missing compensation guard");
+ for(const marker of [
+  "STUDENT_COMPENSATION_OUTSIDE_ENROLLMENT",
+  "e.start_date_unknown=false","e.cancelled_at IS NULL",
+  "e.starts_on<=NEW.effective_from","FOR SHARE OF e",
+ ])ok(clause.includes(marker),"Compensation guard missing "+marker);
+ const source=read("lib/server/compensation-agreements-service.ts");
+ for(const marker of [
+  "COMPENSATION_ENROLLMENT_RANGE_REQUIRED",
+  '.is("cancelled_at",null)',
+  '.lte("starts_on",value.effectiveFrom)',
+  'membership=membership.is("ends_on",null)'
+ ])ok(source.includes(marker),"Compensation service missing "+marker);
+});

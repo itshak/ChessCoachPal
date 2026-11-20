@@ -103,6 +103,22 @@ test("temporal memberships allow separate periods, reject overlap and preserve u
       });
     expect(legacyUnknownPayerError?.code).toBe("23503");
 
+    const agreement = { teacher_id: first.id, workplace_id: first.workplaceId,
+      student_id: studentId, billing_account_id: billing!.id as string,
+      agreement_role: "participant_charge", model: "per_session",
+      rate_cents: 1500, currency: "USD", status: "active" };
+    const { data: validAgreement, error: agreementError } =
+      await admin.from("compensation_agreements").insert({
+        ...agreement, effective_from: "2026-01-10", effective_to: "2026-01-20",
+      }).select("id").single();
+    expect(agreementError).toBeNull();
+    expect(validAgreement?.id).toBeTruthy();
+    const { error: invalidAgreementError } =
+      await admin.from("compensation_agreements").insert({
+        ...agreement, effective_from: "2026-01-22", effective_to: "2026-02-15",
+      });
+    expect(invalidAgreementError?.code).toBe("23503");
+
     const { data: adjusted, error: adjustError } = await admin.from("workplace_enrollments")
       .update({ ends_on: "2026-12-31" }).eq("id", feb!.id)
       .select("revision,ends_on").single();

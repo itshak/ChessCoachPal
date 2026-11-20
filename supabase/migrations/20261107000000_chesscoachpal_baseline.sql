@@ -10678,6 +10678,24 @@ CREATE OR REPLACE FUNCTION public.ccp_compensation_agreement_no_overlap()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
 SET search_path=public,pg_temp AS $ccp_compensation_agreement_no_overlap$
 BEGIN
+  -- Explicit student-specific compensation cannot reach outside a known,
+  -- non-cancelled enrollment period. Workplace-wide and group policies have
+  -- a different scope and are validated by their own ownership constraints.
+  IF NEW.student_id IS NOT NULL THEN
+    PERFORM 1 FROM public.workplace_enrollments e
+    WHERE e.teacher_id=NEW.teacher_id
+      AND e.workplace_id=NEW.workplace_id AND e.student_id=NEW.student_id
+      AND e.cancelled_at IS NULL AND e.start_date_unknown=false
+      AND e.starts_on<=NEW.effective_from
+      AND ((NEW.effective_to IS NULL AND e.ends_on IS NULL)
+        OR (NEW.effective_to IS NOT NULL AND
+            (e.ends_on IS NULL OR e.ends_on>=NEW.effective_to)))
+    FOR SHARE OF e;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'STUDENT_COMPENSATION_OUTSIDE_ENROLLMENT'
+        USING ERRCODE='23503';
+    END IF;
+  END IF;
   IF NEW.status='active' THEN
     PERFORM pg_advisory_xact_lock(hashtextextended(
       NEW.teacher_id::text||':compensation:'||NEW.workplace_id::text,0));
