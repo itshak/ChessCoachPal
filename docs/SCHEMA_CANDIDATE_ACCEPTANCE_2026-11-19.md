@@ -1,6 +1,8 @@
 # Temporal enrollment and credit-safe lifecycle — source acceptance report (2026-11-20)
 
-**State: DRAFT / NOT ARCHIVED / NOT MERGED / NOT AUTHORIZED FOR PRODUCTION.** This is a source-only development report. It is not permission to run the fresh-install migration on populated or live data. The implementation and review of other OpenSpec proposals remain independent gates.
+**2026-11-20 correction — SOURCE MERGED, OpenSpec still active.** PR #104 was merged at `ce162082`, #107 at `6681ea52`, and #108 at `895cb193`. The exact PR #108 head `7e4c43f` passed [CI](https://github.com/itshak/ChessCoachPal/actions/runs/44748652797), [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/44748652813) (313 passed, 5 skipped plus 3 additional passed), [security](https://github.com/itshak/ChessCoachPal/actions/runs/44748652760), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/44748652767), and [synthetic backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/44748652771). The former DRAFT/unmerged references below are **historical review notes**, superseded as to GitHub merge state only. **Do not archive, deploy, or cut over populated data** without the remaining OpenSpec/ADR-0017 acceptance, reconciled off-host restore and operator approval. See [current tracker](../openspec/changes/README.md).
+
+**Historical state at writing: DRAFT / NOT ARCHIVED / NOT MERGED / NOT AUTHORIZED FOR PRODUCTION.** This is a source-only development report. It is not permission to run the fresh-install migration on populated or live data. The implementation and review of other OpenSpec proposals remain independent gates.
 
 ## Dependency and branch inventory
 

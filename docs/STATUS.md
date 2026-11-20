@@ -3,6 +3,14 @@
 > **Current product policy (ADR-0018, 2026-11-19):** ChessCoachPal is exclusively an operator-run SaaS. Customers/teachers cannot deploy, install, operate or self-host ChessCoachPal. In older text, "self-hosted" refers solely to ChessCoachPal operating its own infrastructure (including Supabase/PostgreSQL), not to a customer deployment. Historical/archived plans are evidence of past decisions, not current product support. See [ADR-0018](adr/0018-operator-only-saas-and-tenant-scaling.md).
 
 
+## 2026-11-20 — CURRENT source integration checkpoint
+
+**Merged main:** `895cb193ba8a9efcf171bef8f668505a66a8bce6` contains PRs [#104](https://github.com/itshak/ChessCoachPal/pull/104), [#107](https://github.com/itshak/ChessCoachPal/pull/107), and [#108](https://github.com/itshak/ChessCoachPal/pull/108). No PR from this stack remains open. The three PR heads passed their required synthetic source workflows, including authenticated browser/MCP E2E. The merged-main workflow results and later audit commits must be read separately. **No populated-data production cutover, migration, release, or deployment is certified by this source merge.**
+
+**Current task ownership and statuses:** [Active OpenSpec tracker](../openspec/changes/README.md) and [schema inventory](SCHEMA_FREEZE_INVENTORY_2026-11-20.md). The sections dated 2026-11-18/19 below are an **immutable development log**: descriptions saying PR #104 is still draft, unmerged or has 12 test failures are historical checkpoints and must not be used as today's code state.
+
+---
+
 ## 2026-11-19 — PR #104 latest exact-head E2E review (acceptance BLOCKED)
 
 On source candidate `6cef8c5`, GitHub CI, security history, self-host Compose and disposable backup/restore passed; the full authenticated Playwright run [44519553963](https://github.com/itshak/ChessCoachPal/actions/runs/44519553963) had **297 passing and 12 failing** cases. The previous `0c540bd` run had 273 passing and 35 failing. The remaining failures involve repeated OAuth sign-in test setup, an incorrect raw-MCP fixture adapter, a 100-workplace UI list cap, invoice contact-consent provenance, redacted MCP CSV expectations, 404 streaming/translation assertions, and unresolved credit-balance read behavior. These are not all cosmetic; guest authorization and finance must remain deny-by-default. Corrections require new exact-head runtime checks.
