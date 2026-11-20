@@ -22,6 +22,7 @@
     "teacher_settings",
     "compensation_agreements",
     "student_federation_memberships",
+    "student_rating_snapshots",
     "student_billing_assignments",
     "financial_obligations",
     "received_payments",
