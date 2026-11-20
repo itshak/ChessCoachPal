@@ -82,6 +82,9 @@ if(invoked){
   console.log("Canonical attendance cutover: "+audit.physicalTables.length+" old physical tables; "+
    runtime.length+" source consumers; "+tests.length+" tests/fixtures.");
   for(const entry of runtime)console.log(" - "+entry.path+": "+entry.references.join(", "));
+  if(audit.sqlReferences.length)console.log(" - canonical SQL legacy references: "+audit.sqlReferences.join(", "));
+  for(const entry of audit.financialFieldConsumers)
+   console.log(" - legacy financial consumer "+entry.path+": "+entry.fields.join(", "));
  }
  if(process.argv.includes("--strict")&&
     (audit.physicalTables.length||audit.sqlReferences.length||
