@@ -352,12 +352,12 @@ const catalogue = [
   },
   {
     name:"ccp_students_bulk_lifecycle_preview",
-    description:"Review 1–100 student archive or reactivation changes by stable ID and exact revision, including active workplace enrollments, group membership, future commitments, and hosted quota. Never silently archive a pupil active elsewhere.",
+    description:"Preview archive/reactivation for identified students and exact revisions. Archiving requires removing current enrollment first; current enrollment removal does NOT preserve last workplace history yet. For reactivation, ask which workplace the student is returning to; never infer current enrollment from historical attendance. Preview also checks commitments and hosted quota.",
     schema:bulkLifecyclePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_students_bulk_lifecycle_commit",
-    description:"After reviewing the exact digest and blockers, atomically archive/reactivate up to 100 students. Confirm explicitly. SQL rechecks tenant, revisions, commitments, quota, and durable replay. No student history is deleted.",
+    description:"Commit reviewed archive/reactivation by digest, revision and approval. IMPORTANT: reactivation changes student status only and DOES NOT automatically restore workplace enrollment. Ask teacher to confirm destination workplace and enroll explicitly; do not report return-to-workplace completed until enrollment receipt exists. SQL rechecks tenant, commitments, quota and replay.",
     schema:bulkLifecycleCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
@@ -427,10 +427,10 @@ const catalogue = [
   },
   {
     name:"ccp_import_spreadsheet_commit",
-    description:"Atomically import up to 500 reviewed student/family rows, including optional archived status, with explicit approval and idempotent receipts. A failed batch rolls back all student and family writes. Archived names are deduplicated.",
+    description:"Import reviewed students AND enroll them in a verified workplace atomically. Pass workplaceId explicitly when more than one workplace exists; otherwise the only workplace is selected. If WORKPLACE_REQUIRED is returned, ask the teacher to choose from workplaces and retry. Existing students gain the enrollment without duplication; historical attendance is separate.",
     schema:z.object({rows:z.array(z.record(z.string(),z.string())).min(1).max(500),
       mapping:z.record(z.string(),z.string().nullable()),confirmed:z.literal(true),
-      idempotencyKey:uuid.optional()}).strict(),
+      idempotencyKey:uuid.optional(),workplaceId:uuid.optional()}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1450,13 +1450,13 @@ const catalogue = [
   },
   {
     name:"ccp_workplaces_enroll",
-    description:"Enroll an identified student in an identified workplace. Single-member only.",
+    description:"Enroll a stable student ID in a stable teacher-owned workplace ID. Never guess a workplace from a student name or historical attendance; when missing, list valid workplaces and ask teacher to choose. Single-member operation; do not imply group membership, portal access or billing authority.",
     schema:z.object({workplaceId:uuid,studentId:uuid,...mutation}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_workplaces_unenroll",
-    description:"Explicitly remove one current workplace enrollment. Group memberships and future direct lessons must be cleared first; historic frozen rosters remain untouched.",
+    description:"Remove an explicitly identified current workplace enrollment after confirmation and commitment checks. WARNING: this deletes the current link; there is not yet a durable last-enrollment ledger. Do not tell a teacher that reactivation can automatically restore this workplace. Historic attendance remains untouched.",
     schema:z.object({workplaceId:uuid,studentId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
@@ -1910,13 +1910,13 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherSpreadsheetSuggest(db,teacherId,a)};
       }
       case "ccp_import_spreadsheet_commit": {
-        const a=args as {rows:Record<string,string>[];mapping:ColumnMapping;idempotencyKey?:string};
+        const a=args as {rows:Record<string,string>[];mapping:ColumnMapping;idempotencyKey?:string;workplaceId?:string};
         const response=await teacherSpreadsheetCommit(db,teacherId,a);
         const data=await response.json();
         if(!response.ok)
           return {error:{code:response.status===403?"HOSTED_LIMIT_REACHED":
-            response.status===409?"CONFLICT":"VALIDATION_ERROR",
-            message:data.error??"Spreadsheet import failed"}};
+            response.status===409?"CONFLICT":data.code??"VALIDATION_ERROR",
+            message:data.error??"Spreadsheet import failed",workplaces:data.workplaces}};
         return {data};
       }
       case "ccp_settings_export":

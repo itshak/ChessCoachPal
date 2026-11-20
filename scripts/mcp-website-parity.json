@@ -931,7 +931,7 @@
       "existingTools": [
         "ccp_import_spreadsheet_commit"
       ],
-      "explanation": "Explicit confirmed delegated MCP import and authenticated website commit share tenant-scoped atomic SQL receipt, duplicate mapping and idempotent replay, accepted in OAuth/browser E2E 42709042700; separate rollback tests also exist. Candidate archived-column browser commit and MCP replay, preserving active/archived roster membership, are covered in e2e/parity-spreadsheet-commit.spec.ts.",
+      "explanation": "Explicit confirmed delegated MCP import and authenticated website commit share tenant-scoped atomic SQL receipt, duplicate mapping and idempotent replay, accepted in OAuth/browser E2E 42709042700; separate rollback tests also exist. Candidate archived-column browser commit and MCP replay, preserving active/archived roster membership, are covered in e2e/parity-spreadsheet-commit.spec.ts. 2026-11-19 draft import safeguard: workplaceId is now required when multiple owned workplaces exist, with structured WORKPLACE_REQUIRED choices available to both website and delegated MCP; the SQL writer persists the chosen workplace enrollment atomically for new or existing students and rolls back every row plus receipts on quota failure. Candidate tests e2e/spreadsheet-atomic.spec.ts exercise transactional rollback/receipt replay, and e2e/parity-spreadsheet-commit.spec.ts exercises both real website and delegated MCP surfaces. This is a PR-head candidate, not merged-main or final temporal membership acceptance.",
       "evidenceTest": "e2e/parity-spreadsheet-commit.spec.ts"
     },
     {

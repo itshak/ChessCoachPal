@@ -3534,6 +3534,7 @@ DECLARE
  v_names jsonb:='{}'::jsonb; v_group_ids jsonb:='{}'::jsonb;
  v_name text; v_key text; v_email text; v_contact uuid; v_student_id uuid; v_parent text;
  v_created integer:=0; v_skipped integer:=0; v_contacts integer:=0;
+ v_enrolled integer:=0; v_workplace uuid;
  v_skipped_rows jsonb:='[]'::jsonb; v_result jsonb;
  v_row_number integer;
 BEGIN
@@ -3565,6 +3566,16 @@ BEGIN
  FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
    v_name:=btrim(v_row->>'studentName');
    v_key:=v_row->>'familyKey';
+   IF (v_row->>'workplaceId') IS NULL OR (v_row->>'workplaceId') !~
+     '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN
+     RAISE EXCEPTION 'IMPORT_WORKPLACE_REQUIRED' USING ERRCODE='22023';
+   END IF;
+   v_workplace:=(v_row->>'workplaceId')::uuid;
+   PERFORM 1 FROM public.workplaces
+     WHERE id=v_workplace AND teacher_id=v_teacher;
+   IF NOT FOUND THEN
+     RAISE EXCEPTION 'WORKPLACE_NOT_OWNED' USING ERRCODE='42501';
+   END IF;
    v_row_number:=(v_row->>'sourceRow')::integer;
    IF jsonb_typeof(v_row)<>'object' OR v_name IS NULL
       OR length(v_name) NOT BETWEEN 1 AND 200
@@ -3577,8 +3588,19 @@ BEGIN
    END IF;
    -- Historical/archived student names are preserved, not recreated.
    -- Holding the teacher lock makes this check consistent with other imports.
-   IF EXISTS(SELECT 1 FROM public.students
-     WHERE teacher_id=v_teacher AND lower(btrim(name))=lower(v_name)) THEN
+   -- Names are not unique identifiers. Never silently choose one of several.
+   IF (SELECT count(*) FROM public.students
+       WHERE teacher_id=v_teacher AND lower(btrim(name))=lower(v_name))>1 THEN
+     RAISE EXCEPTION 'STUDENT_MATCH_AMBIGUOUS' USING ERRCODE='22023';
+   END IF;
+   SELECT id INTO v_student_id FROM public.students
+     WHERE teacher_id=v_teacher AND lower(btrim(name))=lower(v_name)
+     ORDER BY created_at,id LIMIT 1;
+   IF v_student_id IS NOT NULL THEN
+     INSERT INTO public.workplace_enrollments(teacher_id,student_id,workplace_id)
+     VALUES(v_teacher,v_student_id,v_workplace)
+     ON CONFLICT (teacher_id,workplace_id,student_id) DO NOTHING;
+     IF FOUND THEN v_enrolled:=v_enrolled+1; END IF;
      v_skipped:=v_skipped+1;
      IF jsonb_array_length(v_skipped_rows)<50 THEN
        v_skipped_rows:=v_skipped_rows||jsonb_build_array(
@@ -3631,9 +3653,14 @@ BEGIN
        is_legal_guardian,may_receive_messages
      ) VALUES(v_teacher,v_student_id,v_contact,'Imported contact',false,false);
    END IF;
+   INSERT INTO public.workplace_enrollments(teacher_id,student_id,workplace_id)
+   VALUES(v_teacher,v_student_id,v_workplace)
+   ON CONFLICT (teacher_id,workplace_id,student_id) DO NOTHING;
+   IF FOUND THEN v_enrolled:=v_enrolled+1; END IF;
    v_created:=v_created+1;
  END LOOP;
  v_result:=jsonb_build_object(
+   'enrollmentsCreated',v_enrolled,
    'studentsCreated',v_created,'studentsSkipped',v_skipped,
    'contactsCreated',v_contacts,'skipped',v_skipped_rows,
    'receiptId',p_idempotency_key

@@ -1484,7 +1484,8 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(mapped.error).toBeUndefined();
   expect(mapped.data.mapping.student_name).toBe("Student Name");
   const csvCommitted=(await call("ccp_import_spreadsheet_commit",{
-    rows:parsedFile.data.rows,mapping:parsedFile.data.mapping,confirmed:true,
+    rows:parsedFile.data.rows,mapping:parsedFile.data.mapping,
+    workplaceId:madeWorkplace.entityId,confirmed:true,
   })).structuredContent;
   expect(csvCommitted.error).toBeUndefined();
   expect(csvCommitted.data.studentsCreated).toBe(1);
@@ -1492,7 +1493,8 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect(importedRoster.status(),await importedRoster.text()).toBe(200);
   expect((await importedRoster.json()).students.some((s:{name:string})=>s.name===csvStudent)).toBe(true);
   const importReplay=await page.request.post("/api/import/spreadsheet/commit",{
-    data:{rows:parsedFile.data.rows,mapping:parsedFile.data.mapping},
+    data:{rows:parsedFile.data.rows,mapping:parsedFile.data.mapping,
+      workplaceId:madeWorkplace.entityId},
   });
   expect(importReplay.status(),await importReplay.text()).toBe(200);
   expect(await importReplay.json()).toEqual(csvCommitted.data);
