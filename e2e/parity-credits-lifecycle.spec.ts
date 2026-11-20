@@ -67,18 +67,40 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  const mcpInitial=await call("ccp_credits_packages_list",{studentId});
  expect(mcpInitial.error).toBeUndefined();
  expect(mcpInitial.data.packages).toEqual(initial);
- const changed=await page.request.patch("/api/billing/credit-packages/"+packageId,{
+ const initialPreview=await call("ccp_credits_adjustment_preview",{packageId});
+ expect(initialPreview.error).toBeUndefined();
+ expect(initialPreview.data.availableCredits).toBe(2);
+ const websiteExpiryRequest={
+   expiresOn:"2042-08-31",expectedBalance:2,
+   reason:"Teacher approved a longer validity period",requestId:randomUUID(),confirmed:true,
+ };
+ const unreviewed=await page.request.patch("/api/billing/credit-packages/"+packageId,{
    data:{expiresOn:"2042-08-31"},
  });
+ expect(unreviewed.status()).toBe(400);
+ const changed=await page.request.patch("/api/billing/credit-packages/"+packageId,{
+   data:websiteExpiryRequest,
+ });
  expect(changed.status(),await changed.text()).toBe(200);
+ expect((await changed.json()).kind).toBe("expiry_extension");
  const updated=await call("ccp_credits_packages_list",{studentId});
  expect(updated.error).toBeUndefined();
  expect(updated.data.packages.find((x:{id:string})=>x.id===packageId).expiresOn)
    .toBe("2042-08-31");
- const later=await call("ccp_credits_package_expiry",{
-   packageId,expiresOn:"2042-09-30",confirmed:true,
- });
+ const modelExpiryRequest={
+   packageId,expiresOn:"2042-09-30",expectedBalance:2,
+   reason:"Teacher reviewed a second credit extension",
+   requestId:randomUUID(),confirmed:true,
+ };
+ const later=await call("ccp_credits_package_expiry",modelExpiryRequest);
  expect(later.error).toBeUndefined();
+ const expiryReplay=await page.request.patch("/api/billing/credit-packages/"+packageId,{
+   data:{expiresOn:modelExpiryRequest.expiresOn,
+    expectedBalance:modelExpiryRequest.expectedBalance,reason:modelExpiryRequest.reason,
+    requestId:modelExpiryRequest.requestId,confirmed:true},
+ });
+ expect(expiryReplay.status(),await expiryReplay.text()).toBe(200);
+ expect((await expiryReplay.json()).replayed).toBe(true);
  const webLater=await page.request.get("/api/billing/credit-packages?studentId="+studentId);
  expect(webLater.status(),await webLater.text()).toBe(200);
  expect((await webLater.json()).packages.find((x:{id:string})=>x.id===packageId).expiresOn)
@@ -147,22 +169,36 @@ test("PARITY:PARITY-credits-full-lifecycle creates, adjusts, redeems and returns
  expect(siteUsed.status(),await siteUsed.text()).toBe(200);
  expect(read.data.packages).toEqual((await siteUsed.json()).packages);
  const wrongExpiry=await page.request.patch("/api/billing/credit-packages/"+packageId,{
-   data:{expiresOn:"2042-07-09"},
+   data:{expiresOn:"2042-07-09",expectedBalance:1,
+    reason:"Attempting an invalid expiry shortening",requestId:randomUUID(),confirmed:true},
  });
  expect(wrongExpiry.status()).toBe(409);
  const mcpWrongExpiry=await call("ccp_credits_package_expiry",{
-   packageId,expiresOn:"2042-07-09",confirmed:true,
+   packageId,expiresOn:"2042-07-09",expectedBalance:1,
+   reason:"Attempting an invalid expiry shortening",requestId:randomUUID(),confirmed:true,
  });
  expect(mcpWrongExpiry.error?.code).toBe("CONFLICT");
  // Database-level invariant also rejects direct or concurrently racing
  // expiry edits, not just the preflight in the website/MCP service.
+ // A direct *extension* would have been allowed by the historical guard;
+ // the reviewed-only database trigger must reject it without a ledger event.
+ const directExtension=await admin.from("credit_packages")
+   .update({expires_on:"2043-06-01"}).eq("id",packageId);
+ expect(directExtension.error?.message).toContain("CREDIT_EXPIRY_REVIEW_REQUIRED");
+ // Shortening is also rejected, possibly by the earlier history guard first.
  const directViolation=await admin.from("credit_packages")
    .update({expires_on:"2042-07-09"}).eq("id",packageId);
- expect(directViolation.error?.message).toContain("CREDIT_EXPIRY_HISTORY_CONFLICT");
+ expect(directViolation.error?.message).toMatch(
+   /CREDIT_EXPIRY_(REVIEW_REQUIRED|HISTORY_CONFLICT)/);
  const afterDenied=await admin.from("credit_packages").select("expires_on")
    .eq("id",packageId).single();
  expect(afterDenied.error).toBeNull();
- expect(afterDenied.data?.expires_on).toBe("2042-09-30");
+ // The original package remains immutable; reviewed extensions are event-ledger state.
+ expect(afterDenied.data?.expires_on).toBe("2042-08-01");
+ const effective=await call("ccp_credits_packages_list",{studentId});
+ expect(effective.error).toBeUndefined();
+ expect(effective.data.packages.find((p:{id:string})=>p.id===packageId).expiresOn)
+   .toBe("2042-09-30");
 
  // A separate authenticated teacher cannot delete another coach's redeemed
  // lesson or read a successful-return receipt. The RPC derives auth.uid().
@@ -309,10 +345,12 @@ test("PARITY:PARITY-credits-tenant-scope denies foreign package reads creates an
    priceCents:4000,startsOn:"2042-02-01",requestId:randomUUID(),confirmed:true,
   })).error?.code).toBe("NOT_FOUND");
   expect((await page.request.patch("/api/billing/credit-packages/"+packageId,{
-   data:{expiresOn:"2043-01-01"},
+   data:{expiresOn:"2043-01-01",expectedBalance:5,
+    reason:"Tenant isolation synthetic extension rejection",requestId:randomUUID(),confirmed:true},
   })).status()).toBe(404);
   expect((await call("ccp_credits_package_expiry",{
-   packageId,expiresOn:"2043-01-01",confirmed:true,
+   packageId,expiresOn:"2043-01-01",expectedBalance:5,
+   reason:"Tenant isolation synthetic extension rejection",requestId:randomUUID(),confirmed:true,
   })).error?.code).toBe("NOT_FOUND");
   const {data:unchanged,error}=await admin.from("credit_packages")
    .select("expires_on").eq("id",packageId).single();

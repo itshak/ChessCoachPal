@@ -892,24 +892,34 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   const removeMcp=(await call("ccp_workplaces_unenroll",{
     workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
   })).structuredContent.data;
-  expect(removeMcp).toEqual({workplace_id:madeWorkplace.entityId,
+  // Reviewed membership end now returns its persistent audit receipt too.
+  expect(removeMcp).toMatchObject({workplace_id:madeWorkplace.entityId,
     student_id:membershipStudent,removed:true});
   const siteRoster=await postDomain({action:"workplaces.enrollments",
     workplaceId:madeWorkplace.entityId});
   expect(siteRoster.some((r:{student_id:string})=>r.student_id===membershipStudent)).toBe(false);
+  // A fresh end request for a period that has already ended is NOT_FOUND;
+  // replay is supported only when the caller supplies the original request ID.
   const removedAgain=(await call("ccp_workplaces_unenroll",{
     workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true,
-  })).structuredContent.data;
-  expect(removedAgain.removed).toBe(false);
+  })).structuredContent;
+  expect(removedAgain.error.code).toBe("NOT_FOUND");
   await call("ccp_workplaces_enroll",{
     workplaceId:madeWorkplace.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
   });
   const removeSite=await postDomain({action:"workplaces.unenroll",
     workplaceId:madeWorkplace.entityId,studentId:membershipStudent,confirmed:true});
-  expect(removeSite).toEqual(removeMcp);
+  expect(removeSite).toMatchObject({workplace_id:madeWorkplace.entityId,
+    student_id:membershipStudent,removed:true});
   expect((await call("ccp_workplaces_enrollments",{
     workplaceId:madeWorkplace.entityId,
   })).structuredContent.data.some((r:{student_id:string})=>r.student_id===membershipStudent)).toBe(false);
+  // A group requires an independently active workplace period. Restore it
+  // before testing that an active group blocks membership end.
+  const periodRejoined=await call("ccp_workplaces_enroll",{
+    workplaceId:madeWorkplace.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
+  });
+  expect(periodRejoined.structuredContent.error).toBeUndefined();
   await call("ccp_groups_enroll",{
     groupId:madeGroup.entityId,studentId:membershipStudent,idempotencyKey:randomUUID(),
   });
@@ -1012,23 +1022,48 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
     studentId:foreignStudent!.id,
   })).structuredContent;
   expect(foreignPreview.error.code).toBe("NOT_FOUND");
-  const archive=(await call("ccp_students_profile_edit",{
+  const genericArchive=(await call("ccp_students_profile_edit",{
     studentId:profileId,expectedUpdatedAt:actualProfile.updated_at,confirmed:true,
     changes:{archived:true},
   })).structuredContent;
+  expect(genericArchive.error).toBeDefined();
+  const archiveReview=(await call("ccp_students_lifecycle_preview",{
+    studentId:profileId,
+  })).structuredContent;
+  expect(archiveReview.error).toBeUndefined();
+  const archive=(await call("ccp_students_lifecycle_commit",{
+    studentId:profileId,mode:"archive",selectedWorkplaceIds:[],
+    expectedUpdatedAt:archiveReview.data.expectedUpdatedAt,
+    requestId:randomUUID(),
+    reason:"Teacher explicitly reviewed archived student commitments",
+    confirmed:true,
+  })).structuredContent;
   expect(archive.error).toBeUndefined();
-  expect(archive.data.archived_at).toBeTruthy();
+  expect(archive.data.archived).toBe(true);
   const activeRoster=(await call("ccp_students_roster",{
     includeArchived:false,limit:100,
   })).structuredContent.data.students;
   expect(activeRoster.some((row:{id:string})=>row.id===profileId)).toBe(false);
   const archivedFromWebsite=await page.request.get("/api/students/"+profileId);
   expect((await archivedFromWebsite.json()).archived_at).toBeTruthy();
-  const restore=(await page.request.put("/api/students/"+profileId,{
+  const legacyRestore=await page.request.put("/api/students/"+profileId,{
     data:{archived:false},
-  }));
+  });
+  expect(legacyRestore.status()).toBe(400);
+  const restoreReview=(await call("ccp_students_lifecycle_preview",{
+    studentId:profileId,
+  })).structuredContent;
+  expect(restoreReview.error).toBeUndefined();
+  const restore=await page.request.post("/api/agent/v1",{data:{
+    action:"students.lifecycleCommit",studentId:profileId,mode:"reactivate",
+    selectedWorkplaceIds:[],expectedUpdatedAt:restoreReview.data.expectedUpdatedAt,
+    requestId:randomUUID(),reason:"Teacher reviewed student return without workplace",
+    confirmed:true,
+  },headers:{Authorization:"Bearer "+session!.access_token}});
   expect(restore.status(),await restore.text()).toBe(200);
-  expect((await restore.json()).archived_at).toBeNull();
+  expect((await restore.json()).data.archived).toBe(false);
+  expect((await page.request.get("/api/students/"+profileId).then(r=>r.json())).archived_at)
+    .toBeNull();
   // Reactivation does not silently restore historical workplace membership.
   // Re-enroll explicitly before this longer scenario creates a new lesson.
   const rejoined=(await call("ccp_workplaces_enroll",{
@@ -1078,16 +1113,40 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   });
   expect(staleWebsiteDelete.status()).toBe(409);
   expect((await staleWebsiteDelete.json()).code).toBe("HISTORY_DEPENDENCIES");
+  // Direct membership deletion must not destroy evidence or unblock profile erasure.
   const {error:membershipRemovalError}=await userClient.from("workplace_enrollments")
     .delete().eq("teacher_id",session!.user.id)
     .eq("workplace_id",madeWorkplace.entityId).eq("student_id",empty.entityId);
-  expect(membershipRemovalError).toBeNull();
+  expect(membershipRemovalError?.code).toBe("42501");
+  const endReview=(await call("ccp_workplaces_unenroll_preview",{
+    workplaceId:madeWorkplace.entityId,studentId:empty.entityId,
+  })).structuredContent;
+  expect(endReview.error).toBeUndefined();
+  const endedEmpty=(await call("ccp_workplaces_unenroll",{
+    workplaceId:madeWorkplace.entityId,studentId:empty.entityId,
+    expectedRevision:endReview.data.revision,idempotencyKey:randomUUID(),
+    reason:"Teacher reviewed and closed the synthetic workplace membership",
+    confirmed:true,
+  })).structuredContent;
+  expect(endedEmpty.error).toBeUndefined();
+  const retained=(await call("ccp_students_delete_impact",{
+    studentId:empty.entityId,
+  })).structuredContent.data;
+  expect(retained.blockers.workplaceMemberships).toBeGreaterThan(0);
+
+  const trulyEmpty=(await call("ccp_students_create",{
+    name:"Truly unlinked deletion test "+suffix,idempotencyKey:randomUUID(),
+  })).structuredContent.data;
+  const genuinelyEmptyImpact=(await call("ccp_students_delete_impact",{
+    studentId:trulyEmpty.entityId,
+  })).structuredContent.data;
+  expect(genuinelyEmptyImpact.canDelete).toBe(true);
   const removedStudent=(await call("ccp_students_delete",{
-    studentId:empty.entityId,expectedUpdatedAt:studentDeleteImpact.updatedAt,confirmed:true,
+    studentId:trulyEmpty.entityId,expectedUpdatedAt:genuinelyEmptyImpact.updatedAt,confirmed:true,
   })).structuredContent;
   expect(removedStudent.error).toBeUndefined();
   expect(removedStudent.data.deleted).toBe(true);
-  expect((await page.request.get("/api/students/"+empty.entityId)).status()).toBe(404);
+  expect((await page.request.get("/api/students/"+trulyEmpty.entityId)).status()).toBe(404);
 
   // Skill dimensions and append-only assessments use the same scoped
   // website/MCP service. Never delete seed dimensions or another coach's data.
@@ -1350,12 +1409,14 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   // to the same structured reply used by the delegated parity helper.
   await createAssignedPayer(async(name,args)=>(await call(name,args)).structuredContent,{
     studentId:profileId,workplaceId:madeWorkplace.entityId,
-    effectiveFrom:"2020-01-01",
+    effectiveFrom:new Date().toISOString().slice(0,10),
   });
   const prepaidPackage=(await call("ccp_credits_package_create",{
     studentId:profileId,workplaceId:madeWorkplace.entityId,
     credits:4,durationMinutes:45,priceCents:10000,
-    startsOn:"2026-11-08",expiresOn:"2027-03-31",confirmed:true,
+    // The funded contract must begin within an active workplace period.
+    startsOn:new Date().toISOString().slice(0,10),
+    expiresOn:"2027-03-31",confirmed:true,
   })).structuredContent;
   expect(prepaidPackage.error).toBeUndefined();
   const prepaidId=prepaidPackage.data.packageId as string;
@@ -1371,8 +1432,15 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent.data.packages;
   expect(prepaidMcpList).toEqual(prepaidWebList);
   expect(prepaidMcpList.some((x:{id:string})=>x.id===prepaidId)).toBe(true);
+  const adjustmentPreview=(await call("ccp_credits_adjustment_preview",{
+    packageId:prepaidId,
+  })).structuredContent;
+  expect(adjustmentPreview.error).toBeUndefined();
   const expiryChanged=await page.request.patch("/api/billing/credit-packages/"+prepaidId,{
-    data:{expiresOn:"2027-04-30"},
+    data:{expiresOn:"2027-04-30",
+      expectedBalance:adjustmentPreview.data.availableCredits,
+      requestId:randomUUID(),reason:"Teacher reviewed additional validity for prepaid credits",
+      confirmed:true},
   });
   expect(expiryChanged.status(),await expiryChanged.text()).toBe(200);
   const prepaidAfterChange=(await call("ccp_credits_packages_list",{

@@ -15,6 +15,9 @@ export async function PATCH(req:NextRequest,{params}:{params:Promise<{id:string}
  const parsed=parseBody(creditPackageUpdateSchema,await req.json().catch(()=>null));
  if(!parsed.ok)return parsed.response;
  try{return NextResponse.json(await teacherCreditPackageExpiry(teacher.db,teacher.id,
-  (await params).id,parsed.data.expiresOn||null));}
+  (await params).id,parsed.data.expiresOn,{
+   expectedBalance:parsed.data.expectedBalance,requestId:parsed.data.requestId,
+   reason:parsed.data.reason,
+  }));}
  catch(error){return fail(error);}
 }

@@ -17,6 +17,7 @@ import {
   type RateSources,
 } from "@/lib/billing";
 import {type CreditPackageState} from "@/lib/credits";
+import {CreditAdjustmentPanel} from "@/components/teacher/billing/CreditAdjustmentPanel";
 
 const inputClass =
   "px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm";
@@ -30,6 +31,7 @@ export interface CreditPackageView {
   startsOn: string;
   expiresOn: string | null;
   usedCredits: number;
+  adjustmentCredits?: number;
   pendingCredits: number;
   remainingCredits: number;
   state: CreditPackageState;
@@ -133,29 +135,9 @@ function PackageRow({
   const router = useRouter();
   const confirm = useConfirm();
   const [showUsed, setShowUsed] = useState(false);
-  const [editingExpiry, setEditingExpiry] = useState(false);
-  const [expiry, setExpiry] = useState(pkg.expiresOn ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const badgeClass=STATE_STYLES[pkg.state];
-
-  async function saveExpiry() {
-    setBusy(true);
-    setError(null);
-    const res = await fetch(`/api/billing/credit-packages/${pkg.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ expiresOn: expiry || null }),
-    });
-    const data = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!res.ok) {
-      setError(toUserError(data,t("expirySaveError")));
-      return;
-    }
-    setEditingExpiry(false);
-    router.refresh();
-  }
 
   async function returnCredit(redemptionId: string, lessonDate: string | null) {
     const ok = await confirm({
@@ -208,7 +190,7 @@ function PackageRow({
             {pkg.remainingCredits}
             <span className="text-sm font-normal text-muted">
               {" "}
-              / {t("remainingTotal",{count:pkg.credits})}
+              / {t("remainingTotal",{count:pkg.credits+(pkg.adjustmentCredits??0)})}
             </span>
           </div>
           {pkg.pendingCredits > 0 && (
@@ -220,40 +202,6 @@ function PackageRow({
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mt-2 text-xs">
-        {editingExpiry ? (
-          <span className="flex flex-wrap items-center gap-2">
-            <input
-              type="date"
-              value={expiry}
-              min={pkg.startsOn}
-              onChange={(e) => setExpiry(e.target.value)}
-              className={inputClass}
-              aria-label={t("expiryDate")}
-            />
-            <Button size="sm" onClick={saveExpiry} disabled={busy}>
-              {t("save")}
-            </Button>
-            <button
-              type="button"
-              onClick={() => {
-                setExpiry(pkg.expiresOn ?? "");
-                setEditingExpiry(false);
-              }}
-              className="text-muted hover:text-foreground cursor-pointer"
-            >
-              {t("cancel")}
-            </button>
-            <span className="text-muted">{t("expiryHint")}</span>
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setEditingExpiry(true)}
-            className="text-primary hover:underline cursor-pointer"
-          >
-            {t("changeExpiry")}
-          </button>
-        )}
         {pkg.redemptions.length > 0 && (
           <button
             type="button"
@@ -288,6 +236,7 @@ function PackageRow({
         </ul>
       )}
 
+      <CreditAdjustmentPanel packageId={pkg.id} />
       {error && <p className="text-error text-xs mt-2">{error}</p>}
     </div>
   );

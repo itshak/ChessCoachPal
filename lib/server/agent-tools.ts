@@ -28,6 +28,12 @@ import {materialInLessonPreviewSchema,materialInLessonCommitSchema,
  from "@/lib/server/teacher-material-in-lesson";
 
 import {spreadsheetSuggestMcpSchema} from "@/lib/spreadsheet-suggest";
+import {creditAdjustmentCommitSchema,creditAdjustmentPreviewSchema,
+ teacherCreditAdjustmentPreview,teacherCreditAdjustmentCommit}
+ from "@/lib/server/credit-adjustments";
+import {lifecyclePreviewSchema,lifecycleCommitSchema,
+ studentLifecyclePreview,studentLifecycleCommit}
+ from "@/lib/server/student-lifecycle-service";
 import {bulkLifecyclePreviewSchema,bulkLifecycleCommitSchema,
  teacherBulkLifecyclePreview,teacherBulkLifecycleCommit,BulkLifecycleError}
  from "@/lib/server/teacher-bulk-lifecycle";
@@ -52,7 +58,9 @@ import {teacherImageFenPropose,imageFenInputSchema,ImageFenError} from "@/lib/se
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, attendanceRecord, attendanceBulkRecord, groupsList, groupsMembers,
-  sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, sessionsComplete, studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
+  sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, sessionsComplete,
+  studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
+  workplacesUnenrollPreview,
 } from "@/lib/server/coach-service";
 
 import {
@@ -485,8 +493,10 @@ const catalogue = [
   },
   {
     name:"ccp_credits_package_expiry",
-    description:"Change or clear the expiry of an owned prepaid package, never before its start or dates of already redeemed lessons.",
-    schema:z.object({packageId:uuid,expiresOn:z.string().date().nullable(),
+    description:"Audited extension only: read package balance with ccp_credits_adjustment_preview, then supply expectedBalance, reason, durable requestId, confirmation. Cannot shorten or clear expiry.",
+    schema:z.object({packageId:uuid,expiresOn:z.string().date(),
+      expectedBalance:z.number().int().min(0),requestId:uuid,
+      reason:z.string().trim().min(8).max(1000),
       confirmed:z.literal(true)}).strict(),scope:"coach:write",readOnly:false,
   },
   {
@@ -1202,10 +1212,20 @@ const catalogue = [
   },
   {
     name: "ccp_students_profile_edit",
-    description: "Edit one student's chess handles, aliases, strength (1-10), teacher-entered ratings, lesson rates, private notes, birthdate, family, or archive state. Use the latest updated_at revision and confirm any privacy-sensitive change; reconcile future commitments before archiving. Reload after conflicts; do not automatically retry a mutation.",
+    description: "Edit one student's chess handles, aliases, strength (1-10), teacher-entered ratings, lesson rates, private notes and birthdate. Archiving/reactivation requires the separate reviewed ccp_students_lifecycle_preview and ccp_students_lifecycle_commit; this general profile tool cannot change lifecycle state. Reload after conflicts; never blindly retry.",
     schema:z.object({studentId:uuid,expectedUpdatedAt:instant,changes:studentUpdateSchema,
       confirmed:z.literal(true)}).strict().refine(v=>Object.keys(v.changes).length>0,"Changes required"),
     scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_students_lifecycle_preview",
+    description:"Preview an exact owned learner's current, future and previous workplace periods, recurring/future-session blockers and all remaining prepaid credits with funding/expiry. Required before archive or reactivation, never assume an old workplace is active.",
+    schema:lifecyclePreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_students_lifecycle_commit",
+    description:"Teacher-confirmed, idempotent atomic archive or reactivation with a stable student ID and exact expectedUpdatedAt from preview. Archiving closes current membership periods, cancels future periods and holds credits without refunds, but blocks unresolved groups, slots and future lessons. Reactivation creates ONLY explicitly selected previously verified workplace periods, never guesses lesson or credit activity.",
+    schema:lifecycleCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
     name: "ccp_students_search",
@@ -1455,15 +1475,34 @@ const catalogue = [
     scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_workplaces_unenroll_preview",
+    description:"Preview ending the exact owned dated workplace membership. Returns membership revision, active group/slot/future lesson blockers, historical-preserving end date and the explicit hold-only credit policy. Read the preview before confirming an end.",
+    schema:z.object({workplaceId:uuid,studentId:uuid}).strict(),
+    scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_workplaces_unenroll",
-    description:"Remove an explicitly identified current workplace enrollment after confirmation and commitment checks. WARNING: this deletes the current link; there is not yet a durable last-enrollment ledger. Do not tell a teacher that reactivation can automatically restore this workplace. Historic attendance remains untouched.",
-    schema:z.object({workplaceId:uuid,studentId:uuid,confirmed:z.literal(true)}).strict(),
+    description:"Confirm ending a workplace membership without deleting any historical periods, frozen lessons or credits. Check the preview first and resolve active group/recurrence/future-session blockers. This never refunds or transfers credits.",
+    schema:z.object({workplaceId:uuid,studentId:uuid,confirmed:z.literal(true),
+      expectedRevision:z.number().int().positive().optional(),
+      idempotencyKey:uuid.optional(),reason:z.string().trim().min(8).max(1000).optional(),
+    }).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_workplaces_enrollments",
     description:"List members of an identified teacher-owned workplace.",
     schema:z.object({workplaceId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_credits_adjustment_preview",
+    description:"Inspect an exact teacher-owned purchased credit package, remaining entitlements, redemptions, adjustments, expiry, invoice payment status and funding. Never infer a cash refund or transfer from archival.",
+    schema:creditAdjustmentPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_credits_adjustment_commit",
+    description:"Explicitly approve a credit grant, forfeiture, transfer between compatible owned paid packages, expiry extension, or refund entitlement backed by an independently recorded payment refund reversal. No cash is moved. Requires reason, exact package ID, expected credit balance, confirmed true and a durable unique retry ID. Call preview first; do not improvise finance evidence.",
+    schema:creditAdjustmentCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_groups_create",
@@ -1950,8 +1989,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherCreditPackageCreate(db,teacherId,a)};
       }
       case "ccp_credits_package_expiry": {
-        const a=args as {packageId:string;expiresOn:string|null};
-        return {data:await teacherCreditPackageExpiry(db,teacherId,a.packageId,a.expiresOn)};
+        const a=args as {packageId:string;expiresOn:string;expectedBalance:number;requestId:string;reason:string};
+        return {data:await teacherCreditPackageExpiry(db,teacherId,a.packageId,a.expiresOn,{
+          expectedBalance:a.expectedBalance,requestId:a.requestId,reason:a.reason,
+        })};
       }
       case "ccp_credits_redemption_return": {
         const a=args as {redemptionId:string};
@@ -2579,9 +2620,22 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_workplaces_enrollments":
         return {data:await workplacesEnrollments(db,teacherId,(args as {workplaceId:string}).workplaceId)};
-      case "ccp_workplaces_unenroll": {
+      case "ccp_credits_adjustment_preview":
+        return {data:await teacherCreditAdjustmentPreview(db,teacherId,
+          args as Parameters<typeof teacherCreditAdjustmentPreview>[2])};
+      case "ccp_credits_adjustment_commit":
+        return {data:await teacherCreditAdjustmentCommit(db,teacherId,
+          args as Parameters<typeof teacherCreditAdjustmentCommit>[2])};
+      case "ccp_workplaces_unenroll_preview": {
         const a=args as {workplaceId:string;studentId:string};
-        return {data:await workplacesUnenroll(db,teacherId,a.workplaceId,a.studentId)};
+        return {data:await workplacesUnenrollPreview(db,teacherId,a.workplaceId,a.studentId)};
+      }
+      case "ccp_workplaces_unenroll": {
+        const a=args as {workplaceId:string;studentId:string;
+          expectedRevision?:number;idempotencyKey?:string;reason?:string};
+        return {data:await workplacesUnenroll(db,teacherId,a.workplaceId,a.studentId,{
+          expectedRevision:a.expectedRevision,idempotencyKey:a.idempotencyKey,reason:a.reason,
+        })};
       }
       case "ccp_schedule_day_preview":
         return {data:await teacherScheduleDayPreview(db,teacherId,
@@ -2643,6 +2697,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_workplaces_list":
         return { data: await workplacesList(db, teacherId) };
+      case "ccp_students_lifecycle_preview":
+        return {data:await studentLifecyclePreview(db,teacherId,
+          args as Parameters<typeof studentLifecyclePreview>[2])};
+      case "ccp_students_lifecycle_commit":
+        return {data:await studentLifecycleCommit(db,teacherId,
+          args as Parameters<typeof studentLifecycleCommit>[2])};
       case "ccp_students_search": {
         const a = args as {query:string};
         const result = await teacherStudentsRoster(db,teacherId,{query:a.query,includeArchived:true,limit:100});

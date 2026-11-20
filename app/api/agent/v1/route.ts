@@ -9,7 +9,8 @@ import {
   attendanceList, attendanceRecord, attendanceBulkRecord,
   groupsCreate, groupsEnroll, groupsUnenroll, groupsList, groupsMembers,
   sessionsCreate, sessionsAdHocCreate, sessionsList, sessionsParticipants, studentsSearch,
-  workplacesCreate, workplacesList, workplacesEnroll, workplacesUnenroll, workplacesEnrollments,
+  workplacesCreate, workplacesList, workplacesEnroll, workplacesUnenroll,
+  workplacesUnenrollPreview, workplacesEnrollments,
   studentsCreate, sessionsUpdate, sessionsComplete, assertTimezone,
 } from "@/lib/server/coach-service";
 
@@ -24,6 +25,10 @@ import { chessUuid, categoryName, observationText, observationInput, observedAt,
 import {materialLinksList,materialLinksCreate,materialLinksUpdate,
  materialLinksUnlinkImpact,materialLinksUnlink} from "@/lib/server/material-links";
 import {lessonCompletionSchema,attendanceBulkRecordSchema} from "@/lib/lesson-completion";
+import {teacherCreditAdjustmentPreview,teacherCreditAdjustmentCommit}
+ from "@/lib/server/credit-adjustments";
+import {studentLifecyclePreview,studentLifecycleCommit}
+ from "@/lib/server/student-lifecycle-service";
 
 export const dynamic = "force-dynamic";
 
@@ -47,8 +52,25 @@ const calls = z.discriminatedUnion("action", [
     message:"At least one workplace field must change",
   }),
   z.object({ action: z.literal("workplaces.enroll"), workplaceId: uuid, studentId: uuid }),
-  z.object({ action: z.literal("workplaces.unenroll"), workplaceId: uuid, studentId: uuid, confirmed: z.literal(true) }),
+  z.object({ action: z.literal("workplaces.unenrollPreview"), workplaceId: uuid, studentId: uuid }),
+  z.object({ action: z.literal("workplaces.unenroll"), workplaceId: uuid,
+    studentId: uuid, confirmed: z.literal(true),
+    expectedRevision: z.number().int().positive().optional(),
+    idempotencyKey: uuid.optional(),
+    reason: z.string().trim().min(8).max(1000).optional(),
+  }).strict(),
   z.object({ action: z.literal("workplaces.enrollments"), workplaceId: uuid }),
+  z.object({action:z.literal("credits.adjustmentPreview"),packageId:uuid}).strict(),
+  z.object({
+    action:z.literal("credits.adjustmentCommit"),packageId:uuid,
+    kind:z.enum(["manual_grant","forfeiture","refund_entitlement","transfer","expiry_extension"]),
+    credits:z.number().int().min(0).max(200),
+    expectedBalance:z.number().int().nonnegative(),
+    destinationPackageId:uuid.optional(),
+    newExpiresOn:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    sourcePaymentId:uuid.optional(),refundReversalId:uuid.optional(),
+    requestId:uuid,reason:z.string().trim().min(8).max(1000),confirmed:z.literal(true),
+  }).strict(),
   z.object({ action: z.literal("students.create"), name: shortName,
     level: z.string().trim().max(120).nullable().optional() }),
   z.object({ action: z.literal("students.update"), studentId: uuid,
@@ -57,6 +79,14 @@ const calls = z.discriminatedUnion("action", [
   }).strict().refine(v=>v.name!==undefined||v.level!==undefined,{
     message:"At least one student field must change",
   }),
+  z.object({action:z.literal("students.lifecyclePreview"),studentId:uuid}).strict(),
+  z.object({action:z.literal("students.lifecycleCommit"),studentId:uuid,
+    mode:z.enum(["archive","reactivate"]),
+    expectedUpdatedAt:z.string().min(10).max(80),
+    selectedWorkplaceIds:z.array(uuid).max(50).default([]),
+    requestId:uuid,reason:z.string().trim().min(8).max(1000),
+    confirmed:z.literal(true),
+  }).strict(),
   z.object({ action: z.literal("students.search"),
     query: z.string().trim().max(80).default("") }),
   z.object({ action: z.literal("groups.list") }),
@@ -125,8 +155,11 @@ const calls = z.discriminatedUnion("action", [
 ]);
 
 const toolNames = [
-  "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll", "workplaces.unenroll", "workplaces.enrollments",
+  "workplaces.list", "workplaces.create", "workplaces.update", "workplaces.enroll",
+  "workplaces.unenrollPreview", "workplaces.unenroll", "workplaces.enrollments",
+  "credits.adjustmentPreview","credits.adjustmentCommit",
   "students.search", "students.create", "students.update",
+  "students.lifecyclePreview","students.lifecycleCommit",
   "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
   "sessions.list", "sessions.create", "sessions.createAdHoc", "sessions.update", "sessions.complete", "sessions.participants",
   "attendance.list", "attendance.record", "attendance.bulkRecord",
@@ -247,10 +280,27 @@ export async function POST(req: NextRequest) {
       }
       case "workplaces.enroll":
         result = await workplacesEnroll(db, teacherId, call.workplaceId, call.studentId); break;
+      case "workplaces.unenrollPreview":
+        result = await workplacesUnenrollPreview(db,teacherId,call.workplaceId,call.studentId); break;
       case "workplaces.unenroll":
-        result = await workplacesUnenroll(db, teacherId, call.workplaceId, call.studentId); break;
+        result = await workplacesUnenroll(db, teacherId, call.workplaceId, call.studentId, {
+          expectedRevision:call.expectedRevision,
+          idempotencyKey:call.idempotencyKey,reason:call.reason,
+        }); break;
       case "workplaces.enrollments":
         result = await workplacesEnrollments(db, teacherId, call.workplaceId); break;
+      case "credits.adjustmentPreview":
+        result = await teacherCreditAdjustmentPreview(db,teacherId,{packageId:call.packageId}); break;
+      case "credits.adjustmentCommit": {
+        const {action: _action, ...payload}=call;
+        result = await teacherCreditAdjustmentCommit(db,teacherId,payload); break;
+      }
+      case "students.lifecyclePreview":
+        result=await studentLifecyclePreview(db,teacherId,{studentId:call.studentId}); break;
+      case "students.lifecycleCommit": {
+        const {action: _action, ...payload}=call;
+        result=await studentLifecycleCommit(db,teacherId,payload); break;
+      }
       case "students.search":
         result = await studentsSearch(db, teacherId, call.query); break;
       case "students.create":

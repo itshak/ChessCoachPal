@@ -1,4 +1,6 @@
 import {randomUUID} from "node:crypto";
+import {createClient} from "@supabase/supabase-js";
+import {SEED_TEACHER} from "./helpers/auth";
 import {expect,test,type Page} from "@playwright/test";
 import {delegatedTool, type TestMcpReply} from "./helpers/delegated-mcp";
 
@@ -137,11 +139,29 @@ test("PARITY:PARITY-workplaces-unenroll-history preserves frozen lessons across 
   expect((await callTool("ccp_workplaces_enroll",{
     workplaceId:id,studentId:learner,idempotencyKey:randomUUID(),
   })).error).toBeUndefined();
+  // Put a separately verified historical period on this same student before
+  // the current one. Using a fresh historical date avoids competing with
+  // another synthetic lesson at UTC midnight and leaves no future blocker.
+  const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+  });
+  const signed=await auth.auth.signInWithPassword(SEED_TEACHER);
+  expect(signed.error).toBeNull();
+  const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+  });
+  const historicalPeriod=await admin.from("workplace_enrollments").insert({
+    teacher_id:signed.data.user!.id,student_id:learner,workplace_id:id,
+    starts_on:"2010-01-01",ends_on:"2010-12-31",source:"legacy_operator",
+  });
+  expect(historicalPeriod.error).toBeNull();
+  const day=2+parseInt(randomUUID().slice(0,8),16)%300;
+  const historicalAt=new Date(Date.UTC(2010,0,day,14,0,0)).toISOString();
   const lesson=await callTool("ccp_sessions_create",{
     workplaceId:id,studentId:learner,title:unique("Historical standalone lesson"),
-    startsAt:new Date(Date.UTC(2019,0,1)+Math.floor(Math.random()*31536000000)).toISOString(),
-    durationMinutes:45,lessonNote:"Preserve this teaching snapshot",
-    idempotencyKey:randomUUID(),
+    startsAt:historicalAt,durationMinutes:45,
+    lessonNote:"Preserve this teaching snapshot",idempotencyKey:randomUUID(),
   });
   expect(lesson.error).toBeUndefined();
   const sessionId=lesson.data.entityId as string;
@@ -151,11 +171,31 @@ test("PARITY:PARITY-workplaces-unenroll-history preserves frozen lessons across 
   expect(before.status(),await before.text()).toBe(200);
   const roster=(await before.json()).data as Array<{student_id:string}>;
   expect(roster.map(p=>p.student_id)).toEqual([learner]);
-  const unenroll=await callTool("ccp_workplaces_unenroll",{
-    workplaceId:id,studentId:learner,confirmed:true,
+  const preview=await callTool("ccp_workplaces_unenroll_preview",{
+    workplaceId:id,studentId:learner,
   });
+  expect(preview.error).toBeUndefined();
+  expect(preview.data.canEnd).toBe(true);
+  expect(preview.data.creditPolicy).toBe("hold_without_refund_transfer_or_expiry_change");
+  const websitePreview=await page.request.post("/api/agent/v1",{data:{
+    action:"workplaces.unenrollPreview",workplaceId:id,studentId:learner,
+  }});
+  expect(websitePreview.status(),await websitePreview.text()).toBe(200);
+  expect((await websitePreview.json()).data).toEqual(preview.data);
+  const requestId=randomUUID();
+  const endArgs={workplaceId:id,studentId:learner,confirmed:true,
+    expectedRevision:preview.data.revision,idempotencyKey:requestId,
+    reason:"Teacher reviewed completed lessons and ended this workplace period"};
+  const unenroll=await callTool("ccp_workplaces_unenroll",endArgs);
   expect(unenroll.error).toBeUndefined();
   expect(unenroll.data.removed).toBe(true);
+  const replay=await callTool("ccp_workplaces_unenroll",endArgs);
+  expect(replay.error).toBeUndefined();
+  expect(replay.data.replayed).toBe(true);
+  const changedRequest=await callTool("ccp_workplaces_unenroll",{
+    ...endArgs,reason:"Changed terms must never replay against the original request",
+  });
+  expect(changedRequest.error?.code).toBe("CONFLICT");
   const browser=await page.request.post("/api/agent/v1",{data:{
     action:"workplaces.enrollments",workplaceId:id,
   }});

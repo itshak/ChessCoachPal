@@ -70,7 +70,12 @@ export function inventory(){
  files.sort((a,b)=>a.path.localeCompare(b.path));
  financialFieldConsumers.sort((a,b)=>a.path.localeCompare(b.path));
  return {physicalTables:physicalLegacyTableDefinitions(sql),sqlPath,
-  sqlReferences:directOldSourceReferences(sql),consumers:files,
+  // SQL comments are not executable references. The strict audit must catch
+  // real FROM/JOIN/UPDATE references, not documentation such as
+  // "not inferred from attendance" in a comment.
+  sqlReferences:directOldSourceReferences(
+   sql.replace(/\/\*[\s\S]*?\*\//g,"").replace(/--[^\r\n]*/g,"")
+  ),consumers:files,
   financialFieldConsumers,oldRpcs};
 }
 const invoked=process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url);
@@ -82,6 +87,9 @@ if(invoked){
   console.log("Canonical attendance cutover: "+audit.physicalTables.length+" old physical tables; "+
    runtime.length+" source consumers; "+tests.length+" tests/fixtures.");
   for(const entry of runtime)console.log(" - "+entry.path+": "+entry.references.join(", "));
+  if(audit.sqlReferences.length)console.log(" - canonical SQL legacy references: "+audit.sqlReferences.join(", "));
+  for(const entry of audit.financialFieldConsumers)
+   console.log(" - legacy financial consumer "+entry.path+": "+entry.fields.join(", "));
  }
  if(process.argv.includes("--strict")&&
     (audit.physicalTables.length||audit.sqlReferences.length||

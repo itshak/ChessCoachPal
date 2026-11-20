@@ -32,8 +32,13 @@ test("PARITY:PARITY-all-teacher-route-field-action-contract discovers every teac
   const changes=editSchema.properties?.changes?.properties??{};
   for(const field of ["nameAliases","strength","lichessUsername",
     "chesscomUsername","lichessRating","chesscomRating","chessGoals",
-    "teacherNotes","defaultRateCents","travelFeeCents","archived"])
+    "teacherNotes","defaultRateCents","travelFeeCents"])
     expect(Object.hasOwn(changes,field),"student edit field "+field).toBe(true);
+  // Lifecycle status is deliberately NOT a generic profile edit. Its
+  // review/commit pair must still be independently advertised by MCP.
+  expect(Object.hasOwn(changes,"archived")).toBe(false);
+  expect(byName.has("ccp_students_lifecycle_preview")).toBe(true);
+  expect(byName.has("ccp_students_lifecycle_commit")).toBe(true);
   const newName="Parity catalog learner "+randomUUID().slice(0,8);
   const created=await call("ccp_students_create",{
     name:newName,idempotencyKey:randomUUID(),

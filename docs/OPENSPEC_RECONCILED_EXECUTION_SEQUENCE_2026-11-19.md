@@ -1,6 +1,6 @@
 # Reconciled remaining OpenSpec execution sequence (2026-11-19)
 
-**Status: planning only; no schema or live DB writes.** Repository base `feature/openspec-contacts-20261118` currently has 11 active OpenSpec changes. This roadmap reconciles their dependency order; it does not mark unfinished changes complete. PR #104 is the draft contact/schema branch; PR #106 is a separate draft import proposal; PR #107 is a draft spreadsheet safeguard implementation based on #104. Avoid merging independent schema baselines out of order.
+**Status: staged schema candidate on draft PR #108; no live database writes or production migration.** Repository base `feature/openspec-contacts-20261118` currently has 11 active OpenSpec changes. This roadmap reconciles their dependency order; it does not mark unfinished changes complete. PR #104 is the draft contact/schema branch; PR #106 is a separate draft import proposal; PR #107 is a draft spreadsheet safeguard implementation based on #104. Avoid merging independent schema baselines out of order.
 
 ## Critical path
 **0. Inventory and reconcile** `2026-11-19-freeze-unified-saas-schema-and-regressions`: use it as the schema governance umbrella, NOT a declaration that the candidate baseline is already frozen. Audit actual live and staging schema, current PRs, credits/finance, enrollment, all 11 active proposals, migrations and data-preservation gates.
@@ -43,3 +43,15 @@
 10. `2026-11-18-automate-online-rating-sync` — stage 6.
 11. `2026-11-17-introduce-multilingual-support` — stage 7.
 12. `2026-11-18-explore-brand-and-redesign-coach-ui` — stage 7.
+
+## 2026-11-19 implementation progress (draft-only)
+
+- PR #107 import protection is green in CI, authenticated E2E, security, Compose and backup/restore on exact commit `da9958156390cfc3115c45c34ef3dedd3e4da753`.
+- PR #108 stages temporal workplace membership, enrollment interval constraints, typed credit adjustment evidence, schema manifest and OpenSpec delta; a schema-only candidate is **not** end-to-end credit-safe lifecycle completion.
+- OpenSpec implementation/verification remains active. See `docs/SCHEMA_CANDIDATE_ACCEPTANCE_2026-11-19.md` for unverified operations and cutover gates; do not archive the umbrella or temporal proposal until independently accepted.
+
+## 2026-11-20 follow-through (not source freeze)
+
+Draft PR #108 now implements candidate shared temporal membership end, archived-student-safe reactivation, explicitly audited credit adjustments, revised credit allocation and English/Hebrew/Russian teacher review panels, with browser/MCP parity tests. The source changes are **not yet an accepted feature**, and no OpenSpec was archived in this step. The database refuses direct enrollment into an archived student's period, even if a client bypasses normal application checks. The last checks and the unresolved expiry-edit bypass are recorded in `docs/SCHEMA_CANDIDATE_ACCEPTANCE_2026-11-19.md`.
+
+The correct sequence remains **#104 (Contacts/payer foundation) → #107 (workplace-safe import) → #108 (temporal/credit lifecycle)**. Before final schema freeze, reconcile old direct expiry edits with audited credit event semantics, all amendment owner/security rules and exact-head authenticated E2E; then inventory, test and approve the forward-only populated-data transition separately. Empty-install green checks never authorize a live data reset or OpenSpec archival while unchecked implementation tasks remain.

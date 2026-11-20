@@ -46,14 +46,9 @@ export async function teacherBulkLifecyclePreview(db:SupabaseClient,teacherId:st
     const currentArchived=Boolean(student.archived_at);
     const blockers:Record<string,number>={};
     if(row.archived && !currentArchived){
-      const [preview,enrollments]=await Promise.all([
-        teacherStudentArchivePreview(db,teacherId,row.studentId),
-        db.from("workplace_enrollments").select("id",{count:"exact",head:true})
-          .eq("teacher_id",teacherId).eq("student_id",row.studentId),
-      ]);
-      if(enrollments.error)
-        return fail(503,"PREVIEW_UNAVAILABLE","Current workplace enrollment unavailable");
-      Object.assign(blockers,preview.blockers,{currentWorkplaceEnrollments:enrollments.count??0});
+      // Shared preview counts only active teacher-local, non-cancelled periods.
+      const preview=await teacherStudentArchivePreview(db,teacherId,row.studentId);
+      Object.assign(blockers,preview.blockers);
     }
     const stale=student.updated_at!==row.expectedUpdatedAt;
     const blocked=Object.values(blockers).some(n=>n>0);

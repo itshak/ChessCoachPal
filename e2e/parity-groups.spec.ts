@@ -180,9 +180,18 @@ test("PARITY:PARITY-groups-archived-roster retains frozen lesson history after a
  expect(sitePreview.status(),await sitePreview.text()).toBe(200);
  expect(await sitePreview.json()).toEqual(preview.data);
  expect(preview.data.canArchive).toBe(true);
- const archived=await page.request.put("/api/students/"+first,{
+ const legacyArchive=await page.request.put("/api/students/"+first,{
    data:{archived:true},
  });
+ expect(legacyArchive.status()).toBe(400);
+ const reviewed=await callTool("ccp_students_lifecycle_preview",{studentId:first});
+ expect(reviewed.error).toBeUndefined();
+ const archived=await page.request.post("/api/agent/v1",{data:{
+   action:"students.lifecycleCommit",studentId:first,mode:"archive",
+   expectedUpdatedAt:reviewed.data.expectedUpdatedAt,
+   selectedWorkplaceIds:[],requestId:randomUUID(),
+   reason:"Teacher explicitly reviewed former group member archive",confirmed:true,
+ }});
  expect(archived.status(),await archived.text()).toBe(200);
  const mcpStudent=await callTool("ccp_students_profile",{studentId:first});
  expect(mcpStudent.error).toBeUndefined();

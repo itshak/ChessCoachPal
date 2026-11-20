@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "mode": "single-canonical-baseline",
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "63ad43b5bb0588fbb5d3feebdffed92944b5fe36eed9177393da4545067f8b63",
+  "baselineSha256": "0daa98f9130ee9fed732109c9982101f02722ce1347845e6c492d6ca25d5f8e3",
   "operatorCutoverRequired": true,
   "baselineRequiredObjects": [
     "students",
@@ -22,6 +22,7 @@
     "teacher_settings",
     "compensation_agreements",
     "student_federation_memberships",
+    "student_rating_snapshots",
     "student_billing_assignments",
     "financial_obligations",
     "received_payments",
@@ -33,6 +34,13 @@
     "ccp_finance_reverse",
     "student_rating_sync_consents",
     "student_rating_refresh_jobs",
-    "student_rating_refresh_receipts"
+    "student_rating_refresh_receipts",
+    "credit_adjustment_events",
+    "ccp_workplace_enrollment_end_preview",
+    "ccp_workplace_enrollment_end_commit",
+    "ccp_credit_adjustment_preview",
+    "ccp_credit_adjustment_commit",
+    "ccp_student_lifecycle_preview",
+    "ccp_student_lifecycle_commit"
   ]
 }

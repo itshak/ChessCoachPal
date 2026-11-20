@@ -125,7 +125,9 @@ export async function groupsMembers(db: Db, teacherId: string, groupId: string) 
 export async function sessionsList(db: Db, teacherId: string) {
   const { data, error } = await db.from("teaching_sessions")
     .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
-    .eq("teacher_id", teacherId).order("starts_at", { ascending: false }).limit(100);
+    .eq("teacher_id", teacherId)
+    .order("starts_at", { ascending: false })
+    .order("id", { ascending: true }).limit(100);
   if (error) throw problem();
   return data;
 }
@@ -171,7 +173,7 @@ export async function sessionsCreate(
     const { data: enrolled } = await db.from("workplace_enrollments")
       .select("id").eq("teacher_id", teacherId)
       .eq("workplace_id", payload.workplaceId).eq("student_id", payload.studentId!)
-      .maybeSingle();
+      .is("cancelled_at",null).limit(1).maybeSingle();
     if (!enrolled) throw notFound();
   }
   const values = {
@@ -411,42 +413,108 @@ export async function workplacesEnroll(
       .eq("teacher_id", teacherId).is("archived_at", null).maybeSingle(),
   ]);
   if (!workplace || !student) throw notFound();
+  // Memberships are dated intervals, not a unique (teacher, workplace,
+  // student) row. An upsert targeting that retired unique constraint fails
+  // with PostgreSQL 42P10 and breaks both website and MCP parity.
+  const today = await teacherToday(db,teacherId);
+  const current = () => db.from("workplace_enrollments")
+    .select("id,workplace_id,student_id")
+    .eq("teacher_id", teacherId).eq("workplace_id", workplaceId)
+    .eq("student_id", studentId).is("cancelled_at", null)
+    .or(`starts_on.is.null,starts_on.lte.${today}`)
+    .or(`ends_on.is.null,ends_on.gte.${today}`)
+    .maybeSingle();
+  const { data: already, error: readError } = await current();
+  if (readError) throw problem();
+  if (already) return { workplace_id: workplaceId, student_id: studentId };
+
+  // The SQL BEFORE INSERT trigger sets the exact teacher-local start date.
+  // A GiST exclusion constraint protects concurrent overlapping writes.
   const { data, error } = await db.from("workplace_enrollments")
-    .upsert({ teacher_id: teacherId, workplace_id: workplaceId, student_id: studentId }, {
-      onConflict: "teacher_id,workplace_id,student_id", ignoreDuplicates: true,
-    }).select("workplace_id,student_id").maybeSingle();
+    .insert({ teacher_id: teacherId, workplace_id: workplaceId,
+      student_id: studentId, source: "manual" })
+    .select("workplace_id,student_id").single();
+  if (error?.code === "23P01") {
+    const { data: raced, error: raceError } = await current();
+    if (raceError) throw problem();
+    if (raced) return { workplace_id: workplaceId, student_id: studentId };
+    throw new CoachError("CONFLICT", 409,
+      "Membership dates overlap an existing or future enrollment period");
+  }
   if (error) throw problem();
-  return data ?? { workplace_id: workplaceId, student_id: studentId };
+  return data;
 }
 
 
-/** Remove a current workplace membership, never a historic session snapshot.
- * A database trigger enforces current-group and future-direct-lesson blockers
- * inside the DELETE transaction, so concurrent/group changes cannot cascade.
- * Repeated calls converge on an absent enrollment without secondary effects.
- */
-export async function workplacesUnenroll(
+/** Teacher calendar dates are never derived from the UTC server date. */
+async function teacherToday(db: Db, teacherId: string) {
+  const { data: settings, error } = await db.from("teacher_settings")
+    .select("timezone").eq("teacher_id", teacherId).maybeSingle();
+  if (error) throw problem();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: settings?.timezone ?? "UTC",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (key: string) => parts.find(item => item.type === key)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+export async function workplacesUnenrollPreview(
   db: Db, teacherId: string, workplaceId: string, studentId: string
 ) {
-  const {data: workplace,error: workplaceError}=await db.from("workplaces")
-    .select("id").eq("teacher_id",teacherId).eq("id",workplaceId).maybeSingle();
-  if(workplaceError)throw problem();
-  if(!workplace)throw notFound();
-  const {data,error}=await db.from("workplace_enrollments").delete()
-    .eq("teacher_id",teacherId).eq("workplace_id",workplaceId).eq("student_id",studentId)
-    .select("student_id").maybeSingle();
-  if(error?.code==="23503")throw new CoachError("CONFLICT",409,
-    "Remove active group membership and cancel future direct lessons before unenrolling");
-  if(error)throw problem();
-  return {workplace_id:workplaceId,student_id:studentId,removed:Boolean(data)};
+  void teacherId; // SQL uses auth.uid(), not a client-supplied tenant identity.
+  const { data, error } = await db.rpc("ccp_workplace_enrollment_end_preview", {
+    p_workplace_id: workplaceId, p_student_id: studentId,
+  });
+  if (error?.code === "42501") throw notFound();
+  if (error) throw problem();
+  return data as {
+    membershipId: string; workplaceId: string; studentId: string;
+    revision: number; startsOn: string | null; endOn: string;
+    activeGroups: number; futureSessions: number; activeSlots: number;
+    canEnd: boolean; creditPolicy: string;
+  };
+}
+
+/** End the current interval without deleting the membership or lesson history.
+ * A transactional SQL commit rechecks all future obligations under row locks.
+ * Finance is deliberately untouched: unused credits stay held.
+ */
+export async function workplacesUnenroll(
+  db: Db, teacherId: string, workplaceId: string, studentId: string,
+  options: {expectedRevision?:number;idempotencyKey?:string;reason?:string} = {}
+) {
+  const revision = options.expectedRevision ??
+    (await workplacesUnenrollPreview(db,teacherId,workplaceId,studentId)).revision;
+  const {data,error}=await db.rpc("ccp_workplace_enrollment_end_commit", {
+    p_workplace_id:workplaceId,p_student_id:studentId,
+    p_expected_revision:revision,
+    p_request_id:options.idempotencyKey??crypto.randomUUID(),
+    p_reason:options.reason??"Teacher explicitly confirmed end of workplace membership",
+    p_confirmed:true,
+  });
+  if (error?.code==="23503"||error?.code==="23505")
+    throw new CoachError("CONFLICT",409,
+      "Active groups, future lessons or slots must be resolved, or membership revision changed");
+  if (error?.code==="42501") throw notFound();
+  if (error?.code==="22023") throw new CoachError("VALIDATION_ERROR",400,
+    "Confirmed workplace end request is invalid");
+  if (error) throw problem();
+  return {workplace_id:workplaceId,student_id:studentId,
+    removed:true, ...data};
 }
 
 export async function workplacesEnrollments(db: Db, teacherId: string, workplaceId: string) {
   const { data: workplace } = await db.from("workplaces")
     .select("id").eq("id", workplaceId).eq("teacher_id", teacherId).maybeSingle();
   if (!workplace) throw notFound();
+  const today = await teacherToday(db,teacherId);
   const { data, error } = await db.from("workplace_enrollments")
-    .select("student_id").eq("teacher_id", teacherId).eq("workplace_id", workplaceId);
+    .select("student_id").eq("teacher_id", teacherId).eq("workplace_id", workplaceId)
+    .is("cancelled_at",null)
+    .or(`starts_on.is.null,starts_on.lte.${today}`)
+    .or(`ends_on.is.null,ends_on.gte.${today}`)
+    .order("student_id");
   if (error) throw problem();
   return data;
 }

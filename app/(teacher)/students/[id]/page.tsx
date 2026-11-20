@@ -98,9 +98,13 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       .eq("student_id", id).eq("active", true).order("start_date", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
+  const today=toLocalDateString(new Date(),policy.timezone);
   const [{data:enrollmentRows},{data:workplaceRows}]=await Promise.all([
     supabase.from("workplace_enrollments").select("workplace_id")
-      .eq("teacher_id",user.id).eq("student_id",id),
+      .eq("teacher_id",user.id).eq("student_id",id)
+      .is("cancelled_at",null)
+      .or(`starts_on.is.null,starts_on.lte.${today}`)
+      .or(`ends_on.is.null,ends_on.gte.${today}`),
     supabase.from("workplaces").select("id,name").eq("teacher_id",user.id).order("name"),
   ]);
   const enrolledIds=new Set((enrollmentRows??[]).map(x=>x.workplace_id));
@@ -111,7 +115,6 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
     .from("student_billing_assignments")
     .select("workplace_id,effective_from,effective_to")
     .eq("teacher_id",user.id).eq("student_id",id);
-  const today=toLocalDateString(new Date(),policy.timezone);
   const activePayers=new Set((payerAssignments??[])
     .filter(a=>a.effective_from<=today&&(a.effective_to===null||a.effective_to>=today))
     .map(a=>a.workplace_id));
@@ -165,7 +168,8 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         currency={policy.currency}
         packages={creditPackages.map(pkg => ({
           id: pkg.id, invoiceId: pkg.invoiceId,
-          credits: pkg.credits, durationMinutes: pkg.durationMinutes,
+          credits: pkg.credits, adjustmentCredits:pkg.adjustmentCredits??0,
+          durationMinutes: pkg.durationMinutes,
           priceCents: pkg.priceCents, startsOn: pkg.startsOn, expiresOn: pkg.expiresOn,
           usedCredits: pkg.balance.usedCredits, pendingCredits: pkg.balance.pendingCredits,
           remainingCredits: pkg.balance.remainingCredits, state: pkg.balance.state,

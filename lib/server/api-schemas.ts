@@ -91,8 +91,7 @@ export const studentUpdateSchema = z.object({
   // the same numeric semantics through its stricter structured schema.
   defaultRateCents: optionalStudentCents,
   travelFeeCents: optionalStudentCents,
-  archived: z.boolean().optional(),
-});
+}).strict();
 
 // ── Prepaid credits ─────────────────────────────────────────────────────────
 // Value rules (ranges, expiry after start) live in lib/credits.ts.
@@ -108,6 +107,11 @@ export const creditPackageCreateSchema = z.object({
   requestId: z.uuid().optional(),
 });
 
+// Reviewed extension: no unconfirmed, unaudited date mutation.
 export const creditPackageUpdateSchema = z.object({
-  expiresOn: z.union([dateString, z.literal(""), z.null()]),
-});
+  expiresOn: dateString,
+  expectedBalance: z.number().int().min(0),
+  requestId: z.uuid(),
+  reason: z.string().trim().min(8).max(1000),
+  confirmed: z.literal(true),
+}).strict();

@@ -92,11 +92,16 @@ async function authorizeTerms(db:Db,teacherId:string,value:z.infer<typeof agreem
     fail(409,"CURRENCY_MISMATCH","Agreement currency must match the workplace; no implicit exchange-rate calculation");
   if(value.studentId){
     await owned(db,teacherId,"students",value.studentId);
-    const {data,error}=await db.from("workplace_enrollments").select("id")
+    let membership=db.from("workplace_enrollments").select("id")
       .eq("teacher_id",teacherId).eq("workplace_id",value.workplaceId)
-      .eq("student_id",value.studentId).limit(1).maybeSingle();
-    if(error)fail(500,"DATABASE_ERROR","Cannot inspect student enrollment");
-    if(!data)fail(409,"NOT_ENROLLED","Student is not in the selected workplace");
+      .eq("student_id",value.studentId).eq("start_date_unknown",false)
+      .is("cancelled_at",null).lte("starts_on",value.effectiveFrom);
+    if(value.effectiveTo===null)membership=membership.is("ends_on",null);
+    else membership=membership.or(`ends_on.is.null,ends_on.gte.${value.effectiveTo}`);
+    const {data,error}=await membership.limit(1).maybeSingle();
+    if(error)fail(500,"DATABASE_ERROR","Cannot inspect dated student enrollment");
+    if(!data)fail(409,"COMPENSATION_ENROLLMENT_RANGE_REQUIRED",
+      "Student-specific agreement dates must fit one verified workplace enrollment");
   }
   if(value.groupId){
     const group=await owned(db,teacherId,"class_groups",value.groupId,"id,workplace_id");
@@ -135,6 +140,8 @@ export async function compensationAgreementCreate(db:Db,teacherId:string,
     last_request_id:value.idempotencyKey,last_request_hash:requestHash,
   }).select(cols).maybeSingle();
   if(!error&&created)return {...safeCompensationAgreement(created),replayed:false};
+  if(error?.code==="23503")fail(409,"COMPENSATION_ENROLLMENT_RANGE_REQUIRED",
+    "Agreement dates are outside an eligible student enrollment");
   if(error?.code==="23505"){
     const {data:old}=await db.from("compensation_agreements").select(cols)
       .eq("id",value.idempotencyKey).eq("teacher_id",teacherId).maybeSingle();
@@ -173,6 +180,8 @@ export async function compensationAgreementUpdate(db:Db,teacherId:string,
   }).eq("teacher_id",teacherId).eq("id",value.id).eq("revision",value.expectedRevision)
     .select(cols).maybeSingle();
   if(error?.code==="23505")fail(409,"AGREEMENT_CONFLICT","Overlapping compensation agreement");
+  if(error?.code==="23503")fail(409,"COMPENSATION_ENROLLMENT_RANGE_REQUIRED",
+    "Agreement dates are outside an eligible student enrollment");
   if(error?.code==="23514"&&error.message.includes("POSTED_COMPENSATION_HISTORY_IMMUTABLE"))
     fail(409,"POSTED_FINANCIAL_HISTORY","The agreement has posted obligations; end it after the final posting and create a new future-dated agreement");
   if(error)fail(500,"DATABASE_ERROR","Cannot update compensation terms");
