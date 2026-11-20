@@ -10693,6 +10693,38 @@ CREATE INDEX compensation_agreement_payer_idx ON public.compensation_agreements
 
 -- Rows serialize by teacher and workplace on create/update so the same
 -- effective interval cannot be introduced concurrently by web and MCP.
+-- Row-level finance validation needs a lock on verified enrollment periods.
+-- Authenticated teachers intentionally lack direct enrollment UPDATE/DELETE.
+-- Keep the finance triggers SECURITY INVOKER; elevate only this one bounded
+-- read+row-lock and enforce the JWT teacher identity before touching rows.
+CREATE OR REPLACE FUNCTION public.ccp_finance_enrollment_period_lock(
+  p_teacher_id uuid,p_student_id uuid,p_workplace_id uuid,
+  p_effective_from date,p_effective_to date
+) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_finance_enrollment_period_lock$
+BEGIN
+  IF auth.role()='authenticated' AND
+     auth.uid() IS DISTINCT FROM p_teacher_id THEN
+    RAISE EXCEPTION 'FINANCE_ENROLLMENT_TENANT_MISMATCH'
+      USING ERRCODE='42501';
+  END IF;
+  PERFORM 1 FROM public.workplace_enrollments e
+  WHERE e.teacher_id=p_teacher_id AND e.student_id=p_student_id
+    AND e.workplace_id=p_workplace_id
+    AND e.cancelled_at IS NULL AND e.start_date_unknown=false
+    AND e.starts_on<=p_effective_from
+    AND ((p_effective_to IS NULL AND e.ends_on IS NULL)
+      OR (p_effective_to IS NOT NULL AND
+          (e.ends_on IS NULL OR e.ends_on>=p_effective_to)))
+  FOR SHARE OF e;
+  RETURN FOUND;
+END;
+$ccp_finance_enrollment_period_lock$;
+REVOKE ALL ON FUNCTION public.ccp_finance_enrollment_period_lock(
+  uuid,uuid,uuid,date,date) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_finance_enrollment_period_lock(
+  uuid,uuid,uuid,date,date) TO authenticated,service_role;
+
 CREATE OR REPLACE FUNCTION public.ccp_compensation_agreement_no_overlap()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
 SET search_path=public,pg_temp AS $ccp_compensation_agreement_no_overlap$
@@ -10701,16 +10733,9 @@ BEGIN
   -- non-cancelled enrollment period. Workplace-wide and group policies have
   -- a different scope and are validated by their own ownership constraints.
   IF NEW.student_id IS NOT NULL THEN
-    PERFORM 1 FROM public.workplace_enrollments e
-    WHERE e.teacher_id=NEW.teacher_id
-      AND e.workplace_id=NEW.workplace_id AND e.student_id=NEW.student_id
-      AND e.cancelled_at IS NULL AND e.start_date_unknown=false
-      AND e.starts_on<=NEW.effective_from
-      AND ((NEW.effective_to IS NULL AND e.ends_on IS NULL)
-        OR (NEW.effective_to IS NOT NULL AND
-            (e.ends_on IS NULL OR e.ends_on>=NEW.effective_to)))
-    FOR SHARE OF e;
-    IF NOT FOUND THEN
+    IF NOT public.ccp_finance_enrollment_period_lock(
+      NEW.teacher_id,NEW.student_id,NEW.workplace_id,
+      NEW.effective_from,NEW.effective_to) THEN
       RAISE EXCEPTION 'STUDENT_COMPENSATION_OUTSIDE_ENROLLMENT'
         USING ERRCODE='23503';
     END IF;
@@ -10787,16 +10812,9 @@ BEGIN
   -- A payer contract must be justified by one known, non-cancelled enrollment
   -- covering its complete date range. A historical/unknown legacy start does
   -- not prove coverage. Lock the period so concurrent unenrollment waits.
-  PERFORM 1 FROM public.workplace_enrollments e
-   WHERE e.teacher_id=NEW.teacher_id
-     AND e.student_id=NEW.student_id AND e.workplace_id=NEW.workplace_id
-     AND e.cancelled_at IS NULL AND e.start_date_unknown=false
-     AND e.starts_on<=NEW.effective_from
-     AND ((NEW.effective_to IS NULL AND e.ends_on IS NULL)
-       OR (NEW.effective_to IS NOT NULL AND
-           (e.ends_on IS NULL OR e.ends_on>=NEW.effective_to)))
-   FOR SHARE OF e;
-  IF NOT FOUND THEN
+  IF NOT public.ccp_finance_enrollment_period_lock(
+    NEW.teacher_id,NEW.student_id,NEW.workplace_id,
+    NEW.effective_from,NEW.effective_to) THEN
     RAISE EXCEPTION 'STUDENT_PAYER_OUTSIDE_ENROLLMENT'
       USING ERRCODE='23503';
   END IF;

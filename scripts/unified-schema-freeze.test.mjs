@@ -114,7 +114,7 @@ test("payer assignment SQL and TypeScript contracts reject unproven enrollment d
   ?.split("$ccp_billing_assignment_one_payer$;")[0];
  ok(fn,"Missing canonical payer assignment guard");
  for(const marker of [
-  "FOR SHARE OF e","e.start_date_unknown=false",
+  "public.ccp_finance_enrollment_period_lock",
   "e.starts_on<=NEW.effective_from","NEW.effective_to IS NULL AND e.ends_on IS NULL",
   "STUDENT_PAYER_OUTSIDE_ENROLLMENT",
   "PAYER_ASSIGNMENT_IDENTITY_IMMUTABLE",
@@ -147,8 +147,7 @@ test("student-specific compensation agreements require teacher-owned dated enrol
  ok(clause,"Missing compensation guard");
  for(const marker of [
   "STUDENT_COMPENSATION_OUTSIDE_ENROLLMENT",
-  "e.start_date_unknown=false","e.cancelled_at IS NULL",
-  "e.starts_on<=NEW.effective_from","FOR SHARE OF e",
+  "public.ccp_finance_enrollment_period_lock",
  ])ok(clause.includes(marker),"Compensation guard missing "+marker);
  const source=read("lib/server/compensation-agreements-service.ts");
  for(const marker of [
@@ -176,4 +175,19 @@ test("portal grants and dated scheduling reject out-of-period membership",()=>{
  const privateLesson=sql.split("CREATE OR REPLACE FUNCTION public.ccp_canonical_private_session_create(")[1];
  ok(privateLesson?.includes("e.starts_on<=p_date"));
  ok(privateLesson?.includes("e.ends_on>=p_date"));
+});
+
+test("finance enrollment lock uses tenant-scoped security definer without granting direct membership edits",()=>{
+ const helper=sql.split("CREATE OR REPLACE FUNCTION public.ccp_finance_enrollment_period_lock(")[1]
+  ?.split("$ccp_finance_enrollment_period_lock$;")[0];
+ ok(helper,"Missing scoped finance enrollment lock helper");
+ for(const marker of [
+  "SECURITY DEFINER","auth.role()='authenticated'",
+  "auth.uid() IS DISTINCT FROM p_teacher_id",
+  "e.start_date_unknown=false","e.cancelled_at IS NULL",
+  "e.starts_on<=p_effective_from","FOR SHARE OF e",
+ ])ok(helper.includes(marker),"Finance scoped lock missing "+marker);
+ ok(sql.includes("REVOKE ALL ON FUNCTION public.ccp_finance_enrollment_period_lock("));
+ ok(sql.includes("TO authenticated,service_role;"));
+ ok(sql.includes("REVOKE UPDATE,DELETE ON public.workplace_enrollments FROM PUBLIC,anon,authenticated;"));
 });
