@@ -28,7 +28,7 @@ const fail=(status:number,code:string,message:string):never=>{
  throw new PayerAssignmentError(status,code,message);
 };
 type Db=SupabaseClient;
-type Row=Database["public"]["Tables"]["student_billing_assignments"]["Row"];
+type Row=Omit<Database["public"]["Tables"]["student_billing_assignments"]["Row"],"teacher_id">;
 const columns="id,student_id,workplace_id,billing_account_id,effective_from,effective_to,revision,last_request_id,last_request_hash,created_at,updated_at";
 const hash=(v:unknown)=>createHash("sha256").update(JSON.stringify(v)).digest("hex");
 function safe(r:Row){

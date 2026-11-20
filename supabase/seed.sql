@@ -119,6 +119,8 @@ ON CONFLICT DO NOTHING;
 
 -- Explicit workplace/date-specific billing contracts, never inferred from
 -- contacts. The fifth learner has intentionally no payer.
+-- Synthetic payer history starts at the explicit synthetic enrollment date.
+-- Never invent an earlier contract than the verified enrollment evidence.
 INSERT INTO public.student_billing_assignments(
   teacher_id,student_id,workplace_id,billing_account_id,effective_from
 )
@@ -128,7 +130,7 @@ SELECT e.teacher_id,e.student_id,e.workplace_id,
     WHEN '10000000-0000-0000-0000-000000000002' THEN 'b0000000-0000-4000-8000-000000000001'::uuid
     WHEN '10000000-0000-0000-0000-000000000003' THEN 'b0000000-0000-4000-8000-000000000002'::uuid
     WHEN '10000000-0000-0000-0000-000000000004' THEN 'b0000000-0000-4000-8000-000000000003'::uuid
-  END,(CURRENT_DATE - interval '10 years')::date
+  END,e.starts_on
 FROM public.workplace_enrollments e
 WHERE e.teacher_id='00000000-0000-0000-0000-000000000001'
   AND e.student_id IN (
