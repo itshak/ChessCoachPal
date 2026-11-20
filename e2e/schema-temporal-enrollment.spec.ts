@@ -21,7 +21,7 @@ test("temporal memberships allow separate periods, reject overlap and preserve u
     const { data: workplace, error: workplaceError } = await admin.from("workplaces")
       .select("id").eq("teacher_id", id).limit(1).single();
     expect(workplaceError).toBeNull();
-    return { id, workplaceId: workplace!.id as string };
+    return { id, email, workplaceId: workplace!.id as string };
   };
   const first = await makeTeacher();
   const second = await makeTeacher();
@@ -84,6 +84,21 @@ test("temporal memberships allow separate periods, reject overlap and preserve u
         .select("id").single();
     expect(validPayerError).toBeNull();
     expect(validPayer?.id).toBeTruthy();
+    // The production path uses the teacher's RLS-authenticated session,
+    // not service-role privileges. Exercise the same trigger under that role.
+    const owner = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+        auth: {persistSession:false,autoRefreshToken:false},
+      });
+    const {error:loginError} = await owner.auth.signInWithPassword({
+      email:first.email,password:"SyntheticPassword-123!",
+    });
+    expect(loginError).toBeNull();
+    const {error:authenticatedPayerError} = await owner
+      .from("student_billing_assignments").insert({
+        ...payer,effective_from:"2026-02-10",effective_to:"2026-02-15",
+      }).select("id").single();
+    expect(authenticatedPayerError).toBeNull();
     const { error: acrossPeriodError } = await admin.from("student_billing_assignments")
       .insert({ ...payer, effective_from: "2026-01-22", effective_to: "2026-02-15" });
     expect(acrossPeriodError?.code).toBe("23503");
