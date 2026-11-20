@@ -3757,12 +3757,19 @@ BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
  PERFORM 1 FROM public.workplaces WHERE id=p_workplace_id AND teacher_id=v_teacher;
  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
- SELECT count(*) INTO v_count
+ -- Every learner counts once, not once per historical membership period.
+ SELECT count(DISTINCT s.id) INTO v_count
  FROM public.students s JOIN public.workplace_enrollments e
    ON e.teacher_id=s.teacher_id AND e.student_id=s.id
    AND e.workplace_id=p_workplace_id
  WHERE s.teacher_id=v_teacher AND s.archived_at IS NULL
-   AND s.id=ANY(p_student_ids);
+   AND s.id=ANY(p_student_ids) AND e.cancelled_at IS NULL
+   AND (e.starts_on IS NULL OR e.starts_on<=
+    (p_starts_at AT TIME ZONE coalesce(
+     (SELECT timezone FROM public.teacher_settings WHERE teacher_id=v_teacher),'UTC'))::date)
+   AND (e.ends_on IS NULL OR e.ends_on>=
+    (p_starts_at AT TIME ZONE coalesce(
+     (SELECT timezone FROM public.teacher_settings WHERE teacher_id=v_teacher),'UTC'))::date);
  IF v_count<>array_length(p_student_ids,1) THEN
    RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';
  END IF;
@@ -8042,9 +8049,11 @@ BEGIN
   ON CONFLICT DO NOTHING;
  END IF;
  IF NOT EXISTS(
-   SELECT 1 FROM public.workplace_enrollments
-    WHERE teacher_id=v_teacher AND workplace_id=v_workplace.id
-      AND student_id=p_student_id
+   SELECT 1 FROM public.workplace_enrollments e
+    WHERE e.teacher_id=v_teacher AND e.workplace_id=v_workplace.id
+      AND e.student_id=p_student_id AND e.cancelled_at IS NULL
+      AND (e.starts_on IS NULL OR e.starts_on<=p_date)
+      AND (e.ends_on IS NULL OR e.ends_on>=p_date)
  ) THEN
   RAISE EXCEPTION 'CANONICAL_PRIVATE_ENROLLMENT_NOT_FOUND'
    USING ERRCODE='42501';
@@ -8521,9 +8530,13 @@ BEGIN
    WHERE teacher_id=v_teacher AND id=p_workplace_id;
  END IF;
  IF v_workplace_id IS NULL OR NOT EXISTS(
-   SELECT 1 FROM public.workplace_enrollments
-    WHERE teacher_id=v_teacher AND workplace_id=v_workplace_id
-      AND student_id=p_student_id
+   SELECT 1 FROM public.workplace_enrollments e
+    WHERE e.teacher_id=v_teacher AND e.workplace_id=v_workplace_id
+      AND e.student_id=p_student_id AND e.cancelled_at IS NULL
+      AND (e.starts_on IS NULL OR e.starts_on<=p_start_date)
+      AND ((p_end_date IS NULL AND e.ends_on IS NULL)
+        OR (p_end_date IS NOT NULL AND
+            (e.ends_on IS NULL OR e.ends_on>=p_end_date)))
  ) THEN
   RAISE EXCEPTION 'CANONICAL_SLOT_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
  END IF;
@@ -10312,6 +10325,9 @@ BEGIN
       AND (sc.active_from IS NULL OR sc.active_from<=current_date)
     JOIN public.workplace_enrollments we ON we.student_id=g.student_id
       AND we.workplace_id=g.workplace_id AND we.teacher_id=g.teacher_id
+    AND we.cancelled_at IS NULL
+    AND (we.starts_on IS NULL OR we.starts_on<=((clock_timestamp() AT TIME ZONE coalesce((SELECT timezone FROM public.teacher_settings WHERE teacher_id=g.teacher_id),'UTC'))::date))
+    AND (we.ends_on IS NULL OR we.ends_on>=((clock_timestamp() AT TIME ZONE coalesce((SELECT timezone FROM public.teacher_settings WHERE teacher_id=g.teacher_id),'UTC'))::date))
     LEFT JOIN public.billing_accounts payer ON payer.id=g.billing_account_id
       AND payer.teacher_id=g.teacher_id AND payer.status='active'
     JOIN public.teaching_sessions s ON s.id=p_session_id
@@ -10466,6 +10482,9 @@ BEGIN
    AND sc.student_id=g.student_id AND sc.teacher_id=g.teacher_id
  JOIN public.workplace_enrollments we ON we.student_id=g.student_id
    AND we.workplace_id=g.workplace_id AND we.teacher_id=g.teacher_id
+    AND we.cancelled_at IS NULL
+    AND (we.starts_on IS NULL OR we.starts_on<=((clock_timestamp() AT TIME ZONE coalesce((SELECT timezone FROM public.teacher_settings WHERE teacher_id=g.teacher_id),'UTC'))::date))
+    AND (we.ends_on IS NULL OR we.ends_on>=((clock_timestamp() AT TIME ZONE coalesce((SELECT timezone FROM public.teacher_settings WHERE teacher_id=g.teacher_id),'UTC'))::date))
  LEFT JOIN public.billing_accounts payer ON payer.id=g.billing_account_id
    AND payer.teacher_id=g.teacher_id AND payer.status='active'
  WHERE g.token_digest=encode(extensions.digest(p_grant_secret,'sha256'),'hex')

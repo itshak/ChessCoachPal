@@ -158,3 +158,22 @@ test("student-specific compensation agreements require teacher-owned dated enrol
   'membership=membership.is("ends_on",null)'
  ])ok(source.includes(marker),"Compensation service missing "+marker);
 });
+
+test("portal grants and dated scheduling reject out-of-period membership",()=>{
+ for(const fn of ["ccp_scoped_portal_cancel","ccp_scoped_portal_rsvp"]){
+  const body=sql.split("CREATE OR REPLACE FUNCTION public."+fn+"(")[1]
+   ?.split("$"+fn+"$;")[0];
+  ok(body,"Missing guest portal RPC "+fn);
+  for(const marker of ["we.cancelled_at IS NULL","we.starts_on IS NULL","we.ends_on IS NULL"])
+   ok(body.includes(marker),"Portal missing date-scoped membership "+fn+" "+marker);
+ }
+ const adhoc=sql.split("CREATE OR REPLACE FUNCTION public.ccp_teacher_ad_hoc_session_create(")[1];
+ ok(adhoc?.includes("count(DISTINCT s.id)"));
+ ok(adhoc?.includes("p_starts_at AT TIME ZONE"));
+ const slots=sql.split("CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_create(")[1];
+ ok(slots?.includes("e.starts_on<=p_start_date"));
+ ok(slots?.includes("p_end_date IS NULL AND e.ends_on IS NULL"));
+ const privateLesson=sql.split("CREATE OR REPLACE FUNCTION public.ccp_canonical_private_session_create(")[1];
+ ok(privateLesson?.includes("e.starts_on<=p_date"));
+ ok(privateLesson?.includes("e.ends_on>=p_date"));
+});
