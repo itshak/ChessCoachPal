@@ -191,3 +191,13 @@ test("finance enrollment lock uses tenant-scoped security definer without granti
  ok(/REVOKE\s+UPDATE\s*,\s*DELETE\s+ON\s+public\.workplace_enrollments\s+FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated\s*;/i.test(sql),
   "Authenticated clients must not update or delete workplace enrollments directly");
 });
+
+test("first-class workplace/group/material tables have typed current-schema contracts",()=>{
+ for(const name of ["workplaces","class_groups","group_enrollments","learning_materials"]){
+  ok(new RegExp('CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:"?public"?\\.)?"?'+name+'"?\\s*\\(','i').test(sql),
+   "Missing current physical table "+name);
+  ok(types.includes("      "+name+": {"),"Missing typed domain table "+name);
+  ok(new RegExp('ALTER\\s+TABLE\\s+(?:"?public"?\\.)?"?'+name+'"?\\s+ENABLE\\s+ROW\\s+LEVEL\\s+SECURITY','i').test(sql),
+   "Missing RLS enablement "+name);
+ }
+});

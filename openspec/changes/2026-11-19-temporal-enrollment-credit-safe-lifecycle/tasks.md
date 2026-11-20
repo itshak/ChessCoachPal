@@ -30,3 +30,7 @@ The unchecked boxes above remain the archive criteria. PR #108 is no longer sche
 **Remaining before checking every box or archiving:** complete exact-head CI/E2E/security/Compose/restore after the final source changes; tenant/concurrent negative tests and old expiry/edit route reconciliation; complete field-by-field cross-proposal schema inventory and compensation/payer ownership review; verify a forward-only transition against actual populated-data inventories, off-host restored copy and operator sign-off. PRs #104 and #107 are still unmerged draft prerequisites. No production reset/cutover has been executed or authorized.
 
 A green older commit, structural parity counts, synthetic payment evidence or successful second-empty-instance restore cannot substitute for verified real-data migration and exact-head E2E. See `docs/SCHEMA_CANDIDATE_ACCEPTANCE_2026-11-19.md`.
+
+## 2026-11-20 source merge update (does not satisfy open acceptance boxes)
+
+PR #108 was merged to main at `895cb193` after its exact head `7e4c43f` passed CI, E2E (313 pass, 5 skip plus 3 additional pass), security, Compose and synthetic backup/restore. Prerequisites #104 and #107 were merged first. The earlier draft/unmerged status above is historical. Schema ownership, financial/portal populated-data reconciliation, an independently verified off-host restoration and explicit operator cutover approval remain open; do not archive or deploy based on synthetic checks alone. See `docs/SCHEMA_CANDIDATE_ACCEPTANCE_2026-11-19.md` and the active OpenSpec tracker.

@@ -35,7 +35,8 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 
 ## Documentation
 
-- **[2026-11-18 accepted architecture and eight implementation OpenSpec proposals](openspec/changes/README.md)** — source-linked scope, dependencies, deferrals, baseline/live migration and website/MCP acceptance gates
+- **[Current OpenSpec tracker — 13 active proposals](openspec/changes/README.md)** — merged source versus outstanding acceptance, dependencies, archive rules and operator-only production cutover
+- **[Current engineering status](docs/STATUS.md)** and [2026-11-20 schema inventory](docs/SCHEMA_FREEZE_INVENTORY_2026-11-20.md) — authoritative current checkpoint and typed-table gaps
 
 - [Hosting architecture and Coolify deployment plan](docs/HOSTING_ARCHITECTURE.md) — operator-managed Supabase target, capacity and recovery gates
 - [ADR-0008: Retain operator-managed Supabase](docs/adr/0008-self-hosted-supabase-on-coolify.md) — hosting choice and alternatives
@@ -47,7 +48,7 @@ Every subsequent version is published automatically from `main` as a [GitHub Rel
 - [Archived chess learning basics](openspec/changes/archive/2026-11-07-add-chess-learning-basics/proposal.md)
 - [Archived Milestone 4 chess-only security implementation](openspec/changes/archive/2026-11-08-remove-cognote-legacy-and-secure-data/proposal.md)
 - [Archived Milestone 5 verified self-hosting and recovery implementation](openspec/changes/archive/2026-11-08-verify-self-hosting-and-release-v0-1-0/proposal.md)
-- [Active final v0.1.0 publication gates](openspec/changes/archive/2026-11-15-complete-v0-1-0-release-gates/proposal.md)
+- [Archived historical v0.1.0 release-gate proposal](openspec/changes/archive/2026-11-15-complete-v0-1-0-release-gates/proposal.md)
 - [Proposed full natural-language lessons, bilingual student profiles and Lichess materials/puzzles](openspec/changes/archive/2026-11-15-support-conversational-lesson-and-lichess-workflows/proposal.md)
 - [All current and proposed MCP commands](openspec/changes/archive/2026-11-15-support-conversational-lesson-and-lichess-workflows/tool-catalog.md)
 - [MCP trainer workflow and student model roadmap](docs/MCP_WORKFLOW_ROADMAP.md)

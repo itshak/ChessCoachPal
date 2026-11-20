@@ -24,6 +24,45 @@ export type RsvpStatus = "pending" | "yes" | "no" | "maybe";
 export interface Database {
   public: {
     Tables: {
+      // Core operator-owned teaching tables. These must remain synchronized
+      // with the one canonical SQL baseline, not inferred from old Studio models.
+      workplaces: {
+        Row: {
+          id: string; teacher_id: string; name: string; timezone: string;
+          currency: string; locale: string; policy: Json; created_at: string;
+        };
+        Insert: {
+          id?: string; teacher_id: string; name: string; timezone?: string;
+          currency?: string; locale?: string; policy?: Json; created_at?: string;
+        };
+        Update: {
+          name?: string; timezone?: string; currency?: string; locale?: string;
+          policy?: Json;
+        };
+      };
+      class_groups: {
+        Row: { id: string; teacher_id: string; workplace_id: string; name: string; created_at: string };
+        Insert: { id?: string; teacher_id: string; workplace_id: string; name: string; created_at?: string };
+        Update: { name?: string };
+      };
+      group_enrollments: {
+        Row: { id: string; teacher_id: string; group_id: string; workplace_id: string; student_id: string; created_at: string };
+        Insert: { id?: string; teacher_id: string; group_id: string; workplace_id: string; student_id: string; created_at?: string };
+        Update: { group_id?: string; workplace_id?: string; student_id?: string };
+      };
+      learning_materials: {
+        Row: {
+          id: string; teacher_id: string; kind: "game"|"puzzle"|"drill"|"study_chapter"|"external_link";
+          title: string; description: string; source_url: string|null;
+          request_id: string; request_hash: string; created_at: string; updated_at: string;
+        };
+        Insert: {
+          id?: string; teacher_id: string; kind: "game"|"puzzle"|"drill"|"study_chapter"|"external_link";
+          title: string; description?: string; source_url?: string|null;
+          request_id: string; request_hash: string; created_at?: string; updated_at?: string;
+        };
+        Update: { title?: string; description?: string; source_url?: string|null; updated_at?: string };
+      };
       // Unified schema only; provider-sync API/workers require separate OpenSpec.
       student_rating_sync_consents: {
         Row:{id:string;teacher_id:string;student_id:string;provider:"lichess"|"chesscom";

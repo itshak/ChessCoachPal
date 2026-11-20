@@ -1,6 +1,6 @@
-# Implementation and verification checklist — all unchecked until evidenced
+# Implementation and verification checklist — check only evidenced work
 
-- [ ] Inventory all active proposals and exact current SQL/table/RLS/type coverage; document missing, existing, deferred, duplicate candidates.
+- [x] Inventory all active proposals and exact current SQL/table/RLS/type coverage; document missing, existing, deferred, duplicate candidates. Evidence: `docs/SCHEMA_FREEZE_INVENTORY_2026-11-20.md` (static source inventory; not schema-freeze or production acceptance).
 - [ ] Approve one domain ownership matrix and schema freeze boundaries with all downstream changes.
 - [ ] Finalize canonical Contacts, students, workplace, locale, scoped portal and financial/ledger structures without duplicate obligations.
 - [ ] Finalize FIDE/national identities and generalized immutable snapshots, consent, durable rating refresh jobs, dedupe/retry receipts and provenance.
