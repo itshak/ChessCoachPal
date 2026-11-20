@@ -71,3 +71,40 @@ test("credit entitlement adjustment history is append-only, tenant-owned and not
  ok(!sql.includes("GRANT INSERT ON TABLE public.credit_adjustment_events TO authenticated"));
  ok(!sql.includes("GRANT UPDATE ON TABLE public.credit_adjustment_events TO authenticated"));
 });
+
+
+test("unified canonical owner isolation and typed finance schema stays synchronized", () => {
+  // This static check is complementary to authenticated tenant A/B and SQL
+  // privilege tests; it does not certify enforcement or a populated DB cutover.
+  const tenantTables = [
+    "workplace_enrollments", "contacts", "student_contacts",
+    "billing_accounts", "portal_access_grants",
+    "student_federation_memberships", "student_rating_snapshots",
+    "student_rating_sync_consents", "student_rating_refresh_jobs",
+    "student_rating_refresh_receipts", "compensation_agreements",
+    "financial_obligations", "received_payments", "payment_allocations",
+    "financial_reversals", "credit_adjustment_events",
+  ];
+  for (const name of tenantTables) {
+    const table = new RegExp(
+      'CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:"?public"?\\.)?"?' +
+      name + '"?\\s*\\(', "i",
+    ).exec(sql);
+    ok(table, "Missing canonical table " + name);
+    ok(manifest.baselineRequiredObjects.includes(name),
+      "Required-object manifest omits " + name);
+    ok(types.includes("      " + name + ": {"),
+      "TypeScript Database contract omits " + name);
+    const declaration = sql.slice(table.index, table.index + 800);
+    ok(/"?teacher_id"?\s+"?uuid"?\s+NOT\s+NULL/i.test(declaration),
+      "Missing nonnullable tenant UUID on " + name);
+    ok(new RegExp(
+      'ALTER\\s+TABLE\\s+(?:"?public"?\\.)?"?' + name +
+      '"?\\s+ENABLE\\s+ROW\\s+LEVEL\\s+SECURITY', "i",
+    ).test(sql), "RLS not enabled for " + name);
+    ok(new RegExp(
+      'CREATE\\s+POLICY\\s+(?:"[^"]+"|\\w+)\\s+ON\\s+(?:"?public"?\\.)?"?' +
+      name + '"?\\b', "i",
+    ).test(sql), "No RLS policy for " + name);
+  }
+});
