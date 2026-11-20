@@ -188,5 +188,6 @@ test("finance enrollment lock uses tenant-scoped security definer without granti
  ])ok(helper.includes(marker),"Finance scoped lock missing "+marker);
  ok(sql.includes("REVOKE ALL ON FUNCTION public.ccp_finance_enrollment_period_lock("));
  ok(sql.includes("TO authenticated,service_role;"));
- ok(sql.includes("REVOKE UPDATE,DELETE ON public.workplace_enrollments FROM PUBLIC,anon,authenticated;"));
+ ok(/REVOKE\s+UPDATE\s*,\s*DELETE\s+ON\s+public\.workplace_enrollments\s+FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated\s*;/i.test(sql),
+  "Authenticated clients must not update or delete workplace enrollments directly");
 });
