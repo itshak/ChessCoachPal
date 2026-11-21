@@ -7,7 +7,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 export class CoachError extends Error {
   constructor(
-    public code: "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR" | "DATABASE_ERROR" | "TOO_MANY_WORKPLACES",
+    public code: "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR" | "DATABASE_ERROR" | "TOO_MANY_WORKPLACES" |
+      "ARCHIVED_STUDENT_CONFIRMATION_REQUIRED",
     public status: number,
     message: string
   ) {
@@ -166,10 +167,12 @@ export async function sessionsCreate(
       .eq("teacher_id", teacherId).maybeSingle();
     if (!group) throw notFound();
   } else {
-    const { data: student } = await db.from("students").select("id")
-      .eq("id", payload.studentId!).eq("teacher_id", teacherId)
-      .is("archived_at", null).maybeSingle();
+    const { data: student } = await db.from("students").select("id,archived_at")
+      .eq("id", payload.studentId!).eq("teacher_id", teacherId).maybeSingle();
     if (!student) throw notFound();
+    if (student.archived_at !== null) throw new CoachError(
+      "ARCHIVED_STUDENT_CONFIRMATION_REQUIRED",409,
+      "This student is archived; review and explicitly approve reactivation and the lesson before writing");
     const { data: enrolled } = await db.from("workplace_enrollments")
       .select("id").eq("teacher_id", teacherId)
       .eq("workplace_id", payload.workplaceId).eq("student_id", payload.studentId!)
@@ -217,11 +220,19 @@ export async function sessionsAdHocCreate(db:Db,teacherId:string,payload:{
   workplaceId:string;studentIds:string[];title:string;startsAt:string;
   durationMinutes:number;lessonNote?:string;requestId:string;
 }){
-  void teacherId; // RPC enforces auth.uid() and enrollment ownership in SQL.
   assertSessionSchedule(payload.startsAt,payload.durationMinutes);
   if(payload.studentIds.length<2||payload.studentIds.length>50||
     new Set(payload.studentIds).size!==payload.studentIds.length)
     throw new CoachError("VALIDATION_ERROR",400,"Choose 2–50 distinct students");
+  // Give an actionable owner-scoped lifecycle error for direct-ID MCP calls.
+  // This is advisory only; the RPC remains the authoritative concurrency guard.
+  const {data:ownedStudents,error:lookupError}=await db.from("students")
+    .select("id,archived_at").eq("teacher_id",teacherId)
+    .in("id",payload.studentIds);
+  if(lookupError)throw problem();
+  if(ownedStudents?.some(student=>student.archived_at!==null))
+    throw new CoachError("ARCHIVED_STUDENT_CONFIRMATION_REQUIRED",409,
+      "One or more selected students are archived; review the exact identities and approve a combined reactivation and lesson");
   const {data,error}=await db.rpc("ccp_teacher_ad_hoc_session_create",{
     p_workplace_id:payload.workplaceId,p_student_ids:payload.studentIds,
     p_title:payload.title,p_starts_at:payload.startsAt,
