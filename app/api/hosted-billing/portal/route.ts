@@ -1,87 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { getDeploymentMode } from "@/lib/entitlements";
-import {
-  createPlatformStripe,
-  isHostedCheckoutConfigured,
-  hostedBillingReturnOrigin,
-} from "@/lib/hosted-billing/stripe";
 
-/**
- * Stripe Customer Portal for ChessCoachPal Hosted Pro (cancel / payment method).
- * Distinct from teacher BYO lesson Stripe in Billing → Payment settings.
- */
+/** ADR-0019: old teacher Stripe customer identifiers are no longer authority. */
 export async function POST() {
-  if (getDeploymentMode() !== "hosted") {
-    return NextResponse.json(
-      { error: "Hosted billing is not enabled on this deployment" },
-      { status: 400 }
-    );
-  }
-
-  if (!isHostedCheckoutConfigured()) {
-    return NextResponse.json(
-      { error: "Billing portal is not configured" },
-      { status: 503 }
-    );
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { data: teacher, error } = await supabase
-    .from("teachers")
-    .select("stripe_customer_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-  if (!teacher?.stripe_customer_id) {
-    return NextResponse.json(
-      { error: "No billing customer yet. Upgrade first." },
-      { status: 400 }
-    );
-  }
-
-  const stripe = createPlatformStripe();
-  if (!stripe) {
-    return NextResponse.json(
-      { error: "Billing portal is not configured" },
-      { status: 503 }
-    );
-  }
-
-  const origin=hostedBillingReturnOrigin();
-  if(!origin)return NextResponse.json({
-    error:"Hosted payment return URL is not safely configured",
+  return NextResponse.json({
+    code:"BILLING_PROVIDER_NOT_ACTIVE",
+    error:"Subscription management requires an activated verified billing adapter.",
   },{status:503});
-
-  try {
-    const portal = await stripe.billingPortal.sessions.create({
-      customer: teacher.stripe_customer_id,
-      return_url: `${origin}/account`,
-    });
-    return NextResponse.json({ url: portal.url });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Portal failed.";
-    console.error("[hosted-billing/portal] provider request failed",
-      err instanceof Error?err.name:"UnknownError");
-    if (/no such customer/i.test(message) || /resource_missing/i.test(message)) {
-      return NextResponse.json(
-        {
-          error:
-            "Stripe customer not found for these API keys. Test-mode customers do not exist in live mode — Upgrade again with the current keys.",
-        },
-        { status: 400 }
-      );
-    }
-    return NextResponse.json({ error: "Billing portal is temporarily unavailable" }, { status: 502 });
-  }
 }
