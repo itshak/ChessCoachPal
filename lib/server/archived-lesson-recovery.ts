@@ -120,7 +120,7 @@ export async function teacherArchivedLessonRecoveryPreview(
   workplace:workplace??null,
   students:args.studentIds.map(id=>{
    const s=byId.get(id);
-   return {studentId:id,name:s?.name??null,archived:s?.archived_at!==null,
+   return {studentId:id,name:s?.name??null,archived:s ? s.archived_at!==null : null,
     expectedUpdatedAt:s?.archived_at!==null?s?.updated_at:null};
   }),
   reactivations:lifecycle,
