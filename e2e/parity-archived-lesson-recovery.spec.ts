@@ -192,3 +192,96 @@ test("PARITY:PARITY-archived-recovery-stale-revisions-fail-without-extra-lesson"
  expect(enrolled.data.filter((e:{student_id:string})=>e.student_id===f.ids[0]))
   .toHaveLength(1);
 });
+
+test("PARITY:PARITY-archived-recovery-schedule-conflict-rolls-back-activation",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const f=await fixture(call,3);
+ await archive(call,f.ids[0]);
+ const startsAt="2060-07-23T18:00:00+03:00";
+ const blocking=await call("ccp_sessions_ad_hoc_create",{
+  workplaceId:f.workplaceId,studentIds:f.ids.slice(1),
+  title:"Existing calendar blocker "+tag(),startsAt,
+  durationMinutes:60,lessonNote:"",idempotencyKey:randomUUID(),confirmed:true,
+ });
+ expect(blocking.error).toBeUndefined();
+ const archived=await call("ccp_students_lifecycle_preview",{studentId:f.ids[0]});
+ expect(archived.error).toBeUndefined();
+ expect(archived.data.archived).toBe(true);
+ const payload={workplaceId:f.workplaceId,studentIds:[f.ids[0],f.ids[1]],
+  title:"Must not partially restore "+tag(),startsAt,durationMinutes:60,lessonNote:""};
+ const pre=await call("ccp_lessons_archived_recovery_preview",payload);
+ expect(pre.error).toBeUndefined();
+ expect(pre.data.canCommit).toBe(false);
+ expect(pre.data.issues.some((x:{code:string})=>x.code==="SCHEDULE_CONFLICT")).toBe(true);
+ // Even a deliberately forged confirmed write that bypasses the preview
+ // must roll back the earlier lifecycle writes when lesson insertion fails.
+ const forbidden=await call("ccp_lessons_archived_recovery_commit",{
+  ...payload,reactivations:[{
+   studentId:f.ids[0],expectedUpdatedAt:archived.data.expectedUpdatedAt,
+  }],requestId:randomUUID(),reason:
+  "Adversarial approval collides with an existing real teacher session",
+  confirmed:true,
+ });
+ expect(forbidden.error).toBeDefined();
+ const after=await call("ccp_students_lifecycle_preview",{studentId:f.ids[0]});
+ expect(after.error).toBeUndefined();
+ expect(after.data.archived).toBe(true);
+ expect(after.data.currentMemberships).toHaveLength(0);
+ const roster=await call("ccp_workplaces_enrollments",{workplaceId:f.workplaceId});
+ expect(roster.error).toBeUndefined();
+ expect(roster.data.some((x:{student_id:string})=>x.student_id===f.ids[0]))
+  .toBe(false);
+ const sessions=await call("ccp_sessions_list",{query:payload.title,workplaceId:f.workplaceId});
+ expect(sessions.error).toBeUndefined();
+ expect(sessions.data.filter((x:{title:string})=>x.title===payload.title))
+  .toHaveLength(0);
+});
+
+test("PARITY:PARITY-archived-active-alias-collision-and-historical-lesson-fail-closed",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const f=await fixture(call,3);
+ await archive(call,f.ids[0]);
+ const shared="Shared archived and active alias "+tag();
+ for(const studentId of f.ids.slice(0,2)){
+  const patched=await page.request.put("/api/students/"+studentId,{
+   data:{nameAliases:[shared]},
+  });
+  expect(patched.status(),await patched.text()).toBe(200);
+ }
+ const preview=await call("ccp_lessons_capture_preview",{
+  names:[shared,f.names[2]],workplaceId:f.workplaceId,
+  title:"Ambiguous alias recovery "+tag(),
+  startsAt:"2060-08-26T18:00:00+03:00",durationMinutes:45,
+ });
+ expect(preview.error).toBeUndefined();
+ expect(preview.data.canCommit).toBe(false);
+ const ambiguous=preview.data.issues.find((x:{code:string})=>x.code==="AMBIGUOUS_STUDENT");
+ expect(ambiguous).toBeDefined();
+ expect(ambiguous.candidates).toEqual(expect.arrayContaining([
+  expect.objectContaining({id:f.ids[0],archived:true}),
+  expect.objectContaining({id:f.ids[1],archived:false}),
+ ]));
+ const historical={
+  workplaceId:f.workplaceId,studentIds:[f.ids[0]],
+  title:"Old historical correction "+tag(),
+  startsAt:"2023-03-10T15:00:00+02:00",durationMinutes:45,lessonNote:"",
+ };
+ const read=await page.request.post(
+  "/api/coaching/lesson-capture/recovery/preview",{data:historical});
+ expect(read.status(),await read.text()).toBe(200);
+ const body=await read.json();
+ expect(body.canCommit).toBe(false);
+ expect(body.issues.some((x:{code:string})=>
+  x.code==="HISTORICAL_LESSON_NO_REACTIVATION")).toBe(true);
+ const state=await call("ccp_students_lifecycle_preview",{studentId:f.ids[0]});
+ const forbidden=await call("ccp_lessons_archived_recovery_commit",{
+  ...historical,reactivations:[{
+   studentId:f.ids[0],expectedUpdatedAt:state.data.expectedUpdatedAt,
+  }],
+  reason:"Historical correction must never cause automatic reactivation",
+  requestId:randomUUID(),confirmed:true,
+ });
+ expect(forbidden.error?.code).toBe("VALIDATION_ERROR");
+ const after=await call("ccp_students_lifecycle_preview",{studentId:f.ids[0]});
+ expect(after.data.archived).toBe(true);
+});
