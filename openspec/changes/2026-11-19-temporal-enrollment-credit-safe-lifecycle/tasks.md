@@ -1,3 +1,5 @@
+> **2026-11-21 schema-ownership handoff:** All outstanding physical DDL, source schema/type/RLS changes and schema-generated regression tasks in this checklist are now tracked under the **single [consolidated schema P0](../2026-11-21-consolidate-final-preproduction-saas-schema/tasks.md)** (ADR-0019). Keep this proposal's functionality, UI, MCP and acceptance tasks open until independently verified. Historical SQL implementation instructions here are not independent migrations. Do not mark work complete solely because merged code exists.
+
 # Tasks
 
 - [ ] Inventory all enrollment, lifecycle, scheduling, group, invoice, credit-package, redemption, return/refund and MCP/web consumers.
