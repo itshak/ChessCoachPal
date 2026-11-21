@@ -1558,7 +1558,7 @@ const catalogue = [
   },
   {
     name:"ccp_lessons_capture_preview",
-    description:"Read-only multi-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. Confirm separately via ccp_sessions_ad_hoc_create.",
+    description:"Read-only one-to-fifty-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. For archived matches, review exact IDs with ccp_lessons_archived_recovery_preview and require separate confirmed atomic ccp_lessons_archived_recovery_commit; for active learners, use ccp_sessions_create for one or ccp_sessions_ad_hoc_create for 2–50.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
