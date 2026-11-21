@@ -32,7 +32,7 @@ export async function teacherWorkplaceContextGet(db:Db,teacherId:string):Promise
     db.from("teachers").select("id,selected_workplace_id")
       .eq("id",teacherId).maybeSingle(),
     db.from("workplaces").select("id,name,timezone,currency,locale")
-      .eq("teacher_id",teacherId).order("name").order("id").limit(1000),
+      .eq("teacher_id",teacherId).is("archived_at",null).order("name").order("id").limit(1000),
   ]);
   if(teacher.error||locations.error)
     fail(503,"DATABASE_ERROR","Workplace context unavailable");
@@ -51,7 +51,8 @@ export async function teacherWorkplaceContextSet(db:Db,teacherId:string,
   const value=workplaceContextUpdateSchema.parse(raw);
   if(value.selectedWorkplaceId!==null){
     const {data,error}=await db.from("workplaces").select("id")
-      .eq("teacher_id",teacherId).eq("id",value.selectedWorkplaceId).maybeSingle();
+      .eq("teacher_id",teacherId).eq("id",value.selectedWorkplaceId)
+       .is("archived_at",null).maybeSingle();
     if(error)fail(503,"DATABASE_ERROR","Unable to validate selected workplace");
     if(!data)fail(404,"WORKPLACE_NOT_FOUND","Workplace not found or not owned by the teacher");
   }
