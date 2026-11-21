@@ -70,6 +70,11 @@ test("PARITY:PARITY-archived-student-lesson-recovery-transactional-group-and-cro
  const mcp=await call("ccp_lessons_archived_recovery_preview",payload);
  expect(mcp.error).toBeUndefined();
  expect(mcp.data).toEqual(preview);
+ const gatewayPreview=await page.request.post("/api/agent/v1",{
+  data:{action:"lessons.archivedRecoveryPreview",...payload},
+ });
+ expect(gatewayPreview.status(),await gatewayPreview.text()).toBe(200);
+ expect((await gatewayPreview.json()).data).toEqual(preview);
  expect(preview).toMatchObject({
   canCommit:true,requiresTeacherConfirmation:true,
   review:{writesPerformed:false,reactivationCount:1,attendance:"unmarked"},
@@ -97,6 +102,11 @@ test("PARITY:PARITY-archived-student-lesson-recovery-transactional-group-and-cro
  const replay=await page.request.post("/api/coaching/lesson-capture/recovery/commit",{data:approval});
  expect(replay.status(),await replay.text()).toBe(200);
  expect(await replay.json()).toMatchObject({id:sessionId,replayed:true});
+ const gatewayCommit=await page.request.post("/api/agent/v1",{
+  data:{action:"lessons.archivedRecoveryCommit",...approval},
+ });
+ expect(gatewayCommit.status(),await gatewayCommit.text()).toBe(200);
+ expect((await gatewayCommit.json()).data).toMatchObject({id:sessionId,replayed:true});
  const changed=await call("ccp_lessons_archived_recovery_commit",{
   ...approval,title:"Change after approval",
  });
