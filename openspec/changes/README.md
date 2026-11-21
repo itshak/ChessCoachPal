@@ -4,6 +4,11 @@
 
 **Three different states must not be conflated:** source code merged; feature OpenSpec accepted/archived; production database migrated/deployed. The last two are **not** established by a Git merge. In particular, the canonical SQL baseline is for a fresh install, **not** a safe migration to an existing teacher database. ADR-0017 requires an independently verified off-host restored copy, complete historical reconciliation, and target-specific operator authorization before any live cutover.
 
+
+### Archived P0 source-only guard (2026-11-21)
+
+The [canonical public-table RLS coverage guard](archive/2026-11-21-guard-canonical-public-table-rls/ARCHIVE_DECISION.md) was implemented in [PR #110](https://github.com/itshak/ChessCoachPal/pull/110). It checks that every public table declaration in the fresh-install SQL has an explicit RLS enable, and blocks disables, duplicate declarations and stray toggles. This is one independently completed **sub-slice** of the unified schema freeze, **not** completion of that P0 change, real tenant/RLS certification or authorization to touch the deployed database. All 13 larger active OpenSpec changes remain open.
+
 ## One priority order and 13 active changes
 
 **P0 — finish schema integrity and real-data transition planning.** [Unified schema freeze](2026-11-19-freeze-unified-saas-schema-and-regressions/tasks.md) and [temporal enrollment/credit-safe lifecycle](2026-11-19-temporal-enrollment-credit-safe-lifecycle/tasks.md) have substantial code candidates on merged `main`, but final inventory/ownership, full type coverage, release acceptance and operational restoration remain open. See [2026-11-20 schema inventory](../../docs/SCHEMA_FREEZE_INVENTORY_2026-11-20.md).

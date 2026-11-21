@@ -1,6 +1,6 @@
 # Guard canonical public-table RLS coverage
 
-**Status:** Implementing as a narrow, independently verifiable slice of the active `2026-11-19-freeze-unified-saas-schema-and-regressions` P0 change.
+**Status:** Source accepted in merged PR [#110](https://github.com/itshak/ChessCoachPal/pull/110) at `35a8526e6b0fa18b64f71ad979c03f36e5aee2c5`; archived as a narrow, independently verified slice of the active `2026-11-19-freeze-unified-saas-schema-and-regressions` P0 change.
 
 ## Why
 
