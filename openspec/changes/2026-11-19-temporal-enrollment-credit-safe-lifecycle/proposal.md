@@ -1,6 +1,8 @@
+> **2026-11-21 schema-ownership handoff:** All remaining planned tables, columns, constraints, RLS and persisted state from this proposal belong to the **single [consolidated schema P0](../2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md)** (ADR-0019). This proposal remains responsible for feature services, UX, MCP parity and independent acceptance. Its earlier DDL instructions are requirements to P0, not authority for an independent migration. No live cutover is authorized.
+
 # Change: temporal multi-workplace enrollment and credit-safe student lifecycle
 
-**Status:** Proposed, not implemented. **Priority:** P0, schema freeze amendment prerequisite. **Owner:** canonical schema and shared domain service. **Depends on:** the inventory and freeze governance in `2026-11-19-freeze-unified-saas-schema-and-regressions`; this amendment must be incorporated **before final acceptance of the frozen baseline**, not as an unreviewed second production migration.
+**Status:** Proposed, not implemented. **Priority:** P0, schema freeze amendment prerequisite. **Owner:** canonical schema and shared domain service. **Depends on:** the inventory and freeze governance in `2026-11-21-consolidate-final-preproduction-saas-schema`; this amendment must be incorporated **before final acceptance of the frozen baseline**, not as an unreviewed second production migration.
 
 ## Problem
 The current `workplace_enrollments` stores only current links. Unenrollment destroys the last workplace association, and bulk lifecycle archiving refuses current enrollments but reactivation does not restore them. The canonical `credit_packages` and `credit_redemptions` track prepaid lessons independently of membership. Archiving with unused paid entitlement, outstanding invoices, future sessions or future memberships needs explicit atomic disposition, not silent deletion.
