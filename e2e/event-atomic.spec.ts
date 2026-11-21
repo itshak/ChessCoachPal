@@ -17,8 +17,7 @@ test("event creation rolls back the master record when late roster update fails"
  const teacherId=identity.user!.id;
  try{
    expect((await admin.from("teachers").insert({
-     id:teacherId,email,display_name:"Event rollback test",hosted_enforced:false,
-   })).error).toBeNull();
+     id:teacherId,email,display_name:"Event rollback test",})).error).toBeNull();
    const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
      auth:{persistSession:false,autoRefreshToken:false},
    });
