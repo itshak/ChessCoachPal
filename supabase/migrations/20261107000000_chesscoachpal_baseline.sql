@@ -13604,7 +13604,7 @@ BEGIN
    RAISE EXCEPTION 'SUBSCRIPTION_IDENTITY_IMMUTABLE' USING ERRCODE='23514';
  END IF;
  IF OLD.latest_event_time IS NOT NULL AND
-    (NEW.latest_event_time IS NULL OR NEW.latest_event_time<OLD.latest_event_time) THEN
+    (NEW.latest_event_time IS NULL OR NEW.latest_event_time<=OLD.latest_event_time) THEN
    RAISE EXCEPTION 'STALE_SUBSCRIPTION_EVENT' USING ERRCODE='23514';
  END IF;
  NEW.revision:=OLD.revision+1;
@@ -14092,3 +14092,30 @@ REVOKE ALL ON public.session_amendment_events FROM PUBLIC,anon,authenticated;
 GRANT SELECT ON public.session_amendment_events TO authenticated;
 GRANT ALL ON public.session_amendment_events TO service_role;
 -- END ADR-0019 session amendment provenance.
+
+
+-- ADR-0019: bounded usage events count exactly once, not per MCP tool call.
+-- Only an authorized server-side domain action inserts these records.
+CREATE OR REPLACE FUNCTION public.ccp_apply_account_usage_event()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_usage_count$
+BEGIN
+ UPDATE public.account_usage_periods
+  SET used_count=used_count+NEW.amount
+ WHERE id=NEW.period_id AND teacher_id=NEW.teacher_id
+   AND capability_key=NEW.capability_key;
+ IF NOT FOUND THEN RAISE EXCEPTION 'USAGE_PERIOD_NOT_FOUND' USING ERRCODE='23503';END IF;
+ RETURN NEW;
+END;
+$ccp_usage_count$;
+REVOKE ALL ON FUNCTION public.ccp_apply_account_usage_event()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_apply_account_usage_event AFTER INSERT
+ ON public.account_usage_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_apply_account_usage_event();
+-- Existing btree_gist from the canonical enrollment exclusion model enables
+-- equality on UUID/text combined with an overlapping time range.
+ALTER TABLE public.account_usage_periods
+ ADD CONSTRAINT ccp_usage_period_nonoverlap EXCLUDE USING gist (
+  teacher_id WITH =,capability_key WITH =,
+  tstzrange(period_start,period_end,'[)') WITH &&
+ );
