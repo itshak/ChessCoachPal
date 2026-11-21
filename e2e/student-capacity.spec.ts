@@ -188,11 +188,11 @@ test("archived lesson recovery serializes simultaneous hosted-capacity reactivat
   expect(identityError).toBeNull();
   const teacherId=identity.user!.id;
   try{
-    const teacher=await admin.from("teachers").insert({
+    const teacherInsert=await admin.from("teachers").insert({
       id:teacherId,email,display_name:"Archived recovery quota test",
       hosted_enforced:true,hosted_max_active_students:2,hosted_plan:"free",
     });
-    expect(teacher.error).toBeNull();
+    expect(teacherInsert.error).toBeNull();
     const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
       auth:{persistSession:false,autoRefreshToken:false},
     });
