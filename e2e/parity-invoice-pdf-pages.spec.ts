@@ -64,8 +64,7 @@ test("PARITY:PARITY-invoice-pdf-multipage-private-export preserves 150 line item
  try{
   expect((await admin.from("teachers").insert({
    id:foreignTeacherId,email,display_name:"Other PDF teacher",
-   hosted_enforced:false,
-  })).error).toBeNull();
+   })).error).toBeNull();
   const otherFamily=await insertTestBillingAccount(admin,{teacherId:foreignTeacherId,displayName:"Other family"});
   expect(otherFamily.error).toBeNull();
   const otherInvoice=await admin.from("invoices").insert({
