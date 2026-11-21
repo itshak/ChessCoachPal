@@ -7,10 +7,20 @@ import {useLocale,useTranslations} from "next-intl";
 import { workplaceLocalToUtc } from "@/lib/coaching-time";
 
 type Workplace = { id:string; name:string; timezone:string };
-type Candidate = { id:string; name:string };
+type Candidate = { id:string; name:string; archived?:boolean };
 type Resolution = {
-  input:string; status:"resolved"|"ambiguous"|"not_found";
+  input:string; status:"resolved"|"ambiguous"|"not_found"|"archived"; archived?:boolean|null;
   studentId:string|null; name:string|null; candidates:Candidate[];
+};
+type RecoveryPreview={
+ canCommit:boolean;issues:Array<{code:string;message:string;studentId?:string}>;
+ workplace:{id:string;name:string}|null;
+ reactivations:Array<{studentId:string;name:string;expectedUpdatedAt:string;
+  previousWorkplaceIds:string[];creditPolicy:string}>;
+ proposedCommit:null|{workplaceId:string;studentIds:string[];title:string;
+  startsAt:string;durationMinutes:number;lessonNote:string;
+  reactivations:Array<{studentId:string;expectedUpdatedAt:string}>};
+ review:{writesPerformed:boolean;attendance:string;credits:string;reactivationCount:number};
 };
 type ChapterLinkPreview={
  canCommit:boolean;issues:string[];selectedStudentIds:string[];
@@ -65,6 +75,10 @@ export function LessonCapturePreviewPanel() {
   const [chapterNumber,setChapterNumber] = useState("");
   const [expectedPlayers,setExpectedPlayers] = useState("");
   const [preview,setPreview] = useState<Preview|null>(null);
+  const [recoveryPreview,setRecoveryPreview] = useState<RecoveryPreview|null>(null);
+  const [recoveryReason,setRecoveryReason] = useState("");
+  const [recoveryApproved,setRecoveryApproved] = useState(false);
+  const recoveryKeyRef = useRef<{signature:string;requestId:string}|null>(null);
   const [approved,setApproved] = useState(false);
   const [atomicApproved,setAtomicApproved] = useState(false);
   const [busy,setBusy] = useState(false);
@@ -92,6 +106,7 @@ export function LessonCapturePreviewPanel() {
   }, [t]);
 
   const invalidate = () => {setPreview(null);setApproved(false);setAtomicApproved(false);setReceipt("");
+    setRecoveryPreview(null);setRecoveryApproved(false);recoveryKeyRef.current=null;
     atomicKeyRef.current=null;
     setPendingLink(null);setLinkReview(null);setLinkApproved(false);setLinkedReceipt("");
     linkKeyRef.current=null;};
@@ -99,6 +114,7 @@ export function LessonCapturePreviewPanel() {
   async function check(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");setReceipt("");setPreview(null);setApproved(false);setAtomicApproved(false);atomicKeyRef.current=null;
+    setRecoveryPreview(null);setRecoveryApproved(false);recoveryKeyRef.current=null;
     const workplace=workplaces.find(item=>item.id===workplaceId);
     if(!workplace){setError(t("chooseWorkplace"));return;}
     const studentNames=names.split(/\r?\n/).map(n=>n.trim()).filter(Boolean);
@@ -128,6 +144,56 @@ export function LessonCapturePreviewPanel() {
       setPreview(result);
       requestRef.current=null;
     }catch(e){setError(toUserError(e, t("previewFailed")));}
+    finally{setBusy(false);}
+  }
+
+  async function reviewArchivedRecovery(){
+    if(!preview||!workplaceId||timingMode!=="explicit")return;
+    const w=workplaces.find(w=>w.id===workplaceId);
+    if(!w)return;
+    const ids=preview.resolutions.map(r=>r.studentId);
+    if(ids.some(id=>id===null))return;
+    let startsAt:string;
+    try{startsAt=workplaceLocalToUtc(localStart,w.timezone);}
+    catch(e){setError(toUserError(e,t("invalidLocalTime")));return;}
+    setBusy(true);setError("");setRecoveryPreview(null);setRecoveryApproved(false);
+    try{
+      const response=await fetch("/api/coaching/lesson-capture/recovery/preview",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({workplaceId,studentIds:ids,title:title.trim(),
+          startsAt,durationMinutes:duration,lessonNote}),cache:"no-store",
+      });
+      const body=await response.json() as RecoveryPreview&{error?:string};
+      if(!response.ok)throw new Error(body.error??t("recoveryDenied"));
+      setRecoveryPreview(body);recoveryKeyRef.current=null;
+    }catch(e){setError(toUserError(e,t("recoveryDenied")));}
+    finally{setBusy(false);}
+  }
+
+  async function confirmArchivedRecovery(){
+    if(!recoveryPreview?.canCommit||!recoveryPreview.proposedCommit||
+      !recoveryApproved||recoveryReason.trim().length<8)return;
+    const payload={...recoveryPreview.proposedCommit,reason:recoveryReason.trim(),
+      confirmed:true as const};
+    const signature=JSON.stringify(payload);
+    if(recoveryKeyRef.current?.signature!==signature)
+      recoveryKeyRef.current={signature,requestId:crypto.randomUUID()};
+    setBusy(true);setError("");
+    try{
+      const response=await fetch("/api/coaching/lesson-capture/recovery/commit",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({...payload,requestId:recoveryKeyRef.current.requestId}),
+        cache:"no-store",
+      });
+      const body=await response.json() as {id?:string;reactivatedCount?:number;
+        replayed?:boolean;error?:string};
+      if(!response.ok||!body.id)throw new Error(body.error??t("recoveryDenied"));
+      setReceipt(t("recoveryReceipt",{id:body.id,count:body.reactivatedCount??0})+
+        (body.replayed?" "+t("safeReplay"):""));
+      setPreview(null);setRecoveryPreview(null);setRecoveryApproved(false);
+      setRecoveryReason("");recoveryKeyRef.current=null;
+      // Do not imply the optional chapter has been linked or mastery marked.
+    }catch(e){setError(toUserError(e,t("recoveryDenied")));}
     finally{setBusy(false);}
   }
 
@@ -336,8 +402,9 @@ export function LessonCapturePreviewPanel() {
       <h3 className="font-semibold">{t("reviewTitle")}</h3>
       <ul className="list-disc ps-5 text-sm">
         {preview.resolutions.map((r,i)=><li key={i}>
-          <bdi dir="auto">{r.input}</bdi>: {r.status==="resolved"?
-             <><bdi dir="auto">{r.name}</bdi>{" ("}<bdi dir="ltr">{r.studentId}</bdi>{")"}</>:
+          <bdi dir="auto">{r.input}</bdi>: {r.status==="resolved"||r.status==="archived"?
+             <><bdi dir="auto">{r.name}</bdi>{" ("}<bdi dir="ltr">{r.studentId}</bdi>{")"}
+               {r.status==="archived"?" — "+t("archivedStudent"):""}</>:
              t(r.status==="ambiguous"?"ambiguous":"notFound")}
           {r.candidates.length>0&&" — "+r.candidates.map(c=>c.name+" ["+c.id+"]").join(", ")}
         </li>)}
@@ -346,6 +413,57 @@ export function LessonCapturePreviewPanel() {
         {issue.code}: {issue.message}{issue.candidates?.length?
           " — "+issue.candidates.map(c=>c.name+" ["+c.id+"]").join(", "):""}
       </p>)}
+
+      {preview.issues.some(i=>i.code==="ARCHIVED_STUDENT_CONFIRMATION_REQUIRED")&&<>
+        <div className="space-y-3 rounded-lg border border-amber-400/60 p-3">
+          <h4 className="font-semibold">{t("recoveryTitle")}</h4>
+          <p className="text-sm">{t("recoveryIntro")}</p>
+          {timingMode!=="explicit"?
+            <p role="alert" className="text-sm text-amber-500">{t("recoveryExplicitTime")}</p>:
+            <button className={button} type="button"
+              disabled={busy||preview.resolutions.some(r=>!r.studentId)}
+              onClick={()=>void reviewArchivedRecovery()}>{t("reviewRecovery")}</button>}
+          {recoveryPreview&&<>
+            {recoveryPreview.issues.map((item,i)=>
+              <p key={i} role="alert" className="text-sm text-amber-500">
+                {item.code}: {item.message}
+              </p>)}
+            <ul className="list-disc ps-5 text-sm">
+              {recoveryPreview.reactivations.map(r=><li key={r.studentId}>
+                <bdi dir="auto">{r.name}</bdi> (<bdi dir="ltr">{r.studentId}</bdi>)
+                {" — "}{t("archivedStudent")}
+              </li>)}
+            </ul>
+            <p className="text-sm">{t("recoveryCredits")}</p>
+            {recoveryPreview.canCommit&&recoveryPreview.proposedCommit&&<>
+              <p className="text-sm">{t("proposedSession",{
+                minutes:recoveryPreview.proposedCommit.durationMinutes,
+                learners:recoveryPreview.proposedCommit.studentIds.length,
+                start:new Date(recoveryPreview.proposedCommit.startsAt).toLocaleString(
+                  locale==="en"?"en-GB":locale,{
+                    timeZone:workplaces.find(w=>w.id===workplaceId)?.timezone??"UTC",
+                    dateStyle:"medium",timeStyle:"short"}),
+                zone:workplaces.find(w=>w.id===workplaceId)?.timezone??"UTC",
+              })}</p>
+              <label className="block text-sm">{t("recoveryReason")}
+                <textarea className={field} rows={2} minLength={8} maxLength={1000}
+                  value={recoveryReason} onChange={e=>{
+                    setRecoveryReason(e.target.value);setRecoveryApproved(false);
+                    recoveryKeyRef.current=null;
+                  }} />
+              </label>
+              <label className="flex gap-2 items-start text-sm">
+                <input type="checkbox" checked={recoveryApproved}
+                  onChange={e=>setRecoveryApproved(e.target.checked)} />
+                {t("recoveryApprove")}
+              </label>
+              <button className={button} type="button"
+                disabled={busy||!recoveryApproved||recoveryReason.trim().length<8}
+                onClick={()=>void confirmArchivedRecovery()}>{t("recoveryCommit")}</button>
+            </>}
+          </>}
+        </div>
+      </>}
       {preview.selectedChapter&&<div className="rounded-lg border border-border p-3 text-sm">
         <p className="font-semibold">{t("verifiedChapter")}</p>
         <p><bdi dir="auto">{preview.selectedChapter.studyName}</bdi> ·
