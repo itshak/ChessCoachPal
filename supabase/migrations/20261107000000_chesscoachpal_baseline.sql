@@ -1022,39 +1022,27 @@ CREATE TABLE IF NOT EXISTS "public"."teachers" (
     "email" "text" NOT NULL,
     "display_name" "text" DEFAULT ''::"text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "hosted_plan" "text" DEFAULT 'free'::"text" NOT NULL,
-    "trial_ends_at" timestamp with time zone,
-    "gifted_until" timestamp with time zone,
-    "stripe_customer_id" "text",
-    "stripe_subscription_id" "text",
-    "founding_number" integer,
-    "stripe_cancel_at" timestamp with time zone,
     "avatar_url" "text",
     "preferred_locale" "text" DEFAULT 'en'::"text" NOT NULL,
     "selected_workplace_id" "uuid",
     "onboarding_tour_completed_at" timestamp with time zone,
     "calendar_token" "text" DEFAULT "rtrim"("translate"("encode"("extensions"."gen_random_bytes"(16), 'base64'::"text"), '+/'::"text", '-_'::"text"), '='::"text") NOT NULL,
-    CONSTRAINT "teachers_preferred_locale_check" CHECK (("preferred_locale" = ANY (ARRAY['en'::"text", 'he'::"text", 'ru'::"text"]))),
-    CONSTRAINT "teachers_hosted_plan_check" CHECK (("hosted_plan" = ANY (ARRAY['free'::"text", 'trial'::"text", 'pro'::"text", 'founding'::"text", 'gifted'::"text"])))
+    CONSTRAINT "teachers_preferred_locale_check" CHECK (("preferred_locale" = ANY (ARRAY['en'::"text", 'he'::"text", 'ru'::"text"])))
 );
 
 
 ALTER TABLE "public"."teachers" OWNER TO "postgres";
 
 
-COMMENT ON COLUMN "public"."teachers"."hosted_plan" IS 'Hosted CogNote plan (free/trial/pro/founding/gifted). Ignored when COGNOTE_DEPLOYMENT=self_hosted.';
 
 
 
-COMMENT ON COLUMN "public"."teachers"."stripe_customer_id" IS 'Platform Stripe customer for CogNote hosted subscription — not teacher BYO lesson Stripe.';
 
 
 
-COMMENT ON COLUMN "public"."teachers"."stripe_subscription_id" IS 'Platform Stripe subscription id for CogNote Hosted Pro.';
 
 
 
-COMMENT ON COLUMN "public"."teachers"."stripe_cancel_at" IS 'When set, Hosted Pro cancels at this time (from Stripe cancel_at). Cleared when subscription is active without pending cancel.';
 
 
 
@@ -3402,117 +3390,12 @@ CREATE TRIGGER ccp_restrict_workplace_unenroll
 BEFORE DELETE ON public.workplace_enrollments
 FOR EACH ROW EXECUTE FUNCTION public.ccp_restrict_workplace_unenroll();
 
--- Enforce active student quotas at the only race-safe boundary: the database.
--- A locked teacher row serializes all insert/archive/unarchive/delete transactions.
--- Tenant entitlements and counters are changed by trusted server provisioning.
-ALTER TABLE public.teachers
- ADD COLUMN hosted_enforced boolean NOT NULL DEFAULT false,
- ADD COLUMN hosted_max_active_students integer NOT NULL DEFAULT 5,
- ADD COLUMN active_student_count integer NOT NULL DEFAULT 0,
- ADD CONSTRAINT ccp_hosted_capacity_range CHECK(hosted_max_active_students BETWEEN 1 AND 1000000),
- ADD CONSTRAINT ccp_active_students_nonnegative CHECK(active_student_count>=0);
-UPDATE public.teachers t SET active_student_count=(
- SELECT count(*) FROM public.students s WHERE s.teacher_id=t.id AND s.archived_at IS NULL
-);
-UPDATE public.teachers SET hosted_enforced=true
- WHERE hosted_plan IN ('trial','pro','founding','gifted');
--- The existing migration grants only safe teacher-profile columns to authenticated.
--- Restate that security invariant so raw PostgREST requests cannot falsify caps.
+-- ADR-0019: student capacity is guarded by ccp_student_capacity_guard,
+-- installed after the normalized plan catalogue and entitlement state.
+-- Authenticated clients can modify only ordinary account profile columns.
 REVOKE UPDATE ON TABLE public.teachers FROM PUBLIC,anon,authenticated;
 GRANT UPDATE(email,display_name,avatar_url,preferred_locale,selected_workplace_id,onboarding_tour_completed_at,calendar_token)
  ON TABLE public.teachers TO authenticated;
-
-CREATE OR REPLACE FUNCTION public.ccp_student_capacity_guard()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=public,pg_temp AS $$
-DECLARE
- v_teacher uuid; v_delta integer:=0; v_count integer; v_max integer;
- v_hosted boolean; v_plan text; v_trial timestamptz; v_gift timestamptz;
-BEGIN
- IF TG_OP='INSERT' THEN
-   v_teacher:=NEW.teacher_id;
-   IF NEW.archived_at IS NULL THEN v_delta:=1; END IF;
- ELSIF TG_OP='DELETE' THEN
-   v_teacher:=OLD.teacher_id;
-   IF OLD.archived_at IS NULL THEN v_delta:=-1; END IF;
- ELSE
-   IF NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
-     RAISE EXCEPTION 'STUDENT_OWNER_IMMUTABLE' USING ERRCODE='23514';
-   END IF;
-   v_teacher:=NEW.teacher_id;
-   IF OLD.archived_at IS NOT NULL AND NEW.archived_at IS NULL THEN
-     v_delta:=1;
-   ELSIF OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL THEN
-     v_delta:=-1;
-     IF EXISTS(SELECT 1 FROM public.workplace_enrollments
-               WHERE teacher_id=v_teacher AND student_id=NEW.id
-                 AND cancelled_at IS NULL
-                 AND (ends_on IS NULL OR ends_on >=
-                   (clock_timestamp() AT TIME ZONE coalesce(
-                     (SELECT timezone FROM public.teacher_settings WHERE teacher_id=v_teacher),
-                     'UTC'))::date))
-       OR EXISTS(SELECT 1 FROM public.lesson_slots
-               WHERE teacher_id=v_teacher AND student_id=NEW.id AND active)
-       OR EXISTS(SELECT 1 FROM public.teaching_sessions
-               WHERE teacher_id=v_teacher AND student_id=NEW.id
-                 AND status='scheduled' AND starts_at>=clock_timestamp())
-       OR EXISTS(SELECT 1 FROM public.session_participants sp
-                 JOIN public.teaching_sessions sess ON sess.id=sp.session_id
-               WHERE sp.teacher_id=v_teacher AND sp.student_id=NEW.id
-                 AND sess.status='scheduled' AND sess.starts_at>=clock_timestamp())
-       OR EXISTS(SELECT 1 FROM public.group_enrollments
-               WHERE teacher_id=v_teacher AND student_id=NEW.id) THEN
-       RAISE EXCEPTION 'FUTURE_COMMITMENTS' USING ERRCODE='23503';
-     END IF;
-   END IF;
- END IF;
- IF v_delta<>0 THEN
-   SELECT active_student_count,hosted_max_active_students,hosted_enforced,
-          hosted_plan,trial_ends_at,gifted_until
-   INTO v_count,v_max,v_hosted,v_plan,v_trial,v_gift
-   FROM public.teachers WHERE id=v_teacher FOR UPDATE;
-   IF FOUND THEN
-     IF v_delta>0 AND v_hosted AND
-       (v_plan='free'
-        OR (v_plan='trial' AND (v_trial IS NULL OR v_trial<=clock_timestamp()))
-        OR (v_plan='gifted' AND (v_gift IS NULL OR v_gift<=clock_timestamp())))
-        AND v_count+v_delta>v_max THEN
-       RAISE EXCEPTION 'HOSTED_LIMIT_REACHED' USING ERRCODE='23514';
-     END IF;
-     UPDATE public.teachers SET active_student_count=active_student_count+v_delta
-       WHERE id=v_teacher;
-   END IF;
- END IF;
- IF TG_OP='DELETE' THEN RETURN OLD; END IF;
- RETURN NEW;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_student_capacity_guard() FROM PUBLIC,anon,authenticated;
-DROP TRIGGER IF EXISTS ccp_student_capacity_guard ON public.students;
-CREATE TRIGGER ccp_student_capacity_guard
- BEFORE INSERT OR UPDATE OR DELETE ON public.students
- FOR EACH ROW EXECUTE FUNCTION public.ccp_student_capacity_guard();
-
--- No teacher client may edit hosted_plan; the one permitted demotion is a
--- server-verified, owner-only function with expired entitlement preconditions.
-CREATE OR REPLACE FUNCTION public.ccp_demote_expired_hosted_plan()
-RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=public,pg_temp AS $$
-DECLARE v_teacher uuid:=auth.uid();
-BEGIN
- IF v_teacher IS NULL THEN
-   RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
- END IF;
- UPDATE public.teachers SET hosted_plan='free'
- WHERE id=v_teacher AND hosted_enforced=true AND (
-   (hosted_plan='trial' AND (trial_ends_at IS NULL OR trial_ends_at<=clock_timestamp()))
-   OR (hosted_plan='gifted' AND (gifted_until IS NULL OR gifted_until<=clock_timestamp()))
- );
- RETURN FOUND;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_demote_expired_hosted_plan() FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_demote_expired_hosted_plan() TO authenticated;
 
 -- One authenticated RPC transaction for spreadsheet onboarding, including
 -- family creation, deduplication, quota reservations, and durable replay receipt.
@@ -4272,27 +4155,6 @@ CREATE TRIGGER ccp_direct_session_enrollment_guard
 BEFORE INSERT OR UPDATE OF student_id,workplace_id
 ON public.teaching_sessions
 FOR EACH ROW EXECUTE FUNCTION public.ccp_direct_session_enrollment_guard();
-
--- New hosted teachers must inherit database-level capacity enforcement.
--- An inserted trial/paid preview row previously inherited hosted_enforced=false,
--- letting direct authenticated writes bypass eventual free active-student caps.
--- Self-hosted free teachers retain their unrestricted default (false).
-CREATE OR REPLACE FUNCTION public.ccp_enforce_hosted_teacher_origin()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-BEGIN
-  IF NEW.hosted_plan IN ('trial','pro','founding','gifted') THEN
-    NEW.hosted_enforced:=true;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_enforce_hosted_teacher_origin()
-  FROM PUBLIC,anon,authenticated;
-DROP TRIGGER IF EXISTS ccp_enforce_hosted_teacher_origin ON public.teachers;
-CREATE TRIGGER ccp_enforce_hosted_teacher_origin
-BEFORE INSERT OR UPDATE OF hosted_plan,hosted_enforced
-ON public.teachers
-FOR EACH ROW EXECUTE FUNCTION public.ccp_enforce_hosted_teacher_origin();
 
 -- A prepaid lesson package is one financial transaction: its invoice,
 -- invoice line and package must either ALL exist or NONE exist. Serialized
@@ -13826,6 +13688,11 @@ BEGIN
  RETURN NEW;
 END;
 $ccp_student_capacity$;
+REVOKE ALL ON FUNCTION public.ccp_student_capacity_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_student_capacity_guard
+ BEFORE INSERT OR UPDATE OR DELETE ON public.students FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_student_capacity_guard();
 
 CREATE OR REPLACE FUNCTION public.ccp_professional_workplace_capacity_guard()
  RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
