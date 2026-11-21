@@ -1,3 +1,5 @@
+> **Superseded planning delta; NOT implemented:** This historical delta was incorporated into [the consolidated schema spec](../../../2026-11-21-consolidate-final-preproduction-saas-schema/specs/final-saas-schema/spec.md), under ADR-0019. Do not treat the two as independent or current migration workstreams.
+
 # Unified SaaS schema foundation
 
 ## Requirements
