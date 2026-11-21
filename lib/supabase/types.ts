@@ -25,6 +25,15 @@ export interface Database {
   public: {
     Tables: {
 
+      session_amendment_events: {
+        Row: {id:string;teacher_id:string;session_id:string;
+          previous_state:Json;next_state:Json;actor_id:string|null;
+          source:"authenticated"|"service";changed_at:string};
+        Insert: {id?:string;teacher_id:string;session_id:string;
+          previous_state:Json;next_state:Json;actor_id?:string|null;
+          source:"authenticated"|"service";changed_at?:string};
+        Update: never;
+      };
       // ADR-0019 reviewed cross-domain schema contracts; trusted writes only.
       rating_providers: {
         Row: {code:string;provider_kind:"online"|"federation";display_name:string;registry_revision:number;active:boolean;created_at:string};
