@@ -1,3 +1,5 @@
+> **2026-11-21 current-owner update:** This document is a dated historical snapshot/runbook. All unfinished DDL planning has moved to [one consolidated final-schema + Freemium P0](../openspec/changes/2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md) under ADR-0019. Do not treat earlier draft-PR/source status or original freeze references below as current implementation or live cutover authority.
+
 # Unified schema freeze — source inventory (2026-11-20)
 
 **Snapshot:** merged `main` source at `895cb193ba8a9efcf171bef8f668505a66a8bce6`, with four low-risk TypeScript table-contract additions in the accompanying audit commit. This is a **static source inventory**, not an actual production database or populated-data review. No external connection, user record, payment or portal token was read.

@@ -2,6 +2,8 @@
 
 ChessCoachPal is **MCP/Plugin-first**; the website is a secondary viewer/editor and trusted sensitive-credential/approval surface. The current student, teaching, financial and material domain model MUST be shared by both interfaces. Follow [ADR-0003](docs/adr/0003-mcp-website-business-parity.md) and [ADR-0007](docs/adr/0007-mcp-supabase-contract-and-release-evidence.md).
 
+**Current single schema owner (ADR-0019, 2026-11-21):** [consolidated final schema and Freemium OpenSpec](openspec/changes/2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md) owns **all remaining planned pre-production DDL**, TypeScript types, RLS/grants and schema-related regression fixes. The older 2026-11-19 schema freeze was superseded *without being completed*. Downstream active proposals own functionality only; do not independently add DDL. See [all 87 tables crosswalk](docs/FINAL_SCHEMA_REQUIREMENTS_CROSSWALK_2026-11-21.md) and [planned acceptance matrix](docs/FINAL_SCHEMA_ACCEPTANCE_MATRIX_2026-11-21.md). No separate production cutover is authorized.
+
 **Read before working on any MCP, Supabase, student, report or release change:**
 - [Accepted architecture and active OpenSpec proposals](openspec/changes/README.md) — product decisions are accepted, implementation is pending; follow dependencies and deferrals.
 - [MCP and Supabase failure-mode playbook](docs/MCP_SUPABASE_RELIABILITY_PLAYBOOK.md) — portable investigation, correct/incorrect patterns, security advisors, CI acceptance.

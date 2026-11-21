@@ -1,3 +1,5 @@
+> **2026-11-21 current-owner update:** This document is a dated historical snapshot/runbook. All unfinished DDL planning has moved to [one consolidated final-schema + Freemium P0](../openspec/changes/2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md) under ADR-0019. Do not treat earlier draft-PR/source status or original freeze references below as current implementation or live cutover authority.
+
 # ChessCoachPal pre-v1 — one final database cutover / reimport runbook
 
 **Policy:** [ADR-0017](adr/0017-pre-v1-single-final-cutover-no-compatibility.md).
