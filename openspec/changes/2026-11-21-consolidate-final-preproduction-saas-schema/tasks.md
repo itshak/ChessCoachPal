@@ -1,6 +1,6 @@
 # Consolidated final-schema implementation and acceptance checklist
 
-**At current implementation draft, the twelve normalized capability/entitlement/usage/provider storage tables and type contracts have source-only candidates; every end-to-end P0 gate remains unchecked.** All tasks unchecked at creation (2026-11-21): documentation approval is not schema implementation or deployment.** Only this proposal owns remaining planned pre-production DDL. Historical source candidates from merged PRs #104/#107/#108 and open test-only PR #113 are inputs, not proof of full acceptance.
+**2026-11-21 implementation candidate (draft PR #115):** The consolidated canonical baseline now contains 18 new domain/commercial relations, normalized SQL entitlement/active-roster guards, Personal/Professional workplace lifecycle, extensible rating categories, teacher evidence, recurrence exceptions and explicitly approved report snapshots, with matching TypeScript and web/MCP compatibility changes. The full field-level source status and limits are documented in `docs/FINAL_SCHEMA_IMPLEMENTATION_STATUS_2026-11-21.md`. **Every Phase 2 acceptance gate is still subject to exact-head SQL/E2E evidence; checkboxes below intentionally remain unchecked until accepted.** Only this proposal owns the pre-production DDL; previous merged candidates and test-only PR #113 are inputs, not independent full acceptance.
 
 ## Phase 0 — audit and ownership (P0)
 
