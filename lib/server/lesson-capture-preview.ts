@@ -48,34 +48,36 @@ export function normalizeStudentIdentity(value: string) {
   return value.normalize("NFKC").replace(/\s+/gu, " ").trim().toLocaleLowerCase();
 }
 
-type StudentIdentity = { id: string; name: string; name_aliases: string[] | null };
+type StudentIdentity = { id: string; name: string; name_aliases: string[] | null; archived_at: string | null };
 type Workplace = { id: string; name: string; timezone: string };
 type ResolutionIssue = {
   code: "NOT_FOUND" | "AMBIGUOUS_STUDENT" | "DUPLICATE_STUDENT" |
+    "ARCHIVED_STUDENT_CONFIRMATION_REQUIRED" |
     "NO_COMMON_WORKPLACE" | "AMBIGUOUS_WORKPLACE" | "WORKPLACE_NOT_FOUND" |
     "STUDENT_NOT_ENROLLED"|"MISSING_SCHEDULE"|"TIME_AMBIGUOUS"|
     "DST_UNRESOLVED"|"SCHEDULE_CONFLICT"|"CHAPTER_NOT_FOUND"|
     "CHAPTER_AMBIGUOUS"|"CHAPTER_STALE"|"CHAPTER_PLAYERS_MISMATCH";
   message: string;
   input?: string;
-  candidates?: Array<{ id: string; name: string }>;
+  candidates?: Array<{ id: string; name: string; archived?: boolean }>;
   inputs?: string[]; // distinct names/aliases referencing the same learner in one roster
 };
 
 const fail = (code: string, message: string) =>
   new LessonCapturePreviewError(503, code, message);
 
-async function activeStudents(db: SupabaseClient, teacherId: string) {
+async function ownedStudents(db: SupabaseClient, teacherId: string, includeArchived = false) {
   const rows: StudentIdentity[] = [];
   const batch = 250;
   // Self-hosted teachers may have more than 1,000 historical students.
   // A truncated roster is unsafe: a duplicate alias after the first page
   // must not silently turn an ambiguous identity into an exact match.
   for (let offset = 0; offset < 20000; offset += batch) {
-    const { data, error } = await db.from("students")
-      .select("id,name,name_aliases")
-      .eq("teacher_id", teacherId).is("archived_at", null)
-      .order("id").range(offset, offset + batch - 1);
+    let query = db.from("students")
+      .select("id,name,name_aliases,archived_at").eq("teacher_id", teacherId);
+    if (!includeArchived) query = query.is("archived_at", null);
+    const { data, error } = await query.order("id")
+      .range(offset, offset + batch - 1);
     if (error || !data) throw fail("ROSTER_UNAVAILABLE", "Student identity lookup unavailable");
     rows.push(...data as StudentIdentity[]);
     if (data.length < batch) return rows;
@@ -88,15 +90,17 @@ export const studentNamesResolveSchema=z.object({
  names:z.array(z.string().trim().min(1).max(120)).min(1).max(100),
 }).strict();
 
-/** Exact owner-owned report-name and alias resolver shared by all capture flows.
- * No fuzzy guesses, archived learners, guardian contact or provider credentials.
+/** Exact owner-owned report-name and alias resolver.
+ * New-lesson intent may include archived candidates for read-only clarification.
+ * Ordinary roster resolution remains active-only. Never guess fuzzy matches.
  */
 export async function teacherStudentNamesResolve(
  db:SupabaseClient,teacherId:string,names:string[],
+ options: {includeArchived?: boolean} = {},
 ){
  const parsed=studentNamesResolveSchema.parse({names});
  const input=parsed;
-  const students = await activeStudents(db, teacherId);
+  const students = await ownedStudents(db, teacherId, options.includeArchived === true);
   const lookup = new Map<string, StudentIdentity[]>();
   for (const student of students) {
     const variants = [student.name, ...(Array.isArray(student.name_aliases) ? student.name_aliases : [])];
@@ -116,13 +120,21 @@ export async function teacherStudentNamesResolve(
     } else if (matches.length > 1) {
       issues.push({ code: "AMBIGUOUS_STUDENT", input: name,
         message: "Multiple students share this name or alias; choose the stable student ID",
-        candidates: matches.map(s => ({ id: s.id, name: s.name })) });
+        candidates: matches.map(s => ({ id: s.id, name: s.name,
+          ...(options.includeArchived ? {archived:s.archived_at !== null} : {}) })) });
+    } else if (matches[0].archived_at !== null) {
+      issues.push({code:"ARCHIVED_STUDENT_CONFIRMATION_REQUIRED",input:name,
+        message:"This student is archived. Review reactivation and an authorized workplace before creating a new lesson.",
+        candidates:[{id:matches[0].id,name:matches[0].name,archived:true}]});
     }
-    return { input: name, status: matches.length === 1 ? "resolved" as const :
+    return { input: name, status: matches.length === 1 ?
+        (matches[0].archived_at !== null ? "archived" as const : "resolved" as const) :
       matches.length === 0 ? "not_found" as const : "ambiguous" as const,
       studentId: matches.length === 1 ? matches[0].id : null,
       name: matches.length === 1 ? matches[0].name : null,
-      candidates: matches.length > 1 ? matches.map(s => ({ id: s.id, name: s.name })) : [] };
+      archived:matches.length === 1 ? matches[0].archived_at !== null : null,
+      candidates: matches.length > 1 ? matches.map(s => ({ id: s.id, name: s.name,
+        ...(options.includeArchived ? {archived:s.archived_at !== null} : {}) })) : [] };
   });
 
   const ids = resolutions.map(r => r.studentId).filter((id): id is string => id !== null);
@@ -149,18 +161,22 @@ export async function teacherStudentNamesResolve(
   // resolution information separately even when a duplicated alias blocks commit.
   studentIds:issues.length===0?ids:[],
   matchedStudentIds:[...byStudent.keys()],
-  explanation:"Names and aliases may both resolve to one existing student; duplicate roster references must be corrected before committing. Archived students and partial matches are never auto-selected."};
+  explanation:"Names and aliases may both resolve to one existing student; duplicate roster references must be corrected before committing. Archived learners require explicit reviewed reactivation before a new lesson. Partial matches are never auto-selected."};
 }
 
-/** Match only active learners within this teacher, then find their common workplace. */
+/** Match owned active and archived learners for a read-only new-lesson review. */
 export async function teacherLessonCapturePreview(
   db: SupabaseClient, teacherId: string, input: LessonCapturePreviewInput,
 ) {
   if(input.startsAt!==undefined&&input.durationMinutes!==undefined)
     assertSessionSchedule(input.startsAt,input.durationMinutes);
-  const identity=await teacherStudentNamesResolve(db,teacherId,input.names);
+  const identity=await teacherStudentNamesResolve(db,teacherId,input.names,
+    {includeArchived:true});
   const {resolutions,issues}=identity;
-  const ids=resolutions.map(r=>r.studentId).filter((id):id is string=>id!==null);
+  // Archived matches are visible for recovery, never eligible for a direct
+  // lesson commit or for an inferred current workplace.
+  const ids=resolutions.filter(r=>r.archived===false)
+    .map(r=>r.studentId).filter((id):id is string=>id!==null);
 
   let selectedWorkplace: Workplace | null = null;
   const enrolledByStudent = new Map<string, Set<string>>();
@@ -355,7 +371,8 @@ export async function teacherLessonCapturePreview(
       materialNextStep:selectedChapter?
         "Approve one combined atomic lesson+chapter commit to avoid partial writes, or use the original separately approved session and chapter operations. Both leave attendance unmarked and mastery unknown.":
         "No verified study chapter selected. Do not invent material history.",
-      nextStep:selectedChapter?"For a scheduled lesson plus verified chapter use ccp_lessons_capture_commit_with_chapter with exact reviewed data, two request UUIDs and teacher approval; this leaves attendance unmarked. For a completed group lesson with explicit attendance instead use ccp_lessons_capture_completed (chapter association is separate).":"For a completed group lesson with explicit attendance for EACH student, confirm exact proposedSession fields and use ccp_lessons_capture_completed with participant-specific attendance notes, one requestId and confirmed=true. Otherwise schedule without attendance via ccp_sessions_ad_hoc_create.",
+      nextStep:issues.some(issue=>issue.code==="ARCHIVED_STUDENT_CONFIRMATION_REQUIRED")?
+        "An archived learner was found. Ask the teacher to review the exact student ID and explicit reactivation/workplace choice. Do not invoke existing session creation or lifecycle commit automatically; the combined atomic workflow must be approved and available first.":selectedChapter?"For a scheduled lesson plus verified chapter use ccp_lessons_capture_commit_with_chapter with exact reviewed data, two request UUIDs and teacher approval; this leaves attendance unmarked. For a completed group lesson with explicit attendance instead use ccp_lessons_capture_completed (chapter association is separate).":"For a completed group lesson with explicit attendance for EACH student, confirm exact proposedSession fields and use ccp_lessons_capture_completed with participant-specific attendance notes, one requestId and confirmed=true. Otherwise schedule without attendance via ccp_sessions_ad_hoc_create.",
     },
   };
 }
