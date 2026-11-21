@@ -13505,3 +13505,381 @@ GRANT ALL ON public.rating_providers,public.rating_categories,
  public.slot_occurrence_exceptions,public.report_publications,
  public.report_publication_audiences TO service_role;
 -- END ADR-0019 cross-domain schema contracts.
+
+
+-- ADR-0019: normalized SQL capacity authority and ordered event guards.
+-- A published base plan and grants are evaluated at transaction time.
+-- The seeded allowance is explicitly UNLIMITED pending an approved product
+-- configuration decision; there is no public quota or price promise here.
+ALTER TABLE public.plan_versions ADD COLUMN priority integer NOT NULL DEFAULT 0
+ CHECK(priority BETWEEN 0 AND 10000);
+INSERT INTO public.capability_definitions(key,kind,unit,security_class) VALUES
+ ('students.active','integer_limit','students','teacher'),
+ ('workplaces.professional','integer_limit','workplaces','teacher'),
+ ('reports.publish','boolean',NULL,'teacher');
+INSERT INTO public.plan_versions(code,version,lifecycle,effective_at,priority)
+ VALUES ('free',1,'published','2026-01-01T00:00:00Z',0),
+        ('pro',1,'published','2026-01-01T00:00:00Z',100);
+INSERT INTO public.plan_capabilities
+ (plan_version_id,capability_key,capability_kind,boolean_value,integer_value,unlimited)
+ SELECT p.id,c.key,c.kind,
+        CASE WHEN c.kind='boolean' THEN p.code='pro' ELSE NULL END,
+        NULL,c.kind='integer_limit'
+ FROM public.plan_versions p CROSS JOIN public.capability_definitions c
+ WHERE p.version=1 AND p.code IN ('free','pro');
+INSERT INTO public.teacher_entitlement_state
+ (teacher_id,baseline_plan_version_id,active_student_count,active_professional_workplace_count)
+ SELECT t.id,(SELECT id FROM public.plan_versions WHERE code='free' AND version=1),
+        (SELECT count(*) FROM public.students st
+         WHERE st.teacher_id=t.id AND st.archived_at IS NULL),
+        (SELECT count(*) FROM public.workplaces w
+         WHERE w.teacher_id=t.id AND w.kind='professional' AND w.archived_at IS NULL)
+ FROM public.teachers t ON CONFLICT (teacher_id) DO NOTHING;
+CREATE OR REPLACE FUNCTION public.ccp_provision_entitlement_state()
+ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_entitlement_provision$
+BEGIN
+ INSERT INTO public.teacher_entitlement_state(teacher_id,baseline_plan_version_id)
+ VALUES(NEW.id,(SELECT id FROM public.plan_versions
+                WHERE code='free' AND version=1))
+ ON CONFLICT DO NOTHING;
+ RETURN NEW;
+END;
+$ccp_entitlement_provision$;
+REVOKE ALL ON FUNCTION public.ccp_provision_entitlement_state()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_provision_entitlement_state AFTER INSERT ON public.teachers
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_provision_entitlement_state();
+
+-- The SQL evaluator is authorized for the owner or trusted service only.
+-- Unknown or unpublished capabilities fail closed; any independently valid
+-- grant remains active even if an unrelated whole-plan grant has expired.
+CREATE OR REPLACE FUNCTION public.ccp_effective_capability(
+ p_teacher uuid,p_capability_key text,p_at timestamptz DEFAULT now()
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_capability$
+DECLARE
+ v_def public.capability_definitions%ROWTYPE;
+ v_plan uuid;
+ v_code text;
+ v_cap public.plan_capabilities%ROWTYPE;
+ v_boost_bool boolean;
+ v_boost_int integer;
+ v_boost_unlimited boolean;
+ v_enabled boolean;
+ v_limit integer;
+ v_unlimited boolean;
+BEGIN
+ IF p_teacher IS NULL OR (coalesce(auth.uid()=p_teacher,false)=false AND
+                          coalesce(auth.role(),'')<>'service_role') THEN
+   RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_def FROM public.capability_definitions
+ WHERE key=p_capability_key AND active;
+ IF NOT FOUND THEN RAISE EXCEPTION 'CAPABILITY_UNKNOWN' USING ERRCODE='22023'; END IF;
+ IF v_def.security_class='operator' AND coalesce(auth.role(),'')<>'service_role' THEN
+   RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
+ END IF;
+ -- Published base, independently active subscription and authorized temporary
+ -- plan grant participate in a deterministic rank ordered selection.
+ SELECT x.id,x.code INTO v_plan,v_code FROM (
+  SELECT p.id,p.code,p.priority,0 AS source_rank,p.effective_at
+   FROM public.teacher_entitlement_state st JOIN public.plan_versions p
+    ON p.id=st.baseline_plan_version_id
+   WHERE st.teacher_id=p_teacher AND p.lifecycle='published'
+     AND p.effective_at<=p_at AND (p.retired_at IS NULL OR p_at<p.retired_at)
+  UNION ALL
+  SELECT p.id,p.code,p.priority,2,p.effective_at
+   FROM public.platform_subscriptions sub
+   JOIN public.platform_subscription_offers off ON off.id=sub.offer_id
+   JOIN public.plan_versions p ON p.id=off.plan_version_id
+   WHERE sub.teacher_id=p_teacher AND p.lifecycle='published'
+     AND p.effective_at<=p_at AND
+     (p.retired_at IS NULL OR p_at<p.retired_at) AND
+     ((sub.state IN ('active','cancel_at_period_end') AND sub.paid_through>p_at)
+       OR (sub.state='trialing' AND sub.current_period_end>p_at)
+       OR (sub.state='grace' AND sub.grace_until>p_at))
+  UNION ALL
+  SELECT p.id,p.code,p.priority,1,p.effective_at
+   FROM public.teacher_entitlement_grants g
+   JOIN public.plan_versions p ON p.id=g.plan_version_id
+   WHERE g.teacher_id=p_teacher AND g.kind='plan_access'
+     AND g.revoked_at IS NULL AND g.valid_from<=p_at
+     AND (g.expires_at IS NULL OR g.expires_at>p_at)
+     AND p.lifecycle='published' AND p.effective_at<=p_at
+     AND (p.retired_at IS NULL OR p_at<p.retired_at)
+ ) x ORDER BY x.priority DESC,x.source_rank DESC,x.effective_at DESC,x.id DESC LIMIT 1;
+ IF v_plan IS NULL THEN
+   RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
+ END IF;
+ SELECT * INTO v_cap FROM public.plan_capabilities
+ WHERE plan_version_id=v_plan AND capability_key=p_capability_key;
+ SELECT coalesce(bool_or(g.boolean_value),false),
+        max(g.integer_value),coalesce(bool_or(g.unlimited),false)
+ INTO v_boost_bool,v_boost_int,v_boost_unlimited
+ FROM public.teacher_entitlement_grants g
+ WHERE g.teacher_id=p_teacher AND g.kind='capability_boost'
+   AND g.capability_key=p_capability_key AND g.revoked_at IS NULL
+   AND g.valid_from<=p_at AND (g.expires_at IS NULL OR g.expires_at>p_at);
+ IF v_def.kind='boolean' THEN
+   v_enabled:=coalesce(v_cap.boolean_value,false) OR coalesce(v_boost_bool,false);
+   v_limit:=NULL;v_unlimited:=false;
+ ELSE
+   v_enabled:=true;
+   v_unlimited:=coalesce(v_cap.unlimited,false) OR coalesce(v_boost_unlimited,false);
+   v_limit:=CASE WHEN v_unlimited THEN NULL
+     ELSE greatest(coalesce(v_cap.integer_value,0),coalesce(v_boost_int,0)) END;
+ END IF;
+ RETURN jsonb_build_object('capabilityKey',p_capability_key,'kind',v_def.kind,
+  'planCode',v_code,'planVersionId',v_plan,'enabled',v_enabled,
+  'unlimited',v_unlimited,'limit',v_limit,'evaluatedAt',p_at);
+END;
+$ccp_capability$;
+REVOKE ALL ON FUNCTION public.ccp_effective_capability(uuid,text,timestamptz)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_effective_capability(uuid,text,timestamptz)
+ TO authenticated,service_role;
+
+CREATE OR REPLACE FUNCTION public.ccp_entitlement_summary()
+ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_summary$
+DECLARE v_teacher uuid:=auth.uid();v_state public.teacher_entitlement_state%ROWTYPE;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';END IF;
+ SELECT * INTO v_state FROM public.teacher_entitlement_state
+ WHERE teacher_id=v_teacher;
+ IF NOT FOUND THEN RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';END IF;
+ RETURN jsonb_build_object('revision',v_state.revision,
+   'activeStudentCount',v_state.active_student_count,
+   'activeProfessionalWorkplaceCount',v_state.active_professional_workplace_count,
+   'studentCapacity',public.ccp_effective_capability(v_teacher,'students.active'),
+   'workplaceCapacity',public.ccp_effective_capability(v_teacher,'workplaces.professional'),
+   'reportPublishing',public.ccp_effective_capability(v_teacher,'reports.publish'));
+END;
+$ccp_summary$;
+REVOKE ALL ON FUNCTION public.ccp_entitlement_summary() FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_entitlement_summary() TO authenticated;
+
+-- Prevent concurrent limit transitions from racing student/workplace writes.
+CREATE OR REPLACE FUNCTION public.ccp_entitlement_grant_serialize()
+ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_grant_serial$
+DECLARE v_teacher uuid;
+BEGIN
+ v_teacher:=CASE WHEN TG_OP='DELETE' THEN OLD.teacher_id ELSE NEW.teacher_id END;
+ IF TG_OP='UPDATE' AND NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+   RAISE EXCEPTION 'GRANT_OWNER_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ PERFORM 1 FROM public.teacher_entitlement_state
+    WHERE teacher_id=v_teacher FOR UPDATE;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ RETURN NEW;
+END;
+$ccp_grant_serial$;
+REVOKE ALL ON FUNCTION public.ccp_entitlement_grant_serialize()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_entitlement_grant_serialize
+ BEFORE INSERT OR UPDATE OR DELETE ON public.teacher_entitlement_grants
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_entitlement_grant_serialize();
+CREATE TRIGGER ccp_subscription_serialize
+ BEFORE INSERT OR UPDATE OR DELETE ON public.platform_subscriptions
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_entitlement_grant_serialize();
+CREATE TRIGGER ccp_entitlement_state_transition_serialize
+ BEFORE UPDATE OF baseline_plan_version_id ON public.teacher_entitlement_state
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_entitlement_grant_serialize();
+
+-- Immutable audit and metered events. Provider event identity, payload digest
+-- and signature provenance cannot be changed after ingestion.
+CREATE OR REPLACE FUNCTION public.ccp_reject_immutable_event_change()
+ RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_event_immutable$
+BEGIN
+ RAISE EXCEPTION 'IMMUTABLE_EVENT' USING ERRCODE='23514';
+END;
+$ccp_event_immutable$;
+REVOKE ALL ON FUNCTION public.ccp_reject_immutable_event_change()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_entitlement_audit_immutable BEFORE UPDATE OR DELETE
+ ON public.entitlement_audit_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_reject_immutable_event_change();
+CREATE TRIGGER ccp_usage_events_immutable BEFORE UPDATE OR DELETE
+ ON public.account_usage_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_reject_immutable_event_change();
+CREATE OR REPLACE FUNCTION public.ccp_platform_event_identity_guard()
+ RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_platform_event$
+BEGIN
+ IF NEW.provider IS DISTINCT FROM OLD.provider OR
+    NEW.merchant_scope IS DISTINCT FROM OLD.merchant_scope OR
+    NEW.external_event_id IS DISTINCT FROM OLD.external_event_id OR
+    NEW.external_subscription_id IS DISTINCT FROM OLD.external_subscription_id OR
+    NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    NEW.event_type IS DISTINCT FROM OLD.event_type OR
+    NEW.external_created_at IS DISTINCT FROM OLD.external_created_at OR
+    NEW.payload_sha256 IS DISTINCT FROM OLD.payload_sha256 OR
+    NEW.signature_verified_at IS DISTINCT FROM OLD.signature_verified_at OR
+    NEW.received_at IS DISTINCT FROM OLD.received_at THEN
+   RAISE EXCEPTION 'EVENT_IDENTITY_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_platform_event$;
+REVOKE ALL ON FUNCTION public.ccp_platform_event_identity_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_platform_event_identity_guard BEFORE UPDATE
+ ON public.platform_billing_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_platform_event_identity_guard();
+CREATE TRIGGER ccp_platform_event_no_delete BEFORE DELETE
+ ON public.platform_billing_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_reject_immutable_event_change();
+
+CREATE OR REPLACE FUNCTION public.ccp_subscription_order_guard()
+ RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_sub_order$
+BEGIN
+ IF NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    NEW.provider IS DISTINCT FROM OLD.provider OR
+    NEW.merchant_scope IS DISTINCT FROM OLD.merchant_scope OR
+    NEW.external_subscription_id IS DISTINCT FROM OLD.external_subscription_id OR
+    NEW.customer_id IS DISTINCT FROM OLD.customer_id THEN
+   RAISE EXCEPTION 'SUBSCRIPTION_IDENTITY_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ IF OLD.latest_event_time IS NOT NULL AND
+    (NEW.latest_event_time IS NULL OR NEW.latest_event_time<OLD.latest_event_time) THEN
+   RAISE EXCEPTION 'STALE_SUBSCRIPTION_EVENT' USING ERRCODE='23514';
+ END IF;
+ NEW.revision:=OLD.revision+1;
+ NEW.updated_at:=now();
+ RETURN NEW;
+END;
+$ccp_sub_order$;
+REVOKE ALL ON FUNCTION public.ccp_subscription_order_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_subscription_order_guard BEFORE UPDATE
+ ON public.platform_subscriptions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_subscription_order_guard();
+
+-- Expanding an active roster locks the teacher and the single entitlement row.
+-- The legacy teacher counter is not used to grant capacity.
+CREATE OR REPLACE FUNCTION public.ccp_student_capacity_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_student_capacity$
+DECLARE
+ v_teacher uuid;v_delta integer:=0;v_count integer;
+ v_effective jsonb;v_limit integer;
+BEGIN
+ IF TG_OP='INSERT' THEN
+  v_teacher:=NEW.teacher_id;
+  IF NEW.archived_at IS NULL THEN v_delta:=1;END IF;
+ ELSIF TG_OP='DELETE' THEN
+  v_teacher:=OLD.teacher_id;
+  IF OLD.archived_at IS NULL THEN v_delta:=-1;END IF;
+ ELSE
+  IF NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+   RAISE EXCEPTION 'STUDENT_OWNER_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  v_teacher:=NEW.teacher_id;
+  IF OLD.archived_at IS NOT NULL AND NEW.archived_at IS NULL THEN v_delta:=1;
+  ELSIF OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL THEN
+   v_delta:=-1;
+   IF EXISTS(SELECT 1 FROM public.workplace_enrollments
+       WHERE teacher_id=v_teacher AND student_id=NEW.id AND cancelled_at IS NULL
+       AND (ends_on IS NULL OR ends_on >=
+         (clock_timestamp() AT TIME ZONE coalesce(
+           (SELECT timezone FROM public.teacher_settings WHERE teacher_id=v_teacher),
+           'UTC'))::date))
+      OR EXISTS(SELECT 1 FROM public.lesson_slots
+       WHERE teacher_id=v_teacher AND student_id=NEW.id AND active)
+      OR EXISTS(SELECT 1 FROM public.teaching_sessions
+       WHERE teacher_id=v_teacher AND student_id=NEW.id
+        AND status='scheduled' AND starts_at>=clock_timestamp())
+      OR EXISTS(SELECT 1 FROM public.session_participants sp
+       JOIN public.teaching_sessions sess ON sess.id=sp.session_id
+       WHERE sp.teacher_id=v_teacher AND sp.student_id=NEW.id
+        AND sess.status='scheduled' AND sess.starts_at>=clock_timestamp())
+      OR EXISTS(SELECT 1 FROM public.group_enrollments
+       WHERE teacher_id=v_teacher AND student_id=NEW.id) THEN
+    RAISE EXCEPTION 'FUTURE_COMMITMENTS' USING ERRCODE='23503';
+   END IF;
+  END IF;
+ END IF;
+ IF v_delta<>0 THEN
+  PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+  SELECT active_student_count INTO v_count FROM public.teacher_entitlement_state
+   WHERE teacher_id=v_teacher FOR UPDATE;
+  IF NOT FOUND THEN
+   RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
+  END IF;
+  IF v_delta>0 THEN
+   v_effective:=public.ccp_effective_capability(v_teacher,'students.active',now());
+   v_limit:=(v_effective->>'limit')::integer;
+   IF coalesce((v_effective->>'unlimited')::boolean,false)=false
+     AND v_count+v_delta>v_limit THEN
+    RAISE EXCEPTION 'CAPACITY_EXCEEDED' USING ERRCODE='23514';
+   END IF;
+  END IF;
+  UPDATE public.teacher_entitlement_state
+   SET active_student_count=active_student_count+v_delta,
+       revision=revision+1,updated_at=now()
+   WHERE teacher_id=v_teacher;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ RETURN NEW;
+END;
+$ccp_student_capacity$;
+
+CREATE OR REPLACE FUNCTION public.ccp_professional_workplace_capacity_guard()
+ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_workplace_capacity$
+DECLARE v_teacher uuid;v_delta integer:=0;v_count integer;
+        v_cap jsonb;v_limit integer;
+BEGIN
+ IF TG_OP='INSERT' THEN
+  v_teacher:=NEW.teacher_id;
+  IF NEW.kind='professional' AND NEW.archived_at IS NULL THEN v_delta:=1;END IF;
+ ELSIF TG_OP='DELETE' THEN
+  v_teacher:=OLD.teacher_id;
+  IF OLD.kind='professional' AND OLD.archived_at IS NULL THEN v_delta:=-1;END IF;
+ ELSE
+  v_teacher:=NEW.teacher_id;
+  IF NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+   RAISE EXCEPTION 'WORKPLACE_OWNER_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  IF OLD.kind='professional' AND OLD.archived_at IS NOT NULL AND
+       NEW.archived_at IS NULL THEN v_delta:=1;
+  ELSIF OLD.kind='professional' AND OLD.archived_at IS NULL AND
+       NEW.archived_at IS NOT NULL THEN v_delta:=-1;
+  END IF;
+ END IF;
+ IF v_delta<>0 THEN
+  PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+  SELECT active_professional_workplace_count INTO v_count
+   FROM public.teacher_entitlement_state
+   WHERE teacher_id=v_teacher FOR UPDATE;
+  IF NOT FOUND THEN
+   RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
+  END IF;
+  IF v_delta>0 THEN
+   v_cap:=public.ccp_effective_capability(v_teacher,'workplaces.professional',now());
+   v_limit:=(v_cap->>'limit')::integer;
+   IF coalesce((v_cap->>'unlimited')::boolean,false)=false AND
+      v_count+v_delta>v_limit THEN
+    RAISE EXCEPTION 'CAPACITY_EXCEEDED' USING ERRCODE='23514';
+   END IF;
+  END IF;
+  UPDATE public.teacher_entitlement_state
+   SET active_professional_workplace_count=active_professional_workplace_count+v_delta,
+       revision=revision+1,updated_at=now()
+   WHERE teacher_id=v_teacher;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ RETURN NEW;
+END;
+$ccp_workplace_capacity$;
+REVOKE ALL ON FUNCTION public.ccp_professional_workplace_capacity_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_professional_workplace_capacity_guard
+ BEFORE INSERT OR UPDATE OR DELETE ON public.workplaces FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_professional_workplace_capacity_guard();
+
+-- Verified counters and capacity remain a database invariant, including
+-- imports and direct PostgREST writes; service callers cannot opt out.
+-- END ADR-0019 normalized SQL authority.
