@@ -1,5 +1,8 @@
 # Implementation and verification checklist — check only evidenced work
 
+> Incremental source-only evidence (2026-11-21): the [canonical public-table RLS coverage guard](../archive/2026-11-21-guard-canonical-public-table-rls/ARCHIVE_DECISION.md) from PR #110 is accepted and archived separately. This is a static regression guard, not full RLS/tenant proof, domain ownership approval, final schema freeze or data cutover. All existing unchecked tasks below remain open.
+
+
 - [x] Inventory all active proposals and exact current SQL/table/RLS/type coverage; document missing, existing, deferred, duplicate candidates. Evidence: `docs/SCHEMA_FREEZE_INVENTORY_2026-11-20.md` (static source inventory; not schema-freeze or production acceptance).
 - [ ] Approve one domain ownership matrix and schema freeze boundaries with all downstream changes.
 - [ ] Finalize canonical Contacts, students, workplace, locale, scoped portal and financial/ledger structures without duplicate obligations.
