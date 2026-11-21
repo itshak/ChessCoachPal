@@ -22,7 +22,9 @@ test("PARITY:PARITY-hosted-subscription-handoff opens signed-in account without 
  expect(result.error).toBeUndefined();
  const data=result.data as {url:string;browserOnly:boolean;action:string};
  expect(data.browserOnly).toBe(true);
- expect(data.action).toBe("hosted-billing");
+ expect(data.action).toBe("account-entitlements");
+ expect((result.data as {entitlements:{studentCapacity:{capabilityKey:string}}})
+  .entitlements.studentCapacity.capabilityKey).toBe("students.active");
  const url=new URL(data.url);
  expect(url.pathname).toBe("/account");
  expect(url.search).toBe("");
