@@ -24,6 +24,68 @@ export type RsvpStatus = "pending" | "yes" | "no" | "maybe";
 export interface Database {
   public: {
     Tables: {
+
+      // ADR-0019 schema-only foundation. Trusted platform writes only.
+      capability_definitions: {
+        Row: {key:string;kind:"boolean"|"integer_limit";unit:string|null;security_class:"teacher"|"operator";definition_version:number;active:boolean;created_at:string};
+        Insert: {key:string;kind:"boolean"|"integer_limit";unit?:string|null;security_class?:"teacher"|"operator";definition_version?:number;active?:boolean;created_at?:string};
+        Update: never;
+      };
+      plan_versions: {
+        Row: {id:string;code:string;version:number;lifecycle:"draft"|"published"|"retired";effective_at:string|null;retired_at:string|null;created_at:string};
+        Insert: {id?:string;code:string;version:number;lifecycle?:"draft"|"published"|"retired";effective_at?:string|null;retired_at?:string|null;created_at?:string};
+        Update: never;
+      };
+      plan_capabilities: {
+        Row: {plan_version_id:string;capability_key:string;capability_kind:"boolean"|"integer_limit";boolean_value:boolean|null;integer_value:number|null;unlimited:boolean};
+        Insert: {plan_version_id:string;capability_key:string;capability_kind:"boolean"|"integer_limit";boolean_value?:boolean|null;integer_value?:number|null;unlimited?:boolean};
+        Update: never;
+      };
+      teacher_entitlement_state: {
+        Row: {teacher_id:string;baseline_plan_version_id:string|null;revision:number;active_student_count:number;active_professional_workplace_count:number;evaluated_at:string|null;created_at:string;updated_at:string};
+        Insert: {teacher_id:string;baseline_plan_version_id?:string|null;revision?:number;active_student_count?:number;active_professional_workplace_count?:number;evaluated_at?:string|null;created_at?:string;updated_at?:string};
+        Update: never;
+      };
+      teacher_entitlement_grants: {
+        Row: {id:string;teacher_id:string;kind:"plan_access"|"capability_boost";plan_version_id:string|null;capability_key:string|null;capability_kind:string|null;boolean_value:boolean|null;integer_value:number|null;unlimited:boolean;valid_from:string;expires_at:string|null;revoked_at:string|null;reason:string;issued_by:string|null;request_id:string;created_at:string};
+        Insert: {id?:string;teacher_id:string;kind:"plan_access"|"capability_boost";plan_version_id?:string|null;capability_key?:string|null;capability_kind?:string|null;boolean_value?:boolean|null;integer_value?:number|null;unlimited?:boolean;valid_from?:string;expires_at?:string|null;revoked_at?:string|null;reason:string;issued_by?:string|null;request_id:string;created_at?:string};
+        Update: never;
+      };
+      entitlement_audit_events: {
+        Row: {id:string;teacher_id:string;actor_id:string|null;source:string;action:string;revision_before:number|null;revision_after:number|null;request_id:string;reason:string;occurred_at:string};
+        Insert: {id?:string;teacher_id:string;actor_id?:string|null;source:string;action:string;revision_before?:number|null;revision_after?:number|null;request_id:string;reason:string;occurred_at?:string};
+        Update: never;
+      };
+      account_usage_periods: {
+        Row: {id:string;teacher_id:string;capability_key:string;period_start:string;period_end:string;used_count:number;reserved_count:number;created_at:string};
+        Insert: {id?:string;teacher_id:string;capability_key:string;period_start:string;period_end:string;used_count?:number;reserved_count?:number;created_at?:string};
+        Update: never;
+      };
+      account_usage_events: {
+        Row: {id:string;teacher_id:string;capability_key:string;period_id:string;request_id:string;unit:string;amount:number;source:string;created_at:string};
+        Insert: {id?:string;teacher_id:string;capability_key:string;period_id:string;request_id:string;unit:string;amount:number;source:string;created_at?:string};
+        Update: never;
+      };
+      platform_billing_customers: {
+        Row: {id:string;teacher_id:string;provider:string;merchant_scope:string;external_customer_id:string;disabled_at:string|null;created_at:string};
+        Insert: {id?:string;teacher_id:string;provider:string;merchant_scope:string;external_customer_id:string;disabled_at?:string|null;created_at?:string};
+        Update: never;
+      };
+      platform_subscription_offers: {
+        Row: {id:string;plan_version_id:string;provider:string;merchant_scope:string;external_price_id:string;currency:string;billing_interval:"month"|"year";effective_from:string;effective_to:string|null;created_at:string};
+        Insert: {id?:string;plan_version_id:string;provider:string;merchant_scope:string;external_price_id:string;currency:string;billing_interval:"month"|"year";effective_from:string;effective_to?:string|null;created_at?:string};
+        Update: never;
+      };
+      platform_subscriptions: {
+        Row: {id:string;teacher_id:string;customer_id:string;offer_id:string;provider:string;merchant_scope:string;external_subscription_id:string;state:"trialing"|"active"|"past_due"|"grace"|"cancel_at_period_end"|"canceled"|"expired"|"refunded"|"disputed";current_period_end:string|null;paid_through:string|null;grace_until:string|null;cancel_at:string|null;latest_event_time:string|null;latest_event_version:string|null;revision:number;created_at:string;updated_at:string};
+        Insert: {id?:string;teacher_id:string;customer_id:string;offer_id:string;provider:string;merchant_scope:string;external_subscription_id:string;state:"trialing"|"active"|"past_due"|"grace"|"cancel_at_period_end"|"canceled"|"expired"|"refunded"|"disputed";current_period_end?:string|null;paid_through?:string|null;grace_until?:string|null;cancel_at?:string|null;latest_event_time?:string|null;latest_event_version?:string|null;revision?:number;created_at?:string;updated_at?:string};
+        Update: never;
+      };
+      platform_billing_events: {
+        Row: {id:string;provider:string;merchant_scope:string;external_event_id:string;external_subscription_id:string|null;teacher_id:string|null;event_type:string;external_created_at:string|null;payload_sha256:string;signature_verified_at:string;processing_state:"pending"|"applied"|"ignored"|"retry"|"failed";attempt_count:number;error_code:string|null;applied_at:string|null;received_at:string};
+        Insert: {id?:string;provider:string;merchant_scope:string;external_event_id:string;external_subscription_id?:string|null;teacher_id?:string|null;event_type:string;external_created_at?:string|null;payload_sha256:string;signature_verified_at:string;processing_state?:"pending"|"applied"|"ignored"|"retry"|"failed";attempt_count?:number;error_code?:string|null;applied_at?:string|null;received_at?:string};
+        Update: never;
+      };
       // Core operator-owned teaching tables. These must remain synchronized
       // with the one canonical SQL baseline, not inferred from old Studio models.
       workplaces: {

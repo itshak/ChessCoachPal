@@ -12918,3 +12918,290 @@ REVOKE ALL ON FUNCTION public.ccp_teacher_archived_lesson_recovery_commit(
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_archived_lesson_recovery_commit(
  uuid,uuid[],jsonb,text,timestamptz,integer,text,uuid,text,boolean)
  TO authenticated;
+
+
+-- ADR-0019: Provider-neutral Freemium/Pro persistence foundation.
+-- SCHEMA-ONLY draft: no checkout, entitlement activation or teacher writes here.
+-- Existing hosted-plan code MUST be removed and SQL quota arbitration rewired
+-- before the consolidated P0 is accepted. Never deploy this intermediate state.
+CREATE TABLE public.capability_definitions (
+ key text PRIMARY KEY CHECK (key ~ '^[a-z][a-z0-9_.]{2,95}$'),
+ kind text NOT NULL CHECK(kind IN ('boolean','integer_limit')),
+ unit text CHECK (unit IS NULL OR (length(unit) BETWEEN 1 AND 48)),
+ security_class text NOT NULL DEFAULT 'teacher' CHECK(security_class IN ('teacher','operator')),
+ definition_version integer NOT NULL DEFAULT 1 CHECK(definition_version>0),
+ active boolean NOT NULL DEFAULT true,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(key,kind)
+);
+CREATE TABLE public.plan_versions (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ code text NOT NULL CHECK(code ~ '^[a-z][a-z0-9_]{1,39}$'),
+ version integer NOT NULL CHECK(version>0),
+ lifecycle text NOT NULL DEFAULT 'draft'
+   CHECK(lifecycle IN ('draft','published','retired')),
+ effective_at timestamptz,
+ retired_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(code,version),
+ CONSTRAINT ccp_plan_publication_time CHECK (
+  lifecycle='draft' OR effective_at IS NOT NULL),
+ CONSTRAINT ccp_plan_retirement_time CHECK (
+  retired_at IS NULL OR effective_at IS NOT NULL AND retired_at>effective_at)
+);
+CREATE TABLE public.plan_capabilities (
+ plan_version_id uuid NOT NULL REFERENCES public.plan_versions(id) ON DELETE RESTRICT,
+ capability_key text NOT NULL,
+ capability_kind text NOT NULL,
+ boolean_value boolean,
+ integer_value integer CHECK(integer_value>=0),
+ unlimited boolean NOT NULL DEFAULT false,
+ PRIMARY KEY(plan_version_id,capability_key),
+ FOREIGN KEY(capability_key,capability_kind)
+   REFERENCES public.capability_definitions(key,kind) ON DELETE RESTRICT,
+ CONSTRAINT ccp_plan_capability_typed CHECK(
+  (capability_kind='boolean' AND boolean_value IS NOT NULL AND
+   integer_value IS NULL AND unlimited=false)
+  OR
+  (capability_kind='integer_limit' AND boolean_value IS NULL AND
+   ((integer_value IS NOT NULL AND unlimited=false)
+      OR (integer_value IS NULL AND unlimited=true))))
+);
+CREATE TABLE public.teacher_entitlement_state (
+ teacher_id uuid PRIMARY KEY REFERENCES public.teachers(id) ON DELETE CASCADE,
+ baseline_plan_version_id uuid REFERENCES public.plan_versions(id) ON DELETE RESTRICT,
+ revision bigint NOT NULL DEFAULT 0 CHECK(revision>=0),
+ active_student_count integer NOT NULL DEFAULT 0 CHECK(active_student_count>=0),
+ active_professional_workplace_count integer NOT NULL DEFAULT 0
+   CHECK(active_professional_workplace_count>=0),
+ evaluated_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.teacher_entitlement_grants (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ kind text NOT NULL CHECK(kind IN ('plan_access','capability_boost')),
+ plan_version_id uuid REFERENCES public.plan_versions(id) ON DELETE RESTRICT,
+ capability_key text,
+ capability_kind text,
+ boolean_value boolean,
+ integer_value integer CHECK(integer_value>=0),
+ unlimited boolean NOT NULL DEFAULT false,
+ valid_from timestamptz NOT NULL DEFAULT now(),
+ expires_at timestamptz,
+ revoked_at timestamptz,
+ reason text NOT NULL CHECK(length(btrim(reason)) BETWEEN 4 AND 500),
+ issued_by uuid,
+ request_id uuid NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(teacher_id,request_id),
+ CONSTRAINT ccp_entitlement_grant_window CHECK(
+  expires_at IS NULL OR expires_at>valid_from),
+ CONSTRAINT ccp_entitlement_grant_shape CHECK(
+  (kind='plan_access' AND plan_version_id IS NOT NULL AND
+   capability_key IS NULL AND capability_kind IS NULL AND
+   boolean_value IS NULL AND integer_value IS NULL AND unlimited=false)
+  OR
+  (kind='capability_boost' AND plan_version_id IS NULL AND
+   capability_key IS NOT NULL AND
+   ((capability_kind='boolean' AND boolean_value=true AND
+     integer_value IS NULL AND unlimited=false)
+    OR
+    (capability_kind='integer_limit' AND boolean_value IS NULL AND
+     ((integer_value IS NOT NULL AND unlimited=false)
+       OR(integer_value IS NULL AND unlimited=true)))))),
+ FOREIGN KEY(capability_key,capability_kind)
+   REFERENCES public.capability_definitions(key,kind) ON DELETE RESTRICT
+);
+CREATE INDEX ccp_grants_teacher_window ON public.teacher_entitlement_grants
+ (teacher_id,valid_from,expires_at) WHERE revoked_at IS NULL;
+CREATE TABLE public.entitlement_audit_events (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ actor_id uuid,
+ source text NOT NULL CHECK(source IN ('operator','subscription','grant','provisioning','reconciliation')),
+ action text NOT NULL CHECK(length(action) BETWEEN 3 AND 100),
+ revision_before bigint CHECK(revision_before>=0),
+ revision_after bigint CHECK(revision_after>=0),
+ request_id uuid NOT NULL,
+ reason text NOT NULL CHECK(length(reason) BETWEEN 3 AND 500),
+ occurred_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(teacher_id,request_id),
+ CONSTRAINT ccp_entitlement_audit_revisions CHECK(
+  revision_before IS NULL OR revision_after IS NULL
+  OR revision_after>=revision_before)
+);
+CREATE TABLE public.account_usage_periods (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ capability_key text NOT NULL REFERENCES public.capability_definitions(key) ON DELETE RESTRICT,
+ period_start timestamptz NOT NULL,
+ period_end timestamptz NOT NULL,
+ used_count bigint NOT NULL DEFAULT 0 CHECK(used_count>=0),
+ reserved_count bigint NOT NULL DEFAULT 0 CHECK(reserved_count>=0),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(teacher_id,capability_key,period_start,period_end),
+ CONSTRAINT ccp_usage_period_window CHECK(period_end>period_start),
+ UNIQUE(id,teacher_id,capability_key)
+);
+CREATE TABLE public.account_usage_events (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ capability_key text NOT NULL REFERENCES public.capability_definitions(key) ON DELETE RESTRICT,
+ period_id uuid NOT NULL,
+ request_id uuid NOT NULL,
+ unit text NOT NULL CHECK(unit ~ '^[a-z][a-z0-9_]{1,47}$'),
+ amount integer NOT NULL CHECK(amount>0 AND amount<=1000000),
+ source text NOT NULL CHECK(length(source) BETWEEN 2 AND 80),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(period_id,teacher_id,capability_key)
+   REFERENCES public.account_usage_periods(id,teacher_id,capability_key)
+   ON DELETE RESTRICT,
+ UNIQUE(teacher_id,capability_key,request_id)
+);
+CREATE TABLE public.platform_billing_customers (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ provider text NOT NULL CHECK(provider ~ '^[a-z][a-z0-9_]{1,39}$'),
+ merchant_scope text NOT NULL CHECK(length(merchant_scope) BETWEEN 1 AND 120),
+ external_customer_id text NOT NULL CHECK(length(external_customer_id) BETWEEN 1 AND 200),
+ disabled_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(provider,merchant_scope,external_customer_id),
+ UNIQUE(id,teacher_id),
+ UNIQUE(id,teacher_id,provider,merchant_scope)
+);
+CREATE TABLE public.platform_subscription_offers (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ plan_version_id uuid NOT NULL REFERENCES public.plan_versions(id) ON DELETE RESTRICT,
+ provider text NOT NULL CHECK(provider ~ '^[a-z][a-z0-9_]{1,39}$'),
+ merchant_scope text NOT NULL CHECK(length(merchant_scope) BETWEEN 1 AND 120),
+ external_price_id text NOT NULL CHECK(length(external_price_id) BETWEEN 1 AND 200),
+ currency text NOT NULL CHECK(currency ~ '^[A-Z]{3}$'),
+ billing_interval text NOT NULL CHECK(billing_interval IN ('month','year')),
+ effective_from timestamptz NOT NULL,
+ effective_to timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(provider,merchant_scope,external_price_id),
+ UNIQUE(id,provider,merchant_scope),
+ CONSTRAINT ccp_platform_offer_window CHECK(
+  effective_to IS NULL OR effective_to>effective_from)
+);
+CREATE TABLE public.platform_subscriptions (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ customer_id uuid NOT NULL,
+ offer_id uuid NOT NULL,
+ provider text NOT NULL,
+ merchant_scope text NOT NULL,
+ external_subscription_id text NOT NULL
+   CHECK(length(external_subscription_id) BETWEEN 1 AND 200),
+ state text NOT NULL CHECK(state IN (
+  'trialing','active','past_due','grace','cancel_at_period_end',
+  'canceled','expired','refunded','disputed')),
+ current_period_end timestamptz,
+ paid_through timestamptz,
+ grace_until timestamptz,
+ cancel_at timestamptz,
+ latest_event_time timestamptz,
+ latest_event_version text,
+ revision bigint NOT NULL DEFAULT 0 CHECK(revision>=0),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(customer_id,teacher_id,provider,merchant_scope)
+   REFERENCES public.platform_billing_customers(id,teacher_id,provider,merchant_scope)
+   ON DELETE RESTRICT,
+ FOREIGN KEY(offer_id,provider,merchant_scope)
+   REFERENCES public.platform_subscription_offers(id,provider,merchant_scope)
+   ON DELETE RESTRICT,
+ UNIQUE(provider,merchant_scope,external_subscription_id),
+ UNIQUE(id,teacher_id)
+);
+CREATE INDEX ccp_platform_subs_teacher ON public.platform_subscriptions
+ (teacher_id,state,current_period_end DESC);
+CREATE TABLE public.platform_billing_events (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ provider text NOT NULL CHECK(provider ~ '^[a-z][a-z0-9_]{1,39}$'),
+ merchant_scope text NOT NULL CHECK(length(merchant_scope) BETWEEN 1 AND 120),
+ external_event_id text NOT NULL CHECK(length(external_event_id) BETWEEN 1 AND 200),
+ external_subscription_id text CHECK(length(external_subscription_id) BETWEEN 1 AND 200),
+ teacher_id uuid REFERENCES public.teachers(id) ON DELETE SET NULL,
+ event_type text NOT NULL CHECK(length(event_type) BETWEEN 2 AND 120),
+ external_created_at timestamptz,
+ payload_sha256 text NOT NULL CHECK(payload_sha256 ~ '^[a-f0-9]{64}$'),
+ signature_verified_at timestamptz NOT NULL,
+ processing_state text NOT NULL DEFAULT 'pending'
+   CHECK(processing_state IN ('pending','applied','ignored','retry','failed')),
+ attempt_count integer NOT NULL DEFAULT 0 CHECK(attempt_count>=0),
+ error_code text CHECK(error_code IS NULL OR length(error_code)<=120),
+ applied_at timestamptz,
+ received_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(provider,merchant_scope,external_event_id),
+ CONSTRAINT ccp_platform_event_applied CHECK (
+  processing_state<>'applied' OR applied_at IS NOT NULL)
+);
+CREATE INDEX ccp_platform_event_replay ON public.platform_billing_events
+ (provider,merchant_scope,external_subscription_id,external_created_at DESC);
+
+-- Catalogs are authenticated read-only; all mutations are trusted service-only.
+-- Never let an OAuth grant, portal token, or profile field write plan authority.
+ALTER TABLE public.capability_definitions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.plan_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.plan_capabilities ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ccp_capabilities_read ON public.capability_definitions
+ FOR SELECT TO authenticated USING (active AND security_class='teacher');
+CREATE POLICY ccp_plan_versions_read ON public.plan_versions
+ FOR SELECT TO authenticated USING (lifecycle='published');
+CREATE POLICY ccp_plan_capabilities_read ON public.plan_capabilities
+ FOR SELECT TO authenticated USING (
+  EXISTS (SELECT 1 FROM public.plan_versions p
+          WHERE p.id=plan_version_id AND p.lifecycle='published')
+ );
+ALTER TABLE public.teacher_entitlement_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teacher_entitlement_grants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.entitlement_audit_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.account_usage_periods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.account_usage_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.platform_billing_customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.platform_subscription_offers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.platform_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.platform_billing_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ccp_entitlement_state_owner ON public.teacher_entitlement_state
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_entitlement_grants_owner ON public.teacher_entitlement_grants
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_entitlement_audit_owner ON public.entitlement_audit_events
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_usage_periods_owner ON public.account_usage_periods
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_usage_events_owner ON public.account_usage_events
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_platform_subscriptions_owner ON public.platform_subscriptions
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+-- Provider IDs and events are private; subscription offers are not price promises.
+CREATE POLICY ccp_platform_offers_read ON public.platform_subscription_offers
+ FOR SELECT TO authenticated USING (
+  EXISTS (SELECT 1 FROM public.plan_versions p
+          WHERE p.id=plan_version_id AND p.lifecycle='published')
+ );
+REVOKE ALL ON public.capability_definitions,public.plan_versions,
+ public.plan_capabilities,public.teacher_entitlement_state,
+ public.teacher_entitlement_grants,public.entitlement_audit_events,
+ public.account_usage_periods,public.account_usage_events,
+ public.platform_billing_customers,public.platform_subscription_offers,
+ public.platform_subscriptions,public.platform_billing_events
+ FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.capability_definitions,public.plan_versions,
+ public.plan_capabilities,public.teacher_entitlement_state,
+ public.teacher_entitlement_grants,public.entitlement_audit_events,
+ public.account_usage_periods,public.account_usage_events,
+ public.platform_subscription_offers,public.platform_subscriptions
+ TO authenticated;
+GRANT ALL ON public.capability_definitions,public.plan_versions,
+ public.plan_capabilities,public.teacher_entitlement_state,
+ public.teacher_entitlement_grants,public.entitlement_audit_events,
+ public.account_usage_periods,public.account_usage_events,
+ public.platform_billing_customers,public.platform_subscription_offers,
+ public.platform_subscriptions,public.platform_billing_events TO service_role;
+-- END ADR-0019 schema-only foundation.
