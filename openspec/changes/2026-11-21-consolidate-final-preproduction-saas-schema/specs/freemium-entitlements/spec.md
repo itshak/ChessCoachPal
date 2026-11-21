@@ -9,12 +9,12 @@ The system SHALL define immutable versioned plans and centrally registered typed
 - **WHEN** the operator publishes a new versioned Free allowance or adjusts one teacher's authorized grant
 - **THEN** all effective quota reads and writes SHALL reflect it without any ALTER TABLE and without rewriting previously published plan versions.
 
-### Requirement: Founding, paid and temporary gifts SHALL be independent
-The system SHALL allow additive, audited and optionally expiring individual grants alongside verified paid subscription access and a base Free plan. Permanent higher Free capacity SHALL persist after an independent temporary Pro grant expires. A founder marker SHALL NOT imply unlimited Pro or force cancellation of a legitimate active paid subscription.
+### Requirement: Subscriptions and individually authorized grants SHALL be independent
+The system SHALL allow additive, audited and optionally expiring individual grants alongside verified paid subscription access and a base Free plan. An independently authorized capacity grant SHALL persist according to its own validity window after a shorter whole-plan grant expires. An inherited plan label SHALL NOT imply unlimited Pro or force cancellation of a legitimate active paid subscription. No specific cohort or upgrade benefit is promised by the schema.
 
-#### Scenario: Gifted Pro ends for a founding coach
-- **WHEN** the time-limited Pro benefit expires while a permanent higher Free cap remains
-- **THEN** the higher Free cap SHALL continue, Pro-only new operations SHALL stop unless separately paid, and no student or workplace record SHALL be deleted.
+#### Scenario: One plan-access grant expires while a separate capacity grant remains
+- **WHEN** the time-limited plan-access grant expires while an independently authorized capacity override remains
+- **THEN** the independent capacity override SHALL continue, Pro-only new operations SHALL stop unless separately paid, and no student or workplace record SHALL be deleted.
 
 ### Requirement: Hosted capacity enforcement SHALL be database-atomic
 Every student creation/reactivation (including import, restore, direct API and archived-lesson recovery) and professional workplace creation/reactivation SHALL derive limits from the **same effective account state** inside the transaction, serialize concurrent operations and use canonical deduplicated active counts. No teacher-controlled disabled flag or stale app environment constant SHALL bypass the guard.

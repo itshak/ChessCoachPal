@@ -25,7 +25,7 @@
 
 ## Phase 2 — SQL and behavioral proof
 
-- [ ] SQL-backed Free/Pro/founding/trial/paid grant precedence, expiration, cancellation, concurrent plan changes, and cap downgrade; no silent data deletion and no premium write after entitlement expiry.
+- [ ] SQL-backed Free/Pro/individual-grant/trial/paid precedence, expiration, cancellation, concurrent plan changes, and cap downgrade; no silent data deletion and no premium write after entitlement expiry.
 - [ ] SQL-backed 0/1/N capacity, concurrent student reactivation (including PR #113), import/restore/bulk, direct PostgREST attempts and group/workplace deduplication; count rollup/reconciliation and rollback on limit rejection.
 - [ ] Provider event replay/out-of-order/newer-subscription vs old-deletion, unsupported provider, forged IDs and failed writes; documented no checkout-success grant and bounded grace.
 - [ ] Tenanted cross-user/FK/RLS, service-role and SECURITY DEFINER negative probes for **all new and modified** tables, raw authenticated/anon access, delete/update attempts on immutable ledger and provider events.

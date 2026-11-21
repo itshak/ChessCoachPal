@@ -18,8 +18,8 @@ Status: **all cases pending** until the consolidated P0 implementation is review
 | ENT-05 | Two archived lesson recovery commits (PR #113) | Exactly one winning committed lesson and activation for one slot, loser unchanged |
 | ENT-06 | Batch spreadsheet import/restore/bulk | Multi-row quota reservation, owner scope, all-or-none rollback and exact replay |
 | ENT-07 | Student in multiple groups/workplaces | Active count exactly one regardless of memberships and attendance |
-| ENT-08 | Founding permanent Free boost + temporary Pro | Pro expires, founding boost remains, history unchanged |
-| ENT-09 | Founding boost + voluntary paid Pro | Existing paid subscription remains valid, grant does not cancel it |
+| ENT-08 | Independent capacity override + temporary plan access | Pro expires, independent capacity boost remains, history unchanged |
+| ENT-09 | Individual capability grant + separately paid Pro | Existing paid subscription remains valid, grant does not cancel it |
 | ENT-10 | Paid Pro downgrade over Free student/workplace cap | Existing data and core lesson capture/edit/export survive; no new growth |
 | ENT-11 | Professional workplace create/archive/reactivate | Correct professional-only count, one Personal protected, capacity SQL enforced |
 | ENT-12 | Time boundary and concurrent grant edit | Transaction uses current valid effective grant and revision, not stale preview |
