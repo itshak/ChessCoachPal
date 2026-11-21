@@ -207,8 +207,15 @@ export function LessonCapturePreviewPanel() {
     try {
       const response=await fetch("/api/agent/v1",{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({action:"sessions.createAdHoc",...payload,
-          requestId:requestRef.current.requestId}),cache:"no-store",
+        body:JSON.stringify({
+          action:payload.studentIds.length===1?"sessions.create":"sessions.createAdHoc",
+          workplaceId:payload.workplaceId,
+          ...(payload.studentIds.length===1?{studentId:payload.studentIds[0]}:
+            {studentIds:payload.studentIds}),
+          title:payload.title,startsAt:payload.startsAt,
+          durationMinutes:payload.durationMinutes,lessonNote:payload.lessonNote,
+          requestId:requestRef.current.requestId,
+        }),cache:"no-store",
       });
       const result=await response.json() as {ok?:boolean;error?:{message?:string;code?:string};data?:{id?:string}};
       if(!response.ok || !result.ok)
