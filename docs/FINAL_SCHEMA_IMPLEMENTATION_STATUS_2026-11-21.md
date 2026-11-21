@@ -1,29 +1,26 @@
-# Consolidated final schema — implementation status (2026-11-21)
+# Consolidated final schema — implementation and acceptance status (2026-11-21)
 
-**Status: IN PROGRESS / NOT FROZEN / NOT ARCHIVED / NOT DEPLOYED.**
+**Status: SOURCE IMPLEMENTATION CANDIDATE / NOT FROZEN / NOT ARCHIVED / NOT DEPLOYED.**
 
-Authoritative OpenSpec: `openspec/changes/2026-11-21-consolidate-final-preproduction-saas-schema`. Design and ADR-0019 are merged to `main` in planning PR #114. This document records source-only work on draft implementation PR #115, not acceptance.
+Authoritative OpenSpec: `openspec/changes/2026-11-21-consolidate-final-preproduction-saas-schema`, ADR-0019, ADR-0017/0018. All source work remains on draft [PR #115](https://github.com/itshak/ChessCoachPal/pull/115). This document distinguishes source implementation from acceptance, external billing activation and independent production cutover.
 
-## Source-only work completed in draft PR #115
+## Implementation committed on the draft branch
 
-- 12 normalized platform capability, plan, entitlement, grant, audit, usage and provider-neutral subscription tables added to the one pre-v1 SQL baseline.
-- Tenant owner-read RLS, restricted direct mutation grants, provider-event uniqueness, type contracts, canonical manifest/checksum and static schema guard.
-- Synthetic SQL-backed E2E probe added for grant isolation, unauthorized writes and event replay; this is not evidence until exact-head CI completes.
-- No public price, quota policy, provider checkout, live deployment or private data migration.
+- **One fresh-install canonical SQL baseline.** The 87 original public tables have been retained/reviewed as the historical baseline. Added 12 normalized product/plan/capability/grant/usage/subscription relations and six cross-domain relations: a provider and rating-category registry, slot occurrence exceptions, approved report publications, explicit report audiences and canonical session-amendment history. No competing feature migrations.
+- **One hosted-capacity authority.** Removed inherited `teachers.hosted_plan`, hosted opt-out, trial/founding/Stripe-specific identity fields and their legacy capacity counter from the target SQL/types. Added a versioned published plan catalogue, independent individual boosts, time-bounded grants, a consistent effective-capability evaluator, owner-visible SQL summary, tenant-serialized student and professional workplace counters, reconciliation and immutable entitlement audit. Baseline limits remain deliberately unlimited until an approved public commercial configuration exists.
+- **Student lifecycle.** An archived student preserves the same canonical ID/history and does not count toward the active roster cap. SQL remains final for create, archive/reactivate and direct writes; existing future-commitment guards are preserved. App services and MCP surface the normalized capacity error. Full concurrent lifecycle acceptance remains pending.
+- **Workplaces.** Exactly one provisioned Personal workspace per teacher, distinguished from Professional scope; archive/revision guard and active-only default selection. Existing workplace records/session attribution are not overwritten; future scheduling, membership and portal obligations block premature professional archive.
+- **Chess ratings and learning evidence.** Approved extensible provider/category registry with tenant-scoped category foreign keys and external source provenance; teacher-verified introduced/practiced/demonstrated/needs-review evidence is distinct from materials taught, ratings and inferred mastery.
+- **Recurring lessons and published reports.** Tenant-owned revocable occurrence exceptions and a canonical session amendment audit; immutable report approval/supersession and explicit portal-grant audiences. No public report sharing is activated by the existence of the schema.
+- **Application contracts.** SQL provisioned onboarding, TypeScript table contracts, updated website account plan/capacity view, MCP subscription handoff and archived workplace filtering. Inherited hosted Stripe checkout/portal/webhook routes deliberately return 503 until a verified provider-neutral subscription adapter is separately reviewed. No provider redirect or unverified event grants Pro.
+- **Security and CI contracts.** RLS and restricted grants on new relations, append-only/revision guards, signature-event identity protection, same-PR website/MCP parity registry review, synthetic fixtures and SQL negative probes, schema manifest SHA-256 and static contract tests.
 
-## Acceptance blockers — do not archive
+## Release-blocking acceptance still to be established
 
-1. **Single authority:** existing `teachers.hosted_*`/Stripe-specific authority, env capacity checks and teacher counter still exist. Implement effective entitlement resolution, atomic teacher-row capacity lock and data-mapping decision. Remove dual authorities and verify every student/workplace write path.
-2. **Full field-level schema:** finish Personal/Professional workplace lifecycle, verified enrollment and archive behavior, finance/portal/credit constraints, extensible rating categories and evidence, justified recurrence exception and immutable report publication snapshots. Review all 87 prior physical tables plus new ones.
-3. **Security:** add cross-tenant composite FK, negative RLS and SECURITY DEFINER probes for each changed relation. Audit immutable records, provider-event ordering, idempotency, time-bounded grants and over-quota downgrade.
-4. **Application:** regenerate verified database types, seed and fixtures; repair already-implemented website/MCP behavior and prove identical premium/limit errors and readback.
-5. **Validation:** full exact-head tests, SQL-backed concurrency, browser/MCP parity, security, Compose, fresh install and independently restored synthetic second instance must be green. Record exact run links and skips.
-6. **Cutover:** populated target database remains separately authorized under ADR-0017. Do not run destructive migration or infer an empty beta database.
+1. **Exact-head SQL:** clean first and second-instance bootstrap/restore, non-privileged tenant/SECURITY DEFINER probes, plan/grant expiry, parallel student and professional workplace capacity changes, and a deterministic catalog/replay test. Fix all newly discovered failures in PR #115 rather than waiving the checks.
+2. **End-to-end:** existing authenticated website/MCP behavior and archived-student concurrency, capability summary readback, group-session accounting, report audience boundaries, historical/financial safety and safe downgrades on the final source revision. A passing source audit is not independently verified functionality.
+3. **CI:** required exact-head TypeScript/lint/unit, E2E, security, self-host Compose and synthetic second-instance backup/restore must all be green. Record the commit SHA and GitHub Actions runs only once verified.
+4. **Field and inventory verification:** final read-only table/constraint/index/function and generated type coverage, documented remaining schema-only capabilities, tenant-scoped retention/erasure, pricing and provider decisions. The separate 13-proposal crosswalk still needs formal signoff.
+5. **Independent operational gate:** actual deployed database, historical records, grants and financial/portal identities must receive separate operator-approved inventory, off-host backup/restore and target-specific mapping under ADR-0017. Do not run `db push` to populated production, do not publish commercial terms and do not represent these storage contracts as activated premium features.
 
-## Related branches
-
-- PR #114: merged **documentation-only** consolidated proposal.
-- PR #115: draft schema foundation; **must not merge until all above gates pass**.
-- PR #113: separate archived-student concurrency test; its own exact-head acceptance is required.
-
-**Archival rule:** check off the consolidated OpenSpec only when all Phase 0–2 acceptance items are evidenced on the merged source commit. Phase 3 live cutover is an independent operator gate and must not be claimed.
+Related PR #113 carries archived-student concurrency E2E evidence and must be reconciled against this final schema independently. Source implementation does not authorize deployment, plugin publication, billable subscriptions, or marking every OpenSpec checklist item complete.
