@@ -295,8 +295,7 @@ test("PARITY:PARITY-billing-manual-payment-foreign-tenant-denial blocks website 
  try{
   expect((await admin.from("teachers").insert({
    id:teacherId,email,display_name:"Unrelated finance teacher",
-   hosted_enforced:false,
-  })).error).toBeNull();
+   })).error).toBeNull();
   const guardian=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"Other studio family"});
   expect(guardian.error).toBeNull();
   const invoice=await admin.from("invoices").insert({
