@@ -78,6 +78,9 @@ import { chessUuid, categoryName, observationText, observedAt, observationInput,
 } from "@/lib/chess-learning";
 import {lessonCompletionSchema,attendanceBulkRecordSchema,type LessonCompletionInput} from "@/lib/lesson-completion";
 import {lessonCapturePreviewSchema,teacherLessonCapturePreview,studentNamesResolveSchema,teacherStudentNamesResolve,LessonCapturePreviewError} from "@/lib/server/lesson-capture-preview";
+import {archivedLessonRecoveryPreviewSchema,archivedLessonRecoveryCommitSchema,
+ teacherArchivedLessonRecoveryPreview,teacherArchivedLessonRecoveryCommit}
+ from "@/lib/server/archived-lesson-recovery";
 import {LessonTimingError,scheduleDayPreviewSchema,teacherScheduleDayPreview} from "@/lib/server/lesson-schedule-inference";
 import {materialsHistoryFilter,materialsHistoryRecord,materialsHistoryVoid,teacherMaterialHistory,teacherMaterialAggregate,teacherMaterialRecord,teacherMaterialVoid,MaterialHistoryError} from "@/lib/server/teacher-material-history";
 import {materialCatalogCreateSchema,materialCatalogUpdateSchema,materialCatalogFilterSchema,materialRelationListSchema,materialRelationSchema,materialArchivePreviewSchema,materialLifecycleSchema,teacherMaterialCatalogCreate,teacherMaterialCatalogUpdate,teacherMaterialCatalogGet,teacherMaterialCatalogList,teacherMaterialRelationsList,teacherMaterialRelationChange,teacherMaterialArchivePreview,teacherMaterialLifecycleChange,MaterialCatalogError} from "@/lib/server/learning-materials";
@@ -1544,6 +1547,16 @@ const catalogue = [
     schema:atomicLessonChapterCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_lessons_archived_recovery_preview",
+    description:"For a new future lesson with an archived learner, review exact stable student IDs (1–50), explicitly chosen historically verified workplace, schedule, current lifecycle revision and retained credits. Read-only; resolve names first, then ask the coach whether to reactivate and create the lesson. Never use this for a historical correction.",
+    schema:archivedLessonRecoveryPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_lessons_archived_recovery_commit",
+    description:"Only AFTER explicit coach approval, atomically reactivate precisely the reviewed archived student IDs at one verified historical workplace AND create a new future 1:1 or ad-hoc lesson with frozen attendance-unmarked roster. Recheck expectedUpdatedAt, capacity, tenant, enrollment and schedule in SQL; all changes roll back together, retries are idempotent. Requires reason, confirmed=true and request UUID. No automatic group/credit/financial changes.",
+    schema:archivedLessonRecoveryCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_lessons_capture_preview",
     description:"Read-only multi-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. Confirm separately via ccp_sessions_ad_hoc_create.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
@@ -2649,6 +2662,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_lessons_capture_preview":
         return {data:await teacherLessonCapturePreview(db,teacherId,
           args as Parameters<typeof teacherLessonCapturePreview>[2])};
+      case "ccp_lessons_archived_recovery_preview":
+        return {data:await teacherArchivedLessonRecoveryPreview(db,teacherId,
+          args as Parameters<typeof teacherArchivedLessonRecoveryPreview>[2])};
+      case "ccp_lessons_archived_recovery_commit":
+        return {data:await teacherArchivedLessonRecoveryCommit(db,teacherId,
+          args as Parameters<typeof teacherArchivedLessonRecoveryCommit>[2])};
       case "ccp_lessons_capture_completed":
         return {data:await teacherCompletedGroupCapture(db,teacherId,
           args as Parameters<typeof teacherCompletedGroupCapture>[2])};
