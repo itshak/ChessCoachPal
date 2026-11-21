@@ -197,3 +197,52 @@ test("PARITY:PARITY-conversational-preview-fails-closed-for-missing-duplicate-am
   expect(incorrectEnrollment.data.issues.some((i:{code:string})=>
     i.code==="STUDENT_NOT_ENROLLED")).toBe(true);
 });
+
+test("PARITY:PARITY-archived-exact-lesson-candidate-is-clarification-not-not-found",async({page,request})=>{
+  const call=await delegatedTool(page,request);
+  const {names,ids,workplaceId,tag}=await teacherFixture(call);
+  const archivePreview=await call("ccp_students_lifecycle_preview",{studentId:ids[0]});
+  expect(archivePreview.error).toBeUndefined();
+  expect(archivePreview.data.canArchive).toBe(true);
+  const archive=await call("ccp_students_lifecycle_commit",{
+    studentId:ids[0],mode:"archive",
+    expectedUpdatedAt:archivePreview.data.expectedUpdatedAt,
+    selectedWorkplaceIds:[],requestId:randomUUID(),confirmed:true,
+  });
+  expect(archive.error).toBeUndefined();
+  expect(archive.data.archived).toBe(true);
+
+  const payload={names:[names[0],names[1]],workplaceId,
+    title:"Archived recovery preview "+tag,
+    startsAt:"2059-03-05T13:00:00+02:00",durationMinutes:60,lessonNote:""};
+  const web=await page.request.post("/api/coaching/lesson-capture/preview",{data:payload});
+  expect(web.status(),await web.text()).toBe(200);
+  const preview=await web.json();
+  expect(preview.canCommit).toBe(false);
+  expect(preview.proposedSession).toBeNull();
+  expect(preview.resolutions[0]).toMatchObject({
+    input:names[0],studentId:ids[0],status:"archived",archived:true,
+  });
+  expect(preview.issues).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      code:"ARCHIVED_STUDENT_CONFIRMATION_REQUIRED",input:names[0],
+      candidates:[{id:ids[0],name:names[0],archived:true}],
+    }),
+  ]));
+  expect(preview.issues.some((issue:{code:string})=>issue.code==="NOT_FOUND"))
+    .toBe(false);
+  expect(preview.review.writesPerformed).toBe(false);
+  const mcp=await call("ccp_lessons_capture_preview",payload);
+  expect(mcp.error).toBeUndefined();
+  expect(mcp.data).toEqual(preview);
+  // The ordinary active-roster resolver deliberately remains active-only.
+  const activeOnly=await call("ccp_students_resolve",{names:[names[0]]});
+  expect(activeOnly.error).toBeUndefined();
+  expect(activeOnly.data.issues[0].code).toBe("NOT_FOUND");
+  const after=await call("ccp_students_lifecycle_preview",{studentId:ids[0]});
+  expect(after.error).toBeUndefined();
+  expect(after.data.archived).toBe(true);
+  const sessions=await call("ccp_sessions_list",{query:payload.title,workplaceId});
+  expect(sessions.error).toBeUndefined();
+  expect(sessions.data.filter((s:{title:string})=>s.title===payload.title)).toHaveLength(0);
+});
