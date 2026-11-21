@@ -14022,3 +14022,73 @@ REVOKE ALL ON FUNCTION public.ccp_reconcile_entitlement_counts(uuid)
  FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.ccp_reconcile_entitlement_counts(uuid) TO service_role;
 -- END ADR-0019 commercial immutability and reconciliation.
+
+
+-- ADR-0019: canonical session amendment provenance, no duplicate lesson truth.
+-- Existing note/attendance/roster audits do not record date, workplace or
+-- duration changes. This captures teacher-owned corrections to those fields.
+CREATE TABLE public.session_amendment_events (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ session_id uuid NOT NULL,
+ previous_state jsonb NOT NULL,
+ next_state jsonb NOT NULL,
+ actor_id uuid,
+ source text NOT NULL CHECK(source IN ('authenticated','service')),
+ changed_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(session_id,teacher_id)
+   REFERENCES public.teaching_sessions(id,teacher_id) ON DELETE CASCADE,
+ CONSTRAINT ccp_amendment_snapshot_objects CHECK(
+   jsonb_typeof(previous_state)='object' AND
+   jsonb_typeof(next_state)='object' AND previous_state<>next_state)
+);
+CREATE INDEX ccp_session_amendments_tenant_history
+ ON public.session_amendment_events(teacher_id,session_id,changed_at DESC);
+CREATE OR REPLACE FUNCTION public.ccp_session_amendment_capture()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_amendment$
+DECLARE v_old jsonb;v_new jsonb;
+BEGIN
+ v_old:=jsonb_build_object('starts_at',OLD.starts_at,
+  'duration_minutes',OLD.duration_minutes,'status',OLD.status,
+  'workplace_id',OLD.workplace_id,'group_id',OLD.group_id,
+  'student_id',OLD.student_id,'slot_id',OLD.slot_id,
+  'slot_occurrence_date',OLD.slot_occurrence_date,
+  'rescheduled_from_date',OLD.rescheduled_from_date);
+ v_new:=jsonb_build_object('starts_at',NEW.starts_at,
+  'duration_minutes',NEW.duration_minutes,'status',NEW.status,
+  'workplace_id',NEW.workplace_id,'group_id',NEW.group_id,
+  'student_id',NEW.student_id,'slot_id',NEW.slot_id,
+  'slot_occurrence_date',NEW.slot_occurrence_date,
+  'rescheduled_from_date',NEW.rescheduled_from_date);
+ IF v_old<>v_new THEN
+  INSERT INTO public.session_amendment_events
+   (teacher_id,session_id,previous_state,next_state,actor_id,source)
+  VALUES(NEW.teacher_id,NEW.id,v_old,v_new,auth.uid(),
+   CASE WHEN auth.uid() IS NULL THEN 'service' ELSE 'authenticated' END);
+ END IF;
+ RETURN NEW;
+END;
+$ccp_amendment$;
+REVOKE ALL ON FUNCTION public.ccp_session_amendment_capture()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_session_amendment_capture
+ AFTER UPDATE ON public.teaching_sessions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_session_amendment_capture();
+CREATE OR REPLACE FUNCTION public.ccp_session_amendment_immutable()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_amendment_immutable$
+BEGIN
+ RAISE EXCEPTION 'IMMUTABLE_SESSION_AMENDMENT' USING ERRCODE='23514';
+END;
+$ccp_amendment_immutable$;
+REVOKE ALL ON FUNCTION public.ccp_session_amendment_immutable()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_session_amendment_immutable BEFORE UPDATE
+ ON public.session_amendment_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_session_amendment_immutable();
+ALTER TABLE public.session_amendment_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ccp_session_amendments_owner ON public.session_amendment_events
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON public.session_amendment_events FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.session_amendment_events TO authenticated;
+GRANT ALL ON public.session_amendment_events TO service_role;
+-- END ADR-0019 session amendment provenance.
