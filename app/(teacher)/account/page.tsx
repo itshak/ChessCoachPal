@@ -23,11 +23,7 @@ export async function generateMetadata(){
   return {title:t("heading")};
 }
 
-export default async function AccountPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ hosted?: string }>;
-}) {
+export default async function AccountPage() {
   const t=await getTranslations("account");
   const supabase = await createClient();
   const {
@@ -35,8 +31,6 @@ export default async function AccountPage({
   } = await supabase.auth.getUser();
 
   if (!user) return null;
-
-  const params = await searchParams;
 
   const { data: teacher } = await supabase
     .from("teachers")
@@ -93,15 +87,6 @@ export default async function AccountPage({
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">{t("heading")}</h1>
       <Link href="/ai-connections" className="underline text-sm">{t("connections")}</Link>
-
-      {params.hosted === "success" && (
-        <p className="text-sm text-success mb-4">
-          {t("stripePending")}
-        </p>
-      )}
-      {params.hosted === "cancel" && (
-        <p className="text-sm text-muted mb-4">{t("checkoutCanceled")}</p>
-      )}
 
       {limitBanner}
 
