@@ -13128,6 +13128,24 @@ BEGIN
  IF OLD.kind='professional' AND NEW.kind IS DISTINCT FROM 'professional' THEN
    RAISE EXCEPTION 'WORKPLACE_KIND_IMMUTABLE' USING ERRCODE='23514';
  END IF;
+ IF OLD.kind='professional' AND OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL THEN
+   IF EXISTS(SELECT 1 FROM public.lesson_slots
+     WHERE teacher_id=OLD.teacher_id AND workplace_id=OLD.id AND active)
+    OR EXISTS(SELECT 1 FROM public.teaching_sessions
+     WHERE teacher_id=OLD.teacher_id AND workplace_id=OLD.id
+       AND status='scheduled' AND starts_at>=now())
+    OR EXISTS(SELECT 1 FROM public.workplace_enrollments
+     WHERE teacher_id=OLD.teacher_id AND workplace_id=OLD.id
+       AND cancelled_at IS NULL AND
+       (ends_on IS NULL OR ends_on>=
+         (now() AT TIME ZONE OLD.timezone)::date))
+    OR EXISTS(SELECT 1 FROM public.portal_access_grants
+     WHERE teacher_id=OLD.teacher_id AND workplace_id=OLD.id
+       AND revoked_at IS NULL AND expires_at>now())
+   THEN
+    RAISE EXCEPTION 'WORKPLACE_FUTURE_COMMITMENTS' USING ERRCODE='23503';
+   END IF;
+ END IF;
  NEW.revision:=OLD.revision+1;
  NEW.updated_at:=now();
  RETURN NEW;
