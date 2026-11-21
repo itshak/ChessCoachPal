@@ -13205,3 +13205,303 @@ GRANT ALL ON public.capability_definitions,public.plan_versions,
  public.platform_billing_customers,public.platform_subscription_offers,
  public.platform_subscriptions,public.platform_billing_events TO service_role;
 -- END ADR-0019 schema-only foundation.
+
+
+-- ADR-0019: consolidated workplace, ratings and publication contracts.
+-- SCHEMA-ONLY. One canonical baseline; no customer cutover or paid UI activation.
+
+-- Preserve all historical workplace IDs and lesson attribution. Never infer
+-- "Personal" from a historic professional workplace's display name.
+ALTER TABLE public.workplaces
+ ADD COLUMN kind text NOT NULL DEFAULT 'professional'
+   CHECK (kind IN ('personal','professional')),
+ ADD COLUMN archived_at timestamptz,
+ ADD COLUMN revision bigint NOT NULL DEFAULT 1 CHECK (revision>=1),
+ ADD COLUMN updated_at timestamptz NOT NULL DEFAULT now();
+CREATE UNIQUE INDEX ccp_one_personal_workplace
+ ON public.workplaces(teacher_id) WHERE kind='personal';
+CREATE INDEX ccp_professional_workplaces_active
+ ON public.workplaces(teacher_id) WHERE kind='professional' AND archived_at IS NULL;
+
+-- Every teacher gets an independent Personal context. This does not alter
+-- previously enrolled students, professional workplaces or recorded sessions.
+CREATE OR REPLACE FUNCTION public.ccp_provision_personal_workplace()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_personal$
+BEGIN
+ INSERT INTO public.workplaces(teacher_id,name,timezone,currency,locale,kind)
+ VALUES(NEW.id,'Personal workspace '||left(NEW.id::text,8),
+        'UTC','USD',coalesce(NEW.preferred_locale,'en'),'personal')
+ ON CONFLICT DO NOTHING;
+ RETURN NEW;
+END;
+$ccp_personal$;
+REVOKE ALL ON FUNCTION public.ccp_provision_personal_workplace()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_provision_personal_workplace
+ AFTER INSERT ON public.teachers FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_provision_personal_workplace();
+INSERT INTO public.workplaces(teacher_id,name,timezone,currency,locale,kind)
+ SELECT t.id,'Personal workspace '||left(t.id::text,8),'UTC','USD',
+        coalesce(t.preferred_locale,'en'),'personal'
+ FROM public.teachers t
+ WHERE NOT EXISTS(SELECT 1 FROM public.workplaces w
+                  WHERE w.teacher_id=t.id AND w.kind='personal')
+ ON CONFLICT DO NOTHING;
+CREATE OR REPLACE FUNCTION public.ccp_personal_workplace_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_personal_guard$
+BEGIN
+ IF TG_OP='DELETE' THEN
+   IF OLD.kind='personal' AND EXISTS
+      (SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id) THEN
+      RAISE EXCEPTION 'PERSONAL_WORKPLACE_REQUIRED' USING ERRCODE='23514';
+   END IF;
+   RETURN OLD;
+ END IF;
+ IF NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+   RAISE EXCEPTION 'WORKPLACE_OWNER_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ IF OLD.kind='personal' AND
+    (NEW.kind IS DISTINCT FROM 'personal' OR NEW.archived_at IS NOT NULL) THEN
+   RAISE EXCEPTION 'PERSONAL_WORKPLACE_REQUIRED' USING ERRCODE='23514';
+ END IF;
+ IF OLD.kind='professional' AND NEW.kind IS DISTINCT FROM 'professional' THEN
+   RAISE EXCEPTION 'WORKPLACE_KIND_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ NEW.revision:=OLD.revision+1;
+ NEW.updated_at:=now();
+ RETURN NEW;
+END;
+$ccp_personal_guard$;
+REVOKE ALL ON FUNCTION public.ccp_personal_workplace_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_personal_workplace_guard
+ BEFORE UPDATE OR DELETE ON public.workplaces FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_personal_workplace_guard();
+
+-- Authoritative, reviewable provider/category registry, not endless
+-- hardcoded ALTER TABLE whenever an additional federation is approved.
+CREATE TABLE public.rating_providers (
+ code text PRIMARY KEY CHECK(code ~ '^[a-z][a-z0-9_]{1,39}$'),
+ provider_kind text NOT NULL CHECK(provider_kind IN ('online','federation')),
+ display_name text NOT NULL CHECK(length(btrim(display_name)) BETWEEN 2 AND 100),
+ registry_revision integer NOT NULL DEFAULT 1 CHECK(registry_revision>=1),
+ active boolean NOT NULL DEFAULT true,
+ created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.rating_categories (
+ provider_code text NOT NULL REFERENCES public.rating_providers(code)
+   ON DELETE RESTRICT,
+ code text NOT NULL CHECK(code ~ '^[a-z][a-z0-9_]{1,39}$'),
+ display_name text NOT NULL CHECK(length(btrim(display_name)) BETWEEN 2 AND 100),
+ registry_revision integer NOT NULL DEFAULT 1 CHECK(registry_revision>=1),
+ active boolean NOT NULL DEFAULT true,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(provider_code,code)
+);
+INSERT INTO public.rating_providers(code,provider_kind,display_name) VALUES
+ ('lichess','online','Lichess'),('chesscom','online','Chess.com'),
+ ('fide','federation','FIDE'),('icf','federation','ICF');
+INSERT INTO public.rating_categories(provider_code,code,display_name)
+ SELECT p,c,initcap(c) FROM (VALUES
+ ('lichess','bullet'),('lichess','blitz'),('lichess','rapid'),
+ ('lichess','classical'),('lichess','puzzle'),
+ ('chesscom','bullet'),('chesscom','blitz'),('chesscom','rapid'),
+ ('chesscom','daily'),('chesscom','puzzle'),
+ ('fide','standard'),('fide','rapid'),('fide','blitz'),
+ ('icf','national')) AS seeded(p,c);
+ALTER TABLE public.student_rating_snapshots
+ DROP CONSTRAINT student_rating_snapshots_provider_check,
+ DROP CONSTRAINT student_rating_snapshots_time_control_check,
+ DROP CONSTRAINT ccp_snapshot_category_check;
+ALTER TABLE public.student_rating_snapshots
+ ADD CONSTRAINT ccp_rating_snapshot_registered_category
+ FOREIGN KEY(provider,time_control)
+ REFERENCES public.rating_categories(provider_code,code) ON DELETE RESTRICT,
+ ADD COLUMN external_player_id text
+   CHECK(external_player_id IS NULL OR
+         length(btrim(external_player_id)) BETWEEN 1 AND 120),
+ ADD COLUMN source_handle_revision bigint CHECK(source_handle_revision>=1);
+-- A verified federation rating needs dated, attributable source evidence.
+-- New federations remain manual/unverified until their adapters are reviewed.
+ALTER TABLE public.student_rating_snapshots
+ DROP CONSTRAINT federation_rating_source_truth;
+ALTER TABLE public.student_rating_snapshots
+ ADD CONSTRAINT ccp_rating_evidence_truth CHECK(
+   (source='teacher_manual' AND fetched_at IS NULL AND
+    verification_state='unverified')
+   OR (source='provider_api' AND fetched_at IS NOT NULL AND
+      (verification_state='unverified' OR
+       (verification_state='provider_published' AND effective_at IS NOT NULL
+        AND provider_list_version IS NOT NULL AND source_digest IS NOT NULL)))
+ );
+CREATE INDEX ccp_rating_registry_recent
+ ON public.student_rating_snapshots(teacher_id,student_id,provider,time_control,observed_at DESC);
+
+-- Explicit teacher assessment evidence is orthogonal to "material taught",
+-- skill assessment and external rating. Legacy rows stay unassessed (NULL).
+ALTER TABLE public.chess_observations
+ ADD COLUMN learning_stage text
+   CHECK(learning_stage IS NULL OR
+         learning_stage IN ('introduced','practiced','demonstrated','needs_review')),
+ ADD CONSTRAINT ccp_observation_teacher_verified_stage CHECK(
+   learning_stage IS NULL OR (verified_at IS NOT NULL AND verified_by=teacher_id));
+ALTER TABLE public.material_teaching_evidence
+ ADD COLUMN learning_stage text
+   CHECK(learning_stage IS NULL OR
+         learning_stage IN ('introduced','practiced','demonstrated','needs_review')),
+ ADD COLUMN stage_verified_at timestamptz,
+ ADD COLUMN stage_verified_by uuid,
+ ADD CONSTRAINT ccp_material_stage_teacher_evidence CHECK (
+   (learning_stage IS NULL AND stage_verified_at IS NULL AND stage_verified_by IS NULL)
+   OR (learning_stage IS NOT NULL AND stage_verified_at IS NOT NULL
+       AND stage_verified_by=teacher_id)),
+ ADD CONSTRAINT ccp_material_stage_active_evidence CHECK (
+   learning_stage IS NULL OR voided_at IS NULL);
+CREATE INDEX ccp_material_teacher_evidence_recent
+ ON public.material_teaching_evidence(teacher_id,student_id,occurred_on DESC)
+ WHERE learning_stage IS NOT NULL AND voided_at IS NULL;
+
+-- Unmaterialized cancellations cannot live in teaching_sessions.
+-- This relation models exceptions, not a competing recurring-intent source.
+CREATE TABLE public.slot_occurrence_exceptions (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ slot_id uuid NOT NULL,
+ original_occurrence_on date NOT NULL,
+ action text NOT NULL CHECK(action IN ('cancel','reschedule','override')),
+ revised_starts_at timestamptz,
+ revised_timezone text CHECK(revised_timezone IS NULL
+   OR length(revised_timezone) BETWEEN 1 AND 80),
+ revised_duration_minutes integer CHECK(revised_duration_minutes BETWEEN 15 AND 480),
+ session_id uuid,
+ approved_by uuid NOT NULL,
+ approved_at timestamptz NOT NULL DEFAULT now(),
+ reason text NOT NULL CHECK(length(btrim(reason)) BETWEEN 4 AND 500),
+ request_id uuid NOT NULL,
+ revision bigint NOT NULL DEFAULT 1 CHECK(revision>=1),
+ revoked_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(slot_id,teacher_id)
+   REFERENCES public.lesson_slots(id,teacher_id) ON DELETE CASCADE,
+ FOREIGN KEY(session_id,teacher_id)
+   REFERENCES public.teaching_sessions(id,teacher_id) ON DELETE RESTRICT,
+ CONSTRAINT ccp_slot_exception_action_shape CHECK(
+   (action='cancel' AND revised_starts_at IS NULL AND
+    revised_timezone IS NULL AND revised_duration_minutes IS NULL)
+   OR (action IN ('reschedule','override') AND revised_starts_at IS NOT NULL
+      AND revised_timezone IS NOT NULL)),
+ CONSTRAINT ccp_slot_exception_teacher_approved CHECK(approved_by=teacher_id),
+ UNIQUE(teacher_id,slot_id,original_occurrence_on),
+ UNIQUE(teacher_id,request_id),
+ UNIQUE(id,teacher_id)
+);
+CREATE INDEX ccp_slot_exceptions_by_teacher
+ ON public.slot_occurrence_exceptions(teacher_id,slot_id,original_occurrence_on);
+
+-- Immutable approved snapshot reference; no raw private notes or automatic
+-- access for a payer, contact or group member. A publication must be approved.
+CREATE TABLE public.report_publications (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ student_id uuid,
+ workplace_id uuid,
+ snapshot_digest text NOT NULL CHECK(snapshot_digest ~ '^[a-f0-9]{64}$'),
+ snapshot_storage_ref text NOT NULL CHECK(length(snapshot_storage_ref) BETWEEN 1 AND 500),
+ output_locale text NOT NULL CHECK(output_locale ~ '^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$'),
+ approved_by uuid NOT NULL,
+ approved_at timestamptz NOT NULL,
+ request_id uuid NOT NULL,
+ revision bigint NOT NULL DEFAULT 1 CHECK(revision>=1),
+ superseded_by uuid,
+ revoked_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ CONSTRAINT ccp_report_scope_single CHECK(
+   (student_id IS NOT NULL) <> (workplace_id IS NOT NULL)),
+ CONSTRAINT ccp_report_teacher_approval CHECK(approved_by=teacher_id),
+ FOREIGN KEY(student_id,teacher_id)
+   REFERENCES public.students(id,teacher_id) ON DELETE RESTRICT,
+ FOREIGN KEY(workplace_id,teacher_id)
+   REFERENCES public.workplaces(id,teacher_id) ON DELETE RESTRICT,
+ UNIQUE(teacher_id,request_id),
+ UNIQUE(id,teacher_id)
+);
+ALTER TABLE public.report_publications
+ ADD CONSTRAINT ccp_report_superseded_same_tenant
+ FOREIGN KEY(superseded_by,teacher_id)
+ REFERENCES public.report_publications(id,teacher_id) ON DELETE RESTRICT;
+CREATE INDEX ccp_report_publications_scope_student
+ ON public.report_publications(teacher_id,student_id,approved_at DESC)
+ WHERE student_id IS NOT NULL;
+CREATE INDEX ccp_report_publications_scope_workplace
+ ON public.report_publications(teacher_id,workplace_id,approved_at DESC)
+ WHERE workplace_id IS NOT NULL;
+-- Sharing is explicit; an unrelated guardian or payer is not entitled.
+CREATE TABLE public.report_publication_audiences (
+ publication_id uuid NOT NULL,
+ portal_grant_id uuid NOT NULL,
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ approved_by uuid NOT NULL,
+ approved_at timestamptz NOT NULL DEFAULT now(),
+ revoked_at timestamptz,
+ request_id uuid NOT NULL,
+ PRIMARY KEY(publication_id,portal_grant_id),
+ FOREIGN KEY(publication_id,teacher_id)
+   REFERENCES public.report_publications(id,teacher_id) ON DELETE CASCADE,
+ FOREIGN KEY(portal_grant_id,teacher_id)
+   REFERENCES public.portal_access_grants(id,teacher_id) ON DELETE RESTRICT,
+ CONSTRAINT ccp_report_audience_teacher_approved CHECK(approved_by=teacher_id),
+ UNIQUE(teacher_id,request_id)
+);
+CREATE OR REPLACE FUNCTION public.ccp_report_audience_scope_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_report_audience$
+DECLARE p public.report_publications%ROWTYPE;
+        g public.portal_access_grants%ROWTYPE;
+BEGIN
+ SELECT * INTO p FROM public.report_publications WHERE id=NEW.publication_id
+  AND teacher_id=NEW.teacher_id;
+ SELECT * INTO g FROM public.portal_access_grants WHERE id=NEW.portal_grant_id
+  AND teacher_id=NEW.teacher_id;
+ IF p.id IS NULL OR g.id IS NULL OR p.revoked_at IS NOT NULL
+    OR p.superseded_by IS NOT NULL OR g.revoked_at IS NOT NULL
+    OR g.expires_at<=now() OR NOT ('shared_notes'=ANY(g.permissions))
+    OR (p.student_id IS NOT NULL AND p.student_id<>g.student_id)
+    OR (p.workplace_id IS NOT NULL AND p.workplace_id<>g.workplace_id) THEN
+   RAISE EXCEPTION 'REPORT_AUDIENCE_NOT_AUTHORIZED' USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_report_audience$;
+REVOKE ALL ON FUNCTION public.ccp_report_audience_scope_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_report_audience_scope_guard
+ BEFORE INSERT OR UPDATE OF portal_grant_id,publication_id,teacher_id
+ ON public.report_publication_audiences FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_audience_scope_guard();
+
+-- Only trusted writers may approve new publications and audience grants.
+-- Owner read-back is possible, but unapproved public/portal access is not.
+ALTER TABLE public.rating_providers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rating_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.slot_occurrence_exceptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.report_publications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.report_publication_audiences ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ccp_rating_providers_read ON public.rating_providers
+ FOR SELECT TO authenticated USING(active);
+CREATE POLICY ccp_rating_categories_read ON public.rating_categories
+ FOR SELECT TO authenticated USING(active);
+CREATE POLICY ccp_slot_exceptions_owner ON public.slot_occurrence_exceptions
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_report_publications_owner ON public.report_publications
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_report_audiences_owner ON public.report_publication_audiences
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON public.rating_providers,public.rating_categories,
+ public.slot_occurrence_exceptions,public.report_publications,
+ public.report_publication_audiences FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.rating_providers,public.rating_categories,
+ public.slot_occurrence_exceptions,public.report_publications,
+ public.report_publication_audiences TO authenticated;
+GRANT ALL ON public.rating_providers,public.rating_categories,
+ public.slot_occurrence_exceptions,public.report_publications,
+ public.report_publication_audiences TO service_role;
+-- END ADR-0019 cross-domain schema contracts.
