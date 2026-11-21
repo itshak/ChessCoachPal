@@ -341,10 +341,14 @@ export async function POST(req: NextRequest) {
         result = await groupsUnenroll(db, teacherId, call.groupId, call.studentId); break;
       case "groups.members":
         result = await groupsMembers(db, teacherId, call.groupId); break;
-      case "lessons.archivedRecoveryPreview":
-        result=await teacherArchivedLessonRecoveryPreview(db,teacherId,call);break;
-      case "lessons.archivedRecoveryCommit":
-        result=await teacherArchivedLessonRecoveryCommit(db,teacherId,call);break;
+      case "lessons.archivedRecoveryPreview": {
+        const {action: _action, ...payload}=call;
+        result=await teacherArchivedLessonRecoveryPreview(db,teacherId,payload);break;
+      }
+      case "lessons.archivedRecoveryCommit": {
+        const {action: _action, ...payload}=call;
+        result=await teacherArchivedLessonRecoveryCommit(db,teacherId,payload);break;
+      }
       case "sessions.list":
         result = await sessionsList(db, teacherId); break;
       case "sessions.create":
