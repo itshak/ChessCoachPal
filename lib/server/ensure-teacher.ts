@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { hostedSignupFields, getDeploymentMode, getHostedLimits } from "@/lib/entitlements";
 import { isUniqueViolation } from "@/lib/onboarding";
 import { ensureTeacherPolicyRow } from "@/lib/server/ensure-policy";
 import { ensureWelcomeNotification } from "@/lib/server/notifications";
@@ -8,7 +7,7 @@ import {isAppLocale,type AppLocale} from "@/i18n/locales";
 /**
  * Ensure a teachers row (+ studio policy) exists for an auth user.
  * Uses the service client (authenticated role cannot INSERT teachers).
- * Hosted signups get trial fields from hostedSignupFields().
+ * The database provisions one Personal workplace and Free entitlement row.
  *
  * Also seeds the one-time welcome notification for accounts that have not
  * finished the first-run tour. Safe to call on signup, email confirm, and
@@ -30,13 +29,10 @@ export async function ensureTeacherForAuthUser(
     .eq("id", opts.userId)
     .maybeSingle();
 
-  const hostedEnforced = getDeploymentMode()==="hosted";
-  const hostedCapacity = getHostedLimits().maxStudents;
   let created = false;
   let tourCompletedAt: string | null = existing?.onboarding_tour_completed_at ?? null;
 
   if (!existing) {
-    const hosted = hostedSignupFields();
     const display =
       opts.displayName?.trim() ||
       opts.email.split("@")[0] ||
@@ -47,10 +43,6 @@ export async function ensureTeacherForAuthUser(
       email: opts.email,
       display_name: display,
       ...(isAppLocale(opts.preferredLocale)?{preferred_locale:opts.preferredLocale}:{}),
-      hosted_plan: hosted.hosted_plan,
-      trial_ends_at: hosted.trial_ends_at,
-      hosted_enforced: hostedEnforced,
-      hosted_max_active_students: hostedCapacity,
     });
 
     if (error && isUniqueViolation(error)) {
@@ -69,13 +61,6 @@ export async function ensureTeacherForAuthUser(
     }
   }
 
-  // Entitlement provisioning is privileged and cannot be spoofed by a teacher JWT.
-  if (existing && hostedEnforced) {
-    const {error:capacityError}=await serviceClient.from("teachers").update({
-      hosted_enforced:true,hosted_max_active_students:hostedCapacity,
-    }).eq("id",opts.userId);
-    if(capacityError)return {ok:false,error:"Failed to verify hosted capacity"};
-  }
 
   await ensureTeacherPolicyRow(
     serviceClient,
