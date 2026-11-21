@@ -13994,3 +13994,164 @@ CREATE UNIQUE INDEX ccp_official_rating_list_once
  ON public.student_rating_snapshots
  (teacher_id,student_id,provider,time_control,provider_list_version)
  WHERE source='provider_api' AND provider_list_version IS NOT NULL;
+
+
+-- ADR-0019: immutable commercial contract guards.
+-- Catalogue publishing is a one-way transition: after publication, a change
+-- is a NEW plan version, never mutation of an existing entitlement contract.
+CREATE OR REPLACE FUNCTION public.ccp_published_plan_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_plan_guard$
+BEGIN
+ IF TG_OP='DELETE' THEN
+   IF OLD.lifecycle<>'draft' THEN
+     RAISE EXCEPTION 'PUBLISHED_PLAN_IMMUTABLE' USING ERRCODE='23514';
+   END IF;
+   RETURN OLD;
+ END IF;
+ IF OLD.lifecycle<>'draft' THEN
+   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.code IS DISTINCT FROM OLD.code
+     OR NEW.version IS DISTINCT FROM OLD.version
+     OR NEW.priority IS DISTINCT FROM OLD.priority
+     OR NEW.effective_at IS DISTINCT FROM OLD.effective_at
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR NEW.lifecycle NOT IN ('published','retired')
+     OR (OLD.lifecycle='retired' AND NEW.lifecycle<>'retired')
+     OR (OLD.lifecycle='retired' AND NEW.retired_at IS DISTINCT FROM OLD.retired_at)
+     OR (OLD.lifecycle='published' AND NEW.retired_at IS DISTINCT FROM OLD.retired_at
+         AND NEW.lifecycle<>'retired')
+   THEN
+    RAISE EXCEPTION 'PUBLISHED_PLAN_IMMUTABLE' USING ERRCODE='23514';
+   END IF;
+ ELSIF NEW.lifecycle='published' AND NEW.effective_at IS NULL THEN
+    RAISE EXCEPTION 'PLAN_EFFECTIVE_DATE_REQUIRED' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_plan_guard$;
+REVOKE ALL ON FUNCTION public.ccp_published_plan_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_published_plan_guard BEFORE UPDATE OR DELETE
+ ON public.plan_versions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_published_plan_guard();
+
+CREATE OR REPLACE FUNCTION public.ccp_plan_capability_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_plan_cap_guard$
+DECLARE v_version uuid;v_lifecycle text;
+BEGIN
+ v_version:=CASE WHEN TG_OP='DELETE' THEN OLD.plan_version_id ELSE NEW.plan_version_id END;
+ SELECT lifecycle INTO v_lifecycle FROM public.plan_versions WHERE id=v_version;
+ IF v_lifecycle<>'draft' OR (TG_OP='UPDATE' AND NEW.plan_version_id<>OLD.plan_version_id)
+ THEN
+    RAISE EXCEPTION 'PUBLISHED_CAPABILITY_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ RETURN NEW;
+END;
+$ccp_plan_cap_guard$;
+REVOKE ALL ON FUNCTION public.ccp_plan_capability_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_plan_capability_guard BEFORE INSERT OR UPDATE OR DELETE
+ ON public.plan_capabilities FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_plan_capability_guard();
+
+-- Individual benefits can be revoked once, not silently broadened/rewritten.
+CREATE OR REPLACE FUNCTION public.ccp_grant_immutable_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_grant_guard$
+BEGIN
+ IF TG_OP='DELETE' THEN
+    RAISE EXCEPTION 'ENTITLEMENT_GRANT_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ IF OLD.revoked_at IS NOT NULL OR
+    NEW.id IS DISTINCT FROM OLD.id OR
+    NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    NEW.kind IS DISTINCT FROM OLD.kind OR
+    NEW.plan_version_id IS DISTINCT FROM OLD.plan_version_id OR
+    NEW.capability_key IS DISTINCT FROM OLD.capability_key OR
+    NEW.capability_kind IS DISTINCT FROM OLD.capability_kind OR
+    NEW.boolean_value IS DISTINCT FROM OLD.boolean_value OR
+    NEW.integer_value IS DISTINCT FROM OLD.integer_value OR
+    NEW.unlimited IS DISTINCT FROM OLD.unlimited OR
+    NEW.valid_from IS DISTINCT FROM OLD.valid_from OR
+    NEW.expires_at IS DISTINCT FROM OLD.expires_at OR
+    NEW.reason IS DISTINCT FROM OLD.reason OR
+    NEW.issued_by IS DISTINCT FROM OLD.issued_by OR
+    NEW.request_id IS DISTINCT FROM OLD.request_id OR
+    NEW.created_at IS DISTINCT FROM OLD.created_at OR
+    (NEW.revoked_at IS NOT NULL AND NEW.revoked_at<OLD.valid_from)
+ THEN
+    RAISE EXCEPTION 'ENTITLEMENT_GRANT_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_grant_guard$;
+REVOKE ALL ON FUNCTION public.ccp_grant_immutable_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_grant_immutable_guard BEFORE UPDATE OR DELETE
+ ON public.teacher_entitlement_grants FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_grant_immutable_guard();
+
+-- Any successful grant/subscription transition invalidates stale cached
+-- summaries; teacher/state locks were acquired by serialize trigger.
+CREATE OR REPLACE FUNCTION public.ccp_bump_entitlement_revision()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_rev_bump$
+DECLARE v_teacher uuid;
+BEGIN
+ v_teacher:=CASE WHEN TG_OP='DELETE' THEN OLD.teacher_id ELSE NEW.teacher_id END;
+ UPDATE public.teacher_entitlement_state SET revision=revision+1,
+  updated_at=now(),evaluated_at=NULL
+ WHERE teacher_id=v_teacher;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ RETURN NEW;
+END;
+$ccp_rev_bump$;
+REVOKE ALL ON FUNCTION public.ccp_bump_entitlement_revision()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_grant_revision_bump AFTER INSERT OR UPDATE
+ ON public.teacher_entitlement_grants FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_bump_entitlement_revision();
+CREATE TRIGGER ccp_subscription_revision_bump AFTER INSERT OR UPDATE OR DELETE
+ ON public.platform_subscriptions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_bump_entitlement_revision();
+
+-- One audited real-count verifier for a transactional administrative
+-- reconciliation; does not fabricate capacity by accepting stale client counts.
+CREATE OR REPLACE FUNCTION public.ccp_reconcile_entitlement_counts(p_teacher uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_count_reconcile$
+DECLARE v_students integer;v_workplaces integer;v_before public.teacher_entitlement_state%ROWTYPE;
+BEGIN
+ IF coalesce(auth.role(),'')<>'service_role' THEN
+   RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
+ END IF;
+ PERFORM 1 FROM public.teachers WHERE id=p_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'TEACHER_NOT_FOUND' USING ERRCODE='23503';END IF;
+ SELECT * INTO v_before FROM public.teacher_entitlement_state
+ WHERE teacher_id=p_teacher FOR UPDATE;
+ SELECT count(*) INTO v_students FROM public.students
+ WHERE teacher_id=p_teacher AND archived_at IS NULL;
+ SELECT count(*) INTO v_workplaces FROM public.workplaces
+ WHERE teacher_id=p_teacher AND kind='professional' AND archived_at IS NULL;
+ IF v_before.active_student_count<>v_students OR
+    v_before.active_professional_workplace_count<>v_workplaces THEN
+   UPDATE public.teacher_entitlement_state
+    SET active_student_count=v_students,
+        active_professional_workplace_count=v_workplaces,
+        revision=revision+1,updated_at=now(),evaluated_at=NULL
+    WHERE teacher_id=p_teacher;
+   INSERT INTO public.entitlement_audit_events
+    (teacher_id,source,action,request_id,reason,revision_before,revision_after)
+    VALUES(p_teacher,'reconciliation','counter_reconciliation',gen_random_uuid(),
+           'Verified canonical active student and professional workplace counts',
+           v_before.revision,v_before.revision+1);
+ END IF;
+ RETURN jsonb_build_object('activeStudentCount',v_students,
+  'activeProfessionalWorkplaceCount',v_workplaces,
+  'changed',v_before.active_student_count<>v_students OR
+            v_before.active_professional_workplace_count<>v_workplaces);
+END;
+$ccp_count_reconcile$;
+REVOKE ALL ON FUNCTION public.ccp_reconcile_entitlement_counts(uuid)
+ FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_reconcile_entitlement_counts(uuid) TO service_role;
+-- END ADR-0019 commercial immutability and reconciliation.
