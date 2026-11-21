@@ -173,3 +173,119 @@ test("new hosted trial teacher cannot bypass free cap after trial expires",async
   expect(counter?.active_student_count).toBe(1);
   expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
 });
+
+
+test("archived lesson recovery serializes simultaneous hosted-capacity reactivations",async()=>{
+  const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+  });
+  const email="archived-recovery-cap-"+randomUUID()+"@example.com";
+  const password="SyntheticRecoveryCap-123!";
+  const {data:identity,error:identityError}=await admin.auth.admin.createUser({
+    email,password,email_confirm:true,
+  });
+  expect(identityError).toBeNull();
+  const teacherId=identity.user!.id;
+  try{
+    const teacher=await admin.from("teachers").insert({
+      id:teacherId,email,display_name:"Archived recovery quota test",
+      hosted_enforced:true,hosted_max_active_students:2,hosted_plan:"free",
+    });
+    expect(teacher.error).toBeNull();
+    const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+      auth:{persistSession:false,autoRefreshToken:false},
+    });
+    expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();
+    const campus=await admin.from("workplaces").insert({
+      teacher_id:teacherId,name:"Archived recovery campus "+randomUUID(),
+      timezone:"UTC",currency:"USD",locale:"en",policy:{},
+    }).select("id").single();
+    expect(campus.error).toBeNull();
+    const workplaceId=campus.data!.id as string;
+    const archivedIds:string[]=[];
+    const revisions:string[]=[];
+    for(let i=0;i<2;i++){
+      const created=await auth.from("students").insert({
+        teacher_id:teacherId,name:"Returning learner "+i+" "+randomUUID(),
+      }).select("id").single();
+      expect(created.error).toBeNull();
+      const studentId=created.data!.id as string;
+      expect((await admin.from("workplace_enrollments").insert({
+        teacher_id:teacherId,workplace_id:workplaceId,
+        student_id:studentId,source:"manual",
+      })).error).toBeNull();
+      const preview=await auth.rpc("ccp_student_lifecycle_preview",{
+        p_student_id:studentId,
+      });
+      expect(preview.error).toBeNull();
+      expect(preview.data.canArchive).toBe(true);
+      const archive=await auth.rpc("ccp_student_lifecycle_commit",{
+        p_student_id:studentId,p_mode:"archive",
+        p_expected_updated_at:preview.data.expectedUpdatedAt,
+        p_selected_workplaces:[],p_request_id:randomUUID(),
+        p_reason:"Teacher reviewed archival before a quota race test",
+        p_confirmed:true,
+      });
+      expect(archive.error).toBeNull();
+      expect(archive.data.archived).toBe(true);
+      const archived=await auth.rpc("ccp_student_lifecycle_preview",{
+        p_student_id:studentId,
+      });
+      expect(archived.error).toBeNull();
+      expect(archived.data.previousWorkplaceIds).toContain(workplaceId);
+      archivedIds.push(studentId);
+      revisions.push(archived.data.expectedUpdatedAt as string);
+    }
+    // Only one active slot remains. Neither participant can obtain it by
+    // racing another approved, individually valid lesson+reactivation.
+    const active=await auth.from("students").insert({
+      teacher_id:teacherId,name:"Currently active learner "+randomUUID(),
+    }).select("id").single();
+    expect(active.error).toBeNull();
+    const approvals=archivedIds.map((studentId,i)=>({
+      p_workplace_id:workplaceId,p_student_ids:[studentId],
+      p_reactivations:[{studentId,expectedUpdatedAt:revisions[i]}],
+      p_title:"Concurrent archived return "+i+" "+randomUUID(),
+      p_starts_at:i===0?"2060-03-10T14:00:00+00:00":"2060-03-11T14:00:00+00:00",
+      p_duration_minutes:45,p_lesson_note:"",
+      p_request_id:randomUUID(),
+      p_reason:"Teacher explicitly approves one safe returning learner",
+      p_confirmed:true,
+    }));
+    const attempts=await Promise.all(approvals.map(args=>
+      auth.rpc("ccp_teacher_archived_lesson_recovery_commit",args)));
+    const successes=attempts.filter(x=>!x.error);
+    const rejected=attempts.filter(x=>x.error);
+    expect(successes).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].error!.code).toBe("23514");
+    expect(rejected[0].error!.message).toContain("HOSTED_LIMIT_REACHED");
+    const {data:teacher,error:teacherError}=await admin.from("teachers")
+      .select("active_student_count").eq("id",teacherId).single();
+    expect(teacherError).toBeNull();
+    expect(teacher?.active_student_count).toBe(2);
+    const {data:students,error:studentError}=await admin.from("students")
+      .select("id,archived_at").eq("teacher_id",teacherId);
+    expect(studentError).toBeNull();
+    expect(students!.filter(s=>s.archived_at===null)).toHaveLength(2);
+    expect(students!.filter(s=>s.archived_at!==null)).toHaveLength(1);
+    const {data:sessions,error:sessionError}=await admin.from("teaching_sessions")
+      .select("id,student_id").eq("teacher_id",teacherId);
+    expect(sessionError).toBeNull();
+    expect(sessions).toHaveLength(1);
+    const winner=successes[0].data;
+    expect(sessions![0].id).toBe(winner.id);
+    expect(winner.reactivatedCount).toBe(1);
+    const winningArgs=approvals[attempts.findIndex(x=>!x.error)];
+    const replay=await auth.rpc("ccp_teacher_archived_lesson_recovery_commit",winningArgs);
+    expect(replay.error).toBeNull();
+    expect(replay.data).toMatchObject({id:winner.id,replayed:true});
+    const {count,error:sessionCountError}=await admin.from("teaching_sessions")
+      .select("id",{count:"exact",head:true}).eq("teacher_id",teacherId);
+    expect(sessionCountError).toBeNull();
+    expect(count).toBe(1);
+  }finally{
+    expect((await admin.auth.admin.deleteUser(teacherId)).error).toBeNull();
+  }
+});
