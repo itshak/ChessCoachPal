@@ -30,8 +30,8 @@ INSERT INTO auth.identities (
 );
 
 -- The teacher trigger creates default workplace + chess skill categories.
-INSERT INTO public.teachers (id, email, display_name, hosted_plan, onboarding_tour_completed_at) VALUES
-('00000000-0000-0000-0000-000000000001', 'teacher@example.com', 'Chess Coach', 'pro', now());
+INSERT INTO public.teachers (id, email, display_name, onboarding_tour_completed_at) VALUES
+('00000000-0000-0000-0000-000000000001', 'teacher@example.com', 'Chess Coach', now());
 
 -- Synthetic identities, distinct from payer accounts and portal grants.
 -- No capability tokens are stored or issued from seed contacts.
