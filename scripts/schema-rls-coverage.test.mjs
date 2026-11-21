@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { deepStrictEqual, match, ok } from "node:assert/strict";
+import { deepStrictEqual, ok } from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { canonicalPublicTableRlsErrors } from "./schema-rls-coverage.mjs";
 
