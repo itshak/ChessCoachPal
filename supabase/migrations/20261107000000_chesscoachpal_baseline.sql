@@ -13216,8 +13216,7 @@ ALTER TABLE public.workplaces
  ADD COLUMN kind text NOT NULL DEFAULT 'professional'
    CHECK (kind IN ('personal','professional')),
  ADD COLUMN archived_at timestamptz,
- ADD COLUMN revision bigint NOT NULL DEFAULT 1 CHECK (revision>=1),
- ADD COLUMN updated_at timestamptz NOT NULL DEFAULT now();
+ ADD COLUMN revision bigint NOT NULL DEFAULT 1 CHECK (revision>=1);
 CREATE UNIQUE INDEX ccp_one_personal_workplace
  ON public.workplaces(teacher_id) WHERE kind='personal';
 CREATE INDEX ccp_professional_workplaces_active
