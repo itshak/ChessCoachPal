@@ -1,7 +1,7 @@
 {
-  "auditedAt": "2026-11-20",
+  "auditedAt": "2026-11-21",
   "headSha": "5288c4e5917473cca7979700cfa9fc77a685f4ca",
-  "policy": "All chess business features, including GigaChess legality, combined session+chapter approval and study preference hierarchy, use shared website/MCP domain operations with tenant authorization. The original 93 historical cases, additional named E2E, strict parity and manual real-client prepublication gates remain mandatory.",
+  "policy": "All chess business features, including GigaChess legality, combined session+chapter approval and study preference hierarchy, use shared website/MCP domain operations with tenant authorization. The original 93 historical cases, additional named E2E, strict parity and manual real-client prepublication gates remain mandatory. ADR-0019 schema normalization requires the account page and ccp_hosted_subscription_handoff to expose the same SQL effective capability read; any future paid checkout must go through an independently verified provider adapter.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",
@@ -925,7 +925,7 @@
       "kind": "auth",
       "parity": "browser-only",
       "existingTools": [],
-      "explanation": "Hosting subscription checkout; web reauth"
+      "explanation": "Hosting subscription checkout; web reauth ADR-0019: fail-closed 503 until approved provider-neutral checkout + signed event adapter exists. No Stripe or return URL grants access, and browser page no longer shows unverified success states."
     },
     {
       "path": "app/api/hosted-billing/portal/route.ts",
@@ -935,7 +935,7 @@
       "kind": "auth",
       "parity": "browser-only",
       "existingTools": [],
-      "explanation": "Hosting provider portal; browser-only handoff"
+      "explanation": "Hosting provider portal; browser-only handoff ADR-0019: no legacy platform Stripe customer authority; fail-closed 503 pending reviewed provider adapter."
     },
     {
       "path": "app/api/hosted-billing/webhook/route.ts",
@@ -945,7 +945,7 @@
       "kind": "system",
       "parity": "not-applicable",
       "existingTools": [],
-      "explanation": "Subscription webhook (not a teacher chat action)"
+      "explanation": "Subscription webhook (not a teacher chat action) ADR-0019: fail-closed 503 during provider-neutral cutover; never accept unverified checkout-success or stale cancellation as a plan mutation."
     },
     {
       "path": "app/api/import/historical/commit/route.ts",
@@ -1594,7 +1594,7 @@
         "ccp_students_roster",
         "ccp_students_create_full"
       ],
-      "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes. Direct archived-on-create uses the same confirmed website/MCP SQL receipt and excludes the archived learner from active roster/quota; the candidate exercises archived creation and changed-payload replay in e2e/parity-students.spec.ts. Historical attendance import reads this explicit includeArchived paginated student roster, equivalent to MCP ccp_students_roster. Its UI now handles this read independently from workplace list errors, with authenticated browser regression in e2e/parity-historical-import.spec.ts.",
+      "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes. Direct archived-on-create uses the same confirmed website/MCP SQL receipt and excludes the archived learner from active roster/quota; the candidate exercises archived creation and changed-payload replay in e2e/parity-students.spec.ts. Historical attendance import reads this explicit includeArchived paginated student roster, equivalent to MCP ccp_students_roster. Its UI now handles this read independently from workplace list errors, with authenticated browser regression in e2e/parity-historical-import.spec.ts. ADR-0019 prelaunch schema transition: both browser and MCP write paths now commit under the same SQL ccp_student_capacity_guard using the effective plan/grant and active-state counters, with no environment-derived hosted cap as authority. SQL snapshot correctness and parallel writes remain release acceptance gates.",
       "evidenceTest": "e2e/parity-students.spec.ts"
     },
     {
@@ -1651,7 +1651,7 @@
         "ccp_workplace_context_get",
         "ccp_workplace_context_set"
       ],
-      "explanation": "One owner-bound global workplace selection service for website and MCP. Null means All Workplaces, stale revision fails, foreign workplace rejected. Selection is a filter, never a permission or lesson mutation.",
+      "explanation": "One owner-bound global workplace selection service for website and MCP. Null means All Workplaces, stale revision fails, foreign workplace rejected. Selection is a filter, never a permission or lesson mutation. ADR-0019: both website and MCP receive the same active-only selectable workplaces; archived professional contexts are preserved for historical reads but rejected for new selection.",
       "evidenceTest": "e2e/parity-workplace-context.spec.ts"
     },
     {
