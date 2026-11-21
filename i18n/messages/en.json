@@ -1193,7 +1193,7 @@
     "title": "Capture a lesson from student names",
     "aria": "Multi-student lesson capture",
     "intro": "Enter one student name or Hebrew, Russian or English alias per line. Preview exact identities before creating a single frozen-roster lesson. No attendance or mastery is assumed.",
-    "names": "Student names, one per line (2–50)",
+    "names": "Student names, one per line (1–50)",
     "workplace": "Workplace / time zone",
     "selectWorkplace": "Select workplace",
     "lessonTitle": "Lesson title",
