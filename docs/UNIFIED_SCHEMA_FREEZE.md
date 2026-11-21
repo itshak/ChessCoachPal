@@ -3,7 +3,7 @@
 # Unified operator-only SaaS schema — inventory and handoff
 
 **2026-11-19 candidate. Not accepted, merged, released, deployed or approved for live cutover.**
-Implements the schema-only prerequisite in [OpenSpec](../openspec/changes/2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md), under [ADR-0017](adr/0017-pre-v1-single-final-cutover-no-compatibility.md) and [ADR-0018](adr/0018-operator-only-saas-and-tenant-scaling.md). The only canonical new-install migration is `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`; `scripts/schema-transition-manifest.json` binds its SHA-256. This is not a customer self-hosting edition, staged compatibility migration, production deployment or permission for a database reset.
+Implements the schema-only prerequisite in [OpenSpec](../openspec/changes/archive/2026-11-19-freeze-unified-saas-schema-and-regressions-superseded/proposal.md), under [ADR-0017](adr/0017-pre-v1-single-final-cutover-no-compatibility.md) and [ADR-0018](adr/0018-operator-only-saas-and-tenant-scaling.md). The only canonical new-install migration is `supabase/migrations/20261107000000_chesscoachpal_baseline.sql`; `scripts/schema-transition-manifest.json` binds its SHA-256. This is not a customer self-hosting edition, staged compatibility migration, production deployment or permission for a database reset.
 
 | Persisted domain | Canonical records | Functional OpenSpec owner |
 | --- | --- | --- |

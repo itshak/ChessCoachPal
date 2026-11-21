@@ -25,7 +25,7 @@ ADR-0017 requires one final authoritative fresh-install schema and **one separat
 
 ## Mandatory schema-first execution gate
 
-[Unified SaaS schema and regression repair](2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md) is now **the first remaining implementation change**. It collects all schema requirements from every active proposal, finalizes one baseline and fixes schema-induced regressions before any downstream feature work. All other active proposals depend on its reviewed freeze and exact-head checks; their previous per-feature schema instructions are requirements handed to this foundation, not separate DDL phases.
+[Unified SaaS schema and regression repair](archive/2026-11-19-freeze-unified-saas-schema-and-regressions-superseded/proposal.md) is now **the first remaining implementation change**. It collects all schema requirements from every active proposal, finalizes one baseline and fixes schema-induced regressions before any downstream feature work. All other active proposals depend on its reviewed freeze and exact-head checks; their previous per-feature schema instructions are requirements handed to this foundation, not separate DDL phases.
 
 ## Historical planning sequence (superseded by schema-first gate)
 

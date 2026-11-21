@@ -2,7 +2,7 @@
 
 **Current planning checkpoint: 2026-11-21.** [ADR-0019](../../docs/adr/0019-single-final-schema-and-commercial-entitlements.md) establishes exactly **one active schema-changing P0 proposal**: [final production-ready schema + Freemium foundation](2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md). Its [87-table source crosswalk](../../docs/FINAL_SCHEMA_REQUIREMENTS_CROSSWALK_2026-11-21.md) and [acceptance matrix](../../docs/FINAL_SCHEMA_ACCEPTANCE_MATRIX_2026-11-21.md) are **proposed review artifacts**, not SQL implementation, production proof or freeze acceptance.
 
-The earlier [2026-11-19 schema-freeze proposal](2026-11-19-freeze-unified-saas-schema-and-regressions/proposal.md) is **SUPERSEDED for DDL ownership, not implemented or silently accepted**. All its unchecked requirements have been transferred into the consolidated P0. Its historical files remain for traceability; never execute them as an independent schema workstream.
+The earlier [2026-11-19 schema-freeze proposal](archive/2026-11-19-freeze-unified-saas-schema-and-regressions-superseded/proposal.md) is **SUPERSEDED for DDL ownership, not implemented or silently accepted**. All its unchecked requirements have been transferred into the consolidated P0. Its historical files remain for traceability; never execute them as an independent schema workstream.
 
 ## Current GitHub/production evidence
 
