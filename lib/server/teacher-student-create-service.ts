@@ -52,7 +52,7 @@ export async function createStudentWithOptionalContact(
   void teacherId;
   if(error){
     const message=error.message??"Student creation failed";
-    if(message.includes("HOSTED_LIMIT_REACHED"))
+    if(/CAPACITY_EXCEEDED|HOSTED_LIMIT_REACHED/.test(message))
       return {ok:false,error:"Active-student capacity reached",status:403};
     if(message.includes("STUDENT_REQUEST_CONFLICT")||error.code==="23505")
       return {ok:false,error:"Student creation requestId was already used with different details",status:409};
