@@ -36,9 +36,9 @@ test("P0 normalized grants are owner-readable and provider events are service-on
   expect(plan.error).toBeNull();
   planId=plan.data!.id as string;
   for(const user of users){
-   const state=await admin.from("teacher_entitlement_state").insert({
-    teacher_id:user.id,baseline_plan_version_id:planId,
-   });
+   const state=await admin.from("teacher_entitlement_state")
+    .update({baseline_plan_version_id:planId})
+    .eq("teacher_id",user.id);
    expect(state.error).toBeNull();
   }
   const grant=await admin.from("teacher_entitlement_grants").insert({
