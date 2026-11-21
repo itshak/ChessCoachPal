@@ -29,8 +29,8 @@ BEGIN
   -- The global workplace filter is the ONLY new writable teacher column;
   -- full teacher records and hosted caps must remain inaccessible.
   IF NOT has_column_privilege('authenticated','public.teachers','selected_workplace_id','UPDATE')
-    OR has_column_privilege('authenticated','public.teachers','hosted_max_active_students','UPDATE')
-    OR has_column_privilege('authenticated','public.teachers','hosted_enforced','UPDATE')
+    OR has_table_privilege('authenticated','public.teacher_entitlement_state','UPDATE')
+    OR has_table_privilege('authenticated','public.teacher_entitlement_grants','INSERT')
     OR has_table_privilege('authenticated','public.teachers','UPDATE') THEN
     RAISE EXCEPTION 'Unsafe/absent teacher workplace filter column grant';
   END IF;
@@ -111,7 +111,7 @@ END
 $baseline$;
 
 -- Prove actual auth-role behavior, not only pg_acl metadata. All changes are
--- rolled back; no synthetic teacher preference or hosted cap persists.
+-- rolled back; no synthetic teacher preference or entitlement capacity persists.
 BEGIN;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub',
@@ -130,9 +130,9 @@ BEGIN
    RAISE EXCEPTION 'Authenticated teacher cannot update selected workplace';
  END IF;
  BEGIN
-   UPDATE public.teachers SET hosted_max_active_students=99999
-     WHERE id=auth.uid();
-   RAISE EXCEPTION 'Authenticated user changed hosted subscription caps';
+   UPDATE public.teacher_entitlement_state SET active_student_count=99999
+     WHERE teacher_id=auth.uid();
+   RAISE EXCEPTION 'Authenticated user changed canonical subscription capacity';
  EXCEPTION WHEN insufficient_privilege THEN
    NULL; -- safe: hosted billing administration remains server-only
  END;
@@ -214,3 +214,86 @@ BEGIN
  END IF;
 END;
 $rating_freeze$;
+
+
+-- ADR-0019: normalized entitlement and cross-domain schema proof.
+DO $final_schema$
+DECLARE tbl text;
+BEGIN
+ FOREACH tbl IN ARRAY ARRAY[
+  'capability_definitions','plan_versions','plan_capabilities',
+  'teacher_entitlement_state','teacher_entitlement_grants',
+  'entitlement_audit_events','account_usage_periods','account_usage_events',
+  'platform_billing_customers','platform_subscription_offers',
+  'platform_subscriptions','platform_billing_events',
+  'rating_providers','rating_categories','slot_occurrence_exceptions',
+  'report_publications','report_publication_audiences','session_amendment_events'
+ ] LOOP
+  IF to_regclass('public.'||tbl) IS NULL THEN
+   RAISE EXCEPTION 'ADR-0019 missing canonical relation: %',tbl;
+  END IF;
+  IF (SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.'||tbl))
+    IS DISTINCT FROM true THEN RAISE EXCEPTION 'ADR-0019 missing RLS: %',tbl;END IF;
+  IF has_table_privilege('authenticated','public.'||tbl,'INSERT') OR
+    has_table_privilege('authenticated','public.'||tbl,'UPDATE') OR
+    has_table_privilege('authenticated','public.'||tbl,'DELETE') OR
+    has_table_privilege('anon','public.'||tbl,'SELECT') THEN
+    RAISE EXCEPTION 'ADR-0019 unsafe public mutation on %',tbl;
+  END IF;
+ END LOOP;
+ IF NOT EXISTS(SELECT 1 FROM pg_constraint c
+   WHERE c.conrelid='public.student_rating_snapshots'::regclass
+    AND c.conname='ccp_rating_snapshot_registered_category') THEN
+  RAISE EXCEPTION 'Rating snapshots must reference extensible categories';
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_constraint c
+   WHERE c.conrelid='public.report_publication_audiences'::regclass
+     AND c.contype='f' AND c.confrelid='public.portal_access_grants'::regclass) THEN
+  RAISE EXCEPTION 'Published report audience must be explicitly portal scoped';
+ END IF;
+ IF to_regprocedure('public.ccp_effective_capability(uuid,text,timestamptz)') IS NULL OR
+    to_regprocedure('public.ccp_entitlement_summary()') IS NULL THEN
+   RAISE EXCEPTION 'Missing single SQL entitlement evaluator';
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_trigger
+   WHERE tgrelid='public.students'::regclass
+     AND tgname='ccp_student_capacity_guard' AND NOT tgisinternal) OR
+    NOT EXISTS(SELECT 1 FROM pg_trigger
+   WHERE tgrelid='public.workplaces'::regclass
+     AND tgname='ccp_professional_workplace_capacity_guard' AND NOT tgisinternal) THEN
+  RAISE EXCEPTION 'Missing transactional capacity triggers';
+ END IF;
+ IF EXISTS(SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='teachers'
+     AND column_name IN ('hosted_plan','hosted_enforced',
+       'hosted_max_active_students','stripe_subscription_id','founding_number')) THEN
+  RAISE EXCEPTION 'Inherited SaaS plan authority must be absent';
+ END IF;
+END
+$final_schema$;
+
+BEGIN;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub',
+ '00000000-0000-0000-0000-000000000001',true);
+DO $entitlement_denials$
+DECLARE v_invalid boolean:=false;
+BEGIN
+ BEGIN
+  PERFORM public.ccp_effective_capability(
+    '00000000-0000-0000-0000-000000000002'::uuid,
+    'students.active');
+ EXCEPTION WHEN insufficient_privilege THEN
+   v_invalid:=true;
+ END;
+ IF NOT v_invalid THEN RAISE EXCEPTION 'Cross-teacher capability read succeeded';END IF;
+ BEGIN
+  INSERT INTO public.platform_billing_events(provider,merchant_scope,
+   external_event_id,event_type,payload_sha256,signature_verified_at)
+  VALUES('synthetic','synthetic','forged','subscription.active',repeat('a',64),now());
+  RAISE EXCEPTION 'Authenticated user forged a provider billing event';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
+END
+$entitlement_denials$;
+ROLLBACK;
