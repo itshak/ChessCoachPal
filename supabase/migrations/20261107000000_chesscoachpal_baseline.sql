@@ -13415,8 +13415,8 @@ CREATE TABLE public.report_publications (
  superseded_by uuid,
  revoked_at timestamptz,
  created_at timestamptz NOT NULL DEFAULT now(),
- CONSTRAINT ccp_report_scope_single CHECK(
-   (student_id IS NOT NULL) <> (workplace_id IS NOT NULL)),
+ CONSTRAINT ccp_report_scope_required CHECK(
+   student_id IS NOT NULL OR workplace_id IS NOT NULL),
  CONSTRAINT ccp_report_teacher_approval CHECK(approved_by=teacher_id),
  FOREIGN KEY(student_id,teacher_id)
    REFERENCES public.students(id,teacher_id) ON DELETE RESTRICT,
@@ -13806,6 +13806,8 @@ BEGIN
   SELECT active_student_count INTO v_count FROM public.teacher_entitlement_state
    WHERE teacher_id=v_teacher FOR UPDATE;
   IF NOT FOUND THEN
+   IF TG_OP='DELETE' AND NOT EXISTS
+    (SELECT 1 FROM public.teachers WHERE id=v_teacher) THEN RETURN OLD;END IF;
    RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
   END IF;
   IF v_delta>0 THEN
@@ -13855,6 +13857,8 @@ BEGIN
    FROM public.teacher_entitlement_state
    WHERE teacher_id=v_teacher FOR UPDATE;
   IF NOT FOUND THEN
+   IF TG_OP='DELETE' AND NOT EXISTS
+    (SELECT 1 FROM public.teachers WHERE id=v_teacher) THEN RETURN OLD;END IF;
    RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
   END IF;
   IF v_delta>0 THEN
@@ -13883,3 +13887,111 @@ CREATE TRIGGER ccp_professional_workplace_capacity_guard
 -- Verified counters and capacity remain a database invariant, including
 -- imports and direct PostgREST writes; service callers cannot opt out.
 -- END ADR-0019 normalized SQL authority.
+
+
+-- Audit-preserving exception replacement: revoke old intent with its receipt,
+-- then insert a new approved version for the same original local date.
+ALTER TABLE public.slot_occurrence_exceptions
+ DROP CONSTRAINT slot_occurrence_exceptions_teacher_id_slot_id_original_occurrence_on_key,
+ ADD COLUMN revoked_by uuid,
+ ADD COLUMN revocation_request_id uuid,
+ ADD CONSTRAINT ccp_slot_exception_revoke_pair CHECK(
+   (revoked_at IS NULL AND revoked_by IS NULL AND revocation_request_id IS NULL)
+   OR (revoked_at IS NOT NULL AND revoked_by=teacher_id
+       AND revocation_request_id IS NOT NULL)),
+ ADD CONSTRAINT ccp_slot_exception_revocation_after_approval CHECK(
+   revoked_at IS NULL OR revoked_at>=approved_at);
+CREATE UNIQUE INDEX ccp_current_slot_occurrence_exception
+ ON public.slot_occurrence_exceptions(teacher_id,slot_id,original_occurrence_on)
+ WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX ccp_slot_exception_revoke_receipt
+ ON public.slot_occurrence_exceptions(teacher_id,revocation_request_id)
+ WHERE revocation_request_id IS NOT NULL;
+CREATE OR REPLACE FUNCTION public.ccp_slot_exception_immutable_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_slot_immut$
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'IMMUTABLE_OCCURRENCE' USING ERRCODE='23514';END IF;
+ IF OLD.revoked_at IS NOT NULL OR NEW.id IS DISTINCT FROM OLD.id OR
+    NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    NEW.slot_id IS DISTINCT FROM OLD.slot_id OR
+    NEW.original_occurrence_on IS DISTINCT FROM OLD.original_occurrence_on OR
+    NEW.action IS DISTINCT FROM OLD.action OR
+    NEW.revised_starts_at IS DISTINCT FROM OLD.revised_starts_at OR
+    NEW.revised_timezone IS DISTINCT FROM OLD.revised_timezone OR
+    NEW.revised_duration_minutes IS DISTINCT FROM OLD.revised_duration_minutes OR
+    NEW.session_id IS DISTINCT FROM OLD.session_id OR
+    NEW.approved_by IS DISTINCT FROM OLD.approved_by OR
+    NEW.approved_at IS DISTINCT FROM OLD.approved_at OR
+    NEW.reason IS DISTINCT FROM OLD.reason OR
+    NEW.request_id IS DISTINCT FROM OLD.request_id THEN
+  RAISE EXCEPTION 'IMMUTABLE_OCCURRENCE' USING ERRCODE='23514';
+ END IF;
+ NEW.revision:=OLD.revision+1;
+ RETURN NEW;
+END;
+$ccp_slot_immut$;
+REVOKE ALL ON FUNCTION public.ccp_slot_exception_immutable_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_slot_exception_immutable_guard BEFORE UPDATE OR DELETE
+ ON public.slot_occurrence_exceptions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_slot_exception_immutable_guard();
+
+-- Publication and audience identity/scope are immutable once approved; a
+-- later action may revoke or explicitly supersede them but never rewrite.
+CREATE OR REPLACE FUNCTION public.ccp_report_publication_immutable_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_pub_immut$
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'IMMUTABLE_PUBLICATION' USING ERRCODE='23514';END IF;
+ IF OLD.revoked_at IS NOT NULL OR OLD.superseded_by IS NOT NULL OR
+    NEW.id IS DISTINCT FROM OLD.id OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    NEW.student_id IS DISTINCT FROM OLD.student_id OR
+    NEW.workplace_id IS DISTINCT FROM OLD.workplace_id OR
+    NEW.snapshot_digest IS DISTINCT FROM OLD.snapshot_digest OR
+    NEW.snapshot_storage_ref IS DISTINCT FROM OLD.snapshot_storage_ref OR
+    NEW.output_locale IS DISTINCT FROM OLD.output_locale OR
+    NEW.approved_by IS DISTINCT FROM OLD.approved_by OR
+    NEW.approved_at IS DISTINCT FROM OLD.approved_at OR
+    NEW.request_id IS DISTINCT FROM OLD.request_id OR
+    NEW.created_at IS DISTINCT FROM OLD.created_at OR
+    (OLD.revoked_at IS NOT NULL AND NEW.revoked_at IS NULL) THEN
+   RAISE EXCEPTION 'IMMUTABLE_PUBLICATION' USING ERRCODE='23514';
+ END IF;
+ NEW.revision:=OLD.revision+1;
+ RETURN NEW;
+END;
+$ccp_pub_immut$;
+REVOKE ALL ON FUNCTION public.ccp_report_publication_immutable_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_report_publication_immutable_guard
+ BEFORE UPDATE OR DELETE ON public.report_publications FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_publication_immutable_guard();
+
+CREATE OR REPLACE FUNCTION public.ccp_report_audience_immutable_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_audience_immut$
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'IMMUTABLE_AUDIENCE' USING ERRCODE='23514';END IF;
+ IF OLD.revoked_at IS NOT NULL OR
+    NEW.publication_id IS DISTINCT FROM OLD.publication_id OR
+    NEW.portal_grant_id IS DISTINCT FROM OLD.portal_grant_id OR
+    NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    NEW.approved_by IS DISTINCT FROM OLD.approved_by OR
+    NEW.approved_at IS DISTINCT FROM OLD.approved_at OR
+    NEW.request_id IS DISTINCT FROM OLD.request_id THEN
+   RAISE EXCEPTION 'IMMUTABLE_AUDIENCE' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_audience_immut$;
+REVOKE ALL ON FUNCTION public.ccp_report_audience_immutable_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_report_audience_immutable_guard
+ BEFORE UPDATE OR DELETE ON public.report_publication_audiences FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_audience_immutable_guard();
+
+-- Same index semantics for *all* future registered official providers,
+-- not only the original national/FIDE enum values.
+DROP INDEX IF EXISTS public.federation_rating_list_once_idx;
+CREATE UNIQUE INDEX ccp_official_rating_list_once
+ ON public.student_rating_snapshots
+ (teacher_id,student_id,provider,time_control,provider_list_version)
+ WHERE source='provider_api' AND provider_list_version IS NOT NULL;
