@@ -13435,8 +13435,11 @@ DECLARE
  v_unlimited boolean;
 BEGIN
  IF p_teacher IS NULL OR (coalesce(auth.uid()=p_teacher,false)=false AND
-                          coalesce(auth.role(),'')<>'service_role' AND
-                          session_user NOT IN ('postgres','supabase_admin')) THEN
+                          coalesce(auth.role(),'')<>'service_role' AND NOT (
+                           session_user IN ('postgres','supabase_admin') AND
+                           coalesce(current_setting('role',true),'none')
+                             IN ('none','postgres','supabase_admin')
+                          )) THEN
    RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
  END IF;
  SELECT * INTO v_def FROM public.capability_definitions
