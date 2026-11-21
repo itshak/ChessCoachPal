@@ -15,7 +15,7 @@ import { inferOwnedWeeklyLessonTime,lessonIntervalConflicts,type LessonTiming } 
  */
 const uuid = z.string().uuid();
 export const lessonCapturePreviewSchema = z.object({
-  names: z.array(z.string().trim().min(1).max(120)).min(2).max(50),
+  names: z.array(z.string().trim().min(1).max(120)).min(1).max(50),
   workplaceId: uuid.optional(),
   title: z.string().trim().min(1).max(160),
   startsAt: z.string().datetime({ offset: true }).optional(),
@@ -340,7 +340,7 @@ export async function teacherLessonCapturePreview(
   // A fresh indexed chapter can now be committed with a new lesson in ONE
   // PostgreSQL transaction. The IDs and expected source version are exactly
   // the ones already reviewed above; no identity, time or mastery is inferred.
-  const proposedAtomicCommit=canCommit&&selectedChapter?{
+  const proposedAtomicCommit=canCommit&&selectedChapter&&ids.length>=2?{
     workplaceId:selectedWorkplace!.id,studentIds:ids,
     title:input.title,startsAt:timing!.startsAt,
     durationMinutes:timing!.durationMinutes,lessonNote:input.lessonNote,
@@ -368,7 +368,8 @@ export async function teacherLessonCapturePreview(
       timezone:selectedWorkplace?.timezone??null,
       inferredComprehension:false,writesPerformed:false,
       materialAssociation:"not_written",
-      materialNextStep:selectedChapter?
+      materialNextStep:selectedChapter&&ids.length===1?
+        "For a 1:1 lesson, create the reviewed session first; then separately approve chapter assignment. Do not infer attendance or mastery.":selectedChapter?
         "Approve one combined atomic lesson+chapter commit to avoid partial writes, or use the original separately approved session and chapter operations. Both leave attendance unmarked and mastery unknown.":
         "No verified study chapter selected. Do not invent material history.",
       nextStep:issues.some(issue=>issue.code==="ARCHIVED_STUDENT_CONFIRMATION_REQUIRED")?
