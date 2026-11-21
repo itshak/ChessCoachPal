@@ -25,6 +25,78 @@ export interface Database {
   public: {
     Tables: {
 
+      // ADR-0019 reviewed cross-domain schema contracts; trusted writes only.
+      rating_providers: {
+        Row: {code:string;provider_kind:"online"|"federation";display_name:string;registry_revision:number;active:boolean;created_at:string};
+        Insert: {code:string;provider_kind:"online"|"federation";display_name:string;registry_revision?:number;active?:boolean;created_at?:string};
+        Update: never;
+      };
+      rating_categories: {
+        Row: {provider_code:string;code:string;display_name:string;registry_revision:number;active:boolean;created_at:string};
+        Insert: {provider_code:string;code:string;display_name:string;registry_revision?:number;active?:boolean;created_at?:string};
+        Update: never;
+      };
+      slot_occurrence_exceptions: {
+        Row: {id:string;teacher_id:string;slot_id:string;original_occurrence_on:string;
+          action:"cancel"|"reschedule"|"override";revised_starts_at:string|null;
+          revised_timezone:string|null;revised_duration_minutes:number|null;
+          session_id:string|null;approved_by:string;approved_at:string;
+          reason:string;request_id:string;revision:number;revoked_at:string|null;created_at:string};
+        Insert: {id?:string;teacher_id:string;slot_id:string;original_occurrence_on:string;
+          action:"cancel"|"reschedule"|"override";revised_starts_at?:string|null;
+          revised_timezone?:string|null;revised_duration_minutes?:number|null;
+          session_id?:string|null;approved_by:string;approved_at?:string;
+          reason:string;request_id:string;revision?:number;revoked_at?:string|null;created_at?:string};
+        Update: never;
+      };
+      report_publications: {
+        Row: {id:string;teacher_id:string;student_id:string|null;workplace_id:string|null;
+          snapshot_digest:string;snapshot_storage_ref:string;output_locale:string;
+          approved_by:string;approved_at:string;request_id:string;revision:number;
+          superseded_by:string|null;revoked_at:string|null;created_at:string};
+        Insert: {id?:string;teacher_id:string;student_id?:string|null;workplace_id?:string|null;
+          snapshot_digest:string;snapshot_storage_ref:string;output_locale:string;
+          approved_by:string;approved_at:string;request_id:string;revision?:number;
+          superseded_by?:string|null;revoked_at?:string|null;created_at?:string};
+        Update: never;
+      };
+      report_publication_audiences: {
+        Row: {publication_id:string;portal_grant_id:string;teacher_id:string;
+          approved_by:string;approved_at:string;revoked_at:string|null;request_id:string};
+        Insert: {publication_id:string;portal_grant_id:string;teacher_id:string;
+          approved_by:string;approved_at?:string;revoked_at?:string|null;request_id:string};
+        Update: never;
+      };
+      // Teacher-verifiable evidence distinct from material delivery and ratings.
+      chess_observations: {
+        Row: {id:string;teacher_id:string;student_id:string;session_id:string|null;
+          category_id:string;observation:string;observed_at:string;
+          source:"teacher"|"agent";verified_at:string|null;verified_by:string|null;
+          request_id:string|null;created_at:string;updated_at:string;
+          learning_stage:"introduced"|"practiced"|"demonstrated"|"needs_review"|null};
+        Insert: {id?:string;teacher_id:string;student_id:string;session_id?:string|null;
+          category_id:string;observation:string;observed_at?:string;
+          source:"teacher"|"agent";verified_at?:string|null;verified_by?:string|null;
+          request_id?:string|null;created_at?:string;updated_at?:string;
+          learning_stage?:"introduced"|"practiced"|"demonstrated"|"needs_review"|null};
+        Update: Partial<Database["public"]["Tables"]["chess_observations"]["Insert"]>;
+      };
+      material_teaching_evidence: {
+        Row: {id:string;teacher_id:string;student_id:string;workplace_id:string|null;
+          session_id:string|null;material_id:string;stage:"assigned"|"taught"|"completed";
+          occurred_on:string;note:string;request_id:string;created_at:string;
+          updated_at:string;voided_at:string|null;void_reason:string|null;
+          learning_stage:"introduced"|"practiced"|"demonstrated"|"needs_review"|null;
+          stage_verified_at:string|null;stage_verified_by:string|null};
+        Insert: {id?:string;teacher_id:string;student_id:string;workplace_id?:string|null;
+          session_id?:string|null;material_id:string;stage:"assigned"|"taught"|"completed";
+          occurred_on:string;note?:string;request_id:string;created_at?:string;
+          updated_at?:string;voided_at?:string|null;void_reason?:string|null;
+          learning_stage?:"introduced"|"practiced"|"demonstrated"|"needs_review"|null;
+          stage_verified_at?:string|null;stage_verified_by?:string|null};
+        Update: Partial<Database["public"]["Tables"]["material_teaching_evidence"]["Insert"]>;
+      };
+
       // ADR-0019 schema-only foundation. Trusted platform writes only.
       capability_definitions: {
         Row: {key:string;kind:"boolean"|"integer_limit";unit:string|null;security_class:"teacher"|"operator";definition_version:number;active:boolean;created_at:string};
@@ -92,14 +164,18 @@ export interface Database {
         Row: {
           id: string; teacher_id: string; name: string; timezone: string;
           currency: string; locale: string; policy: Json; created_at: string;
+          kind: "personal"|"professional"; archived_at: string|null;
+          revision: number; updated_at: string;
         };
         Insert: {
           id?: string; teacher_id: string; name: string; timezone?: string;
           currency?: string; locale?: string; policy?: Json; created_at?: string;
+          kind?: "personal"|"professional"; archived_at?: string|null;
+          revision?: number; updated_at?: string;
         };
         Update: {
           name?: string; timezone?: string; currency?: string; locale?: string;
-          policy?: Json;
+          policy?: Json; archived_at?: string|null;
         };
       };
       class_groups: {
@@ -176,21 +252,29 @@ export interface Database {
       student_rating_snapshots: {
         Row: {
           id: string; teacher_id: string; student_id: string;
-          provider: "lichess" | "chesscom";
-          time_control: "bullet" | "blitz" | "rapid" | "classical" | "daily" | "puzzle";
+          provider: string;
+          time_control: string;
           rating: number; rating_deviation: number | null; provisional: boolean | null;
           games: number | null; source: "teacher_manual" | "provider_api";
           observed_at: string; fetched_at: string | null;
           request_id: string; created_at: string;
+          effective_at:string|null;provider_list_version:string|null;
+          source_url:string|null;source_digest:string|null;
+          verification_state:"unverified"|"provider_published";
+          external_player_id:string|null;source_handle_revision:number|null;
         };
         Insert: {
           id?: string; teacher_id: string; student_id: string;
-          provider: "lichess" | "chesscom";
-          time_control: "bullet" | "blitz" | "rapid" | "classical" | "daily" | "puzzle";
+          provider: string;
+          time_control: string;
           rating: number; rating_deviation?: number | null; provisional?: boolean | null;
           games?: number | null; source: "teacher_manual" | "provider_api";
           observed_at: string; fetched_at?: string | null;
           request_id: string; created_at?: string;
+          effective_at?:string|null;provider_list_version?:string|null;
+          source_url?:string|null;source_digest?:string|null;
+          verification_state?:"unverified"|"provider_published";
+          external_player_id?:string|null;source_handle_revision?:number|null;
         };
         Update: Partial<Database["public"]["Tables"]["student_rating_snapshots"]["Insert"]>;
       };
