@@ -55,7 +55,9 @@ test("PARITY:PARITY-archived-student-lesson-recovery-transactional-group-and-cro
  // The conversational name resolver must discover the archived candidate,
  // but never produce a directly committable ad-hoc roster.
  const naming=await call("ccp_lessons_capture_preview",{
-  names:f.names,...payload,
+  names:f.names,workplaceId:f.workplaceId,title:payload.title,
+  startsAt:payload.startsAt,durationMinutes:payload.durationMinutes,
+  lessonNote:payload.lessonNote,
  });
  expect(naming.error).toBeUndefined();
  expect(naming.data.canCommit).toBe(false);
