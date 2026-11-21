@@ -2,6 +2,7 @@ import {createHash} from "node:crypto";
 import {z} from "zod";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {teacherStudentArchivePreview} from "@/lib/server/student-profile-service";
+import {loadAccountEntitlementSummary} from "@/lib/server/entitlements";
 
 export class BulkLifecycleError extends Error {
   constructor(public status:number,public code:string,message:string){super(message);}
@@ -61,24 +62,28 @@ export async function teacherBulkLifecyclePreview(db:SupabaseClient,teacherId:st
   }
   const totalDelta=result.filter(r=>r.currentArchived!==r.requestedArchived)
     .reduce((count,r)=>count+(r.requestedArchived?-1:1),0);
-  const {data:teacher,error:te}=await db.from("teachers")
-    .select("hosted_enforced,hosted_plan,hosted_max_active_students,active_student_count,trial_ends_at,gifted_until")
-    .eq("id",teacherId).maybeSingle();
-  if(te||!teacher)return fail(503,"PREVIEW_UNAVAILABLE","Active-student quota unavailable");
-  const now=Date.now();
-  const enforce=teacher.hosted_enforced&&(
-    teacher.hosted_plan==="free"||
-    (teacher.hosted_plan==="trial"&&(!teacher.trial_ends_at||Date.parse(teacher.trial_ends_at)<=now))||
-    (teacher.hosted_plan==="gifted"&&(!teacher.gifted_until||Date.parse(teacher.gifted_until)<=now)));
-  const quotaBlocked=Boolean(enforce&&teacher.active_student_count+totalDelta>teacher.hosted_max_active_students);
+  let entitlement:Awaited<ReturnType<typeof loadAccountEntitlementSummary>>;
+  try {
+    entitlement=await loadAccountEntitlementSummary(db);
+  } catch {
+    return fail(503,"PREVIEW_UNAVAILABLE","Active-student quota unavailable");
+  }
+  const currentCount=entitlement.activeStudentCount;
+  const capacity=entitlement.studentCapacity;
+  if(!capacity.unlimited&&capacity.limit===null)
+    return fail(503,"PREVIEW_UNAVAILABLE","Active-student capacity is not configured");
+  // Archiving always remains possible as a way to return to quota compliance.
+  // This remains an advisory read; SQL guards every expanding commit.
+  const quotaBlocked=Boolean(totalDelta>0&&!capacity.unlimited&&
+    currentCount+totalDelta>(capacity.limit??0));
   const canCommit=!quotaBlocked&&result.every(r=>r.canChange);
   const previewDigest=digest({teacherId,rows:ordered,states:result.map(r=>({
     studentId:r.studentId,currentArchived:r.currentArchived,
     currentUpdatedAt:r.currentUpdatedAt,blockers:r.blockers,
   }))});
   return {rows:result,previewDigest,canCommit,quotaBlocked,
-    activeStudentCountBefore:teacher.active_student_count,
-    activeStudentCountAfter:teacher.active_student_count+totalDelta};
+    activeStudentCountBefore:currentCount,
+    activeStudentCountAfter:currentCount+totalDelta};
 }
 export async function teacherBulkLifecycleCommit(
   db:SupabaseClient,teacherId:string,input:z.infer<typeof bulkLifecycleCommitSchema>){
@@ -98,7 +103,7 @@ export async function teacherBulkLifecycleCommit(
   if(preview.previewDigest!==input.previewDigest)
     return fail(409,"PREVIEW_CHANGED","Student status or blockers changed since preview");
   if(!preview.canCommit)
-    return fail(409,preview.quotaBlocked?"HOSTED_LIMIT_REACHED":"BLOCKED",
+    return fail(409,preview.quotaBlocked?"CAPACITY_EXCEEDED":"BLOCKED",
       "Resolve student commitments, active enrollment, quota or stale revisions before committing");
   const {data,error}=await db.rpc("ccp_student_bulk_lifecycle",{
     p_rows:canonical(parsed.data.rows),
@@ -106,8 +111,8 @@ export async function teacherBulkLifecycleCommit(
   });
   if(error){
     const message=error.message??"";
-    if(message.includes("HOSTED_LIMIT_REACHED"))
-      return fail(403,"HOSTED_LIMIT_REACHED","Active-student quota reached");
+    if(/CAPACITY_EXCEEDED|HOSTED_LIMIT_REACHED/.test(message))
+      return fail(409,"CAPACITY_EXCEEDED","Active-student capacity reached");
     if(message.includes("REPLAY_CONFLICT")||message.includes("REVISION"))
       return fail(409,"CONFLICT","A student changed or the idempotency key was reused");
     if(message.includes("FUTURE_COMMITMENTS")||message.includes("ACTIVE_WORKPLACE"))
