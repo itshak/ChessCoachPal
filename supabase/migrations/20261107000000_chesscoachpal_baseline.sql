@@ -13391,7 +13391,7 @@ CREATE TABLE public.slot_occurrence_exceptions (
    OR (action IN ('reschedule','override') AND revised_starts_at IS NOT NULL
       AND revised_timezone IS NOT NULL)),
  CONSTRAINT ccp_slot_exception_teacher_approved CHECK(approved_by=teacher_id),
- UNIQUE(teacher_id,slot_id,original_occurrence_on),
+ CONSTRAINT ccp_slot_exception_unique_occurrence UNIQUE(teacher_id,slot_id,original_occurrence_on),
  UNIQUE(teacher_id,request_id),
  UNIQUE(id,teacher_id)
 );
@@ -13892,7 +13892,7 @@ CREATE TRIGGER ccp_professional_workplace_capacity_guard
 -- Audit-preserving exception replacement: revoke old intent with its receipt,
 -- then insert a new approved version for the same original local date.
 ALTER TABLE public.slot_occurrence_exceptions
- DROP CONSTRAINT slot_occurrence_exceptions_teacher_id_slot_id_original_occurrence_on_key,
+ DROP CONSTRAINT ccp_slot_exception_unique_occurrence,
  ADD COLUMN revoked_by uuid,
  ADD COLUMN revocation_request_id uuid,
  ADD CONSTRAINT ccp_slot_exception_revoke_pair CHECK(
