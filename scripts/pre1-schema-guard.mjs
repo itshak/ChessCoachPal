@@ -8,6 +8,7 @@ import {readdirSync,readFileSync} from "node:fs";
 import {resolve,dirname,join} from "node:path";
 import {fileURLToPath} from "node:url";
 import {transitionContractErrors} from "./schema-transition-contract.mjs";
+import {canonicalPublicTableRlsErrors} from "./schema-rls-coverage.mjs";
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const read=path=>readFileSync(join(root,path),"utf8");
 const BASELINE="20261107000000_chesscoachpal_baseline.sql";
@@ -65,11 +66,13 @@ export function repositoryInputs(){
  return checks;
 }
 export function checkRepository(){
- return canonicalSchemaErrors(repositoryInputs());
+ const inputs=repositoryInputs();
+ return [...canonicalSchemaErrors(inputs),...canonicalPublicTableRlsErrors(inputs.sql)];
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const errors=process.argv.includes("--strict-materials")?
-   canonicalSchemaErrors({...repositoryInputs(),strictMaterials:true}):checkRepository();
+ const inputs=repositoryInputs();
+ const errors=[...canonicalSchemaErrors({...inputs,strictMaterials:process.argv.includes("--strict-materials")}),
+   ...canonicalPublicTableRlsErrors(inputs.sql)];
  if(errors.length){for(const e of errors)console.error("ADR-0001: "+e);process.exitCode=1;}
  else console.log("ADR-0001/0017 one canonical baseline checksum, no compatibility chain, and operator cutover contract verified.");
 }
