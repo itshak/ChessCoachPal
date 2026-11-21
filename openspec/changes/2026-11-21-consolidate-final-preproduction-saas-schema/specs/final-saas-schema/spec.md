@@ -26,7 +26,7 @@ The target SHALL preserve single-source students, dated workplace enrollment, ca
 ### Requirement: All anticipated durable professional workflows have a schema contract
 The final baseline SHALL represent the necessary immutable occurrence/exception provenance, approved report publication and revoke/revision state, applicable signed-off workplace policy hierarchy, consented provider jobs and evidence, and teacher-verifiable educational observations; no independent shadow queue or duplicate report/rating truth SHALL be introduced.
 
-#### Scenario: Recurring class skips a future unmateralized occurrence
+#### Scenario: Recurring class skips a future unmaterialized occurrence
 - **WHEN** a teacher approves an exception for one slot's local date
 - **THEN** the intent and exception SHALL survive restart/retry without materializing an unwanted lesson or rewriting completed teaching/finance history.
 

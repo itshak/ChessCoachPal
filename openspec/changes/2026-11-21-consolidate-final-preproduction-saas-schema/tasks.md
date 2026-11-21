@@ -17,6 +17,7 @@
 - [ ] Apply finalized workplace Personal/Professional, lifecycle and per-workplace preference schema; preserve existing named beta workplaces, source lesson attribution and safe over-limit downgrade access.
 - [ ] Complete existing temporal enrollment, student archive, session/roster and credit safety; ensure teacher-lock quota serializes all create/reactivate/import/bulk/recovery/direct-SQL paths.
 - [ ] Finish contacts, payer, portal grants and immutable teacher finance reconciliation at field level, avoiding duplicate receipts and unauthorized contact/portal inheritance.
+- [ ] Replace fixed `student_rating_snapshots` provider/category CHECK lists with reviewed extensible provider/category lookup and tenant-safe provenance; verify an approved new federation category can be represented without DDL.
 - [ ] Finalize federation/category ratings and immutable snapshots, provider consent/status/job receipt, source handle revisions and teacher evidence semantics.
 - [ ] Implement only justified recurrence exception, lesson amendment audit and shareable report publication/approval snapshot schema; no independent daily queue, generic report/financial truth or duplicate material evidence.
 - [ ] Remove executable inherited Family/Studio/self-host customer-contract artifacts and stale schema columns/comments that violate ADR-0017/0018; update selected schema guard/manifest checksum atomically.

@@ -1,4 +1,6 @@
-> **2026-11-21 current-owner update:** This document is a dated historical snapshot/runbook. All unfinished DDL planning has moved to [one consolidated final-schema + Freemium P0](../2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md) under ADR-0019. Do not treat earlier draft-PR/source status or original freeze references below as current implementation or live cutover authority.\n\n# Cross-change canonical schema roadmap (2026-11-19)
+> **2026-11-21 current-owner update:** This document is a dated historical snapshot/runbook. All unfinished DDL planning has moved to [one consolidated final-schema + Freemium P0](2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md) under ADR-0019. Do not treat earlier draft-PR/source status or original freeze references below as current implementation or live cutover authority.
+
+# Cross-change canonical schema roadmap (2026-11-19)
 
 > Planning status, not an implementation or production-cutover certificate. The branch PR #104 remains draft until all acceptance gates are independently verified.
 
