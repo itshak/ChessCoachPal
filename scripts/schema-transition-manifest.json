@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "mode": "single-canonical-baseline",
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "0daa98f9130ee9fed732109c9982101f02722ce1347845e6c492d6ca25d5f8e3",
+  "baselineSha256": "5fc9e7b4f02f7598ec8cb0c92cd886b176efecc9fcf5de03605b62a6887e77f8",
   "operatorCutoverRequired": true,
   "baselineRequiredObjects": [
     "students",
@@ -41,6 +41,7 @@
     "ccp_credit_adjustment_preview",
     "ccp_credit_adjustment_commit",
     "ccp_student_lifecycle_preview",
-    "ccp_student_lifecycle_commit"
+    "ccp_student_lifecycle_commit",
+    "ccp_teacher_archived_lesson_recovery_commit"
   ]
 }

@@ -47,3 +47,30 @@ The system SHALL preserve purchased packages and redemptions separately from rec
 
 ### Requirement: Release and production migration are independent gates
 The source schema SHALL be accepted only after exact-head fresh-install, RLS/tenant, website/MCP parity, longitudinal data, E2E, Compose, security and backup/restore verification. Existing populated databases SHALL be migrated only through a separately approved operator-run transition with backups and independent reconciliation; no baseline reset is permissible.
+
+### Requirement: New lesson intent SHALL recover archived learners through explicit, atomic consent
+A new-lesson preview SHALL resolve teacher-owned active and archived candidate identities, and SHALL distinguish an archived exact match from a genuinely missing student. Reactivation SHALL remain a deliberate choice, not an automatic consequence of lesson creation. When the teacher approves new teaching for an archived learner, the supported reactivation, selected authorized membership and one lesson SHALL commit together atomically with existing lifecycle, entitlement, security and historical-retention rules. No alternative MCP or website write path SHALL silently bypass those constraints.
+
+#### Scenario: Unique archived learner returns for an individual lesson
+- **WHEN** a teacher names an archived learner for a future one-to-one lesson
+- **THEN** preview SHALL return a structured `ARCHIVED_STUDENT_CONFIRMATION_REQUIRED` outcome with the stable learner ID, archival status, suggested *verified* previous workplace(s), relevant capacity and a choice to reactivate or leave archived
+- **AND** without an explicit reviewed selection and confirmation, neither enrollment, reactivation nor lesson SHALL be written.
+
+#### Scenario: Reviewed reactivation and lesson form one write
+- **WHEN** the teacher confirms a uniquely identified archived learner, selected valid workplace period, exact time and lesson details after preview
+- **THEN** one owner-authorized SQL transaction SHALL recheck revision, effective membership, student quota, schedule and idempotency and persist the same canonical student ID, new period and exactly one lesson
+- **AND** failure, stale preview or changed retry payload SHALL create **no** lifecycle, enrollment, quota or lesson side effects, while identical replay SHALL return the original receipt.
+
+#### Scenario: Multi-student lesson has one archived participant
+- **WHEN** one of several proposed participants is archived or quota would be exceeded by reactivating several learners
+- **THEN** the preview SHALL identify the affected student IDs and block all writes pending explicit teacher decisions; the coach MAY review a revised roster
+- **AND** the new group session SHALL never be partially created, count more than one instructor duration, re-enroll unapproved students, or invent individual attendance or proficiency.
+
+#### Scenario: Two exact-name matches differ by lifecycle status
+- **WHEN** one active and one archived learner share an exact reporting name or alias, or several archived learners match
+- **THEN** the teacher SHALL choose a stable owned ID; active status SHALL not silently win, and the tool SHALL not present another teacher's records.
+
+#### Scenario: No, not found, and history remain distinct
+- **WHEN** the teacher declines reactivation, requests a correction to a recorded past lesson, or provides verified historical attendance dates
+- **THEN** the declined new lesson SHALL cause zero writes, and historical reads/corrections/evidence SHALL remain possible without unarchiving
+- **AND** a genuinely unknown or unauthorized learner SHALL not be reported as a known archived student; unsupported historical full-lesson backfills SHALL fail transparently rather than masquerade as current sessions.

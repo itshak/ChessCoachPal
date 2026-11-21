@@ -37,6 +37,14 @@ export async function teacherAtomicLessonChapterCommit(
  // two existing, transaction-coordinated SEC DEFINER SQL child routines.
  void _teacherId;
  const a=atomicLessonChapterCommitSchema.parse(input);
+ // Explicit recovery is a different confirmed transaction. Do not turn an
+ // archived-ID chapter commit into implicit reactivation or a NOT_FOUND.
+ const {data:owned,error:lookupError}=await db.from("students")
+  .select("id,archived_at").eq("teacher_id",_teacherId).in("id",a.studentIds);
+ if(lookupError)throw fail(503,"DATABASE_ERROR","Learner status is unavailable");
+ if(owned?.some(s=>s.archived_at!==null))
+  throw fail(409,"ARCHIVED_STUDENT_CONFIRMATION_REQUIRED",
+   "An archived learner was selected. Review reactivation and the lesson first; chapter assignment requires separate approval.");
  const {data,error}=await db.rpc("ccp_teacher_lesson_chapter_commit",{
   p_workplace_id:a.workplaceId,
   p_student_ids:a.studentIds,

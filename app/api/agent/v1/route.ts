@@ -27,6 +27,9 @@ import {materialLinksList,materialLinksCreate,materialLinksUpdate,
 import {lessonCompletionSchema,attendanceBulkRecordSchema} from "@/lib/lesson-completion";
 import {teacherCreditAdjustmentPreview,teacherCreditAdjustmentCommit}
  from "@/lib/server/credit-adjustments";
+import {archivedLessonRecoveryPreviewSchema,archivedLessonRecoveryCommitSchema,
+ teacherArchivedLessonRecoveryPreview,teacherArchivedLessonRecoveryCommit}
+ from "@/lib/server/archived-lesson-recovery";
 import {studentLifecyclePreview,studentLifecycleCommit}
  from "@/lib/server/student-lifecycle-service";
 
@@ -96,6 +99,12 @@ const calls = z.discriminatedUnion("action", [
   z.object({ action: z.literal("groups.enroll"), groupId: uuid, studentId: uuid }),
   z.object({ action: z.literal("groups.unenroll"), groupId: uuid, studentId: uuid }),
   z.object({ action: z.literal("groups.members"), groupId: uuid }),
+  archivedLessonRecoveryPreviewSchema.safeExtend({
+    action:z.literal("lessons.archivedRecoveryPreview"),
+  }),
+  archivedLessonRecoveryCommitSchema.safeExtend({
+    action:z.literal("lessons.archivedRecoveryCommit"),
+  }),
   z.object({ action: z.literal("sessions.list") }),
   z.object({ action: z.literal("sessions.create"),
     workplaceId: uuid, groupId: uuid.optional(), studentId: uuid.optional(),
@@ -161,6 +170,7 @@ const toolNames = [
   "students.search", "students.create", "students.update",
   "students.lifecyclePreview","students.lifecycleCommit",
   "groups.list", "groups.create", "groups.update", "groups.enroll", "groups.unenroll", "groups.members",
+  "lessons.archivedRecoveryPreview", "lessons.archivedRecoveryCommit",
   "sessions.list", "sessions.create", "sessions.createAdHoc", "sessions.update", "sessions.complete", "sessions.participants",
   "attendance.list", "attendance.record", "attendance.bulkRecord",
   "chess.categories.list","chess.categories.create","chess.categories.update",
@@ -331,6 +341,14 @@ export async function POST(req: NextRequest) {
         result = await groupsUnenroll(db, teacherId, call.groupId, call.studentId); break;
       case "groups.members":
         result = await groupsMembers(db, teacherId, call.groupId); break;
+      case "lessons.archivedRecoveryPreview": {
+        const {action: _action, ...payload}=call;
+        result=await teacherArchivedLessonRecoveryPreview(db,teacherId,payload);break;
+      }
+      case "lessons.archivedRecoveryCommit": {
+        const {action: _action, ...payload}=call;
+        result=await teacherArchivedLessonRecoveryCommit(db,teacherId,payload);break;
+      }
       case "sessions.list":
         result = await sessionsList(db, teacherId); break;
       case "sessions.create":

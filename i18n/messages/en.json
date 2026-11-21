@@ -1193,7 +1193,7 @@
     "title": "Capture a lesson from student names",
     "aria": "Multi-student lesson capture",
     "intro": "Enter one student name or Hebrew, Russian or English alias per line. Preview exact identities before creating a single frozen-roster lesson. No attendance or mastery is assumed.",
-    "names": "Student names, one per line (2–50)",
+    "names": "Student names, one per line (1–50)",
     "workplace": "Workplace / time zone",
     "selectWorkplace": "Select workplace",
     "lessonTitle": "Lesson title",
@@ -1255,7 +1255,18 @@
     "chapterReviewFailed": "Could not review chapter",
     "chapterAssignUnavailable": "Could not assign exact chapter",
     "chapterAssignFailed": "Chapter assignment failed",
-    "chapterAssigned": "Verified chapter assigned to {count} learners. Attendance and mastery are unchanged."
+    "chapterAssigned": "Verified chapter assigned to {count} learners. Attendance and mastery are unchanged.",
+    "archivedStudent": "Archived learner — teacher approval required",
+    "recoveryTitle": "Reactivate archived learner and create this lesson",
+    "recoveryIntro": "Review the exact learner IDs and previously verified workplace. Nothing changes until you approve the combined operation. This does not enroll students in groups, redeem credits or attach study chapters.",
+    "recoveryExplicitTime": "Choose an explicit future start time and duration before requesting reactivation. Historical corrections must not reactivate students.",
+    "reviewRecovery": "Review archived learner and lesson",
+    "recoveryCredits": "Prepaid credits and historical lessons are preserved; no refund, redemption, transfer or expiry extension occurs.",
+    "recoveryReason": "Reason for reactivation and new lesson (at least 8 characters)",
+    "recoveryApprove": "I approve reactivating these exact archived students at this verified workplace and creating this one future lesson in a single transaction. Attendance stays unmarked.",
+    "recoveryCommit": "Confirm reactivation and create lesson",
+    "recoveryReceipt": "Lesson {id} created; {count} archived students reactivated atomically. Attendance remains unmarked.",
+    "recoveryDenied": "Archived student reactivation and lesson creation could not be completed. Review current state and retry."
   },
   "homework": {
     "aria": "Student chess homework",

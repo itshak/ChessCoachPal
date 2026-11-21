@@ -306,7 +306,7 @@ test("PARITY:PARITY-website-reviewer-date-only-form-commits-matching-roster",asy
  await expect(page.getByRole("heading",{
   name:"Capture a lesson from student names",
  })).toBeVisible();
- await page.getByLabel("Student names, one per line (2–50)")
+ await page.getByLabel("Student names, one per line (1–50)")
   .fill(names.join("\n"));
  await page.getByLabel("Workplace / time zone").selectOption(workplaceId);
  await page.getByLabel("Lesson title").fill(unique("Verified weekly UI session"));

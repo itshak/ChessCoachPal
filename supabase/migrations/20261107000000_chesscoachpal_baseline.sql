@@ -12737,3 +12737,184 @@ REVOKE ALL ON FUNCTION public.ccp_student_archive_write_guard()
 CREATE TRIGGER ccp_student_archive_write_guard
  BEFORE UPDATE OF archived_at ON public.students
  FOR EACH ROW EXECUTE FUNCTION public.ccp_student_archive_write_guard();
+
+
+-- Teacher-approved archived learner recovery for a NEW future lesson.
+-- The entire operation is a single PostgreSQL transaction: revision-checked
+-- reactivation, historical-workplace-scoped new membership, then the canonical
+-- lesson writer. Any failure (quota, overlap, roster or schedule) rolls back
+-- BOTH lifecycle and lesson. No old membership, attendance or credit is edited.
+CREATE OR REPLACE FUNCTION public.ccp_teacher_archived_lesson_recovery_commit(
+ p_workplace_id uuid,p_student_ids uuid[],p_reactivations jsonb,
+ p_title text,p_starts_at timestamptz,p_duration_minutes integer,
+ p_lesson_note text,p_request_id uuid,p_reason text,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_archived_lesson_recovery$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_hash text;v_result jsonb;
+ v_ids uuid[];v_archived_ids uuid[];v_approved_ids uuid[]:='{}'::uuid[];
+ v_expected jsonb;v_id uuid;v_revision timestamptz;
+ v_student public.students%ROWTYPE;
+ v_single public.teaching_sessions%ROWTYPE;
+ v_count integer;v_workplace public.workplaces%ROWTYPE;
+ v_start_day date;v_timezone text;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF p_workplace_id IS NULL OR p_student_ids IS NULL OR
+    coalesce(cardinality(p_student_ids),0) NOT BETWEEN 1 AND 50 OR
+    array_position(p_student_ids,NULL) IS NOT NULL OR
+    p_request_id IS NULL OR p_confirmed IS DISTINCT FROM true OR
+    p_starts_at IS NULL OR p_duration_minutes NOT BETWEEN 15 AND 480 OR
+    length(btrim(coalesce(p_title,''))) NOT BETWEEN 1 AND 160 OR
+    length(coalesce(p_lesson_note,''))>10000 OR
+    length(btrim(coalesce(p_reason,''))) NOT BETWEEN 8 AND 1000 OR
+    jsonb_typeof(p_reactivations) IS DISTINCT FROM 'array' OR
+    jsonb_array_length(p_reactivations) NOT BETWEEN 1 AND 50 THEN
+  RAISE EXCEPTION 'LESSON_RECOVERY_REQUIRES_REVIEW' USING ERRCODE='22023';
+ END IF;
+ SELECT array_agg(x ORDER BY x) INTO v_ids FROM unnest(p_student_ids) x;
+ IF (SELECT count(DISTINCT x) FROM unnest(p_student_ids) x)
+    <>cardinality(p_student_ids) THEN
+  RAISE EXCEPTION 'DUPLICATE_LEARNER' USING ERRCODE='22023';
+ END IF;
+ -- Session insertion and lifecycle changes must serialize with ordinary
+ -- ad-hoc writes AND with lifecycle/quota checks for this teacher.
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ v_hash:=md5(jsonb_build_array(p_workplace_id,v_ids,p_reactivations,
+  btrim(p_title),p_starts_at,p_duration_minutes,
+  coalesce(p_lesson_note,''),btrim(p_reason),p_confirmed)::text);
+ SELECT * INTO v_saved FROM public.agent_tool_receipts
+ WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ IF FOUND THEN
+  IF v_saved.operation<>'lesson.archivedRecovery' OR
+     v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'LESSON_RECOVERY_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ -- A historical lesson correction MUST NOT silently reactivate a student.
+ IF p_starts_at<clock_timestamp() THEN
+  RAISE EXCEPTION 'HISTORICAL_LESSON_NO_REACTIVATION' USING ERRCODE='22023';
+ END IF;
+ SELECT * INTO v_workplace FROM public.workplaces
+ WHERE teacher_id=v_teacher AND id=p_workplace_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ SELECT count(*) INTO v_count FROM public.students
+ WHERE teacher_id=v_teacher AND id=ANY(p_student_ids);
+ IF v_count<>cardinality(p_student_ids) THEN
+  RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ -- Resolve EVERY archived member exactly, and reject unreviewed extras,
+ -- duplicate revisions, newly active IDs and a stale preview.
+ SELECT coalesce(array_agg(id ORDER BY id),'{}'::uuid[]) INTO v_archived_ids
+ FROM public.students WHERE teacher_id=v_teacher AND id=ANY(p_student_ids)
+  AND archived_at IS NOT NULL;
+ IF cardinality(v_archived_ids)=0 THEN
+  RAISE EXCEPTION 'NO_ARCHIVED_LEARNER' USING ERRCODE='22023';
+ END IF;
+ FOR v_expected IN SELECT value FROM jsonb_array_elements(p_reactivations)
+ LOOP
+  IF jsonb_typeof(v_expected)<>'object'
+     OR jsonb_typeof(v_expected->'studentId')<>'string'
+     OR jsonb_typeof(v_expected->'expectedUpdatedAt')<>'string'
+     OR (SELECT count(*) FROM jsonb_object_keys(v_expected))<>2 THEN
+   RAISE EXCEPTION 'INVALID_REACTIVATION_REVIEW' USING ERRCODE='22023';
+  END IF;
+  v_id:=(v_expected->>'studentId')::uuid;
+  v_revision:=(v_expected->>'expectedUpdatedAt')::timestamptz;
+  IF v_id<>ALL(v_archived_ids) OR v_id=ANY(v_approved_ids) THEN
+   RAISE EXCEPTION 'UNREVIEWED_REACTIVATION' USING ERRCODE='22023';
+  END IF;
+  SELECT * INTO v_student FROM public.students
+  WHERE teacher_id=v_teacher AND id=v_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+  IF v_student.archived_at IS NULL OR
+     v_student.updated_at IS DISTINCT FROM v_revision THEN
+   RAISE EXCEPTION 'LIFECYCLE_REVISION_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  v_approved_ids:=array_append(v_approved_ids,v_id);
+ END LOOP;
+ IF (SELECT array_agg(x ORDER BY x) FROM unnest(v_approved_ids) x)
+    IS DISTINCT FROM v_archived_ids THEN
+  RAISE EXCEPTION 'UNREVIEWED_ARCHIVED_LEARNER' USING ERRCODE='22023';
+ END IF;
+ SELECT timezone INTO v_timezone FROM public.teacher_settings
+ WHERE teacher_id=v_teacher;
+ v_start_day:=(p_starts_at AT TIME ZONE coalesce(v_timezone,'UTC'))::date;
+ -- Active members must be enrolled as of the requested lesson date,
+ -- rather than merely appearing in historical workplace records.
+ IF EXISTS(
+  SELECT 1 FROM public.students s
+  WHERE s.teacher_id=v_teacher AND s.id=ANY(v_ids)
+    AND s.archived_at IS NULL
+    AND NOT EXISTS(
+     SELECT 1 FROM public.workplace_enrollments e
+     WHERE e.teacher_id=v_teacher AND e.student_id=s.id
+       AND e.workplace_id=p_workplace_id AND e.cancelled_at IS NULL
+       AND (e.starts_on IS NULL OR e.starts_on<=v_start_day)
+       AND (e.ends_on IS NULL OR e.ends_on>=v_start_day)
+    )
+ ) THEN
+  RAISE EXCEPTION 'STUDENT_NOT_ENROLLED' USING ERRCODE='42501';
+ END IF;
+ -- Reuse the established audited lifecycle writer; its revision, historical
+ -- evidence, enrollment overlap and hosted active-capacity checks remain
+ -- authoritative. Its receipt and the new membership roll back with the
+ -- whole lesson if a later operation fails.
+ FOR v_expected IN
+  SELECT value FROM jsonb_array_elements(p_reactivations)
+   ORDER BY value->>'studentId'
+ LOOP
+  PERFORM public.ccp_student_lifecycle_commit(
+   (v_expected->>'studentId')::uuid,'reactivate',
+   (v_expected->>'expectedUpdatedAt')::timestamptz,
+   ARRAY[p_workplace_id],gen_random_uuid(),btrim(p_reason),true
+  );
+ END LOOP;
+ IF cardinality(v_ids)=1 THEN
+  -- A normal 1:1 session retains the existing student_id semantics; the
+  -- canonical trigger freezes its single participant.
+  INSERT INTO public.teaching_sessions(
+   teacher_id,workplace_id,student_id,title,starts_at,
+   duration_minutes,lesson_note,request_id
+  ) VALUES(
+   v_teacher,p_workplace_id,v_ids[1],btrim(p_title),p_starts_at,
+   p_duration_minutes,coalesce(p_lesson_note,''),p_request_id
+  ) RETURNING * INTO v_single;
+  v_result:=jsonb_build_object(
+   'id',v_single.id,'title',v_single.title,
+   'starts_at',v_single.starts_at,
+   'duration_minutes',v_single.duration_minutes,
+   'lesson_note',v_single.lesson_note,
+   'status',v_single.status,'workplace_id',v_single.workplace_id,
+   'group_id',v_single.group_id,'student_id',v_single.student_id,
+   'roster_mode',v_single.roster_mode);
+ ELSE
+  -- Shared canonical 2–50 writer owns frozen roster, time conflict and
+  -- attendance defaults; never create permanent group membership.
+  v_result:=public.ccp_teacher_ad_hoc_session_create(
+   p_workplace_id,v_ids,btrim(p_title),p_starts_at,
+   p_duration_minutes,coalesce(p_lesson_note,''),p_request_id
+  );
+ END IF;
+ v_result:=v_result||jsonb_build_object(
+  'reactivatedStudentIds',to_jsonb(v_archived_ids),
+  'reactivatedCount',cardinality(v_archived_ids),
+  'creditPolicy','hold_released_no_automatic_redemption_or_expiry_extension',
+  'attendance','unmarked','replayed',false);
+ INSERT INTO public.agent_tool_receipts
+  (teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_request_id,'lesson.archivedRecovery',v_hash,v_result);
+ RETURN v_result;
+END;
+$ccp_archived_lesson_recovery$;
+REVOKE ALL ON FUNCTION public.ccp_teacher_archived_lesson_recovery_commit(
+ uuid,uuid[],jsonb,text,timestamptz,integer,text,uuid,text,boolean)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_teacher_archived_lesson_recovery_commit(
+ uuid,uuid[],jsonb,text,timestamptz,integer,text,uuid,text,boolean)
+ TO authenticated;

@@ -13,3 +13,10 @@
 - [ ] Add website/MCP parity registry and authenticated E2E: upcoming private, school group, ad-hoc multi-student, archived student, school+personal history, missing homework, rating failure and unmarked attendance.
 - [ ] Test timezones/DST, materials assigned vs taught vs mastered, idempotency and stale/replay, cross-tenant denial, group hour deduplication and mixed Hebrew/Russian aliases.
 - [ ] Run typecheck/lint/unit, strict parity, E2E, security, Compose and backup/restore; document exact merged-main evidence before archive.
+
+## Archived learner recovery in lesson capture (2026-11-21; pending)
+
+- [ ] Wire read-only lesson intent resolution to owned active+archived exact IDs/aliases; show archived indicator and disambiguate duplicates before confirmation, including one-on-one and mixed group workflows.
+- [ ] Add localized website and MCP “reactivate and create / keep archived / choose another / historical review” outcomes using temporal lifecycle's shared preview/atomic commit; verify consent and no-write decline.
+- [ ] Test one-session group semantics, quota and workplace blockers, stale previews, all-or-nothing failed lesson writes, replay, authorized/foreign identities and no automatic group/credit/billing changes with independent persisted read-back.
+- [ ] Preserve and test archival corrections and historical imports without activating students; sync tool descriptions, parity checklist and release gate before marking complete.

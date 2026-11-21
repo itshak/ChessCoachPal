@@ -23,6 +23,8 @@ export const legacyActionTools=Object.freeze({
   "groups.enroll":"ccp_groups_enroll",
   "groups.unenroll":"ccp_groups_unenroll",
   "groups.members":"ccp_groups_members",
+  "lessons.archivedRecoveryPreview":"ccp_lessons_archived_recovery_preview",
+  "lessons.archivedRecoveryCommit":"ccp_lessons_archived_recovery_commit",
   "sessions.list":"ccp_sessions_list",
   "sessions.create":"ccp_sessions_create",
   "sessions.createAdHoc":"ccp_sessions_ad_hoc_create",

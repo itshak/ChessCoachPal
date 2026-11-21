@@ -34,3 +34,13 @@ A green older commit, structural parity counts, synthetic payment evidence or su
 ## 2026-11-20 source merge update (does not satisfy open acceptance boxes)
 
 PR #108 was merged to main at `895cb193` after its exact head `7e4c43f` passed CI, E2E (313 pass, 5 skip plus 3 additional pass), security, Compose and synthetic backup/restore. Prerequisites #104 and #107 were merged first. The earlier draft/unmerged status above is historical. Schema ownership, financial/portal populated-data reconciliation, an independently verified off-host restoration and explicit operator cutover approval remain open; do not archive or deploy based on synthetic checks alone. See `docs/SCHEMA_CANDIDATE_ACCEPTANCE_2026-11-19.md` and the active OpenSpec tracker.
+
+## Archived learner lesson-intent recovery (2026-11-21; new unchecked acceptance work)
+
+- [ ] Inventory all single-student session, ad-hoc multi-student, completed group, date-inference, chapter-linked and direct-ID capture paths for archived status; verify source and actual authenticated runtime behavior before claiming a bug is fixed.
+- [ ] Implement owner-scoped exact-identity resolution for lesson intent across active and archived records, bounded pagination, stable candidate IDs, alias collisions and structured `ARCHIVED_STUDENT_CONFIRMATION_REQUIRED`; preserve ordinary active-only roster defaults.
+- [ ] Implement shared no-write reactivation+lesson preview with exact workplace/date, previous verified membership provenance, quota/credit information, expected revisions, digest and explicit cancel/choose-another affordances.
+- [ ] Implement a transactionally atomic, deduplicated lesson+reactivation commit for supported private and group cases; rollback all student, enrollment and session changes on any failure. Do not chain two independent MCP writes as a claim of atomic success.
+- [ ] Handle missing or new-workplace selections, expired/held credits, historical lesson corrections and backfills without silent membership, payer, group, attendance or financial changes.
+- [ ] Add unit, SQL/RLS/concurrency and authenticated website/MCP parity tests: archived-only name; same alias across active/archived; multiple archived matches; foreign UUID; decline/no writes; one and multiple quota restores; failed lesson rollback; same-key replay; changed/stale preview; group instructor time once; historical correction without reactivation; localization; no credit or permission side effects.
+- [ ] Record exact-head checks and approved deployed-version evidence separately. Do not mark implemented or archive this proposal from a design-only PR.
