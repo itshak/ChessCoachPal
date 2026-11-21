@@ -41,12 +41,12 @@ export interface Database {
           action:"cancel"|"reschedule"|"override";revised_starts_at:string|null;
           revised_timezone:string|null;revised_duration_minutes:number|null;
           session_id:string|null;approved_by:string;approved_at:string;
-          reason:string;request_id:string;revision:number;revoked_at:string|null;created_at:string};
+          reason:string;request_id:string;revision:number;revoked_at:string|null;revoked_by:string|null;revocation_request_id:string|null;created_at:string};
         Insert: {id?:string;teacher_id:string;slot_id:string;original_occurrence_on:string;
           action:"cancel"|"reschedule"|"override";revised_starts_at?:string|null;
           revised_timezone?:string|null;revised_duration_minutes?:number|null;
           session_id?:string|null;approved_by:string;approved_at?:string;
-          reason:string;request_id:string;revision?:number;revoked_at?:string|null;created_at?:string};
+          reason:string;request_id:string;revision?:number;revoked_at?:string|null;revoked_by?:string|null;revocation_request_id?:string|null;created_at?:string};
         Update: never;
       };
       report_publications: {
@@ -104,8 +104,8 @@ export interface Database {
         Update: never;
       };
       plan_versions: {
-        Row: {id:string;code:string;version:number;lifecycle:"draft"|"published"|"retired";effective_at:string|null;retired_at:string|null;created_at:string};
-        Insert: {id?:string;code:string;version:number;lifecycle?:"draft"|"published"|"retired";effective_at?:string|null;retired_at?:string|null;created_at?:string};
+        Row: {id:string;code:string;version:number;lifecycle:"draft"|"published"|"retired";effective_at:string|null;retired_at:string|null;priority:number;created_at:string};
+        Insert: {id?:string;code:string;version:number;lifecycle?:"draft"|"published"|"retired";effective_at?:string|null;retired_at?:string|null;priority?:number;created_at?:string};
         Update: never;
       };
       plan_capabilities: {
