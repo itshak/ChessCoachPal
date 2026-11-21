@@ -36,3 +36,23 @@ Daily queue, prepare, preview and commit SHALL be accessible via typed authentic
 #### Scenario: Conversational lesson close
 - **WHEN** a coach closes a lesson through MCP after reviewing the proposed roster and attendance
 - **THEN** the website SHALL show the same persisted lesson and outstanding tasks, with no unacknowledged or extra writes.
+
+### Requirement: Conversational new-lesson creation SHALL provide a safe archived-learner recovery choice
+When a new individual or group lesson references a teacher-owned archived learner, the shared website and MCP preview SHALL return a typed reactivation-required clarification, rather than treating the learner as nonexistent. The coach SHALL be shown exactly whom the system found, which workplace and date are proposed, and the effects of the action. Reactivation SHALL only happen after the coach explicitly confirms the student identity, relevant workplace membership and lesson details. The temporal lifecycle domain service SHALL enforce an atomic all-or-nothing commit.
+
+#### Scenario: Coach records the next lesson for an archived pupil
+- **WHEN** a coach says “Add a 60-minute lesson for Daniel tomorrow” and exactly one owned Daniel is archived
+- **THEN** website and MCP SHALL present the same archived-student review with **Reactivate and create**, **Keep archived / cancel** and **Choose another student** as meaningful choices, and no write before approval
+- **AND** a confirmed valid action SHALL preserve Daniel's stable student ID and history while adding exactly one session, with a replay-safe receipt.
+
+#### Scenario: Name conflicts with an active pupil
+- **WHEN** an active and an archived pupil share Daniel's name or alias
+- **THEN** both owned candidates SHALL be disambiguated by stable ID before a lesson or lifecycle mutation, without silently preferring the active pupil.
+
+#### Scenario: Coach declines or asks about the past
+- **WHEN** the coach declines reactivation or corrects an already completed historical lesson for an archived learner
+- **THEN** a declined new lesson SHALL not reactivate or create anything; a historical correction or verified date-evidence workflow SHALL remain separate and require no reactivation.
+
+#### Scenario: Partial group recovery, capacity and stale replay
+- **WHEN** the planned group contains archived and active pupils, quota is insufficient, a selected workplace is invalid, or a reviewed preview has become stale
+- **THEN** both clients SHALL show a deterministic reason and a revised-review path; no group session, lesson hours or partial lifecycle changes SHALL be committed.
