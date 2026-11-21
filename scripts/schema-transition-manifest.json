@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "mode": "single-canonical-baseline",
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "3cba5a3c767efccc9dc8cca37b5727bc6e7dc778c5b9ee05f84256407d757599",
+  "baselineSha256": "1761ebfab73bffd1baac415e260cb77618be7c133b3844ae7e0f9ebb42f960b7",
   "operatorCutoverRequired": true,
   "baselineRequiredObjects": [
     "students",
@@ -54,6 +54,17 @@
     "platform_billing_customers",
     "platform_subscription_offers",
     "platform_subscriptions",
-    "platform_billing_events"
+    "platform_billing_events",
+    "rating_providers",
+    "rating_categories",
+    "slot_occurrence_exceptions",
+    "report_publications",
+    "report_publication_audiences",
+    "session_amendment_events",
+    "ccp_effective_capability",
+    "ccp_entitlement_summary",
+    "ccp_professional_workplace_capacity_guard",
+    "ccp_provision_personal_workplace",
+    "ccp_session_amendment_capture"
   ]
 }
