@@ -2,6 +2,7 @@ import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
 import {signInAsTeacher} from "./helpers/auth";
+import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 
 const key=()=>randomUUID();
 const row=(name:string,sourceRow:number)=>({
@@ -22,8 +23,8 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
  const id=user.user!.id;
  expect((await admin.from("teachers").insert({
    id,email,display_name:"Atomic import synthetic",
-   hosted_plan:"free",hosted_enforced:true,hosted_max_active_students:1,
  })).error).toBeNull();
+ await configureSyntheticStudentCapacity(admin,id,1);
  const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
    auth:{persistSession:false,autoRefreshToken:false},
  });
@@ -39,15 +40,15 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
    p_rows:rows,p_idempotency_key:idempotencyKey,
  });
  expect(failed.error?.code).toBe("23514");
- expect(failed.error?.message).toContain("HOSTED_LIMIT_REACHED");
+ expect(failed.error?.message).toContain("CAPACITY_EXCEEDED");
  for(const table of ["students","contacts","workplace_enrollments","teacher_spreadsheet_import_receipts"]){
    const {count,error}=await admin.from(table).select("*",{head:true,count:"exact"})
      .eq("teacher_id",id);
    expect(error).toBeNull();
    expect(count).toBe(0);
  }
- expect((await admin.from("teachers").select("active_student_count")
-   .eq("id",id).single()).data?.active_student_count).toBe(0);
+ expect((await admin.from("teacher_entitlement_state").select("active_student_count")
+   .eq("teacher_id",id).single()).data?.active_student_count).toBe(0);
  const allowed=await auth.rpc("ccp_teacher_spreadsheet_commit",{
    p_rows:[rows[0]],p_idempotency_key:idempotencyKey,
  });
