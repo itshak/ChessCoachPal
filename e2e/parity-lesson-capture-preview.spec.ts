@@ -208,6 +208,7 @@ test("PARITY:PARITY-archived-exact-lesson-candidate-is-clarification-not-not-fou
     studentId:ids[0],mode:"archive",
     expectedUpdatedAt:archivePreview.data.expectedUpdatedAt,
     selectedWorkplaceIds:[],requestId:randomUUID(),confirmed:true,
+    reason:"Teacher reviewed learner archive before archived lesson recovery test",
   });
   expect(archive.error).toBeUndefined();
   expect(archive.data.archived).toBe(true);
