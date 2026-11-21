@@ -65,21 +65,6 @@ $$;
 ALTER FUNCTION "public"."chesscoachpal_seed_chess_skills"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."chesscoachpal_seed_workplace"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    SET "search_path" TO 'public'
-    AS $$
-BEGIN
-  INSERT INTO public.workplaces(teacher_id, name, timezone, currency)
-  VALUES (NEW.id, 'Private coaching', 'UTC', 'USD');
-  RETURN NEW;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."chesscoachpal_seed_workplace"() OWNER TO "postgres";
-
-
 CREATE OR REPLACE FUNCTION "public"."chesscoachpal_snapshot_participants"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1625,7 +1610,7 @@ CREATE OR REPLACE TRIGGER "chesscoachpal_seed_chess_skills" AFTER INSERT ON "pub
 
 
 
-CREATE OR REPLACE TRIGGER "chesscoachpal_seed_workplace" AFTER INSERT ON "public"."teachers" FOR EACH ROW EXECUTE FUNCTION "public"."chesscoachpal_seed_workplace"();
+-- Personal workplace is provisioned by the unique ADR-0019 trigger.
 
 
 
@@ -2268,9 +2253,9 @@ GRANT ALL ON FUNCTION "public"."chesscoachpal_seed_chess_skills"() TO "service_r
 
 
 
-GRANT ALL ON FUNCTION "public"."chesscoachpal_seed_workplace"() TO "anon";
-GRANT ALL ON FUNCTION "public"."chesscoachpal_seed_workplace"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."chesscoachpal_seed_workplace"() TO "service_role";
+
+
+
 
 
 
@@ -13090,7 +13075,7 @@ CREATE OR REPLACE FUNCTION public.ccp_provision_personal_workplace()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_personal$
 BEGIN
  INSERT INTO public.workplaces(teacher_id,name,timezone,currency,locale,kind)
- VALUES(NEW.id,'Personal workspace '||left(NEW.id::text,8),
+ VALUES(NEW.id,'Private coaching',
         'UTC','USD',coalesce(NEW.preferred_locale,'en'),'personal')
  ON CONFLICT DO NOTHING;
  RETURN NEW;
@@ -13102,7 +13087,7 @@ CREATE TRIGGER ccp_provision_personal_workplace
  AFTER INSERT ON public.teachers FOR EACH ROW
  EXECUTE FUNCTION public.ccp_provision_personal_workplace();
 INSERT INTO public.workplaces(teacher_id,name,timezone,currency,locale,kind)
- SELECT t.id,'Personal workspace '||left(t.id::text,8),'UTC','USD',
+ SELECT t.id,'Private coaching','UTC','USD',
         coalesce(t.preferred_locale,'en'),'personal'
  FROM public.teachers t
  WHERE NOT EXISTS(SELECT 1 FROM public.workplaces w
