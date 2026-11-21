@@ -13555,6 +13555,11 @@ CREATE TRIGGER ccp_entitlement_state_transition_serialize
 CREATE OR REPLACE FUNCTION public.ccp_reject_immutable_event_change()
  RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_event_immutable$
 BEGIN
+ IF TG_OP='DELETE' AND TG_TABLE_NAME IN
+   ('entitlement_audit_events','account_usage_events') AND
+   NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id) THEN
+   RETURN OLD; -- cascade after explicitly deleting the account
+ END IF;
  RAISE EXCEPTION 'IMMUTABLE_EVENT' USING ERRCODE='23514';
 END;
 $ccp_event_immutable$;
@@ -13573,7 +13578,9 @@ BEGIN
     NEW.merchant_scope IS DISTINCT FROM OLD.merchant_scope OR
     NEW.external_event_id IS DISTINCT FROM OLD.external_event_id OR
     NEW.external_subscription_id IS DISTINCT FROM OLD.external_subscription_id OR
-    NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    (NEW.teacher_id IS DISTINCT FROM OLD.teacher_id AND
+      NOT (NEW.teacher_id IS NULL AND OLD.teacher_id IS NOT NULL AND
+       NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id))) OR
     NEW.event_type IS DISTINCT FROM OLD.event_type OR
     NEW.external_created_at IS DISTINCT FROM OLD.external_created_at OR
     NEW.payload_sha256 IS DISTINCT FROM OLD.payload_sha256 OR
@@ -13776,7 +13783,13 @@ CREATE UNIQUE INDEX ccp_slot_exception_revoke_receipt
 CREATE OR REPLACE FUNCTION public.ccp_slot_exception_immutable_guard()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_slot_immut$
 BEGIN
- IF TG_OP='DELETE' THEN RAISE EXCEPTION 'IMMUTABLE_OCCURRENCE' USING ERRCODE='23514';END IF;
+ IF TG_OP='DELETE' THEN
+  IF NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
+    OR NOT EXISTS(SELECT 1 FROM public.lesson_slots
+                  WHERE id=OLD.slot_id AND teacher_id=OLD.teacher_id)
+  THEN RETURN OLD; END IF;
+  RAISE EXCEPTION 'IMMUTABLE_OCCURRENCE' USING ERRCODE='23514';
+ END IF;
  IF OLD.revoked_at IS NOT NULL OR NEW.id IS DISTINCT FROM OLD.id OR
     NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
     NEW.slot_id IS DISTINCT FROM OLD.slot_id OR
@@ -13807,7 +13820,11 @@ CREATE TRIGGER ccp_slot_exception_immutable_guard BEFORE UPDATE OR DELETE
 CREATE OR REPLACE FUNCTION public.ccp_report_publication_immutable_guard()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_pub_immut$
 BEGIN
- IF TG_OP='DELETE' THEN RAISE EXCEPTION 'IMMUTABLE_PUBLICATION' USING ERRCODE='23514';END IF;
+ IF TG_OP='DELETE' THEN
+  IF NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
+    THEN RETURN OLD;END IF;
+  RAISE EXCEPTION 'IMMUTABLE_PUBLICATION' USING ERRCODE='23514';
+ END IF;
  IF OLD.revoked_at IS NOT NULL OR OLD.superseded_by IS NOT NULL OR
     NEW.id IS DISTINCT FROM OLD.id OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
     NEW.student_id IS DISTINCT FROM OLD.student_id OR
@@ -13835,7 +13852,13 @@ CREATE TRIGGER ccp_report_publication_immutable_guard
 CREATE OR REPLACE FUNCTION public.ccp_report_audience_immutable_guard()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_audience_immut$
 BEGIN
- IF TG_OP='DELETE' THEN RAISE EXCEPTION 'IMMUTABLE_AUDIENCE' USING ERRCODE='23514';END IF;
+ IF TG_OP='DELETE' THEN
+  IF NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
+   OR NOT EXISTS(SELECT 1 FROM public.report_publications
+                 WHERE id=OLD.publication_id AND teacher_id=OLD.teacher_id)
+  THEN RETURN OLD;END IF;
+  RAISE EXCEPTION 'IMMUTABLE_AUDIENCE' USING ERRCODE='23514';
+ END IF;
  IF OLD.revoked_at IS NOT NULL OR
     NEW.publication_id IS DISTINCT FROM OLD.publication_id OR
     NEW.portal_grant_id IS DISTINCT FROM OLD.portal_grant_id OR
@@ -13926,6 +13949,8 @@ CREATE OR REPLACE FUNCTION public.ccp_grant_immutable_guard()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_grant_guard$
 BEGIN
  IF TG_OP='DELETE' THEN
+    IF NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
+     THEN RETURN OLD;END IF;
     RAISE EXCEPTION 'ENTITLEMENT_GRANT_IMMUTABLE' USING ERRCODE='23514';
  END IF;
  IF OLD.revoked_at IS NOT NULL OR
