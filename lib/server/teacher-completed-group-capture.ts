@@ -58,6 +58,14 @@ export async function teacherCompletedGroupCapture(
  const p=completedGroupCaptureSchema.parse(input);
  try{assertSessionSchedule(p.startsAt,p.durationMinutes);}
  catch{throw fail(400,"VALIDATION_ERROR","Invalid lesson start/duration; use a real ISO time with offset");}
+ // Preserve a typed archived-learner clarification on all direct-ID creation
+ // paths. The SQL writer still rechecks tenant/enrollment state under locks.
+ const {data:owned,error:lookupError}=await db.from("students")
+  .select("id,archived_at").eq("teacher_id",_teacherId).in("id",p.studentIds);
+ if(lookupError)throw fail(503,"DATABASE_ERROR","Learner status is unavailable");
+ if(owned?.some(s=>s.archived_at!==null))
+  throw fail(409,"ARCHIVED_STUDENT_CONFIRMATION_REQUIRED",
+   "A learner is archived. Review reactivation and the workplace before scheduling; historical corrections must not reactivate.");
  const {data,error}=await db.rpc("ccp_teacher_completed_group_lesson_create",{
   p_workplace_id:p.workplaceId,
   p_student_ids:p.studentIds,
