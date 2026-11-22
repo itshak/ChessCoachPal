@@ -55,3 +55,28 @@ Status: **source acceptance in progress, not frozen**. The 2026-11-22 PR #115 so
 | OPS-06 | Final operator cutover | Signed target-specific authorization, recovery plan and post-cutover counts; never inferred from PR |
 
 **Exit gate:** only after every final requirement and test is evidenced may the consolidated schema OpenSpec be source-accepted and the manifest marked frozen. Private populated-data cutover and real payment activation remain later independent gates.
+
+## Exact-head execution ledger — 2026-11-22
+
+Candidate commit: [`99e143e8685bba448d42448e68cbb724efd93996`](https://github.com/itshak/ChessCoachPal/commit/99e143e8685bba448d42448e68cbb724efd93996). This evidence confirms workflow completion **only**, not that every row above has an executable assertion. These workflows ran automatically on push; do not treat them as a final post-freeze certification suite.
+
+| Workflow | Exact-head run | Result |
+| --- | --- | --- |
+| CI | [44998982074](https://github.com/itshak/ChessCoachPal/actions/runs/44998982074) | success |
+| Authenticated E2E | [44998982091](https://github.com/itshak/ChessCoachPal/actions/runs/44998982091) | success |
+| Security history audit | [44998982028](https://github.com/itshak/ChessCoachPal/actions/runs/44998982028) | success |
+| Fresh self-host Compose | [44998982014](https://github.com/itshak/ChessCoachPal/actions/runs/44998982014) | success |
+| Synthetic second-instance backup/restore | [44998981999](https://github.com/itshak/ChessCoachPal/actions/runs/44998981999) | success |
+
+### Concrete scenario evidence (partial; not blanket acceptance)
+
+- **ENT-03/04/05, capacity:** `e2e/student-capacity.spec.ts` exercises simultaneous direct student writes, zero-cap rejection, archive/reactivation and concurrent archived lesson recovery; `e2e/schema-freeze-boundaries.spec.ts` covers professional workplace capacity. Full import/restore/bulk paths remain a separate cross-service acceptance obligation.
+- **ENT-08/12, entitlement time:** `e2e/student-capacity.spec.ts` verifies expired plan access and independent capability boost/revocation. `e2e/platform-subscription-state.spec.ts` verifies paid-through expiry and a stale event cannot downgrade a newer valid subscription. Concurrent entitlement edits and cancellation/grace boundaries need a complete scenario-specific review.
+- **PAY-02/03 and SCH-05:** `e2e/platform-billing-schema.spec.ts` proves provider event replay uniqueness, service-only writes and no entitlement elevation from an event receipt. `e2e/platform-subscription-state.spec.ts` covers stale subscription updates. This is not proof of an implemented authenticated provider webhook adapter or every provider ordering permutation.
+- **SCH-04/06/07 and ENT-13:** `e2e/schema-final-saas-entitlements.spec.ts` and `e2e/schema-freeze-boundaries.spec.ts` check selected cross-tenant, commercial grant, report and operator catalog boundaries; `scripts/final-saas-schema-foundation.test.mjs` checks privileged function source grants. These do **not** yet establish an exhaustive per-table, per-function negative authorization matrix.
+- **TCH-01/03, RAT-01:** `e2e/schema-freeze-boundaries.spec.ts` covers recurrence exception and report approval/scope, and extensible rating registry. Other temporal, consent, financial and guest scenarios require explicit linked evidence.
+- **OPS-04:** all five workflows passed on the same SHA. **OPS-05/06** are separate populated-private-data operator gates and are not authorized or implied by this synthetic evidence.
+
+### Freeze decision
+
+**NOT FROZEN.** The unfulfilled Phase 0 source crosswalk/target comparison and remaining Phase 2 row-by-row security, finance, recurrence, subscription and website/MCP parity evidence are release blockers. The source schema must not be certified merely because five workflows are green. Final post-freeze tests, OpenSpec archive, merge and operational deployment remain distinct actions.
