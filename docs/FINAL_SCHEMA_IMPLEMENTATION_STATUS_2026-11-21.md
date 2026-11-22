@@ -29,6 +29,10 @@ The implementation commit `0f8d283a0a78a749c5709271777a86668d3b5906` completed *
 
 These runs are attached to the prior code commit. Subsequent documentation or code commits require their own exact-head checks before merge. The OpenSpec Phase 2 scenario-specific matrix, formal inventory/crosswalk signoff, live provider behavior and separate ADR-0017 private beta operational gate remain outstanding.
 
+## Additional scenario coverage added after the verified implementation commit
+
+The current draft branch now adds synthetic authenticated/privileged E2E regressions for (a) zero active-student capacity and counter rollback, (b) independently issued, expired and revoked additive capacity boosts, denied self-issued grants and grandfathered existing roster after revocation, and (c) provider-event idempotent identity, immutable signed-event provenance, private event access and absence of checkout-derived entitlement elevation. These new tests were **not** part of the five green workflows on `0f8d283`; their final exact-head results must be checked before acceptance. They are targeted proof, not a substitute for the complete OpenSpec scenario matrix.
+
 ## Release-blocking acceptance still to be established
 
 1. **Exact-head SQL:** clean first and second-instance bootstrap/restore, non-privileged tenant/SECURITY DEFINER probes, plan/grant expiry, parallel student and professional workplace capacity changes, and a deterministic catalog/replay test. Fix all newly discovered failures in PR #115 rather than waiving the checks.
