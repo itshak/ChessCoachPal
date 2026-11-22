@@ -4,7 +4,7 @@
 
 ## Active work
 
-Twelve functional OpenSpecs remain. Workplace Context is first, followed by [the dependency tracker](../openspec/changes/README.md). Preserve shared authenticated website/MCP behavior and the frozen schema. Use ADR-0019 for genuinely unforeseen persistence requirements rather than editing the locked baseline.
+Eleven functional OpenSpecs remain; see [the dependency tracker](../openspec/changes/README.md). Workplace Context / Studio retirement is [source accepted](../openspec/changes/archive/2026-11-18-add-workplace-context-and-retire-studio/SOURCE_ACCEPTANCE.md) on [merged main](https://github.com/itshak/ChessCoachPal/commit/83d050cc478d995fdd983cf5ae5a227ffc34463e) after exact-head [CI](https://github.com/itshak/ChessCoachPal/actions/runs/45079495390), [E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45079495318), [security](https://github.com/itshak/ChessCoachPal/actions/runs/45079495322), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45079495441) and [restore](https://github.com/itshak/ChessCoachPal/actions/runs/45079495316). The reviewed [ADR-0021 successor](adr/0021-workplace-makeup-policy-source-review.md) is the active source lock under ADR-0020; the private beta mapping and deployment remain open under ADR-0017. Preserve shared authenticated website/MCP behavior and the frozen schema. Use ADR-0019 for genuinely unforeseen persistence requirements rather than editing the locked baseline.
 
 ## Release and data safety
 
