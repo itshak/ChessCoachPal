@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
+import {delegatedTool} from "./helpers/delegated-mcp";
 import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 
 /** SQL is the capacity authority for website, MCP, direct writes and imports. */
@@ -235,7 +236,7 @@ test("individual capacity boosts are additive, expirable, revocable and never se
 });
 
 
-test("zero-cap tenant rejects direct student creation without changing counters",async()=>{
+test("PARITY:PARITY-zero SQL student capacity matches the roster and MCP and rejects writes",async({page,request})=>{
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
  const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
   auth:{persistSession:false,autoRefreshToken:false},
@@ -245,31 +246,42 @@ test("zero-cap tenant rejects direct student creation without changing counters"
  const identity=await admin.auth.admin.createUser({email,password,email_confirm:true});
  expect(identity.error).toBeNull();
  const id=identity.data.user!.id;
- expect((await admin.from("teachers").insert({
-  id,email,display_name:"Zero-cap tenant",
- })).error).toBeNull();
- await configureSyntheticStudentCapacity(admin,id,0);
- const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
-  auth:{persistSession:false,autoRefreshToken:false},
- });
- expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();
- const results=await Promise.all(Array.from({length:3},(_,i)=>
-  auth.from("students").insert({
-   teacher_id:id,name:"Rejected at zero "+i+" "+randomUUID(),
-  })));
- for(const result of results){
-  expect(result.error?.code).toBe("23514");
-  expect(result.error?.message).toContain("CAPACITY_EXCEEDED");
+ try{
+  expect((await admin.from("teachers").insert({
+   id,email,display_name:"Zero-cap tenant",onboarding_tour_completed_at:new Date().toISOString(),
+  })).error).toBeNull();
+  await configureSyntheticStudentCapacity(admin,id,0);
+  const call=await delegatedTool(page,request,"coach:read",{email,password});
+  const tool=await call("ccp_hosted_subscription_handoff",{});
+  expect(tool.error).toBeUndefined();
+  expect(tool.data.entitlements).toMatchObject({
+   activeStudentCount:0,studentCapacity:{limit:0,unlimited:false},
+  });
+  await page.goto("/students");
+  await expect(page.getByRole("status").filter({hasText:"Active students: 0 / 0"})).toBeVisible();
+  const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+  expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();
+  const results=await Promise.all(Array.from({length:3},(_,i)=>
+   auth.from("students").insert({
+    teacher_id:id,name:"Rejected at zero "+i+" "+randomUUID(),
+   })));
+  for(const result of results){
+   expect(result.error?.code).toBe("23514");
+   expect(result.error?.message).toContain("CAPACITY_EXCEEDED");
+  }
+  const state=await admin.from("teacher_entitlement_state")
+   .select("active_student_count").eq("teacher_id",id).single();
+  expect(state.error).toBeNull();
+  expect(state.data?.active_student_count).toBe(0);
+  const actual=await admin.from("students")
+   .select("id",{count:"exact",head:true}).eq("teacher_id",id);
+  expect(actual.error).toBeNull();
+  expect(actual.count).toBe(0);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
  }
- const state=await admin.from("teacher_entitlement_state")
-  .select("active_student_count").eq("teacher_id",id).single();
- expect(state.error).toBeNull();
- expect(state.data?.active_student_count).toBe(0);
- const actual=await admin.from("students")
-  .select("id",{count:"exact",head:true}).eq("teacher_id",id);
- expect(actual.error).toBeNull();
- expect(actual.count).toBe(0);
- expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
 });
 
 test("archived lesson recovery serializes concurrent capacity reactivations using canonical entitlements",async()=>{

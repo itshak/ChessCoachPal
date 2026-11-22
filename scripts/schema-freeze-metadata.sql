@@ -9,7 +9,8 @@ t AS (
  SELECT n.nspname AS schema,c.relname AS name,
         c.relkind::text AS kind,c.relpersistence::text AS persistence,
         c.relrowsecurity AS rls_enabled,c.relforcerowsecurity AS rls_forced,
-        pg_get_userbyid(c.relowner) AS owner
+        pg_get_userbyid(c.relowner) AS owner,
+        CASE WHEN c.relkind IN ('v','m') THEN pg_get_viewdef(c.oid,true) END AS view_definition
  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
  WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f')
 ),
@@ -56,6 +57,7 @@ fn AS (
  SELECT n.nspname AS schema,
         p.proname||'('||pg_get_function_identity_arguments(p.oid)||')' AS identity,
         pg_get_functiondef(p.oid) AS definition,
+        pg_get_userbyid(p.proowner) AS owner,
         p.prosecdef AS security_definer,p.provolatile::text AS volatility,
         p.proparallel::text AS parallel,
         p.proconfig AS configuration
@@ -96,6 +98,7 @@ gr AS (
  -- information_schema may omit. Stable routine identity excludes OIDs.
  SELECT n.nspname AS schema,'relation' AS object_kind,
         c.relname AS object_identity,
+        pg_get_userbyid(acl.grantor) AS grantor,
         CASE WHEN acl.grantee=0 THEN 'PUBLIC'
              ELSE pg_get_userbyid(acl.grantee) END AS grantee,
         acl.privilege_type AS privilege,
@@ -108,6 +111,7 @@ gr AS (
  SELECT n.nspname AS schema,'routine' AS object_kind,
         p.proname||'('||pg_get_function_identity_arguments(p.oid)||')'
           AS object_identity,
+        pg_get_userbyid(acl.grantor) AS grantor,
         CASE WHEN acl.grantee=0 THEN 'PUBLIC'
              ELSE pg_get_userbyid(acl.grantee) END AS grantee,
         acl.privilege_type AS privilege,
@@ -116,9 +120,42 @@ gr AS (
  CROSS JOIN LATERAL aclexplode(
   COALESCE(p.proacl,acldefault('f',p.proowner))) acl
  WHERE n.nspname='public'
+ UNION ALL
+ SELECT n.nspname,'sequence',c.relname,pg_get_userbyid(acl.grantor),
+        CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END,
+        acl.privilege_type,acl.is_grantable
+ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl,acldefault('s',c.relowner))) acl
+ WHERE n.nspname='public' AND c.relkind='S'
+ UNION ALL
+ SELECT n.nspname,'column',jsonb_build_array(c.relname,a.attname)::text,
+        pg_get_userbyid(acl.grantor),
+        CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END,
+        acl.privilege_type,acl.is_grantable
+ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
+ CROSS JOIN LATERAL aclexplode(a.attacl) acl
+ WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f')
+ UNION ALL
+ SELECT n.nspname,'schema',n.nspname,pg_get_userbyid(acl.grantor),
+        CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END,
+        acl.privilege_type,acl.is_grantable
+ FROM pg_namespace n
+ CROSS JOIN LATERAL aclexplode(COALESCE(n.nspacl,acldefault('n',n.nspowner))) acl
+ WHERE n.nspname='public'
+ UNION ALL
+ SELECT COALESCE(n.nspname,'(global)'),'default_acl',
+        jsonb_build_array(pg_get_userbyid(d.defaclrole),d.defaclobjtype::text)::text,
+        pg_get_userbyid(acl.grantor),
+        CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END,
+        acl.privilege_type,acl.is_grantable
+ FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
+ CROSS JOIN LATERAL aclexplode(d.defaclacl) acl
+ WHERE n.nspname='public' OR d.defaclnamespace=0
 )
 
 SELECT jsonb_pretty(jsonb_build_object(
+ 'format',2,
  'tables',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,name) FROM t x),'[]'::jsonb),
  'columns',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,"table",ordinal) FROM cols x),'[]'::jsonb),
  'constraints',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,"table",name) FROM cons x),'[]'::jsonb),
@@ -126,7 +163,7 @@ SELECT jsonb_pretty(jsonb_build_object(
  'triggers',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,"table",name) FROM trg x),'[]'::jsonb),
  'policies',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,"table",name) FROM pol x),'[]'::jsonb),
  'functions',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,identity) FROM fn x),'[]'::jsonb),
- 'grants',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,object_kind,object_identity,grantee,privilege) FROM gr x),'[]'::jsonb),
+ 'grants',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,object_kind,object_identity,grantor,grantee,privilege) FROM gr x),'[]'::jsonb),
  'sequences',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,name) FROM seq x),'[]'::jsonb),
  'types',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,name) FROM typ x),'[]'::jsonb),
  'extensions',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY name) FROM ext x),'[]'::jsonb)

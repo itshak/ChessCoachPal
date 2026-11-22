@@ -1,10 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  type EffectiveEntitlement,
-  type HostedPlan,
-  type LimitCheckResult,
-  type LimitResource,
-  type TeacherEntitlementRow,
+import type {
+  EffectiveEntitlement,
+  HostedPlan,
+  LimitCheckResult,
+  LimitResource,
 } from "@/lib/entitlements";
 
 /**
@@ -69,37 +68,12 @@ export async function loadAccountEntitlementSummary(
   };
 }
 
-/** Historical teacher metadata is no longer used for authorization. */
-export async function loadTeacherEntitlements(
-  supabase: SupabaseClient,
-  teacherId: string
-): Promise<TeacherEntitlementRow | null> {
-  void teacherId;
-  const summary=await loadAccountEntitlementSummary(supabase);
-  const plan=(summary.studentCapacity.planCode === "pro" ? "pro" : "free");
-  return {
-    hosted_plan:plan,
-    trial_ends_at:null,
-    gifted_until:null,
-    stripe_subscription_id:null,
-    founding_number:null,
-  };
-}
-
-/** Legacy no-op: expired grants are evaluated by SQL at transaction time. */
-export async function persistDemotionIfNeeded(
-  supabase: SupabaseClient, teacherId: string, stored: TeacherEntitlementRow | null,
-  demotedFrom: "trial" | "gifted" | null,
-): Promise<void> {
-  void supabase;void teacherId;void stored;void demotedFrom;
-}
-
-export async function countActiveStudents(
-  supabase: SupabaseClient,
-  teacherId: string
-): Promise<number> {
-  void teacherId;
-  return (await loadAccountEntitlementSummary(supabase)).activeStudentCount;
+/** Presentation only; PostgreSQL remains authoritative for student writes. */
+export function reachedStudentCapacity(
+  { activeStudentCount, studentCapacity }: Pick<AccountEntitlementSummary, "activeStudentCount" | "studentCapacity">,
+): number | null {
+  const { unlimited, limit } = studentCapacity;
+  return !unlimited && limit !== null && activeStudentCount >= limit ? limit : null;
 }
 
 /**

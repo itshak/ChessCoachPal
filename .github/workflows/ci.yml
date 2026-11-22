@@ -43,6 +43,9 @@ jobs:
       - name: Enforce ADR-0001 current-schema-only contract
         run: npm run schema:canonical:guard && npm run schema:canonical:guard-test
 
+      - name: Enforce final schema source acceptance guards
+        run: npm run pre1:final-cutover:audit && npm run schema:final:inventory:strict
+
       - name: Audit MCP-first website and API coverage (baseline; gaps explicitly reported)
         run: npm run mcp:parity:strict
 

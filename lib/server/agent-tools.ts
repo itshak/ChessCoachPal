@@ -659,7 +659,7 @@ const catalogue = [
   },
   {
     name:"ccp_hosted_subscription_handoff",
-    description:"Review the same authoritative account plan and active capacity visible on the website. Browser-only checkout is not offered until a verified provider and approved subscription are configured.",
+    description:"Review the authoritative account plan and active capacity shown on the website Account and Students pages. Browser-only checkout is not offered until a verified provider and approved subscription are configured.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {

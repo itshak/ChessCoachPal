@@ -1,7 +1,7 @@
 {
   "auditedAt": "2026-11-21",
   "headSha": "5288c4e5917473cca7979700cfa9fc77a685f4ca",
-  "policy": "All chess business features, including GigaChess legality, combined session+chapter approval and study preference hierarchy, use shared website/MCP domain operations with tenant authorization. The original 93 historical cases, additional named E2E, strict parity and manual real-client prepublication gates remain mandatory. ADR-0019 schema normalization requires the account page and ccp_hosted_subscription_handoff to expose the same SQL effective capability read; any future paid checkout must go through an independently verified provider adapter.",
+  "policy": "All chess business features, including GigaChess legality, combined session+chapter approval and study preference hierarchy, use shared website/MCP domain operations with tenant authorization. The original 93 historical cases, additional named E2E, strict parity and manual real-client prepublication gates remain mandatory. ADR-0019 schema normalization requires the account page and ccp_hosted_subscription_handoff to expose the same SQL effective capability read; the Students roster shows its SQL finite-cap boundary with authenticated evidence in e2e/student-capacity.spec.ts. Any future paid checkout must go through an independently verified provider adapter.",
   "apiRoutes": [
     {
       "path": "app/api/agent/connections/route.ts",

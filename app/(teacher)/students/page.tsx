@@ -3,15 +3,12 @@ import {getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { AddStudentForm } from "@/components/teacher/AddStudentForm";
-import { HostedLimitBanner } from "@/components/teacher/HostedLimitBanner";
 import { ageFromBirthdate } from "@/lib/students";
 import {teacherWorkplaceContextGet} from "@/lib/server/teacher-workplace-context";
 import {workplaceCurrentStudentIds} from "@/lib/server/workplace-student-scope";
-import { getDeploymentMode, resolveEffectivePlan } from "@/lib/entitlements";
 import {
-  countActiveStudents,
-  loadTeacherEntitlements,
-  persistDemotionIfNeeded,
+  loadAccountEntitlementSummary,
+  reachedStudentCapacity,
 } from "@/lib/server/entitlements";
 
 export async function generateMetadata(){
@@ -76,28 +73,11 @@ export default async function StudentsPage({
   // does not need a household/guardian, and no household grants portal rights.
   if(rosterError)students.length=0;
 
-  let limitBanner: React.ReactNode = null;
-  if (getDeploymentMode() === "hosted") {
-    const stored = await loadTeacherEntitlements(supabase, user.id);
-    const entitlement = resolveEffectivePlan(stored);
-    await persistDemotionIfNeeded(
-      supabase,
-      user.id,
-      stored,
-      entitlement.demotedFrom
-    );
-    if (entitlement.softLimitsApply) {
-      const activeCount = await countActiveStudents(supabase, user.id);
-      if (activeCount >= entitlement.limits.maxStudents) {
-        limitBanner = (
-          <HostedLimitBanner
-            monthlyPriceCents={entitlement.monthlyPriceCents}
-            message={t("freeLimit",{count:entitlement.limits.maxStudents})}
-          />
-        );
-      }
-    }
-  }
+  const [entitlements, tHosted] = await Promise.all([
+    loadAccountEntitlementSummary(supabase).catch(() => null),
+    getTranslations("hosted"),
+  ]);
+  const limit = entitlements ? reachedStudentCapacity(entitlements) : null;
 
   return (
     <div>
@@ -122,7 +102,12 @@ export default async function StudentsPage({
         </p>
       </div>
 
-      {limitBanner}
+      {!entitlements && <p role="status" className="mb-4 text-sm">{t("capacityUnavailable")}</p>}
+      {entitlements && limit !== null && (
+        <p role="status" className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+          {tHosted("activeStudents", { count: entitlements.activeStudentCount, limit })}
+        </p>
+      )}
       {rosterError && <p role="alert" className="mb-4 text-sm text-error">{rosterError}</p>}
 
       <div className="grid min-w-0 grid-cols-1 lg:grid-cols-3 gap-6">

@@ -8,11 +8,13 @@
  * containing operational identifiers, comments or data.
  *
  * Usage: node scripts/compare-schema-freeze.mjs source.json target.json
- * Exit 0 only for exact structural equality; exit 1 for a difference.
+ * Exit 0 only for valid, equal structural snapshots; exit 1 for a difference.
+ * Exit 2 for invalid, incomplete or older snapshots.
  */
 import {readFileSync} from "node:fs";
 import {resolve} from "node:path";
 
+const FORMAT=2;
 const REQUIRED=["tables","columns","constraints","indexes","triggers","policies","functions","grants","sequences","types","extensions"];
 const keyFor={
  tables:["schema","name"],
@@ -22,17 +24,22 @@ const keyFor={
  triggers:["schema","table","name"],
  policies:["schema","table","name"],
  functions:["schema","identity"],
- grants:["schema","object_kind","object_identity","grantee","privilege"],
+ grants:["schema","object_kind","object_identity","grantor","grantee","privilege"],
  sequences:["schema","name"],
  types:["schema","name"],
  extensions:["name"],
 };
-const allowed=new Set(REQUIRED);
+const allowed=new Set(["format",...REQUIRED]);
+const mustContainRows=REQUIRED.filter(section=>section!=="sequences"&&section!=="types");
+const requiredRelations=["teachers","students","workplaces","plan_versions"];
 function parse(path){
  const raw=JSON.parse(readFileSync(resolve(path),"utf8"));
  if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new Error("Snapshot must be an object");
+ if(raw.format!==FORMAT)throw new Error("Unsupported snapshot format; re-export both databases");
  for(const section of REQUIRED){
   if(!Array.isArray(raw[section]))throw new Error("Missing array: "+section);
+  if(mustContainRows.includes(section)&&raw[section].length===0)
+   throw new Error("Incomplete snapshot: empty "+section);
   const keys=keyFor[section];
   const seen=new Set();
   for(const item of raw[section]){
@@ -46,6 +53,10 @@ function parse(path){
  }
  for(const section of Object.keys(raw))if(!allowed.has(section))
   throw new Error("Unknown snapshot section: "+section);
+ for(const name of requiredRelations){
+  if(!raw.tables.some(row=>row.schema==="public"&&row.name===name&&(row.kind==="r"||row.kind==="p")))
+   throw new Error("Incomplete ChessCoachPal snapshot: missing public."+name);
+ }
  return raw;
 }
 function canonical(value){
