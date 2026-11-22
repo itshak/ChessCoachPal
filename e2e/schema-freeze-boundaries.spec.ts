@@ -181,6 +181,19 @@ test("report audience scope rejects other children and revoked guest grants",asy
   const selfSupersession=await admin.from("report_publications")
    .update({superseded_by:publication}).eq("id",publication);
   expect(selfSupersession.error?.code).toBe("23514");
+  const otherStudentReport=await admin.from("report_publications").insert({
+   teacher_id:teacher.id,student_id:studentB.data!.id,
+   workplace_id:workplace.data!.id,
+   snapshot_digest:createHash("sha256").update(randomUUID()).digest("hex"),
+   snapshot_storage_ref:"synthetic-reports/"+randomUUID(),
+   output_locale:"en",approved_by:teacher.id,
+   approved_at:new Date().toISOString(),request_id:randomUUID(),
+  }).select("id").single();
+  expect(otherStudentReport.error).toBeNull();
+  const crossStudentSupersession=await admin.from("report_publications")
+   .update({superseded_by:otherStudentReport.data!.id}).eq("id",publication);
+  expect(crossStudentSupersession.error?.message)
+   .toContain("REPORT_SUPERSESSION_SCOPE_MISMATCH");
   const denied=await admin.from("report_publication_audiences").insert({
    publication_id:publication,portal_grant_id:grantB,
    teacher_id:teacher.id,approved_by:teacher.id,request_id:randomUUID(),
