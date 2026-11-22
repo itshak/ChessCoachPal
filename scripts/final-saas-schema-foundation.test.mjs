@@ -52,7 +52,12 @@ test("ADR-0019 final cross-domain safety invariants and one SQL authority",()=>{
   "ccp_published_plan_guard","ccp_plan_capability_guard",
   "ccp_grant_immutable_guard","ccp_usage_period_nonoverlap","ccp_apply_account_usage_event",
   "ccp_subscription_order_guard","ccp_entitlement_grant_serialize",
+  "ccp_report_not_self_superseded",
  ])assert.ok(sql.includes(marker),"Missing schema contract "+marker);
+ assert.match(sql,/ccp_session_amendment_immutable BEFORE UPDATE OR DELETE/);
+ assert.match(sql,/g\.issued_at IS NULL[\s\S]*g\.token_digest IS NULL/);
+ assert.match(sql,/p\.student_id IS DISTINCT FROM g\.student_id/);
+ assert.match(sql,/p\.workplace_id IS DISTINCT FROM g\.workplace_id/);
  for(const obsolete of [
   '"hosted_plan" "text"', 'ADD COLUMN hosted_enforced',
   'ADD COLUMN hosted_max_active_students',
