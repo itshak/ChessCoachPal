@@ -4,6 +4,7 @@ import {execFileSync} from "node:child_process";
 import {lstatSync,readFileSync,readdirSync} from "node:fs";
 
 const lockPath = "scripts/schema-freeze-lock.json";
+const successorPath = "scripts/approved-schema-freeze-successor.json";
 const migrationDir = "supabase/migrations";
 const baselineName = "20261107000000_chesscoachpal_baseline.sql";
 const lockedPaths = [
@@ -55,22 +56,55 @@ function parseLock(buf) {
   return obj;
 }
 
+function requireAncestor(ancestor, descendant, message) {
+  try { git("merge-base","--is-ancestor",ancestor,descendant); }
+  catch { throw new Error(message); }
+}
+
+function authorizeSuccessor(base, previousBytes, currentBytes) {
+  // The proposal itself cannot permit its own lock change. Use only the
+  // independently merged approval on the checked-out base, never working-tree data.
+  const approvalBytes=optionalObject(base,successorPath);
+  if (!approvalBytes)
+    throw new Error("The accepted base schema freeze lock cannot be edited or removed by an ordinary change");
+  const approval=JSON.parse(approvalBytes.toString("utf8"));
+  const keys=["version","adr","previousLockSha256","successorLockSha256"];
+  if (!approval || typeof approval!=="object" || Array.isArray(approval) ||
+      approval.version!==1 || Object.keys(approval).length!==keys.length ||
+      keys.some(key=>!Object.hasOwn(approval,key)) ||
+      typeof approval.adr!=="string" || !/^ADR-[0-9]{4}$/.test(approval.adr) ||
+      ["previousLockSha256","successorLockSha256"].some(k=>
+        typeof approval[k]!=="string" || !/^[0-9a-f]{64}$/.test(approval[k])))
+    throw new Error("Invalid reviewed schema successor approval on the base");
+  if (approval.previousLockSha256!==sha256(previousBytes) ||
+      approval.successorLockSha256!==sha256(currentBytes))
+    throw new Error("Schema lock does not match the exact reviewed successor on the base");
+  const previous=parseLock(previousBytes);
+  const next=parseLock(currentBytes);
+  requireAncestor(base,"HEAD","Approved schema successor must retain the review base in checkout history");
+  requireAncestor(previous.acceptedSourceCommit,next.acceptedSourceCommit,
+    "Approved schema successor must retain the previous accepted source in history");
+  if (previous.acceptedSourceCommit===next.acceptedSourceCommit)
+    throw new Error("Approved schema successor must pin a distinct accepted source");
+  console.log(`Schema lock transition matches the separately reviewed base approval (${approval.adr}).`);
+}
+
 function main(args) {
   if (args.length !== 0 && !(args.length === 2 && args[0] === "--base"))
     throw new Error("Usage: node scripts/schema-freeze-lock.mjs [--base FULL_GIT_SHA]");
   const base=args.length ? commit(args[1]) : null;
   const old=base ? optionalObject(base,lockPath) : null;
   const current=optionalFile(lockPath);
-  if (old && (!current || !old.equals(current))) {
+  if (old && !current) {
     throw new Error("The accepted base schema freeze lock cannot be edited or removed by an ordinary change");
   }
+  if (old && !old.equals(current)) authorizeSuccessor(base,old,current);
   if (!current) {
     console.log("No accepted schema freeze lock yet; the post-freeze drift guard is not active.");
     return;
   }
-  const lock=parseLock(old ?? current);
-  try { git("merge-base","--is-ancestor",lock.acceptedSourceCommit,"HEAD"); }
-  catch { throw new Error("Accepted schema source commit must be preserved in checkout history"); }
+  const lock=parseLock(current);
+  requireAncestor(lock.acceptedSourceCommit,"HEAD","Accepted schema source commit must be preserved in checkout history");
   if (!lstatSync(migrationDir).isDirectory()) throw new Error("Expected a regular migration directory");
   const migrations=readdirSync(migrationDir).filter(name=>name.endsWith(".sql"));
   if (migrations.length !== 1 || migrations[0] !== baselineName)
