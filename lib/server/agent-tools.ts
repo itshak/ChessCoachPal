@@ -1966,8 +1966,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const response=await teacherSpreadsheetCommit(db,teacherId,a);
         const data=await response.json();
         if(!response.ok)
-          return {error:{code:response.status===403?(data.code??"FORBIDDEN"):
-            response.status===409?"CONFLICT":data.code??"VALIDATION_ERROR",
+          return {error:{code:data.code??(response.status===403?"FORBIDDEN":
+            response.status===409?"CONFLICT":"VALIDATION_ERROR"),
             message:data.error??"Spreadsheet import failed",workplaces:data.workplaces}};
         return {data};
       }
