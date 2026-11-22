@@ -145,6 +145,8 @@ test("report audience scope rejects other children and revoked guest grants",asy
    const row=await admin.from("portal_access_grants").insert({
     teacher_id:teacher.id,contact_id:contactId,student_id:studentId,
     workplace_id:workplace.data!.id,permissions:["shared_notes"],
+    issued_at:new Date().toISOString(),
+    token_digest:createHash("sha256").update(randomUUID()).digest("hex"),
     expires_at:future,
    }).select("id").single();
    expect(row.error).toBeNull();
@@ -165,6 +167,20 @@ test("report audience scope rejects other children and revoked guest grants",asy
    return row.data!.id as string;
   };
   const publication=await publish();
+  const pendingGrant=await admin.from("portal_access_grants").insert({
+   teacher_id:teacher.id,contact_id:contactA.data!.id,
+   student_id:studentA.data!.id,workplace_id:workplace.data!.id,
+   permissions:["shared_notes"],expires_at:future,
+  }).select("id").single();
+  expect(pendingGrant.error).toBeNull();
+  const unissuedDenied=await admin.from("report_publication_audiences").insert({
+   publication_id:publication,portal_grant_id:pendingGrant.data!.id,
+   teacher_id:teacher.id,approved_by:teacher.id,request_id:randomUUID(),
+  });
+  expect(unissuedDenied.error?.message).toContain("REPORT_AUDIENCE_NOT_AUTHORIZED");
+  const selfSupersession=await admin.from("report_publications")
+   .update({superseded_by:publication}).eq("id",publication);
+  expect(selfSupersession.error?.code).toBe("23514");
   const denied=await admin.from("report_publication_audiences").insert({
    publication_id:publication,portal_grant_id:grantB,
    teacher_id:teacher.id,approved_by:teacher.id,request_id:randomUUID(),
@@ -184,6 +200,50 @@ test("report audience scope rejects other children and revoked guest grants",asy
    teacher_id:teacher.id,approved_by:teacher.id,request_id:randomUUID(),
   });
   expect(revokedDenied.error?.message).toContain("REPORT_AUDIENCE_NOT_AUTHORIZED");
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
+
+/** TCH-03: session correction provenance is immutable while its session exists. */
+test("session amendment history rejects direct updates and deletes",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  const workplace=await admin.from("workplaces").select("id")
+   .eq("teacher_id",teacher.id).eq("kind","personal").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Audit learner "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const enrollment=await admin.from("workplace_enrollments").insert({
+   teacher_id:teacher.id,student_id:student.data!.id,
+   workplace_id:workplace.data!.id,source:"manual",
+  });
+  expect(enrollment.error).toBeNull();
+  const session=await admin.from("teaching_sessions").insert({
+   teacher_id:teacher.id,workplace_id:workplace.data!.id,
+   student_id:student.data!.id,title:"Schema audit lesson",
+   starts_at:"2060-03-07T11:00:00Z",duration_minutes:45,
+  }).select("id").single();
+  expect(session.error).toBeNull();
+  const corrected=await admin.from("teaching_sessions")
+   .update({duration_minutes:60}).eq("id",session.data!.id);
+  expect(corrected.error).toBeNull();
+  const events=await admin.from("session_amendment_events")
+   .select("id,previous_state,next_state")
+   .eq("session_id",session.data!.id);
+  expect(events.error).toBeNull();
+  expect(events.data).toHaveLength(1);
+  expect(events.data?.[0].previous_state.duration_minutes).toBe(45);
+  expect(events.data?.[0].next_state.duration_minutes).toBe(60);
+  const tamper=await admin.from("session_amendment_events")
+   .update({source:"service"}).eq("id",events.data![0].id);
+  expect(tamper.error?.message).toContain("IMMUTABLE_SESSION_AMENDMENT");
+  const erase=await admin.from("session_amendment_events")
+   .delete().eq("id",events.data![0].id);
+  expect(erase.error?.message).toContain("IMMUTABLE_SESSION_AMENDMENT");
  }finally{
   expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
  }
