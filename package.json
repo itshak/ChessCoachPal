@@ -30,7 +30,9 @@
     "test:e2e:ui": "playwright test --ui",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "pre1:final-cutover:audit": "node scripts/pre1-final-cutover-audit.mjs"
+    "pre1:final-cutover:audit": "node scripts/pre1-final-cutover-audit.mjs",
+    "schema:final:inventory": "node scripts/final-schema-source-inventory.mjs --json",
+    "schema:final:inventory:strict": "node scripts/final-schema-source-inventory.mjs --strict"
   },
   "dependencies": {
     "@floating-ui/dom": "^1.8.0",
