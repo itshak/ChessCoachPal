@@ -14282,6 +14282,9 @@ BEGIN
     (SELECT 1 FROM public.teachers WHERE id=v_teacher) THEN RETURN OLD;END IF;
    RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
   END IF;
+  -- Lock before an active candidate INSERT can contend on a row or an FK,
+  -- but count only a real INSERT. ON CONFLICT may update or write nothing.
+  IF TG_OP='INSERT' AND TG_WHEN='BEFORE' THEN RETURN NEW;END IF;
   IF v_delta>0 THEN
    v_effective:=public.ccp_effective_capability(v_teacher,'students.active',now());
    v_limit:=(v_effective->>'limit')::integer;
@@ -14303,6 +14306,9 @@ REVOKE ALL ON FUNCTION public.ccp_student_capacity_guard()
  FROM PUBLIC,anon,authenticated;
 CREATE TRIGGER ccp_student_capacity_guard
  BEFORE INSERT OR UPDATE OR DELETE ON public.students FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_student_capacity_guard();
+CREATE TRIGGER ccp_student_capacity_guard_inserted
+ AFTER INSERT ON public.students FOR EACH ROW
  EXECUTE FUNCTION public.ccp_student_capacity_guard();
 
 CREATE OR REPLACE FUNCTION public.ccp_professional_workplace_capacity_guard()
@@ -14338,6 +14344,9 @@ BEGIN
     (SELECT 1 FROM public.teachers WHERE id=v_teacher) THEN RETURN OLD;END IF;
    RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
   END IF;
+  -- Lock before an active candidate INSERT can contend on a row or an FK,
+  -- but count only a real INSERT. ON CONFLICT may update or write nothing.
+  IF TG_OP='INSERT' AND TG_WHEN='BEFORE' THEN RETURN NEW;END IF;
   IF v_delta>0 THEN
    v_cap:=public.ccp_effective_capability(v_teacher,'workplaces.professional',now());
    v_limit:=(v_cap->>'limit')::integer;
@@ -14359,6 +14368,9 @@ REVOKE ALL ON FUNCTION public.ccp_professional_workplace_capacity_guard()
  FROM PUBLIC,anon,authenticated;
 CREATE TRIGGER ccp_professional_workplace_capacity_guard
  BEFORE INSERT OR UPDATE OR DELETE ON public.workplaces FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_professional_workplace_capacity_guard();
+CREATE TRIGGER ccp_professional_workplace_capacity_guard_inserted
+ AFTER INSERT ON public.workplaces FOR EACH ROW
  EXECUTE FUNCTION public.ccp_professional_workplace_capacity_guard();
 
 -- Verified counters and capacity remain a database invariant, including
