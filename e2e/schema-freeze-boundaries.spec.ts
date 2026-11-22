@@ -355,3 +355,68 @@ test("cross-tenant report references are rejected and private reports are invisi
   expect((await admin.auth.admin.deleteUser(b.id)).error).toBeNull();
  }
 });
+
+/** SCH-05/06: A signed-in teacher can inspect only their own entitlement
+ * state, while direct writes to authority, subscription and audit tables
+ * fail at the database privilege boundary. Anonymous users get no rows. */
+test("authenticated and anonymous roles cannot mutate commercial authority",async()=>{
+ const admin=syntheticAdmin();
+ const a=await syntheticTeacher(admin);
+ const b=await syntheticTeacher(admin);
+ const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
+ const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const anon=createClient(url,key,{auth:{
+  persistSession:false,autoRefreshToken:false,
+ }});
+ const member=createClient(url,key,{auth:{
+  persistSession:false,autoRefreshToken:false,
+ }});
+ try{
+  const signed=await member.auth.signInWithPassword({
+   email:a.email,password:a.password,
+  });
+  expect(signed.error).toBeNull();
+  const own=await member.from("teacher_entitlement_state")
+   .select("teacher_id,revision").eq("teacher_id",a.id).single();
+  expect(own.error).toBeNull();
+  expect(own.data?.teacher_id).toBe(a.id);
+  const other=await member.from("teacher_entitlement_state")
+   .select("teacher_id").eq("teacher_id",b.id);
+  expect(other.error).toBeNull();
+  expect(other.data).toEqual([]);
+  const anonymous=await anon.from("teacher_entitlement_state")
+   .select("teacher_id").eq("teacher_id",a.id);
+  expect(anonymous.data ?? []).toEqual([]);
+  const changes=[
+   member.from("teacher_entitlement_state")
+    .update({revision:99999}).eq("teacher_id",a.id),
+   member.from("teacher_entitlement_grants").insert({
+    teacher_id:a.id,kind:"plan_access",request_id:randomUUID(),
+    reason:"synthetic forged grant",
+   }),
+   member.from("entitlement_audit_events").insert({
+    teacher_id:a.id,source:"operator",action:"fake",
+    request_id:randomUUID(),reason:"synthetic forged audit",
+   }),
+   member.from("platform_billing_events").insert({
+    provider:"synthetic",merchant_scope:"tenant-test",
+    external_event_id:randomUUID(),event_type:"paid",
+    payload_sha256:"a".repeat(64),
+    signature_verified_at:new Date().toISOString(),
+   }),
+   member.from("platform_subscriptions").delete().eq("teacher_id",a.id),
+  ];
+  for(const mutation of changes){
+   const result=await mutation;
+   expect(result.error,"direct commercial mutation must be denied").not.toBeNull();
+  }
+  const unchanged=await admin.from("teacher_entitlement_state")
+   .select("revision").eq("teacher_id",a.id).single();
+  expect(unchanged.error).toBeNull();
+  expect(unchanged.data?.revision).toBe(own.data?.revision);
+ }finally{
+  await member.auth.signOut();
+  expect((await admin.auth.admin.deleteUser(a.id)).error).toBeNull();
+  expect((await admin.auth.admin.deleteUser(b.id)).error).toBeNull();
+ }
+});
