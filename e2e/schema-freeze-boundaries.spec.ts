@@ -204,6 +204,13 @@ test("report audience scope rejects other children and revoked guest grants",asy
    teacher_id:teacher.id,approved_by:teacher.id,request_id:randomUUID(),
   });
   expect(allowed.error).toBeNull();
+  const sameScopeSuccessor=await publish();
+  const superseded=await admin.from("report_publications")
+   .update({superseded_by:sameScopeSuccessor}).eq("id",publication);
+  expect(superseded.error).toBeNull();
+  const secondSupersession=await admin.from("report_publications")
+   .update({superseded_by:otherStudentReport.data!.id}).eq("id",publication);
+  expect(secondSupersession.error?.message).toContain("IMMUTABLE_PUBLICATION");
   const revoke=await admin.from("portal_access_grants")
    .update({revoked_at:new Date().toISOString()}).eq("id",grantA);
   expect(revoke.error).toBeNull();
