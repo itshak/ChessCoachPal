@@ -1,12 +1,13 @@
 import {randomUUID} from "node:crypto";
-import {expect,test} from "@playwright/test";
+import {expect} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {isolatedTeacherTest as test} from "./helpers/isolated-teacher";
 
-const origin="http://localhost:3000";
+const origin=new URL(process.env.PLAYWRIGHT_BASE_URL??"http://localhost:3000").origin;
 const future=(days:number)=>new Date(Date.now()+days*86400000).toISOString();
 
-test("PARITY:PARITY-scoped-guest-calendar and cancellation cannot access the same student's other workplace",async({page,request})=>{
-  const call=await delegatedTool(page,request);
+test("PARITY:PARITY-scoped-guest-calendar and cancellation cannot access the same student's other workplace",async({page,request,isolatedTeacher})=>{
+  const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
   const student=await call("ccp_students_create",{
     name:"Two-workplace pupil "+randomUUID(),idempotencyKey:randomUUID(),
   });
@@ -32,13 +33,13 @@ test("PARITY:PARITY-scoped-guest-calendar and cancellation cannot access the sam
     workplaceId:school.data.entityId,studentId,title:"School chess",startsAt:future(8),
     durationMinutes:50,lessonNote:"Shared school",idempotencyKey:randomUUID(),
   });
+  expect(schoolLesson.error,"independent school lesson").toBeUndefined();
   const privateLessonTitle="Private coaching "+randomUUID();
   const privateLesson=await call("ccp_sessions_create",{
     workplaceId:privatePlace.data.entityId,studentId,title:privateLessonTitle,startsAt:future(9),
     durationMinutes:45,lessonNote:"Private coaching",idempotencyKey:randomUUID(),
   });
-  expect(schoolLesson.error).toBeUndefined();
-  expect(privateLesson.error).toBeUndefined();
+  expect(privateLesson.error,"independent private lesson").toBeUndefined();
   const contact=await call("ccp_contacts_create",{
     displayName:"School liaison "+randomUUID(),idempotencyKey:randomUUID(),confirmed:true,
   });

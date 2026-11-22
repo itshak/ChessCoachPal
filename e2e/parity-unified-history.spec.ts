@@ -1,9 +1,10 @@
 import {randomUUID} from "node:crypto";
-import {expect,test} from "@playwright/test";
+import {expect} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {isolatedTeacherTest as test} from "./helpers/isolated-teacher";
 
-test("PARITY:PARITY-unified-lessons-reconcile counts canonical teaching time only once",async({page,request})=>{
- const call=await delegatedTool(page,request);
+test("PARITY:PARITY-unified-lessons-reconcile counts canonical teaching time only once",async({page,request,isolatedTeacher})=>{
+ const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
  const day="2042-06-12",startsAt=day+"T14:00:00.000Z";
  const workplace=await call("ccp_workplaces_create",{
    name:"Unified history "+randomUUID(),timezone:"UTC",

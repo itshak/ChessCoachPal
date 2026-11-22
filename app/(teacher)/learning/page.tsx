@@ -1,4 +1,6 @@
 import {getTranslations} from "next-intl/server";
+import {createClient} from "@/lib/supabase/server";
+import {teacherWorkplaceContextGet} from "@/lib/server/teacher-workplace-context";
 import { LearningMaterialsCatalog } from "@/components/teacher/LearningMaterialsCatalog";
 import { TrainingHomeworkPanel } from "@/components/teacher/TrainingHomeworkPanel";
 import { ChessLearningPanel } from "@/components/teacher/ChessLearningPanel";
@@ -18,9 +20,15 @@ export async function generateMetadata(){
 
 export default async function LearningPage() {
   const t=await getTranslations("nav");
+  const db=await createClient();
+  const {data:{user}}=await db.auth.getUser();
+  if(!user)return null;
+  const {selectedWorkplaceId:workplaceId,workplaces}=await teacherWorkplaceContextGet(db,user.id);
+  const scope=workplaceId??"all";
   return <div className="max-w-6xl mx-auto px-4 py-8">
     <h1 className="text-2xl font-bold mb-6">{t("learning")}</h1>
-    <div className="space-y-8"><LearningMaterialsCatalog /><TrainingHomeworkPanel /><LichessConnectionPanel /><LichessStudyExplorer /><StudyPreferencesPanel />
-      <StudyChapterEvidencePanel /><PuzzleSeriesPanel /><FenReviewPanel /><LichessPuzzlePublisher /><ChessLearningPanel /><MaterialHistoryPanel /></div>
+    <div className="space-y-8"><LearningMaterialsCatalog /><TrainingHomeworkPanel key={"homework:"+scope} workplaceId={workplaceId} /><LichessConnectionPanel /><LichessStudyExplorer /><StudyPreferencesPanel />
+      <StudyChapterEvidencePanel /><PuzzleSeriesPanel /><FenReviewPanel /><LichessPuzzlePublisher /><ChessLearningPanel key={"learning:"+scope} workplaceId={workplaceId} />
+      <MaterialHistoryPanel key={"materials:"+scope} initialWorkplaceId={workplaceId} initialWorkplaces={workplaces} /></div>
   </div>;
 }
