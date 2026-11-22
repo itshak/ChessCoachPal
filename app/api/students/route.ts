@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createStudentWithOptionalContact } from "@/lib/server/teacher-student-create-service";
 import { parseBody, studentCreateSchema } from "@/lib/server/api-schemas";
-import { teacherStudentsRoster, StudentProfileError } from "@/lib/server/student-profile-service";
+import { teacherStudentsRoster, studentRosterWorkplaceFilter, StudentProfileError } from "@/lib/server/student-profile-service";
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const params = req.nextUrl.searchParams;
+  const rawWorkplace=params.get("workplaceId");
+  const workplace=studentRosterWorkplaceFilter.safeParse(rawWorkplace==="all"?null:rawWorkplace??undefined);
+  if(!workplace.success)return NextResponse.json({error:"Invalid workplace roster filter"},{status:400});
   const paginate = params.has("limit") || params.has("offset") || params.has("query");
   const limit = paginate ? Number(params.get("limit") ?? 50) : 1000;
   const offset = Number(params.get("offset") ?? 0);
@@ -18,6 +21,7 @@ export async function GET(req: NextRequest) {
   try {
     const roster = await teacherStudentsRoster(supabase, user.id, {
       query: params.get("query") ?? undefined,
+      workplaceId:workplace.data,
       // Match the website Students page and the MCP roster default:
       // archived pupils remain accessible on explicit historical requests.
       includeArchived: params.get("includeArchived") === "true" &&

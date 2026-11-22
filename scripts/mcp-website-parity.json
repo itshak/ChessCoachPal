@@ -763,8 +763,8 @@
       "existingTools": [
         "ccp_dashboard_summary"
       ],
-      "explanation": "Teacher-scoped shared service powers website and MCP; real delegated OAuth browser comparison and notification write/readback in E2E",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "Shared dashboard page, HTTP and delegated MCP resolve omitted, explicit All or owned workplace scope alike. An owned historical workplace can be read explicitly; foreign IDs are rejected. The global workplace count remains explicitly teacher-wide.",
+      "evidenceTest": "e2e/parity-workplace-dashboard.spec.ts"
     },
     {
       "path": "app/api/events/[id]/email/route.ts",
@@ -1594,7 +1594,7 @@
         "ccp_students_roster",
         "ccp_students_create_full"
       ],
-      "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes. Direct archived-on-create uses the same confirmed website/MCP SQL receipt and excludes the archived learner from active roster/quota; the candidate exercises archived creation and changed-payload replay in e2e/parity-students.spec.ts. Historical attendance import reads this explicit includeArchived paginated student roster, equivalent to MCP ccp_students_roster. Its UI now handles this read independently from workplace list errors, with authenticated browser regression in e2e/parity-historical-import.spec.ts. ADR-0019 prelaunch schema transition: both browser and MCP write paths now commit under the same SQL ccp_student_capacity_guard using the effective plan/grant and active-state counters, with no environment-derived hosted cap as authority. SQL snapshot correctness and parallel writes remain release acceptance gates.",
+      "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. The roster page opts into persisted context, with matching HTTP workplaceId=context and MCP context filters; optional UUID selects an owned workplace. Omitted or explicit All preserves global import/contact pickers and returns each canonical student once. Current rows require dated local membership; explicit archived views use started noncancelled periods and do not rewrite historical lessons. Browser/HTTP/MCP evidence: e2e/parity-workplace-roster-scope.spec.ts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes. Direct archived-on-create uses the same confirmed website/MCP SQL receipt and excludes the archived learner from active roster/quota; the candidate exercises archived creation and changed-payload replay in e2e/parity-students.spec.ts. Historical attendance import reads this explicit includeArchived paginated student roster, equivalent to MCP ccp_students_roster. Its UI now handles this read independently from workplace list errors, with authenticated browser regression in e2e/parity-historical-import.spec.ts. ADR-0019 prelaunch schema transition: both browser and MCP write paths now commit under the same SQL ccp_student_capacity_guard using the effective plan/grant and active-state counters, with no environment-derived hosted cap as authority. SQL snapshot correctness and parallel writes remain release acceptance gates.",
       "evidenceTest": "e2e/parity-students.spec.ts"
     },
     {

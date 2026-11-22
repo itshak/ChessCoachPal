@@ -1,6 +1,13 @@
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {getPolicy} from "@/lib/server/scheduling";
 import {toLocalDateString} from "@/lib/schedule";
+
+/** Evaluate date-only memberships in the owned workplace's local calendar. */
+export async function workplaceRosterDate(db:SupabaseClient,teacherId:string,workplaceId:string){
+  const {data,error}=await db.from("workplaces").select("timezone")
+    .eq("teacher_id",teacherId).eq("id",workplaceId).maybeSingle();
+  if(error)throw new Error("WORKPLACE_STUDENT_SCOPE_UNAVAILABLE");
+  return data?toLocalDateString(new Date(),data.timezone):null;
+}
 
 /**
  * Return the set of current students assigned to a specific owned workplace.
@@ -12,8 +19,8 @@ export async function workplaceCurrentStudentIds(db:SupabaseClient,
   teacherId:string,workplaceId:string):Promise<Set<string>> {
   const result=new Set<string>();
   const pageSize=500,maxRows=20000;
-  const policy=await getPolicy(db,teacherId);
-  const today=toLocalDateString(new Date(),policy.timezone);
+  const today=await workplaceRosterDate(db,teacherId,workplaceId);
+  if(!today)throw new Error("WORKPLACE_STUDENT_SCOPE_UNAVAILABLE");
   for(let offset=0;offset<=maxRows;offset+=pageSize){
     const {data,error}=await db.from("workplace_enrollments")
       .select("id,student_id").eq("teacher_id",teacherId)

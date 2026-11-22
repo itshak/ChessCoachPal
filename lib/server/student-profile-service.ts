@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {z} from "zod";
+import type {Database} from "@/lib/supabase/types";
+import {resolveTeacherWorkplaceFilter,WorkplaceContextError} from "@/lib/server/teacher-workplace-context";
+import {workplaceRosterDate} from "@/lib/server/workplace-student-scope";
 import {getPolicy} from "@/lib/server/scheduling";
 import {toLocalDateString} from "@/lib/schedule";
 
@@ -26,18 +30,46 @@ export type StudentProfilePatch = {
   defaultRateCents?: number | string | null;
   travelFeeCents?: number | string | null;
 };
+export const studentRosterWorkplaceFilter=z.union([z.string().uuid(),z.literal("context"),z.null()]).optional();
 /** Bounded, navigable roster. Archived students remain accessible via explicit filter. */
 export async function teacherStudentsRoster(db: Db, teacherId: string,
   opts: { query?: string; includeArchived?: boolean; archivedOnly?: boolean;
-    offset?: number; limit?: number } = {}) {
+    workplaceId?:z.infer<typeof studentRosterWorkplaceFilter>; offset?: number; limit?: number } = {}) {
   const limit = Math.min(1000, Math.max(1, opts.limit ?? 1000));
   const offset = Math.min(100000, Math.max(0, opts.offset ?? 0));
+  let workplaceId:string|null, today:string|null=null;
+  try{
+    // Omitted preserves the historical global identity chooser. Roster views
+    // opt into the saved context, or explicitly pick All or an owned UUID.
+    workplaceId=await resolveTeacherWorkplaceFilter(db,teacherId,
+      opts.workplaceId==="context"?undefined:opts.workplaceId??null);
+    if(workplaceId)today=await workplaceRosterDate(db,teacherId,workplaceId);
+  }catch(error){
+    if(error instanceof WorkplaceContextError)throw new StudentProfileError(error.status,error.code,error.message);
+    throw new StudentProfileError(500,"DATABASE_ERROR","Workplace roster unavailable");
+  }
+  if(workplaceId&&!today)throw new StudentProfileError(404,"NOT_FOUND","Workplace not found");
+  const mixed=Boolean(workplaceId&&opts.includeArchived&&!opts.archivedOnly);
+  const relation="workplace_enrollments!workplace_enrollments_student_id_teacher_id_fkey";
+  const projection=workplaceId?(mixed?`*,current_membership:${relation}(),past_membership:${relation}()`:
+    `*,membership:${relation}!inner()`):"*";
   let query = db.from("students")
-    .select("*", {count:"exact"})
+    .select(projection, {count:"exact"})
     .eq("teacher_id", teacherId).order("name").order("id")
     .range(offset, offset + limit - 1);
   if (opts.archivedOnly) query = query.not("archived_at", "is", null);
   else if (!opts.includeArchived) query = query.is("archived_at", null);
+  if(workplaceId){
+    for(const alias of mixed?["current_membership","past_membership"]:["membership"]){
+      query=query.eq(alias+".teacher_id",teacherId).eq(alias+".workplace_id",workplaceId)
+        .is(alias+".cancelled_at",null).or(`starts_on.is.null,starts_on.lte.${today}`,{referencedTable:alias});
+      const current=mixed?alias==="current_membership":!opts.archivedOnly;
+      if(current)query=query.or(`ends_on.is.null,ends_on.gte.${today}`,{referencedTable:alias});
+    }
+    // PostgREST applies embedded existence to each canonical top-level row;
+    // ended intervals are evidence for archived learners only, not active.
+    if(mixed)query=query.or("and(archived_at.is.null,current_membership.not.is.null),and(archived_at.not.is.null,past_membership.not.is.null)");
+  }
   if (opts.query?.trim()) {
     const literal = opts.query.trim().replace(/[\\%_]/g, "\\$&");
     query = query.ilike("name_search", `%${literal}%`);
@@ -46,7 +78,7 @@ export async function teacherStudentsRoster(db: Db, teacherId: string,
   if (error || typeof count !== "number")
     throw new StudentProfileError(500,"DATABASE_ERROR","Student roster or pagination count unavailable");
   return {
-    students:data??[],
+    students:(data??[]) as unknown as Database["public"]["Tables"]["students"]["Row"][],
     nextOffset:count > offset+(data?.length??0) ? offset+(data?.length??0) : null,
   };
 }

@@ -100,9 +100,9 @@ import {teacherProfileGet,teacherProfileUpdate,TeacherProfileError} from "@/lib/
 import {teacherInvoiceSendPreview,InvoiceSendPreviewError} from "@/lib/server/teacher-invoice-send-preview";
 import {teacherStudentProgressReport} from "@/lib/server/teacher-student-progress-service";
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
-  TeacherOverviewError } from "@/lib/server/teacher-overview-service";
+  teacherDashboardSummaryInput, TeacherOverviewError } from "@/lib/server/teacher-overview-service";
 
-import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, teacherStudentChessHistory, teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, StudentProfileError } from "@/lib/server/student-profile-service";
+import { teacherStudentProfile, teacherStudentsRoster, studentRosterWorkplaceFilter, teacherStudentPatch, teacherStudentChessHistory, teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, StudentProfileError } from "@/lib/server/student-profile-service";
 import { studentUpdateSchema,studentCreateSchema } from "@/lib/server/api-schemas";
 import { createStudentWithOptionalContact } from "@/lib/server/teacher-student-create-service";
 const safeStudentProfile = (row: Record<string,unknown>) => ({
@@ -273,8 +273,8 @@ const catalogue = [
   },
   {
     name: "ccp_dashboard_summary",
-    description: "Read the same teacher-owned student/workplace/group and last-seven-day session totals as the website dashboard.",
-    schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
+    description: "Read the shared website dashboard totals. Omit workplaceId to inherit the active selection, pass null for All, or pass an owned workplace ID. workplaceCount is teacher-wide; scopedWorkplaceCount, active students, groups, and past-seven-day sessions respect the filter.",
+    schema: teacherDashboardSummaryInput, scope: "coach:read", readOnly: true,
   },
   {
     name: "ccp_notifications_list",
@@ -1177,8 +1177,8 @@ const catalogue = [
   },
   {
     name: "ccp_students_roster",
-    description: "Page through active learners by default, all learners with includeArchived=true, or only former pupils with archivedOnly=true. Includes chess profiles and revisions; excludes private notes and guardian contacts.",
-    schema: z.object({query:z.string().trim().max(80).optional(),
+    description: "Page through active learners by default or explicitly include archived learners. Omit workplaceId or use null for the global identity catalogue; use context for the teacher’s selected roster or supply an owned workplace UUID. Current members use its local date; archived pupils qualify only through a started, noncancelled membership period there. Private notes and guardian contacts are excluded.",
+    schema: z.object({query:z.string().trim().max(80).optional(),workplaceId:studentRosterWorkplaceFilter,
       includeArchived:z.boolean().default(false),archivedOnly:z.boolean().default(false),
       offset:z.number().int().min(0).max(100000).default(0),limit:z.number().int().min(1).max(100).default(50)}).strict(),
     scope:"coach:read",readOnly:true,
@@ -2480,7 +2480,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await studentSkillAssessmentsRecord(db,teacherId,a.studentId,a.ratings,a.idempotencyKey,a.assessedOn)};
       }
       case "ccp_students_roster": {
-        const a=args as {query?:string;includeArchived:boolean;archivedOnly:boolean;offset:number;limit:number};
+        const a=args as Parameters<typeof teacherStudentsRoster>[2];
         const result=await teacherStudentsRoster(db,teacherId,a);
         return {data:{students:result.students.map(safeStudentProfile),nextOffset:result.nextOffset}};
       }
@@ -2510,7 +2510,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherStudentPatch(db,teacherId,a.studentId,a.changes,a.expectedUpdatedAt)};
       }
       case "ccp_dashboard_summary":
-        return { data: await teacherDashboardSummary(db, teacherId) };
+        return { data: await teacherDashboardSummary(db, teacherId, (args as z.infer<typeof teacherDashboardSummaryInput>).workplaceId) };
       case "ccp_notifications_list":
         return { data: await teacherNotificationsList(db, teacherId) };
       case "ccp_notifications_mark_read": {

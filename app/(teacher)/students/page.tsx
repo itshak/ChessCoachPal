@@ -4,8 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { AddStudentForm } from "@/components/teacher/AddStudentForm";
 import { ageFromBirthdate } from "@/lib/students";
+import {teacherStudentsRoster} from "@/lib/server/student-profile-service";
 import {teacherWorkplaceContextGet} from "@/lib/server/teacher-workplace-context";
-import {workplaceCurrentStudentIds} from "@/lib/server/workplace-student-scope";
 import {
   loadAccountEntitlementSummary,
   reachedStudentCapacity,
@@ -39,35 +39,32 @@ export default async function StudentsPage({
 
   const params = await searchParams;
   const showArchived = params.show === "archived";
-  const context=await teacherWorkplaceContextGet(supabase,user.id);
-  const currentStudentIds=context.selectedWorkplaceId?
-    await workplaceCurrentStudentIds(supabase,user.id,context.selectedWorkplaceId):null;
-
-  // The default PostgREST response caps at 1,000 rows. Both the website
-  // and MCP must show the complete active/archived roster, not the first
-  // thousand learners silently. Stable secondary ordering prevents ties at
-  // page boundaries; oversized rosters fail visibly instead of truncating.
+  // The roster opts into selected workplace context; global identity
+  // choosers keep their existing unscoped list.
+  // Oversized scoped rosters fail visibly instead of truncating.
   const students: StudentListRow[] = [];
   const pageSize = 500;
   const maxRows = 20_000;
   let rosterError: string | null = null;
-  for (let offset = 0; offset <= maxRows; offset += pageSize) {
-    let query = supabase.from("students")
-      .select("id, name, level, birthdate, archived_at, created_at")
-      .eq("teacher_id", user.id).order("name").order("id");
-    query = showArchived
-      ? query.not("archived_at", "is", null)
-      : query.is("archived_at", null);
-    const { data, error } = await query.range(offset, offset + pageSize - 1);
-    if (error) { rosterError = t("rosterLoadFailed"); break; }
-    const chunk = (data ?? []) as unknown as StudentListRow[];
-    if (offset + chunk.length > maxRows) {
-      rosterError = t("rosterTooLarge");
+  // Keep one effective selection across all pages in this render.
+  let workplaceId:string|null=null;
+  try{workplaceId=(await teacherWorkplaceContextGet(supabase,user.id)).selectedWorkplaceId;}
+  catch{rosterError=t("rosterLoadFailed");}
+  for (let offset = 0; !rosterError&&offset <= maxRows; offset += pageSize) {
+    try{
+      const page=await teacherStudentsRoster(supabase,user.id,{
+        workplaceId,archivedOnly:showArchived,offset,limit:pageSize,
+      });
+      if(offset+page.students.length>maxRows||page.nextOffset!==null&&page.nextOffset>=maxRows){
+        rosterError=t("rosterTooLarge");
+        break;
+      }
+      students.push(...page.students as unknown as StudentListRow[]);
+      if(page.nextOffset===null)break;
+    }catch{
+      rosterError=t("rosterLoadFailed");
       break;
     }
-    students.push(...(currentStudentIds?
-      chunk.filter(student=>currentStudentIds.has(student.id)):chunk));
-    if (chunk.length < pageSize) break;
   }
   // Contacts are managed independently on each student profile. A student
   // does not need a household/guardian, and no household grants portal rights.

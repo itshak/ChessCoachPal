@@ -2,8 +2,7 @@ import Link from "next/link";
 import {getLocale,getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
-import {teacherWorkplaceContextGet} from "@/lib/server/teacher-workplace-context";
-import {workplaceCurrentStudentIds} from "@/lib/server/workplace-student-scope";
+import { teacherDashboardPageModel } from "@/lib/server/teacher-overview-service";
 
 export async function generateMetadata() {const t=await getTranslations("dashboard");return {title:t("title")};}
 
@@ -14,40 +13,8 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const context=await teacherWorkplaceContextGet(supabase,user.id);
-  const selectedWorkplaceId=context.selectedWorkplaceId;
-  const [
-    { data: students },
-    { data: workplaces },
-    { data: groups },
-    { data: upcoming },
-    { data: recent },
-    { data: teacher },
-  ] = await Promise.all([
-    supabase.from("students").select("id, name, level, archived_at")
-      .eq("teacher_id", user.id).order("name"),
-    supabase.from("workplaces").select("id, name").eq("teacher_id", user.id),
-    supabase.from("class_groups").select("id, name").eq("teacher_id", user.id)
-      .match(selectedWorkplaceId?{workplace_id:selectedWorkplaceId}:{}),
-    supabase.from("teaching_sessions")
-      .select("id, title, starts_at, duration_minutes")
-      .eq("teacher_id", user.id)
-      .match(selectedWorkplaceId?{workplace_id:selectedWorkplaceId}:{})
-      .gte("starts_at", new Date().toISOString())
-      .order("starts_at").limit(6),
-    supabase.from("teaching_sessions")
-      .select("id, title, starts_at, duration_minutes")
-      .eq("teacher_id", user.id)
-      .match(selectedWorkplaceId?{workplace_id:selectedWorkplaceId}:{})
-      .lt("starts_at", new Date().toISOString())
-      .order("starts_at", { ascending: false }).limit(5),
-    supabase.from("teachers").select("display_name").eq("id", user.id).maybeSingle(),
-  ]);
-
-  const currentStudentIds=selectedWorkplaceId?
-    await workplaceCurrentStudentIds(supabase,user.id,selectedWorkplaceId):null;
-  const activeStudents = (students ?? []).filter(s => !s.archived_at &&
-    (!currentStudentIds||currentStudentIds.has(s.id)));
+  const { summary, students, upcoming, recent, teacher } =
+    await teacherDashboardPageModel(supabase, user.id);
   const dateLabel = (iso: string) => new Intl.DateTimeFormat(locale, {
     dateStyle: "medium", timeStyle: "short",
   }).format(new Date(iso));
@@ -71,17 +38,17 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-8 min-w-0">
         <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
           <div className="text-sm text-muted">{t("activeStudents")}</div>
-          <div className="text-3xl font-bold mt-1">{activeStudents.length}</div>
+          <div className="text-3xl font-bold mt-1">{summary.studentCount}</div>
           <Link href="/students" className="text-sm text-primary hover:underline">{t("manageStudents")}</Link>
         </Card>
         <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
           <div className="text-sm text-muted">{t("workplaces")}</div>
-          <div className="text-3xl font-bold mt-1">{selectedWorkplaceId?1:(workplaces?.length ?? 0)}</div>
+          <div className="text-3xl font-bold mt-1">{summary.scopedWorkplaceCount}</div>
           <Link href="/coaching" className="text-sm text-primary hover:underline">{t("manageWorkplaces")}</Link>
         </Card>
         <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
           <div className="text-sm text-muted">{t("classGroups")}</div>
-          <div className="text-3xl font-bold mt-1">{groups?.length ?? 0}</div>
+          <div className="text-3xl font-bold mt-1">{summary.groupCount}</div>
           <Link href="/coaching" className="text-sm text-primary hover:underline">{t("viewClasses")}</Link>
         </Card>
       </div>
@@ -124,11 +91,11 @@ export default async function DashboardPage() {
           <h2 className="text-lg font-semibold">{t("studentsSection")}</h2>
           <Link href="/students" className="text-sm text-primary hover:underline">{t("viewAll")}</Link>
         </div>
-        {!activeStudents.length ? (
+        {!students.length ? (
           <Card><p className="text-sm text-muted">{t("addFirstStudent")}</p></Card>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 min-w-0">
-            {activeStudents.slice(0, 9).map(student => (
+            {students.map(student => (
               <Card key={student.id} padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
                 <Link href={`/students/${student.id}`} className="font-semibold text-primary hover:underline [overflow-wrap:anywhere]"><bdi dir="auto">{student.name}</bdi></Link>
                 {student.level && <p className="text-xs text-muted mt-1">{student.level}</p>}
