@@ -760,12 +760,12 @@ const catalogue = [
   },
   {
     name:"ccp_workplace_context_get",
-    description:"Read the teacher's globally selected workplace filter (or All Workplaces) and exactly owned locations. This is presentation context only, not an access grant or historical data mutation.",
+    description:"Read the teacher's global filter and active owned workplaces. If its previous workplace is unavailable, the effective selection is null (All Workplaces) with selectionWasStale=true. This is a filter, not an access grant or a historical data change.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_workplace_context_set",
-    description:"Confirm a global workplace filter change. Requires exact owned workplace UUID or null for All Workplaces and current expected selection; does not reassign students, lessons or financial history.",
+    description:"Confirm a global filter change to an active owned workplace UUID or null (All Workplaces). Set expectedSelectedWorkplaceId from the latest GET, including null for an archived-workplace fallback; it can be safely replaced or cleared. Re-read on stale conflicts. No students, lessons or financial history are reassigned.",
     schema:workplaceContextUpdateSchema,scope:"coach:write",readOnly:false,
   },
   {

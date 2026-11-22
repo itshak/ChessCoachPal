@@ -27,6 +27,7 @@
     "toggleNavigation": "Toggle navigation",
     "workplaceFilter": "Active workplace context",
     "allWorkplaces": "All workplaces",
+    "workplaceFilterFallback": "Previous workplace unavailable. Showing all workplaces.",
     "workplaceFilterFailed": "Could not change workplace; reload"
   },
   "dashboard": {

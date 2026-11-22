@@ -27,6 +27,7 @@
     "toggleNavigation": "פתיחת תפריט ניווט",
     "workplaceFilter": "הקשר מקום העבודה הפעיל",
     "allWorkplaces": "כל מקומות העבודה",
+    "workplaceFilterFallback": "מקום העבודה הקודם אינו זמין. מוצגים כל מקומות העבודה.",
     "workplaceFilterFailed": "שינוי מקום העבודה נכשל; רעננו"
   },
   "dashboard": {

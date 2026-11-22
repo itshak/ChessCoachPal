@@ -2,7 +2,8 @@ import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
 import {delegatedTool} from "./helpers/delegated-mcp";
-const origin="http://localhost:3000";
+import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
+const origin=new URL(process.env.PLAYWRIGHT_BASE_URL??"http://localhost:3000").origin;
 
 /** A distinct synthetic teacher keeps global preference changes isolated from
  * every other concurrently running browser/MCP acceptance scenario. */
@@ -21,6 +22,7 @@ test("PARITY:PARITY-global workplace context persists across browser and MCP wit
       id:teacherId,email,display_name:"Synthetic workplace context coach",
     });
     expect(inserted.error).toBeNull();
+    await configureSyntheticStudentCapacity(admin,teacherId,5,3);
     const call=await delegatedTool(page,request,"coach:read coach:write",{email,password});
     // This synthetic teacher is new: the onboarding tour deliberately routes
     // visitors to its current step (Dashboard), overriding /coaching. Finish
@@ -135,12 +137,61 @@ test("PARITY:PARITY-global workplace context persists across browser and MCP wit
     const cleared=await call("ccp_workplace_context_get",{});
     expect(cleared.data.selectedWorkplaceId).toBeNull();
 
+    // The saved filter becomes stale, not history or access. The same public
+    // fallback token must be usable across transports without exposing its ID.
+    // Use an otherwise empty workplace; the archive guard correctly rejects
+    // the earlier school fixture because it still has an active enrollment.
+    const obsolete=await call("ccp_workplaces_create",{
+      name:"Retiring workplace "+randomUUID(),timezone:"UTC",currency:"USD",locale:"en",
+      policy:{},idempotencyKey:randomUUID(),
+    });
+    expect(obsolete.error).toBeUndefined();
+    const archivedId=obsolete.data.entityId as string;
+    expect((await call("ccp_workplace_context_set",{
+      selectedWorkplaceId:archivedId,expectedSelectedWorkplaceId:null,confirmed:true,
+    })).error).toBeUndefined();
+    expect((await admin.from("workplaces").update({archived_at:new Date().toISOString()})
+      .eq("id",archivedId).eq("teacher_id",teacherId)).error).toBeNull();
+    const fallback=await call("ccp_workplace_context_get",{});
+    expect(fallback.error).toBeUndefined();
+    expect(fallback.data).toMatchObject({selectedWorkplaceId:null,selectedWorkplace:null,selectionWasStale:true});
+    expect(fallback.data.workplaces.some((w:{id:string})=>w.id===archivedId)).toBe(false);
+    const browserFallback=await page.request.get("/api/teacher/workplace-context");
+    expect(browserFallback.status()).toBe(200);
+    expect(await browserFallback.json()).toEqual(fallback.data);
+    await page.goto("/students");
+    await expect(switcher).toHaveValue("all");
+    await expect(switcher.locator('option[value="'+archivedId+'"]')).toHaveCount(0);
+    await expect(page.getByText("Previous workplace unavailable. Showing all workplaces.",{exact:true})).toBeVisible();
+    await switcher.selectOption(aId);
+    await expect.poll(async()=>(await call("ccp_workplace_context_get",{})).data)
+      .toMatchObject({selectedWorkplaceId:aId,selectionWasStale:false});
+    await expect(page.getByText("Previous workplace unavailable. Showing all workplaces.",{exact:true})).toHaveCount(0);
+    const staleNull=await call("ccp_workplace_context_set",{
+      selectedWorkplaceId:null,expectedSelectedWorkplaceId:null,confirmed:true,
+    });
+    expect(staleNull.error?.code).toBe("STALE_WORKPLACE_CONTEXT");
+    expect((await call("ccp_workplace_context_get",{})).data.selectedWorkplaceId).toBe(aId);
+
+    // MCP may also recover to All from a stale owned ID, actually clearing it.
+    expect((await admin.from("teachers").update({selected_workplace_id:archivedId})
+      .eq("id",teacherId)).error).toBeNull();
+    expect((await call("ccp_workplace_context_set",{
+      selectedWorkplaceId:null,expectedSelectedWorkplaceId:null,confirmed:true,
+    })).data).toMatchObject({selectedWorkplaceId:null,selectionWasStale:false,replayed:false});
+    const stored=await admin.from("teachers").select("selected_workplace_id").eq("id",teacherId).single();
+    expect(stored.error).toBeNull();
+    expect(stored.data?.selected_workplace_id).toBeNull();
+
     // Do not attach, reassign, erase or double-count teaching data when the
     // selected preference changes. The original workplace rows remain intact.
     const all=await call("ccp_workplaces_list",{});
     expect(all.error).toBeUndefined();
     expect(all.data.some((w:{id:string})=>w.id===aId)).toBe(true);
     expect(all.data.some((w:{id:string})=>w.id===bId)).toBe(true);
+    const preserved=await admin.from("workplaces").select("id,archived_at").eq("id",archivedId).eq("teacher_id",teacherId).single();
+    expect(preserved.error).toBeNull();
+    expect(preserved.data?.archived_at).toBeTruthy();
   }finally{
     const deleted=await admin.auth.admin.deleteUser(teacherId);
     expect(deleted.error).toBeNull();

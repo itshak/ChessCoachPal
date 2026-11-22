@@ -27,6 +27,7 @@
     "toggleNavigation": "Открыть меню",
     "workplaceFilter": "Текущее место работы",
     "allWorkplaces": "Все места работы",
+    "workplaceFilterFallback": "Предыдущее рабочее пространство недоступно. Показаны все рабочие пространства.",
     "workplaceFilterFailed": "Не удалось изменить место работы; обновите страницу"
   },
   "dashboard": {

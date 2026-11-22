@@ -1651,7 +1651,7 @@
         "ccp_workplace_context_get",
         "ccp_workplace_context_set"
       ],
-      "explanation": "One owner-bound global workplace selection service for website and MCP. Null means All Workplaces, stale revision fails, foreign workplace rejected. Selection is a filter, never a permission or lesson mutation. ADR-0019: both website and MCP receive the same active-only selectable workplaces; archived professional contexts are preserved for historical reads but rejected for new selection.",
+      "explanation": "Browser and MCP share an owner-bound selection and active-only list. GET distinguishes explicit All (null) from archived-workplace fallback (null plus selectionWasStale); PUT and the MCP setter take the last effective selection, replace or clear the exact saved stale row and reject a conflicting live selection or a foreign/archived target. The navigation explains fallback without exposing the archived ID; stored teaching history is unchanged.",
       "evidenceTest": "e2e/parity-workplace-context.spec.ts"
     },
     {
