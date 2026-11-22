@@ -43,4 +43,5 @@ sql < scripts/finance-native-rpc-synthetic.sql >/dev/null
 sql < scripts/schema-transition-contact-student-create.sql >/dev/null
 sql < scripts/schema-state-fingerprint.sql > "$scratch/second.json"
 cmp "$scratch/first.json" "$scratch/second.json"
+bash scripts/verify-entitlement-grant-race.sh "$db"
 echo "SCHEMA_FINAL_BASELINE_OK: deterministic clean install, owner checks, restricted portal functions; single future operator cutover required"

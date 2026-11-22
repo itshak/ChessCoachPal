@@ -111,3 +111,19 @@ test("draft plan capabilities require active versioned catalog keys",()=>{
 test("operator capability metadata is filtered out of published plan catalog",()=>{
  assert.match(sql,/CREATE POLICY ccp_plan_capabilities_read[\s\S]*JOIN public\.capability_definitions d[\s\S]*d\.active AND d\.security_class='teacher'/);
 });
+
+test("rating evidence keeps manual, online and published federation provenance separate",()=>{
+ assert.match(sql,/DROP CONSTRAINT ccp_rating_snapshot_provenance/);
+ const check=sql.match(/ADD CONSTRAINT ccp_rating_evidence_truth CHECK\([\s\S]*?\n \);/)?.[0];
+ assert.ok(check,"current row-shape constraint is missing");
+ assert.match(check,/teacher_manual.*unverified.*fetched_at IS NULL/);
+ assert.match(check,/provider_api.*unverified[\s\S]*preview_digest IS NOT NULL AND source_username IS NOT NULL/);
+ assert.match(check,/provider_api.*provider_published[\s\S]*effective_at IS NOT NULL AND provider_list_version IS NOT NULL/);
+ assert.match(check,/source_digest IS NOT NULL AND external_player_id IS NOT NULL/);
+ assert.match(check,/source_url ~ '\^https:\/\//);
+ assert.match(check,/preview_digest IS NULL AND source_username IS NULL AND source_handle_revision IS NULL\)$/m);
+ assert.match(sql,/CREATE FUNCTION public\.ccp_rating_provider_evidence_kind\(\)[\s\S]*?SECURITY INVOKER/);
+ assert.match(sql,/SELECT provider_kind INTO v_kind\s+FROM public\.rating_providers WHERE code=NEW\.provider/);
+ assert.match(sql,/CREATE TRIGGER ccp_rating_provider_evidence_kind\s+BEFORE INSERT OR UPDATE OF provider,source,verification_state ON public\.student_rating_snapshots/);
+ assert.match(sql,/CREATE UNIQUE INDEX ccp_official_rating_list_once\s+ON public\.student_rating_snapshots\s+\(teacher_id,student_id,provider,time_control,provider_list_version\)/);
+});

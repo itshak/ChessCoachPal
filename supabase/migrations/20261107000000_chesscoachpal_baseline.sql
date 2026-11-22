@@ -13188,19 +13188,59 @@ ALTER TABLE public.student_rating_snapshots
    CHECK(external_player_id IS NULL OR
          length(btrim(external_player_id)) BETWEEN 1 AND 120),
  ADD COLUMN source_handle_revision bigint CHECK(source_handle_revision>=1);
--- A verified federation rating needs dated, attributable source evidence.
--- New federations remain manual/unverified until their adapters are reviewed.
+-- Do not model an official federation-list player ID as an online username.
+-- Teacher-entered federation references may retain a URL, date and audit
+-- digest; that metadata does not turn a manual observation into official proof.
 ALTER TABLE public.student_rating_snapshots
- DROP CONSTRAINT federation_rating_source_truth;
+ DROP CONSTRAINT federation_rating_source_truth,
+ DROP CONSTRAINT ccp_rating_snapshot_provenance;
 ALTER TABLE public.student_rating_snapshots
  ADD CONSTRAINT ccp_rating_evidence_truth CHECK(
-   (source='teacher_manual' AND fetched_at IS NULL AND
-    verification_state='unverified')
-   OR (source='provider_api' AND fetched_at IS NOT NULL AND
-      (verification_state='unverified' OR
-       (verification_state='provider_published' AND effective_at IS NOT NULL
-        AND provider_list_version IS NOT NULL AND source_digest IS NOT NULL)))
+   (source='teacher_manual' AND verification_state='unverified' AND fetched_at IS NULL
+    AND preview_digest IS NULL AND source_username IS NULL
+    AND source_handle_revision IS NULL AND provider_list_version IS NULL)
+   OR
+   (source='provider_api' AND verification_state='unverified' AND fetched_at IS NOT NULL
+    AND preview_digest IS NOT NULL AND source_username IS NOT NULL
+    AND source_username ~ '^[A-Za-z0-9_-]{2,30}$'
+    AND effective_at IS NULL AND provider_list_version IS NULL)
+   OR
+   (source='provider_api' AND verification_state='provider_published' AND fetched_at IS NOT NULL
+    AND effective_at IS NOT NULL AND provider_list_version IS NOT NULL
+    AND provider_list_version=btrim(provider_list_version) AND provider_list_version<>''
+    AND source_digest IS NOT NULL AND external_player_id IS NOT NULL
+    AND external_player_id=btrim(external_player_id) AND source_url IS NOT NULL
+    AND source_url ~ '^https://[A-Za-z0-9.-]+(:[0-9]+)?([/?#][^[:space:][:cntrl:]]*)?$'
+    AND preview_digest IS NULL AND source_username IS NULL AND source_handle_revision IS NULL)
  );
+-- Row shape alone cannot tell which evidence modes a registered provider
+-- supports. Use registry kind, not editable UI input or hardcoded federation
+-- codes. This trigger does not elevate privileges or fetch/verify remote data.
+CREATE FUNCTION public.ccp_rating_provider_evidence_kind()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_rating_provider_evidence_kind$
+DECLARE
+ v_kind text;
+ v_expected_kind text;
+BEGIN
+ IF NEW.source='provider_api' THEN
+  SELECT provider_kind INTO v_kind
+    FROM public.rating_providers WHERE code=NEW.provider;
+  v_expected_kind:=CASE NEW.verification_state
+    WHEN 'provider_published' THEN 'federation' ELSE 'online' END;
+  IF v_kind IS DISTINCT FROM v_expected_kind THEN
+   RAISE EXCEPTION 'RATING_PROVIDER_EVIDENCE_KIND_MISMATCH'
+    USING ERRCODE='23514',CONSTRAINT='ccp_rating_provider_evidence_kind';
+  END IF;
+ END IF;
+ RETURN NEW;
+END
+$ccp_rating_provider_evidence_kind$;
+REVOKE ALL ON FUNCTION public.ccp_rating_provider_evidence_kind()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_rating_provider_evidence_kind
+ BEFORE INSERT OR UPDATE OF provider,source,verification_state ON public.student_rating_snapshots
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_rating_provider_evidence_kind();
 CREATE INDEX ccp_rating_registry_recent
  ON public.student_rating_snapshots(teacher_id,student_id,provider,time_control,observed_at DESC);
 
@@ -13904,8 +13944,10 @@ CREATE TRIGGER ccp_report_audience_immutable_guard
  BEFORE UPDATE OR DELETE ON public.report_publication_audiences FOR EACH ROW
  EXECUTE FUNCTION public.ccp_report_audience_immutable_guard();
 
--- Same index semantics for *all* future registered official providers,
--- not only the original national/FIDE enum values.
+-- Same index semantics for all registered official-list providers. This
+-- pins one observation per student/category/edition: a corrected player ID
+-- cannot add a second observation in that same edition without a reviewed
+-- identity-correction policy. Do not invent an edition to bypass this key.
 DROP INDEX IF EXISTS public.federation_rating_list_once_idx;
 CREATE UNIQUE INDEX ccp_official_rating_list_once
  ON public.student_rating_snapshots

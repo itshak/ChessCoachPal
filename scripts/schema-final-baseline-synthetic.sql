@@ -297,3 +297,155 @@ BEGIN
 END
 $entitlement_denials$;
 ROLLBACK;
+
+-- RAT-01: real registered provider kinds select the appropriate provenance
+-- mode. Synthetic rows are rolled back; nothing is fetched from providers.
+BEGIN;
+SET LOCAL ROLE service_role;
+INSERT INTO public.rating_providers(code,provider_kind,display_name)
+ VALUES ('synthetic_federation','federation','Synthetic Federation');
+INSERT INTO public.rating_categories(provider_code,code,display_name)
+ VALUES ('synthetic_federation','standard','Standard');
+
+DO $rating_provider_provenance$
+DECLARE
+ base jsonb:=jsonb_build_object(
+  'teacher_id','00000000-0000-0000-0000-000000000001',
+  'student_id','10000000-0000-0000-0000-000000000001',
+  'source','provider_api','rating',1825,
+  'observed_at','2026-11-01T00:00:00Z','fetched_at','2026-11-02T00:00:00Z');
+ online jsonb;
+ official jsonb;
+ candidate jsonb;
+ field text;
+ failed text;
+BEGIN
+ online:=base||jsonb_build_object(
+  'provider','lichess','time_control','rapid','verification_state','unverified',
+  'preview_digest',repeat('a',64),'source_username','synthetic_account');
+ official:=base||jsonb_build_object(
+  'provider','synthetic_federation','time_control','standard',
+  'verification_state','provider_published','effective_at','2026-11-01',
+  'provider_list_version','2026-11','source_digest',repeat('b',64),
+  'source_url','https://ratings.example.invalid/list/2026-11',
+  'external_player_id','12345678');
+ FOREACH candidate IN ARRAY ARRAY[online,official] LOOP
+  INSERT INTO public.student_rating_snapshots
+   SELECT (jsonb_populate_record(NULL::public.student_rating_snapshots,
+    candidate||jsonb_build_object('id',gen_random_uuid(),
+     'request_id',gen_random_uuid(),'created_at',now()))).*;
+ END LOOP;
+ FOREACH field IN ARRAY ARRAY[
+  'external_player_id','effective_at','provider_list_version','source_digest','source_url'
+ ] LOOP
+  BEGIN
+   INSERT INTO public.student_rating_snapshots
+    SELECT (jsonb_populate_record(NULL::public.student_rating_snapshots,
+     (official-field)||jsonb_build_object('id',gen_random_uuid(),
+      'request_id',gen_random_uuid(),'created_at',now()))).*;
+   RAISE EXCEPTION 'Official rating accepted missing evidence field %',field;
+  EXCEPTION WHEN check_violation THEN
+   GET STACKED DIAGNOSTICS failed=CONSTRAINT_NAME;
+   IF failed<>'ccp_rating_evidence_truth' THEN RAISE;END IF;
+  END;
+ END LOOP;
+ FOREACH candidate IN ARRAY ARRAY[
+  official||jsonb_build_object('source_username','synthetic_account','preview_digest',repeat('a',64)),
+  official||jsonb_build_object('source_handle_revision',1),
+  official||jsonb_build_object('provider_list_version',' '),
+  official||jsonb_build_object('source_url','http://ratings.example.invalid/list'),
+  official||jsonb_build_object('source_url','https://ratings.example.invalid@another.example.invalid/list'),
+  online||jsonb_build_object('provider_list_version','online-fake-edition'),
+  online||jsonb_build_object('preview_digest',NULL),
+  online||jsonb_build_object('source_username',NULL)
+ ] LOOP
+  BEGIN
+   INSERT INTO public.student_rating_snapshots
+    SELECT (jsonb_populate_record(NULL::public.student_rating_snapshots,
+     candidate||jsonb_build_object('id',gen_random_uuid(),
+      'request_id',gen_random_uuid(),'created_at',now()))).*;
+   RAISE EXCEPTION 'Invalid or mixed rating evidence was accepted';
+  EXCEPTION WHEN check_violation THEN
+   GET STACKED DIAGNOSTICS failed=CONSTRAINT_NAME;
+   IF failed<>'ccp_rating_evidence_truth' THEN RAISE;END IF;
+  END;
+ END LOOP;
+ FOREACH candidate IN ARRAY ARRAY[
+  official||jsonb_build_object('provider','lichess','time_control','rapid'),
+  online||jsonb_build_object('provider','synthetic_federation','time_control','standard')
+ ] LOOP
+  BEGIN
+   INSERT INTO public.student_rating_snapshots
+    SELECT (jsonb_populate_record(NULL::public.student_rating_snapshots,
+     candidate||jsonb_build_object('id',gen_random_uuid(),
+      'request_id',gen_random_uuid(),'created_at',now()))).*;
+   RAISE EXCEPTION 'Provider accepted another registry kind''s evidence';
+  EXCEPTION WHEN check_violation THEN
+   GET STACKED DIAGNOSTICS failed=CONSTRAINT_NAME;
+   IF failed<>'ccp_rating_provider_evidence_kind' THEN RAISE;END IF;
+  END;
+ END LOOP;
+ -- Preserve one observation per student/category/list edition for now,
+ -- even when a proposed correction changes the player identifier.
+ BEGIN
+  INSERT INTO public.student_rating_snapshots
+   SELECT (jsonb_populate_record(NULL::public.student_rating_snapshots,
+    official||jsonb_build_object('id',gen_random_uuid(),'external_player_id','87654321',
+     'request_id',gen_random_uuid(),'created_at',now()))).*;
+  RAISE EXCEPTION 'Duplicate edition bypassed the existing idempotency contract';
+ EXCEPTION WHEN unique_violation THEN
+  GET STACKED DIAGNOSTICS failed=CONSTRAINT_NAME;
+  IF failed<>'ccp_official_rating_list_once' THEN RAISE;END IF;
+ END;
+END
+$rating_provider_provenance$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub',
+ '00000000-0000-0000-0000-000000000001',true);
+DO $rating_owner_provenance$
+DECLARE t uuid:='00000000-0000-0000-0000-000000000001';
+s uuid:='10000000-0000-0000-0000-000000000001';
+BEGIN
+ -- This is the present federation manual caller's shape, including the
+ -- reviewable reference and application-level request digest.
+ INSERT INTO public.student_rating_snapshots(teacher_id,student_id,provider,time_control,
+  rating,source,verification_state,observed_at,effective_at,source_url,source_digest,request_id)
+ VALUES(t,s,'fide','standard',1700,'teacher_manual','unverified',now(),'2026-11-01',
+  'https://ratings.example.invalid/teacher-reference',repeat('d',64),gen_random_uuid());
+ IF NOT EXISTS(SELECT 1 FROM public.student_rating_snapshots
+   WHERE teacher_id=t AND student_id=s AND provider='synthetic_federation'
+   AND verification_state='provider_published' AND source_username IS NULL)
+ OR NOT EXISTS(SELECT 1 FROM public.student_rating_snapshots
+   WHERE teacher_id=t AND student_id=s AND provider='lichess' AND source='provider_api'
+   AND source_username='synthetic_account' AND verification_state='unverified') THEN
+  RAISE EXCEPTION 'Teacher cannot read own correctly classified provider evidence';
+ END IF;
+ BEGIN
+  INSERT INTO public.student_rating_snapshots(teacher_id,student_id,provider,time_control,
+   rating,source,verification_state,observed_at,fetched_at,effective_at,provider_list_version,
+   source_url,source_digest,external_player_id,request_id)
+  VALUES(t,s,'synthetic_federation','standard',1800,'provider_api','provider_published',now(),now(),
+   '2026-11-01','forged-edition','https://ratings.example.invalid/list',
+   repeat('e',64),'12345678',gen_random_uuid());
+  RAISE EXCEPTION 'Ordinary teacher forged official provider evidence';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
+END
+$rating_owner_provenance$;
+
+SELECT set_config('request.jwt.claim.sub',
+ '00000000-0000-0000-0000-000000000002',true);
+DO $rating_foreign_provenance$
+BEGIN
+ IF EXISTS(SELECT 1 FROM public.student_rating_snapshots
+   WHERE student_id='10000000-0000-0000-0000-000000000001') THEN
+  RAISE EXCEPTION 'Cross-tenant rating evidence leaked';
+ END IF;
+ IF has_table_privilege('anon','public.student_rating_snapshots','SELECT')
+ OR has_table_privilege('anon','public.student_rating_snapshots','INSERT') THEN
+  RAISE EXCEPTION 'Anonymous rating evidence access leaked';
+ END IF;
+END
+$rating_foreign_provenance$;
+ROLLBACK;
