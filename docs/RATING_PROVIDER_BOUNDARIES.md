@@ -1,6 +1,6 @@
 # Rating-provider boundaries for ChessCoachPal
 
-**Proposal for review; no implementation or schema change.** This is the shared architecture for the existing [FIDE and national ratings OpenSpec](../openspec/changes/2026-11-18-introduce-fide-national-ratings/proposal.md) and [online rating sync OpenSpec](../openspec/changes/2026-11-18-automate-online-rating-sync/proposal.md). It adds no third feature change. The [consolidated P0](../openspec/changes/2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md) remains the sole DDL owner. Downstream implementation starts only after the freeze. If the transactional checks below genuinely require a new database contract, raise that as an explicit freeze decision rather than adding feature-owned DDL.
+**Proposal for review; no implementation or schema change.** This is the shared architecture for the existing [FIDE and national ratings OpenSpec](../openspec/changes/2026-11-18-introduce-fide-national-ratings/proposal.md) and [online rating sync OpenSpec](../openspec/changes/2026-11-18-automate-online-rating-sync/proposal.md). It adds no third feature change. The [consolidated P0](../openspec/changes/archive/2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md) remains the sole DDL owner. Downstream implementation starts only after the freeze. If the transactional checks below genuinely require a new database contract, raise that as an explicit freeze decision rather than adding feature-owned DDL.
 
 ## Decision: separate provider code, keep one application service
 

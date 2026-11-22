@@ -1,3 +1,5 @@
+> **2026-11-22:** Current source disposition: accepted and locked. Historical entries retain their as-tested scope. See the [merged source decision](../openspec/changes/archive/2026-11-21-consolidate-final-preproduction-saas-schema/SOURCE_ACCEPTANCE.md).
+
 # Final-schema pre-production acceptance matrix (planned, not executed)
 
 Status: **source acceptance in progress, not frozen**. The 2026-11-22 PR #115 source candidate includes new synthetic regressions for ENT-05, ENT-11, RAT-01 and TCH-03, plus new entitlement audit checks. Passing earlier implementation-commit workflows is not final-head acceptance; unexecuted scenarios remain open. This is a *test inventory*, not a report of successes or a publication claim. Website/MCP parity remains ADR-0003-required; real client acceptance is distinct.
@@ -83,9 +85,9 @@ Candidate commit: [`99e143e8685bba448d42448e68cbb724efd93996`](https://github.co
 - **TCH-01/03, RAT-01:** `e2e/schema-freeze-boundaries.spec.ts` covers recurrence exception and report approval/scope, and extensible rating registry. Other temporal, consent, financial and guest scenarios require explicit linked evidence.
 - **OPS-04:** all five workflows passed on the same SHA. **OPS-05/06** are separate populated-private-data operator gates and are not authorized or implied by this synthetic evidence.
 
-### Freeze decision
+### Historical freeze decision before final acceptance
 
-**NOT FROZEN.** The unfulfilled Phase 0 source crosswalk/target comparison and remaining Phase 2 row-by-row security, finance, recurrence, subscription and website/MCP parity evidence are release blockers. The source schema must not be certified merely because five workflows are green. Final post-freeze tests, OpenSpec archive, merge and operational deployment remain distinct actions.
+**Not yet frozen at this earlier checkpoint.** The unfulfilled Phase 0 source crosswalk/target comparison and remaining Phase 2 row-by-row security, finance, recurrence, subscription and website/MCP parity evidence are release blockers. The source schema must not be certified merely because five workflows are green. Final post-freeze tests, OpenSpec archive, merge and operational deployment remain distinct actions.
 
 ### Independent verification branch: scoped evidence, not signoff
 
