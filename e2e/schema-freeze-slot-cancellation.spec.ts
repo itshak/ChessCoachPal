@@ -203,3 +203,271 @@ test("owner-approved unmaterialized cancellation is exact and regenerates withou
   expect((await admin.auth.admin.deleteUser(outsider.id)).error).toBeNull();
  }
 });
+
+test("owner-approved cancellation revocation preserves its original audit and never creates a lesson",async()=>{
+ const admin=db(process.env.SUPABASE_SERVICE_ROLE_KEY!);
+ const owner=await teacher(admin);
+ const outsider=await teacher(admin);
+ try{
+  const workplace=await admin.from("workplaces").select("id,timezone")
+   .eq("teacher_id",owner.id).eq("kind","personal").single();
+  expect(workplace.error).toBeNull();
+  const learner=await admin.from("students").insert({
+   teacher_id:owner.id,name:"Synthetic revocation learner "+randomUUID(),
+  }).select("id").single();
+  expect(learner.error).toBeNull();
+  const workplaceId=workplace.data!.id;
+  const learnerId=learner.data!.id;
+  expect((await admin.from("workplace_enrollments").insert({
+   teacher_id:owner.id,student_id:learnerId,workplace_id:workplaceId,source:"manual",
+  })).error).toBeNull();
+  const original="2060-01-08",other="2060-01-15",legacy="2060-01-22";
+  const slot=await admin.from("lesson_slots").insert({
+   teacher_id:owner.id,student_id:learnerId,workplace_id:workplaceId,
+   day_of_week:dayOfWeek(original),start_date:original,start_time:"14:00:00",
+   duration_minutes:45,
+  }).select("id,updated_at,series_id").single();
+  expect(slot.error).toBeNull();
+  const slotId=slot.data!.id;
+  expect(slot.data?.series_id).toBe(slotId);
+  const approve=(key:string)=>owner.client.rpc("ccp_canonical_slot_cancel_unmaterialized",{
+   p_slot_id:slotId,p_original_occurrence_on:original,p_expected_updated_at:slot.data!.updated_at,
+   p_idempotency_key:key,p_reason:"Approved original cancellation retained verbatim",p_confirmed:true,
+  });
+  const firstApproval=await approve(randomUUID());
+  expect(firstApproval.error).toBeNull();
+  const legacyKey=randomUUID();
+  const old=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:owner.id,slot_id:slotId,original_occurrence_on:legacy,
+   action:"cancel",approved_by:owner.id,reason:"Legacy standalone manual approval",
+   request_id:legacyKey,
+  }).select("id").single();
+  expect(old.error).toBeNull();
+  const nonCancel=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:owner.id,slot_id:slotId,original_occurrence_on:other,
+   action:"reschedule",approved_by:owner.id,reason:"Existing separate rescheduling intent",
+   revised_starts_at:"2060-01-16T14:00:00Z",revised_timezone:"UTC",request_id:randomUUID(),
+  }).select("id").single();
+  expect(nonCancel.error).toBeNull();
+
+  const args={
+   p_exception_id:firstApproval.data.exceptionId as string,p_expected_revision:1,
+   p_idempotency_key:randomUUID(),p_confirmed:true,
+  };
+  const revoke=(patch:Partial<typeof args>={},client=owner.client)=>
+   client.rpc("ccp_canonical_slot_revoke_unmaterialized_cancellation",{...args,...patch});
+  const readException=(id:string)=>owner.client.from("slot_occurrence_exceptions")
+   .select("*").eq("id",id).single();
+  const receipts=()=>admin.from("agent_tool_receipts")
+   .select("teacher_id,idempotency_key,receipt")
+   .in("teacher_id",[owner.id,outsider.id])
+   .eq("operation","canonical.slot.revoke_unmaterialized_cancellation");
+  const readLessons=()=>admin.from("teaching_sessions").select("*").eq("teacher_id",owner.id);
+  const before=await readException(args.p_exception_id);
+  expect(before.error).toBeNull();
+  expect(before.data).toMatchObject({revision:1,action:"cancel",revoked_at:null});
+  const legacyBefore=await readException(old.data!.id);
+  expect(legacyBefore.error).toBeNull();
+
+  expect((await revoke({},outsider.client)).error).toMatchObject({
+   code:"42501",message:"SLOT_CANCELLATION_NOT_FOUND",
+  });
+  expect((await revoke({},db(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!))).error).not.toBeNull();
+  expect((await revoke({},admin)).error).not.toBeNull();
+  expect((await revoke({p_confirmed:false})).error).toMatchObject({
+   code:"22023",message:"INVALID_SLOT_CANCELLATION_REVOCATION",
+  });
+  expect((await revoke({p_expected_revision:2})).error).toMatchObject({
+   code:"23505",message:"SLOT_CANCELLATION_REVISION_CONFLICT",
+  });
+  const conflict={code:"23505",message:"SLOT_CANCELLATION_REVOCATION_REPLAY_CONFLICT"};
+  expect((await revoke({p_idempotency_key:firstApproval.data.idempotencyKey})).error)
+   .toMatchObject(conflict);
+  expect((await revoke({p_exception_id:old.data!.id,p_idempotency_key:legacyKey})).error)
+   .toMatchObject(conflict);
+  expect((await revoke({p_exception_id:nonCancel.data!.id})).error).toMatchObject({
+   code:"23514",message:"SLOT_CANCELLATION_REVOCATION_NOT_SUPPORTED",
+  });
+  expect((await receipts()).data).toEqual([]);
+  expect((await readException(args.p_exception_id)).data).toEqual(before.data);
+  expect((await readException(old.data!.id)).data).toEqual(legacyBefore.data);
+  expect((await readLessons()).data).toEqual([]);
+
+  const [first,repeat]=await Promise.all([revoke(),revoke()]);
+  expect(first.error).toBeNull();
+  expect(repeat.error).toBeNull();
+  expect([first.data.replayed,repeat.data.replayed].sort()).toEqual([false,true]);
+  const {replayed,...receipt}=first.data;
+  expect(repeat.data).toEqual({...receipt,replayed:!replayed});
+  expect(receipt).toMatchObject({
+   exceptionId:args.p_exception_id,slotId,originalOccurrenceOn:original,
+   revision:2,revokedBy:owner.id,idempotencyKey:args.p_idempotency_key,
+  });
+  const revoked=await readException(args.p_exception_id);
+  expect(revoked.error).toBeNull();
+  expect(revoked.data).toEqual({
+   ...before.data,revision:2,revoked_by:owner.id,revoked_at:revoked.data!.revoked_at,
+   revocation_request_id:args.p_idempotency_key,
+  });
+  expect(Date.parse(revoked.data!.revoked_at)).toBe(Date.parse(receipt.revokedAt));
+  expect((await readLessons()).data).toEqual([]);
+  expect((await revoke({p_expected_revision:2})).error).toMatchObject(conflict);
+  expect((await revoke({p_exception_id:old.data!.id})).error).toMatchObject(conflict);
+  expect((await revoke({p_idempotency_key:randomUUID(),p_expected_revision:2})).error)
+   .toMatchObject({code:"23514",message:"SLOT_CANCELLATION_ALREADY_REVOKED"});
+
+  // The same date can later receive a new approval. Replaying the old
+  // revocation returns the original receipt and never touches that successor.
+  const successor=await approve(randomUUID());
+  expect(successor.error).toBeNull();
+  expect(successor.data.exceptionId).not.toBe(args.p_exception_id);
+  expect((await revoke()).data).toEqual({...receipt,replayed:true});
+  expect((await readException(successor.data.exceptionId)).data).toMatchObject({revoked_at:null,revision:1});
+  expect((await revoke({p_exception_id:successor.data.exceptionId,p_idempotency_key:randomUUID()})).error)
+   .toBeNull();
+  expect((await readLessons()).data).toEqual([]);
+
+  const legacyRequestKey=randomUUID();
+  const legacyRevoke=await revoke({p_exception_id:old.data!.id,p_idempotency_key:legacyRequestKey});
+  expect(legacyRevoke.error).toBeNull();
+  expect((await readException(old.data!.id)).data).toMatchObject({
+   ...legacyBefore.data,revision:2,revoked_at:expect.any(String),revoked_by:owner.id,
+   revocation_request_id:legacyRequestKey,
+  });
+  const deniedDelete=await owner.client.rpc("ccp_canonical_slot_delete",{
+   p_slot_id:slotId,p_idempotency_key:randomUUID(),
+  });
+  expect(deniedDelete.error).toMatchObject({code:"23514",message:"RECURRENCE_SERIES_REQUIRES_RETIREMENT"});
+  expect((await revoke({p_exception_id:old.data!.id,p_idempotency_key:legacyRequestKey})).data)
+   .toEqual({...legacyRevoke.data,replayed:true});
+  expect((await readLessons()).data).toEqual([]);
+
+  const materialized=await admin.rpc("ccp_canonical_slot_materialize",{
+   p_teacher_id:owner.id,p_rows:[{
+    teacher_id:owner.id,student_id:learnerId,workplace_id:workplaceId,slot_id:slotId,
+    slot_occurrence_date:original,starts_at:zonedTimeToUtc(original,"14:00",workplace.data!.timezone).toISOString(),
+    duration_minutes:45,local_timezone:workplace.data!.timezone,is_home_visit:false,slot_rate_cents:null,
+   }],
+  });
+  expect(materialized.error).toBeNull();
+  expect(materialized.data).toEqual({planned:1,inserted:1});
+  const lessons=await readLessons();
+  expect(lessons.error).toBeNull();
+  expect(lessons.data).toMatchObject([{slot_occurrence_date:original,status:"scheduled"}]);
+  expect((await revoke()).data).toEqual({...receipt,replayed:true});
+  expect((await readLessons()).data).toEqual(lessons.data);
+  const stored=await receipts();
+  expect(stored.error).toBeNull();
+  expect(stored.data).toHaveLength(3);
+  expect(stored.data).toContainEqual({
+   teacher_id:owner.id,idempotency_key:args.p_idempotency_key,receipt,
+  });
+ }finally{
+  expect((await admin.auth.admin.deleteUser(owner.id)).error).toBeNull();
+  expect((await admin.auth.admin.deleteUser(outsider.id)).error).toBeNull();
+ }
+});
+
+test("revocation fails closed for legacy history and resolves the current series segment",async()=>{
+ const admin=db(process.env.SUPABASE_SERVICE_ROLE_KEY!);
+ const owner=await teacher(admin);
+ try{
+  const workplace=await admin.from("workplaces").select("id,timezone")
+   .eq("teacher_id",owner.id).eq("kind","personal").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:owner.id,name:"Synthetic retained recurrence "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  expect((await admin.from("workplace_enrollments").insert({
+   teacher_id:owner.id,student_id:student.data!.id,workplace_id:workplace.data!.id,source:"manual",
+  })).error).toBeNull();
+  const existingDate="2060-01-08",validDate="2060-01-15",wrongDay="2060-01-16";
+  const pastDate="2020-01-08";
+  const makeSlot=async(date:string,extra:Record<string,unknown>={})=>{
+   const made=await admin.from("lesson_slots").insert({
+    teacher_id:owner.id,student_id:student.data!.id,workplace_id:workplace.data!.id,
+    day_of_week:dayOfWeek(date),start_date:date,start_time:"14:00:00",
+    duration_minutes:45,...extra,
+   }).select("id").single();
+   expect(made.error).toBeNull();
+   return made.data!.id as string;
+  };
+  const root=await makeSlot(existingDate);
+  const pastSlot=await makeSlot(pastDate);
+  const noActiveSlot=await makeSlot(validDate,{active:false});
+  const gapSlot=await makeSlot("2060-03-14",{start_time:"02:30:00"});
+  const materialized=await admin.rpc("ccp_canonical_slot_materialize",{
+   p_teacher_id:owner.id,p_rows:[{
+    teacher_id:owner.id,student_id:student.data!.id,workplace_id:workplace.data!.id,
+    slot_id:root,slot_occurrence_date:existingDate,
+    starts_at:zonedTimeToUtc(existingDate,"14:00",workplace.data!.timezone).toISOString(),
+    duration_minutes:45,local_timezone:workplace.data!.timezone,is_home_visit:false,slot_rate_cents:null,
+   }],
+  });
+  expect(materialized.error).toBeNull();
+  expect(materialized.data).toEqual({planned:1,inserted:1});
+  const sessions=()=>admin.from("teaching_sessions").select("*").eq("teacher_id",owner.id);
+  const before=await sessions();
+  expect(before.error).toBeNull();
+  expect(before.data).toMatchObject([{slot_id:root,slot_occurrence_date:existingDate}]);
+  expect((await admin.from("lesson_slots").update({active:false}).eq("id",root)).error).toBeNull();
+  const tail=await makeSlot(existingDate,{series_id:root});
+  const addLegacy=async(slotId:string,date:string)=>{
+   const e=await admin.from("slot_occurrence_exceptions").insert({
+    teacher_id:owner.id,slot_id:slotId,original_occurrence_on:date,action:"cancel",
+    approved_by:owner.id,reason:"Approved legacy unlinked cancellation",
+    request_id:randomUUID(),
+   }).select("id").single();
+   expect(e.error).toBeNull();
+   return e.data!.id as string;
+  };
+  // The old operator exception is physically on the active tail, but the
+  // existing actual lesson remains physically on the retired predecessor.
+  const legacyMaterialized=await addLegacy(tail,existingDate);
+  const legacyPast=await addLegacy(pastSlot,pastDate);
+  const legacyNoActive=await addLegacy(noActiveSlot,validDate);
+  const legacyWrongDay=await addLegacy(root,wrongDay);
+  const legacyHappy=await addLegacy(root,validDate);
+  // Future US DST gap: this otherwise valid rule has no real local instant.
+  expect((await admin.from("workplaces").update({timezone:"America/New_York"})
+   .eq("id",workplace.data!.id)).error).toBeNull();
+  const legacyGap=await addLegacy(gapSlot,"2060-03-14");
+  const row=(id:string)=>admin.from("slot_occurrence_exceptions").select("id,revoked_at,revision").eq("id",id).single();
+  const revoke=(id:string,key:string)=>owner.client.rpc("ccp_canonical_slot_revoke_unmaterialized_cancellation",{
+   p_exception_id:id,p_expected_revision:1,p_idempotency_key:key,p_confirmed:true,
+  });
+  for(const [id,message,code] of [
+   [legacyMaterialized,"SLOT_OCCURRENCE_ALREADY_MATERIALIZED","23514"],
+   [legacyPast,"SLOT_CANCELLATION_NOT_FUTURE","22023"],
+   [legacyNoActive,"SLOT_CANCELLATION_NOT_A_RULE_DATE","22023"],
+   [legacyWrongDay,"SLOT_CANCELLATION_NOT_A_RULE_DATE","22023"],
+   [legacyGap,"SLOT_CANCELLATION_NOT_FUTURE","22023"],
+  ]){
+   const key=randomUUID();
+   expect((await revoke(id,key)).error).toMatchObject({message,code});
+   const after=await row(id);
+   expect(after.error).toBeNull();
+   expect(after.data).toEqual({id,revoked_at:null,revision:1});
+   const deniedReceipt=await admin.from("agent_tool_receipts").select("idempotency_key")
+    .eq("teacher_id",owner.id).eq("idempotency_key",key);
+   expect(deniedReceipt.error).toBeNull();
+   expect(deniedReceipt.data).toEqual([]);
+  }
+
+  const acceptedKey=randomUUID();
+  const accepted=await revoke(legacyHappy,acceptedKey);
+  expect(accepted.error).toBeNull();
+  expect(accepted.data).toMatchObject({
+   exceptionId:legacyHappy,slotId:root,originalOccurrenceOn:validDate,revision:2,replayed:false,
+  });
+  expect((await sessions()).data).toEqual(before.data);
+  expect((await admin.from("lesson_slots").update({active:false}).eq("id",tail)).error).toBeNull();
+  const replay=await revoke(legacyHappy,acceptedKey);
+  expect(replay.error).toBeNull();
+  expect(replay.data).toEqual({...accepted.data,replayed:true});
+  expect((await sessions()).data).toEqual(before.data);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(owner.id)).error).toBeNull();
+ }
+});

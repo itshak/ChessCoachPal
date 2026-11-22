@@ -61,3 +61,7 @@ Combined canonical SQL SHA-256 `0cd3c2a5beb2c67b053b928a029074d2e2fa60c8de51960c
 ## Secure single-date cancellation and linked materialization checkpoint
 
 The combined canonical SQL SHA-256 `a48ff24a28c7b882f29534e9a849b08537a08a5189952013bd9c614e8f82eb1c` bootstrapped independently twice on disposable PostgreSQL 17.12. Both read-only v2 snapshots matched byte-for-byte at SHA-256 `7d1f669b53a0545e7e95a1ab016c2c2e22f6c006a720b3bbffa9b7557108a94e` (105 tables, 1,080 columns, 146 routines, zero differences). Seeded lineage and portable-material restoration passed. Authenticated API tests checked exact one-date cancellation, retirement protection and regeneration. No later-scope recurrence writer, populated-data cutover or matrix acceptance is implied.
+
+## Future-safe revocation and terminal split checkpoint
+
+The combined canonical SQL SHA-256 `c5189b6c8df9a5259896927388557455f8b22c78fc79691f594477eaba33f50a` applied once per instance to two disposable PostgreSQL 17.12 databases. Both read-only v2 snapshots matched at SHA-256 `3541ac2a29a22c4c894709ef8e8697da2867a15b4a0c09713cbb5838e7a927ca` with zero differences (105 tables, 1,080 columns, 812 constraints, 389 indexes, 85 triggers, 96 policies, 149 routines, 3,153 ACLs). The projects and volumes were removed. This is not complete recurring-edit, full-CI or operational cutover acceptance.

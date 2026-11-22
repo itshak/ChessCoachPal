@@ -14957,6 +14957,45 @@ CREATE CONSTRAINT TRIGGER ccp_lesson_slot_series_root
  AFTER INSERT ON public.lesson_slots DEFERRABLE INITIALLY DEFERRED
  FOR EACH ROW EXECUTE FUNCTION public.ccp_lesson_slot_series_root();
 
+-- Resolve the earliest real instant of a canonical local occurrence. Only
+-- owner-validated scheduling commands may supply the locked slot row.
+CREATE FUNCTION public.ccp_canonical_slot_real_start(p_slot public.lesson_slots,p_date date)
+RETURNS timestamptz LANGUAGE plpgsql STABLE SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_slot_real_start$
+DECLARE
+ v_workplace public.workplaces%ROWTYPE;
+ v_timezone text;
+ v_local timestamp;
+ v_guess timestamptz;
+ v_start timestamptz;
+BEGIN
+ -- Same explicit-workplace/teacher fallback timezone as materialization.
+ SELECT * INTO v_workplace FROM public.workplaces
+  WHERE teacher_id=p_slot.teacher_id AND (p_slot.workplace_id IS NULL OR id=p_slot.workplace_id)
+  ORDER BY created_at,id LIMIT 1;
+ IF NOT FOUND OR v_workplace.archived_at IS NOT NULL THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF p_slot.workplace_id IS NULL THEN
+  SELECT nullif(timezone,'') INTO v_timezone FROM public.teacher_settings
+   WHERE teacher_id=p_slot.teacher_id;
+ END IF;
+ v_timezone:=coalesce(v_timezone,v_workplace.timezone);
+ -- Match the planner's earliest real instant for an ambiguous fall-back
+ -- time. A nonexistent local time cannot be safely approved by this RPC.
+ v_local:=p_date+p_slot.start_time;
+ v_guess:=v_local AT TIME ZONE 'UTC';
+ SELECT min(candidate) INTO v_start FROM (
+  SELECT v_guess-((probe AT TIME ZONE v_timezone)-(probe AT TIME ZONE 'UTC')) AS candidate
+  FROM unnest(ARRAY[-48,-24,-12,0,12,24,48]) AS h(hours)
+  CROSS JOIN LATERAL (SELECT v_guess+hours*interval '1 hour' AS probe) AS z
+ ) timings WHERE candidate AT TIME ZONE v_timezone=v_local;
+ RETURN v_start;
+END;
+$ccp_slot_real_start$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_real_start(public.lesson_slots,date)
+ FROM PUBLIC,anon,authenticated,service_role;
+
 -- Exact, teacher-approved cancellation before a recurring lesson exists.
 -- The common calendar/series writer takes the same lock before checking
 -- this table, so approval and materialization have one serial order.
@@ -14970,10 +15009,6 @@ DECLARE
  v_operation constant text:='canonical.slot.cancel_unmaterialized';
  v_slot public.lesson_slots%ROWTYPE;
  v_saved public.agent_tool_receipts%ROWTYPE;
- v_workplace public.workplaces%ROWTYPE;
- v_timezone text;
- v_local timestamp;
- v_guess timestamptz;
  v_start timestamptz;
  v_hash text;
  v_exception_id uuid;
@@ -15038,27 +15073,7 @@ BEGIN
   RAISE EXCEPTION 'SLOT_OCCURRENCE_ALREADY_HAS_EXCEPTION' USING ERRCODE='23505';
  END IF;
 
- -- Same explicit-workplace/teacher fallback timezone as materialization.
- SELECT * INTO v_workplace FROM public.workplaces
-  WHERE teacher_id=v_teacher AND (v_slot.workplace_id IS NULL OR id=v_slot.workplace_id)
-  ORDER BY created_at,id LIMIT 1;
- IF NOT FOUND OR v_workplace.archived_at IS NOT NULL THEN
-  RAISE EXCEPTION 'CANONICAL_SLOT_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
- END IF;
- IF v_slot.workplace_id IS NULL THEN
-  SELECT nullif(timezone,'') INTO v_timezone FROM public.teacher_settings
-   WHERE teacher_id=v_teacher;
- END IF;
- v_timezone:=coalesce(v_timezone,v_workplace.timezone);
- -- Match the planner's earliest real instant for an ambiguous fall-back
- -- time. A nonexistent local time cannot be safely approved by this RPC.
- v_local:=p_original_occurrence_on+v_slot.start_time;
- v_guess:=v_local AT TIME ZONE 'UTC';
- SELECT min(candidate) INTO v_start FROM (
-  SELECT v_guess-((probe AT TIME ZONE v_timezone)-(probe AT TIME ZONE 'UTC')) AS candidate
-  FROM unnest(ARRAY[-48,-24,-12,0,12,24,48]) AS h(hours)
-  CROSS JOIN LATERAL (SELECT v_guess+hours*interval '1 hour' AS probe) AS z
- ) timings WHERE candidate AT TIME ZONE v_timezone=v_local;
+ v_start:=public.ccp_canonical_slot_real_start(v_slot,p_original_occurrence_on);
  IF v_start IS NULL OR v_start<=clock_timestamp() THEN
   RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_FUTURE' USING ERRCODE='22023';
  END IF;
@@ -15079,4 +15094,345 @@ $ccp_cancel_unmaterialized$;
 REVOKE ALL ON FUNCTION public.ccp_canonical_slot_cancel_unmaterialized(uuid,date,timestamptz,uuid,text,boolean)
  FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_cancel_unmaterialized(uuid,date,timestamptz,uuid,text,boolean)
+ TO authenticated;
+
+-- Lift a single approved unmaterialized cancellation without creating a
+-- lesson. Calendar materialization must take the same teacher lock and can
+-- independently regenerate the original date after this transaction commits.
+CREATE FUNCTION public.ccp_canonical_slot_revoke_unmaterialized_cancellation(
+ p_exception_id uuid,p_expected_revision bigint,p_idempotency_key uuid,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_revoke_unmaterialized_cancellation$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_operation constant text:='canonical.slot.revoke_unmaterialized_cancellation';
+ v_exception public.slot_occurrence_exceptions%ROWTYPE;
+ v_slot public.lesson_slots%ROWTYPE;
+ v_series_id uuid;
+ v_start timestamptz;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_hash text;
+ v_receipt jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_exception_id IS NULL OR p_idempotency_key IS NULL
+   OR p_expected_revision IS NULL OR p_expected_revision<1 OR p_confirmed IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'INVALID_SLOT_CANCELLATION_REVOCATION' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=encode(sha256(convert_to(jsonb_build_array(v_operation,p_exception_id,
+  p_expected_revision,p_confirmed)::text,'UTF8')),'hex');
+ INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_idempotency_key,v_operation,v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF NOT FOUND OR v_saved.operation<>v_operation OR v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'SLOT_CANCELLATION_REVOCATION_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_exception FROM public.slot_occurrence_exceptions
+  WHERE teacher_id=v_teacher AND id=p_exception_id FOR UPDATE;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF v_exception.action<>'cancel' OR v_exception.session_id IS NOT NULL THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_REVOCATION_NOT_SUPPORTED' USING ERRCODE='23514';
+ END IF;
+ -- Legacy approvals/revocations may have a request UUID on their immutable
+ -- rows but no agent receipt. They can never be replayed as new commands.
+ IF EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions
+   WHERE teacher_id=v_teacher AND
+    (request_id=p_idempotency_key OR revocation_request_id=p_idempotency_key)) THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_REVOCATION_REPLAY_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF v_exception.revoked_at IS NOT NULL THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_ALREADY_REVOKED' USING ERRCODE='23514';
+ END IF;
+ IF v_exception.revision IS DISTINCT FROM p_expected_revision THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+
+ -- An old trusted exception may lack a session link despite a real lesson.
+ -- Use series identity and the saved original date, not current UTC times
+ -- or only the currently active segment's physical slot ID.
+ SELECT series_id INTO v_series_id FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND id=v_exception.slot_id;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF EXISTS(
+   SELECT 1 FROM public.lesson_slots segment
+   JOIN public.teaching_sessions s ON s.teacher_id=segment.teacher_id AND s.slot_id=segment.id
+   WHERE segment.teacher_id=v_teacher AND segment.series_id=v_series_id
+     AND s.slot_occurrence_date=v_exception.original_occurrence_on
+ ) THEN
+  RAISE EXCEPTION 'SLOT_OCCURRENCE_ALREADY_MATERIALIZED' USING ERRCODE='23514';
+ END IF;
+
+ SELECT * INTO v_slot FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND series_id=v_series_id AND active
+    AND start_date<=v_exception.original_occurrence_on
+    AND (end_date IS NULL OR end_date>=v_exception.original_occurrence_on)
+    AND day_of_week=extract(dow FROM v_exception.original_occurrence_on)
+  LIMIT 1 FOR UPDATE;
+ IF NOT FOUND OR v_slot.duration_minutes NOT BETWEEN 15 AND 480
+    OR v_slot.start_time>=time '24:00:00'
+    OR extract(second FROM v_slot.start_time)<>trunc(extract(second FROM v_slot.start_time)) THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_A_RULE_DATE' USING ERRCODE='22023';
+ END IF;
+ v_start:=public.ccp_canonical_slot_real_start(v_slot,v_exception.original_occurrence_on);
+ IF v_start IS NULL OR v_start<=clock_timestamp() THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_FUTURE' USING ERRCODE='22023';
+ END IF;
+
+ UPDATE public.slot_occurrence_exceptions SET
+  revoked_at=clock_timestamp(),revoked_by=v_teacher,revocation_request_id=p_idempotency_key
+ WHERE teacher_id=v_teacher AND id=p_exception_id
+ RETURNING * INTO v_exception;
+ v_receipt:=jsonb_build_object('exceptionId',v_exception.id,'slotId',v_exception.slot_id,
+  'originalOccurrenceOn',v_exception.original_occurrence_on,'revision',v_exception.revision,
+  'revokedAt',v_exception.revoked_at,'revokedBy',v_exception.revoked_by,
+  'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_revoke_unmaterialized_cancellation$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_revoke_unmaterialized_cancellation(uuid,bigint,uuid,boolean)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_revoke_unmaterialized_cancellation(uuid,bigint,uuid,boolean)
+ TO authenticated;
+
+-- P0 terminal-segment split. The read-only preview and commit share the same
+-- owner, original-date, plan and history rules; the existing materializer
+-- still owns occurrence validation. Earlier/multi-segment and entire-series
+-- editing are deliberately not implied by this narrower baseline operation.
+CREATE FUNCTION public.ccp_canonical_terminal_slot_split(
+ p_slot_id uuid,p_cutoff date,p_tail_id uuid,p_changes jsonb,p_to date,
+ p_expected_updated_at timestamptz,p_review_digest text,p_idempotency_key uuid,
+ p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_terminal_split$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_slot public.lesson_slots%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_workplace uuid;
+ v_zone text;
+ v_start time;
+ v_duration integer;
+ v_rate integer;
+ v_home boolean;
+ v_day date;
+ v_local timestamp;
+ v_utc timestamptz;
+ v_before_offset interval;
+ v_after_offset interval;
+ v_now timestamptz;
+ v_plan jsonb:='[]'::jsonb;
+ v_rows jsonb:='[]'::jsonb;
+ v_exceptions jsonb;
+ v_row public.teaching_sessions%ROWTYPE;
+ v_eligible boolean;
+ v_drafts uuid[]:=ARRAY[]::uuid[];
+ v_protected integer:=0;
+ v_deleted integer;
+ v_hash text;
+ v_review text;
+ v_receipt jsonb;
+ v_result jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501'; END IF;
+ IF p_slot_id IS NULL OR p_cutoff IS NULL OR p_tail_id IS NULL OR p_slot_id=p_tail_id
+    OR p_expected_updated_at IS NULL OR p_to IS NULL OR p_to<p_cutoff OR p_to-p_cutoff>366
+    OR p_confirmed IS NULL OR (p_confirmed AND (p_idempotency_key IS NULL
+       OR p_review_digest IS NULL OR p_review_digest !~ '^[0-9a-f]{64}$'))
+    OR jsonb_typeof(p_changes) IS DISTINCT FROM 'object' OR p_changes='{}'::jsonb THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_INVALID' USING ERRCODE='22023';
+ END IF;
+ -- This baseline slice preserves weekday, venue and local-date identity.
+ IF p_changes-ARRAY['startTime','durationMinutes','rateCents','isHomeVisit']<>'{}'::jsonb THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_UNSUPPORTED_FIELDS' USING ERRCODE='22023';
+ END IF;
+ IF (p_changes ? 'startTime' AND (jsonb_typeof(p_changes->'startTime') IS DISTINCT FROM 'string'
+     OR (p_changes->>'startTime') !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'))
+    OR (p_changes ? 'durationMinutes' AND (p_changes->>'durationMinutes' IS NULL
+     OR (p_changes->>'durationMinutes') !~ '^[0-9]{1,3}$'
+     OR (p_changes->>'durationMinutes')::integer NOT BETWEEN 15 AND 480))
+    OR (p_changes ? 'rateCents' AND p_changes->'rateCents'<>'null'::jsonb
+     AND (p_changes->>'rateCents') !~ '^[0-9]{1,9}$')
+    OR (p_changes ? 'isHomeVisit' AND jsonb_typeof(p_changes->'isHomeVisit') IS DISTINCT FROM 'boolean') THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_INVALID_FIELDS' USING ERRCODE='22023';
+ END IF;
+
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=encode(sha256(convert_to(jsonb_build_array('canonical.slot.split.tail',p_slot_id,
+  p_cutoff,p_tail_id,p_changes,p_to,p_expected_updated_at,p_review_digest)::text,'UTF8')),'hex');
+ IF p_confirmed THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF FOUND THEN
+   IF v_saved.operation<>'canonical.slot.split.tail' OR v_saved.request_hash<>v_hash THEN
+    RAISE EXCEPTION 'RECURRENCE_SPLIT_REPLAY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+  END IF;
+ END IF;
+ SELECT * INTO v_slot FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND id=p_slot_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'RECURRENCE_SPLIT_NOT_FOUND' USING ERRCODE='42501'; END IF;
+ IF v_slot.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF NOT v_slot.active OR EXISTS(SELECT 1 FROM public.lesson_slots s
+   WHERE s.teacher_id=v_teacher AND s.series_id=v_slot.series_id
+     AND s.id<>v_slot.id AND s.start_date>=v_slot.start_date)
+  OR EXISTS(SELECT 1 FROM public.lesson_slots WHERE id=p_tail_id AND teacher_id=v_teacher) THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_REQUIRES_TERMINAL_SEGMENT' USING ERRCODE='23514';
+ END IF;
+ IF v_slot.workplace_id IS NULL THEN
+  SELECT id,timezone INTO v_workplace,v_zone FROM public.workplaces
+   WHERE teacher_id=v_teacher ORDER BY created_at,id LIMIT 1 FOR SHARE;
+  v_zone:=coalesce((SELECT nullif(timezone,'') FROM public.teacher_settings WHERE teacher_id=v_teacher),v_zone);
+ ELSE
+  SELECT id,timezone INTO v_workplace,v_zone FROM public.workplaces
+   WHERE id=v_slot.workplace_id AND teacher_id=v_teacher FOR SHARE;
+ END IF;
+ v_now:=clock_timestamp();
+ IF v_workplace IS NULL OR v_zone IS NULL OR ((p_cutoff+v_slot.start_time) AT TIME ZONE v_zone)<=v_now
+  OR p_cutoff<=v_slot.start_date OR (v_slot.end_date IS NOT NULL AND p_cutoff>v_slot.end_date)
+  OR extract(dow FROM p_cutoff)<>v_slot.day_of_week THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_INVALID_CUTOFF' USING ERRCODE='22023';
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.students s
+  WHERE s.teacher_id=v_teacher AND s.id=v_slot.student_id AND s.archived_at IS NULL)
+ OR NOT EXISTS(SELECT 1 FROM public.workplace_enrollments e
+  WHERE e.teacher_id=v_teacher AND e.workplace_id=v_workplace AND e.student_id=v_slot.student_id
+    AND e.cancelled_at IS NULL AND (e.starts_on IS NULL OR e.starts_on<=p_cutoff)
+    AND (e.ends_on IS NULL OR (v_slot.end_date IS NOT NULL AND e.ends_on>=v_slot.end_date))) THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ v_start:=coalesce((p_changes->>'startTime')::time,v_slot.start_time);
+ v_duration:=coalesce((p_changes->>'durationMinutes')::integer,v_slot.duration_minutes);
+ v_rate:=CASE WHEN p_changes ? 'rateCents' THEN (p_changes->>'rateCents')::integer ELSE v_slot.rate_cents END;
+ v_home:=coalesce((p_changes->>'isHomeVisit')::boolean,v_slot.is_home_visit);
+ -- Build a complete bounded plan from exactly the same local dates; do not
+ -- accept client-supplied derived UTC times. For gaps/folds, ask for explicit
+ -- reconciliation instead of picking an automatic DST interpretation.
+ FOR v_day IN SELECT d::date FROM generate_series(p_cutoff,least(p_to,coalesce(v_slot.end_date,p_to)),interval '1 day') d
+   WHERE extract(dow FROM d)=v_slot.day_of_week ORDER BY d
+ LOOP
+  v_local:=v_day+v_start;
+  v_utc:=v_local AT TIME ZONE v_zone;
+  v_before_offset:=((v_utc-interval '1 day') AT TIME ZONE v_zone)-((v_utc-interval '1 day') AT TIME ZONE 'UTC');
+  v_after_offset:=((v_utc+interval '1 day') AT TIME ZONE v_zone)-((v_utc+interval '1 day') AT TIME ZONE 'UTC');
+  IF (v_utc AT TIME ZONE v_zone) IS DISTINCT FROM v_local OR (
+   v_before_offset<>v_after_offset
+   AND (((v_local-v_before_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local
+   AND (((v_local-v_after_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local) THEN
+   RAISE EXCEPTION 'RECURRENCE_SPLIT_AMBIGUOUS_LOCAL_TIME' USING ERRCODE='22023';
+  END IF;
+  v_plan:=v_plan||jsonb_build_array(jsonb_build_object(
+   'teacher_id',v_teacher,'workplace_id',v_workplace,'student_id',v_slot.student_id,
+   'slot_id',p_tail_id,'slot_occurrence_date',v_day,'starts_at',v_utc,'local_timezone',v_zone,
+   'duration_minutes',v_duration,'slot_rate_cents',v_rate,'is_home_visit',v_home));
+ END LOOP;
+
+ IF EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions e
+   JOIN public.lesson_slots origin ON origin.id=e.slot_id AND origin.teacher_id=e.teacher_id
+   WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+    AND e.original_occurrence_on>=p_cutoff AND e.revoked_at IS NULL AND e.action<>'cancel'
+    AND NOT EXISTS(SELECT 1 FROM public.teaching_sessions occurrence
+     JOIN public.lesson_slots recorded ON recorded.id=occurrence.slot_id AND recorded.teacher_id=occurrence.teacher_id
+     WHERE recorded.teacher_id=v_teacher AND recorded.series_id=v_slot.series_id
+       AND occurrence.id=e.session_id AND occurrence.slot_occurrence_date=e.original_occurrence_on)) THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_EXCEPTION_RECONCILIATION_REQUIRED' USING ERRCODE='23514';
+ END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_array(e.id,e.slot_id,e.original_occurrence_on,
+  e.action,e.session_id,e.revoked_at,e.revision) ORDER BY e.original_occurrence_on,e.id),'[]'::jsonb)
+ INTO v_exceptions FROM (
+  SELECT observed.* FROM public.slot_occurrence_exceptions observed
+  JOIN public.lesson_slots origin ON origin.id=observed.slot_id AND origin.teacher_id=observed.teacher_id
+  WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+   AND observed.original_occurrence_on>=p_cutoff ORDER BY observed.original_occurrence_on,observed.id LIMIT 2001
+ ) e;
+ IF jsonb_array_length(v_exceptions)>2000 THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_TOO_MANY_EXCEPTIONS' USING ERRCODE='22023';
+ END IF;
+
+ FOR v_row IN SELECT occurrence.* FROM public.teaching_sessions occurrence
+   JOIN public.lesson_slots origin ON origin.id=occurrence.slot_id AND origin.teacher_id=occurrence.teacher_id
+   WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+     AND occurrence.slot_occurrence_date>=p_cutoff
+   ORDER BY occurrence.slot_occurrence_date,occurrence.id LIMIT 2001 FOR UPDATE OF occurrence
+ LOOP
+  IF jsonb_array_length(v_rows)>=2000 THEN
+   RAISE EXCEPTION 'RECURRENCE_SPLIT_TOO_MANY_OCCURRENCES' USING ERRCODE='22023';
+  END IF;
+  v_eligible:=v_row.slot_id=v_slot.id AND v_row.starts_at>=v_now AND v_row.status='scheduled'
+   AND v_row.makeup_for_session_id IS NULL AND v_row.rescheduled_from_date IS NULL
+   AND btrim(coalesce(v_row.lesson_note,''))='' AND v_row.updated_at<=v_row.created_at+interval '1 microsecond'
+   AND NOT EXISTS(SELECT 1 FROM public.session_attendance WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.ccp_session_attendance_audit WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_notes WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.ccp_session_note_audit WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.ccp_delivery_outbox WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.invoice_items WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.financial_obligations WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.credit_redemptions WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.chess_observations WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.material_teaching_evidence WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.material_links WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_roster_corrections WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_amendment_events WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.teaching_sessions WHERE makeup_for_session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions WHERE session_id=v_row.id);
+  IF v_eligible THEN
+   IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_plan) planned
+     WHERE planned->>'slot_occurrence_date'=v_row.slot_occurrence_date::text) THEN
+    RAISE EXCEPTION 'RECURRENCE_SPLIT_REVIEW_RANGE_INCOMPLETE' USING ERRCODE='22023';
+   END IF;
+   v_drafts:=array_append(v_drafts,v_row.id);
+  ELSE
+   v_protected:=v_protected+1;
+  END IF;
+  -- Some privileged corrections do not move updated_at. Bind complete stored
+  -- session state in the digest without exposing teacher-only fields.
+  v_rows:=v_rows||jsonb_build_array(jsonb_build_array(
+   encode(sha256(convert_to(to_jsonb(v_row)::text,'UTF8')),'hex'),v_eligible));
+ END LOOP;
+ v_review:=encode(sha256(convert_to(jsonb_build_array(v_teacher,v_slot.series_id,v_slot.id,
+  v_slot.updated_at,p_cutoff,p_tail_id,p_changes,p_to,v_plan,v_rows,v_exceptions)::text,'UTF8')),'hex');
+ v_receipt:=jsonb_build_object('seriesId',v_slot.series_id,'predecessorId',v_slot.id,
+  'successorId',p_tail_id,'cutoff',p_cutoff,'reviewDigest',v_review,'sourceRevision',v_slot.updated_at,
+  'planned',jsonb_array_length(v_plan),'replaceableDrafts',cardinality(v_drafts),'preservedHistory',v_protected);
+ IF NOT p_confirmed THEN RETURN v_receipt; END IF;
+ IF p_review_digest<>v_review THEN RAISE EXCEPTION 'RECURRENCE_SPLIT_REVIEW_CONFLICT' USING ERRCODE='23505'; END IF;
+
+ INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+  VALUES(v_teacher,p_idempotency_key,'canonical.slot.split.tail',v_hash,'{}'::jsonb);
+ UPDATE public.lesson_slots SET end_date=p_cutoff-1 WHERE id=v_slot.id AND teacher_id=v_teacher;
+ BEGIN
+  INSERT INTO public.lesson_slots(id,teacher_id,student_id,workplace_id,series_id,day_of_week,
+   start_time,duration_minutes,start_date,end_date,active,rate_cents,is_home_visit)
+  VALUES(p_tail_id,v_teacher,v_slot.student_id,v_slot.workplace_id,v_slot.series_id,v_slot.day_of_week,
+   v_start,v_duration,p_cutoff,v_slot.end_date,true,v_rate,v_home);
+ EXCEPTION WHEN unique_violation THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_TAIL_CONFLICT' USING ERRCODE='23505';
+ END;
+ DELETE FROM public.teaching_sessions WHERE teacher_id=v_teacher AND id=ANY(v_drafts);
+ GET DIAGNOSTICS v_deleted=ROW_COUNT;
+ IF v_deleted<>cardinality(v_drafts) THEN RAISE EXCEPTION 'RECURRENCE_SPLIT_DRAFT_CONFLICT' USING ERRCODE='23505'; END IF;
+ v_result:=public.ccp_canonical_slot_materialize(v_plan,NULL);
+ v_receipt:=v_receipt||jsonb_build_object('removedFutureDrafts',v_deleted,'materialized',v_result,
+  'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_terminal_split$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_terminal_slot_split(uuid,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_terminal_slot_split(uuid,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
  TO authenticated;
