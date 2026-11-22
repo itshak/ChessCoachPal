@@ -29,6 +29,15 @@ const protectedTables = [
   {table:"report_publications",key:"id",patch:{output_locale:"en"},authRead:true},
   {table:"report_publication_audiences",key:"publication_id",patch:{approved_by:randomUUID()},authRead:true},
   {table:"session_amendment_events",key:"id",patch:{source:"service"},authRead:true},
+  // Previously existing internal relations are equally sensitive: receipt
+  // replay, delivery/audit history and encrypted integration credentials.
+  {table:"ccp_delivery_outbox",key:"id",patch:{state:"sent"},authRead:false},
+  {table:"ccp_session_note_audit",key:"id",patch:{before_value:{}},authRead:false},
+  {table:"teacher_spreadsheet_import_receipts",key:"teacher_id",patch:{receipt:{}},authRead:false},
+  {table:"ccp_credit_redemption_return_receipts",key:"teacher_id",patch:{created_at:new Date().toISOString()},authRead:false},
+  {table:"skill_assessment_write_receipts",key:"teacher_id",patch:{payload:{}},authRead:false},
+  {table:"teacher_lichess_connections",key:"teacher_id",patch:{lichess_username:"NotAuthorized"},authRead:false},
+  {table:"teacher_lichess_connection_events",key:"id",patch:{action:"connected"},authRead:false},
 ] as const;
 
 const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -40,7 +49,7 @@ const admin=()=>createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
   auth:{persistSession:false,autoRefreshToken:false},
 });
 
-test("all 18 schema-foundation tables deny direct non-service insert/update/delete and anonymous reads",async()=>{
+test("all 25 sensitive tables reject unauthorized direct writes and private reads",async()=>{
   const privileged=admin();
   const teacherEmail="schema-permissions-"+randomUUID()+"@example.com";
   const password="SchemaPermissions123!";
