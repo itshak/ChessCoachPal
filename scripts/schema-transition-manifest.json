@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "mode": "single-canonical-baseline",
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "63c7e9f1d85a0c42f87870a3a490de5e326c42822ec7086fda1420963b1a0c23",
+  "baselineSha256": "0e4978a7c1bdd16dcd1f73e72c33cb9448fdb9df60c5644cc7612863d43ea6af",
   "operatorCutoverRequired": true,
   "baselineRequiredObjects": [
     "students",
@@ -65,6 +65,7 @@
     "ccp_entitlement_summary",
     "ccp_professional_workplace_capacity_guard",
     "ccp_provision_personal_workplace",
-    "ccp_session_amendment_capture"
+    "ccp_session_amendment_capture",
+    "ccp_capability_definition_contract_guard"
   ]
 }

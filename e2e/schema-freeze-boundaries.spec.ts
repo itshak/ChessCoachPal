@@ -553,3 +553,38 @@ test("authenticated and anonymous roles cannot mutate commercial authority",asyn
   expect((await admin.auth.admin.deleteUser(b.id)).error).toBeNull();
  }
 });
+
+
+/** ENT-13: a referenced capability cannot be silently retired, reclassified
+ * or changed retroactively. Published plan values also remain immutable. */
+test("referenced capability definitions and published plan values are immutable",async()=>{
+ const admin=syntheticAdmin();
+ const key="students.active";
+ const before=await admin.from("capability_definitions")
+  .select("key,kind,security_class,active,definition_version")
+  .eq("key",key).single();
+ expect(before.error).toBeNull();
+ for(const change of [
+  {security_class:"operator"},
+  {active:false},
+  {definition_version:(before.data!.definition_version as number)+1},
+ ]){
+  const result=await admin.from("capability_definitions")
+   .update(change).eq("key",key);
+  expect(result.error?.code).toBe("23514");
+  expect(result.error?.message).toContain("CAPABILITY_CONTRACT_IMMUTABLE");
+ }
+ const free=await admin.from("plan_versions")
+  .select("id").eq("code","free").eq("version",1).single();
+ expect(free.error).toBeNull();
+ const rewritten=await admin.from("plan_capabilities")
+  .update({unlimited:false,integer_value:1})
+  .eq("plan_version_id",free.data!.id).eq("capability_key",key);
+ expect(rewritten.error?.code).toBe("23514");
+ expect(rewritten.error?.message).toContain("PUBLISHED_CAPABILITY_IMMUTABLE");
+ const after=await admin.from("capability_definitions")
+  .select("key,kind,security_class,active,definition_version")
+  .eq("key",key).single();
+ expect(after.error).toBeNull();
+ expect(after.data).toEqual(before.data);
+});

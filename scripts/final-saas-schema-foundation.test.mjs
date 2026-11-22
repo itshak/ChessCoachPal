@@ -50,6 +50,7 @@ test("ADR-0019 final cross-domain safety invariants and one SQL authority",()=>{
   "ccp_report_publication_immutable_guard","ccp_report_audience_immutable_guard",
   "ccp_session_amendment_capture",
   "ccp_published_plan_guard","ccp_plan_capability_guard",
+  "ccp_capability_definition_contract_guard",
   "ccp_grant_immutable_guard","ccp_usage_period_nonoverlap","ccp_apply_account_usage_event",
   "ccp_subscription_order_guard","ccp_entitlement_grant_serialize",
   "ccp_report_not_self_superseded",
@@ -71,4 +72,11 @@ test("ADR-0019 final cross-domain safety invariants and one SQL authority",()=>{
   "capability_definitions", "rating_categories", "report_publications",
   "session_amendment_events",
  ])assert.ok(types.includes("      "+pathMarker+": {"),"Missing TypeScript "+pathMarker);
+});
+
+
+test("referenced capability contracts and plan publication serialize",()=>{
+ assert.match(sql,/SELECT lifecycle INTO v_lifecycle FROM public\.plan_versions\s+WHERE id=v_version FOR UPDATE/);
+ assert.match(sql,/CREATE TRIGGER ccp_capability_definition_contract_guard\s+BEFORE UPDATE OR DELETE ON public\.capability_definitions/);
+ assert.match(sql,/v_referenced AND[\s\S]*NEW\.active IS DISTINCT FROM OLD\.active/);
 });

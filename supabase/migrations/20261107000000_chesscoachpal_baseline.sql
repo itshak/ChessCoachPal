@@ -13953,7 +13953,9 @@ RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_plan_cap
 DECLARE v_version uuid;v_lifecycle text;
 BEGIN
  v_version:=CASE WHEN TG_OP='DELETE' THEN OLD.plan_version_id ELSE NEW.plan_version_id END;
- SELECT lifecycle INTO v_lifecycle FROM public.plan_versions WHERE id=v_version;
+ -- Serialize publication and capability writes on the plan row.
+  SELECT lifecycle INTO v_lifecycle FROM public.plan_versions
+   WHERE id=v_version FOR UPDATE;
  IF v_lifecycle<>'draft' OR (TG_OP='UPDATE' AND NEW.plan_version_id<>OLD.plan_version_id)
  THEN
     RAISE EXCEPTION 'PUBLISHED_CAPABILITY_IMMUTABLE' USING ERRCODE='23514';
@@ -14267,3 +14269,47 @@ CREATE TRIGGER ccp_zz_subscription_audit
  AFTER INSERT OR UPDATE OR DELETE ON public.platform_subscriptions
  FOR EACH ROW EXECUTE FUNCTION public.ccp_audit_subscription_change();
 -- END ADR-0019 audited entitlement authority.
+
+-- ADR-0019: referenced capability definitions are immutable contracts.
+-- No silent reclassification, retirement or reinterpretation of issued plans.
+-- Register a new reviewed capability key for incompatible semantics.
+CREATE OR REPLACE FUNCTION public.ccp_capability_definition_contract_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp
+AS $ccp_capability_contract$
+DECLARE v_referenced boolean;
+BEGIN
+  SELECT EXISTS (SELECT 1 FROM public.plan_capabilities p
+                  WHERE p.capability_key=OLD.key)
+      OR EXISTS (SELECT 1 FROM public.teacher_entitlement_grants g
+                  WHERE g.capability_key=OLD.key)
+      OR EXISTS (SELECT 1 FROM public.account_usage_periods p
+                  WHERE p.capability_key=OLD.key)
+      OR EXISTS (SELECT 1 FROM public.account_usage_events e
+                  WHERE e.capability_key=OLD.key)
+  INTO v_referenced;
+  IF TG_OP='DELETE' THEN
+    IF v_referenced THEN
+      RAISE EXCEPTION 'CAPABILITY_CONTRACT_IMMUTABLE' USING ERRCODE='23514';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF NEW.key IS DISTINCT FROM OLD.key OR NEW.kind IS DISTINCT FROM OLD.kind THEN
+    RAISE EXCEPTION 'CAPABILITY_IDENTITY_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  IF v_referenced AND
+     (NEW.unit IS DISTINCT FROM OLD.unit OR
+      NEW.security_class IS DISTINCT FROM OLD.security_class OR
+      NEW.definition_version IS DISTINCT FROM OLD.definition_version OR
+      NEW.active IS DISTINCT FROM OLD.active OR
+      NEW.created_at IS DISTINCT FROM OLD.created_at) THEN
+    RAISE EXCEPTION 'CAPABILITY_CONTRACT_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+END;
+$ccp_capability_contract$;
+REVOKE ALL ON FUNCTION public.ccp_capability_definition_contract_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_capability_definition_contract_guard
+ BEFORE UPDATE OR DELETE ON public.capability_definitions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_capability_definition_contract_guard();
+-- END ADR-0019 capability contract hardening.
