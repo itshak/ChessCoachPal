@@ -225,3 +225,70 @@ test("baseline and grant transitions produce immutable scoped entitlement audit 
   expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
  }
 });
+
+/** TCH-01/02: a cancelled unmaterialized recurring occurrence is durable,
+ * exactly dated, versioned and replaceable without creating a phantom lesson. */
+test("cancelled recurring occurrence can be reviewed, revoked and replaced without a session",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  const workplace=await admin.from("workplaces")
+   .select("id").eq("teacher_id",teacher.id).eq("kind","personal").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Weekly learner "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const enrollment=await admin.from("workplace_enrollments").insert({
+   teacher_id:teacher.id,workplace_id:workplace.data!.id,
+   student_id:student.data!.id,source:"manual",
+  });
+  expect(enrollment.error).toBeNull();
+  const day=new Date("2060-04-01T00:00:00Z").getUTCDay();
+  const slot=await admin.from("lesson_slots").insert({
+   teacher_id:teacher.id,student_id:student.data!.id,
+   workplace_id:workplace.data!.id,day_of_week:day,
+   start_time:"14:00:00",duration_minutes:45,start_date:"2060-04-01",
+  }).select("id").single();
+  expect(slot.error).toBeNull();
+  const original="2060-04-08";
+  const canceled=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:teacher.id,slot_id:slot.data!.id,
+   original_occurrence_on:original,action:"cancel",
+   approved_by:teacher.id,
+   reason:"Explicit weekly cancellation by teacher",
+   request_id:randomUUID(),
+  }).select("id").single();
+  expect(canceled.error).toBeNull();
+  const dupe=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:teacher.id,slot_id:slot.data!.id,
+   original_occurrence_on:original,action:"cancel",
+   approved_by:teacher.id,
+   reason:"A duplicate would create two current intents",
+   request_id:randomUUID(),
+  });
+  expect(dupe.error?.code).toBe("23505");
+  const revoked=await admin.from("slot_occurrence_exceptions").update({
+   revoked_at:new Date().toISOString(),revoked_by:teacher.id,
+   revocation_request_id:randomUUID(),
+  }).eq("id",canceled.data!.id);
+  expect(revoked.error).toBeNull();
+  const amended=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:teacher.id,slot_id:slot.data!.id,
+   original_occurrence_on:original,action:"reschedule",
+   revised_starts_at:"2060-04-09T14:00:00+00:00",revised_timezone:"UTC",
+   approved_by:teacher.id,reason:"Approved replacement after cancellation",
+   request_id:randomUUID(),
+  });
+  expect(amended.error).toBeNull();
+  const overwrite=await admin.from("slot_occurrence_exceptions")
+   .update({action:"override"}).eq("id",canceled.data!.id);
+  expect(overwrite.error?.message).toContain("IMMUTABLE_OCCURRENCE");
+  const sessions=await admin.from("teaching_sessions")
+   .select("id",{count:"exact",head:true}).eq("teacher_id",teacher.id);
+  expect(sessions.error).toBeNull();
+  expect(sessions.count).toBe(0);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
