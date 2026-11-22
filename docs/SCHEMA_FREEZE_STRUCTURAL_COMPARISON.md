@@ -57,3 +57,7 @@ The combined canonical SQL SHA-256 `cae29c652091daaacff32130d1790122476c3d98e69b
 ## Durable series identity checkpoint
 
 Combined canonical SQL SHA-256 `0cd3c2a5beb2c67b053b928a029074d2e2fa60c8de51960c41ae9e91e3c0fd5e` bootstrapped twice on separate disposable PostgreSQL 17.12 instances with only the canonical migration. Read-only v2 snapshots matched byte-for-byte at SHA-256 `f9a4626076b67e549c88730fe63bd17016ab38f73ebeec886c288ab6f12bd085` (105 tables, 1,080 columns, 812 constraints, 389 indexes, 85 triggers, 96 policies, 145 routines, 3,145 ACLs). The seeded baseline and material restore SQL tests passed independently on both instances. The exact materialized Row audit found zero issues across 60 declared table contracts and 730 columns. Test resources were removed. This verifies lineage storage and restore, not the not-yet-complete scoped write operations.
+
+## Secure single-date cancellation and linked materialization checkpoint
+
+The combined canonical SQL SHA-256 `a48ff24a28c7b882f29534e9a849b08537a08a5189952013bd9c614e8f82eb1c` bootstrapped independently twice on disposable PostgreSQL 17.12. Both read-only v2 snapshots matched byte-for-byte at SHA-256 `7d1f669b53a0545e7e95a1ab016c2c2e22f6c006a720b3bbffa9b7557108a94e` (105 tables, 1,080 columns, 146 routines, zero differences). Seeded lineage and portable-material restoration passed. Authenticated API tests checked exact one-date cancellation, retirement protection and regeneration. No later-scope recurrence writer, populated-data cutover or matrix acceptance is implied.

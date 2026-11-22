@@ -6954,10 +6954,16 @@ BEGIN
       RAISE EXCEPTION 'CANONICAL_MATERIALIZE_SLOT_MISMATCH'
         USING ERRCODE='22023';
     END IF;
+    -- A predecessor segment may retain an occurrence after its rule ends.
+    -- Any stored original date consumes the series occurrence, not only
+    -- protected history. A reviewed split must reconcile editable rows
+    -- explicitly; generation never guesses which stored row it may replace.
     IF EXISTS(
-      SELECT 1 FROM public.teaching_sessions
-       WHERE teacher_id=v_teacher AND slot_id=v_slot.id
-         AND slot_occurrence_date=v_slot_date
+      SELECT 1 FROM public.lesson_slots origin
+       JOIN public.teaching_sessions occurrence
+        ON occurrence.teacher_id=origin.teacher_id AND occurrence.slot_id=origin.id
+       WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+         AND occurrence.slot_occurrence_date=v_slot_date
     ) THEN
       v_count:=v_count+1;
       CONTINUE;
@@ -6966,10 +6972,12 @@ BEGIN
     -- Use the original occurrence date in the slot's local timezone, not
     -- the UTC calendar date. A revoked cancellation cannot hide the date.
     IF EXISTS(
-      SELECT 1 FROM public.slot_occurrence_exceptions
-       WHERE teacher_id=v_teacher AND slot_id=v_slot.id
-         AND original_occurrence_on=v_slot_date
-         AND action='cancel' AND revoked_at IS NULL
+      SELECT 1 FROM public.lesson_slots origin
+       JOIN public.slot_occurrence_exceptions exception
+        ON exception.teacher_id=origin.teacher_id AND exception.slot_id=origin.id
+       WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+         AND exception.original_occurrence_on=v_slot_date
+         AND exception.action='cancel' AND exception.revoked_at IS NULL
     ) THEN
       v_count:=v_count+1;
       CONTINUE;
@@ -14907,9 +14915,14 @@ BEGIN
   RETURN NEW;
  END IF;
  -- Account removal may cascade; it is not a recurrence edit.
+ -- A retained exception is audit history even after revocation. Do not
+ -- cascade its deletion (or strand an approval receipt) while the owner
+ -- exists. Account erasure may still cascade, and plain slots can be deleted.
  IF EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id) AND
    (OLD.series_id<>OLD.id OR EXISTS(SELECT 1 FROM public.lesson_slots
-     WHERE teacher_id=OLD.teacher_id AND series_id=OLD.id AND id<>OLD.id)) THEN
+     WHERE teacher_id=OLD.teacher_id AND series_id=OLD.id AND id<>OLD.id)
+    OR EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions
+     WHERE teacher_id=OLD.teacher_id AND slot_id=OLD.id)) THEN
   RAISE EXCEPTION 'RECURRENCE_SERIES_REQUIRES_RETIREMENT' USING ERRCODE='23514';
  END IF;
  RETURN OLD;
@@ -14943,3 +14956,127 @@ REVOKE ALL ON FUNCTION public.ccp_lesson_slot_series_root()
 CREATE CONSTRAINT TRIGGER ccp_lesson_slot_series_root
  AFTER INSERT ON public.lesson_slots DEFERRABLE INITIALLY DEFERRED
  FOR EACH ROW EXECUTE FUNCTION public.ccp_lesson_slot_series_root();
+
+-- Exact, teacher-approved cancellation before a recurring lesson exists.
+-- The common calendar/series writer takes the same lock before checking
+-- this table, so approval and materialization have one serial order.
+CREATE FUNCTION public.ccp_canonical_slot_cancel_unmaterialized(
+ p_slot_id uuid,p_original_occurrence_on date,p_expected_updated_at timestamptz,
+ p_idempotency_key uuid,p_reason text,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_cancel_unmaterialized$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_operation constant text:='canonical.slot.cancel_unmaterialized';
+ v_slot public.lesson_slots%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_workplace public.workplaces%ROWTYPE;
+ v_timezone text;
+ v_local timestamp;
+ v_guess timestamptz;
+ v_start timestamptz;
+ v_hash text;
+ v_exception_id uuid;
+ v_receipt jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_slot_id IS NULL OR p_idempotency_key IS NULL OR p_confirmed IS DISTINCT FROM true
+   OR p_expected_updated_at IS NULL OR NOT isfinite(p_expected_updated_at)
+   OR p_original_occurrence_on IS NULL
+   OR p_original_occurrence_on NOT BETWEEN DATE '0001-01-01' AND DATE '9999-12-31'
+   OR p_reason IS NULL OR char_length(btrim(p_reason)) NOT BETWEEN 4 AND 500 THEN
+  RAISE EXCEPTION 'INVALID_SLOT_CANCELLATION' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=encode(sha256(convert_to(jsonb_build_array(v_operation,p_slot_id,
+  p_original_occurrence_on,p_expected_updated_at AT TIME ZONE 'UTC',
+  p_reason,p_confirmed)::text,'UTF8')),'hex');
+ INSERT INTO public.agent_tool_receipts
+  (teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_idempotency_key,v_operation,v_hash,'{}'::jsonb)
+ ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF NOT FOUND OR v_saved.operation<>v_operation OR v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'SLOT_CANCELLATION_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+
+ SELECT * INTO v_slot FROM public.lesson_slots
+  WHERE id=p_slot_id AND teacher_id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF v_slot.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF NOT v_slot.active OR v_slot.duration_minutes NOT BETWEEN 15 AND 480
+    OR v_slot.start_time>=time '24:00:00'
+    OR extract(second FROM v_slot.start_time)<>trunc(extract(second FROM v_slot.start_time))
+    OR p_original_occurrence_on<v_slot.start_date
+    OR (v_slot.end_date IS NOT NULL AND p_original_occurrence_on>v_slot.end_date)
+    OR extract(dow FROM p_original_occurrence_on)<>v_slot.day_of_week THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_A_RULE_DATE' USING ERRCODE='22023';
+ END IF;
+ IF EXISTS(
+   SELECT 1 FROM public.lesson_slots segment
+   JOIN public.teaching_sessions s ON s.teacher_id=segment.teacher_id AND s.slot_id=segment.id
+   WHERE segment.teacher_id=v_teacher AND segment.series_id=v_slot.series_id
+     AND s.slot_occurrence_date=p_original_occurrence_on
+ ) THEN
+  RAISE EXCEPTION 'SLOT_OCCURRENCE_ALREADY_MATERIALIZED' USING ERRCODE='23514';
+ END IF;
+ IF EXISTS(
+   SELECT 1 FROM public.lesson_slots segment
+   JOIN public.slot_occurrence_exceptions e
+     ON e.teacher_id=segment.teacher_id AND e.slot_id=segment.id
+   WHERE segment.teacher_id=v_teacher AND segment.series_id=v_slot.series_id
+     AND e.original_occurrence_on=p_original_occurrence_on AND e.revoked_at IS NULL
+ ) THEN
+  RAISE EXCEPTION 'SLOT_OCCURRENCE_ALREADY_HAS_EXCEPTION' USING ERRCODE='23505';
+ END IF;
+
+ -- Same explicit-workplace/teacher fallback timezone as materialization.
+ SELECT * INTO v_workplace FROM public.workplaces
+  WHERE teacher_id=v_teacher AND (v_slot.workplace_id IS NULL OR id=v_slot.workplace_id)
+  ORDER BY created_at,id LIMIT 1;
+ IF NOT FOUND OR v_workplace.archived_at IS NOT NULL THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF v_slot.workplace_id IS NULL THEN
+  SELECT nullif(timezone,'') INTO v_timezone FROM public.teacher_settings
+   WHERE teacher_id=v_teacher;
+ END IF;
+ v_timezone:=coalesce(v_timezone,v_workplace.timezone);
+ -- Match the planner's earliest real instant for an ambiguous fall-back
+ -- time. A nonexistent local time cannot be safely approved by this RPC.
+ v_local:=p_original_occurrence_on+v_slot.start_time;
+ v_guess:=v_local AT TIME ZONE 'UTC';
+ SELECT min(candidate) INTO v_start FROM (
+  SELECT v_guess-((probe AT TIME ZONE v_timezone)-(probe AT TIME ZONE 'UTC')) AS candidate
+  FROM unnest(ARRAY[-48,-24,-12,0,12,24,48]) AS h(hours)
+  CROSS JOIN LATERAL (SELECT v_guess+hours*interval '1 hour' AS probe) AS z
+ ) timings WHERE candidate AT TIME ZONE v_timezone=v_local;
+ IF v_start IS NULL OR v_start<=clock_timestamp() THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_FUTURE' USING ERRCODE='22023';
+ END IF;
+
+ INSERT INTO public.slot_occurrence_exceptions
+  (teacher_id,slot_id,original_occurrence_on,action,approved_by,reason,request_id)
+ VALUES(v_teacher,v_slot.id,p_original_occurrence_on,'cancel',v_teacher,
+  btrim(p_reason),p_idempotency_key)
+ RETURNING id INTO v_exception_id;
+ v_receipt:=jsonb_build_object('exceptionId',v_exception_id,'slotId',v_slot.id,
+  'originalOccurrenceOn',p_original_occurrence_on,'slotRevision',v_slot.updated_at,
+  'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_cancel_unmaterialized$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_cancel_unmaterialized(uuid,date,timestamptz,uuid,text,boolean)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_cancel_unmaterialized(uuid,date,timestamptz,uuid,text,boolean)
+ TO authenticated;

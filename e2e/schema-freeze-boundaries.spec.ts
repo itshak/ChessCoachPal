@@ -916,3 +916,110 @@ test("published plan catalog excludes operator capabilities for authenticated te
   expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
  }
 });
+
+/** TCH-01/02: generated segments consume durable original series dates.
+ * This fixture writes a split-shaped database, not a scoped product writer. */
+test("linked tail cannot recreate predecessor original dates or evade cancellation",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  const owner=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});
+  expect((await owner.auth.signInWithPassword({email:teacher.email,password:teacher.password})).error).toBeNull();
+  const timezone="Asia/Jerusalem";
+  const workplace=await admin.from("workplaces").update({timezone})
+   .eq("teacher_id",teacher.id).eq("kind","personal").select("id").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Linked recurrence "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const ids={teacher_id:teacher.id,workplace_id:workplace.data!.id,student_id:student.data!.id};
+  expect((await admin.from("workplace_enrollments").insert({...ids,source:"manual"})).error).toBeNull();
+  const first="2060-01-08",cancelled="2060-01-15",draft="2060-01-22",open="2060-01-29";
+  const base={...ids,day_of_week:dayOfWeek(first),duration_minutes:45};
+  const root=await admin.from("lesson_slots").insert({
+   ...base,start_time:"00:30:00",start_date:"2060-01-01",
+  }).select("id,series_id").single();
+  expect(root.error).toBeNull();
+  expect(root.data?.series_id).toBe(root.data?.id);
+  const rootId=root.data!.id;
+  const occurrence=(slotId:string,date:string,time:string)=>({
+   ...ids,slot_id:slotId,slot_occurrence_date:date,
+   starts_at:zonedTimeToUtc(date,time,timezone).toISOString(),local_timezone:timezone,
+   duration_minutes:45,is_home_visit:false,slot_rate_cents:null,
+  });
+  const persisted=()=>admin.from("teaching_sessions")
+   .select("id,slot_id,slot_occurrence_date,starts_at,status,lesson_note,updated_at")
+   .eq("teacher_id",teacher.id).order("starts_at");
+  const materialized=await owner.rpc("ccp_canonical_slot_materialize",{
+   p_rows:[occurrence(rootId,first,"00:30"),occurrence(rootId,draft,"00:30")],
+  });
+  expect(materialized.error).toBeNull();
+  expect(materialized.data).toEqual({planned:2,inserted:2});
+  const note="Protected teaching history "+randomUUID();
+  const protect=await admin.from("teaching_sessions").update({status:"completed",lesson_note:note})
+   .eq("teacher_id",teacher.id).eq("slot_id",rootId).eq("slot_occurrence_date",first);
+  expect(protect.error).toBeNull();
+  const before=await persisted();
+  expect(before.error).toBeNull();
+  expect(before.data).toHaveLength(2);
+  expect(before.data?.[0]).toMatchObject({slot_id:rootId,status:"completed",lesson_note:note});
+  expect(before.data?.[1]).toMatchObject({slot_id:rootId,status:"scheduled",lesson_note:""});
+  const exception=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:teacher.id,slot_id:rootId,original_occurrence_on:cancelled,
+   action:"cancel",approved_by:teacher.id,reason:"Approved predecessor cancellation",
+   request_id:randomUUID(),
+  }).select("id").single();
+  expect(exception.error).toBeNull();
+  const shortened=await admin.from("lesson_slots").update({end_date:"2060-01-07"}).eq("id",rootId);
+  expect(shortened.error).toBeNull();
+  const tail=await admin.from("lesson_slots").insert({
+   ...base,series_id:rootId,start_time:"02:00:00",start_date:first,
+  }).select("id").single();
+  expect(tail.error).toBeNull();
+  const other=await admin.from("lesson_slots").insert({
+   ...base,start_time:"14:00:00",start_date:first,
+  }).select("id,series_id").single();
+  expect(other.error).toBeNull();
+  expect(other.data?.series_id).toBe(other.data?.id);
+  const tailId=tail.data!.id,otherId=other.data!.id;
+  const stale=await owner.rpc("ccp_canonical_slot_materialize",{
+   p_rows:[occurrence(rootId,first,"00:30")],
+  });
+  expect(stale.error?.message).toBe("CANONICAL_MATERIALIZE_SLOT_MISMATCH");
+  const requested=[
+   occurrence(tailId,first,"02:00"),occurrence(tailId,cancelled,"02:00"),
+   occurrence(tailId,draft,"02:00"),occurrence(tailId,open,"02:00"),
+   occurrence(otherId,first,"14:00"),occurrence(otherId,cancelled,"14:00"),
+  ];
+  const firstRun=await owner.rpc("ccp_canonical_slot_materialize",{p_rows:requested});
+  expect(firstRun.error).toBeNull();
+  expect(firstRun.data).toEqual({planned:6,inserted:3});
+  const firstRead=await persisted();
+  expect(firstRead.error).toBeNull();
+  expect(firstRead.data).toHaveLength(5);
+  expect(firstRead.data?.filter(row=>row.slot_id===rootId)).toEqual(before.data);
+  expect(firstRead.data?.filter(row=>row.slot_id===tailId).map(row=>row.slot_occurrence_date)).toEqual([open]);
+  expect(firstRead.data?.filter(row=>row.slot_id===otherId).map(row=>row.slot_occurrence_date)).toEqual([first,cancelled]);
+  const replay=await owner.rpc("ccp_canonical_slot_materialize",{p_rows:requested});
+  expect(replay.error).toBeNull();
+  expect(replay.data).toEqual({planned:6,inserted:0});
+  expect((await persisted()).data).toEqual(firstRead.data);
+
+  const revoked=await admin.from("slot_occurrence_exceptions").update({
+   revoked_at:new Date().toISOString(),revoked_by:teacher.id,revocation_request_id:randomUUID(),
+  }).eq("id",exception.data!.id);
+  expect(revoked.error).toBeNull();
+  const resumed=await owner.rpc("ccp_canonical_slot_materialize",{p_rows:requested});
+  expect(resumed.error).toBeNull();
+  expect(resumed.data).toEqual({planned:6,inserted:1});
+  const final=await persisted();
+  expect(final.error).toBeNull();
+  expect(final.data?.filter(row=>row.slot_id===rootId)).toEqual(before.data);
+  expect(final.data?.filter(row=>row.slot_id===tailId).map(row=>row.slot_occurrence_date)).toEqual([cancelled,open]);
+  expect(final.data?.filter(row=>row.slot_id===otherId)).toEqual(firstRead.data?.filter(row=>row.slot_id===otherId));
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
