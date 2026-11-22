@@ -233,3 +233,41 @@ test("individual capacity boosts are additive, expirable, revocable and never se
  expect(state.data?.active_student_count).toBe(3);
  expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
 });
+
+
+test("zero-cap tenant rejects direct student creation without changing counters",async()=>{
+ const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
+ const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const email="zero-cap-"+randomUUID()+"@example.com";
+ const password="SyntheticZero-123!";
+ const identity=await admin.auth.admin.createUser({email,password,email_confirm:true});
+ expect(identity.error).toBeNull();
+ const id=identity.data.user!.id;
+ expect((await admin.from("teachers").insert({
+  id,email,display_name:"Zero-cap tenant",
+ })).error).toBeNull();
+ await configureSyntheticStudentCapacity(admin,id,0);
+ const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();
+ const results=await Promise.all(Array.from({length:3},(_,i)=>
+  auth.from("students").insert({
+   teacher_id:id,name:"Rejected at zero "+i+" "+randomUUID(),
+  })));
+ for(const result of results){
+  expect(result.error?.code).toBe("23514");
+  expect(result.error?.message).toContain("CAPACITY_EXCEEDED");
+ }
+ const state=await admin.from("teacher_entitlement_state")
+  .select("active_student_count").eq("teacher_id",id).single();
+ expect(state.error).toBeNull();
+ expect(state.data?.active_student_count).toBe(0);
+ const actual=await admin.from("students")
+  .select("id",{count:"exact",head:true}).eq("teacher_id",id);
+ expect(actual.error).toBeNull();
+ expect(actual.count).toBe(0);
+ expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
+});
