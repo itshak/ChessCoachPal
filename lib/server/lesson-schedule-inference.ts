@@ -3,6 +3,9 @@ import {z} from "zod";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {dayOfWeek,isDateString} from "@/lib/schedule";
 import {workplaceLocalToUtc} from "@/lib/coaching-time";
+import {effectiveLessonWorkplaces,lessonEnrollmentCalendar,lessonEnrollmentPeriods,
+ LessonTimingError} from "@/lib/server/lesson-enrollment-periods";
+export {LessonTimingError} from "@/lib/server/lesson-enrollment-periods";
 
 type Db=SupabaseClient;
 type Slot={id:string;student_id:string;start_time:string;duration_minutes:number};
@@ -19,9 +22,6 @@ export type LessonTiming={
   timeSource:"explicit"|"weekly_slot";
   slotIds:string[];
 };
-export class LessonTimingError extends Error {
-  constructor(public code:string,message:string){super(message);}
-}
 
 /**
  * Day-scoped recurrence evidence, never a guess at an omitted date.
@@ -142,25 +142,25 @@ export async function teacherScheduleDayPreview(db:Db,teacherId:string,
   "Cannot verify requested workplace");
  if(!workplace)throw new LessonTimingError("NOT_FOUND",
   "Requested workplace not found");
- const [{data:students,error:se},{data:enrollments,error:ee}]=await Promise.all([
+ const [{data:students,error:se},periods,calendarDate]=await Promise.all([
   db.from("students").select("id").eq("teacher_id",teacherId)
    .is("archived_at",null).in("id",args.studentIds).limit(51),
-  db.from("workplace_enrollments").select("student_id")
-   .eq("teacher_id",teacherId).eq("workplace_id",args.workplaceId)
-   .in("student_id",args.studentIds).limit(51),
+  lessonEnrollmentPeriods(db,teacherId,args.studentIds,args.workplaceId),
+  lessonEnrollmentCalendar(db,teacherId),
  ]);
- if(se||ee||!students||!enrollments)
-  throw new LessonTimingError("ENROLLMENT_UNAVAILABLE",
+ if(se||!students)throw new LessonTimingError("ENROLLMENT_UNAVAILABLE",
    "Cannot verify all selected students and enrollments");
- if(students.length!==args.studentIds.length||
-    new Set(enrollments.map(x=>x.student_id)).size!==args.studentIds.length)
-  return {canUse:false,workplace:{id:workplace.id,name:workplace.name,
+ const inWorkplace=(date?:string)=>args.studentIds.every(id=>
+   effectiveLessonWorkplaces(periods,id,date).has(workplace.id));
+ const blocked=()=>({canUse:false,workplace:{id:workplace.id,name:workplace.name,
     timezone:workplace.timezone},localDate:args.localDate,
     studentIds:args.studentIds,timing:null,issues:[{
-      code:"STUDENT_NOT_ENROLLED",message:"One or more learners are not active and enrolled in the selected workplace",
-    }],writesPerformed:false};
+      code:"STUDENT_NOT_ENROLLED",message:"One or more learners have no effective enrollment for this lesson",
+    }],writesPerformed:false});
+ if(students.length!==args.studentIds.length||!inWorkplace())return blocked();
  const result=await inferOwnedWeeklyLessonTime(db,teacherId,workplace,
    args.localDate,args.studentIds);
+ if(result.timing&&!inWorkplace(calendarDate(result.timing.startsAt)))return blocked();
  const issues:LessonTimingIssue[]=[...result.issues];
  if(result.timing)issues.push(...await lessonIntervalConflicts(
    db,teacherId,result.timing));
