@@ -188,3 +188,40 @@ test("report audience scope rejects other children and revoked guest grants",asy
   expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
  }
 });
+
+/** ENT-08/12: plan and individual-grant changes cannot evade the audit ledger. */
+test("baseline and grant transitions produce immutable scoped entitlement audit events",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  await configureSyntheticStudentCapacity(admin,teacher.id,1);
+  const issued=await admin.from("teacher_entitlement_grants").insert({
+   teacher_id:teacher.id,kind:"capability_boost",
+   capability_key:"students.active",capability_kind:"integer_limit",
+   integer_value:2,unlimited:false,issued_by:teacher.id,
+   reason:"Synthetic independently approved extra student capacity",
+   request_id:randomUUID(),
+  }).select("id").single();
+  expect(issued.error).toBeNull();
+  const revoke=await admin.from("teacher_entitlement_grants")
+   .update({revoked_at:new Date().toISOString()}).eq("id",issued.data!.id);
+  expect(revoke.error).toBeNull();
+  const audited=await admin.from("entitlement_audit_events")
+   .select("id,source,action,revision_before,revision_after")
+   .eq("teacher_id",teacher.id).order("occurred_at",{ascending:true});
+  expect(audited.error).toBeNull();
+  const entries=audited.data??[];
+  for(const action of ["baseline_plan_changed","grant_issued","grant_revoked"]){
+   expect(entries.map(x=>x.action)).toContain(action);
+  }
+  for(const entry of entries){
+   if(entry.revision_before!==null&&entry.revision_after!==null)
+    expect(entry.revision_after).toBeGreaterThanOrEqual(entry.revision_before);
+  }
+  const tamper=await admin.from("entitlement_audit_events")
+   .update({reason:"Tampered audit"}).eq("id",entries[0].id);
+  expect(tamper.error?.message).toContain("IMMUTABLE_EVENT");
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
