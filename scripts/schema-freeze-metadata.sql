@@ -63,17 +63,32 @@ fn AS (
  WHERE n.nspname='public'
 ),
 gr AS (
- SELECT DISTINCT table_schema AS schema,'table' AS object_kind,
-        table_name AS object_identity,grantee,privilege_type AS privilege
- FROM information_schema.role_table_grants
- WHERE table_schema='public'
- UNION
- SELECT DISTINCT routine_schema AS schema,'routine' AS object_kind,
-        routine_name||'('||specific_name||')' AS object_identity,
-        grantee,privilege_type AS privilege
- FROM information_schema.role_routine_grants
- WHERE routine_schema='public'
+ -- pg_catalog ACLs include PUBLIC and non-current-role grants that
+ -- information_schema may omit. Stable routine identity excludes OIDs.
+ SELECT n.nspname AS schema,'relation' AS object_kind,
+        c.relname AS object_identity,
+        CASE WHEN acl.grantee=0 THEN 'PUBLIC'
+             ELSE pg_get_userbyid(acl.grantee) END AS grantee,
+        acl.privilege_type AS privilege,
+        acl.is_grantable AS grantable
+ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ CROSS JOIN LATERAL aclexplode(
+  COALESCE(c.relacl,acldefault('r',c.relowner))) acl
+ WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f')
+ UNION ALL
+ SELECT n.nspname AS schema,'routine' AS object_kind,
+        p.proname||'('||pg_get_function_identity_arguments(p.oid)||')'
+          AS object_identity,
+        CASE WHEN acl.grantee=0 THEN 'PUBLIC'
+             ELSE pg_get_userbyid(acl.grantee) END AS grantee,
+        acl.privilege_type AS privilege,
+        acl.is_grantable AS grantable
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ CROSS JOIN LATERAL aclexplode(
+  COALESCE(p.proacl,acldefault('f',p.proowner))) acl
+ WHERE n.nspname='public'
 )
+
 SELECT jsonb_pretty(jsonb_build_object(
  'tables',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,name) FROM t x),'[]'::jsonb),
  'columns',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,"table",ordinal) FROM cols x),'[]'::jsonb),
