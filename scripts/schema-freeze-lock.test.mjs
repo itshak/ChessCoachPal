@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {execFileSync,spawnSync} from "node:child_process";
-import {mkdirSync,mkdtempSync,rmSync,writeFileSync} from "node:fs";
+import {mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {test} from "node:test";
@@ -12,6 +12,7 @@ const dir="supabase/migrations";
 const sql=`${dir}/20261107000000_chesscoachpal_baseline.sql`;
 const manifest="scripts/schema-transition-manifest.json";
 const lock="scripts/schema-freeze-lock.json";
+const approval="scripts/approved-schema-freeze-successor.json";
 const initial={ [sql]:"-- canonical\n", [manifest]:'{"mode":"canonical"}\n' };
 const digest=value=>createHash("sha256").update(value).digest("hex");
 
@@ -31,7 +32,7 @@ function fixture(t) {
     version:1,acceptedSourceCommit:sha,
     sha256:Object.fromEntries(Object.entries(content).map(([path,value])=>[path,digest(value)])),
   }));
-  return {cwd,write,save,run,accepted,begin};
+  return {cwd,write,save,run,accepted,begin,git};
 }
 
 test("a candidate without a lock remains explicitly unfrozen; accepted lock permits code-only changes",t=>{
@@ -70,4 +71,47 @@ test("a new lock requires complete fingerprints that agree with the pinned commi
   f.begin(f.accepted,{...initial,[sql]:"-- forged\n"});
   assert.match(f.run(f.accepted).stderr,/does not match the accepted source commit/);
   assert.notEqual(f.run("f".repeat(40)).status,0);
+});
+
+test("schema rotation requires the exact independently reviewed successor on base",t=>{
+  const f=fixture(t);
+  const readLock=()=>readFileSync(join(f.cwd,lock));
+  f.begin();
+  const oldBytes=readLock();
+  const frozen=f.save("accepted lock");
+  f.git("checkout","-qb","feature",frozen);
+  const changed={ [sql]:"-- intentional successor SQL\n", [manifest]:'{"mode":"next"}\n' };
+  Object.entries(changed).forEach(([file,value])=>f.write(file,value));
+  const newSource=f.save("exact successor source");
+  f.begin(newSource,changed);
+  const nextBytes=readLock();
+  const permit=JSON.stringify({version:1,adr:"ADR-0020",
+    previousLockSha256:digest(oldBytes),successorLockSha256:digest(nextBytes)});
+  f.write(approval,permit);
+  const candidate=f.save("successor lock plus attempted self-approval");
+  assert.match(f.run(frozen).stderr,/cannot be edited/,"same-PR permit cannot authorize itself");
+
+  f.git("checkout","-qb","review",frozen);
+  f.write(approval,permit);
+  const approved=f.save("independently approve exact digests with old baseline intact");
+  assert.equal(f.run(frozen).status,0,"approval is preparation only");
+
+  f.git("checkout","-q","feature");
+  assert.match(f.run(approved).stderr,/retain the review base/);
+  f.git("merge","--no-ff","-qm","bring in reviewed approval",approved);
+  const result=f.run(approved);
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/separately reviewed base approval \(ADR-0020\)/);
+
+  f.write(lock,Buffer.concat([nextBytes,Buffer.from("\n")]));
+  assert.match(f.run(approved).stderr,/does not match the exact reviewed successor/);
+  f.write(lock,nextBytes);
+  f.write(sql,"-- unrelated edit\n");
+  assert.match(f.run(approved).stderr,/Schema drift/);
+  f.write(sql,changed[sql]);
+  const successor=f.git("rev-parse","HEAD");
+  Object.entries(initial).forEach(([file,value])=>f.write(file,value));
+  f.write(lock,oldBytes);
+  assert.match(f.run(successor).stderr,/does not match the exact reviewed successor/,"approval cannot be reused to revert");
+  assert.notEqual(candidate,approved);
 });
