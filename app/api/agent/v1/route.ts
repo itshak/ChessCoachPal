@@ -105,7 +105,7 @@ const calls = z.discriminatedUnion("action", [
   archivedLessonRecoveryCommitSchema.safeExtend({
     action:z.literal("lessons.archivedRecoveryCommit"),
   }),
-  z.object({ action: z.literal("sessions.list") }),
+  z.object({ action: z.literal("sessions.list"),workplaceId:uuid.nullable().optional() }),
   z.object({ action: z.literal("sessions.create"),
     workplaceId: uuid, groupId: uuid.optional(), studentId: uuid.optional(),
     title: z.string().trim().min(1).max(160),
@@ -350,7 +350,7 @@ export async function POST(req: NextRequest) {
         result=await teacherArchivedLessonRecoveryCommit(db,teacherId,payload);break;
       }
       case "sessions.list":
-        result = await sessionsList(db, teacherId); break;
+        result = await sessionsList(db, teacherId,call.workplaceId); break;
       case "sessions.create":
         result = await sessionsCreate(db, teacherId, call); break;
       case "sessions.update":

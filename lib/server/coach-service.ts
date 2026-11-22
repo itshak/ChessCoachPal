@@ -123,12 +123,19 @@ export async function groupsMembers(db: Db, teacherId: string, groupId: string) 
   return data;
 }
 
-export async function sessionsList(db: Db, teacherId: string) {
-  const { data, error } = await db.from("teaching_sessions")
+export async function sessionsList(db: Db, teacherId: string, workplaceId?:string|null) {
+  if(workplaceId){
+    const owned=await db.from("workplaces").select("id").eq("teacher_id",teacherId).eq("id",workplaceId).maybeSingle();
+    if(owned.error)throw problem();
+    if(!owned.data)throw notFound();
+  }
+  let query=db.from("teaching_sessions")
     .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
     .eq("teacher_id", teacherId)
     .order("starts_at", { ascending: false })
     .order("id", { ascending: true }).limit(100);
+  if(workplaceId)query=query.eq("workplace_id",workplaceId);
+  const {data,error}=await query;
   if (error) throw problem();
   return data;
 }

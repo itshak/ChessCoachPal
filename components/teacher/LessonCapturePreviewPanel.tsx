@@ -57,11 +57,11 @@ const button = "rounded-lg bg-primary px-4 py-2 text-white font-semibold disable
  * The website and the assistant share a single read-only preview service.
  * This panel never assumes a nickname, guesses a local time or marks attendance.
  */
-export function LessonCapturePreviewPanel() {
+export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkplaces}:{initialWorkplaceId?:string|null;initialWorkplaces?:Workplace[]}={}) {
   const t=useTranslations("lessonCapture"),locale=useLocale();
   const toUserError=useLocalizedApiError();
-  const [workplaces,setWorkplaces] = useState<Workplace[]>([]);
-  const [workplaceId,setWorkplaceId] = useState("");
+  const [workplaces,setWorkplaces] = useState<Workplace[]>(initialWorkplaces??[]);
+  const [workplaceId,setWorkplaceId] = useState(initialWorkplaceId??"");
   const [names,setNames] = useState("");
   const [title,setTitle] = useState("");
   const [timingMode,setTimingMode] = useState<"explicit"|"weekly">("explicit");
@@ -93,6 +93,7 @@ export function LessonCapturePreviewPanel() {
   const requestRef = useRef<{signature:string;requestId:string}|null>(null);
 
   useEffect(() => {
+    if(initialWorkplaces)return;
     let active=true;
     void fetch("/api/agent/v1",{method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -103,7 +104,7 @@ export function LessonCapturePreviewPanel() {
       if(active)setWorkplaces(result.data);
     }).catch(() => {if(active)setError(t("loadWorkplacesFailed"));});
     return () => {active=false;};
-  }, [t]);
+  }, [t,initialWorkplaces]);
 
   const invalidate = () => {setPreview(null);setApproved(false);setAtomicApproved(false);setReceipt("");
     setRecoveryPreview(null);setRecoveryApproved(false);recoveryKeyRef.current=null;

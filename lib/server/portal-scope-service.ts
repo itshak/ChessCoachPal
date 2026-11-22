@@ -9,6 +9,7 @@ import {portalAuthorizeToken,portalGrantAllows,
 import {canonicalCalendarWindow,type CanonicalCalendarRow}
   from "./canonical-calendar-read";
 import {toLocalDateString} from "@/lib/schedule";
+import {getCancellationWindowHours} from "./scheduling";
 
 type Db=SupabaseClient;
 export interface PortalContext{
@@ -26,16 +27,14 @@ export async function resolvePortalContext(db:Db,secret:string):Promise<PortalCo
       .eq("id",grant.contactId).eq("teacher_id",grant.teacherId).maybeSingle(),
     db.from("students").select("id,name").eq("id",grant.studentId)
       .eq("teacher_id",grant.teacherId).maybeSingle(),
-    db.from("workplaces").select("id,name,timezone,locale,currency,policy")
+    db.from("workplaces").select("id,name,timezone,locale,currency")
       .eq("id",grant.workplaceId).eq("teacher_id",grant.teacherId).maybeSingle(),
   ]);
   if(contact.error||student.error||workplace.error||
     contact.data?.status!=="active"||!student.data||!workplace.data)return null;
   const wp=workplace.data;
-  const rawPolicy=wp.policy as Record<string,unknown>|null;
-  const hours=rawPolicy?.cancellationWindowHours;
-  const cancellationWindowHours=typeof hours==="number"&&Number.isInteger(hours)&&
-    hours>=0&&hours<=336?hours:24;
+  // Cancellation eligibility uses this typed teacher setting, not local JSON.
+  const cancellationWindowHours=await getCancellationWindowHours(db,grant.teacherId);
   return {grant,contact:{id:contact.data.id,displayName:contact.data.display_name,
     preferredLocale:contact.data.preferred_locale},
     student:{id:student.data.id,name:student.data.name},

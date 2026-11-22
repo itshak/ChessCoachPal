@@ -21,5 +21,5 @@ export default async function CoachingPage() {
   if(!user)return null;
   const context=await teacherWorkplaceContextGet(db,user.id);
   const selected=context.selectedWorkplaceId;
-  return <><ChessCoachWorkspace initialWorkplaceId={selected} /><div className="max-w-6xl mx-auto px-4 py-8 space-y-8"><LessonCapturePreviewPanel /><LessonCompletionPanel /><CoachingReportPanel initialWorkplaceId={selected} /><CompensationAgreementsPanel initialWorkplaceId={selected} /><UnifiedLessonHistoryPanel initialWorkplaceId={selected} /><ChessLearningPanel /><MaterialHistoryPanel /></div></>;
+  return <><ChessCoachWorkspace initialWorkplaceId={selected} /><div className="max-w-6xl mx-auto px-4 py-8 space-y-8"><LessonCapturePreviewPanel key={"capture:"+(selected??"all")} initialWorkplaceId={selected} initialWorkplaces={context.workplaces} /><LessonCompletionPanel key={"completion:"+(selected??"all")} workplaceId={selected} /><CoachingReportPanel initialWorkplaceId={selected} /><CompensationAgreementsPanel initialWorkplaceId={selected} /><UnifiedLessonHistoryPanel initialWorkplaceId={selected} /><ChessLearningPanel key={"learning:"+(selected??"all")} workplaceId={selected} /><MaterialHistoryPanel key={"materials:"+(selected??"all")} initialWorkplaceId={selected} initialWorkplaces={context.workplaces} /></div></>;
 }

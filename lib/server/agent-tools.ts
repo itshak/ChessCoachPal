@@ -1250,9 +1250,9 @@ const catalogue = [
   },
   {
     name: "ccp_sessions_list",
-    description: "Find sessions, their revision timestamp and their existing topic note. Omit query for recent sessions; ambiguity returns NEEDS_RESOLUTION.",
+    description: "Find sessions and their revision/topic. An explicit owned workplace filters discovery before the limit; null or omitted workplaceId leaves All. Exact session IDs and frozen rosters are unaffected. Omit query for recent sessions; ambiguity returns NEEDS_RESOLUTION.",
     schema: z.object({
-      query: searchText.optional(), workplaceId: uuid.optional(),
+      query: searchText.optional(), workplaceId: uuid.nullable().optional(),
     }).strict(), scope: "coach:read", readOnly: true,
   },
   {
@@ -1364,7 +1364,7 @@ const catalogue = [
   },
   {
     name:"ccp_materials_history_list",
-    description:"List **explicitly recorded** study/material stages for a teacher-owned student, workplace or session. Stages distinguish assigned, actually taught, and teacher-attested completed; mere study links are never counted. Workplace results deduplicate sessions in page summary.",
+    description:"List **explicitly recorded** study/material stages for a teacher-owned student, workplace or session. To reproduce Coaching’s selected-workplace history, pass its explicit workplaceId; omit it for All with a student or session ID. The teacher-global catalog is not this ledger. Stages distinguish assigned, actually taught, and teacher-attested completed; mere study links are never counted. Workplace results deduplicate sessions in page summary.",
     schema:materialsHistoryFilter,
     scope:"coach:read",readOnly:true,
   },
@@ -1558,7 +1558,7 @@ const catalogue = [
   },
   {
     name:"ccp_lessons_capture_preview",
-    description:"Read-only one-to-fifty-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. For archived matches, review exact IDs with ccp_lessons_archived_recovery_preview and require separate confirmed atomic ccp_lessons_archived_recovery_commit; for active learners, use ccp_sessions_create for one or ccp_sessions_ad_hoc_create for 2–50.",
+    description:"Read-only one-to-fifty-student capture preview: resolve exact full names/aliases. Omitted workplaceId inherits an active selected workplace; null does not infer from selection and still requires an unambiguous owned venue. An explicit UUID overrides selection. Then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. For archived matches, review exact IDs with ccp_lessons_archived_recovery_preview and require separate confirmed atomic ccp_lessons_archived_recovery_commit; for active learners, use ccp_sessions_create for one or ccp_sessions_ad_hoc_create for 2–50.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -2742,10 +2742,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_groups_members":
         return { data: await groupsMembers(db, teacherId, (args as {groupId:string}).groupId) };
       case "ccp_sessions_list": {
-        const a = args as {query?:string;workplaceId?:string};
-        const sessions = await sessionsList(db, teacherId);
+        const a = args as {query?:string;workplaceId?:string|null};
+        const sessions = await sessionsList(db, teacherId,a.workplaceId);
         const filtered = sessions?.filter((s: {title:string;workplace_id:string}) =>
-          (!a.workplaceId || s.workplace_id === a.workplaceId) &&
           (!a.query || s.title.toLocaleLowerCase().includes(a.query.toLocaleLowerCase()))) ?? [];
         if (a.query) {
           const exact = filtered.filter((s: {title:string}) =>

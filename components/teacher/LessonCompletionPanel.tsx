@@ -30,7 +30,7 @@ async function api<T>(action:string,args:Record<string,unknown>={},fallback="Una
  * No unmarked learner is silently treated as present, and a completed
  * lesson never implies material mastery or homework completion.
  */
-export function LessonCompletionPanel(){
+export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|null}={}){
  const t=useTranslations("lessonCompletion"),locale=useLocale();
   const toUserError=useLocalizedApiError();
  const statusName=(status:string)=>status==="scheduled"?t("scheduled"):status==="completed"?t("completed"):status==="cancelled"?t("cancelled"):status;
@@ -83,10 +83,10 @@ export function LessonCompletionPanel(){
   setConfirmed(false);
  },[t,toUserError]);
  const refreshSessions=useCallback(async()=>{
-  const items=await api<Session[]>("sessions.list",{},t("loadFailed"));
+  const items=await api<Session[]>("sessions.list",{workplaceId},t("loadFailed"));
   setSessions(items);
   setSessionId(old=>old&&items.some(s=>s.id===old)?old:items[0]?.id??"");
- },[t]);
+ },[t,workplaceId]);
  useEffect(()=>{
   void refreshSessions().catch(e=>setError(String(e)));
  },[refreshSessions]);
