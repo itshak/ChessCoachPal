@@ -13,7 +13,7 @@
 import {readFileSync} from "node:fs";
 import {resolve} from "node:path";
 
-const REQUIRED=["tables","columns","constraints","indexes","triggers","policies","functions","grants"];
+const REQUIRED=["tables","columns","constraints","indexes","triggers","policies","functions","grants","sequences","types","extensions"];
 const keyFor={
  tables:["schema","name"],
  columns:["schema","table","name"],
@@ -23,6 +23,9 @@ const keyFor={
  policies:["schema","table","name"],
  functions:["schema","identity"],
  grants:["schema","object_kind","object_identity","grantee","privilege"],
+ sequences:["schema","name"],
+ types:["schema","name"],
+ extensions:["name"],
 };
 const allowed=new Set(REQUIRED);
 function parse(path){
