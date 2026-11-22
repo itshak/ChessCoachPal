@@ -1,6 +1,6 @@
 # Design: final target schema and no-competing-DDL ownership
 
-**Status:** Proposed field contracts for schema implementation. Names are candidate canonical names until SQL/type review; this design is not a claim the tables exist. See [full domain crosswalk](../../../docs/FINAL_SCHEMA_REQUIREMENTS_CROSSWALK_2026-11-21.md) and ADR-0019.
+**Status:** Proposed field contracts for schema implementation. Names are candidate canonical names until SQL/type review; this design is not a claim the tables exist. See [full domain crosswalk](../../../../docs/FINAL_SCHEMA_REQUIREMENTS_CROSSWALK_2026-11-21.md) and ADR-0019.
 
 ## Canonical implementation strategy
 

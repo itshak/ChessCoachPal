@@ -1,9 +1,9 @@
 # ADR-0019: One final pre-production schema owner, provider-neutral commercial entitlements
 
-- **Status:** Accepted architecture decision; source implementation and schema freeze **not accepted**.
+- **Status:** Accepted architecture decision; source implementation frozen on [merged main](https://github.com/itshak/ChessCoachPal/commit/0147c7aa34f680b6defa9f202f28c64e9fc6b5ba). Downstream feature acceptance, release and live cutover remain separate.
 - **Date:** 2026-11-21
 - **Owners:** ChessCoachPal product and platform
-- **Relates to:** ADR-0001, ADR-0003, ADR-0007, ADR-0017, ADR-0018; [consolidated OpenSpec](../../openspec/changes/2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md).
+- **Relates to:** ADR-0001, ADR-0003, ADR-0007, ADR-0017, ADR-0018; [consolidated OpenSpec](../../openspec/changes/archive/2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md).
 - **Supersedes for future DDL planning:** `2026-11-19-freeze-unified-saas-schema-and-regressions` (historical proposal retained but no longer a competing schema owner).
 
 ## Decision and rationale

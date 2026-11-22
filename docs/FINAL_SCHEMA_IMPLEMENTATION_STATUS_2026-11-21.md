@@ -1,3 +1,5 @@
+> **2026-11-22:** Historical source candidate report. See the [merged source decision](../openspec/changes/archive/2026-11-21-consolidate-final-preproduction-saas-schema/SOURCE_ACCEPTANCE.md).
+
 # Consolidated final schema — implementation and acceptance status (2026-11-21)
 
 **Status: SOURCE IMPLEMENTATION CANDIDATE / NOT FROZEN / NOT ARCHIVED / NOT DEPLOYED.**

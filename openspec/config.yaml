@@ -10,9 +10,9 @@ context: |
   self-run infrastructure does not create a supported customer self-host edition.
   ADR-0001/0017 require no pre-v1 backward compatibility and exactly one final,
   separately authorized populated-data transition or tested clean rebuild/reimport.
-  ADR-0019 and the 2026-11-21 consolidated final-schema OpenSpec are the sole
-  unfinished source of pre-production DDL, including Free/Pro entitlement/billing
-  foundations, provenance, report publication and remaining feature schema.
+  ADR-0019 and the archived consolidated final-schema OpenSpec govern the frozen
+  preproduction schema. The checked-in schema lock prevents drift from reviewed
+  SQL and manifest contents during normal feature work.
   Do not independently add schema in downstream active feature proposals.
   Treat merged source, accepted OpenSpec, release, deployed schema and live client
   acceptance as distinct evidence gates. Do not infer one from another.
@@ -24,7 +24,7 @@ rules:
   proposal:
     - Separate implemented behavior from proposed functionality.
     - For accepted architecture, distinguish decision approval from unimplemented acceptance; keep scope specific and dependencies explicit.
-    - All pre-production DDL is owned by 2026-11-21-consolidate-final-preproduction-saas-schema under ADR-0019. It changes the one baseline; populated-data transitions require separate target-specific ADR-0017 authorization and independent restore.
+    - The consolidated baseline is frozen under ADR-0019. Unexpected DDL needs a reviewed post-freeze decision. Populated-data transitions require separate target-specific ADR-0017 authorization and independent restore.
     - Keep each change narrowly scoped with dependencies, acceptance gates and explicit deferrals.
   specs:
     - Use SHALL and WHEN/THEN acceptance scenarios.

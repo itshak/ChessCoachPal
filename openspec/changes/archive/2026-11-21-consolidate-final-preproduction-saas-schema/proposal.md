@@ -1,7 +1,7 @@
 # Change: consolidate the final pre-production SaaS schema, including Freemium/Pro
 
-**Status:** Source implementation candidate on draft PR #115; **not accepted, frozen, archived, merged or deployed**. The canonical SQL, type/service changes and synthetic tests are implemented; remaining Phase 2 scenario-specific proof and inventory/crosswalk signoff are tracked in `tasks.md` and `docs/FINAL_SCHEMA_IMPLEMENTATION_STATUS_2026-11-21.md`. All five automated workflows passed on code commit `0f8d283a0a78a749c5709271777a86668d3b5906`.  
-**Decision:** [ADR-0019](../../../docs/adr/0019-single-final-schema-and-commercial-entitlements.md), plus ADR-0017/0018.  
+**Status:** Source implemented and frozen on [merged main](https://github.com/itshak/ChessCoachPal/commit/0147c7aa34f680b6defa9f202f28c64e9fc6b5ba). [Source acceptance](SOURCE_ACCEPTANCE.md) is distinct from downstream feature acceptance and an authorized operational cutover.
+**Decision:** [ADR-0019](../../../../docs/adr/0019-single-final-schema-and-commercial-entitlements.md), plus ADR-0017/0018.
 **Only schema owner:** supersedes the older schema-freeze proposal as the active DDL planning owner. **All other active OpenSpecs are downstream functional owners**.
 
 ## Why now
@@ -12,7 +12,7 @@ Finalizing only the already-proposed feature schema would guarantee a second str
 
 ## In scope: ONE consolidated schema phase
 
-1. Exhaustively inventory the authoritative baseline, every one of the 13 historical active proposals (including older P0), 87 existing tables, matching TypeScript contracts, relevant API/MCP/SQL callers, open PRs and restore/runbook assumptions; declare a single owner and keep-or-adjust/drop/new decision for every relation and required persistent field. [Crosswalk](../../../docs/FINAL_SCHEMA_REQUIREMENTS_CROSSWALK_2026-11-21.md).
+1. Exhaustively inventory the authoritative baseline, every one of the 13 historical active proposals (including older P0), 87 existing tables, matching TypeScript contracts, relevant API/MCP/SQL callers, open PRs and restore/runbook assumptions; declare a single owner and keep-or-adjust/drop/new decision for every relation and required persistent field. [Crosswalk](../../../../docs/FINAL_SCHEMA_REQUIREMENTS_CROSSWALK_2026-11-21.md).
 2. **Freemium foundation:** typed versioned plan catalogue, capability definitions/limits, independent individual grants (including durable higher Free limits and expiring plan access), effective entitlement state and audit, serialized active-student and professional-workplace capacity, optional bounded usage windows and provider-neutral SaaS subscription/customer/offer/event records.
 3. **Student lifecycle:** preserve canonical ID, archive and history, temporal `workplace_enrollments`, exact same student once in the roster quota, reviewed reactivation and archived-lesson recovery, group and future-session consistency, independent prepaid credit entitlements. No duplicate membership timeline or financial ledger.
 4. **Workplaces / preferences:** guarantee one Personal workspace, distinguish Personal from Professional, model archive status and relevant effective-dated typed workplace defaults, teacher-global settings/locale, validated selected-workplace view preference, no invented membership from historic attendance.

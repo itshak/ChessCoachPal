@@ -1,3 +1,5 @@
+> **2026-11-22:** Source acceptance is now merged. The checkpoints below retain their as-tested scope. See the [merged source decision](../openspec/changes/archive/2026-11-21-consolidate-final-preproduction-saas-schema/SOURCE_ACCEPTANCE.md).
+
 # Structural source-to-target comparison — freeze gate (draft)
 
 This is an implementation aid for OpenSpec `2026-11-21-consolidate-final-preproduction-saas-schema`, not a freeze certificate.

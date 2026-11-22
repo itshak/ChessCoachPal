@@ -1,4 +1,6 @@
-# Consolidated final-schema implementation and acceptance checklist
+# Historical consolidation checklist
+
+> Archived after the reviewed source freeze. [The source acceptance decision](SOURCE_ACCEPTANCE.md) records verified outcomes and deferrals. The original checkboxes below preserve the proposal-stage checklist, including out-of-scope operational work; they are not the current tracker and have not been retroactively marked as exercised.
 
 **2026-11-21 implementation candidate (draft PR #115):** The consolidated canonical baseline now contains 18 new domain/commercial relations, normalized SQL entitlement/active-roster guards, Personal/Professional workplace lifecycle, extensible rating categories, teacher evidence, recurrence exceptions and explicitly approved report snapshots, with matching TypeScript and web/MCP compatibility changes. The full field-level source status and limits are documented in `docs/FINAL_SCHEMA_IMPLEMENTATION_STATUS_2026-11-21.md`. **Every Phase 2 acceptance gate is still subject to exact-head SQL/E2E evidence; checkboxes below intentionally remain unchecked until accepted.** Only this proposal owns the pre-production DDL; previous merged candidates and test-only PR #113 are inputs, not independent full acceptance.
 
@@ -10,7 +12,7 @@ A single source candidate on draft PR #115 now includes all 18 planned new relat
 
 - [ ] Pin exact merged-main SHA and inspect every open PR for DDL, RLS, TypeScript type, migration, seed and service-contract conflict; record update on PR #113 and any new PRs before implementation.
 - [ ] Regenerate the exhaustive table/column/FK/unique/index/trigger/policy/function inventory from the exact authoritative SQL and an independent disposable target via read-only structural inspection; reconcile the historical 87 source tables and 40 typed/47 untyped counts against the candidate; label internal-only contracts. This tests the source freeze. The actual private legacy target inventory and mapping stay mandatory in Phase 3 under ADR-0017 and require separate authorization.
-- [ ] Sign off [crosswalk](../../../docs/FINAL_SCHEMA_REQUIREMENTS_CROSSWALK_2026-11-21.md) and every downstream persistent requirement: contacts/payer, workplace/locale, enrollment/import/archive/credits, portal, compensation/financial truth, ratings/consent/jobs, recurrence/lesson revisions, published reports, learning provenance and Free/Pro.
+- [ ] Sign off [crosswalk](../../../../docs/FINAL_SCHEMA_REQUIREMENTS_CROSSWALK_2026-11-21.md) and every downstream persistent requirement: contacts/payer, workplace/locale, enrollment/import/archive/credits, portal, compensation/financial truth, ratings/consent/jobs, recurrence/lesson revisions, published reports, learning provenance and Free/Pro.
 - [ ] Decide exact minimal DDL for pending recurrence exceptions, report publication, workplace overrides and educational evidence; reuse existing tables or explicitly document none needed. No speculative new Academy source of truth.
 
 ## Phase 1 — consolidated baseline (P0)

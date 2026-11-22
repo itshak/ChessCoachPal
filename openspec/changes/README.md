@@ -1,23 +1,16 @@
-> **2026-11-22 candidate update:** Draft [PR #115](https://github.com/itshak/ChessCoachPal/pull/115) now contains the consolidated SQL/types/services candidate (**105 public tables, 60 directly typed**), audited entitlement transitions, archived-student capacity-race test ported from draft #113, and focused professional-capacity, ratings and report-sharing checks. **Not frozen or merged:** exact-head CI, source/type ownership, crosswalk and Phase 2 signoff remain required. PR #113 retains historical test evidence; do not merge its old hosted-plan test directly over the normalized schema.
+# ChessCoachPal OpenSpec: active work and acceptance tracker
 
-# ChessCoachPal OpenSpec — active work and acceptance tracker
+**Updated 2026-11-22.** The [consolidated schema](archive/2026-11-21-consolidate-final-preproduction-saas-schema/SOURCE_ACCEPTANCE.md) is frozen on [merged main](https://github.com/itshak/ChessCoachPal/commit/0147c7aa34f680b6defa9f202f28c64e9fc6b5ba). [ADR-0019](../../docs/adr/0019-single-final-schema-and-commercial-entitlements.md) and the schema lock govern changes. The older 2026-11-19 freeze proposal was superseded, not separately completed.
 
-**Current planning checkpoint: 2026-11-21.** [ADR-0019](../../docs/adr/0019-single-final-schema-and-commercial-entitlements.md) establishes exactly **one active schema-changing P0 proposal**: [final production-ready schema + Freemium foundation](2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md). Its [87-table source crosswalk](../../docs/FINAL_SCHEMA_REQUIREMENTS_CROSSWALK_2026-11-21.md) and [acceptance matrix](../../docs/FINAL_SCHEMA_ACCEPTANCE_MATRIX_2026-11-21.md) are **proposed review artifacts**, not SQL implementation, production proof or freeze acceptance.
+## Current evidence
 
-The earlier [2026-11-19 schema-freeze proposal](archive/2026-11-19-freeze-unified-saas-schema-and-regressions-superseded/proposal.md) is **SUPERSEDED for DDL ownership, not implemented or silently accepted**. All its unchecked requirements have been transferred into the consolidated P0. Its historical files remain for traceability; never execute them as an independent schema workstream.
+- [PR #115](https://github.com/itshak/ChessCoachPal/pull/115) merged the source and active lock after all five exact-head workflows and an independent two-boot structural comparison. The frozen baseline has **105 public relations**, 60 directly typed and 45 classified as SQL-only. PR #113 remains historical; its regression was ported, not merged.
+- This is a source freeze, not a private-beta migration, paid checkout, or deployment. ADR-0017 still requires separately approved private reconciliation and independent off-host restoration.
 
-## Current GitHub/production evidence
-
-- Inspected GitHub main: `5b6d178d91382928ebc7c799dd05204c3a76ba0b` (2026-11-21 before this documentation branch). The current source includes merged #104 (Contacts/finance), #107 (import), #108 (temporal membership/credits), #110/#111 (RLS guard) candidates and acceptance notes. A merge does **not** imply OpenSpec acceptance or production cutover.
-- At review, one open draft PR: [#113](https://github.com/itshak/ChessCoachPal/pull/113), concurrency regression for archived-lesson capacity; **no competing DDL**. Recheck PR inventory on implementation day.
-- The fresh-install baseline declares 87 public application tables and RLS-enables; the earlier static inventory identified 40 explicitly typed table contracts and 47 without matching hand-maintained entries. Effective policy/grant and typegen acceptance remain pending.
-- **No live database change or deployment is authorized** by a documentation PR, schema freeze or previously passing synthetic CI. ADR-0017 requires independently restored off-host data, exact operator approval and reconciled Auth/Storage/student/finance/portal records before any cutover. Do not copy sensitive data, private commercial strategy, unapproved prices/limits, secrets or operational exports into public GitHub.
-
-## One P0 schema owner; remaining changes are functional only
+## Twelve active feature changes, no planned DDL
 
 | Active OpenSpec change | Schema authority | Remaining feature/acceptance work |
 | --- | --- | --- |
-| **[Final schema incl. Freemium (P0)](2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md)** | **Only active owner of all pre-production DDL, type/RLS/FK/index and schema-induced regressions** | 87-table/field crosswalk, entitlement and subscription foundation, recurrence/report persistence, tested freeze manifest, separate operator cutover |
 | [Temporal enrollment, credit-safe lifecycle](2026-11-19-temporal-enrollment-credit-safe-lifecycle/proposal.md) | Handed to P0 | Preview/commit, audited credits, archived lesson lifecycle, exact-head/real-data acceptance |
 | [Workplace import enrollment](2026-11-19-enforce-workplace-enrollment-on-student-import/proposal.md) | Handed to P0 | Fail-closed import, idempotent reconciliation, website/MCP |
 | [Contacts and billing identity](2026-11-18-replace-families-with-contacts/proposal.md) | Handed to P0 | Source mapping, consent, UI/MCP, historical reconciliation |
@@ -31,14 +24,6 @@ The earlier [2026-11-19 schema-freeze proposal](archive/2026-11-19-freeze-unifie
 | [Multilingual support](2026-11-17-introduce-multilingual-support/proposal.md) | Handed to P0 | Full translation/RTL/a11y, stable MCP presentation and reports |
 | [Coach branding/redesign](2026-11-18-explore-brand-and-redesign-coach-ui/proposal.md) | No planned DDL | Approved design comparison, staged implementation and a11y |
 
-**13 active changes** are listed: one consolidated P0 schema proposal and 12 downstream functional proposals. The old unfinished schema-freeze proposal is no longer independently actionable; it was superseded **without being marked completed**. All previous archived changes remain historical records; do not reopen them or infer passing deployment from archive status.
-
-## Required sequence
-
-1. Review [ADR-0019](../../docs/adr/0019-single-final-schema-and-commercial-entitlements.md), [crosswalk](../../docs/FINAL_SCHEMA_REQUIREMENTS_CROSSWALK_2026-11-21.md), [acceptance matrix](../../docs/FINAL_SCHEMA_ACCEPTANCE_MATRIX_2026-11-21.md) and [P0 tasks](2026-11-21-consolidate-final-preproduction-saas-schema/tasks.md). Decide minimal persistent recurrence/report/evidence contracts; approve no duplicated financial/rating/tenant models.
-2. Implement all remaining **planned schema** in the one fresh-install SQL and synchronized manifest, typed schema, privileges/RLS, seeds and existing API/MCP adapters. No per-proposal ALTER/DDL branches.
-3. Verify tenant isolation, SQL concurrency, same authoritative entitlement guard, independent individual grants, provider-event ordering, entire finance/history, PR #113 and complete website/MCP functional parity, full exact-head GitHub CI/E2E/security/Compose/restore. Only then accept/archive P0 as *source implemented* and hand off a frozen contract to downstream feature work.
-4. Implement and individually accept the 12 remaining functional OpenSpecs **without planned DDL**. Unexpected schema demands require explicit review rather than silent mutation of the frozen baseline.
-5. Independently verify a private off-host restored copy and authorize one real database transition/rebuild under [ADR-0017](../../docs/adr/0017-pre-v1-single-final-cutover-no-compatibility.md); reconcile actual students/finance/portal/Auth/Storage. Paid subscriptions and live-client compatibility have additional launch gates.
+**Sequence:** Start with Workplace Context, then continue one feature proposal at a time according to dependencies and acceptance evidence. Federation identity and official rating evidence precede automated online refresh. Update the same web/MCP service, verify authenticated parity, and archive individual proposals only after their source merges and tests. File a reviewed ADR for any unexpected physical schema need instead of editing the locked baseline.
 
 **Scope:** centrally operated SaaS under [ADR-0018](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md), teacher UUID tenant with SQL and shared-domain controls, one operator-managed schema, MCP-first parity under ADR-0003, no pre-v1 compatibility layer, no automatic release.
