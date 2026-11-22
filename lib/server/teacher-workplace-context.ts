@@ -84,3 +84,21 @@ export async function teacherWorkplaceContextSet(db:Db,teacherId:string,
     return {...state,replayed:true};
   return fail(409,"STALE_WORKPLACE_CONTEXT","Workplace selection changed; reload to choose again");
 }
+
+/** Omitted inherits the stored active filter; null is an explicit All. */
+export async function resolveTeacherWorkplaceFilter(db:Db,teacherId:string,requested:string|null|undefined){
+  return requested===undefined?(await teacherWorkplaceContextGet(db,teacherId)).selectedWorkplaceId:requested;
+}
+
+/** Historical lookup intentionally includes archived owned workplaces. */
+export async function recordedWorkplaceTimezones(db:Db,teacherId:string,ids:string[]){
+  const unique=[...new Set(ids)];
+  const zones=new Map<string,string>();
+  for(let i=0;i<unique.length;i+=100){
+    const {data,error}=await db.from("workplaces").select("id,timezone")
+      .eq("teacher_id",teacherId).in("id",unique.slice(i,i+100));
+    if(error)fail(503,"DATABASE_ERROR","Recorded workplace timezones unavailable");
+    for(const row of data??[])zones.set(row.id,row.timezone);
+  }
+  return zones;
+}

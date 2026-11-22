@@ -3,12 +3,12 @@ import {messagesFor} from "@/i18n/messages";
 import {supportedLocale, localeDetails, type AppLocale} from "@/i18n/locales";
 export type ReportSession = {
   id: string; starts_at: string; duration_minutes: number;
-  status: string;
+  status: string; local_timezone?: string|null;
 };
 export type ReportAttendance = { session_id: string; status: string };
 export type ReportStatus = "present" | "absent" | "late" | "excused" | "unmarked";
 export type ReportSummary = {
-  from: string; to: string; timezone: string; locale: string;
+  from: string; to: string; timezone: string; locale: string; timezonesUsed?: string[];
   sessions: number; cancelled: number; teachingMinutes: number;
   participants: number; attendance: Record<ReportStatus, number>;
 };
@@ -43,10 +43,10 @@ export function summarizeTeaching(
   const attendance: Record<ReportStatus, number> = {
     present: 0, absent: 0, late: 0, excused: 0, unmarked: 0,
   };
-  const included = sessions.filter(s =>
-    workplaceDay(s.starts_at, timezone) >= from &&
-    workplaceDay(s.starts_at, timezone) <= to
-  );
+  const included = sessions.filter(s => {
+    const day=workplaceDay(s.starts_at,s.local_timezone??timezone);
+    return day>=from&&day<=to;
+  });
   const active = included.filter(s => s.status !== "cancelled");
   const activeIds = new Set(active.map(s => s.id));
   for (const row of rows) {
@@ -67,6 +67,9 @@ export function summarizeTeaching(
 function outputLanguage(report:ReportSummary, locale?:AppLocale):AppLocale {
   return locale ?? supportedLocale(report.locale) ?? "en";
 }
+function reportZones(report:ReportSummary){
+  return report.timezonesUsed?.join(", ")||report.timezone;
+}
 function humanLabels(report:ReportSummary, locale?:AppLocale) {
   return messagesFor(outputLanguage(report,locale)).reports;
 }
@@ -80,7 +83,7 @@ export function reportCsv(r: ReportSummary, outputLocale?:AppLocale): string {
   const name=(key:string)=>labels.find(([canonical])=>canonical===key)?.[1]??key;
   const lines=[
     [t.metric,t.value],[name("From"),r.from],[name("To"),r.to],
-    [name("Timezone"),r.timezone],[name("Sessions"),String(r.sessions)],
+    [name("Timezone"),reportZones(r)],[name("Sessions"),String(r.sessions)],
     [name("Cancelled"),String(r.cancelled)],
     [name("Teaching minutes"),String(r.teachingMinutes)],
     [name("Participants"),String(r.participants)],
@@ -95,7 +98,7 @@ export function reportText(r:ReportSummary,outputLocale?:AppLocale):string {
   const t=humanLabels(r,outputLocale);
   return [
     t.reportHeading,
-    t.period+": "+r.from+" — "+r.to+" ("+r.timezone+")",
+    t.period+": "+r.from+" — "+r.to+" ("+reportZones(r)+")",
     t.sessions+": "+r.sessions+" ("+t.cancelled+": "+r.cancelled+")",
     t.teachingMinutes+": "+r.teachingMinutes,
     t.participants+": "+r.participants,
@@ -124,7 +127,7 @@ export function reportPresentation(r:ReportSummary, requested?:AppLocale):Report
   return {
     outputLocale,direction:info.dir,heading:t.reportHeading,
     periodLabel:t.period,period:date(r.from)+" — "+date(r.to),
-    timezoneLabel:t.timezone,timezone:r.timezone,
+    timezoneLabel:t.timezone,timezone:reportZones(r),
     metrics:([
       ["sessions",t.sessions,r.sessions],
       ["cancelled",t.cancelled,r.cancelled],

@@ -11,7 +11,8 @@ export async function GET(request: NextRequest) {
   const db = await createClient();
   const { data: { user }, error } = await db.auth.getUser();
   if (error || !user) return respond({ error: "Unauthorized" }, 401);
-  const workplaceId = request.nextUrl.searchParams.get("workplaceId") ?? "";
+  const workplace=request.nextUrl.searchParams.get("workplaceId");
+  const workplaceId=workplace==="all"?null:workplace??undefined;
   const from = request.nextUrl.searchParams.get("from") ?? "";
   const to = request.nextUrl.searchParams.get("to") ?? "";
   const requested=request.nextUrl.searchParams.get("outputLocale");

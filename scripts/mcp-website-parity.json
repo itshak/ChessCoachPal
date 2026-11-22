@@ -555,7 +555,7 @@
       "existingTools": [
         "ccp_reports_workplace_summary"
       ],
-      "explanation": "Read-only MCP summary and CSV/text exports reuse the same teacher-scoped report service as website GET. Optional outputLocale (en/he/ru) produces matching human-readable JSON presentation and safe CSV/TXT without modifying numeric report fields; authenticated website/MCP tests: e2e/agent-mcp.spec.ts and e2e/parity-reports.spec.ts.",
+      "explanation": "Browser and MCP share one recorded-workplace report service: omitted filter inherits stored context, HTTP workplaceId=all and MCP null explicitly override it, and owned UUIDs select original workplace. Mixed saved timezones and aggregate CSV/TXT count each canonical session once. Scope parity: e2e/parity-workplace-report-scope.spec.ts; existing outputLocale and export proof remains in e2e/parity-reports.spec.ts.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
@@ -642,7 +642,7 @@
       "existingTools": [
         "ccp_lessons_history_unified"
       ],
-      "explanation": "Shared teacher-scoped bounded lesson history reads the one canonical teaching_sessions model and frozen rosters, counts booked vs evidenced instructor minutes without double-counting group sessions, and discloses per-session timezones plus workplace/studio fallback provenance. Browser/delegated MCP share one service and verified parity tests.",
+      "explanation": "Browser/delegated MCP share one bounded lesson history, original workplace attribution and frozen roster filtering: omitted filter inherits stored context, HTTP workplaceId=all and MCP null explicitly select All, with saved lesson timezone and recorded workplace fallback. Scope and deduplication are exercised in e2e/parity-workplace-report-scope.spec.ts alongside existing history coverage.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {

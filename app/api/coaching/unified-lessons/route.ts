@@ -6,9 +6,10 @@ export async function GET(req:NextRequest){
  const {data:{user}}=await db.auth.getUser();
  if(!user)return NextResponse.json({error:"Unauthorized"},{status:401});
  const q=req.nextUrl.searchParams;
+ const requestedWorkplace=q.get("workplaceId");
  const parsed=unifiedLessonFilter.safeParse({
   from:q.get("from"),to:q.get("to"),studentId:q.get("studentId")||undefined,
-  workplaceId:q.get("workplaceId")||undefined,offset:Number(q.get("offset")??0),
+  workplaceId:requestedWorkplace==="all"?null:requestedWorkplace??undefined,offset:Number(q.get("offset")??0),
   limit:Number(q.get("limit")??50),
  });
  if(!parsed.success)return NextResponse.json({error:"Invalid lesson history period or filter"},{status:400});

@@ -291,15 +291,15 @@ const catalogue = [
   },
   {
     name:"ccp_lessons_history_unified",
-    description:"Read bounded lesson history with instructor booked vs evidenced minutes. Each lesson\u0027s date uses its saved local timezone; filter.timezone is only the workplace/teacher fallback. timezonesUsed and timezoneSource explain why student-only and workplace-only queries may echo different fallback zones. Optional student/workplace filters.",
+    description:"Read bounded lesson history using original recorded workplace and each lesson's saved local timezone. Omit workplaceId to inherit the active global filter, use null for explicit All Workplaces, or provide an owned UUID. Optional studentId is applied to the frozen session roster.",
     schema:unifiedLessonFilter,
     scope:"coach:read",readOnly:true,
   },
   {
     name: "ccp_reports_workplace_summary",
-    description: "Read a teacher-owned workplace's date-range sessions and attendance totals, with optional CSV or text export. The same server calculation powers the website. Instructor minutes count each group lesson once. No student names or notes in this aggregate.",
+    description: "Read date-range sessions and attendance totals through the same website service. Omit workplaceId to inherit the active global filter; null means All Workplaces, or provide an owned UUID. Dates use saved local lesson zones, and each lesson is counted once. Optional CSV/TXT exports contain no learner names or notes.",
     schema: z.object({
-      workplaceId: uuid,
+      workplaceId: uuid.nullable().optional(),
       from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       format: z.enum(["json", "csv", "text"]).default("json"),
@@ -2530,7 +2530,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherUnifiedLessonHistory(db,teacherId,a)};
       }
       case "ccp_reports_workplace_summary": {
-        const a = args as { workplaceId: string; from: string; to: string; format: "json" | "csv" | "text"; outputLocale?:"en"|"he"|"ru" };
+        const a = args as { workplaceId?: string|null; from: string; to: string; format: "json" | "csv" | "text"; outputLocale?:"en"|"he"|"ru" };
         try {
           const result = await workplaceTeachingReport(
             db,teacherId,a.workplaceId,a.from,a.to,a.outputLocale
