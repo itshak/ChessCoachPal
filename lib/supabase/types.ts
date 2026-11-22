@@ -971,7 +971,7 @@ export interface Database {
       };
       teaching_sessions: {
         Row: {
-          id: string; teacher_id: string; workplace_id: string | null;
+          id: string; teacher_id: string; workplace_id: string;
           group_id: string | null; student_id: string | null;
           title: string; starts_at: string; duration_minutes: number;
           status: "scheduled" | "completed" | "cancelled";
@@ -983,7 +983,7 @@ export interface Database {
           roster_mode: "standard" | "ad_hoc";
         };
         Insert: {
-          id?: string; teacher_id: string; workplace_id?: string | null;
+          id?: string; teacher_id: string; workplace_id: string;
           group_id?: string | null; student_id?: string | null;
           title: string; starts_at: string; duration_minutes: number;
           status?: "scheduled" | "completed" | "cancelled";
@@ -995,7 +995,7 @@ export interface Database {
           roster_mode?: "standard" | "ad_hoc";
         };
         Update: {
-          workplace_id?: string | null; group_id?: string | null;
+          workplace_id?: string; group_id?: string | null;
           student_id?: string | null; title?: string; starts_at?: string;
           duration_minutes?: number; status?: "scheduled" | "completed" | "cancelled";
           lesson_note?: string; slot_id?: string | null;

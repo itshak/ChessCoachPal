@@ -44,7 +44,7 @@ jobs:
         run: npm run schema:canonical:guard && npm run schema:canonical:guard-test
 
       - name: Enforce final schema source acceptance guards
-        run: npm run pre1:final-cutover:audit && npm run schema:final:inventory:strict
+        run: npm run pre1:final-cutover:audit && npm run schema:final:inventory:strict && node --test scripts/check-db-row-contracts.test.mjs
 
       - name: Enforce post-freeze schema drift lock
         env:

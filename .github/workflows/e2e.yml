@@ -42,6 +42,15 @@ jobs:
           supabase start
           supabase db reset --yes
 
+      - name: Check declared row types against the materialized schema
+        run: |
+          {
+            printf 'BEGIN READ ONLY;\n'
+            cat scripts/schema-freeze-metadata.sql
+            printf 'ROLLBACK;\n'
+          } | docker exec -i supabase_db_chesscoachpal psql -XqAt -U postgres -d postgres -v ON_ERROR_STOP=1 > "$RUNNER_TEMP/ccp-schema-types.json"
+          node scripts/check-db-row-contracts.mjs "$RUNNER_TEMP/ccp-schema-types.json"
+
       - name: Export Supabase keys to environment
         run: |
           eval "$(supabase status -o env)"
