@@ -69,3 +69,7 @@ The combined canonical SQL SHA-256 `c5189b6c8df9a5259896927388557455f8b22c78fc79
 ## Bounded multi-segment recurrence checkpoint
 
 Canonical SQL SHA-256 `26c6dacc778911e805d3eae81ac7dcc38aa2edac5e6dad41c15531718527f422` bootstrapped independently twice on disposable PostgreSQL 17.12. Each applied the only canonical migration, and snapshots matched byte-for-byte at SHA-256 `a3decd78298281c5e05b27cf4897178c19acf30979b74d8c7f1f0f9dc3aacb74` (105 tables, 1,080 columns, 150 routines, zero differences). The seeded canonical baseline and material restore checks passed. Three actual scoped Auth/PostgREST cases passed on the exact code tree. Disposable assets were removed; no freeze or operational cutover is implied.
+
+## Reviewed single-date move checkpoint
+
+The canonical SQL SHA-256 `e7e13bdc0fe57ffadefb1421b62f555deeee1420a2ace22c39aae0b86944d7a9` bootstrapped independently on two disposable PostgreSQL 17.12 stacks. Their structural fingerprint SHA-256 matched at `28a252991cf75bdfa25038e2052ea6b5e8a502891b00048882e285e372721de1` and the full read-only metadata comparator returned zero differences. All 13 combined recurrence API tests passed on the checked code. Disposable projects/volumes were removed. This is source verification only; UI parity, complete acceptance, and populated-data cutover are separate.

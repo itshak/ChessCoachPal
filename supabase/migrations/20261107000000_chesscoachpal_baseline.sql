@@ -14957,6 +14957,23 @@ CREATE CONSTRAINT TRIGGER ccp_lesson_slot_series_root
  AFTER INSERT ON public.lesson_slots DEFERRABLE INITIALLY DEFERRED
  FOR EACH ROW EXECUTE FUNCTION public.ccp_lesson_slot_series_root();
 
+-- All distinct real instants corresponding to an exact local wall time.
+-- Ordinary cancellation keeps its established earliest-fold policy. A
+-- reviewed move uses this same source but rejects both gaps and folds.
+CREATE FUNCTION public.ccp_canonical_wall_instants(p_local timestamp,p_zone text)
+RETURNS timestamptz[] LANGUAGE sql STABLE SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_canonical_wall_instants$
+ SELECT coalesce(array_agg(DISTINCT candidate ORDER BY candidate),ARRAY[]::timestamptz[])
+ FROM (
+  SELECT guess-((probe AT TIME ZONE p_zone)-(probe AT TIME ZONE 'UTC')) AS candidate
+  FROM (SELECT p_local AT TIME ZONE 'UTC' AS guess) initial
+  CROSS JOIN unnest(ARRAY[-48,-24,-12,0,12,24,48]) AS h(hours)
+  CROSS JOIN LATERAL (SELECT guess+hours*interval '1 hour' AS probe) AS z
+ ) timings WHERE candidate AT TIME ZONE p_zone=p_local;
+$ccp_canonical_wall_instants$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_wall_instants(timestamp,text)
+ FROM PUBLIC,anon,authenticated,service_role;
+
 -- Resolve the earliest real instant of a canonical local occurrence. Only
 -- owner-validated scheduling commands may supply the locked slot row.
 CREATE FUNCTION public.ccp_canonical_slot_real_start(p_slot public.lesson_slots,p_date date)
@@ -14965,9 +14982,6 @@ SET search_path=public,pg_temp AS $ccp_slot_real_start$
 DECLARE
  v_workplace public.workplaces%ROWTYPE;
  v_timezone text;
- v_local timestamp;
- v_guess timestamptz;
- v_start timestamptz;
 BEGIN
  -- Same explicit-workplace/teacher fallback timezone as materialization.
  SELECT * INTO v_workplace FROM public.workplaces
@@ -14983,14 +14997,7 @@ BEGIN
  v_timezone:=coalesce(v_timezone,v_workplace.timezone);
  -- Match the planner's earliest real instant for an ambiguous fall-back
  -- time. A nonexistent local time cannot be safely approved by this RPC.
- v_local:=p_date+p_slot.start_time;
- v_guess:=v_local AT TIME ZONE 'UTC';
- SELECT min(candidate) INTO v_start FROM (
-  SELECT v_guess-((probe AT TIME ZONE v_timezone)-(probe AT TIME ZONE 'UTC')) AS candidate
-  FROM unnest(ARRAY[-48,-24,-12,0,12,24,48]) AS h(hours)
-  CROSS JOIN LATERAL (SELECT v_guess+hours*interval '1 hour' AS probe) AS z
- ) timings WHERE candidate AT TIME ZONE v_timezone=v_local;
- RETURN v_start;
+ RETURN (public.ccp_canonical_wall_instants(p_date+p_slot.start_time,v_timezone))[1];
 END;
 $ccp_slot_real_start$;
 REVOKE ALL ON FUNCTION public.ccp_canonical_slot_real_start(public.lesson_slots,date)
@@ -15726,4 +15733,216 @@ $ccp_scoped_slot_edit$;
 REVOKE ALL ON FUNCTION public.ccp_canonical_slot_edit_scoped(uuid,text,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
  FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_edit_scoped(uuid,text,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
+ TO authenticated;
+
+-- A preview and commit of one not-yet-generated original series date.
+-- The moved lesson uses the same canonical insertion path, frozen roster
+-- triggers and storage identity as a regular occurrence. Its exception
+-- records the approval; neither of the two rows can be created alone.
+CREATE FUNCTION public.ccp_canonical_reschedule_unmaterialized_slot(
+ p_slot_id uuid,p_original_occurrence_on date,p_revised_date date,p_revised_time time,
+ p_expected_updated_at timestamptz,p_reason text,p_review_digest text,
+ p_idempotency_key uuid,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_reschedule_unmaterialized_slot$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_operation constant text:='canonical.slot.reschedule_unmaterialized';
+ v_slot public.lesson_slots%ROWTYPE;
+ v_workplace public.workplaces%ROWTYPE;
+ v_default_workplace public.workplaces%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_teacher_zone text;
+ v_zone text;
+ v_now timestamptz;
+ v_original timestamptz[];
+ v_revised timestamptz[];
+ v_target timestamptz;
+ v_until timestamptz;
+ v_day date;
+ v_c record;
+ v_options timestamptz[];
+ v_offset_start timestamptz;
+ v_n integer:=0;
+ v_hash text;
+ v_review text;
+ v_result jsonb;
+ v_session uuid;
+ v_exception uuid;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_slot_id IS NULL OR p_expected_updated_at IS NULL OR NOT isfinite(p_expected_updated_at)
+   OR p_original_occurrence_on IS NULL
+   OR p_original_occurrence_on NOT BETWEEN DATE '0001-01-01' AND DATE '9999-12-31'
+   OR p_revised_date IS NULL OR p_revised_date NOT BETWEEN DATE '0001-01-01' AND DATE '9999-12-31'
+   OR p_revised_time IS NULL OR p_revised_time>=time '24:00:00'
+   OR extract(second FROM p_revised_time)<>trunc(extract(second FROM p_revised_time))
+   OR p_reason IS NULL OR char_length(btrim(p_reason)) NOT BETWEEN 4 AND 500
+   OR p_confirmed IS NULL OR (p_confirmed AND (p_idempotency_key IS NULL
+      OR p_review_digest IS NULL OR p_review_digest !~ '^[0-9a-f]{64}$'))
+   OR (NOT p_confirmed AND (p_idempotency_key IS NOT NULL OR p_review_digest IS NOT NULL)) THEN
+  RAISE EXCEPTION 'INVALID_SLOT_RESCHEDULE' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=encode(sha256(convert_to(jsonb_build_array(v_operation,p_slot_id,
+  p_original_occurrence_on,p_revised_date,p_revised_time,p_expected_updated_at AT TIME ZONE 'UTC',
+  p_reason,p_review_digest,p_confirmed)::text,'UTF8')),'hex');
+ IF p_confirmed THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF FOUND THEN
+   IF v_saved.operation<>v_operation OR v_saved.request_hash<>v_hash THEN
+    RAISE EXCEPTION 'SLOT_RESCHEDULE_REPLAY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+  END IF;
+ END IF;
+ SELECT * INTO v_slot FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND id=p_slot_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'CANONICAL_SLOT_NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF v_slot.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF NOT v_slot.active OR v_slot.duration_minutes NOT BETWEEN 15 AND 480
+   OR v_slot.start_time>=time '24:00:00'
+   OR extract(second FROM v_slot.start_time)<>trunc(extract(second FROM v_slot.start_time))
+   OR p_original_occurrence_on<v_slot.start_date
+   OR (v_slot.end_date IS NOT NULL AND p_original_occurrence_on>v_slot.end_date)
+   OR extract(dow FROM p_original_occurrence_on)<>v_slot.day_of_week THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_NOT_A_RULE_DATE' USING ERRCODE='22023';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.lesson_slots anchor
+  JOIN public.teaching_sessions s ON s.teacher_id=anchor.teacher_id AND s.slot_id=anchor.id
+  WHERE anchor.teacher_id=v_teacher AND anchor.series_id=v_slot.series_id
+    AND s.slot_occurrence_date=p_original_occurrence_on) THEN
+  RAISE EXCEPTION 'SLOT_OCCURRENCE_ALREADY_MATERIALIZED' USING ERRCODE='23514';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.lesson_slots anchor
+  JOIN public.slot_occurrence_exceptions e ON e.teacher_id=anchor.teacher_id AND e.slot_id=anchor.id
+  WHERE anchor.teacher_id=v_teacher AND anchor.series_id=v_slot.series_id
+    AND e.original_occurrence_on=p_original_occurrence_on AND e.revoked_at IS NULL) THEN
+  RAISE EXCEPTION 'SLOT_OCCURRENCE_ALREADY_HAS_EXCEPTION' USING ERRCODE='23505';
+ END IF;
+ IF p_confirmed AND EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions
+   WHERE teacher_id=v_teacher AND
+     (request_id=p_idempotency_key OR revocation_request_id=p_idempotency_key)) THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_REPLAY_CONFLICT' USING ERRCODE='23505';
+ END IF;
+
+ SELECT * INTO v_default_workplace FROM public.workplaces
+  WHERE teacher_id=v_teacher ORDER BY created_at,id LIMIT 1 FOR SHARE;
+ SELECT nullif(timezone,'') INTO v_teacher_zone FROM public.teacher_settings
+  WHERE teacher_id=v_teacher FOR SHARE;
+ SELECT * INTO v_workplace FROM public.workplaces
+  WHERE teacher_id=v_teacher AND id=coalesce(v_slot.workplace_id,v_default_workplace.id) FOR SHARE;
+ IF NOT FOUND OR v_workplace.archived_at IS NOT NULL THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ v_zone:=coalesce(CASE WHEN v_slot.workplace_id IS NULL THEN v_teacher_zone END,v_workplace.timezone);
+ v_original:=public.ccp_canonical_wall_instants(p_original_occurrence_on+v_slot.start_time,v_zone);
+ v_revised:=public.ccp_canonical_wall_instants(p_revised_date+p_revised_time,v_zone);
+ IF cardinality(v_original)<>1 OR cardinality(v_revised)<>1 THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_AMBIGUOUS_LOCAL_TIME' USING ERRCODE='22023';
+ END IF;
+ v_now:=clock_timestamp();
+ v_target:=v_revised[1];
+ v_until:=v_target+v_slot.duration_minutes*interval '1 minute';
+ IF v_original[1]<=v_now OR v_target<=v_now OR v_target=v_original[1] THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_INVALID_TIME' USING ERRCODE='22023';
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.students
+  WHERE teacher_id=v_teacher AND id=v_slot.student_id AND archived_at IS NULL)
+ OR NOT EXISTS(SELECT 1 FROM public.workplace_enrollments
+  WHERE teacher_id=v_teacher AND student_id=v_slot.student_id AND workplace_id=v_workplace.id
+   AND cancelled_at IS NULL AND (starts_on IS NULL OR starts_on<=least(p_original_occurrence_on,p_revised_date))
+   AND (ends_on IS NULL OR ends_on>=greatest(p_original_occurrence_on,p_revised_date))) THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.teaching_sessions s WHERE s.teacher_id=v_teacher AND s.status<>'cancelled'
+   AND s.starts_at<v_until AND s.starts_at>=v_target-interval '8 hours'
+   AND s.starts_at+s.duration_minutes*interval '1 minute'>v_target) THEN
+  RAISE EXCEPTION 'SESSION_CONFLICT' USING ERRCODE='23P01';
+ END IF;
+
+ -- A teacher can already have expected lessons for the target window which
+ -- have not been materialized. No calendar writes during preview or commit.
+ -- The UTC date envelope is conservative for all supported named zones;
+ -- locally check only that window and the previous day for overnight lessons.
+ -- An existing cancellation is not a permanent reservation release: its
+ -- independent revocation must not turn this move into a generation conflict.
+ FOR v_c IN SELECT r.id,r.series_id,r.start_date,r.end_date,r.day_of_week,
+      r.start_time,r.duration_minutes,
+      coalesce(CASE WHEN r.workplace_id IS NULL THEN v_teacher_zone END,w.timezone) AS zone
+   FROM public.lesson_slots r
+   JOIN public.workplaces w ON w.teacher_id=r.teacher_id
+     AND w.id=coalesce(r.workplace_id,v_default_workplace.id)
+   WHERE r.teacher_id=v_teacher AND r.active
+     AND r.start_date<=(v_until AT TIME ZONE 'UTC')::date+2
+     AND (r.end_date IS NULL OR r.end_date>=(v_target AT TIME ZONE 'UTC')::date-2)
+   ORDER BY r.id LIMIT 2001
+ LOOP
+  v_n:=v_n+1;
+  IF v_n>2000 THEN RAISE EXCEPTION 'SLOT_RESCHEDULE_TOO_MANY_RULES' USING ERRCODE='22023';END IF;
+  FOR v_day IN SELECT d::date FROM generate_series((v_target AT TIME ZONE v_c.zone)::date-1,
+    (v_until AT TIME ZONE v_c.zone)::date,interval '1 day') d
+   WHERE d::date>=v_c.start_date AND (v_c.end_date IS NULL OR d::date<=v_c.end_date)
+    AND extract(dow FROM d)=v_c.day_of_week
+  LOOP
+   IF (v_c.series_id=v_slot.series_id AND v_day=p_original_occurrence_on)
+    OR EXISTS(SELECT 1 FROM public.lesson_slots a JOIN public.teaching_sessions s
+     ON s.slot_id=a.id AND s.teacher_id=a.teacher_id
+     WHERE a.teacher_id=v_teacher AND a.series_id=v_c.series_id AND s.slot_occurrence_date=v_day) THEN
+    CONTINUE;
+   END IF;
+   v_options:=public.ccp_canonical_wall_instants(v_day+v_c.start_time,v_c.zone);
+   IF cardinality(v_options)=0 THEN
+    -- A gap cannot be materialized by the current canonical SQL. If its
+    -- shifted interval could collide, do not approve around the ambiguity.
+    v_options:=ARRAY[(v_day+v_c.start_time) AT TIME ZONE v_c.zone];
+   END IF;
+   FOREACH v_offset_start IN ARRAY v_options LOOP
+    IF v_offset_start<v_until
+     AND v_offset_start+greatest(15,v_c.duration_minutes)*interval '1 minute'>v_target THEN
+     RAISE EXCEPTION 'SLOT_RESCHEDULE_PENDING_RULE_CONFLICT' USING ERRCODE='23P01';
+    END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
+
+ v_review:=encode(sha256(convert_to(jsonb_build_array(v_teacher,v_slot.series_id,v_slot.id,
+  v_slot.updated_at AT TIME ZONE 'UTC',p_original_occurrence_on,v_original[1] AT TIME ZONE 'UTC',
+  p_revised_date,p_revised_time,v_target AT TIME ZONE 'UTC',v_zone,v_workplace.id,v_slot.student_id,
+  v_slot.duration_minutes,v_slot.is_home_visit,v_slot.rate_cents,p_reason)::text,'UTF8')),'hex');
+ v_result:=jsonb_build_object('slotId',v_slot.id,'seriesId',v_slot.series_id,
+  'originalOccurrenceOn',p_original_occurrence_on,'originalStartsAt',v_original[1],
+  'revisedStartsAt',v_target,'timezone',v_zone,'durationMinutes',v_slot.duration_minutes,
+  'slotRevision',v_slot.updated_at,'reviewDigest',v_review);
+ IF NOT p_confirmed THEN RETURN v_result; END IF;
+ IF p_review_digest<>v_review THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_REVIEW_CONFLICT' USING ERRCODE='23505';
+ END IF;
+
+ INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_idempotency_key,v_operation,v_hash,'{}'::jsonb);
+ INSERT INTO public.teaching_sessions(teacher_id,workplace_id,student_id,title,starts_at,
+  duration_minutes,status,slot_id,slot_occurrence_date,rescheduled_from_date,local_timezone,
+  is_home_visit,slot_rate_cents,request_id)
+ VALUES(v_teacher,v_workplace.id,v_slot.student_id,'Private chess lesson',v_target,
+  v_slot.duration_minutes,'scheduled',v_slot.id,p_original_occurrence_on,p_original_occurrence_on,v_zone,
+  v_slot.is_home_visit,v_slot.rate_cents,p_idempotency_key)
+ RETURNING id INTO v_session;
+ INSERT INTO public.slot_occurrence_exceptions(teacher_id,slot_id,original_occurrence_on,action,
+  revised_starts_at,revised_timezone,revised_duration_minutes,session_id,approved_by,reason,request_id)
+ VALUES(v_teacher,v_slot.id,p_original_occurrence_on,'reschedule',v_target,v_zone,
+  v_slot.duration_minutes,v_session,v_teacher,btrim(p_reason),p_idempotency_key)
+ RETURNING id INTO v_exception;
+ v_result:=v_result||jsonb_build_object('sessionId',v_session,'exceptionId',v_exception,'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_result
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_result||jsonb_build_object('replayed',false);
+END;
+$ccp_reschedule_unmaterialized_slot$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_reschedule_unmaterialized_slot(uuid,date,date,time,timestamptz,text,text,uuid,boolean)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_reschedule_unmaterialized_slot(uuid,date,date,time,timestamptz,text,text,uuid,boolean)
  TO authenticated;

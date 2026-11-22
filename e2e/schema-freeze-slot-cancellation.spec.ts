@@ -471,3 +471,200 @@ test("revocation fails closed for legacy history and resolves the current series
   expect((await admin.auth.admin.deleteUser(owner.id)).error).toBeNull();
  }
 });
+
+test("reviewed one-date rescheduling moves only an unmaterialized occurrence",async()=>{
+ const admin=db(process.env.SUPABASE_SERVICE_ROLE_KEY!);
+ const owner=await teacher(admin);
+ const outsider=await teacher(admin);
+ try{
+  const timezone="Asia/Jerusalem";
+  const workplace=await admin.from("workplaces").update({timezone})
+   .eq("teacher_id",owner.id).eq("kind","personal").select("id").single();
+  expect(workplace.error).toBeNull();
+  const distant=await admin.from("workplaces").insert({
+   teacher_id:owner.id,kind:"professional",name:"Synthetic New York venue",timezone:"America/New_York",
+   currency:"USD",locale:"en",policy:{},
+  }).select("id").single();
+  expect(distant.error).toBeNull();
+  const learner=await admin.from("students").insert({
+   teacher_id:owner.id,name:"Synthetic moved lesson learner "+randomUUID(),
+  }).select("id").single();
+  expect(learner.error).toBeNull();
+  for(const workplaceId of [workplace.data!.id,distant.data!.id]){
+   const enrolled=await admin.from("workplace_enrollments").insert({
+    teacher_id:owner.id,student_id:learner.data!.id,workplace_id:workplaceId,source:"manual",
+   });
+   expect(enrolled.error).toBeNull();
+  }
+  const original="2060-01-08",neighbor="2060-01-15",target="2060-01-09";
+  const slot=async(date:string,time:string,workplaceId:string)=>{
+   const r=await admin.from("lesson_slots").insert({
+    teacher_id:owner.id,student_id:learner.data!.id,workplace_id:workplaceId,
+    day_of_week:dayOfWeek(date),start_time:time,start_date:date,duration_minutes:45,
+    rate_cents:12000,is_home_visit:true,
+   }).select("id,updated_at,series_id").single();
+   expect(r.error).toBeNull();
+   return r.data!;
+  };
+  const source=await slot(original,"14:00",workplace.data!.id);
+  const targetStarts=zonedTimeToUtc(target,"15:00",timezone).toISOString();
+  const plan=(date:string)=>({
+   teacher_id:owner.id,workplace_id:workplace.data!.id,student_id:learner.data!.id,
+   slot_id:source.id,slot_occurrence_date:date,starts_at:zonedTimeToUtc(date,"14:00",timezone).toISOString(),
+   duration_minutes:45,local_timezone:timezone,slot_rate_cents:12000,is_home_visit:true,
+  });
+  const materialize=(dates:string[])=>admin.rpc("ccp_canonical_slot_materialize",{
+   p_teacher_id:owner.id,p_rows:dates.map(plan),
+  });
+  const neighborResult=await materialize([neighbor]);
+  expect(neighborResult.error).toBeNull();
+  expect(neighborResult.data).toEqual({planned:1,inserted:1});
+  const sessions=()=>admin.from("teaching_sessions").select("*").eq("teacher_id",owner.id)
+   .eq("slot_id",source.id).order("slot_occurrence_date");
+  const baseline=await sessions();
+  expect(baseline.error).toBeNull();
+  expect(baseline.data).toMatchObject([{slot_occurrence_date:neighbor,status:"scheduled"}]);
+
+  const args={
+   p_slot_id:source.id,p_original_occurrence_on:original,p_revised_date:target,p_revised_time:"15:00:00",
+   p_expected_updated_at:source.updated_at,p_reason:"Teacher reviewed moving just this occurrence",
+   p_review_digest:null as string|null,p_idempotency_key:null as string|null,p_confirmed:false,
+  };
+  const reschedule=(patch:Partial<typeof args>={},client=owner.client)=>
+   client.rpc("ccp_canonical_reschedule_unmaterialized_slot",{...args,...patch});
+  const receipts=()=>admin.from("agent_tool_receipts").select("idempotency_key,receipt")
+   .in("teacher_id",[owner.id,outsider.id]).eq("operation","canonical.slot.reschedule_unmaterialized");
+  const exceptions=()=>owner.client.from("slot_occurrence_exceptions").select("*").eq("slot_id",source.id);
+  expect((await reschedule({},outsider.client)).error).toMatchObject({code:"42501",message:"CANONICAL_SLOT_NOT_FOUND"});
+  expect((await reschedule({},admin)).error).not.toBeNull();
+  expect((await reschedule({},db(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!))).error).not.toBeNull();
+  expect((await reschedule({p_expected_updated_at:"2020-01-01T00:00:00Z"})).error)
+   .toMatchObject({code:"23505",message:"CANONICAL_SLOT_REVISION_CONFLICT"});
+  expect((await reschedule({p_original_occurrence_on:neighbor})).error)
+   .toMatchObject({code:"23514",message:"SLOT_OCCURRENCE_ALREADY_MATERIALIZED"});
+
+  const booked=await admin.from("teaching_sessions").insert({
+   teacher_id:owner.id,workplace_id:workplace.data!.id,student_id:learner.data!.id,
+   title:"Synthetic booked target",starts_at:targetStarts,duration_minutes:45,
+  }).select("id").single();
+  expect(booked.error).toBeNull();
+  expect((await reschedule()).error).toMatchObject({code:"23P01",message:"SESSION_CONFLICT"});
+  expect((await admin.from("teaching_sessions").delete().eq("id",booked.data!.id)).error).toBeNull();
+
+  // 08:00 in New York and 15:00 in Jerusalem are the same UTC instant in January.
+  const pending=await slot(target,"08:00",distant.data!.id);
+  expect((await reschedule()).error)
+   .toMatchObject({code:"23P01",message:"SLOT_RESCHEDULE_PENDING_RULE_CONFLICT"});
+  const released=await owner.client.rpc("ccp_canonical_slot_cancel_unmaterialized",{
+   p_slot_id:pending.id,p_original_occurrence_on:target,p_expected_updated_at:pending.updated_at,
+   p_idempotency_key:randomUUID(),p_reason:"Approved cancelling existing target rule date",p_confirmed:true,
+  });
+  expect(released.error).toBeNull();
+  // The initial slice will not schedule over a still-active rule even after
+  // cancellation: revocation could otherwise poison generation of that rule.
+  expect((await reschedule()).error)
+   .toMatchObject({code:"23P01",message:"SLOT_RESCHEDULE_PENDING_RULE_CONFLICT"});
+  expect((await admin.from("lesson_slots").update({active:false}).eq("id",pending.id)).error)
+   .toBeNull();
+  expect((await receipts()).data).toEqual([]);
+  expect((await exceptions()).data).toEqual([]);
+  expect((await sessions()).data).toEqual(baseline.data);
+
+  const preview=await reschedule();
+  expect(preview.error).toBeNull();
+  expect(preview.data).toMatchObject({
+   slotId:source.id,seriesId:source.series_id,originalOccurrenceOn:original,timezone,
+   originalStartsAt:expect.any(String),revisedStartsAt:expect.any(String),durationMinutes:45,
+   reviewDigest:expect.stringMatching(/^[a-f0-9]{64}$/),
+  });
+  expect(Date.parse(preview.data.revisedStartsAt)).toBe(Date.parse(targetStarts));
+  expect((await receipts()).data).toEqual([]);
+  expect((await sessions()).data).toEqual(baseline.data);
+  const commit={p_confirmed:true,p_review_digest:preview.data.reviewDigest,p_idempotency_key:randomUUID()};
+  expect((await reschedule({...commit,p_revised_time:"16:20:00"})).error)
+   .toMatchObject({code:"23505",message:"SLOT_RESCHEDULE_REVIEW_CONFLICT"});
+  expect((await receipts()).data).toEqual([]);
+
+  const [approved,replay]=await Promise.all([reschedule(commit),reschedule(commit)]);
+  expect(approved.error).toBeNull();
+  expect(replay.error).toBeNull();
+  expect([approved.data.replayed,replay.data.replayed].sort()).toEqual([false,true]);
+  const {replayed,...receipt}=approved.data;
+  expect(replay.data).toEqual({...receipt,replayed:!replayed});
+  expect((await reschedule({...commit,p_reason:"Different reschedule approval payload"})).error)
+   .toMatchObject({code:"23505",message:"SLOT_RESCHEDULE_REPLAY_CONFLICT"});
+  const stored=await sessions();
+  expect(stored.error).toBeNull();
+  expect(stored.data).toHaveLength(2);
+  const moved=stored.data![0];
+  expect(moved).toMatchObject({
+   id:receipt.sessionId,slot_id:source.id,slot_occurrence_date:original,rescheduled_from_date:original,
+   local_timezone:timezone,duration_minutes:45,is_home_visit:true,slot_rate_cents:12000,request_id:commit.p_idempotency_key,
+  });
+  expect(Date.parse(moved.starts_at)).toBe(Date.parse(targetStarts));
+  expect(stored.data![1]).toEqual(baseline.data![0]);
+  const frozen=await admin.from("session_participants").select("student_id").eq("session_id",moved.id);
+  expect(frozen.error).toBeNull();
+  expect(frozen.data).toEqual([{student_id:learner.data!.id}]);
+  const e=await exceptions();
+  expect(e.error).toBeNull();
+  expect(e.data).toHaveLength(1);
+  expect(e.data![0]).toMatchObject({
+   id:receipt.exceptionId,slot_id:source.id,original_occurrence_on:original,action:"reschedule",
+   revised_timezone:timezone,revised_duration_minutes:45,approved_by:owner.id,session_id:moved.id,
+   request_id:commit.p_idempotency_key,reason:args.p_reason,revision:1,revoked_at:null,
+  });
+  expect(Date.parse(e.data![0].revised_starts_at)).toBe(Date.parse(targetStarts));
+  const reMaterialize=await materialize([original,neighbor]);
+  expect(reMaterialize.error).toBeNull();
+  expect(reMaterialize.data).toEqual({planned:2,inserted:0});
+  expect((await sessions()).data).toEqual(stored.data);
+  expect((await admin.from("teaching_sessions").delete().eq("id",moved.id)).error?.code).toBe("23503");
+  expect((await sessions()).data).toEqual(stored.data);
+  const durable=await receipts();
+  expect(durable.error).toBeNull();
+  expect(durable.data).toEqual([{idempotency_key:commit.p_idempotency_key,receipt}]);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(owner.id)).error).toBeNull();
+  expect((await admin.auth.admin.deleteUser(outsider.id)).error).toBeNull();
+ }
+});
+
+test("one-date rescheduling rejects nonexistent and ambiguous local starts",async()=>{
+ const admin=db(process.env.SUPABASE_SERVICE_ROLE_KEY!);
+ const owner=await teacher(admin);
+ try{
+  const workplace=await admin.from("workplaces").update({timezone:"America/New_York"})
+   .eq("teacher_id",owner.id).eq("kind","personal").select("id").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:owner.id,name:"Synthetic DST learner "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const enrolled=await admin.from("workplace_enrollments").insert({
+   teacher_id:owner.id,student_id:student.data!.id,workplace_id:workplace.data!.id,source:"manual",
+  });
+  expect(enrolled.error).toBeNull();
+  const original="2060-01-08";
+  const slot=await admin.from("lesson_slots").insert({
+   teacher_id:owner.id,student_id:student.data!.id,workplace_id:workplace.data!.id,
+   start_date:original,day_of_week:dayOfWeek(original),start_time:"14:00:00",duration_minutes:45,
+  }).select("id,updated_at").single();
+  expect(slot.error).toBeNull();
+  for(const [date,time] of [["2060-03-14","02:30:00"],["2060-11-07","01:30:00"]]){
+   const moved=await owner.client.rpc("ccp_canonical_reschedule_unmaterialized_slot",{
+    p_slot_id:slot.data!.id,p_original_occurrence_on:original,p_revised_date:date,p_revised_time:time,
+    p_expected_updated_at:slot.data!.updated_at,p_reason:"Synthetic DST reschedule",
+    p_review_digest:null,p_idempotency_key:null,p_confirmed:false,
+   });
+   expect(moved.error).toMatchObject({code:"22023",message:"SLOT_RESCHEDULE_AMBIGUOUS_LOCAL_TIME"});
+  }
+  for(const table of ["teaching_sessions","slot_occurrence_exceptions","agent_tool_receipts"]){
+   const read=await admin.from(table).select("*").eq("teacher_id",owner.id);
+   expect(read.error).toBeNull();
+   expect(read.data).toEqual([]);
+  }
+ }finally{
+  expect((await admin.auth.admin.deleteUser(owner.id)).error).toBeNull();
+ }
+});
