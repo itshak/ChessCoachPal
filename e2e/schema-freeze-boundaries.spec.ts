@@ -373,6 +373,59 @@ test("cancelled recurring occurrence can be reviewed, revoked and replaced witho
  }
 });
 
+
+/** ENT-16 / SCH-04: usage is counted once per durable workflow request,
+ * never multiplied by retries or by a foreign tenant's period. */
+test("meaningful usage receipts are idempotent, bounded and tenant scoped",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ const outsider=await syntheticTeacher(admin);
+ try{
+  const period=await admin.from("account_usage_periods").insert({
+   teacher_id:teacher.id,capability_key:"students.active",
+   period_start:"2026-01-01T00:00:00Z",
+   period_end:"2027-01-01T00:00:00Z",
+  }).select("id").single();
+  expect(period.error).toBeNull();
+  const receipt=({
+   teacherId=teacher.id,
+   requestId=randomUUID(),
+   periodId=period.data!.id,
+   amount=1,
+  }:{teacherId?:string;requestId?:string;periodId?:string;amount?:number}={})=>({
+   teacher_id:teacherId,capability_key:"students.active",
+   period_id:periodId,request_id:requestId,
+   unit:"lesson",amount,source:"synthetic_workflow",
+  });
+  const requestId=randomUUID();
+  const first=await admin.from("account_usage_events")
+   .insert(receipt({requestId}));
+  expect(first.error).toBeNull();
+  const repeated=await admin.from("account_usage_events")
+   .insert(receipt({requestId}));
+  expect(repeated.error?.code).toBe("23505");
+  const oversized=await admin.from("account_usage_events")
+   .insert(receipt({amount:1000001}));
+  expect(oversized.error?.code).toBe("23514");
+  const injected=await admin.from("account_usage_events")
+   .insert(receipt({teacherId:outsider.id}));
+  expect(injected.error?.code).toBe("23503");
+  const concurrent=await Promise.all([
+   admin.from("account_usage_events").insert(receipt()),
+   admin.from("account_usage_events").insert(receipt()),
+  ]);
+  for(const r of concurrent)expect(r.error).toBeNull();
+  const after=await admin.from("account_usage_periods")
+   .select("used_count,reserved_count").eq("id",period.data!.id).single();
+  expect(after.error).toBeNull();
+  expect(after.data?.used_count).toBe(3);
+  expect(after.data?.reserved_count).toBe(0);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+  expect((await admin.auth.admin.deleteUser(outsider.id)).error).toBeNull();
+ }
+});
+
 /** SCH-04/06: tenant identity is enforced by both composite foreign keys
  * and authenticated row security, not by UI filters or caller claims. */
 test("cross-tenant report references are rejected and private reports are invisible",async()=>{
