@@ -26,3 +26,20 @@ test("final-schema inventory is exhaustive, deterministic and RLS complete",()=>
   assert.ok(row.column_count>0,"no columns extracted for "+row.table);
  }
 });
+
+test("every declared typed table Row covers the canonical CREATE TABLE columns",()=>{
+ const report=JSON.parse(execFileSync(process.execPath,[
+  new URL("./final-schema-source-inventory.mjs",import.meta.url).pathname,
+  "--json","--strict",
+ ],{encoding:"utf8"}));
+ const source=readFileSync(new URL("../lib/supabase/types.ts",import.meta.url),"utf8");
+ for(const row of report.tables.filter(t=>t.type_ownership==="declared")){
+  const match=new RegExp("^\\s{6}"+row.table+
+   ":\\s*\\{\\s*Row:\\s*\\{([\\s\\S]*?)\\}\\s*;","m").exec(source);
+  assert.ok(match,"missing Row contract for "+row.table);
+  const known=new Set([...match[1].matchAll(/(?:^|[;\\n])\\s*([a-z_][a-z0-9_]*):\\s*/gm)]
+   .map(m=>m[1]));
+  for(const column of row.columns)
+   assert.ok(known.has(column),"missing "+row.table+"."+column+" in typed Row");
+ }
+});
