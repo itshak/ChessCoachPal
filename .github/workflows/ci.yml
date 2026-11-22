@@ -46,6 +46,21 @@ jobs:
       - name: Enforce final schema source acceptance guards
         run: npm run pre1:final-cutover:audit && npm run schema:final:inventory:strict
 
+      - name: Enforce post-freeze schema drift lock
+        env:
+          SCHEMA_FREEZE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          base="${SCHEMA_FREEZE_BASE_SHA:-}"
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+            node scripts/schema-freeze-lock.mjs
+          else
+            node scripts/schema-freeze-lock.mjs --base "$base"
+            if git cat-file -e "$base:scripts/schema-freeze-lock.json" 2>/dev/null; then
+              git show "$base:scripts/schema-freeze-lock.mjs" | node --input-type=module - --base "$base"
+            fi
+          fi
+
       - name: Audit MCP-first website and API coverage (baseline; gaps explicitly reported)
         run: npm run mcp:parity:strict
 
