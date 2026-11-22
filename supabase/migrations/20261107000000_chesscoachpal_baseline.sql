@@ -15440,7 +15440,7 @@ BEGIN
 END;
 $ccp_terminal_split$;
 REVOKE ALL ON FUNCTION public.ccp_canonical_terminal_slot_split(uuid,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
- FROM PUBLIC,anon;
+ FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_terminal_slot_split(uuid,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
  TO authenticated;
 
@@ -15731,7 +15731,7 @@ BEGIN
 END;
 $ccp_scoped_slot_edit$;
 REVOKE ALL ON FUNCTION public.ccp_canonical_slot_edit_scoped(uuid,text,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
- FROM PUBLIC,anon;
+ FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_edit_scoped(uuid,text,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
  TO authenticated;
 

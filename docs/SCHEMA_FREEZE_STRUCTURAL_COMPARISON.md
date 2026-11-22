@@ -73,3 +73,7 @@ Canonical SQL SHA-256 `26c6dacc778911e805d3eae81ac7dcc38aa2edac5e6dad41c15531718
 ## Reviewed single-date move checkpoint
 
 The canonical SQL SHA-256 `e7e13bdc0fe57ffadefb1421b62f555deeee1420a2ace22c39aae0b86944d7a9` bootstrapped independently on two disposable PostgreSQL 17.12 stacks. Their structural fingerprint SHA-256 matched at `28a252991cf75bdfa25038e2052ea6b5e8a502891b00048882e285e372721de1` and the full read-only metadata comparator returned zero differences. All 13 combined recurrence API tests passed on the checked code. Disposable projects/volumes were removed. This is source verification only; UI parity, complete acceptance, and populated-data cutover are separate.
+
+## Effective database roles checkpoint
+
+Canonically migrated disposable PostgreSQL 17.12 databases were independently bootstrapped on SQL SHA-256 `4e96039318252e35cd3648dfe7d625addc13b29777c93218dbef73bbeb552c2a`. Both read-only structural metadata snapshots matched at SHA-256 `6fc7346c16c2d1edcff249dd4c7fef2b5859c0df48c8819e853c16a93dbe52a3` with zero differences and one ledger migration. Actual PostgreSQL grants for 11 signatures and six tables plus three signed-user permission checks passed. Both test instances and volumes were removed. No acceptance waiver or production change is implied.
