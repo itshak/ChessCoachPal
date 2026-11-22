@@ -167,11 +167,30 @@ export async function prepareSendableInvoice(db:SupabaseClient,input:{
   const hour=8+(parseInt(slot.slice(4,8),16)%11);
   const startsAt=invoice.period_start.slice(0,8)+String(day).padStart(2,"0")+
     "T"+String(hour).padStart(2,"0")+":00:00Z";
-  const sessionId=await add("teaching_sessions",{
-   teacher_id:input.teacherId,workplace_id:workplaceId,student_id:studentId,
-   title:"Synthetic billed chess lesson "+randomUUID(),
-   starts_at:startsAt,duration_minutes:60,local_timezone:"UTC",
-  });
+  // Other seeded tests may have already used this teacher's hour.
+  // Retry ONLY on the expected synthetic overlap, never mask an integrity error.
+  let sessionId:string|null=null;
+  let candidate=startsAt;
+  for(let attempt=0;attempt<160;attempt++){
+    const {data,error}=await db.from("teaching_sessions").insert({
+      teacher_id:input.teacherId,workplace_id:workplaceId,student_id:studentId,
+      title:"Synthetic billed chess lesson "+randomUUID(),
+      starts_at:candidate,duration_minutes:60,local_timezone:"UTC",
+    }).select("id").single();
+    if(!error&&data){sessionId=data.id as string;break;}
+    if(!error?.message.includes("SESSION_CONFLICT"))
+      throw new Error("Synthetic teaching_sessions fixture: "+(error?.message??"no record"));
+    // Probe distinct UTC hour slots in the invoice month. Fixtures run
+    // serially; no production scheduler or conflict rule is weakened.
+    const offset=attempt+1;
+    const baseHour=8;
+    const dayIndex=Math.floor(offset/16);
+    const hourIndex=offset%16;
+    const safeDay=1+((day-1+dayIndex)%28);
+    candidate=invoice.period_start.slice(0,8)+String(safeDay).padStart(2,"0")+
+      "T"+String(baseHour+hourIndex).padStart(2,"0")+":00:00Z";
+  }
+  if(!sessionId)throw new Error("No conflict-free synthetic billed lesson slot");
   // The session trigger may have frozen this participant already.
   const {error:freezeError}=await db.from("session_participants").upsert({
    teacher_id:input.teacherId,session_id:sessionId,student_id:studentId,
