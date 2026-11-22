@@ -6253,6 +6253,9 @@ DECLARE
  v_count integer;
  v_changed integer;
  v_guard text;
+ v_material_input public.material_teaching_evidence%ROWTYPE;
+ v_material_existing public.material_teaching_evidence%ROWTYPE;
+ v_material_archived timestamptz;
  v_counts jsonb:='{}'::jsonb;
 BEGIN
  IF v_teacher IS NULL OR NOT EXISTS (
@@ -6287,6 +6290,69 @@ BEGIN
    FOR v_row IN SELECT value FROM jsonb_array_elements(v_rows) LOOP
      IF jsonb_typeof(v_row)<>'object'
      THEN RAISE EXCEPTION 'IMPORT_INVALID_ROW:%',v_table USING ERRCODE='22023'; END IF;
+
+     IF v_table='material_teaching_evidence' THEN
+       -- Verification belongs to its recorded environment owner. Do not use
+       -- the generic teacher-id rewrite or upsert on historical evidence.
+       v_material_input:=jsonb_populate_record(NULL::public.material_teaching_evidence,v_row);
+       IF v_material_input.teacher_id IS DISTINCT FROM v_teacher
+          OR (v_material_input.stage_verified_by IS NOT NULL
+              AND v_material_input.stage_verified_by IS DISTINCT FROM v_teacher) THEN
+        RAISE EXCEPTION 'IMPORT_FOREIGN_MATERIAL_EVIDENCE' USING ERRCODE='42501';
+       END IF;
+       IF v_material_input.id IS NULL OR v_material_input.created_at IS NULL
+          OR (v_material_input.voided_at IS NULL)<>(v_material_input.void_reason IS NULL) THEN
+        RAISE EXCEPTION 'IMPORT_INVALID_MATERIAL_EVIDENCE' USING ERRCODE='22023';
+       END IF;
+       v_material_input.note:=coalesce(v_material_input.note,'');
+       SELECT * INTO v_material_existing FROM public.material_teaching_evidence
+        WHERE id=v_material_input.id FOR UPDATE;
+       IF NOT FOUND THEN
+        SELECT archived_at INTO v_material_archived FROM public.learning_materials
+         WHERE id=v_material_input.material_id AND teacher_id=v_teacher FOR SHARE;
+        IF v_material_archived IS NOT NULL THEN
+         RAISE EXCEPTION 'IMPORT_ARCHIVED_MATERIAL_EVIDENCE_REQUIRES_OPERATOR'
+          USING ERRCODE='22023';
+        END IF;
+        -- The ordinary INSERT trigger must still validate the active material,
+        -- student, workplace and session roster. Void a new, verified row
+        -- afterwards in this same transaction; never fabricate an actor.
+        INSERT INTO public.material_teaching_evidence(
+          id,teacher_id,student_id,workplace_id,session_id,material_id,stage,
+          occurred_on,note,request_id,created_at,learning_stage,
+          stage_verified_at,stage_verified_by)
+         VALUES(v_material_input.id,v_teacher,v_material_input.student_id,
+          v_material_input.workplace_id,v_material_input.session_id,
+          v_material_input.material_id,v_material_input.stage,
+          v_material_input.occurred_on,v_material_input.note,
+          v_material_input.request_id,v_material_input.created_at,
+          v_material_input.learning_stage,v_material_input.stage_verified_at,
+          v_material_input.stage_verified_by)
+         ON CONFLICT(id) DO NOTHING RETURNING * INTO v_material_existing;
+        IF FOUND THEN
+         IF v_material_input.voided_at IS NOT NULL THEN
+          UPDATE public.material_teaching_evidence
+           SET voided_at=v_material_input.voided_at,void_reason=v_material_input.void_reason
+           WHERE id=v_material_input.id AND teacher_id=v_teacher
+           RETURNING * INTO v_material_existing;
+         END IF;
+        ELSE
+         SELECT * INTO v_material_existing FROM public.material_teaching_evidence
+          WHERE id=v_material_input.id FOR UPDATE;
+        END IF;
+       END IF;
+       IF v_material_existing.teacher_id IS DISTINCT FROM v_teacher THEN
+        RAISE EXCEPTION 'IMPORT_FOREIGN_MATERIAL_EVIDENCE' USING ERRCODE='42501';
+       END IF;
+       -- updated_at is server-controlled, not the timestamp of the attestation
+       -- or archived evidence. An exact replay never executes UPDATE.
+       IF (to_jsonb(v_material_existing)-'updated_at')
+         IS DISTINCT FROM (to_jsonb(v_material_input)-'updated_at') THEN
+        RAISE EXCEPTION 'IMPORT_MATERIAL_EVIDENCE_MISMATCH' USING ERRCODE='23505';
+       END IF;
+       v_count:=v_count+1;
+       CONTINUE;
+     END IF;
 
      -- The teacher identity is *always* the signed-in person. Copying foreign
      -- IDs to another owner never grants access to the old user's data.
@@ -13990,6 +14056,38 @@ CREATE TRIGGER ccp_subscription_serialize
 CREATE TRIGGER ccp_entitlement_state_transition_serialize
  BEFORE UPDATE OF baseline_plan_version_id ON public.teacher_entitlement_state
  FOR EACH ROW EXECUTE FUNCTION public.ccp_entitlement_grant_serialize();
+
+-- Publishing and expanding an explicit audience are premium mutations, even
+-- for the trusted server role. Share the teacher row lock taken by grant,
+-- subscription and base-plan transitions, and evaluate time after waiting.
+-- Do not gate reads, existing approvals or safety-reducing revocation.
+CREATE OR REPLACE FUNCTION public.ccp_report_publish_entitlement_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_report_entitlement$
+BEGIN
+ PERFORM 1 FROM public.teachers WHERE id=NEW.teacher_id FOR UPDATE;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'REPORT_TEACHER_NOT_FOUND' USING ERRCODE='23503';
+ END IF;
+ IF (public.ccp_effective_capability(
+        NEW.teacher_id,'reports.publish',clock_timestamp()
+      )->>'enabled')::boolean IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'UPGRADE_REQUIRED' USING ERRCODE='23514',
+   DETAIL='reports.publish';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_report_entitlement$;
+REVOKE ALL ON FUNCTION public.ccp_report_publish_entitlement_guard()
+ FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_report_publication_publish_entitlement_guard
+ BEFORE INSERT ON public.report_publications FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_publish_entitlement_guard();
+-- The entitlement lock must be acquired before the existing scope validation
+-- (PostgreSQL runs triggers of the same kind alphabetically).
+CREATE TRIGGER ccp_report_audience_publish_entitlement_guard
+ BEFORE INSERT ON public.report_publication_audiences FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_publish_entitlement_guard();
 
 -- Immutable audit and metered events. Provider event identity, payload digest
 -- and signature provenance cannot be changed after ingestion.

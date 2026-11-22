@@ -49,3 +49,7 @@ Both independent disposable PostgreSQL `17.12.0.000` stacks bootstrapped the com
 ## Cancellation and historical evidence checkpoint
 
 The selected canonical SQL (SHA-256 `ff643a093ed2712fc52397ac530081fa2f569bf39271e6ce9d5f9dc4460734f7`) was independently bootstrapped twice on disposable PostgreSQL 17.12. Both instances applied only migration `20261107000000`; read-only structural snapshots matched at SHA-256 `b3150fb30ceacdb8dc8d91d4c409a3fb5a63db73d3b87fb5d9c7922db3ac6a98` with 105 tables, 1,078 columns, 142 routines, 807 constraints and zero differences. Both projects were removed. This checkpoint does not accept the full recurrence scope, portable restore, or a populated deployment.
+
+## Report entitlement and material restore checkpoint
+
+The combined canonical SQL SHA-256 `cae29c652091daaacff32130d1790122476c3d98e69b9abc62c9961e1db35d00` bootstrapped independently twice on disposable PostgreSQL 17.12; both applied the single canonical migration and their read-only structural snapshots matched byte-for-byte at SHA-256 `d8212b7c535e6198b1282ee7b009371410a7c37cf8a356e0ee8ac2c7c2697065` (105 relations, 1,078 columns, 807 constraints, 386 indexes, 96 policies, 83 triggers, 143 routines, 3,141 ACLs, zero differences). Seeded portable material restoration and three focused report boundary cases passed. Both independent databases and all isolated test resources were removed. This is not a production import or all-scope acceptance.

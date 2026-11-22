@@ -24,6 +24,17 @@ async function syntheticTeacher(admin:ReturnType<typeof syntheticAdmin>){
  expect(teacher.error).toBeNull();
  return {id,email,password};
 }
+async function grantSyntheticReportPro(admin:ReturnType<typeof syntheticAdmin>,teacherId:string){
+ const pro=await admin.from("plan_versions").select("id")
+  .eq("code","pro").eq("version",1).eq("lifecycle","published").single();
+ expect(pro.error).toBeNull();
+ const grant=await admin.from("teacher_entitlement_grants").insert({
+  teacher_id:teacherId,kind:"plan_access",plan_version_id:pro.data!.id,
+  reason:"Synthetic Pro report fixture",request_id:randomUUID(),
+ }).select("id").single();
+ expect(grant.error).toBeNull();
+ return grant.data!.id as string;
+}
 function studio(name:string,teacherId:string){
  return {teacher_id:teacherId,name,
   timezone:"UTC",currency:"USD",locale:"en",
@@ -122,6 +133,7 @@ test("report audience scope rejects other children and revoked guest grants",asy
  const admin=syntheticAdmin();
  const teacher=await syntheticTeacher(admin);
  try{
+  await grantSyntheticReportPro(admin,teacher.id);
   const workplace=await admin.from("workplaces")
    .select("id").eq("teacher_id",teacher.id).eq("kind","personal").single();
   expect(workplace.error).toBeNull();
@@ -221,6 +233,103 @@ test("report audience scope rejects other children and revoked guest grants",asy
    teacher_id:teacher.id,approved_by:teacher.id,request_id:randomUUID(),
   });
   expect(revokedDenied.error?.message).toContain("REPORT_AUDIENCE_NOT_AUTHORIZED");
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
+
+/** ENT-14: the trusted server cannot bypass effective report publishing
+ * access; a downgrade leaves previous approvals readable and revocable. */
+test("report publishing and new audiences need effective SQL entitlement",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  const workplace=await admin.from("workplaces").select("id")
+   .eq("teacher_id",teacher.id).eq("kind","personal").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Premium boundary learner "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const createPortalGrant=async()=>{
+   const contact=await admin.from("contacts").insert({
+    teacher_id:teacher.id,display_name:"Synthetic reviewer "+randomUUID(),
+   }).select("id").single();
+   expect(contact.error).toBeNull();
+   const grant=await admin.from("portal_access_grants").insert({
+    teacher_id:teacher.id,contact_id:contact.data!.id,student_id:student.data!.id,
+    workplace_id:workplace.data!.id,permissions:["shared_notes"],
+    issued_at:new Date().toISOString(),
+    token_digest:createHash("sha256").update(randomUUID()).digest("hex"),
+    expires_at:new Date(Date.now()+86400000*30).toISOString(),
+   }).select("id").single();
+   expect(grant.error).toBeNull();
+   return grant.data!.id as string;
+  };
+  const [firstAudience,nextAudience]=await Promise.all([
+   createPortalGrant(),createPortalGrant(),
+  ]);
+  const publication=()=>({
+   teacher_id:teacher.id,student_id:student.data!.id,workplace_id:workplace.data!.id,
+   snapshot_digest:createHash("sha256").update(randomUUID()).digest("hex"),
+   snapshot_storage_ref:"synthetic-reports/"+randomUUID(),
+   output_locale:"en",approved_by:teacher.id,
+   approved_at:new Date().toISOString(),request_id:randomUUID(),
+  });
+  const publish=(row:ReturnType<typeof publication>)=>admin.from("report_publications")
+   .insert(row).select("id,request_id,revoked_at").single();
+  const newAudience=(reportId:string,grantId:string)=>({
+   teacher_id:teacher.id,publication_id:reportId,portal_grant_id:grantId,
+   approved_by:teacher.id,request_id:randomUUID(),
+  });
+  const addAudience=(row:ReturnType<typeof newAudience>)=>admin
+   .from("report_publication_audiences").insert(row);
+  const denied={code:"23514",message:"UPGRADE_REQUIRED",details:"reports.publish"};
+
+  const approvedRequest=publication();
+  expect((await publish(approvedRequest)).error).toMatchObject(denied);
+  const proGrant=await grantSyntheticReportPro(admin,teacher.id);
+  const approved=await publish(approvedRequest);
+  expect(approved.error).toBeNull();
+  const reportId=approved.data!.id;
+  const originalAudience=newAudience(reportId,firstAudience);
+  expect((await addAudience(originalAudience)).error).toBeNull();
+
+  const downgraded=await admin.from("teacher_entitlement_grants")
+   .update({revoked_at:new Date().toISOString()}).eq("id",proGrant)
+   .select("revoked_at").single();
+  expect(downgraded.error).toBeNull();
+  expect(downgraded.data?.revoked_at).not.toBeNull();
+  expect((await publish(publication())).error).toMatchObject(denied);
+  expect((await addAudience(newAudience(reportId,nextAudience))).error).toMatchObject(denied);
+  const owner=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+   });
+  expect((await owner.auth.signInWithPassword({
+   email:teacher.email,password:teacher.password,
+  })).error).toBeNull();
+  const after=await owner.from("report_publications").select("id,request_id,revoked_at")
+   .eq("teacher_id",teacher.id);
+  expect(after.error).toBeNull();
+  expect(after.data).toEqual([approved.data]);
+  const audienceAfter=await owner.from("report_publication_audiences")
+   .select("portal_grant_id,revoked_at").eq("publication_id",reportId);
+  expect(audienceAfter.error).toBeNull();
+  expect(audienceAfter.data).toEqual([{portal_grant_id:firstAudience,revoked_at:null}]);
+
+  const revokedAt=new Date().toISOString();
+  const audienceRevoked=await admin.from("report_publication_audiences")
+   .update({revoked_at:revokedAt}).eq("publication_id",reportId)
+   .eq("portal_grant_id",firstAudience).select("revoked_at").single();
+  expect(audienceRevoked.error).toBeNull();
+  expect(audienceRevoked.data?.revoked_at).not.toBeNull();
+  const publicationRevoked=await admin.from("report_publications")
+   .update({revoked_at:revokedAt}).eq("id",reportId)
+   .select("id,revoked_at,revision").single();
+  expect(publicationRevoked.error).toBeNull();
+  expect(publicationRevoked.data).toMatchObject({id:reportId,revision:2});
+  expect(publicationRevoked.data?.revoked_at).not.toBeNull();
  }finally{
   expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
  }
@@ -560,6 +669,7 @@ test("cross-tenant report references are rejected and private reports are invisi
  const a=await syntheticTeacher(admin);
  const b=await syntheticTeacher(admin);
  try{
+  await grantSyntheticReportPro(admin,a.id);
   const aWorkplace=await admin.from("workplaces")
    .select("id").eq("teacher_id",a.id).eq("kind","personal").single();
   const bWorkplace=await admin.from("workplaces")
