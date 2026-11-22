@@ -82,22 +82,21 @@ test("referenced capability contracts and plan publication serialize",()=>{
 });
 
 
-/** SCH-07: all privileged helpers must explicitly revoke default public
- * EXECUTE (including trigger-only functions) and set a predictable path. */
-test("every canonical SECURITY DEFINER has pinned path and explicit public revoke",()=>{
- const re=/CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+(?:\"?public\"?\\.)?(?:\"([^\"]+)\"|([a-z_][a-z0-9_]*))\\s*\\(/gi;
+/** SCH-07: every privileged helper has a fixed execution boundary. */
+test("every canonical SECURITY DEFINER has pinned path and public revoke",()=>{
+ const re=/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:"?public"?\.)?(?:"([^"]+)"|([a-z_][a-z0-9_]*))\s*\(/gi;
  let inspected=0;
  for(const match of sql.matchAll(re)){
   const header=sql.slice(match.index,match.index+3500)
-   .split(/\\bAS\\s+\\$[a-zA-Z0-9_]*\\$/i)[0];
-  if(!/SECURITY\\s+DEFINER/i.test(header))continue;
+   .split(/\bAS\s+\$[a-zA-Z0-9_]*\$/i)[0];
+  if(!/SECURITY\s+DEFINER/i.test(header))continue;
   inspected++;
   const name=match[1]??match[2];
-  assert.match(header,/SET\\s+(?:\"search_path\"|search_path)\\s*(?:=|TO)/i,
-   name+\" must pin search_path\");
-  const quoted=name.replace(/[.*+?^$\u007b\u007d()|[\\]\\\\]/g,\"\\\\$&\");
-  assert.match(sql,new RegExp('REVOKE\\\\s+ALL\\\\s+ON\\\\s+FUNCTION\\\\s+(?:\"?public\"?\\\\.)?\"?'+quoted+'\"?\\\\s*\\\\(','i'),
-   name+\" must revoke public EXECUTE\");
+  assert.match(name,/^[a-z_][a-z0-9_]*$/i);
+  assert.match(header,/SET\s+(?:"search_path"|search_path)\s*(?:=|TO)/i,
+   name+" must pin search_path");
+  const revoked=new RegExp('REVOKE\\s+ALL\\s+ON\\s+FUNCTION\\s+(?:"?public"?\\.)?"?'+name+'"?\\s*\\(','i');
+  assert.match(sql,revoked,name+" must revoke public EXECUTE");
  }
- assert.ok(inspected>=100,\"all privileged SQL functions were scanned\");
+ assert.ok(inspected>=100,"all privileged SQL functions were scanned");
 });
