@@ -488,3 +488,160 @@ BEGIN
 END
 $rating_foreign_provenance$;
 ROLLBACK;
+
+-- TCH-02 source lineage only: owned, immutable segments survive the ordinary
+-- invoker restore in arbitrary payload order. This is not a split/editor test.
+BEGIN;
+INSERT INTO auth.users(id,email) VALUES(
+ 'ce000000-0000-4000-8000-000000000003','synthetic-lineage-owner@example.invalid');
+SET LOCAL ROLE service_role;
+INSERT INTO public.teachers(id,email,display_name) VALUES(
+ 'ce000000-0000-4000-8000-000000000003','synthetic-lineage-owner@example.invalid',
+ 'Synthetic foreign slot teacher');
+INSERT INTO public.students(id,teacher_id,name,archived_at) VALUES(
+ 'ce000000-0000-4000-8000-000000000001','ce000000-0000-4000-8000-000000000003',
+ 'Synthetic foreign slot learner',now());
+INSERT INTO public.lesson_slots(id,teacher_id,student_id,day_of_week,start_time,start_date)
+ VALUES('ce000000-0000-4000-8000-000000000002','ce000000-0000-4000-8000-000000000003',
+ 'ce000000-0000-4000-8000-000000000001',1,'10:00','2090-01-01');
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',true);
+DO $lesson_slot_lineage$
+DECLARE
+ t uuid:='00000000-0000-0000-0000-000000000001';
+ s uuid:='10000000-0000-0000-0000-000000000001';
+ sibling_student uuid:='10000000-0000-0000-0000-000000000002';
+ foreign_root uuid:='ce000000-0000-4000-8000-000000000002';
+ root_id uuid:=gen_random_uuid();
+ tail_id uuid:=gen_random_uuid();
+ standalone uuid:=gen_random_uuid();
+ root_row jsonb;
+ tail_row jsonb;
+ bundle jsonb;
+ receipt jsonb;
+ digest text:=encode(sha256(convert_to(gen_random_uuid()::text,'UTF8')),'hex');
+ bad_digest text:=encode(sha256(convert_to(gen_random_uuid()::text,'UTF8')),'hex');
+ hit text;
+ workplace uuid;
+ other_workplace uuid;
+BEGIN
+ SELECT id INTO STRICT workplace FROM public.workplaces WHERE teacher_id=t AND kind='personal';
+ INSERT INTO public.workplaces(teacher_id,name) VALUES(t,'Synthetic other lineage workplace') RETURNING id INTO other_workplace;
+ root_row:=jsonb_build_object('id',root_id,'student_id',s,'workplace_id',workplace,'day_of_week',1,
+   'start_time','10:00','start_date','2090-01-01','end_date','2090-01-31');
+ tail_row:=jsonb_build_object('id',tail_id,'student_id',s,'workplace_id',workplace,'series_workplace_scope','discarded','day_of_week',1,
+   'start_time','11:00','start_date','2090-02-01','series_id',root_id);
+ bundle:=jsonb_build_object('lesson_slots',jsonb_build_array(tail_row,root_row));
+ receipt:=public.ccp_teacher_backup_restore(bundle,NULL,digest);
+ IF receipt->'counts'->>'lesson_slots' IS DISTINCT FROM '2' THEN
+  RAISE EXCEPTION 'Lineage backup restore did not persist both segments';
+ END IF;
+ SET CONSTRAINTS lesson_slots_series_owner_scope_fk,
+  lesson_slots_series_active_overlap,ccp_lesson_slot_series_root IMMEDIATE;
+ SET CONSTRAINTS lesson_slots_series_owner_scope_fk,
+  lesson_slots_series_active_overlap,ccp_lesson_slot_series_root DEFERRED;
+ IF public.ccp_teacher_backup_restore(bundle,NULL,digest) IS DISTINCT FROM receipt THEN
+  RAISE EXCEPTION 'Lineage backup receipt did not replay exactly';
+ END IF;
+ IF (SELECT count(*) FROM public.lesson_slots
+     WHERE teacher_id=t AND series_id=root_id AND id IN(root_id,tail_id)
+       AND series_workplace_scope=workplace::text)<>2 THEN
+  RAISE EXCEPTION 'Lineage backup restore lost root grouping or created duplicates';
+ END IF;
+
+ -- An independent identical schedule remains its own series.
+ INSERT INTO public.lesson_slots(id,teacher_id,student_id,day_of_week,start_time,start_date)
+  VALUES(standalone,t,s,1,'11:00','2090-02-01');
+ IF NOT EXISTS(SELECT 1 FROM public.lesson_slots
+   WHERE id=standalone AND series_id=standalone) THEN RAISE EXCEPTION 'New independent slot missing root';END IF;
+
+ BEGIN
+  UPDATE public.lesson_slots SET series_id=standalone WHERE id=tail_id;
+  RAISE EXCEPTION 'Existing segment reparented';
+ EXCEPTION WHEN check_violation THEN
+  IF SQLERRM<>'RECURRENCE_SERIES_IDENTITY_IMMUTABLE' THEN RAISE;END IF;
+ END;
+ BEGIN
+  INSERT INTO public.lesson_slots(teacher_id,student_id,workplace_id,day_of_week,start_time,start_date,series_id)
+   VALUES(t,s,workplace,1,'10:00','2090-03-01',foreign_root);
+  SET CONSTRAINTS lesson_slots_series_owner_scope_fk IMMEDIATE;
+  RAISE EXCEPTION 'Foreign series attached through authenticated insert';
+ EXCEPTION WHEN foreign_key_violation THEN
+  GET STACKED DIAGNOSTICS hit=CONSTRAINT_NAME;
+  IF hit<>'lesson_slots_series_owner_scope_fk' THEN RAISE;END IF;
+ END;
+ BEGIN
+  INSERT INTO public.lesson_slots(teacher_id,student_id,workplace_id,day_of_week,start_time,start_date,series_id)
+   VALUES(t,sibling_student,workplace,1,'10:00','2090-03-01',root_id);
+  SET CONSTRAINTS lesson_slots_series_owner_scope_fk IMMEDIATE;
+  RAISE EXCEPTION 'Different student attached through authenticated insert';
+ EXCEPTION WHEN foreign_key_violation THEN
+  GET STACKED DIAGNOSTICS hit=CONSTRAINT_NAME;
+  IF hit<>'lesson_slots_series_owner_scope_fk' THEN RAISE;END IF;
+ END;
+ BEGIN
+  INSERT INTO public.lesson_slots(teacher_id,student_id,workplace_id,day_of_week,start_time,start_date,series_id)
+   VALUES(t,s,workplace,1,'10:00','2090-03-01',tail_id);
+  SET CONSTRAINTS ccp_lesson_slot_series_root IMMEDIATE;
+  RAISE EXCEPTION 'Non-root segment accepted as a new root';
+ EXCEPTION WHEN check_violation THEN
+  IF SQLERRM<>'RECURRENCE_SERIES_ROOT_INVALID' THEN RAISE;END IF;
+ END;
+ BEGIN
+  INSERT INTO public.lesson_slots(teacher_id,student_id,workplace_id,day_of_week,start_time,start_date,series_id)
+   VALUES(t,s,workplace,1,'12:00','2090-02-02',root_id);
+  SET CONSTRAINTS lesson_slots_series_active_overlap IMMEDIATE;
+  RAISE EXCEPTION 'Overlapping active tail accepted';
+ EXCEPTION WHEN exclusion_violation THEN
+  GET STACKED DIAGNOSTICS hit=CONSTRAINT_NAME;
+  IF hit<>'lesson_slots_series_active_overlap' THEN RAISE;END IF;
+ END;
+ BEGIN
+  INSERT INTO public.lesson_slots(teacher_id,student_id,workplace_id,day_of_week,start_time,start_date,series_id)
+   VALUES(t,s,other_workplace,1,'10:00','2090-03-01',root_id);
+  SET CONSTRAINTS lesson_slots_series_owner_scope_fk IMMEDIATE;
+  RAISE EXCEPTION 'Different explicit workplace attached through authenticated insert';
+ EXCEPTION WHEN foreign_key_violation THEN
+  GET STACKED DIAGNOSTICS hit=CONSTRAINT_NAME;
+  IF hit<>'lesson_slots_series_owner_scope_fk' THEN RAISE;END IF;
+ END;
+ BEGIN
+  INSERT INTO public.lesson_slots(teacher_id,student_id,day_of_week,start_time,start_date,series_id)
+   VALUES(t,s,1,'10:00','2090-03-01',root_id);
+  SET CONSTRAINTS lesson_slots_series_owner_scope_fk IMMEDIATE;
+  RAISE EXCEPTION 'Nullable workplace attached to an explicit root';
+ EXCEPTION WHEN foreign_key_violation THEN
+  GET STACKED DIAGNOSTICS hit=CONSTRAINT_NAME;
+  IF hit<>'lesson_slots_series_owner_scope_fk' THEN RAISE;END IF;
+ END;
+ BEGIN
+  PERFORM public.ccp_teacher_backup_restore(jsonb_build_object('lesson_slots',
+    jsonb_build_array(tail_row||jsonb_build_object('workplace_id',other_workplace))),NULL,bad_digest);
+  RAISE EXCEPTION 'Portable restore silently moved a linked segment to another workplace';
+ EXCEPTION WHEN check_violation THEN
+  IF SQLERRM<>'RECURRENCE_SERIES_WORKPLACE_IMMUTABLE' THEN RAISE;END IF;
+ END;
+ IF EXISTS(SELECT 1 FROM public.teacher_backup_import_receipts r WHERE r.teacher_id=t AND r.digest=bad_digest)
+ OR NOT EXISTS(SELECT 1 FROM public.lesson_slots WHERE id=tail_id AND workplace_id=workplace) THEN
+  RAISE EXCEPTION 'Rejected portable restoration left a receipt or changed the slot';
+ END IF;
+ BEGIN
+  PERFORM public.ccp_canonical_slot_delete(tail_id,gen_random_uuid());
+  RAISE EXCEPTION 'Hard delete removed a linked segment';
+ EXCEPTION WHEN check_violation THEN
+  IF SQLERRM<>'RECURRENCE_SERIES_REQUIRES_RETIREMENT' THEN RAISE;END IF;
+ END;
+ BEGIN
+  PERFORM public.ccp_canonical_slot_delete(root_id,gen_random_uuid());
+  RAISE EXCEPTION 'Hard delete removed a root with a linked segment';
+ EXCEPTION WHEN check_violation THEN
+  IF SQLERRM<>'RECURRENCE_SERIES_REQUIRES_RETIREMENT' THEN RAISE;END IF;
+ END;
+ PERFORM public.ccp_canonical_slot_delete(standalone,gen_random_uuid());
+ IF EXISTS(SELECT 1 FROM public.lesson_slots WHERE id=standalone) THEN
+  RAISE EXCEPTION 'Standalone delete changed behavior';
+ END IF;
+END
+$lesson_slot_lineage$;
+SET CONSTRAINTS ALL IMMEDIATE;
+ROLLBACK;

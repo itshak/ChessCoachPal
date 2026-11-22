@@ -722,6 +722,8 @@ export interface Database {
       lesson_slots: {
         Row: {
           id: string;
+          series_id: string;
+          series_workplace_scope: string;
           teacher_id: string;
           student_id: string;
           workplace_id: string | null;
@@ -738,6 +740,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
+          series_id?: string;
           teacher_id: string;
           student_id: string;
           workplace_id?: string | null;

@@ -6554,6 +6554,10 @@ BEGIN
           '{issued_at}','null'::jsonb,true);
       END IF;
 
+      -- Derive the nullable workplace identity key from the restored field.
+      -- A portable export can contain the generated read-only column.
+      IF v_table='lesson_slots' THEN v_row:=v_row-'series_workplace_scope'; END IF;
+
       -- Insert only supplied columns so database defaults survive sparse
       -- portable exports. PostgreSQL performs the whole operation under RLS:
       -- a foreign owner's ID cannot be overwritten or attached via child FK.
@@ -14858,3 +14862,84 @@ CREATE TRIGGER ccp_capability_definition_contract_guard
 -- cause the trigger to run, but no caller needs direct EXECUTE permission.
 REVOKE ALL ON FUNCTION public.chesscoachpal_snapshot_participants()
  FROM PUBLIC,anon,authenticated;
+
+-- P0: a recurring slot is a dated segment, not the durable series identity.
+-- Keep the root slot as an anchor. Standalone slots are their own series.
+ALTER TABLE public.lesson_slots
+ ADD COLUMN series_id uuid,
+ ADD COLUMN series_workplace_scope text GENERATED ALWAYS AS (coalesce(workplace_id::text,'')) STORED NOT NULL;
+UPDATE public.lesson_slots SET series_id=id;
+ALTER TABLE public.lesson_slots
+ ALTER COLUMN series_id SET NOT NULL,
+ ADD CONSTRAINT lesson_slots_series_owner_scope_key UNIQUE(id,teacher_id,student_id,series_workplace_scope),
+ ADD CONSTRAINT lesson_slots_series_owner_scope_fk
+  FOREIGN KEY(series_id,teacher_id,student_id,series_workplace_scope)
+  REFERENCES public.lesson_slots(id,teacher_id,student_id,series_workplace_scope)
+  DEFERRABLE INITIALLY DEFERRED,
+ ADD CONSTRAINT lesson_slots_series_active_range CHECK(
+  NOT active OR end_date IS NULL OR end_date>=start_date),
+ ADD CONSTRAINT lesson_slots_series_active_overlap EXCLUDE USING gist
+  (teacher_id WITH =,series_id WITH =,daterange(start_date,end_date,'[]') WITH &&)
+  WHERE (active) DEFERRABLE INITIALLY DEFERRED;
+CREATE INDEX lesson_slots_series_scope
+ ON public.lesson_slots(teacher_id,series_id,start_date,id);
+COMMENT ON COLUMN public.lesson_slots.series_id IS
+ 'Immutable ID of the same-teacher, same-student, same-workplace root slot. A standalone slot is its own root; one series can own non-overlapping dated segments.';
+
+CREATE FUNCTION public.ccp_lesson_slot_series_identity()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_lesson_slot_series_identity$
+BEGIN
+ IF TG_OP='INSERT' THEN
+  IF NEW.series_id IS NULL THEN NEW.series_id:=NEW.id; END IF;
+  RETURN NEW;
+ END IF;
+ IF TG_OP='UPDATE' THEN
+  IF ROW(NEW.id,NEW.teacher_id,NEW.student_id,NEW.series_id)
+    IS DISTINCT FROM ROW(OLD.id,OLD.teacher_id,OLD.student_id,OLD.series_id) THEN
+   RAISE EXCEPTION 'RECURRENCE_SERIES_IDENTITY_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  IF NEW.workplace_id IS DISTINCT FROM OLD.workplace_id AND
+    (OLD.series_id<>OLD.id OR EXISTS(SELECT 1 FROM public.lesson_slots
+      WHERE teacher_id=OLD.teacher_id AND series_id=OLD.id AND id<>OLD.id)) THEN
+   RAISE EXCEPTION 'RECURRENCE_SERIES_WORKPLACE_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+ END IF;
+ -- Account removal may cascade; it is not a recurrence edit.
+ IF EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id) AND
+   (OLD.series_id<>OLD.id OR EXISTS(SELECT 1 FROM public.lesson_slots
+     WHERE teacher_id=OLD.teacher_id AND series_id=OLD.id AND id<>OLD.id)) THEN
+  RAISE EXCEPTION 'RECURRENCE_SERIES_REQUIRES_RETIREMENT' USING ERRCODE='23514';
+ END IF;
+ RETURN OLD;
+END;
+$ccp_lesson_slot_series_identity$;
+REVOKE ALL ON FUNCTION public.ccp_lesson_slot_series_identity()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_lesson_slot_series_identity
+ BEFORE INSERT OR UPDATE OR DELETE ON public.lesson_slots
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_lesson_slot_series_identity();
+
+-- Portable backups need not list the root before its tail. At commit the
+-- reference must resolve directly to the self-root, not to an arbitrary chain.
+CREATE FUNCTION public.ccp_lesson_slot_series_root()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_lesson_slot_series_root$
+BEGIN
+ IF EXISTS(SELECT 1 FROM public.lesson_slots
+   WHERE id=NEW.id AND teacher_id=NEW.teacher_id)
+ AND NOT EXISTS(SELECT 1 FROM public.lesson_slots
+   WHERE id=NEW.series_id AND teacher_id=NEW.teacher_id
+     AND student_id=NEW.student_id AND series_id=id) THEN
+  RAISE EXCEPTION 'RECURRENCE_SERIES_ROOT_INVALID'
+   USING ERRCODE='23514',CONSTRAINT='ccp_lesson_slot_series_root';
+ END IF;
+ RETURN NULL;
+END;
+$ccp_lesson_slot_series_root$;
+REVOKE ALL ON FUNCTION public.ccp_lesson_slot_series_root()
+ FROM PUBLIC,anon,authenticated;
+CREATE CONSTRAINT TRIGGER ccp_lesson_slot_series_root
+ AFTER INSERT ON public.lesson_slots DEFERRABLE INITIALLY DEFERRED
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_lesson_slot_series_root();
