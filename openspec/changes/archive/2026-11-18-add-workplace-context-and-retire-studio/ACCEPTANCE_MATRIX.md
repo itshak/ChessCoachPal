@@ -1,6 +1,6 @@
 # Workplace Context acceptance checkpoint
 
-Source checkpoint: dated through the Management and Hebrew RTL proof. The repository remains on the frozen source schema. The [consolidated schema source acceptance](https://github.com/itshak/ChessCoachPal/blob/756c646951a94c6a84b6d211b691d53939e52f36/openspec/changes/archive/2026-11-21-consolidate-final-preproduction-saas-schema/SOURCE_ACCEPTANCE.md) on main is archived and does not authorize deployment or a populated-data transition. This change remains open. Named tests below identify exact scope of source coverage; their presence alone does not attest a clean run at the final feature commit.
+Historical investigation checklist, retained as context. The [final verified source disposition](SOURCE_ACCEPTANCE.md) supersedes every provisional entry below; the independent operational gate remains open.
 
 | Requirement | Evidence in candidate | Remaining acceptance |
 |---|---|---|

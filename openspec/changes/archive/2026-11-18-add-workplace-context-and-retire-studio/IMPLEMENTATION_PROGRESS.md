@@ -1,6 +1,6 @@
 # Workplace context / Studio retirement — implementation in progress
 
-**Status:** Draft PR #104. No acceptance, no archive, no deployment.
+**Historical checkpoint:** Draft PR #104 at the time of this note. Subsequent source completion and hosted evidence are recorded in [SOURCE_ACCEPTANCE.md](SOURCE_ACCEPTANCE.md); this historical checklist does not describe remaining functional work or certify deployment.
 
 ## Delivered initial source slice
 
