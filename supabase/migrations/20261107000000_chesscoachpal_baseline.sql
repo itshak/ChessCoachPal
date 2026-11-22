@@ -3052,6 +3052,9 @@ BEGIN
                          'sessions.reschedule','sessions.cancel')
      AND p_expected_updated_at IS NOT NULL THEN RAISE EXCEPTION 'VALIDATION_ERROR'; END IF;
 
+  IF p_operation IN ('sessions.create','sessions.reschedule','sessions.cancel') THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+  END IF;
   -- The unique (teacher_id, idempotency_key) row lock serializes racing retries.
   -- The entire transaction rolls back on validation/conflict/permission failures.
   -- Browser and delegated MCP use ONE request identity. Client ID is audit
@@ -3168,8 +3171,6 @@ BEGIN
     IF v_start IS NULL OR v_duration NOT BETWEEN 15 AND 480 THEN
       RAISE EXCEPTION 'VALIDATION_ERROR';
     END IF;
-    -- Serializes MCP-created sessions for the same teacher, preventing MCP/MCP overlap races.
-    PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
     IF EXISTS (
       SELECT 1 FROM public.teaching_sessions s
       WHERE s.teacher_id=v_teacher AND s.status <> 'cancelled'
@@ -3185,8 +3186,6 @@ BEGIN
 
   ELSIF p_operation IN ('sessions.reschedule','sessions.cancel') THEN
     v_id := (p_payload->>'sessionId')::uuid;
-    -- Block concurrent MCP writes while evaluating the new time interval.
-    PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
     SELECT status,starts_at,duration_minutes INTO v_existing_status,v_start,v_duration
     FROM public.teaching_sessions
     WHERE id=v_id AND teacher_id=v_teacher AND updated_at=p_expected_updated_at
@@ -3578,8 +3577,48 @@ GRANT UPDATE (
 -- The same teacher lock protects direct website inserts/edits and MCP RPC.
 CREATE OR REPLACE FUNCTION public.ccp_session_schedule_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE
+ v_rescheduling boolean:=false;
+ v_status_change boolean:=false;
 BEGIN
- IF NEW.status='scheduled' THEN
+ IF TG_OP='UPDATE' THEN
+   -- A whole-slot retirement may detach its retained history; it may not
+   -- reparent a session or replace its frozen original local date.
+   IF NEW.slot_occurrence_date IS DISTINCT FROM OLD.slot_occurrence_date
+     OR (NEW.slot_id IS DISTINCT FROM OLD.slot_id AND NEW.slot_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'SESSION_OCCURRENCE_IDENTITY_CONFLICT' USING ERRCODE='23514';
+   END IF;
+   v_rescheduling:=ROW(NEW.starts_at,NEW.duration_minutes,NEW.local_timezone,NEW.is_home_visit)
+      IS DISTINCT FROM ROW(OLD.starts_at,OLD.duration_minutes,OLD.local_timezone,OLD.is_home_visit);
+   -- Completion has its own explicit frozen-roster SQL guard. This branch
+   -- controls schedule-only cancellation and generic rewinds, not teaching
+   -- or attendance/note corrections that leave the schedule unchanged.
+   v_status_change:=NEW.status IS DISTINCT FROM OLD.status AND NEW.status<>'completed';
+   IF v_rescheduling OR v_status_change THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.teacher_id::text,0));
+    IF OLD.status<>'scheduled'
+     OR (v_rescheduling AND
+         (OLD.starts_at<=clock_timestamp() OR NEW.starts_at<=clock_timestamp()))
+     OR OLD.rescheduled_from_date IS NOT NULL OR OLD.makeup_for_session_id IS NOT NULL
+     OR EXISTS(SELECT 1 FROM public.session_attendance WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.ccp_session_attendance_audit WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.session_notes WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.ccp_session_note_audit WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.ccp_delivery_outbox WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.invoice_items WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.financial_obligations WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.credit_redemptions WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.chess_observations WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.material_teaching_evidence WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.material_links WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.session_roster_corrections WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.teaching_sessions WHERE makeup_for_session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions WHERE session_id=OLD.id) THEN
+      RAISE EXCEPTION 'SESSION_SCHEDULE_HISTORY_CONFLICT' USING ERRCODE='23514';
+    END IF;
+   END IF;
+ END IF;
+ IF NEW.status='scheduled' AND (TG_OP='INSERT' OR v_rescheduling OR v_status_change) THEN
    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.teacher_id::text,0));
    IF EXISTS(
       SELECT 1 FROM public.teaching_sessions s
@@ -3597,7 +3636,8 @@ $$;
 REVOKE ALL ON FUNCTION public.ccp_session_schedule_guard() FROM PUBLIC,anon,authenticated;
 DROP TRIGGER IF EXISTS ccp_session_schedule_guard ON public.teaching_sessions;
 CREATE TRIGGER ccp_session_schedule_guard
- BEFORE INSERT OR UPDATE OF starts_at,duration_minutes,status,roster_mode
+ BEFORE INSERT OR UPDATE OF starts_at,duration_minutes,status,local_timezone,is_home_visit,
+   slot_id,slot_occurrence_date
  ON public.teaching_sessions FOR EACH ROW EXECUTE FUNCTION public.ccp_session_schedule_guard();
 
 CREATE OR REPLACE FUNCTION public.ccp_teacher_ad_hoc_session_create(
@@ -3907,6 +3947,11 @@ BEGIN
    END IF;
    v_seen:=array_append(v_seen,v_student);
  END LOOP;
+ -- Match the teacher-then-session lock order used by scoped recurrence
+ -- writers. Attendance-only commits never touch the scheduling columns.
+ IF p_changes<>'{}'::jsonb THEN
+   PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ END IF;
  v_hash:=md5(jsonb_build_array('sessions.commit',p_session_id,p_changes,
    p_attendance,p_expected_updated_at)::text);
  INSERT INTO public.agent_tool_receipts(
@@ -15461,6 +15506,13 @@ DECLARE
  v_today_slot public.lesson_slots%ROWTYPE;
  v_today_starts timestamptz;
  v_today_proposed timestamptz;
+ v_new_weekday integer;
+ v_segment_weekday integer;
+ v_new_first date;
+ v_changing_weekday boolean;
+ v_old_dates jsonb;
+ v_new_dates jsonb;
+ v_date_changes jsonb:='[]'::jsonb;
  v_from date;
  v_first date;
  v_target uuid;
@@ -15503,8 +15555,8 @@ BEGIN
     OR jsonb_typeof(p_changes) IS DISTINCT FROM 'object' OR p_changes='{}'::jsonb THEN
   RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID' USING ERRCODE='22023';
  END IF;
- -- Scoped edits retain weekday, venue and timezone.
- IF p_changes-ARRAY['startTime','durationMinutes','rateCents','isHomeVisit']<>'{}'::jsonb THEN
+ -- Only the reviewed finite-horizon path below may alter weekday; the zone and workplace are retained.
+ IF p_changes-ARRAY['startTime','durationMinutes','rateCents','isHomeVisit','dayOfWeek']<>'{}'::jsonb THEN
   RAISE EXCEPTION 'RECURRENCE_SCOPE_UNSUPPORTED_FIELDS' USING ERRCODE='22023';
  END IF;
  IF (p_changes ? 'startTime' AND (jsonb_typeof(p_changes->'startTime') IS DISTINCT FROM 'string'
@@ -15517,10 +15569,13 @@ BEGIN
     OR (p_changes ? 'rateCents' AND p_changes->'rateCents'<>'null'::jsonb
      AND (jsonb_typeof(p_changes->'rateCents') IS DISTINCT FROM 'number'
        OR (p_changes->>'rateCents') !~ '^[0-9]{1,9}$'))
+    OR (p_changes ? 'dayOfWeek' AND (jsonb_typeof(p_changes->'dayOfWeek') IS DISTINCT FROM 'number'
+       OR (p_changes->>'dayOfWeek') !~ '^[0-6]$'))
     OR (p_changes ? 'isHomeVisit' AND jsonb_typeof(p_changes->'isHomeVisit') IS DISTINCT FROM 'boolean') THEN
   RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_FIELDS' USING ERRCODE='22023';
  END IF;
 
+ v_new_weekday:=(p_changes->>'dayOfWeek')::integer;
  PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
  v_hash:=encode(sha256(convert_to(jsonb_build_array('canonical.slot.edit.scoped',p_slot_id,
   p_scope,p_cutoff,p_tail_id,p_changes,p_to,p_expected_updated_at,p_review_digest)::text,'UTF8')),'hex');
@@ -15603,6 +15658,9 @@ BEGIN
    RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_CUTOFF' USING ERRCODE='22023';
   END IF;
  END IF;
+ IF v_new_weekday IS NOT NULL AND v_bound<=v_today THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_WEEKDAY_SAME_DAY_UNSUPPORTED' USING ERRCODE='22023';
+ END IF;
  IF p_confirmed AND p_to<v_bound THEN
   RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505';
  END IF;
@@ -15621,12 +15679,19 @@ BEGIN
   v_from:=greatest(v_bound,v_segment.start_date);
   v_first:=v_from+((v_segment.day_of_week-extract(dow FROM v_from)::integer+7)%7);
   IF v_segment.end_date IS NOT NULL AND v_first>v_segment.end_date THEN CONTINUE; END IF;
+  v_segment_weekday:=coalesce(v_new_weekday,v_segment.day_of_week);
+  v_changing_weekday:=v_segment_weekday<>v_segment.day_of_week;
+  v_new_first:=v_from+((v_segment_weekday-extract(dow FROM v_from)::integer+7)%7);
+  IF v_changing_weekday AND (v_segment.end_date IS NULL OR NOT isfinite(v_segment.end_date)
+    OR v_segment.end_date>p_to OR v_new_first>v_segment.end_date) THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_WEEKDAY_COMPLETE_FINITE_RANGE_REQUIRED' USING ERRCODE='22023';
+  END IF;
   IF jsonb_array_length(v_edits)>=64 OR v_first>p_to THEN
    RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_RANGE_INCOMPLETE' USING ERRCODE='22023';
   END IF;
   IF NOT EXISTS(SELECT 1 FROM public.workplace_enrollments e
     WHERE e.teacher_id=v_teacher AND e.workplace_id=v_workplace AND e.student_id=v_segment.student_id
-      AND e.cancelled_at IS NULL AND (e.starts_on IS NULL OR e.starts_on<=v_first)
+      AND e.cancelled_at IS NULL AND (e.starts_on IS NULL OR e.starts_on<=least(v_first,v_new_first))
       AND (e.ends_on IS NULL OR (v_segment.end_date IS NOT NULL AND e.ends_on>=v_segment.end_date)) FOR SHARE) THEN
    RAISE EXCEPTION 'RECURRENCE_SCOPE_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
   END IF;
@@ -15640,8 +15705,38 @@ BEGIN
   v_rate:=CASE WHEN p_changes ? 'rateCents' THEN (p_changes->>'rateCents')::integer ELSE v_segment.rate_cents END;
   v_home:=coalesce((p_changes->>'isHomeVisit')::boolean,v_segment.is_home_visit);
   v_edits:=v_edits||jsonb_build_array(jsonb_build_object('before',to_jsonb(v_segment),
-   'from',v_from,'target',v_target,'split',v_split,'start',v_start,'duration',v_duration,'rate',v_rate,'home',v_home));
-  FOR v_day IN SELECT v_first+7*n FROM generate_series(0,(least(p_to,coalesce(v_segment.end_date,p_to))-v_first)/7) n
+   'from',v_from,'target',v_target,'split',v_split,'start',v_start,'duration',v_duration,'rate',v_rate,'home',v_home,
+   'weekday',v_segment_weekday,'weekdayChange',v_changing_weekday));
+  IF v_changing_weekday THEN
+   -- Any approved active exception in a changing segment's effective suffix
+   -- may be evidence of the original dates. Do not decide which date it maps to.
+   IF EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions observed
+      JOIN public.lesson_slots origin ON origin.id=observed.slot_id AND origin.teacher_id=observed.teacher_id
+      WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+       AND observed.revoked_at IS NULL AND observed.original_occurrence_on BETWEEN v_from AND v_segment.end_date) THEN
+    RAISE EXCEPTION 'RECURRENCE_SCOPE_WEEKDAY_ORIGINAL_EVIDENCE' USING ERRCODE='23514';
+   END IF;
+   v_old_dates:='[]'::jsonb;
+   FOR v_day IN SELECT v_first+7*n FROM generate_series(0,(v_segment.end_date-v_first)/7) n LOOP
+    v_local:=v_day+v_segment.start_time;
+    v_utc:=v_local AT TIME ZONE v_zone;
+    v_before_offset:=((v_utc-interval '1 day') AT TIME ZONE v_zone)-((v_utc-interval '1 day') AT TIME ZONE 'UTC');
+    v_after_offset:=((v_utc+interval '1 day') AT TIME ZONE v_zone)-((v_utc+interval '1 day') AT TIME ZONE 'UTC');
+    IF (v_utc AT TIME ZONE v_zone) IS DISTINCT FROM v_local OR (
+     v_before_offset<>v_after_offset
+     AND (((v_local-v_before_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local
+     AND (((v_local-v_after_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local) THEN
+     RAISE EXCEPTION 'RECURRENCE_SCOPE_AMBIGUOUS_LOCAL_TIME' USING ERRCODE='22023';
+    END IF;
+    v_old_dates:=v_old_dates||jsonb_build_array(v_day);
+   END LOOP;
+   SELECT jsonb_agg(v_new_first+7*n ORDER BY n) INTO v_new_dates
+    FROM generate_series(0,(v_segment.end_date-v_new_first)/7) n;
+   v_date_changes:=v_date_changes||jsonb_build_array(jsonb_build_object(
+    'sourceSlotId',v_segment.id,'targetSlotId',v_target,
+    'oldOriginalDates',v_old_dates,'newOriginalDates',v_new_dates));
+  END IF;
+  FOR v_day IN SELECT v_new_first+7*n FROM generate_series(0,(least(p_to,coalesce(v_segment.end_date,p_to))-v_new_first)/7) n
   LOOP
   v_local:=v_day+v_start;
   v_utc:=v_local AT TIME ZONE v_zone;
@@ -15721,8 +15816,30 @@ BEGIN
    AND NOT EXISTS(SELECT 1 FROM public.session_amendment_events WHERE session_id=v_row.id)
    AND NOT EXISTS(SELECT 1 FROM public.teaching_sessions WHERE makeup_for_session_id=v_row.id)
    AND NOT EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions WHERE session_id=v_row.id);
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(v_edits) edit
+    WHERE (edit->>'weekdayChange')::boolean AND v_row.slot_occurrence_date
+    BETWEEN (edit->>'from')::date AND (edit->'before'->>'end_date')::date)
+    AND (NOT v_eligible OR v_row.title<>'Private chess lesson' OR v_row.request_id IS NOT NULL
+     OR v_row.group_id IS NOT NULL OR v_row.student_id IS DISTINCT FROM v_slot.student_id
+     OR v_row.workplace_id IS DISTINCT FROM v_workplace OR v_row.local_timezone IS DISTINCT FROM v_zone
+     OR NOT EXISTS(SELECT 1 FROM public.session_participants participant
+      WHERE participant.teacher_id=v_teacher AND participant.session_id=v_row.id AND participant.student_id=v_row.student_id)
+     OR EXISTS(SELECT 1 FROM public.session_participants participant
+      WHERE participant.teacher_id=v_teacher AND participant.session_id=v_row.id AND participant.student_id<>v_row.student_id)
+     OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_date_changes) dates
+      JOIN jsonb_array_elements(v_edits) edit ON edit->'before'->>'id'=dates->>'sourceSlotId'
+      WHERE dates->>'sourceSlotId'=v_row.slot_id::text
+       AND dates->'oldOriginalDates' ? v_row.slot_occurrence_date::text
+       AND v_row.starts_at=((v_row.slot_occurrence_date+(edit->'before'->>'start_time')::time) AT TIME ZONE v_zone)
+       AND v_row.duration_minutes=(edit->'before'->>'duration_minutes')::integer
+       AND v_row.slot_rate_cents IS NOT DISTINCT FROM (edit->'before'->>'rate_cents')::integer
+       AND v_row.is_home_visit=(edit->'before'->>'is_home_visit')::boolean)) THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_WEEKDAY_ORIGINAL_EVIDENCE' USING ERRCODE='23514';
+  END IF;
   IF v_eligible THEN
-   IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_plan) planned
+   IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_date_changes) dates
+     WHERE dates->>'sourceSlotId'=v_row.slot_id::text AND dates->'oldOriginalDates' ? v_row.slot_occurrence_date::text)
+    AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_plan) planned
      JOIN jsonb_array_elements(v_edits) edit ON edit->>'target'=planned->>'slot_id'
      WHERE edit->'before'->>'id'=v_row.slot_id::text AND planned->>'slot_occurrence_date'=v_row.slot_occurrence_date::text) THEN
     RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_RANGE_INCOMPLETE' USING ERRCODE='22023';
@@ -15737,11 +15854,14 @@ BEGIN
    encode(sha256(convert_to(to_jsonb(v_row)::text,'UTF8')),'hex'),v_eligible));
  END LOOP;
  v_review:=encode(sha256(convert_to(jsonb_build_array(v_teacher,v_slot.series_id,to_jsonb(v_slot),
-  p_scope,v_bound,p_tail_id,p_changes,p_to,v_edits,v_plan,v_rows,v_exceptions,v_today_proposed)::text,'UTF8')),'hex');
+  p_scope,v_bound,p_tail_id,p_changes,p_to,v_edits,v_plan,v_rows,v_exceptions,v_today_proposed,v_date_changes)::text,'UTF8')),'hex');
  v_receipt:=jsonb_build_object('seriesId',v_slot.series_id,'anchorId',v_slot.id,'scope',p_scope,
   'successorId',p_tail_id,'cutoff',v_bound,'reviewThrough',p_to,'reviewDigest',v_review,'sourceRevision',v_slot.updated_at,
   'planned',jsonb_array_length(v_plan),'affectedSegments',jsonb_array_length(v_edits),
   'replaceableDrafts',cardinality(v_drafts),'preservedHistory',v_protected);
+ IF v_new_weekday IS NOT NULL THEN
+  v_receipt:=v_receipt||jsonb_build_object('weekdayDateChanges',v_date_changes);
+ END IF;
  IF NOT p_confirmed THEN RETURN v_receipt; END IF;
  IF p_review_digest<>v_review OR (
    v_today_proposed IS NOT NULL AND least(v_today_starts,v_today_proposed)<=clock_timestamp()) THEN
@@ -15758,7 +15878,7 @@ BEGIN
    BEGIN
     INSERT INTO public.lesson_slots(id,teacher_id,student_id,workplace_id,series_id,day_of_week,
      start_time,duration_minutes,start_date,end_date,active,rate_cents,is_home_visit)
-    VALUES(p_tail_id,v_teacher,v_segment.student_id,v_segment.workplace_id,v_segment.series_id,v_segment.day_of_week,
+    VALUES(p_tail_id,v_teacher,v_segment.student_id,v_segment.workplace_id,v_segment.series_id,(v_edit->>'weekday')::integer,
      (v_edit->>'start')::time,(v_edit->>'duration')::integer,(v_edit->>'from')::date,v_segment.end_date,
      true,(v_edit->>'rate')::integer,(v_edit->>'home')::boolean);
    EXCEPTION WHEN unique_violation THEN
@@ -15766,7 +15886,7 @@ BEGIN
    END;
   ELSE
    UPDATE public.lesson_slots SET start_time=(v_edit->>'start')::time,
-    duration_minutes=(v_edit->>'duration')::integer,rate_cents=(v_edit->>'rate')::integer,
+    day_of_week=(v_edit->>'weekday')::integer,duration_minutes=(v_edit->>'duration')::integer,rate_cents=(v_edit->>'rate')::integer,
     is_home_visit=(v_edit->>'home')::boolean
     WHERE id=v_segment.id AND teacher_id=v_teacher;
   END IF;

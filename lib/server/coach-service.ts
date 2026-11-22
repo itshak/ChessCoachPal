@@ -569,6 +569,10 @@ export async function sessionsUpdate(
     p_expected_updated_at:updates.expectedUpdatedAt ?? existing.updated_at,
     p_idempotency_key:updates.requestId ?? crypto.randomUUID(),
   });
+  if (error?.message.includes("SESSION_SCHEDULE_HISTORY_CONFLICT")) {
+    throw new CoachError("CONFLICT",409,
+      "This change would rewrite closed or recorded lesson history. Use the attendance or note correction workflow instead.");
+  }
   if (error?.code==="23P01" || error?.code==="23505" ||
       /SESSION_REPLAY_CONFLICT|SESSION_REVISION_CONFLICT/.test(error?.message??""))
     throw conflict();

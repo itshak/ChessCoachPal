@@ -81,3 +81,7 @@ Canonically migrated disposable PostgreSQL 17.12 databases were independently bo
 ## Same-day scope and effective roles checkpoint
 
 Canonical SQL SHA-256 `64d6f7cffb4616c3efea7fdd6e2a50b4b62b7f96c9a2f9b3d6eaf23c1e247457` applied once to each of two independently bootstrapped disposable PostgreSQL 17.12 instances. Both read-only structural snapshots matched byte-for-byte at SHA-256 `62fd4c6568589d84736a5b2eb6973d2c3a325238901c1cee7a31ab47c5518711` with zero differences. Actual role assertions and six authenticated scoped scheduling checks passed, including a naturally expired review. Isolated resources were removed. This does not certify live deployment or the entire acceptance matrix.
+
+## Bounded weekday, lesson history and downgrade checkpoint
+
+Canonical SQL SHA-256 `59185e1ab2301abed722429420c4531831ee6b8a2c4c961cb0f82b0ff9dc10d7` applied once to each independently bootstrapped disposable PostgreSQL 17.12 database. Both read-only snapshots had SHA-256 `3062271667cd9f7f7cd8e0326dcc774b028ae230b386458e2fb8a07a2da52d82` with zero differences: 105 public relations, 1,080 columns, 152 routines, 85 triggers, 96 policies, and 3,157 grants. The materialized contract audit checked 60 declared row types and 730 columns with zero issues on each database. Six SQL fixtures passed on both instances, including the effective-role check; 23 Auth/PostgREST cases passed on the combined code tree. Both disposable projects were removed. These checks neither replace exact hosted CI nor certify the full source matrix or a live deployment.
