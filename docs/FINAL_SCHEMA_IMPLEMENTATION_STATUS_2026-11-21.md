@@ -42,3 +42,15 @@ The current draft branch now adds synthetic authenticated/privileged E2E regress
 5. **Independent operational gate:** actual deployed database, historical records, grants and financial/portal identities must receive separate operator-approved inventory, off-host backup/restore and target-specific mapping under ADR-0017. Do not run `db push` to populated production, do not publish commercial terms and do not represent these storage contracts as activated premium features.
 
 Related PR #113 carries archived-student concurrency E2E evidence and must be reconciled against this final schema independently. Source implementation does not authorize deployment, plugin publication, billable subscriptions, or marking every OpenSpec checklist item complete.
+
+
+## Additional 2026-11-22 schema-integration work (unaccepted candidate)
+
+- Ported archived-student concurrent reactivation + lesson commit regression from the pre-consolidation hosted-plan columns in PR #113 onto PR #115's SQL `teacher_entitlement_state` and normalized synthetic plan. One winner/one `CAPACITY_EXCEEDED` loser, same-ID history, one session and idempotent retry are the expected assertions.
+- Preserved bounded synthetic invoice-fixture overlap retry instead of weakening the real schedule conflict guard.
+- Added SQL append-only plan-baseline, independent grant-issue/revocation, and platform subscription state-change audit triggers, with the canonical baseline SHA-256 regenerated. Audit events carry reason and revision, not payment payloads. Grant and subscription authorization remain service-side.
+- Added authenticated/privileged regression scenarios for one Personal workplace plus parallel Professional capacity writes, archive/reactivation, extensible new federation/category rating evidence, exact student/workplace report audience scope, revoked guest grants and immutable entitlement audit.
+- Fixed static final-schema inventory of quoted PostgreSQL column types; its previous parser reported empty columns for quoted legacy tables.
+- Candidate physical inventory: **105** public tables, **60** explicit TypeScript table contracts, **45** tables requiring a documented type/internal-ownership decision. This is a source inventory, not a declaration that all 45 are intentionally internal or that every effective RLS policy is safe.
+
+**Acceptance remains pending:** exact final-head green CI/E2E/security/Compose/restore (not a predecessor SHA), complete contract/crosswalk and tenant/financial/privacy/recurrence checks in the published matrix, and source freeze signoff. The independent ADR-0017 operator-owned real-data inventory/backup/cutover is explicitly outside source freeze and is **not** authorized by this PR.

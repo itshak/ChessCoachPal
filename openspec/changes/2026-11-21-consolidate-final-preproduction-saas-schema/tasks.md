@@ -2,6 +2,10 @@
 
 **2026-11-21 implementation candidate (draft PR #115):** The consolidated canonical baseline now contains 18 new domain/commercial relations, normalized SQL entitlement/active-roster guards, Personal/Professional workplace lifecycle, extensible rating categories, teacher evidence, recurrence exceptions and explicitly approved report snapshots, with matching TypeScript and web/MCP compatibility changes. The full field-level source status and limits are documented in `docs/FINAL_SCHEMA_IMPLEMENTATION_STATUS_2026-11-21.md`. **Every Phase 2 acceptance gate is still subject to exact-head SQL/E2E evidence; checkboxes below intentionally remain unchecked until accepted.** Only this proposal owns the pre-production DDL; previous merged candidates and test-only PR #113 are inputs, not independent full acceptance.
 
+## 2026-11-22 implementation evidence pending final-head checks
+
+A single source candidate on draft PR #115 now includes all 18 planned new relations, canonical SQL entitlement authority, explicit plan/grant/subscription audit triggers, the normalized PR #113 recovery race and new professional-workplace/rating/report scoping regressions. Physical source inventory currently counts 105 tables (60 explicitly typed, 45 requiring deliberate type/internal ownership decisions). Static parser fixes and the latest SQL SHA-256 require **their own** five-workflow exact-head pass. These are implemented slices, **not** unchecked Phase 0/1/2 signoffs, and production cutover remains separate.
+
 ## Phase 0 — audit and ownership (P0)
 
 - [ ] Pin exact merged-main SHA and inspect every open PR for DDL, RLS, TypeScript type, migration, seed and service-contract conflict; record update on PR #113 and any new PRs before implementation.

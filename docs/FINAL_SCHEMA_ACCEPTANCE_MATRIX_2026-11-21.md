@@ -1,6 +1,8 @@
 # Final-schema pre-production acceptance matrix (planned, not executed)
 
-Status: **all cases pending** until the consolidated P0 implementation is reviewed and exact-head tests run. This is a *test inventory*, not a report of successes or a publication claim. Website/MCP parity remains ADR-0003-required; real client acceptance is distinct.
+Status: **source acceptance in progress, not frozen**. The 2026-11-22 PR #115 source candidate includes new synthetic regressions for ENT-05, ENT-11, RAT-01 and TCH-03, plus new entitlement audit checks. Passing earlier implementation-commit workflows is not final-head acceptance; unexecuted scenarios remain open. This is a *test inventory*, not a report of successes or a publication claim. Website/MCP parity remains ADR-0003-required; real client acceptance is distinct.
+
+> **2026-11-22 scope note:** The candidate is a fresh-install physical schema for 105 tables. This matrix requires both positive and negative authenticated checks. A synthetic test is not independent proof of a populated private database, customer entitlements or a production release.
 
 | ID | Boundary / test | Deterministic expected result |
 | --- | --- | --- |
