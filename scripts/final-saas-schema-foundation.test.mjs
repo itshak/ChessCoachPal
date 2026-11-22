@@ -106,3 +106,8 @@ test("draft plan capabilities require active versioned catalog keys",()=>{
  assert.match(sql,/PERFORM 1 FROM public\.capability_definitions\s+WHERE key=NEW\.capability_key AND kind=NEW\.capability_kind AND active\s+FOR SHARE/);
  assert.match(sql,/RAISE EXCEPTION 'CAPABILITY_UNAVAILABLE' USING ERRCODE='23514'/);
 });
+
+
+test("operator capability metadata is filtered out of published plan catalog",()=>{
+ assert.match(sql,/CREATE POLICY ccp_plan_capabilities_read[\s\S]*JOIN public\.capability_definitions d[\s\S]*d\.active AND d\.security_class='teacher'/);
+});

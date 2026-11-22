@@ -13003,7 +13003,10 @@ CREATE POLICY ccp_plan_versions_read ON public.plan_versions
 CREATE POLICY ccp_plan_capabilities_read ON public.plan_capabilities
  FOR SELECT TO authenticated USING (
   EXISTS (SELECT 1 FROM public.plan_versions p
-          WHERE p.id=plan_version_id AND p.lifecycle='published')
+          JOIN public.capability_definitions d
+           ON d.key=capability_key AND d.kind=capability_kind
+          WHERE p.id=plan_version_id AND p.lifecycle='published'
+            AND d.active AND d.security_class='teacher')
  );
 ALTER TABLE public.teacher_entitlement_state ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.teacher_entitlement_grants ENABLE ROW LEVEL SECURITY;

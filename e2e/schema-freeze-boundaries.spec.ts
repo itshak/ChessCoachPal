@@ -628,3 +628,54 @@ test("draft plan rejects inactive capability, then pins its approved definition"
   await admin.from("capability_definitions").delete().eq("key",key);
  }
 });
+
+/** SCH-06/ENT-15: a visible plan must not disclose operator-only keys. */
+test("published plan catalog excludes operator capabilities for authenticated teacher",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ const member=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ const privateKey="operator."+randomUUID().replaceAll("-","");
+ const code="z"+randomUUID().replaceAll("-","").slice(0,15);
+ try{
+  const def=await admin.from("capability_definitions").insert({
+   key:privateKey,kind:"boolean",security_class:"operator",active:true,
+  });
+  expect(def.error).toBeNull();
+  const plan=await admin.from("plan_versions").insert({
+   code,version:1,lifecycle:"draft",
+  }).select("id").single();
+  expect(plan.error).toBeNull();
+  const id=plan.data!.id;
+  const caps=await admin.from("plan_capabilities").insert([
+   {plan_version_id:id,capability_key:privateKey,capability_kind:"boolean",
+    boolean_value:true,unlimited:false},
+   {plan_version_id:id,capability_key:"students.active",
+    capability_kind:"integer_limit",integer_value:0,unlimited:false},
+  ]);
+  expect(caps.error).toBeNull();
+  const publish=await admin.from("plan_versions").update({
+   lifecycle:"published",effective_at:"2026-01-01T00:00:00Z",
+  }).eq("id",id);
+  expect(publish.error).toBeNull();
+  const login=await member.auth.signInWithPassword({
+   email:teacher.email,password:teacher.password,
+  });
+  expect(login.error).toBeNull();
+  const visible=await member.from("plan_capabilities")
+   .select("capability_key").eq("plan_version_id",id);
+  expect(visible.error).toBeNull();
+  expect(visible.data).toEqual([{capability_key:"students.active"}]);
+  const hidden=await member.from("capability_definitions")
+   .select("key").eq("key",privateKey);
+  expect(hidden.error).toBeNull();
+  expect(hidden.data).toEqual([]);
+ }finally{
+  await member.auth.signOut();
+  // Published plan versions are intentionally immutable, so this synthetic
+  // catalog exists solely in the disposable test database.
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});

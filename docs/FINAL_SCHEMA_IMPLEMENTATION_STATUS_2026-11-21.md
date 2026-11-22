@@ -95,3 +95,8 @@ A source pass found 102 canonical `SECURITY DEFINER` functions. The inherited tr
 ## Draft plan catalog admission (candidate)
 
 New plan-capability references now require a currently active registered key of the declared kind, locked against concurrent deactivation/first use. A synthetic SQL-backed E2E regression proves disabled keys are rejected, accepted upon reviewed activation, and immutable after reference. The baseline manifest checksum was updated for this single-schema revision. This does not imply other Phase 2 acceptance gates are complete.
+
+
+## Published catalog operator privacy fix (source candidate)
+
+The authenticated `plan_capabilities` SELECT policy now requires a matching active teacher-visible definition, preventing a published plan from disclosing operator-only capability names or values even though `capability_definitions` already hid those keys. Added an authenticated disposable-DB regression with one public and one operator key and a source guard. The canonical manifest digest was regenerated; source-freeze signoff still requires the broader matrix.
