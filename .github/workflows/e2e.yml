@@ -78,7 +78,9 @@ jobs:
         # extra apt font-package fetch (prior CI failed on Ubuntu mirror DNS).
         # Browser launch still fails if any required library is missing.
         run: npx playwright install chromium
-      - name: Run smoke suite
+      - name: Run smoke suite (including production service worker)
+        env:
+          PWA_E2E: "1"
         run: npm run test:e2e
 
       # Each repetition provisions a different teacher; no shared seed calendar
