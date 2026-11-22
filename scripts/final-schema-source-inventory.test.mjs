@@ -16,6 +16,9 @@ test("final-schema inventory is exhaustive, deterministic and RLS complete",()=>
  assert.equal(report.table_count,report.tables.length);
  assert.equal(report.typed_count+report.untyped_count,report.table_count);
  assert.deepEqual(report.rls_missing,[]);
+ assert.deepEqual(report.unreviewed_type_ownership,[]);
+ assert.deepEqual(report.stale_internal_ownership,[]);
+ assert.equal(report.internal_sql_only_count,report.untyped_count);
  assert.equal(new Set(report.tables.map(t=>t.table)).size,report.table_count);
  for(const row of report.tables){
   assert.ok(row.table.length>0);
