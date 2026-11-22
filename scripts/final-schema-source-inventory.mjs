@@ -14,9 +14,9 @@ if(duplicate.length)throw new Error("Duplicate CREATE TABLE: "+duplicate.join(",
 const rows=names.map(name=>{
  const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
  const rls=new RegExp('ALTER\\s+TABLE\\s+(?:"public"|public)\\.(?:"'+escaped+'"|'+escaped+')\\s+ENABLE\\s+ROW\\s+LEVEL\\s+SECURITY','i').test(sql);
- const tableStart=new RegExp('CREATE\\\\s+TABLE\\\\s+(?:IF\\\\s+NOT\\\\s+EXISTS\\\\s+)?(?:"public"|public)\\\\.(?:"'+escaped+'"|'+escaped+')\\\\s*\\\\(','i').exec(sql);
+ const tableStart=new RegExp('CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:"public"|public)\\.(?:"'+escaped+'"|'+escaped+')\\s*\\(','i').exec(sql);
  const section=tableStart?sql.slice(tableStart.index,sql.indexOf(";",tableStart.index)+1):"";
- const declaredColumns=[...section.matchAll(/^\\s*(?:"([^"]+)"|([a-z_][a-z0-9_]*))\\s+(uuid|text|integer|bigint|boolean|numeric|date|timestamptz|timestamp|jsonb|json|smallint|time|character varying|double precision|real)\\b/gim)]
+ const declaredColumns=[...section.matchAll(/^\s*(?:"([^"]+)"|([a-z_][a-z0-9_]*))\s+(uuid|text|integer|bigint|boolean|numeric|date|timestamptz|timestamp|jsonb|json|smallint|time|character varying|double precision|real)\b/gim)]
   .map(m=>m[1]??m[2]);
  const typed=new RegExp('^\\s{6}'+escaped+':\\s*\\{','m').test(types);
  return {table:name,column_count:declaredColumns.length,columns:declaredColumns,rls_enabled:rls,typescript_contract:typed,
