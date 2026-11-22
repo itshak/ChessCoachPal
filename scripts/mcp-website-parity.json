@@ -374,7 +374,7 @@
       "existingTools": [
         "ccp_canonical_makeup_credits_list"
       ],
-      "explanation": "Web and MCP share source lesson timezone and owner-scoped frozen session/student credit identity. Calendar booking defaults to the owned venue date; the writer independently checks teacher cancellation policy, expiry, enrollment and single-use. e2e/parity-workplace-calendar-context.spec.ts.",
+      "explanation": "Web and MCP share source lesson timezone and owner-scoped frozen session/student identity. New student cancellations use typed recorded source-venue terms; legacy unknown retains teacher-global behavior, and unverified portable evidence does not authorize a make-up. Enrollment and single-use remain checked at booking. e2e/parity-workplace-cancellation.spec.ts and e2e/parity-workplace-calendar-context.spec.ts.",
       "evidenceTest": "e2e/canonical-makeup-credits-parity.spec.ts"
     },
     {
@@ -1292,7 +1292,7 @@
       "kind": "external",
       "parity": "not-applicable",
       "existingTools": [],
-      "explanation": "Guardian token authorizes one canonical session participant cancellation; a coach MCP token cannot impersonate a guardian. SQL validates token and frozen roster inside one transaction; repeat requests are idempotent."
+      "explanation": "Guardian token authorizes one canonical session participant cancellation; a coach MCP token cannot impersonate a guardian. SQL validates token and frozen roster inside one transaction and records applicable make-up notice terms from the grant workplace. Repeat requests retain original notice and terms. e2e/parity-workplace-cancellation.spec.ts."
     },
     {
       "path": "app/api/preferences/locale/route.ts",

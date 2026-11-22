@@ -21,9 +21,12 @@ function normalizeCancellationWindowHours(value: unknown): number {
 export async function getCancellationWindowHours(
   supabase: SupabaseClient,
   teacherId: string,
+  workplaceOverride?:number|null,
 ): Promise<number> {
-  const { data } = await supabase.from("teacher_settings")
+  if(workplaceOverride!=null)return normalizeCancellationWindowHours(workplaceOverride);
+  const { data,error } = await supabase.from("teacher_settings")
     .select("cancellation_window_hours").eq("teacher_id", teacherId).maybeSingle();
+  if(error)throw new Error("Unable to read cancellation notice window");
   return normalizeCancellationWindowHours(data?.cancellation_window_hours);
 }
 

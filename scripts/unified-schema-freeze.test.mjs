@@ -129,10 +129,14 @@ test("payer assignment SQL and TypeScript contracts reject unproven enrollment d
  ])ok(service.includes(marker),"Payer service missing "+marker);
 });
 
-test("workplace current student filter excludes future, ended, cancelled and archived entries",()=>{
+test("current students use the owned workplace day and exclude future, ended, cancelled and archived entries",()=>{
  const source=read("lib/server/workplace-student-scope.ts");
  for(const marker of [
-  'toLocalDateString(new Date(),policy.timezone)',
+  'db.from("workplaces").select("timezone")',
+  '.eq("teacher_id",teacherId).eq("id",workplaceId).maybeSingle()',
+  'toLocalDateString(new Date(),data.timezone)',
+  'const today=await workplaceRosterDate(db,teacherId,workplaceId)',
+  'if(!today)throw new Error("WORKPLACE_STUDENT_SCOPE_UNAVAILABLE")',
   '.is("cancelled_at",null)',
   'starts_on.is.null,starts_on.lte.',
   'ends_on.is.null,ends_on.gte.',

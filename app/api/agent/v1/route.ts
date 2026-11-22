@@ -33,6 +33,8 @@ import {archivedLessonRecoveryPreviewSchema,archivedLessonRecoveryCommitSchema,
 import {studentLifecyclePreview,studentLifecycleCommit}
  from "@/lib/server/student-lifecycle-service";
 
+import {workplaceCancellationWindowInput} from "@/lib/server/workplace-cancellation-policy";
+
 export const dynamic = "force-dynamic";
 
 const uuid = z.string().uuid();
@@ -43,15 +45,17 @@ const calls = z.discriminatedUnion("action", [
     timezone: z.string().trim().min(1).max(80).default("UTC"),
     currency: z.string().regex(/^[A-Z]{3}$/).default("USD"),
     locale: z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).default("en"),
-    policy: z.record(z.string(), z.unknown()).default({}) }),
+    policy: z.record(z.string(), z.unknown()).default({}),
+    cancellationWindowHours:workplaceCancellationWindowInput.optional() }),
   z.object({ action: z.literal("workplaces.update"), workplaceId: uuid,
     name: shortName.optional(), timezone: z.string().trim().min(1).max(80).optional(),
     currency: z.string().regex(/^[A-Z]{3}$/).optional(),
     locale: z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).optional(),
     policy: z.record(z.string(), z.unknown()).optional(),
+    cancellationWindowHours:workplaceCancellationWindowInput.optional(),
     expectedUpdatedAt:z.string().datetime({offset:true}),idempotencyKey:uuid,
   }).strict().refine(v=>v.name!==undefined||v.timezone!==undefined||
-    v.currency!==undefined||v.locale!==undefined||v.policy!==undefined,{
+    v.currency!==undefined||v.locale!==undefined||v.policy!==undefined||v.cancellationWindowHours!==undefined,{
     message:"At least one workplace field must change",
   }),
   z.object({ action: z.literal("workplaces.enroll"), workplaceId: uuid, studentId: uuid }),
@@ -274,7 +278,7 @@ export async function POST(req: NextRequest) {
       case "workplaces.create":
         assertTimezone(call.timezone);
         result = await workplacesCreate(db, teacherId, call.name, call.timezone,
-          call.currency, call.locale, call.policy); break;
+          call.currency, call.locale, call.policy, call.cancellationWindowHours); break;
       case "workplaces.update": {
         if(call.timezone!==undefined)assertTimezone(call.timezone);
         result=await writeRevisionedCoaching(db,"workplaces.update",{
@@ -284,6 +288,7 @@ export async function POST(req: NextRequest) {
           ...(call.currency!==undefined?{currency:call.currency}:{}),
           ...(call.locale!==undefined?{locale:call.locale}:{}),
           ...(call.policy!==undefined?{policy:call.policy}:{}),
+          ...(call.cancellationWindowHours!==undefined?{cancellationWindowHours:call.cancellationWindowHours}:{}),
           expectedUpdatedAt:call.expectedUpdatedAt,idempotencyKey:call.idempotencyKey,
         },call.expectedUpdatedAt,call.idempotencyKey);
         break;

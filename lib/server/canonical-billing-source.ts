@@ -64,7 +64,7 @@ export async function loadCanonicalBillingParticipants(
  if(!sessions.length)return [];
  const ids=sessions.map(s=>s.id);
  const roster:{session_id:string;student_id:string}[]=[];
- const attendance:{session_id:string;student_id:string;status:string;notice_at:string|null}[]=[];
+ const attendance:{session_id:string;student_id:string;status:string;notice_at:string|null;cancellation_policy_snapshot_origin:string|null}[]=[];
  for(const part of chunks(ids,75)){
   roster.push(...await pages(
    (lo,hi)=>db.from("session_participants").select("session_id,student_id")
@@ -72,7 +72,7 @@ export async function loadCanonicalBillingParticipants(
     .order("session_id").order("student_id").range(lo,hi),
    MAX_PARTICIPANTS,"frozen participants"));
   attendance.push(...await pages(
-   (lo,hi)=>db.from("session_attendance").select("session_id,student_id,status,notice_at")
+   (lo,hi)=>db.from("session_attendance").select("session_id,student_id,status,notice_at,cancellation_policy_snapshot_origin")
     .eq("teacher_id",teacherId).in("session_id",part)
     .order("session_id").order("student_id").range(lo,hi),
    MAX_PARTICIPANTS,"marked attendance"));
@@ -150,7 +150,11 @@ export async function loadCanonicalBillingParticipants(
    slotRateCents:session.slot_rate_cents,
    studentDefaultRateCents:student.default_rate_cents,
    studentTravelFeeCents:student.travel_fee_cents,
-   attendanceStatus:att?.status??null,noticeAt:att?.notice_at??null,
+   // A newly restored unverified cancellation is not a source for new invoice
+   // drafts or prepaid-credit allocation. This does not read or change paid
+   // history, or apply the make-up notice window to invoice classification.
+   attendanceStatus:att?.cancellation_policy_snapshot_origin==="restored_unverified"?null:att?.status??null,
+   noticeAt:att?.cancellation_policy_snapshot_origin==="restored_unverified"?null:att?.notice_at??null,
   });
  }
  return result;

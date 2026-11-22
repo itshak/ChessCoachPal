@@ -27,14 +27,15 @@ export async function resolvePortalContext(db:Db,secret:string):Promise<PortalCo
       .eq("id",grant.contactId).eq("teacher_id",grant.teacherId).maybeSingle(),
     db.from("students").select("id,name").eq("id",grant.studentId)
       .eq("teacher_id",grant.teacherId).maybeSingle(),
-    db.from("workplaces").select("id,name,timezone,locale,currency")
+    db.from("workplaces").select("id,name,timezone,locale,currency,cancellation_window_hours")
       .eq("id",grant.workplaceId).eq("teacher_id",grant.teacherId).maybeSingle(),
   ]);
   if(contact.error||student.error||workplace.error||
     contact.data?.status!=="active"||!student.data||!workplace.data)return null;
   const wp=workplace.data;
-  // Cancellation eligibility uses this typed teacher setting, not local JSON.
-  const cancellationWindowHours=await getCancellationWindowHours(db,grant.teacherId);
+  // The grant's owned venue, not selected context or arbitrary policy JSON,
+  // controls the notice displayed before the first recorded decision.
+  const cancellationWindowHours=await getCancellationWindowHours(db,grant.teacherId,wp.cancellation_window_hours);
   return {grant,contact:{id:contact.data.id,displayName:contact.data.display_name,
     preferredLocale:contact.data.preferred_locale},
     student:{id:student.data.id,name:student.data.name},

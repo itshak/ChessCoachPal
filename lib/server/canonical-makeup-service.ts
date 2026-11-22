@@ -3,10 +3,16 @@ import {getPolicy} from "@/lib/server/scheduling";
 import {recordedWorkplaceTimezones} from "@/lib/server/teacher-workplace-context";
 import {creditIsValid,toLocalDateString} from "@/lib/schedule";
 
+import type {CancellationPolicySnapshotOrigin} from "./workplace-cancellation-policy";
+
 type Db=SupabaseClient;
 type Mark={
  session_id:string;student_id:string;status:string;
  notice_at:string|null;marked_at:string|null;updated_at:string;
+ cancellation_policy_snapshot_origin:CancellationPolicySnapshotOrigin|null;
+ cancellation_was_timely_snapshot:boolean|null;
+ cancellation_timely_earns_makeup_snapshot:boolean|null;
+ cancellation_late_earns_makeup_snapshot:boolean|null;
 };
 type Session={
  id:string;starts_at:string;duration_minutes:number;status:string;
@@ -43,7 +49,7 @@ export async function canonicalMakeupCreditsList(
  const policy=await getPolicy(db,teacherId);
  const [attendance,replacements]=await Promise.all([
   rows<Mark>((start,end)=>db.from("session_attendance")
-   .select("session_id,student_id,status,notice_at,marked_at,updated_at")
+   .select("session_id,student_id,status,notice_at,marked_at,updated_at,cancellation_policy_snapshot_origin,cancellation_was_timely_snapshot,cancellation_timely_earns_makeup_snapshot,cancellation_late_earns_makeup_snapshot")
    .eq("teacher_id",teacherId)
    .in("status",["absent","student_cancelled","teacher_cancelled"])
    .order("session_id").order("student_id").range(start,end),
@@ -85,6 +91,14 @@ export async function canonicalMakeupCreditsList(
    case "teacher_cancelled":qualifies=policy.teacher_cancel_earns_makeup;break;
    case "absent":qualifies=policy.no_show_earns_makeup;break;
    case "student_cancelled":{
+    if(a.cancellation_policy_snapshot_origin==="restored_unverified")break;
+    if(a.cancellation_policy_snapshot_origin==="observed"){
+     qualifies=(a.cancellation_was_timely_snapshot===true?
+       a.cancellation_timely_earns_makeup_snapshot:a.cancellation_late_earns_makeup_snapshot)===true;
+     break;
+    }
+    // No historical terms were captured. Preserve legacy global behavior;
+    // a venue override introduced later must not manufacture old evidence.
     const notice=a.notice_at?Date.parse(a.notice_at):NaN;
     const advance=Date.parse(session.starts_at)-notice;
     const timely=Number.isFinite(advance)&&

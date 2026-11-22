@@ -1,3 +1,4 @@
+import {workplaceCancellationWindowInput} from "@/lib/server/workplace-cancellation-policy";
 import "server-only";
 import { z } from "zod";
 import {ratingRecordSchema,ratingFetchSchema,ratingListSchema} from "@/lib/chess-public-ratings";
@@ -268,7 +269,7 @@ const currency = z.string().regex(/^[A-Z]{3}$/);
 const catalogue = [
   {
     name: "ccp_workplaces_list",
-    description: "List the connected teacher's workplaces with stable owned IDs. For historical attendance date imports, verify the workplace ID for the batch; never guess workplace names or create a workplace from an unverified source label. This is the delegated MCP equivalent of the teacher website Manage workplaces inventory and historical import workplaces.list read; both share the owner-scoped workplace service. For active global filter options, use ccp_workplace_context_get.",
+    description: "List the connected teacher's workplaces with stable owned IDs. For historical attendance date imports, verify the workplace ID for the batch; never guess workplace names or create a workplace from an unverified source label. This is the delegated MCP equivalent of the teacher website Manage workplaces inventory and historical import workplaces.list read; both share the owner-scoped workplace service. For active global filter options, use ccp_workplace_context_get. cancellation_window_hours is a make-up notice override; null inherits the typed teacher setting.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
   },
   {
@@ -851,7 +852,7 @@ const catalogue = [
   },
   {
     name:"ccp_canonical_makeup_credits_list",
-    description:"Read unredeemed make-up credits and the source lesson timezone from frozen attendance; eligibility still uses teacher cancellation and expiry policy. To redeem, use ccp_private_sessions_create with the original makeupForSessionId and a separately confirmed venue-local date and time.",
+    description:"Read unredeemed make-up credits and the source lesson timezone from frozen attendance; New student cancellations retain the recorded source workplace window and make-up flags; older unknown and portable-unverified decisions are distinguished. Other attendance and expiry rules are unchanged. To redeem, use ccp_private_sessions_create with the original makeupForSessionId and a separately confirmed venue-local date and time.",
     schema:z.object({}).strict(),
     scope:"coach:read",readOnly:true,
   },
@@ -1434,19 +1435,20 @@ const catalogue = [
   // operation. The receipt is replay-safe and contains only IDs and audit metadata.
   {
     name: "ccp_workplaces_create",
-    description: "Create a teacher-owned workplace. Confirm its name, IANA time zone and currency.",
+    description: "Create a teacher-owned workplace. Confirm its name, IANA time zone, currency and optional whole-hour make-up notice override (null inherits the teacher default).",
     schema: z.object({name:shortName, timezone:z.string().min(1).max(80),
       currency:currency.default("USD"),locale:locale.default("en"),
-      policy:resourcePolicy.default({}),...mutation}).strict(),
+      policy:resourcePolicy.default({}),cancellationWindowHours:workplaceCancellationWindowInput.optional(),...mutation}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_workplaces_update",
-    description:"Edit an identified workplace using its latest revision from workplaces_list. No silent overwrite.",
+    description:"Edit an identified workplace using its latest revision from workplaces_list. Set cancellationWindowHours to whole hours (including 0) or null to inherit. Applies to new student cancellations only and does not set invoice policy. No silent overwrite.",
     schema:z.object({workplaceId:uuid,name:shortName.optional(),timezone:z.string().min(1).max(80).optional(),
-      currency:currency.optional(),locale:locale.optional(),policy:resourcePolicy.optional(),...revision}).strict()
+      currency:currency.optional(),locale:locale.optional(),policy:resourcePolicy.optional(),
+      cancellationWindowHours:workplaceCancellationWindowInput.optional(),...revision}).strict()
       .refine(v => v.name!==undefined || v.timezone!==undefined || v.currency!==undefined ||
-        v.locale!==undefined || v.policy!==undefined,"At least one change is required"),
+        v.locale!==undefined || v.policy!==undefined || v.cancellationWindowHours!==undefined,"At least one change is required"),
     scope:"coach:write",readOnly:false,
   },
   {

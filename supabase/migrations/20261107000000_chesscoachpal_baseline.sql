@@ -750,6 +750,28 @@ CREATE TABLE IF NOT EXISTS "public"."session_attendance" (
     "marked_at" timestamp with time zone,
     "marked_by" "uuid",
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    cancellation_window_hours_snapshot integer,
+    cancellation_session_starts_at_snapshot timestamptz,
+    cancellation_timely_earns_makeup_snapshot boolean,
+    cancellation_late_earns_makeup_snapshot boolean,
+    cancellation_policy_snapshot_origin text,
+    cancellation_was_timely_snapshot boolean GENERATED ALWAYS AS (
+      CASE WHEN cancellation_policy_snapshot_origin IS NOT NULL
+      THEN cancellation_session_starts_at_snapshot - notice_at >=
+        cancellation_window_hours_snapshot * interval '1 hour'
+      END
+    ) STORED,
+    CONSTRAINT attendance_cancellation_policy_snapshot_check CHECK (
+      (cancellation_policy_snapshot_origin IS NULL AND
+        num_nonnulls(cancellation_window_hours_snapshot,cancellation_session_starts_at_snapshot,
+          cancellation_timely_earns_makeup_snapshot,cancellation_late_earns_makeup_snapshot)=0)
+      OR (cancellation_policy_snapshot_origin IS NOT NULL AND
+        cancellation_policy_snapshot_origin IN ('observed','restored_unverified') AND
+        status='student_cancelled' AND notice_at IS NOT NULL AND isfinite(notice_at) AND
+        num_nonnulls(cancellation_window_hours_snapshot,cancellation_session_starts_at_snapshot,
+          cancellation_timely_earns_makeup_snapshot,cancellation_late_earns_makeup_snapshot)=4 AND
+        cancellation_window_hours_snapshot >= 0 AND isfinite(cancellation_session_starts_at_snapshot))
+    ),
     CONSTRAINT "session_attendance_note_check" CHECK (("char_length"("note") <= 5000)),
     CONSTRAINT "session_attendance_cancel_reason_check" CHECK (("char_length"("cancel_reason") <= 1000)),
     CONSTRAINT "session_attendance_cancellation_metadata_check" CHECK (
@@ -1116,6 +1138,8 @@ CREATE TABLE IF NOT EXISTS "public"."workplaces" (
     "locale" "text" DEFAULT 'en'::"text" NOT NULL,
     "policy" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    cancellation_window_hours integer,
+    CONSTRAINT workplaces_makeup_window_hours_check CHECK (cancellation_window_hours BETWEEN 0 AND 8760),
     CONSTRAINT "workplaces_currency_check" CHECK (("currency" ~ '^[A-Z]{3}$'::"text")),
     CONSTRAINT "workplaces_locale_check" CHECK (("locale" ~ '^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$'::"text")),
     CONSTRAINT "workplaces_name_check" CHECK (((("char_length"("btrim"("name")) >= 0) AND ("char_length"("btrim"("name")) <= 120)) AND ("char_length"("btrim"("name")) > 0))),
@@ -3072,10 +3096,19 @@ BEGIN
     RETURN v_saved.receipt;
   END IF;
 
+  IF p_operation IN ('workplaces.create','workplaces.update')
+     AND p_payload ? 'cancellationWindowHours'
+     AND p_payload->'cancellationWindowHours' <> 'null'::jsonb
+     AND (jsonb_typeof(p_payload->'cancellationWindowHours') IS DISTINCT FROM 'number'
+       OR (p_payload->>'cancellationWindowHours') !~ '^[0-9]{1,4}$'
+       OR CASE WHEN (p_payload->>'cancellationWindowHours') ~ '^[0-9]{1,4}$'
+         THEN (p_payload->>'cancellationWindowHours')::integer > 8760 ELSE false END) THEN
+    RAISE EXCEPTION 'VALIDATION_ERROR';
+  END IF;
   IF p_operation = 'workplaces.create' THEN
-    INSERT INTO public.workplaces(teacher_id,name,timezone,currency,locale,policy)
+    INSERT INTO public.workplaces(teacher_id,name,timezone,currency,locale,policy,cancellation_window_hours)
     VALUES(v_teacher,p_payload->>'name',p_payload->>'timezone',p_payload->>'currency',
-           p_payload->>'locale',p_payload->'policy')
+           p_payload->>'locale',p_payload->'policy',(p_payload->>'cancellationWindowHours')::integer)
     RETURNING id,updated_at INTO v_id,v_revision;
 
   ELSIF p_operation = 'workplaces.update' THEN
@@ -3084,7 +3117,9 @@ BEGIN
       timezone = COALESCE(p_payload->>'timezone',timezone),
       currency = COALESCE(p_payload->>'currency',currency),
       locale = COALESCE(p_payload->>'locale',locale),
-      policy = COALESCE(p_payload->'policy',policy)
+      policy = COALESCE(p_payload->'policy',policy),
+      cancellation_window_hours = CASE WHEN p_payload ? 'cancellationWindowHours'
+        THEN (p_payload->>'cancellationWindowHours')::integer ELSE cancellation_window_hours END
     WHERE id = (p_payload->>'workplaceId')::uuid AND teacher_id = v_teacher
       AND updated_at = p_expected_updated_at
     RETURNING id,updated_at INTO v_id,v_revision;
@@ -7690,6 +7725,22 @@ CREATE TRIGGER ccp_protect_canonical_financed_attendance
 -- each pupil; a separate invoice line per participant carries the charge.
 -- The receipt hash intentionally preserves the existing website/MCP billing
 -- operation identity, so a replay is transport independent.
+-- Block new automatic charges/credit allocations derived from a portable
+-- claimed cancellation; historical restore/read and ordinary billing terms
+-- remain independent from the workplace make-up policy.
+CREATE FUNCTION public.ccp_assert_verified_automatic_billing_source(
+ p_teacher uuid,p_session uuid,p_student uuid
+) RETURNS void LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_verified_billing_source$
+BEGIN
+ IF EXISTS(SELECT 1 FROM public.session_attendance
+   WHERE teacher_id=p_teacher AND session_id=p_session AND student_id=p_student
+     AND cancellation_policy_snapshot_origin='restored_unverified') THEN
+  RAISE EXCEPTION 'UNVERIFIED_CANCELLATION_BILLING_SOURCE' USING ERRCODE='23514';
+ END IF;
+END;
+$ccp_verified_billing_source$;
+REVOKE ALL ON FUNCTION public.ccp_assert_verified_automatic_billing_source(uuid,uuid,uuid)
+ FROM PUBLIC,anon,authenticated;
 CREATE OR REPLACE FUNCTION public.ccp_canonical_invoice_generation_commit(
  p_period_start date,p_period_end date,p_drafts jsonb,
  p_redemptions jsonb,p_request_id uuid
@@ -7742,6 +7793,7 @@ BEGIN
    IF v_session IS NULL OR v_student IS NULL OR v_package IS NULL THEN
     RAISE EXCEPTION 'INVALID_CREDIT_ALLOCATION' USING ERRCODE='22023';
    END IF;
+   PERFORM public.ccp_assert_verified_automatic_billing_source(v_teacher,v_session,v_student);
    INSERT INTO public.credit_redemptions(
     teacher_id,session_id,student_id,package_id
    ) VALUES(v_teacher,v_session,v_student,v_package);
@@ -7777,6 +7829,7 @@ BEGIN
        v_quantity::bigint*v_unit<>v_amount THEN
        RAISE EXCEPTION 'INVALID_BILLING_LINE' USING ERRCODE='22023';
      END IF;
+     PERFORM public.ccp_assert_verified_automatic_billing_source(v_teacher,v_session,v_student);
      INSERT INTO public.invoice_items(
        invoice_id,session_id,student_id,kind,description,
        quantity,unit_cents,amount_cents,sort_order
@@ -7864,6 +7917,7 @@ BEGIN
    v_package:=(v_credit->>'packageId')::uuid;
    IF v_session IS NULL OR v_student IS NULL OR v_package IS NULL THEN
     RAISE EXCEPTION 'INVALID_CREDIT_ALLOCATION' USING ERRCODE='22023';END IF;
+   PERFORM public.ccp_assert_verified_automatic_billing_source(v_teacher,v_session,v_student);
    INSERT INTO public.credit_redemptions(
     teacher_id,session_id,student_id,package_id
    ) VALUES(v_teacher,v_session,v_student,v_package);
@@ -7885,6 +7939,7 @@ BEGIN
     OR v_quantity::bigint*v_unit<>v_amount THEN
     RAISE EXCEPTION 'INVALID_REGENERATION_LINE' USING ERRCODE='22023';
    END IF;
+   PERFORM public.ccp_assert_verified_automatic_billing_source(v_teacher,v_session,v_student);
    INSERT INTO public.invoice_items(
      invoice_id,session_id,student_id,kind,description,
      quantity,unit_cents,amount_cents,sort_order
@@ -7994,11 +8049,17 @@ BEGIN
    v_valid_makeup:=CASE v_att.status
       WHEN 'teacher_cancelled' THEN coalesce(v_policy.teacher_cancel_earns_makeup,false)
       WHEN 'absent' THEN coalesce(v_policy.no_show_earns_makeup,false)
-      WHEN 'student_cancelled' THEN CASE WHEN
+      WHEN 'student_cancelled' THEN CASE
+        WHEN v_att.cancellation_policy_snapshot_origin='restored_unverified' THEN false
+        WHEN v_att.cancellation_policy_snapshot_origin='observed' THEN
+          CASE WHEN v_att.cancellation_was_timely_snapshot
+            THEN v_att.cancellation_timely_earns_makeup_snapshot
+            ELSE v_att.cancellation_late_earns_makeup_snapshot END
+        WHEN
         v_att.notice_at IS NOT NULL AND
         v_source.starts_at-v_att.notice_at >=
           coalesce(v_policy.cancellation_window_hours,24)*interval '1 hour'
-        THEN coalesce(v_policy.timely_cancel_earns_makeup,false)
+        THEN coalesce(v_policy.timely_cancel_earns_makeup,true)
         ELSE coalesce(v_policy.late_cancel_earns_makeup,false) END
       ELSE false END;
    IF NOT v_valid_makeup THEN
@@ -8604,6 +8665,7 @@ DECLARE
  v_session uuid;
  v_student uuid;
  v_att public.session_attendance%ROWTYPE;
+ v_present public.session_attendance%ROWTYPE;
  v_note public.session_notes%ROWTYPE;
 BEGIN
  IF v_teacher IS NULL OR
@@ -8629,17 +8691,50 @@ BEGIN
   END IF;
   SELECT * INTO v_att FROM jsonb_populate_record(
    NULL::public.session_attendance,p_source);
+  IF v_att.cancellation_policy_snapshot_origin IS NOT NULL AND
+     (v_att.cancellation_policy_snapshot_origin NOT IN ('observed','restored_unverified')
+      OR v_att.status IS DISTINCT FROM 'student_cancelled') THEN
+    RAISE EXCEPTION 'BACKUP_CANCELLATION_POLICY_INVALID' USING ERRCODE='22023';
+  END IF;
+  IF v_att.cancellation_policy_snapshot_origin IS NULL AND
+     num_nonnulls(v_att.cancellation_window_hours_snapshot,v_att.cancellation_session_starts_at_snapshot,
+       v_att.cancellation_timely_earns_makeup_snapshot,v_att.cancellation_late_earns_makeup_snapshot)<>0 THEN
+    RAISE EXCEPTION 'BACKUP_CANCELLATION_POLICY_INVALID' USING ERRCODE='22023';
+  END IF;
+  SELECT * INTO v_present FROM public.session_attendance
+   WHERE id=v_att.id AND teacher_id=v_teacher AND session_id=v_session AND student_id=v_student
+   FOR UPDATE;
+  IF FOUND AND (v_present.cancellation_policy_snapshot_origin IS NOT NULL OR
+                v_att.cancellation_policy_snapshot_origin IS NOT NULL) THEN
+   IF (v_present.status,v_present.notice_at) IS DISTINCT FROM (v_att.status,v_att.notice_at)
+      OR (v_att.cancellation_policy_snapshot_origin IS NOT NULL AND
+       (v_present.cancellation_window_hours_snapshot,v_present.cancellation_session_starts_at_snapshot,
+        v_present.cancellation_timely_earns_makeup_snapshot,v_present.cancellation_late_earns_makeup_snapshot)
+      IS DISTINCT FROM
+       (v_att.cancellation_window_hours_snapshot,v_att.cancellation_session_starts_at_snapshot,
+        v_att.cancellation_timely_earns_makeup_snapshot,v_att.cancellation_late_earns_makeup_snapshot)) THEN
+     RAISE EXCEPTION 'BACKUP_CANCELLATION_POLICY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   -- Matching imported evidence never rewrites trusted existing evidence.
+   RETURN;
+  END IF;
   PERFORM set_config('ccp.attendance_commit_session',v_session::text,true);
   INSERT INTO public.session_attendance(
     id,teacher_id,session_id,student_id,status,note,notice_at,
-    cancelled_by,cancel_reason,marked_at,marked_by,updated_at
+    cancelled_by,cancel_reason,marked_at,marked_by,updated_at,
+    cancellation_window_hours_snapshot,cancellation_session_starts_at_snapshot,
+    cancellation_timely_earns_makeup_snapshot,cancellation_late_earns_makeup_snapshot,
+    cancellation_policy_snapshot_origin
   ) VALUES(
     coalesce(v_att.id,gen_random_uuid()),v_teacher,v_session,v_student,
     v_att.status,coalesce(v_att.note,''),v_att.notice_at,
     v_att.cancelled_by,coalesce(v_att.cancel_reason,''),
     coalesce(v_att.marked_at,now()),
     CASE WHEN v_att.marked_by IS NULL THEN NULL ELSE v_teacher END,
-    coalesce(v_att.updated_at,now())
+    coalesce(v_att.updated_at,now()),
+    v_att.cancellation_window_hours_snapshot,v_att.cancellation_session_starts_at_snapshot,
+    v_att.cancellation_timely_earns_makeup_snapshot,v_att.cancellation_late_earns_makeup_snapshot,
+    CASE WHEN v_att.cancellation_policy_snapshot_origin IS NOT NULL THEN 'restored_unverified' END
   ) ON CONFLICT (id) DO UPDATE SET
     status=EXCLUDED.status,note=EXCLUDED.note,
     notice_at=EXCLUDED.notice_at,cancelled_by=EXCLUDED.cancelled_by,
@@ -8647,7 +8742,9 @@ BEGIN
     marked_by=EXCLUDED.marked_by,updated_at=EXCLUDED.updated_at
   WHERE public.session_attendance.teacher_id=v_teacher
     AND public.session_attendance.session_id=v_session
-    AND public.session_attendance.student_id=v_student;
+    AND public.session_attendance.student_id=v_student
+    AND public.session_attendance.cancellation_policy_snapshot_origin IS NULL
+    AND EXCLUDED.cancellation_policy_snapshot_origin IS NULL;
   IF NOT FOUND THEN
    RAISE EXCEPTION 'BACKUP_ATTENDANCE_ID_CONFLICT' USING ERRCODE='23505';
   END IF;
@@ -8680,6 +8777,57 @@ REVOKE ALL ON FUNCTION public.ccp_backup_upsert_protected(text,jsonb)
 GRANT EXECUTE ON FUNCTION public.ccp_backup_upsert_protected(text,jsonb)
  TO authenticated;
 
+
+-- Resolve current terms only at a new student cancellation decision.
+-- Session workplace (not viewer context or the proposed replacement venue)
+-- determines the override. Existing decisions, including legacy NULL, are
+-- retained for same-status correction; the audit preserves prior revisions.
+CREATE FUNCTION public.ccp_capture_cancellation_policy_snapshot()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $cancel_snapshot$
+BEGIN
+ IF NEW.status<>'student_cancelled' THEN
+   NEW.cancellation_window_hours_snapshot:=NULL;
+   NEW.cancellation_session_starts_at_snapshot:=NULL;
+   NEW.cancellation_timely_earns_makeup_snapshot:=NULL;
+   NEW.cancellation_late_earns_makeup_snapshot:=NULL;
+   NEW.cancellation_policy_snapshot_origin:=NULL;
+ ELSIF TG_OP='UPDATE' AND OLD.status='student_cancelled' THEN
+   NEW.cancellation_window_hours_snapshot:=OLD.cancellation_window_hours_snapshot;
+   NEW.cancellation_session_starts_at_snapshot:=OLD.cancellation_session_starts_at_snapshot;
+   NEW.cancellation_timely_earns_makeup_snapshot:=OLD.cancellation_timely_earns_makeup_snapshot;
+   NEW.cancellation_late_earns_makeup_snapshot:=OLD.cancellation_late_earns_makeup_snapshot;
+   NEW.cancellation_policy_snapshot_origin:=OLD.cancellation_policy_snapshot_origin;
+ ELSIF auth.uid()=NEW.teacher_id AND
+       current_setting('ccp.backup_import_teacher',true)=NEW.teacher_id::text THEN
+   -- The import marker suppresses historical backfill; it is not attestation.
+   -- The narrowly scoped restore helper accepts only informational snapshots.
+   IF NEW.cancellation_policy_snapshot_origin IS NOT NULL THEN
+     NEW.cancellation_policy_snapshot_origin:='restored_unverified';
+   ELSE
+     NEW.cancellation_window_hours_snapshot:=NULL;
+     NEW.cancellation_session_starts_at_snapshot:=NULL;
+     NEW.cancellation_timely_earns_makeup_snapshot:=NULL;
+     NEW.cancellation_late_earns_makeup_snapshot:=NULL;
+   END IF;
+ ELSE
+   SELECT coalesce(w.cancellation_window_hours,t.cancellation_window_hours,24),s.starts_at,
+          coalesce(t.timely_cancel_earns_makeup,true),coalesce(t.late_cancel_earns_makeup,false)
+     INTO STRICT NEW.cancellation_window_hours_snapshot,NEW.cancellation_session_starts_at_snapshot,
+                 NEW.cancellation_timely_earns_makeup_snapshot,NEW.cancellation_late_earns_makeup_snapshot
+     FROM public.teaching_sessions s JOIN public.workplaces w
+       ON w.id=s.workplace_id AND w.teacher_id=s.teacher_id
+     LEFT JOIN public.teacher_settings t ON t.teacher_id=s.teacher_id
+    WHERE s.id=NEW.session_id AND s.teacher_id=NEW.teacher_id;
+   NEW.cancellation_policy_snapshot_origin:='observed';
+ END IF;
+ RETURN NEW;
+END;
+$cancel_snapshot$;
+REVOKE ALL ON FUNCTION public.ccp_capture_cancellation_policy_snapshot()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_capture_cancellation_policy_snapshot
+ BEFORE INSERT OR UPDATE ON public.session_attendance
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_capture_cancellation_policy_snapshot();
 
 -- Append-only canonical attendance revision evidence. Guarded owner-scoped
 -- SQL commands (teacher, delegated MCP, guardian portal and roster correction)
@@ -8735,14 +8883,28 @@ BEGIN
    'status',OLD.status,'note',OLD.note,
    'noticeAt',OLD.notice_at,'cancelledBy',OLD.cancelled_by,
    'cancelReason',OLD.cancel_reason,'markedAt',OLD.marked_at,
-   'markedBy',OLD.marked_by,'revision',OLD.updated_at);
+   'markedBy',OLD.marked_by,'revision',OLD.updated_at,
+   'cancellationPolicySnapshot',CASE WHEN OLD.cancellation_policy_snapshot_origin IS NOT NULL THEN
+    jsonb_build_object('origin',OLD.cancellation_policy_snapshot_origin,
+     'windowHours',OLD.cancellation_window_hours_snapshot,
+     'sessionStartsAt',OLD.cancellation_session_starts_at_snapshot,
+     'timelyEarnsMakeup',OLD.cancellation_timely_earns_makeup_snapshot,
+     'lateEarnsMakeup',OLD.cancellation_late_earns_makeup_snapshot,
+     'wasTimely',OLD.cancellation_was_timely_snapshot) END);
  END IF;
  IF TG_OP<>'DELETE' THEN
   v_new:=jsonb_build_object(
    'status',NEW.status,'note',NEW.note,
    'noticeAt',NEW.notice_at,'cancelledBy',NEW.cancelled_by,
    'cancelReason',NEW.cancel_reason,'markedAt',NEW.marked_at,
-   'markedBy',NEW.marked_by,'revision',NEW.updated_at);
+   'markedBy',NEW.marked_by,'revision',NEW.updated_at,
+   'cancellationPolicySnapshot',CASE WHEN NEW.cancellation_policy_snapshot_origin IS NOT NULL THEN
+    jsonb_build_object('origin',NEW.cancellation_policy_snapshot_origin,
+     'windowHours',NEW.cancellation_window_hours_snapshot,
+     'sessionStartsAt',NEW.cancellation_session_starts_at_snapshot,
+     'timelyEarnsMakeup',NEW.cancellation_timely_earns_makeup_snapshot,
+     'lateEarnsMakeup',NEW.cancellation_late_earns_makeup_snapshot,
+     'wasTimely',NEW.cancellation_was_timely_snapshot) END);
  END IF;
  INSERT INTO public.ccp_session_attendance_audit(
    teacher_id,session_id,student_id,action,actor_role,actor_id,
