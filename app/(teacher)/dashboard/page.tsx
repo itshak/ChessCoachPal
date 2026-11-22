@@ -44,7 +44,7 @@ export default async function DashboardPage() {
         <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
           <div className="text-sm text-muted">{t("workplaces")}</div>
           <div className="text-3xl font-bold mt-1">{summary.scopedWorkplaceCount}</div>
-          <Link href="/coaching" className="text-sm text-primary hover:underline">{t("manageWorkplaces")}</Link>
+          <Link href="/coaching#manage-workplaces" className="text-sm text-primary hover:underline">{t("manageWorkplaces")}</Link>
         </Card>
         <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
           <div className="text-sm text-muted">{t("classGroups")}</div>

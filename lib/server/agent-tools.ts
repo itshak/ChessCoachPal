@@ -268,7 +268,7 @@ const currency = z.string().regex(/^[A-Z]{3}$/);
 const catalogue = [
   {
     name: "ccp_workplaces_list",
-    description: "List the connected teacher's workplaces with stable owned IDs. For historical attendance date imports, verify the workplace ID for the batch; never guess workplace names or create a workplace from an unverified source label. This is the delegated MCP equivalent of the teacher website workplaces.list read used by historical import; both share the owner-scoped workplace service.",
+    description: "List the connected teacher's workplaces with stable owned IDs. For historical attendance date imports, verify the workplace ID for the batch; never guess workplace names or create a workplace from an unverified source label. This is the delegated MCP equivalent of the teacher website Manage workplaces inventory and historical import workplaces.list read; both share the owner-scoped workplace service. For active global filter options, use ccp_workplace_context_get.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
   },
   {
@@ -760,7 +760,7 @@ const catalogue = [
   },
   {
     name:"ccp_workplace_context_get",
-    description:"Read the teacher's global filter and active owned workplaces. If its previous workplace is unavailable, the effective selection is null (All Workplaces) with selectionWasStale=true. This is a filter, not an access grant or a historical data change.",
+    description:"Read the teacher's global filter and active owned workplaces. An archived saved workplace falls back to null (All Workplaces) with selectionWasStale=true. If the reference is already cleared, including on deletion, a fresh read returns ordinary All (null, selectionWasStale=false); it cannot infer the previous venue. This is a filter, not an access grant or a historical data change.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {

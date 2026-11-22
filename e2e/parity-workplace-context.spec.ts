@@ -197,3 +197,90 @@ test("PARITY:PARITY-global workplace context persists across browser and MCP wit
     expect(deleted.error).toBeNull();
   }
 });
+
+test("PARITY: Manage workplaces is a keyboard target and only the open tab can recognize a deleted selection",async({page,request,context})=>{
+  test.setTimeout(90000);
+  const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+  });
+  const email="workplace-deletion-"+randomUUID()+"@example.invalid",password="SyntheticDeleteContext-34!";
+  const created=await admin.auth.admin.createUser({email,password,email_confirm:true});
+  expect(created.error).toBeNull();
+  const teacherId=created.data.user!.id;
+  try{
+    expect((await admin.from("teachers").insert({id:teacherId,email,display_name:"Synthetic RTL workplace coach",
+      onboarding_tour_completed_at:new Date().toISOString()})).error).toBeNull();
+    await configureSyntheticStudentCapacity(admin,teacherId,5,3);
+    const call=await delegatedTool(page,request,"coach:read coach:write",{email,password});
+    expect((await call("ccp_teacher_profile_update",{preferredLocale:"he",confirmed:true})).error).toBeUndefined();
+    const name="מקום לבדיקה "+randomUUID();
+    const obsolete=await call("ccp_workplaces_create",{
+      name,timezone:"Asia/Jerusalem",currency:"ILS",locale:"he",policy:{},idempotencyKey:randomUUID(),
+    });
+    expect(obsolete.error).toBeUndefined();
+    const gone=obsolete.data.entityId as string;
+    const selected=await call("ccp_workplace_context_get",{});
+    expect(selected.error).toBeUndefined();
+    const kept=selected.data.workplaces.find((w:{id:string})=>w.id!==gone).id as string;
+    expect((await call("ccp_workplace_context_set",{
+      selectedWorkplaceId:gone,expectedSelectedWorkplaceId:null,confirmed:true,
+    })).error).toBeUndefined();
+
+    await page.goto("/dashboard");
+    await expect(page.locator("html")).toHaveAttribute("dir","rtl");
+    const manage=page.getByRole("link",{name:"ניהול מקומות עבודה",exact:true});
+    await manage.focus();
+    await manage.press("Enter");
+    await expect(page).toHaveURL(/\/coaching#manage-workplaces$/);
+    const section=page.getByRole("region",{name:"מקומות עבודה",exact:true});
+    const heading=section.getByRole("heading",{name:"מקומות עבודה",exact:true});
+    await expect(heading).toBeFocused();
+    await expect(heading).toBeInViewport();
+    await expect(section.getByText(name,{exact:true})).toBeVisible();
+    const managed=await call("ccp_workplaces_list",{});
+    expect(managed.error).toBeUndefined();
+    expect(managed.data).toEqual(expect.arrayContaining([expect.objectContaining({id:gone,name})]));
+
+    const selector=page.getByRole("combobox",{name:"הקשר מקום העבודה הפעיל"});
+    const fallback="מקום העבודה הקודם אינו זמין. מוצגים כל מקומות העבודה.";
+    await expect(selector).toHaveValue(gone);
+    expect((await admin.from("workplaces").delete().eq("id",gone).eq("teacher_id",teacherId)
+      .select("id").single()).data).toEqual({id:gone});
+    const freshApi=await page.request.get("/api/teacher/workplace-context");
+    const fresh=await freshApi.json();
+    expect(fresh).toMatchObject({selectedWorkplaceId:null,selectionWasStale:false});
+    expect((await call("ccp_workplace_context_get",{})).data).toEqual(fresh);
+
+    // Another real selection attempt uses the tab's old CAS and refreshes
+    // the route on 409, preserving the mounted header's local observation.
+    const conflict=page.waitForResponse(r=>r.url().endsWith("/api/teacher/workplace-context")&&r.request().method()==="PUT");
+    await selector.selectOption(kept);
+    expect((await conflict).status()).toBe(409);
+    await expect(selector).toHaveValue("all");
+    await expect(selector).toHaveAccessibleDescription(fallback);
+    await expect(page.getByRole("status").filter({hasText:fallback})).toBeVisible();
+    await expect(selector.locator(`option[value="${gone}"]`)).toHaveCount(0);
+
+    const separate=await context.newPage();
+    try{
+      await separate.goto("/dashboard");
+      await expect(separate.getByRole("combobox",{name:"הקשר מקום העבודה הפעיל"})).toHaveValue("all");
+      await expect(separate.getByText(fallback,{exact:true})).toHaveCount(0);
+    }finally{await separate.close();}
+
+    await selector.selectOption(kept);
+    await expect.poll(async()=>(await call("ccp_workplace_context_get",{})).data.selectedWorkplaceId).toBe(kept);
+    await expect(page.getByText(fallback,{exact:true})).toHaveCount(0);
+
+    // A deliberate cross-transport clear while the old venue still exists
+    // is ordinary All, not a missing-workplace recovery.
+    expect((await call("ccp_workplace_context_set",{
+      selectedWorkplaceId:null,expectedSelectedWorkplaceId:kept,confirmed:true,
+    })).error).toBeUndefined();
+    const clearRefresh=page.waitForResponse(r=>r.url().endsWith("/api/teacher/workplace-context")&&r.request().method()==="PUT");
+    await selector.selectOption("all");
+    expect((await clearRefresh).status()).toBe(200);
+    await expect(selector).toHaveValue("all");
+    await expect(page.getByText(fallback,{exact:true})).toHaveCount(0);
+  }finally{expect((await admin.auth.admin.deleteUser(teacherId)).error).toBeNull();}
+});

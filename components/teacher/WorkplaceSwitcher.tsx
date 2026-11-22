@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect,useId,useState} from "react";
+import {useEffect,useId,useRef,useState} from "react";
 import {useRouter} from "next/navigation";
 import {useTranslations} from "next-intl";
 
@@ -15,7 +15,17 @@ export function WorkplaceSwitcher({selectedWorkplaceId,selectionWasStale,workpla
   const [current,setCurrent]=useState(selectedWorkplaceId);
   const [pending,setPending]=useState(false);
   const [error,setError]=useState(false);
-  useEffect(()=>{setCurrent(selectedWorkplaceId);setError(false);},[selectedWorkplaceId]);
+  const previousSelection=useRef(selectedWorkplaceId);
+  const [lostDisplayedSelection,setLostDisplayedSelection]=useState(false);
+  useEffect(()=>{
+    const prior=previousSelection.current;
+    if(selectedWorkplaceId!==null)setLostDisplayedSelection(false);
+    else if(prior!==null)setLostDisplayedSelection(!workplaces.some(w=>w.id===prior));
+    previousSelection.current=selectedWorkplaceId;
+    setCurrent(selectedWorkplaceId);
+    setError(false);
+  },[selectedWorkplaceId,workplaces]);
+  const fallback=selectionWasStale||lostDisplayedSelection;
   async function change(selected:string){
     if(pending)return;
     const desired=selected==="all"?null:selected;
@@ -30,6 +40,8 @@ export function WorkplaceSwitcher({selectedWorkplaceId,selectionWasStale,workpla
       });
       if(!response.ok)throw new Error("CONTEXT_CHANGE_FAILED");
       const data=await response.json() as {selectedWorkplaceId:string|null};
+      previousSelection.current=data.selectedWorkplaceId;
+      setLostDisplayedSelection(false);
       setCurrent(data.selectedWorkplaceId);
       router.refresh();
     }catch{
@@ -41,12 +53,12 @@ export function WorkplaceSwitcher({selectedWorkplaceId,selectionWasStale,workpla
     <label htmlFor="global-workplace-switch" className="sr-only">{t("workplaceFilter")}</label>
     <select id="global-workplace-switch" value={current??"all"}
       onChange={event=>void change(event.target.value)} disabled={pending}
-      aria-busy={pending} aria-describedby={selectionWasStale?fallbackId:undefined} title={t("workplaceFilter")}
+      aria-busy={pending} aria-describedby={fallback?fallbackId:undefined} title={t("workplaceFilter")}
       className="w-28 sm:w-36 lg:w-40 truncate rounded-lg border border-border bg-surface text-foreground px-2 py-1.5 text-xs cursor-pointer focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-60">
       <option value="all">{t("allWorkplaces")}</option>
       {workplaces.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
     </select>
-    {selectionWasStale&&<span id={fallbackId} className="max-w-40 text-[10px] text-muted" role="status">
+    {fallback&&<span id={fallbackId} className="max-w-40 text-[10px] text-muted" role="status">
       {t("workplaceFilterFallback")}
     </span>}
     {error&&<span className="text-[10px] text-error" role="alert">{t("workplaceFilterFailed")}</span>}

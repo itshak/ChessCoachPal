@@ -86,6 +86,12 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
   const [editGroupName, setEditGroupName] = useState("");
   const [groupMembers, setGroupMembers] = useState<Roster[]>([]);
   const [groupMembersId, setGroupMembersId] = useState("");
+  const workplaceHeadingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(()=>{
+    if (window.location.hash === "#manage-workplaces") {
+      workplaceHeadingRef.current?.focus({preventScroll:true});
+    }
+  },[]);
   const groupLoadRef = useRef(0);
   const [workplaceId, setWorkplaceId] = useState(initialWorkplaceId??"");
   const [groupId, setGroupId] = useState("");
@@ -477,8 +483,9 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
         ) : <p className="text-sm text-muted">{t("emptySessions")}</p>}
       </section>
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <section className={panel}>
-          <h2 className="text-lg font-semibold">{t("workplaces")}</h2>
+        <section id="manage-workplaces" aria-labelledby="manage-workplaces-heading" className={panel}>
+          <h2 ref={workplaceHeadingRef} id="manage-workplaces-heading" tabIndex={-1}
+            className="text-lg font-semibold focus-visible:outline-2 focus-visible:outline-primary">{t("workplaces")}</h2>
           <ul className="text-sm space-y-1 [overflow-wrap:anywhere]">
             {workplaces.map(w => <li key={w.id}><bdi dir="auto">{w.name}</bdi> · <span dir="ltr">{w.timezone}</span> · <span dir="ltr">{w.currency}</span></li>)}
           </ul>
