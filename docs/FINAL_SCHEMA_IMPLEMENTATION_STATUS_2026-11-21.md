@@ -15,11 +15,25 @@ Authoritative OpenSpec: `openspec/changes/2026-11-21-consolidate-final-preproduc
 - **Application contracts.** SQL provisioned onboarding, TypeScript table contracts, updated website account plan/capacity view, MCP subscription handoff and archived workplace filtering. Inherited hosted Stripe checkout/portal/webhook routes deliberately return 503 until a verified provider-neutral subscription adapter is separately reviewed. No provider redirect or unverified event grants Pro.
 - **Security and CI contracts.** RLS and restricted grants on new relations, append-only/revision guards, signature-event identity protection, same-PR website/MCP parity registry review, synthetic fixtures and SQL negative probes, schema manifest SHA-256 and static contract tests.
 
+## Verified GitHub Actions evidence (2026-11-22)
+
+The implementation commit `0f8d283a0a78a749c5709271777a86668d3b5906` completed **all five** GitHub Actions workflows successfully. This verifies the automated gates on that exact code revision, **not** every independent field-level or live deployment acceptance item:
+
+| Workflow | Run | Result |
+| --- | --- | --- |
+| CI | [44955791714](https://github.com/itshak/ChessCoachPal/actions/runs/44955791714) | success |
+| E2E (authenticated Playwright) | [44955791630](https://github.com/itshak/ChessCoachPal/actions/runs/44955791630) | success |
+| Security history audit | [44955791627](https://github.com/itshak/ChessCoachPal/actions/runs/44955791627) | success |
+| M5 self-host Compose smoke | [44955791648](https://github.com/itshak/ChessCoachPal/actions/runs/44955791648) | success |
+| M5 backup-restore smoke | [44955791696](https://github.com/itshak/ChessCoachPal/actions/runs/44955791696) | success |
+
+These runs are attached to the prior code commit. Subsequent documentation or code commits require their own exact-head checks before merge. The OpenSpec Phase 2 scenario-specific matrix, formal inventory/crosswalk signoff, live provider behavior and separate ADR-0017 private beta operational gate remain outstanding.
+
 ## Release-blocking acceptance still to be established
 
 1. **Exact-head SQL:** clean first and second-instance bootstrap/restore, non-privileged tenant/SECURITY DEFINER probes, plan/grant expiry, parallel student and professional workplace capacity changes, and a deterministic catalog/replay test. Fix all newly discovered failures in PR #115 rather than waiving the checks.
 2. **End-to-end:** existing authenticated website/MCP behavior and archived-student concurrency, capability summary readback, group-session accounting, report audience boundaries, historical/financial safety and safe downgrades on the final source revision. A passing source audit is not independently verified functionality.
-3. **CI:** required exact-head TypeScript/lint/unit, E2E, security, self-host Compose and synthetic second-instance backup/restore must all be green. Record the commit SHA and GitHub Actions runs only once verified.
+3. **CI:** All five workflows passed on implementation commit `0f8d283` (links above). Recheck the final branch head after any subsequent changes, and verify scenario-specific skips and scope separately.
 4. **Field and inventory verification:** final read-only table/constraint/index/function and generated type coverage, documented remaining schema-only capabilities, tenant-scoped retention/erasure, pricing and provider decisions. The separate 13-proposal crosswalk still needs formal signoff.
 5. **Independent operational gate:** actual deployed database, historical records, grants and financial/portal identities must receive separate operator-approved inventory, off-host backup/restore and target-specific mapping under ADR-0017. Do not run `db push` to populated production, do not publish commercial terms and do not represent these storage contracts as activated premium features.
 
