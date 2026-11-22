@@ -188,9 +188,9 @@ export interface Database {
         };
       };
       class_groups: {
-        Row: { id: string; teacher_id: string; workplace_id: string; name: string; created_at: string };
-        Insert: { id?: string; teacher_id: string; workplace_id: string; name: string; created_at?: string };
-        Update: { name?: string };
+        Row: { id: string; teacher_id: string; workplace_id: string; name: string; created_at: string; updated_at: string };
+        Insert: { id?: string; teacher_id: string; workplace_id: string; name: string; created_at?: string; updated_at?: string };
+        Update: { name?: string; updated_at?: string };
       };
       group_enrollments: {
         Row: { id: string; teacher_id: string; group_id: string; workplace_id: string; student_id: string; created_at: string };
@@ -202,13 +202,17 @@ export interface Database {
           id: string; teacher_id: string; kind: "game"|"puzzle"|"drill"|"study_chapter"|"external_link";
           title: string; description: string; source_url: string|null;
           request_id: string; request_hash: string; created_at: string; updated_at: string;
+          revision: number;
+          archived_at: string | null;
         };
         Insert: {
           id?: string; teacher_id: string; kind: "game"|"puzzle"|"drill"|"study_chapter"|"external_link";
           title: string; description?: string; source_url?: string|null;
           request_id: string; request_hash: string; created_at?: string; updated_at?: string;
+          revision?: number;
+          archived_at?: string | null;
         };
-        Update: { title?: string; description?: string; source_url?: string|null; updated_at?: string };
+        Update: { title?: string; description?: string; source_url?: string|null; updated_at?: string; archived_at?: string | null };
       };
       // Unified schema only; provider-sync API/workers require separate OpenSpec.
       student_rating_sync_consents: {
@@ -271,6 +275,8 @@ export interface Database {
           source_url:string|null;source_digest:string|null;
           verification_state:"unverified"|"provider_published";
           external_player_id:string|null;source_handle_revision:number|null;
+          preview_digest: string | null;
+          source_username: string | null;
         };
         Insert: {
           id?: string; teacher_id: string; student_id: string;
@@ -284,6 +290,8 @@ export interface Database {
           source_url?:string|null;source_digest?:string|null;
           verification_state?:"unverified"|"provider_published";
           external_player_id?:string|null;source_handle_revision?:number|null;
+          preview_digest?: string | null;
+          source_username?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["student_rating_snapshots"]["Insert"]>;
       };
@@ -480,6 +488,7 @@ export interface Database {
           created_at: string;
           onboarding_tour_completed_at: string | null;
           calendar_token: string;
+          default_national_federation_code: string | null;
         };
         Insert: {
           id: string;
@@ -491,6 +500,7 @@ export interface Database {
           created_at?: string;
           onboarding_tour_completed_at?: string | null;
           calendar_token?: string;
+          default_national_federation_code?: string | null;
         };
         Update: {
           id?: string;
@@ -501,6 +511,7 @@ export interface Database {
           selected_workplace_id?: string | null;
           onboarding_tour_completed_at?: string | null;
           calendar_token?: string;
+          default_national_federation_code?: string | null;
         };
       };
       students: {
@@ -520,6 +531,16 @@ export interface Database {
           travel_fee_cents: number | null;
           archived_at: string | null;
           created_at: string;
+          updated_at: string;
+          name_aliases: string[];
+          strength: number | null;
+          lichess_username: string | null;
+          chesscom_username: string | null;
+          lichess_rating: number | null;
+          chesscom_rating: number | null;
+          name_search: string;
+          chess_goals: string;
+          chess_ratings: Json;
         };
         Insert: {
           id?: string;
@@ -537,6 +558,15 @@ export interface Database {
           travel_fee_cents?: number | null;
           archived_at?: string | null;
           created_at?: string;
+          updated_at?: string;
+          name_aliases?: string[];
+          strength?: number | null;
+          lichess_username?: string | null;
+          chesscom_username?: string | null;
+          lichess_rating?: number | null;
+          chesscom_rating?: number | null;
+          chess_goals?: string;
+          chess_ratings?: Json;
         };
         Update: {
           name?: string;
@@ -551,6 +581,14 @@ export interface Database {
           default_rate_cents?: number | null;
           travel_fee_cents?: number | null;
           archived_at?: string | null;
+          name_aliases?: string[];
+          strength?: number | null;
+          lichess_username?: string | null;
+          chesscom_username?: string | null;
+          lichess_rating?: number | null;
+          chesscom_rating?: number | null;
+          chess_goals?: string;
+          chess_ratings?: Json;
         };
       };
       teacher_settings: {
@@ -696,6 +734,7 @@ export interface Database {
           rate_cents: number | null;
           is_home_visit: boolean;
           created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -710,6 +749,7 @@ export interface Database {
           active?: boolean;
           rate_cents?: number | null;
           is_home_visit?: boolean;
+          updated_at?: string;
         };
         Update: {
           workplace_id?: string | null;
@@ -721,6 +761,7 @@ export interface Database {
           active?: boolean;
           rate_cents?: number | null;
           is_home_visit?: boolean;
+          updated_at?: string;
         };
       };
       invoices: {
@@ -741,6 +782,7 @@ export interface Database {
           stripe_checkout_url: string | null;
           notes: string;
           created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -758,6 +800,7 @@ export interface Database {
           stripe_payment_intent_id?: string | null;
           stripe_checkout_url?: string | null;
           notes?: string;
+          updated_at?: string;
         };
         Update: {
           status?: InvoiceStatus;
@@ -770,6 +813,7 @@ export interface Database {
           stripe_payment_intent_id?: string | null;
           stripe_checkout_url?: string | null;
           notes?: string;
+          updated_at?: string;
         };
       };
       invoice_items: {
@@ -936,6 +980,7 @@ export interface Database {
           slot_occurrence_date: string | null; local_timezone: string | null;
           is_home_visit: boolean; rescheduled_from_date: string | null;
           makeup_for_session_id: string | null; makeup_for_student_id: string | null;
+          roster_mode: "standard" | "ad_hoc";
         };
         Insert: {
           id?: string; teacher_id: string; workplace_id?: string | null;
@@ -947,6 +992,7 @@ export interface Database {
           slot_occurrence_date?: string | null; local_timezone?: string | null;
           is_home_visit?: boolean; rescheduled_from_date?: string | null;
           makeup_for_session_id?: string | null; makeup_for_student_id?: string | null;
+          roster_mode?: "standard" | "ad_hoc";
         };
         Update: {
           workplace_id?: string | null; group_id?: string | null;
@@ -958,6 +1004,7 @@ export interface Database {
           rescheduled_from_date?: string | null;
           makeup_for_session_id?: string | null; makeup_for_student_id?: string | null;
           updated_at?: string;
+          roster_mode?: "standard" | "ad_hoc";
         };
       };
       session_participants: {
