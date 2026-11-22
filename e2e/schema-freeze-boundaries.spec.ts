@@ -292,3 +292,66 @@ test("cancelled recurring occurrence can be reviewed, revoked and replaced witho
   expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
  }
 });
+
+/** SCH-04/06: tenant identity is enforced by both composite foreign keys
+ * and authenticated row security, not by UI filters or caller claims. */
+test("cross-tenant report references are rejected and private reports are invisible",async()=>{
+ const admin=syntheticAdmin();
+ const a=await syntheticTeacher(admin);
+ const b=await syntheticTeacher(admin);
+ try{
+  const aWorkplace=await admin.from("workplaces")
+   .select("id").eq("teacher_id",a.id).eq("kind","personal").single();
+  const bWorkplace=await admin.from("workplaces")
+   .select("id").eq("teacher_id",b.id).eq("kind","personal").single();
+  expect(aWorkplace.error).toBeNull();
+  expect(bWorkplace.error).toBeNull();
+  const aStudent=await admin.from("students").insert({
+   teacher_id:a.id,name:"Tenant A learner "+randomUUID(),
+  }).select("id").single();
+  const bStudent=await admin.from("students").insert({
+   teacher_id:b.id,name:"Tenant B learner "+randomUUID(),
+  }).select("id").single();
+  expect(aStudent.error).toBeNull();
+  expect(bStudent.error).toBeNull();
+  const report=(teacherId:string,studentId:string,workplaceId:string)=>({
+   teacher_id:teacherId,student_id:studentId,workplace_id:workplaceId,
+   snapshot_digest:createHash("sha256").update(randomUUID()).digest("hex"),
+   snapshot_storage_ref:"synthetic-reports/"+randomUUID(),
+   output_locale:"en",approved_by:teacherId,
+   approved_at:new Date().toISOString(),request_id:randomUUID(),
+  });
+  const own=await admin.from("report_publications").insert(
+   report(a.id,aStudent.data!.id,aWorkplace.data!.id)
+  ).select("id").single();
+  expect(own.error).toBeNull();
+  const foreignStudent=await admin.from("report_publications").insert(
+   report(a.id,bStudent.data!.id,aWorkplace.data!.id)
+  );
+  expect(foreignStudent.error?.code).toBe("23503");
+  const foreignWorkplace=await admin.from("report_publications").insert(
+   report(a.id,aStudent.data!.id,bWorkplace.data!.id)
+  );
+  expect(foreignWorkplace.error?.code).toBe("23503");
+  const outsider=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+   });
+  const login=await outsider.auth.signInWithPassword({
+   email:b.email,password:b.password,
+  });
+  expect(login.error).toBeNull();
+  const hidden=await outsider.from("report_publications")
+   .select("id").eq("id",own.data!.id);
+  expect(hidden.error).toBeNull();
+  expect(hidden.data).toEqual([]);
+  const forged=await outsider.from("report_publications").insert(
+   report(a.id,aStudent.data!.id,aWorkplace.data!.id)
+  );
+  expect(forged.error).not.toBeNull();
+  await outsider.auth.signOut();
+ }finally{
+  expect((await admin.auth.admin.deleteUser(a.id)).error).toBeNull();
+  expect((await admin.auth.admin.deleteUser(b.id)).error).toBeNull();
+ }
+});
