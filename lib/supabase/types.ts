@@ -475,6 +475,7 @@ export interface Database {
           email: string;
           display_name: string;
           avatar_url: string | null;
+          preferred_locale: string;
           selected_workplace_id: string | null;
           created_at: string;
           onboarding_tour_completed_at: string | null;
@@ -485,6 +486,7 @@ export interface Database {
           email: string;
           display_name: string;
           avatar_url?: string | null;
+          preferred_locale?: string;
           selected_workplace_id?: string | null;
           created_at?: string;
           onboarding_tour_completed_at?: string | null;
@@ -495,6 +497,7 @@ export interface Database {
           email?: string;
           display_name?: string;
           avatar_url?: string | null;
+          preferred_locale?: string;
           selected_workplace_id?: string | null;
           onboarding_tour_completed_at?: string | null;
           calendar_token?: string;
@@ -591,6 +594,7 @@ export interface Database {
           bcc_email: string | null;
           ai_provider: "none" | "openai" | "anthropic";
           ai_api_key: string | null;
+          policies_updated_at: string | null;
           updated_at: string;
         };
         Insert: {
@@ -633,6 +637,7 @@ export interface Database {
           bcc_email?: string | null;
           ai_provider?: "none" | "openai" | "anthropic";
           ai_api_key?: string | null;
+          policies_updated_at?: string | null;
         };
         Update: {
           business_name?: string;
@@ -673,6 +678,7 @@ export interface Database {
           bcc_email?: string | null;
           ai_provider?: "none" | "openai" | "anthropic";
           ai_api_key?: string | null;
+          policies_updated_at?: string | null;
         };
       };
       lesson_slots: {
@@ -680,6 +686,7 @@ export interface Database {
           id: string;
           teacher_id: string;
           student_id: string;
+          workplace_id: string | null;
           day_of_week: number;
           start_time: string;
           duration_minutes: number;
@@ -694,6 +701,7 @@ export interface Database {
           id?: string;
           teacher_id: string;
           student_id: string;
+          workplace_id?: string | null;
           day_of_week: number;
           start_time: string;
           duration_minutes?: number;
@@ -704,6 +712,7 @@ export interface Database {
           is_home_visit?: boolean;
         };
         Update: {
+          workplace_id?: string | null;
           day_of_week?: number;
           start_time?: string;
           duration_minutes?: number;
@@ -1068,6 +1077,7 @@ export interface Database {
         Row: {
           id: string;
           teacher_id: string;
+          workplace_id: string | null;
           title: string;
           description: string;
           location: string;
@@ -1081,6 +1091,7 @@ export interface Database {
         Insert: {
           id?: string;
           teacher_id: string;
+          workplace_id?: string | null;
           title: string;
           description?: string;
           location?: string;
@@ -1092,6 +1103,7 @@ export interface Database {
           updated_at?: string;
         };
         Update: {
+          workplace_id?: string | null;
           title?: string;
           description?: string;
           location?: string;
