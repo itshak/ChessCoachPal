@@ -80,3 +80,24 @@ test("referenced capability contracts and plan publication serialize",()=>{
  assert.match(sql,/CREATE TRIGGER ccp_capability_definition_contract_guard\s+BEFORE UPDATE OR DELETE ON public\.capability_definitions/);
  assert.match(sql,/v_referenced AND[\s\S]*NEW\.active IS DISTINCT FROM OLD\.active/);
 });
+
+
+/** SCH-07: all privileged helpers must explicitly revoke default public
+ * EXECUTE (including trigger-only functions) and set a predictable path. */
+test("every canonical SECURITY DEFINER has pinned path and explicit public revoke",()=>{
+ const re=/CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+(?:\"?public\"?\\.)?(?:\"([^\"]+)\"|([a-z_][a-z0-9_]*))\\s*\\(/gi;
+ let inspected=0;
+ for(const match of sql.matchAll(re)){
+  const header=sql.slice(match.index,match.index+3500)
+   .split(/\\bAS\\s+\\$[a-zA-Z0-9_]*\\$/i)[0];
+  if(!/SECURITY\\s+DEFINER/i.test(header))continue;
+  inspected++;
+  const name=match[1]??match[2];
+  assert.match(header,/SET\\s+(?:\"search_path\"|search_path)\\s*(?:=|TO)/i,
+   name+\" must pin search_path\");
+  const quoted=name.replace(/[.*+?^$\u007b\u007d()|[\\]\\\\]/g,\"\\\\$&\");
+  assert.match(sql,new RegExp('REVOKE\\\\s+ALL\\\\s+ON\\\\s+FUNCTION\\\\s+(?:\"?public\"?\\\\.)?\"?'+quoted+'\"?\\\\s*\\\\(','i'),
+   name+\" must revoke public EXECUTE\");
+ }
+ assert.ok(inspected>=100,\"all privileged SQL functions were scanned\");
+});

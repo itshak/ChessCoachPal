@@ -14313,3 +14313,9 @@ CREATE TRIGGER ccp_capability_definition_contract_guard
  BEFORE UPDATE OR DELETE ON public.capability_definitions FOR EACH ROW
  EXECUTE FUNCTION public.ccp_capability_definition_contract_guard();
 -- END ADR-0019 capability contract hardening.
+
+-- ADR-0019: suppress inherited anonymous execution of roster snapshot.
+-- This is a trigger-only SECURITY DEFINER function; table operations still
+-- cause the trigger to run, but no caller needs direct EXECUTE permission.
+REVOKE ALL ON FUNCTION public.chesscoachpal_snapshot_participants()
+ FROM PUBLIC,anon,authenticated;

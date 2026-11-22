@@ -85,3 +85,8 @@ Approved report supersession is constrained to an existing, non-revoked, not-yet
 ## 2026-11-22 catalog contract hardening (candidate)
 
 Referenced commercial capability metadata can no longer be reclassified, retired, or version-rewritten in place: existing plan/grant/usage evidence retains its meaning. New capability keys remain registrable without DDL. Plan-capability edits now lock the parent version row before checking publication, eliminating the draft-to-published race. A static contract test and synthetic E2E regression cover these invariants. The canonical baseline SHA-256 and manifest were updated together. **Source-freeze signoff and exact-head testing remain outstanding.**
+
+
+## 2026-11-22 privileged function inventory guard (candidate)
+
+A source pass found 102 canonical `SECURITY DEFINER` functions. The inherited trigger `chesscoachpal_snapshot_participants()` lacked an explicit execution-privilege revocation; its direct PUBLIC/anon/authenticated EXECUTE was revoked while preserving normal trigger behavior. The schema guard suite now enumerates privileged functions and requires a fixed `search_path` and explicit PUBLIC revocation for each. This is a static least-privilege safeguard, not a replacement for SQL-backed negative RPC/tenant tests.
