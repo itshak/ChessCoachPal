@@ -588,3 +588,43 @@ test("referenced capability definitions and published plan values are immutable"
  expect(after.error).toBeNull();
  expect(after.data).toEqual(before.data);
 });
+
+/** ENT-13: a disabled capability cannot enter any new draft plan; once a
+ * plan references the definition it also becomes immutable. */
+test("draft plan rejects inactive capability, then pins its approved definition",async()=>{
+ const admin=syntheticAdmin();
+ const key="synthetic."+randomUUID().replaceAll("-","");
+ const code="z"+randomUUID().replaceAll("-","").slice(0,14);
+ let planId:string|undefined;
+ try{
+  const definition=await admin.from("capability_definitions").insert({
+   key,kind:"integer_limit",unit:"units",security_class:"teacher",
+   active:false,
+  });
+  expect(definition.error).toBeNull();
+  const plan=await admin.from("plan_versions").insert({
+   code,version:1,lifecycle:"draft",
+  }).select("id").single();
+  expect(plan.error).toBeNull();
+  planId=plan.data!.id;
+  const cap={plan_version_id:planId,capability_key:key,
+   capability_kind:"integer_limit",integer_value:1,unlimited:false};
+  const blocked=await admin.from("plan_capabilities").insert(cap);
+  expect(blocked.error?.code).toBe("23514");
+  expect(blocked.error?.message).toContain("CAPABILITY_UNAVAILABLE");
+  const activation=await admin.from("capability_definitions")
+   .update({active:true}).eq("key",key);
+  expect(activation.error).toBeNull();
+  const enabled=await admin.from("plan_capabilities").insert(cap);
+  expect(enabled.error).toBeNull();
+  const disable=await admin.from("capability_definitions")
+   .update({active:false}).eq("key",key);
+  expect(disable.error?.message).toContain("CAPABILITY_CONTRACT_IMMUTABLE");
+ }finally{
+  if(planId){
+   await admin.from("plan_capabilities").delete().eq("plan_version_id",planId);
+   await admin.from("plan_versions").delete().eq("id",planId);
+  }
+  await admin.from("capability_definitions").delete().eq("key",key);
+ }
+});

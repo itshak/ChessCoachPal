@@ -90,3 +90,8 @@ Referenced commercial capability metadata can no longer be reclassified, retired
 ## 2026-11-22 privileged function inventory guard (candidate)
 
 A source pass found 102 canonical `SECURITY DEFINER` functions. The inherited trigger `chesscoachpal_snapshot_participants()` lacked an explicit execution-privilege revocation; its direct PUBLIC/anon/authenticated EXECUTE was revoked while preserving normal trigger behavior. The schema guard suite now enumerates privileged functions and requires a fixed `search_path` and explicit PUBLIC revocation for each. This is a static least-privilege safeguard, not a replacement for SQL-backed negative RPC/tenant tests.
+
+
+## Draft plan catalog admission (candidate)
+
+New plan-capability references now require a currently active registered key of the declared kind, locked against concurrent deactivation/first use. A synthetic SQL-backed E2E regression proves disabled keys are rejected, accepted upon reviewed activation, and immutable after reference. The baseline manifest checksum was updated for this single-schema revision. This does not imply other Phase 2 acceptance gates are complete.

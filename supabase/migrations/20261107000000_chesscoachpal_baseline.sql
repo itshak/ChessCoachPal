@@ -13961,6 +13961,15 @@ BEGIN
     RAISE EXCEPTION 'PUBLISHED_CAPABILITY_IMMUTABLE' USING ERRCODE='23514';
  END IF;
  IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ -- A new draft plan must not reference a disabled catalog item. SHARE
+ -- conflicts with metadata UPDATE and prevents a concurrent first-reference
+ -- race against the capability-definition immutability trigger.
+ PERFORM 1 FROM public.capability_definitions
+  WHERE key=NEW.capability_key AND kind=NEW.capability_kind AND active
+  FOR SHARE;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'CAPABILITY_UNAVAILABLE' USING ERRCODE='23514';
+ END IF;
  RETURN NEW;
 END;
 $ccp_plan_cap_guard$;

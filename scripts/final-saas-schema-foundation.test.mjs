@@ -100,3 +100,9 @@ test("every canonical SECURITY DEFINER has pinned path and public revoke",()=>{
  }
  assert.ok(inspected>=100,"all privileged SQL functions were scanned");
 });
+
+
+test("draft plan capabilities require active versioned catalog keys",()=>{
+ assert.match(sql,/PERFORM 1 FROM public\.capability_definitions\s+WHERE key=NEW\.capability_key AND kind=NEW\.capability_kind AND active\s+FOR SHARE/);
+ assert.match(sql,/RAISE EXCEPTION 'CAPABILITY_UNAVAILABLE' USING ERRCODE='23514'/);
+});
