@@ -6177,12 +6177,28 @@ BEGIN
         OLD.created_at) THEN
       RAISE EXCEPTION 'MATERIAL_HISTORY_IMMUTABLE';
     END IF;
-    IF OLD.voided_at IS NOT NULL OR NEW.voided_at IS NULL OR
-       NEW.void_reason IS NULL OR length(btrim(NEW.void_reason)) < 5 THEN
+    IF OLD.voided_at IS NOT NULL THEN
+      RAISE EXCEPTION 'INVALID_MATERIAL_VOID';
+    END IF;
+    IF (NEW.learning_stage,NEW.stage_verified_at,NEW.stage_verified_by)
+      IS DISTINCT FROM
+       (OLD.learning_stage,OLD.stage_verified_at,OLD.stage_verified_by)
+    THEN
+      -- An active legacy claim can acquire a first owner verification, but
+      -- an existing attestation survives correction/void without modification.
+      IF OLD.learning_stage IS NOT NULL OR NEW.learning_stage IS NULL
+         OR NEW.voided_at IS NOT NULL OR NEW.void_reason IS NOT NULL THEN
+        RAISE EXCEPTION 'IMMUTABLE_MATERIAL_STAGE_EVIDENCE' USING ERRCODE='23514';
+      END IF;
+    ELSIF NEW.voided_at IS NULL OR NEW.void_reason IS NULL
+       OR length(btrim(NEW.void_reason)) < 5 THEN
       RAISE EXCEPTION 'INVALID_MATERIAL_VOID';
     END IF;
     NEW.updated_at := clock_timestamp();
     RETURN NEW;
+  END IF;
+  IF NEW.learning_stage IS NOT NULL AND NEW.voided_at IS NOT NULL THEN
+    RAISE EXCEPTION 'IMMUTABLE_MATERIAL_STAGE_EVIDENCE' USING ERRCODE='23514';
   END IF;
   PERFORM 1 FROM public.students
    WHERE id=NEW.student_id AND teacher_id=NEW.teacher_id;
@@ -6872,6 +6888,18 @@ BEGIN
       SELECT 1 FROM public.teaching_sessions
        WHERE teacher_id=v_teacher AND slot_id=v_slot.id
          AND slot_occurrence_date=v_slot_date
+    ) THEN
+      v_count:=v_count+1;
+      CONTINUE;
+    END IF;
+    -- An approved single-date cancellation can precede any session row.
+    -- Use the original occurrence date in the slot's local timezone, not
+    -- the UTC calendar date. A revoked cancellation cannot hide the date.
+    IF EXISTS(
+      SELECT 1 FROM public.slot_occurrence_exceptions
+       WHERE teacher_id=v_teacher AND slot_id=v_slot.id
+         AND original_occurrence_on=v_slot_date
+         AND action='cancel' AND revoked_at IS NULL
     ) THEN
       v_count:=v_count+1;
       CONTINUE;
@@ -13622,9 +13650,7 @@ ALTER TABLE public.material_teaching_evidence
  ADD CONSTRAINT ccp_material_stage_teacher_evidence CHECK (
    (learning_stage IS NULL AND stage_verified_at IS NULL AND stage_verified_by IS NULL)
    OR (learning_stage IS NOT NULL AND stage_verified_at IS NOT NULL
-       AND stage_verified_by=teacher_id)),
- ADD CONSTRAINT ccp_material_stage_active_evidence CHECK (
-   learning_stage IS NULL OR voided_at IS NULL);
+       AND stage_verified_by IS NOT DISTINCT FROM teacher_id));
 CREATE INDEX ccp_material_teacher_evidence_recent
  ON public.material_teaching_evidence(teacher_id,student_id,occurred_on DESC)
  WHERE learning_stage IS NOT NULL AND voided_at IS NULL;
@@ -14185,7 +14211,7 @@ ALTER TABLE public.slot_occurrence_exceptions
  ADD COLUMN revocation_request_id uuid,
  ADD CONSTRAINT ccp_slot_exception_revoke_pair CHECK(
    (revoked_at IS NULL AND revoked_by IS NULL AND revocation_request_id IS NULL)
-   OR (revoked_at IS NOT NULL AND revoked_by=teacher_id
+   OR (revoked_at IS NOT NULL AND revoked_by IS NOT DISTINCT FROM teacher_id
        AND revocation_request_id IS NOT NULL)),
  ADD CONSTRAINT ccp_slot_exception_revocation_after_approval CHECK(
    revoked_at IS NULL OR revoked_at>=approved_at);

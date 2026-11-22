@@ -45,3 +45,7 @@ On ordinary later changes, the CI guard reads the already accepted lock from the
 ## Rating provenance and worker boundary checkpoint
 
 Both independent disposable PostgreSQL `17.12.0.000` stacks bootstrapped the combined provenance/worker SQL (SHA-256 `2cb9fb08378eac4f6771de5c011a06d10bf5555a79923329f4baeb9e05f4df28`) with one canonical migration. Their v2 metadata snapshots were identical (SHA-256 `c9d183fed04b4451a3a183bcafcb6ea0e9b55879c2cb0bbf18591c9ec62d1ada`; 105 relations, 1,078 columns, 386 indexes, 96 policies, 81 triggers, 142 routines, 3,140 ACL entries, 808 constraints, six extensions). The comparator reported zero differences and both isolated projects were removed. This is evidence for those exact SQL bytes and the stated image, not a production cutover or complete source acceptance.
+
+## Cancellation and historical evidence checkpoint
+
+The selected canonical SQL (SHA-256 `ff643a093ed2712fc52397ac530081fa2f569bf39271e6ce9d5f9dc4460734f7`) was independently bootstrapped twice on disposable PostgreSQL 17.12. Both instances applied only migration `20261107000000`; read-only structural snapshots matched at SHA-256 `b3150fb30ceacdb8dc8d91d4c409a3fb5a63db73d3b87fb5d9c7922db3ac6a98` with 105 tables, 1,078 columns, 142 routines, 807 constraints and zero differences. Both projects were removed. This checkpoint does not accept the full recurrence scope, portable restore, or a populated deployment.

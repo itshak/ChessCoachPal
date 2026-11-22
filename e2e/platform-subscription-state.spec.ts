@@ -199,3 +199,72 @@ test("PAY-05 grants only explicit paid-through or grace time; failed, refunded a
   expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
  }
 });
+
+test("ENT-09 active paid Pro is independent of an individual grant and its expiry",async()=>{
+ const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
+ const options={auth:{persistSession:false,autoRefreshToken:false}};
+ const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,options);
+ const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,options);
+ const email="paid-plus-grant-"+randomUUID()+"@example.com",password="SyntheticPaidPlusGrant-123!";
+ const identity=await admin.auth.admin.createUser({email,password,email_confirm:true});
+ expect(identity.error).toBeNull();
+ const id=identity.data.user!.id;
+ try{
+  expect((await admin.from("teachers").insert({id,email,display_name:"Synthetic paid with grant"})).error).toBeNull();
+  expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();
+  const base=await configureSyntheticStudentCapacity(admin,id,1);
+  const pro=await admin.from("plan_versions").select("id").eq("code","pro").eq("version",1).single();
+  expect(pro.error).toBeNull();
+  const merchant_scope="paid_plus_grant_"+randomUUID();
+  const merchant={provider:"synthetic",merchant_scope};
+  const customer=await admin.from("platform_billing_customers").insert({
+   ...merchant,teacher_id:id,external_customer_id:"customer",
+  }).select("id").single();
+  expect(customer.error).toBeNull();
+  const offer=await admin.from("platform_subscription_offers").insert({
+   ...merchant,plan_version_id:pro.data!.id,external_price_id:"offer",currency:"USD",
+   billing_interval:"month",effective_from:"2026-01-01T00:00:00.000Z",
+  }).select("id").single();
+  expect(offer.error).toBeNull();
+  const grantEnds="2070-06-10T12:00:00.000Z",paidEnds="2070-06-15T12:00:00.000Z";
+  const grant=await admin.from("teacher_entitlement_grants").insert({
+   teacher_id:id,kind:"capability_boost",capability_key:"students.active",
+   capability_kind:"integer_limit",integer_value:3,unlimited:false,
+   valid_from:"2026-01-01T00:00:00.000Z",expires_at:grantEnds,
+   reason:"Synthetic independent student allowance",request_id:randomUUID(),
+  }).select("id").single();
+  expect(grant.error).toBeNull();
+  const evaluate=async(key:string,at:string)=>{
+   const result=await auth.rpc("ccp_effective_capability",{p_teacher:id,p_capability_key:key,p_at:at});
+   expect(result.error).toBeNull();
+   return result.data;
+  };
+  // The individual grant is demonstrably active, but grants no Pro functions.
+  const overlap="2070-06-10T11:59:59.999Z";
+  expect(await evaluate("students.active",overlap)).toMatchObject({
+   planVersionId:base.planId,limit:3,unlimited:false,
+  });
+  expect(await evaluate("reports.publish",overlap)).toMatchObject({enabled:false});
+  const sub=await admin.from("platform_subscriptions").insert({
+   ...merchant,teacher_id:id,customer_id:customer.data!.id,offer_id:offer.data!.id,
+   external_subscription_id:"sub",state:"active",paid_through:paidEnds,
+   current_period_end:paidEnds,latest_event_time:"2026-01-01T00:00:00.000Z",
+  }).select("id,state,paid_through,current_period_end,revision").single();
+  expect(sub.error).toBeNull();
+  // Both overlap and the exact exclusive grant expiry keep separately paid Pro.
+  for(const at of [overlap,grantEnds,"2070-06-15T11:59:59.999Z"]){
+   expect(await evaluate("students.active",at)).toMatchObject({
+    planVersionId:pro.data!.id,planCode:"pro",limit:null,unlimited:true,
+   });
+   expect(await evaluate("reports.publish",at)).toMatchObject({enabled:true});
+  }
+  expect(await evaluate("students.active",paidEnds)).toMatchObject({planVersionId:base.planId,limit:1});
+  expect(await evaluate("reports.publish",paidEnds)).toMatchObject({enabled:false});
+  const readback=await admin.from("platform_subscriptions").select("id,state,paid_through,current_period_end,revision")
+    .eq("id",sub.data!.id).single();
+  expect(readback.error).toBeNull();
+  expect(readback.data).toEqual(sub.data);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
+ }
+});

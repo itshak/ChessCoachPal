@@ -1,6 +1,7 @@
 import {createHash,randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
+import {dayOfWeek,zonedTimeToUtc} from "../lib/schedule";
 import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 
 function syntheticAdmin(){
@@ -373,6 +374,132 @@ test("cancelled recurring occurrence can be reviewed, revoked and replaced witho
  }
 });
 
+
+/** TCH-01: test the actual shared calendar and series-edit SQL writers on a
+ * persisted cancellation, not just the exception table's shape. */
+test("persisted cancellation suppresses its original local date across regeneration",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  const owner=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+   });
+  expect((await owner.auth.signInWithPassword({
+   email:teacher.email,password:teacher.password,
+  })).error).toBeNull();
+  const timezone="Asia/Jerusalem";
+  const workplace=await admin.from("workplaces").update({timezone})
+   .eq("teacher_id",teacher.id).eq("kind","personal").select("id").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Cancellation replay "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  expect((await admin.from("workplace_enrollments").insert({
+   teacher_id:teacher.id,workplace_id:workplace.data!.id,
+   student_id:student.data!.id,source:"manual",
+  })).error).toBeNull();
+  const original="2060-01-08",neighbor="2060-01-15";
+  const slotBase={
+   teacher_id:teacher.id,student_id:student.data!.id,
+   workplace_id:workplace.data!.id,day_of_week:dayOfWeek(original),
+   start_date:original,duration_minutes:45,
+  };
+  const slot=await admin.from("lesson_slots")
+   .insert({...slotBase,start_time:"00:30:00"}).select("id,updated_at").single();
+  expect(slot.error).toBeNull();
+  const otherSlot=await admin.from("lesson_slots")
+   .insert({...slotBase,start_time:"14:00:00"}).select("id").single();
+  expect(otherSlot.error).toBeNull();
+  const exception=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:teacher.id,slot_id:slot.data!.id,original_occurrence_on:original,
+   action:"cancel",approved_by:teacher.id,reason:"Teacher-approved single date off",
+   request_id:randomUUID(),
+  }).select("id").single();
+  expect(exception.error).toBeNull();
+  const occurrence=(id:string,date:string,time:string)=>({
+   teacher_id:teacher.id,workplace_id:workplace.data!.id,student_id:student.data!.id,
+   slot_id:id,slot_occurrence_date:date,
+   starts_at:zonedTimeToUtc(date,time,timezone).toISOString(),
+   local_timezone:timezone,duration_minutes:45,is_home_visit:false,slot_rate_cents:null,
+  });
+  const cancelled=occurrence(slot.data!.id,original,"00:30");
+  expect(cancelled.starts_at.slice(0,10)).toBe("2060-01-07");
+  const p_rows=[
+   cancelled,
+   occurrence(slot.data!.id,neighbor,"00:30"),
+   occurrence(otherSlot.data!.id,original,"14:00"),
+  ];
+  const persisted=()=>admin.from("teaching_sessions")
+   .select("id,slot_id,slot_occurrence_date,starts_at")
+   .eq("teacher_id",teacher.id).order("starts_at");
+  const first=await admin.rpc("ccp_canonical_slot_materialize",{
+   p_rows,p_teacher_id:teacher.id,
+  });
+  expect(first.error).toBeNull();
+  expect(first.data).toEqual({planned:3,inserted:2});
+  const firstRead=await persisted();
+  expect(firstRead.error).toBeNull();
+  expect(firstRead.data?.map(row=>[row.slot_id,row.slot_occurrence_date]))
+   .toEqual([[otherSlot.data!.id,original],[slot.data!.id,neighbor]]);
+
+  // Keep input/ownership validation even when an active exception exists.
+  const invalid=await owner.rpc("ccp_canonical_slot_materialize",{
+   p_rows:[{...cancelled,starts_at:p_rows[1].starts_at}],
+  });
+  expect(invalid.error?.message).toContain("CANONICAL_MATERIALIZE_SLOT_MISMATCH");
+  const spoof=await owner.rpc("ccp_canonical_slot_materialize",{
+   p_rows:[cancelled],p_teacher_id:teacher.id,
+  });
+  expect(spoof.error?.code).toBe("42501");
+  const repeat=await owner.rpc("ccp_canonical_slot_materialize",{p_rows});
+  expect(repeat.error).toBeNull();
+  expect(repeat.data).toEqual({planned:3,inserted:0});
+  expect((await persisted()).data).toEqual(firstRead.data);
+
+  // A full plan supplied to the real series-update RPC must still suppress
+  // the exact exception date even after the recurring local time changes.
+  const adjusted=[original,neighbor].map(date=>occurrence(slot.data!.id,date,"01:00"));
+  const editArgs={
+   p_slot_id:slot.data!.id,p_changes:{startTime:"01:00"},
+   p_expected_updated_at:slot.data!.updated_at,p_rows:adjusted,
+   p_from:original,p_to:neighbor,p_idempotency_key:randomUUID(),
+  };
+  const edited=await owner.rpc("ccp_canonical_slot_update",editArgs);
+  expect(edited.error).toBeNull();
+  expect(edited.data).toMatchObject({
+   replayed:false,removedFuture:1,materialized:{planned:2,inserted:1},
+  });
+  const regenerated=await persisted();
+  expect(regenerated.error).toBeNull();
+  expect(regenerated.data?.map(row=>[row.slot_id,row.slot_occurrence_date]))
+   .toEqual([[otherSlot.data!.id,original],[slot.data!.id,neighbor]]);
+  expect(regenerated.data?.[0]).toEqual(firstRead.data?.[0]);
+  expect(Date.parse(regenerated.data![1].starts_at)).toBe(Date.parse(adjusted[1].starts_at));
+  const editReplay=await owner.rpc("ccp_canonical_slot_update",editArgs);
+  expect(editReplay.error).toBeNull();
+  expect(editReplay.data).toEqual({...edited.data,replayed:true});
+  expect((await persisted()).data).toEqual(regenerated.data);
+
+  const revoke=await admin.from("slot_occurrence_exceptions").update({
+   revoked_at:new Date().toISOString(),revoked_by:teacher.id,
+   revocation_request_id:randomUUID(),
+  }).eq("id",exception.data!.id).select("action,revision,revoked_at").single();
+  expect(revoke.error).toBeNull();
+  expect(revoke.data).toMatchObject({action:"cancel",revision:2});
+  expect(revoke.data?.revoked_at).not.toBeNull();
+  const restored=await owner.rpc("ccp_canonical_slot_materialize",{p_rows:adjusted});
+  expect(restored.error).toBeNull();
+  expect(restored.data).toEqual({planned:2,inserted:1});
+  const finalRead=await persisted();
+  expect(finalRead.error).toBeNull();
+  expect(finalRead.data?.map(row=>[row.slot_id,row.slot_occurrence_date]))
+   .toEqual([[slot.data!.id,original],[otherSlot.data!.id,original],[slot.data!.id,neighbor]]);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
 
 /** ENT-16 / SCH-04: usage is counted once per durable workflow request,
  * never multiplied by retries or by a foreign tenant's period. */
