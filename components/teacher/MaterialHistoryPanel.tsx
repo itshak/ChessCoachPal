@@ -34,13 +34,13 @@ async function json(url:string,init?:RequestInit){
  if(!resp.ok)throw new Error(result?.error||"Material history unavailable");
  return result;
 }
-export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
+export function MaterialHistoryPanel({fixedStudentId,initialWorkplaceId=null,initialWorkplaces}:{fixedStudentId?:string;initialWorkplaceId?:string|null;initialWorkplaces?:Workplace[]}){
  const t=useTranslations("materialHistory"),locale=useLocale();
   const toUserError=useLocalizedApiError();
  const stageLabel=(s:"assigned"|"taught"|"completed")=>
    t(s==="assigned"?"statusAssigned":s==="taught"?"statusTaught":"statusCompleted");
  const [students,setStudents]=useState<Student[]>([]);
- const [workplaces,setWorkplaces]=useState<Workplace[]>([]);
+ const [workplaces,setWorkplaces]=useState<Workplace[]>(initialWorkplaces??[]);
  const [groups,setGroups]=useState<Group[]>([]);
  const [groupId,setGroupId]=useState("");
  const [defaults,setDefaults]=useState<DefaultStudy[]>([]);
@@ -53,7 +53,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
  const [editDefaultUrl,setEditDefaultUrl]=useState("");
  const [editDefaultNotes,setEditDefaultNotes]=useState("");
  const [studentId,setStudentId]=useState(fixedStudentId||"");
- const [workplaceId,setWorkplaceId]=useState("");
+ const [workplaceId,setWorkplaceId]=useState(initialWorkplaceId??"");
  const [materials,setMaterials]=useState<MaterialOption[]>([]);
  const [materialId,setMaterialId]=useState("");
  const [stage,setStage]=useState<"assigned"|"taught"|"completed">("taught");
@@ -71,7 +71,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
   let active=true;
   void Promise.all([
    json("/api/students?limit=1000"),
-   json("/api/agent/v1",{method:"POST",headers:{"Content-Type":"application/json"},
+   initialWorkplaces?Promise.resolve({data:initialWorkplaces}):json("/api/agent/v1",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({action:"workplaces.list"})}),
    json("/api/agent/v1",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({action:"groups.list"})}),
@@ -85,7 +85,7 @@ export function MaterialHistoryPanel({fixedStudentId}:{fixedStudentId?:string}){
    setGroups((classes.data??[]) as Group[]);
   }).catch(e=>{if(active)setError(String(e));});
   return ()=>{active=false;};
- },[fixedStudentId]);
+ },[fixedStudentId,initialWorkplaces]);
  const loadDefaults=useCallback(async()=>{
   if(!workplaceId){setDefaults([]);setDefaultHistory([]);return;}
   const params=new URLSearchParams({defaults:"true",workplaceId,includeArchived:"true"});

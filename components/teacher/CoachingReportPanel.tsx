@@ -9,7 +9,7 @@ import { reportCsv, reportText, type ReportSummary, type ReportPresentation } fr
 
 type Workplace = { id: string; name: string; locale: string };
 type ResponseBody = {
-  workplace?: { id: string; name: string }; report?: ReportSummary;
+  workplace?: { id: string; name: string }|null; report?: ReportSummary;
   presentation?: ReportPresentation;
   error?: string;
 };
@@ -23,12 +23,12 @@ function saveReport(filename: string, type: string, data: string) {
 }
 
 export function CoachingReportPanel({initialWorkplaceId}:{initialWorkplaceId?:string|null}) {
-  const t=useTranslations("reports");
+  const t=useTranslations("reports"), nav=useTranslations("nav");
   const toUserError=useLocalizedApiError();
   const uiLocale=useLocale();
   const [reportOutputLocale,setReportOutputLocale]=useState<""|AppLocale>("");
   const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
-  const [workplaceId, setWorkplaceId] = useState(initialWorkplaceId??"");
+  const [workplaceId, setWorkplaceId] = useState(initialWorkplaceId??"all");
   const [from, setFrom] = useState(today.slice(0, 7) + "-01");
   const [to, setTo] = useState(today);
   const [report, setReport] = useState<ReportSummary | null>(null);
@@ -44,14 +44,12 @@ export function CoachingReportPanel({initialWorkplaceId}:{initialWorkplaceId?:st
       if (!body.ok) throw new Error(t("loadFailed"));
       const options = body.data as Workplace[];
       setWorkplaces(options);
-      setWorkplaceId(current => {
-        if(initialWorkplaceId&&options.some(w=>w.id===initialWorkplaceId))
-          return initialWorkplaceId;
-        return current||options[0]?.id||"";
-      });
+
     }).catch(() => { if (!cancelled) setError(t("loadFailed")); });
     return () => { cancelled = true; };
-  }, [t,initialWorkplaceId]);
+  }, [t]);
+  useEffect(()=>{setWorkplaceId(initialWorkplaceId??"all");},[initialWorkplaceId]);
+  useEffect(()=>{setReport(null);setPresentation(null);},[workplaceId]);
   async function generate(event: FormEvent) {
     event.preventDefault();
     setBusy(true); setError(""); setReport(null);setPresentation(null);
@@ -78,6 +76,7 @@ export function CoachingReportPanel({initialWorkplaceId}:{initialWorkplaceId?:st
         <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-full">{t("workplace")}
           <select data-testid="report-workplace-select" value={workplaceId} onChange={event => { setWorkplaceId(event.target.value); setReport(null); }}
             required className="w-full min-w-0 max-w-full rounded border border-border bg-surface p-2">
+            <option value="all">{nav("allWorkplaces")}</option>
             {workplaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
         </label>

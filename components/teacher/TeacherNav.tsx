@@ -228,11 +228,13 @@ export function TeacherNav({
   teacherName,
   avatarUrl,
   selectedWorkplaceId,
+  selectionWasStale,
   workplaces,
 }: {
   teacherName: string;
   avatarUrl: string | null;
   selectedWorkplaceId:string|null;
+  selectionWasStale:boolean;
   workplaces:Array<{id:string;name:string}>;
 }) {
   const pathname = usePathname();
@@ -291,7 +293,7 @@ export function TeacherNav({
 
         <div className="flex items-center gap-1 shrink-0">
           <WorkplaceSwitcher workplaces={workplaces}
-            selectedWorkplaceId={selectedWorkplaceId}/>
+            selectedWorkplaceId={selectedWorkplaceId} selectionWasStale={selectionWasStale}/>
           <NotificationBell />
           <AccountMenu teacherName={teacherName} avatarUrl={avatarUrl} />
           <button

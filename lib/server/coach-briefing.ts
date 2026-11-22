@@ -39,7 +39,7 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
 
   const [lessons,materials,assignments,observationResult,trainingPlans]=await Promise.all([
     teacherUnifiedLessonHistory(db,teacherId,{
-      studentId:student.id,from,to,limit:input.limit,offset:0,
+      studentId:student.id,workplaceId:null,from,to,limit:input.limit,offset:0,
     }),
     teacherMaterialHistory(db,teacherId,{
       studentId:student.id,from,to,limit:input.limit,offset:0,

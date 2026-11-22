@@ -11,7 +11,7 @@ import type {CanonicalCalendarRow} from "@/lib/server/canonical-calendar-read";
 import {addDays,toLocalDateString,formatLessonTime,zonedTimeToUtc} from "@/lib/schedule";
 
 type Student={id:string;name:string};
-type Workplace={id:string;name:string};
+type Workplace={id:string;name:string;localToday:string};
 type Event={id:string;title:string;startsAt:string;localDate:string};
 type AttendanceRow={
  studentId:string;status:string;note:string;noticeAt:string|null;
@@ -41,9 +41,10 @@ async function jsonResponse(res:Response){
  * participant, and all writes use the exact website/MCP domain operations.
  */
 export function CanonicalScheduleBoard({
- weekStart,today,timezone,sessions,events,students,workplaces,durationOptions,
+ weekStart,today,timezone,personalToday,selectedWorkplaceId,workplaceTimezones,sessions,events,students,workplaces,durationOptions,
 }:{
- weekStart:string;today:string;timezone:string;
+ weekStart:string;today:string;timezone:string;personalToday:string;selectedWorkplaceId:string|null;
+ workplaceTimezones:Readonly<Record<string,string>>;
  sessions:CanonicalCalendarRow[];events:Event[];
  students:Student[];workplaces:Workplace[];durationOptions:number[];
 }){
@@ -73,7 +74,8 @@ export function CanonicalScheduleBoard({
  const [busy,setBusy]=useState(false);
  const [addOpen,setAddOpen]=useState(false);
  const [addStudent,setAddStudent]=useState("");
- const [addWorkplace,setAddWorkplace]=useState("");
+ const [addWorkplace,setAddWorkplace]=useState(selectedWorkplaceId??"");
+ const [addDateEdited,setAddDateEdited]=useState(false);
  const [addDate,setAddDate]=useState(today);
  const [addTime,setAddTime]=useState("16:00");
  const [addDuration,setAddDuration]=useState(60);
@@ -82,12 +84,12 @@ export function CanonicalScheduleBoard({
  const byDay=useMemo(()=>{
   const daysMap=new Map<string,CanonicalCalendarRow[]>();
   for(const session of sessions){
-   const date=toLocalDateString(new Date(session.starts_at),session.local_timezone||timezone);
+   const date=toLocalDateString(new Date(session.starts_at),session.local_timezone||workplaceTimezones[session.workplace_id]||timezone);
    const arr=daysMap.get(date)??[];arr.push(session);daysMap.set(date,arr);
   }
   for(const arr of daysMap.values())arr.sort((a,b)=>a.starts_at.localeCompare(b.starts_at));
   return daysMap;
- },[sessions,timezone]);
+ },[sessions,timezone,workplaceTimezones]);
 
  const chosen=register.find(r=>r.studentId===selectedStudent);
  const chosenNote=notes.find(n=>n.student_id===selectedStudent);
@@ -121,7 +123,7 @@ export function CanonicalScheduleBoard({
    if(!Array.isArray(rows))throw new Error(t("invalidRegister"));
    setOpen(session);setTab(section);
    if(section==="schedule"){
-    const zone=session.local_timezone||timezone;
+    const zone=session.local_timezone||workplaceTimezones[session.workplace_id]||timezone;
     setMoveDate(toLocalDateString(new Date(session.starts_at),zone));
     setMoveTime(new Intl.DateTimeFormat("en-GB",{timeZone:zone,
       hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date(session.starts_at)));
@@ -195,7 +197,7 @@ export function CanonicalScheduleBoard({
   if(!open)return;
   let startsAt:string;
   try{
-   startsAt=zonedTimeToUtc(moveDate,moveTime,open.local_timezone||timezone,"reject").toISOString();
+   startsAt=zonedTimeToUtc(moveDate,moveTime,open.local_timezone||workplaceTimezones[open.workplace_id]||timezone,"reject").toISOString();
   }catch{showToast(t("invalidLocalTime"),"error");return;}
   setBusy(true);
   try{
@@ -275,7 +277,12 @@ export function CanonicalScheduleBoard({
     <Link className="text-primary hover:underline" href="/schedule">{t("today")}</Link>
    </div>
    <button className="rounded-lg border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/10"
-    onClick={()=>setAddOpen(!addOpen)}>+ {t("privateSessionButton")}</button>
+    onClick={()=>{
+      if(!addOpen){
+       setAddWorkplace(selectedWorkplaceId??"");setAddDate(today);setAddDateEdited(false);
+      }
+      setAddOpen(!addOpen);
+    }}>+ {t("privateSessionButton")}</button>
   </div>
   {addOpen&&<div className="rounded-xl border border-border bg-surface p-4 space-y-3">
    <h3 className="font-medium">{t("individualLesson")}</h3>
@@ -287,7 +294,10 @@ export function CanonicalScheduleBoard({
      </select>
     </label>
     <label className="text-sm">{t("workplace")}
-     <select className={field} value={addWorkplace} onChange={e=>setAddWorkplace(e.target.value)}>
+     <select className={field} value={addWorkplace} onChange={e=>{
+      const id=e.target.value;setAddWorkplace(id);
+      if(!addDateEdited)setAddDate(workplaces.find(w=>w.id===id)?.localToday??personalToday);
+     }}>
       <option value="">{t("personalCoaching")}</option>
       {workplaces.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
      </select>
@@ -299,7 +309,7 @@ export function CanonicalScheduleBoard({
      </select>
     </label>
     <label className="text-sm">{t("date")}
-     <input className={field} type="date" value={addDate} onChange={e=>setAddDate(e.target.value)}/>
+     <input className={field} type="date" value={addDate} onChange={e=>{setAddDate(e.target.value);setAddDateEdited(true)}}/>
     </label>
     <label className="text-sm">{t("localTime")}
      <input className={field} type="time" value={addTime} onChange={e=>setAddTime(e.target.value)}/>
@@ -313,7 +323,7 @@ export function CanonicalScheduleBoard({
     disabled={busy} onClick={addPrivateSession}>{t("createSession")}</button>
   </div>}
   <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
-   {days.map((date,i)=><div key={date} className={
+   {days.map((date,i)=><div key={date} data-calendar-date={date} className={
     "min-h-28 rounded-xl border p-2 "+
      (date===today?"border-primary/60 bg-primary/5":"border-border bg-surface")
    }>
@@ -324,7 +334,7 @@ export function CanonicalScheduleBoard({
     </Link>)}
     {(byDay.get(date)??[]).map(session=><div key={session.id}
       className="rounded-lg border border-border bg-background p-2 text-xs mb-2 space-y-1">
-      <div className="font-medium">{formatLessonTime(session.starts_at,session.local_timezone||timezone)}</div>
+      <div className="font-medium">{formatLessonTime(session.starts_at,session.local_timezone||workplaceTimezones[session.workplace_id]||timezone)}</div>
       <div className="text-foreground break-all">{session.participants.map(p=>p.name).join(", ")}</div>
       <div className="text-muted">{t("minuteShort",{count:session.duration_minutes})} · {session.status==="cancelled"?t("cancelled"):session.status==="completed"?t("completed"):t("scheduled")}</div>
       <div className="flex gap-2">
@@ -344,7 +354,7 @@ export function CanonicalScheduleBoard({
    <div className="flex justify-between gap-2">
     <div>
      <h2 className="font-semibold break-all">{open.title}</h2>
-     <p className="text-sm text-muted">{new Intl.DateTimeFormat(uiLocale,{timeZone:open.local_timezone||timezone,dateStyle:"full"}).format(new Date(open.starts_at))} · {formatLessonTime(open.starts_at,open.local_timezone||timezone)}</p>
+     <p className="text-sm text-muted">{new Intl.DateTimeFormat(uiLocale,{timeZone:open.local_timezone||workplaceTimezones[open.workplace_id]||timezone,dateStyle:"full"}).format(new Date(open.starts_at))} · {formatLessonTime(open.starts_at,open.local_timezone||workplaceTimezones[open.workplace_id]||timezone)}</p>
     </div>
     <button className="text-primary hover:underline text-sm" onClick={()=>setOpen(null)}>{t("close")}</button>
    </div>
@@ -435,7 +445,7 @@ export function CanonicalScheduleBoard({
      <label className="text-sm">{t("date")}
       <input type="date" className={field} value={moveDate}
        onChange={e=>setMoveDate(e.target.value)}/></label>
-     <label className="text-sm">{t("localTimeZone",{zone:open.local_timezone||timezone})}
+     <label className="text-sm">{t("localTimeZone",{zone:open.local_timezone||workplaceTimezones[open.workplace_id]||timezone})}
       <input type="time" className={field} value={moveTime}
        onChange={e=>setMoveTime(e.target.value)}/></label>
      <label className="text-sm">{t("duration")}

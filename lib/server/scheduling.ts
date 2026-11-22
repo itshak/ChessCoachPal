@@ -12,6 +12,24 @@ import {
  * Canonical slot materialization is implemented in canonical-slot-service.
  */
 
+function normalizeCancellationWindowHours(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value : DEFAULT_POLICY.cancellation_window_hours;
+}
+
+/** Narrow scalar read for an already authorized guest scope. Never read credentials. */
+export async function getCancellationWindowHours(
+  supabase: SupabaseClient,
+  teacherId: string,
+  workplaceOverride?:number|null,
+): Promise<number> {
+  if(workplaceOverride!=null)return normalizeCancellationWindowHours(workplaceOverride);
+  const { data,error } = await supabase.from("teacher_settings")
+    .select("cancellation_window_hours").eq("teacher_id", teacherId).maybeSingle();
+  if(error)throw new Error("Unable to read cancellation notice window");
+  return normalizeCancellationWindowHours(data?.cancellation_window_hours);
+}
+
 export async function getPolicy(
   supabase: SupabaseClient,
   teacherId: string
@@ -23,6 +41,7 @@ export async function getPolicy(
     .maybeSingle();
   if (!data) return DEFAULT_POLICY;
   const policy = { ...DEFAULT_POLICY, ...data };
+  policy.cancellation_window_hours = normalizeCancellationWindowHours(data.cancellation_window_hours);
   policy.duration_rate_cents = normalizeDurationRates(
     (data as { duration_rate_cents?: unknown }).duration_rate_cents
   );

@@ -27,6 +27,7 @@
     "toggleNavigation": "פתיחת תפריט ניווט",
     "workplaceFilter": "הקשר מקום העבודה הפעיל",
     "allWorkplaces": "כל מקומות העבודה",
+    "workplaceFilterFallback": "מקום העבודה הקודם אינו זמין. מוצגים כל מקומות העבודה.",
     "workplaceFilterFailed": "שינוי מקום העבודה נכשל; רעננו"
   },
   "dashboard": {
@@ -230,6 +231,8 @@
     "editWorkplaceTimezone": "עריכת אזור הזמן של מקום העבודה",
     "editWorkplaceCurrency": "עריכת מטבע של מקום העבודה",
     "editWorkplaceLocale": "עריכת שפת הדוחות של מקום העבודה",
+    "workplaceMakeupNoticeHours": "הודעת ביטול לשיעור השלמה (שעות)",
+    "workplaceMakeupNoticeHelp": "השאירו ריק כדי להשתמש בברירת המחדל שלכם. ההגדרה חלה על ביטולים חדשים מצד תלמידים ואינה קובעת חיובים.",
     "workplacePolicy": "מדיניות מקום העבודה (JSON)",
     "saveWorkplace": "שמירת מקום עבודה",
     "findStudent": "איתור תלמיד לפי שם",
@@ -502,7 +505,7 @@
     "cancelledByStudent": "בוטל על ידי התלמיד",
     "cancelledByTeacher": "בוטל על ידי המאמן",
     "requestInvalid": "הבקשה נכשלה ({status})",
-    "studioSettingsLink": "הגדרות המועדון",
+    "teacherSettingsLink": "הגדרות המורה",
     "notesSavedEmailQueued": "ההערות נשמרו; דוא״ל לאנשי הקשר שאושרו נוסף לתור",
     "cancelSessionConfirm": "לבטל את השיעור עבור כל התלמידים הרשומים? תיעוד הנוכחות והחיוב יישמר.",
     "attendanceSavedEmailQueued": "הנוכחות נשמרה; דוא״ל לאנשי הקשר שאושרו נוסף לתור"
@@ -579,7 +582,7 @@
     "noSessionNotes": "אין הערות שיעור משותפות",
     "cancelLesson": "ביטול שיעור",
     "cancelTitle": "לבטל את השיעור?",
-    "cancelWarning": "המאמן יקבל הודעה. ביטול בתוך {hours, plural, one {שעה אחת} other {# שעות}} לפני השיעור עשוי להיות מחויב לפי מדיניות מקום העבודה.",
+    "cancelWarning": "המאמן יקבל הודעה. חלון הודעת הביטול לשיעור השלמה הוא {hours, plural, one {שעה אחת} other {# שעות}}. עדיין אפשר לבטל לפני תחילת השיעור.",
     "optionalNote": "הערה למאמן (רשות)…",
     "couldNotCancel": "לא ניתן לבטל את השיעור",
     "cancelling": "מבטל…",

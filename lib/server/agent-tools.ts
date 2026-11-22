@@ -1,3 +1,4 @@
+import {workplaceCancellationWindowInput} from "@/lib/server/workplace-cancellation-policy";
 import "server-only";
 import { z } from "zod";
 import {ratingRecordSchema,ratingFetchSchema,ratingListSchema} from "@/lib/chess-public-ratings";
@@ -100,9 +101,9 @@ import {teacherProfileGet,teacherProfileUpdate,TeacherProfileError} from "@/lib/
 import {teacherInvoiceSendPreview,InvoiceSendPreviewError} from "@/lib/server/teacher-invoice-send-preview";
 import {teacherStudentProgressReport} from "@/lib/server/teacher-student-progress-service";
 import { teacherDashboardSummary, teacherNotificationsList, teacherNotificationsMarkRead,
-  TeacherOverviewError } from "@/lib/server/teacher-overview-service";
+  teacherDashboardSummaryInput, TeacherOverviewError } from "@/lib/server/teacher-overview-service";
 
-import { teacherStudentProfile, teacherStudentsRoster, teacherStudentPatch, teacherStudentChessHistory, teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, StudentProfileError } from "@/lib/server/student-profile-service";
+import { teacherStudentProfile, teacherStudentsRoster, studentRosterWorkplaceFilter, teacherStudentPatch, teacherStudentChessHistory, teacherStudentArchivePreview, teacherStudentDeleteImpact, teacherStudentDelete, StudentProfileError } from "@/lib/server/student-profile-service";
 import { studentUpdateSchema,studentCreateSchema } from "@/lib/server/api-schemas";
 import { createStudentWithOptionalContact } from "@/lib/server/teacher-student-create-service";
 const safeStudentProfile = (row: Record<string,unknown>) => ({
@@ -268,13 +269,13 @@ const currency = z.string().regex(/^[A-Z]{3}$/);
 const catalogue = [
   {
     name: "ccp_workplaces_list",
-    description: "List the connected teacher's workplaces with stable owned IDs. For historical attendance date imports, verify the workplace ID for the batch; never guess workplace names or create a workplace from an unverified source label. This is the delegated MCP equivalent of the teacher website workplaces.list read used by historical import; both share the owner-scoped workplace service.",
+    description: "List the connected teacher's workplaces with stable owned IDs. For historical attendance date imports, verify the workplace ID for the batch; never guess workplace names or create a workplace from an unverified source label. This is the delegated MCP equivalent of the teacher website Manage workplaces inventory and historical import workplaces.list read; both share the owner-scoped workplace service. For active global filter options, use ccp_workplace_context_get. cancellation_window_hours is a make-up notice override; null inherits the typed teacher setting.",
     schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
   },
   {
     name: "ccp_dashboard_summary",
-    description: "Read the same teacher-owned student/workplace/group and last-seven-day session totals as the website dashboard.",
-    schema: z.object({}).strict(), scope: "coach:read", readOnly: true,
+    description: "Read the shared website dashboard totals. Omit workplaceId to inherit the active selection, pass null for All, or pass an owned workplace ID. workplaceCount is teacher-wide; scopedWorkplaceCount, active students, groups, and past-seven-day sessions respect the filter.",
+    schema: teacherDashboardSummaryInput, scope: "coach:read", readOnly: true,
   },
   {
     name: "ccp_notifications_list",
@@ -291,15 +292,15 @@ const catalogue = [
   },
   {
     name:"ccp_lessons_history_unified",
-    description:"Read bounded lesson history with instructor booked vs evidenced minutes. Each lesson\u0027s date uses its saved local timezone; filter.timezone is only the workplace/teacher fallback. timezonesUsed and timezoneSource explain why student-only and workplace-only queries may echo different fallback zones. Optional student/workplace filters.",
+    description:"Read bounded lesson history using original recorded workplace and each lesson's saved local timezone. Omit workplaceId to inherit the active global filter, use null for explicit All Workplaces, or provide an owned UUID. Optional studentId is applied to the frozen session roster.",
     schema:unifiedLessonFilter,
     scope:"coach:read",readOnly:true,
   },
   {
     name: "ccp_reports_workplace_summary",
-    description: "Read a teacher-owned workplace's date-range sessions and attendance totals, with optional CSV or text export. The same server calculation powers the website. Instructor minutes count each group lesson once. No student names or notes in this aggregate.",
+    description: "Read date-range sessions and attendance totals through the same website service. Omit workplaceId to inherit the active global filter; null means All Workplaces, or provide an owned UUID. Dates use saved local lesson zones, and each lesson is counted once. Optional CSV/TXT exports contain no learner names or notes.",
     schema: z.object({
-      workplaceId: uuid,
+      workplaceId: uuid.nullable().optional(),
       from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       format: z.enum(["json", "csv", "text"]).default("json"),
@@ -760,12 +761,12 @@ const catalogue = [
   },
   {
     name:"ccp_workplace_context_get",
-    description:"Read the teacher's globally selected workplace filter (or All Workplaces) and exactly owned locations. This is presentation context only, not an access grant or historical data mutation.",
+    description:"Read the teacher's global filter and active owned workplaces. An archived saved workplace falls back to null (All Workplaces) with selectionWasStale=true. If the reference is already cleared, including on deletion, a fresh read returns ordinary All (null, selectionWasStale=false); it cannot infer the previous venue. This is a filter, not an access grant or a historical data change.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_workplace_context_set",
-    description:"Confirm a global workplace filter change. Requires exact owned workplace UUID or null for All Workplaces and current expected selection; does not reassign students, lessons or financial history.",
+    description:"Confirm a global filter change to an active owned workplace UUID or null (All Workplaces). Set expectedSelectedWorkplaceId from the latest GET, including null for an archived-workplace fallback; it can be safely replaced or cleared. Re-read on stale conflicts. No students, lessons or financial history are reassigned.",
     schema:workplaceContextUpdateSchema,scope:"coach:write",readOnly:false,
   },
   {
@@ -851,7 +852,7 @@ const catalogue = [
   },
   {
     name:"ccp_canonical_makeup_credits_list",
-    description:"Read available, unredeemed make-up credits from canonical frozen student attendance, subject to the studio cancellation and expiry policy. A make-up session is created with ccp_canonical_private_session_create and makeupForSessionId.",
+    description:"Read unredeemed make-up credits and the source lesson timezone from frozen attendance; New student cancellations retain the recorded source workplace window and make-up flags; older unknown and portable-unverified decisions are distinguished. Other attendance and expiry rules are unchanged. To redeem, use ccp_private_sessions_create with the original makeupForSessionId and a separately confirmed venue-local date and time.",
     schema:z.object({}).strict(),
     scope:"coach:read",readOnly:true,
   },
@@ -878,7 +879,7 @@ const catalogue = [
   },
   {
     name:"ccp_private_sessions_create",
-    description:"Atomically schedule one canonical private/ad-hoc chess lesson or verified make-up. Optional durationMinutes (15–480) defaults to 30 minutes for ordinary sessions or the original length for make-ups; supply it to avoid surprise defaults. Local timezone/DST, ownership and enrollment are enforced; replays return the original session.",
+    description:"Atomically schedule one canonical private/ad-hoc chess lesson or verified make-up. Optional durationMinutes (15–480) defaults to 30 minutes for ordinary sessions or the original length for make-ups; supply it to avoid surprise defaults. An explicit workplace UUID uses that venue’s local calendar, and omitted/null uses the teacher’s Personal default; pass the workplace shown by the selected browser form rather than assuming context grants it. Ownership, DST and enrollment are revalidated; retries return the original session.",
     schema:canonicalPrivateSessionCreateSchema.extend({
       confirmed:z.literal(true),
     }).strict(),scope:"coach:write",readOnly:false,
@@ -891,7 +892,7 @@ const catalogue = [
   },
   {
     name:"ccp_recurring_slots_create",
-    description:"Create one recurring canonical private lesson slot and materialize the next 56 studio-local days atomically. The supplied idempotencyKey is also the stable slot ID for exact website/MCP replay. Teacher-owned student and workplace enrollment required.",
+    description:"Create one confirmed recurring private lesson slot and materialize the existing 56-day teacher horizon; startDate and time are in the explicitly chosen workplace’s calendar, or the Personal default when omitted. The supplied idempotencyKey is also the stable slot ID for exact website/MCP replay. Teacher-owned student and workplace enrollment required.",
     schema:canonicalSlotCreateSchema.extend({confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
@@ -1177,8 +1178,8 @@ const catalogue = [
   },
   {
     name: "ccp_students_roster",
-    description: "Page through active learners by default, all learners with includeArchived=true, or only former pupils with archivedOnly=true. Includes chess profiles and revisions; excludes private notes and guardian contacts.",
-    schema: z.object({query:z.string().trim().max(80).optional(),
+    description: "Page through active learners by default or explicitly include archived learners. Omit workplaceId or use null for the global identity catalogue; use context for the teacher’s selected roster or supply an owned workplace UUID. Current members use its local date; archived pupils qualify only through a started, noncancelled membership period there. Private notes and guardian contacts are excluded.",
+    schema: z.object({query:z.string().trim().max(80).optional(),workplaceId:studentRosterWorkplaceFilter,
       includeArchived:z.boolean().default(false),archivedOnly:z.boolean().default(false),
       offset:z.number().int().min(0).max(100000).default(0),limit:z.number().int().min(1).max(100).default(50)}).strict(),
     scope:"coach:read",readOnly:true,
@@ -1250,9 +1251,9 @@ const catalogue = [
   },
   {
     name: "ccp_sessions_list",
-    description: "Find sessions, their revision timestamp and their existing topic note. Omit query for recent sessions; ambiguity returns NEEDS_RESOLUTION.",
+    description: "Find sessions and their revision/topic. An explicit owned workplace filters discovery before the limit; null or omitted workplaceId leaves All. Exact session IDs and frozen rosters are unaffected. Omit query for recent sessions; ambiguity returns NEEDS_RESOLUTION.",
     schema: z.object({
-      query: searchText.optional(), workplaceId: uuid.optional(),
+      query: searchText.optional(), workplaceId: uuid.nullable().optional(),
     }).strict(), scope: "coach:read", readOnly: true,
   },
   {
@@ -1364,7 +1365,7 @@ const catalogue = [
   },
   {
     name:"ccp_materials_history_list",
-    description:"List **explicitly recorded** study/material stages for a teacher-owned student, workplace or session. Stages distinguish assigned, actually taught, and teacher-attested completed; mere study links are never counted. Workplace results deduplicate sessions in page summary.",
+    description:"List **explicitly recorded** study/material stages for a teacher-owned student, workplace or session. To reproduce Coaching’s selected-workplace history, pass its explicit workplaceId; omit it for All with a student or session ID. The teacher-global catalog is not this ledger. Stages distinguish assigned, actually taught, and teacher-attested completed; mere study links are never counted. Workplace results deduplicate sessions in page summary.",
     schema:materialsHistoryFilter,
     scope:"coach:read",readOnly:true,
   },
@@ -1434,19 +1435,20 @@ const catalogue = [
   // operation. The receipt is replay-safe and contains only IDs and audit metadata.
   {
     name: "ccp_workplaces_create",
-    description: "Create a teacher-owned workplace. Confirm its name, IANA time zone and currency.",
+    description: "Create a teacher-owned workplace. Confirm its name, IANA time zone, currency and optional whole-hour make-up notice override (null inherits the teacher default).",
     schema: z.object({name:shortName, timezone:z.string().min(1).max(80),
       currency:currency.default("USD"),locale:locale.default("en"),
-      policy:resourcePolicy.default({}),...mutation}).strict(),
+      policy:resourcePolicy.default({}),cancellationWindowHours:workplaceCancellationWindowInput.optional(),...mutation}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_workplaces_update",
-    description:"Edit an identified workplace using its latest revision from workplaces_list. No silent overwrite.",
+    description:"Edit an identified workplace using its latest revision from workplaces_list. Set cancellationWindowHours to whole hours (including 0) or null to inherit. Applies to new student cancellations only and does not set invoice policy. No silent overwrite.",
     schema:z.object({workplaceId:uuid,name:shortName.optional(),timezone:z.string().min(1).max(80).optional(),
-      currency:currency.optional(),locale:locale.optional(),policy:resourcePolicy.optional(),...revision}).strict()
+      currency:currency.optional(),locale:locale.optional(),policy:resourcePolicy.optional(),
+      cancellationWindowHours:workplaceCancellationWindowInput.optional(),...revision}).strict()
       .refine(v => v.name!==undefined || v.timezone!==undefined || v.currency!==undefined ||
-        v.locale!==undefined || v.policy!==undefined,"At least one change is required"),
+        v.locale!==undefined || v.policy!==undefined || v.cancellationWindowHours!==undefined,"At least one change is required"),
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1558,7 +1560,7 @@ const catalogue = [
   },
   {
     name:"ccp_lessons_capture_preview",
-    description:"Read-only one-to-fifty-student capture preview: resolve exact full names/aliases and owner-scoped workplace, then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. For archived matches, review exact IDs with ccp_lessons_archived_recovery_preview and require separate confirmed atomic ccp_lessons_archived_recovery_commit; for active learners, use ccp_sessions_create for one or ccp_sessions_ad_hoc_create for 2–50.",
+    description:"Read-only one-to-fifty-student capture preview: resolve exact full names/aliases. Omitted workplaceId inherits an active selected workplace; null does not infer from selection and still requires an unambiguous owned venue. An explicit UUID overrides selection. Then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. For archived matches, review exact IDs with ccp_lessons_archived_recovery_preview and require separate confirmed atomic ccp_lessons_archived_recovery_commit; for active learners, use ccp_sessions_create for one or ccp_sessions_ad_hoc_create for 2–50.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -2480,7 +2482,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await studentSkillAssessmentsRecord(db,teacherId,a.studentId,a.ratings,a.idempotencyKey,a.assessedOn)};
       }
       case "ccp_students_roster": {
-        const a=args as {query?:string;includeArchived:boolean;archivedOnly:boolean;offset:number;limit:number};
+        const a=args as Parameters<typeof teacherStudentsRoster>[2];
         const result=await teacherStudentsRoster(db,teacherId,a);
         return {data:{students:result.students.map(safeStudentProfile),nextOffset:result.nextOffset}};
       }
@@ -2510,7 +2512,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherStudentPatch(db,teacherId,a.studentId,a.changes,a.expectedUpdatedAt)};
       }
       case "ccp_dashboard_summary":
-        return { data: await teacherDashboardSummary(db, teacherId) };
+        return { data: await teacherDashboardSummary(db, teacherId, (args as z.infer<typeof teacherDashboardSummaryInput>).workplaceId) };
       case "ccp_notifications_list":
         return { data: await teacherNotificationsList(db, teacherId) };
       case "ccp_notifications_mark_read": {
@@ -2530,7 +2532,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherUnifiedLessonHistory(db,teacherId,a)};
       }
       case "ccp_reports_workplace_summary": {
-        const a = args as { workplaceId: string; from: string; to: string; format: "json" | "csv" | "text"; outputLocale?:"en"|"he"|"ru" };
+        const a = args as { workplaceId?: string|null; from: string; to: string; format: "json" | "csv" | "text"; outputLocale?:"en"|"he"|"ru" };
         try {
           const result = await workplaceTeachingReport(
             db,teacherId,a.workplaceId,a.from,a.to,a.outputLocale
@@ -2742,10 +2744,9 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_groups_members":
         return { data: await groupsMembers(db, teacherId, (args as {groupId:string}).groupId) };
       case "ccp_sessions_list": {
-        const a = args as {query?:string;workplaceId?:string};
-        const sessions = await sessionsList(db, teacherId);
+        const a = args as {query?:string;workplaceId?:string|null};
+        const sessions = await sessionsList(db, teacherId,a.workplaceId);
         const filtered = sessions?.filter((s: {title:string;workplace_id:string}) =>
-          (!a.workplaceId || s.workplace_id === a.workplaceId) &&
           (!a.query || s.title.toLocaleLowerCase().includes(a.query.toLocaleLowerCase()))) ?? [];
         if (a.query) {
           const exact = filtered.filter((s: {title:string}) =>

@@ -34,7 +34,7 @@ async function command<T>(action:string,body:Record<string,unknown>={}):Promise<
  * Shared student and lesson learning panel. The teacher explicitly approves
  * suggestions; MCP is only allowed to propose, never to call approve/update.
  */
-export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
+export function ChessLearningPanel({fixedStudentId,workplaceId=null}:{fixedStudentId?:string;workplaceId?:string|null}) {
   const t=useTranslations("chessLearning"),locale=useLocale();
   const toUserError=useLocalizedApiError();
   const [students,setStudents]=useState<Student[]>([]);
@@ -78,7 +78,7 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
     let active=true;
     void Promise.all([
       command<Student[]>("students.search",{query:""}),
-      command<Session[]>("sessions.list"),
+      command<Session[]>("sessions.list",{workplaceId}),
       command<Category[]>("chess.categories.list"),
     ]).then(([people,lessons,skills])=>{
       if (!active)return;
@@ -87,7 +87,7 @@ export function ChessLearningPanel({fixedStudentId}:{fixedStudentId?:string}) {
       setCategoryId(old=>old||skills[0]?.id||"");
     }).catch(e=>{if(active)setError(String(e));});
     return ()=>{active=false;};
-  },[fixedStudentId]);
+  },[fixedStudentId,workplaceId]);
 
   useEffect(()=>{
     let active=true;

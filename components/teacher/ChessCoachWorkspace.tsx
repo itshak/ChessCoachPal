@@ -3,13 +3,13 @@
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import {LocalizedUiError} from "@/i18n/api-error";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import {useTranslations,useLocale} from "next-intl";
 import Link from "next/link";
 import { workplaceLocalToUtc, utcToWorkplaceLocal } from "@/lib/coaching-time";
 import {WorkplaceMembershipEndPanel} from "@/components/teacher/WorkplaceMembershipEndPanel";
 
-type Workplace = { id: string; name: string; timezone: string; currency: string; locale: string; policy: Record<string, unknown>; updated_at:string };
+type Workplace = { id: string; name: string; timezone: string; currency: string; locale: string; policy: Record<string, unknown>; updated_at:string; cancellation_window_hours:number|null };
 type Student = { id: string; name: string; level: string | null; updated_at:string };
 type Group = { id: string; name: string; workplace_id: string; updated_at:string };
 type Session = {
@@ -76,6 +76,10 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
   const [editCurrency, setEditCurrency] = useState("USD");
   const [editLocale, setEditLocale] = useState("en");
   const [editWorkplacePolicy, setEditWorkplacePolicy] = useState("{}");
+  const [newCancellationWindow, setNewCancellationWindow] = useState("");
+  const [editCancellationWindow, setEditCancellationWindow] = useState("");
+  const createNoticeHint=useId(),editNoticeHint=useId();
+  const noticeHours=(value:string)=>value===""?null:Number(value);
   const [newStudentName, setNewStudentName] = useState("");
   const [newStudentLevel, setNewStudentLevel] = useState("");
   const [editStudentId, setEditStudentId] = useState("");
@@ -86,6 +90,12 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
   const [editGroupName, setEditGroupName] = useState("");
   const [groupMembers, setGroupMembers] = useState<Roster[]>([]);
   const [groupMembersId, setGroupMembersId] = useState("");
+  const workplaceHeadingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(()=>{
+    if (window.location.hash === "#manage-workplaces") {
+      workplaceHeadingRef.current?.focus({preventScroll:true});
+    }
+  },[]);
   const groupLoadRef = useRef(0);
   const [workplaceId, setWorkplaceId] = useState(initialWorkplaceId??"");
   const [groupId, setGroupId] = useState("");
@@ -198,8 +208,10 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
   async function addWorkplace(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     await perform(async () => {
-      await operation("workplaces.create", { name: workplaceName.trim(), timezone, currency, locale });
+      await operation("workplaces.create", { name: workplaceName.trim(), timezone, currency, locale,
+        cancellationWindowHours:noticeHours(newCancellationWindow) });
       setWorkplaceName("");
+      setNewCancellationWindow("");
     }, t("workplaceCreated"));
   }
 
@@ -221,6 +233,7 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
       await operation("workplaces.update", {
         workplaceId, name: editWorkplaceName.trim(), timezone: editTimezone,
         currency: editCurrency, locale: editLocale, policy,
+        cancellationWindowHours:noticeHours(editCancellationWindow),
         expectedUpdatedAt:current.updated_at,idempotencyKey:crypto.randomUUID(),
       });
     }, t("workplaceSaved"));
@@ -411,6 +424,7 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
       setEditWorkplaceName(w.name); setEditTimezone(w.timezone);
       setEditCurrency(w.currency); setEditLocale(w.locale);
       setEditWorkplacePolicy(JSON.stringify(w.policy ?? {}, null, 2));
+      setEditCancellationWindow(w.cancellation_window_hours==null?"":String(w.cancellation_window_hours));
     }
     void reloadEnrollments(workplaceId).catch(e => setError(toUserError(e,t("operationFailed"))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -477,8 +491,9 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
         ) : <p className="text-sm text-muted">{t("emptySessions")}</p>}
       </section>
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <section className={panel}>
-          <h2 className="text-lg font-semibold">{t("workplaces")}</h2>
+        <section id="manage-workplaces" aria-labelledby="manage-workplaces-heading" className={panel}>
+          <h2 ref={workplaceHeadingRef} id="manage-workplaces-heading" tabIndex={-1}
+            className="text-lg font-semibold focus-visible:outline-2 focus-visible:outline-primary">{t("workplaces")}</h2>
           <ul className="text-sm space-y-1 [overflow-wrap:anywhere]">
             {workplaces.map(w => <li key={w.id}><bdi dir="auto">{w.name}</bdi> · <span dir="ltr">{w.timezone}</span> · <span dir="ltr">{w.currency}</span></li>)}
           </ul>
@@ -498,6 +513,11 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
             <label className="block text-sm">{t("locale")}
               <input className={field} value={locale} onChange={e => setLocale(e.target.value)} required />
             </label>
+            <label className="block text-sm">{t("workplaceMakeupNoticeHours")}
+              <input className={field} type="number" min={0} max={8760} step={1} dir="ltr" aria-describedby={createNoticeHint}
+                value={newCancellationWindow} onChange={e=>setNewCancellationWindow(e.target.value)} />
+            </label>
+            <p id={createNoticeHint} className="text-xs text-muted">{t("workplaceMakeupNoticeHelp")}</p>
             <button className={button} disabled={busy}>{t("createWorkplace")}</button>
           </form>
           {activeWorkplace && <form onSubmit={updateWorkplace} className="space-y-2 border-t border-border pt-3">
@@ -514,6 +534,11 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
             <label className="block text-sm">{t("editWorkplaceLocale")}
               <input className={field} value={editLocale} onChange={e => setEditLocale(e.target.value)} required />
             </label>
+            <label className="block text-sm">{t("workplaceMakeupNoticeHours")}
+              <input className={field} type="number" min={0} max={8760} step={1} dir="ltr" aria-describedby={editNoticeHint}
+                value={editCancellationWindow} onChange={e=>setEditCancellationWindow(e.target.value)} />
+            </label>
+            <p id={editNoticeHint} className="text-xs text-muted">{t("workplaceMakeupNoticeHelp")}</p>
             <label className="block text-sm">{t("workplacePolicy")}
               <textarea className={field} rows={4} value={editWorkplacePolicy}
                 onChange={e => setEditWorkplacePolicy(e.target.value)} spellCheck={false} />

@@ -9,24 +9,26 @@ import {useToast} from "@/components/ui/toast";
 import type {CanonicalMakeupCredit} from "@/lib/server/canonical-makeup-service";
 import {formatLessonDate} from "@/lib/schedule";
 
-type Workplace={id:string;name:string};
+type Workplace={id:string;name:string;localToday:string};
 const field="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm";
 export function CanonicalMakeupPanel({
- credits,workplaces,timezone,today,
-}:{credits:CanonicalMakeupCredit[];workplaces:Workplace[];timezone:string;today:string}){
+ credits,workplaces,timezone,personalToday,selectedWorkplaceId,
+}:{credits:CanonicalMakeupCredit[];workplaces:Workplace[];timezone:string;personalToday:string;selectedWorkplaceId:string|null}){
  const router=useRouter(),{showToast}=useToast();
  const t=useTranslations("scheduling"),locale=useLocale();
   const toUserError=useLocalizedApiError();
  const [selected,setSelected]=useState<CanonicalMakeupCredit|null>(null);
- const [date,setDate]=useState(today);
+ const [date,setDate]=useState(personalToday);
+ const [dateEdited,setDateEdited]=useState(false);
  const [time,setTime]=useState("16:00");
  const [workplaceId,setWorkplaceId]=useState("");
  const [homeVisit,setHomeVisit]=useState(false);
  const [requestId,setRequestId]=useState<string|null>(null);
  const [busy,setBusy]=useState(false);
  function choose(credit:CanonicalMakeupCredit){
-  setSelected(credit);setDate(today);setTime("16:00");
-  setWorkplaceId(credit.workplaceId);setHomeVisit(false);setRequestId(null);
+  const venue=workplaces.find(w=>w.id===credit.workplaceId)??workplaces.find(w=>w.id===selectedWorkplaceId);
+  setSelected(credit);setDate(venue?.localToday??personalToday);setDateEdited(false);setTime("16:00");
+  setWorkplaceId(venue?.id??"");setHomeVisit(false);setRequestId(null);
  }
  async function save(){
   if(!selected)return;
@@ -65,8 +67,8 @@ export function CanonicalMakeupPanel({
      <div>
       <strong><bdi dir="auto">{c.studentName}</bdi></strong>
       <div className="text-xs text-muted">
-       {locale==="en"?formatLessonDate(c.missedAt,timezone,"short"):
-        new Intl.DateTimeFormat(locale,{dateStyle:"short",timeZone:timezone}).format(new Date(c.missedAt))}
+       {locale==="en"?formatLessonDate(c.missedAt,c.sourceTimezone||timezone,"short"):
+        new Intl.DateTimeFormat(locale,{dateStyle:"short",timeZone:c.sourceTimezone||timezone}).format(new Date(c.missedAt))}
        {" · "}{t("minutes",{count:c.durationMinutes})} · {
         c.status==="teacher_cancelled"?t("teacherCancelled"):
         c.status==="student_cancelled"?t("studentCancelled"):t("absence")}
@@ -79,7 +81,7 @@ export function CanonicalMakeupPanel({
    <div className="grid sm:grid-cols-2 gap-3">
     <label className="text-sm">{t("date")}
      <input type="date" className={field} value={date}
-      onChange={e=>{setDate(e.target.value);setRequestId(null)}}/>
+      onChange={e=>{setDate(e.target.value);setDateEdited(true);setRequestId(null)}}/>
     </label>
     <label className="text-sm">{t("localTime")}
      <input type="time" className={field} value={time}
@@ -87,7 +89,8 @@ export function CanonicalMakeupPanel({
     </label>
     <label className="text-sm">{t("teachingWorkplace")}
      <select className={field} value={workplaceId}
-      onChange={e=>{setWorkplaceId(e.target.value);setRequestId(null)}}>
+      onChange={e=>{const id=e.target.value;setWorkplaceId(id);setRequestId(null);
+       if(!dateEdited)setDate(workplaces.find(w=>w.id===id)?.localToday??personalToday);}}>
       <option value="">{t("personal")}</option>
       {workplaces.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
      </select>

@@ -172,19 +172,19 @@ export interface Database {
       workplaces: {
         Row: {
           id: string; teacher_id: string; name: string; timezone: string;
-          currency: string; locale: string; policy: Json; created_at: string;
+          currency: string; locale: string; policy: Json; created_at: string; cancellation_window_hours:number|null;
           kind: "personal"|"professional"; archived_at: string|null;
           revision: number; updated_at: string;
         };
         Insert: {
           id?: string; teacher_id: string; name: string; timezone?: string;
-          currency?: string; locale?: string; policy?: Json; created_at?: string;
+          currency?: string; locale?: string; policy?: Json; created_at?: string; cancellation_window_hours?:number|null;
           kind?: "personal"|"professional"; archived_at?: string|null;
           revision?: number; updated_at?: string;
         };
         Update: {
           name?: string; timezone?: string; currency?: string; locale?: string;
-          policy?: Json; archived_at?: string|null;
+          policy?: Json; archived_at?: string|null; cancellation_window_hours?:number|null;
         };
       };
       class_groups: {
@@ -1021,6 +1021,12 @@ export interface Database {
           status: SessionAttendanceStatus; note: string; notice_at: string | null;
           cancelled_by: "student" | "teacher" | null; cancel_reason: string;
           marked_at: string | null; marked_by: string | null; updated_at: string;
+          cancellation_window_hours_snapshot:number|null;
+          cancellation_session_starts_at_snapshot:string|null;
+          cancellation_timely_earns_makeup_snapshot:boolean|null;
+          cancellation_late_earns_makeup_snapshot:boolean|null;
+          cancellation_policy_snapshot_origin:"observed"|"restored_unverified"|null;
+          cancellation_was_timely_snapshot:boolean|null;
         };
         Insert: {
           id?: string; teacher_id: string; session_id: string; student_id: string;

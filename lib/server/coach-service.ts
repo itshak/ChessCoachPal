@@ -27,7 +27,7 @@ export async function workplacesList(db: Db, teacherId: string) {
   // A 100-row cap silently hid recently created workplaces (and broke all
   // reporting/lesson selectors) after a realistic long-lived teacher history.
   const { data, error } = await db.from("workplaces")
-    .select("id,name,timezone,currency,locale,policy,updated_at")
+    .select("id,name,timezone,currency,locale,policy,updated_at,cancellation_window_hours")
     .eq("teacher_id", teacherId).order("name").order("id").limit(1000);
   if (error) throw problem();
   if ((data?.length ?? 0) >= 1000)
@@ -37,11 +37,11 @@ export async function workplacesList(db: Db, teacherId: string) {
 
 export async function workplacesCreate(
   db: Db, teacherId: string, name: string, timezone: string, currency: string,
-  locale = 'en', policy: Record<string, unknown> = {}
+  locale = 'en', policy: Record<string, unknown> = {}, cancellationWindowHours:number|null=null
 ) {
   const { data, error } = await db.from("workplaces")
-    .insert({ teacher_id: teacherId, name, timezone, currency, locale, policy })
-    .select("id,name,timezone,currency,locale,policy").single();
+    .insert({ teacher_id: teacherId, name, timezone, currency, locale, policy, cancellation_window_hours:cancellationWindowHours })
+    .select("id,name,timezone,currency,locale,policy,cancellation_window_hours").single();
   if (error?.code === "23505") throw conflict();
   if (error) throw problem();
   return data;
@@ -123,12 +123,19 @@ export async function groupsMembers(db: Db, teacherId: string, groupId: string) 
   return data;
 }
 
-export async function sessionsList(db: Db, teacherId: string) {
-  const { data, error } = await db.from("teaching_sessions")
+export async function sessionsList(db: Db, teacherId: string, workplaceId?:string|null) {
+  if(workplaceId){
+    const owned=await db.from("workplaces").select("id").eq("teacher_id",teacherId).eq("id",workplaceId).maybeSingle();
+    if(owned.error)throw problem();
+    if(!owned.data)throw notFound();
+  }
+  let query=db.from("teaching_sessions")
     .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
     .eq("teacher_id", teacherId)
     .order("starts_at", { ascending: false })
     .order("id", { ascending: true }).limit(100);
+  if(workplaceId)query=query.eq("workplace_id",workplaceId);
+  const {data,error}=await query;
   if (error) throw problem();
   return data;
 }

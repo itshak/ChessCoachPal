@@ -82,7 +82,7 @@
         "ccp_lessons_archived_recovery_preview",
         "ccp_lessons_archived_recovery_commit"
       ],
-      "explanation": "Exact source c80b85c: 38/38 website gateway actions have independently named authenticated website/delegated MCP evidence. 36 are equivalent owner-scoped MCP operations and two are narrowly approved browser-only teacher-attestation exceptions with negative bearer tests. The action-evidence audit found zero missing; 225 authenticated E2E passed and all five workflow families were green. Legacy calendar vs canonical session double writers and four outstanding historical release cases remain separate blockers. Canonical per-participant cancellation is being implemented through the existing shared session commit, website attendance.record/list and ccp_attendance_record/preview MCP actions. Notice timestamp, initiator and reason are independently checked in e2e/parity-session-completion.spec.ts; these new assertions still require CI confirmation. This is an incremental change only: legacy private-calendar attendance and the unresolved historical parity cases remain strict release blockers. Historical attendance import dropdown reads workplaces.list via this authenticated website action; ccp_workplaces_list uses the same owner-scoped workplacesList service. Browser regression covers independent student/workplace load failures and retry in e2e/parity-historical-import.spec.ts; no new domain capability was added. v0.1.9 corrects the cookie-based website agent gateway CSRF origin check behind Coolify's reverse proxy to prefer the configured public site origin; delegated MCP bearer authentication, workplace data selection and scope enforcement are unchanged. Same-origin and cross-origin authenticated browser regression assertions were added. Dated workplace-membership end now has a browser teacher review panel and the two shared website/MCP operations workplaces.unenrollPreview/ccp_workplaces_unenroll_preview and workplaces.unenroll/ccp_workplaces_unenroll. Both use owner-scoped SQL and return current-period impact/credit-hold policy; confirming end is non-destructive and receipt/revision controlled. e2e/parity-workplaces-extended.spec.ts pairs the two transports and tests preserved frozen lessons, replay and changed-key conflict. Acceptance is not inferred from source inventory; the new exact-head E2E and dedicated finance adjustment workflows are outstanding. Explicit credit-adjustment preview/commit now exposes shared website/MCP service and owner-scoped SQL receipt/revision transaction. Grants, forfeitures, expiry extensions, transfer pairing and refund-reversal funding provenance are audited independently of invoice/payments. Paired action E2E e2e/parity-credit-adjustments.spec.ts covers teacher concession vs paid status, changed-key replay, stale credit balance, and noncash outcomes; funded transfer and refund E2E are still required before release acceptance. Teacher student credit UI now includes funding-aware review/confirmation for all adjustment types. The shared canonical credit read and allocation model includes approved adjustment deltas and effective expiry; no archive or workplace exit silently modifies the ledger. Dedicated existing billing API expiry edit remains separate and must be reconciled before freeze. Shared student lifecycle preview/commit now shows actual current/future periods and funding-aware held-credit data. Teacher archive closes/cancels only active/future memberships transactionally; reactivation inserts ONLY previously verified selected workplaces. The same SQL and teacher service handles browser and MCP, with E2E pairing in e2e/parity-student-lifecycle.spec.ts. Do not mark accepted without exact-head DB-backed E2E. Archived-learner lesson recovery has exact-ID audited preview and one SQL transactional teacher-approved reactivation plus new lesson, identical to the delegated MCP tools.",
+      "explanation": "Exact source c80b85c: 38/38 website gateway actions have independently named authenticated website/delegated MCP evidence. 36 are equivalent owner-scoped MCP operations and two are narrowly approved browser-only teacher-attestation exceptions with negative bearer tests. The action-evidence audit found zero missing; 225 authenticated E2E passed and all five workflow families were green. Legacy calendar vs canonical session double writers and four outstanding historical release cases remain separate blockers. Canonical per-participant cancellation is being implemented through the existing shared session commit, website attendance.record/list and ccp_attendance_record/preview MCP actions. Notice timestamp, initiator and reason are independently checked in e2e/parity-session-completion.spec.ts; these new assertions still require CI confirmation. This is an incremental change only: legacy private-calendar attendance and the unresolved historical parity cases remain strict release blockers. Historical attendance import dropdown reads workplaces.list via this authenticated website action; ccp_workplaces_list uses the same owner-scoped workplacesList service. Browser regression covers independent student/workplace load failures and retry in e2e/parity-historical-import.spec.ts; no new domain capability was added. v0.1.9 corrects the cookie-based website agent gateway CSRF origin check behind Coolify's reverse proxy to prefer the configured public site origin; delegated MCP bearer authentication, workplace data selection and scope enforcement are unchanged. Same-origin and cross-origin authenticated browser regression assertions were added. Dated workplace-membership end now has a browser teacher review panel and the two shared website/MCP operations workplaces.unenrollPreview/ccp_workplaces_unenroll_preview and workplaces.unenroll/ccp_workplaces_unenroll. Both use owner-scoped SQL and return current-period impact/credit-hold policy; confirming end is non-destructive and receipt/revision controlled. e2e/parity-workplaces-extended.spec.ts pairs the two transports and tests preserved frozen lessons, replay and changed-key conflict. Acceptance is not inferred from source inventory; the new exact-head E2E and dedicated finance adjustment workflows are outstanding. Explicit credit-adjustment preview/commit now exposes shared website/MCP service and owner-scoped SQL receipt/revision transaction. Grants, forfeitures, expiry extensions, transfer pairing and refund-reversal funding provenance are audited independently of invoice/payments. Paired action E2E e2e/parity-credit-adjustments.spec.ts covers teacher concession vs paid status, changed-key replay, stale credit balance, and noncash outcomes; funded transfer and refund E2E are still required before release acceptance. Teacher student credit UI now includes funding-aware review/confirmation for all adjustment types. The shared canonical credit read and allocation model includes approved adjustment deltas and effective expiry; no archive or workplace exit silently modifies the ledger. Dedicated existing billing API expiry edit remains separate and must be reconciled before freeze. Shared student lifecycle preview/commit now shows actual current/future periods and funding-aware held-credit data. Teacher archive closes/cancels only active/future memberships transactionally; reactivation inserts ONLY previously verified selected workplaces. The same SQL and teacher service handles browser and MCP, with E2E pairing in e2e/parity-student-lifecycle.spec.ts. Do not mark accepted without exact-head DB-backed E2E. Archived-learner lesson recovery has exact-ID audited preview and one SQL transactional teacher-approved reactivation plus new lesson, identical to the delegated MCP tools. sessions.list and ccp_sessions_list accept the same optional owned venue discovery filter; Completion and Learning send selected context without changing exact-ID frozen reads. e2e/parity-workplace-coaching-context.spec.ts.",
       "evidenceTest": "e2e/parity-gateway-action-coverage.spec.ts"
     },
     {
@@ -374,7 +374,7 @@
       "existingTools": [
         "ccp_canonical_makeup_credits_list"
       ],
-      "explanation": "Web and delegated MCP call the same owner-scoped canonical make-up eligibility service; each credit is a frozen session/student pair. The atomic private-session writer independently checks student enrollment, studio policy, expiry and single-use status.",
+      "explanation": "Web and MCP share source lesson timezone and owner-scoped frozen session/student identity. New student cancellations use typed recorded source-venue terms; legacy unknown retains teacher-global behavior, and unverified portable evidence does not authorize a make-up. Enrollment and single-use remain checked at booking. e2e/parity-workplace-cancellation.spec.ts and e2e/parity-workplace-calendar-context.spec.ts.",
       "evidenceTest": "e2e/canonical-makeup-credits-parity.spec.ts"
     },
     {
@@ -387,7 +387,7 @@
       "existingTools": [
         "ccp_private_sessions_create"
       ],
-      "explanation": "One tenant-authorized canonical SQL transaction for new private lessons and consumed student-specific make-up credits, shared by web and named MCP. Stable client idempotency, workplace timezone, DST and cross-tenant guards.",
+      "explanation": "Browser venue-local defaults do not create attendance or a lesson. A confirmed explicit venue UUID and local date/time are sent to the same canonical website/MCP writer; null retains the Personal default. e2e/parity-workplace-calendar-context.spec.ts verifies exact replay and no pre-submit write.",
       "evidenceTest": "e2e/canonical-private-sessions-parity.spec.ts"
     },
     {
@@ -417,7 +417,7 @@
         "ccp_recurring_slots_list",
         "ccp_recurring_slots_create"
       ],
-      "explanation": "Shared canonical recurring intent list and atomic create RPC, with a stable caller-provided idempotency key, frozen participant, owned workplace enrollment and materialized horizon. Authenticated cross-interface E2E.",
+      "explanation": "Shared recurring intent list and atomic create with preserved ownership and idempotency. Blank browser drafts use the selected venue’s local date and weekday without modifying explicit edits or history. MCP takes the same explicit venue-local input. e2e/parity-workplace-calendar-context.spec.ts.",
       "evidenceTest": "e2e/canonical-recurring-slots-parity.spec.ts"
     },
     {
@@ -483,7 +483,7 @@
       "existingTools": [
         "ccp_lessons_capture_preview"
       ],
-      "explanation": "One owner-scoped read-only website/MCP preview now accepts either an explicit offset start+duration OR a date-only localDate for exactly one common active workplace-scoped weekly slot across 2–50 unambiguously resolved active students. It refuses missing/multiple slot times, date/DST gaps/folds, foreign enrollments and existing canonical lesson intervals. Browser panel shows inferred time and requires confirmation; existing atomic ad-hoc writer remains the only commit authority. Independently named web/delegated OAuth E2E proves week-slot inference, strict input modes, negative cases, DST and retry behavior. Optional chapterSelection study ID and ordinal (1–64) resolve an exact fresh, authorized Lichess PGN metadata chapter including verified PGN players, without claiming that chapter was taught, assigned or even attached; this remains a separate confirmed material-evidence operation after session creation.",
+      "explanation": "One owner-scoped read-only website/MCP preview defaults omitted workplace to active context, with explicit UUID override and null requiring unambiguous independent venue resolution. e2e/parity-workplace-coaching-context.spec.ts. It accepts either an explicit offset start+duration OR a date-only localDate for exactly one common active workplace-scoped weekly slot across 2–50 unambiguously resolved active students. It refuses missing/multiple slot times, date/DST gaps/folds, foreign enrollments and existing canonical lesson intervals. Browser panel shows inferred time and requires confirmation; existing atomic ad-hoc writer remains the only commit authority. Independently named web/delegated OAuth E2E proves week-slot inference, strict input modes, negative cases, DST and retry behavior. Optional chapterSelection study ID and ordinal (1–64) resolve an exact fresh, authorized Lichess PGN metadata chapter including verified PGN players, without claiming that chapter was taught, assigned or even attached; this remains a separate confirmed material-evidence operation after session creation.",
       "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
     },
     {
@@ -542,7 +542,7 @@
         "ccp_materials_history_void",
         "ccp_materials_aggregate"
       ],
-      "explanation": "Whole-filtered material summary and individual teacher-attested evidence ledger use the same website/MCP service. Full aggregate runs bounded pagination, checks for concurrent drift and deduplicates session/material/stage combinations across group participants. Existing explicit claims only. Provider write/read completeness and 93 strict cases remain separate blockers.",
+      "explanation": "Whole-filtered material summary and individual teacher-attested evidence ledger use the same website/MCP service. Coaching prefills the selected workplace and passes it as an explicit filter; All/fixed-student history and the separate teacher-global material catalogue remain independent. e2e/parity-workplace-coaching-context.spec.ts. Full aggregate runs bounded pagination, checks for concurrent drift and deduplicates session/material/stage combinations across group participants. Existing explicit claims only. Provider write/read completeness and 93 strict cases remain separate blockers.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
@@ -555,7 +555,7 @@
       "existingTools": [
         "ccp_reports_workplace_summary"
       ],
-      "explanation": "Read-only MCP summary and CSV/text exports reuse the same teacher-scoped report service as website GET. Optional outputLocale (en/he/ru) produces matching human-readable JSON presentation and safe CSV/TXT without modifying numeric report fields; authenticated website/MCP tests: e2e/agent-mcp.spec.ts and e2e/parity-reports.spec.ts.",
+      "explanation": "Browser and MCP share one recorded-workplace report service: omitted filter inherits stored context, HTTP workplaceId=all and MCP null explicitly override it, and owned UUIDs select original workplace. Mixed saved timezones and aggregate CSV/TXT count each canonical session once. Scope parity: e2e/parity-workplace-report-scope.spec.ts; existing outputLocale and export proof remains in e2e/parity-reports.spec.ts.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
@@ -642,7 +642,7 @@
       "existingTools": [
         "ccp_lessons_history_unified"
       ],
-      "explanation": "Shared teacher-scoped bounded lesson history reads the one canonical teaching_sessions model and frozen rosters, counts booked vs evidenced instructor minutes without double-counting group sessions, and discloses per-session timezones plus workplace/studio fallback provenance. Browser/delegated MCP share one service and verified parity tests.",
+      "explanation": "Browser/delegated MCP share one bounded lesson history, original workplace attribution and frozen roster filtering: omitted filter inherits stored context, HTTP workplaceId=all and MCP null explicitly select All, with saved lesson timezone and recorded workplace fallback. Scope and deduplication are exercised in e2e/parity-workplace-report-scope.spec.ts alongside existing history coverage.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
@@ -763,8 +763,8 @@
       "existingTools": [
         "ccp_dashboard_summary"
       ],
-      "explanation": "Teacher-scoped shared service powers website and MCP; real delegated OAuth browser comparison and notification write/readback in E2E",
-      "evidenceTest": "e2e/agent-mcp.spec.ts"
+      "explanation": "Shared dashboard page, HTTP and delegated MCP resolve omitted, explicit All or owned workplace scope alike. An owned historical workplace can be read explicitly; foreign IDs are rejected. The global workplace count remains explicitly teacher-wide.",
+      "evidenceTest": "e2e/parity-workplace-dashboard.spec.ts"
     },
     {
       "path": "app/api/events/[id]/email/route.ts",
@@ -1292,7 +1292,7 @@
       "kind": "external",
       "parity": "not-applicable",
       "existingTools": [],
-      "explanation": "Guardian token authorizes one canonical session participant cancellation; a coach MCP token cannot impersonate a guardian. SQL validates token and frozen roster inside one transaction; repeat requests are idempotent."
+      "explanation": "Guardian token authorizes one canonical session participant cancellation; a coach MCP token cannot impersonate a guardian. SQL validates token and frozen roster inside one transaction and records applicable make-up notice terms from the grant workplace. Repeat requests retain original notice and terms. e2e/parity-workplace-cancellation.spec.ts."
     },
     {
       "path": "app/api/preferences/locale/route.ts",
@@ -1594,7 +1594,7 @@
         "ccp_students_roster",
         "ccp_students_create_full"
       ],
-      "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes. Direct archived-on-create uses the same confirmed website/MCP SQL receipt and excludes the archived learner from active roster/quota; the candidate exercises archived creation and changed-payload replay in e2e/parity-students.spec.ts. Historical attendance import reads this explicit includeArchived paginated student roster, equivalent to MCP ccp_students_roster. Its UI now handles this read independently from workplace list errors, with authenticated browser regression in e2e/parity-historical-import.spec.ts. ADR-0019 prelaunch schema transition: both browser and MCP write paths now commit under the same SQL ccp_student_capacity_guard using the effective plan/grant and active-state counters, with no environment-derived hosted cap as authority. SQL snapshot correctness and parallel writes remain release acceptance gates.",
+      "explanation": "Website/MCP current student roster/search/basic create and atomic full student+family creation share current teacher-scoped contracts. The roster page opts into persisted context, with matching HTTP workplaceId=context and MCP context filters; optional UUID selects an owned workplace. Omitted or explicit All preserves global import/contact pickers and returns each canonical student once. Current rows require dated local membership; explicit archived views use started noncancelled periods and do not rewrite historical lessons. Browser/HTTP/MCP evidence: e2e/parity-workplace-roster-scope.spec.ts. E2E verifies active/archived paginated rosters, Hebrew names/aliases, student-family receipt replay/changed request, teacher-private field redaction, hosted-cap denial and named family ownership. Legacy gateway students.update divergence is separately tracked in partial agent/v1 and students/[id] routes. Direct archived-on-create uses the same confirmed website/MCP SQL receipt and excludes the archived learner from active roster/quota; the candidate exercises archived creation and changed-payload replay in e2e/parity-students.spec.ts. Historical attendance import reads this explicit includeArchived paginated student roster, equivalent to MCP ccp_students_roster. Its UI now handles this read independently from workplace list errors, with authenticated browser regression in e2e/parity-historical-import.spec.ts. ADR-0019 prelaunch schema transition: both browser and MCP write paths now commit under the same SQL ccp_student_capacity_guard using the effective plan/grant and active-state counters, with no environment-derived hosted cap as authority. SQL snapshot correctness and parallel writes remain release acceptance gates.",
       "evidenceTest": "e2e/parity-students.spec.ts"
     },
     {
@@ -1651,7 +1651,7 @@
         "ccp_workplace_context_get",
         "ccp_workplace_context_set"
       ],
-      "explanation": "One owner-bound global workplace selection service for website and MCP. Null means All Workplaces, stale revision fails, foreign workplace rejected. Selection is a filter, never a permission or lesson mutation. ADR-0019: both website and MCP receive the same active-only selectable workplaces; archived professional contexts are preserved for historical reads but rejected for new selection.",
+      "explanation": "Browser and MCP share an owner-bound selection and active-only list. GET distinguishes explicit All (null) from archived-workplace fallback (null plus selectionWasStale); PUT and the MCP setter take the last effective selection, replace or clear the exact saved stale row and reject a conflicting live selection or a foreign/archived target. The navigation explains archived fallback without exposing the archived ID. After deletion clears the stored reference, fresh browser/MCP reads both return ordinary All; an open browser tab can announce fallback if its previously displayed selection vanished on refresh. Dashboard Manage workplaces links directly to the labelled Coaching management section; its list still shares the existing owned inventory tool. Stored teaching history is unchanged.",
       "evidenceTest": "e2e/parity-workplace-context.spec.ts"
     },
     {

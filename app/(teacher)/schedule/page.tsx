@@ -30,7 +30,16 @@ export default async function SchedulePage({
  const context=await teacherWorkplaceContextGet(db,user.id);
  const selection=context.selectedWorkplaceId;
  const currentStudentIds=selection?await workplaceCurrentStudentIds(db,user.id,selection):null;
- const today=toLocalDateString(new Date(),policy.timezone);
+ const now=new Date();
+ const timezone=context.selectedWorkplace?.timezone??policy.timezone;
+ const today=toLocalDateString(now,timezone);
+ const teacherToday=toLocalDateString(now,policy.timezone);
+ const workplacesRes=await db.from("workplaces").select("id,name,timezone,archived_at")
+   .eq("teacher_id",user.id).order("created_at").order("id");
+ if(workplacesRes.error)throw new Error("Unable to load calendar workplaces");
+ const workplaceTimezones=Object.fromEntries((workplacesRes.data??[]).map(w=>[w.id,w.timezone]));
+ const workplaces=(workplacesRes.data??[]).filter(w=>!w.archived_at&&(!selection||w.id===selection))
+   .map(w=>({id:w.id,name:w.name,localToday:toLocalDateString(now,w.timezone)}));
  const weekStart=startOfWeek(week&&/^\d{4}-\d{2}-\d{2}$/.test(week)?week:today);
  const weekEnd=addDays(weekStart,6);
 
@@ -38,31 +47,28 @@ export default async function SchedulePage({
  // week. This avoids one unbounded window when a teacher looks far back or
  // forward in history. Existing marked, noted, moved or paid occurrence IDs
  // are never overwritten by recurrence materialization.
- const normalEnd=addDays(today,56);
- await materializeCanonicalSessions(db,user.id,today,normalEnd);
- if(weekStart<today||weekEnd>normalEnd)
+ const normalEnd=addDays(teacherToday,56);
+ await materializeCanonicalSessions(db,user.id,teacherToday,normalEnd);
+ if(weekStart<teacherToday||weekEnd>normalEnd)
   await materializeCanonicalSessions(db,user.id,weekStart,weekEnd);
 
- const [calendar,slots,makeup,studentsRes,workplacesRes,eventsRes]=
+ const [calendar,slots,makeup,studentsRes,eventsRes]=
   await Promise.all([
-   canonicalCalendarWindow(db,user.id,weekStart,weekEnd,policy.timezone),
+   canonicalCalendarWindow(db,user.id,weekStart,weekEnd,timezone,undefined,workplaceTimezones),
    canonicalSlotsList(db,user.id),
    canonicalMakeupCreditsList(db,user.id),
    db.from("students").select("id,name")
-    .eq("teacher_id",user.id).order("name"),
-   db.from("workplaces").select("id,name")
-    .eq("teacher_id",user.id).order("created_at").order("id"),
+    .eq("teacher_id",user.id).is("archived_at",null).order("name"),
    db.from("events").select("id,title,starts_at,workplace_id")
     .eq("teacher_id",user.id)
     .gte("starts_at",addDays(weekStart,-2)+"T00:00:00Z")
     .lt("starts_at",addDays(weekEnd,3)+"T00:00:00Z")
     .order("starts_at"),
   ]);
- if(studentsRes.error||workplacesRes.error||eventsRes.error)
+ if(studentsRes.error||eventsRes.error)
   throw new Error("Unable to load the canonical teaching schedule");
 
  const students=(studentsRes.data??[]).filter(s=>!currentStudentIds||currentStudentIds.has(s.id));
- const workplaces=selection?(workplacesRes.data??[]).filter(w=>w.id===selection):workplacesRes.data??[];
  // Global context affects presentation only: recurrence generation and frozen
  // historical lesson attribution are never mutated by changing a filter.
  const scopedCalendar=selection?calendar.filter(session=>session.workplace_id===selection):calendar;
@@ -70,7 +76,7 @@ export default async function SchedulePage({
  const scopedMakeup=selection?makeup.filter(credit=>credit.workplaceId===selection):makeup;
  const events=(eventsRes.data??[]).filter(event=>!selection||event.workplace_id===selection).map(event=>({
   id:event.id,title:event.title,startsAt:event.starts_at,
-  localDate:formatEventDateKey(event.starts_at,policy.timezone),
+  localDate:formatEventDateKey(event.starts_at,(event.workplace_id&&workplaceTimezones[event.workplace_id])||policy.timezone),
  })).filter(event=>event.localDate>=weekStart&&event.localDate<=weekEnd);
 
  return <main className="space-y-6">
@@ -81,19 +87,20 @@ export default async function SchedulePage({
    </p>
   </header>
   <CanonicalScheduleBoard
-   weekStart={weekStart} today={today} timezone={policy.timezone}
+   weekStart={weekStart} today={today} timezone={timezone} personalToday={teacherToday}
+   selectedWorkplaceId={selection} workplaceTimezones={workplaceTimezones}
    sessions={scopedCalendar} events={events} students={students}
    workplaces={workplaces} durationOptions={policy.lesson_duration_options}/>
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
    <CanonicalSlotManager slots={scopedSlots as Slot[]}
     students={students} workplaces={workplaces}
-    today={today} durationOptions={policy.lesson_duration_options}/>
+    today={today} personalToday={teacherToday} selectedWorkplaceId={selection} durationOptions={policy.lesson_duration_options}/>
    <div className="space-y-4">
     <CanonicalMakeupPanel credits={scopedMakeup} timezone={policy.timezone}
-     today={today} workplaces={workplaces}/>
+     personalToday={teacherToday} selectedWorkplaceId={selection} workplaces={workplaces}/>
     <p className="text-muted text-sm">
      {t("policy")}{" "}
-     <Link className="text-primary hover:underline" href="/settings">{t("studioSettingsLink")}</Link>.
+     <Link className="text-primary hover:underline" href="/settings">{t("teacherSettingsLink")}</Link>.
     </p>
    </div>
   </div>

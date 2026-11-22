@@ -4,6 +4,7 @@ import {createHash} from "node:crypto";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertSessionSchedule } from "@/lib/server/coach-service";
+import {resolveTeacherWorkplaceFilter} from "@/lib/server/teacher-workplace-context";
 import { isDateString } from "@/lib/schedule";
 import {teacherStudyIndexSearch} from "@/lib/server/teacher-study-index";
 import { inferOwnedWeeklyLessonTime,lessonIntervalConflicts,type LessonTiming } from "@/lib/server/lesson-schedule-inference";
@@ -16,7 +17,7 @@ import { inferOwnedWeeklyLessonTime,lessonIntervalConflicts,type LessonTiming } 
 const uuid = z.string().uuid();
 export const lessonCapturePreviewSchema = z.object({
   names: z.array(z.string().trim().min(1).max(120)).min(1).max(50),
-  workplaceId: uuid.optional(),
+  workplaceId: uuid.nullable().optional(),
   title: z.string().trim().min(1).max(160),
   startsAt: z.string().datetime({ offset: true }).optional(),
   durationMinutes: z.number().int().min(15).max(480).optional(),
@@ -205,10 +206,11 @@ export async function teacherLessonCapturePreview(
       throw fail("ENROLLMENTS_LIMIT", "Too many enrollments for an unambiguous preview");
   }
 
-  if (input.workplaceId) {
+  const workplaceId=await resolveTeacherWorkplaceFilter(db,teacherId,input.workplaceId);
+  if (workplaceId) {
     const { data, error } = await db.from("workplaces")
       .select("id,name,timezone")
-      .eq("teacher_id", teacherId).eq("id", input.workplaceId).maybeSingle();
+      .eq("teacher_id", teacherId).eq("id", workplaceId).maybeSingle();
     if (error) throw fail("WORKPLACE_UNAVAILABLE", "Workplace lookup unavailable");
     if (!data) {
       issues.push({ code: "WORKPLACE_NOT_FOUND", message: "Specified workplace is unavailable" });

@@ -645,3 +645,146 @@ END
 $lesson_slot_lineage$;
 SET CONSTRAINTS ALL IMMEDIATE;
 ROLLBACK;
+
+-- Typed source-venue make-up policy and provenance. This uses the actual
+-- authenticated writer, portable restore receipt and automatic billing
+-- transaction. Everything remains within the synthetic fixture transaction.
+BEGIN;
+DELETE FROM public.teacher_settings
+ WHERE teacher_id='00000000-0000-0000-0000-000000000001';
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',true);
+DO $workplace_makeup$
+DECLARE
+ t uuid:=auth.uid();
+ pupil uuid:='10000000-0000-0000-0000-000000000001';
+ payer uuid:='b0000000-0000-4000-8000-000000000001';
+ venue uuid;
+ observed uuid;
+ historical uuid;
+ unverified uuid;
+ v_invoice_id uuid;
+ first_row jsonb;
+ claims jsonb;
+ source_row jsonb;
+ draft jsonb;
+ request_key uuid:=gen_random_uuid();
+ date_start date:='2079-01-01';
+ no_override timestamptz:='2079-01-02 18:00Z';
+ local_start timestamptz:='2079-01-03 18:00Z';
+ historical_starts timestamptz:='2079-01-04 18:00Z';
+BEGIN
+ SELECT id INTO STRICT venue FROM public.workplaces WHERE teacher_id=t AND kind='personal';
+ UPDATE public.workplaces SET cancellation_window_hours=NULL WHERE id=venue AND teacher_id=t;
+ SELECT (public.ccp_canonical_private_session_create(
+  pupil,'2079-01-02','12:00',30,false,NULL,venue,gen_random_uuid())->>'id')::uuid INTO observed;
+ -- Use the exact stored instant, independent of venue UTC offset.
+ SELECT starts_at INTO STRICT no_override FROM public.teaching_sessions WHERE id=observed;
+ PERFORM public.ccp_canonical_attendance_mutate(
+   observed,pupil,'student_cancelled','',no_override-interval '24 hours','',
+   NULL,gen_random_uuid(),false);
+ SELECT to_jsonb(a) INTO STRICT first_row FROM public.session_attendance a WHERE session_id=observed AND student_id=pupil;
+ IF (first_row->>'cancellation_window_hours_snapshot')::integer IS DISTINCT FROM 24
+   OR (first_row->>'cancellation_timely_earns_makeup_snapshot')::boolean IS DISTINCT FROM true
+   OR (first_row->>'cancellation_was_timely_snapshot')::boolean IS DISTINCT FROM true
+   OR first_row->>'cancellation_policy_snapshot_origin' IS DISTINCT FROM 'observed' THEN
+   RAISE EXCEPTION 'Missing settings row must use the same default 24/timely eligibility';
+ END IF;
+ UPDATE public.workplaces SET cancellation_window_hours=96 WHERE id=venue AND teacher_id=t;
+
+ SELECT (public.ccp_canonical_private_session_create(
+  pupil,'2079-01-03','12:00',30,false,NULL,venue,gen_random_uuid())->>'id')::uuid INTO unverified;
+ SELECT starts_at INTO STRICT local_start FROM public.teaching_sessions WHERE id=unverified;
+ claims:=jsonb_build_object(
+  'id',gen_random_uuid(),'teacher_id',t,'session_id',unverified,'student_id',pupil,
+  'status','student_cancelled','notice_at',local_start-interval '10 hours','cancelled_by','student',
+  'cancellation_window_hours_snapshot',4,'cancellation_session_starts_at_snapshot',local_start,
+  'cancellation_timely_earns_makeup_snapshot',true,'cancellation_late_earns_makeup_snapshot',false,
+  'cancellation_policy_snapshot_origin','observed');
+ PERFORM public.ccp_teacher_backup_restore(
+  jsonb_build_object('session_attendance',jsonb_build_array(claims)),NULL,repeat('a',64));
+ IF NOT EXISTS(SELECT 1 FROM public.session_attendance WHERE session_id=unverified
+  AND student_id=pupil AND cancellation_policy_snapshot_origin='restored_unverified'
+  AND cancellation_was_timely_snapshot AND cancellation_window_hours_snapshot=4) THEN
+   RAISE EXCEPTION 'Portable snapshot not retained as informational only';
+ END IF;
+ BEGIN
+   PERFORM public.ccp_canonical_private_session_create(
+    pupil,'2079-02-01','12:00',30,false,unverified,venue,gen_random_uuid());
+   RAISE EXCEPTION 'Unverified terms allowed automatic make-up';
+ EXCEPTION WHEN check_violation THEN
+   IF SQLERRM<>'CANONICAL_MAKEUP_NOT_ELIGIBLE' THEN RAISE; END IF;
+ END;
+
+ SELECT (public.ccp_canonical_private_session_create(
+  pupil,'2079-01-04','12:00',30,false,NULL,venue,gen_random_uuid())->>'id')::uuid INTO historical;
+ SELECT starts_at INTO STRICT historical_starts FROM public.teaching_sessions WHERE id=historical;
+ PERFORM public.ccp_teacher_backup_restore(
+  jsonb_build_object('session_attendance',jsonb_build_array(jsonb_build_object(
+   'id',gen_random_uuid(),'teacher_id',t,'session_id',historical,'student_id',pupil,
+   'status','student_cancelled','notice_at',historical_starts-interval '24 hours','cancelled_by','student'))),
+  NULL,repeat('b',64));
+ IF NOT EXISTS(SELECT 1 FROM public.session_attendance WHERE session_id=historical
+  AND student_id=pupil AND cancellation_policy_snapshot_origin IS NULL) THEN
+   RAISE EXCEPTION 'Legacy attendance was incorrectly backfilled with the current venue window';
+ END IF;
+ PERFORM public.ccp_canonical_private_session_create(
+  pupil,'2079-02-02','12:00',30,false,historical,venue,gen_random_uuid());
+ PERFORM public.ccp_canonical_private_session_create(
+  pupil,'2079-02-03','12:00',30,false,observed,venue,gen_random_uuid());
+
+ PERFORM public.ccp_teacher_backup_restore(
+  jsonb_build_object('session_attendance',jsonb_build_array(first_row)),NULL,repeat('c',64));
+ SELECT to_jsonb(a) INTO STRICT source_row FROM public.session_attendance a WHERE session_id=observed AND student_id=pupil;
+ IF source_row IS DISTINCT FROM first_row THEN
+   RAISE EXCEPTION 'Matching portable replay did not preserve exact observed evidence';
+ END IF;
+ BEGIN
+   PERFORM public.ccp_teacher_backup_restore(jsonb_build_object('session_attendance',
+    jsonb_build_array(jsonb_set(first_row,'{cancellation_window_hours_snapshot}','3'))),NULL,repeat('d',64));
+   RAISE EXCEPTION 'A conflicting portable upload replaced observed terms';
+ EXCEPTION WHEN unique_violation THEN
+   IF SQLERRM<>'BACKUP_CANCELLATION_POLICY_CONFLICT' THEN RAISE; END IF;
+ END;
+
+ -- Billing positive control remains accepted by the same transaction;
+ -- the restored cancellation must not generate a line or allocate credits.
+ INSERT INTO public.teacher_settings(teacher_id,currency) VALUES(t,'USD');
+ draft:=jsonb_build_array(jsonb_build_object('billingAccountId',payer,'items',
+  jsonb_build_array(jsonb_build_object('sessionId',observed,'studentId',pupil,
+    'kind','lesson','description','Synthetic observed source','quantity',1,'unitCents',100,'amountCents',100))));
+ v_invoice_id:=((public.ccp_canonical_invoice_generation_commit(
+  date_start,date_start+7,draft,'[]',request_key))->'created'->>0)::uuid;
+ IF NOT EXISTS(SELECT 1 FROM public.invoice_items WHERE invoice_id=v_invoice_id
+   AND session_id=observed AND student_id=pupil) THEN
+   RAISE EXCEPTION 'Observed-source billing positive control did not produce its approved draft';
+ END IF;
+ draft:=jsonb_set(draft,'{0,items,0,sessionId}',to_jsonb(unverified));
+ BEGIN
+   PERFORM public.ccp_canonical_invoice_generation_commit(date_start,date_start+7,draft,'[]',gen_random_uuid());
+   RAISE EXCEPTION 'A draft invoice used unverified cancellation evidence';
+ EXCEPTION WHEN check_violation THEN
+   IF SQLERRM<>'UNVERIFIED_CANCELLATION_BILLING_SOURCE' THEN RAISE; END IF;
+ END;
+ BEGIN
+   PERFORM public.ccp_canonical_invoice_generation_commit(date_start,date_start+7,'[]',
+    jsonb_build_array(jsonb_build_object('sessionId',unverified,'studentId',pupil,'packageId',gen_random_uuid())),
+    gen_random_uuid());
+   RAISE EXCEPTION 'A prepaid credit used unverified cancellation evidence';
+ EXCEPTION WHEN check_violation THEN
+   IF SQLERRM<>'UNVERIFIED_CANCELLATION_BILLING_SOURCE' THEN RAISE; END IF;
+ END;
+ BEGIN
+   PERFORM public.ccp_canonical_invoice_regenerate_atomic(v_invoice_id,
+    draft->0->'items','[]',(SELECT i.updated_at FROM public.invoices i WHERE i.id=v_invoice_id),gen_random_uuid());
+   RAISE EXCEPTION 'Draft regeneration used unverified cancellation evidence';
+ EXCEPTION WHEN check_violation THEN
+   IF SQLERRM<>'UNVERIFIED_CANCELLATION_BILLING_SOURCE' THEN RAISE; END IF;
+ END;
+ IF NOT EXISTS(SELECT 1 FROM public.invoice_items WHERE invoice_id=v_invoice_id
+   AND session_id=observed AND student_id=pupil) THEN
+   RAISE EXCEPTION 'Denied draft regeneration did not roll back its changes';
+ END IF;
+END
+$workplace_makeup$;
+ROLLBACK;

@@ -26,8 +26,10 @@ export interface WorkplaceContextState {
   selectedWorkplace:WorkplaceContextItem|null;
   workplaces:WorkplaceContextItem[];
 }
-/** Server response is identical via authenticated browser and delegated MCP. */
-export async function teacherWorkplaceContextGet(db:Db,teacherId:string):Promise<WorkplaceContextState>{
+/** Preserve the raw owner row only for an internal compare-and-set. Never expose a stale ID. */
+async function readWorkplaceContext(db:Db,teacherId:string):Promise<{
+ stored:string|null;state:WorkplaceContextState;
+}> {
   const [teacher,locations]=await Promise.all([
     db.from("teachers").select("id,selected_workplace_id")
       .eq("id",teacherId).maybeSingle(),
@@ -42,8 +44,12 @@ export async function teacherWorkplaceContextGet(db:Db,teacherId:string):Promise
   const workplaces=(locations.data??[]) as WorkplaceContextItem[];
   const stored=teacher.data.selected_workplace_id as string|null;
   const selectedWorkplace=workplaces.find(x=>x.id===stored)??null;
-  return {selectedWorkplaceId:selectedWorkplace?.id??null,
-    selectionWasStale:Boolean(stored&&!selectedWorkplace),selectedWorkplace,workplaces};
+  return {stored,state:{selectedWorkplaceId:selectedWorkplace?.id??null,
+    selectionWasStale:Boolean(stored&&!selectedWorkplace),selectedWorkplace,workplaces}};
+}
+/** Server response is identical via authenticated browser and delegated MCP. */
+export async function teacherWorkplaceContextGet(db:Db,teacherId:string):Promise<WorkplaceContextState>{
+  return (await readWorkplaceContext(db,teacherId)).state;
 }
 /** A retry of the same selection is idempotent; a stale conflicting tab fails. */
 export async function teacherWorkplaceContextSet(db:Db,teacherId:string,
@@ -58,8 +64,15 @@ export async function teacherWorkplaceContextSet(db:Db,teacherId:string,
   }
   let q=db.from("teachers").update({selected_workplace_id:value.selectedWorkplaceId})
     .eq("id",teacherId);
-  q=value.expectedSelectedWorkplaceId===null?
-    q.is("selected_workplace_id",null):q.eq("selected_workplace_id",value.expectedSelectedWorkplaceId);
+  let expectedStored=value.expectedSelectedWorkplaceId;
+  if(expectedStored===null){
+    const current=await readWorkplaceContext(db,teacherId);
+    // The public value is All for an archived preference. Recover by matching
+    // that same stored ID, not by weakening the compare-and-set for stale tabs.
+    if(current.state.selectionWasStale)expectedStored=current.stored;
+  }
+  q=expectedStored===null?
+    q.is("selected_workplace_id",null):q.eq("selected_workplace_id",expectedStored);
   const {data,error}=await q.select("id").maybeSingle();
   if(error){
     if(error.code==="23503")fail(404,"WORKPLACE_NOT_FOUND","Workplace no longer exists");
@@ -70,4 +83,22 @@ export async function teacherWorkplaceContextSet(db:Db,teacherId:string,
   if(state.selectedWorkplaceId===value.selectedWorkplaceId)
     return {...state,replayed:true};
   return fail(409,"STALE_WORKPLACE_CONTEXT","Workplace selection changed; reload to choose again");
+}
+
+/** Omitted inherits the stored active filter; null is an explicit All. */
+export async function resolveTeacherWorkplaceFilter(db:Db,teacherId:string,requested:string|null|undefined){
+  return requested===undefined?(await teacherWorkplaceContextGet(db,teacherId)).selectedWorkplaceId:requested;
+}
+
+/** Historical lookup intentionally includes archived owned workplaces. */
+export async function recordedWorkplaceTimezones(db:Db,teacherId:string,ids:string[]){
+  const unique=[...new Set(ids)];
+  const zones=new Map<string,string>();
+  for(let i=0;i<unique.length;i+=100){
+    const {data,error}=await db.from("workplaces").select("id,timezone")
+      .eq("teacher_id",teacherId).in("id",unique.slice(i,i+100));
+    if(error)fail(503,"DATABASE_ERROR","Recorded workplace timezones unavailable");
+    for(const row of data??[])zones.set(row.id,row.timezone);
+  }
+  return zones;
 }

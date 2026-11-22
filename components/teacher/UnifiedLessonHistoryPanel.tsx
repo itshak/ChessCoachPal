@@ -43,7 +43,7 @@ export function UnifiedLessonHistoryPanel({fixedStudentId,initialWorkplaceId}:{f
   if(from>to)throw new Error(t("invalidRange"));
   const q=new URLSearchParams({from,to,offset:String(offset),limit:"50"});
   if(fixedStudentId)q.set("studentId",fixedStudentId);
-  if(workplaceId)q.set("workplaceId",workplaceId);
+  q.set("workplaceId",workplaceId||"all");
   const response=await fetch("/api/coaching/unified-lessons?"+q,{cache:"no-store"});
   const data=await response.json();
   if(!response.ok)throw new Error(toUserError(data, t("loadError")));

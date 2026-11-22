@@ -27,6 +27,7 @@
     "toggleNavigation": "Toggle navigation",
     "workplaceFilter": "Active workplace context",
     "allWorkplaces": "All workplaces",
+    "workplaceFilterFallback": "Previous workplace unavailable. Showing all workplaces.",
     "workplaceFilterFailed": "Could not change workplace; reload"
   },
   "dashboard": {
@@ -230,6 +231,8 @@
     "editWorkplaceTimezone": "Edit workplace timezone",
     "editWorkplaceCurrency": "Edit workplace currency",
     "editWorkplaceLocale": "Edit workplace locale",
+    "workplaceMakeupNoticeHours": "Make-up cancellation notice (hours)",
+    "workplaceMakeupNoticeHelp": "Leave blank to use your teaching default. Applies to new student cancellations and does not set charges.",
     "workplacePolicy": "Workplace policy (JSON)",
     "saveWorkplace": "Save workplace",
     "findStudent": "Find student by name",
@@ -502,7 +505,7 @@
     "cancelledByStudent": "Cancelled by student",
     "cancelledByTeacher": "Cancelled by teacher",
     "requestInvalid": "Request failed ({status})",
-    "studioSettingsLink": "Studio settings",
+    "teacherSettingsLink": "Teacher settings",
     "notesSavedEmailQueued": "Notes saved; approved contact emails queued",
     "cancelSessionConfirm": "Cancel this session for all enrolled students? Attendance and billing evidence will be preserved.",
     "attendanceSavedEmailQueued": "Attendance saved; approved contact emails queued"
@@ -579,7 +582,7 @@
     "noSessionNotes": "No shared lesson notes",
     "cancelLesson": "Cancel lesson",
     "cancelTitle": "Cancel this lesson?",
-    "cancelWarning": "Your teacher will be notified. Cancellations within {hours, plural, one {# hour} other {# hours}} of the lesson may still be billed per the workplace policy.",
+    "cancelWarning": "Your teacher will be notified. The make-up notice window for this lesson is {hours, plural, one {# hour} other {# hours}}. You can still cancel before the lesson starts.",
     "optionalNote": "Optional note for your teacher…",
     "couldNotCancel": "Could not cancel lesson",
     "cancelling": "Cancelling…",

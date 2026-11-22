@@ -33,13 +33,13 @@ async function pages<T>(
  }
  return out;
 }
-/** Load a bounded studio-local date window from only the canonical actual
+/** Load a bounded local-date window from only the canonical actual
  * session table. Roster is frozen; never derive historic group membership.
  * Both token-bound calendar feeds and teacher pages call this reader.
  */
 export async function canonicalCalendarWindow(
  db:Db,teacherId:string,from:string,to:string,
- timezone:string,studentIds?:string[]
+ timezone:string,studentIds?:string[],workplaceTimezones?:Readonly<Record<string,string>>
 ):Promise<CanonicalCalendarRow[]>{
  if(from>to||!Number.isFinite(Date.parse(from+"T00:00:00Z"))||
    !Number.isFinite(Date.parse(to+"T00:00:00Z")))
@@ -96,7 +96,7 @@ export async function canonicalCalendarWindow(
   peopleBySession.set(p.session_id,group);
  }
  return sessions.filter(s=>{
-  const localDate=toLocalDateString(new Date(s.starts_at),s.local_timezone||timezone);
+  const localDate=toLocalDateString(new Date(s.starts_at),s.local_timezone||workplaceTimezones?.[s.workplace_id]||timezone);
   return from<=localDate&&localDate<=to&&peopleBySession.has(s.id);
  }).map(s=>({...s,participants:peopleBySession.get(s.id)!}));
 }
