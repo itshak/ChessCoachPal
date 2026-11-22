@@ -9,9 +9,13 @@ import type {SupabaseClient} from "@supabase/supabase-js";
  */
 export async function configureSyntheticStudentCapacity(
  admin:SupabaseClient,teacherId:string,maxActiveStudents:number,
+ maxProfessionalWorkplaces:number|null=null,
 ):Promise<{planId:string;originalPlanVersionId:string|null;restore:()=>Promise<void>}>{
  if(!Number.isSafeInteger(maxActiveStudents)||maxActiveStudents<0)
   throw new Error("Invalid synthetic capacity");
+ if(maxProfessionalWorkplaces!==null &&
+    (!Number.isSafeInteger(maxProfessionalWorkplaces)||maxProfessionalWorkplaces<0))
+  throw new Error("Invalid synthetic professional workplace capacity");
  const initial=await admin.from("teacher_entitlement_state")
   .select("baseline_plan_version_id").eq("teacher_id",teacherId).single();
  if(initial.error||!initial.data)
@@ -25,7 +29,8 @@ export async function configureSyntheticStudentCapacity(
   {plan_version_id:planId,capability_key:"students.active",
    capability_kind:"integer_limit",integer_value:maxActiveStudents,unlimited:false},
   {plan_version_id:planId,capability_key:"workplaces.professional",
-   capability_kind:"integer_limit",integer_value:null,unlimited:true},
+   capability_kind:"integer_limit",integer_value:maxProfessionalWorkplaces,
+   unlimited:maxProfessionalWorkplaces===null},
   {plan_version_id:planId,capability_key:"reports.publish",
    capability_kind:"boolean",boolean_value:false,unlimited:false},
  ]);
