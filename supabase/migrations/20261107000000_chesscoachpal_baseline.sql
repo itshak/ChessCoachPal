@@ -13287,7 +13287,9 @@ CREATE TABLE public.report_publications (
  FOREIGN KEY(workplace_id,teacher_id)
    REFERENCES public.workplaces(id,teacher_id) ON DELETE RESTRICT,
  UNIQUE(teacher_id,request_id),
- UNIQUE(id,teacher_id)
+ UNIQUE(id,teacher_id),
+ CONSTRAINT ccp_report_not_self_superseded CHECK (
+  superseded_by IS NULL OR superseded_by<>id)
 );
 ALTER TABLE public.report_publications
  ADD CONSTRAINT ccp_report_superseded_same_tenant
@@ -13327,9 +13329,11 @@ BEGIN
   AND teacher_id=NEW.teacher_id;
  IF p.id IS NULL OR g.id IS NULL OR p.revoked_at IS NOT NULL
     OR p.superseded_by IS NOT NULL OR g.revoked_at IS NOT NULL
-    OR g.expires_at<=now() OR NOT ('shared_notes'=ANY(g.permissions))
-    OR (p.student_id IS NOT NULL AND p.student_id<>g.student_id)
-    OR (p.workplace_id IS NOT NULL AND p.workplace_id<>g.workplace_id) THEN
+    OR g.expires_at<=now() OR g.issued_at IS NULL
+     OR g.token_digest IS NULL
+     OR NOT ('shared_notes'=ANY(g.permissions))
+    OR (p.student_id IS NOT NULL AND p.student_id IS DISTINCT FROM g.student_id)
+    OR (p.workplace_id IS NOT NULL AND p.workplace_id IS DISTINCT FROM g.workplace_id) THEN
    RAISE EXCEPTION 'REPORT_AUDIENCE_NOT_AUTHORIZED' USING ERRCODE='42501';
  END IF;
  RETURN NEW;
@@ -14109,12 +14113,18 @@ CREATE TRIGGER ccp_session_amendment_capture
 CREATE OR REPLACE FUNCTION public.ccp_session_amendment_immutable()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_amendment_immutable$
 BEGIN
+ -- Permit cascading erasure of the parent session/account, not direct audit deletion.
+ IF TG_OP='DELETE' AND (
+  NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
+  OR NOT EXISTS(SELECT 1 FROM public.teaching_sessions
+                WHERE id=OLD.session_id AND teacher_id=OLD.teacher_id)
+ ) THEN RETURN OLD; END IF;
  RAISE EXCEPTION 'IMMUTABLE_SESSION_AMENDMENT' USING ERRCODE='23514';
 END;
 $ccp_amendment_immutable$;
 REVOKE ALL ON FUNCTION public.ccp_session_amendment_immutable()
  FROM PUBLIC,anon,authenticated;
-CREATE TRIGGER ccp_session_amendment_immutable BEFORE UPDATE
+CREATE TRIGGER ccp_session_amendment_immutable BEFORE UPDATE OR DELETE
  ON public.session_amendment_events FOR EACH ROW
  EXECUTE FUNCTION public.ccp_session_amendment_immutable();
 ALTER TABLE public.session_amendment_events ENABLE ROW LEVEL SECURITY;
