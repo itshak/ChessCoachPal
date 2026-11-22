@@ -15444,8 +15444,8 @@ REVOKE ALL ON FUNCTION public.ccp_canonical_terminal_slot_split(uuid,date,uuid,j
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_terminal_slot_split(uuid,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
  TO authenticated;
 
--- P0 scoped edits. 'Entire series' means all editable original dates beginning
--- tomorrow in the owned series timezone; existing lesson evidence is retained.
+-- P0 scoped edits preserve existing lesson evidence. An original occurrence
+-- today is eligible only while both the original and proposed starts are future.
 CREATE FUNCTION public.ccp_canonical_slot_edit_scoped(
  p_slot_id uuid,p_scope text,p_cutoff date,p_tail_id uuid,p_changes jsonb,p_to date,
  p_expected_updated_at timestamptz,p_review_digest text,p_idempotency_key uuid,
@@ -15457,6 +15457,10 @@ DECLARE
  v_slot public.lesson_slots%ROWTYPE;
  v_segment public.lesson_slots%ROWTYPE;
  v_bound date;
+ v_today date;
+ v_today_slot public.lesson_slots%ROWTYPE;
+ v_today_starts timestamptz;
+ v_today_proposed timestamptz;
  v_from date;
  v_first date;
  v_target uuid;
@@ -15499,7 +15503,7 @@ BEGIN
     OR jsonb_typeof(p_changes) IS DISTINCT FROM 'object' OR p_changes='{}'::jsonb THEN
   RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID' USING ERRCODE='22023';
  END IF;
- -- Scoped edits start tomorrow or later; weekday, venue and zone are unchanged.
+ -- Scoped edits retain weekday, venue and timezone.
  IF p_changes-ARRAY['startTime','durationMinutes','rateCents','isHomeVisit']<>'{}'::jsonb THEN
   RAISE EXCEPTION 'RECURRENCE_SCOPE_UNSUPPORTED_FIELDS' USING ERRCODE='22023';
  END IF;
@@ -15557,14 +15561,50 @@ BEGIN
  IF v_workplace IS NULL OR v_zone IS NULL THEN
   RAISE EXCEPTION 'RECURRENCE_SCOPE_WORKPLACE_REQUIRED' USING ERRCODE='42501';
  END IF;
- v_bound:=(v_now AT TIME ZONE v_zone)::date+1;
+ v_today:=(v_now AT TIME ZONE v_zone)::date;
+ v_bound:=v_today+1;
  IF p_scope='this_and_future' THEN
-  IF NOT v_slot.active OR p_cutoff<v_bound OR p_cutoff<v_slot.start_date
+  IF NOT v_slot.active OR p_cutoff<v_slot.start_date
     OR (v_slot.end_date IS NOT NULL AND p_cutoff>v_slot.end_date)
     OR extract(dow FROM p_cutoff)<>v_slot.day_of_week THEN
    RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_CUTOFF' USING ERRCODE='22023';
   END IF;
+  IF p_cutoff<v_today THEN
+   IF p_confirmed THEN RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505'; END IF;
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_CUTOFF' USING ERRCODE='22023';
+  END IF;
+  IF p_cutoff=v_today THEN v_today_slot:=v_slot; END IF;
   v_bound:=p_cutoff;
+ ELSE
+  -- The exclusion constraint permits at most one effective active segment.
+  SELECT * INTO v_today_slot FROM public.lesson_slots s
+   WHERE s.teacher_id=v_teacher AND s.series_id=v_slot.series_id AND s.active
+    AND s.start_date<=v_today AND (s.end_date IS NULL OR s.end_date>=v_today)
+    AND s.day_of_week=extract(dow FROM v_today) FOR UPDATE;
+ END IF;
+ IF v_today_slot.id IS NOT NULL THEN
+  -- Do not use the database's arbitrary result for a fold or gap in the
+  -- original local start; the old boundary must itself be unambiguous.
+  v_local:=v_today+v_today_slot.start_time;
+  v_utc:=v_local AT TIME ZONE v_zone;
+  v_before_offset:=((v_utc-interval '1 day') AT TIME ZONE v_zone)-((v_utc-interval '1 day') AT TIME ZONE 'UTC');
+  v_after_offset:=((v_utc+interval '1 day') AT TIME ZONE v_zone)-((v_utc+interval '1 day') AT TIME ZONE 'UTC');
+  IF (v_utc AT TIME ZONE v_zone) IS DISTINCT FROM v_local OR (
+   v_before_offset<>v_after_offset
+   AND (((v_local-v_before_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local
+   AND (((v_local-v_after_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local) THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_AMBIGUOUS_LOCAL_TIME' USING ERRCODE='22023';
+  END IF;
+  v_today_starts:=v_utc;
+  IF v_today_starts>v_now THEN
+   v_bound:=v_today;
+  ELSIF p_scope='this_and_future' THEN
+   IF p_confirmed THEN RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505'; END IF;
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_CUTOFF' USING ERRCODE='22023';
+  END IF;
+ END IF;
+ IF p_confirmed AND p_to<v_bound THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505';
  END IF;
  IF p_to<v_bound OR p_to>v_bound+366 THEN
   RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_RANGE' USING ERRCODE='22023';
@@ -15613,6 +15653,13 @@ BEGIN
    AND (((v_local-v_after_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local) THEN
    RAISE EXCEPTION 'RECURRENCE_SCOPE_AMBIGUOUS_LOCAL_TIME' USING ERRCODE='22023';
   END IF;
+  IF v_day=v_today THEN
+   IF v_utc<=v_now THEN
+    IF p_confirmed THEN RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505'; END IF;
+    RAISE EXCEPTION 'RECURRENCE_SCOPE_PROPOSED_START_PASSED' USING ERRCODE='22023';
+   END IF;
+   v_today_proposed:=v_utc;
+  END IF;
   v_plan:=v_plan||jsonb_build_array(jsonb_build_object(
    'teacher_id',v_teacher,'workplace_id',v_workplace,'student_id',v_slot.student_id,
    'slot_id',v_target,'slot_occurrence_date',v_day,'starts_at',v_utc,'local_timezone',v_zone,
@@ -15621,6 +15668,7 @@ BEGIN
  END LOOP;
  IF v_edits='[]'::jsonb OR (p_tail_id IS NOT NULL AND NOT EXISTS(
    SELECT 1 FROM jsonb_array_elements(v_edits) entry WHERE (entry->>'split')::boolean)) THEN
+  IF p_confirmed THEN RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505'; END IF;
   RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_TARGET' USING ERRCODE='22023';
  END IF;
 
@@ -15689,13 +15737,16 @@ BEGIN
    encode(sha256(convert_to(to_jsonb(v_row)::text,'UTF8')),'hex'),v_eligible));
  END LOOP;
  v_review:=encode(sha256(convert_to(jsonb_build_array(v_teacher,v_slot.series_id,to_jsonb(v_slot),
-  p_scope,v_bound,p_tail_id,p_changes,p_to,v_edits,v_plan,v_rows,v_exceptions)::text,'UTF8')),'hex');
+  p_scope,v_bound,p_tail_id,p_changes,p_to,v_edits,v_plan,v_rows,v_exceptions,v_today_proposed)::text,'UTF8')),'hex');
  v_receipt:=jsonb_build_object('seriesId',v_slot.series_id,'anchorId',v_slot.id,'scope',p_scope,
   'successorId',p_tail_id,'cutoff',v_bound,'reviewThrough',p_to,'reviewDigest',v_review,'sourceRevision',v_slot.updated_at,
   'planned',jsonb_array_length(v_plan),'affectedSegments',jsonb_array_length(v_edits),
   'replaceableDrafts',cardinality(v_drafts),'preservedHistory',v_protected);
  IF NOT p_confirmed THEN RETURN v_receipt; END IF;
- IF p_review_digest<>v_review THEN RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505'; END IF;
+ IF p_review_digest<>v_review OR (
+   v_today_proposed IS NOT NULL AND least(v_today_starts,v_today_proposed)<=clock_timestamp()) THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505';
+ END IF;
 
  INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
   VALUES(v_teacher,p_idempotency_key,'canonical.slot.edit.scoped',v_hash,'{}'::jsonb);

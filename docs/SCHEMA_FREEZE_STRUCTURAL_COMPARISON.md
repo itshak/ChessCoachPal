@@ -77,3 +77,7 @@ The canonical SQL SHA-256 `e7e13bdc0fe57ffadefb1421b62f555deeee1420a2ace22c39aae
 ## Effective database roles checkpoint
 
 Canonically migrated disposable PostgreSQL 17.12 databases were independently bootstrapped on SQL SHA-256 `4e96039318252e35cd3648dfe7d625addc13b29777c93218dbef73bbeb552c2a`. Both read-only structural metadata snapshots matched at SHA-256 `6fc7346c16c2d1edcff249dd4c7fef2b5859c0df48c8819e853c16a93dbe52a3` with zero differences and one ledger migration. Actual PostgreSQL grants for 11 signatures and six tables plus three signed-user permission checks passed. Both test instances and volumes were removed. No acceptance waiver or production change is implied.
+
+## Same-day scope and effective roles checkpoint
+
+Canonical SQL SHA-256 `64d6f7cffb4616c3efea7fdd6e2a50b4b62b7f96c9a2f9b3d6eaf23c1e247457` applied once to each of two independently bootstrapped disposable PostgreSQL 17.12 instances. Both read-only structural snapshots matched byte-for-byte at SHA-256 `62fd4c6568589d84736a5b2eb6973d2c3a325238901c1cee7a31ab47c5518711` with zero differences. Actual role assertions and six authenticated scoped scheduling checks passed, including a naturally expired review. Isolated resources were removed. This does not certify live deployment or the entire acceptance matrix.

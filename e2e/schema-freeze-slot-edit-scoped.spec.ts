@@ -34,7 +34,7 @@ for(const action of ["this_and_future","entire_series"] as const){
    const d=(offset:number)=>new Date(Date.parse(today)+offset*86400000).toISOString().slice(0,10);
    const base={...scope,day_of_week:dayOfWeek(today),duration_minutes:45};
    const root=await admin.from("lesson_slots").insert({
-    ...base,start_date:d(-7),end_date:d(14),start_time:"09:00",rate_cents:1200,
+    ...base,start_date:d(-7),end_date:d(14),start_time:"00:00",rate_cents:1200,
    }).select("*").single();
    expect(root.error).toBeNull();
    const rootId=root.data!.id,tailId=randomUUID();
@@ -50,8 +50,8 @@ for(const action of ["this_and_future","entire_series"] as const){
    });
    const materialize=(p_rows:ReturnType<typeof occurrence>[])=>owner.rpc("ccp_canonical_slot_materialize",{p_rows});
    expect((await materialize([
-    occurrence(rootId,0,"09:00",45,1200),occurrence(rootId,7,"09:00",45,1200),
-    occurrence(rootId,14,"09:00",45,1200),occurrence(laterId,28,"10:00",60,2400,true),
+    occurrence(rootId,0,"00:00",45,1200),occurrence(rootId,7,"00:00",45,1200),
+    occurrence(rootId,14,"00:00",45,1200),occurrence(laterId,28,"10:00",60,2400,true),
    ])).error).toBeNull();
    expect((await admin.from("teaching_sessions").update({status:"completed",lesson_note:"Synthetic protected"})
      .eq("slot_id",rootId).eq("slot_occurrence_date",d(14))).error).toBeNull();
@@ -112,7 +112,7 @@ for(const action of ["this_and_future","entire_series"] as const){
    const keep=before.filter(row=>row.slot_id===independent.data!.id||row.slot_occurrence_date===d(0)||
     row.slot_occurrence_date===d(14)||(action==="this_and_future"&&row.slot_occurrence_date===d(7)));
    expect(after.filter(row=>keep.some(k=>k.id===row.id))).toEqual(keep);
-   expect(rules.find(row=>row.id===rootId)).toMatchObject({end_date:d(action==="entire_series"?0:13),start_time:"09:00:00"});
+   expect(rules.find(row=>row.id===rootId)).toMatchObject({end_date:d(action==="entire_series"?0:13),start_time:"00:00:00"});
    expect(rules.find(row=>row.id===tailId)).toMatchObject({series_id:rootId,start_time:"11:15:00",duration_minutes:45,
     rate_cents:action==="entire_series"?1300:1200,end_date:d(14)});
    expect(rules.find(row=>row.id===laterId)).toMatchObject({start_time:"11:15:00",duration_minutes:60,is_home_visit:true,
@@ -156,6 +156,114 @@ test("scoped edit refuses nonexistent and ambiguous local starts",async()=>{
    expect(result.error?.message,date).toBe("RECURRENCE_SCOPE_AMBIGUOUS_LOCAL_TIME");
   }
   expect((await admin.from("lesson_slots").select("id").eq("teacher_id",id)).data).toHaveLength(1);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
+ }
+});
+
+function scheduleClock(){
+ const now=Date.now();
+ const offset=[0,-8,8].find(h=>{
+  const hour=new Date(now+h*3600000).getUTCHours();
+  return hour>=8&&hour<16;
+ })!;
+ const local=(advance:number)=>new Date(Date.now()+offset*3600000+advance);
+ const zone=offset===0?"UTC":offset>0?`Etc/GMT-${offset}`:`Etc/GMT+${-offset}`;
+ const today=local(0).toISOString().slice(0,10);
+ const day=(n:number)=>new Date(Date.parse(today)+n*86400000).toISOString().slice(0,10);
+ const time=(ms:number)=>local(ms).toISOString().slice(11,19);
+ return {zone,today,day,time};
+}
+
+for(const action of ["this_and_future","entire_series"] as const){
+ test(action+" includes a still-future occurrence today without accepting a proposed past start",async()=>{
+  const {zone,today,day,time}=scheduleClock();
+  const {admin,owner,id,scope}=await tenant(zone);
+  try{
+   const slot=await admin.from("lesson_slots").insert({
+    ...scope,day_of_week:dayOfWeek(today),start_date:day(-7),end_date:day(7),
+    start_time:time(3600000),duration_minutes:45,
+   }).select("*").single();
+   expect(slot.error).toBeNull();
+   const root=slot.data!,tail=randomUUID();
+   const initial=await owner.rpc("ccp_canonical_slot_materialize",{p_rows:[{
+    ...scope,slot_id:root.id,slot_occurrence_date:today,starts_at:zonedTimeToUtc(today,root.start_time,zone).toISOString(),
+    local_timezone:zone,duration_minutes:45,slot_rate_cents:null,is_home_visit:false,
+   }]});
+   expect(initial.error).toBeNull();
+   const original=(await admin.from("teaching_sessions").select("*").eq("slot_id",root.id).single()).data!;
+   const args={p_slot_id:root.id,p_scope:action,p_cutoff:action==="this_and_future"?today:null,
+    p_tail_id:tail,p_changes:{startTime:time(7200000)},p_expected_updated_at:root.updated_at,p_to:day(7),
+    p_idempotency_key:randomUUID(),p_review_digest:null,p_confirmed:false};
+   const past=await owner.rpc("ccp_canonical_slot_edit_scoped",{...args,p_changes:{startTime:time(-3600000)}});
+   expect(past.error?.message).toBe("RECURRENCE_SCOPE_PROPOSED_START_PASSED");
+   expect((await admin.from("teaching_sessions").select("*").eq("id",original.id).single()).data).toEqual(original);
+   const preview=await owner.rpc("ccp_canonical_slot_edit_scoped",args);
+   expect(preview.error).toBeNull();
+   expect(preview.data).toMatchObject({cutoff:today,replaceableDrafts:1});
+   const confirm={...args,p_review_digest:preview.data.reviewDigest,p_confirmed:true};
+   const commit=await owner.rpc("ccp_canonical_slot_edit_scoped",confirm);
+   expect(commit.error).toBeNull();
+   expect(commit.data).toMatchObject({replayed:false,removedFutureDrafts:1});
+   const changed=await admin.from("teaching_sessions").select("id,starts_at").eq("slot_id",tail)
+    .eq("slot_occurrence_date",today).single();
+   expect(changed.error).toBeNull();
+   expect(changed.data!.id).not.toBe(original.id);
+   expect(new Date(changed.data!.starts_at).toISOString()).toBe(zonedTimeToUtc(today,args.p_changes.startTime,zone).toISOString());
+   const retry=await owner.rpc("ccp_canonical_slot_edit_scoped",confirm);
+   expect(retry.data).toEqual({...commit.data,replayed:true});
+  }finally{
+   expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
+  }
+ });
+}
+
+test("same-day review expires at the original start and renewed entire-series edit leaves today untouched",async()=>{
+ const {zone,today,day,time}=scheduleClock();
+ const {admin,owner,id,scope}=await tenant(zone);
+ try{
+  const anchor=await admin.from("lesson_slots").insert({
+   ...scope,day_of_week:dayOfWeek(today),start_date:day(-7),end_date:day(7),
+   start_time:time(6500),duration_minutes:45,
+  }).select("*").single();
+  expect(anchor.error).toBeNull();
+  const root=anchor.data!;
+  const oldStart=zonedTimeToUtc(today,root.start_time,zone);
+  expect((await owner.rpc("ccp_canonical_slot_materialize",{p_rows:[{
+   ...scope,slot_id:root.id,slot_occurrence_date:today,starts_at:oldStart.toISOString(),
+   local_timezone:zone,duration_minutes:45,slot_rate_cents:null,is_home_visit:false,
+  }]})).error).toBeNull();
+  const readToday=async()=>(await admin.from("teaching_sessions").select("*").eq("slot_id",root.id)
+   .eq("slot_occurrence_date",today).single()).data;
+  const original=await readToday();
+  expect(original).not.toBeNull();
+  const args={p_slot_id:root.id,p_scope:"entire_series",p_cutoff:null,
+   p_tail_id:randomUUID(),p_changes:{startTime:time(3600000)},p_expected_updated_at:root.updated_at,p_to:day(7),
+   p_idempotency_key:randomUUID(),p_review_digest:null,p_confirmed:false};
+  const secondArgs={...args,p_scope:"this_and_future",p_cutoff:today,p_idempotency_key:randomUUID()};
+  const [preview,secondPreview]=await Promise.all([owner.rpc("ccp_canonical_slot_edit_scoped",args),
+   owner.rpc("ccp_canonical_slot_edit_scoped",secondArgs)]);
+  expect(preview.error).toBeNull();
+  expect(secondPreview.error).toBeNull();
+  expect(preview.data.cutoff).toBe(today);
+  expect(secondPreview.data.cutoff).toBe(today);
+  await new Promise(resolve=>setTimeout(resolve,Math.max(0,oldStart.getTime()+400-Date.now())));
+  for(const [request,digest] of [[args,preview.data.reviewDigest],[secondArgs,secondPreview.data.reviewDigest]] as const){
+   const stale=await owner.rpc("ccp_canonical_slot_edit_scoped",{...request,p_review_digest:digest,p_confirmed:true});
+   expect(stale.error?.message).toBe("RECURRENCE_SCOPE_REVIEW_CONFLICT");
+   expect((await admin.from("agent_tool_receipts").select("idempotency_key").eq("teacher_id",id)
+    .eq("idempotency_key",request.p_idempotency_key).maybeSingle()).data).toBeNull();
+  }
+  expect(await readToday()).toEqual(original);
+  const renewed=await owner.rpc("ccp_canonical_slot_edit_scoped",args);
+  expect(renewed.error).toBeNull();
+  expect(renewed.data.cutoff).toBe(day(1));
+  expect(renewed.data.reviewDigest).not.toBe(preview.data.reviewDigest);
+  const result=await owner.rpc("ccp_canonical_slot_edit_scoped",{
+   ...args,p_review_digest:renewed.data.reviewDigest,p_confirmed:true,
+  });
+  expect(result.error).toBeNull();
+  expect(await readToday()).toEqual(original);
  }finally{
   expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
  }
