@@ -16,7 +16,9 @@ type Assignment={
 const input="w-full rounded-lg border border-border bg-surface px-3 py-2 text-foreground";
 const button="rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50";
 
-export function TrainingHomeworkPanel({fixedStudentId}:{fixedStudentId?:string}){
+export function TrainingHomeworkPanel({fixedStudentId,workplaceId=null}:{
+  fixedStudentId?:string;workplaceId?:string|null;
+}){
   const t=useTranslations("homework"),locale=useLocale();
   const toUserError=useLocalizedApiError();
   const formatOutcome=(value:Attempt["outcome"])=>t(value==="in_progress"?"inProgress":value);
@@ -56,8 +58,11 @@ export function TrainingHomeworkPanel({fixedStudentId}:{fixedStudentId?:string})
     setAssignments(data.assignments);setTotal(data.total);
   },[studentId,t]);
   useEffect(()=>{let active=true;
+    // Context scopes learner discovery only; existing assignments and the
+    // catalogue belong to the teacher and never acquire a workplace identity.
+    const roster=new URLSearchParams({limit:"1000",workplaceId:workplaceId??"all"});
     void Promise.all([
-      fetch("/api/students?limit=1000").then(async r=>{
+      fetch("/api/students?"+roster).then(async r=>{
         if(!r.ok)throw Error(t("studentsError"));
         const body=await r.json();return body.students as Student[];
       }),
@@ -72,7 +77,7 @@ export function TrainingHomeworkPanel({fixedStudentId}:{fixedStudentId?:string})
       if(materialRows.length)setMaterialId(materialRows[0].id);
     }).catch(()=>{if(active)setError(t("optionsError"));});
     return()=>{active=false};
-  },[fixedStudentId,studentId,t]);
+  },[fixedStudentId,studentId,t,workplaceId]);
   useEffect(()=>{let active=true;void load().catch(()=>{if(active)setError(t("readError"));});
     return()=>{active=false};},[load,t]);
   async function submit(url:string,method:"POST"|"PATCH",body:unknown,successText:string){

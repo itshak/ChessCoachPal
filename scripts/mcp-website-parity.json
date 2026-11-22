@@ -542,7 +542,7 @@
         "ccp_materials_history_void",
         "ccp_materials_aggregate"
       ],
-      "explanation": "Whole-filtered material summary and individual teacher-attested evidence ledger use the same website/MCP service. Coaching prefills the selected workplace and passes it as an explicit filter; All/fixed-student history and the separate teacher-global material catalogue remain independent. e2e/parity-workplace-coaching-context.spec.ts. Full aggregate runs bounded pagination, checks for concurrent drift and deduplicates session/material/stage combinations across group participants. Existing explicit claims only. Provider write/read completeness and 93 strict cases remain separate blockers.",
+      "explanation": "Whole-filtered material summary and individual teacher-attested evidence ledger use the same website/MCP service. Coaching and Learning prefill the selected workplace and pass it as an explicit filter; Learning homework uses the corresponding current roster for learner discovery without changing the teacher-global material catalogue or learner-owned assignment history. All/fixed-student history remains independent. e2e/parity-workplace-coaching-context.spec.ts; e2e/parity-workplace-learning-context.spec.ts. Full aggregate runs bounded pagination, checks for concurrent drift and deduplicates session/material/stage combinations across group participants. Existing explicit claims only. Provider write/read completeness and 93 strict cases remain separate blockers.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
