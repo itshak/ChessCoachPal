@@ -503,7 +503,7 @@
     "cancelledByStudent": "בוטל על ידי התלמיד",
     "cancelledByTeacher": "בוטל על ידי המאמן",
     "requestInvalid": "הבקשה נכשלה ({status})",
-    "studioSettingsLink": "הגדרות המועדון",
+    "teacherSettingsLink": "הגדרות המורה",
     "notesSavedEmailQueued": "ההערות נשמרו; דוא״ל לאנשי הקשר שאושרו נוסף לתור",
     "cancelSessionConfirm": "לבטל את השיעור עבור כל התלמידים הרשומים? תיעוד הנוכחות והחיוב יישמר.",
     "attendanceSavedEmailQueued": "הנוכחות נשמרה; דוא״ל לאנשי הקשר שאושרו נוסף לתור"

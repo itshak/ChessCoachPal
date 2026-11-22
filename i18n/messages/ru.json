@@ -503,7 +503,7 @@
     "cancelledByStudent": "Отменено учеником",
     "cancelledByTeacher": "Отменено тренером",
     "requestInvalid": "Запрос не выполнен ({status})",
-    "studioSettingsLink": "Настройки школы",
+    "teacherSettingsLink": "Настройки преподавателя",
     "notesSavedEmailQueued": "Заметки сохранены; письма разрешённым контактам поставлены в очередь",
     "cancelSessionConfirm": "Отменить занятие для всех записанных учеников? Данные о посещаемости и оплате сохранятся.",
     "attendanceSavedEmailQueued": "Посещаемость сохранена; письма разрешённым контактам поставлены в очередь"

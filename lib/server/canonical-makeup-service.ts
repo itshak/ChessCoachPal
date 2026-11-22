@@ -1,5 +1,6 @@
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {getPolicy} from "@/lib/server/scheduling";
+import {recordedWorkplaceTimezones} from "@/lib/server/teacher-workplace-context";
 import {creditIsValid,toLocalDateString} from "@/lib/schedule";
 
 type Db=SupabaseClient;
@@ -9,13 +10,13 @@ type Mark={
 };
 type Session={
  id:string;starts_at:string;duration_minutes:number;status:string;
- workplace_id:string;
+ workplace_id:string;local_timezone:string|null;
 };
 type Student={id:string;name:string};
 export type CanonicalMakeupCredit={
  sourceSessionId:string;studentId:string;studentName:string;
  status:"absent"|"student_cancelled"|"teacher_cancelled";
- missedAt:string;durationMinutes:number;earnedAt:string;workplaceId:string;
+ missedAt:string;durationMinutes:number;earnedAt:string;workplaceId:string;sourceTimezone:string;
 };
 const PAGE=500;
 async function rows<T>(
@@ -61,7 +62,7 @@ export async function canonicalMakeupCreditsList(
  const sessions=new Map<string,Session>(),students=new Map<string,string>();
  for(let i=0;i<sessionIds.length;i+=100){
   const {data,error}=await db.from("teaching_sessions")
-    .select("id,starts_at,duration_minutes,status,workplace_id")
+    .select("id,starts_at,duration_minutes,status,workplace_id,local_timezone")
     .eq("teacher_id",teacherId).in("id",sessionIds.slice(i,i+100));
   if(error)throw new Error("Unable to load missed canonical sessions");
   for(const row of (data??[]) as Session[])sessions.set(row.id,row);
@@ -72,6 +73,7 @@ export async function canonicalMakeupCreditsList(
   if(error)throw new Error("Unable to load make-up student names");
   for(const row of (data??[]) as Student[])students.set(row.id,row.name);
  }
+ const zones=await recordedWorkplaceTimezones(db,teacherId,[...sessions.values()].filter(s=>!s.local_timezone).map(s=>s.workplace_id));
  const out:CanonicalMakeupCredit[]=[];
  for(const a of attendance){
   const session=sessions.get(a.session_id);
@@ -98,7 +100,7 @@ export async function canonicalMakeupCreditsList(
    studentName:students.get(a.student_id)??"Student",
    status:a.status as CanonicalMakeupCredit["status"],
    missedAt:session.starts_at,durationMinutes:session.duration_minutes,
-   earnedAt,workplaceId:session.workplace_id,
+   earnedAt,workplaceId:session.workplace_id,sourceTimezone:session.local_timezone??zones.get(session.workplace_id)??policy.timezone,
   });
  }
  out.sort((a,b)=>a.missedAt.localeCompare(b.missedAt)||a.sourceSessionId.localeCompare(b.sourceSessionId));

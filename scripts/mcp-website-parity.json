@@ -374,7 +374,7 @@
       "existingTools": [
         "ccp_canonical_makeup_credits_list"
       ],
-      "explanation": "Web and delegated MCP call the same owner-scoped canonical make-up eligibility service; each credit is a frozen session/student pair. The atomic private-session writer independently checks student enrollment, studio policy, expiry and single-use status.",
+      "explanation": "Web and MCP share source lesson timezone and owner-scoped frozen session/student credit identity. Calendar booking defaults to the owned venue date; the writer independently checks teacher cancellation policy, expiry, enrollment and single-use. e2e/parity-workplace-calendar-context.spec.ts.",
       "evidenceTest": "e2e/canonical-makeup-credits-parity.spec.ts"
     },
     {
@@ -387,7 +387,7 @@
       "existingTools": [
         "ccp_private_sessions_create"
       ],
-      "explanation": "One tenant-authorized canonical SQL transaction for new private lessons and consumed student-specific make-up credits, shared by web and named MCP. Stable client idempotency, workplace timezone, DST and cross-tenant guards.",
+      "explanation": "Browser venue-local defaults do not create attendance or a lesson. A confirmed explicit venue UUID and local date/time are sent to the same canonical website/MCP writer; null retains the Personal default. e2e/parity-workplace-calendar-context.spec.ts verifies exact replay and no pre-submit write.",
       "evidenceTest": "e2e/canonical-private-sessions-parity.spec.ts"
     },
     {
@@ -417,7 +417,7 @@
         "ccp_recurring_slots_list",
         "ccp_recurring_slots_create"
       ],
-      "explanation": "Shared canonical recurring intent list and atomic create RPC, with a stable caller-provided idempotency key, frozen participant, owned workplace enrollment and materialized horizon. Authenticated cross-interface E2E.",
+      "explanation": "Shared recurring intent list and atomic create with preserved ownership and idempotency. Blank browser drafts use the selected venue’s local date and weekday without modifying explicit edits or history. MCP takes the same explicit venue-local input. e2e/parity-workplace-calendar-context.spec.ts.",
       "evidenceTest": "e2e/canonical-recurring-slots-parity.spec.ts"
     },
     {

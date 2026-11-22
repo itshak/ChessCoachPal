@@ -503,7 +503,7 @@
     "cancelledByStudent": "Cancelled by student",
     "cancelledByTeacher": "Cancelled by teacher",
     "requestInvalid": "Request failed ({status})",
-    "studioSettingsLink": "Studio settings",
+    "teacherSettingsLink": "Teacher settings",
     "notesSavedEmailQueued": "Notes saved; approved contact emails queued",
     "cancelSessionConfirm": "Cancel this session for all enrolled students? Attendance and billing evidence will be preserved.",
     "attendanceSavedEmailQueued": "Attendance saved; approved contact emails queued"

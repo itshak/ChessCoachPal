@@ -851,7 +851,7 @@ const catalogue = [
   },
   {
     name:"ccp_canonical_makeup_credits_list",
-    description:"Read available, unredeemed make-up credits from canonical frozen student attendance, subject to the studio cancellation and expiry policy. A make-up session is created with ccp_canonical_private_session_create and makeupForSessionId.",
+    description:"Read unredeemed make-up credits and the source lesson timezone from frozen attendance; eligibility still uses teacher cancellation and expiry policy. To redeem, use ccp_private_sessions_create with the original makeupForSessionId and a separately confirmed venue-local date and time.",
     schema:z.object({}).strict(),
     scope:"coach:read",readOnly:true,
   },
@@ -878,7 +878,7 @@ const catalogue = [
   },
   {
     name:"ccp_private_sessions_create",
-    description:"Atomically schedule one canonical private/ad-hoc chess lesson or verified make-up. Optional durationMinutes (15–480) defaults to 30 minutes for ordinary sessions or the original length for make-ups; supply it to avoid surprise defaults. Local timezone/DST, ownership and enrollment are enforced; replays return the original session.",
+    description:"Atomically schedule one canonical private/ad-hoc chess lesson or verified make-up. Optional durationMinutes (15–480) defaults to 30 minutes for ordinary sessions or the original length for make-ups; supply it to avoid surprise defaults. An explicit workplace UUID uses that venue’s local calendar, and omitted/null uses the teacher’s Personal default; pass the workplace shown by the selected browser form rather than assuming context grants it. Ownership, DST and enrollment are revalidated; retries return the original session.",
     schema:canonicalPrivateSessionCreateSchema.extend({
       confirmed:z.literal(true),
     }).strict(),scope:"coach:write",readOnly:false,
@@ -891,7 +891,7 @@ const catalogue = [
   },
   {
     name:"ccp_recurring_slots_create",
-    description:"Create one recurring canonical private lesson slot and materialize the next 56 studio-local days atomically. The supplied idempotencyKey is also the stable slot ID for exact website/MCP replay. Teacher-owned student and workplace enrollment required.",
+    description:"Create one confirmed recurring private lesson slot and materialize the existing 56-day teacher horizon; startDate and time are in the explicitly chosen workplace’s calendar, or the Personal default when omitted. The supplied idempotencyKey is also the stable slot ID for exact website/MCP replay. Teacher-owned student and workplace enrollment required.",
     schema:canonicalSlotCreateSchema.extend({confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },

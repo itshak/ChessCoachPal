@@ -15,7 +15,7 @@ export type Slot={
  is_home_visit:boolean;active:boolean;updated_at:string;
 };
 type Student={id:string;name:string};
-type Workplace={id:string;name:string};
+type Workplace={id:string;name:string;localToday:string};
 const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const inputClass="w-full rounded-lg border border-border bg-background text-foreground px-3 py-2 text-sm";
 type Draft={
@@ -23,8 +23,8 @@ type Draft={
  durationMinutes:number;startDate:string;endDate:string;rateCents:string;
  isHomeVisit:boolean;active:boolean;
 };
-const empty=(today:string):Draft=>({
- studentId:"",workplaceId:"",dayOfWeek:new Date(today+"T12:00:00Z").getUTCDay(),
+const empty=(today:string,workplaceId:string):Draft=>({
+ studentId:"",workplaceId,dayOfWeek:new Date(today+"T12:00:00Z").getUTCDay(),
  startTime:"16:00",durationMinutes:60,startDate:today,endDate:"",
  rateCents:"",isHomeVisit:false,active:true,
 });
@@ -42,8 +42,8 @@ async function expectJson(res:Response){
  return body;
 }
 export function CanonicalSlotManager({
- slots,students,workplaces,today,durationOptions,
-}:{slots:Slot[];students:Student[];workplaces:Workplace[];today:string;durationOptions:number[]}){
+ slots,students,workplaces,today,personalToday,selectedWorkplaceId,durationOptions,
+}:{slots:Slot[];students:Student[];workplaces:Workplace[];today:string;personalToday:string;selectedWorkplaceId:string|null;durationOptions:number[]}){
  const router=useRouter(),{showToast}=useToast(),confirm=useConfirm();
  const t=useTranslations("scheduling"),locale=useLocale();
   const toUserError=useLocalizedApiError();
@@ -51,14 +51,16 @@ export function CanonicalSlotManager({
    .format(new Date(Date.UTC(2023,0,1+day)));
  const [editing,setEditing]=useState<Slot|null>(null);
  const [expanded,setExpanded]=useState(false);
- const [draft,setDraft]=useState<Draft>(()=>empty(today));
+ const [draft,setDraft]=useState<Draft>(()=>empty(today,selectedWorkplaceId??""));
+ const [dateEdited,setDateEdited]=useState(false);
+ const [weekdayEdited,setWeekdayEdited]=useState(false);
  const [busy,setBusy]=useState(false);
  const [pendingKey,setPendingKey]=useState<string|null>(null);
  function edit(value:Partial<Draft>){
   setDraft(p=>({...p,...value}));
   setPendingKey(null);
  }
- function openCreate(){setEditing(null);setDraft(empty(today));setPendingKey(null);setExpanded(true);}
+ function openCreate(){setEditing(null);setDraft(empty(today,selectedWorkplaceId??""));setDateEdited(false);setWeekdayEdited(false);setPendingKey(null);setExpanded(true);}
  function openEdit(slot:Slot){
   setEditing(slot);setDraft(fromSlot(slot));setPendingKey(null);setExpanded(true);
  }
@@ -157,14 +159,19 @@ export function CanonicalSlotManager({
     </label>
     <label className="block text-sm">{t("workplace")}
      <select className={inputClass} value={draft.workplaceId}
-      onChange={e=>edit({workplaceId:e.target.value})}>
+      onChange={e=>{
+       const workplaceId=e.target.value;
+       if(editing||dateEdited){edit({workplaceId});return;}
+       const startDate=workplaces.find(w=>w.id===workplaceId)?.localToday??personalToday;
+       edit({workplaceId,startDate,...(weekdayEdited?{}:{dayOfWeek:new Date(startDate+"T12:00:00Z").getUTCDay()})});
+      }}>
       <option value="">{t("personal")}</option>
       {workplaces.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
      </select>
     </label>
     <label className="block text-sm">{t("weekday")}
      <select className={inputClass} value={draft.dayOfWeek}
-      onChange={e=>edit({dayOfWeek:Number(e.target.value)})}>
+      onChange={e=>{setWeekdayEdited(true);edit({dayOfWeek:Number(e.target.value)})}}>
       {days.map((day,i)=><option key={day} value={i}>{dayLabel(i)}</option>)}
      </select>
     </label>
@@ -185,7 +192,7 @@ export function CanonicalSlotManager({
     </label>
     <label className="block text-sm">{t("starts")}
      <input type="date" className={inputClass} value={draft.startDate}
-      onChange={e=>edit({startDate:e.target.value})}/>
+      onChange={e=>{setDateEdited(true);edit({startDate:e.target.value})}}/>
     </label>
     <label className="block text-sm">{t("ends")}
      <input type="date" className={inputClass} value={draft.endDate}
