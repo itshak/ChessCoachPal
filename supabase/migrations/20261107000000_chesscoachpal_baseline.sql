@@ -14151,3 +14151,96 @@ ALTER TABLE public.account_usage_periods
   teacher_id WITH =,capability_key WITH =,
   tstzrange(period_start,period_end,'[)') WITH &&
  );
+
+-- ADR-0019: Automatically audit changes to entitlement authority.
+-- All records are append-only and contain no provider payload or private price.
+-- A service-role plan/grant/subscription change must not bypass its audit.
+CREATE OR REPLACE FUNCTION public.ccp_audit_baseline_plan_change()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_audit_baseline$
+DECLARE v_revision bigint;
+BEGIN
+ IF NEW.baseline_plan_version_id IS NOT DISTINCT FROM
+    OLD.baseline_plan_version_id THEN RETURN NEW; END IF;
+ UPDATE public.teacher_entitlement_state
+ SET revision=revision+1,evaluated_at=NULL,updated_at=now()
+ WHERE teacher_id=NEW.teacher_id RETURNING revision INTO v_revision;
+ INSERT INTO public.entitlement_audit_events
+ (teacher_id,actor_id,source,action,request_id,reason,
+  revision_before,revision_after)
+ VALUES(NEW.teacher_id,auth.uid(),'operator','baseline_plan_changed',
+        gen_random_uuid(),'Authorized baseline plan reassignment',
+        OLD.revision,v_revision);
+ RETURN NEW;
+END;
+$ccp_audit_baseline$;
+REVOKE ALL ON FUNCTION public.ccp_audit_baseline_plan_change()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_audit_baseline_plan_change
+ AFTER UPDATE OF baseline_plan_version_id ON public.teacher_entitlement_state
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_audit_baseline_plan_change();
+
+CREATE OR REPLACE FUNCTION public.ccp_audit_entitlement_grant_change()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_audit_grant$
+DECLARE v_revision bigint;v_action text;
+BEGIN
+ IF TG_OP='UPDATE' AND NEW.revoked_at IS NOT DISTINCT FROM OLD.revoked_at
+   THEN RETURN NEW; END IF;
+ SELECT revision INTO v_revision FROM public.teacher_entitlement_state
+  WHERE teacher_id=NEW.teacher_id;
+ IF v_revision IS NULL THEN
+  RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
+ END IF;
+ v_action:=CASE WHEN TG_OP='INSERT' THEN 'grant_issued'
+                ELSE 'grant_revoked' END;
+ INSERT INTO public.entitlement_audit_events
+ (teacher_id,actor_id,source,action,request_id,reason,
+  revision_before,revision_after)
+ VALUES(NEW.teacher_id,NEW.issued_by,'grant',v_action,
+        gen_random_uuid(),NEW.reason,
+        greatest(v_revision-1,0),v_revision);
+ RETURN NEW;
+END;
+$ccp_audit_grant$;
+REVOKE ALL ON FUNCTION public.ccp_audit_entitlement_grant_change()
+ FROM PUBLIC,anon,authenticated;
+-- After ccp_grant_revision_bump by deterministic alphabetical trigger order.
+CREATE TRIGGER ccp_zz_entitlement_grant_audit
+ AFTER INSERT OR UPDATE ON public.teacher_entitlement_grants
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_audit_entitlement_grant_change();
+
+CREATE OR REPLACE FUNCTION public.ccp_audit_subscription_change()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_audit_subscription$
+DECLARE v_teacher uuid;v_revision bigint;v_action text;
+BEGIN
+ v_teacher:=CASE WHEN TG_OP='DELETE' THEN OLD.teacher_id ELSE NEW.teacher_id END;
+ IF NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=v_teacher)
+  THEN RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+ END IF;
+ SELECT revision INTO v_revision FROM public.teacher_entitlement_state
+  WHERE teacher_id=v_teacher;
+ IF v_revision IS NULL THEN
+  RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
+ END IF;
+ v_action:=CASE WHEN TG_OP='INSERT' THEN 'subscription_created'
+                WHEN TG_OP='UPDATE' THEN 'subscription_changed'
+                ELSE 'subscription_deleted' END;
+ INSERT INTO public.entitlement_audit_events
+ (teacher_id,source,action,request_id,reason,
+  revision_before,revision_after)
+ VALUES(v_teacher,'subscription',v_action,gen_random_uuid(),
+        'Provider-neutral subscription state transition',
+        greatest(v_revision-1,0),v_revision);
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
+END;
+$ccp_audit_subscription$;
+REVOKE ALL ON FUNCTION public.ccp_audit_subscription_change()
+ FROM PUBLIC,anon,authenticated;
+-- After ccp_subscription_revision_bump; use an append-only audit ledger.
+CREATE TRIGGER ccp_zz_subscription_audit
+ AFTER INSERT OR UPDATE OR DELETE ON public.platform_subscriptions
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_audit_subscription_change();
+-- END ADR-0019 audited entitlement authority.
