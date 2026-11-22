@@ -166,3 +166,70 @@ test("expired Pro plan grant cannot bypass a capped baseline",async()=>{
  expect(state.data?.active_student_count).toBe(1);
  expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
 });
+
+
+test("individual capacity boosts are additive, expirable, revocable and never self-issued",async()=>{
+ const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
+ const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const email="boost-cap-"+randomUUID()+"@example.com";
+ const password="SyntheticBoost-123!";
+ const identity=await admin.auth.admin.createUser({email,password,email_confirm:true});
+ expect(identity.error).toBeNull();
+ const id=identity.data.user!.id;
+ expect((await admin.from("teachers").insert({
+  id,email,display_name:"Synthetic boost tenant",
+ })).error).toBeNull();
+ const baseline=await configureSyntheticStudentCapacity(admin,id,1);
+ const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();
+ const summary=async()=>{
+  const result=await auth.rpc("ccp_entitlement_summary");
+  expect(result.error).toBeNull();
+  return result.data.studentCapacity;
+ };
+ expect((await summary()).limit).toBe(1);
+ const selfIssued=await auth.from("teacher_entitlement_grants").insert({
+  teacher_id:id,kind:"capability_boost",capability_key:"students.active",
+  capability_kind:"integer_limit",integer_value:100,unlimited:false,
+  reason:"Unauthorized synthetic self grant",request_id:randomUUID(),
+ });
+ expect(selfIssued.error).not.toBeNull();
+ const expired=await admin.from("teacher_entitlement_grants").insert({
+  teacher_id:id,kind:"capability_boost",capability_key:"students.active",
+  capability_kind:"integer_limit",integer_value:10,unlimited:false,
+  valid_from:"2019-01-01T00:00:00Z",expires_at:"2020-01-01T00:00:00Z",
+  reason:"Expired synthetic capacity boost",request_id:randomUUID(),
+ });
+ expect(expired.error).toBeNull();
+ expect((await summary()).limit).toBe(1);
+ const granted=await admin.from("teacher_entitlement_grants").insert({
+  teacher_id:id,kind:"capability_boost",capability_key:"students.active",
+  capability_kind:"integer_limit",integer_value:3,unlimited:false,
+  reason:"Temporary synthetic active roster boost",request_id:randomUUID(),
+ }).select("id").single();
+ expect(granted.error).toBeNull();
+ expect((await summary()).limit).toBe(3);
+ const created=await Promise.all(Array.from({length:4},(_,i)=>
+  auth.from("students").insert({teacher_id:id,name:"Boost student "+i+" "+randomUUID()})
+   .select("id").single()));
+ expect(created.filter(x=>!x.error)).toHaveLength(3);
+ expect(created.filter(x=>x.error?.message.includes("CAPACITY_EXCEEDED")))
+  .toHaveLength(1);
+ const revoked=await admin.from("teacher_entitlement_grants")
+  .update({revoked_at:new Date().toISOString()}).eq("id",granted.data!.id);
+ expect(revoked.error).toBeNull();
+ expect((await summary()).limit).toBe(1);
+ const denied=await auth.from("students").insert({
+  teacher_id:id,name:"Post-revocation "+randomUUID(),
+ });
+ expect(denied.error?.message).toContain("CAPACITY_EXCEEDED");
+ const state=await admin.from("teacher_entitlement_state")
+  .select("active_student_count").eq("teacher_id",id).single();
+ expect(state.error).toBeNull();
+ expect(state.data?.active_student_count).toBe(3);
+ expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
+});
