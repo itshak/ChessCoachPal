@@ -7,6 +7,7 @@ import {
 function failure(error:unknown){
  return NextResponse.json({
    error:error instanceof TeacherTransferError?error.message:"Import failed",
+   ...(error instanceof TeacherTransferError?{code:error.code}:{}),
  },{
    status:error instanceof TeacherTransferError?error.status:500,
    headers:{"Cache-Control":"no-store"},

@@ -416,6 +416,7 @@
     "rosterTooLarge": "Student roster is too large for this view. Use an export.",
     "familiesLoadFailed": "Family options could not be loaded.",
     "familiesTooLarge": "Family roster is too large for this view. Use an export.",
+    "capacityUnavailable": "Active student capacity is temporarily unavailable.",
     "freeLimit": "Free plan allows {count} active students. Archive one, upgrade to Pro, or export and self-host."
   },
   "calendar": {

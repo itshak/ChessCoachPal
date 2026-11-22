@@ -17,7 +17,7 @@ export type TestMcpReply = {data?:TestMcpData;error?:{code:string;message:string
  * not synthetic list-of-tool-name assertions.
  */
 export async function delegatedTool(page: Page, request: APIRequestContext, scope = "coach:read coach:write", credentials?:{email:string;password:string}) {
-  const origin = "http://localhost:3000";
+  const origin = new URL(process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000").origin;
   const callback = origin + "/oauth/synthetic-callback";
   const verifier = "p".repeat(64);
   const challenge = createHash("sha256").update(verifier).digest("base64url");

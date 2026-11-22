@@ -659,7 +659,7 @@ const catalogue = [
   },
   {
     name:"ccp_hosted_subscription_handoff",
-    description:"Open the signed-in Account page to review hosting plan, start subscription Checkout or enter Stripe billing portal securely in the browser. MCP cannot collect card data or create a Stripe session without the required browser confirmation.",
+    description:"Review the authoritative account plan and active capacity shown on the website Account and Students pages. Browser-only checkout is not offered until a verified provider and approved subscription are configured.",
     schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
   },
   {
@@ -1814,7 +1814,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       });
       if (error) {
         const msg = error.message || "";
-        const code = /HOSTED_LIMIT_REACHED/.test(msg)?"HOSTED_LIMIT_REACHED":
+        const code = /CAPACITY_EXCEEDED|HOSTED_LIMIT_REACHED/.test(msg)?"CAPACITY_EXCEEDED":
           /FUTURE_COMMITMENTS/.test(msg)?"FUTURE_COMMITMENTS":
           /CONFLICT|23505|23P01/.test(msg)?"CONFLICT":
           /NOT_FOUND/.test(msg)?"NOT_FOUND":"VALIDATION_ERROR";
@@ -1859,7 +1859,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as Parameters<typeof createStudentWithOptionalContact>[2];
         const result=await createStudentWithOptionalContact(db,teacherId,a);
         if(!result.ok)return {error:{
-          code:result.status===403?"HOSTED_LIMIT_REACHED":
+          code:result.status===403?"CAPACITY_EXCEEDED":
             result.status===404?"NOT_FOUND":
             result.status===409?"IDEMPOTENCY_CONFLICT":
             result.status===400?"VALIDATION_ERROR":"DATABASE_ERROR",
@@ -1966,8 +1966,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const response=await teacherSpreadsheetCommit(db,teacherId,a);
         const data=await response.json();
         if(!response.ok)
-          return {error:{code:response.status===403?"HOSTED_LIMIT_REACHED":
-            response.status===409?"CONFLICT":data.code??"VALIDATION_ERROR",
+          return {error:{code:data.code??(response.status===403?"FORBIDDEN":
+            response.status===409?"CONFLICT":"VALIDATION_ERROR"),
             message:data.error??"Spreadsheet import failed",workplaces:data.workplaces}};
         return {data};
       }
@@ -2141,13 +2141,16 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           action:"account-security",
           explanation:"Open the signed-in Account page and complete any required reauthentication. Email, password, MFA keys and recovery codes must never be submitted to a model.",
         }};
-      case "ccp_hosted_subscription_handoff":
+      case "ccp_hosted_subscription_handoff": {
+        const {loadAccountEntitlementSummary}=await import("@/lib/server/entitlements");
         return {data:{
           url:oauthOrigin()+"/account",
           browserOnly:true,
-          action:"hosted-billing",
-          explanation:"On hosted deployments, review the plan and choose Upgrade or Manage billing in your signed-in browser. Payment-card entry and Stripe sessions remain in secure website/provider flows.",
+          action:"account-entitlements",
+          entitlements:await loadAccountEntitlementSummary(db),
+          explanation:"Account capacity and plan access come from the shared SQL entitlement state. Subscription checkout is not yet active.",
         }};
+      }
       case "ccp_teacher_federation_default_get":
         return {data:await federationDefaultGet(db,teacherId)};
       case "ccp_teacher_federation_default_set": {

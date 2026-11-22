@@ -65,21 +65,6 @@ $$;
 ALTER FUNCTION "public"."chesscoachpal_seed_chess_skills"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."chesscoachpal_seed_workplace"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    SET "search_path" TO 'public'
-    AS $$
-BEGIN
-  INSERT INTO public.workplaces(teacher_id, name, timezone, currency)
-  VALUES (NEW.id, 'Private coaching', 'UTC', 'USD');
-  RETURN NEW;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."chesscoachpal_seed_workplace"() OWNER TO "postgres";
-
-
 CREATE OR REPLACE FUNCTION "public"."chesscoachpal_snapshot_participants"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1022,39 +1007,27 @@ CREATE TABLE IF NOT EXISTS "public"."teachers" (
     "email" "text" NOT NULL,
     "display_name" "text" DEFAULT ''::"text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "hosted_plan" "text" DEFAULT 'free'::"text" NOT NULL,
-    "trial_ends_at" timestamp with time zone,
-    "gifted_until" timestamp with time zone,
-    "stripe_customer_id" "text",
-    "stripe_subscription_id" "text",
-    "founding_number" integer,
-    "stripe_cancel_at" timestamp with time zone,
     "avatar_url" "text",
     "preferred_locale" "text" DEFAULT 'en'::"text" NOT NULL,
     "selected_workplace_id" "uuid",
     "onboarding_tour_completed_at" timestamp with time zone,
     "calendar_token" "text" DEFAULT "rtrim"("translate"("encode"("extensions"."gen_random_bytes"(16), 'base64'::"text"), '+/'::"text", '-_'::"text"), '='::"text") NOT NULL,
-    CONSTRAINT "teachers_preferred_locale_check" CHECK (("preferred_locale" = ANY (ARRAY['en'::"text", 'he'::"text", 'ru'::"text"]))),
-    CONSTRAINT "teachers_hosted_plan_check" CHECK (("hosted_plan" = ANY (ARRAY['free'::"text", 'trial'::"text", 'pro'::"text", 'founding'::"text", 'gifted'::"text"])))
+    CONSTRAINT "teachers_preferred_locale_check" CHECK (("preferred_locale" = ANY (ARRAY['en'::"text", 'he'::"text", 'ru'::"text"])))
 );
 
 
 ALTER TABLE "public"."teachers" OWNER TO "postgres";
 
 
-COMMENT ON COLUMN "public"."teachers"."hosted_plan" IS 'Hosted CogNote plan (free/trial/pro/founding/gifted). Ignored when COGNOTE_DEPLOYMENT=self_hosted.';
 
 
 
-COMMENT ON COLUMN "public"."teachers"."stripe_customer_id" IS 'Platform Stripe customer for CogNote hosted subscription — not teacher BYO lesson Stripe.';
 
 
 
-COMMENT ON COLUMN "public"."teachers"."stripe_subscription_id" IS 'Platform Stripe subscription id for CogNote Hosted Pro.';
 
 
 
-COMMENT ON COLUMN "public"."teachers"."stripe_cancel_at" IS 'When set, Hosted Pro cancels at this time (from Stripe cancel_at). Cleared when subscription is active without pending cancel.';
 
 
 
@@ -1637,7 +1610,7 @@ CREATE OR REPLACE TRIGGER "chesscoachpal_seed_chess_skills" AFTER INSERT ON "pub
 
 
 
-CREATE OR REPLACE TRIGGER "chesscoachpal_seed_workplace" AFTER INSERT ON "public"."teachers" FOR EACH ROW EXECUTE FUNCTION "public"."chesscoachpal_seed_workplace"();
+-- Personal workplace is provisioned by the unique ADR-0019 trigger.
 
 
 
@@ -2280,9 +2253,9 @@ GRANT ALL ON FUNCTION "public"."chesscoachpal_seed_chess_skills"() TO "service_r
 
 
 
-GRANT ALL ON FUNCTION "public"."chesscoachpal_seed_workplace"() TO "anon";
-GRANT ALL ON FUNCTION "public"."chesscoachpal_seed_workplace"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."chesscoachpal_seed_workplace"() TO "service_role";
+
+
+
 
 
 
@@ -3079,6 +3052,9 @@ BEGIN
                          'sessions.reschedule','sessions.cancel')
      AND p_expected_updated_at IS NOT NULL THEN RAISE EXCEPTION 'VALIDATION_ERROR'; END IF;
 
+  IF p_operation IN ('sessions.create','sessions.reschedule','sessions.cancel') THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+  END IF;
   -- The unique (teacher_id, idempotency_key) row lock serializes racing retries.
   -- The entire transaction rolls back on validation/conflict/permission failures.
   -- Browser and delegated MCP use ONE request identity. Client ID is audit
@@ -3195,8 +3171,6 @@ BEGIN
     IF v_start IS NULL OR v_duration NOT BETWEEN 15 AND 480 THEN
       RAISE EXCEPTION 'VALIDATION_ERROR';
     END IF;
-    -- Serializes MCP-created sessions for the same teacher, preventing MCP/MCP overlap races.
-    PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
     IF EXISTS (
       SELECT 1 FROM public.teaching_sessions s
       WHERE s.teacher_id=v_teacher AND s.status <> 'cancelled'
@@ -3212,8 +3186,6 @@ BEGIN
 
   ELSIF p_operation IN ('sessions.reschedule','sessions.cancel') THEN
     v_id := (p_payload->>'sessionId')::uuid;
-    -- Block concurrent MCP writes while evaluating the new time interval.
-    PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
     SELECT status,starts_at,duration_minutes INTO v_existing_status,v_start,v_duration
     FROM public.teaching_sessions
     WHERE id=v_id AND teacher_id=v_teacher AND updated_at=p_expected_updated_at
@@ -3402,117 +3374,12 @@ CREATE TRIGGER ccp_restrict_workplace_unenroll
 BEFORE DELETE ON public.workplace_enrollments
 FOR EACH ROW EXECUTE FUNCTION public.ccp_restrict_workplace_unenroll();
 
--- Enforce active student quotas at the only race-safe boundary: the database.
--- A locked teacher row serializes all insert/archive/unarchive/delete transactions.
--- Tenant entitlements and counters are changed by trusted server provisioning.
-ALTER TABLE public.teachers
- ADD COLUMN hosted_enforced boolean NOT NULL DEFAULT false,
- ADD COLUMN hosted_max_active_students integer NOT NULL DEFAULT 5,
- ADD COLUMN active_student_count integer NOT NULL DEFAULT 0,
- ADD CONSTRAINT ccp_hosted_capacity_range CHECK(hosted_max_active_students BETWEEN 1 AND 1000000),
- ADD CONSTRAINT ccp_active_students_nonnegative CHECK(active_student_count>=0);
-UPDATE public.teachers t SET active_student_count=(
- SELECT count(*) FROM public.students s WHERE s.teacher_id=t.id AND s.archived_at IS NULL
-);
-UPDATE public.teachers SET hosted_enforced=true
- WHERE hosted_plan IN ('trial','pro','founding','gifted');
--- The existing migration grants only safe teacher-profile columns to authenticated.
--- Restate that security invariant so raw PostgREST requests cannot falsify caps.
+-- ADR-0019: student capacity is guarded by ccp_student_capacity_guard,
+-- installed after the normalized plan catalogue and entitlement state.
+-- Authenticated clients can modify only ordinary account profile columns.
 REVOKE UPDATE ON TABLE public.teachers FROM PUBLIC,anon,authenticated;
 GRANT UPDATE(email,display_name,avatar_url,preferred_locale,selected_workplace_id,onboarding_tour_completed_at,calendar_token)
  ON TABLE public.teachers TO authenticated;
-
-CREATE OR REPLACE FUNCTION public.ccp_student_capacity_guard()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=public,pg_temp AS $$
-DECLARE
- v_teacher uuid; v_delta integer:=0; v_count integer; v_max integer;
- v_hosted boolean; v_plan text; v_trial timestamptz; v_gift timestamptz;
-BEGIN
- IF TG_OP='INSERT' THEN
-   v_teacher:=NEW.teacher_id;
-   IF NEW.archived_at IS NULL THEN v_delta:=1; END IF;
- ELSIF TG_OP='DELETE' THEN
-   v_teacher:=OLD.teacher_id;
-   IF OLD.archived_at IS NULL THEN v_delta:=-1; END IF;
- ELSE
-   IF NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
-     RAISE EXCEPTION 'STUDENT_OWNER_IMMUTABLE' USING ERRCODE='23514';
-   END IF;
-   v_teacher:=NEW.teacher_id;
-   IF OLD.archived_at IS NOT NULL AND NEW.archived_at IS NULL THEN
-     v_delta:=1;
-   ELSIF OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL THEN
-     v_delta:=-1;
-     IF EXISTS(SELECT 1 FROM public.workplace_enrollments
-               WHERE teacher_id=v_teacher AND student_id=NEW.id
-                 AND cancelled_at IS NULL
-                 AND (ends_on IS NULL OR ends_on >=
-                   (clock_timestamp() AT TIME ZONE coalesce(
-                     (SELECT timezone FROM public.teacher_settings WHERE teacher_id=v_teacher),
-                     'UTC'))::date))
-       OR EXISTS(SELECT 1 FROM public.lesson_slots
-               WHERE teacher_id=v_teacher AND student_id=NEW.id AND active)
-       OR EXISTS(SELECT 1 FROM public.teaching_sessions
-               WHERE teacher_id=v_teacher AND student_id=NEW.id
-                 AND status='scheduled' AND starts_at>=clock_timestamp())
-       OR EXISTS(SELECT 1 FROM public.session_participants sp
-                 JOIN public.teaching_sessions sess ON sess.id=sp.session_id
-               WHERE sp.teacher_id=v_teacher AND sp.student_id=NEW.id
-                 AND sess.status='scheduled' AND sess.starts_at>=clock_timestamp())
-       OR EXISTS(SELECT 1 FROM public.group_enrollments
-               WHERE teacher_id=v_teacher AND student_id=NEW.id) THEN
-       RAISE EXCEPTION 'FUTURE_COMMITMENTS' USING ERRCODE='23503';
-     END IF;
-   END IF;
- END IF;
- IF v_delta<>0 THEN
-   SELECT active_student_count,hosted_max_active_students,hosted_enforced,
-          hosted_plan,trial_ends_at,gifted_until
-   INTO v_count,v_max,v_hosted,v_plan,v_trial,v_gift
-   FROM public.teachers WHERE id=v_teacher FOR UPDATE;
-   IF FOUND THEN
-     IF v_delta>0 AND v_hosted AND
-       (v_plan='free'
-        OR (v_plan='trial' AND (v_trial IS NULL OR v_trial<=clock_timestamp()))
-        OR (v_plan='gifted' AND (v_gift IS NULL OR v_gift<=clock_timestamp())))
-        AND v_count+v_delta>v_max THEN
-       RAISE EXCEPTION 'HOSTED_LIMIT_REACHED' USING ERRCODE='23514';
-     END IF;
-     UPDATE public.teachers SET active_student_count=active_student_count+v_delta
-       WHERE id=v_teacher;
-   END IF;
- END IF;
- IF TG_OP='DELETE' THEN RETURN OLD; END IF;
- RETURN NEW;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_student_capacity_guard() FROM PUBLIC,anon,authenticated;
-DROP TRIGGER IF EXISTS ccp_student_capacity_guard ON public.students;
-CREATE TRIGGER ccp_student_capacity_guard
- BEFORE INSERT OR UPDATE OR DELETE ON public.students
- FOR EACH ROW EXECUTE FUNCTION public.ccp_student_capacity_guard();
-
--- No teacher client may edit hosted_plan; the one permitted demotion is a
--- server-verified, owner-only function with expired entitlement preconditions.
-CREATE OR REPLACE FUNCTION public.ccp_demote_expired_hosted_plan()
-RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=public,pg_temp AS $$
-DECLARE v_teacher uuid:=auth.uid();
-BEGIN
- IF v_teacher IS NULL THEN
-   RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
- END IF;
- UPDATE public.teachers SET hosted_plan='free'
- WHERE id=v_teacher AND hosted_enforced=true AND (
-   (hosted_plan='trial' AND (trial_ends_at IS NULL OR trial_ends_at<=clock_timestamp()))
-   OR (hosted_plan='gifted' AND (gifted_until IS NULL OR gifted_until<=clock_timestamp()))
- );
- RETURN FOUND;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_demote_expired_hosted_plan() FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.ccp_demote_expired_hosted_plan() TO authenticated;
 
 -- One authenticated RPC transaction for spreadsheet onboarding, including
 -- family creation, deduplication, quota reservations, and durable replay receipt.
@@ -3710,8 +3577,48 @@ GRANT UPDATE (
 -- The same teacher lock protects direct website inserts/edits and MCP RPC.
 CREATE OR REPLACE FUNCTION public.ccp_session_schedule_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE
+ v_rescheduling boolean:=false;
+ v_status_change boolean:=false;
 BEGIN
- IF NEW.status='scheduled' THEN
+ IF TG_OP='UPDATE' THEN
+   -- A whole-slot retirement may detach its retained history; it may not
+   -- reparent a session or replace its frozen original local date.
+   IF NEW.slot_occurrence_date IS DISTINCT FROM OLD.slot_occurrence_date
+     OR (NEW.slot_id IS DISTINCT FROM OLD.slot_id AND NEW.slot_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'SESSION_OCCURRENCE_IDENTITY_CONFLICT' USING ERRCODE='23514';
+   END IF;
+   v_rescheduling:=ROW(NEW.starts_at,NEW.duration_minutes,NEW.local_timezone,NEW.is_home_visit)
+      IS DISTINCT FROM ROW(OLD.starts_at,OLD.duration_minutes,OLD.local_timezone,OLD.is_home_visit);
+   -- Completion has its own explicit frozen-roster SQL guard. This branch
+   -- controls schedule-only cancellation and generic rewinds, not teaching
+   -- or attendance/note corrections that leave the schedule unchanged.
+   v_status_change:=NEW.status IS DISTINCT FROM OLD.status AND NEW.status<>'completed';
+   IF v_rescheduling OR v_status_change THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.teacher_id::text,0));
+    IF OLD.status<>'scheduled'
+     OR (v_rescheduling AND
+         (OLD.starts_at<=clock_timestamp() OR NEW.starts_at<=clock_timestamp()))
+     OR OLD.rescheduled_from_date IS NOT NULL OR OLD.makeup_for_session_id IS NOT NULL
+     OR EXISTS(SELECT 1 FROM public.session_attendance WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.ccp_session_attendance_audit WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.session_notes WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.ccp_session_note_audit WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.ccp_delivery_outbox WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.invoice_items WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.financial_obligations WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.credit_redemptions WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.chess_observations WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.material_teaching_evidence WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.material_links WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.session_roster_corrections WHERE session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.teaching_sessions WHERE makeup_for_session_id=OLD.id)
+     OR EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions WHERE session_id=OLD.id) THEN
+      RAISE EXCEPTION 'SESSION_SCHEDULE_HISTORY_CONFLICT' USING ERRCODE='23514';
+    END IF;
+   END IF;
+ END IF;
+ IF NEW.status='scheduled' AND (TG_OP='INSERT' OR v_rescheduling OR v_status_change) THEN
    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.teacher_id::text,0));
    IF EXISTS(
       SELECT 1 FROM public.teaching_sessions s
@@ -3729,7 +3636,8 @@ $$;
 REVOKE ALL ON FUNCTION public.ccp_session_schedule_guard() FROM PUBLIC,anon,authenticated;
 DROP TRIGGER IF EXISTS ccp_session_schedule_guard ON public.teaching_sessions;
 CREATE TRIGGER ccp_session_schedule_guard
- BEFORE INSERT OR UPDATE OF starts_at,duration_minutes,status,roster_mode
+ BEFORE INSERT OR UPDATE OF starts_at,duration_minutes,status,local_timezone,is_home_visit,
+   slot_id,slot_occurrence_date
  ON public.teaching_sessions FOR EACH ROW EXECUTE FUNCTION public.ccp_session_schedule_guard();
 
 CREATE OR REPLACE FUNCTION public.ccp_teacher_ad_hoc_session_create(
@@ -4039,6 +3947,11 @@ BEGIN
    END IF;
    v_seen:=array_append(v_seen,v_student);
  END LOOP;
+ -- Match the teacher-then-session lock order used by scoped recurrence
+ -- writers. Attendance-only commits never touch the scheduling columns.
+ IF p_changes<>'{}'::jsonb THEN
+   PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ END IF;
  v_hash:=md5(jsonb_build_array('sessions.commit',p_session_id,p_changes,
    p_attendance,p_expected_updated_at)::text);
  INSERT INTO public.agent_tool_receipts(
@@ -4272,27 +4185,6 @@ CREATE TRIGGER ccp_direct_session_enrollment_guard
 BEFORE INSERT OR UPDATE OF student_id,workplace_id
 ON public.teaching_sessions
 FOR EACH ROW EXECUTE FUNCTION public.ccp_direct_session_enrollment_guard();
-
--- New hosted teachers must inherit database-level capacity enforcement.
--- An inserted trial/paid preview row previously inherited hosted_enforced=false,
--- letting direct authenticated writes bypass eventual free active-student caps.
--- Self-hosted free teachers retain their unrestricted default (false).
-CREATE OR REPLACE FUNCTION public.ccp_enforce_hosted_teacher_origin()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-BEGIN
-  IF NEW.hosted_plan IN ('trial','pro','founding','gifted') THEN
-    NEW.hosted_enforced:=true;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.ccp_enforce_hosted_teacher_origin()
-  FROM PUBLIC,anon,authenticated;
-DROP TRIGGER IF EXISTS ccp_enforce_hosted_teacher_origin ON public.teachers;
-CREATE TRIGGER ccp_enforce_hosted_teacher_origin
-BEFORE INSERT OR UPDATE OF hosted_plan,hosted_enforced
-ON public.teachers
-FOR EACH ROW EXECUTE FUNCTION public.ccp_enforce_hosted_teacher_origin();
 
 -- A prepaid lesson package is one financial transaction: its invoice,
 -- invoice line and package must either ALL exist or NONE exist. Serialized
@@ -6311,6 +6203,9 @@ ALTER TABLE public.material_teaching_evidence ENABLE ROW LEVEL SECURITY;
 CREATE POLICY material_teaching_evidence_owner ON public.material_teaching_evidence
  FOR ALL TO authenticated USING (teacher_id = (select auth.uid()))
  WITH CHECK (teacher_id = (select auth.uid()));
+-- This append-only history uses explicit voiding. An additive GRANT does
+-- not remove inherited default table privileges (including DELETE/TRUNCATE).
+REVOKE ALL ON public.material_teaching_evidence FROM PUBLIC,anon,authenticated;
 GRANT SELECT,INSERT,UPDATE ON public.material_teaching_evidence TO authenticated;
 GRANT ALL ON public.material_teaching_evidence TO service_role;
 
@@ -6330,12 +6225,28 @@ BEGIN
         OLD.created_at) THEN
       RAISE EXCEPTION 'MATERIAL_HISTORY_IMMUTABLE';
     END IF;
-    IF OLD.voided_at IS NOT NULL OR NEW.voided_at IS NULL OR
-       NEW.void_reason IS NULL OR length(btrim(NEW.void_reason)) < 5 THEN
+    IF OLD.voided_at IS NOT NULL THEN
+      RAISE EXCEPTION 'INVALID_MATERIAL_VOID';
+    END IF;
+    IF (NEW.learning_stage,NEW.stage_verified_at,NEW.stage_verified_by)
+      IS DISTINCT FROM
+       (OLD.learning_stage,OLD.stage_verified_at,OLD.stage_verified_by)
+    THEN
+      -- An active legacy claim can acquire a first owner verification, but
+      -- an existing attestation survives correction/void without modification.
+      IF OLD.learning_stage IS NOT NULL OR NEW.learning_stage IS NULL
+         OR NEW.voided_at IS NOT NULL OR NEW.void_reason IS NOT NULL THEN
+        RAISE EXCEPTION 'IMMUTABLE_MATERIAL_STAGE_EVIDENCE' USING ERRCODE='23514';
+      END IF;
+    ELSIF NEW.voided_at IS NULL OR NEW.void_reason IS NULL
+       OR length(btrim(NEW.void_reason)) < 5 THEN
       RAISE EXCEPTION 'INVALID_MATERIAL_VOID';
     END IF;
     NEW.updated_at := clock_timestamp();
     RETURN NEW;
+  END IF;
+  IF NEW.learning_stage IS NOT NULL AND NEW.voided_at IS NOT NULL THEN
+    RAISE EXCEPTION 'IMMUTABLE_MATERIAL_STAGE_EVIDENCE' USING ERRCODE='23514';
   END IF;
   PERFORM 1 FROM public.students
    WHERE id=NEW.student_id AND teacher_id=NEW.teacher_id;
@@ -6390,6 +6301,9 @@ DECLARE
  v_count integer;
  v_changed integer;
  v_guard text;
+ v_material_input public.material_teaching_evidence%ROWTYPE;
+ v_material_existing public.material_teaching_evidence%ROWTYPE;
+ v_material_archived timestamptz;
  v_counts jsonb:='{}'::jsonb;
 BEGIN
  IF v_teacher IS NULL OR NOT EXISTS (
@@ -6424,6 +6338,69 @@ BEGIN
    FOR v_row IN SELECT value FROM jsonb_array_elements(v_rows) LOOP
      IF jsonb_typeof(v_row)<>'object'
      THEN RAISE EXCEPTION 'IMPORT_INVALID_ROW:%',v_table USING ERRCODE='22023'; END IF;
+
+     IF v_table='material_teaching_evidence' THEN
+       -- Verification belongs to its recorded environment owner. Do not use
+       -- the generic teacher-id rewrite or upsert on historical evidence.
+       v_material_input:=jsonb_populate_record(NULL::public.material_teaching_evidence,v_row);
+       IF v_material_input.teacher_id IS DISTINCT FROM v_teacher
+          OR (v_material_input.stage_verified_by IS NOT NULL
+              AND v_material_input.stage_verified_by IS DISTINCT FROM v_teacher) THEN
+        RAISE EXCEPTION 'IMPORT_FOREIGN_MATERIAL_EVIDENCE' USING ERRCODE='42501';
+       END IF;
+       IF v_material_input.id IS NULL OR v_material_input.created_at IS NULL
+          OR (v_material_input.voided_at IS NULL)<>(v_material_input.void_reason IS NULL) THEN
+        RAISE EXCEPTION 'IMPORT_INVALID_MATERIAL_EVIDENCE' USING ERRCODE='22023';
+       END IF;
+       v_material_input.note:=coalesce(v_material_input.note,'');
+       SELECT * INTO v_material_existing FROM public.material_teaching_evidence
+        WHERE id=v_material_input.id FOR UPDATE;
+       IF NOT FOUND THEN
+        SELECT archived_at INTO v_material_archived FROM public.learning_materials
+         WHERE id=v_material_input.material_id AND teacher_id=v_teacher FOR SHARE;
+        IF v_material_archived IS NOT NULL THEN
+         RAISE EXCEPTION 'IMPORT_ARCHIVED_MATERIAL_EVIDENCE_REQUIRES_OPERATOR'
+          USING ERRCODE='22023';
+        END IF;
+        -- The ordinary INSERT trigger must still validate the active material,
+        -- student, workplace and session roster. Void a new, verified row
+        -- afterwards in this same transaction; never fabricate an actor.
+        INSERT INTO public.material_teaching_evidence(
+          id,teacher_id,student_id,workplace_id,session_id,material_id,stage,
+          occurred_on,note,request_id,created_at,learning_stage,
+          stage_verified_at,stage_verified_by)
+         VALUES(v_material_input.id,v_teacher,v_material_input.student_id,
+          v_material_input.workplace_id,v_material_input.session_id,
+          v_material_input.material_id,v_material_input.stage,
+          v_material_input.occurred_on,v_material_input.note,
+          v_material_input.request_id,v_material_input.created_at,
+          v_material_input.learning_stage,v_material_input.stage_verified_at,
+          v_material_input.stage_verified_by)
+         ON CONFLICT(id) DO NOTHING RETURNING * INTO v_material_existing;
+        IF FOUND THEN
+         IF v_material_input.voided_at IS NOT NULL THEN
+          UPDATE public.material_teaching_evidence
+           SET voided_at=v_material_input.voided_at,void_reason=v_material_input.void_reason
+           WHERE id=v_material_input.id AND teacher_id=v_teacher
+           RETURNING * INTO v_material_existing;
+         END IF;
+        ELSE
+         SELECT * INTO v_material_existing FROM public.material_teaching_evidence
+          WHERE id=v_material_input.id FOR UPDATE;
+        END IF;
+       END IF;
+       IF v_material_existing.teacher_id IS DISTINCT FROM v_teacher THEN
+        RAISE EXCEPTION 'IMPORT_FOREIGN_MATERIAL_EVIDENCE' USING ERRCODE='42501';
+       END IF;
+       -- updated_at is server-controlled, not the timestamp of the attestation
+       -- or archived evidence. An exact replay never executes UPDATE.
+       IF (to_jsonb(v_material_existing)-'updated_at')
+         IS DISTINCT FROM (to_jsonb(v_material_input)-'updated_at') THEN
+        RAISE EXCEPTION 'IMPORT_MATERIAL_EVIDENCE_MISMATCH' USING ERRCODE='23505';
+       END IF;
+       v_count:=v_count+1;
+       CONTINUE;
+     END IF;
 
      -- The teacher identity is *always* the signed-in person. Copying foreign
      -- IDs to another owner never grants access to the old user's data.
@@ -6624,6 +6601,10 @@ BEGIN
         v_row:=jsonb_set(jsonb_set(v_row,'{token_digest}','null'::jsonb,true),
           '{issued_at}','null'::jsonb,true);
       END IF;
+
+      -- Derive the nullable workplace identity key from the restored field.
+      -- A portable export can contain the generated read-only column.
+      IF v_table='lesson_slots' THEN v_row:=v_row-'series_workplace_scope'; END IF;
 
       -- Insert only supplied columns so database defaults survive sparse
       -- portable exports. PostgreSQL performs the whole operation under RLS:
@@ -7021,10 +7002,30 @@ BEGIN
       RAISE EXCEPTION 'CANONICAL_MATERIALIZE_SLOT_MISMATCH'
         USING ERRCODE='22023';
     END IF;
+    -- A predecessor segment may retain an occurrence after its rule ends.
+    -- Any stored original date consumes the series occurrence, not only
+    -- protected history. A reviewed split must reconcile editable rows
+    -- explicitly; generation never guesses which stored row it may replace.
     IF EXISTS(
-      SELECT 1 FROM public.teaching_sessions
-       WHERE teacher_id=v_teacher AND slot_id=v_slot.id
-         AND slot_occurrence_date=v_slot_date
+      SELECT 1 FROM public.lesson_slots origin
+       JOIN public.teaching_sessions occurrence
+        ON occurrence.teacher_id=origin.teacher_id AND occurrence.slot_id=origin.id
+       WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+         AND occurrence.slot_occurrence_date=v_slot_date
+    ) THEN
+      v_count:=v_count+1;
+      CONTINUE;
+    END IF;
+    -- An approved single-date cancellation can precede any session row.
+    -- Use the original occurrence date in the slot's local timezone, not
+    -- the UTC calendar date. A revoked cancellation cannot hide the date.
+    IF EXISTS(
+      SELECT 1 FROM public.lesson_slots origin
+       JOIN public.slot_occurrence_exceptions exception
+        ON exception.teacher_id=origin.teacher_id AND exception.slot_id=origin.id
+       WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+         AND exception.original_occurrence_on=v_slot_date
+         AND exception.action='cancel' AND exception.revoked_at IS NULL
     ) THEN
       v_count:=v_count+1;
       CONTINUE;
@@ -11767,6 +11768,367 @@ REVOKE ALL ON TABLE public.student_rating_refresh_receipts FROM service_role;
 GRANT SELECT,INSERT ON TABLE public.student_rating_refresh_receipts TO service_role;
 COMMENT ON TABLE public.student_rating_refresh_receipts IS
  'Append-only worker attempt evidence; no service-role UPDATE/DELETE and no inference of consent.';
+
+-- ADR-0019: atomic physical contract for future consented online-rating sync.
+-- This grants no consent, enables no cron, and makes no provider requests.
+-- All paths that touch more than one row acquire student -> consent -> job.
+-- The profile API trims and preserves case; do not lower-case identities here.
+-- Revocation/regrant cannot reuse an old lease even for the same username.
+-- The existing handle revision is the epoch of the approved handle binding.
+CREATE OR REPLACE FUNCTION public.ccp_rating_consent_binding_epoch()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_rating_consent_binding_epoch$
+BEGIN
+ IF NEW.handle_revision<OLD.handle_revision OR NEW.revision<OLD.revision THEN
+  RAISE EXCEPTION 'RATING_CONSENT_REVISION_REGRESSION' USING ERRCODE='23514';
+ END IF;
+ IF NEW.source_username IS DISTINCT FROM OLD.source_username
+    OR (OLD.enabled AND NOT NEW.enabled) THEN
+  NEW.handle_revision:=greatest(NEW.handle_revision,OLD.handle_revision+1);
+  NEW.revision:=greatest(NEW.revision,OLD.revision+1);
+ END IF;
+ RETURN NEW;
+END;
+$ccp_rating_consent_binding_epoch$;
+REVOKE ALL ON FUNCTION public.ccp_rating_consent_binding_epoch()
+ FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_rating_consent_binding_epoch
+ BEFORE UPDATE ON public.student_rating_sync_consents FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_rating_consent_binding_epoch();
+
+CREATE OR REPLACE FUNCTION public.ccp_rating_handle_changed()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_rating_handle_changed$
+BEGIN
+ UPDATE public.student_rating_sync_consents c SET
+   enabled=false,
+   revoked_at=CASE WHEN c.consented_at IS NOT NULL THEN clock_timestamp()
+                   ELSE c.revoked_at END,
+   handle_revision=c.handle_revision+1,revision=c.revision+1,
+   last_request_id=NULL,last_request_hash=NULL,updated_at=clock_timestamp()
+  WHERE c.teacher_id=OLD.teacher_id AND c.student_id=OLD.id AND (
+   (c.provider='lichess' AND btrim(NEW.lichess_username) IS DISTINCT FROM btrim(OLD.lichess_username))
+   OR (c.provider='chesscom' AND btrim(NEW.chesscom_username) IS DISTINCT FROM btrim(OLD.chesscom_username))
+  );
+ RETURN NEW;
+END;
+$ccp_rating_handle_changed$;
+REVOKE ALL ON FUNCTION public.ccp_rating_handle_changed() FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_rating_revoke_changed_handle
+ AFTER UPDATE OF lichess_username,chesscom_username ON public.students
+ FOR EACH ROW WHEN (btrim(OLD.lichess_username) IS DISTINCT FROM btrim(NEW.lichess_username)
+                 OR btrim(OLD.chesscom_username) IS DISTINCT FROM btrim(NEW.chesscom_username))
+ EXECUTE FUNCTION public.ccp_rating_handle_changed();
+
+-- A scheduler may discover candidate IDs separately. The discovery result is
+-- never authority: this bounded single-job claim rechecks live eligibility
+-- under row locks before returning a short lease or any account identifier.
+CREATE OR REPLACE FUNCTION public.ccp_rating_refresh_claim(
+ p_teacher_id uuid,p_job_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_rating_refresh_claim$
+DECLARE
+ v_seed public.student_rating_refresh_jobs%ROWTYPE;
+ v_job public.student_rating_refresh_jobs%ROWTYPE;
+ v_student public.students%ROWTYPE;
+ v_consent public.student_rating_sync_consents%ROWTYPE;
+ v_now timestamptz;
+ v_eligible boolean;
+ v_result text;
+BEGIN
+ IF current_user<>'service_role' THEN
+  RAISE EXCEPTION 'RATING_WORKER_ACCESS_DENIED' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_seed FROM public.student_rating_refresh_jobs
+  WHERE id=p_job_id AND teacher_id=p_teacher_id;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_student FROM public.students
+  WHERE id=v_seed.student_id AND teacher_id=p_teacher_id FOR SHARE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_consent FROM public.student_rating_sync_consents
+  WHERE id=v_seed.consent_id AND teacher_id=p_teacher_id
+    AND student_id=v_seed.student_id AND provider=v_seed.provider FOR SHARE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_job FROM public.student_rating_refresh_jobs
+  WHERE id=v_seed.id AND teacher_id=p_teacher_id
+    AND student_id=v_seed.student_id AND consent_id=v_seed.consent_id
+    AND provider=v_seed.provider FOR UPDATE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ v_now:=clock_timestamp();
+ IF NOT (
+      (v_job.status IN ('pending','retry') AND v_job.run_after<=v_now)
+   OR (v_job.status='running' AND v_job.lease_until<=v_now)
+ ) THEN RETURN NULL; END IF;
+
+ v_eligible:=(
+   v_student.archived_at IS NULL AND v_consent.enabled
+   AND v_consent.revoked_at IS NULL AND v_consent.consented_at<=v_job.created_at
+   AND v_consent.handle_revision=v_job.handle_revision
+   AND v_consent.source_username=v_job.source_username
+   AND v_job.source_username ~ '^[A-Za-z0-9_-]{2,30}$'
+   AND v_job.source_username=CASE v_job.provider
+     WHEN 'lichess' THEN btrim(v_student.lichess_username)
+     WHEN 'chesscom' THEN btrim(v_student.chesscom_username) END
+ ) IS TRUE;
+ IF NOT v_eligible THEN
+  v_result:='stale';
+ ELSIF v_job.attempt_count>=30 THEN
+  v_result:='failed';
+ ELSE
+  v_result:='retry';
+ END IF;
+ IF v_job.status='running' THEN
+  -- An expired lease abandoned by its worker still has immutable evidence.
+  INSERT INTO public.student_rating_refresh_receipts(
+   id,teacher_id,student_id,job_id,attempt_number,outcome,
+   source_username,input_digest,error_code)
+  VALUES(v_job.lease_token,v_job.teacher_id,v_job.student_id,v_job.id,
+   v_job.attempt_count,v_result,v_job.source_username,v_job.input_digest,
+   CASE WHEN v_result='stale' THEN 'RATING_CONTEXT_STALE'
+        ELSE 'RATING_LEASE_EXPIRED' END);
+ END IF;
+ IF v_result IN ('stale','failed') THEN
+  UPDATE public.student_rating_refresh_jobs SET status=v_result,
+   lease_token=NULL,lease_until=NULL,finished_at=v_now,updated_at=v_now,
+   last_error_code=CASE WHEN v_result='stale' THEN 'RATING_CONTEXT_STALE'
+                        ELSE 'RATING_ATTEMPTS_EXHAUSTED' END
+   WHERE id=v_job.id AND teacher_id=p_teacher_id;
+  RETURN NULL;
+ END IF;
+ -- Registry deactivation pauses admission without erasing history or consent.
+ PERFORM 1 FROM public.rating_providers
+  WHERE code=v_job.provider AND provider_kind='online' AND active FOR SHARE;
+ IF NOT FOUND THEN
+  IF v_job.status='running' THEN
+   UPDATE public.student_rating_refresh_jobs SET status='retry',
+    lease_token=NULL,lease_until=NULL,updated_at=v_now,
+    last_error_code='RATING_PROVIDER_UNAVAILABLE' WHERE id=v_job.id AND teacher_id=p_teacher_id;
+  END IF;
+  RETURN NULL;
+ END IF;
+ v_now:=clock_timestamp();
+ UPDATE public.student_rating_refresh_jobs SET
+  status='running',attempt_count=attempt_count+1,lease_token=gen_random_uuid(),
+  lease_until=v_now+interval '2 minutes',updated_at=v_now,last_error_code=NULL
+  WHERE id=v_job.id AND teacher_id=p_teacher_id
+  RETURNING * INTO v_job;
+ RETURN jsonb_build_object('jobId',v_job.id,'teacherId',v_job.teacher_id,
+   'studentId',v_job.student_id,'provider',v_job.provider,
+   'sourceUsername',v_job.source_username,'handleRevision',v_job.handle_revision,
+   'inputDigest',v_job.input_digest,'triggerKind',v_job.trigger_kind,
+   'attempt',v_job.attempt_count,'leaseToken',v_job.lease_token,'leaseUntil',v_job.lease_until);
+END;
+$ccp_rating_refresh_claim$;
+REVOKE ALL ON FUNCTION public.ccp_rating_refresh_claim(uuid,uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_rating_refresh_claim(uuid,uuid) TO service_role;
+
+-- Only bounded normalized online observations; this cannot attest that an
+-- account belongs to a student, write official ratings or change strength.
+-- Success is one transaction: rows, immutable receipt and lease completion.
+CREATE OR REPLACE FUNCTION public.ccp_rating_refresh_finalize(
+ p_teacher_id uuid,p_job_id uuid,p_lease_token uuid,p_attempt integer,
+ p_input_digest text,p_outcome text,p_fetched_at timestamptz,
+ p_evidence_digest text,p_observations jsonb,p_error_code text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_rating_refresh_finalize$
+DECLARE
+ v_seed public.student_rating_refresh_jobs%ROWTYPE;
+ v_job public.student_rating_refresh_jobs%ROWTYPE;
+ v_student public.students%ROWTYPE;
+ v_consent public.student_rating_sync_consents%ROWTYPE;
+ v_receipt public.student_rating_refresh_receipts%ROWTYPE;
+ v_now timestamptz;
+ v_result text;
+ v_error text;
+ v_entry jsonb;
+ v_entry_count integer;
+ v_count integer:=0;
+ v_observed timestamptz;
+ v_latest timestamptz;
+ v_category text;
+ v_categories text[]:='{}';
+ v_payload_digest text;
+BEGIN
+ IF current_user<>'service_role' THEN
+  RAISE EXCEPTION 'RATING_WORKER_ACCESS_DENIED' USING ERRCODE='42501';
+ END IF;
+ IF p_attempt IS NULL OR p_attempt NOT BETWEEN 1 AND 30 OR p_lease_token IS NULL
+  OR p_input_digest IS NULL OR p_input_digest !~ '^[a-f0-9]{64}$'
+  OR p_outcome IS NULL OR p_outcome NOT IN ('succeeded','retry','failed')
+  OR jsonb_typeof(p_observations) IS DISTINCT FROM 'array'
+  OR pg_column_size(p_observations)>24000 THEN
+  RAISE EXCEPTION 'RATING_WORKER_INVALID_RESULT' USING ERRCODE='22023';
+ END IF;
+ v_entry_count:=jsonb_array_length(p_observations);
+ IF (p_outcome='succeeded' AND (
+    p_fetched_at IS NULL OR NOT isfinite(p_fetched_at)
+    OR p_evidence_digest IS NULL OR p_evidence_digest !~ '^[a-f0-9]{64}$'
+    OR p_error_code IS NOT NULL OR v_entry_count NOT BETWEEN 1 AND 20
+  )) OR (p_outcome<>'succeeded' AND (
+    p_fetched_at IS NOT NULL OR p_evidence_digest IS NOT NULL OR v_entry_count<>0
+    OR p_error_code IS NULL OR p_error_code !~ '^[A-Z0-9_]{1,80}$'
+    OR p_error_code IN ('RATING_LEASE_EXPIRED','RATING_CONTEXT_STALE','RATING_ATTEMPTS_EXHAUSTED')
+  )) THEN
+  RAISE EXCEPTION 'RATING_WORKER_INVALID_RESULT' USING ERRCODE='22023';
+ END IF;
+ SELECT * INTO v_seed FROM public.student_rating_refresh_jobs
+  WHERE id=p_job_id AND teacher_id=p_teacher_id;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_student FROM public.students
+  WHERE id=v_seed.student_id AND teacher_id=p_teacher_id FOR SHARE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_consent FROM public.student_rating_sync_consents
+  WHERE id=v_seed.consent_id AND teacher_id=p_teacher_id
+    AND student_id=v_seed.student_id AND provider=v_seed.provider FOR SHARE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_job FROM public.student_rating_refresh_jobs
+  WHERE id=v_seed.id AND teacher_id=p_teacher_id
+    AND student_id=v_seed.student_id AND consent_id=v_seed.consent_id
+    AND provider=v_seed.provider FOR UPDATE;
+ IF NOT FOUND OR v_job.input_digest<>p_input_digest THEN RETURN NULL; END IF;
+
+ v_result:=CASE WHEN p_outcome='retry' AND p_attempt=30 THEN 'failed' ELSE p_outcome END;
+ IF p_outcome='succeeded' THEN
+  -- Request fingerprint includes the actual normalized payload, not only
+  -- the worker-provided evidence digest. It deliberately preserves order.
+  v_payload_digest:=encode(extensions.digest(jsonb_build_object(
+   'job',p_job_id,'attempt',p_attempt,'input',p_input_digest,
+   'fetchedAt',extract(epoch FROM p_fetched_at),'evidence',p_evidence_digest,
+   'observations',p_observations)::text,'sha256'),'hex');
+ END IF;
+ SELECT * INTO v_receipt FROM public.student_rating_refresh_receipts
+  WHERE id=p_lease_token AND job_id=p_job_id AND teacher_id=p_teacher_id
+    AND attempt_number=p_attempt AND input_digest=p_input_digest;
+ IF FOUND THEN
+  IF v_receipt.error_code='RATING_LEASE_EXPIRED' THEN RETURN NULL; END IF;
+  IF v_receipt.outcome='stale' THEN
+   RETURN jsonb_build_object('status','stale','snapshotsWritten',0);
+  END IF;
+  IF v_receipt.outcome IS DISTINCT FROM v_result
+   OR v_receipt.error_code IS DISTINCT FROM p_error_code
+   OR v_receipt.evidence_digest IS DISTINCT FROM p_evidence_digest
+   OR (p_outcome='succeeded' AND (
+     v_receipt.fetched_at IS DISTINCT FROM p_fetched_at
+     OR v_receipt.snapshots_written<>v_entry_count
+     OR (SELECT count(*) FROM public.student_rating_snapshots s
+       WHERE s.teacher_id=p_teacher_id AND s.student_id=v_job.student_id
+         AND s.provider=v_job.provider AND s.request_id=p_lease_token
+         AND s.source='provider_api' AND s.preview_digest=v_payload_digest)<>v_entry_count
+   )) THEN
+   RAISE EXCEPTION 'RATING_WORKER_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN jsonb_build_object('status',v_receipt.outcome,
+   'snapshotsWritten',v_receipt.snapshots_written,'replayed',true);
+ END IF;
+
+ v_now:=clock_timestamp();
+ IF v_job.status<>'running' OR v_job.attempt_count<>p_attempt OR
+   v_job.lease_token IS DISTINCT FROM p_lease_token OR
+   v_job.lease_until IS NULL OR v_job.lease_until<=v_now THEN RETURN NULL; END IF;
+ v_error:=p_error_code;
+ IF (
+   v_student.archived_at IS NULL AND v_consent.enabled
+   AND v_consent.consented_at<=v_job.created_at AND v_consent.revoked_at IS NULL
+   AND v_consent.handle_revision=v_job.handle_revision
+   AND v_consent.source_username=v_job.source_username
+   AND v_job.source_username ~ '^[A-Za-z0-9_-]{2,30}$'
+   AND v_job.source_username=CASE v_job.provider
+     WHEN 'lichess' THEN btrim(v_student.lichess_username)
+     WHEN 'chesscom' THEN btrim(v_student.chesscom_username) END
+ ) IS NOT TRUE THEN
+  v_result:='stale';
+  v_error:='RATING_CONTEXT_STALE';
+ END IF;
+ IF v_result='succeeded' THEN
+  PERFORM 1 FROM public.rating_providers WHERE code=v_job.provider
+   AND provider_kind='online' AND active FOR SHARE;
+  IF NOT FOUND THEN
+   v_result:='stale';
+   v_error:='RATING_PROVIDER_UNAVAILABLE';
+  END IF;
+ END IF;
+ IF v_result='succeeded' THEN
+  IF p_fetched_at>clock_timestamp() OR p_fetched_at<v_job.updated_at-interval '1 millisecond' THEN
+   RAISE EXCEPTION 'RATING_WORKER_INVALID_FETCH_TIME' USING ERRCODE='22023';
+  END IF;
+  FOR v_entry IN SELECT value FROM jsonb_array_elements(p_observations) LOOP
+   IF jsonb_typeof(v_entry)<>'object' THEN
+    RAISE EXCEPTION 'RATING_WORKER_INVALID_OBSERVATION' USING ERRCODE='22023';
+   END IF;
+   IF v_entry-ARRAY['time_control','rating','rating_deviation','provisional','games','observed_at']<>'{}'::jsonb
+    OR jsonb_typeof(v_entry->'time_control') IS DISTINCT FROM 'string'
+    OR jsonb_typeof(v_entry->'rating') IS DISTINCT FROM 'number'
+    OR COALESCE(v_entry->>'rating','') !~ '^[0-9]{1,4}$'
+    OR (v_entry->>'rating')::integer NOT BETWEEN 100 AND 4000
+    OR (v_entry->>'rating_deviation' IS NOT NULL AND (
+     jsonb_typeof(v_entry->'rating_deviation')<>'number'
+     OR (v_entry->>'rating_deviation') !~ '^[0-9]{1,4}$'
+     OR (v_entry->>'rating_deviation')::integer>1000
+    ))
+    OR (v_entry->>'games' IS NOT NULL AND (
+     jsonb_typeof(v_entry->'games')<>'number'
+     OR (v_entry->>'games') !~ '^[0-9]{1,8}$'
+     OR (v_entry->>'games')::integer>10000000
+    ))
+    OR (v_entry->>'provisional' IS NOT NULL AND jsonb_typeof(v_entry->'provisional')<>'boolean')
+    OR jsonb_typeof(v_entry->'observed_at') IS DISTINCT FROM 'string'
+    OR COALESCE(v_entry->>'observed_at','') !~
+     '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?Z$'
+   THEN
+    RAISE EXCEPTION 'RATING_WORKER_INVALID_OBSERVATION' USING ERRCODE='22023';
+   END IF;
+   v_category:=v_entry->>'time_control';
+   v_observed:=(v_entry->>'observed_at')::timestamptz;
+   IF v_category !~ '^[a-z][a-z0-9_]{1,39}$' OR v_category=ANY(v_categories)
+      OR v_observed>p_fetched_at THEN
+    RAISE EXCEPTION 'RATING_WORKER_INVALID_OBSERVATION' USING ERRCODE='22023';
+   END IF;
+   PERFORM 1 FROM public.rating_categories
+    WHERE provider_code=v_job.provider AND code=v_category AND active FOR SHARE;
+   IF NOT FOUND THEN
+    RAISE EXCEPTION 'RATING_WORKER_CATEGORY_UNAVAILABLE' USING ERRCODE='22023';
+   END IF;
+   v_categories:=array_append(v_categories,v_category);
+   v_latest:=greatest(v_latest,v_observed);
+   INSERT INTO public.student_rating_snapshots(
+    teacher_id,student_id,provider,time_control,rating,rating_deviation,
+    provisional,games,source,observed_at,fetched_at,request_id,preview_digest,
+    source_username,source_handle_revision,source_digest,verification_state)
+   VALUES(v_job.teacher_id,v_job.student_id,v_job.provider,v_category,
+    (v_entry->>'rating')::integer,(v_entry->>'rating_deviation')::integer,
+    (v_entry->>'provisional')::boolean,(v_entry->>'games')::integer,
+    'provider_api',v_observed,p_fetched_at,p_lease_token,v_payload_digest,
+    v_job.source_username,v_job.handle_revision,p_evidence_digest,'unverified');
+   v_count:=v_count+1;
+  END LOOP;
+ END IF;
+ -- Waiting on a registry lock must not let an expired lease persist rows.
+ v_now:=clock_timestamp();
+ IF v_job.lease_until<=v_now THEN
+  RAISE EXCEPTION 'RATING_LEASE_EXPIRED' USING ERRCODE='23514';
+ END IF;
+ INSERT INTO public.student_rating_refresh_receipts(
+  id,teacher_id,student_id,job_id,attempt_number,outcome,
+  source_username,input_digest,evidence_digest,snapshots_written,error_code,
+  observed_at,fetched_at)
+ VALUES(p_lease_token,v_job.teacher_id,v_job.student_id,v_job.id,p_attempt,v_result,
+  v_job.source_username,v_job.input_digest,
+  CASE WHEN v_result='succeeded' THEN p_evidence_digest END,v_count,v_error,
+  v_latest,CASE WHEN v_result='succeeded' THEN p_fetched_at END);
+ UPDATE public.student_rating_refresh_jobs SET status=v_result,
+  lease_token=NULL,lease_until=NULL,updated_at=v_now,last_error_code=v_error,
+  finished_at=CASE WHEN v_result='retry' THEN NULL ELSE v_now END,
+  run_after=CASE WHEN v_result='retry' THEN
+   v_now+make_interval(secs=>least(3600,30*(2^least(p_attempt,7))::integer))
+   ELSE v_job.run_after END
+  WHERE id=v_job.id AND teacher_id=p_teacher_id;
+ RETURN jsonb_build_object('status',v_result,'snapshotsWritten',v_count,'replayed',false);
+END;
+$ccp_rating_refresh_finalize$;
+REVOKE ALL ON FUNCTION public.ccp_rating_refresh_finalize(
+ uuid,uuid,uuid,integer,text,text,timestamptz,text,jsonb,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_rating_refresh_finalize(
+ uuid,uuid,uuid,integer,text,text,timestamptz,text,jsonb,text) TO service_role;
 -- Schema-only OpenSpec amendment: canonical temporal workplace enrollment.
 -- Existing membership rows have no trustworthy start date. Only an operator's
 -- separately approved data transition may import start_date_unknown=true.
@@ -12917,4 +13279,2861 @@ REVOKE ALL ON FUNCTION public.ccp_teacher_archived_lesson_recovery_commit(
  FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_archived_lesson_recovery_commit(
  uuid,uuid[],jsonb,text,timestamptz,integer,text,uuid,text,boolean)
+ TO authenticated;
+
+
+-- ADR-0019: Provider-neutral Freemium/Pro persistence foundation.
+-- SCHEMA-ONLY draft: no checkout, entitlement activation or teacher writes here.
+-- Existing hosted-plan code MUST be removed and SQL quota arbitration rewired
+-- before the consolidated P0 is accepted. Never deploy this intermediate state.
+CREATE TABLE public.capability_definitions (
+ key text PRIMARY KEY CHECK (key ~ '^[a-z][a-z0-9_.]{2,95}$'),
+ kind text NOT NULL CHECK(kind IN ('boolean','integer_limit')),
+ unit text CHECK (unit IS NULL OR (length(unit) BETWEEN 1 AND 48)),
+ security_class text NOT NULL DEFAULT 'teacher' CHECK(security_class IN ('teacher','operator')),
+ definition_version integer NOT NULL DEFAULT 1 CHECK(definition_version>0),
+ active boolean NOT NULL DEFAULT true,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(key,kind)
+);
+CREATE TABLE public.plan_versions (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ code text NOT NULL CHECK(code ~ '^[a-z][a-z0-9_]{1,39}$'),
+ version integer NOT NULL CHECK(version>0),
+ lifecycle text NOT NULL DEFAULT 'draft'
+   CHECK(lifecycle IN ('draft','published','retired')),
+ effective_at timestamptz,
+ retired_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(code,version),
+ CONSTRAINT ccp_plan_publication_time CHECK (
+  lifecycle='draft' OR effective_at IS NOT NULL),
+ CONSTRAINT ccp_plan_retirement_time CHECK (
+  retired_at IS NULL OR effective_at IS NOT NULL AND retired_at>effective_at)
+);
+CREATE TABLE public.plan_capabilities (
+ plan_version_id uuid NOT NULL REFERENCES public.plan_versions(id) ON DELETE RESTRICT,
+ capability_key text NOT NULL,
+ capability_kind text NOT NULL,
+ boolean_value boolean,
+ integer_value integer CHECK(integer_value>=0),
+ unlimited boolean NOT NULL DEFAULT false,
+ PRIMARY KEY(plan_version_id,capability_key),
+ FOREIGN KEY(capability_key,capability_kind)
+   REFERENCES public.capability_definitions(key,kind) ON DELETE RESTRICT,
+ CONSTRAINT ccp_plan_capability_typed CHECK(
+  (capability_kind='boolean' AND boolean_value IS NOT NULL AND
+   integer_value IS NULL AND unlimited=false)
+  OR
+  (capability_kind='integer_limit' AND boolean_value IS NULL AND
+   ((integer_value IS NOT NULL AND unlimited=false)
+      OR (integer_value IS NULL AND unlimited=true))))
+);
+CREATE TABLE public.teacher_entitlement_state (
+ teacher_id uuid PRIMARY KEY REFERENCES public.teachers(id) ON DELETE CASCADE,
+ baseline_plan_version_id uuid REFERENCES public.plan_versions(id) ON DELETE RESTRICT,
+ revision bigint NOT NULL DEFAULT 0 CHECK(revision>=0),
+ active_student_count integer NOT NULL DEFAULT 0 CHECK(active_student_count>=0),
+ active_professional_workplace_count integer NOT NULL DEFAULT 0
+   CHECK(active_professional_workplace_count>=0),
+ evaluated_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.teacher_entitlement_grants (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ kind text NOT NULL CHECK(kind IN ('plan_access','capability_boost')),
+ plan_version_id uuid REFERENCES public.plan_versions(id) ON DELETE RESTRICT,
+ capability_key text,
+ capability_kind text,
+ boolean_value boolean,
+ integer_value integer CHECK(integer_value>=0),
+ unlimited boolean NOT NULL DEFAULT false,
+ valid_from timestamptz NOT NULL DEFAULT now(),
+ expires_at timestamptz,
+ revoked_at timestamptz,
+ reason text NOT NULL CHECK(length(btrim(reason)) BETWEEN 4 AND 500),
+ issued_by uuid,
+ request_id uuid NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(teacher_id,request_id),
+ CONSTRAINT ccp_entitlement_grant_window CHECK(
+  expires_at IS NULL OR expires_at>valid_from),
+ CONSTRAINT ccp_entitlement_grant_shape CHECK(
+  (kind='plan_access' AND plan_version_id IS NOT NULL AND
+   capability_key IS NULL AND capability_kind IS NULL AND
+   boolean_value IS NULL AND integer_value IS NULL AND unlimited=false)
+  OR
+  (kind='capability_boost' AND plan_version_id IS NULL AND
+   capability_key IS NOT NULL AND
+   ((capability_kind='boolean' AND boolean_value=true AND
+     integer_value IS NULL AND unlimited=false)
+    OR
+    (capability_kind='integer_limit' AND boolean_value IS NULL AND
+     ((integer_value IS NOT NULL AND unlimited=false)
+       OR(integer_value IS NULL AND unlimited=true)))))),
+ FOREIGN KEY(capability_key,capability_kind)
+   REFERENCES public.capability_definitions(key,kind) ON DELETE RESTRICT
+);
+CREATE INDEX ccp_grants_teacher_window ON public.teacher_entitlement_grants
+ (teacher_id,valid_from,expires_at) WHERE revoked_at IS NULL;
+CREATE TABLE public.entitlement_audit_events (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ actor_id uuid,
+ source text NOT NULL CHECK(source IN ('operator','subscription','grant','provisioning','reconciliation')),
+ action text NOT NULL CHECK(length(action) BETWEEN 3 AND 100),
+ revision_before bigint CHECK(revision_before>=0),
+ revision_after bigint CHECK(revision_after>=0),
+ request_id uuid NOT NULL,
+ reason text NOT NULL CHECK(length(reason) BETWEEN 3 AND 500),
+ occurred_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(teacher_id,request_id),
+ CONSTRAINT ccp_entitlement_audit_revisions CHECK(
+  revision_before IS NULL OR revision_after IS NULL
+  OR revision_after>=revision_before)
+);
+CREATE TABLE public.account_usage_periods (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ capability_key text NOT NULL REFERENCES public.capability_definitions(key) ON DELETE RESTRICT,
+ period_start timestamptz NOT NULL,
+ period_end timestamptz NOT NULL,
+ used_count bigint NOT NULL DEFAULT 0 CHECK(used_count>=0),
+ reserved_count bigint NOT NULL DEFAULT 0 CHECK(reserved_count>=0),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(teacher_id,capability_key,period_start,period_end),
+ CONSTRAINT ccp_usage_period_window CHECK(period_end>period_start),
+ UNIQUE(id,teacher_id,capability_key)
+);
+CREATE TABLE public.account_usage_events (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ capability_key text NOT NULL REFERENCES public.capability_definitions(key) ON DELETE RESTRICT,
+ period_id uuid NOT NULL,
+ request_id uuid NOT NULL,
+ unit text NOT NULL CHECK(unit ~ '^[a-z][a-z0-9_]{1,47}$'),
+ amount integer NOT NULL CHECK(amount>0 AND amount<=1000000),
+ source text NOT NULL CHECK(length(source) BETWEEN 2 AND 80),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(period_id,teacher_id,capability_key)
+   REFERENCES public.account_usage_periods(id,teacher_id,capability_key)
+   ON DELETE RESTRICT,
+ UNIQUE(teacher_id,capability_key,request_id)
+);
+CREATE TABLE public.platform_billing_customers (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ provider text NOT NULL CHECK(provider ~ '^[a-z][a-z0-9_]{1,39}$'),
+ merchant_scope text NOT NULL CHECK(length(merchant_scope) BETWEEN 1 AND 120),
+ external_customer_id text NOT NULL CHECK(length(external_customer_id) BETWEEN 1 AND 200),
+ disabled_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(provider,merchant_scope,external_customer_id),
+ UNIQUE(id,teacher_id),
+ UNIQUE(id,teacher_id,provider,merchant_scope)
+);
+CREATE TABLE public.platform_subscription_offers (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ plan_version_id uuid NOT NULL REFERENCES public.plan_versions(id) ON DELETE RESTRICT,
+ provider text NOT NULL CHECK(provider ~ '^[a-z][a-z0-9_]{1,39}$'),
+ merchant_scope text NOT NULL CHECK(length(merchant_scope) BETWEEN 1 AND 120),
+ external_price_id text NOT NULL CHECK(length(external_price_id) BETWEEN 1 AND 200),
+ currency text NOT NULL CHECK(currency ~ '^[A-Z]{3}$'),
+ billing_interval text NOT NULL CHECK(billing_interval IN ('month','year')),
+ effective_from timestamptz NOT NULL,
+ effective_to timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(provider,merchant_scope,external_price_id),
+ UNIQUE(id,provider,merchant_scope),
+ CONSTRAINT ccp_platform_offer_window CHECK(
+  effective_to IS NULL OR effective_to>effective_from)
+);
+CREATE TABLE public.platform_subscriptions (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ customer_id uuid NOT NULL,
+ offer_id uuid NOT NULL,
+ provider text NOT NULL,
+ merchant_scope text NOT NULL,
+ external_subscription_id text NOT NULL
+   CHECK(length(external_subscription_id) BETWEEN 1 AND 200),
+ state text NOT NULL CHECK(state IN (
+  'trialing','active','past_due','grace','cancel_at_period_end',
+  'canceled','expired','refunded','disputed')),
+ current_period_end timestamptz,
+ paid_through timestamptz,
+ grace_until timestamptz,
+ cancel_at timestamptz,
+ latest_event_time timestamptz,
+ latest_event_version text,
+ revision bigint NOT NULL DEFAULT 0 CHECK(revision>=0),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(customer_id,teacher_id,provider,merchant_scope)
+   REFERENCES public.platform_billing_customers(id,teacher_id,provider,merchant_scope)
+   ON DELETE RESTRICT,
+ FOREIGN KEY(offer_id,provider,merchant_scope)
+   REFERENCES public.platform_subscription_offers(id,provider,merchant_scope)
+   ON DELETE RESTRICT,
+ UNIQUE(provider,merchant_scope,external_subscription_id),
+ UNIQUE(id,teacher_id)
+);
+CREATE INDEX ccp_platform_subs_teacher ON public.platform_subscriptions
+ (teacher_id,state,current_period_end DESC);
+CREATE TABLE public.platform_billing_events (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ provider text NOT NULL CHECK(provider ~ '^[a-z][a-z0-9_]{1,39}$'),
+ merchant_scope text NOT NULL CHECK(length(merchant_scope) BETWEEN 1 AND 120),
+ external_event_id text NOT NULL CHECK(length(external_event_id) BETWEEN 1 AND 200),
+ external_subscription_id text CHECK(length(external_subscription_id) BETWEEN 1 AND 200),
+ teacher_id uuid REFERENCES public.teachers(id) ON DELETE SET NULL,
+ event_type text NOT NULL CHECK(length(event_type) BETWEEN 2 AND 120),
+ external_created_at timestamptz,
+ payload_sha256 text NOT NULL CHECK(payload_sha256 ~ '^[a-f0-9]{64}$'),
+ signature_verified_at timestamptz NOT NULL,
+ processing_state text NOT NULL DEFAULT 'pending'
+   CHECK(processing_state IN ('pending','applied','ignored','retry','failed')),
+ attempt_count integer NOT NULL DEFAULT 0 CHECK(attempt_count>=0),
+ error_code text CHECK(error_code IS NULL OR length(error_code)<=120),
+ applied_at timestamptz,
+ received_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(provider,merchant_scope,external_event_id),
+ CONSTRAINT ccp_platform_event_applied CHECK (
+  processing_state<>'applied' OR applied_at IS NOT NULL)
+);
+CREATE INDEX ccp_platform_event_replay ON public.platform_billing_events
+ (provider,merchant_scope,external_subscription_id,external_created_at DESC);
+
+-- Catalogs are authenticated read-only; all mutations are trusted service-only.
+-- Never let an OAuth grant, portal token, or profile field write plan authority.
+ALTER TABLE public.capability_definitions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.plan_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.plan_capabilities ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ccp_capabilities_read ON public.capability_definitions
+ FOR SELECT TO authenticated USING (active AND security_class='teacher');
+CREATE POLICY ccp_plan_versions_read ON public.plan_versions
+ FOR SELECT TO authenticated USING (lifecycle='published');
+CREATE POLICY ccp_plan_capabilities_read ON public.plan_capabilities
+ FOR SELECT TO authenticated USING (
+  EXISTS (SELECT 1 FROM public.plan_versions p
+          JOIN public.capability_definitions d
+           ON d.key=capability_key AND d.kind=capability_kind
+          WHERE p.id=plan_version_id AND p.lifecycle='published'
+            AND d.active AND d.security_class='teacher')
+ );
+ALTER TABLE public.teacher_entitlement_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teacher_entitlement_grants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.entitlement_audit_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.account_usage_periods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.account_usage_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.platform_billing_customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.platform_subscription_offers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.platform_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.platform_billing_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ccp_entitlement_state_owner ON public.teacher_entitlement_state
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_entitlement_grants_owner ON public.teacher_entitlement_grants
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_entitlement_audit_owner ON public.entitlement_audit_events
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_usage_periods_owner ON public.account_usage_periods
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_usage_events_owner ON public.account_usage_events
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_platform_subscriptions_owner ON public.platform_subscriptions
+ FOR SELECT TO authenticated USING (teacher_id=(SELECT auth.uid()));
+-- Provider IDs and events are private; subscription offers are not price promises.
+CREATE POLICY ccp_platform_offers_read ON public.platform_subscription_offers
+ FOR SELECT TO authenticated USING (
+  EXISTS (SELECT 1 FROM public.plan_versions p
+          WHERE p.id=plan_version_id AND p.lifecycle='published')
+ );
+REVOKE ALL ON public.capability_definitions,public.plan_versions,
+ public.plan_capabilities,public.teacher_entitlement_state,
+ public.teacher_entitlement_grants,public.entitlement_audit_events,
+ public.account_usage_periods,public.account_usage_events,
+ public.platform_billing_customers,public.platform_subscription_offers,
+ public.platform_subscriptions,public.platform_billing_events
+ FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.capability_definitions,public.plan_versions,
+ public.plan_capabilities,public.teacher_entitlement_state,
+ public.teacher_entitlement_grants,public.entitlement_audit_events,
+ public.account_usage_periods,public.account_usage_events,
+ public.platform_subscriptions
+ TO authenticated;
+-- Public product metadata is explicit; provider routing references belong
+-- only to the trusted billing writer and are not teacher-facing.
+GRANT SELECT (id,plan_version_id,provider,currency,billing_interval,
+ effective_from,effective_to,created_at)
+ ON public.platform_subscription_offers TO authenticated;
+GRANT ALL ON public.capability_definitions,public.plan_versions,
+ public.plan_capabilities,public.teacher_entitlement_state,
+ public.teacher_entitlement_grants,public.entitlement_audit_events,
+ public.account_usage_periods,public.account_usage_events,
+ public.platform_billing_customers,public.platform_subscription_offers,
+ public.platform_subscriptions,public.platform_billing_events TO service_role;
+-- END ADR-0019 schema-only foundation.
+
+
+-- ADR-0019: consolidated workplace, ratings and publication contracts.
+-- SCHEMA-ONLY. One canonical baseline; no customer cutover or paid UI activation.
+
+-- Preserve all historical workplace IDs and lesson attribution. Never infer
+-- "Personal" from a historic professional workplace's display name.
+ALTER TABLE public.workplaces
+ ADD COLUMN kind text NOT NULL DEFAULT 'professional'
+   CHECK (kind IN ('personal','professional')),
+ ADD COLUMN archived_at timestamptz,
+ ADD COLUMN revision bigint NOT NULL DEFAULT 1 CHECK (revision>=1);
+CREATE UNIQUE INDEX ccp_one_personal_workplace
+ ON public.workplaces(teacher_id) WHERE kind='personal';
+CREATE INDEX ccp_professional_workplaces_active
+ ON public.workplaces(teacher_id) WHERE kind='professional' AND archived_at IS NULL;
+
+-- Every teacher gets an independent Personal context. This does not alter
+-- previously enrolled students, professional workplaces or recorded sessions.
+CREATE OR REPLACE FUNCTION public.ccp_provision_personal_workplace()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_personal$
+BEGIN
+ INSERT INTO public.workplaces(teacher_id,name,timezone,currency,locale,kind)
+ VALUES(NEW.id,'Private coaching',
+        'UTC','USD',coalesce(NEW.preferred_locale,'en'),'personal')
+ ON CONFLICT DO NOTHING;
+ RETURN NEW;
+END;
+$ccp_personal$;
+REVOKE ALL ON FUNCTION public.ccp_provision_personal_workplace()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_provision_personal_workplace
+ AFTER INSERT ON public.teachers FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_provision_personal_workplace();
+INSERT INTO public.workplaces(teacher_id,name,timezone,currency,locale,kind)
+ SELECT t.id,'Private coaching','UTC','USD',
+        coalesce(t.preferred_locale,'en'),'personal'
+ FROM public.teachers t
+ WHERE NOT EXISTS(SELECT 1 FROM public.workplaces w
+                  WHERE w.teacher_id=t.id AND w.kind='personal')
+ ON CONFLICT DO NOTHING;
+CREATE OR REPLACE FUNCTION public.ccp_personal_workplace_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_personal_guard$
+BEGIN
+ IF TG_OP='DELETE' THEN
+   IF OLD.kind='personal' AND EXISTS
+      (SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id) THEN
+      RAISE EXCEPTION 'PERSONAL_WORKPLACE_REQUIRED' USING ERRCODE='23514';
+   END IF;
+   RETURN OLD;
+ END IF;
+ IF NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+   RAISE EXCEPTION 'WORKPLACE_OWNER_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ IF OLD.kind='personal' AND
+    (NEW.kind IS DISTINCT FROM 'personal' OR NEW.archived_at IS NOT NULL) THEN
+   RAISE EXCEPTION 'PERSONAL_WORKPLACE_REQUIRED' USING ERRCODE='23514';
+ END IF;
+ IF OLD.kind='professional' AND NEW.kind IS DISTINCT FROM 'professional' THEN
+   RAISE EXCEPTION 'WORKPLACE_KIND_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ IF OLD.kind='professional' AND OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL THEN
+   IF EXISTS(SELECT 1 FROM public.lesson_slots
+     WHERE teacher_id=OLD.teacher_id AND workplace_id=OLD.id AND active)
+    OR EXISTS(SELECT 1 FROM public.teaching_sessions
+     WHERE teacher_id=OLD.teacher_id AND workplace_id=OLD.id
+       AND status='scheduled' AND starts_at>=now())
+    OR EXISTS(SELECT 1 FROM public.workplace_enrollments
+     WHERE teacher_id=OLD.teacher_id AND workplace_id=OLD.id
+       AND cancelled_at IS NULL AND
+       (ends_on IS NULL OR ends_on>=
+         (now() AT TIME ZONE OLD.timezone)::date))
+    OR EXISTS(SELECT 1 FROM public.portal_access_grants
+     WHERE teacher_id=OLD.teacher_id AND workplace_id=OLD.id
+       AND revoked_at IS NULL AND expires_at>now())
+   THEN
+    RAISE EXCEPTION 'WORKPLACE_FUTURE_COMMITMENTS' USING ERRCODE='23503';
+   END IF;
+ END IF;
+ NEW.revision:=OLD.revision+1;
+ NEW.updated_at:=now();
+ RETURN NEW;
+END;
+$ccp_personal_guard$;
+REVOKE ALL ON FUNCTION public.ccp_personal_workplace_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_personal_workplace_guard
+ BEFORE UPDATE OR DELETE ON public.workplaces FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_personal_workplace_guard();
+
+-- Authoritative, reviewable provider/category registry, not endless
+-- hardcoded ALTER TABLE whenever an additional federation is approved.
+CREATE TABLE public.rating_providers (
+ code text PRIMARY KEY CHECK(code ~ '^[a-z][a-z0-9_]{1,39}$'),
+ provider_kind text NOT NULL CHECK(provider_kind IN ('online','federation')),
+ display_name text NOT NULL CHECK(length(btrim(display_name)) BETWEEN 2 AND 100),
+ registry_revision integer NOT NULL DEFAULT 1 CHECK(registry_revision>=1),
+ active boolean NOT NULL DEFAULT true,
+ created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.rating_categories (
+ provider_code text NOT NULL REFERENCES public.rating_providers(code)
+   ON DELETE RESTRICT,
+ code text NOT NULL CHECK(code ~ '^[a-z][a-z0-9_]{1,39}$'),
+ display_name text NOT NULL CHECK(length(btrim(display_name)) BETWEEN 2 AND 100),
+ registry_revision integer NOT NULL DEFAULT 1 CHECK(registry_revision>=1),
+ active boolean NOT NULL DEFAULT true,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(provider_code,code)
+);
+INSERT INTO public.rating_providers(code,provider_kind,display_name) VALUES
+ ('lichess','online','Lichess'),('chesscom','online','Chess.com'),
+ ('fide','federation','FIDE'),('icf','federation','ICF');
+INSERT INTO public.rating_categories(provider_code,code,display_name)
+ SELECT p,c,initcap(c) FROM (VALUES
+ ('lichess','bullet'),('lichess','blitz'),('lichess','rapid'),
+ ('lichess','classical'),('lichess','puzzle'),
+ ('chesscom','bullet'),('chesscom','blitz'),('chesscom','rapid'),
+ ('chesscom','daily'),('chesscom','puzzle'),
+ ('fide','standard'),('fide','rapid'),('fide','blitz'),
+ ('icf','national')) AS seeded(p,c);
+ALTER TABLE public.student_rating_snapshots
+ DROP CONSTRAINT student_rating_snapshots_provider_check,
+ DROP CONSTRAINT student_rating_snapshots_time_control_check,
+ DROP CONSTRAINT ccp_snapshot_category_check;
+ALTER TABLE public.student_rating_snapshots
+ ADD CONSTRAINT ccp_rating_snapshot_registered_category
+ FOREIGN KEY(provider,time_control)
+ REFERENCES public.rating_categories(provider_code,code) ON DELETE RESTRICT,
+ ADD COLUMN external_player_id text
+   CHECK(external_player_id IS NULL OR
+         length(btrim(external_player_id)) BETWEEN 1 AND 120),
+ ADD COLUMN source_handle_revision bigint CHECK(source_handle_revision>=1);
+-- Do not model an official federation-list player ID as an online username.
+-- Teacher-entered federation references may retain a URL, date and audit
+-- digest; that metadata does not turn a manual observation into official proof.
+ALTER TABLE public.student_rating_snapshots
+ DROP CONSTRAINT federation_rating_source_truth,
+ DROP CONSTRAINT ccp_rating_snapshot_provenance;
+ALTER TABLE public.student_rating_snapshots
+ ADD CONSTRAINT ccp_rating_evidence_truth CHECK(
+   (source='teacher_manual' AND verification_state='unverified' AND fetched_at IS NULL
+    AND preview_digest IS NULL AND source_username IS NULL
+    AND source_handle_revision IS NULL AND provider_list_version IS NULL)
+   OR
+   (source='provider_api' AND verification_state='unverified' AND fetched_at IS NOT NULL
+    AND preview_digest IS NOT NULL AND source_username IS NOT NULL
+    AND source_username ~ '^[A-Za-z0-9_-]{2,30}$'
+    AND effective_at IS NULL AND provider_list_version IS NULL)
+   OR
+   (source='provider_api' AND verification_state='provider_published' AND fetched_at IS NOT NULL
+    AND effective_at IS NOT NULL AND provider_list_version IS NOT NULL
+    AND provider_list_version=btrim(provider_list_version) AND provider_list_version<>''
+    AND source_digest IS NOT NULL AND external_player_id IS NOT NULL
+    AND external_player_id=btrim(external_player_id) AND source_url IS NOT NULL
+    AND source_url ~ '^https://[A-Za-z0-9.-]+(:[0-9]+)?([/?#][^[:space:][:cntrl:]]*)?$'
+    AND preview_digest IS NULL AND source_username IS NULL AND source_handle_revision IS NULL)
+ );
+-- Row shape alone cannot tell which evidence modes a registered provider
+-- supports. Use registry kind, not editable UI input or hardcoded federation
+-- codes. This trigger does not elevate privileges or fetch/verify remote data.
+CREATE FUNCTION public.ccp_rating_provider_evidence_kind()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_rating_provider_evidence_kind$
+DECLARE
+ v_kind text;
+ v_expected_kind text;
+BEGIN
+ IF NEW.source='provider_api' THEN
+  SELECT provider_kind INTO v_kind
+    FROM public.rating_providers WHERE code=NEW.provider;
+  v_expected_kind:=CASE NEW.verification_state
+    WHEN 'provider_published' THEN 'federation' ELSE 'online' END;
+  IF v_kind IS DISTINCT FROM v_expected_kind THEN
+   RAISE EXCEPTION 'RATING_PROVIDER_EVIDENCE_KIND_MISMATCH'
+    USING ERRCODE='23514',CONSTRAINT='ccp_rating_provider_evidence_kind';
+  END IF;
+ END IF;
+ RETURN NEW;
+END
+$ccp_rating_provider_evidence_kind$;
+REVOKE ALL ON FUNCTION public.ccp_rating_provider_evidence_kind()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_rating_provider_evidence_kind
+ BEFORE INSERT OR UPDATE OF provider,source,verification_state ON public.student_rating_snapshots
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_rating_provider_evidence_kind();
+CREATE INDEX ccp_rating_registry_recent
+ ON public.student_rating_snapshots(teacher_id,student_id,provider,time_control,observed_at DESC);
+
+-- Explicit teacher assessment evidence is orthogonal to "material taught",
+-- skill assessment and external rating. Legacy rows stay unassessed (NULL).
+ALTER TABLE public.chess_observations
+ ADD COLUMN learning_stage text
+   CHECK(learning_stage IS NULL OR
+         learning_stage IN ('introduced','practiced','demonstrated','needs_review')),
+ ADD CONSTRAINT ccp_observation_teacher_verified_stage CHECK(
+   learning_stage IS NULL OR (verified_at IS NOT NULL AND verified_by=teacher_id));
+ALTER TABLE public.material_teaching_evidence
+ ADD COLUMN learning_stage text
+   CHECK(learning_stage IS NULL OR
+         learning_stage IN ('introduced','practiced','demonstrated','needs_review')),
+ ADD COLUMN stage_verified_at timestamptz,
+ ADD COLUMN stage_verified_by uuid,
+ ADD CONSTRAINT ccp_material_stage_teacher_evidence CHECK (
+   (learning_stage IS NULL AND stage_verified_at IS NULL AND stage_verified_by IS NULL)
+   OR (learning_stage IS NOT NULL AND stage_verified_at IS NOT NULL
+       AND stage_verified_by IS NOT DISTINCT FROM teacher_id));
+CREATE INDEX ccp_material_teacher_evidence_recent
+ ON public.material_teaching_evidence(teacher_id,student_id,occurred_on DESC)
+ WHERE learning_stage IS NOT NULL AND voided_at IS NULL;
+
+-- Unmaterialized cancellations cannot live in teaching_sessions.
+-- This relation models exceptions, not a competing recurring-intent source.
+CREATE TABLE public.slot_occurrence_exceptions (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ slot_id uuid NOT NULL,
+ original_occurrence_on date NOT NULL,
+ action text NOT NULL CHECK(action IN ('cancel','reschedule','override')),
+ revised_starts_at timestamptz,
+ revised_timezone text CHECK(revised_timezone IS NULL
+   OR length(revised_timezone) BETWEEN 1 AND 80),
+ revised_duration_minutes integer CHECK(revised_duration_minutes BETWEEN 15 AND 480),
+ session_id uuid,
+ approved_by uuid NOT NULL,
+ approved_at timestamptz NOT NULL DEFAULT now(),
+ reason text NOT NULL CHECK(length(btrim(reason)) BETWEEN 4 AND 500),
+ request_id uuid NOT NULL,
+ revision bigint NOT NULL DEFAULT 1 CHECK(revision>=1),
+ revoked_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(slot_id,teacher_id)
+   REFERENCES public.lesson_slots(id,teacher_id) ON DELETE CASCADE,
+ FOREIGN KEY(session_id,teacher_id)
+   REFERENCES public.teaching_sessions(id,teacher_id) ON DELETE RESTRICT,
+ CONSTRAINT ccp_slot_exception_action_shape CHECK(
+   (action='cancel' AND revised_starts_at IS NULL AND
+    revised_timezone IS NULL AND revised_duration_minutes IS NULL)
+   OR (action IN ('reschedule','override') AND revised_starts_at IS NOT NULL
+      AND revised_timezone IS NOT NULL)),
+ CONSTRAINT ccp_slot_exception_teacher_approved CHECK(approved_by=teacher_id),
+ CONSTRAINT ccp_slot_exception_unique_occurrence UNIQUE(teacher_id,slot_id,original_occurrence_on),
+ UNIQUE(teacher_id,request_id),
+ UNIQUE(id,teacher_id)
+);
+CREATE INDEX ccp_slot_exceptions_by_teacher
+ ON public.slot_occurrence_exceptions(teacher_id,slot_id,original_occurrence_on);
+
+-- Immutable approved snapshot reference; no raw private notes or automatic
+-- access for a payer, contact or group member. A publication must be approved.
+CREATE TABLE public.report_publications (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ student_id uuid,
+ workplace_id uuid,
+ snapshot_digest text NOT NULL CHECK(snapshot_digest ~ '^[a-f0-9]{64}$'),
+ snapshot_storage_ref text NOT NULL CHECK(length(snapshot_storage_ref) BETWEEN 1 AND 500),
+ output_locale text NOT NULL CHECK(output_locale ~ '^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$'),
+ approved_by uuid NOT NULL,
+ approved_at timestamptz NOT NULL,
+ request_id uuid NOT NULL,
+ revision bigint NOT NULL DEFAULT 1 CHECK(revision>=1),
+ superseded_by uuid,
+ revoked_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ CONSTRAINT ccp_report_scope_required CHECK(
+   student_id IS NOT NULL OR workplace_id IS NOT NULL),
+ CONSTRAINT ccp_report_teacher_approval CHECK(approved_by=teacher_id),
+ FOREIGN KEY(student_id,teacher_id)
+   REFERENCES public.students(id,teacher_id) ON DELETE RESTRICT,
+ FOREIGN KEY(workplace_id,teacher_id)
+   REFERENCES public.workplaces(id,teacher_id) ON DELETE RESTRICT,
+ UNIQUE(teacher_id,request_id),
+ UNIQUE(id,teacher_id),
+ CONSTRAINT ccp_report_not_self_superseded CHECK (
+  superseded_by IS NULL OR superseded_by<>id)
+);
+ALTER TABLE public.report_publications
+ ADD CONSTRAINT ccp_report_superseded_same_tenant
+ FOREIGN KEY(superseded_by,teacher_id)
+ REFERENCES public.report_publications(id,teacher_id) ON DELETE RESTRICT;
+CREATE INDEX ccp_report_publications_scope_student
+ ON public.report_publications(teacher_id,student_id,approved_at DESC)
+ WHERE student_id IS NOT NULL;
+CREATE INDEX ccp_report_publications_scope_workplace
+ ON public.report_publications(teacher_id,workplace_id,approved_at DESC)
+ WHERE workplace_id IS NOT NULL;
+-- Sharing is explicit; an unrelated guardian or payer is not entitled.
+CREATE TABLE public.report_publication_audiences (
+ publication_id uuid NOT NULL,
+ portal_grant_id uuid NOT NULL,
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ approved_by uuid NOT NULL,
+ approved_at timestamptz NOT NULL DEFAULT now(),
+ revoked_at timestamptz,
+ request_id uuid NOT NULL,
+ PRIMARY KEY(publication_id,portal_grant_id),
+ FOREIGN KEY(publication_id,teacher_id)
+   REFERENCES public.report_publications(id,teacher_id) ON DELETE CASCADE,
+ FOREIGN KEY(portal_grant_id,teacher_id)
+   REFERENCES public.portal_access_grants(id,teacher_id) ON DELETE RESTRICT,
+ CONSTRAINT ccp_report_audience_teacher_approved CHECK(approved_by=teacher_id),
+ UNIQUE(teacher_id,request_id)
+);
+CREATE OR REPLACE FUNCTION public.ccp_report_audience_scope_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_report_audience$
+DECLARE p public.report_publications%ROWTYPE;
+        g public.portal_access_grants%ROWTYPE;
+BEGIN
+ SELECT * INTO p FROM public.report_publications WHERE id=NEW.publication_id
+  AND teacher_id=NEW.teacher_id;
+ SELECT * INTO g FROM public.portal_access_grants WHERE id=NEW.portal_grant_id
+  AND teacher_id=NEW.teacher_id;
+ IF p.id IS NULL OR g.id IS NULL OR p.revoked_at IS NOT NULL
+    OR p.superseded_by IS NOT NULL OR g.revoked_at IS NOT NULL
+    OR g.expires_at<=now() OR g.issued_at IS NULL
+     OR g.token_digest IS NULL
+     OR NOT ('shared_notes'=ANY(g.permissions))
+    OR (p.student_id IS NOT NULL AND p.student_id IS DISTINCT FROM g.student_id)
+    OR (p.workplace_id IS NOT NULL AND p.workplace_id IS DISTINCT FROM g.workplace_id) THEN
+   RAISE EXCEPTION 'REPORT_AUDIENCE_NOT_AUTHORIZED' USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_report_audience$;
+REVOKE ALL ON FUNCTION public.ccp_report_audience_scope_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_report_audience_scope_guard
+ BEFORE INSERT OR UPDATE OF portal_grant_id,publication_id,teacher_id
+ ON public.report_publication_audiences FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_audience_scope_guard();
+
+-- Only trusted writers may approve new publications and audience grants.
+-- Owner read-back is possible, but unapproved public/portal access is not.
+ALTER TABLE public.rating_providers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rating_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.slot_occurrence_exceptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.report_publications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.report_publication_audiences ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ccp_rating_providers_read ON public.rating_providers
+ FOR SELECT TO authenticated USING(active);
+CREATE POLICY ccp_rating_categories_read ON public.rating_categories
+ FOR SELECT TO authenticated USING(active);
+CREATE POLICY ccp_slot_exceptions_owner ON public.slot_occurrence_exceptions
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_report_publications_owner ON public.report_publications
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+CREATE POLICY ccp_report_audiences_owner ON public.report_publication_audiences
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON public.rating_providers,public.rating_categories,
+ public.slot_occurrence_exceptions,public.report_publications,
+ public.report_publication_audiences FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.rating_providers,public.rating_categories,
+ public.slot_occurrence_exceptions,public.report_publications,
+ public.report_publication_audiences TO authenticated;
+GRANT ALL ON public.rating_providers,public.rating_categories,
+ public.slot_occurrence_exceptions,public.report_publications,
+ public.report_publication_audiences TO service_role;
+-- END ADR-0019 cross-domain schema contracts.
+
+
+-- ADR-0019: normalized SQL capacity authority and ordered event guards.
+-- A published base plan and grants are evaluated at transaction time.
+-- The seeded allowance is explicitly UNLIMITED pending an approved product
+-- configuration decision; there is no public quota or price promise here.
+ALTER TABLE public.plan_versions ADD COLUMN priority integer NOT NULL DEFAULT 0
+ CHECK(priority BETWEEN 0 AND 10000);
+INSERT INTO public.capability_definitions(key,kind,unit,security_class) VALUES
+ ('students.active','integer_limit','students','teacher'),
+ ('workplaces.professional','integer_limit','workplaces','teacher'),
+ ('reports.publish','boolean',NULL,'teacher');
+INSERT INTO public.plan_versions(code,version,lifecycle,effective_at,priority)
+ VALUES ('free',1,'published','2026-01-01T00:00:00Z',0),
+        ('pro',1,'published','2026-01-01T00:00:00Z',100);
+INSERT INTO public.plan_capabilities
+ (plan_version_id,capability_key,capability_kind,boolean_value,integer_value,unlimited)
+ SELECT p.id,c.key,c.kind,
+        CASE WHEN c.kind='boolean' THEN p.code='pro' ELSE NULL END,
+        NULL,c.kind='integer_limit'
+ FROM public.plan_versions p CROSS JOIN public.capability_definitions c
+ WHERE p.version=1 AND p.code IN ('free','pro');
+INSERT INTO public.teacher_entitlement_state
+ (teacher_id,baseline_plan_version_id,active_student_count,active_professional_workplace_count)
+ SELECT t.id,(SELECT id FROM public.plan_versions WHERE code='free' AND version=1),
+        (SELECT count(*) FROM public.students st
+         WHERE st.teacher_id=t.id AND st.archived_at IS NULL),
+        (SELECT count(*) FROM public.workplaces w
+         WHERE w.teacher_id=t.id AND w.kind='professional' AND w.archived_at IS NULL)
+ FROM public.teachers t ON CONFLICT (teacher_id) DO NOTHING;
+CREATE OR REPLACE FUNCTION public.ccp_provision_entitlement_state()
+ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_entitlement_provision$
+BEGIN
+ INSERT INTO public.teacher_entitlement_state(teacher_id,baseline_plan_version_id)
+ VALUES(NEW.id,(SELECT id FROM public.plan_versions
+                WHERE code='free' AND version=1))
+ ON CONFLICT DO NOTHING;
+ RETURN NEW;
+END;
+$ccp_entitlement_provision$;
+REVOKE ALL ON FUNCTION public.ccp_provision_entitlement_state()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_provision_entitlement_state AFTER INSERT ON public.teachers
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_provision_entitlement_state();
+
+-- The SQL evaluator is authorized for the owner or trusted service only.
+-- Unknown or unpublished capabilities fail closed; any independently valid
+-- grant remains active even if an unrelated whole-plan grant has expired.
+CREATE OR REPLACE FUNCTION public.ccp_effective_capability(
+ p_teacher uuid,p_capability_key text,p_at timestamptz DEFAULT now()
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_capability$
+DECLARE
+ v_def public.capability_definitions%ROWTYPE;
+ v_plan uuid;
+ v_code text;
+ v_cap public.plan_capabilities%ROWTYPE;
+ v_boost_bool boolean;
+ v_boost_int integer;
+ v_boost_unlimited boolean;
+ v_enabled boolean;
+ v_limit integer;
+ v_unlimited boolean;
+BEGIN
+ IF p_teacher IS NULL OR (coalesce(auth.uid()=p_teacher,false)=false AND
+                          coalesce(auth.role(),'')<>'service_role' AND NOT (
+                           session_user IN ('postgres','supabase_admin') AND
+                           coalesce(current_setting('role',true),'none')
+                             IN ('none','postgres','supabase_admin')
+                          )) THEN
+   RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_def FROM public.capability_definitions
+ WHERE key=p_capability_key AND active;
+ IF NOT FOUND THEN RAISE EXCEPTION 'CAPABILITY_UNKNOWN' USING ERRCODE='22023'; END IF;
+ IF v_def.security_class='operator' AND coalesce(auth.role(),'')<>'service_role' THEN
+   RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
+ END IF;
+ -- Published base, independently active subscription and authorized temporary
+ -- plan grant participate in a deterministic rank ordered selection.
+ SELECT x.id,x.code INTO v_plan,v_code FROM (
+  SELECT p.id,p.code,p.priority,0 AS source_rank,p.effective_at
+   FROM public.teacher_entitlement_state st JOIN public.plan_versions p
+    ON p.id=st.baseline_plan_version_id
+   WHERE st.teacher_id=p_teacher AND p.lifecycle='published'
+     AND p.effective_at<=p_at AND (p.retired_at IS NULL OR p_at<p.retired_at)
+  UNION ALL
+  SELECT p.id,p.code,p.priority,2,p.effective_at
+   FROM public.platform_subscriptions sub
+   JOIN public.platform_subscription_offers off ON off.id=sub.offer_id
+   JOIN public.plan_versions p ON p.id=off.plan_version_id
+   WHERE sub.teacher_id=p_teacher AND p.lifecycle='published'
+     AND p.effective_at<=p_at AND
+     (p.retired_at IS NULL OR p_at<p.retired_at) AND
+     ((sub.state IN ('active','cancel_at_period_end') AND sub.paid_through>p_at)
+       OR (sub.state='trialing' AND sub.current_period_end>p_at)
+       OR (sub.state='grace' AND sub.grace_until>p_at))
+  UNION ALL
+  SELECT p.id,p.code,p.priority,1,p.effective_at
+   FROM public.teacher_entitlement_grants g
+   JOIN public.plan_versions p ON p.id=g.plan_version_id
+   WHERE g.teacher_id=p_teacher AND g.kind='plan_access'
+     AND g.revoked_at IS NULL AND g.valid_from<=p_at
+     AND (g.expires_at IS NULL OR g.expires_at>p_at)
+     AND p.lifecycle='published' AND p.effective_at<=p_at
+     AND (p.retired_at IS NULL OR p_at<p.retired_at)
+ ) x ORDER BY x.priority DESC,x.source_rank DESC,x.effective_at DESC,x.id DESC LIMIT 1;
+ IF v_plan IS NULL THEN
+   RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
+ END IF;
+ SELECT * INTO v_cap FROM public.plan_capabilities
+ WHERE plan_version_id=v_plan AND capability_key=p_capability_key;
+ SELECT coalesce(bool_or(g.boolean_value),false),
+        max(g.integer_value),coalesce(bool_or(g.unlimited),false)
+ INTO v_boost_bool,v_boost_int,v_boost_unlimited
+ FROM public.teacher_entitlement_grants g
+ WHERE g.teacher_id=p_teacher AND g.kind='capability_boost'
+   AND g.capability_key=p_capability_key AND g.revoked_at IS NULL
+   AND g.valid_from<=p_at AND (g.expires_at IS NULL OR g.expires_at>p_at);
+ IF v_def.kind='boolean' THEN
+   v_enabled:=coalesce(v_cap.boolean_value,false) OR coalesce(v_boost_bool,false);
+   v_limit:=NULL;v_unlimited:=false;
+ ELSE
+   v_enabled:=true;
+   v_unlimited:=coalesce(v_cap.unlimited,false) OR coalesce(v_boost_unlimited,false);
+   v_limit:=CASE WHEN v_unlimited THEN NULL
+     ELSE greatest(coalesce(v_cap.integer_value,0),coalesce(v_boost_int,0)) END;
+ END IF;
+ RETURN jsonb_build_object('capabilityKey',p_capability_key,'kind',v_def.kind,
+  'planCode',v_code,'planVersionId',v_plan,'enabled',v_enabled,
+  'unlimited',v_unlimited,'limit',v_limit,'evaluatedAt',p_at);
+END;
+$ccp_capability$;
+REVOKE ALL ON FUNCTION public.ccp_effective_capability(uuid,text,timestamptz)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_effective_capability(uuid,text,timestamptz)
+ TO authenticated,service_role;
+
+CREATE OR REPLACE FUNCTION public.ccp_entitlement_summary()
+ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_summary$
+DECLARE v_teacher uuid:=auth.uid();v_state public.teacher_entitlement_state%ROWTYPE;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';END IF;
+ SELECT * INTO v_state FROM public.teacher_entitlement_state
+ WHERE teacher_id=v_teacher;
+ IF NOT FOUND THEN RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';END IF;
+ RETURN jsonb_build_object('revision',v_state.revision,
+   'activeStudentCount',v_state.active_student_count,
+   'activeProfessionalWorkplaceCount',v_state.active_professional_workplace_count,
+   'studentCapacity',public.ccp_effective_capability(v_teacher,'students.active'),
+   'workplaceCapacity',public.ccp_effective_capability(v_teacher,'workplaces.professional'),
+   'reportPublishing',public.ccp_effective_capability(v_teacher,'reports.publish'));
+END;
+$ccp_summary$;
+REVOKE ALL ON FUNCTION public.ccp_entitlement_summary() FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.ccp_entitlement_summary() TO authenticated;
+
+-- Prevent concurrent limit transitions from racing student/workplace writes.
+CREATE OR REPLACE FUNCTION public.ccp_entitlement_grant_serialize()
+ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_grant_serial$
+DECLARE v_teacher uuid;
+BEGIN
+ v_teacher:=CASE WHEN TG_OP='DELETE' THEN OLD.teacher_id ELSE NEW.teacher_id END;
+ IF TG_OP='UPDATE' AND NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+   RAISE EXCEPTION 'GRANT_OWNER_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ PERFORM 1 FROM public.teacher_entitlement_state
+    WHERE teacher_id=v_teacher FOR UPDATE;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ RETURN NEW;
+END;
+$ccp_grant_serial$;
+REVOKE ALL ON FUNCTION public.ccp_entitlement_grant_serialize()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_entitlement_grant_serialize
+ BEFORE INSERT OR UPDATE OR DELETE ON public.teacher_entitlement_grants
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_entitlement_grant_serialize();
+CREATE TRIGGER ccp_subscription_serialize
+ BEFORE INSERT OR UPDATE OR DELETE ON public.platform_subscriptions
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_entitlement_grant_serialize();
+CREATE TRIGGER ccp_entitlement_state_transition_serialize
+ BEFORE UPDATE OF baseline_plan_version_id ON public.teacher_entitlement_state
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_entitlement_grant_serialize();
+
+-- Publishing and expanding an explicit audience are premium mutations, even
+-- for the trusted server role. Share the teacher row lock taken by grant,
+-- subscription and base-plan transitions, and evaluate time after waiting.
+-- Do not gate reads, existing approvals or safety-reducing revocation.
+CREATE OR REPLACE FUNCTION public.ccp_report_publish_entitlement_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_report_entitlement$
+BEGIN
+ PERFORM 1 FROM public.teachers WHERE id=NEW.teacher_id FOR UPDATE;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'REPORT_TEACHER_NOT_FOUND' USING ERRCODE='23503';
+ END IF;
+ IF (public.ccp_effective_capability(
+        NEW.teacher_id,'reports.publish',clock_timestamp()
+      )->>'enabled')::boolean IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'UPGRADE_REQUIRED' USING ERRCODE='23514',
+   DETAIL='reports.publish';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_report_entitlement$;
+REVOKE ALL ON FUNCTION public.ccp_report_publish_entitlement_guard()
+ FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_report_publication_publish_entitlement_guard
+ BEFORE INSERT ON public.report_publications FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_publish_entitlement_guard();
+-- The entitlement lock must be acquired before the existing scope validation
+-- (PostgreSQL runs triggers of the same kind alphabetically).
+CREATE TRIGGER ccp_report_audience_publish_entitlement_guard
+ BEFORE INSERT ON public.report_publication_audiences FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_publish_entitlement_guard();
+
+-- Immutable audit and metered events. Provider event identity, payload digest
+-- and signature provenance cannot be changed after ingestion.
+CREATE OR REPLACE FUNCTION public.ccp_reject_immutable_event_change()
+ RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_event_immutable$
+BEGIN
+ IF TG_OP='DELETE' AND TG_TABLE_NAME IN
+   ('entitlement_audit_events','account_usage_events') AND
+   NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id) THEN
+   RETURN OLD; -- cascade after explicitly deleting the account
+ END IF;
+ RAISE EXCEPTION 'IMMUTABLE_EVENT' USING ERRCODE='23514';
+END;
+$ccp_event_immutable$;
+REVOKE ALL ON FUNCTION public.ccp_reject_immutable_event_change()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_entitlement_audit_immutable BEFORE UPDATE OR DELETE
+ ON public.entitlement_audit_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_reject_immutable_event_change();
+CREATE TRIGGER ccp_usage_events_immutable BEFORE UPDATE OR DELETE
+ ON public.account_usage_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_reject_immutable_event_change();
+CREATE OR REPLACE FUNCTION public.ccp_platform_event_identity_guard()
+ RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_platform_event$
+BEGIN
+ IF NEW.provider IS DISTINCT FROM OLD.provider OR
+    NEW.merchant_scope IS DISTINCT FROM OLD.merchant_scope OR
+    NEW.external_event_id IS DISTINCT FROM OLD.external_event_id OR
+    NEW.external_subscription_id IS DISTINCT FROM OLD.external_subscription_id OR
+    (NEW.teacher_id IS DISTINCT FROM OLD.teacher_id AND
+      NOT (NEW.teacher_id IS NULL AND OLD.teacher_id IS NOT NULL AND
+       NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id))) OR
+    NEW.event_type IS DISTINCT FROM OLD.event_type OR
+    NEW.external_created_at IS DISTINCT FROM OLD.external_created_at OR
+    NEW.payload_sha256 IS DISTINCT FROM OLD.payload_sha256 OR
+    NEW.signature_verified_at IS DISTINCT FROM OLD.signature_verified_at OR
+    NEW.received_at IS DISTINCT FROM OLD.received_at THEN
+   RAISE EXCEPTION 'EVENT_IDENTITY_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_platform_event$;
+REVOKE ALL ON FUNCTION public.ccp_platform_event_identity_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_platform_event_identity_guard BEFORE UPDATE
+ ON public.platform_billing_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_platform_event_identity_guard();
+CREATE TRIGGER ccp_platform_event_no_delete BEFORE DELETE
+ ON public.platform_billing_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_reject_immutable_event_change();
+
+CREATE OR REPLACE FUNCTION public.ccp_subscription_order_guard()
+ RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_sub_order$
+BEGIN
+ IF NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    NEW.provider IS DISTINCT FROM OLD.provider OR
+    NEW.merchant_scope IS DISTINCT FROM OLD.merchant_scope OR
+    NEW.external_subscription_id IS DISTINCT FROM OLD.external_subscription_id OR
+    NEW.customer_id IS DISTINCT FROM OLD.customer_id THEN
+   RAISE EXCEPTION 'SUBSCRIPTION_IDENTITY_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ IF OLD.latest_event_time IS NOT NULL AND
+    (NEW.latest_event_time IS NULL OR NEW.latest_event_time<=OLD.latest_event_time) THEN
+   RAISE EXCEPTION 'STALE_SUBSCRIPTION_EVENT' USING ERRCODE='23514';
+ END IF;
+ NEW.revision:=OLD.revision+1;
+ NEW.updated_at:=now();
+ RETURN NEW;
+END;
+$ccp_sub_order$;
+REVOKE ALL ON FUNCTION public.ccp_subscription_order_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_subscription_order_guard BEFORE UPDATE
+ ON public.platform_subscriptions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_subscription_order_guard();
+
+-- Expanding an active roster locks the teacher and the single entitlement row.
+-- The legacy teacher counter is not used to grant capacity.
+CREATE OR REPLACE FUNCTION public.ccp_student_capacity_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_student_capacity$
+DECLARE
+ v_teacher uuid;v_delta integer:=0;v_count integer;
+ v_effective jsonb;v_limit integer;
+BEGIN
+ IF TG_OP='INSERT' THEN
+  v_teacher:=NEW.teacher_id;
+  IF NEW.archived_at IS NULL THEN v_delta:=1;END IF;
+ ELSIF TG_OP='DELETE' THEN
+  v_teacher:=OLD.teacher_id;
+  IF OLD.archived_at IS NULL THEN v_delta:=-1;END IF;
+ ELSE
+  IF NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+   RAISE EXCEPTION 'STUDENT_OWNER_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  v_teacher:=NEW.teacher_id;
+  IF OLD.archived_at IS NOT NULL AND NEW.archived_at IS NULL THEN v_delta:=1;
+  ELSIF OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL THEN
+   v_delta:=-1;
+   IF EXISTS(SELECT 1 FROM public.workplace_enrollments
+       WHERE teacher_id=v_teacher AND student_id=NEW.id AND cancelled_at IS NULL
+       AND (ends_on IS NULL OR ends_on >=
+         (clock_timestamp() AT TIME ZONE coalesce(
+           (SELECT timezone FROM public.teacher_settings WHERE teacher_id=v_teacher),
+           'UTC'))::date))
+      OR EXISTS(SELECT 1 FROM public.lesson_slots
+       WHERE teacher_id=v_teacher AND student_id=NEW.id AND active)
+      OR EXISTS(SELECT 1 FROM public.teaching_sessions
+       WHERE teacher_id=v_teacher AND student_id=NEW.id
+        AND status='scheduled' AND starts_at>=clock_timestamp())
+      OR EXISTS(SELECT 1 FROM public.session_participants sp
+       JOIN public.teaching_sessions sess ON sess.id=sp.session_id
+       WHERE sp.teacher_id=v_teacher AND sp.student_id=NEW.id
+        AND sess.status='scheduled' AND sess.starts_at>=clock_timestamp())
+      OR EXISTS(SELECT 1 FROM public.group_enrollments
+       WHERE teacher_id=v_teacher AND student_id=NEW.id) THEN
+    RAISE EXCEPTION 'FUTURE_COMMITMENTS' USING ERRCODE='23503';
+   END IF;
+  END IF;
+ END IF;
+ IF v_delta<>0 THEN
+  PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+  SELECT active_student_count INTO v_count FROM public.teacher_entitlement_state
+   WHERE teacher_id=v_teacher FOR UPDATE;
+  IF NOT FOUND THEN
+   IF TG_OP='DELETE' AND NOT EXISTS
+    (SELECT 1 FROM public.teachers WHERE id=v_teacher) THEN RETURN OLD;END IF;
+   RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
+  END IF;
+  -- Lock before an active candidate INSERT can contend on a row or an FK,
+  -- but count only a real INSERT. ON CONFLICT may update or write nothing.
+  IF TG_OP='INSERT' AND TG_WHEN='BEFORE' THEN RETURN NEW;END IF;
+  IF v_delta>0 THEN
+   v_effective:=public.ccp_effective_capability(v_teacher,'students.active',now());
+   v_limit:=(v_effective->>'limit')::integer;
+   IF coalesce((v_effective->>'unlimited')::boolean,false)=false
+     AND v_count+v_delta>v_limit THEN
+    RAISE EXCEPTION 'CAPACITY_EXCEEDED' USING ERRCODE='23514';
+   END IF;
+  END IF;
+  UPDATE public.teacher_entitlement_state
+   SET active_student_count=active_student_count+v_delta,
+       revision=revision+1,updated_at=now()
+   WHERE teacher_id=v_teacher;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ RETURN NEW;
+END;
+$ccp_student_capacity$;
+REVOKE ALL ON FUNCTION public.ccp_student_capacity_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_student_capacity_guard
+ BEFORE INSERT OR UPDATE OR DELETE ON public.students FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_student_capacity_guard();
+CREATE TRIGGER ccp_student_capacity_guard_inserted
+ AFTER INSERT ON public.students FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_student_capacity_guard();
+
+CREATE OR REPLACE FUNCTION public.ccp_professional_workplace_capacity_guard()
+ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_workplace_capacity$
+DECLARE v_teacher uuid;v_delta integer:=0;v_count integer;
+        v_cap jsonb;v_limit integer;
+BEGIN
+ IF TG_OP='INSERT' THEN
+  v_teacher:=NEW.teacher_id;
+  IF NEW.kind='professional' AND NEW.archived_at IS NULL THEN v_delta:=1;END IF;
+ ELSIF TG_OP='DELETE' THEN
+  v_teacher:=OLD.teacher_id;
+  IF OLD.kind='professional' AND OLD.archived_at IS NULL THEN v_delta:=-1;END IF;
+ ELSE
+  v_teacher:=NEW.teacher_id;
+  IF NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+   RAISE EXCEPTION 'WORKPLACE_OWNER_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  IF OLD.kind='professional' AND OLD.archived_at IS NOT NULL AND
+       NEW.archived_at IS NULL THEN v_delta:=1;
+  ELSIF OLD.kind='professional' AND OLD.archived_at IS NULL AND
+       NEW.archived_at IS NOT NULL THEN v_delta:=-1;
+  END IF;
+ END IF;
+ IF v_delta<>0 THEN
+  PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+  SELECT active_professional_workplace_count INTO v_count
+   FROM public.teacher_entitlement_state
+   WHERE teacher_id=v_teacher FOR UPDATE;
+  IF NOT FOUND THEN
+   IF TG_OP='DELETE' AND NOT EXISTS
+    (SELECT 1 FROM public.teachers WHERE id=v_teacher) THEN RETURN OLD;END IF;
+   RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
+  END IF;
+  -- Lock before an active candidate INSERT can contend on a row or an FK,
+  -- but count only a real INSERT. ON CONFLICT may update or write nothing.
+  IF TG_OP='INSERT' AND TG_WHEN='BEFORE' THEN RETURN NEW;END IF;
+  IF v_delta>0 THEN
+   v_cap:=public.ccp_effective_capability(v_teacher,'workplaces.professional',now());
+   v_limit:=(v_cap->>'limit')::integer;
+   IF coalesce((v_cap->>'unlimited')::boolean,false)=false AND
+      v_count+v_delta>v_limit THEN
+    RAISE EXCEPTION 'CAPACITY_EXCEEDED' USING ERRCODE='23514';
+   END IF;
+  END IF;
+  UPDATE public.teacher_entitlement_state
+   SET active_professional_workplace_count=active_professional_workplace_count+v_delta,
+       revision=revision+1,updated_at=now()
+   WHERE teacher_id=v_teacher;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ RETURN NEW;
+END;
+$ccp_workplace_capacity$;
+REVOKE ALL ON FUNCTION public.ccp_professional_workplace_capacity_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_professional_workplace_capacity_guard
+ BEFORE INSERT OR UPDATE OR DELETE ON public.workplaces FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_professional_workplace_capacity_guard();
+CREATE TRIGGER ccp_professional_workplace_capacity_guard_inserted
+ AFTER INSERT ON public.workplaces FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_professional_workplace_capacity_guard();
+
+-- Verified counters and capacity remain a database invariant, including
+-- imports and direct PostgREST writes; service callers cannot opt out.
+-- END ADR-0019 normalized SQL authority.
+
+
+-- Audit-preserving exception replacement: revoke old intent with its receipt,
+-- then insert a new approved version for the same original local date.
+ALTER TABLE public.slot_occurrence_exceptions
+ DROP CONSTRAINT ccp_slot_exception_unique_occurrence,
+ ADD COLUMN revoked_by uuid,
+ ADD COLUMN revocation_request_id uuid,
+ ADD CONSTRAINT ccp_slot_exception_revoke_pair CHECK(
+   (revoked_at IS NULL AND revoked_by IS NULL AND revocation_request_id IS NULL)
+   OR (revoked_at IS NOT NULL AND revoked_by IS NOT DISTINCT FROM teacher_id
+       AND revocation_request_id IS NOT NULL)),
+ ADD CONSTRAINT ccp_slot_exception_revocation_after_approval CHECK(
+   revoked_at IS NULL OR revoked_at>=approved_at);
+CREATE UNIQUE INDEX ccp_current_slot_occurrence_exception
+ ON public.slot_occurrence_exceptions(teacher_id,slot_id,original_occurrence_on)
+ WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX ccp_slot_exception_revoke_receipt
+ ON public.slot_occurrence_exceptions(teacher_id,revocation_request_id)
+ WHERE revocation_request_id IS NOT NULL;
+CREATE OR REPLACE FUNCTION public.ccp_slot_exception_immutable_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_slot_immut$
+BEGIN
+ IF TG_OP='DELETE' THEN
+  IF NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
+    OR NOT EXISTS(SELECT 1 FROM public.lesson_slots
+                  WHERE id=OLD.slot_id AND teacher_id=OLD.teacher_id)
+  THEN RETURN OLD; END IF;
+  RAISE EXCEPTION 'IMMUTABLE_OCCURRENCE' USING ERRCODE='23514';
+ END IF;
+ IF OLD.revoked_at IS NOT NULL OR NEW.id IS DISTINCT FROM OLD.id OR
+    NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    NEW.slot_id IS DISTINCT FROM OLD.slot_id OR
+    NEW.original_occurrence_on IS DISTINCT FROM OLD.original_occurrence_on OR
+    NEW.action IS DISTINCT FROM OLD.action OR
+    NEW.revised_starts_at IS DISTINCT FROM OLD.revised_starts_at OR
+    NEW.revised_timezone IS DISTINCT FROM OLD.revised_timezone OR
+    NEW.revised_duration_minutes IS DISTINCT FROM OLD.revised_duration_minutes OR
+    NEW.session_id IS DISTINCT FROM OLD.session_id OR
+    NEW.approved_by IS DISTINCT FROM OLD.approved_by OR
+    NEW.approved_at IS DISTINCT FROM OLD.approved_at OR
+    NEW.reason IS DISTINCT FROM OLD.reason OR
+    NEW.request_id IS DISTINCT FROM OLD.request_id THEN
+  RAISE EXCEPTION 'IMMUTABLE_OCCURRENCE' USING ERRCODE='23514';
+ END IF;
+ NEW.revision:=OLD.revision+1;
+ RETURN NEW;
+END;
+$ccp_slot_immut$;
+REVOKE ALL ON FUNCTION public.ccp_slot_exception_immutable_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_slot_exception_immutable_guard BEFORE UPDATE OR DELETE
+ ON public.slot_occurrence_exceptions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_slot_exception_immutable_guard();
+
+-- Publication and audience identity/scope are immutable once approved; a
+-- later action may revoke or explicitly supersede them but never rewrite.
+CREATE OR REPLACE FUNCTION public.ccp_report_publication_immutable_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_pub_immut$
+DECLARE v_next public.report_publications%ROWTYPE;
+BEGIN
+ IF TG_OP='DELETE' THEN
+  IF NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
+    THEN RETURN OLD;END IF;
+  RAISE EXCEPTION 'IMMUTABLE_PUBLICATION' USING ERRCODE='23514';
+ END IF;
+ IF OLD.revoked_at IS NOT NULL OR OLD.superseded_by IS NOT NULL OR
+    NEW.id IS DISTINCT FROM OLD.id OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    NEW.student_id IS DISTINCT FROM OLD.student_id OR
+    NEW.workplace_id IS DISTINCT FROM OLD.workplace_id OR
+    NEW.snapshot_digest IS DISTINCT FROM OLD.snapshot_digest OR
+    NEW.snapshot_storage_ref IS DISTINCT FROM OLD.snapshot_storage_ref OR
+    NEW.output_locale IS DISTINCT FROM OLD.output_locale OR
+    NEW.approved_by IS DISTINCT FROM OLD.approved_by OR
+    NEW.approved_at IS DISTINCT FROM OLD.approved_at OR
+    NEW.request_id IS DISTINCT FROM OLD.request_id OR
+    NEW.created_at IS DISTINCT FROM OLD.created_at OR
+    (OLD.revoked_at IS NOT NULL AND NEW.revoked_at IS NULL) THEN
+   RAISE EXCEPTION 'IMMUTABLE_PUBLICATION' USING ERRCODE='23514';
+ END IF;
+ IF NEW.superseded_by IS NOT NULL
+    AND NEW.superseded_by IS DISTINCT FROM OLD.superseded_by THEN
+  SELECT * INTO v_next FROM public.report_publications
+   WHERE id=NEW.superseded_by AND teacher_id=OLD.teacher_id;
+  IF NOT FOUND OR v_next.student_id IS DISTINCT FROM OLD.student_id
+     OR v_next.workplace_id IS DISTINCT FROM OLD.workplace_id
+     OR v_next.approved_at<OLD.approved_at
+     OR v_next.revoked_at IS NOT NULL
+     OR v_next.superseded_by IS NOT NULL THEN
+   RAISE EXCEPTION 'REPORT_SUPERSESSION_SCOPE_MISMATCH' USING ERRCODE='23514';
+  END IF;
+ END IF;
+ NEW.revision:=OLD.revision+1;
+ RETURN NEW;
+END;
+$ccp_pub_immut$;
+REVOKE ALL ON FUNCTION public.ccp_report_publication_immutable_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_report_publication_immutable_guard
+ BEFORE UPDATE OR DELETE ON public.report_publications FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_publication_immutable_guard();
+
+CREATE OR REPLACE FUNCTION public.ccp_report_audience_immutable_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_audience_immut$
+BEGIN
+ IF TG_OP='DELETE' THEN
+  IF NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
+   OR NOT EXISTS(SELECT 1 FROM public.report_publications
+                 WHERE id=OLD.publication_id AND teacher_id=OLD.teacher_id)
+  THEN RETURN OLD;END IF;
+  RAISE EXCEPTION 'IMMUTABLE_AUDIENCE' USING ERRCODE='23514';
+ END IF;
+ IF OLD.revoked_at IS NOT NULL OR
+    NEW.publication_id IS DISTINCT FROM OLD.publication_id OR
+    NEW.portal_grant_id IS DISTINCT FROM OLD.portal_grant_id OR
+    NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    NEW.approved_by IS DISTINCT FROM OLD.approved_by OR
+    NEW.approved_at IS DISTINCT FROM OLD.approved_at OR
+    NEW.request_id IS DISTINCT FROM OLD.request_id THEN
+   RAISE EXCEPTION 'IMMUTABLE_AUDIENCE' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_audience_immut$;
+REVOKE ALL ON FUNCTION public.ccp_report_audience_immutable_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_report_audience_immutable_guard
+ BEFORE UPDATE OR DELETE ON public.report_publication_audiences FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_audience_immutable_guard();
+
+-- Same index semantics for all registered official-list providers. This
+-- pins one observation per student/category/edition: a corrected player ID
+-- cannot add a second observation in that same edition without a reviewed
+-- identity-correction policy. Do not invent an edition to bypass this key.
+DROP INDEX IF EXISTS public.federation_rating_list_once_idx;
+CREATE UNIQUE INDEX ccp_official_rating_list_once
+ ON public.student_rating_snapshots
+ (teacher_id,student_id,provider,time_control,provider_list_version)
+ WHERE source='provider_api' AND provider_list_version IS NOT NULL;
+
+
+-- ADR-0019: immutable commercial contract guards.
+-- Catalogue publishing is a one-way transition: after publication, a change
+-- is a NEW plan version, never mutation of an existing entitlement contract.
+CREATE OR REPLACE FUNCTION public.ccp_published_plan_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_plan_guard$
+BEGIN
+ IF TG_OP='DELETE' THEN
+   IF OLD.lifecycle<>'draft' THEN
+     RAISE EXCEPTION 'PUBLISHED_PLAN_IMMUTABLE' USING ERRCODE='23514';
+   END IF;
+   RETURN OLD;
+ END IF;
+ IF OLD.lifecycle<>'draft' THEN
+   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.code IS DISTINCT FROM OLD.code
+     OR NEW.version IS DISTINCT FROM OLD.version
+     OR NEW.priority IS DISTINCT FROM OLD.priority
+     OR NEW.effective_at IS DISTINCT FROM OLD.effective_at
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR NEW.lifecycle NOT IN ('published','retired')
+     OR (OLD.lifecycle='retired' AND NEW.lifecycle<>'retired')
+     OR (OLD.lifecycle='retired' AND NEW.retired_at IS DISTINCT FROM OLD.retired_at)
+     OR (OLD.lifecycle='published' AND NEW.retired_at IS DISTINCT FROM OLD.retired_at
+         AND NEW.lifecycle<>'retired')
+   THEN
+    RAISE EXCEPTION 'PUBLISHED_PLAN_IMMUTABLE' USING ERRCODE='23514';
+   END IF;
+ ELSIF NEW.lifecycle='published' AND NEW.effective_at IS NULL THEN
+    RAISE EXCEPTION 'PLAN_EFFECTIVE_DATE_REQUIRED' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_plan_guard$;
+REVOKE ALL ON FUNCTION public.ccp_published_plan_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_published_plan_guard BEFORE UPDATE OR DELETE
+ ON public.plan_versions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_published_plan_guard();
+
+CREATE OR REPLACE FUNCTION public.ccp_plan_capability_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_plan_cap_guard$
+DECLARE v_version uuid;v_lifecycle text;
+BEGIN
+ v_version:=CASE WHEN TG_OP='DELETE' THEN OLD.plan_version_id ELSE NEW.plan_version_id END;
+ -- Serialize publication and capability writes on the plan row.
+  SELECT lifecycle INTO v_lifecycle FROM public.plan_versions
+   WHERE id=v_version FOR UPDATE;
+ IF v_lifecycle<>'draft' OR (TG_OP='UPDATE' AND NEW.plan_version_id<>OLD.plan_version_id)
+ THEN
+    RAISE EXCEPTION 'PUBLISHED_CAPABILITY_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ -- A new draft plan must not reference a disabled catalog item. SHARE
+ -- conflicts with metadata UPDATE and prevents a concurrent first-reference
+ -- race against the capability-definition immutability trigger.
+ PERFORM 1 FROM public.capability_definitions
+  WHERE key=NEW.capability_key AND kind=NEW.capability_kind AND active
+  FOR SHARE;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'CAPABILITY_UNAVAILABLE' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_plan_cap_guard$;
+REVOKE ALL ON FUNCTION public.ccp_plan_capability_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_plan_capability_guard BEFORE INSERT OR UPDATE OR DELETE
+ ON public.plan_capabilities FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_plan_capability_guard();
+
+-- Individual benefits can be revoked once, not silently broadened/rewritten.
+CREATE OR REPLACE FUNCTION public.ccp_grant_immutable_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_grant_guard$
+BEGIN
+ IF TG_OP='DELETE' THEN
+    IF NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
+     THEN RETURN OLD;END IF;
+    RAISE EXCEPTION 'ENTITLEMENT_GRANT_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ IF OLD.revoked_at IS NOT NULL OR
+    NEW.id IS DISTINCT FROM OLD.id OR
+    NEW.teacher_id IS DISTINCT FROM OLD.teacher_id OR
+    NEW.kind IS DISTINCT FROM OLD.kind OR
+    NEW.plan_version_id IS DISTINCT FROM OLD.plan_version_id OR
+    NEW.capability_key IS DISTINCT FROM OLD.capability_key OR
+    NEW.capability_kind IS DISTINCT FROM OLD.capability_kind OR
+    NEW.boolean_value IS DISTINCT FROM OLD.boolean_value OR
+    NEW.integer_value IS DISTINCT FROM OLD.integer_value OR
+    NEW.unlimited IS DISTINCT FROM OLD.unlimited OR
+    NEW.valid_from IS DISTINCT FROM OLD.valid_from OR
+    NEW.expires_at IS DISTINCT FROM OLD.expires_at OR
+    NEW.reason IS DISTINCT FROM OLD.reason OR
+    NEW.issued_by IS DISTINCT FROM OLD.issued_by OR
+    NEW.request_id IS DISTINCT FROM OLD.request_id OR
+    NEW.created_at IS DISTINCT FROM OLD.created_at OR
+    (NEW.revoked_at IS NOT NULL AND NEW.revoked_at<OLD.valid_from)
+ THEN
+    RAISE EXCEPTION 'ENTITLEMENT_GRANT_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$ccp_grant_guard$;
+REVOKE ALL ON FUNCTION public.ccp_grant_immutable_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_grant_immutable_guard BEFORE UPDATE OR DELETE
+ ON public.teacher_entitlement_grants FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_grant_immutable_guard();
+
+-- Any successful grant/subscription transition invalidates stale cached
+-- summaries; teacher/state locks were acquired by serialize trigger.
+CREATE OR REPLACE FUNCTION public.ccp_bump_entitlement_revision()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_rev_bump$
+DECLARE v_teacher uuid;
+BEGIN
+ v_teacher:=CASE WHEN TG_OP='DELETE' THEN OLD.teacher_id ELSE NEW.teacher_id END;
+ UPDATE public.teacher_entitlement_state SET revision=revision+1,
+  updated_at=now(),evaluated_at=NULL
+ WHERE teacher_id=v_teacher;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ RETURN NEW;
+END;
+$ccp_rev_bump$;
+REVOKE ALL ON FUNCTION public.ccp_bump_entitlement_revision()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_grant_revision_bump AFTER INSERT OR UPDATE
+ ON public.teacher_entitlement_grants FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_bump_entitlement_revision();
+CREATE TRIGGER ccp_subscription_revision_bump AFTER INSERT OR UPDATE OR DELETE
+ ON public.platform_subscriptions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_bump_entitlement_revision();
+
+-- One audited real-count verifier for a transactional administrative
+-- reconciliation; does not fabricate capacity by accepting stale client counts.
+CREATE OR REPLACE FUNCTION public.ccp_reconcile_entitlement_counts(p_teacher uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=public,pg_temp AS $ccp_count_reconcile$
+DECLARE v_students integer;v_workplaces integer;v_before public.teacher_entitlement_state%ROWTYPE;
+BEGIN
+ IF coalesce(auth.role(),'')<>'service_role' THEN
+   RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
+ END IF;
+ PERFORM 1 FROM public.teachers WHERE id=p_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'TEACHER_NOT_FOUND' USING ERRCODE='23503';END IF;
+ SELECT * INTO v_before FROM public.teacher_entitlement_state
+ WHERE teacher_id=p_teacher FOR UPDATE;
+ SELECT count(*) INTO v_students FROM public.students
+ WHERE teacher_id=p_teacher AND archived_at IS NULL;
+ SELECT count(*) INTO v_workplaces FROM public.workplaces
+ WHERE teacher_id=p_teacher AND kind='professional' AND archived_at IS NULL;
+ IF v_before.active_student_count<>v_students OR
+    v_before.active_professional_workplace_count<>v_workplaces THEN
+   UPDATE public.teacher_entitlement_state
+    SET active_student_count=v_students,
+        active_professional_workplace_count=v_workplaces,
+        revision=revision+1,updated_at=now(),evaluated_at=NULL
+    WHERE teacher_id=p_teacher;
+   INSERT INTO public.entitlement_audit_events
+    (teacher_id,source,action,request_id,reason,revision_before,revision_after)
+    VALUES(p_teacher,'reconciliation','counter_reconciliation',gen_random_uuid(),
+           'Verified canonical active student and professional workplace counts',
+           v_before.revision,v_before.revision+1);
+ END IF;
+ RETURN jsonb_build_object('activeStudentCount',v_students,
+  'activeProfessionalWorkplaceCount',v_workplaces,
+  'changed',v_before.active_student_count<>v_students OR
+            v_before.active_professional_workplace_count<>v_workplaces);
+END;
+$ccp_count_reconcile$;
+REVOKE ALL ON FUNCTION public.ccp_reconcile_entitlement_counts(uuid)
+ FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_reconcile_entitlement_counts(uuid) TO service_role;
+-- END ADR-0019 commercial immutability and reconciliation.
+
+
+-- ADR-0019: canonical session amendment provenance, no duplicate lesson truth.
+-- Existing note/attendance/roster audits do not record date, workplace or
+-- duration changes. This captures teacher-owned corrections to those fields.
+CREATE TABLE public.session_amendment_events (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ session_id uuid NOT NULL,
+ previous_state jsonb NOT NULL,
+ next_state jsonb NOT NULL,
+ actor_id uuid,
+ source text NOT NULL CHECK(source IN ('authenticated','service')),
+ changed_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(session_id,teacher_id)
+   REFERENCES public.teaching_sessions(id,teacher_id) ON DELETE CASCADE,
+ CONSTRAINT ccp_amendment_snapshot_objects CHECK(
+   jsonb_typeof(previous_state)='object' AND
+   jsonb_typeof(next_state)='object' AND previous_state<>next_state)
+);
+CREATE INDEX ccp_session_amendments_tenant_history
+ ON public.session_amendment_events(teacher_id,session_id,changed_at DESC);
+CREATE OR REPLACE FUNCTION public.ccp_session_amendment_capture()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_amendment$
+DECLARE v_old jsonb;v_new jsonb;
+BEGIN
+ v_old:=jsonb_build_object('starts_at',OLD.starts_at,
+  'duration_minutes',OLD.duration_minutes,'status',OLD.status,
+  'workplace_id',OLD.workplace_id,'group_id',OLD.group_id,
+  'student_id',OLD.student_id,'slot_id',OLD.slot_id,
+  'slot_occurrence_date',OLD.slot_occurrence_date,
+  'rescheduled_from_date',OLD.rescheduled_from_date);
+ v_new:=jsonb_build_object('starts_at',NEW.starts_at,
+  'duration_minutes',NEW.duration_minutes,'status',NEW.status,
+  'workplace_id',NEW.workplace_id,'group_id',NEW.group_id,
+  'student_id',NEW.student_id,'slot_id',NEW.slot_id,
+  'slot_occurrence_date',NEW.slot_occurrence_date,
+  'rescheduled_from_date',NEW.rescheduled_from_date);
+ IF v_old<>v_new THEN
+  INSERT INTO public.session_amendment_events
+   (teacher_id,session_id,previous_state,next_state,actor_id,source)
+  VALUES(NEW.teacher_id,NEW.id,v_old,v_new,auth.uid(),
+   CASE WHEN auth.uid() IS NULL THEN 'service' ELSE 'authenticated' END);
+ END IF;
+ RETURN NEW;
+END;
+$ccp_amendment$;
+REVOKE ALL ON FUNCTION public.ccp_session_amendment_capture()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_session_amendment_capture
+ AFTER UPDATE ON public.teaching_sessions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_session_amendment_capture();
+CREATE OR REPLACE FUNCTION public.ccp_session_amendment_immutable()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_amendment_immutable$
+BEGIN
+ -- Permit cascading erasure of the parent session/account, not direct audit deletion.
+ IF TG_OP='DELETE' AND (
+  NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
+  OR NOT EXISTS(SELECT 1 FROM public.teaching_sessions
+                WHERE id=OLD.session_id AND teacher_id=OLD.teacher_id)
+ ) THEN RETURN OLD; END IF;
+ RAISE EXCEPTION 'IMMUTABLE_SESSION_AMENDMENT' USING ERRCODE='23514';
+END;
+$ccp_amendment_immutable$;
+REVOKE ALL ON FUNCTION public.ccp_session_amendment_immutable()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_session_amendment_immutable BEFORE UPDATE OR DELETE
+ ON public.session_amendment_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_session_amendment_immutable();
+ALTER TABLE public.session_amendment_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ccp_session_amendments_owner ON public.session_amendment_events
+ FOR SELECT TO authenticated USING(teacher_id=(SELECT auth.uid()));
+REVOKE ALL ON public.session_amendment_events FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.session_amendment_events TO authenticated;
+GRANT ALL ON public.session_amendment_events TO service_role;
+-- END ADR-0019 session amendment provenance.
+
+
+-- ADR-0019: bounded usage events count exactly once, not per MCP tool call.
+-- Only an authorized server-side domain action inserts these records.
+CREATE OR REPLACE FUNCTION public.ccp_apply_account_usage_event()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $ccp_usage_count$
+BEGIN
+ UPDATE public.account_usage_periods
+  SET used_count=used_count+NEW.amount
+ WHERE id=NEW.period_id AND teacher_id=NEW.teacher_id
+   AND capability_key=NEW.capability_key;
+ IF NOT FOUND THEN RAISE EXCEPTION 'USAGE_PERIOD_NOT_FOUND' USING ERRCODE='23503';END IF;
+ RETURN NEW;
+END;
+$ccp_usage_count$;
+REVOKE ALL ON FUNCTION public.ccp_apply_account_usage_event()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_apply_account_usage_event AFTER INSERT
+ ON public.account_usage_events FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_apply_account_usage_event();
+-- Existing btree_gist from the canonical enrollment exclusion model enables
+-- equality on UUID/text combined with an overlapping time range.
+ALTER TABLE public.account_usage_periods
+ ADD CONSTRAINT ccp_usage_period_nonoverlap EXCLUDE USING gist (
+  teacher_id WITH =,capability_key WITH =,
+  tstzrange(period_start,period_end,'[)') WITH &&
+ );
+
+-- ADR-0019: Automatically audit changes to entitlement authority.
+-- All records are append-only and contain no provider payload or private price.
+-- A service-role plan/grant/subscription change must not bypass its audit.
+CREATE OR REPLACE FUNCTION public.ccp_audit_baseline_plan_change()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_audit_baseline$
+DECLARE v_revision bigint;
+BEGIN
+ IF NEW.baseline_plan_version_id IS NOT DISTINCT FROM
+    OLD.baseline_plan_version_id THEN RETURN NEW; END IF;
+ UPDATE public.teacher_entitlement_state
+ SET revision=revision+1,evaluated_at=NULL,updated_at=now()
+ WHERE teacher_id=NEW.teacher_id RETURNING revision INTO v_revision;
+ INSERT INTO public.entitlement_audit_events
+ (teacher_id,actor_id,source,action,request_id,reason,
+  revision_before,revision_after)
+ VALUES(NEW.teacher_id,auth.uid(),'operator','baseline_plan_changed',
+        gen_random_uuid(),'Authorized baseline plan reassignment',
+        OLD.revision,v_revision);
+ RETURN NEW;
+END;
+$ccp_audit_baseline$;
+REVOKE ALL ON FUNCTION public.ccp_audit_baseline_plan_change()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_audit_baseline_plan_change
+ AFTER UPDATE OF baseline_plan_version_id ON public.teacher_entitlement_state
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_audit_baseline_plan_change();
+
+CREATE OR REPLACE FUNCTION public.ccp_audit_entitlement_grant_change()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_audit_grant$
+DECLARE v_revision bigint;v_action text;
+BEGIN
+ IF TG_OP='UPDATE' AND NEW.revoked_at IS NOT DISTINCT FROM OLD.revoked_at
+   THEN RETURN NEW; END IF;
+ SELECT revision INTO v_revision FROM public.teacher_entitlement_state
+  WHERE teacher_id=NEW.teacher_id;
+ IF v_revision IS NULL THEN
+  RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
+ END IF;
+ v_action:=CASE WHEN TG_OP='INSERT' THEN 'grant_issued'
+                ELSE 'grant_revoked' END;
+ INSERT INTO public.entitlement_audit_events
+ (teacher_id,actor_id,source,action,request_id,reason,
+  revision_before,revision_after)
+ VALUES(NEW.teacher_id,NEW.issued_by,'grant',v_action,
+        gen_random_uuid(),NEW.reason,
+        greatest(v_revision-1,0),v_revision);
+ RETURN NEW;
+END;
+$ccp_audit_grant$;
+REVOKE ALL ON FUNCTION public.ccp_audit_entitlement_grant_change()
+ FROM PUBLIC,anon,authenticated;
+-- After ccp_grant_revision_bump by deterministic alphabetical trigger order.
+CREATE TRIGGER ccp_zz_entitlement_grant_audit
+ AFTER INSERT OR UPDATE ON public.teacher_entitlement_grants
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_audit_entitlement_grant_change();
+
+CREATE OR REPLACE FUNCTION public.ccp_audit_subscription_change()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_audit_subscription$
+DECLARE v_teacher uuid;v_revision bigint;v_action text;
+BEGIN
+ v_teacher:=CASE WHEN TG_OP='DELETE' THEN OLD.teacher_id ELSE NEW.teacher_id END;
+ IF NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=v_teacher)
+  THEN RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+ END IF;
+ SELECT revision INTO v_revision FROM public.teacher_entitlement_state
+  WHERE teacher_id=v_teacher;
+ IF v_revision IS NULL THEN
+  RAISE EXCEPTION 'ENTITLEMENT_STATE_UNAVAILABLE' USING ERRCODE='23514';
+ END IF;
+ v_action:=CASE WHEN TG_OP='INSERT' THEN 'subscription_created'
+                WHEN TG_OP='UPDATE' THEN 'subscription_changed'
+                ELSE 'subscription_deleted' END;
+ INSERT INTO public.entitlement_audit_events
+ (teacher_id,source,action,request_id,reason,
+  revision_before,revision_after)
+ VALUES(v_teacher,'subscription',v_action,gen_random_uuid(),
+        'Provider-neutral subscription state transition',
+        greatest(v_revision-1,0),v_revision);
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
+END;
+$ccp_audit_subscription$;
+REVOKE ALL ON FUNCTION public.ccp_audit_subscription_change()
+ FROM PUBLIC,anon,authenticated;
+-- After ccp_subscription_revision_bump; use an append-only audit ledger.
+CREATE TRIGGER ccp_zz_subscription_audit
+ AFTER INSERT OR UPDATE OR DELETE ON public.platform_subscriptions
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_audit_subscription_change();
+-- END ADR-0019 audited entitlement authority.
+
+-- ADR-0019: referenced capability definitions are immutable contracts.
+-- No silent reclassification, retirement or reinterpretation of issued plans.
+-- Register a new reviewed capability key for incompatible semantics.
+CREATE OR REPLACE FUNCTION public.ccp_capability_definition_contract_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp
+AS $ccp_capability_contract$
+DECLARE v_referenced boolean;
+BEGIN
+  SELECT EXISTS (SELECT 1 FROM public.plan_capabilities p
+                  WHERE p.capability_key=OLD.key)
+      OR EXISTS (SELECT 1 FROM public.teacher_entitlement_grants g
+                  WHERE g.capability_key=OLD.key)
+      OR EXISTS (SELECT 1 FROM public.account_usage_periods p
+                  WHERE p.capability_key=OLD.key)
+      OR EXISTS (SELECT 1 FROM public.account_usage_events e
+                  WHERE e.capability_key=OLD.key)
+  INTO v_referenced;
+  IF TG_OP='DELETE' THEN
+    IF v_referenced THEN
+      RAISE EXCEPTION 'CAPABILITY_CONTRACT_IMMUTABLE' USING ERRCODE='23514';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF NEW.key IS DISTINCT FROM OLD.key OR NEW.kind IS DISTINCT FROM OLD.kind THEN
+    RAISE EXCEPTION 'CAPABILITY_IDENTITY_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  IF v_referenced AND
+     (NEW.unit IS DISTINCT FROM OLD.unit OR
+      NEW.security_class IS DISTINCT FROM OLD.security_class OR
+      NEW.definition_version IS DISTINCT FROM OLD.definition_version OR
+      NEW.active IS DISTINCT FROM OLD.active OR
+      NEW.created_at IS DISTINCT FROM OLD.created_at) THEN
+    RAISE EXCEPTION 'CAPABILITY_CONTRACT_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+END;
+$ccp_capability_contract$;
+REVOKE ALL ON FUNCTION public.ccp_capability_definition_contract_guard()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_capability_definition_contract_guard
+ BEFORE UPDATE OR DELETE ON public.capability_definitions FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_capability_definition_contract_guard();
+-- END ADR-0019 capability contract hardening.
+
+-- ADR-0019: suppress inherited anonymous execution of roster snapshot.
+-- This is a trigger-only SECURITY DEFINER function; table operations still
+-- cause the trigger to run, but no caller needs direct EXECUTE permission.
+REVOKE ALL ON FUNCTION public.chesscoachpal_snapshot_participants()
+ FROM PUBLIC,anon,authenticated;
+
+-- P0: a recurring slot is a dated segment, not the durable series identity.
+-- Keep the root slot as an anchor. Standalone slots are their own series.
+ALTER TABLE public.lesson_slots
+ ADD COLUMN series_id uuid,
+ ADD COLUMN series_workplace_scope text GENERATED ALWAYS AS (coalesce(workplace_id::text,'')) STORED NOT NULL;
+UPDATE public.lesson_slots SET series_id=id;
+ALTER TABLE public.lesson_slots
+ ALTER COLUMN series_id SET NOT NULL,
+ ADD CONSTRAINT lesson_slots_series_owner_scope_key UNIQUE(id,teacher_id,student_id,series_workplace_scope),
+ ADD CONSTRAINT lesson_slots_series_owner_scope_fk
+  FOREIGN KEY(series_id,teacher_id,student_id,series_workplace_scope)
+  REFERENCES public.lesson_slots(id,teacher_id,student_id,series_workplace_scope)
+  DEFERRABLE INITIALLY DEFERRED,
+ ADD CONSTRAINT lesson_slots_series_active_range CHECK(
+  NOT active OR end_date IS NULL OR end_date>=start_date),
+ ADD CONSTRAINT lesson_slots_series_active_overlap EXCLUDE USING gist
+  (teacher_id WITH =,series_id WITH =,daterange(start_date,end_date,'[]') WITH &&)
+  WHERE (active) DEFERRABLE INITIALLY DEFERRED;
+CREATE INDEX lesson_slots_series_scope
+ ON public.lesson_slots(teacher_id,series_id,start_date,id);
+COMMENT ON COLUMN public.lesson_slots.series_id IS
+ 'Immutable ID of the same-teacher, same-student, same-workplace root slot. A standalone slot is its own root; one series can own non-overlapping dated segments.';
+
+CREATE FUNCTION public.ccp_lesson_slot_series_identity()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_lesson_slot_series_identity$
+BEGIN
+ IF TG_OP='INSERT' THEN
+  IF NEW.series_id IS NULL THEN NEW.series_id:=NEW.id; END IF;
+  RETURN NEW;
+ END IF;
+ IF TG_OP='UPDATE' THEN
+  IF ROW(NEW.id,NEW.teacher_id,NEW.student_id,NEW.series_id)
+    IS DISTINCT FROM ROW(OLD.id,OLD.teacher_id,OLD.student_id,OLD.series_id) THEN
+   RAISE EXCEPTION 'RECURRENCE_SERIES_IDENTITY_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  IF NEW.workplace_id IS DISTINCT FROM OLD.workplace_id AND
+    (OLD.series_id<>OLD.id OR EXISTS(SELECT 1 FROM public.lesson_slots
+      WHERE teacher_id=OLD.teacher_id AND series_id=OLD.id AND id<>OLD.id)) THEN
+   RAISE EXCEPTION 'RECURRENCE_SERIES_WORKPLACE_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+ END IF;
+ -- Account removal may cascade; it is not a recurrence edit.
+ -- A retained exception is audit history even after revocation. Do not
+ -- cascade its deletion (or strand an approval receipt) while the owner
+ -- exists. Account erasure may still cascade, and plain slots can be deleted.
+ IF EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id) AND
+   (OLD.series_id<>OLD.id OR EXISTS(SELECT 1 FROM public.lesson_slots
+     WHERE teacher_id=OLD.teacher_id AND series_id=OLD.id AND id<>OLD.id)
+    OR EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions
+     WHERE teacher_id=OLD.teacher_id AND slot_id=OLD.id)) THEN
+  RAISE EXCEPTION 'RECURRENCE_SERIES_REQUIRES_RETIREMENT' USING ERRCODE='23514';
+ END IF;
+ RETURN OLD;
+END;
+$ccp_lesson_slot_series_identity$;
+REVOKE ALL ON FUNCTION public.ccp_lesson_slot_series_identity()
+ FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER ccp_lesson_slot_series_identity
+ BEFORE INSERT OR UPDATE OR DELETE ON public.lesson_slots
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_lesson_slot_series_identity();
+
+-- Portable backups need not list the root before its tail. At commit the
+-- reference must resolve directly to the self-root, not to an arbitrary chain.
+CREATE FUNCTION public.ccp_lesson_slot_series_root()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_lesson_slot_series_root$
+BEGIN
+ IF EXISTS(SELECT 1 FROM public.lesson_slots
+   WHERE id=NEW.id AND teacher_id=NEW.teacher_id)
+ AND NOT EXISTS(SELECT 1 FROM public.lesson_slots
+   WHERE id=NEW.series_id AND teacher_id=NEW.teacher_id
+     AND student_id=NEW.student_id AND series_id=id) THEN
+  RAISE EXCEPTION 'RECURRENCE_SERIES_ROOT_INVALID'
+   USING ERRCODE='23514',CONSTRAINT='ccp_lesson_slot_series_root';
+ END IF;
+ RETURN NULL;
+END;
+$ccp_lesson_slot_series_root$;
+REVOKE ALL ON FUNCTION public.ccp_lesson_slot_series_root()
+ FROM PUBLIC,anon,authenticated;
+CREATE CONSTRAINT TRIGGER ccp_lesson_slot_series_root
+ AFTER INSERT ON public.lesson_slots DEFERRABLE INITIALLY DEFERRED
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_lesson_slot_series_root();
+
+-- All distinct real instants corresponding to an exact local wall time.
+-- Ordinary cancellation keeps its established earliest-fold policy. A
+-- reviewed move uses this same source but rejects both gaps and folds.
+CREATE FUNCTION public.ccp_canonical_wall_instants(p_local timestamp,p_zone text)
+RETURNS timestamptz[] LANGUAGE sql STABLE SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_canonical_wall_instants$
+ SELECT coalesce(array_agg(DISTINCT candidate ORDER BY candidate),ARRAY[]::timestamptz[])
+ FROM (
+  SELECT guess-((probe AT TIME ZONE p_zone)-(probe AT TIME ZONE 'UTC')) AS candidate
+  FROM (SELECT p_local AT TIME ZONE 'UTC' AS guess) initial
+  CROSS JOIN unnest(ARRAY[-48,-24,-12,0,12,24,48]) AS h(hours)
+  CROSS JOIN LATERAL (SELECT guess+hours*interval '1 hour' AS probe) AS z
+ ) timings WHERE candidate AT TIME ZONE p_zone=p_local;
+$ccp_canonical_wall_instants$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_wall_instants(timestamp,text)
+ FROM PUBLIC,anon,authenticated,service_role;
+
+-- Resolve the earliest real instant of a canonical local occurrence. Only
+-- owner-validated scheduling commands may supply the locked slot row.
+CREATE FUNCTION public.ccp_canonical_slot_real_start(p_slot public.lesson_slots,p_date date)
+RETURNS timestamptz LANGUAGE plpgsql STABLE SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_slot_real_start$
+DECLARE
+ v_workplace public.workplaces%ROWTYPE;
+ v_timezone text;
+BEGIN
+ -- Same explicit-workplace/teacher fallback timezone as materialization.
+ SELECT * INTO v_workplace FROM public.workplaces
+  WHERE teacher_id=p_slot.teacher_id AND (p_slot.workplace_id IS NULL OR id=p_slot.workplace_id)
+  ORDER BY created_at,id LIMIT 1;
+ IF NOT FOUND OR v_workplace.archived_at IS NOT NULL THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF p_slot.workplace_id IS NULL THEN
+  SELECT nullif(timezone,'') INTO v_timezone FROM public.teacher_settings
+   WHERE teacher_id=p_slot.teacher_id;
+ END IF;
+ v_timezone:=coalesce(v_timezone,v_workplace.timezone);
+ -- Match the planner's earliest real instant for an ambiguous fall-back
+ -- time. A nonexistent local time cannot be safely approved by this RPC.
+ RETURN (public.ccp_canonical_wall_instants(p_date+p_slot.start_time,v_timezone))[1];
+END;
+$ccp_slot_real_start$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_real_start(public.lesson_slots,date)
+ FROM PUBLIC,anon,authenticated,service_role;
+
+-- Exact, teacher-approved cancellation before a recurring lesson exists.
+-- The common calendar/series writer takes the same lock before checking
+-- this table, so approval and materialization have one serial order.
+CREATE FUNCTION public.ccp_canonical_slot_cancel_unmaterialized(
+ p_slot_id uuid,p_original_occurrence_on date,p_expected_updated_at timestamptz,
+ p_idempotency_key uuid,p_reason text,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_cancel_unmaterialized$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_operation constant text:='canonical.slot.cancel_unmaterialized';
+ v_slot public.lesson_slots%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_start timestamptz;
+ v_hash text;
+ v_exception_id uuid;
+ v_receipt jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_slot_id IS NULL OR p_idempotency_key IS NULL OR p_confirmed IS DISTINCT FROM true
+   OR p_expected_updated_at IS NULL OR NOT isfinite(p_expected_updated_at)
+   OR p_original_occurrence_on IS NULL
+   OR p_original_occurrence_on NOT BETWEEN DATE '0001-01-01' AND DATE '9999-12-31'
+   OR p_reason IS NULL OR char_length(btrim(p_reason)) NOT BETWEEN 4 AND 500 THEN
+  RAISE EXCEPTION 'INVALID_SLOT_CANCELLATION' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=encode(sha256(convert_to(jsonb_build_array(v_operation,p_slot_id,
+  p_original_occurrence_on,p_expected_updated_at AT TIME ZONE 'UTC',
+  p_reason,p_confirmed)::text,'UTF8')),'hex');
+ INSERT INTO public.agent_tool_receipts
+  (teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_idempotency_key,v_operation,v_hash,'{}'::jsonb)
+ ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF NOT FOUND OR v_saved.operation<>v_operation OR v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'SLOT_CANCELLATION_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+
+ SELECT * INTO v_slot FROM public.lesson_slots
+  WHERE id=p_slot_id AND teacher_id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF v_slot.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF NOT v_slot.active OR v_slot.duration_minutes NOT BETWEEN 15 AND 480
+    OR v_slot.start_time>=time '24:00:00'
+    OR extract(second FROM v_slot.start_time)<>trunc(extract(second FROM v_slot.start_time))
+    OR p_original_occurrence_on<v_slot.start_date
+    OR (v_slot.end_date IS NOT NULL AND p_original_occurrence_on>v_slot.end_date)
+    OR extract(dow FROM p_original_occurrence_on)<>v_slot.day_of_week THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_A_RULE_DATE' USING ERRCODE='22023';
+ END IF;
+ IF EXISTS(
+   SELECT 1 FROM public.lesson_slots segment
+   JOIN public.teaching_sessions s ON s.teacher_id=segment.teacher_id AND s.slot_id=segment.id
+   WHERE segment.teacher_id=v_teacher AND segment.series_id=v_slot.series_id
+     AND s.slot_occurrence_date=p_original_occurrence_on
+ ) THEN
+  RAISE EXCEPTION 'SLOT_OCCURRENCE_ALREADY_MATERIALIZED' USING ERRCODE='23514';
+ END IF;
+ IF EXISTS(
+   SELECT 1 FROM public.lesson_slots segment
+   JOIN public.slot_occurrence_exceptions e
+     ON e.teacher_id=segment.teacher_id AND e.slot_id=segment.id
+   WHERE segment.teacher_id=v_teacher AND segment.series_id=v_slot.series_id
+     AND e.original_occurrence_on=p_original_occurrence_on AND e.revoked_at IS NULL
+ ) THEN
+  RAISE EXCEPTION 'SLOT_OCCURRENCE_ALREADY_HAS_EXCEPTION' USING ERRCODE='23505';
+ END IF;
+
+ v_start:=public.ccp_canonical_slot_real_start(v_slot,p_original_occurrence_on);
+ IF v_start IS NULL OR v_start<=clock_timestamp() THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_FUTURE' USING ERRCODE='22023';
+ END IF;
+
+ INSERT INTO public.slot_occurrence_exceptions
+  (teacher_id,slot_id,original_occurrence_on,action,approved_by,reason,request_id)
+ VALUES(v_teacher,v_slot.id,p_original_occurrence_on,'cancel',v_teacher,
+  btrim(p_reason),p_idempotency_key)
+ RETURNING id INTO v_exception_id;
+ v_receipt:=jsonb_build_object('exceptionId',v_exception_id,'slotId',v_slot.id,
+  'originalOccurrenceOn',p_original_occurrence_on,'slotRevision',v_slot.updated_at,
+  'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_cancel_unmaterialized$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_cancel_unmaterialized(uuid,date,timestamptz,uuid,text,boolean)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_cancel_unmaterialized(uuid,date,timestamptz,uuid,text,boolean)
+ TO authenticated;
+
+-- Lift a single approved unmaterialized cancellation without creating a
+-- lesson. Calendar materialization must take the same teacher lock and can
+-- independently regenerate the original date after this transaction commits.
+CREATE FUNCTION public.ccp_canonical_slot_revoke_unmaterialized_cancellation(
+ p_exception_id uuid,p_expected_revision bigint,p_idempotency_key uuid,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_revoke_unmaterialized_cancellation$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_operation constant text:='canonical.slot.revoke_unmaterialized_cancellation';
+ v_exception public.slot_occurrence_exceptions%ROWTYPE;
+ v_slot public.lesson_slots%ROWTYPE;
+ v_series_id uuid;
+ v_start timestamptz;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_hash text;
+ v_receipt jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_exception_id IS NULL OR p_idempotency_key IS NULL
+   OR p_expected_revision IS NULL OR p_expected_revision<1 OR p_confirmed IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'INVALID_SLOT_CANCELLATION_REVOCATION' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=encode(sha256(convert_to(jsonb_build_array(v_operation,p_exception_id,
+  p_expected_revision,p_confirmed)::text,'UTF8')),'hex');
+ INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_idempotency_key,v_operation,v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF NOT FOUND OR v_saved.operation<>v_operation OR v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'SLOT_CANCELLATION_REVOCATION_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ SELECT * INTO v_exception FROM public.slot_occurrence_exceptions
+  WHERE teacher_id=v_teacher AND id=p_exception_id FOR UPDATE;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF v_exception.action<>'cancel' OR v_exception.session_id IS NOT NULL THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_REVOCATION_NOT_SUPPORTED' USING ERRCODE='23514';
+ END IF;
+ -- Legacy approvals/revocations may have a request UUID on their immutable
+ -- rows but no agent receipt. They can never be replayed as new commands.
+ IF EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions
+   WHERE teacher_id=v_teacher AND
+    (request_id=p_idempotency_key OR revocation_request_id=p_idempotency_key)) THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_REVOCATION_REPLAY_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF v_exception.revoked_at IS NOT NULL THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_ALREADY_REVOKED' USING ERRCODE='23514';
+ END IF;
+ IF v_exception.revision IS DISTINCT FROM p_expected_revision THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+
+ -- An old trusted exception may lack a session link despite a real lesson.
+ -- Use series identity and the saved original date, not current UTC times
+ -- or only the currently active segment's physical slot ID.
+ SELECT series_id INTO v_series_id FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND id=v_exception.slot_id;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF EXISTS(
+   SELECT 1 FROM public.lesson_slots segment
+   JOIN public.teaching_sessions s ON s.teacher_id=segment.teacher_id AND s.slot_id=segment.id
+   WHERE segment.teacher_id=v_teacher AND segment.series_id=v_series_id
+     AND s.slot_occurrence_date=v_exception.original_occurrence_on
+ ) THEN
+  RAISE EXCEPTION 'SLOT_OCCURRENCE_ALREADY_MATERIALIZED' USING ERRCODE='23514';
+ END IF;
+
+ SELECT * INTO v_slot FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND series_id=v_series_id AND active
+    AND start_date<=v_exception.original_occurrence_on
+    AND (end_date IS NULL OR end_date>=v_exception.original_occurrence_on)
+    AND day_of_week=extract(dow FROM v_exception.original_occurrence_on)
+  LIMIT 1 FOR UPDATE;
+ IF NOT FOUND OR v_slot.duration_minutes NOT BETWEEN 15 AND 480
+    OR v_slot.start_time>=time '24:00:00'
+    OR extract(second FROM v_slot.start_time)<>trunc(extract(second FROM v_slot.start_time)) THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_A_RULE_DATE' USING ERRCODE='22023';
+ END IF;
+ v_start:=public.ccp_canonical_slot_real_start(v_slot,v_exception.original_occurrence_on);
+ IF v_start IS NULL OR v_start<=clock_timestamp() THEN
+  RAISE EXCEPTION 'SLOT_CANCELLATION_NOT_FUTURE' USING ERRCODE='22023';
+ END IF;
+
+ UPDATE public.slot_occurrence_exceptions SET
+  revoked_at=clock_timestamp(),revoked_by=v_teacher,revocation_request_id=p_idempotency_key
+ WHERE teacher_id=v_teacher AND id=p_exception_id
+ RETURNING * INTO v_exception;
+ v_receipt:=jsonb_build_object('exceptionId',v_exception.id,'slotId',v_exception.slot_id,
+  'originalOccurrenceOn',v_exception.original_occurrence_on,'revision',v_exception.revision,
+  'revokedAt',v_exception.revoked_at,'revokedBy',v_exception.revoked_by,
+  'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_revoke_unmaterialized_cancellation$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_revoke_unmaterialized_cancellation(uuid,bigint,uuid,boolean)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_revoke_unmaterialized_cancellation(uuid,bigint,uuid,boolean)
+ TO authenticated;
+
+-- P0 terminal-segment split. The read-only preview and commit share the same
+-- owner, original-date, plan and history rules; the existing materializer
+-- still owns occurrence validation. Earlier/multi-segment and entire-series
+-- editing are deliberately not implied by this narrower baseline operation.
+CREATE FUNCTION public.ccp_canonical_terminal_slot_split(
+ p_slot_id uuid,p_cutoff date,p_tail_id uuid,p_changes jsonb,p_to date,
+ p_expected_updated_at timestamptz,p_review_digest text,p_idempotency_key uuid,
+ p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_terminal_split$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_slot public.lesson_slots%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_workplace uuid;
+ v_zone text;
+ v_start time;
+ v_duration integer;
+ v_rate integer;
+ v_home boolean;
+ v_day date;
+ v_local timestamp;
+ v_utc timestamptz;
+ v_before_offset interval;
+ v_after_offset interval;
+ v_now timestamptz;
+ v_plan jsonb:='[]'::jsonb;
+ v_rows jsonb:='[]'::jsonb;
+ v_exceptions jsonb;
+ v_row public.teaching_sessions%ROWTYPE;
+ v_eligible boolean;
+ v_drafts uuid[]:=ARRAY[]::uuid[];
+ v_protected integer:=0;
+ v_deleted integer;
+ v_hash text;
+ v_review text;
+ v_receipt jsonb;
+ v_result jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501'; END IF;
+ IF p_slot_id IS NULL OR p_cutoff IS NULL OR p_tail_id IS NULL OR p_slot_id=p_tail_id
+    OR p_expected_updated_at IS NULL OR p_to IS NULL OR p_to<p_cutoff OR p_to-p_cutoff>366
+    OR p_confirmed IS NULL OR (p_confirmed AND (p_idempotency_key IS NULL
+       OR p_review_digest IS NULL OR p_review_digest !~ '^[0-9a-f]{64}$'))
+    OR jsonb_typeof(p_changes) IS DISTINCT FROM 'object' OR p_changes='{}'::jsonb THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_INVALID' USING ERRCODE='22023';
+ END IF;
+ -- This baseline slice preserves weekday, venue and local-date identity.
+ IF p_changes-ARRAY['startTime','durationMinutes','rateCents','isHomeVisit']<>'{}'::jsonb THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_UNSUPPORTED_FIELDS' USING ERRCODE='22023';
+ END IF;
+ IF (p_changes ? 'startTime' AND (jsonb_typeof(p_changes->'startTime') IS DISTINCT FROM 'string'
+     OR (p_changes->>'startTime') !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'))
+    OR (p_changes ? 'durationMinutes' AND (p_changes->>'durationMinutes' IS NULL
+     OR (p_changes->>'durationMinutes') !~ '^[0-9]{1,3}$'
+     OR (p_changes->>'durationMinutes')::integer NOT BETWEEN 15 AND 480))
+    OR (p_changes ? 'rateCents' AND p_changes->'rateCents'<>'null'::jsonb
+     AND (p_changes->>'rateCents') !~ '^[0-9]{1,9}$')
+    OR (p_changes ? 'isHomeVisit' AND jsonb_typeof(p_changes->'isHomeVisit') IS DISTINCT FROM 'boolean') THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_INVALID_FIELDS' USING ERRCODE='22023';
+ END IF;
+
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=encode(sha256(convert_to(jsonb_build_array('canonical.slot.split.tail',p_slot_id,
+  p_cutoff,p_tail_id,p_changes,p_to,p_expected_updated_at,p_review_digest)::text,'UTF8')),'hex');
+ IF p_confirmed THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF FOUND THEN
+   IF v_saved.operation<>'canonical.slot.split.tail' OR v_saved.request_hash<>v_hash THEN
+    RAISE EXCEPTION 'RECURRENCE_SPLIT_REPLAY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+  END IF;
+ END IF;
+ SELECT * INTO v_slot FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND id=p_slot_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'RECURRENCE_SPLIT_NOT_FOUND' USING ERRCODE='42501'; END IF;
+ IF v_slot.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF NOT v_slot.active OR EXISTS(SELECT 1 FROM public.lesson_slots s
+   WHERE s.teacher_id=v_teacher AND s.series_id=v_slot.series_id
+     AND s.id<>v_slot.id AND s.start_date>=v_slot.start_date)
+  OR EXISTS(SELECT 1 FROM public.lesson_slots WHERE id=p_tail_id AND teacher_id=v_teacher) THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_REQUIRES_TERMINAL_SEGMENT' USING ERRCODE='23514';
+ END IF;
+ IF v_slot.workplace_id IS NULL THEN
+  SELECT id,timezone INTO v_workplace,v_zone FROM public.workplaces
+   WHERE teacher_id=v_teacher ORDER BY created_at,id LIMIT 1 FOR SHARE;
+  v_zone:=coalesce((SELECT nullif(timezone,'') FROM public.teacher_settings WHERE teacher_id=v_teacher),v_zone);
+ ELSE
+  SELECT id,timezone INTO v_workplace,v_zone FROM public.workplaces
+   WHERE id=v_slot.workplace_id AND teacher_id=v_teacher FOR SHARE;
+ END IF;
+ v_now:=clock_timestamp();
+ IF v_workplace IS NULL OR v_zone IS NULL OR ((p_cutoff+v_slot.start_time) AT TIME ZONE v_zone)<=v_now
+  OR p_cutoff<=v_slot.start_date OR (v_slot.end_date IS NOT NULL AND p_cutoff>v_slot.end_date)
+  OR extract(dow FROM p_cutoff)<>v_slot.day_of_week THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_INVALID_CUTOFF' USING ERRCODE='22023';
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.students s
+  WHERE s.teacher_id=v_teacher AND s.id=v_slot.student_id AND s.archived_at IS NULL)
+ OR NOT EXISTS(SELECT 1 FROM public.workplace_enrollments e
+  WHERE e.teacher_id=v_teacher AND e.workplace_id=v_workplace AND e.student_id=v_slot.student_id
+    AND e.cancelled_at IS NULL AND (e.starts_on IS NULL OR e.starts_on<=p_cutoff)
+    AND (e.ends_on IS NULL OR (v_slot.end_date IS NOT NULL AND e.ends_on>=v_slot.end_date))) THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ v_start:=coalesce((p_changes->>'startTime')::time,v_slot.start_time);
+ v_duration:=coalesce((p_changes->>'durationMinutes')::integer,v_slot.duration_minutes);
+ v_rate:=CASE WHEN p_changes ? 'rateCents' THEN (p_changes->>'rateCents')::integer ELSE v_slot.rate_cents END;
+ v_home:=coalesce((p_changes->>'isHomeVisit')::boolean,v_slot.is_home_visit);
+ -- Build a complete bounded plan from exactly the same local dates; do not
+ -- accept client-supplied derived UTC times. For gaps/folds, ask for explicit
+ -- reconciliation instead of picking an automatic DST interpretation.
+ FOR v_day IN SELECT d::date FROM generate_series(p_cutoff,least(p_to,coalesce(v_slot.end_date,p_to)),interval '1 day') d
+   WHERE extract(dow FROM d)=v_slot.day_of_week ORDER BY d
+ LOOP
+  v_local:=v_day+v_start;
+  v_utc:=v_local AT TIME ZONE v_zone;
+  v_before_offset:=((v_utc-interval '1 day') AT TIME ZONE v_zone)-((v_utc-interval '1 day') AT TIME ZONE 'UTC');
+  v_after_offset:=((v_utc+interval '1 day') AT TIME ZONE v_zone)-((v_utc+interval '1 day') AT TIME ZONE 'UTC');
+  IF (v_utc AT TIME ZONE v_zone) IS DISTINCT FROM v_local OR (
+   v_before_offset<>v_after_offset
+   AND (((v_local-v_before_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local
+   AND (((v_local-v_after_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local) THEN
+   RAISE EXCEPTION 'RECURRENCE_SPLIT_AMBIGUOUS_LOCAL_TIME' USING ERRCODE='22023';
+  END IF;
+  v_plan:=v_plan||jsonb_build_array(jsonb_build_object(
+   'teacher_id',v_teacher,'workplace_id',v_workplace,'student_id',v_slot.student_id,
+   'slot_id',p_tail_id,'slot_occurrence_date',v_day,'starts_at',v_utc,'local_timezone',v_zone,
+   'duration_minutes',v_duration,'slot_rate_cents',v_rate,'is_home_visit',v_home));
+ END LOOP;
+
+ IF EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions e
+   JOIN public.lesson_slots origin ON origin.id=e.slot_id AND origin.teacher_id=e.teacher_id
+   WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+    AND e.original_occurrence_on>=p_cutoff AND e.revoked_at IS NULL AND e.action<>'cancel'
+    AND NOT EXISTS(SELECT 1 FROM public.teaching_sessions occurrence
+     JOIN public.lesson_slots recorded ON recorded.id=occurrence.slot_id AND recorded.teacher_id=occurrence.teacher_id
+     WHERE recorded.teacher_id=v_teacher AND recorded.series_id=v_slot.series_id
+       AND occurrence.id=e.session_id AND occurrence.slot_occurrence_date=e.original_occurrence_on)) THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_EXCEPTION_RECONCILIATION_REQUIRED' USING ERRCODE='23514';
+ END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_array(e.id,e.slot_id,e.original_occurrence_on,
+  e.action,e.session_id,e.revoked_at,e.revision) ORDER BY e.original_occurrence_on,e.id),'[]'::jsonb)
+ INTO v_exceptions FROM (
+  SELECT observed.* FROM public.slot_occurrence_exceptions observed
+  JOIN public.lesson_slots origin ON origin.id=observed.slot_id AND origin.teacher_id=observed.teacher_id
+  WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+   AND observed.original_occurrence_on>=p_cutoff ORDER BY observed.original_occurrence_on,observed.id LIMIT 2001
+ ) e;
+ IF jsonb_array_length(v_exceptions)>2000 THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_TOO_MANY_EXCEPTIONS' USING ERRCODE='22023';
+ END IF;
+
+ FOR v_row IN SELECT occurrence.* FROM public.teaching_sessions occurrence
+   JOIN public.lesson_slots origin ON origin.id=occurrence.slot_id AND origin.teacher_id=occurrence.teacher_id
+   WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+     AND occurrence.slot_occurrence_date>=p_cutoff
+   ORDER BY occurrence.slot_occurrence_date,occurrence.id LIMIT 2001 FOR UPDATE OF occurrence
+ LOOP
+  IF jsonb_array_length(v_rows)>=2000 THEN
+   RAISE EXCEPTION 'RECURRENCE_SPLIT_TOO_MANY_OCCURRENCES' USING ERRCODE='22023';
+  END IF;
+  v_eligible:=v_row.slot_id=v_slot.id AND v_row.starts_at>=v_now AND v_row.status='scheduled'
+   AND v_row.makeup_for_session_id IS NULL AND v_row.rescheduled_from_date IS NULL
+   AND btrim(coalesce(v_row.lesson_note,''))='' AND v_row.updated_at<=v_row.created_at+interval '1 microsecond'
+   AND NOT EXISTS(SELECT 1 FROM public.session_attendance WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.ccp_session_attendance_audit WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_notes WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.ccp_session_note_audit WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.ccp_delivery_outbox WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.invoice_items WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.financial_obligations WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.credit_redemptions WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.chess_observations WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.material_teaching_evidence WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.material_links WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_roster_corrections WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_amendment_events WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.teaching_sessions WHERE makeup_for_session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions WHERE session_id=v_row.id);
+  IF v_eligible THEN
+   IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_plan) planned
+     WHERE planned->>'slot_occurrence_date'=v_row.slot_occurrence_date::text) THEN
+    RAISE EXCEPTION 'RECURRENCE_SPLIT_REVIEW_RANGE_INCOMPLETE' USING ERRCODE='22023';
+   END IF;
+   v_drafts:=array_append(v_drafts,v_row.id);
+  ELSE
+   v_protected:=v_protected+1;
+  END IF;
+  -- Some privileged corrections do not move updated_at. Bind complete stored
+  -- session state in the digest without exposing teacher-only fields.
+  v_rows:=v_rows||jsonb_build_array(jsonb_build_array(
+   encode(sha256(convert_to(to_jsonb(v_row)::text,'UTF8')),'hex'),v_eligible));
+ END LOOP;
+ v_review:=encode(sha256(convert_to(jsonb_build_array(v_teacher,v_slot.series_id,v_slot.id,
+  v_slot.updated_at,p_cutoff,p_tail_id,p_changes,p_to,v_plan,v_rows,v_exceptions)::text,'UTF8')),'hex');
+ v_receipt:=jsonb_build_object('seriesId',v_slot.series_id,'predecessorId',v_slot.id,
+  'successorId',p_tail_id,'cutoff',p_cutoff,'reviewDigest',v_review,'sourceRevision',v_slot.updated_at,
+  'planned',jsonb_array_length(v_plan),'replaceableDrafts',cardinality(v_drafts),'preservedHistory',v_protected);
+ IF NOT p_confirmed THEN RETURN v_receipt; END IF;
+ IF p_review_digest<>v_review THEN RAISE EXCEPTION 'RECURRENCE_SPLIT_REVIEW_CONFLICT' USING ERRCODE='23505'; END IF;
+
+ INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+  VALUES(v_teacher,p_idempotency_key,'canonical.slot.split.tail',v_hash,'{}'::jsonb);
+ UPDATE public.lesson_slots SET end_date=p_cutoff-1 WHERE id=v_slot.id AND teacher_id=v_teacher;
+ BEGIN
+  INSERT INTO public.lesson_slots(id,teacher_id,student_id,workplace_id,series_id,day_of_week,
+   start_time,duration_minutes,start_date,end_date,active,rate_cents,is_home_visit)
+  VALUES(p_tail_id,v_teacher,v_slot.student_id,v_slot.workplace_id,v_slot.series_id,v_slot.day_of_week,
+   v_start,v_duration,p_cutoff,v_slot.end_date,true,v_rate,v_home);
+ EXCEPTION WHEN unique_violation THEN
+  RAISE EXCEPTION 'RECURRENCE_SPLIT_TAIL_CONFLICT' USING ERRCODE='23505';
+ END;
+ DELETE FROM public.teaching_sessions WHERE teacher_id=v_teacher AND id=ANY(v_drafts);
+ GET DIAGNOSTICS v_deleted=ROW_COUNT;
+ IF v_deleted<>cardinality(v_drafts) THEN RAISE EXCEPTION 'RECURRENCE_SPLIT_DRAFT_CONFLICT' USING ERRCODE='23505'; END IF;
+ v_result:=public.ccp_canonical_slot_materialize(v_plan,NULL);
+ v_receipt:=v_receipt||jsonb_build_object('removedFutureDrafts',v_deleted,'materialized',v_result,
+  'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_terminal_split$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_terminal_slot_split(uuid,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
+ FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_terminal_slot_split(uuid,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
+ TO authenticated;
+
+-- P0 scoped edits preserve existing lesson evidence. An original occurrence
+-- today is eligible only while both the original and proposed starts are future.
+CREATE FUNCTION public.ccp_canonical_slot_edit_scoped(
+ p_slot_id uuid,p_scope text,p_cutoff date,p_tail_id uuid,p_changes jsonb,p_to date,
+ p_expected_updated_at timestamptz,p_review_digest text,p_idempotency_key uuid,
+ p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp SET timezone='UTC' AS $ccp_scoped_slot_edit$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_slot public.lesson_slots%ROWTYPE;
+ v_segment public.lesson_slots%ROWTYPE;
+ v_bound date;
+ v_today date;
+ v_today_slot public.lesson_slots%ROWTYPE;
+ v_today_starts timestamptz;
+ v_today_proposed timestamptz;
+ v_new_weekday integer;
+ v_segment_weekday integer;
+ v_new_first date;
+ v_changing_weekday boolean;
+ v_old_dates jsonb;
+ v_new_dates jsonb;
+ v_date_changes jsonb:='[]'::jsonb;
+ v_from date;
+ v_first date;
+ v_target uuid;
+ v_split boolean;
+ v_edits jsonb:='[]'::jsonb;
+ v_edit jsonb;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_workplace uuid;
+ v_zone text;
+ v_start time;
+ v_duration integer;
+ v_rate integer;
+ v_home boolean;
+ v_day date;
+ v_local timestamp;
+ v_utc timestamptz;
+ v_before_offset interval;
+ v_after_offset interval;
+ v_now timestamptz;
+ v_plan jsonb:='[]'::jsonb;
+ v_rows jsonb:='[]'::jsonb;
+ v_exceptions jsonb;
+ v_row public.teaching_sessions%ROWTYPE;
+ v_eligible boolean;
+ v_drafts uuid[]:=ARRAY[]::uuid[];
+ v_protected integer:=0;
+ v_deleted integer;
+ v_hash text;
+ v_review text;
+ v_receipt jsonb;
+ v_result jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501'; END IF;
+ IF p_slot_id IS NULL OR p_scope IS NULL OR p_scope NOT IN ('this_and_future','entire_series')
+    OR (p_scope='this_and_future' AND (p_cutoff IS NULL OR NOT isfinite(p_cutoff)))
+    OR (p_scope='entire_series' AND p_cutoff IS NOT NULL) OR p_slot_id=p_tail_id
+    OR p_expected_updated_at IS NULL OR p_to IS NULL OR NOT isfinite(p_to)
+    OR p_confirmed IS NULL OR (p_confirmed AND (p_idempotency_key IS NULL
+       OR p_review_digest IS NULL OR p_review_digest !~ '^[0-9a-f]{64}$'))
+    OR jsonb_typeof(p_changes) IS DISTINCT FROM 'object' OR p_changes='{}'::jsonb THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID' USING ERRCODE='22023';
+ END IF;
+ -- Only the reviewed finite-horizon path below may alter weekday; the zone and workplace are retained.
+ IF p_changes-ARRAY['startTime','durationMinutes','rateCents','isHomeVisit','dayOfWeek']<>'{}'::jsonb THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_UNSUPPORTED_FIELDS' USING ERRCODE='22023';
+ END IF;
+ IF (p_changes ? 'startTime' AND (jsonb_typeof(p_changes->'startTime') IS DISTINCT FROM 'string'
+     OR (p_changes->>'startTime') !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'))
+    OR (p_changes ? 'durationMinutes' AND CASE
+      WHEN jsonb_typeof(p_changes->'durationMinutes') = 'number'
+       AND (p_changes->>'durationMinutes') ~ '^[0-9]{1,3}$'
+      THEN (p_changes->>'durationMinutes')::integer NOT BETWEEN 15 AND 480
+      ELSE true END)
+    OR (p_changes ? 'rateCents' AND p_changes->'rateCents'<>'null'::jsonb
+     AND (jsonb_typeof(p_changes->'rateCents') IS DISTINCT FROM 'number'
+       OR (p_changes->>'rateCents') !~ '^[0-9]{1,9}$'))
+    OR (p_changes ? 'dayOfWeek' AND (jsonb_typeof(p_changes->'dayOfWeek') IS DISTINCT FROM 'number'
+       OR (p_changes->>'dayOfWeek') !~ '^[0-6]$'))
+    OR (p_changes ? 'isHomeVisit' AND jsonb_typeof(p_changes->'isHomeVisit') IS DISTINCT FROM 'boolean') THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_FIELDS' USING ERRCODE='22023';
+ END IF;
+
+ v_new_weekday:=(p_changes->>'dayOfWeek')::integer;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=encode(sha256(convert_to(jsonb_build_array('canonical.slot.edit.scoped',p_slot_id,
+  p_scope,p_cutoff,p_tail_id,p_changes,p_to,p_expected_updated_at,p_review_digest)::text,'UTF8')),'hex');
+ IF p_confirmed THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF FOUND THEN
+   IF v_saved.operation<>'canonical.slot.edit.scoped' OR v_saved.request_hash<>v_hash THEN
+    RAISE EXCEPTION 'RECURRENCE_SCOPE_REPLAY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+  END IF;
+ END IF;
+ SELECT * INTO v_slot FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND id=p_slot_id;
+ IF FOUND THEN
+  -- The lineage FK serializes a concurrent directly inserted successor on this root.
+  PERFORM 1 FROM public.lesson_slots WHERE teacher_id=v_teacher AND id=v_slot.series_id FOR UPDATE;
+ END IF;
+ SELECT * INTO v_slot FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND id=p_slot_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'RECURRENCE_SCOPE_NOT_FOUND' USING ERRCODE='42501'; END IF;
+ IF v_slot.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF p_tail_id IS NOT NULL AND EXISTS(SELECT 1 FROM public.lesson_slots WHERE id=p_tail_id AND teacher_id=v_teacher) THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_TAIL_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF v_slot.workplace_id IS NULL THEN
+  SELECT id,timezone INTO v_workplace,v_zone FROM public.workplaces
+   WHERE teacher_id=v_teacher ORDER BY created_at,id LIMIT 1 FOR SHARE;
+  v_zone:=coalesce((SELECT nullif(timezone,'') FROM public.teacher_settings WHERE teacher_id=v_teacher FOR SHARE),v_zone);
+ ELSE
+  SELECT id,timezone INTO v_workplace,v_zone FROM public.workplaces
+   WHERE id=v_slot.workplace_id AND teacher_id=v_teacher FOR SHARE;
+ END IF;
+ v_now:=clock_timestamp();
+ IF v_workplace IS NULL OR v_zone IS NULL THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_WORKPLACE_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ v_today:=(v_now AT TIME ZONE v_zone)::date;
+ v_bound:=v_today+1;
+ IF p_scope='this_and_future' THEN
+  IF NOT v_slot.active OR p_cutoff<v_slot.start_date
+    OR (v_slot.end_date IS NOT NULL AND p_cutoff>v_slot.end_date)
+    OR extract(dow FROM p_cutoff)<>v_slot.day_of_week THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_CUTOFF' USING ERRCODE='22023';
+  END IF;
+  IF p_cutoff<v_today THEN
+   IF p_confirmed THEN RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505'; END IF;
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_CUTOFF' USING ERRCODE='22023';
+  END IF;
+  IF p_cutoff=v_today THEN v_today_slot:=v_slot; END IF;
+  v_bound:=p_cutoff;
+ ELSE
+  -- The exclusion constraint permits at most one effective active segment.
+  SELECT * INTO v_today_slot FROM public.lesson_slots s
+   WHERE s.teacher_id=v_teacher AND s.series_id=v_slot.series_id AND s.active
+    AND s.start_date<=v_today AND (s.end_date IS NULL OR s.end_date>=v_today)
+    AND s.day_of_week=extract(dow FROM v_today) FOR UPDATE;
+ END IF;
+ IF v_today_slot.id IS NOT NULL THEN
+  -- Do not use the database's arbitrary result for a fold or gap in the
+  -- original local start; the old boundary must itself be unambiguous.
+  v_local:=v_today+v_today_slot.start_time;
+  v_utc:=v_local AT TIME ZONE v_zone;
+  v_before_offset:=((v_utc-interval '1 day') AT TIME ZONE v_zone)-((v_utc-interval '1 day') AT TIME ZONE 'UTC');
+  v_after_offset:=((v_utc+interval '1 day') AT TIME ZONE v_zone)-((v_utc+interval '1 day') AT TIME ZONE 'UTC');
+  IF (v_utc AT TIME ZONE v_zone) IS DISTINCT FROM v_local OR (
+   v_before_offset<>v_after_offset
+   AND (((v_local-v_before_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local
+   AND (((v_local-v_after_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local) THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_AMBIGUOUS_LOCAL_TIME' USING ERRCODE='22023';
+  END IF;
+  v_today_starts:=v_utc;
+  IF v_today_starts>v_now THEN
+   v_bound:=v_today;
+  ELSIF p_scope='this_and_future' THEN
+   IF p_confirmed THEN RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505'; END IF;
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_CUTOFF' USING ERRCODE='22023';
+  END IF;
+ END IF;
+ IF v_new_weekday IS NOT NULL AND v_bound<=v_today THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_WEEKDAY_SAME_DAY_UNSUPPORTED' USING ERRCODE='22023';
+ END IF;
+ IF p_confirmed AND p_to<v_bound THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF p_to<v_bound OR p_to>v_bound+366 THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_RANGE' USING ERRCODE='22023';
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.students s
+  WHERE s.teacher_id=v_teacher AND s.id=v_slot.student_id AND s.archived_at IS NULL FOR SHARE) THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ FOR v_segment IN SELECT s.* FROM public.lesson_slots s
+   WHERE s.teacher_id=v_teacher AND s.series_id=v_slot.series_id AND s.active
+    AND (s.end_date IS NULL OR s.end_date>=v_bound)
+   ORDER BY s.start_date,s.id FOR UPDATE
+ LOOP
+  v_from:=greatest(v_bound,v_segment.start_date);
+  v_first:=v_from+((v_segment.day_of_week-extract(dow FROM v_from)::integer+7)%7);
+  IF v_segment.end_date IS NOT NULL AND v_first>v_segment.end_date THEN CONTINUE; END IF;
+  v_segment_weekday:=coalesce(v_new_weekday,v_segment.day_of_week);
+  v_changing_weekday:=v_segment_weekday<>v_segment.day_of_week;
+  v_new_first:=v_from+((v_segment_weekday-extract(dow FROM v_from)::integer+7)%7);
+  IF v_changing_weekday AND (v_segment.end_date IS NULL OR NOT isfinite(v_segment.end_date)
+    OR v_segment.end_date>p_to OR v_new_first>v_segment.end_date) THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_WEEKDAY_COMPLETE_FINITE_RANGE_REQUIRED' USING ERRCODE='22023';
+  END IF;
+  IF jsonb_array_length(v_edits)>=64 OR v_first>p_to THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_RANGE_INCOMPLETE' USING ERRCODE='22023';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.workplace_enrollments e
+    WHERE e.teacher_id=v_teacher AND e.workplace_id=v_workplace AND e.student_id=v_segment.student_id
+      AND e.cancelled_at IS NULL AND (e.starts_on IS NULL OR e.starts_on<=least(v_first,v_new_first))
+      AND (e.ends_on IS NULL OR (v_segment.end_date IS NOT NULL AND e.ends_on>=v_segment.end_date)) FOR SHARE) THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
+  END IF;
+  v_split:=v_segment.start_date<v_from;
+  IF v_split AND p_tail_id IS NULL THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_TAIL_ID_REQUIRED' USING ERRCODE='22023';
+  END IF;
+  v_target:=CASE WHEN v_split THEN p_tail_id ELSE v_segment.id END;
+  v_start:=coalesce((p_changes->>'startTime')::time,v_segment.start_time);
+  v_duration:=coalesce((p_changes->>'durationMinutes')::integer,v_segment.duration_minutes);
+  v_rate:=CASE WHEN p_changes ? 'rateCents' THEN (p_changes->>'rateCents')::integer ELSE v_segment.rate_cents END;
+  v_home:=coalesce((p_changes->>'isHomeVisit')::boolean,v_segment.is_home_visit);
+  v_edits:=v_edits||jsonb_build_array(jsonb_build_object('before',to_jsonb(v_segment),
+   'from',v_from,'target',v_target,'split',v_split,'start',v_start,'duration',v_duration,'rate',v_rate,'home',v_home,
+   'weekday',v_segment_weekday,'weekdayChange',v_changing_weekday));
+  IF v_changing_weekday THEN
+   -- Any approved active exception in a changing segment's effective suffix
+   -- may be evidence of the original dates. Do not decide which date it maps to.
+   IF EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions observed
+      JOIN public.lesson_slots origin ON origin.id=observed.slot_id AND origin.teacher_id=observed.teacher_id
+      WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+       AND observed.revoked_at IS NULL AND observed.original_occurrence_on BETWEEN v_from AND v_segment.end_date) THEN
+    RAISE EXCEPTION 'RECURRENCE_SCOPE_WEEKDAY_ORIGINAL_EVIDENCE' USING ERRCODE='23514';
+   END IF;
+   v_old_dates:='[]'::jsonb;
+   FOR v_day IN SELECT v_first+7*n FROM generate_series(0,(v_segment.end_date-v_first)/7) n LOOP
+    v_local:=v_day+v_segment.start_time;
+    v_utc:=v_local AT TIME ZONE v_zone;
+    v_before_offset:=((v_utc-interval '1 day') AT TIME ZONE v_zone)-((v_utc-interval '1 day') AT TIME ZONE 'UTC');
+    v_after_offset:=((v_utc+interval '1 day') AT TIME ZONE v_zone)-((v_utc+interval '1 day') AT TIME ZONE 'UTC');
+    IF (v_utc AT TIME ZONE v_zone) IS DISTINCT FROM v_local OR (
+     v_before_offset<>v_after_offset
+     AND (((v_local-v_before_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local
+     AND (((v_local-v_after_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local) THEN
+     RAISE EXCEPTION 'RECURRENCE_SCOPE_AMBIGUOUS_LOCAL_TIME' USING ERRCODE='22023';
+    END IF;
+    v_old_dates:=v_old_dates||jsonb_build_array(v_day);
+   END LOOP;
+   SELECT jsonb_agg(v_new_first+7*n ORDER BY n) INTO v_new_dates
+    FROM generate_series(0,(v_segment.end_date-v_new_first)/7) n;
+   v_date_changes:=v_date_changes||jsonb_build_array(jsonb_build_object(
+    'sourceSlotId',v_segment.id,'targetSlotId',v_target,
+    'oldOriginalDates',v_old_dates,'newOriginalDates',v_new_dates));
+  END IF;
+  FOR v_day IN SELECT v_new_first+7*n FROM generate_series(0,(least(p_to,coalesce(v_segment.end_date,p_to))-v_new_first)/7) n
+  LOOP
+  v_local:=v_day+v_start;
+  v_utc:=v_local AT TIME ZONE v_zone;
+  v_before_offset:=((v_utc-interval '1 day') AT TIME ZONE v_zone)-((v_utc-interval '1 day') AT TIME ZONE 'UTC');
+  v_after_offset:=((v_utc+interval '1 day') AT TIME ZONE v_zone)-((v_utc+interval '1 day') AT TIME ZONE 'UTC');
+  IF (v_utc AT TIME ZONE v_zone) IS DISTINCT FROM v_local OR (
+   v_before_offset<>v_after_offset
+   AND (((v_local-v_before_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local
+   AND (((v_local-v_after_offset) AT TIME ZONE 'UTC') AT TIME ZONE v_zone)=v_local) THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_AMBIGUOUS_LOCAL_TIME' USING ERRCODE='22023';
+  END IF;
+  IF v_day=v_today THEN
+   IF v_utc<=v_now THEN
+    IF p_confirmed THEN RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505'; END IF;
+    RAISE EXCEPTION 'RECURRENCE_SCOPE_PROPOSED_START_PASSED' USING ERRCODE='22023';
+   END IF;
+   v_today_proposed:=v_utc;
+  END IF;
+  v_plan:=v_plan||jsonb_build_array(jsonb_build_object(
+   'teacher_id',v_teacher,'workplace_id',v_workplace,'student_id',v_slot.student_id,
+   'slot_id',v_target,'slot_occurrence_date',v_day,'starts_at',v_utc,'local_timezone',v_zone,
+   'duration_minutes',v_duration,'slot_rate_cents',v_rate,'is_home_visit',v_home));
+  END LOOP;
+ END LOOP;
+ IF v_edits='[]'::jsonb OR (p_tail_id IS NOT NULL AND NOT EXISTS(
+   SELECT 1 FROM jsonb_array_elements(v_edits) entry WHERE (entry->>'split')::boolean)) THEN
+  IF p_confirmed THEN RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505'; END IF;
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_INVALID_TARGET' USING ERRCODE='22023';
+ END IF;
+
+ IF EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions e
+   JOIN public.lesson_slots origin ON origin.id=e.slot_id AND origin.teacher_id=e.teacher_id
+   WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+    AND e.original_occurrence_on>=v_bound AND e.revoked_at IS NULL AND e.action<>'cancel'
+    AND NOT EXISTS(SELECT 1 FROM public.teaching_sessions occurrence
+     JOIN public.lesson_slots recorded ON recorded.id=occurrence.slot_id AND recorded.teacher_id=occurrence.teacher_id
+     WHERE recorded.teacher_id=v_teacher AND recorded.series_id=v_slot.series_id
+       AND occurrence.id=e.session_id AND occurrence.slot_occurrence_date=e.original_occurrence_on)) THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_EXCEPTION_RECONCILIATION_REQUIRED' USING ERRCODE='23514';
+ END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_array(e.id,e.slot_id,e.original_occurrence_on,
+  e.action,e.session_id,e.revoked_at,e.revision) ORDER BY e.original_occurrence_on,e.id),'[]'::jsonb)
+ INTO v_exceptions FROM (
+  SELECT observed.* FROM public.slot_occurrence_exceptions observed
+  JOIN public.lesson_slots origin ON origin.id=observed.slot_id AND origin.teacher_id=observed.teacher_id
+  WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+   AND observed.original_occurrence_on>=v_bound ORDER BY observed.original_occurrence_on,observed.id LIMIT 2001
+ ) e;
+ IF jsonb_array_length(v_exceptions)>2000 THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_TOO_MANY_EXCEPTIONS' USING ERRCODE='22023';
+ END IF;
+
+ FOR v_row IN SELECT occurrence.* FROM public.teaching_sessions occurrence
+   JOIN public.lesson_slots origin ON origin.id=occurrence.slot_id AND origin.teacher_id=occurrence.teacher_id
+   WHERE origin.teacher_id=v_teacher AND origin.series_id=v_slot.series_id
+     AND occurrence.slot_occurrence_date>=v_bound
+   ORDER BY occurrence.slot_occurrence_date,occurrence.id LIMIT 2001 FOR UPDATE OF occurrence
+ LOOP
+  IF jsonb_array_length(v_rows)>=2000 THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_TOO_MANY_OCCURRENCES' USING ERRCODE='22023';
+  END IF;
+  v_eligible:=EXISTS(SELECT 1 FROM jsonb_array_elements(v_edits) entry WHERE entry->'before'->>'id'=v_row.slot_id::text AND v_row.slot_occurrence_date>=(entry->>'from')::date AND (entry->'before'->>'end_date' IS NULL OR v_row.slot_occurrence_date<=(entry->'before'->>'end_date')::date)) AND v_row.starts_at>=v_now AND v_row.status='scheduled'
+   AND v_row.makeup_for_session_id IS NULL AND v_row.rescheduled_from_date IS NULL
+   AND btrim(coalesce(v_row.lesson_note,''))='' AND v_row.updated_at<=v_row.created_at+interval '1 microsecond'
+   AND NOT EXISTS(SELECT 1 FROM public.session_attendance WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.ccp_session_attendance_audit WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_notes WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.ccp_session_note_audit WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.ccp_delivery_outbox WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.invoice_items WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.financial_obligations WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.credit_redemptions WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.chess_observations WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.material_teaching_evidence WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.material_links WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_roster_corrections WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.session_amendment_events WHERE session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.teaching_sessions WHERE makeup_for_session_id=v_row.id)
+   AND NOT EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions WHERE session_id=v_row.id);
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(v_edits) edit
+    WHERE (edit->>'weekdayChange')::boolean AND v_row.slot_occurrence_date
+    BETWEEN (edit->>'from')::date AND (edit->'before'->>'end_date')::date)
+    AND (NOT v_eligible OR v_row.title<>'Private chess lesson' OR v_row.request_id IS NOT NULL
+     OR v_row.group_id IS NOT NULL OR v_row.student_id IS DISTINCT FROM v_slot.student_id
+     OR v_row.workplace_id IS DISTINCT FROM v_workplace OR v_row.local_timezone IS DISTINCT FROM v_zone
+     OR NOT EXISTS(SELECT 1 FROM public.session_participants participant
+      WHERE participant.teacher_id=v_teacher AND participant.session_id=v_row.id AND participant.student_id=v_row.student_id)
+     OR EXISTS(SELECT 1 FROM public.session_participants participant
+      WHERE participant.teacher_id=v_teacher AND participant.session_id=v_row.id AND participant.student_id<>v_row.student_id)
+     OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_date_changes) dates
+      JOIN jsonb_array_elements(v_edits) edit ON edit->'before'->>'id'=dates->>'sourceSlotId'
+      WHERE dates->>'sourceSlotId'=v_row.slot_id::text
+       AND dates->'oldOriginalDates' ? v_row.slot_occurrence_date::text
+       AND v_row.starts_at=((v_row.slot_occurrence_date+(edit->'before'->>'start_time')::time) AT TIME ZONE v_zone)
+       AND v_row.duration_minutes=(edit->'before'->>'duration_minutes')::integer
+       AND v_row.slot_rate_cents IS NOT DISTINCT FROM (edit->'before'->>'rate_cents')::integer
+       AND v_row.is_home_visit=(edit->'before'->>'is_home_visit')::boolean)) THEN
+   RAISE EXCEPTION 'RECURRENCE_SCOPE_WEEKDAY_ORIGINAL_EVIDENCE' USING ERRCODE='23514';
+  END IF;
+  IF v_eligible THEN
+   IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_date_changes) dates
+     WHERE dates->>'sourceSlotId'=v_row.slot_id::text AND dates->'oldOriginalDates' ? v_row.slot_occurrence_date::text)
+    AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_plan) planned
+     JOIN jsonb_array_elements(v_edits) edit ON edit->>'target'=planned->>'slot_id'
+     WHERE edit->'before'->>'id'=v_row.slot_id::text AND planned->>'slot_occurrence_date'=v_row.slot_occurrence_date::text) THEN
+    RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_RANGE_INCOMPLETE' USING ERRCODE='22023';
+   END IF;
+   v_drafts:=array_append(v_drafts,v_row.id);
+  ELSE
+   v_protected:=v_protected+1;
+  END IF;
+  -- Some privileged corrections do not move updated_at. Bind complete stored
+  -- session state in the digest without exposing teacher-only fields.
+  v_rows:=v_rows||jsonb_build_array(jsonb_build_array(
+   encode(sha256(convert_to(to_jsonb(v_row)::text,'UTF8')),'hex'),v_eligible));
+ END LOOP;
+ v_review:=encode(sha256(convert_to(jsonb_build_array(v_teacher,v_slot.series_id,to_jsonb(v_slot),
+  p_scope,v_bound,p_tail_id,p_changes,p_to,v_edits,v_plan,v_rows,v_exceptions,v_today_proposed,v_date_changes)::text,'UTF8')),'hex');
+ v_receipt:=jsonb_build_object('seriesId',v_slot.series_id,'anchorId',v_slot.id,'scope',p_scope,
+  'successorId',p_tail_id,'cutoff',v_bound,'reviewThrough',p_to,'reviewDigest',v_review,'sourceRevision',v_slot.updated_at,
+  'planned',jsonb_array_length(v_plan),'affectedSegments',jsonb_array_length(v_edits),
+  'replaceableDrafts',cardinality(v_drafts),'preservedHistory',v_protected);
+ IF v_new_weekday IS NOT NULL THEN
+  v_receipt:=v_receipt||jsonb_build_object('weekdayDateChanges',v_date_changes);
+ END IF;
+ IF NOT p_confirmed THEN RETURN v_receipt; END IF;
+ IF p_review_digest<>v_review OR (
+   v_today_proposed IS NOT NULL AND least(v_today_starts,v_today_proposed)<=clock_timestamp()) THEN
+  RAISE EXCEPTION 'RECURRENCE_SCOPE_REVIEW_CONFLICT' USING ERRCODE='23505';
+ END IF;
+
+ INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+  VALUES(v_teacher,p_idempotency_key,'canonical.slot.edit.scoped',v_hash,'{}'::jsonb);
+ FOR v_edit IN SELECT * FROM jsonb_array_elements(v_edits) LOOP
+  v_segment:=jsonb_populate_record(NULL::public.lesson_slots,v_edit->'before');
+  IF (v_edit->>'split')::boolean THEN
+   UPDATE public.lesson_slots SET end_date=(v_edit->>'from')::date-1
+    WHERE id=v_segment.id AND teacher_id=v_teacher;
+   BEGIN
+    INSERT INTO public.lesson_slots(id,teacher_id,student_id,workplace_id,series_id,day_of_week,
+     start_time,duration_minutes,start_date,end_date,active,rate_cents,is_home_visit)
+    VALUES(p_tail_id,v_teacher,v_segment.student_id,v_segment.workplace_id,v_segment.series_id,(v_edit->>'weekday')::integer,
+     (v_edit->>'start')::time,(v_edit->>'duration')::integer,(v_edit->>'from')::date,v_segment.end_date,
+     true,(v_edit->>'rate')::integer,(v_edit->>'home')::boolean);
+   EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'RECURRENCE_SCOPE_TAIL_CONFLICT' USING ERRCODE='23505';
+   END;
+  ELSE
+   UPDATE public.lesson_slots SET start_time=(v_edit->>'start')::time,
+    day_of_week=(v_edit->>'weekday')::integer,duration_minutes=(v_edit->>'duration')::integer,rate_cents=(v_edit->>'rate')::integer,
+    is_home_visit=(v_edit->>'home')::boolean
+    WHERE id=v_segment.id AND teacher_id=v_teacher;
+  END IF;
+ END LOOP;
+ DELETE FROM public.teaching_sessions WHERE teacher_id=v_teacher AND id=ANY(v_drafts);
+ GET DIAGNOSTICS v_deleted=ROW_COUNT;
+ IF v_deleted<>cardinality(v_drafts) THEN RAISE EXCEPTION 'RECURRENCE_SCOPE_DRAFT_CONFLICT' USING ERRCODE='23505'; END IF;
+ v_result:=public.ccp_canonical_slot_materialize(v_plan,NULL);
+ v_receipt:=v_receipt||jsonb_build_object('removedFutureDrafts',v_deleted,'materialized',v_result,
+  'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_receipt WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_receipt||jsonb_build_object('replayed',false);
+END;
+$ccp_scoped_slot_edit$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_slot_edit_scoped(uuid,text,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
+ FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_slot_edit_scoped(uuid,text,date,uuid,jsonb,date,timestamptz,text,uuid,boolean)
+ TO authenticated;
+
+-- A preview and commit of one not-yet-generated original series date.
+-- The moved lesson uses the same canonical insertion path, frozen roster
+-- triggers and storage identity as a regular occurrence. Its exception
+-- records the approval; neither of the two rows can be created alone.
+CREATE FUNCTION public.ccp_canonical_reschedule_unmaterialized_slot(
+ p_slot_id uuid,p_original_occurrence_on date,p_revised_date date,p_revised_time time,
+ p_expected_updated_at timestamptz,p_reason text,p_review_digest text,
+ p_idempotency_key uuid,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_reschedule_unmaterialized_slot$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_operation constant text:='canonical.slot.reschedule_unmaterialized';
+ v_slot public.lesson_slots%ROWTYPE;
+ v_workplace public.workplaces%ROWTYPE;
+ v_default_workplace public.workplaces%ROWTYPE;
+ v_saved public.agent_tool_receipts%ROWTYPE;
+ v_teacher_zone text;
+ v_zone text;
+ v_now timestamptz;
+ v_original timestamptz[];
+ v_revised timestamptz[];
+ v_target timestamptz;
+ v_until timestamptz;
+ v_day date;
+ v_c record;
+ v_options timestamptz[];
+ v_offset_start timestamptz;
+ v_n integer:=0;
+ v_hash text;
+ v_review text;
+ v_result jsonb;
+ v_session uuid;
+ v_exception uuid;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';END IF;
+ IF p_slot_id IS NULL OR p_expected_updated_at IS NULL OR NOT isfinite(p_expected_updated_at)
+   OR p_original_occurrence_on IS NULL
+   OR p_original_occurrence_on NOT BETWEEN DATE '0001-01-01' AND DATE '9999-12-31'
+   OR p_revised_date IS NULL OR p_revised_date NOT BETWEEN DATE '0001-01-01' AND DATE '9999-12-31'
+   OR p_revised_time IS NULL OR p_revised_time>=time '24:00:00'
+   OR extract(second FROM p_revised_time)<>trunc(extract(second FROM p_revised_time))
+   OR p_reason IS NULL OR char_length(btrim(p_reason)) NOT BETWEEN 4 AND 500
+   OR p_confirmed IS NULL OR (p_confirmed AND (p_idempotency_key IS NULL
+      OR p_review_digest IS NULL OR p_review_digest !~ '^[0-9a-f]{64}$'))
+   OR (NOT p_confirmed AND (p_idempotency_key IS NOT NULL OR p_review_digest IS NOT NULL)) THEN
+  RAISE EXCEPTION 'INVALID_SLOT_RESCHEDULE' USING ERRCODE='22023';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ v_hash:=encode(sha256(convert_to(jsonb_build_array(v_operation,p_slot_id,
+  p_original_occurrence_on,p_revised_date,p_revised_time,p_expected_updated_at AT TIME ZONE 'UTC',
+  p_reason,p_review_digest,p_confirmed)::text,'UTF8')),'hex');
+ IF p_confirmed THEN
+  SELECT * INTO v_saved FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+  IF FOUND THEN
+   IF v_saved.operation<>v_operation OR v_saved.request_hash<>v_hash THEN
+    RAISE EXCEPTION 'SLOT_RESCHEDULE_REPLAY_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+  END IF;
+ END IF;
+ SELECT * INTO v_slot FROM public.lesson_slots
+  WHERE teacher_id=v_teacher AND id=p_slot_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'CANONICAL_SLOT_NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF v_slot.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_REVISION_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF NOT v_slot.active OR v_slot.duration_minutes NOT BETWEEN 15 AND 480
+   OR v_slot.start_time>=time '24:00:00'
+   OR extract(second FROM v_slot.start_time)<>trunc(extract(second FROM v_slot.start_time))
+   OR p_original_occurrence_on<v_slot.start_date
+   OR (v_slot.end_date IS NOT NULL AND p_original_occurrence_on>v_slot.end_date)
+   OR extract(dow FROM p_original_occurrence_on)<>v_slot.day_of_week THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_NOT_A_RULE_DATE' USING ERRCODE='22023';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.lesson_slots anchor
+  JOIN public.teaching_sessions s ON s.teacher_id=anchor.teacher_id AND s.slot_id=anchor.id
+  WHERE anchor.teacher_id=v_teacher AND anchor.series_id=v_slot.series_id
+    AND s.slot_occurrence_date=p_original_occurrence_on) THEN
+  RAISE EXCEPTION 'SLOT_OCCURRENCE_ALREADY_MATERIALIZED' USING ERRCODE='23514';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.lesson_slots anchor
+  JOIN public.slot_occurrence_exceptions e ON e.teacher_id=anchor.teacher_id AND e.slot_id=anchor.id
+  WHERE anchor.teacher_id=v_teacher AND anchor.series_id=v_slot.series_id
+    AND e.original_occurrence_on=p_original_occurrence_on AND e.revoked_at IS NULL) THEN
+  RAISE EXCEPTION 'SLOT_OCCURRENCE_ALREADY_HAS_EXCEPTION' USING ERRCODE='23505';
+ END IF;
+ IF p_confirmed AND EXISTS(SELECT 1 FROM public.slot_occurrence_exceptions
+   WHERE teacher_id=v_teacher AND
+     (request_id=p_idempotency_key OR revocation_request_id=p_idempotency_key)) THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_REPLAY_CONFLICT' USING ERRCODE='23505';
+ END IF;
+
+ SELECT * INTO v_default_workplace FROM public.workplaces
+  WHERE teacher_id=v_teacher ORDER BY created_at,id LIMIT 1 FOR SHARE;
+ SELECT nullif(timezone,'') INTO v_teacher_zone FROM public.teacher_settings
+  WHERE teacher_id=v_teacher FOR SHARE;
+ SELECT * INTO v_workplace FROM public.workplaces
+  WHERE teacher_id=v_teacher AND id=coalesce(v_slot.workplace_id,v_default_workplace.id) FOR SHARE;
+ IF NOT FOUND OR v_workplace.archived_at IS NOT NULL THEN
+  RAISE EXCEPTION 'CANONICAL_SLOT_WORKPLACE_NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ v_zone:=coalesce(CASE WHEN v_slot.workplace_id IS NULL THEN v_teacher_zone END,v_workplace.timezone);
+ v_original:=public.ccp_canonical_wall_instants(p_original_occurrence_on+v_slot.start_time,v_zone);
+ v_revised:=public.ccp_canonical_wall_instants(p_revised_date+p_revised_time,v_zone);
+ IF cardinality(v_original)<>1 OR cardinality(v_revised)<>1 THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_AMBIGUOUS_LOCAL_TIME' USING ERRCODE='22023';
+ END IF;
+ v_now:=clock_timestamp();
+ v_target:=v_revised[1];
+ v_until:=v_target+v_slot.duration_minutes*interval '1 minute';
+ IF v_original[1]<=v_now OR v_target<=v_now OR v_target=v_original[1] THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_INVALID_TIME' USING ERRCODE='22023';
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.students
+  WHERE teacher_id=v_teacher AND id=v_slot.student_id AND archived_at IS NULL)
+ OR NOT EXISTS(SELECT 1 FROM public.workplace_enrollments
+  WHERE teacher_id=v_teacher AND student_id=v_slot.student_id AND workplace_id=v_workplace.id
+   AND cancelled_at IS NULL AND (starts_on IS NULL OR starts_on<=least(p_original_occurrence_on,p_revised_date))
+   AND (ends_on IS NULL OR ends_on>=greatest(p_original_occurrence_on,p_revised_date))) THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_ENROLLMENT_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.teaching_sessions s WHERE s.teacher_id=v_teacher AND s.status<>'cancelled'
+   AND s.starts_at<v_until AND s.starts_at>=v_target-interval '8 hours'
+   AND s.starts_at+s.duration_minutes*interval '1 minute'>v_target) THEN
+  RAISE EXCEPTION 'SESSION_CONFLICT' USING ERRCODE='23P01';
+ END IF;
+
+ -- A teacher can already have expected lessons for the target window which
+ -- have not been materialized. No calendar writes during preview or commit.
+ -- The UTC date envelope is conservative for all supported named zones;
+ -- locally check only that window and the previous day for overnight lessons.
+ -- An existing cancellation is not a permanent reservation release: its
+ -- independent revocation must not turn this move into a generation conflict.
+ FOR v_c IN SELECT r.id,r.series_id,r.start_date,r.end_date,r.day_of_week,
+      r.start_time,r.duration_minutes,
+      coalesce(CASE WHEN r.workplace_id IS NULL THEN v_teacher_zone END,w.timezone) AS zone
+   FROM public.lesson_slots r
+   JOIN public.workplaces w ON w.teacher_id=r.teacher_id
+     AND w.id=coalesce(r.workplace_id,v_default_workplace.id)
+   WHERE r.teacher_id=v_teacher AND r.active
+     AND r.start_date<=(v_until AT TIME ZONE 'UTC')::date+2
+     AND (r.end_date IS NULL OR r.end_date>=(v_target AT TIME ZONE 'UTC')::date-2)
+   ORDER BY r.id LIMIT 2001
+ LOOP
+  v_n:=v_n+1;
+  IF v_n>2000 THEN RAISE EXCEPTION 'SLOT_RESCHEDULE_TOO_MANY_RULES' USING ERRCODE='22023';END IF;
+  FOR v_day IN SELECT d::date FROM generate_series((v_target AT TIME ZONE v_c.zone)::date-1,
+    (v_until AT TIME ZONE v_c.zone)::date,interval '1 day') d
+   WHERE d::date>=v_c.start_date AND (v_c.end_date IS NULL OR d::date<=v_c.end_date)
+    AND extract(dow FROM d)=v_c.day_of_week
+  LOOP
+   IF (v_c.series_id=v_slot.series_id AND v_day=p_original_occurrence_on)
+    OR EXISTS(SELECT 1 FROM public.lesson_slots a JOIN public.teaching_sessions s
+     ON s.slot_id=a.id AND s.teacher_id=a.teacher_id
+     WHERE a.teacher_id=v_teacher AND a.series_id=v_c.series_id AND s.slot_occurrence_date=v_day) THEN
+    CONTINUE;
+   END IF;
+   v_options:=public.ccp_canonical_wall_instants(v_day+v_c.start_time,v_c.zone);
+   IF cardinality(v_options)=0 THEN
+    -- A gap cannot be materialized by the current canonical SQL. If its
+    -- shifted interval could collide, do not approve around the ambiguity.
+    v_options:=ARRAY[(v_day+v_c.start_time) AT TIME ZONE v_c.zone];
+   END IF;
+   FOREACH v_offset_start IN ARRAY v_options LOOP
+    IF v_offset_start<v_until
+     AND v_offset_start+greatest(15,v_c.duration_minutes)*interval '1 minute'>v_target THEN
+     RAISE EXCEPTION 'SLOT_RESCHEDULE_PENDING_RULE_CONFLICT' USING ERRCODE='23P01';
+    END IF;
+   END LOOP;
+  END LOOP;
+ END LOOP;
+
+ v_review:=encode(sha256(convert_to(jsonb_build_array(v_teacher,v_slot.series_id,v_slot.id,
+  v_slot.updated_at AT TIME ZONE 'UTC',p_original_occurrence_on,v_original[1] AT TIME ZONE 'UTC',
+  p_revised_date,p_revised_time,v_target AT TIME ZONE 'UTC',v_zone,v_workplace.id,v_slot.student_id,
+  v_slot.duration_minutes,v_slot.is_home_visit,v_slot.rate_cents,p_reason)::text,'UTF8')),'hex');
+ v_result:=jsonb_build_object('slotId',v_slot.id,'seriesId',v_slot.series_id,
+  'originalOccurrenceOn',p_original_occurrence_on,'originalStartsAt',v_original[1],
+  'revisedStartsAt',v_target,'timezone',v_zone,'durationMinutes',v_slot.duration_minutes,
+  'slotRevision',v_slot.updated_at,'reviewDigest',v_review);
+ IF NOT p_confirmed THEN RETURN v_result; END IF;
+ IF p_review_digest<>v_review THEN
+  RAISE EXCEPTION 'SLOT_RESCHEDULE_REVIEW_CONFLICT' USING ERRCODE='23505';
+ END IF;
+
+ INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_idempotency_key,v_operation,v_hash,'{}'::jsonb);
+ INSERT INTO public.teaching_sessions(teacher_id,workplace_id,student_id,title,starts_at,
+  duration_minutes,status,slot_id,slot_occurrence_date,rescheduled_from_date,local_timezone,
+  is_home_visit,slot_rate_cents,request_id)
+ VALUES(v_teacher,v_workplace.id,v_slot.student_id,'Private chess lesson',v_target,
+  v_slot.duration_minutes,'scheduled',v_slot.id,p_original_occurrence_on,p_original_occurrence_on,v_zone,
+  v_slot.is_home_visit,v_slot.rate_cents,p_idempotency_key)
+ RETURNING id INTO v_session;
+ INSERT INTO public.slot_occurrence_exceptions(teacher_id,slot_id,original_occurrence_on,action,
+  revised_starts_at,revised_timezone,revised_duration_minutes,session_id,approved_by,reason,request_id)
+ VALUES(v_teacher,v_slot.id,p_original_occurrence_on,'reschedule',v_target,v_zone,
+  v_slot.duration_minutes,v_session,v_teacher,btrim(p_reason),p_idempotency_key)
+ RETURNING id INTO v_exception;
+ v_result:=v_result||jsonb_build_object('sessionId',v_session,'exceptionId',v_exception,'idempotencyKey',p_idempotency_key);
+ UPDATE public.agent_tool_receipts SET receipt=v_result
+  WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ RETURN v_result||jsonb_build_object('replayed',false);
+END;
+$ccp_reschedule_unmaterialized_slot$;
+REVOKE ALL ON FUNCTION public.ccp_canonical_reschedule_unmaterialized_slot(uuid,date,date,time,timestamptz,text,text,uuid,boolean)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_canonical_reschedule_unmaterialized_slot(uuid,date,date,time,timestamptz,text,text,uuid,boolean)
  TO authenticated;

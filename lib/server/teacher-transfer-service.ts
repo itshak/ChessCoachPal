@@ -67,7 +67,10 @@ export async function teacherImportApply(db:Db,teacherId:string,raw:unknown,expe
   throw fail(409,"PREVIEW_CHANGED","The import payload differs from the previously reviewed preview");
  // Domain import contains table allowlisting and writes only as this tenant.
  const result=await importStudioExport(db,teacherId,preview.payload,preview.sha256);
- if(!result.ok)throw fail(500,"IMPORT_FAILED",result.error);
+ if(!result.ok){
+  if(result.code==="CAPACITY_EXCEEDED")throw fail(409,result.code,result.error);
+  throw fail(500,"IMPORT_FAILED",result.error);
+ }
  return {ok:true,counts:result.counts,
   message:"Import complete. Matching IDs were updated; new IDs were inserted.",
   sha256:preview.sha256};

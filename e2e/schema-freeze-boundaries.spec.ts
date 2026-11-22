@@ -1,0 +1,1025 @@
+import {createHash,randomUUID} from "node:crypto";
+import {expect,test} from "@playwright/test";
+import {createClient} from "@supabase/supabase-js";
+import {dayOfWeek,zonedTimeToUtc} from "../lib/schedule";
+import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
+
+function syntheticAdmin(){
+ return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+}
+async function syntheticTeacher(admin:ReturnType<typeof syntheticAdmin>){
+ const email="freeze-"+randomUUID()+"@example.com";
+ const password="FreezeSchemaSynthetic123!";
+ const identity=await admin.auth.admin.createUser({
+  email,password,email_confirm:true,
+ });
+ expect(identity.error).toBeNull();
+ const id=identity.data.user!.id;
+ const teacher=await admin.from("teachers").insert({
+  id,email,display_name:"Synthetic schema-freeze account",
+ });
+ expect(teacher.error).toBeNull();
+ return {id,email,password};
+}
+async function grantSyntheticReportPro(admin:ReturnType<typeof syntheticAdmin>,teacherId:string){
+ const pro=await admin.from("plan_versions").select("id")
+  .eq("code","pro").eq("version",1).eq("lifecycle","published").single();
+ expect(pro.error).toBeNull();
+ const grant=await admin.from("teacher_entitlement_grants").insert({
+  teacher_id:teacherId,kind:"plan_access",plan_version_id:pro.data!.id,
+  reason:"Synthetic Pro report fixture",request_id:randomUUID(),
+ }).select("id").single();
+ expect(grant.error).toBeNull();
+ return grant.data!.id as string;
+}
+function studio(name:string,teacherId:string){
+ return {teacher_id:teacherId,name,
+  timezone:"UTC",currency:"USD",locale:"en",
+  kind:"professional",policy:{}};
+}
+
+/** ENT-11: The Personal workplace cannot occupy or evade professional slots. */
+test("professional workplace quota serializes, archives and restores without bypass",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  await configureSyntheticStudentCapacity(admin,teacher.id,2,1);
+  const personal=await admin.from("workplaces")
+   .select("id,kind,archived_at").eq("teacher_id",teacher.id)
+   .eq("kind","personal").single();
+  expect(personal.error).toBeNull();
+  expect(personal.data?.archived_at).toBeNull();
+  const attempts=await Promise.all([0,1,2,3].map(i=>
+   admin.from("workplaces").insert(studio(
+    "Concurrent professional "+i+" "+randomUUID(),teacher.id))
+     .select("id").single()
+  ));
+  const winners=attempts.filter(x=>!x.error);
+  const blocked=attempts.filter(x=>x.error);
+  expect(winners).toHaveLength(1);
+  expect(blocked).toHaveLength(3);
+  for(const denied of blocked){
+   expect(denied.error?.code).toBe("23514");
+   expect(denied.error?.message).toContain("CAPACITY_EXCEEDED");
+  }
+  const original=winners[0].data!.id as string;
+  const personalArchive=await admin.from("workplaces")
+   .update({archived_at:new Date().toISOString()})
+   .eq("id",personal.data!.id);
+  expect(personalArchive.error?.message).toContain("PERSONAL_WORKPLACE_REQUIRED");
+  const archived=await admin.from("workplaces")
+   .update({archived_at:new Date().toISOString()}).eq("id",original);
+  expect(archived.error).toBeNull();
+  const replacement=await admin.from("workplaces")
+   .insert(studio("Replacement "+randomUUID(),teacher.id))
+   .select("id").single();
+  expect(replacement.error).toBeNull();
+  const reactivation=await admin.from("workplaces")
+   .update({archived_at:null}).eq("id",original);
+  expect(reactivation.error?.message).toContain("CAPACITY_EXCEEDED");
+  const state=await admin.from("teacher_entitlement_state")
+   .select("active_professional_workplace_count")
+   .eq("teacher_id",teacher.id).single();
+  expect(state.error).toBeNull();
+  expect(state.data?.active_professional_workplace_count).toBe(1);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
+
+/** RAT-01: a newly approved federation/category needs only registry rows, no DDL. */
+test("rating registry accepts a new national provider but rejects unregistered categories",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ const code="x"+randomUUID().replaceAll("-","");
+ try{
+  const provider=await admin.from("rating_providers").insert({
+   code,provider_kind:"federation",display_name:"Synthetic national federation",
+  });
+  expect(provider.error).toBeNull();
+  const category=await admin.from("rating_categories").insert({
+   provider_code:code,code:"standard",display_name:"National Standard",
+  });
+  expect(category.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Synthetic national player "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const newRating=await admin.from("student_rating_snapshots").insert({
+   teacher_id:teacher.id,student_id:student.data!.id,
+   provider:code,time_control:"standard",rating:1624,
+   source:"teacher_manual",observed_at:new Date().toISOString(),
+   request_id:randomUUID(),verification_state:"unverified",
+  }).select("id").single();
+  expect(newRating.error).toBeNull();
+  const invalid=await admin.from("student_rating_snapshots").insert({
+   teacher_id:teacher.id,student_id:student.data!.id,
+   provider:code,time_control:"unregistered",rating:1700,
+   source:"teacher_manual",observed_at:new Date().toISOString(),
+   request_id:randomUUID(),verification_state:"unverified",
+  });
+  expect(invalid.error?.code).toBe("23503");
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
+
+/** TCH-03/04: a report is shareable only to the exact student and workplace of
+ * an active explicitly-scoped guest grant; no relative or payer is inferred. */
+test("report audience scope rejects other children and revoked guest grants",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  await grantSyntheticReportPro(admin,teacher.id);
+  const workplace=await admin.from("workplaces")
+   .select("id").eq("teacher_id",teacher.id).eq("kind","personal").single();
+  expect(workplace.error).toBeNull();
+  const studentA=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Student A "+randomUUID(),
+  }).select("id").single();
+  const studentB=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Student B "+randomUUID(),
+  }).select("id").single();
+  expect(studentA.error).toBeNull();
+  expect(studentB.error).toBeNull();
+  const contactA=await admin.from("contacts").insert({
+   teacher_id:teacher.id,display_name:"Reviewer A "+randomUUID(),
+  }).select("id").single();
+  const contactB=await admin.from("contacts").insert({
+   teacher_id:teacher.id,display_name:"Reviewer B "+randomUUID(),
+  }).select("id").single();
+  expect(contactA.error).toBeNull();
+  expect(contactB.error).toBeNull();
+  const future=new Date(Date.now()+86400000*30).toISOString();
+  const grant=async(contactId:string,studentId:string)=>{
+   const row=await admin.from("portal_access_grants").insert({
+    teacher_id:teacher.id,contact_id:contactId,student_id:studentId,
+    workplace_id:workplace.data!.id,permissions:["shared_notes"],
+    issued_at:new Date().toISOString(),
+    token_digest:createHash("sha256").update(randomUUID()).digest("hex"),
+    expires_at:future,
+   }).select("id").single();
+   expect(row.error).toBeNull();
+   return row.data!.id as string;
+  };
+  const grantA=await grant(contactA.data!.id,studentA.data!.id);
+  const grantB=await grant(contactB.data!.id,studentB.data!.id);
+  const publish=async()=>{
+   const row=await admin.from("report_publications").insert({
+    teacher_id:teacher.id,student_id:studentA.data!.id,
+    workplace_id:workplace.data!.id,
+    snapshot_digest:createHash("sha256").update(randomUUID()).digest("hex"),
+    snapshot_storage_ref:"synthetic-reports/"+randomUUID(),
+    output_locale:"en",approved_by:teacher.id,
+    approved_at:new Date().toISOString(),request_id:randomUUID(),
+   }).select("id").single();
+   expect(row.error).toBeNull();
+   return row.data!.id as string;
+  };
+  const publication=await publish();
+  const pendingGrant=await admin.from("portal_access_grants").insert({
+   teacher_id:teacher.id,contact_id:contactA.data!.id,
+   student_id:studentA.data!.id,workplace_id:workplace.data!.id,
+   permissions:["shared_notes"],expires_at:future,
+  }).select("id").single();
+  expect(pendingGrant.error).toBeNull();
+  const unissuedDenied=await admin.from("report_publication_audiences").insert({
+   publication_id:publication,portal_grant_id:pendingGrant.data!.id,
+   teacher_id:teacher.id,approved_by:teacher.id,request_id:randomUUID(),
+  });
+  expect(unissuedDenied.error?.message).toContain("REPORT_AUDIENCE_NOT_AUTHORIZED");
+  const selfSupersession=await admin.from("report_publications")
+   .update({superseded_by:publication}).eq("id",publication);
+  expect(selfSupersession.error?.code).toBe("23514");
+  const otherStudentReport=await admin.from("report_publications").insert({
+   teacher_id:teacher.id,student_id:studentB.data!.id,
+   workplace_id:workplace.data!.id,
+   snapshot_digest:createHash("sha256").update(randomUUID()).digest("hex"),
+   snapshot_storage_ref:"synthetic-reports/"+randomUUID(),
+   output_locale:"en",approved_by:teacher.id,
+   approved_at:new Date().toISOString(),request_id:randomUUID(),
+  }).select("id").single();
+  expect(otherStudentReport.error).toBeNull();
+  const crossStudentSupersession=await admin.from("report_publications")
+   .update({superseded_by:otherStudentReport.data!.id}).eq("id",publication);
+  expect(crossStudentSupersession.error?.message)
+   .toContain("REPORT_SUPERSESSION_SCOPE_MISMATCH");
+  const denied=await admin.from("report_publication_audiences").insert({
+   publication_id:publication,portal_grant_id:grantB,
+   teacher_id:teacher.id,approved_by:teacher.id,request_id:randomUUID(),
+  });
+  expect(denied.error?.message).toContain("REPORT_AUDIENCE_NOT_AUTHORIZED");
+  const allowed=await admin.from("report_publication_audiences").insert({
+   publication_id:publication,portal_grant_id:grantA,
+   teacher_id:teacher.id,approved_by:teacher.id,request_id:randomUUID(),
+  });
+  expect(allowed.error).toBeNull();
+  const sameScopeSuccessor=await publish();
+  const superseded=await admin.from("report_publications")
+   .update({superseded_by:sameScopeSuccessor}).eq("id",publication);
+  expect(superseded.error).toBeNull();
+  const secondSupersession=await admin.from("report_publications")
+   .update({superseded_by:otherStudentReport.data!.id}).eq("id",publication);
+  expect(secondSupersession.error?.message).toContain("IMMUTABLE_PUBLICATION");
+  const revoke=await admin.from("portal_access_grants")
+   .update({revoked_at:new Date().toISOString()}).eq("id",grantA);
+  expect(revoke.error).toBeNull();
+  const nextPublication=await publish();
+  const revokedDenied=await admin.from("report_publication_audiences").insert({
+   publication_id:nextPublication,portal_grant_id:grantA,
+   teacher_id:teacher.id,approved_by:teacher.id,request_id:randomUUID(),
+  });
+  expect(revokedDenied.error?.message).toContain("REPORT_AUDIENCE_NOT_AUTHORIZED");
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
+
+/** ENT-14: the trusted server cannot bypass effective report publishing
+ * access; a downgrade leaves previous approvals readable and revocable. */
+test("report publishing and new audiences need effective SQL entitlement",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  const workplace=await admin.from("workplaces").select("id")
+   .eq("teacher_id",teacher.id).eq("kind","personal").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Premium boundary learner "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const createPortalGrant=async()=>{
+   const contact=await admin.from("contacts").insert({
+    teacher_id:teacher.id,display_name:"Synthetic reviewer "+randomUUID(),
+   }).select("id").single();
+   expect(contact.error).toBeNull();
+   const grant=await admin.from("portal_access_grants").insert({
+    teacher_id:teacher.id,contact_id:contact.data!.id,student_id:student.data!.id,
+    workplace_id:workplace.data!.id,permissions:["shared_notes"],
+    issued_at:new Date().toISOString(),
+    token_digest:createHash("sha256").update(randomUUID()).digest("hex"),
+    expires_at:new Date(Date.now()+86400000*30).toISOString(),
+   }).select("id").single();
+   expect(grant.error).toBeNull();
+   return grant.data!.id as string;
+  };
+  const [firstAudience,nextAudience]=await Promise.all([
+   createPortalGrant(),createPortalGrant(),
+  ]);
+  const publication=()=>({
+   teacher_id:teacher.id,student_id:student.data!.id,workplace_id:workplace.data!.id,
+   snapshot_digest:createHash("sha256").update(randomUUID()).digest("hex"),
+   snapshot_storage_ref:"synthetic-reports/"+randomUUID(),
+   output_locale:"en",approved_by:teacher.id,
+   approved_at:new Date().toISOString(),request_id:randomUUID(),
+  });
+  const publish=(row:ReturnType<typeof publication>)=>admin.from("report_publications")
+   .insert(row).select("id,request_id,revoked_at").single();
+  const newAudience=(reportId:string,grantId:string)=>({
+   teacher_id:teacher.id,publication_id:reportId,portal_grant_id:grantId,
+   approved_by:teacher.id,request_id:randomUUID(),
+  });
+  const addAudience=(row:ReturnType<typeof newAudience>)=>admin
+   .from("report_publication_audiences").insert(row);
+  const denied={code:"23514",message:"UPGRADE_REQUIRED",details:"reports.publish"};
+
+  const approvedRequest=publication();
+  expect((await publish(approvedRequest)).error).toMatchObject(denied);
+  const proGrant=await grantSyntheticReportPro(admin,teacher.id);
+  const approved=await publish(approvedRequest);
+  expect(approved.error).toBeNull();
+  const reportId=approved.data!.id;
+  const originalAudience=newAudience(reportId,firstAudience);
+  expect((await addAudience(originalAudience)).error).toBeNull();
+
+  const downgraded=await admin.from("teacher_entitlement_grants")
+   .update({revoked_at:new Date().toISOString()}).eq("id",proGrant)
+   .select("revoked_at").single();
+  expect(downgraded.error).toBeNull();
+  expect(downgraded.data?.revoked_at).not.toBeNull();
+  expect((await publish(publication())).error).toMatchObject(denied);
+  expect((await addAudience(newAudience(reportId,nextAudience))).error).toMatchObject(denied);
+  const owner=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+   });
+  expect((await owner.auth.signInWithPassword({
+   email:teacher.email,password:teacher.password,
+  })).error).toBeNull();
+  const after=await owner.from("report_publications").select("id,request_id,revoked_at")
+   .eq("teacher_id",teacher.id);
+  expect(after.error).toBeNull();
+  expect(after.data).toEqual([approved.data]);
+  const audienceAfter=await owner.from("report_publication_audiences")
+   .select("portal_grant_id,revoked_at").eq("publication_id",reportId);
+  expect(audienceAfter.error).toBeNull();
+  expect(audienceAfter.data).toEqual([{portal_grant_id:firstAudience,revoked_at:null}]);
+
+  const revokedAt=new Date().toISOString();
+  const audienceRevoked=await admin.from("report_publication_audiences")
+   .update({revoked_at:revokedAt}).eq("publication_id",reportId)
+   .eq("portal_grant_id",firstAudience).select("revoked_at").single();
+  expect(audienceRevoked.error).toBeNull();
+  expect(audienceRevoked.data?.revoked_at).not.toBeNull();
+  const publicationRevoked=await admin.from("report_publications")
+   .update({revoked_at:revokedAt}).eq("id",reportId)
+   .select("id,revoked_at,revision").single();
+  expect(publicationRevoked.error).toBeNull();
+  expect(publicationRevoked.data).toMatchObject({id:reportId,revision:2});
+  expect(publicationRevoked.data?.revoked_at).not.toBeNull();
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
+
+/** TCH-03: session correction provenance is immutable while its session exists. */
+test("session amendment history rejects direct updates and deletes",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  const workplace=await admin.from("workplaces").select("id")
+   .eq("teacher_id",teacher.id).eq("kind","personal").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Audit learner "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const enrollment=await admin.from("workplace_enrollments").insert({
+   teacher_id:teacher.id,student_id:student.data!.id,
+   workplace_id:workplace.data!.id,source:"manual",
+  });
+  expect(enrollment.error).toBeNull();
+  const session=await admin.from("teaching_sessions").insert({
+   teacher_id:teacher.id,workplace_id:workplace.data!.id,
+   student_id:student.data!.id,title:"Schema audit lesson",
+   starts_at:"2060-03-07T11:00:00Z",duration_minutes:45,
+  }).select("id").single();
+  expect(session.error).toBeNull();
+  const corrected=await admin.from("teaching_sessions")
+   .update({duration_minutes:60}).eq("id",session.data!.id);
+  expect(corrected.error).toBeNull();
+  const events=await admin.from("session_amendment_events")
+   .select("id,previous_state,next_state")
+   .eq("session_id",session.data!.id);
+  expect(events.error).toBeNull();
+  expect(events.data).toHaveLength(1);
+  expect(events.data?.[0].previous_state.duration_minutes).toBe(45);
+  expect(events.data?.[0].next_state.duration_minutes).toBe(60);
+  const tamper=await admin.from("session_amendment_events")
+   .update({source:"service"}).eq("id",events.data![0].id);
+  expect(tamper.error?.message).toContain("IMMUTABLE_SESSION_AMENDMENT");
+  const erase=await admin.from("session_amendment_events")
+   .delete().eq("id",events.data![0].id);
+  expect(erase.error?.message).toContain("IMMUTABLE_SESSION_AMENDMENT");
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
+
+/** ENT-08/12: plan and individual-grant changes cannot evade the audit ledger. */
+test("baseline and grant transitions produce immutable scoped entitlement audit events",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  await configureSyntheticStudentCapacity(admin,teacher.id,1);
+  const issued=await admin.from("teacher_entitlement_grants").insert({
+   teacher_id:teacher.id,kind:"capability_boost",
+   capability_key:"students.active",capability_kind:"integer_limit",
+   integer_value:2,unlimited:false,issued_by:teacher.id,
+   reason:"Synthetic independently approved extra student capacity",
+   request_id:randomUUID(),
+  }).select("id").single();
+  expect(issued.error).toBeNull();
+  const revoke=await admin.from("teacher_entitlement_grants")
+   .update({revoked_at:new Date().toISOString()}).eq("id",issued.data!.id);
+  expect(revoke.error).toBeNull();
+  const audited=await admin.from("entitlement_audit_events")
+   .select("id,source,action,revision_before,revision_after")
+   .eq("teacher_id",teacher.id).order("occurred_at",{ascending:true});
+  expect(audited.error).toBeNull();
+  const entries=audited.data??[];
+  for(const action of ["baseline_plan_changed","grant_issued","grant_revoked"]){
+   expect(entries.map(x=>x.action)).toContain(action);
+  }
+  for(const entry of entries){
+   if(entry.revision_before!==null&&entry.revision_after!==null)
+    expect(entry.revision_after).toBeGreaterThanOrEqual(entry.revision_before);
+  }
+  const tamper=await admin.from("entitlement_audit_events")
+   .update({reason:"Tampered audit"}).eq("id",entries[0].id);
+  expect(tamper.error?.message).toContain("IMMUTABLE_EVENT");
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
+
+/** TCH-01/02: a cancelled unmaterialized recurring occurrence is durable,
+ * exactly dated, versioned and replaceable without creating a phantom lesson. */
+test("cancelled recurring occurrence can be reviewed, revoked and replaced without a session",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  const workplace=await admin.from("workplaces")
+   .select("id").eq("teacher_id",teacher.id).eq("kind","personal").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Weekly learner "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const enrollment=await admin.from("workplace_enrollments").insert({
+   teacher_id:teacher.id,workplace_id:workplace.data!.id,
+   student_id:student.data!.id,source:"manual",
+  });
+  expect(enrollment.error).toBeNull();
+  const day=new Date("2060-04-01T00:00:00Z").getUTCDay();
+  const slot=await admin.from("lesson_slots").insert({
+   teacher_id:teacher.id,student_id:student.data!.id,
+   workplace_id:workplace.data!.id,day_of_week:day,
+   start_time:"14:00:00",duration_minutes:45,start_date:"2060-04-01",
+  }).select("id").single();
+  expect(slot.error).toBeNull();
+  const original="2060-04-08";
+  const canceled=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:teacher.id,slot_id:slot.data!.id,
+   original_occurrence_on:original,action:"cancel",
+   approved_by:teacher.id,
+   reason:"Explicit weekly cancellation by teacher",
+   request_id:randomUUID(),
+  }).select("id").single();
+  expect(canceled.error).toBeNull();
+  const dupe=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:teacher.id,slot_id:slot.data!.id,
+   original_occurrence_on:original,action:"cancel",
+   approved_by:teacher.id,
+   reason:"A duplicate would create two current intents",
+   request_id:randomUUID(),
+  });
+  expect(dupe.error?.code).toBe("23505");
+  const revoked=await admin.from("slot_occurrence_exceptions").update({
+   revoked_at:new Date().toISOString(),revoked_by:teacher.id,
+   revocation_request_id:randomUUID(),
+  }).eq("id",canceled.data!.id);
+  expect(revoked.error).toBeNull();
+  const amended=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:teacher.id,slot_id:slot.data!.id,
+   original_occurrence_on:original,action:"reschedule",
+   revised_starts_at:"2060-04-09T14:00:00+00:00",revised_timezone:"UTC",
+   approved_by:teacher.id,reason:"Approved replacement after cancellation",
+   request_id:randomUUID(),
+  });
+  expect(amended.error).toBeNull();
+  const overwrite=await admin.from("slot_occurrence_exceptions")
+   .update({action:"override"}).eq("id",canceled.data!.id);
+  expect(overwrite.error?.message).toContain("IMMUTABLE_OCCURRENCE");
+  const sessions=await admin.from("teaching_sessions")
+   .select("id",{count:"exact",head:true}).eq("teacher_id",teacher.id);
+  expect(sessions.error).toBeNull();
+  expect(sessions.count).toBe(0);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
+
+
+/** TCH-01: test the actual shared calendar and series-edit SQL writers on a
+ * persisted cancellation, not just the exception table's shape. */
+test("persisted cancellation suppresses its original local date across regeneration",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  const owner=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+   });
+  expect((await owner.auth.signInWithPassword({
+   email:teacher.email,password:teacher.password,
+  })).error).toBeNull();
+  const timezone="Asia/Jerusalem";
+  const workplace=await admin.from("workplaces").update({timezone})
+   .eq("teacher_id",teacher.id).eq("kind","personal").select("id").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Cancellation replay "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  expect((await admin.from("workplace_enrollments").insert({
+   teacher_id:teacher.id,workplace_id:workplace.data!.id,
+   student_id:student.data!.id,source:"manual",
+  })).error).toBeNull();
+  const original="2060-01-08",neighbor="2060-01-15";
+  const slotBase={
+   teacher_id:teacher.id,student_id:student.data!.id,
+   workplace_id:workplace.data!.id,day_of_week:dayOfWeek(original),
+   start_date:original,duration_minutes:45,
+  };
+  const slot=await admin.from("lesson_slots")
+   .insert({...slotBase,start_time:"00:30:00"}).select("id,updated_at").single();
+  expect(slot.error).toBeNull();
+  const otherSlot=await admin.from("lesson_slots")
+   .insert({...slotBase,start_time:"14:00:00"}).select("id").single();
+  expect(otherSlot.error).toBeNull();
+  const exception=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:teacher.id,slot_id:slot.data!.id,original_occurrence_on:original,
+   action:"cancel",approved_by:teacher.id,reason:"Teacher-approved single date off",
+   request_id:randomUUID(),
+  }).select("id").single();
+  expect(exception.error).toBeNull();
+  const occurrence=(id:string,date:string,time:string)=>({
+   teacher_id:teacher.id,workplace_id:workplace.data!.id,student_id:student.data!.id,
+   slot_id:id,slot_occurrence_date:date,
+   starts_at:zonedTimeToUtc(date,time,timezone).toISOString(),
+   local_timezone:timezone,duration_minutes:45,is_home_visit:false,slot_rate_cents:null,
+  });
+  const cancelled=occurrence(slot.data!.id,original,"00:30");
+  expect(cancelled.starts_at.slice(0,10)).toBe("2060-01-07");
+  const p_rows=[
+   cancelled,
+   occurrence(slot.data!.id,neighbor,"00:30"),
+   occurrence(otherSlot.data!.id,original,"14:00"),
+  ];
+  const persisted=()=>admin.from("teaching_sessions")
+   .select("id,slot_id,slot_occurrence_date,starts_at")
+   .eq("teacher_id",teacher.id).order("starts_at");
+  const first=await admin.rpc("ccp_canonical_slot_materialize",{
+   p_rows,p_teacher_id:teacher.id,
+  });
+  expect(first.error).toBeNull();
+  expect(first.data).toEqual({planned:3,inserted:2});
+  const firstRead=await persisted();
+  expect(firstRead.error).toBeNull();
+  expect(firstRead.data?.map(row=>[row.slot_id,row.slot_occurrence_date]))
+   .toEqual([[otherSlot.data!.id,original],[slot.data!.id,neighbor]]);
+
+  // Keep input/ownership validation even when an active exception exists.
+  const invalid=await owner.rpc("ccp_canonical_slot_materialize",{
+   p_rows:[{...cancelled,starts_at:p_rows[1].starts_at}],
+  });
+  expect(invalid.error?.message).toContain("CANONICAL_MATERIALIZE_SLOT_MISMATCH");
+  const spoof=await owner.rpc("ccp_canonical_slot_materialize",{
+   p_rows:[cancelled],p_teacher_id:teacher.id,
+  });
+  expect(spoof.error?.code).toBe("42501");
+  const repeat=await owner.rpc("ccp_canonical_slot_materialize",{p_rows});
+  expect(repeat.error).toBeNull();
+  expect(repeat.data).toEqual({planned:3,inserted:0});
+  expect((await persisted()).data).toEqual(firstRead.data);
+
+  // A full plan supplied to the real series-update RPC must still suppress
+  // the exact exception date even after the recurring local time changes.
+  const adjusted=[original,neighbor].map(date=>occurrence(slot.data!.id,date,"01:00"));
+  const editArgs={
+   p_slot_id:slot.data!.id,p_changes:{startTime:"01:00"},
+   p_expected_updated_at:slot.data!.updated_at,p_rows:adjusted,
+   p_from:original,p_to:neighbor,p_idempotency_key:randomUUID(),
+  };
+  const edited=await owner.rpc("ccp_canonical_slot_update",editArgs);
+  expect(edited.error).toBeNull();
+  expect(edited.data).toMatchObject({
+   replayed:false,removedFuture:1,materialized:{planned:2,inserted:1},
+  });
+  const regenerated=await persisted();
+  expect(regenerated.error).toBeNull();
+  expect(regenerated.data?.map(row=>[row.slot_id,row.slot_occurrence_date]))
+   .toEqual([[otherSlot.data!.id,original],[slot.data!.id,neighbor]]);
+  expect(regenerated.data?.[0]).toEqual(firstRead.data?.[0]);
+  expect(Date.parse(regenerated.data![1].starts_at)).toBe(Date.parse(adjusted[1].starts_at));
+  const editReplay=await owner.rpc("ccp_canonical_slot_update",editArgs);
+  expect(editReplay.error).toBeNull();
+  expect(editReplay.data).toEqual({...edited.data,replayed:true});
+  expect((await persisted()).data).toEqual(regenerated.data);
+
+  const revoke=await admin.from("slot_occurrence_exceptions").update({
+   revoked_at:new Date().toISOString(),revoked_by:teacher.id,
+   revocation_request_id:randomUUID(),
+  }).eq("id",exception.data!.id).select("action,revision,revoked_at").single();
+  expect(revoke.error).toBeNull();
+  expect(revoke.data).toMatchObject({action:"cancel",revision:2});
+  expect(revoke.data?.revoked_at).not.toBeNull();
+  const restored=await owner.rpc("ccp_canonical_slot_materialize",{p_rows:adjusted});
+  expect(restored.error).toBeNull();
+  expect(restored.data).toEqual({planned:2,inserted:1});
+  const finalRead=await persisted();
+  expect(finalRead.error).toBeNull();
+  expect(finalRead.data?.map(row=>[row.slot_id,row.slot_occurrence_date]))
+   .toEqual([[slot.data!.id,original],[otherSlot.data!.id,original],[slot.data!.id,neighbor]]);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
+
+/** ENT-16 / SCH-04: usage is counted once per durable workflow request,
+ * never multiplied by retries or by a foreign tenant's period. */
+test("meaningful usage receipts are idempotent, bounded and tenant scoped",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ const outsider=await syntheticTeacher(admin);
+ try{
+  const period=await admin.from("account_usage_periods").insert({
+   teacher_id:teacher.id,capability_key:"students.active",
+   period_start:"2026-01-01T00:00:00Z",
+   period_end:"2027-01-01T00:00:00Z",
+  }).select("id").single();
+  expect(period.error).toBeNull();
+  const receipt=({
+   teacherId=teacher.id,
+   requestId=randomUUID(),
+   periodId=period.data!.id,
+   amount=1,
+  }:{teacherId?:string;requestId?:string;periodId?:string;amount?:number}={})=>({
+   teacher_id:teacherId,capability_key:"students.active",
+   period_id:periodId,request_id:requestId,
+   unit:"lesson",amount,source:"synthetic_workflow",
+  });
+  const requestId=randomUUID();
+  const first=await admin.from("account_usage_events")
+   .insert(receipt({requestId}));
+  expect(first.error).toBeNull();
+  const repeated=await admin.from("account_usage_events")
+   .insert(receipt({requestId}));
+  expect(repeated.error?.code).toBe("23505");
+  const oversized=await admin.from("account_usage_events")
+   .insert(receipt({amount:1000001}));
+  expect(oversized.error?.code).toBe("23514");
+  const injected=await admin.from("account_usage_events")
+   .insert(receipt({teacherId:outsider.id}));
+  expect(injected.error?.code).toBe("23503");
+  const concurrent=await Promise.all([
+   admin.from("account_usage_events").insert(receipt()),
+   admin.from("account_usage_events").insert(receipt()),
+  ]);
+  for(const r of concurrent)expect(r.error).toBeNull();
+  const after=await admin.from("account_usage_periods")
+   .select("used_count,reserved_count").eq("id",period.data!.id).single();
+  expect(after.error).toBeNull();
+  expect(after.data?.used_count).toBe(3);
+  expect(after.data?.reserved_count).toBe(0);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+  expect((await admin.auth.admin.deleteUser(outsider.id)).error).toBeNull();
+ }
+});
+
+/** SCH-04/06: tenant identity is enforced by both composite foreign keys
+ * and authenticated row security, not by UI filters or caller claims. */
+test("cross-tenant report references are rejected and private reports are invisible",async()=>{
+ const admin=syntheticAdmin();
+ const a=await syntheticTeacher(admin);
+ const b=await syntheticTeacher(admin);
+ try{
+  await grantSyntheticReportPro(admin,a.id);
+  const aWorkplace=await admin.from("workplaces")
+   .select("id").eq("teacher_id",a.id).eq("kind","personal").single();
+  const bWorkplace=await admin.from("workplaces")
+   .select("id").eq("teacher_id",b.id).eq("kind","personal").single();
+  expect(aWorkplace.error).toBeNull();
+  expect(bWorkplace.error).toBeNull();
+  const aStudent=await admin.from("students").insert({
+   teacher_id:a.id,name:"Tenant A learner "+randomUUID(),
+  }).select("id").single();
+  const bStudent=await admin.from("students").insert({
+   teacher_id:b.id,name:"Tenant B learner "+randomUUID(),
+  }).select("id").single();
+  expect(aStudent.error).toBeNull();
+  expect(bStudent.error).toBeNull();
+  const report=(teacherId:string,studentId:string,workplaceId:string)=>({
+   teacher_id:teacherId,student_id:studentId,workplace_id:workplaceId,
+   snapshot_digest:createHash("sha256").update(randomUUID()).digest("hex"),
+   snapshot_storage_ref:"synthetic-reports/"+randomUUID(),
+   output_locale:"en",approved_by:teacherId,
+   approved_at:new Date().toISOString(),request_id:randomUUID(),
+  });
+  const own=await admin.from("report_publications").insert(
+   report(a.id,aStudent.data!.id,aWorkplace.data!.id)
+  ).select("id").single();
+  expect(own.error).toBeNull();
+  const foreignStudent=await admin.from("report_publications").insert(
+   report(a.id,bStudent.data!.id,aWorkplace.data!.id)
+  );
+  expect(foreignStudent.error?.code).toBe("23503");
+  const foreignWorkplace=await admin.from("report_publications").insert(
+   report(a.id,aStudent.data!.id,bWorkplace.data!.id)
+  );
+  expect(foreignWorkplace.error?.code).toBe("23503");
+  const outsider=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+    auth:{persistSession:false,autoRefreshToken:false},
+   });
+  const login=await outsider.auth.signInWithPassword({
+   email:b.email,password:b.password,
+  });
+  expect(login.error).toBeNull();
+  const hidden=await outsider.from("report_publications")
+   .select("id").eq("id",own.data!.id);
+  expect(hidden.error).toBeNull();
+  expect(hidden.data).toEqual([]);
+  const forged=await outsider.from("report_publications").insert(
+   report(a.id,aStudent.data!.id,aWorkplace.data!.id)
+  );
+  expect(forged.error).not.toBeNull();
+  await outsider.auth.signOut();
+ }finally{
+  expect((await admin.auth.admin.deleteUser(a.id)).error).toBeNull();
+  expect((await admin.auth.admin.deleteUser(b.id)).error).toBeNull();
+ }
+});
+
+/** SCH-05/06: A signed-in teacher can inspect only their own entitlement
+ * state, while direct writes to authority, subscription and audit tables
+ * fail at the database privilege boundary. Anonymous users get no rows. */
+test("authenticated and anonymous roles cannot mutate commercial authority",async()=>{
+ const admin=syntheticAdmin();
+ const a=await syntheticTeacher(admin);
+ const b=await syntheticTeacher(admin);
+ const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
+ const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const anon=createClient(url,key,{auth:{
+  persistSession:false,autoRefreshToken:false,
+ }});
+ const member=createClient(url,key,{auth:{
+  persistSession:false,autoRefreshToken:false,
+ }});
+ try{
+  const signed=await member.auth.signInWithPassword({
+   email:a.email,password:a.password,
+  });
+  expect(signed.error).toBeNull();
+  const own=await member.from("teacher_entitlement_state")
+   .select("teacher_id,revision").eq("teacher_id",a.id).single();
+  expect(own.error).toBeNull();
+  expect(own.data?.teacher_id).toBe(a.id);
+  const other=await member.from("teacher_entitlement_state")
+   .select("teacher_id").eq("teacher_id",b.id);
+  expect(other.error).toBeNull();
+  expect(other.data).toEqual([]);
+  const anonymous=await anon.from("teacher_entitlement_state")
+   .select("teacher_id").eq("teacher_id",a.id);
+  expect(anonymous.data ?? []).toEqual([]);
+  const changes=[
+   member.from("teacher_entitlement_state")
+    .update({revision:99999}).eq("teacher_id",a.id),
+   member.from("teacher_entitlement_grants").insert({
+    teacher_id:a.id,kind:"plan_access",request_id:randomUUID(),
+    reason:"synthetic forged grant",
+   }),
+   member.from("entitlement_audit_events").insert({
+    teacher_id:a.id,source:"operator",action:"fake",
+    request_id:randomUUID(),reason:"synthetic forged audit",
+   }),
+   member.from("platform_billing_events").insert({
+    provider:"synthetic",merchant_scope:"tenant-test",
+    external_event_id:randomUUID(),event_type:"paid",
+    payload_sha256:"a".repeat(64),
+    signature_verified_at:new Date().toISOString(),
+   }),
+   member.from("platform_subscriptions").delete().eq("teacher_id",a.id),
+  ];
+  for(const mutation of changes){
+   const result=await mutation;
+   expect(result.error,"direct commercial mutation must be denied").not.toBeNull();
+  }
+  const unchanged=await admin.from("teacher_entitlement_state")
+   .select("revision").eq("teacher_id",a.id).single();
+  expect(unchanged.error).toBeNull();
+  expect(unchanged.data?.revision).toBe(own.data?.revision);
+ }finally{
+  await member.auth.signOut();
+  expect((await admin.auth.admin.deleteUser(a.id)).error).toBeNull();
+  expect((await admin.auth.admin.deleteUser(b.id)).error).toBeNull();
+ }
+});
+
+
+/** ENT-13: a referenced capability cannot be silently retired, reclassified
+ * or changed retroactively. Published plan values also remain immutable. */
+test("referenced capability definitions and published plan values are immutable",async()=>{
+ const admin=syntheticAdmin();
+ const key="students.active";
+ const before=await admin.from("capability_definitions")
+  .select("key,kind,security_class,active,definition_version")
+  .eq("key",key).single();
+ expect(before.error).toBeNull();
+ for(const change of [
+  {security_class:"operator"},
+  {active:false},
+  {definition_version:(before.data!.definition_version as number)+1},
+ ]){
+  const result=await admin.from("capability_definitions")
+   .update(change).eq("key",key);
+  expect(result.error?.code).toBe("23514");
+  expect(result.error?.message).toContain("CAPABILITY_CONTRACT_IMMUTABLE");
+ }
+ const free=await admin.from("plan_versions")
+  .select("id").eq("code","free").eq("version",1).single();
+ expect(free.error).toBeNull();
+ const rewritten=await admin.from("plan_capabilities")
+  .update({unlimited:false,integer_value:1})
+  .eq("plan_version_id",free.data!.id).eq("capability_key",key);
+ expect(rewritten.error?.code).toBe("23514");
+ expect(rewritten.error?.message).toContain("PUBLISHED_CAPABILITY_IMMUTABLE");
+ const after=await admin.from("capability_definitions")
+  .select("key,kind,security_class,active,definition_version")
+  .eq("key",key).single();
+ expect(after.error).toBeNull();
+ expect(after.data).toEqual(before.data);
+});
+
+/** ENT-13: a disabled capability cannot enter any new draft plan; once a
+ * plan references the definition it also becomes immutable. */
+test("draft plan rejects inactive capability, then pins its approved definition",async()=>{
+ const admin=syntheticAdmin();
+ const key="synthetic."+randomUUID().replaceAll("-","");
+ const code="z"+randomUUID().replaceAll("-","").slice(0,14);
+ let planId:string|undefined;
+ try{
+  const definition=await admin.from("capability_definitions").insert({
+   key,kind:"integer_limit",unit:"units",security_class:"teacher",
+   active:false,
+  });
+  expect(definition.error).toBeNull();
+  const plan=await admin.from("plan_versions").insert({
+   code,version:1,lifecycle:"draft",
+  }).select("id").single();
+  expect(plan.error).toBeNull();
+  planId=plan.data!.id;
+  const cap={plan_version_id:planId,capability_key:key,
+   capability_kind:"integer_limit",integer_value:1,unlimited:false};
+  const blocked=await admin.from("plan_capabilities").insert(cap);
+  expect(blocked.error?.code).toBe("23514");
+  expect(blocked.error?.message).toContain("CAPABILITY_UNAVAILABLE");
+  const activation=await admin.from("capability_definitions")
+   .update({active:true}).eq("key",key);
+  expect(activation.error).toBeNull();
+  const enabled=await admin.from("plan_capabilities").insert(cap);
+  expect(enabled.error).toBeNull();
+  const disable=await admin.from("capability_definitions")
+   .update({active:false}).eq("key",key);
+  expect(disable.error?.message).toContain("CAPABILITY_CONTRACT_IMMUTABLE");
+ }finally{
+  if(planId){
+   await admin.from("plan_capabilities").delete().eq("plan_version_id",planId);
+   await admin.from("plan_versions").delete().eq("id",planId);
+  }
+  await admin.from("capability_definitions").delete().eq("key",key);
+ }
+});
+
+/** SCH-06/ENT-15: a visible plan must not disclose operator-only keys. */
+test("published plan catalog excludes operator capabilities for authenticated teacher",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ const member=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ const privateKey="operator."+randomUUID().replaceAll("-","");
+ const code="z"+randomUUID().replaceAll("-","").slice(0,15);
+ try{
+  const def=await admin.from("capability_definitions").insert({
+   key:privateKey,kind:"boolean",security_class:"operator",active:true,
+  });
+  expect(def.error).toBeNull();
+  const plan=await admin.from("plan_versions").insert({
+   code,version:1,lifecycle:"draft",
+  }).select("id").single();
+  expect(plan.error).toBeNull();
+  const id=plan.data!.id;
+  const caps=await admin.from("plan_capabilities").insert([
+   {plan_version_id:id,capability_key:privateKey,capability_kind:"boolean",
+    boolean_value:true,unlimited:false},
+   {plan_version_id:id,capability_key:"students.active",
+    capability_kind:"integer_limit",integer_value:0,unlimited:false},
+  ]);
+  expect(caps.error).toBeNull();
+  const publish=await admin.from("plan_versions").update({
+   lifecycle:"published",effective_at:"2026-01-01T00:00:00Z",
+  }).eq("id",id);
+  expect(publish.error).toBeNull();
+  const login=await member.auth.signInWithPassword({
+   email:teacher.email,password:teacher.password,
+  });
+  expect(login.error).toBeNull();
+  const visible=await member.from("plan_capabilities")
+   .select("capability_key").eq("plan_version_id",id);
+  expect(visible.error).toBeNull();
+  expect(visible.data).toEqual([{capability_key:"students.active"}]);
+  const hidden=await member.from("capability_definitions")
+   .select("key").eq("key",privateKey);
+  expect(hidden.error).toBeNull();
+  expect(hidden.data).toEqual([]);
+ }finally{
+  await member.auth.signOut();
+  // Published plan versions are intentionally immutable, so this synthetic
+  // catalog exists solely in the disposable test database.
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});
+
+/** TCH-01/02: generated segments consume durable original series dates.
+ * This fixture writes a split-shaped database, not a scoped product writer. */
+test("linked tail cannot recreate predecessor original dates or evade cancellation",async()=>{
+ const admin=syntheticAdmin();
+ const teacher=await syntheticTeacher(admin);
+ try{
+  const owner=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});
+  expect((await owner.auth.signInWithPassword({email:teacher.email,password:teacher.password})).error).toBeNull();
+  const timezone="Asia/Jerusalem";
+  const workplace=await admin.from("workplaces").update({timezone})
+   .eq("teacher_id",teacher.id).eq("kind","personal").select("id").single();
+  expect(workplace.error).toBeNull();
+  const student=await admin.from("students").insert({
+   teacher_id:teacher.id,name:"Linked recurrence "+randomUUID(),
+  }).select("id").single();
+  expect(student.error).toBeNull();
+  const ids={teacher_id:teacher.id,workplace_id:workplace.data!.id,student_id:student.data!.id};
+  expect((await admin.from("workplace_enrollments").insert({...ids,source:"manual"})).error).toBeNull();
+  const first="2060-01-08",cancelled="2060-01-15",draft="2060-01-22",open="2060-01-29";
+  const base={...ids,day_of_week:dayOfWeek(first),duration_minutes:45};
+  const root=await admin.from("lesson_slots").insert({
+   ...base,start_time:"00:30:00",start_date:"2060-01-01",
+  }).select("id,series_id").single();
+  expect(root.error).toBeNull();
+  expect(root.data?.series_id).toBe(root.data?.id);
+  const rootId=root.data!.id;
+  const occurrence=(slotId:string,date:string,time:string)=>({
+   ...ids,slot_id:slotId,slot_occurrence_date:date,
+   starts_at:zonedTimeToUtc(date,time,timezone).toISOString(),local_timezone:timezone,
+   duration_minutes:45,is_home_visit:false,slot_rate_cents:null,
+  });
+  const persisted=()=>admin.from("teaching_sessions")
+   .select("id,slot_id,slot_occurrence_date,starts_at,status,lesson_note,updated_at")
+   .eq("teacher_id",teacher.id).order("starts_at");
+  const materialized=await owner.rpc("ccp_canonical_slot_materialize",{
+   p_rows:[occurrence(rootId,first,"00:30"),occurrence(rootId,draft,"00:30")],
+  });
+  expect(materialized.error).toBeNull();
+  expect(materialized.data).toEqual({planned:2,inserted:2});
+  const note="Protected teaching history "+randomUUID();
+  const protect=await admin.from("teaching_sessions").update({status:"completed",lesson_note:note})
+   .eq("teacher_id",teacher.id).eq("slot_id",rootId).eq("slot_occurrence_date",first);
+  expect(protect.error).toBeNull();
+  const before=await persisted();
+  expect(before.error).toBeNull();
+  expect(before.data).toHaveLength(2);
+  expect(before.data?.[0]).toMatchObject({slot_id:rootId,status:"completed",lesson_note:note});
+  expect(before.data?.[1]).toMatchObject({slot_id:rootId,status:"scheduled",lesson_note:""});
+  const exception=await admin.from("slot_occurrence_exceptions").insert({
+   teacher_id:teacher.id,slot_id:rootId,original_occurrence_on:cancelled,
+   action:"cancel",approved_by:teacher.id,reason:"Approved predecessor cancellation",
+   request_id:randomUUID(),
+  }).select("id").single();
+  expect(exception.error).toBeNull();
+  const shortened=await admin.from("lesson_slots").update({end_date:"2060-01-07"}).eq("id",rootId);
+  expect(shortened.error).toBeNull();
+  const tail=await admin.from("lesson_slots").insert({
+   ...base,series_id:rootId,start_time:"02:00:00",start_date:first,
+  }).select("id").single();
+  expect(tail.error).toBeNull();
+  const other=await admin.from("lesson_slots").insert({
+   ...base,start_time:"14:00:00",start_date:first,
+  }).select("id,series_id").single();
+  expect(other.error).toBeNull();
+  expect(other.data?.series_id).toBe(other.data?.id);
+  const tailId=tail.data!.id,otherId=other.data!.id;
+  const stale=await owner.rpc("ccp_canonical_slot_materialize",{
+   p_rows:[occurrence(rootId,first,"00:30")],
+  });
+  expect(stale.error?.message).toBe("CANONICAL_MATERIALIZE_SLOT_MISMATCH");
+  const requested=[
+   occurrence(tailId,first,"02:00"),occurrence(tailId,cancelled,"02:00"),
+   occurrence(tailId,draft,"02:00"),occurrence(tailId,open,"02:00"),
+   occurrence(otherId,first,"14:00"),occurrence(otherId,cancelled,"14:00"),
+  ];
+  const firstRun=await owner.rpc("ccp_canonical_slot_materialize",{p_rows:requested});
+  expect(firstRun.error).toBeNull();
+  expect(firstRun.data).toEqual({planned:6,inserted:3});
+  const firstRead=await persisted();
+  expect(firstRead.error).toBeNull();
+  expect(firstRead.data).toHaveLength(5);
+  expect(firstRead.data?.filter(row=>row.slot_id===rootId)).toEqual(before.data);
+  expect(firstRead.data?.filter(row=>row.slot_id===tailId).map(row=>row.slot_occurrence_date)).toEqual([open]);
+  expect(firstRead.data?.filter(row=>row.slot_id===otherId).map(row=>row.slot_occurrence_date)).toEqual([first,cancelled]);
+  const replay=await owner.rpc("ccp_canonical_slot_materialize",{p_rows:requested});
+  expect(replay.error).toBeNull();
+  expect(replay.data).toEqual({planned:6,inserted:0});
+  expect((await persisted()).data).toEqual(firstRead.data);
+
+  const revoked=await admin.from("slot_occurrence_exceptions").update({
+   revoked_at:new Date().toISOString(),revoked_by:teacher.id,revocation_request_id:randomUUID(),
+  }).eq("id",exception.data!.id);
+  expect(revoked.error).toBeNull();
+  const resumed=await owner.rpc("ccp_canonical_slot_materialize",{p_rows:requested});
+  expect(resumed.error).toBeNull();
+  expect(resumed.data).toEqual({planned:6,inserted:1});
+  const final=await persisted();
+  expect(final.error).toBeNull();
+  expect(final.data?.filter(row=>row.slot_id===rootId)).toEqual(before.data);
+  expect(final.data?.filter(row=>row.slot_id===tailId).map(row=>row.slot_occurrence_date)).toEqual([cancelled,open]);
+  expect(final.data?.filter(row=>row.slot_id===otherId)).toEqual(firstRead.data?.filter(row=>row.slot_id===otherId));
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacher.id)).error).toBeNull();
+ }
+});

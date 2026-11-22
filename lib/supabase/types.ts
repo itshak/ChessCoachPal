@@ -24,26 +24,173 @@ export type RsvpStatus = "pending" | "yes" | "no" | "maybe";
 export interface Database {
   public: {
     Tables: {
+
+      session_amendment_events: {
+        Row: {id:string;teacher_id:string;session_id:string;
+          previous_state:Json;next_state:Json;actor_id:string|null;
+          source:"authenticated"|"service";changed_at:string};
+        Insert: {id?:string;teacher_id:string;session_id:string;
+          previous_state:Json;next_state:Json;actor_id?:string|null;
+          source:"authenticated"|"service";changed_at?:string};
+        Update: never;
+      };
+      // ADR-0019 reviewed cross-domain schema contracts; trusted writes only.
+      rating_providers: {
+        Row: {code:string;provider_kind:"online"|"federation";display_name:string;registry_revision:number;active:boolean;created_at:string};
+        Insert: {code:string;provider_kind:"online"|"federation";display_name:string;registry_revision?:number;active?:boolean;created_at?:string};
+        Update: never;
+      };
+      rating_categories: {
+        Row: {provider_code:string;code:string;display_name:string;registry_revision:number;active:boolean;created_at:string};
+        Insert: {provider_code:string;code:string;display_name:string;registry_revision?:number;active?:boolean;created_at?:string};
+        Update: never;
+      };
+      slot_occurrence_exceptions: {
+        Row: {id:string;teacher_id:string;slot_id:string;original_occurrence_on:string;
+          action:"cancel"|"reschedule"|"override";revised_starts_at:string|null;
+          revised_timezone:string|null;revised_duration_minutes:number|null;
+          session_id:string|null;approved_by:string;approved_at:string;
+          reason:string;request_id:string;revision:number;revoked_at:string|null;revoked_by:string|null;revocation_request_id:string|null;created_at:string};
+        Insert: {id?:string;teacher_id:string;slot_id:string;original_occurrence_on:string;
+          action:"cancel"|"reschedule"|"override";revised_starts_at?:string|null;
+          revised_timezone?:string|null;revised_duration_minutes?:number|null;
+          session_id?:string|null;approved_by:string;approved_at?:string;
+          reason:string;request_id:string;revision?:number;revoked_at?:string|null;revoked_by?:string|null;revocation_request_id?:string|null;created_at?:string};
+        Update: never;
+      };
+      report_publications: {
+        Row: {id:string;teacher_id:string;student_id:string|null;workplace_id:string|null;
+          snapshot_digest:string;snapshot_storage_ref:string;output_locale:string;
+          approved_by:string;approved_at:string;request_id:string;revision:number;
+          superseded_by:string|null;revoked_at:string|null;created_at:string};
+        Insert: {id?:string;teacher_id:string;student_id?:string|null;workplace_id?:string|null;
+          snapshot_digest:string;snapshot_storage_ref:string;output_locale:string;
+          approved_by:string;approved_at:string;request_id:string;revision?:number;
+          superseded_by?:string|null;revoked_at?:string|null;created_at?:string};
+        Update: never;
+      };
+      report_publication_audiences: {
+        Row: {publication_id:string;portal_grant_id:string;teacher_id:string;
+          approved_by:string;approved_at:string;revoked_at:string|null;request_id:string};
+        Insert: {publication_id:string;portal_grant_id:string;teacher_id:string;
+          approved_by:string;approved_at?:string;revoked_at?:string|null;request_id:string};
+        Update: never;
+      };
+      // Teacher-verifiable evidence distinct from material delivery and ratings.
+      chess_observations: {
+        Row: {id:string;teacher_id:string;student_id:string;session_id:string|null;
+          category_id:string;observation:string;observed_at:string;
+          source:"teacher"|"agent";verified_at:string|null;verified_by:string|null;
+          request_id:string|null;created_at:string;updated_at:string;
+          learning_stage:"introduced"|"practiced"|"demonstrated"|"needs_review"|null};
+        Insert: {id?:string;teacher_id:string;student_id:string;session_id?:string|null;
+          category_id:string;observation:string;observed_at?:string;
+          source:"teacher"|"agent";verified_at?:string|null;verified_by?:string|null;
+          request_id?:string|null;created_at?:string;updated_at?:string;
+          learning_stage?:"introduced"|"practiced"|"demonstrated"|"needs_review"|null};
+        Update: Partial<Database["public"]["Tables"]["chess_observations"]["Insert"]>;
+      };
+      material_teaching_evidence: {
+        Row: {id:string;teacher_id:string;student_id:string;workplace_id:string|null;
+          session_id:string|null;material_id:string;stage:"assigned"|"taught"|"completed";
+          occurred_on:string;note:string;request_id:string;created_at:string;
+          updated_at:string;voided_at:string|null;void_reason:string|null;
+          learning_stage:"introduced"|"practiced"|"demonstrated"|"needs_review"|null;
+          stage_verified_at:string|null;stage_verified_by:string|null};
+        Insert: {id?:string;teacher_id:string;student_id:string;workplace_id?:string|null;
+          session_id?:string|null;material_id:string;stage:"assigned"|"taught"|"completed";
+          occurred_on:string;note?:string;request_id:string;created_at?:string;
+          updated_at?:string;voided_at?:string|null;void_reason?:string|null;
+          learning_stage?:"introduced"|"practiced"|"demonstrated"|"needs_review"|null;
+          stage_verified_at?:string|null;stage_verified_by?:string|null};
+        Update: Partial<Database["public"]["Tables"]["material_teaching_evidence"]["Insert"]>;
+      };
+
+      // ADR-0019 schema-only foundation. Trusted platform writes only.
+      capability_definitions: {
+        Row: {key:string;kind:"boolean"|"integer_limit";unit:string|null;security_class:"teacher"|"operator";definition_version:number;active:boolean;created_at:string};
+        Insert: {key:string;kind:"boolean"|"integer_limit";unit?:string|null;security_class?:"teacher"|"operator";definition_version?:number;active?:boolean;created_at?:string};
+        Update: never;
+      };
+      plan_versions: {
+        Row: {id:string;code:string;version:number;lifecycle:"draft"|"published"|"retired";effective_at:string|null;retired_at:string|null;priority:number;created_at:string};
+        Insert: {id?:string;code:string;version:number;lifecycle?:"draft"|"published"|"retired";effective_at?:string|null;retired_at?:string|null;priority?:number;created_at?:string};
+        Update: never;
+      };
+      plan_capabilities: {
+        Row: {plan_version_id:string;capability_key:string;capability_kind:"boolean"|"integer_limit";boolean_value:boolean|null;integer_value:number|null;unlimited:boolean};
+        Insert: {plan_version_id:string;capability_key:string;capability_kind:"boolean"|"integer_limit";boolean_value?:boolean|null;integer_value?:number|null;unlimited?:boolean};
+        Update: never;
+      };
+      teacher_entitlement_state: {
+        Row: {teacher_id:string;baseline_plan_version_id:string|null;revision:number;active_student_count:number;active_professional_workplace_count:number;evaluated_at:string|null;created_at:string;updated_at:string};
+        Insert: {teacher_id:string;baseline_plan_version_id?:string|null;revision?:number;active_student_count?:number;active_professional_workplace_count?:number;evaluated_at?:string|null;created_at?:string;updated_at?:string};
+        Update: never;
+      };
+      teacher_entitlement_grants: {
+        Row: {id:string;teacher_id:string;kind:"plan_access"|"capability_boost";plan_version_id:string|null;capability_key:string|null;capability_kind:string|null;boolean_value:boolean|null;integer_value:number|null;unlimited:boolean;valid_from:string;expires_at:string|null;revoked_at:string|null;reason:string;issued_by:string|null;request_id:string;created_at:string};
+        Insert: {id?:string;teacher_id:string;kind:"plan_access"|"capability_boost";plan_version_id?:string|null;capability_key?:string|null;capability_kind?:string|null;boolean_value?:boolean|null;integer_value?:number|null;unlimited?:boolean;valid_from?:string;expires_at?:string|null;revoked_at?:string|null;reason:string;issued_by?:string|null;request_id:string;created_at?:string};
+        Update: never;
+      };
+      entitlement_audit_events: {
+        Row: {id:string;teacher_id:string;actor_id:string|null;source:string;action:string;revision_before:number|null;revision_after:number|null;request_id:string;reason:string;occurred_at:string};
+        Insert: {id?:string;teacher_id:string;actor_id?:string|null;source:string;action:string;revision_before?:number|null;revision_after?:number|null;request_id:string;reason:string;occurred_at?:string};
+        Update: never;
+      };
+      account_usage_periods: {
+        Row: {id:string;teacher_id:string;capability_key:string;period_start:string;period_end:string;used_count:number;reserved_count:number;created_at:string};
+        Insert: {id?:string;teacher_id:string;capability_key:string;period_start:string;period_end:string;used_count?:number;reserved_count?:number;created_at?:string};
+        Update: never;
+      };
+      account_usage_events: {
+        Row: {id:string;teacher_id:string;capability_key:string;period_id:string;request_id:string;unit:string;amount:number;source:string;created_at:string};
+        Insert: {id?:string;teacher_id:string;capability_key:string;period_id:string;request_id:string;unit:string;amount:number;source:string;created_at?:string};
+        Update: never;
+      };
+      platform_billing_customers: {
+        Row: {id:string;teacher_id:string;provider:string;merchant_scope:string;external_customer_id:string;disabled_at:string|null;created_at:string};
+        Insert: {id?:string;teacher_id:string;provider:string;merchant_scope:string;external_customer_id:string;disabled_at?:string|null;created_at?:string};
+        Update: never;
+      };
+      platform_subscription_offers: {
+        Row: {id:string;plan_version_id:string;provider:string;merchant_scope:string;external_price_id:string;currency:string;billing_interval:"month"|"year";effective_from:string;effective_to:string|null;created_at:string};
+        Insert: {id?:string;plan_version_id:string;provider:string;merchant_scope:string;external_price_id:string;currency:string;billing_interval:"month"|"year";effective_from:string;effective_to?:string|null;created_at?:string};
+        Update: never;
+      };
+      platform_subscriptions: {
+        Row: {id:string;teacher_id:string;customer_id:string;offer_id:string;provider:string;merchant_scope:string;external_subscription_id:string;state:"trialing"|"active"|"past_due"|"grace"|"cancel_at_period_end"|"canceled"|"expired"|"refunded"|"disputed";current_period_end:string|null;paid_through:string|null;grace_until:string|null;cancel_at:string|null;latest_event_time:string|null;latest_event_version:string|null;revision:number;created_at:string;updated_at:string};
+        Insert: {id?:string;teacher_id:string;customer_id:string;offer_id:string;provider:string;merchant_scope:string;external_subscription_id:string;state:"trialing"|"active"|"past_due"|"grace"|"cancel_at_period_end"|"canceled"|"expired"|"refunded"|"disputed";current_period_end?:string|null;paid_through?:string|null;grace_until?:string|null;cancel_at?:string|null;latest_event_time?:string|null;latest_event_version?:string|null;revision?:number;created_at?:string;updated_at?:string};
+        Update: never;
+      };
+      platform_billing_events: {
+        Row: {id:string;provider:string;merchant_scope:string;external_event_id:string;external_subscription_id:string|null;teacher_id:string|null;event_type:string;external_created_at:string|null;payload_sha256:string;signature_verified_at:string;processing_state:"pending"|"applied"|"ignored"|"retry"|"failed";attempt_count:number;error_code:string|null;applied_at:string|null;received_at:string};
+        Insert: {id?:string;provider:string;merchant_scope:string;external_event_id:string;external_subscription_id?:string|null;teacher_id?:string|null;event_type:string;external_created_at?:string|null;payload_sha256:string;signature_verified_at:string;processing_state?:"pending"|"applied"|"ignored"|"retry"|"failed";attempt_count?:number;error_code?:string|null;applied_at?:string|null;received_at?:string};
+        Update: never;
+      };
       // Core operator-owned teaching tables. These must remain synchronized
       // with the one canonical SQL baseline, not inferred from old Studio models.
       workplaces: {
         Row: {
           id: string; teacher_id: string; name: string; timezone: string;
           currency: string; locale: string; policy: Json; created_at: string;
+          kind: "personal"|"professional"; archived_at: string|null;
+          revision: number; updated_at: string;
         };
         Insert: {
           id?: string; teacher_id: string; name: string; timezone?: string;
           currency?: string; locale?: string; policy?: Json; created_at?: string;
+          kind?: "personal"|"professional"; archived_at?: string|null;
+          revision?: number; updated_at?: string;
         };
         Update: {
           name?: string; timezone?: string; currency?: string; locale?: string;
-          policy?: Json;
+          policy?: Json; archived_at?: string|null;
         };
       };
       class_groups: {
-        Row: { id: string; teacher_id: string; workplace_id: string; name: string; created_at: string };
-        Insert: { id?: string; teacher_id: string; workplace_id: string; name: string; created_at?: string };
-        Update: { name?: string };
+        Row: { id: string; teacher_id: string; workplace_id: string; name: string; created_at: string; updated_at: string };
+        Insert: { id?: string; teacher_id: string; workplace_id: string; name: string; created_at?: string; updated_at?: string };
+        Update: { name?: string; updated_at?: string };
       };
       group_enrollments: {
         Row: { id: string; teacher_id: string; group_id: string; workplace_id: string; student_id: string; created_at: string };
@@ -55,13 +202,17 @@ export interface Database {
           id: string; teacher_id: string; kind: "game"|"puzzle"|"drill"|"study_chapter"|"external_link";
           title: string; description: string; source_url: string|null;
           request_id: string; request_hash: string; created_at: string; updated_at: string;
+          revision: number;
+          archived_at: string | null;
         };
         Insert: {
           id?: string; teacher_id: string; kind: "game"|"puzzle"|"drill"|"study_chapter"|"external_link";
           title: string; description?: string; source_url?: string|null;
           request_id: string; request_hash: string; created_at?: string; updated_at?: string;
+          revision?: number;
+          archived_at?: string | null;
         };
-        Update: { title?: string; description?: string; source_url?: string|null; updated_at?: string };
+        Update: { title?: string; description?: string; source_url?: string|null; updated_at?: string; archived_at?: string | null };
       };
       // Unified schema only; provider-sync API/workers require separate OpenSpec.
       student_rating_sync_consents: {
@@ -114,21 +265,33 @@ export interface Database {
       student_rating_snapshots: {
         Row: {
           id: string; teacher_id: string; student_id: string;
-          provider: "lichess" | "chesscom";
-          time_control: "bullet" | "blitz" | "rapid" | "classical" | "daily" | "puzzle";
+          provider: string;
+          time_control: string;
           rating: number; rating_deviation: number | null; provisional: boolean | null;
           games: number | null; source: "teacher_manual" | "provider_api";
           observed_at: string; fetched_at: string | null;
           request_id: string; created_at: string;
+          effective_at:string|null;provider_list_version:string|null;
+          source_url:string|null;source_digest:string|null;
+          verification_state:"unverified"|"provider_published";
+          external_player_id:string|null;source_handle_revision:number|null;
+          preview_digest: string | null;
+          source_username: string | null;
         };
         Insert: {
           id?: string; teacher_id: string; student_id: string;
-          provider: "lichess" | "chesscom";
-          time_control: "bullet" | "blitz" | "rapid" | "classical" | "daily" | "puzzle";
+          provider: string;
+          time_control: string;
           rating: number; rating_deviation?: number | null; provisional?: boolean | null;
           games?: number | null; source: "teacher_manual" | "provider_api";
           observed_at: string; fetched_at?: string | null;
           request_id: string; created_at?: string;
+          effective_at?:string|null;provider_list_version?:string|null;
+          source_url?:string|null;source_digest?:string|null;
+          verification_state?:"unverified"|"provider_published";
+          external_player_id?:string|null;source_handle_revision?:number|null;
+          preview_digest?: string | null;
+          source_username?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["student_rating_snapshots"]["Insert"]>;
       };
@@ -320,50 +483,35 @@ export interface Database {
           email: string;
           display_name: string;
           avatar_url: string | null;
+          preferred_locale: string;
           selected_workplace_id: string | null;
           created_at: string;
-          hosted_plan: string;
-          trial_ends_at: string | null;
-          gifted_until: string | null;
-          stripe_customer_id: string | null;
-          stripe_subscription_id: string | null;
-          stripe_cancel_at: string | null;
-          founding_number: number | null;
           onboarding_tour_completed_at: string | null;
           calendar_token: string;
+          default_national_federation_code: string | null;
         };
         Insert: {
           id: string;
           email: string;
           display_name: string;
           avatar_url?: string | null;
+          preferred_locale?: string;
           selected_workplace_id?: string | null;
           created_at?: string;
-          hosted_plan?: string;
-          trial_ends_at?: string | null;
-          gifted_until?: string | null;
-          stripe_customer_id?: string | null;
-          stripe_subscription_id?: string | null;
-          stripe_cancel_at?: string | null;
-          founding_number?: number | null;
           onboarding_tour_completed_at?: string | null;
           calendar_token?: string;
+          default_national_federation_code?: string | null;
         };
         Update: {
           id?: string;
           email?: string;
           display_name?: string;
           avatar_url?: string | null;
+          preferred_locale?: string;
           selected_workplace_id?: string | null;
-          hosted_plan?: string;
-          trial_ends_at?: string | null;
-          gifted_until?: string | null;
-          stripe_customer_id?: string | null;
-          stripe_subscription_id?: string | null;
-          stripe_cancel_at?: string | null;
-          founding_number?: number | null;
           onboarding_tour_completed_at?: string | null;
           calendar_token?: string;
+          default_national_federation_code?: string | null;
         };
       };
       students: {
@@ -383,6 +531,16 @@ export interface Database {
           travel_fee_cents: number | null;
           archived_at: string | null;
           created_at: string;
+          updated_at: string;
+          name_aliases: string[];
+          strength: number | null;
+          lichess_username: string | null;
+          chesscom_username: string | null;
+          lichess_rating: number | null;
+          chesscom_rating: number | null;
+          name_search: string;
+          chess_goals: string;
+          chess_ratings: Json;
         };
         Insert: {
           id?: string;
@@ -400,6 +558,15 @@ export interface Database {
           travel_fee_cents?: number | null;
           archived_at?: string | null;
           created_at?: string;
+          updated_at?: string;
+          name_aliases?: string[];
+          strength?: number | null;
+          lichess_username?: string | null;
+          chesscom_username?: string | null;
+          lichess_rating?: number | null;
+          chesscom_rating?: number | null;
+          chess_goals?: string;
+          chess_ratings?: Json;
         };
         Update: {
           name?: string;
@@ -414,6 +581,14 @@ export interface Database {
           default_rate_cents?: number | null;
           travel_fee_cents?: number | null;
           archived_at?: string | null;
+          name_aliases?: string[];
+          strength?: number | null;
+          lichess_username?: string | null;
+          chesscom_username?: string | null;
+          lichess_rating?: number | null;
+          chesscom_rating?: number | null;
+          chess_goals?: string;
+          chess_ratings?: Json;
         };
       };
       teacher_settings: {
@@ -457,6 +632,7 @@ export interface Database {
           bcc_email: string | null;
           ai_provider: "none" | "openai" | "anthropic";
           ai_api_key: string | null;
+          policies_updated_at: string | null;
           updated_at: string;
         };
         Insert: {
@@ -499,6 +675,7 @@ export interface Database {
           bcc_email?: string | null;
           ai_provider?: "none" | "openai" | "anthropic";
           ai_api_key?: string | null;
+          policies_updated_at?: string | null;
         };
         Update: {
           business_name?: string;
@@ -539,13 +716,17 @@ export interface Database {
           bcc_email?: string | null;
           ai_provider?: "none" | "openai" | "anthropic";
           ai_api_key?: string | null;
+          policies_updated_at?: string | null;
         };
       };
       lesson_slots: {
         Row: {
           id: string;
+          series_id: string;
+          series_workplace_scope: string;
           teacher_id: string;
           student_id: string;
+          workplace_id: string | null;
           day_of_week: number;
           start_time: string;
           duration_minutes: number;
@@ -555,11 +736,14 @@ export interface Database {
           rate_cents: number | null;
           is_home_visit: boolean;
           created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
+          series_id?: string;
           teacher_id: string;
           student_id: string;
+          workplace_id?: string | null;
           day_of_week: number;
           start_time: string;
           duration_minutes?: number;
@@ -568,8 +752,10 @@ export interface Database {
           active?: boolean;
           rate_cents?: number | null;
           is_home_visit?: boolean;
+          updated_at?: string;
         };
         Update: {
+          workplace_id?: string | null;
           day_of_week?: number;
           start_time?: string;
           duration_minutes?: number;
@@ -578,6 +764,7 @@ export interface Database {
           active?: boolean;
           rate_cents?: number | null;
           is_home_visit?: boolean;
+          updated_at?: string;
         };
       };
       invoices: {
@@ -598,6 +785,7 @@ export interface Database {
           stripe_checkout_url: string | null;
           notes: string;
           created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -615,6 +803,7 @@ export interface Database {
           stripe_payment_intent_id?: string | null;
           stripe_checkout_url?: string | null;
           notes?: string;
+          updated_at?: string;
         };
         Update: {
           status?: InvoiceStatus;
@@ -627,6 +816,7 @@ export interface Database {
           stripe_payment_intent_id?: string | null;
           stripe_checkout_url?: string | null;
           notes?: string;
+          updated_at?: string;
         };
       };
       invoice_items: {
@@ -784,7 +974,7 @@ export interface Database {
       };
       teaching_sessions: {
         Row: {
-          id: string; teacher_id: string; workplace_id: string | null;
+          id: string; teacher_id: string; workplace_id: string;
           group_id: string | null; student_id: string | null;
           title: string; starts_at: string; duration_minutes: number;
           status: "scheduled" | "completed" | "cancelled";
@@ -793,9 +983,10 @@ export interface Database {
           slot_occurrence_date: string | null; local_timezone: string | null;
           is_home_visit: boolean; rescheduled_from_date: string | null;
           makeup_for_session_id: string | null; makeup_for_student_id: string | null;
+          roster_mode: "standard" | "ad_hoc";
         };
         Insert: {
-          id?: string; teacher_id: string; workplace_id?: string | null;
+          id?: string; teacher_id: string; workplace_id: string;
           group_id?: string | null; student_id?: string | null;
           title: string; starts_at: string; duration_minutes: number;
           status?: "scheduled" | "completed" | "cancelled";
@@ -804,9 +995,10 @@ export interface Database {
           slot_occurrence_date?: string | null; local_timezone?: string | null;
           is_home_visit?: boolean; rescheduled_from_date?: string | null;
           makeup_for_session_id?: string | null; makeup_for_student_id?: string | null;
+          roster_mode?: "standard" | "ad_hoc";
         };
         Update: {
-          workplace_id?: string | null; group_id?: string | null;
+          workplace_id?: string; group_id?: string | null;
           student_id?: string | null; title?: string; starts_at?: string;
           duration_minutes?: number; status?: "scheduled" | "completed" | "cancelled";
           lesson_note?: string; slot_id?: string | null;
@@ -815,6 +1007,7 @@ export interface Database {
           rescheduled_from_date?: string | null;
           makeup_for_session_id?: string | null; makeup_for_student_id?: string | null;
           updated_at?: string;
+          roster_mode?: "standard" | "ad_hoc";
         };
       };
       session_participants: {
@@ -934,6 +1127,7 @@ export interface Database {
         Row: {
           id: string;
           teacher_id: string;
+          workplace_id: string | null;
           title: string;
           description: string;
           location: string;
@@ -947,6 +1141,7 @@ export interface Database {
         Insert: {
           id?: string;
           teacher_id: string;
+          workplace_id?: string | null;
           title: string;
           description?: string;
           location?: string;
@@ -958,6 +1153,7 @@ export interface Database {
           updated_at?: string;
         };
         Update: {
+          workplace_id?: string | null;
           title?: string;
           description?: string;
           location?: string;

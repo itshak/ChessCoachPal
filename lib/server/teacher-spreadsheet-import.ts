@@ -119,9 +119,9 @@ export async function teacherSpreadsheetCommit(
   });
   if(error){
     const code=error.message??"";
-    if(code.includes("HOSTED_LIMIT_REACHED"))
-      return NextResponse.json({error:"Active-student capacity reached",
-        code:"HOSTED_LIMIT_REACHED",issues},{status:403});
+    if(code==="CAPACITY_EXCEEDED")
+      return NextResponse.json({error:"Active-student capacity reached. No rows were imported.",
+        code:"CAPACITY_EXCEEDED",issues},{status:409});
     if(code.includes("IMPORT_REPLAY_CONFLICT"))
       return NextResponse.json({error:"Import idempotency key reused with changed data",
         code:"IMPORT_REPLAY_CONFLICT",issues},{status:409});

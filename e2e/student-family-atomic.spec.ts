@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
+import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 
 /** Real authenticated SQL rollback: contact creation succeeds inside the
  * function, then the student-capacity trigger fails. Neither partial contact,
@@ -21,10 +22,9 @@ test("atomic full student-contact create rolls back orphan contacts on hosted ca
  try{
    const teacher=await admin.from("teachers").insert({
      id:teacherId,email,display_name:"Atomic family student teacher",
-     hosted_enforced:true,hosted_plan:"free",
-     hosted_max_active_students:1,active_student_count:0,
    });
    expect(teacher.error).toBeNull();
+   await configureSyntheticStudentCapacity(admin,teacherId,1);
    const occupant=await admin.from("students").insert({
      teacher_id:teacherId,name:"Student occupying the only active slot",
    });
@@ -45,7 +45,7 @@ test("atomic full student-contact create rolls back orphan contacts on hosted ca
      p_adult_self:false,p_request_id:randomUUID(),
    });
    expect(refused.error).not.toBeNull();
-   expect(refused.error?.message).toContain("HOSTED_LIMIT_REACHED");
+   expect(refused.error?.message).toContain("CAPACITY_EXCEEDED");
 
    const contactCheck=await admin.from("contacts").select("id")
      .eq("teacher_id",teacherId).eq("display_name",familyName);
@@ -59,8 +59,8 @@ test("atomic full student-contact create rolls back orphan contacts on hosted ca
    expect(contactCheck.data).toEqual([]);
    expect(linkCheck.data).toEqual([]);
    expect(studentCheck.data).toEqual([]);
-   const counted=await admin.from("teachers").select("active_student_count")
-     .eq("id",teacherId).single();
+   const counted=await admin.from("teacher_entitlement_state")
+     .select("active_student_count").eq("teacher_id",teacherId).single();
    expect(counted.error).toBeNull();
    expect(counted.data?.active_student_count).toBe(1);
  }finally{

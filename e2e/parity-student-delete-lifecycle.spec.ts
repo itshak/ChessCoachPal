@@ -127,8 +127,7 @@ test("PARITY:PARITY-student-delete-revision-race-and-tenant-isolation allow one 
  try{
   expect((await admin.from("teachers").insert({
    id:foreignId,email:foreignEmail,display_name:"Foreign chess teacher",
-   hosted_enforced:false,
-  })).error).toBeNull();
+   })).error).toBeNull();
   const other=await admin.from("students").insert({
    teacher_id:foreignId,name:"Not your pupil "+randomUUID(),
   }).select("id,updated_at").single();

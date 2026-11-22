@@ -1,11 +1,15 @@
 # Consolidated final-schema implementation and acceptance checklist
 
-**All tasks unchecked at creation (2026-11-21): documentation approval is not schema implementation or deployment.** Only this proposal owns remaining planned pre-production DDL. Historical source candidates from merged PRs #104/#107/#108 and open test-only PR #113 are inputs, not proof of full acceptance.
+**2026-11-21 implementation candidate (draft PR #115):** The consolidated canonical baseline now contains 18 new domain/commercial relations, normalized SQL entitlement/active-roster guards, Personal/Professional workplace lifecycle, extensible rating categories, teacher evidence, recurrence exceptions and explicitly approved report snapshots, with matching TypeScript and web/MCP compatibility changes. The full field-level source status and limits are documented in `docs/FINAL_SCHEMA_IMPLEMENTATION_STATUS_2026-11-21.md`. **Every Phase 2 acceptance gate is still subject to exact-head SQL/E2E evidence; checkboxes below intentionally remain unchecked until accepted.** Only this proposal owns the pre-production DDL; previous merged candidates and test-only PR #113 are inputs, not independent full acceptance.
+
+## 2026-11-22 implementation evidence pending final-head checks
+
+A single source candidate on draft PR #115 now includes all 18 planned new relations, canonical SQL entitlement authority, explicit plan/grant/subscription audit triggers, the normalized PR #113 recovery race and new professional-workplace/rating/report scoping regressions. Physical source inventory currently counts 105 tables (60 explicitly typed, 45 requiring deliberate type/internal ownership decisions). Static parser fixes and the latest SQL SHA-256 require **their own** five-workflow exact-head pass. These are implemented slices, **not** unchecked Phase 0/1/2 signoffs, and production cutover remains separate.
 
 ## Phase 0 — audit and ownership (P0)
 
 - [ ] Pin exact merged-main SHA and inspect every open PR for DDL, RLS, TypeScript type, migration, seed and service-contract conflict; record update on PR #113 and any new PRs before implementation.
-- [ ] Regenerate exhaustive table/column/FK/unique/index/trigger/policy/function inventory from authoritative SQL and live target via read-only private inspection; reconcile 87 source tables and previously reported 40 typed/47 untyped; label internal-only contracts.
+- [ ] Regenerate the exhaustive table/column/FK/unique/index/trigger/policy/function inventory from the exact authoritative SQL and an independent disposable target via read-only structural inspection; reconcile the historical 87 source tables and 40 typed/47 untyped counts against the candidate; label internal-only contracts. This tests the source freeze. The actual private legacy target inventory and mapping stay mandatory in Phase 3 under ADR-0017 and require separate authorization.
 - [ ] Sign off [crosswalk](../../../docs/FINAL_SCHEMA_REQUIREMENTS_CROSSWALK_2026-11-21.md) and every downstream persistent requirement: contacts/payer, workplace/locale, enrollment/import/archive/credits, portal, compensation/financial truth, ratings/consent/jobs, recurrence/lesson revisions, published reports, learning provenance and Free/Pro.
 - [ ] Decide exact minimal DDL for pending recurrence exceptions, report publication, workplace overrides and educational evidence; reuse existing tables or explicitly document none needed. No speculative new Academy source of truth.
 

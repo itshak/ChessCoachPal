@@ -132,3 +132,149 @@ test("PARITY:PARITY-student-lifecycle archives all dated memberships atomically 
  const foreign=await call("ccp_students_lifecycle_preview",{studentId:randomUUID()});
  expect(foreign.error?.code).toBe("NOT_FOUND");
 });
+
+test("PARITY:PARITY-expired-funded-credit-hold is owner-only and preserves financial evidence",async({
+ page,request,browser,baseURL,
+})=>{
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+ const identities:string[]=[];
+ const makeTeacher=async(label:string)=>{
+  const email="credit-hold-"+randomUUID()+"@example.com";
+  const password="Synthetic-CreditHold-123!";
+  const {data,error}=await admin.auth.admin.createUser({email,password,email_confirm:true});
+  expect(error).toBeNull();
+  const id=data.user!.id;
+  identities.push(id);
+  expect((await admin.from("teachers").insert({
+   id,email,display_name:label,onboarding_tour_completed_at:new Date().toISOString(),
+  })).error).toBeNull();
+  return {id,email,password};
+ };
+ const otherContext=await browser.newContext({baseURL});
+ try{
+  const owner=await makeTeacher("Synthetic expired-credit owner");
+  const other=await makeTeacher("Synthetic neighboring teacher");
+  const owned=await delegatedTool(page,request,"coach:read coach:write",owner);
+  const otherPage=await otherContext.newPage();
+  const neighboring=await delegatedTool(otherPage,request,"coach:read coach:write",other);
+  const learner=await owned("ccp_students_create",{
+   name:"Expired credit learner "+randomUUID(),idempotencyKey:randomUUID(),
+  });
+  expect(learner.error).toBeUndefined();
+  const studentId=learner.data.entityId as string;
+  const workplace=await owned("ccp_workplaces_create",{
+   name:"Expired credit campus "+randomUUID(),timezone:"UTC",currency:"USD",
+   locale:"en",policy:{},idempotencyKey:randomUUID(),
+  });
+  expect(workplace.error).toBeUndefined();
+  const workplaceId=workplace.data.entityId as string;
+  // Record an actual historical enrollment rather than creating a current
+  // enrollment and backdating a purchase outside its verified interval.
+  const startsOn="2020-01-01",expiresOn="2020-02-01",priceCents=7500;
+  const period=await admin.from("workplace_enrollments").insert({
+   teacher_id:owner.id,workplace_id:workplaceId,student_id:studentId,
+   starts_on:startsOn,source:"manual",
+  });
+  expect(period.error).toBeNull();
+  const {billingAccountId}=await createAssignedPayer(owned,{
+   studentId,workplaceId,effectiveFrom:startsOn,
+  });
+  const packageResult=await owned("ccp_credits_package_create",{
+   studentId,workplaceId,credits:3,durationMinutes:45,priceCents,
+   startsOn,expiresOn,requestId:randomUUID(),confirmed:true,
+  });
+  expect(packageResult.error).toBeUndefined();
+  const {packageId,invoiceId}=packageResult.data as {packageId:string;invoiceId:string};
+  // Model one already recorded synthetic manual receipt, not a new cash
+  // transaction performed by the lifecycle operation being tested.
+  const funding=await admin.from("payments").insert({
+   invoice_id:invoiceId,amount_cents:priceCents,method:"manual",
+   recorded_at:"2020-01-01T12:00:00Z",
+  });
+  expect(funding.error).toBeNull();
+  const paid=await admin.from("invoices").update({
+   status:"paid",paid_at:"2020-01-01T12:00:00Z",payment_method:"manual",
+  }).eq("teacher_id",owner.id).eq("id",invoiceId);
+  expect(paid.error).toBeNull();
+  const financialSnapshot=async()=>{
+   const [packageRow,receipt,invoice,adjustments,reversals]=await Promise.all([
+    admin.from("credit_packages").select("id,student_id,workplace_id,invoice_id,credits,starts_on,expires_on,price_cents")
+     .eq("teacher_id",owner.id).eq("id",packageId).single(),
+    admin.from("payments").select("id,amount_cents,method,recorded_at").eq("invoice_id",invoiceId),
+    admin.from("invoices").select("id,status,billing_account_id,subtotal_cents,paid_at")
+     .eq("teacher_id",owner.id).eq("id",invoiceId).single(),
+    admin.from("credit_adjustment_events").select("id").eq("teacher_id",owner.id).eq("package_id",packageId),
+    admin.from("financial_reversals").select("id").eq("teacher_id",owner.id),
+   ]);
+   for(const row of [packageRow,receipt,invoice,adjustments,reversals])expect(row.error).toBeNull();
+   return {package:packageRow.data,receipt:receipt.data,invoice:invoice.data,
+    adjustments:adjustments.data,reversals:reversals.data};
+  };
+  const financialBefore=await financialSnapshot();
+  expect(financialBefore).toMatchObject({
+   package:{id:packageId,student_id:studentId,workplace_id:workplaceId,credits:3,expires_on:expiresOn},
+   receipt:[{amount_cents:priceCents,method:"manual"}],
+   invoice:{status:"paid",billing_account_id:billingAccountId,subtotal_cents:priceCents},
+   adjustments:[],reversals:[],
+  });
+  const previewArgs={action:"students.lifecyclePreview",studentId};
+  const preview=await page.request.post("/api/agent/v1",{data:previewArgs});
+  expect(preview.status(),await preview.text()).toBe(200);
+  const before=(await preview.json()).data;
+  expect(before.teacherLocalToday>expiresOn).toBe(true);
+  expect(before).toMatchObject({
+   studentId,archived:false,canArchive:true,
+   creditPolicy:"hold_without_refund_transfer_or_expiry_change",
+   creditPackages:[{packageId,invoiceId,invoiceStatus:"paid",expiresOn,purchasedCredits:3,
+    redeemedCredits:0,adjustmentCredits:0,recordedLegacyInvoicePaymentsCents:priceCents}],
+  });
+  expect((await owned("ccp_students_lifecycle_preview",{studentId})).data).toEqual(before);
+  const commit={studentId,mode:"archive",expectedUpdatedAt:before.expectedUpdatedAt,
+   selectedWorkplaceIds:[],requestId:randomUUID(),confirmed:true,
+   reason:"Teacher reviewed expired prepaid credit and kept original financial evidence"};
+  const deniedPreview=await otherPage.request.post("/api/agent/v1",{data:previewArgs});
+  expect(deniedPreview.status()).toBe(404);
+  const mcpDeniedPreview=await neighboring("ccp_students_lifecycle_preview",{studentId});
+  expect(mcpDeniedPreview).toEqual(await deniedPreview.json());
+  expect(mcpDeniedPreview.error?.code).toBe("NOT_FOUND");
+  const deniedCommit=await otherPage.request.post("/api/agent/v1",{
+   data:{action:"students.lifecycleCommit",...commit},
+  });
+  expect(deniedCommit.status()).toBe(404);
+  const mcpDeniedCommit=await neighboring("ccp_students_lifecycle_commit",commit);
+  expect(mcpDeniedCommit).toEqual(await deniedCommit.json());
+  expect(mcpDeniedCommit.error?.code).toBe("NOT_FOUND");
+  const deniedLedger=await admin.from("agent_tool_receipts").select("teacher_id")
+   .eq("idempotency_key",commit.requestId);
+  expect(deniedLedger.error).toBeNull();
+  expect(deniedLedger.data).toEqual([]);
+  const stillOwned=await owned("ccp_students_lifecycle_preview",{studentId});
+  expect(stillOwned.error).toBeUndefined();
+  expect(stillOwned.data).toMatchObject({archived:false,expectedUpdatedAt:before.expectedUpdatedAt});
+
+  const archived=await owned("ccp_students_lifecycle_commit",commit);
+  expect(archived.error).toBeUndefined();
+  expect(archived.data).toMatchObject({archived:true,replayed:false,closedPeriods:1});
+  const retry=await page.request.post("/api/agent/v1",{
+   data:{action:"students.lifecycleCommit",...commit},
+  });
+  expect(retry.status(),await retry.text()).toBe(200);
+  expect((await retry.json()).data).toEqual({...archived.data,replayed:true});
+  const ownerAfter=await page.request.post("/api/agent/v1",{data:previewArgs});
+  expect(ownerAfter.status(),await ownerAfter.text()).toBe(200);
+  expect((await ownerAfter.json()).data).toMatchObject({
+   archived:true,creditPackages:before.creditPackages,creditPolicy:before.creditPolicy,
+  });
+  expect(await financialSnapshot()).toEqual(financialBefore);
+  const ownerLedger=await admin.from("agent_tool_receipts").select("teacher_id,operation")
+   .eq("idempotency_key",commit.requestId);
+  expect(ownerLedger.error).toBeNull();
+  expect(ownerLedger.data).toEqual([{teacher_id:owner.id,operation:"student.lifecycle"}]);
+ }finally{
+  await otherContext.close();
+  for(const id of identities.reverse())expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
+ }
+});

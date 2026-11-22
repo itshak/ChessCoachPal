@@ -32,6 +32,8 @@ Keep one target `supabase/migrations/20261107000000_chesscoachpal_baseline.sql` 
 | `platform_billing_events` | provider+merchant+external event ID unique, verified received timestamp, provider-object ID, event creation/version, payload digest, processing status/attempt/error, applied subscription version; redact sensitive provider payloads and handle out-of-order/replay |
 | `platform_entitlement_transitions` (optional if unified audit suffices) | Prefer **reuse** `entitlement_audit_events`; do not create duplicate audit truth |
 
+Authenticated teachers may read published-plan offer metadata, including its window; this is not sale eligibility or a price promise. Billing routing fields (`merchant_scope` and `external_price_id`) are visible only to the trusted service. A verified existing subscription is evaluated by its plan and verified paid/trial/grace state, not the offer sale window. Rating catalogue rows expose their own active flags; worker admission and commit independently require an active parent provider and supported active category.
+
 Never elevate solely on a checkout success redirect or an unverified payment event. Signed webhooks and provider account scopes are validated by adapters. Compare/corroborate current subscription identity and ordered provider status before applying; older deletion cannot demote a replacement subscription. Explicit cancellation, period-end, failed payment, bounded grace, refund/dispute and trial states; reconcile external events after errors. Do not conflate `platform_*` money with teacher `invoices`, `payments`, `received_payments`, `credit_packages` or `financial_obligations`. OAuth scopes and portal grants remain independent of plan state.
 
 ### C. Workplaces and teacher settings

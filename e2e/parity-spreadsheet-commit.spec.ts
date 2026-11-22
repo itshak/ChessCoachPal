@@ -1,6 +1,8 @@
 import {randomUUID} from "node:crypto";
+import {createClient} from "@supabase/supabase-js";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 
 test("PARITY:PARITY-spreadsheet-preview-commit-replay shares mapping and deduplicated receipt",async({page,request})=>{
  const call=await delegatedTool(page,request);
@@ -100,4 +102,63 @@ test("PARITY:PARITY-spreadsheet-archived-status-website-MCP-atomic-roundtrip",as
  const excluded=await page.request.get("/api/students?query="+encodeURIComponent(historicalName));
  expect(excluded.status()).toBe(200);
  expect((await excluded.json()).students.some((s:{name:string})=>s.name===historicalName)).toBe(false);
+});
+
+test("PARITY:PARITY-spreadsheet-capacity rejects the entire over-cap batch then permits same-key retry",async({page,request})=>{
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const email="capacity-spreadsheet-"+randomUUID()+"@example.com";
+ const password="SyntheticSpreadsheetCapacity-123!";
+ const identity=await admin.auth.admin.createUser({email,password,email_confirm:true});
+ expect(identity.error).toBeNull();
+ const teacherId=identity.data.user!.id;
+ try{
+  expect((await admin.from("teachers").insert({
+   id:teacherId,email,display_name:"Synthetic spreadsheet capacity",
+   onboarding_tour_completed_at:new Date().toISOString(),
+  })).error).toBeNull();
+  await configureSyntheticStudentCapacity(admin,teacherId,1);
+  const workplace=await admin.from("workplaces").select("id").eq("teacher_id",teacherId).single();
+  expect(workplace.error).toBeNull();
+  const workplaceId=workplace.data!.id;
+  const call=await delegatedTool(page,request,"coach:read coach:write",{email,password});
+  const names=["Import learner "+randomUUID(),"Other learner "+randomUUID()];
+  const rows=names.map(name=>({"Student Name":name,"Guardian Name":"Guardian "+name}));
+  const mapping={student_name:"Student Name",guardian_name:"Guardian Name"};
+  const idempotencyKey=randomUUID();
+  const body={rows,mapping,workplaceId,idempotencyKey};
+  const persisted=async(expected:number)=>{
+   for(const table of ["students","contacts","workplace_enrollments","teacher_spreadsheet_import_receipts"]){
+    const {count,error}=await admin.from(table).select("*",{head:true,count:"exact"}).eq("teacher_id",teacherId);
+    expect(error,table).toBeNull();
+    expect(count,table).toBe(expected);
+   }
+   const count=await admin.from("teacher_entitlement_state").select("active_student_count").eq("teacher_id",teacherId).single();
+   expect(count.error).toBeNull();
+   expect(count.data?.active_student_count).toBe(expected);
+  };
+  const rejected=await page.request.post("/api/import/spreadsheet/commit",{data:body});
+  expect(rejected.status(),await rejected.text()).toBe(409);
+  expect((await rejected.json()).code).toBe("CAPACITY_EXCEEDED");
+  await persisted(0);
+  const mcpRejected=await call("ccp_import_spreadsheet_commit",{...body,confirmed:true});
+  expect(mcpRejected.error?.code).toBe("CAPACITY_EXCEEDED");
+  await persisted(0);
+  const retry={...body,rows:[rows[0]]};
+  const accepted=await call("ccp_import_spreadsheet_commit",{...retry,confirmed:true});
+  expect(accepted.error).toBeUndefined();
+  expect(accepted.data).toMatchObject({
+   receiptId:idempotencyKey,studentsCreated:1,contactsCreated:1,enrollmentsCreated:1,
+  });
+  const replay=await page.request.post("/api/import/spreadsheet/commit",{data:retry});
+  expect(replay.status(),await replay.text()).toBe(200);
+  expect(await replay.json()).toEqual(accepted.data);
+  await persisted(1);
+  const readback=await admin.from("students").select("name").eq("teacher_id",teacherId);
+  expect(readback.error).toBeNull();
+  expect(readback.data).toEqual([{name:names[0]}]);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacherId)).error).toBeNull();
+ }
 });

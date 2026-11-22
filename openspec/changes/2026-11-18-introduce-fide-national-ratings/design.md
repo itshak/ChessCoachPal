@@ -5,8 +5,10 @@
 > **Execution prerequisite:** First complete [`2026-11-21-consolidate-final-preproduction-saas-schema`](../2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
 
 
+> **Shared adapter proposal:** [Rating-provider boundaries](../../../docs/RATING_PROVIDER_BOUNDARIES.md). Keep provider retrieval separate from shared website/MCP policies and persistence. No independent DDL or deployment is proposed.
+
 ## Current source boundaries
-Student profile: students.strength (teacher), students.chess_ratings/manual fields, student_chess_profile_history, student_rating_snapshots with provider IN (lichess,chesscom) and source (teacher_manual,provider_api). Preserve those records, avoid dual truth and align this change with online sync.
+The source candidate retains teacher-assessed strength, manual chess profile fields, profile history, and canonical immutable `student_rating_snapshots`. Snapshot categories are now validated by the shared provider/category registry. The existing federation service handles owner-scoped identity and manual evidence; an automated FIDE/national importer is not implemented. Preserve existing records and avoid dual truth.
 
 ## Proposed identity and ratings
 - students.fide_id nullable text validated against known stable ID syntax, plus fide_federation_code nullable; no fabricated registration, a FIDE ID is not a national membership.

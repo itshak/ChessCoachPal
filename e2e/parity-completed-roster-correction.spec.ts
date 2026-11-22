@@ -178,8 +178,7 @@ test("PARITY:PARITY-session-roster-foreign-tenant denies snapshot, confidential 
  try{
   expect((await admin.from("teachers").insert({
    id:teacherId,email,display_name:"Foreign historical teacher",
-   hosted_enforced:false,
-  })).error).toBeNull();
+   })).error).toBeNull();
   const workplace=await admin.from("workplaces").insert({
    teacher_id:teacherId,name:"Foreign chess school",timezone:"UTC",
   }).select("id").single();

@@ -2,6 +2,7 @@ import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 
 const unique=(s:string)=>s+" "+randomUUID();
 const teacherStudent=async(page:import("@playwright/test").Page,name:string)=>{
@@ -376,16 +377,12 @@ test("PARITY:PARITY-history-hosted-cap archived former students do not consume c
    .select("teacher_id").eq("id",ids[0]).single();
  expect(pupilError).toBeNull();
  const teacherId=pupil!.teacher_id as string;
- const {data:original,error:profileError}=await admin.from("teachers")
-  .select("hosted_enforced,hosted_plan,hosted_max_active_students,active_student_count")
-  .eq("id",teacherId).single();
+ const {data:original,error:profileError}=await admin.from("teacher_entitlement_state")
+  .select("active_student_count").eq("teacher_id",teacherId).single();
  expect(profileError).toBeNull();
+ const limit=Math.max(1,original!.active_student_count as number);
+ const capped=await configureSyntheticStudentCapacity(admin,teacherId,limit);
  try{
-  const cap=Math.max(1,original!.active_student_count as number);
-  const {error:setupError}=await admin.from("teachers").update({
-   hosted_enforced:true,hosted_plan:"free",hosted_max_active_students:cap,
-  }).eq("id",teacherId);
-  expect(setupError).toBeNull();
   // Creating another already archived former pupil when the active roster
   // is exactly at capacity must not be denied or count as an active pupil.
   const extraArchived=await page.request.post("/api/students",{
@@ -394,8 +391,8 @@ test("PARITY:PARITY-history-hosted-cap archived former students do not consume c
   });
   expect(extraArchived.status(),await extraArchived.text()).toBe(201);
   expect((await extraArchived.json()).archived_at).toBeTruthy();
-  const {data:afterCreate,error:afterCreateError}=await admin.from("teachers")
-   .select("active_student_count").eq("id",teacherId).single();
+  const {data:afterCreate,error:afterCreateError}=await admin.from("teacher_entitlement_state")
+   .select("active_student_count").eq("teacher_id",teacherId).single();
   expect(afterCreateError).toBeNull();
   expect(afterCreate!.active_student_count).toBe(original!.active_student_count);
   const rows=await Promise.all(ids.map(async studentId=>({
@@ -412,15 +409,10 @@ test("PARITY:PARITY-history-hosted-cap archived former students do not consume c
   const denied=await call("ccp_students_bulk_lifecycle_commit",{
    rows,previewDigest:preview.previewDigest,idempotencyKey:randomUUID(),confirmed:true,
   });
-  expect(denied.error?.code).toBe("HOSTED_LIMIT_REACHED");
+  expect(denied.error?.code).toBe("CAPACITY_EXCEEDED");
   for(const id of ids)expect((await profile(page,id)).archived_at).toBeTruthy();
  }finally{
-  const {error:restoreError}=await admin.from("teachers").update({
-   hosted_enforced:original!.hosted_enforced,
-   hosted_plan:original!.hosted_plan,
-   hosted_max_active_students:original!.hosted_max_active_students,
-  }).eq("id",teacherId);
-  expect(restoreError).toBeNull();
+  await capped.restore();
  }
 });
 

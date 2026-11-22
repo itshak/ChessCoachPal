@@ -1,79 +1,85 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  evaluateLimit,
-  HOSTED_LIMIT_ERROR_CODE,
-  resolveEffectivePlan,
-  type LimitCheckResult,
-  type LimitResource,
-  type TeacherEntitlementRow,
+import type {
+  EffectiveEntitlement,
+  HostedPlan,
+  LimitCheckResult,
+  LimitResource,
 } from "@/lib/entitlements";
 
-const TEACHER_ENTITLEMENT_SELECT =
-  "hosted_plan, trial_ends_at, gifted_until, stripe_subscription_id, founding_number";
-
-export async function loadTeacherEntitlements(
-  supabase: SupabaseClient,
-  teacherId: string
-): Promise<TeacherEntitlementRow | null> {
-  const { data, error } = await supabase
-    .from("teachers")
-    .select(TEACHER_ENTITLEMENT_SELECT)
-    .eq("id", teacherId)
-    .maybeSingle();
-
-  if (error) {
-    console.error("loadTeacherEntitlements:", error);
-    return null;
-  }
-  return data as TeacherEntitlementRow | null;
-}
-
 /**
- * Persist lazy demotion (trial/gift → free) so Account hosting stays honest.
- * Safe to call often; no-op when nothing changed.
+ * The immutable SQL plan catalogue + independent grants are the only
+ * authorization source. This helper is a UX precheck; PostgreSQL serializes
+ * each capacity-expanding write under the entitlement-state row lock.
  */
-export async function persistDemotionIfNeeded(
-  supabase: SupabaseClient,
-  teacherId: string,
-  stored: TeacherEntitlementRow | null,
-  demotedFrom: "trial" | "gifted" | null
-): Promise<void> {
-  if (!demotedFrom || !stored) return;
-  if (stored.hosted_plan === "free") return;
-  const { error } = await supabase.rpc("ccp_demote_expired_hosted_plan");
-  void teacherId;
-  if (error) {
-    console.error("persistDemotionIfNeeded:", error);
-  }
+export type SqlCapability = {
+  capabilityKey: string;
+  kind: "boolean" | "integer_limit";
+  planCode: string;
+  planVersionId: string;
+  enabled: boolean;
+  unlimited: boolean;
+  limit: number | null;
+  evaluatedAt: string;
+};
+export type AccountEntitlementSummary = {
+  revision: number;
+  activeStudentCount: number;
+  activeProfessionalWorkplaceCount: number;
+  studentCapacity: SqlCapability;
+  workplaceCapacity: SqlCapability;
+  reportPublishing: SqlCapability;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function parseCapability(value: unknown, key: string): SqlCapability {
+  if (!isRecord(value) || value.capabilityKey !== key ||
+      (value.kind !== "integer_limit" && value.kind !== "boolean") ||
+      typeof value.planCode !== "string" ||
+      typeof value.planVersionId !== "string" ||
+      typeof value.enabled !== "boolean" ||
+      typeof value.unlimited !== "boolean" ||
+      (value.limit !== null && (!Number.isSafeInteger(value.limit) ||
+        Number(value.limit) < 0)) ||
+      typeof value.evaluatedAt !== "string")
+    throw new Error("Invalid authoritative entitlement response");
+  return value as SqlCapability;
 }
 
-export async function countActiveStudents(
+/** Tenant identity comes from the authenticated JWT inside the RPC. */
+export async function loadAccountEntitlementSummary(
   supabase: SupabaseClient,
-  teacherId: string
-): Promise<number> {
-  const { count, error } = await supabase
-    .from("students")
-    .select("id", { count: "exact", head: true })
-    .eq("teacher_id", teacherId)
-    .is("archived_at", null);
-
-  if (error) {
-    console.error("countActiveStudents:", error);
-    throw new Error("Unable to verify active-student capacity");
+): Promise<AccountEntitlementSummary> {
+  const {data,error} = await supabase.rpc("ccp_entitlement_summary");
+  if (error || !isRecord(data) ||
+      !Number.isSafeInteger(data.revision) ||
+      !Number.isSafeInteger(data.activeStudentCount) ||
+      !Number.isSafeInteger(data.activeProfessionalWorkplaceCount)) {
+    throw new Error("Unable to load authoritative account entitlements");
   }
-  return count ?? 0;
+  return {
+    revision:data.revision as number,
+    activeStudentCount:data.activeStudentCount as number,
+    activeProfessionalWorkplaceCount:data.activeProfessionalWorkplaceCount as number,
+    studentCapacity:parseCapability(data.studentCapacity,"students.active"),
+    workplaceCapacity:parseCapability(data.workplaceCapacity,"workplaces.professional"),
+    reportPublishing:parseCapability(data.reportPublishing,"reports.publish"),
+  };
 }
 
-async function countForResource(
-  supabase: SupabaseClient, teacherId: string, resource: LimitResource
-): Promise<number> {
-  void resource;
-  return countActiveStudents(supabase, teacherId);
+/** Presentation only; PostgreSQL remains authoritative for student writes. */
+export function reachedStudentCapacity(
+  { activeStudentCount, studentCapacity }: Pick<AccountEntitlementSummary, "activeStudentCount" | "studentCapacity">,
+): number | null {
+  const { unlimited, limit } = studentCapacity;
+  return !unlimited && limit !== null && activeStudentCount >= limit ? limit : null;
 }
 
 /**
- * Server-side gate for create paths. Returns a LimitCheckResult; callers
- * should respond with 403 + HOSTED_LIMIT_REACHED when !allowed.
+ * The SQL commit guard is always final; never trust this read under a race.
+ * No deployment ENV, hosted-plan label or Stripe return URL can authorize a
+ * capacity expansion.
  */
 export async function assertWithinHostedLimit(
   supabase: SupabaseClient,
@@ -81,30 +87,39 @@ export async function assertWithinHostedLimit(
   resource: LimitResource,
   adding = 1
 ): Promise<LimitCheckResult> {
-  const stored = await loadTeacherEntitlements(supabase, teacherId);
-  const entitlement = resolveEffectivePlan(stored);
-  await persistDemotionIfNeeded(
-    supabase,
-    teacherId,
-    stored,
-    entitlement.demotedFrom
-  );
-
-  if (!entitlement.softLimitsApply) {
-    return evaluateLimit(entitlement, resource, 0, adding);
-  }
-
-  const currentCount = await countForResource(supabase, teacherId, resource);
-  return evaluateLimit(entitlement, resource, currentCount, adding);
+  void teacherId;
+  if (resource !== "students" || !Number.isSafeInteger(adding) || adding < 0)
+    throw new Error("Invalid resource capacity request");
+  const state=await loadAccountEntitlementSummary(supabase);
+  const capability=state.studentCapacity;
+  const currentCount=state.activeStudentCount;
+  const limit=capability.unlimited?null:capability.limit;
+  if (!capability.unlimited && limit === null)
+    throw new Error("Missing SQL capacity ceiling");
+  const plan:HostedPlan=capability.planCode==="pro"?"pro":"free";
+  const entitlement:EffectiveEntitlement={
+    deployment:"hosted",plan,softLimitsApply:!capability.unlimited,
+    trialEndsAt:null,giftedUntil:null,demotedFrom:null,
+    limits:{maxStudents:limit??Number.MAX_SAFE_INTEGER},
+    monthlyPriceCents:0,
+  };
+  const allowed=limit===null || currentCount+adding<=limit;
+  return {
+    allowed,entitlement,currentCount,limit,
+    ...(allowed ? {} : {
+      code:"CAPACITY_EXCEEDED" as unknown as LimitCheckResult["code"],
+      message:"Active student capacity exceeded. Archive an unused active student or review plan options.",
+    }),
+  };
 }
 
 export function limitReachedResponse(check: LimitCheckResult) {
   return {
-    error: check.message ?? "Hosted free limit reached",
-    code: check.code ?? HOSTED_LIMIT_ERROR_CODE,
-    resourceLimit: check.limit,
-    currentCount: check.currentCount,
-    plan: check.entitlement.plan,
-    upgradePath: "/hosting",
+    error:check.message??"Active student capacity reached",
+    code:check.code??"CAPACITY_EXCEEDED",
+    resourceLimit:check.limit,
+    currentCount:check.currentCount,
+    plan:check.entitlement.plan,
+    upgradePath:"/account",
   };
 }

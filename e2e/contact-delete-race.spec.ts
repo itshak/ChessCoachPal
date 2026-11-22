@@ -16,8 +16,7 @@ test("tenant-owned contact with historical student relationships cannot be delet
  const teacherId=identity.data.user!.id;
  try{
   expect((await admin.from("teachers").insert({
-   id:teacherId,email,display_name:"Contact deletion guard",hosted_enforced:false,
-  })).error).toBeNull();
+   id:teacherId,email,display_name:"Contact deletion guard",})).error).toBeNull();
   const auth=createClient(url,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
    auth:{persistSession:false,autoRefreshToken:false},
   });

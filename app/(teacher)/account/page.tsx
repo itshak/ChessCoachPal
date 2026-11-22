@@ -6,8 +6,6 @@ import { createClient } from "@/lib/supabase/server";
 import { AccountSettings } from "@/components/teacher/AccountSettings";
 import { AccountMfaSettings } from "@/components/teacher/AccountMfaSettings";
 import { LichessConnectionPanel } from "@/components/teacher/LichessConnectionPanel";
-import { HostingSettingsForm } from "@/components/teacher/settings/HostingSettingsForm";
-import { HostedLimitBanner } from "@/components/teacher/HostedLimitBanner";
 import { NotificationSettingsForm } from "@/components/teacher/settings/NotificationSettingsForm";
 import { OptionalAiSettingsForm } from "@/components/teacher/settings/OptionalAiSettingsForm";
 import { SpreadsheetImportSettings } from "@/components/teacher/settings/SpreadsheetImportSettings";
@@ -18,30 +16,14 @@ import { TeacherCalendarFeed } from "@/components/teacher/settings/TeacherCalend
 import { getPolicy } from "@/lib/server/scheduling";
 import { isPushConfigured } from "@/lib/server/push";
 import { maskSecret } from "@/lib/billing";
-import {
-  getDeploymentMode,
-  hostedLimitMessage,
-  resolveEffectivePlan,
-  type HostedPlan,
-  type LimitResource,
-} from "@/lib/entitlements";
-import {
-  countActiveStudents,
-  loadTeacherEntitlements,
-  persistDemotionIfNeeded,
-} from "@/lib/server/entitlements";
-import { isHostedCheckoutConfigured } from "@/lib/hosted-billing/stripe";
+import {loadAccountEntitlementSummary} from "@/lib/server/entitlements";
 
 export async function generateMetadata(){
   const t=await getTranslations("account");
   return {title:t("heading")};
 }
 
-export default async function AccountPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ hosted?: string }>;
-}) {
+export default async function AccountPage() {
   const t=await getTranslations("account");
   const supabase = await createClient();
   const {
@@ -50,12 +32,10 @@ export default async function AccountPage({
 
   if (!user) return null;
 
-  const params = await searchParams;
-
   const { data: teacher } = await supabase
     .from("teachers")
     .select(
-      "display_name, avatar_url, email, created_at, stripe_customer_id, stripe_cancel_at, calendar_token"
+      "display_name, avatar_url, email, created_at, calendar_token"
     )
     .eq("id", user.id)
     .single();
@@ -69,57 +49,30 @@ export default async function AccountPage({
     ai_api_key: null,
   };
 
-  let hostingSection: React.ReactNode = null;
-  let limitBanner: React.ReactNode = null;
-
-  if (getDeploymentMode() === "hosted") {
-    const stored = await loadTeacherEntitlements(supabase, user.id);
-    const entitlement = resolveEffectivePlan(stored);
-    await persistDemotionIfNeeded(
-      supabase,
-      user.id,
-      stored,
-      entitlement.demotedFrom
+  const tHosted=await getTranslations("hosted");
+  const summary=await loadAccountEntitlementSummary(supabase);
+  const studentCap=summary.studentCapacity;
+  const activeCount=summary.activeStudentCount;
+  const planLabel=studentCap.planCode==="pro"?
+    tHosted("plans.pro"):tHosted("plans.free");
+  const hostingSection=(
+    <section className="rounded-xl border border-border p-4 space-y-2">
+      <h2 className="font-semibold">{tHosted("plan")}: {planLabel}</h2>
+      {studentCap.unlimited?(
+        <p className="text-sm text-muted">{tHosted("unlimited")}</p>
+      ):(
+        <p className="text-sm text-muted">{tHosted("activeStudents",{
+          count:activeCount,limit:studentCap.limit??0,
+        })}</p>
+      )}
+    </section>
+  );
+  const limitBanner=studentCap.unlimited || studentCap.limit===null ||
+    activeCount<studentCap.limit?null:(
+      <p role="status" className="text-sm text-warning">
+        {tHosted("activeStudents",{count:activeCount,limit:studentCap.limit})}
+      </p>
     );
-    const students = await countActiveStudents(supabase, user.id);
-
-    // Only warn when a free-tier cap is actually hit (not merely "on free").
-    if (entitlement.softLimitsApply) {
-      const hit: LimitResource | null =
-        students >= entitlement.limits.maxStudents ? "students" : null;
-      if (hit) {
-        const limit = entitlement.limits.maxStudents;
-        limitBanner = (
-          <HostedLimitBanner
-            monthlyPriceCents={entitlement.monthlyPriceCents}
-            message={hostedLimitMessage(
-              hit,
-              limit,
-              entitlement.monthlyPriceCents
-            )}
-          />
-        );
-      }
-    }
-
-    hostingSection = (
-      <HostingSettingsForm
-        plan={entitlement.plan as HostedPlan}
-        softLimitsApply={entitlement.softLimitsApply}
-        trialEndsAt={entitlement.trialEndsAt?.toISOString() ?? null}
-        giftedUntil={entitlement.giftedUntil?.toISOString() ?? null}
-        foundingNumber={stored?.founding_number ?? null}
-        monthlyPriceCents={entitlement.monthlyPriceCents}
-        checkoutConfigured={isHostedCheckoutConfigured()}
-        hasStripeCustomer={Boolean(teacher?.stripe_customer_id)}
-        stripeCancelAt={teacher?.stripe_cancel_at ?? null}
-        usage={{
-          students,
-          limits: entitlement.limits,
-        }}
-      />
-    );
-  }
 
   const accountEmail = user.email ?? teacher?.email ?? "";
   const memberSinceLabel = new Date(
@@ -134,15 +87,6 @@ export default async function AccountPage({
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">{t("heading")}</h1>
       <Link href="/ai-connections" className="underline text-sm">{t("connections")}</Link>
-
-      {params.hosted === "success" && (
-        <p className="text-sm text-success mb-4">
-          {t("stripePending")}
-        </p>
-      )}
-      {params.hosted === "cancel" && (
-        <p className="text-sm text-muted mb-4">{t("checkoutCanceled")}</p>
-      )}
 
       {limitBanner}
 

@@ -1,6 +1,6 @@
 # Change: consolidate the final pre-production SaaS schema, including Freemium/Pro
 
-**Status:** Proposed; P0 consolidated **schema-only** change, NOT implemented/frozen/deployed.  
+**Status:** Source implementation candidate on draft PR #115; **not accepted, frozen, archived, merged or deployed**. The canonical SQL, type/service changes and synthetic tests are implemented; remaining Phase 2 scenario-specific proof and inventory/crosswalk signoff are tracked in `tasks.md` and `docs/FINAL_SCHEMA_IMPLEMENTATION_STATUS_2026-11-21.md`. All five automated workflows passed on code commit `0f8d283a0a78a749c5709271777a86668d3b5906`.  
 **Decision:** [ADR-0019](../../../docs/adr/0019-single-final-schema-and-commercial-entitlements.md), plus ADR-0017/0018.  
 **Only schema owner:** supersedes the older schema-freeze proposal as the active DDL planning owner. **All other active OpenSpecs are downstream functional owners**.
 

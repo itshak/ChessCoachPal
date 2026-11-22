@@ -5,6 +5,8 @@
 > **Execution prerequisite:** First complete [`2026-11-21-consolidate-final-preproduction-saas-schema`](../2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
 
 
+> **Shared adapter proposal:** [Rating-provider boundaries](../../../docs/RATING_PROVIDER_BOUNDARIES.md). Keep provider retrieval separate from shared website/MCP policies and persistence. No independent DDL or deployment is proposed.
+
 ## Current implementation
 lib/chess-public-ratings.ts reads official public profile/stats; lib/server/student-rating-snapshots.ts offers refreshPreview/refreshCommit, manually recordable snapshots; components/teacher/StudentChessProfileEditor.tsx and StudentRatingHistoryPanel.tsx expose a multi-click workflow; app/api/cron currently has no rating refresh job.
 

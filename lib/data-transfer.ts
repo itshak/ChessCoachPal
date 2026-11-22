@@ -188,7 +188,7 @@ export async function buildStudioExport(
  */
 export async function importStudioExport(
   supabase: SupabaseClient, teacherId: string, payload: StudioDataExport, sha256: string
-): Promise<{ ok: true; counts: Record<string, number> } | { ok: false; error: string }> {
+): Promise<{ ok: true; counts: Record<string, number> } | { ok: false; error: string; code?: "CAPACITY_EXCEEDED" }> {
   if (!parseExportPayload(payload))
     return {ok:false,error:"Unsupported ChessCoachPal export format or invalid table shape"};
   // The invoker's auth.uid() is authoritative inside the RPC; never pass a
@@ -217,7 +217,9 @@ export async function importStudioExport(
     p_display_name:payload.teacher_profile?.display_name ?? null,
     p_digest:sha256,
   });
-  if (error) return {ok:false,error:error.message};
+  if (error) return error.message==="CAPACITY_EXCEEDED"
+    ?{ok:false,code:"CAPACITY_EXCEEDED",error:"Active-student capacity reached. No backup rows were restored."}
+    :{ok:false,error:error.message};
   const counts=(data as {counts?:Record<string,number>}|null)?.counts;
   if (!counts || typeof counts!=="object" || Array.isArray(counts))
     return {ok:false,error:"Restore completed without a valid transaction receipt"};
