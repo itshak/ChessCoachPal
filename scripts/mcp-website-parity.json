@@ -763,7 +763,7 @@
       "existingTools": [
         "ccp_dashboard_summary"
       ],
-      "explanation": "Shared dashboard page, HTTP and delegated MCP resolve omitted, explicit All or owned workplace scope alike. An owned historical workplace can be read explicitly; foreign IDs are rejected. The global workplace count remains explicitly teacher-wide.",
+      "explanation": "Shared dashboard page, HTTP and delegated MCP resolve omitted, explicit All or owned workplace scope alike. An owned historical workplace can be read explicitly; foreign IDs are rejected. The global workplace count remains explicitly teacher-wide; activating the accessible scoped count opens the existing schedule with selected or All context, independent of the Manage Workplaces jump.",
       "evidenceTest": "e2e/parity-workplace-dashboard.spec.ts"
     },
     {

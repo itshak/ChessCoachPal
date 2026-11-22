@@ -5,6 +5,7 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 
 test("PARITY: dashboard browser, HTTP and delegated MCP apply the same workplace scope",async({page,request})=>{
+  test.setTimeout(90_000);
   const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});
   const identities:string[]=[];
@@ -101,6 +102,45 @@ test("PARITY: dashboard browser, HTTP and delegated MCP apply the same workplace
       await expect(page.getByText(text,{exact:true})).toBeVisible();
     for(const text of ["Dashboard B learner","Dashboard ended learner","B upcoming fact","B recent fact"])
       await expect(page.getByText(text,{exact:true})).toHaveCount(0);
+    const openSchedule=async(count:number,selectedId:string)=>{
+      const countLink=page.getByRole("link",{name:"Open workplace schedule ("+count+")",exact:true});
+      await expect(countLink).toHaveAttribute("href","/schedule");
+      await expect(page.getByRole("link",{name:"Manage workplaces",exact:true}))
+        .toHaveAttribute("href","/coaching#manage-workplaces");
+      await countLink.focus();
+      await expect(countLink).toBeFocused();
+      await countLink.press("Enter");
+      await expect(page).toHaveURL(/\/schedule$/);
+      await expect(page.locator("#global-workplace-switch")).toHaveValue(selectedId);
+    };
+    await openSchedule(1,a);
+    expect((await call("ccp_workplace_context_get",{})).data.selectedWorkplaceId).toBe(a);
+    await page.getByRole("button",{name:"Private session"}).click();
+    await expect(page.getByRole("heading",{name:"Schedule an individual chess lesson"}).locator("..").locator("select").nth(1)).toHaveValue(a);
+
+    expect((await call("ccp_workplace_context_set",{
+      selectedWorkplaceId:null,expectedSelectedWorkplaceId:a,confirmed:true,
+    })).error).toBeUndefined();
+    await page.goto("/dashboard");
+    await openSchedule(4,"all");
+    await page.getByRole("button",{name:"Private session"}).click();
+    await expect(page.getByRole("heading",{name:"Schedule an individual chess lesson"}).locator("..").locator("select").nth(1)).toHaveValue("");
+    expect((await call("ccp_workplace_context_get",{})).data.selectedWorkplaceId).toBeNull();
+
+    for(const [locale,website,save,hint] of [
+      ["en","Business website","Save business settings","This does not publish anything to the guest portal."],
+      ["he","אתר העסק","שמירת הגדרות העסק","ואינו מתפרסם בפורטל האורחים."],
+      ["ru","Сайт преподавательской практики","Сохранить настройки практики","и не публикуется в гостевом портале."],
+    ]){
+      const updatedLocale=await call("ccp_teacher_profile_update",{preferredLocale:locale,confirmed:true});
+      expect(updatedLocale.error).toBeUndefined();
+      await page.goto("/settings");
+      await expect(page.locator("html")).toHaveAttribute("lang",locale);
+      if(locale==="he")await expect(page.locator("html")).toHaveAttribute("dir","rtl");
+      await expect(page.getByText(website,{exact:true})).toBeVisible();
+      await expect(page.getByRole("button",{name:save,exact:true})).toBeVisible();
+      await expect(page.getByText(hint,{exact:false})).toBeVisible();
+    }
   }finally{
     for(const id of identities) expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
   }
