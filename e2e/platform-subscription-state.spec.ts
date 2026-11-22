@@ -64,11 +64,27 @@ test("trial and paid-through access expire; stale provider updates cannot restor
  }).eq("id",subscription.data!.id);
  expect(stale.error?.message).toContain("STALE_SUBSCRIPTION_EVENT");
  expect((await capacity()).planCode).toBe("pro");
+ // A stale/expired old subscription must not demote a separately valid
+ // replacement subscription for the same teacher and commercial offer.
+ const replacement=await admin.from("platform_subscriptions").insert({
+  teacher_id:id,customer_id:customer.data!.id,offer_id:offer.data!.id,
+  provider:"synthetic",merchant_scope:scope,
+  external_subscription_id:"sub_replacement_"+randomUUID(),state:"active",
+  current_period_end:future,paid_through:future,
+  latest_event_time:new Date().toISOString(),
+ }).select("id").single();
+ expect(replacement.error).toBeNull();
  const expired=await admin.from("platform_subscriptions").update({
   state:"expired",paid_through:"2020-01-01T00:00:00Z",
   latest_event_time:new Date().toISOString(),
  }).eq("id",subscription.data!.id);
  expect(expired.error).toBeNull();
+ expect((await capacity()).planCode).toBe("pro");
+ const replacementExpired=await admin.from("platform_subscriptions").update({
+  state:"expired",paid_through:"2020-01-01T00:00:00Z",
+  latest_event_time:new Date(Date.now()+10000).toISOString(),
+ }).eq("id",replacement.data!.id);
+ expect(replacementExpired.error).toBeNull();
  expect((await capacity()).limit).toBe(1);
  const denied=await auth.from("platform_subscriptions").update({
   state:"active",paid_through:future,
