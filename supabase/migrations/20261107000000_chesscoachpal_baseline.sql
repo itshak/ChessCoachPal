@@ -11614,6 +11614,367 @@ REVOKE ALL ON TABLE public.student_rating_refresh_receipts FROM service_role;
 GRANT SELECT,INSERT ON TABLE public.student_rating_refresh_receipts TO service_role;
 COMMENT ON TABLE public.student_rating_refresh_receipts IS
  'Append-only worker attempt evidence; no service-role UPDATE/DELETE and no inference of consent.';
+
+-- ADR-0019: atomic physical contract for future consented online-rating sync.
+-- This grants no consent, enables no cron, and makes no provider requests.
+-- All paths that touch more than one row acquire student -> consent -> job.
+-- The profile API trims and preserves case; do not lower-case identities here.
+-- Revocation/regrant cannot reuse an old lease even for the same username.
+-- The existing handle revision is the epoch of the approved handle binding.
+CREATE OR REPLACE FUNCTION public.ccp_rating_consent_binding_epoch()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_rating_consent_binding_epoch$
+BEGIN
+ IF NEW.handle_revision<OLD.handle_revision OR NEW.revision<OLD.revision THEN
+  RAISE EXCEPTION 'RATING_CONSENT_REVISION_REGRESSION' USING ERRCODE='23514';
+ END IF;
+ IF NEW.source_username IS DISTINCT FROM OLD.source_username
+    OR (OLD.enabled AND NOT NEW.enabled) THEN
+  NEW.handle_revision:=greatest(NEW.handle_revision,OLD.handle_revision+1);
+  NEW.revision:=greatest(NEW.revision,OLD.revision+1);
+ END IF;
+ RETURN NEW;
+END;
+$ccp_rating_consent_binding_epoch$;
+REVOKE ALL ON FUNCTION public.ccp_rating_consent_binding_epoch()
+ FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_rating_consent_binding_epoch
+ BEFORE UPDATE ON public.student_rating_sync_consents FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_rating_consent_binding_epoch();
+
+CREATE OR REPLACE FUNCTION public.ccp_rating_handle_changed()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_rating_handle_changed$
+BEGIN
+ UPDATE public.student_rating_sync_consents c SET
+   enabled=false,
+   revoked_at=CASE WHEN c.consented_at IS NOT NULL THEN clock_timestamp()
+                   ELSE c.revoked_at END,
+   handle_revision=c.handle_revision+1,revision=c.revision+1,
+   last_request_id=NULL,last_request_hash=NULL,updated_at=clock_timestamp()
+  WHERE c.teacher_id=OLD.teacher_id AND c.student_id=OLD.id AND (
+   (c.provider='lichess' AND btrim(NEW.lichess_username) IS DISTINCT FROM btrim(OLD.lichess_username))
+   OR (c.provider='chesscom' AND btrim(NEW.chesscom_username) IS DISTINCT FROM btrim(OLD.chesscom_username))
+  );
+ RETURN NEW;
+END;
+$ccp_rating_handle_changed$;
+REVOKE ALL ON FUNCTION public.ccp_rating_handle_changed() FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_rating_revoke_changed_handle
+ AFTER UPDATE OF lichess_username,chesscom_username ON public.students
+ FOR EACH ROW WHEN (btrim(OLD.lichess_username) IS DISTINCT FROM btrim(NEW.lichess_username)
+                 OR btrim(OLD.chesscom_username) IS DISTINCT FROM btrim(NEW.chesscom_username))
+ EXECUTE FUNCTION public.ccp_rating_handle_changed();
+
+-- A scheduler may discover candidate IDs separately. The discovery result is
+-- never authority: this bounded single-job claim rechecks live eligibility
+-- under row locks before returning a short lease or any account identifier.
+CREATE OR REPLACE FUNCTION public.ccp_rating_refresh_claim(
+ p_teacher_id uuid,p_job_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_rating_refresh_claim$
+DECLARE
+ v_seed public.student_rating_refresh_jobs%ROWTYPE;
+ v_job public.student_rating_refresh_jobs%ROWTYPE;
+ v_student public.students%ROWTYPE;
+ v_consent public.student_rating_sync_consents%ROWTYPE;
+ v_now timestamptz;
+ v_eligible boolean;
+ v_result text;
+BEGIN
+ IF current_user<>'service_role' THEN
+  RAISE EXCEPTION 'RATING_WORKER_ACCESS_DENIED' USING ERRCODE='42501';
+ END IF;
+ SELECT * INTO v_seed FROM public.student_rating_refresh_jobs
+  WHERE id=p_job_id AND teacher_id=p_teacher_id;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_student FROM public.students
+  WHERE id=v_seed.student_id AND teacher_id=p_teacher_id FOR SHARE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_consent FROM public.student_rating_sync_consents
+  WHERE id=v_seed.consent_id AND teacher_id=p_teacher_id
+    AND student_id=v_seed.student_id AND provider=v_seed.provider FOR SHARE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_job FROM public.student_rating_refresh_jobs
+  WHERE id=v_seed.id AND teacher_id=p_teacher_id
+    AND student_id=v_seed.student_id AND consent_id=v_seed.consent_id
+    AND provider=v_seed.provider FOR UPDATE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ v_now:=clock_timestamp();
+ IF NOT (
+      (v_job.status IN ('pending','retry') AND v_job.run_after<=v_now)
+   OR (v_job.status='running' AND v_job.lease_until<=v_now)
+ ) THEN RETURN NULL; END IF;
+
+ v_eligible:=(
+   v_student.archived_at IS NULL AND v_consent.enabled
+   AND v_consent.revoked_at IS NULL AND v_consent.consented_at<=v_job.created_at
+   AND v_consent.handle_revision=v_job.handle_revision
+   AND v_consent.source_username=v_job.source_username
+   AND v_job.source_username ~ '^[A-Za-z0-9_-]{2,30}$'
+   AND v_job.source_username=CASE v_job.provider
+     WHEN 'lichess' THEN btrim(v_student.lichess_username)
+     WHEN 'chesscom' THEN btrim(v_student.chesscom_username) END
+ ) IS TRUE;
+ IF NOT v_eligible THEN
+  v_result:='stale';
+ ELSIF v_job.attempt_count>=30 THEN
+  v_result:='failed';
+ ELSE
+  v_result:='retry';
+ END IF;
+ IF v_job.status='running' THEN
+  -- An expired lease abandoned by its worker still has immutable evidence.
+  INSERT INTO public.student_rating_refresh_receipts(
+   id,teacher_id,student_id,job_id,attempt_number,outcome,
+   source_username,input_digest,error_code)
+  VALUES(v_job.lease_token,v_job.teacher_id,v_job.student_id,v_job.id,
+   v_job.attempt_count,v_result,v_job.source_username,v_job.input_digest,
+   CASE WHEN v_result='stale' THEN 'RATING_CONTEXT_STALE'
+        ELSE 'RATING_LEASE_EXPIRED' END);
+ END IF;
+ IF v_result IN ('stale','failed') THEN
+  UPDATE public.student_rating_refresh_jobs SET status=v_result,
+   lease_token=NULL,lease_until=NULL,finished_at=v_now,updated_at=v_now,
+   last_error_code=CASE WHEN v_result='stale' THEN 'RATING_CONTEXT_STALE'
+                        ELSE 'RATING_ATTEMPTS_EXHAUSTED' END
+   WHERE id=v_job.id AND teacher_id=p_teacher_id;
+  RETURN NULL;
+ END IF;
+ -- Registry deactivation pauses admission without erasing history or consent.
+ PERFORM 1 FROM public.rating_providers
+  WHERE code=v_job.provider AND provider_kind='online' AND active FOR SHARE;
+ IF NOT FOUND THEN
+  IF v_job.status='running' THEN
+   UPDATE public.student_rating_refresh_jobs SET status='retry',
+    lease_token=NULL,lease_until=NULL,updated_at=v_now,
+    last_error_code='RATING_PROVIDER_UNAVAILABLE' WHERE id=v_job.id AND teacher_id=p_teacher_id;
+  END IF;
+  RETURN NULL;
+ END IF;
+ v_now:=clock_timestamp();
+ UPDATE public.student_rating_refresh_jobs SET
+  status='running',attempt_count=attempt_count+1,lease_token=gen_random_uuid(),
+  lease_until=v_now+interval '2 minutes',updated_at=v_now,last_error_code=NULL
+  WHERE id=v_job.id AND teacher_id=p_teacher_id
+  RETURNING * INTO v_job;
+ RETURN jsonb_build_object('jobId',v_job.id,'teacherId',v_job.teacher_id,
+   'studentId',v_job.student_id,'provider',v_job.provider,
+   'sourceUsername',v_job.source_username,'handleRevision',v_job.handle_revision,
+   'inputDigest',v_job.input_digest,'triggerKind',v_job.trigger_kind,
+   'attempt',v_job.attempt_count,'leaseToken',v_job.lease_token,'leaseUntil',v_job.lease_until);
+END;
+$ccp_rating_refresh_claim$;
+REVOKE ALL ON FUNCTION public.ccp_rating_refresh_claim(uuid,uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_rating_refresh_claim(uuid,uuid) TO service_role;
+
+-- Only bounded normalized online observations; this cannot attest that an
+-- account belongs to a student, write official ratings or change strength.
+-- Success is one transaction: rows, immutable receipt and lease completion.
+CREATE OR REPLACE FUNCTION public.ccp_rating_refresh_finalize(
+ p_teacher_id uuid,p_job_id uuid,p_lease_token uuid,p_attempt integer,
+ p_input_digest text,p_outcome text,p_fetched_at timestamptz,
+ p_evidence_digest text,p_observations jsonb,p_error_code text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_rating_refresh_finalize$
+DECLARE
+ v_seed public.student_rating_refresh_jobs%ROWTYPE;
+ v_job public.student_rating_refresh_jobs%ROWTYPE;
+ v_student public.students%ROWTYPE;
+ v_consent public.student_rating_sync_consents%ROWTYPE;
+ v_receipt public.student_rating_refresh_receipts%ROWTYPE;
+ v_now timestamptz;
+ v_result text;
+ v_error text;
+ v_entry jsonb;
+ v_entry_count integer;
+ v_count integer:=0;
+ v_observed timestamptz;
+ v_latest timestamptz;
+ v_category text;
+ v_categories text[]:='{}';
+ v_payload_digest text;
+BEGIN
+ IF current_user<>'service_role' THEN
+  RAISE EXCEPTION 'RATING_WORKER_ACCESS_DENIED' USING ERRCODE='42501';
+ END IF;
+ IF p_attempt IS NULL OR p_attempt NOT BETWEEN 1 AND 30 OR p_lease_token IS NULL
+  OR p_input_digest IS NULL OR p_input_digest !~ '^[a-f0-9]{64}$'
+  OR p_outcome IS NULL OR p_outcome NOT IN ('succeeded','retry','failed')
+  OR jsonb_typeof(p_observations) IS DISTINCT FROM 'array'
+  OR pg_column_size(p_observations)>24000 THEN
+  RAISE EXCEPTION 'RATING_WORKER_INVALID_RESULT' USING ERRCODE='22023';
+ END IF;
+ v_entry_count:=jsonb_array_length(p_observations);
+ IF (p_outcome='succeeded' AND (
+    p_fetched_at IS NULL OR NOT isfinite(p_fetched_at)
+    OR p_evidence_digest IS NULL OR p_evidence_digest !~ '^[a-f0-9]{64}$'
+    OR p_error_code IS NOT NULL OR v_entry_count NOT BETWEEN 1 AND 20
+  )) OR (p_outcome<>'succeeded' AND (
+    p_fetched_at IS NOT NULL OR p_evidence_digest IS NOT NULL OR v_entry_count<>0
+    OR p_error_code IS NULL OR p_error_code !~ '^[A-Z0-9_]{1,80}$'
+    OR p_error_code IN ('RATING_LEASE_EXPIRED','RATING_CONTEXT_STALE','RATING_ATTEMPTS_EXHAUSTED')
+  )) THEN
+  RAISE EXCEPTION 'RATING_WORKER_INVALID_RESULT' USING ERRCODE='22023';
+ END IF;
+ SELECT * INTO v_seed FROM public.student_rating_refresh_jobs
+  WHERE id=p_job_id AND teacher_id=p_teacher_id;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_student FROM public.students
+  WHERE id=v_seed.student_id AND teacher_id=p_teacher_id FOR SHARE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_consent FROM public.student_rating_sync_consents
+  WHERE id=v_seed.consent_id AND teacher_id=p_teacher_id
+    AND student_id=v_seed.student_id AND provider=v_seed.provider FOR SHARE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v_job FROM public.student_rating_refresh_jobs
+  WHERE id=v_seed.id AND teacher_id=p_teacher_id
+    AND student_id=v_seed.student_id AND consent_id=v_seed.consent_id
+    AND provider=v_seed.provider FOR UPDATE;
+ IF NOT FOUND OR v_job.input_digest<>p_input_digest THEN RETURN NULL; END IF;
+
+ v_result:=CASE WHEN p_outcome='retry' AND p_attempt=30 THEN 'failed' ELSE p_outcome END;
+ IF p_outcome='succeeded' THEN
+  -- Request fingerprint includes the actual normalized payload, not only
+  -- the worker-provided evidence digest. It deliberately preserves order.
+  v_payload_digest:=encode(extensions.digest(jsonb_build_object(
+   'job',p_job_id,'attempt',p_attempt,'input',p_input_digest,
+   'fetchedAt',extract(epoch FROM p_fetched_at),'evidence',p_evidence_digest,
+   'observations',p_observations)::text,'sha256'),'hex');
+ END IF;
+ SELECT * INTO v_receipt FROM public.student_rating_refresh_receipts
+  WHERE id=p_lease_token AND job_id=p_job_id AND teacher_id=p_teacher_id
+    AND attempt_number=p_attempt AND input_digest=p_input_digest;
+ IF FOUND THEN
+  IF v_receipt.error_code='RATING_LEASE_EXPIRED' THEN RETURN NULL; END IF;
+  IF v_receipt.outcome='stale' THEN
+   RETURN jsonb_build_object('status','stale','snapshotsWritten',0);
+  END IF;
+  IF v_receipt.outcome IS DISTINCT FROM v_result
+   OR v_receipt.error_code IS DISTINCT FROM p_error_code
+   OR v_receipt.evidence_digest IS DISTINCT FROM p_evidence_digest
+   OR (p_outcome='succeeded' AND (
+     v_receipt.fetched_at IS DISTINCT FROM p_fetched_at
+     OR v_receipt.snapshots_written<>v_entry_count
+     OR (SELECT count(*) FROM public.student_rating_snapshots s
+       WHERE s.teacher_id=p_teacher_id AND s.student_id=v_job.student_id
+         AND s.provider=v_job.provider AND s.request_id=p_lease_token
+         AND s.source='provider_api' AND s.preview_digest=v_payload_digest)<>v_entry_count
+   )) THEN
+   RAISE EXCEPTION 'RATING_WORKER_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN jsonb_build_object('status',v_receipt.outcome,
+   'snapshotsWritten',v_receipt.snapshots_written,'replayed',true);
+ END IF;
+
+ v_now:=clock_timestamp();
+ IF v_job.status<>'running' OR v_job.attempt_count<>p_attempt OR
+   v_job.lease_token IS DISTINCT FROM p_lease_token OR
+   v_job.lease_until IS NULL OR v_job.lease_until<=v_now THEN RETURN NULL; END IF;
+ v_error:=p_error_code;
+ IF (
+   v_student.archived_at IS NULL AND v_consent.enabled
+   AND v_consent.consented_at<=v_job.created_at AND v_consent.revoked_at IS NULL
+   AND v_consent.handle_revision=v_job.handle_revision
+   AND v_consent.source_username=v_job.source_username
+   AND v_job.source_username ~ '^[A-Za-z0-9_-]{2,30}$'
+   AND v_job.source_username=CASE v_job.provider
+     WHEN 'lichess' THEN btrim(v_student.lichess_username)
+     WHEN 'chesscom' THEN btrim(v_student.chesscom_username) END
+ ) IS NOT TRUE THEN
+  v_result:='stale';
+  v_error:='RATING_CONTEXT_STALE';
+ END IF;
+ IF v_result='succeeded' THEN
+  PERFORM 1 FROM public.rating_providers WHERE code=v_job.provider
+   AND provider_kind='online' AND active FOR SHARE;
+  IF NOT FOUND THEN
+   v_result:='stale';
+   v_error:='RATING_PROVIDER_UNAVAILABLE';
+  END IF;
+ END IF;
+ IF v_result='succeeded' THEN
+  IF p_fetched_at>clock_timestamp() OR p_fetched_at<v_job.updated_at-interval '1 millisecond' THEN
+   RAISE EXCEPTION 'RATING_WORKER_INVALID_FETCH_TIME' USING ERRCODE='22023';
+  END IF;
+  FOR v_entry IN SELECT value FROM jsonb_array_elements(p_observations) LOOP
+   IF jsonb_typeof(v_entry)<>'object' THEN
+    RAISE EXCEPTION 'RATING_WORKER_INVALID_OBSERVATION' USING ERRCODE='22023';
+   END IF;
+   IF v_entry-ARRAY['time_control','rating','rating_deviation','provisional','games','observed_at']<>'{}'::jsonb
+    OR jsonb_typeof(v_entry->'time_control') IS DISTINCT FROM 'string'
+    OR jsonb_typeof(v_entry->'rating') IS DISTINCT FROM 'number'
+    OR COALESCE(v_entry->>'rating','') !~ '^[0-9]{1,4}$'
+    OR (v_entry->>'rating')::integer NOT BETWEEN 100 AND 4000
+    OR (v_entry->>'rating_deviation' IS NOT NULL AND (
+     jsonb_typeof(v_entry->'rating_deviation')<>'number'
+     OR (v_entry->>'rating_deviation') !~ '^[0-9]{1,4}$'
+     OR (v_entry->>'rating_deviation')::integer>1000
+    ))
+    OR (v_entry->>'games' IS NOT NULL AND (
+     jsonb_typeof(v_entry->'games')<>'number'
+     OR (v_entry->>'games') !~ '^[0-9]{1,8}$'
+     OR (v_entry->>'games')::integer>10000000
+    ))
+    OR (v_entry->>'provisional' IS NOT NULL AND jsonb_typeof(v_entry->'provisional')<>'boolean')
+    OR jsonb_typeof(v_entry->'observed_at') IS DISTINCT FROM 'string'
+    OR COALESCE(v_entry->>'observed_at','') !~
+     '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?Z$'
+   THEN
+    RAISE EXCEPTION 'RATING_WORKER_INVALID_OBSERVATION' USING ERRCODE='22023';
+   END IF;
+   v_category:=v_entry->>'time_control';
+   v_observed:=(v_entry->>'observed_at')::timestamptz;
+   IF v_category !~ '^[a-z][a-z0-9_]{1,39}$' OR v_category=ANY(v_categories)
+      OR v_observed>p_fetched_at THEN
+    RAISE EXCEPTION 'RATING_WORKER_INVALID_OBSERVATION' USING ERRCODE='22023';
+   END IF;
+   PERFORM 1 FROM public.rating_categories
+    WHERE provider_code=v_job.provider AND code=v_category AND active FOR SHARE;
+   IF NOT FOUND THEN
+    RAISE EXCEPTION 'RATING_WORKER_CATEGORY_UNAVAILABLE' USING ERRCODE='22023';
+   END IF;
+   v_categories:=array_append(v_categories,v_category);
+   v_latest:=greatest(v_latest,v_observed);
+   INSERT INTO public.student_rating_snapshots(
+    teacher_id,student_id,provider,time_control,rating,rating_deviation,
+    provisional,games,source,observed_at,fetched_at,request_id,preview_digest,
+    source_username,source_handle_revision,source_digest,verification_state)
+   VALUES(v_job.teacher_id,v_job.student_id,v_job.provider,v_category,
+    (v_entry->>'rating')::integer,(v_entry->>'rating_deviation')::integer,
+    (v_entry->>'provisional')::boolean,(v_entry->>'games')::integer,
+    'provider_api',v_observed,p_fetched_at,p_lease_token,v_payload_digest,
+    v_job.source_username,v_job.handle_revision,p_evidence_digest,'unverified');
+   v_count:=v_count+1;
+  END LOOP;
+ END IF;
+ -- Waiting on a registry lock must not let an expired lease persist rows.
+ v_now:=clock_timestamp();
+ IF v_job.lease_until<=v_now THEN
+  RAISE EXCEPTION 'RATING_LEASE_EXPIRED' USING ERRCODE='23514';
+ END IF;
+ INSERT INTO public.student_rating_refresh_receipts(
+  id,teacher_id,student_id,job_id,attempt_number,outcome,
+  source_username,input_digest,evidence_digest,snapshots_written,error_code,
+  observed_at,fetched_at)
+ VALUES(p_lease_token,v_job.teacher_id,v_job.student_id,v_job.id,p_attempt,v_result,
+  v_job.source_username,v_job.input_digest,
+  CASE WHEN v_result='succeeded' THEN p_evidence_digest END,v_count,v_error,
+  v_latest,CASE WHEN v_result='succeeded' THEN p_fetched_at END);
+ UPDATE public.student_rating_refresh_jobs SET status=v_result,
+  lease_token=NULL,lease_until=NULL,updated_at=v_now,last_error_code=v_error,
+  finished_at=CASE WHEN v_result='retry' THEN NULL ELSE v_now END,
+  run_after=CASE WHEN v_result='retry' THEN
+   v_now+make_interval(secs=>least(3600,30*(2^least(p_attempt,7))::integer))
+   ELSE v_job.run_after END
+  WHERE id=v_job.id AND teacher_id=p_teacher_id;
+ RETURN jsonb_build_object('status',v_result,'snapshotsWritten',v_count,'replayed',false);
+END;
+$ccp_rating_refresh_finalize$;
+REVOKE ALL ON FUNCTION public.ccp_rating_refresh_finalize(
+ uuid,uuid,uuid,integer,text,text,timestamptz,text,jsonb,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_rating_refresh_finalize(
+ uuid,uuid,uuid,integer,text,text,timestamptz,text,jsonb,text) TO service_role;
 -- Schema-only OpenSpec amendment: canonical temporal workplace enrollment.
 -- Existing membership rows have no trustworthy start date. Only an operator's
 -- separately approved data transition may import start_date_unknown=true.

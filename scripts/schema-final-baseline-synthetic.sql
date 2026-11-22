@@ -316,6 +316,9 @@ DECLARE
   'observed_at','2026-11-01T00:00:00Z','fetched_at','2026-11-02T00:00:00Z');
  online jsonb;
  official jsonb;
+ reissued jsonb;
+ original_row jsonb;
+ revised_row jsonb;
  candidate jsonb;
  field text;
  failed text;
@@ -385,6 +388,42 @@ BEGIN
    IF failed<>'ccp_rating_provider_evidence_kind' THEN RAISE;END IF;
   END;
  END LOOP;
+ -- A source correction can revise an edition without moving its effective
+ -- date or changing the confirmed external identity. These revision tokens
+ -- are synthetic; the database only enforces row shape and idempotency.
+ SELECT to_jsonb(snapshot) INTO STRICT original_row
+ FROM public.student_rating_snapshots snapshot
+ WHERE provider='synthetic_federation' AND provider_list_version='2026-11';
+ reissued:=official||jsonb_build_object(
+  'provider_list_version','2026-11-correction-1','source_digest',repeat('c',64),
+  'rating',1826,'fetched_at','2026-11-03T00:00:00Z',
+  'id',gen_random_uuid(),'request_id',gen_random_uuid(),'created_at',now());
+ INSERT INTO public.student_rating_snapshots
+  SELECT (jsonb_populate_record(NULL::public.student_rating_snapshots,reissued)).*;
+ SELECT to_jsonb(snapshot) INTO STRICT revised_row
+ FROM public.student_rating_snapshots snapshot
+ WHERE provider='synthetic_federation' AND provider_list_version='2026-11-correction-1';
+ -- Replay the identical evidence with fresh local write identifiers. The
+ -- edition key, not a reused request ID, is what prevents another row.
+ INSERT INTO public.student_rating_snapshots
+  SELECT (jsonb_populate_record(NULL::public.student_rating_snapshots,
+   reissued||jsonb_build_object('id',gen_random_uuid(),'request_id',gen_random_uuid()))).*
+  ON CONFLICT (teacher_id,student_id,provider,time_control,provider_list_version)
+    WHERE source='provider_api' AND provider_list_version IS NOT NULL
+    DO NOTHING;
+ IF FOUND THEN RAISE EXCEPTION 'Exact official edition replay inserted a duplicate'; END IF;
+ IF (SELECT count(*) FROM public.student_rating_snapshots
+     WHERE provider='synthetic_federation' AND source='provider_api')<>2
+ OR revised_row->>'effective_at' IS DISTINCT FROM original_row->>'effective_at'
+ OR revised_row->>'external_player_id' IS DISTINCT FROM original_row->>'external_player_id'
+ OR revised_row->>'source_digest' IS DISTINCT FROM repeat('c',64)
+ OR revised_row->>'rating' IS DISTINCT FROM '1826'
+ OR NOT EXISTS(SELECT 1 FROM public.student_rating_snapshots snapshot
+   WHERE to_jsonb(snapshot)=original_row)
+ OR NOT EXISTS(SELECT 1 FROM public.student_rating_snapshots snapshot
+   WHERE to_jsonb(snapshot)=revised_row) THEN
+  RAISE EXCEPTION 'Same-period revision did not preserve both immutable evidence rows';
+ END IF;
  -- Preserve one observation per student/category/list edition for now,
  -- even when a proposed correction changes the player identifier.
  BEGIN
