@@ -13830,6 +13830,7 @@ CREATE TRIGGER ccp_slot_exception_immutable_guard BEFORE UPDATE OR DELETE
 -- later action may revoke or explicitly supersede them but never rewrite.
 CREATE OR REPLACE FUNCTION public.ccp_report_publication_immutable_guard()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $ccp_pub_immut$
+DECLARE v_next public.report_publications%ROWTYPE;
 BEGIN
  IF TG_OP='DELETE' THEN
   IF NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
@@ -13849,6 +13850,18 @@ BEGIN
     NEW.created_at IS DISTINCT FROM OLD.created_at OR
     (OLD.revoked_at IS NOT NULL AND NEW.revoked_at IS NULL) THEN
    RAISE EXCEPTION 'IMMUTABLE_PUBLICATION' USING ERRCODE='23514';
+ END IF;
+ IF NEW.superseded_by IS NOT NULL
+    AND NEW.superseded_by IS DISTINCT FROM OLD.superseded_by THEN
+  SELECT * INTO v_next FROM public.report_publications
+   WHERE id=NEW.superseded_by AND teacher_id=OLD.teacher_id;
+  IF NOT FOUND OR v_next.student_id IS DISTINCT FROM OLD.student_id
+     OR v_next.workplace_id IS DISTINCT FROM OLD.workplace_id
+     OR v_next.approved_at<OLD.approved_at
+     OR v_next.revoked_at IS NOT NULL
+     OR v_next.superseded_by IS NOT NULL THEN
+   RAISE EXCEPTION 'REPORT_SUPERSESSION_SCOPE_MISMATCH' USING ERRCODE='23514';
+  END IF;
  END IF;
  NEW.revision:=OLD.revision+1;
  RETURN NEW;
