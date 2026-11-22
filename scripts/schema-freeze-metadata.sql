@@ -62,6 +62,35 @@ fn AS (
  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
  WHERE n.nspname='public'
 ),
+seq AS (
+ SELECT n.nspname AS schema,c.relname AS name,
+        pg_get_userbyid(c.relowner) AS owner,
+        s.seqtypid::regtype::text AS data_type,
+        s.seqstart AS start_value,s.seqincrement AS increment_by,
+        s.seqmin AS min_value,s.seqmax AS max_value,
+        s.seqcache AS cache_size,s.seqcycle AS cycle
+ FROM pg_sequence s JOIN pg_class c ON c.oid=s.seqrelid
+ JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname='public'
+),
+typ AS (
+ SELECT n.nspname AS schema,t.typname AS name,
+        t.typtype::text AS kind,
+        format_type(t.typbasetype,t.typtypmod) AS base_type,
+        t.typnotnull AS not_null,
+        t.typdefault AS default_value,
+        (SELECT jsonb_agg(e.enumlabel ORDER BY e.enumsortorder)
+         FROM pg_enum e WHERE e.enumtypid=t.oid) AS enum_values,
+        (SELECT jsonb_agg(pg_get_constraintdef(k.oid,true) ORDER BY k.conname)
+         FROM pg_constraint k WHERE k.contypid=t.oid) AS checks
+ FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+ WHERE n.nspname='public' AND t.typtype IN ('e','d')
+),
+ext AS (
+ SELECT e.extname AS name,e.extversion AS version,
+        n.nspname AS schema
+ FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace
+),
 gr AS (
  -- pg_catalog ACLs include PUBLIC and non-current-role grants that
  -- information_schema may omit. Stable routine identity excludes OIDs.
@@ -97,5 +126,8 @@ SELECT jsonb_pretty(jsonb_build_object(
  'triggers',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,"table",name) FROM trg x),'[]'::jsonb),
  'policies',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,"table",name) FROM pol x),'[]'::jsonb),
  'functions',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,identity) FROM fn x),'[]'::jsonb),
- 'grants',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,object_kind,object_identity,grantee,privilege) FROM gr x),'[]'::jsonb)
+ 'grants',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,object_kind,object_identity,grantee,privilege) FROM gr x),'[]'::jsonb),
+ 'sequences',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,name) FROM seq x),'[]'::jsonb),
+ 'types',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,name) FROM typ x),'[]'::jsonb),
+ 'extensions',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY name) FROM ext x),'[]'::jsonb)
 )) AS snapshot;
