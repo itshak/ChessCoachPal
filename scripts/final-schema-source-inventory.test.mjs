@@ -43,3 +43,23 @@ test("every declared typed table Row covers the canonical CREATE TABLE columns",
    assert.ok(known.has(column),"missing "+row.table+"."+column+" in typed Row");
  }
 });
+
+
+test("explicit ALTER TABLE columns remain present in all typed Row contracts",()=>{
+ const sql=readFileSync(new URL("../supabase/migrations/20261107000000_chesscoachpal_baseline.sql",import.meta.url),"utf8");
+ const types=readFileSync(new URL("../lib/supabase/types.ts",import.meta.url),"utf8");
+ for(const statement of sql.split(";")){
+  const table=/ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"public"|public)\.(?:"([^"]+)"|([a-z_][a-z0-9_]*))/i.exec(statement);
+  if(!table)continue;
+  const name=table[1]??table[2];
+  const row=new RegExp("^\\s{6}"+name+
+   ":\\s*\\{\\s*Row:\\s*\\{([\\s\\S]*?)\\}\\s*;","m").exec(types);
+  if(!row)continue; // Explicit SQL-only relations have separate ownership.
+  const keys=new Set([...row[1].matchAll(/(?:^|[;\n])\s*([a-z_][a-z0-9_]*):\s*/gm)].map(m=>m[1]));
+  const adds=statement.matchAll(/ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|([a-z_][a-z0-9_]*))\s+(uuid|text|integer|bigint|boolean|numeric|date|timestamptz|timestamp|jsonb|json|smallint|time|character varying|double precision|real)\b/gi);
+  for(const add of adds){
+   const column=add[1]??add[2];
+   assert.ok(keys.has(column),"missing ALTER TABLE "+name+"."+column+" in typed Row");
+  }
+ }
+});
