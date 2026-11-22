@@ -96,8 +96,9 @@ ext AS (
 gr AS (
  -- pg_catalog ACLs include PUBLIC and non-current-role grants that
  -- information_schema may omit. Stable routine identity excludes OIDs.
+ -- Use text for the UNION identity: PostgreSQL name truncates to 63 bytes.
  SELECT n.nspname AS schema,'relation' AS object_kind,
-        c.relname AS object_identity,
+        c.relname::text AS object_identity,
         pg_get_userbyid(acl.grantor) AS grantor,
         CASE WHEN acl.grantee=0 THEN 'PUBLIC'
              ELSE pg_get_userbyid(acl.grantee) END AS grantee,
@@ -155,7 +156,7 @@ gr AS (
 )
 
 SELECT jsonb_pretty(jsonb_build_object(
- 'format',2,
+ 'format',3,
  'tables',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,name) FROM t x),'[]'::jsonb),
  'columns',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,"table",ordinal) FROM cols x),'[]'::jsonb),
  'constraints',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY schema,"table",name) FROM cons x),'[]'::jsonb),

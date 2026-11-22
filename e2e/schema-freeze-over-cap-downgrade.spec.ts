@@ -5,7 +5,7 @@ import {buildStudioExport} from "../lib/data-transfer";
 import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 
 /** ENT-10: a bounded baseline stands in for commercial limits; published Free v1 is unlimited. */
-test("ENT-10 expired paid Pro preserves over-cap professional lesson history, edit and export",async()=>{
+test("ENT-10 expired paid Pro preserves over-cap professional lesson history, edit, capture and export",async()=>{
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
  const options={auth:{persistSession:false,autoRefreshToken:false}};
  const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,options);
@@ -69,6 +69,10 @@ test("ENT-10 expired paid Pro preserves over-cap professional lesson history, ed
     teacher_id:id,student_id:student.data!.id,workplace_id:workplace.data!.id,source:"manual",starts_on:"2020-03-01",
    })).error).toBeNull();
   }
+  // Both existing learners already belong to the second professional workplace.
+  expect((await owner.from("workplace_enrollments").insert({
+   teacher_id:id,student_id:studentIds[0],workplace_id:workplaceIds[1],source:"manual",starts_on:"2020-03-01",
+  })).error).toBeNull();
   const originalLesson=await owner.from("teaching_sessions").insert({
    teacher_id:id,workplace_id:workplaceIds[1],student_id:studentIds[1],title:"Existing professional lesson",
    starts_at:"2020-03-07T11:00:00Z",duration_minutes:45,
@@ -99,6 +103,23 @@ test("ENT-10 expired paid Pro preserves over-cap professional lesson history, ed
    .eq("id",originalLesson.data!.id).select("id,title").single();
   expect(corrected.error).toBeNull();
   expect(corrected.data?.title).toBe(correctedTitle);
+  const captureTitle="Completed professional lesson after downgrade";
+  const capture=await owner.rpc("ccp_teacher_completed_group_lesson_create",{
+   p_workplace_id:workplaceIds[1],p_student_ids:studentIds,p_title:captureTitle,
+   p_starts_at:"2020-03-08T11:00:00Z",p_duration_minutes:45,p_lesson_note:"Synthetic lesson capture",
+   p_attendance:studentIds.map(studentId=>({studentId,status:"present"})),p_request_id:randomUUID(),
+  });
+  expect(capture.error).toBeNull();
+  expect(capture.data).toMatchObject({
+   workplaceId:workplaceIds[1],status:"completed",rosterMode:"ad_hoc",
+   participantCount:2,oneTransaction:true,replayed:false,
+  });
+  const completedId=capture.data!.sessionId;
+  const attendance=await owner.from("session_attendance").select("student_id,status")
+   .eq("session_id",completedId).order("student_id");
+  expect(attendance.error).toBeNull();
+  expect(attendance.data).toEqual([...studentIds].sort().map(student_id=>({student_id,status:"present"})));
+  expect(await summary()).toMatchObject({activeStudentCount:2,activeProfessionalWorkplaceCount:2});
   const backup=await buildStudioExport(owner,id);
   const professional=(backup.tables.workplaces as Record<string,unknown>[])
    .filter(row=>row.kind==="professional");
@@ -109,9 +130,18 @@ test("ENT-10 expired paid Pro preserves over-cap professional lesson history, ed
   expect(backup.tables.workplace_enrollments).toEqual(expect.arrayContaining(
    workplaceIds.map((workplace_id,index)=>expect.objectContaining({workplace_id,student_id:studentIds[index]})),
   ));
-  expect(backup.tables.teaching_sessions).toEqual([expect.objectContaining({
-   ...originalLesson.data,title:correctedTitle,
-  })]);
+  expect(backup.tables.teaching_sessions).toHaveLength(2);
+  expect(backup.tables.teaching_sessions).toEqual(expect.arrayContaining([
+   expect.objectContaining({...originalLesson.data,title:correctedTitle}),
+   expect.objectContaining({
+    id:completedId,workplace_id:workplaceIds[1],title:captureTitle,status:"completed",roster_mode:"ad_hoc",
+   }),
+  ]));
+  const exportedAttendance=(backup.tables.session_attendance as Record<string,unknown>[])
+   .filter(row=>row.session_id===completedId)
+   .map(({student_id,status})=>({student_id,status}));
+  expect(exportedAttendance).toHaveLength(2);
+  expect(exportedAttendance).toEqual(expect.arrayContaining(attendance.data!));
  }finally{
   expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
  }

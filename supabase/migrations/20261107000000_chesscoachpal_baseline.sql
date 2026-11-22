@@ -6203,6 +6203,9 @@ ALTER TABLE public.material_teaching_evidence ENABLE ROW LEVEL SECURITY;
 CREATE POLICY material_teaching_evidence_owner ON public.material_teaching_evidence
  FOR ALL TO authenticated USING (teacher_id = (select auth.uid()))
  WITH CHECK (teacher_id = (select auth.uid()));
+-- This append-only history uses explicit voiding. An additive GRANT does
+-- not remove inherited default table privileges (including DELETE/TRUNCATE).
+REVOKE ALL ON public.material_teaching_evidence FROM PUBLIC,anon,authenticated;
 GRANT SELECT,INSERT,UPDATE ON public.material_teaching_evidence TO authenticated;
 GRANT ALL ON public.material_teaching_evidence TO service_role;
 
@@ -13558,8 +13561,13 @@ GRANT SELECT ON public.capability_definitions,public.plan_versions,
  public.plan_capabilities,public.teacher_entitlement_state,
  public.teacher_entitlement_grants,public.entitlement_audit_events,
  public.account_usage_periods,public.account_usage_events,
- public.platform_subscription_offers,public.platform_subscriptions
+ public.platform_subscriptions
  TO authenticated;
+-- Public product metadata is explicit; provider routing references belong
+-- only to the trusted billing writer and are not teacher-facing.
+GRANT SELECT (id,plan_version_id,provider,currency,billing_interval,
+ effective_from,effective_to,created_at)
+ ON public.platform_subscription_offers TO authenticated;
 GRANT ALL ON public.capability_definitions,public.plan_versions,
  public.plan_capabilities,public.teacher_entitlement_state,
  public.teacher_entitlement_grants,public.entitlement_audit_events,

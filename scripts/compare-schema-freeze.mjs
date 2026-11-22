@@ -14,7 +14,7 @@
 import {readFileSync} from "node:fs";
 import {resolve} from "node:path";
 
-const FORMAT=2;
+const FORMAT=3;
 const REQUIRED=["tables","columns","constraints","indexes","triggers","policies","functions","grants","sequences","types","extensions"];
 const keyFor={
  tables:["schema","name"],
@@ -49,6 +49,23 @@ function parse(path){
    const id=JSON.stringify(keys.map(k=>item[k]));
    if(seen.has(id))throw new Error("Duplicate "+section+" identity "+id);
    seen.add(id);
+  }
+ }
+ // Format 2 could silently truncate ACL identities by coercing a SQL UNION
+ // to PostgreSQL's 63-byte name type. Require the current wire version and
+ // reject orphan identities instead of blessing two equally lossy snapshots.
+ const routineIds=new Set(raw.functions.map(row=>JSON.stringify([row.schema,row.identity])));
+ const columnIds=new Set(raw.columns.map(row=>JSON.stringify([row.schema,row.table,row.name])));
+ for(const grant of raw.grants){
+  if(grant.object_kind==="routine" &&
+     !routineIds.has(JSON.stringify([grant.schema,grant.object_identity])))
+   throw new Error("Unknown routine ACL identity: "+grant.object_identity);
+  if(grant.object_kind==="column"){
+   let parts;
+   try{ parts=JSON.parse(grant.object_identity); }catch{ /* Invalid structured identity. */ }
+   if(!Array.isArray(parts)||parts.length!==2||
+      !columnIds.has(JSON.stringify([grant.schema,...parts])))
+    throw new Error("Unknown column ACL identity: "+grant.object_identity);
   }
  }
  for(const section of Object.keys(raw))if(!allowed.has(section))

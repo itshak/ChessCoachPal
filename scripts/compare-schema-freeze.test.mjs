@@ -13,7 +13,7 @@ const receipt={schema,object_kind:"relation",object_identity:table,grantor:"post
   grantee:"authenticated",privilege:"SELECT",grantable:false};
 function snapshot(){
   return {
-    format:2,
+    format:3,
     tables:[...["teachers","students","workplaces","plan_versions"]
       .map(name=>({schema,name,kind:"r"})),{schema,name:"example_view",kind:"v",view_definition:"SELECT 1;"}],
     columns:[{schema,table,name:"id"}],
@@ -48,9 +48,9 @@ test("equal valid snapshots accept unsorted rows and distinct grantors",()=>{
 
 test("identical empty, incomplete, and old-format snapshots cannot pass",()=>{
   const empty=Object.fromEntries(Object.keys(snapshot()).map(key=>[key,[]]));
-  empty.format=2;
+  empty.format=3;
   const missing=snapshot(); missing.tables.splice(1,1);
-  const obsolete=snapshot(); delete obsolete.format;
+  const obsolete=snapshot(); obsolete.format=2;
   assert.match(compare(empty,empty).stderr,/empty tables/);
   assert.match(compare(missing,missing).stderr,/missing public\.students/);
   assert.match(compare(obsolete,obsolete).stderr,/Unsupported snapshot format/);
@@ -70,4 +70,37 @@ test("view definition, routine ownership, and grantor drift are differences",()=
     ["grants","unexpected_in_target"],
     ["tables","definition_mismatch"],
   ]);
+});
+
+test("distinct long routine grants retain identity and orphaned old prefixes fail",()=>{
+  const source=snapshot(),target=snapshot();
+  const prefix="long_reviewed_function(p_reviewed_first_argument_name uuid, p_second_argument_";
+  const add=(fixture,suffix)=>{
+    const identity=prefix+suffix+")";
+    fixture.functions.push({schema,identity,owner:"postgres"});
+    fixture.grants.push({...receipt,object_kind:"routine",object_identity:identity,privilege:"EXECUTE"});
+  };
+  for(const fixture of [source,target]){
+    add(fixture,"a date");
+    add(fixture,"b integer");
+  }
+  assert.equal(compare(source,target).status,0);
+  target.grants.at(-1).grantee="service_role";
+  const difference=compare(source,target);
+  assert.equal(difference.status,1,difference.stderr);
+  assert.equal(JSON.parse(difference.stdout).differences.length,2);
+  target.grants.at(-1).object_identity=prefix.slice(0,63);
+  const lossy=compare(target,target);
+  assert.equal(lossy.status,2,lossy.stderr);
+  assert.match(lossy.stderr,/Unknown routine ACL identity/);
+});
+
+test("structured column grant must match a materialized relation and column",()=>{
+  const source=snapshot();
+  source.grants.push({...receipt,object_kind:"column",object_identity:'["teachers", "id"]'});
+  assert.equal(compare(source,source).status,0);
+  source.grants.at(-1).object_identity='["teachers", "missing"]';
+  const bad=compare(source,source);
+  assert.equal(bad.status,2,bad.stderr);
+  assert.match(bad.stderr,/Unknown column ACL identity/);
 });

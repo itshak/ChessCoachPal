@@ -80,7 +80,8 @@ test("all 25 sensitive tables reject unauthorized direct writes and private read
       expect(remove.error?.code,tag+" delete").toBe("42501");
       const anonymousRead=await anonymous.from(table).select("*").limit(1);
       expect(anonymousRead.error?.code,tag+" anonymous read").toBe("42501");
-      const signedRead=await signed.from(table).select("*").limit(1);
+      const signedRead=await signed.from(table)
+        .select(table==="platform_subscription_offers"?"id,plan_version_id,currency":"*").limit(1);
       if(authRead)expect(signedRead.error,tag+" authenticated read").toBeNull();
       else expect(signedRead.error?.code,tag+" private read").toBe("42501");
     }
