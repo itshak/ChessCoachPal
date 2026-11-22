@@ -274,7 +274,7 @@ const catalogue = [
   },
   {
     name: "ccp_dashboard_summary",
-    description: "Read the shared website dashboard totals. Omit workplaceId to inherit the active selection, pass null for All, or pass an owned workplace ID. workplaceCount is teacher-wide; scopedWorkplaceCount, active students, groups, and past-seven-day sessions respect the filter.",
+    description: "Read the shared website dashboard totals. Omit workplaceId to inherit the active selection, pass null for All, or pass an owned workplace ID. workplaceCount is teacher-wide; scopedWorkplaceCount, shown on the dashboard link to the filtered schedule, active students, groups, and past-seven-day sessions respect the filter. Use the existing selected workplace for subsequent calendar reads.",
     schema: teacherDashboardSummaryInput, scope: "coach:read", readOnly: true,
   },
   {
