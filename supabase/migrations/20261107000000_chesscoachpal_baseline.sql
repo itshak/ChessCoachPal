@@ -16802,3 +16802,95 @@ REVOKE ALL ON FUNCTION public.ccp_teacher_completed_archived_recovery_commit(
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_completed_archived_recovery_commit(
  uuid,uuid[],jsonb,text,timestamptz,integer,date,text,date,text,timestamp,integer,jsonb,uuid,text,boolean)
  TO authenticated;
+
+-- Exact owner-scoped posted teaching earnings. This read is not a forecast,
+-- cash-flow report, invoice, payment action or proof of unallocated cash.
+CREATE OR REPLACE FUNCTION public.ccp_finance_earning_summary(
+ p_workplace_id uuid,p_from date,p_to date,p_currency text,
+ p_billing_account_id uuid DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_finance_earning_summary$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_summary jsonb;
+ v_scope boolean;
+ v_valid boolean;
+BEGIN
+ IF v_teacher IS NULL THEN
+   RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501';
+ END IF;
+ IF p_workplace_id IS NULL OR p_from IS NULL OR p_to IS NULL OR
+   p_currency IS NULL OR p_currency !~ '^[A-Z]{3}$' OR
+   p_from<date '0001-01-01' OR p_to>date '9999-12-31' OR p_from>p_to THEN
+   RAISE EXCEPTION 'INVALID_EARNINGS_SUMMARY_SCOPE' USING ERRCODE='22023';
+ END IF;
+ IF p_to-p_from>365 THEN
+   RAISE EXCEPTION 'INVALID_EARNINGS_SUMMARY_SCOPE' USING ERRCODE='22023';
+ END IF;
+ WITH scope AS MATERIALIZED (
+   SELECT EXISTS(SELECT 1 FROM public.workplaces w
+     WHERE w.id=p_workplace_id AND w.teacher_id=v_teacher)
+   AND (p_billing_account_id IS NULL OR EXISTS(SELECT 1 FROM public.billing_accounts b
+     WHERE b.id=p_billing_account_id AND b.teacher_id=v_teacher)) AS owned
+ ), posted AS MATERIALIZED (
+   SELECT o.id,o.teacher_id,o.amount_cents
+   FROM public.financial_obligations o CROSS JOIN scope s
+   WHERE s.owned AND o.teacher_id=v_teacher AND o.workplace_id=p_workplace_id
+     AND o.kind='coach_earning' AND o.currency=p_currency
+     AND o.period_start BETWEEN p_from AND p_to
+     AND (p_billing_account_id IS NULL OR o.billing_account_id=p_billing_account_id)
+ ), allocated AS (
+   SELECT o.id AS obligation_id,a.amount_cents-COALESCE(rv.amount,0) AS net
+   FROM posted o JOIN public.payment_allocations a
+     ON a.teacher_id=o.teacher_id AND a.obligation_id=o.id
+   CROSS JOIN LATERAL (
+     SELECT sum(r.amount_cents) AS amount
+     FROM public.financial_reversals r
+     WHERE r.teacher_id=a.teacher_id AND r.allocation_id=a.id
+       AND r.kind='allocation_reversal'
+   ) rv
+ ), applied AS (
+   SELECT obligation_id,sum(net) AS amount,bool_and(net>=0) AS valid
+   FROM allocated GROUP BY obligation_id
+ ), balances AS (
+   SELECT o.amount_cents::numeric AS gross,COALESCE(c.amount,0) AS correction,
+     COALESCE(a.amount,0) AS applied,COALESCE(a.valid,true) AS valid
+   FROM posted o LEFT JOIN applied a ON a.obligation_id=o.id
+   CROSS JOIN LATERAL (
+     SELECT sum(r.amount_cents) AS amount
+     FROM public.financial_reversals r
+     WHERE r.teacher_id=o.teacher_id AND r.obligation_id=o.id
+       AND r.kind='obligation_correction'
+   ) c
+ ), totals AS (
+   SELECT count(*) AS entries,COALESCE(sum(gross),0) AS gross,
+     COALESCE(sum(correction),0) AS correction,COALESCE(sum(applied),0) AS applied,
+     COALESCE(bool_and(valid AND correction>=0 AND applied>=0
+       AND correction+applied<=gross),true) AS valid
+   FROM balances
+ )
+ SELECT s.owned,(t.valid AND t.gross BETWEEN 0 AND 9007199254740991
+                    AND t.entries<=9007199254740991),
+   jsonb_build_object('workplaceId',p_workplace_id,'from',p_from,'to',p_to,
+     'currency',p_currency,'billingAccountId',p_billing_account_id,
+     'obligationCount',t.entries,'grossPostedCents',t.gross,
+     'correctionCents',t.correction,'correctedPostedCents',t.gross-t.correction,
+     'netAllocatedReceivedCents',t.applied,
+     'outstandingCents',t.gross-t.correction-t.applied)
+ INTO v_scope,v_valid,v_summary
+ FROM scope s CROSS JOIN totals t;
+ IF v_scope IS DISTINCT FROM true THEN
+   RAISE EXCEPTION 'EARNINGS_SUMMARY_SCOPE_NOT_OWNED' USING ERRCODE='42501';
+ END IF;
+ IF v_valid IS DISTINCT FROM true THEN
+   RAISE EXCEPTION 'EARNINGS_SUMMARY_UNAVAILABLE' USING ERRCODE='22003';
+ END IF;
+ RETURN v_summary;
+END;
+$ccp_finance_earning_summary$;
+REVOKE ALL ON FUNCTION public.ccp_finance_earning_summary(uuid,date,date,text,uuid)
+ FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_finance_earning_summary(uuid,date,date,text,uuid)
+ TO authenticated;
+COMMENT ON FUNCTION public.ccp_finance_earning_summary(uuid,date,date,text,uuid) IS
+ 'Current settled and open coach earnings for one owned venue, currency and inclusive frozen occurrence date range. Read-only; not cash-flow or forecast.';
