@@ -9,7 +9,7 @@ import {createHash,randomBytes} from "node:crypto";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import type {z} from "zod";
 import {toLocalDateString} from "@/lib/schedule";
-import {portalGrantCreateSchema,portalGrantRevokeSchema,
+import {portalGrantCreateSchema,portalGrantRevokeSchema,portalGrantRenewPreviewSchema,portalGrantRenewSchema,
   type PortalGrantPermission} from "./portal-grant-schemas";
 
 type Db=SupabaseClient;
@@ -89,7 +89,7 @@ async function hasCurrentPortalEnrollment(db:Db,teacherId:string,studentId:strin
 }
 async function currentPortalScope(db:Db,teacherId:string,row:GrantRow,now:Date){
   const studentId=String(row.student_id),contactId=String(row.contact_id);
-  const [contact,student,link,enrollment,payer]=await Promise.all([
+  const [contact,student,link,enrollment,payer,workplace]=await Promise.all([
     db.from("contacts").select("id,status").eq("id",contactId)
       .eq("teacher_id",teacherId).maybeSingle(),
     db.from("students").select("id,archived_at").eq("id",studentId)
@@ -103,11 +103,14 @@ async function currentPortalScope(db:Db,teacherId:string,row:GrantRow,now:Date){
     row.billing_account_id?db.from("billing_accounts").select("id,status")
       .eq("teacher_id",teacherId).eq("id",String(row.billing_account_id))
       .maybeSingle():Promise.resolve({data:null,error:null}),
+    db.from("workplaces").select("id,archived_at").eq("teacher_id",teacherId)
+      .eq("id",String(row.workplace_id)).maybeSingle(),
   ]);
-  if(contact.error||student.error||link.error||payer.error)
+  if(contact.error||student.error||link.error||payer.error||workplace.error)
     fail(500,"DATABASE_ERROR","Cannot verify current portal authorization");
   return contact.data?.status==="active"&&Boolean(student.data)&&!student.data?.archived_at&&
-    Boolean(link.data)&&enrollment&&(!row.billing_account_id||payer.data?.status==="active");
+    Boolean(link.data)&&enrollment&&Boolean(workplace.data)&&!workplace.data?.archived_at&&
+    (!row.billing_account_id||payer.data?.status==="active");
 }
 export async function teacherPortalGrantCreate(db:Db,teacherId:string,input:Input){
   // Validation exists in route/MCP too, but the shared service owns the
@@ -119,10 +122,11 @@ export async function teacherPortalGrantCreate(db:Db,teacherId:string,input:Inpu
   const [contact,student,workplace]=await Promise.all([
     owned(db,teacherId,"contacts",value.contactId,"id,status"),
     owned(db,teacherId,"students",value.studentId,"id,archived_at"),
-    owned(db,teacherId,"workplaces",value.workplaceId),
+    owned(db,teacherId,"workplaces",value.workplaceId,"id,archived_at"),
   ]);
   if(contact.status!=="active")fail(409,"CONTACT_ARCHIVED","Cannot grant an archived contact access");
   if(student.archived_at)fail(409,"STUDENT_ARCHIVED","Reactivate the student before sharing");
+  if(workplace.archived_at)fail(409,"SCOPE_INACTIVE","The workplace no longer allows sharing");
   // Explicit relationship is required to avoid giving an unrelated person a
   // direct secret merely by knowing valid tenant object IDs.
   const {data:link,error:linkError}=await db.from("student_contacts").select("id")
@@ -171,6 +175,54 @@ export async function teacherPortalGrantRevoke(db:Db,teacherId:string,id:string,
   if(previous.last_request_id===value.idempotencyKey&&previous.last_request_hash===requestHash)
     return {...safePortalGrant(previous),replayed:true};
   fail(409,"STALE_REVISION","The grant changed or was revoked; reload before updating");
+}
+async function reviewRenewal(db:Db,teacherId:string,row:GrantRow,expiresAt:string){
+  const now=new Date(),previous=Date.parse(String(row.expires_at)),next=Date.parse(expiresAt);
+  if(row.revoked_at)fail(409,"REVOKED","The grant has been revoked");
+  if(previous<=now.getTime())fail(409,"EXPIRED","The grant has expired");
+  if(!Number.isFinite(next)||next<=previous||next>now.getTime()+366*86400000)
+    fail(400,"INVALID_EXPIRY","Choose a later expiry within one year");
+  if(!await currentPortalScope(db,teacherId,row,now))
+    fail(409,"SCOPE_INACTIVE","The student, contact or workplace is no longer in scope");
+  return new Date(next).toISOString();
+}
+
+export async function teacherPortalGrantRenewPreview(db:Db,teacherId:string,id:string,
+  input:z.infer<typeof portalGrantRenewPreviewSchema>){
+  const {expiresAt}=portalGrantRenewPreviewSchema.parse(input),row=await grant(db,teacherId,id);
+  return {grant:safePortalGrant(row),expiresAt:await reviewRenewal(db,teacherId,row,expiresAt),
+    invalidatesExistingLink:true,requiresSeparateBrowserIssue:true};
+}
+
+export async function teacherPortalGrantRenew(db:Db,teacherId:string,id:string,
+  input:z.infer<typeof portalGrantRenewSchema>){
+  const value=portalGrantRenewSchema.parse(input);
+  const expiresAt=new Date(value.expiresAt).toISOString();
+  const requestHash=digest(["portal-grant-renew-v1",id,value.expectedRevision,expiresAt]);
+  function replay(row:GrantRow){
+    if(row.last_request_id!==value.idempotencyKey)return null;
+    if(row.last_request_hash!==requestHash)
+      fail(409,"IDEMPOTENCY_CONFLICT","The request ID was reused for another action");
+    if(Number(row.revision)!==value.expectedRevision+1)
+      fail(409,"STALE_REVISION","The grant changed after the renewal");
+    return {...safePortalGrant(row),replayed:true};
+  }
+  const row=await grant(db,teacherId,id),previous=replay(row);
+  if(previous)return previous;
+  if(Number(row.revision)!==value.expectedRevision)fail(409,"STALE_REVISION","Reload the grant");
+  await reviewRenewal(db,teacherId,row,expiresAt);
+  const now=new Date().toISOString();
+  // Renewal only changes the expiry and access lifecycle on this row. No
+  // bearer credential can survive renewal or be minted by this operation.
+  const {data,error}=await db.from("portal_access_grants").update({
+    expires_at:expiresAt,token_digest:null,issued_at:null,revision:value.expectedRevision+1,
+    last_request_id:value.idempotencyKey,last_request_hash:requestHash,updated_at:now,
+  }).eq("teacher_id",teacherId).eq("id",id).eq("revision",value.expectedRevision)
+    .eq("expires_at",String(row.expires_at)).is("revoked_at",null).gt("expires_at",now)
+    .select(columns).maybeSingle();
+  if(error)fail(500,"DATABASE_ERROR","Unable to renew portal grant");
+  if(data)return {...safePortalGrant(data),replayed:false};
+  return replay(await grant(db,teacherId,id))??fail(409,"STALE_REVISION","Grant changed during renewal");
 }
 /** Only a securely authenticated TEACHER website endpoint can call this. */
 export async function teacherPortalGrantIssueBrowserOnly(db:Db,teacherId:string,id:string,

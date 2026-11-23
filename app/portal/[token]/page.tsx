@@ -148,11 +148,11 @@ export default async function PortalPage({params}:{params:Promise<{token:string}
                         {t("dueAmount",{amount:formatMoney(due,invoice.currency,locale)})}
                       </p>}
                     </div>
-                    {invoice.status==="sent"&&due>0&&invoice.checkoutUrl&&
+                    {invoice.status==="sent"&&due>0&&(invoice.checkoutUrl?
                       <a href={invoice.checkoutUrl} target="_blank" rel="noreferrer"
                         className="bg-primary text-white rounded-lg px-3 py-2 text-sm font-semibold">
                         {t("payOnline")}
-                      </a>}
+                      </a>:<p className="text-sm text-muted">{t("contactCoachForPayment")}</p>)}
                   </div>
                 </Card>;
               })}</div>}

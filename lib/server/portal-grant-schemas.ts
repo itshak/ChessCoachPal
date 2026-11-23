@@ -36,3 +36,12 @@ export const portalGrantIssueSchema=z.object({
   expectedRevision:z.number().int().min(1),
   confirmed:z.literal(true),
 }).strict();
+
+export const portalGrantRenewPreviewSchema=z.object({
+  expiresAt:z.iso.datetime({offset:true}),
+}).strict();
+export const portalGrantRenewSchema=portalGrantRenewPreviewSchema.extend({
+  expectedRevision:z.number().int().min(1),
+  idempotencyKey:uuid,
+  confirmed:z.literal(true),
+}).strict();

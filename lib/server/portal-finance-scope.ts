@@ -2,6 +2,16 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import type {PortalContext} from "./portal-scope-service";
 import {portalGrantAllows} from "./portal-grants-service";
 
+/** The existing stored Stripe Checkout URL is a handoff, not a payment action. */
+export function trustedPortalCheckoutUrl(value:string|null):string|null{
+  if(!value)return null;
+  try{
+    const url=new URL(value);
+    return url.protocol==="https:"&&url.hostname==="checkout.stripe.com"&&!url.port&&
+      !url.username&&!url.password?url.href:null;
+  }catch{return null;}
+}
+
 export type ScopedInvoice={
   id:string;periodStart:string;periodEnd:string;status:"sent"|"paid";
   kind:"lesson_invoice"|"prepaid_purchase";
@@ -123,6 +133,6 @@ export async function portalScopedInvoices(db:Db,ctx:PortalContext):Promise<Scop
     kind,
     id:row.id,periodStart:row.period_start,periodEnd:row.period_end,
     status:row.status,subtotalCents:row.subtotal_cents,currency:row.currency,
-    paidCents:paid.get(row.id)??0,checkoutUrl:kind==="lesson_invoice"?row.stripe_checkout_url:null,
+    paidCents:paid.get(row.id)??0,checkoutUrl:kind==="lesson_invoice"?trustedPortalCheckoutUrl(row.stripe_checkout_url):null,
   }));
 }

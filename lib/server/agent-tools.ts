@@ -130,9 +130,9 @@ import {
  billingAccountsList,billingAccountDetail,billingAccountCreate,billingAccountUpdate,
  safeBillingAccount,ContactServiceError,
 } from "@/lib/server/teacher-contacts-service";
-import {portalGrantCreateSchema,portalGrantRevokeSchema} from "@/lib/server/portal-grant-schemas";
+import {portalGrantCreateSchema,portalGrantRevokeSchema,portalGrantRenewPreviewSchema,portalGrantRenewSchema} from "@/lib/server/portal-grant-schemas";
 import {teacherPortalGrantsList,teacherPortalGrantGet,
- teacherPortalGrantCreate,teacherPortalGrantRevoke,PortalGrantError}
+ teacherPortalGrantCreate,teacherPortalGrantRevoke,teacherPortalGrantRenewPreview,teacherPortalGrantRenew,PortalGrantError}
  from "@/lib/server/portal-grants-service";
 import {portalEventInviteCreateSchema,portalEventInviteRevokeSchema,
   teacherPortalEventInvitesList,teacherPortalEventInviteCreate,
@@ -989,6 +989,16 @@ const catalogue = [
     name:"ccp_portal_grants_create",
     description:"With teacher confirmation create an explicit limited contact/student/workplace sharing grant, requiring exact permissions, expiration and a current noncancelled enrollment on the teacher’s local day. This DOES NOT issue a secret URL. Use the authenticated website for link issuance; contact relationship alone is never a grant.",
     schema:portalGrantCreateSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_portal_grants_renew_preview",
+    description:"Read-only review of a later expiry for one active owned portal grant. Scope is unchanged. Renewal invalidates any old link and requires separately approved secure browser issuance.",
+    schema:portalGrantRenewPreviewSchema.extend({grantId:uuid}).strict(),scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_portal_grants_renew",
+    description:"Explicitly approve a reviewed expiry extension for one active owned grant at its exact revision. The existing link becomes invalid. Never issues or reveals a bearer URL; use the secure website separately if a new link is needed.",
+    schema:portalGrantRenewSchema.extend({grantId:uuid}).strict(),scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_portal_grants_revoke",
@@ -2386,6 +2396,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_portal_grants_create": {
         const a=args as Parameters<typeof teacherPortalGrantCreate>[2];
         return {data:await teacherPortalGrantCreate(db,teacherId,a)};
+      }
+      case "ccp_portal_grants_renew_preview": {
+        const {grantId,...input}=args as {grantId:string}&Parameters<typeof teacherPortalGrantRenewPreview>[3];
+        return {data:await teacherPortalGrantRenewPreview(db,teacherId,grantId,input)};
+      }
+      case "ccp_portal_grants_renew": {
+        const {grantId,...input}=args as {grantId:string}&Parameters<typeof teacherPortalGrantRenew>[3];
+        return {data:await teacherPortalGrantRenew(db,teacherId,grantId,input)};
       }
       case "ccp_portal_grants_revoke": {
         const {grantId,...input}=args as {grantId:string}&Parameters<typeof teacherPortalGrantRevoke>[3];
