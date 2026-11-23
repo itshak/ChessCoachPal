@@ -169,9 +169,20 @@ test("portal grants and dated scheduling reject out-of-period membership",()=>{
   for(const marker of ["we.cancelled_at IS NULL","we.starts_on IS NULL","we.ends_on IS NULL"])
    ok(body.includes(marker),"Portal missing date-scoped membership "+fn+" "+marker);
  }
- const adhoc=sql.split("CREATE OR REPLACE FUNCTION public.ccp_teacher_ad_hoc_session_create(")[1];
- ok(adhoc?.includes("count(DISTINCT s.id)"));
- ok(adhoc?.includes("p_starts_at AT TIME ZONE"));
+ // Match the writer itself, not a later routine that happens to contain a marker.
+ const adhoc=sql.split("CREATE FUNCTION public.ccp_teacher_ad_hoc_session_create_internal(")[1]
+  ?.split("$$;")[0];
+ ok(adhoc,"Missing canonical ad hoc session writer");
+ for(const marker of [
+  "count(DISTINCT s.id)","e.cancelled_at IS NULL",
+  "e.starts_on IS NULL OR e.starts_on<=","e.ends_on IS NULL OR e.ends_on>=",
+  "p_starts_at AT TIME ZONE",
+ ])ok(adhoc.includes(marker),"Canonical ad hoc writer missing "+marker);
+ const adhocWrapper=sql.split("CREATE OR REPLACE FUNCTION public.ccp_teacher_ad_hoc_session_create(")[1]
+  ?.split("$ccp_canonical_adhoc_wrapper$;")[0];
+ ok(adhocWrapper,"Missing public ad hoc session wrapper");
+ ok(/SELECT public\.ccp_teacher_ad_hoc_session_create_internal\(\s*p_workplace_id,\s*p_student_ids,\s*p_title,\s*p_starts_at,\s*p_duration_minutes,\s*p_lesson_note,\s*p_request_id,\s*NULL\s*\);/.test(adhocWrapper),
+  "Public ad hoc wrapper must delegate the exact reviewed inputs without an explicit timezone override");
  const slots=sql.split("CREATE OR REPLACE FUNCTION public.ccp_canonical_slot_create(")[1];
  ok(slots?.includes("e.starts_on<=p_start_date"));
  ok(slots?.includes("p_end_date IS NULL AND e.ends_on IS NULL"));
