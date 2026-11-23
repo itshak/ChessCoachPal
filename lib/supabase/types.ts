@@ -462,14 +462,14 @@ export interface Database {
       };
       compensation_agreements: {
         Row:{id:string;teacher_id:string;workplace_id:string;student_id:string|null;
-          group_id:string|null;billing_account_id:string;
+          group_id:string|null;exact_session_id:string|null;billing_account_id:string;
           agreement_role:"coach_earning"|"participant_charge";
           model:"hourly"|"per_session"|"per_student"|"fixed_period";
           rate_cents:number;currency:string;effective_from:string;effective_to:string|null;
           status:"active"|"archived";revision:number;last_request_id:string|null;
           last_request_hash:string|null;created_at:string;updated_at:string};
         Insert:{id?:string;teacher_id:string;workplace_id:string;student_id?:string|null;
-          group_id?:string|null;billing_account_id:string;
+          group_id?:string|null;exact_session_id?:string|null;billing_account_id:string;
           agreement_role:"coach_earning"|"participant_charge";
           model:"hourly"|"per_session"|"per_student"|"fixed_period";
           rate_cents:number;currency:string;effective_from:string;effective_to?:string|null;
