@@ -15,8 +15,11 @@ type Resolution = {
 type RecoveryPreview={
  canCommit:boolean;issues:Array<{code:string;message:string;studentId?:string}>;
  workplace:{id:string;name:string}|null;
+ capacity:null|{requestedReactivations:number;remaining:number|null;blocked:boolean};
  reactivations:Array<{studentId:string;name:string;expectedUpdatedAt:string;
-  previousWorkplaceIds:string[];creditPolicy:string}>;
+  previousWorkplaceIds:string[];creditPolicy:string;
+  creditNotice:null|{packagesWithUnusedUnits:number;expiredBeforeLesson:number;
+   scopedToAnotherWorkplace:number}}>;
  proposedCommit:null|{workplaceId:string;studentIds:string[];title:string;
   startsAt:string;durationMinutes:number;lessonNote:string;
   reactivations:Array<{studentId:string;expectedUpdatedAt:string}>};
@@ -188,7 +191,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
       });
       const body=await response.json() as {id?:string;reactivatedCount?:number;
         replayed?:boolean;error?:string};
-      if(!response.ok||!body.id)throw new Error(body.error??t("recoveryDenied"));
+      if(!response.ok||!body.id)throw new Error(toUserError(body,t("recoveryDenied")));
       setReceipt(t("recoveryReceipt",{id:body.id,count:body.reactivatedCount??0})+
         (body.replayed?" "+t("safeReplay"):""));
       setPreview(null);setRecoveryPreview(null);setRecoveryApproved(false);
@@ -432,14 +435,29 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
               disabled={busy||preview.resolutions.some(r=>!r.studentId)}
               onClick={()=>void reviewArchivedRecovery()}>{t("reviewRecovery")}</button>}
           {recoveryPreview&&<>
+            {recoveryPreview.capacity&&<p className="text-sm">
+              {recoveryPreview.capacity.remaining===null?t("recoveryCapacityUnlimited",{
+                requested:recoveryPreview.capacity.requestedReactivations,
+              }):t("recoveryCapacitySummary",{
+                requested:recoveryPreview.capacity.requestedReactivations,
+                remaining:recoveryPreview.capacity.remaining,
+              })}
+            </p>}
             {recoveryPreview.issues.map((item,i)=>
               <p key={i} role="alert" className="text-sm text-amber-500">
-                {item.code}: {item.message}
+                {item.code==="CAPACITY_EXCEEDED"?t("recoveryCapacityBlocked"):
+                  toUserError({code:item.code,error:item.message},item.message)}
               </p>)}
             <ul className="list-disc ps-5 text-sm">
               {recoveryPreview.reactivations.map(r=><li key={r.studentId}>
                 <bdi dir="auto">{r.name}</bdi> (<bdi dir="ltr">{r.studentId}</bdi>)
                 {" — "}{t("archivedStudent")}
+                {r.creditNotice&&r.creditNotice.packagesWithUnusedUnits>0&&
+                  <p className="text-sm">{t("recoveryCreditNotice",{
+                    packages:r.creditNotice.packagesWithUnusedUnits,
+                    expired:r.creditNotice.expiredBeforeLesson,
+                    otherWorkplace:r.creditNotice.scopedToAnotherWorkplace,
+                  })}</p>}
               </li>)}
             </ul>
             <p className="text-sm">{t("recoveryCredits")}</p>

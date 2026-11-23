@@ -8,7 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export class CoachError extends Error {
   constructor(
     public code: "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR" | "DATABASE_ERROR" | "TOO_MANY_WORKPLACES" |
-      "ARCHIVED_STUDENT_CONFIRMATION_REQUIRED",
+      "ARCHIVED_STUDENT_CONFIRMATION_REQUIRED" | "CAPACITY_EXCEEDED" | "PREVIEW_UNAVAILABLE",
     public status: number,
     message: string
   ) {
@@ -137,7 +137,18 @@ export async function sessionsList(db: Db, teacherId: string, workplaceId?:strin
   if(workplaceId)query=query.eq("workplace_id",workplaceId);
   const {data,error}=await query;
   if (error) throw problem();
-  return data;
+  const sessions=data??[];
+  const studentIds=[...new Set(sessions.flatMap(session=>session.student_id?[session.student_id]:[]))];
+  if(!studentIds.length)return sessions.map(session=>({...session,studentArchived:null}));
+  // One minimal owner-scoped read for the currently listed direct students.
+  // Absence from the active roster is not reliable archival evidence.
+  const {data:students,error:studentError}=await db.from("students").select("id,archived_at")
+    .eq("teacher_id",teacherId).in("id",studentIds);
+  if(studentError)throw problem();
+  const archived=new Map((students??[]).map(student=>[student.id,student.archived_at!==null]));
+  return sessions.map(session=>({...session,
+    studentArchived:session.student_id?archived.get(session.student_id)??null:null,
+  }));
 }
 
 /** Reject malformed instants and invalid durations before database writes. */

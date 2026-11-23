@@ -1,7 +1,7 @@
 import {getTranslations} from "next-intl/server";
 import {createClient} from "@/lib/supabase/server";
 import {getPolicy} from "@/lib/server/scheduling";
-import {addDays,startOfWeek,toLocalDateString} from "@/lib/schedule";
+import {addDays,isDateString,startOfWeek,toLocalDateString} from "@/lib/schedule";
 import {formatEventDateKey} from "@/lib/events";
 import {materializeCanonicalSessions} from "@/lib/server/canonical-calendar-service";
 import {canonicalCalendarWindow} from "@/lib/server/canonical-calendar-read";
@@ -21,11 +21,11 @@ export async function generateMetadata(){
 
 export default async function SchedulePage({
  searchParams,
-}:{searchParams:Promise<{week?:string}>}){
+}:{searchParams:Promise<{week?:string;session?:string}>}){
  const t=await getTranslations("calendar");
  const db=await createClient(),{data:{user}}=await db.auth.getUser();
  if(!user)return null;
- const {week}=await searchParams;
+ const {week,session:requestedSession}=await searchParams;
  const policy=await getPolicy(db,user.id);
  const context=await teacherWorkplaceContextGet(db,user.id);
  const selection=context.selectedWorkplaceId;
@@ -40,7 +40,19 @@ export default async function SchedulePage({
  const workplaceTimezones=Object.fromEntries((workplacesRes.data??[]).map(w=>[w.id,w.timezone]));
  const workplaces=(workplacesRes.data??[]).filter(w=>!w.archived_at&&(!selection||w.id===selection))
    .map(w=>({id:w.id,name:w.name,localToday:toLocalDateString(now,w.timezone)}));
- const weekStart=startOfWeek(week&&/^\d{4}-\d{2}-\d{2}$/.test(week)?week:today);
+ // Navigation only: recognize an exact owned session in the visible
+ // workplace context. Invalid, missing and excluded IDs stay indistinguishable.
+ let noteTarget:null|{id:string;date:string}=null;
+ if(typeof requestedSession==="string"&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestedSession)){
+  let lookup=db.from("teaching_sessions").select("id,starts_at,local_timezone,workplace_id")
+    .eq("teacher_id",user.id).eq("id",requestedSession);
+  if(selection)lookup=lookup.eq("workplace_id",selection);
+  const {data,error}=await lookup.maybeSingle();
+  if(error)throw new Error("Unable to resolve the schedule link");
+  if(data)noteTarget={id:data.id,date:toLocalDateString(new Date(data.starts_at),
+    data.local_timezone||workplaceTimezones[data.workplace_id]||timezone)};
+ }
+ const weekStart=startOfWeek(noteTarget?.date??(typeof week==="string"&&isDateString(week)?week:today));
  const weekEnd=addDays(weekStart,6);
 
  // Materialize the normal near-term horizon and separately the requested
@@ -48,9 +60,11 @@ export default async function SchedulePage({
  // forward in history. Existing marked, noted, moved or paid occurrence IDs
  // are never overwritten by recurrence materialization.
  const normalEnd=addDays(teacherToday,56);
- await materializeCanonicalSessions(db,user.id,teacherToday,normalEnd);
- if(weekStart<teacherToday||weekEnd>normalEnd)
-  await materializeCanonicalSessions(db,user.id,weekStart,weekEnd);
+ if(requestedSession===undefined){
+  await materializeCanonicalSessions(db,user.id,teacherToday,normalEnd);
+  if(weekStart<teacherToday||weekEnd>normalEnd)
+   await materializeCanonicalSessions(db,user.id,weekStart,weekEnd);
+ }
 
  const [calendar,slots,makeup,studentsRes,eventsRes]=
   await Promise.all([
@@ -86,6 +100,7 @@ export default async function SchedulePage({
     {t("intro")}
    </p>
   </header>
+  {requestedSession!==undefined&&!noteTarget&&<p role="status">{t("lessonLinkUnavailable")}</p>}
   <CanonicalScheduleBoard
    weekStart={weekStart} today={today} timezone={timezone} personalToday={teacherToday}
    selectedWorkplaceId={selection} workplaceTimezones={workplaceTimezones}

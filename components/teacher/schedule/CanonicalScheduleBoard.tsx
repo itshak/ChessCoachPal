@@ -340,7 +340,7 @@ export function CanonicalScheduleBoard({
       <div className="flex gap-2">
        <button disabled={busy} className="text-primary hover:underline"
         onClick={()=>openSession(session,"attendance")}>{t("attendance")}</button>
-       <button disabled={busy} className="text-primary hover:underline"
+       <button id={"lesson-notes-"+session.id} disabled={busy} className="text-primary hover:underline"
         onClick={()=>openSession(session,"notes")}>{t("notes")}</button>
        {session.status==="scheduled"&&<button disabled={busy}
         className="text-primary hover:underline"

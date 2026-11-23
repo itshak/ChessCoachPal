@@ -15,7 +15,7 @@ type Group = { id: string; name: string; workplace_id: string; updated_at:string
 type Session = {
   id: string; title: string; starts_at: string; duration_minutes: number;
   workplace_id: string; group_id: string | null; student_id: string | null;
-  lesson_note: string; status: "scheduled" | "completed" | "cancelled";
+  lesson_note: string; studentArchived?:boolean|null; status: "scheduled" | "completed" | "cancelled";
 };
 type Roster = { student_id: string; students: { name: string } | { name: string }[] };
 type Attendance = {
@@ -413,6 +413,8 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
   const localGroups = groups.filter(g => g.workplace_id === workplaceId);
   const localSessions = sessions.filter(s => s.workplace_id === workplaceId);
   const session = localSessions.find(s => s.id === selectedSessionId);
+  const [openedAt]=useState(()=>Date.now());
+  const historicalArchivedSession=Boolean(session?.studentArchived===true&&Date.parse(session.starts_at)<openedAt);
   const activeWorkplace = workplaces.find(w => w.id === workplaceId);
   const sessionWorkplace = workplaces.find(w => w.id === session?.workplace_id);
   const teacherMinutes = localSessions.reduce((sum, item) =>
@@ -715,10 +717,19 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
           </label>
           {session && <p className="text-sm text-muted">
             <bdi dir="auto">{sessionWorkplace?.name}</bdi> · {t("minuteCount",{count:session.duration_minutes})}
-            {session.lesson_note && <> · {session.lesson_note}</>}
+            {session.lesson_note && !historicalArchivedSession && <> · {session.lesson_note}</>}
           </p>}
           {!session && <p className="text-sm text-muted">{t("selectSessionHint")}</p>}
-          {session && <form onSubmit={updateSession} className="space-y-2 border-y border-border py-3">
+          {session&&historicalArchivedSession&&<div className="space-y-2 border-y border-border py-3">
+            <p className="text-sm">{t("archivedHistoricalEdits")}</p>
+            {session.lesson_note&&<details>
+              <summary className="cursor-pointer text-sm">{t("archivedHistoricalSummary")}</summary>
+              <p className="whitespace-pre-wrap break-words text-sm">{session.lesson_note}</p>
+            </details>}
+            <Link href={"/schedule?session="+encodeURIComponent(session.id)+"#lesson-notes-"+session.id}
+              className="text-primary underline">{t("archivedHistoricalNotes")}</Link>
+          </div>}
+          {session && !historicalArchivedSession && <form onSubmit={updateSession} className="space-y-2 border-y border-border py-3">
             <h3 className="font-semibold">{t("editSession")}</h3>
             <label className="block text-sm">{t("editSessionTitle")}
               <input className={field} value={editSessionTitle} onChange={e => setEditSessionTitle(e.target.value)} required maxLength={160} />
