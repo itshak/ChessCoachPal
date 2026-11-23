@@ -5,6 +5,7 @@ import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {useLocale,useTranslations} from "next-intl";
 import { workplaceLocalToUtc } from "@/lib/coaching-time";
+import {CompletedArchivedRecoveryPanel,type CompletedRecoveryPhase} from "@/components/teacher/CompletedArchivedRecoveryPanel";
 
 type Workplace = { id:string; name:string; timezone:string };
 type Candidate = { id:string; name:string; archived?:boolean };
@@ -80,6 +81,11 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
   const [preview,setPreview] = useState<Preview|null>(null);
   const [studentChoices,setStudentChoices]=useState<Record<number,string>>({});
   const previewGeneration=useRef(0);
+  const [completedPhase,setCompletedPhase]=useState<CompletedRecoveryPhase>("idle");
+  const completedPhaseRef=useRef<CompletedRecoveryPhase>("idle");
+  const completedLocked=completedPhase!=="idle";
+  const completedGeneration=previewGeneration.current;
+  const [recoveryKind,setRecoveryKind]=useState<"scheduled"|"completed">("scheduled");
   const [recoveryPreview,setRecoveryPreview] = useState<RecoveryPreview|null>(null);
   const [recoveryReason,setRecoveryReason] = useState("");
   const [recoveryApproved,setRecoveryApproved] = useState(false);
@@ -89,6 +95,13 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
   const [receipt,setReceipt] = useState("");
+  const receiptRef=useRef<HTMLParagraphElement>(null);
+  const focusCompletedReceipt=useRef(false);
+  useEffect(()=>{
+    if(receipt&&focusCompletedReceipt.current){
+      focusCompletedReceipt.current=false;receiptRef.current?.focus();
+    }
+  },[receipt]);
   const [pendingLink,setPendingLink] = useState<ChapterLinkState|null>(null);
   const [linkReview,setLinkReview] = useState<ChapterLinkPreview|null>(null);
   const [linkApproved,setLinkApproved] = useState(false);
@@ -111,7 +124,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
     return () => {active=false;};
   }, [t,initialWorkplaces]);
 
-  const invalidate = () => {previewGeneration.current++;setStudentChoices({});setPreview(null);setApproved(false);setAtomicApproved(false);setReceipt("");
+  const invalidate = () => {previewGeneration.current++;setRecoveryKind("scheduled");setStudentChoices({});setPreview(null);setApproved(false);setAtomicApproved(false);setReceipt("");
     setRecoveryPreview(null);setRecoveryApproved(false);recoveryKeyRef.current=null;
     atomicKeyRef.current=null;
     setPendingLink(null);setLinkReview(null);setLinkApproved(false);setLinkedReceipt("");
@@ -119,12 +132,15 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
 
   function check(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if(completedPhaseRef.current!=="idle")return;
     setStudentChoices({});
     void requestPreview({});
   }
 
   async function requestPreview(choices:Record<number,string>) {
+    if(completedPhaseRef.current!=="idle")return;
     const generation=++previewGeneration.current;
+    setRecoveryKind("scheduled");
     setError("");setReceipt("");setPreview(null);setApproved(false);setAtomicApproved(false);atomicKeyRef.current=null;
     setRecoveryPreview(null);setRecoveryApproved(false);recoveryKeyRef.current=null;
     const workplace=workplaces.find(item=>item.id===workplaceId);
@@ -321,6 +337,13 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
     finally{setBusy(false);}
   }
 
+  const reviewedRecoveryWorkplace=workplaces.find(w=>w.id===workplaceId);
+  const exactRecoveryLearners=preview?.resolutions.flatMap(r=>r.studentId&&r.name?
+    [{id:r.studentId,name:r.name,archived:r.archived===true}]:[])??[];
+  const canChooseCompleted=Boolean(reviewedRecoveryWorkplace&&timingMode==="explicit"&&
+    preview?.resolutions.length===exactRecoveryLearners.length&&exactRecoveryLearners.length>0&&
+    new Set(exactRecoveryLearners.map(x=>x.id)).size===exactRecoveryLearners.length);
+
   return <section className="rounded-xl border border-border bg-surface p-5 space-y-4" aria-label={t("aria")}>
     <div>
       <h2 className="font-semibold text-lg">{t("title")}</h2>
@@ -328,7 +351,8 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
         {t("intro")}
       </p>
     </div>
-    <form onSubmit={check} className="grid grid-cols-1 gap-3 md:grid-cols-2">
+    <form onSubmit={check}>
+      <fieldset disabled={completedLocked} className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <label className="block min-w-0 text-sm">{t("names")}
         <textarea className={field} rows={3} required value={names}
           onChange={e=>{setNames(e.target.value);invalidate();}} />
@@ -396,9 +420,10 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
         </label>
       </>}
       <div><button className={button} type="submit" disabled={busy}>{t("previewOnly")}</button></div>
+      </fieldset>
     </form>
     {error&&<p role="alert" className="text-red-500">{error}</p>}
-    {receipt&&<p role="status">{receipt}</p>}
+    {receipt&&<p ref={receiptRef} role="status" tabIndex={-1}>{receipt}</p>}
     {linkedReceipt&&<p role="status">{linkedReceipt}</p>}
     {pendingLink&&<div className="space-y-3 rounded-lg border border-border p-3">
       <h3 className="font-semibold">{t("pendingTitle")}</h3>
@@ -432,7 +457,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
              t(r.status==="ambiguous"?"ambiguous":"notFound")}
           {r.candidates.length>0&&<label className="block text-sm">
             {t("chooseExactLearner",{name:r.input,position:i+1})}
-            <select className={field} value={r.candidates.some(c=>c.id===studentChoices[i])?studentChoices[i]:""}
+            <select className={field} disabled={completedLocked} value={r.candidates.some(c=>c.id===studentChoices[i])?studentChoices[i]:""}
               onChange={e=>{const studentId=e.target.value;setStudentChoices(old=>({...old,[i]:studentId}));}}>
               <option value="">{t("leaveLearnerUnselected")}</option>
               {r.candidates.map(c=><option value={c.id} key={c.id}>{t("learnerIdentityOption",{
@@ -443,7 +468,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
         </li>)}
       </ul>
       {preview.resolutions.some(r=>r.candidates.length>0)&&<button type="button" className={button}
-        disabled={busy||preview.resolutions.some((r,i)=>r.candidates.length>0&&
+        disabled={busy||completedLocked||preview.resolutions.some((r,i)=>r.candidates.length>0&&
           !r.candidates.some(c=>c.id===studentChoices[i]))}
         onClick={()=>void requestPreview(studentChoices)}>{t("verifySelectedLearners")}</button>}
       {preview.issues.map((issue,i)=><p key={i} role="alert" className="text-sm text-amber-500">
@@ -455,10 +480,33 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
         <div className="space-y-3 rounded-lg border border-amber-400/60 p-3">
           <h4 className="font-semibold">{t("recoveryTitle")}</h4>
           <p className="text-sm">{t("recoveryIntro")}</p>
+          {canChooseCompleted&&<fieldset className="space-y-1">
+            <legend className="text-sm font-semibold">{t("completedRecoveryMode")}</legend>
+            {(["scheduled","completed"] as const).map(kind=><label key={kind} className="flex items-center gap-2 text-sm">
+              <input type="radio" name="archived-recovery-kind" checked={recoveryKind===kind} disabled={busy||completedLocked} onChange={()=>{
+                if(completedPhaseRef.current!=="idle")return;
+                setRecoveryKind(kind);setRecoveryPreview(null);setRecoveryApproved(false);recoveryKeyRef.current=null;
+              }}/>
+              {t(kind==="scheduled"?"scheduledRecoveryChoice":"completedRecoveryChoice")}
+            </label>)}
+          </fieldset>}
+          {recoveryKind==="completed"&&canChooseCompleted&&reviewedRecoveryWorkplace&&
+            <CompletedArchivedRecoveryPanel workplace={reviewedRecoveryWorkplace} learners={exactRecoveryLearners}
+              title={title.trim()} localStart={localStart} durationMinutes={duration}
+              onPhaseChange={phase=>{
+               if(completedGeneration!==previewGeneration.current)return;
+               completedPhaseRef.current=phase;setCompletedPhase(phase);
+              }}
+              onCommitted={id=>{
+               if(completedGeneration!==previewGeneration.current)return;
+               focusCompletedReceipt.current=true;
+               setReceipt(t("completedRecoveryReceipt",{id}));setPreview(null);setRecoveryKind("scheduled");
+              }}/>}
+          {recoveryKind==="scheduled"&&<>
           {timingMode!=="explicit"?
             <p role="alert" className="text-sm text-amber-500">{t("recoveryExplicitTime")}</p>:
             <button className={button} type="button"
-              disabled={busy||preview.resolutions.some(r=>!r.studentId)}
+              disabled={busy||completedLocked||preview.resolutions.some(r=>!r.studentId)}
               onClick={()=>void reviewArchivedRecovery()}>{t("reviewRecovery")}</button>}
           {recoveryPreview&&<>
             {recoveryPreview.capacity&&<p className="text-sm">
@@ -513,6 +561,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
                 disabled={busy||!recoveryApproved||recoveryReason.trim().length<8}
                 onClick={()=>void confirmArchivedRecovery()}>{t("recoveryCommit")}</button>
             </>}
+          </>}
           </>}
         </div>
       </>}

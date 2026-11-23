@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "mode": "single-canonical-baseline",
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "94511e25acb5149f6c84a901814f34137cd425c2f9d91ed6989787db7a8cc90b",
+  "baselineSha256": "aac96c09bc36d25e0a56d545edbaa9fd687bffa50c93fce4b7881499d4298628",
   "operatorCutoverRequired": true,
   "baselineRequiredObjects": [
     "students",
@@ -43,6 +43,9 @@
     "ccp_student_lifecycle_preview",
     "ccp_student_lifecycle_commit",
     "ccp_teacher_archived_lesson_recovery_commit",
+    "ccp_teacher_ad_hoc_session_create_internal",
+    "ccp_completed_archived_recovery_calendar",
+    "ccp_teacher_completed_archived_recovery_commit",
     "capability_definitions",
     "plan_versions",
     "plan_capabilities",

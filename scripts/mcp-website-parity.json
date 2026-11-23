@@ -487,6 +487,21 @@
       "evidenceTest": "e2e/parity-lesson-schedule-inference.spec.ts"
     },
     {
+      "path": "app/api/coaching/lesson-capture/recovery/completed/route.ts",
+      "methods": [
+        "POST",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_lessons_completed_archived_recovery_preview",
+        "ccp_lessons_completed_archived_recovery_commit"
+      ],
+      "explanation": "Read-only DB-pinned same-day completed archived lesson preview and separately confirmed atomic owner-scoped write with attested present/late/excused roster. Signed browser request and delegated MCP fixture cover no writes, auth scope, canonical completion and replay. This reviewed SQL prototype contains no portal, financial or provider authority.",
+      "evidenceTest": "e2e/parity-completed-archived-recovery.spec.ts"
+    },
+    {
       "path": "app/api/coaching/lesson-capture/recovery/commit/route.ts",
       "methods": [
         "POST"
@@ -1780,6 +1795,7 @@
     "components/teacher/ContactsManager.tsx",
     "components/teacher/CopyLinkClient.tsx",
     "components/teacher/EditableStudentName.tsx",
+    "components/teacher/CompletedArchivedRecoveryPanel.tsx",
     "components/teacher/FenReviewPanel.tsx",
     "components/teacher/HostedLimitBanner.tsx",
     "components/teacher/LearningMaterialsCatalog.tsx",
