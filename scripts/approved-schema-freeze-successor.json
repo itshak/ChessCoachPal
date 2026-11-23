@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "adr": "ADR-0026",
-  "previousLockSha256": "52934523a9b24c7fe79d5bd488fbb79d13d8eba26e8fd26700caf9702b4f8125",
-  "successorLockSha256": "7fefef807b652e7d51dd545b8f17ffb5d24541c1ffbe9009d0e6bcfac7995843"
+  "adr": "ADR-0027",
+  "previousLockSha256": "7fefef807b652e7d51dd545b8f17ffb5d24541c1ffbe9009d0e6bcfac7995843",
+  "successorLockSha256": "e5e5a219af2cc5a0d69d8b85bba2d854a7adfb0f142795911e841dfd9008863c"
 }
