@@ -138,6 +138,7 @@ export default async function PortalPage({params}:{params:Promise<{token:string}
                 return <Card key={invoice.id} padding="sm">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
+                      {invoice.kind==="prepaid_purchase"&&<p className="font-medium">{t("prepaidPurchase")}</p>}
                       <p className="font-medium">{invoice.periodStart} – {invoice.periodEnd}</p>
                       <p className="text-muted text-sm">
                         {invoice.status==="paid"?t("paid"):t("sent")} · {formatMoney(invoice.subtotalCents,invoice.currency,locale)}

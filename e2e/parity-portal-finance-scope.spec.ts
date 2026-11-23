@@ -167,3 +167,96 @@ test("PARITY: scoped guest sees only complete invoices for the exact authorized 
   }
  }
 });
+
+test("PARITY: an exact finance grant shows prepaid purchases only, never a learner credit balance",async({page,request,playwright,isolatedTeacher})=>{
+ const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const owner=await admin.from("teachers").select("id").eq("email",isolatedTeacher.email).single();
+ expect(owner.error).toBeNull();
+ const teacherId=owner.data!.id as string;
+ expect((await admin.from("teacher_settings").upsert({teacher_id:teacherId,timezone:"UTC",currency:"USD"})).error).toBeNull();
+ const run=async(name:string,args:Record<string,unknown>)=>{
+  const result=await call(name,args);expect(result.error).toBeUndefined();return result.data;
+ };
+ const idem=()=>({idempotencyKey:randomUUID()});
+ const key=()=>({...idem(),confirmed:true});
+ const makeStudent=async()=> (await run("ccp_students_create",{name:"Synthetic purchase student "+randomUUID(),...idem()})).entityId as string;
+ const studentId=await makeStudent(),otherStudent=await makeStudent();
+ const makeVenue=async()=> (await run("ccp_workplaces_create",{name:"Purchase workplace "+randomUUID(),timezone:"UTC",
+  currency:"USD",locale:"en",policy:{},...idem()})).entityId as string;
+ const workplaceId=await makeVenue(),otherVenue=await makeVenue();
+ for(const [learner,venue] of [[studentId,workplaceId],[otherStudent,workplaceId],[studentId,otherVenue]])
+  await run("ccp_workplaces_enroll",{studentId:learner,workplaceId:venue,...idem()});
+ const contact=await run("ccp_contacts_create",{displayName:"Synthetic sponsor "+randomUUID(),...key()});
+ const contactId=contact.id as string;
+ await run("ccp_student_contacts_link",{studentId,contactId,relationshipLabel:"Sponsor",...key()});
+ const account=async()=> (await run("ccp_billing_accounts_create",{displayName:"Synthetic payer "+randomUUID(),
+  accountKind:"organization",...key()})).id as string;
+ const payer=await account(),otherPayer=await account();
+ const assign=async(studentId:string,workplaceId:string,billingAccountId:string,effectiveFrom:string,effectiveTo:string|null=null)=>
+  run("ccp_student_billing_assignments_create",{studentId,workplaceId,billingAccountId,effectiveFrom,effectiveTo,...key()});
+ await assign(studentId,workplaceId,payer,"2040-01-01","2040-01-05");
+ await assign(studentId,workplaceId,otherPayer,"2040-01-06");
+ await assign(otherStudent,workplaceId,payer,"2040-01-01");
+ await assign(studentId,otherVenue,payer,"2040-01-01");
+ const invoiceIds:string[]=[];
+ const purchase=async(studentId:string,workplaceId:string,priceCents:number,startsOn:string)=>{
+  const got=await run("ccp_credits_package_create",{studentId,workplaceId,credits:17,durationMinutes:45,
+   priceCents,startsOn,expiresOn:"2042-01-01",requestId:randomUUID(),confirmed:true});
+  invoiceIds.push(got.invoiceId);
+  return got.invoiceId as string;
+ };
+ const issuedStatus=async(id:string)=>expect((await admin.from("invoices").update({status:"sent",sent_at:new Date().toISOString()})
+  .eq("teacher_id",teacherId).eq("id",id)).error).toBeNull();
+ const guest=await playwright.request.newContext({baseURL:origin});
+ try{
+  const wanted=await purchase(studentId,workplaceId,3718,"2040-01-02");
+  const wrongPayer=await purchase(studentId,workplaceId,4829,"2040-01-06");
+  const wrongChild=await purchase(otherStudent,workplaceId,5937,"2040-01-02");
+  const wrongVenue=await purchase(studentId,otherVenue,6043,"2040-01-02");
+  await purchase(studentId,workplaceId,7152,"2040-01-03"); // Draft stays private.
+  const mixed=await purchase(studentId,workplaceId,8261,"2040-01-04");
+  expect((await admin.from("invoice_items").insert({invoice_id:mixed,kind:"lesson",
+   description:"Synthetic unresolved mixed-history marker",quantity:1,unit_cents:0,amount_cents:0,sort_order:1})).error).toBeNull();
+  const missing=await admin.from("invoices").insert({teacher_id:teacherId,billing_account_id:payer,
+   period_start:"2040-01-05",period_end:"2040-01-05",status:"draft",subtotal_cents:9374,currency:"USD"})
+   .select("id").single();
+  expect(missing.error).toBeNull();
+  invoiceIds.push(missing.data!.id);
+  expect((await admin.from("invoice_items").insert({invoice_id:missing.data!.id,kind:"credit_package",
+   description:"Synthetic package evidence absent",quantity:1,unit_cents:9374,amount_cents:9374})).error).toBeNull();
+  for(const id of [wanted,wrongPayer,wrongChild,wrongVenue,mixed,missing.data!.id])await issuedStatus(id);
+  const grant=await run("ccp_portal_grants_create",{studentId,workplaceId,contactId,billingAccountId:payer,
+   permissions:["finance"],expiresAt:future(2),...key()});
+  const issued=await page.request.post("/api/portal-grants/"+grant.id+"/issue",{
+   headers:{origin},data:{expectedRevision:1,confirmed:true},
+  });
+  expect(issued.status()).toBe(200);
+  const path=new URL((await issued.json()).url).pathname;
+  const response=await guest.get(path);
+  expect(response.status()).toBe(200);
+  const html=await response.text();
+  expect(html).toContain("Prepaid lesson purchase");
+  expect(html).toContain("$37.18");
+  for(const amount of ["48.29","59.37","60.43","71.52","82.61","93.74"])expect(html).not.toContain(amount);
+  expect(html).not.toMatch(/2042-01-01|Prepaid 17 ×|payment.?notes|pay\.stripe\.com/i);
+  const lifecycle=await run("ccp_students_lifecycle_preview",{studentId});
+  expect(lifecycle.canArchive).toBe(true);
+  await run("ccp_students_lifecycle_commit",{studentId,mode:"archive",
+   expectedUpdatedAt:lifecycle.expectedUpdatedAt,selectedWorkplaceIds:[],requestId:randomUUID(),
+   reason:"Synthetic archived learner retains private purchase record",confirmed:true});
+  expect(await (await guest.get(path)).text()).not.toContain("$37.18");
+  const retained=await admin.from("credit_packages").select("invoice_id").eq("teacher_id",teacherId).eq("invoice_id",wanted).single();
+  expect(retained.data?.invoice_id).toBe(wanted);
+ }finally{
+  await guest.dispose();
+  if(invoiceIds.length){
+   expect((await admin.from("credit_packages").delete().eq("teacher_id",teacherId).in("invoice_id",invoiceIds)).error).toBeNull();
+   expect((await admin.from("invoices").update({status:"void"}).eq("teacher_id",teacherId)
+    .in("id",invoiceIds).eq("status","sent")).error).toBeNull();
+   expect((await admin.from("invoices").delete().eq("teacher_id",teacherId).in("id",invoiceIds)).error).toBeNull();
+  }
+ }
+});

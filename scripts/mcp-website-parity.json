@@ -1261,7 +1261,7 @@
         "ccp_portal_grants_get",
         "ccp_portal_grants_revoke"
       ],
-      "explanation": "Get/revoke explicit owned grant metadata; the exact guest link is browser-issued, rotates independently and never appears in MCP. Signed guest finance regression in e2e/parity-portal-finance-scope.spec.ts verifies no disclosure from calendar-only, wrong debtor or learner, mixed or unattributed invoice, draft, rotated, expired or revoked access. Financial pages remain guest-only and do not send or mutate money.",
+      "explanation": "Get/revoke explicit owned grant metadata; the exact guest link is browser-issued, rotates independently and never appears in MCP. Signed guest finance regression in e2e/parity-portal-finance-scope.spec.ts verifies no disclosure from calendar-only, wrong debtor or learner, mixed or unattributed invoice, draft, rotated, expired or revoked access. Exact scoped prepaid purchase invoices show only purchase amount, date and payment status, not learner balance or usage; this separately signed guest finance is read-only and never creates checkout, sends or mutates money.",
       "evidenceTest": "e2e/parity-scoped-portal-grants.spec.ts"
     },
     {
