@@ -143,6 +143,7 @@ import {
  compensationAgreementCreate,compensationAgreementUpdate,
  compensationAgreementPreview,CompensationAgreementError,
 } from "@/lib/server/compensation-agreements-service";
+import {financeEarningSummary,financeEarningSummarySchema} from "@/lib/server/finance-earning-summary";
 import {
  financialObligationApproveSchema,receivedPaymentRecordSchema,
  paymentAllocationSchema,financialReversalSchema,
@@ -732,6 +733,11 @@ const catalogue = [
     name:"ccp_compensation_agreements_preview",
     description:"Read-only deterministic expected coach compensation for verified completed canonical sessions, one group session counted once. Never claim cash received, compliance, invoice issuance or missing lessons as completed; fixed monthly agreements require full calendar months.",
     schema:compensationPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_finance_earning_summary",
+    description:"Read posted coaching earnings for one exact owned workplace, currency and inclusive frozen lesson dates, optionally one owned payer. Current applied receipts net of allocation reversals and outstanding amounts exclude unallocated receipts, forecasts, fixed-month salary, participant charges and invoices.",
+    schema:financeEarningSummarySchema,scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_finance_ledger_list",
@@ -2230,6 +2236,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_compensation_agreements_preview": {
         const a=args as Parameters<typeof compensationAgreementPreview>[2];
         return {data:await compensationAgreementPreview(db,teacherId,a)};
+      }
+      case "ccp_finance_earning_summary": {
+        const input=args as Parameters<typeof financeEarningSummary>[1];
+        return {data:await financeEarningSummary(db,input)};
       }
       case "ccp_finance_ledger_list":
         return {data:await financeLedgerList(db,teacherId)};
