@@ -48,8 +48,11 @@ The system SHALL preserve purchased packages and redemptions separately from rec
 ### Requirement: Release and production migration are independent gates
 The source schema SHALL be accepted only after exact-head fresh-install, RLS/tenant, website/MCP parity, longitudinal data, E2E, Compose, security and backup/restore verification. Existing populated databases SHALL be migrated only through a separately approved operator-run transition with backups and independent reconciliation; no baseline reset is permissible.
 
+#### Scenario: Synthetic evidence is not operator authorization
+**WHEN** the exact frozen source passes local and hosted checks with disposable data **THEN** source evidence SHALL be recorded separately, and live migration SHALL remain pending until the actual populated target is approved, independently restored and reconciled.
+
 ### Requirement: New lesson intent SHALL recover archived learners through explicit, atomic consent
-A new-lesson preview SHALL resolve teacher-owned active and archived candidate identities, and SHALL distinguish an archived exact match from a genuinely missing student. Reactivation SHALL remain a deliberate choice, not an automatic consequence of lesson creation. When the teacher approves new teaching for an archived learner, the supported reactivation, selected authorized membership and one lesson SHALL commit together atomically with existing lifecycle, entitlement, security and historical-retention rules. No alternative MCP or website write path SHALL silently bypass those constraints.
+A new-lesson preview SHALL distinguish owned active, archived and missing identities. Reactivation SHALL require deliberate teacher consent. For a supported lesson, reactivation, selected authorized membership and one lesson SHALL commit atomically under existing quota, entitlement, tenant and history rules. No website or MCP path SHALL bypass those rules.
 
 #### Scenario: Unique archived learner returns for an individual lesson
 - **WHEN** a teacher names an archived learner for a future one-to-one lesson

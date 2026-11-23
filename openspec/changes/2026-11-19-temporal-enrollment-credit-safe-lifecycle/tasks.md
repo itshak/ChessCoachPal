@@ -2,6 +2,20 @@
 
 # Tasks
 
+## Independently verified source subitems—not a completion declaration
+
+- [x] Frozen canonical dated-period exclusion, owner boundaries and unknown-start provenance, with signed temporal regressions.
+- [x] Reviewed membership ending and student archive/return for previously verified venues; preserve history, paid/unpaid records, credits and effective expiry.
+- [x] Shared lesson and day previews check actual effective enrollment on the canonical teacher-date boundary.
+- [x] Explicit website and delegated MCP exact-ID selection, advisory quota/credit evidence, and atomic **future scheduled** recovery (private and group), including no-write preview, replay and capacity rollback.
+- [x] Correct existing canonical historical notes and import verified dates without reactivating or inventing a complete lesson.
+- [x] Local browser/MCP and unit proof distinguishes invoice workflow, recorded receipts and issued/usable entitlement without changing sent/paid redemption or cash authority.
+- [x] Record #125 exact hosted E2E and verified merge/tree read-back.
+- [ ] Resolve the remaining completed-lesson and archived-credit reconciliation scope described in [the source checkpoint](SOURCE_ACCEPTANCE.md).
+- [ ] Preserve the separate ADR-0017 operator authorization, actual populated-beta inventory/reconciliation and independent off-host restore. No live work or archive from synthetic acceptance.
+
+## Historical proposal checklist (broader scopes remain open)
+
 - [ ] Inventory all enrollment, lifecycle, scheduling, group, invoice, credit-package, redemption, return/refund and MCP/web consumers.
 - [ ] Reconcile proposal with unified schema freeze, Contacts/payer and workplace compensation; update ADR, canonical SQL and manifest checksum.
 - [ ] Add temporal membership fields, cancellation audit, owner-safe FKs, indexes and non-overlap exclusion; preserve unknown legacy dates.
