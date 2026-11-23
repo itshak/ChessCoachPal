@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertSessionSchedule } from "@/lib/server/coach-service";
 import {resolveTeacherWorkplaceFilter} from "@/lib/server/teacher-workplace-context";
+import {effectiveLessonWorkplaces,lessonEnrollmentCalendar,lessonEnrollmentPeriods} from "@/lib/server/lesson-enrollment-periods";
 import { isDateString } from "@/lib/schedule";
 import {teacherStudyIndexSearch} from "@/lib/server/teacher-study-index";
 import { inferOwnedWeeklyLessonTime,lessonIntervalConflicts,type LessonTiming } from "@/lib/server/lesson-schedule-inference";
@@ -180,80 +181,70 @@ export async function teacherLessonCapturePreview(
     .map(r=>r.studentId).filter((id):id is string=>id!==null);
 
   let selectedWorkplace: Workplace | null = null;
-  const enrolledByStudent = new Map<string, Set<string>>();
-  if (ids.length > 0) {
-    // PostgREST installations commonly cap responses at 1,000 rows even when
-    // the requested range is larger. Page deterministically: a truncated
-    // enrollment query could falsely exclude a valid second workplace.
-    const batch = 250;
-    let exhausted = false;
-    for (let offset = 0; offset < 20000; offset += batch) {
-      const { data, error } = await db.from("workplace_enrollments")
-        .select("student_id,workplace_id")
-        .eq("teacher_id", teacherId).in("student_id", [...new Set(ids)])
-        .order("student_id").order("workplace_id")
-        .range(offset, offset + batch - 1);
-      if (error || !data)
-        throw fail("ENROLLMENTS_UNAVAILABLE", "Cannot verify workplace enrollment safely");
-      for (const row of data) {
-        const values = enrolledByStudent.get(row.student_id) ?? new Set<string>();
-        values.add(row.workplace_id);
-        enrolledByStudent.set(row.student_id, values);
-      }
-      if (data.length < batch) { exhausted = true; break; }
-    }
-    if (!exhausted)
-      throw fail("ENROLLMENTS_LIMIT", "Too many enrollments for an unambiguous preview");
-  }
-
-  const workplaceId=await resolveTeacherWorkplaceFilter(db,teacherId,input.workplaceId);
-  if (workplaceId) {
-    const { data, error } = await db.from("workplaces")
-      .select("id,name,timezone")
-      .eq("teacher_id", teacherId).eq("id", workplaceId).maybeSingle();
-    if (error) throw fail("WORKPLACE_UNAVAILABLE", "Workplace lookup unavailable");
-    if (!data) {
-      issues.push({ code: "WORKPLACE_NOT_FOUND", message: "Specified workplace is unavailable" });
-    } else {
-      selectedWorkplace = data as Workplace;
-      for (const r of resolutions) {
-        if (r.studentId && !enrolledByStudent.get(r.studentId)?.has(data.id)) {
-          issues.push({ code: "STUDENT_NOT_ENROLLED", input: r.input,
-            message: "Student is not currently enrolled in the requested workplace" });
-        }
-      }
-    }
-  } else if (ids.length > 0 && ids.length === input.names.length &&
-    new Set(ids).size === ids.length) {
-    const common = [...(enrolledByStudent.get(ids[0]) ?? new Set<string>())]
-      .filter(id => ids.every(studentId => enrolledByStudent.get(studentId)?.has(id)));
-    if (common.length === 0) {
-      issues.push({ code: "NO_COMMON_WORKPLACE",
-        message: "No workplace contains every selected student; specify and review enrollments" });
-    } else {
-      const { data, error } = await db.from("workplaces")
-        .select("id,name,timezone").eq("teacher_id", teacherId).in("id", common)
-        .order("id").limit(100);
-      if (error || !data || data.length !== common.length)
-        throw fail("WORKPLACE_UNAVAILABLE", "Cannot verify common workplaces safely");
-      if (data.length === 1) selectedWorkplace = data[0] as Workplace;
-      else issues.push({ code: "AMBIGUOUS_WORKPLACE",
-        message: "More than one workplace contains these students; choose one explicitly",
-        candidates: data.map(w => ({ id: w.id, name: w.name })) });
-    }
-  }
-
   let timing:LessonTiming|null=input.startsAt!==undefined&&
     input.durationMinutes!==undefined ? {
       startsAt:input.startsAt,durationMinutes:input.durationMinutes,
       timeSource:"explicit",slotIds:[],
     }:null;
+  const contextId=await resolveTeacherWorkplaceFilter(db,teacherId,input.workplaceId);
+  const [periods,calendarDate]=ids.length?await Promise.all([
+    lessonEnrollmentPeriods(db,teacherId,[...new Set(ids)],contextId??undefined),
+    lessonEnrollmentCalendar(db,teacherId),
+  ]):[[],null] as [Awaited<ReturnType<typeof lessonEnrollmentPeriods>>,null];
+  const eligible=(studentId:string,start=timing?.startsAt)=>
+    effectiveLessonWorkplaces(periods,studentId,start&&calendarDate?calendarDate(start):undefined);
+  const unenrolled=(workplace:Workplace,start=timing?.startsAt)=>resolutions
+    .filter(r=>r.archived===false&&r.studentId&&!eligible(r.studentId,start).has(workplace.id));
+  const addEnrollmentIssues=(workplace:Workplace,start=timing?.startsAt)=>{
+    for(const r of unenrolled(workplace,start))issues.push({
+      code:"STUDENT_NOT_ENROLLED",input:r.input,
+      message:"Student has no effective enrollment in the requested workplace for this lesson",
+    });
+  };
+  if(contextId){
+    const {data,error}=await db.from("workplaces").select("id,name,timezone")
+      .eq("teacher_id",teacherId).eq("id",contextId).maybeSingle();
+    if(error)throw fail("WORKPLACE_UNAVAILABLE","Workplace lookup unavailable");
+    if(!data)issues.push({code:"WORKPLACE_NOT_FOUND",message:"Specified workplace is unavailable"});
+    else {
+      selectedWorkplace=data as Workplace;
+      addEnrollmentIssues(selectedWorkplace);
+    }
+  }else if(ids.length>0&&ids.length===input.names.length&&new Set(ids).size===ids.length){
+    const common=[...eligible(ids[0])].filter(id=>ids.every(studentId=>eligible(studentId).has(id)));
+    if(common.length===0)issues.push({code:"NO_COMMON_WORKPLACE",
+      message:"No workplace contains effective enrollment for every selected student; specify and review enrollments"});
+    else {
+      const {data,error}=await db.from("workplaces").select("id,name,timezone")
+        .eq("teacher_id",teacherId).in("id",common).order("id").limit(100);
+      if(error||!data||data.length!==common.length)
+        throw fail("WORKPLACE_UNAVAILABLE","Cannot verify common workplaces safely");
+      let candidates=data as Workplace[];
+      if(input.localDate&&candidates.length>1){
+        // A workplace-local date is not the writer's teacher-calendar date.
+        // Discard a candidate only when its actual inferred start proves the
+        // enrollment is ineffective. Unresolved times stay ambiguous.
+        const timed=await Promise.all(candidates.map(workplace=>
+          inferOwnedWeeklyLessonTime(db,teacherId,workplace,input.localDate!,ids)));
+        candidates=candidates.filter((workplace,i)=>
+          !timed[i].timing||unenrolled(workplace,timed[i].timing!.startsAt).length===0);
+      }
+      if(candidates.length===1)selectedWorkplace=candidates[0];
+      else if(candidates.length===0)issues.push({code:"NO_COMMON_WORKPLACE",
+        message:"No workplace contains effective enrollment for every selected student on the inferred lesson date"});
+      else issues.push({code:"AMBIGUOUS_WORKPLACE",
+        message:"More than one workplace may contain these students; choose one explicitly",
+        candidates:candidates.map(w=>({id:w.id,name:w.name}))});
+    }
+  }
+
   if(selectedWorkplace&&issues.length===0&&ids.length===input.names.length){
     if(input.localDate){
       const inferred=await inferOwnedWeeklyLessonTime(
         db,teacherId,selectedWorkplace,input.localDate,ids);
       timing=inferred.timing;
       issues.push(...inferred.issues);
+      if(timing)addEnrollmentIssues(selectedWorkplace,timing.startsAt);
     }
     if(timing&&issues.length===0)
       issues.push(...await lessonIntervalConflicts(db,teacherId,timing));

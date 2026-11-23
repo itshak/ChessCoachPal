@@ -3,6 +3,8 @@ import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
 import {createClient} from "@supabase/supabase-js";
 import {SEED_TEACHER} from "./helpers/auth";
+import {isolatedTeacherTest} from "./helpers/isolated-teacher";
+import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 
 type Call=Awaited<ReturnType<typeof delegatedTool>>;
 const unique=(name:string)=>name+" "+randomUUID().slice(0,10);
@@ -331,3 +333,97 @@ test("PARITY:PARITY-website-reviewer-date-only-form-commits-matching-roster",asy
  expect(created.data.filter((x:{title:string})=>
   x.title.startsWith("Verified weekly UI session"))).toHaveLength(1);
 });
+
+isolatedTeacherTest("PARITY: dated lesson preview rejects ended, future and cancelled memberships in the writer calendar",
+ async({page,request,isolatedTeacher})=>{
+  const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+   process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});
+  const owner=await admin.from("teachers").select("id").eq("email",isolatedTeacher.email).single();
+  expect(owner.error).toBeNull();
+  const teacher_id=owner.data!.id as string;
+  await configureSyntheticStudentCapacity(admin,teacher_id,6,6);
+  expect((await admin.from("teacher_settings").upsert({
+   teacher_id,timezone:"America/Chicago",
+  })).error).toBeNull();
+  const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
+  const name=unique("Dated lesson learner");
+  const student=await call("ccp_students_create",{name,idempotencyKey:randomUUID()});
+  expect(student.error).toBeUndefined();
+  const student_id=student.data.entityId as string;
+  const day="2061-06-15",effective="2061-06-14";
+  const startsAt="2061-06-14T21:30:00.000Z"; // 00:30 Jerusalem, 16:30 Chicago.
+  const places:Record<string,string>={};
+  for(const [kind,starts_on,ends_on] of [
+   ["covered",effective,effective],["ended","2060-01-01","2061-06-13"],
+   ["future",day,null],["cancelled","2060-01-01",null],
+  ]){
+   const workplace=await call("ccp_workplaces_create",{
+    name:"Dated "+kind,timezone:"Asia/Jerusalem",currency:"ILS",locale:"en",
+    policy:{},idempotencyKey:randomUUID(),
+   });
+   expect(workplace.error).toBeUndefined();
+   const workplace_id=places[kind!]=workplace.data.entityId as string;
+   const cancellation=kind==="cancelled"?
+    {cancelled_at:"2026-01-01T00:00:00Z",cancel_reason:"Synthetic cancelled period"}:{};
+   const membership=await admin.from("workplace_enrollments").insert({
+    teacher_id,student_id,workplace_id,starts_on,ends_on,...cancellation,
+   });
+   expect(membership.error,kind??"membership").toBeNull();
+   const slot=await admin.from("lesson_slots").insert({
+    teacher_id,student_id,workplace_id,day_of_week:new Date(day+"T00:00:00Z").getUTCDay(),
+    start_time:"00:30",start_date:day,duration_minutes:45,
+   });
+   expect(slot.error,kind??"slot").toBeNull();
+  }
+  const peers=(table:string,fields:string)=>admin.from(table).select(fields).eq("teacher_id",teacher_id);
+  const before=await peers("workplace_enrollments","id,revision,starts_on,ends_on,cancelled_at").order("id");
+  expect(before.error).toBeNull();
+  const common={names:[name],title:"Temporal preview is read-only"};
+  const parity=async(path:string,tool:string,args:Record<string,unknown>)=>{
+   const result=await page.request.post("/api/coaching/lesson-capture/"+path,{data:args});
+   expect(result.status(),await result.text()).toBe(200);
+   const website=await result.json();
+   const mcp=await call(tool,args);
+   expect(mcp.error).toBeUndefined();
+   expect(mcp.data).toEqual(website);
+   return website;
+  };
+  for(const kind of ["ended","future","cancelled"]){
+   const workplaceId=places[kind];
+   for(const dateFields of [{startsAt,durationMinutes:45},{localDate:day}]){
+    const blocked=await parity("preview","ccp_lessons_capture_preview",{
+     ...common,workplaceId,...dateFields,
+    });
+    expect(blocked).toMatchObject({canCommit:false,proposedSession:null,review:{writesPerformed:false},
+     issues:[{code:"STUDENT_NOT_ENROLLED",input:name}]});
+   }
+   const slots=await parity("day","ccp_schedule_day_preview",{
+    workplaceId,localDate:day,studentIds:[student_id],
+   });
+   expect(slots).toMatchObject({canUse:false,timing:null,writesPerformed:false,
+    issues:[{code:"STUDENT_NOT_ENROLLED"}]});
+  }
+  // All is explicit: the effective venue wins over an ended, future and
+  // cancelled relation rather than returning a false venue ambiguity.
+  for(const dateFields of [{startsAt,durationMinutes:45},{localDate:day}]){
+   const ready=await parity("preview","ccp_lessons_capture_preview",{...common,workplaceId:null,...dateFields});
+   expect(ready).toMatchObject({canCommit:true,issues:[],workplace:{id:places.covered},
+    proposedSession:{startsAt,studentIds:[student_id]},review:{writesPerformed:false}});
+  }
+  const slots=await parity("day","ccp_schedule_day_preview",{
+   workplaceId:places.covered,localDate:day,studentIds:[student_id],
+  });
+  expect(slots).toMatchObject({canUse:true,timing:{startsAt},writesPerformed:false});
+  const after=await peers("workplace_enrollments","id,revision,starts_on,ends_on,cancelled_at").order("id");
+  expect(after.error).toBeNull();
+  expect(after.data).toEqual(before.data);
+  const sessions=await peers("teaching_sessions","id");
+  expect(sessions.error).toBeNull();
+  expect(sessions.data).toEqual([]);
+  const missing=await call("ccp_sessions_create",{workplaceId:places.future,studentId:student_id,
+   title:common.title,startsAt,durationMinutes:45,idempotencyKey:randomUUID()});
+  expect(missing.error).toBeDefined();
+  const confirmed=await call("ccp_sessions_create",{workplaceId:places.covered,studentId:student_id,
+   title:common.title,startsAt,durationMinutes:45,idempotencyKey:randomUUID()});
+  expect(confirmed.error).toBeUndefined();
+ });
