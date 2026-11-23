@@ -26,6 +26,7 @@ import { CreditPackagesCard } from "@/components/teacher/billing/CreditPackagesC
 import { getOrSeedDimensions } from "@/lib/server/skills";
 import { getPolicy } from "@/lib/server/scheduling";
 import {loadCanonicalCreditBalances} from "@/lib/server/canonical-credits";
+import {withCreditFundingReport} from "@/lib/server/credit-package-funding";
 import { oneToOne, toLocalDateString } from "@/lib/schedule";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -93,7 +94,8 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
   });
 
   const [creditPackages, { data: activeSlot }] = await Promise.all([
-    loadCanonicalCreditBalances(supabase, user.id, policy, [id], toLocalDateString(new Date(), policy.timezone)),
+    loadCanonicalCreditBalances(supabase,user.id,policy,[id],toLocalDateString(new Date(),policy.timezone),{includeClosed:true})
+      .then(packages=>withCreditFundingReport(supabase,packages)),
     supabase.from("lesson_slots").select("duration_minutes, rate_cents")
       .eq("student_id", id).eq("active", true).order("start_date", { ascending: false }).limit(1).maybeSingle(),
   ]);
@@ -167,7 +169,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         workplaces={creditWorkplaces}
         currency={policy.currency}
         packages={creditPackages.map(pkg => ({
-          id: pkg.id, invoiceId: pkg.invoiceId,
+          id: pkg.id, invoiceId: pkg.invoiceId, fundingReport:pkg.fundingReport,
           credits: pkg.credits, adjustmentCredits:pkg.adjustmentCredits??0,
           durationMinutes: pkg.durationMinutes,
           priceCents: pkg.priceCents, startsOn: pkg.startsOn, expiresOn: pkg.expiresOn,

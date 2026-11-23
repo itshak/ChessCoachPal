@@ -486,7 +486,7 @@ const catalogue = [
   },
   {
     name:"ccp_credits_packages_list",
-    description:"Read prepaid packages, redeemed/pending balances, invoice status and expiration for an identified student or all coach-owned students.",
+    description:"Read owned prepaid packages, expiry, invoice workflow status, separately recorded invoice-mapped funding, and issued entitlement. Student-specific results include pending lesson balances. A sent unpaid invoice may authorize eligible credits under the existing policy without proving payment.",
     schema:z.object({studentId:uuid.optional()}).strict(),scope:"coach:read",readOnly:true,
   },
   {

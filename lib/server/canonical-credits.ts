@@ -11,6 +11,7 @@ import {participantBillingKey} from "@/lib/server/canonical-billing-source";
 
 export interface CanonicalPackageRecord extends CreditPackageInput{
  invoiceId:string;invoiceStatus:InvoiceStatus;priceCents:number;
+ invoiceWorkflowStatus:InvoiceStatus|null;invoiceCurrency:string|null;
  createdAt:string;
  redemptions:{id:string;sessionId:string;studentId:string;lessonDate:string|null}[];
 }
@@ -21,7 +22,7 @@ type PackageRow={
  id:string;student_id:string;workplace_id:string;invoice_id:string;credits:number;
  duration_minutes:number;price_cents:number;starts_on:string;
  expires_on:string|null;created_at:string;
- invoices:{status:InvoiceStatus}|{status:InvoiceStatus}[]|null;
+ invoices:{status:InvoiceStatus;currency:string}|{status:InvoiceStatus;currency:string}[]|null;
  credit_redemptions:{id:string;session_id:string|null;student_id:string|null}[]|null;
 };
 const PAGE=500;
@@ -31,7 +32,7 @@ export async function loadCanonicalCreditPackages(db:SupabaseClient,teacherId:st
  const all:PackageRow[]=[];
  for(let offset=0;;offset+=PAGE){
   let q=db.from("credit_packages").select(
-   "id,student_id,workplace_id,invoice_id,credits,duration_minutes,price_cents,starts_on,expires_on,created_at,invoices(status),credit_redemptions(id,session_id,student_id)"
+   "id,student_id,workplace_id,invoice_id,credits,duration_minutes,price_cents,starts_on,expires_on,created_at,invoices(status,currency),credit_redemptions(id,session_id,student_id)"
   ).eq("teacher_id",teacherId).order("created_at",{ascending:false}).order("id")
    .range(offset,offset+PAGE-1);
   if(opts.studentIds)q=q.in("student_id",opts.studentIds);
@@ -75,7 +76,8 @@ export async function loadCanonicalCreditPackages(db:SupabaseClient,teacherId:st
   for(const row of data??[])starts.set(row.id,row);
  }
  return all.map(row=>{
-  const invoiceStatus=oneToOne(row.invoices)?.status??"void";
+  const invoice=oneToOne(row.invoices);
+  const invoiceStatus=invoice?.status??"void";
   const redemptions=(row.credit_redemptions??[]).flatMap(r=>{
    if(!r.session_id||!r.student_id)return [];
    const session=starts.get(r.session_id);
@@ -92,6 +94,7 @@ export async function loadCanonicalCreditPackages(db:SupabaseClient,teacherId:st
    startsOn:row.starts_on,expiresOn:extension.get(row.id)??row.expires_on,
    active:invoiceStatus==="sent"||invoiceStatus==="paid",
    invoiceId:row.invoice_id,invoiceStatus,priceCents:row.price_cents,
+   invoiceWorkflowStatus:invoice?.status??null,invoiceCurrency:invoice?.currency??null,
    createdAt:row.created_at,redemptions,
   };
  });
@@ -138,11 +141,11 @@ export async function recordCanonicalRedemptions(
 }
 export async function loadCanonicalCreditBalances(
  db:SupabaseClient,teacherId:string,policy:TeacherPolicy,
- studentIds:string[],today:string
+ studentIds:string[],today:string,options:{includeClosed?:boolean}={}
 ):Promise<CanonicalPackageWithBalance[]>{
  const packages=(await loadCanonicalCreditPackages(db,teacherId,{
   studentIds,timezone:policy.timezone,
- })).filter(x=>x.invoiceStatus!=="void");
+ })).filter(x=>options.includeClosed||x.invoiceStatus!=="void");
  if(!packages.length)return [];
  const usable=packages.filter(x=>x.active);
  let pending=new Map<string,string>();

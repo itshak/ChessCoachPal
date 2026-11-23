@@ -1,4 +1,6 @@
 import {insertTestBillingAccount} from "./helpers/canonical-payer";
+import {isolatedTeacherTest} from "./helpers/isolated-teacher";
+import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
@@ -360,3 +362,115 @@ test("PARITY:PARITY-credits-tenant-scope denies foreign package reads creates an
   expect((await admin.auth.admin.deleteUser(teacherId)).error).toBeNull();
  }
 });
+
+isolatedTeacherTest("PARITY: credit packages separate invoice status, recorded invoice receipts and eligible issued credits",
+ async({page,request,browser,baseURL,isolatedTeacher})=>{
+  const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,
+   {auth:{persistSession:false,autoRefreshToken:false}});
+  const {data:owner,error:ownerError}=await admin.from("teachers").select("id")
+   .eq("email",isolatedTeacher.email).single();
+  expect(ownerError).toBeNull();
+  const teacherId=owner!.id as string;
+  await configureSyntheticStudentCapacity(admin,teacherId,6,3);
+  const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
+  const created=await call("ccp_students_create",{name:"Invoice reporting pupil "+randomUUID(),idempotencyKey:randomUUID()});
+  expect(created.error).toBeUndefined();
+  const studentId=created.data.entityId as string;
+  const venue=await call("ccp_workplaces_create",{
+   name:"Invoice reporting venue "+randomUUID(),timezone:"UTC",currency:"USD",locale:"en",
+   policy:{},idempotencyKey:randomUUID(),
+  });
+  expect(venue.error).toBeUndefined();
+  const workplaceId=venue.data.entityId as string;
+  expect((await call("ccp_workplaces_enroll",{studentId,workplaceId,idempotencyKey:randomUUID()})).error)
+   .toBeUndefined();
+  const date=(await call("ccp_students_lifecycle_preview",{studentId})).data.teacherLocalToday as string;
+  const {billingAccountId}=await createAssignedPayer(call,{studentId,workplaceId,effectiveFrom:date});
+  const create=async(priceCents:number)=>{
+   const result=await call("ccp_credits_package_create",{studentId,workplaceId,credits:3,
+    durationMinutes:45,priceCents,startsOn:date,requestId:randomUUID(),confirmed:true});
+   expect(result.error).toBeUndefined();
+   return result.data as {packageId:string;invoiceId:string};
+  };
+  const open=await create(7500), closed=await create(8100);
+  const endpoint="/api/billing/credit-packages";
+  const paired=async()=>{
+   const site=await page.request.get(endpoint+"?studentId="+studentId);
+   expect(site.status(),await site.text()).toBe(200);
+   const body=await site.json();
+   const model=await call("ccp_credits_packages_list",{studentId});
+   expect(model.error).toBeUndefined();
+   expect(model.data).toEqual(body);
+   const byId=(id:string)=>body.packages.find((p:{id:string})=>p.id===id);
+   expect(JSON.stringify(body)).not.toContain(billingAccountId);
+   return {current:byId(open.packageId),closed:byId(closed.packageId)};
+  };
+  expect((await paired()).current.fundingReport).toMatchObject({
+   invoiceWorkflowStatus:"draft",funding:{status:"none_recorded",recordedInvoicePaymentCents:0},
+   entitlement:{issued:false,unredeemedUnits:3,remainingAfterPending:3},
+  });
+  // An isolated source status transition, no invoice or email sent.
+  expect((await admin.from("invoices").update({status:"sent"})
+   .eq("teacher_id",teacherId).eq("id",open.invoiceId)).error).toBeNull();
+  expect((await admin.from("invoices").update({status:"void"})
+   .eq("teacher_id",teacherId).eq("id",closed.invoiceId)).error).toBeNull();
+  const sent=await paired();
+  expect(sent.current).toMatchObject({active:true,fundingReport:{
+   invoiceWorkflowStatus:"sent",funding:{status:"none_recorded",recordedInvoicePaymentCents:0},
+   entitlement:{issued:true,unredeemedUnits:3},
+  }});
+  expect(sent.closed).toMatchObject({active:false,fundingReport:{
+   invoiceWorkflowStatus:"void",funding:{status:"none_recorded",recordedInvoicePaymentCents:0},
+   entitlement:{issued:false},
+  }});
+  await page.goto("/students/"+studentId);
+  await expect(page.getByText("Invoice status: Sent",{exact:true})).toBeVisible();
+  await expect(page.getByText("Invoice status: Voided",{exact:true})).toBeVisible();
+  await expect(page.getByText("Credits are issued for eligible lessons. This does not indicate payment.",{exact:true})).toBeVisible();
+  await expect(page.getByText("No payments recorded against this invoice.",{exact:true})).toHaveCount(2);
+  const pay=async(amountCents:number)=>{
+   const receipt=await call("ccp_billing_manual_payment_record",{invoiceId:open.invoiceId,amountCents,
+    note:"Synthetic report evidence",idempotencyKey:randomUUID(),confirmed:true});
+   expect(receipt.error).toBeUndefined();
+   return receipt.data.paymentId as string;
+  };
+  const ids=[await pay(2500)];
+  expect((await paired()).current.fundingReport).toMatchObject({
+   invoiceWorkflowStatus:"sent",funding:{status:"partial",recordedInvoicePaymentCents:2500},
+   entitlement:{issued:true,unredeemedUnits:3},
+  });
+  await page.reload();
+  await expect(page.getByText(/Payments recorded against this invoice:.*partial/)).toBeVisible();
+  ids.push(await pay(5000));
+  const receipts=async()=>{
+   const result=await admin.from("payments").select("id,invoice_id,amount_cents")
+    .in("invoice_id",[open.invoiceId,closed.invoiceId]).order("id");
+   expect(result.error).toBeNull();
+   return result.data;
+  };
+  const snapshot=await receipts();
+  expect(snapshot!.map(p=>p.amount_cents).sort()).toEqual([2500,5000]);
+  const paid=(await paired()).current;
+  expect(paid.fundingReport).toMatchObject({
+   invoiceWorkflowStatus:"paid",funding:{status:"covered",recordedInvoicePaymentCents:7500},
+   entitlement:{issued:true,unredeemedUnits:3},
+  });
+  for(const id of ids.filter(Boolean))expect(JSON.stringify(paid)).not.toContain(id);
+  await page.reload();
+  await expect(page.getByText("Invoice status: Paid",{exact:true})).toBeVisible();
+  await expect(page.getByText(/Payments recorded against this invoice:.*covers package price/)).toBeVisible();
+  expect(await receipts()).toEqual(snapshot);
+
+  const foreign=await browser.newContext({baseURL});
+  try{
+   const foreignPage=await foreign.newPage();
+   const outsider=await delegatedTool(foreignPage,request);
+   expect((await foreignPage.request.get(endpoint+"?studentId="+studentId)).status()).toBe(404);
+   const denied=await outsider("ccp_credits_packages_list",{studentId});
+   expect(denied.error?.code).toBe("NOT_FOUND");
+   const otherPackages=await outsider("ccp_credits_packages_list",{});
+   expect(otherPackages.error).toBeUndefined();
+   expect(JSON.stringify(otherPackages.data)).not.toContain(open.invoiceId);
+   expect(JSON.stringify(otherPackages.data)).not.toContain(closed.invoiceId);
+  }finally{await foreign.close();}
+ });
