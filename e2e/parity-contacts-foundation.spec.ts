@@ -186,7 +186,8 @@ test("PARITY:PARITY-contact-ui shows an MCP-created contact in the localized tea
   await expect(page.locator("h1")).toHaveText(/Contacts/);
   await expect(page.getByText(name)).toBeVisible();
   await page.getByText(name).click();
-  await expect(page.getByLabel("Display name")).toHaveValue(name);
+  const editor=page.getByRole("heading",{name:"Edit contact",exact:true}).locator("..");
+  await expect(editor.getByLabel("Display name",{exact:true})).toHaveValue(name);
   await expect(page.getByText("Linking a contact does not share private teaching notes, grant portal access or make this person a payer.")).toBeVisible();
 });
 
