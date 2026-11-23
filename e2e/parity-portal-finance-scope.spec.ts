@@ -168,7 +168,8 @@ test("PARITY: scoped guest sees only complete invoices for the exact authorized 
  }
 });
 
-test("PARITY: an exact finance grant shows prepaid purchases only, never a learner credit balance",async({page,request,playwright,isolatedTeacher})=>{
+test("PARITY: three guest contacts see only their own calendars, RSVP and prepaid purchase",async({page,request,playwright,isolatedTeacher})=>{
+ test.setTimeout(60_000);
  const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
  const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
   auth:{persistSession:false,autoRefreshToken:false},
@@ -242,6 +243,83 @@ test("PARITY: an exact finance grant shows prepaid purchases only, never a learn
   expect(html).toContain("$37.18");
   for(const amount of ["48.29","59.37","60.43","71.52","82.61","93.74"])expect(html).not.toContain(amount);
   expect(html).not.toMatch(/2042-01-01|Prepaid 17 ×|payment.?notes|pay\.stripe\.com/i);
+  const audience=async(role:string,venue:string,permissions:string[])=>{
+   const related=await run("ccp_contacts_create",{displayName:role+" "+randomUUID(),...key()});
+   const relation=await run("ccp_student_contacts_link",{studentId,contactId:related.id,
+    relationshipLabel:role,...key()});
+   const scoped=await run("ccp_portal_grants_create",{studentId,contactId:related.id,
+    workplaceId:venue,permissions,expiresAt:future(2),...key()});
+   const response=await page.request.post("/api/portal-grants/"+scoped.id+"/issue",{
+    headers:{origin},data:{expectedRevision:1,confirmed:true},
+   });
+   expect(response.status()).toBe(200);
+   return {path:new URL((await response.json()).url).pathname,contact:related,link:relation,grant:scoped};
+  };
+  const schoolGuest=await audience("School liaison",workplaceId,["calendar","event_rsvp"]);
+  const mother=await audience("Mother",otherVenue,["calendar"]);
+  const titles={school:"School calendar "+randomUUID(),private:"Private calendar "+randomUUID(),
+   event:"School event "+randomUUID()};
+  const sessions=[];
+  for(const [venue,title,days,durationMinutes] of [[workplaceId,titles.school,3,45],[otherVenue,titles.private,4,50]] as const){
+   sessions.push(await run("ccp_sessions_create",{studentId,workplaceId:venue,title,
+    startsAt:future(days),durationMinutes,...idem()}));
+  }
+  const event=await run("ccp_events_create",{title:titles.event,workplaceId,
+   startsAt:future(5),studentIds:[studentId],...key()});
+  await run("ccp_events_portal_invitations_create",{eventId:event.event.id,portalGrantId:schoolGuest.grant.id,...key()});
+  const title=(body:string)=>body.match(/<title>([^<]*)<\/title>/i)?.[1];
+  const neutralTitle="ChessCoachPal - Student and Contact Portal";
+  const read=async(url:string,allowed:string[],forbidden:string[])=>{
+   const response=await guest.get(url);
+   expect(response.status()).toBe(200);
+   const body=await response.text();
+   expect(title(body)).toBe(neutralTitle);
+   expect(title(body)).not.toContain("Family Portal");
+   for(const value of allowed)expect(body.includes(value),"authorized resource renders").toBe(true);
+   for(const value of forbidden)expect(body.includes(value),"unapproved resource stays private").toBe(false);
+  };
+  await read(schoolGuest.path,[schoolGuest.contact.displayName,titles.event],["$37.18"]);
+  await read(mother.path,[mother.contact.displayName],[titles.event,"$37.18"]);
+  await read(path,["$37.18","Prepaid lesson purchase"],[titles.event,schoolGuest.contact.displayName,mother.contact.displayName]);
+  const schoolIcs=await guest.get("/api"+schoolGuest.path+"/calendar");
+  expect(schoolIcs.status()).toBe(200);
+  expect(schoolIcs.headers()["cache-control"]).toContain("no-store");
+  expect(schoolIcs.headers()["referrer-policy"]).toBe("no-referrer");
+  const schoolFeed=await schoolIcs.text();
+  expect(schoolFeed).toContain(sessions[0].entityId);
+  expect(schoolFeed).not.toContain(sessions[1].entityId);
+  const motherIcs=await guest.get("/api"+mother.path+"/calendar");
+  expect(motherIcs.status()).toBe(200);
+  const motherFeed=await motherIcs.text();
+  expect(motherFeed).toContain(sessions[1].entityId);
+  expect(motherFeed).not.toContain(sessions[0].entityId);
+  const rsvp=await guest.post("/api"+schoolGuest.path+"/events/"+event.event.id+"/rsvp",{
+   data:{status:"yes",partySize:1,note:""},
+  });
+  expect(rsvp.status()).toBe(200);
+  expect(await rsvp.json()).toMatchObject({ok:true,replayed:false});
+  expect(rsvp.headers()["cache-control"]).toContain("no-store");
+  expect(rsvp.headers()["referrer-policy"]).toBe("no-referrer");
+  const unlink=await run("ccp_student_contacts_unlink",{studentId,linkId:schoolGuest.link.id,
+   expectedRevision:schoolGuest.link.revision,...key()});
+  expect(unlink.activeTo).toBeTruthy();
+  const unlinkedBody=await (await guest.get(schoolGuest.path)).text();
+  expect(unlinkedBody.includes(titles.event)).toBe(false);
+  expect(title(unlinkedBody)).toBe(neutralTitle);
+  expect((await guest.get("/api"+schoolGuest.path+"/calendar")).status()).toBe(404);
+  await run("ccp_contacts_update",{contactId:mother.contact.id,status:"archived",
+   expectedRevision:mother.contact.revision,...key()});
+  expect((await (await guest.get(mother.path)).text()).includes(mother.contact.displayName)).toBe(false);
+  expect((await guest.get("/api"+mother.path+"/calendar")).status()).toBe(404);
+  await read(path,["$37.18"],[titles.event,schoolGuest.contact.displayName,mother.contact.displayName]);
+  // Keep fixture session history without leaving open future lessons that
+  // intentionally block the independent learner-archive assertion.
+  for(const lesson of sessions){
+   const live=await admin.from("teaching_sessions").select("updated_at")
+    .eq("teacher_id",teacherId).eq("id",lesson.entityId).single();
+   expect(live.error).toBeNull();
+   await run("ccp_sessions_cancel",{sessionId:lesson.entityId,expectedUpdatedAt:live.data!.updated_at,...key()});
+  }
   const lifecycle=await run("ccp_students_lifecycle_preview",{studentId});
   expect(lifecycle.canArchive).toBe(true);
   await run("ccp_students_lifecycle_commit",{studentId,mode:"archive",

@@ -67,6 +67,8 @@ test("PARITY:PARITY-scoped-guest-calendar and cancellation cannot access the sam
   expect(portal.headers()["referrer-policy"]).toBe("no-referrer");
   const ics=await page.request.get("/api/portal/"+encodeURIComponent(secret)+"/calendar");
   expect(ics.status(),await ics.text()).toBe(200);
+  expect(ics.headers()["cache-control"]).toContain("no-store");
+  expect(ics.headers()["referrer-policy"]).toBe("no-referrer");
   const content=await ics.text();
   expect(content).toContain("BEGIN:VCALENDAR");
   expect(content).not.toContain("Private practice");
@@ -75,10 +77,14 @@ test("PARITY:PARITY-scoped-guest-calendar and cancellation cannot access the sam
     privateLesson.data.entityId+"/students/"+studentId+"/cancel";
   const forbidden=await page.request.post(wrong,{data:{note:"Unauthorised private lesson"}});
   expect(forbidden.status()).toBe(404);
+  expect(forbidden.headers()["cache-control"]).toContain("no-store");
+  expect(forbidden.headers()["referrer-policy"]).toBe("no-referrer");
   const correct="/api/portal/"+encodeURIComponent(secret)+"/sessions/"+
     schoolLesson.data.entityId+"/students/"+studentId+"/cancel";
   const cancelled=await page.request.post(correct,{data:{note:"School notice"}});
   expect(cancelled.status(),await cancelled.text()).toBe(200);
+  expect(cancelled.headers()["cache-control"]).toContain("no-store");
+  expect(cancelled.headers()["referrer-policy"]).toBe("no-referrer");
   expect(await cancelled.json()).toMatchObject({ok:true,replayed:false});
   const replay=await page.request.post(correct,{data:{note:"School notice"}});
   expect(replay.status()).toBe(200);
@@ -89,6 +95,8 @@ test("PARITY:PARITY-scoped-guest-calendar and cancellation cannot access the sam
   expect(revoked.error).toBeUndefined();
   const after=await page.request.post(correct,{data:{note:"Revoked"}});
   expect(after.status()).toBe(404);
+  expect(after.headers()["cache-control"]).toContain("no-store");
+  expect(after.headers()["referrer-policy"]).toBe("no-referrer");
   const old=await page.request.get("/portal/"+"f".repeat(48));
   // Next.js may stream an async notFound response with HTTP 200. Verify
   // access denial by content, not only the streaming response status.
