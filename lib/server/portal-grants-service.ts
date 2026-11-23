@@ -8,6 +8,7 @@
 import {createHash,randomBytes} from "node:crypto";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import type {z} from "zod";
+import {toLocalDateString} from "@/lib/schedule";
 import {portalGrantCreateSchema,portalGrantRevokeSchema,
   type PortalGrantPermission} from "./portal-grant-schemas";
 
@@ -69,6 +70,45 @@ export async function teacherPortalGrantsList(db:Db,teacherId:string,contactId?:
 export async function teacherPortalGrantGet(db:Db,teacherId:string,id:string){
   return safePortalGrant(await grant(db,teacherId,id));
 }
+/** Match the frozen cancellation/RSVP teacher-calendar predicate. Existing
+ * periods establish history, not current guest access. Filter before limiting. */
+async function hasCurrentPortalEnrollment(db:Db,teacherId:string,studentId:string,
+  workplaceId:string,now:Date){
+  const settings=await db.from("teacher_settings").select("timezone")
+    .eq("teacher_id",teacherId).maybeSingle();
+  if(settings.error)fail(500,"DATABASE_ERROR","Cannot verify the enrollment calendar");
+  let today:string;
+  try{today=toLocalDateString(now,settings.data?.timezone??"UTC");}
+  catch{return fail(500,"DATABASE_ERROR","Cannot verify the enrollment calendar");}
+  const {data,error}=await db.from("workplace_enrollments").select("id")
+    .eq("teacher_id",teacherId).eq("student_id",studentId).eq("workplace_id",workplaceId)
+    .is("cancelled_at",null).or(`starts_on.is.null,starts_on.lte.${today}`)
+    .or(`ends_on.is.null,ends_on.gte.${today}`).limit(1).maybeSingle();
+  if(error)fail(500,"DATABASE_ERROR","Cannot verify workplace enrollment");
+  return Boolean(data);
+}
+async function currentPortalScope(db:Db,teacherId:string,row:GrantRow,now:Date){
+  const studentId=String(row.student_id),contactId=String(row.contact_id);
+  const [contact,student,link,enrollment,payer]=await Promise.all([
+    db.from("contacts").select("id,status").eq("id",contactId)
+      .eq("teacher_id",teacherId).maybeSingle(),
+    db.from("students").select("id,archived_at").eq("id",studentId)
+      .eq("teacher_id",teacherId).maybeSingle(),
+    db.from("student_contacts").select("id")
+      .eq("teacher_id",teacherId).eq("student_id",studentId)
+      .eq("contact_id",contactId).is("active_to",null)
+      .or(`active_from.is.null,active_from.lte.${now.toISOString().slice(0,10)}`)
+      .limit(1).maybeSingle(),
+    hasCurrentPortalEnrollment(db,teacherId,studentId,String(row.workplace_id),now),
+    row.billing_account_id?db.from("billing_accounts").select("id,status")
+      .eq("teacher_id",teacherId).eq("id",String(row.billing_account_id))
+      .maybeSingle():Promise.resolve({data:null,error:null}),
+  ]);
+  if(contact.error||student.error||link.error||payer.error)
+    fail(500,"DATABASE_ERROR","Cannot verify current portal authorization");
+  return contact.data?.status==="active"&&Boolean(student.data)&&!student.data?.archived_at&&
+    Boolean(link.data)&&enrollment&&(!row.billing_account_id||payer.data?.status==="active");
+}
 export async function teacherPortalGrantCreate(db:Db,teacherId:string,input:Input){
   // Validation exists in route/MCP too, but the shared service owns the
   // authorization invariant and checks every referenced object independently.
@@ -98,11 +138,8 @@ export async function teacherPortalGrantCreate(db:Db,teacherId:string,input:Inpu
   }
   // Relationship and student enrollment in a workplace are distinct. Requiring
   // actual membership protects against a typo selecting another workplace.
-  const {data:enrollment,error:enrollmentError}=await db.from("workplace_enrollments")
-    .select("id").eq("teacher_id",teacherId).eq("workplace_id",value.workplaceId)
-    .eq("student_id",value.studentId).limit(1).maybeSingle();
-  if(enrollmentError)fail(500,"DATABASE_ERROR","Cannot verify workplace enrollment");
-  if(!enrollment)fail(409,"NOT_ENROLLED","The selected student is not enrolled in that workplace");
+  if(!await hasCurrentPortalEnrollment(db,teacherId,value.studentId,value.workplaceId,new Date(now)))
+    fail(409,"NOT_ENROLLED","The selected student is not currently enrolled in that workplace");
   const normalized={contact_id:value.contactId,student_id:value.studentId,
     workplace_id:value.workplaceId,billing_account_id:value.billingAccountId,
     permissions:[...value.permissions].sort(),expires_at:new Date(expiry).toISOString()};
@@ -143,6 +180,8 @@ export async function teacherPortalGrantIssueBrowserOnly(db:Db,teacherId:string,
   if(new Date(String(row.expires_at)).getTime()<=Date.now())
     fail(409,"EXPIRED","The grant has expired");
   if(row.revision!==expectedRevision)fail(409,"STALE_REVISION","Reload the grant");
+  if(!await currentPortalScope(db,teacherId,row,new Date()))
+    fail(409,"SCOPE_INACTIVE","The student, contact or workplace is no longer in scope");
   const secret=randomBytes(32).toString("base64url");
   const {data,error}=await db.from("portal_access_grants")
     .update({token_digest:hash(secret),issued_at:new Date().toISOString(),
@@ -167,30 +206,16 @@ export async function portalAuthorizeToken(db:Db,rawToken:string):Promise<Portal
     .is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
   if(error||!data)return null;
   const row=data as GrantRow;
-  // Recheck current authority for EVERY guest request. Deleting an enrollment,
-  // archiving the student/payer or ending a relationship must immediately
-  // invalidate the grant even when its token has not reached expiry.
-  const [contact,student,link,enrollment,payer]=await Promise.all([
-    db.from("contacts").select("id,status").eq("id",String(row.contact_id))
-      .eq("teacher_id",String(row.teacher_id)).maybeSingle(),
-    db.from("students").select("id,archived_at").eq("id",String(row.student_id))
-      .eq("teacher_id",String(row.teacher_id)).maybeSingle(),
-    db.from("student_contacts").select("id")
-      .eq("teacher_id",String(row.teacher_id)).eq("student_id",String(row.student_id))
-      .eq("contact_id",String(row.contact_id)).is("active_to",null)
-      .or(`active_from.is.null,active_from.lte.${new Date().toISOString().slice(0,10)}`)
-      .limit(1).maybeSingle(),
-    db.from("workplace_enrollments").select("id")
-      .eq("teacher_id",String(row.teacher_id)).eq("student_id",String(row.student_id))
-      .eq("workplace_id",String(row.workplace_id)).maybeSingle(),
-    row.billing_account_id?db.from("billing_accounts").select("id,status")
-      .eq("teacher_id",String(row.teacher_id)).eq("id",String(row.billing_account_id))
-      .maybeSingle():Promise.resolve({data:null,error:null}),
-  ]);
-  if(contact.error||contact.data?.status!=="active"||student.error||
-    !student.data||student.data.archived_at||link.error||!link.data||
-    enrollment.error||!enrollment.data||payer.error||
-    (row.billing_account_id&&payer.data?.status!=="active"))return null;
+  // Missing, ended or cancelled authority fails closed. Re-read the same
+  // grant revision after the lookups to reject a change during authorization.
+  try{
+    if(!await currentPortalScope(db,String(row.teacher_id),row,new Date()))return null;
+  }catch{return null;}
+  const confirmed=await db.from("portal_access_grants").select("id").eq("id",String(row.id))
+    .eq("teacher_id",String(row.teacher_id)).eq("token_digest",hash(rawToken))
+    .eq("revision",Number(row.revision)).is("revoked_at",null)
+    .gt("expires_at",new Date().toISOString()).maybeSingle();
+  if(confirmed.error||!confirmed.data)return null;
   return {id:String(row.id),teacherId:String(row.teacher_id),contactId:String(row.contact_id),
     studentId:String(row.student_id),workplaceId:String(row.workplace_id),
     billingAccountId:row.billing_account_id?String(row.billing_account_id):null,
