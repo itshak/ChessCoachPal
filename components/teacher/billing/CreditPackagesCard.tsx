@@ -17,6 +17,7 @@ import {
   type RateSources,
 } from "@/lib/billing";
 import {type CreditPackageState} from "@/lib/credits";
+import type {CreditFundingReport} from "@/lib/server/credit-package-funding";
 import {CreditAdjustmentPanel} from "@/components/teacher/billing/CreditAdjustmentPanel";
 
 const inputClass =
@@ -25,6 +26,7 @@ const inputClass =
 export interface CreditPackageView {
   id: string;
   invoiceId: string;
+  fundingReport:CreditFundingReport;
   credits: number;
   durationMinutes: number;
   priceCents: number;
@@ -160,6 +162,8 @@ function PackageRow({
     router.refresh();
   }
 
+  const {invoiceWorkflowStatus,invoiceCurrency,funding,entitlement}=pkg.fundingReport;
+  const closed=invoiceWorkflowStatus==="void"||invoiceWorkflowStatus===null;
   return (
     <div className="border border-border rounded-lg p-3 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -167,22 +171,22 @@ function PackageRow({
           <div className="font-medium flex flex-wrap items-center gap-2">
             {t("packageDescription",{count:pkg.credits,minutes:pkg.durationMinutes})}
             <span className={`text-xs px-2 py-0.5 rounded-full ${badgeClass}`}>
-              {pkg.state==="pending"?t("pending"):pkg.state==="active"?t("active"):pkg.state==="used_up"?t("usedUp"):t("expired")}
+              {invoiceWorkflowStatus==="void"?t("entitlementClosed"):invoiceWorkflowStatus===null?t("entitlementUnavailable"):pkg.state==="pending"?t("pending"):pkg.state==="active"?t("active"):pkg.state==="used_up"?t("usedUp"):t("expired")}
             </span>
           </div>
           <div className="text-xs text-muted mt-0.5">
-            {formatMoney(pkg.priceCents, currency)} · {t("from")}{" "}
+            {formatMoney(pkg.priceCents, invoiceCurrency??currency)} · {t("from")}{" "}
             {date(pkg.startsOn)} ·{" "}
             {pkg.expiresOn
               ?t("expiresOn",{date:date(pkg.expiresOn)})
               :t("noExpiry")}{" "}
             ·{" "}
-            <Link
+            {invoiceWorkflowStatus!==null&&<Link
               href={`/billing/${pkg.invoiceId}`}
               className="text-primary hover:underline"
             >
               {t("invoice")}
-            </Link>
+            </Link>}
           </div>
         </div>
         <div className="text-end shrink-0">
@@ -201,6 +205,14 @@ function PackageRow({
         </div>
       </div>
 
+      <ul className="mt-2 list-none space-y-1 text-xs">
+        <li>{t("invoiceWorkflow",{status:t(`workflow_${invoiceWorkflowStatus??"unavailable"}`)})}</li>
+        <li>{t(`funding_${funding.status}`,{
+          amount:funding.recordedInvoicePaymentCents===null||invoiceCurrency===null?"":
+            formatMoney(funding.recordedInvoicePaymentCents,invoiceCurrency),
+        })}</li>
+        <li>{t(entitlement.issued===null?"entitlementEvidenceUnavailable":entitlement.issued?"entitlementIssued":"entitlementNotIssued")}</li>
+      </ul>
       <div className="flex flex-wrap items-center gap-3 mt-2 text-xs">
         {pkg.redemptions.length > 0 && (
           <button
@@ -223,20 +235,20 @@ function PackageRow({
               <span>
                 {r.lessonDate?date(r.lessonDate):t("lesson")}
               </span>
-              <button
+              {!closed&&<button
                 type="button"
                 onClick={() => returnCredit(r.id, r.lessonDate)}
                 disabled={busy}
                 className="text-error hover:underline cursor-pointer disabled:opacity-50"
               >
                 {t("returnCredit")}
-              </button>
+              </button>}
             </li>
           ))}
         </ul>
       )}
 
-      <CreditAdjustmentPanel packageId={pkg.id} />
+      {!closed&&<CreditAdjustmentPanel packageId={pkg.id} />}
       {error && <p className="text-error text-xs mt-2">{error}</p>}
     </div>
   );

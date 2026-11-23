@@ -184,7 +184,7 @@
         "ccp_credits_packages_list",
         "ccp_credits_package_create"
       ],
-      "explanation": "142-pass authenticated E2E on PR commit 12ec30b verifies website↔MCP prepaid package GET and transactional POST, durable requestId replay and changed-payload conflict, invalid/foreign student isolation, no phantom draft invoice and shared balances; both clients use atomic owner-scoped ccp_credit_package_create SQL transaction.",
+      "explanation": "142-pass authenticated E2E on PR commit 12ec30b verifies website↔MCP prepaid package GET and transactional POST, durable requestId replay and changed-payload conflict, invalid/foreign student isolation, no phantom draft invoice and shared balances. Listing and the student card distinguish invoice workflow, invoice-mapped payment amounts and issued entitlement without exposing payer or payment records or changing sent/paid usability; both clients use atomic owner-scoped ccp_credit_package_create SQL transaction.",
       "evidenceTest": "e2e/parity-credits-lifecycle.spec.ts"
     },
     {

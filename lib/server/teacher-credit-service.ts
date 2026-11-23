@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPolicy } from "@/lib/server/scheduling";
 import {loadCanonicalCreditBalances,loadCanonicalCreditPackages} from "@/lib/server/canonical-credits";
+import {withCreditFundingReport} from "@/lib/server/credit-package-funding";
 import { validateCreditPackage } from "@/lib/credits";
 import {toLocalDateString} from "@/lib/schedule";
 import {teacherCreditAdjustmentCommit} from "@/lib/server/credit-adjustments";
@@ -19,9 +20,10 @@ export async function teacherCreditPackagesList(db:Db,teacherId:string,studentId
   const {data,error}=await db.from("students").select("id").eq("id",studentId).eq("teacher_id",teacherId).maybeSingle();
   if(error)throw fail(500,"DATABASE_ERROR","Unable to find student");
   if(!data)throw fail(404,"NOT_FOUND","Student not found");
-  return {packages:await loadCanonicalCreditBalances(db,teacherId,policy,[studentId],today)};
+  const packages=await loadCanonicalCreditBalances(db,teacherId,policy,[studentId],today,{includeClosed:true});
+  return {packages:await withCreditFundingReport(db,packages)};
  }
- return {packages:await loadCanonicalCreditPackages(db,teacherId,{timezone:policy.timezone})};
+ return {packages:await withCreditFundingReport(db,await loadCanonicalCreditPackages(db,teacherId,{timezone:policy.timezone}))};
 }
 /**
  * Purchase package, invoice and invoice line in ONE authenticated SQL
