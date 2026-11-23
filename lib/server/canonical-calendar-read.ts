@@ -20,16 +20,23 @@ type Person={session_id:string;student_id:string};
 type Mark={session_id:string;student_id:string;status:string;notice_at:string|null;updated_at:string;note:string;cancel_reason:string};
 const PAGE=500;
 async function pages<T>(
- fn:(offset:number)=>PromiseLike<{data:T[]|null;error:{message:string}|null}>,
- context:string,max=20000
+ fn:(offset:number)=>PromiseLike<{data:T[]|null;error:{message:string}|null;count?:number|null}>,
+ context:string,max=20000,strict=false
 ){
  const out:T[]=[];
+ let expectedCount:number|undefined;
  for(let offset=0;;offset+=PAGE){
-  const {data,error}=await fn(offset);
+  const {data,error,count}=await fn(offset);
   if(error)throw new Error("Unable to read "+context+": "+error.message);
+  if(strict){
+   if(count===null||count===undefined||(expectedCount!==undefined&&count!==expectedCount)||
+      data?.length!==Math.min(PAGE,count-offset))
+    throw new Error("Incomplete "+context);
+   expectedCount=count;
+  }
   out.push(...(data??[]));
   if(out.length>max)throw new RangeError(context+" exceeds safe pagination size");
-  if((data?.length??0)<PAGE)break;
+  if((data?.length??0)<PAGE||(strict&&out.length===count))break;
  }
  return out;
 }
@@ -39,7 +46,8 @@ async function pages<T>(
  */
 export async function canonicalCalendarWindow(
  db:Db,teacherId:string,from:string,to:string,
- timezone:string,studentIds?:string[],workplaceTimezones?:Readonly<Record<string,string>>
+ timezone:string,studentIds?:string[],workplaceTimezones?:Readonly<Record<string,string>>,
+ options?:{strictWorkplaceId:string}
 ):Promise<CanonicalCalendarRow[]>{
  if(from>to||!Number.isFinite(Date.parse(from+"T00:00:00Z"))||
    !Number.isFinite(Date.parse(to+"T00:00:00Z")))
@@ -49,11 +57,14 @@ export async function canonicalCalendarWindow(
  if(studentIds?.length===0)return [];
  const earliest=addDays(from,-2)+"T00:00:00Z";
  const latest=addDays(to,3)+"T00:00:00Z";
- const sessions=await pages<Session>(offset=>db.from("teaching_sessions")
-  .select("id,title,starts_at,duration_minutes,updated_at,status,workplace_id,local_timezone,slot_id,slot_occurrence_date,is_home_visit,makeup_for_session_id")
-  .eq("teacher_id",teacherId).gte("starts_at",earliest).lt("starts_at",latest)
-  .order("starts_at").order("id").range(offset,offset+PAGE-1),
-  "canonical calendar sessions");
+ const exact=options?{count:"exact" as const}:undefined;
+ const sessions=await pages<Session>(offset=>{
+  let q=db.from("teaching_sessions")
+   .select("id,title,starts_at,duration_minutes,updated_at,status,workplace_id,local_timezone,slot_id,slot_occurrence_date,is_home_visit,makeup_for_session_id",exact)
+   .eq("teacher_id",teacherId).gte("starts_at",earliest).lt("starts_at",latest);
+  if(options)q=q.eq("workplace_id",options.strictWorkplaceId);
+  return q.order("starts_at").order("id").range(offset,offset+PAGE-1);
+ },"canonical calendar sessions",20000,Boolean(options));
  if(!sessions.length)return [];
  const ids=sessions.map(x=>x.id);
  const people:Person[]=[],marks:Mark[]=[];
@@ -61,11 +72,11 @@ export async function canonicalCalendarWindow(
   const chunk=ids.slice(i,i+60);
   const [roster,decisions]=await Promise.all([
    pages<Person>(offset=>db.from("session_participants")
-    .select("session_id,student_id").eq("teacher_id",teacherId)
+    .select("session_id,student_id",exact).eq("teacher_id",teacherId)
     .in("session_id",chunk).order("session_id").order("student_id")
-    .range(offset,offset+PAGE-1),"canonical calendar frozen roster"),
+    .range(offset,offset+PAGE-1),"canonical calendar frozen roster",20000,Boolean(options)),
    pages<Mark>(offset=>db.from("session_attendance")
-    .select("session_id,student_id,status,notice_at,updated_at,note,cancel_reason")
+    .select("session_id,student_id,status,notice_at,updated_at,note,cancel_reason",exact)
     .eq("teacher_id",teacherId).in("session_id",chunk)
     .order("session_id").order("student_id").range(offset,offset+PAGE-1),
     "canonical attendance calendar"),

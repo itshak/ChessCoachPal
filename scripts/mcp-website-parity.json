@@ -689,6 +689,15 @@
       "evidenceTest": "e2e/parity-compensation-agreements.spec.ts"
     },
     {
+      "path": "app/api/compensation-agreements/completed-lessons/route.ts",
+      "methods": ["GET"],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": ["ccp_compensation_completed_lessons"],
+      "explanation": "Owner-scoped completed lesson picker, one exact venue and local date, with no roster or notes. Exact scope approval and both live interfaces exercised by signed end-to-end evidence.",
+      "evidenceTest": "e2e/parity-compensation-exact-session.spec.ts"
+    },
+    {
       "path": "app/api/compensation-agreements/route.ts",
       "methods": [
         "GET",

@@ -139,6 +139,7 @@ import {portalEventInviteCreateSchema,portalEventInviteRevokeSchema,
   teacherPortalEventInviteRevoke} from "@/lib/server/portal-event-invitations";
 import {
  compensationAgreementCreateSchema,compensationAgreementUpdateSchema,
+ compensationCompletedLessons,compensationCompletedLessonsSchema,
  compensationPreviewSchema,compensationAgreementsList,compensationAgreementGet,
  compensationAgreementCreate,compensationAgreementUpdate,
  compensationAgreementPreview,CompensationAgreementError,
@@ -721,7 +722,7 @@ const catalogue = [
   },
   {
     name:"ccp_compensation_agreements_create",
-    description:"After explicit teacher approval, create one agreement for instructor earnings or one customer billing scope. Name the exact owned workplace, model, minor-unit rate, explicitly owned billing-account counterparty for both coach earnings and charges, effective dates; ambiguous overlapping agreements are rejected. No cash or invoice is created.",
+    description:"After explicit teacher approval, create one agreement for instructor earnings or one customer billing scope. Name the exact owned workplace, model, minor-unit rate, explicitly owned billing-account counterparty for both coach earnings and charges, effective dates; use exactSessionId only for one explicitly selected completed coach lesson and its exact day, not customer debt or fixed salary. Ambiguous overlapping agreements are rejected. No cash or invoice is created.",
     schema:compensationAgreementCreateSchema,scope:"coach:write",readOnly:false,
   },
   {
@@ -730,8 +731,13 @@ const catalogue = [
     schema:compensationAgreementUpdateSchema,scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_compensation_completed_lessons",
+    description:"List only completed exact lesson choices for one explicitly owned workplace and one local date (title, time, duration, ID). Read only; choose an exact ID with the coach before configuring terms. No student, attendance or payer details.",
+    schema:compensationCompletedLessonsSchema,scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_compensation_agreements_preview",
-    description:"Read-only deterministic expected coach compensation for verified completed canonical sessions, one group session counted once. Never claim cash received, compliance, invoice issuance or missing lessons as completed; fixed monthly agreements require full calendar months.",
+    description:"Read-only deterministic expected coach compensation for verified completed canonical sessions, one group session counted once. Broad coach preview excludes lessons with their own active agreement; previews do not alter posting authority. Never claim cash received or invoice issuance; fixed monthly agreements require full months.",
     schema:compensationPreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -2233,6 +2239,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as Parameters<typeof compensationAgreementUpdate>[2];
         return {data:await compensationAgreementUpdate(db,teacherId,a)};
       }
+      case "ccp_compensation_completed_lessons":
+        return {data:await compensationCompletedLessons(db,teacherId,args as Parameters<typeof compensationCompletedLessons>[2])};
       case "ccp_compensation_agreements_preview": {
         const a=args as Parameters<typeof compensationAgreementPreview>[2];
         return {data:await compensationAgreementPreview(db,teacherId,a)};
