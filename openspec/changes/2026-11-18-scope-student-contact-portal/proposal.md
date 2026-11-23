@@ -10,12 +10,12 @@
 > **ADR-0017 final-cutover override (2026-11-18):** No backward compatibility or legacy dual-writes before v1. The final deliverable uses the clean canonical baseline and current website/MCP contracts. All planned features deploy with **one final** live migration **or** verified clean rebuild/reimport at the operator's choice; no per-feature production migration. Existing data handling is a deliberate one-time import/mapping decision, not an obligation to retain obsolete Family/Studio/guardian APIs or old portal tokens. Security, tenant isolation and explicit new grants remain required.
 
 
-**Status:** Proposed implementation; approved direction only; public access changes unimplemented.
+**Status:** [Verified scoped Portal source milestones](SOURCE_ACCEPTANCE.md); durable privacy audit, target ingress evidence and separately authorized legacy reconciliation remain open.
 **Priority:** P1 privacy/security cutover alongside contacts.
 **Depends on:** 2026-11-18-replace-families-with-contacts and baseline-first transition; coordinate with workplace context and finance agreements.
 
 ## Why
-The existing /portal/[token] is useful: shared upcoming lessons, .ics feed, cancellation, teacher-approved session notes, credits, invoices/Checkout/payment instructions, event invitations/RSVP, policy info. But its token identifies one guardian row and pulls all linked students across workplaces. The same learner might have a school contact allowed to see only school lessons and a mother allowed to see private billing. The current broad household token cannot safely express this. Teacher settings remain branded Studio.
+The predecessor /portal/[token] offered: shared upcoming lessons, .ics feed, cancellation, teacher-approved session notes, credits, invoices/Checkout/payment instructions, event invitations/RSVP, policy info. Its old token identified one guardian row and pulled linked students across workplaces. The same learner might have a school contact allowed to see only school lessons and a mother allowed to see private billing. The current broad household token cannot safely express this. Studio was the predecessor branding.
 
 ## Outcome
 Preserve useful viewer functionality but make external sharing optional, explicit, revocable and scoped to particular students, workplaces, functions and billing accounts. Retire household-wide token semantics and Family Portal naming after successful coordinated cutover. Later chess learning sharing and individual login remain independently scoped future stages.

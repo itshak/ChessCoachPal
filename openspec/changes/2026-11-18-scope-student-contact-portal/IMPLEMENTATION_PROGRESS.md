@@ -1,3 +1,7 @@
+# Historical Portal implementation progress
+
+Current exact source and open operational acceptance are tracked in [SOURCE_ACCEPTANCE.md](SOURCE_ACCEPTANCE.md). The notes below are historical draft checkpoints, not current product status or release authorization.
+
 # Scoped Student & Contact Portal — unaccepted implementation progress
 
 **Status:** Draft PR #104, source implementation in progress. **NOT ACCEPTED / NOT ARCHIVED / NOT DEPLOYED.**
