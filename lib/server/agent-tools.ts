@@ -713,13 +713,13 @@ const catalogue = [
   },
   {
     name:"ccp_compensation_agreements_list",
-    description:"Read owner-scoped effective-dated professional compensation terms. Coach expected earnings and participant charges are different policies; no payment, invoice or obligation is posted. Optional workplace filter and archived terms.",
+    description:"Read owner-scoped effective-dated professional compensation terms. Coach expected earnings and participant charges are different policies; no payment, invoice or obligation is posted. Optional workplace filter and archived terms. This surface omits terms managed by a separate private-series workflow.",
     schema:z.object({workplaceId:uuid.optional(),includeArchived:z.boolean().default(false)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_compensation_agreements_get",
-    description:"Read one teacher-owned professional compensation agreement by exact ID, revision, currency, scope and validity dates. Does not disclose finance credentials.",
+    description:"Read one teacher-owned professional compensation agreement by exact ID, revision, currency, scope and validity dates. Does not disclose finance credentials; a private-series agreement is not available through this operation.",
     schema:z.object({agreementId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
@@ -729,7 +729,7 @@ const catalogue = [
   },
   {
     name:"ccp_compensation_agreements_update",
-    description:"Confirm an effective-dated rate or status amendment with exact revision and idempotency; updates cannot retroactively rewrite issued invoices or verified financial history.",
+    description:"Confirm an effective-dated rate or status amendment with exact revision and idempotency; updates cannot retroactively rewrite issued invoices or verified financial history. Do not use this tool for a private-series agreement.",
     schema:compensationAgreementUpdateSchema,scope:"coach:write",readOnly:false,
   },
   {
@@ -749,7 +749,7 @@ const catalogue = [
   },
   {
     name:"ccp_compensation_agreements_preview",
-    description:"Read-only deterministic expected coach compensation for verified completed canonical sessions, one group session counted once. Broad coach preview excludes lessons with their own active agreement; previews do not alter posting authority. Never claim cash received or invoice issuance; fixed monthly agreements require full months.",
+    description:"Read-only deterministic expected coach compensation for verified completed canonical sessions, one group session counted once. Broad coach preview excludes lessons with their own active exact agreement and refuses a potential private-series overlap until explicitly reviewed; previews do not alter posting authority. Never claim cash received or invoice issuance; fixed monthly agreements require full months.",
     schema:compensationPreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -764,7 +764,7 @@ const catalogue = [
   },
   {
     name:"ccp_finance_obligation_approve",
-    description:"Explicitly approve one frozen teacher-owned session or complete-month obligation against an exact agreement revision, amount, specific payer and canonical attendance. Reject stale rate, unconfirmed pupil, duplicate coach time or invented cash. Replay safely with idempotency.",
+    description:"Explicitly approve one frozen teacher-owned session or complete-month obligation against an exact agreement revision, amount, specific payer and canonical attendance. Reject stale rate, unconfirmed pupil, duplicate coach time or invented cash. Replay safely with idempotency. This legacy approval does not approve private-series agreements.",
     schema:financialObligationApproveSchema,scope:"coach:write",readOnly:false,
   },
   {

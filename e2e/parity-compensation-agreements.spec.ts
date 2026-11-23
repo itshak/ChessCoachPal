@@ -1,7 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
-const origin="http://localhost:3000";
+const origin=new URL(process.env.PLAYWRIGHT_BASE_URL??"http://localhost:3000").origin;
 
 test("PARITY:PARITY-compensation-agreements exact scopes, 8-pupil group counted once and web/MCP readback",async({page,request})=>{
  const call=await delegatedTool(page,request);
@@ -56,8 +56,11 @@ test("PARITY:PARITY-compensation-agreements exact scopes, 8-pupil group counted 
  expect(mcp.data).toEqual(await website.json());
  const details=await page.request.get("/api/compensation-agreements/"+id);
  expect(details.status(),await details.text()).toBe(200);
+ const detailsBody=await details.json();
+ expect(detailsBody).not.toHaveProperty("last_request_hash");
+ expect(detailsBody).not.toHaveProperty("private_series_id");
  expect((await call("ccp_compensation_agreements_get",{agreementId:id})).data)
-   .toEqual(await details.json());
+   .toEqual(detailsBody);
  const q=new URLSearchParams({from:"2046-02-01",to:"2046-02-28"});
  const webPreview=await page.request.get(`/api/compensation-agreements/${id}/preview?${q}`);
  expect(webPreview.status(),await webPreview.text()).toBe(200);
