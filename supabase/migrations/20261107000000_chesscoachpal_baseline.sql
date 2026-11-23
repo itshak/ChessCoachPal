@@ -789,7 +789,8 @@ ALTER TABLE "public"."session_attendance" OWNER TO "postgres";
 CREATE TABLE IF NOT EXISTS "public"."session_participants" (
     "teacher_id" "uuid" NOT NULL,
     "session_id" "uuid" NOT NULL,
-    "student_id" "uuid" NOT NULL
+    "student_id" "uuid" NOT NULL,
+    sponsor_billing_review_required boolean NOT NULL DEFAULT false
 );
 
 
@@ -6796,6 +6797,18 @@ BEGIN
     RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE = '22023';
   END IF;
 
+  -- Portable JSON has no authority to rebuild a previously approved sponsor
+  -- or its durable financial-review witness. Reject before the import starts.
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(
+       p_tables->'compensation_agreements')='array' THEN p_tables->'compensation_agreements' ELSE '[]' END) r
+       WHERE r->>'agreement_role'='participant_charge' AND r->>'exact_session_id' IS NOT NULL)
+     OR EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(
+       p_tables->'session_participants')='array' THEN p_tables->'session_participants' ELSE '[]' END) r
+       WHERE r->>'sponsor_billing_review_required'='true') THEN
+    RAISE EXCEPTION 'EXACT_SPONSOR_OPERATOR_RESTORE_REQUIRED: use an operator-verified full backup restore; no rows were restored'
+      USING ERRCODE='22023';
+  END IF;
+
   -- Independent backups for the same teacher cannot interleave; the receipt
   -- insert also serializes concurrent retries of an identical approved digest.
   PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text, 0));
@@ -7757,6 +7770,7 @@ BEGIN
  ) THEN
    RAISE EXCEPTION 'FINANCE_PARTICIPANT_NOT_FOUND' USING ERRCODE='42501';
  END IF;
+ PERFORM public.ccp_assert_no_automatic_sponsor_source(v_invoice.teacher_id,NEW.session_id,NEW.student_id);
  SELECT teacher_id INTO v_student_teacher
   FROM public.students WHERE id=NEW.student_id;
  v_date:=(v_session.starts_at AT TIME ZONE
@@ -7841,6 +7855,7 @@ BEGIN
    ) THEN
    RAISE EXCEPTION 'CREDIT_PARTICIPANT_NOT_OWNED' USING ERRCODE='42501';
  END IF;
+ PERFORM public.ccp_assert_no_automatic_sponsor_source(NEW.teacher_id,NEW.session_id,NEW.student_id);
  IF v_package.duration_minutes<>v_session.duration_minutes THEN
    RAISE EXCEPTION 'CREDIT_WRONG_DURATION' USING ERRCODE='23514';
  END IF;
@@ -11103,9 +11118,13 @@ CREATE TABLE public.compensation_agreements (
   FOREIGN KEY (billing_account_id,teacher_id)
     REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT,
   CONSTRAINT compensation_exact_session_shape CHECK (
-    exact_session_id IS NULL OR (student_id IS NULL AND group_id IS NULL
-      AND agreement_role='coach_earning' AND model<>'fixed_period'
-      AND rate_cents>0 AND effective_to IS NOT NULL AND effective_to=effective_from)),
+    exact_session_id IS NULL OR (group_id IS NULL AND model<>'fixed_period'
+      AND rate_cents>0 AND effective_to IS NOT NULL AND effective_to=effective_from
+      AND ((agreement_role='coach_earning' AND student_id IS NULL)
+        OR (agreement_role='participant_charge' AND student_id IS NOT NULL)))),
+  CONSTRAINT compensation_exact_participant_roster_fk
+    FOREIGN KEY(exact_session_id,student_id,teacher_id)
+    REFERENCES public.session_participants(session_id,student_id,teacher_id) ON DELETE RESTRICT,
   CONSTRAINT compensation_effective_date_order CHECK (
     effective_to IS NULL OR effective_to >= effective_from),
   CONSTRAINT compensation_scope_one_specificity CHECK (
@@ -11113,7 +11132,10 @@ CREATE TABLE public.compensation_agreements (
 );
 CREATE UNIQUE INDEX compensation_agreement_one_active_exact
  ON public.compensation_agreements(teacher_id,workplace_id,exact_session_id)
- WHERE exact_session_id IS NOT NULL AND status='active';
+ WHERE exact_session_id IS NOT NULL AND agreement_role='coach_earning' AND status='active';
+CREATE UNIQUE INDEX compensation_one_active_participant_sponsor
+ ON public.compensation_agreements(teacher_id,workplace_id,exact_session_id,student_id)
+ WHERE exact_session_id IS NOT NULL AND agreement_role='participant_charge' AND status='active';
 CREATE INDEX compensation_agreement_scope_idx ON public.compensation_agreements
   (teacher_id,workplace_id,agreement_role,status,effective_from,effective_to);
 CREATE INDEX compensation_agreement_payer_idx ON public.compensation_agreements
@@ -11864,6 +11886,32 @@ GRANT EXECUTE ON FUNCTION public.ccp_finance_reverse(
  text,uuid,bigint,text,uuid) TO authenticated;
 
 
+-- Existing canonical invoice and redemption row guards call this only
+-- AFTER validating ownership and locking the canonical source session.
+CREATE FUNCTION public.ccp_assert_no_automatic_sponsor_source(
+ p_teacher uuid,p_session uuid,p_student uuid
+) RETURNS void LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_automatic_sponsor_source$
+DECLARE v_review_required boolean;
+BEGIN
+ -- Lock the existing exact participant witness after the caller's session
+ -- lock. Old repeatable-read snapshots conflicting with a newly marked
+ -- witness receive PostgreSQL's ordinary serialization failure.
+ SELECT p.sponsor_billing_review_required INTO v_review_required
+ FROM public.session_participants p
+ WHERE p.teacher_id=p_teacher AND p.session_id=p_session AND p.student_id=p_student
+ FOR SHARE;
+ IF NOT FOUND THEN
+   RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='42501';
+ END IF;
+ IF v_review_required THEN
+   RAISE EXCEPTION 'EXACT_SPONSOR_REVIEW_REQUIRED' USING ERRCODE='23514';
+ END IF;
+END;
+$ccp_automatic_sponsor_source$;
+REVOKE ALL ON FUNCTION public.ccp_assert_no_automatic_sponsor_source(uuid,uuid,uuid)
+ FROM PUBLIC,anon,authenticated,service_role;
+
 -- The selected exact occurrence is a dependency, not detachable metadata.
 -- The trigger runs under a private owner only to obtain a session row lock
 -- (ordinary teacher credentials cannot UPDATE session tables directly).
@@ -11902,14 +11950,37 @@ BEGIN
      RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='23514';
    END IF;
  END IF;
+ IF NEW.agreement_role='participant_charge' THEN
+   -- Explicit tenant FK lock first: existing invoice workflows lock teacher
+   -- before the source session. Never wait on the tenant after locking a session.
+   PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR KEY SHARE;
+   IF NOT FOUND THEN RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='42501';END IF;
+ END IF;
  SELECT s.* INTO v_session FROM public.teaching_sessions s
  WHERE s.id=NEW.exact_session_id AND s.teacher_id=v_teacher
  AND s.workplace_id=NEW.workplace_id FOR SHARE;
  IF NOT FOUND OR v_session.status<>'completed' THEN
    RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='42501';
  END IF;
- PERFORM pg_advisory_xact_lock(hashtextextended(
-   v_teacher::text||':compensation-exact:'||v_session.id::text,0));
+ IF NEW.agreement_role='participant_charge' THEN
+   IF NOT EXISTS(SELECT 1 FROM public.session_participants sp
+     WHERE sp.teacher_id=v_teacher AND sp.session_id=v_session.id AND sp.student_id=NEW.student_id) THEN
+     RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='42501';
+   END IF;
+   PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text||
+     ':compensation-sponsor:'||v_session.id::text||':'||NEW.student_id::text,0));
+   IF NEW.status='active' AND (
+     EXISTS(SELECT 1 FROM public.invoice_items ii JOIN public.invoices i ON i.id=ii.invoice_id
+       WHERE i.teacher_id=v_teacher AND ii.session_id=v_session.id AND ii.student_id=NEW.student_id)
+     OR EXISTS(SELECT 1 FROM public.credit_redemptions r WHERE r.teacher_id=v_teacher
+       AND r.session_id=v_session.id AND r.student_id=NEW.student_id)
+   ) THEN
+     RAISE EXCEPTION 'EXACT_SPONSOR_RETAINED_BILLING_SOURCE' USING ERRCODE='23514';
+   END IF;
+ ELSE
+   PERFORM pg_advisory_xact_lock(hashtextextended(
+     v_teacher::text||':compensation-exact:'||v_session.id::text,0));
+ END IF;
  SELECT w.timezone INTO v_zone FROM public.workplaces w
  WHERE w.id=NEW.workplace_id AND w.teacher_id=v_teacher
    AND (TG_OP<>'INSERT' OR w.currency=NEW.currency) FOR SHARE;
@@ -11928,7 +11999,8 @@ BEGIN
    END IF;
  END IF;
  IF EXISTS (SELECT 1 FROM public.financial_obligations o WHERE o.teacher_id=v_teacher
-   AND o.workplace_id=NEW.workplace_id AND o.session_id=v_session.id AND o.kind='coach_earning') THEN
+   AND o.workplace_id=NEW.workplace_id AND o.session_id=v_session.id
+   AND o.kind=CASE WHEN NEW.agreement_role='participant_charge' THEN 'participant_charge' ELSE 'coach_earning' END AND (NEW.agreement_role='coach_earning' OR o.student_id=NEW.student_id)) THEN
    IF TG_OP='INSERT' OR NEW.status<>'archived' OR OLD.rate_cents IS DISTINCT FROM NEW.rate_cents THEN
      RAISE EXCEPTION 'EXACT_AGREEMENT_ALREADY_POSTED' USING ERRCODE='23514';
    END IF;
@@ -11941,6 +12013,171 @@ REVOKE ALL ON FUNCTION public.ccp_compensation_exact_session_guard()
 CREATE TRIGGER compensation_agreement_exact_session
  BEFORE INSERT OR UPDATE ON public.compensation_agreements
  FOR EACH ROW EXECUTE FUNCTION public.ccp_compensation_exact_session_guard();
+
+-- Only the confirmed owner RPC can write the new subtype. This trigger
+-- deliberately runs as INVOKER; auth.uid alone would not distinguish raw
+-- teacher table DML from the explicitly confirmed definer entrypoint.
+CREATE FUNCTION public.ccp_exact_sponsor_write_boundary()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_exact_sponsor_write_boundary$
+DECLARE
+ v_protected boolean:=false;
+BEGIN
+ IF TG_OP<>'INSERT' THEN
+   v_protected:=OLD.exact_session_id IS NOT NULL AND OLD.agreement_role='participant_charge';
+ END IF;
+ IF TG_OP<>'DELETE' THEN
+   v_protected:=v_protected OR (NEW.exact_session_id IS NOT NULL AND NEW.agreement_role='participant_charge');
+ END IF;
+ IF v_protected AND TG_OP='DELETE' THEN
+   IF EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id) THEN
+     RAISE EXCEPTION 'EXACT_SPONSOR_CONFIRMED_RPC_REQUIRED' USING ERRCODE='42501';
+   END IF;
+   RETURN OLD;
+ END IF;
+ IF v_protected AND (current_user IS DISTINCT FROM
+   pg_get_userbyid((SELECT f.proowner FROM pg_catalog.pg_proc f
+     WHERE f.oid='public.ccp_compensation_exact_sponsor_commit(uuid,uuid,uuid,uuid,text,bigint,text,date,uuid,bigint,uuid,boolean)'::regprocedure))) THEN
+   RAISE EXCEPTION 'EXACT_SPONSOR_CONFIRMED_RPC_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
+END;
+$ccp_exact_sponsor_write_boundary$;
+REVOKE ALL ON FUNCTION public.ccp_exact_sponsor_write_boundary()
+ FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION public.ccp_compensation_exact_sponsor_commit(
+ p_workplace uuid,p_session uuid,p_student uuid,p_payer uuid,p_model text,
+ p_rate_cents bigint,p_currency text,p_day date,
+ p_archive_agreement uuid,p_expected_revision bigint,p_request_id uuid,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_exact_sponsor_commit$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_hash text;
+ v_row public.compensation_agreements%ROWTYPE;
+ v_prior public.agent_tool_receipts%ROWTYPE;
+ v_out jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501';END IF;
+ IF p_request_id IS NULL OR p_confirmed IS DISTINCT FROM true OR
+    (p_archive_agreement IS NULL AND (p_expected_revision IS NOT NULL
+       OR p_workplace IS NULL OR p_session IS NULL OR p_student IS NULL OR p_payer IS NULL
+       OR p_model IS NULL OR p_model NOT IN ('hourly','per_session','per_student')
+       OR p_rate_cents IS NULL OR p_rate_cents NOT BETWEEN 1 AND 1000000000
+       OR p_currency IS NULL OR p_currency !~ '^[A-Z]{3}$' OR p_day IS NULL
+       OR NOT isfinite(p_day))) OR
+    (p_archive_agreement IS NOT NULL AND (p_expected_revision IS NULL OR p_expected_revision<1
+       OR p_workplace IS NOT NULL OR p_session IS NOT NULL OR p_student IS NOT NULL OR p_payer IS NOT NULL
+       OR p_model IS NOT NULL OR p_rate_cents IS NOT NULL OR p_currency IS NOT NULL OR p_day IS NOT NULL)) THEN
+   RAISE EXCEPTION 'INVALID_EXACT_SPONSOR_APPROVAL' USING ERRCODE='22023';
+ END IF;
+ v_hash:=encode(extensions.digest(jsonb_build_array('finance.exact-sponsor.v1',p_workplace,
+   p_session,p_student,p_payer,p_model,p_rate_cents,p_currency,p_day,p_archive_agreement,
+   p_expected_revision)::text,'sha256'),'hex');
+ SELECT * INTO v_prior FROM public.agent_tool_receipts
+  WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ IF FOUND THEN
+   IF v_prior.operation<>'finance.exact-sponsor.v1' OR v_prior.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'EXACT_SPONSOR_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_prior.receipt||'{"replayed":true}'::jsonb;
+ END IF;
+ IF current_setting('transaction_isolation')<>'read committed' THEN
+   RAISE EXCEPTION 'SPONSOR_READ_COMMITTED_REQUIRED' USING ERRCODE='40001';
+ END IF;
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR KEY SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501';END IF;
+ INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_request_id,'finance.exact-sponsor.v1',v_hash,'{}'::jsonb)
+ ON CONFLICT DO NOTHING;
+ IF NOT FOUND THEN
+   SELECT * INTO v_prior FROM public.agent_tool_receipts
+    WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+   IF NOT FOUND OR v_prior.operation<>'finance.exact-sponsor.v1' OR v_prior.request_hash<>v_hash THEN
+     RAISE EXCEPTION 'EXACT_SPONSOR_REQUEST_CONFLICT' USING ERRCODE='23505';
+   END IF;
+   RETURN v_prior.receipt||'{"replayed":true}'::jsonb;
+ END IF;
+ IF p_archive_agreement IS NULL THEN
+   INSERT INTO public.compensation_agreements(id,teacher_id,workplace_id,exact_session_id,student_id,
+     billing_account_id,agreement_role,model,rate_cents,currency,effective_from,effective_to)
+   VALUES(p_request_id,v_teacher,p_workplace,p_session,p_student,p_payer,'participant_charge',
+     p_model,p_rate_cents,p_currency,p_day,p_day) RETURNING * INTO v_row;
+   -- The trigger above still holds source/session locks. Mark only the frozen
+   -- participant already verified for this exact approved agreement.
+   UPDATE public.session_participants SET sponsor_billing_review_required=true
+    WHERE teacher_id=v_teacher AND session_id=p_session AND student_id=p_student;
+   IF NOT FOUND THEN RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='42501';END IF;
+ ELSE
+   SELECT * INTO v_row FROM public.compensation_agreements
+    WHERE teacher_id=v_teacher AND id=p_archive_agreement AND exact_session_id IS NOT NULL
+      AND agreement_role='participant_charge' FOR UPDATE;
+   IF NOT FOUND THEN
+     RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='42501';
+   END IF;
+   IF v_row.status<>'active' OR v_row.revision<>p_expected_revision THEN
+     RAISE EXCEPTION 'STALE_AGREEMENT_REVISION' USING ERRCODE='23514';
+   END IF;
+   UPDATE public.compensation_agreements SET status='archived',revision=revision+1,
+     updated_at=clock_timestamp() WHERE id=v_row.id AND teacher_id=v_teacher RETURNING * INTO v_row;
+ END IF;
+ v_out:=jsonb_build_object('agreementId',v_row.id,'workplaceId',v_row.workplace_id,
+   'exactSessionId',v_row.exact_session_id,'studentId',v_row.student_id,
+   'billingAccountId',v_row.billing_account_id,'model',v_row.model,
+   'rateCents',v_row.rate_cents,'currency',v_row.currency,'day',v_row.effective_from,
+   'status',v_row.status,'revision',v_row.revision,'replayed',false);
+ UPDATE public.agent_tool_receipts SET receipt=v_out
+  WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ RETURN v_out;
+END;
+$ccp_exact_sponsor_commit$;
+REVOKE ALL ON FUNCTION public.ccp_compensation_exact_sponsor_commit(
+ uuid,uuid,uuid,uuid,text,bigint,text,date,uuid,bigint,uuid,boolean) FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_compensation_exact_sponsor_commit(
+ uuid,uuid,uuid,uuid,text,bigint,text,date,uuid,bigint,uuid,boolean) TO authenticated;
+CREATE TRIGGER compensation_agreement_exact_role_boundary
+ BEFORE INSERT OR UPDATE OR DELETE ON public.compensation_agreements
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_exact_sponsor_write_boundary();
+
+CREATE FUNCTION public.ccp_sponsor_participant_review_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $ccp_sponsor_participant_review_guard$
+BEGIN
+ IF TG_OP='INSERT' THEN
+   IF NOT NEW.sponsor_billing_review_required THEN RETURN NEW; END IF;
+ ELSIF TG_OP='DELETE' THEN
+   IF NOT OLD.sponsor_billing_review_required OR NOT EXISTS(
+      SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id) THEN RETURN OLD;END IF;
+ ELSE
+   IF OLD.sponsor_billing_review_required AND
+     (NOT NEW.sponsor_billing_review_required OR
+      ROW(OLD.teacher_id,OLD.session_id,OLD.student_id) IS DISTINCT FROM
+      ROW(NEW.teacher_id,NEW.session_id,NEW.student_id)) THEN
+     RAISE EXCEPTION 'EXACT_SPONSOR_WITNESS_IMMUTABLE' USING ERRCODE='42501';
+   END IF;
+   IF OLD.sponsor_billing_review_required=NEW.sponsor_billing_review_required THEN RETURN NEW;END IF;
+   IF current_user=pg_get_userbyid((SELECT f.proowner FROM pg_catalog.pg_proc f
+     WHERE f.oid='public.ccp_compensation_exact_sponsor_commit(uuid,uuid,uuid,uuid,text,bigint,text,date,uuid,bigint,uuid,boolean)'::regprocedure))
+    AND auth.uid()=NEW.teacher_id
+    AND ROW(OLD.teacher_id,OLD.session_id,OLD.student_id) IS NOT DISTINCT FROM
+      ROW(NEW.teacher_id,NEW.session_id,NEW.student_id)
+    AND EXISTS(SELECT 1 FROM public.compensation_agreements a
+      WHERE a.teacher_id=NEW.teacher_id AND a.exact_session_id=NEW.session_id
+      AND a.student_id=NEW.student_id AND a.agreement_role='participant_charge'
+      AND a.status='active') THEN
+     RETURN NEW;
+   END IF;
+ END IF;
+ RAISE EXCEPTION 'EXACT_SPONSOR_CONFIRMED_RPC_REQUIRED' USING ERRCODE='42501';
+END;
+$ccp_sponsor_participant_review_guard$;
+REVOKE ALL ON FUNCTION public.ccp_sponsor_participant_review_guard()
+ FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_sponsor_participant_review_guard
+ BEFORE INSERT OR UPDATE OR DELETE ON public.session_participants
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_sponsor_participant_review_guard();
 
 -- Approval is independent of preview. Re-read the exact canonical lesson and
 -- agreement under a transaction, require explicit amount/revision confirmation,
@@ -12030,6 +12267,10 @@ BEGIN
    IF p_session_id IS NULL THEN
      RAISE EXCEPTION 'CANONICAL_SESSION_REQUIRED' USING ERRCODE='22023';
    END IF;
+   IF v_terms.agreement_role='participant_charge' THEN
+     PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR KEY SHARE;
+     IF NOT FOUND THEN RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501';END IF;
+   END IF;
    SELECT * INTO v_session FROM public.teaching_sessions
     WHERE id=p_session_id AND teacher_id=v_teacher
       AND workplace_id=v_terms.workplace_id FOR SHARE;
@@ -12060,6 +12301,27 @@ BEGIN
    IF v_terms.group_id IS NOT NULL AND
      v_session.group_id IS DISTINCT FROM v_terms.group_id THEN
      RAISE EXCEPTION 'AGREEMENT_GROUP_MISMATCH' USING ERRCODE='23514';
+   END IF;
+   IF v_terms.agreement_role='participant_charge' AND p_student_id IS NOT NULL THEN
+     PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text||
+       ':compensation-sponsor:'||v_session.id::text||':'||p_student_id::text,0));
+     PERFORM 1 FROM public.session_participants sp
+      WHERE sp.teacher_id=v_teacher AND sp.session_id=v_session.id
+      AND sp.student_id=p_student_id FOR SHARE;
+     IF NOT FOUND THEN
+       RAISE EXCEPTION 'PARTICIPANT_CHARGE_REQUIRES_ATTENDED_STUDENT' USING ERRCODE='23514';
+     END IF;
+     IF v_terms.exact_session_id IS NOT NULL AND
+        (v_terms.exact_session_id IS DISTINCT FROM v_session.id OR
+         v_terms.student_id IS DISTINCT FROM p_student_id) THEN
+       RAISE EXCEPTION 'EXACT_AGREEMENT_SESSION_MISMATCH' USING ERRCODE='23514';
+     END IF;
+     IF v_terms.exact_session_id IS NULL AND EXISTS(
+       SELECT 1 FROM public.compensation_agreements a
+       WHERE a.teacher_id=v_teacher AND a.workplace_id=v_session.workplace_id
+         AND a.exact_session_id=v_session.id AND a.student_id=p_student_id
+         AND a.agreement_role='participant_charge' AND a.status='active'
+     ) THEN RAISE EXCEPTION 'EXACT_SPONSOR_REVIEW_REQUIRED' USING ERRCODE='23514';END IF;
    END IF;
    IF v_terms.exact_session_id IS NOT NULL THEN
      -- Same order as exact setup. The venue lookup stabilizes legacy time
@@ -12116,8 +12378,9 @@ BEGIN
          RAISE EXCEPTION 'PARTICIPANT_CHARGE_REQUIRES_ATTENDED_STUDENT'
            USING ERRCODE='23514';
      END IF;
-     -- An explicit student/workplace/date payer assignment is required; a
-     -- family relationship or agreement policy does not create liability.
+     -- Preserve ordinary dated payer matching. The only exception is the
+     -- selected explicit authorized exact participant agreement above.
+     IF v_terms.exact_session_id IS NULL THEN
      PERFORM 1 FROM public.student_billing_assignments ba
       WHERE ba.teacher_id=v_teacher AND ba.workplace_id=v_terms.workplace_id
        AND ba.student_id=p_student_id
@@ -12126,6 +12389,7 @@ BEGIN
        AND (ba.effective_to IS NULL OR ba.effective_to>=v_local_date);
      IF NOT FOUND THEN RAISE EXCEPTION 'EXPLICIT_PAYER_ASSIGNMENT_REQUIRED'
        USING ERRCODE='23514';END IF;
+     END IF;
      v_kind:='participant_charge';
      v_source_key:='session:'||p_session_id::text||':student:'||p_student_id::text;
    ELSE
@@ -12162,8 +12426,13 @@ BEGIN
                            ELSE v_session.duration_minutes END,
    'attendedCount',v_attended_count,'amountCents',v_amount);
  IF v_terms.exact_session_id IS NOT NULL THEN
-   v_snapshot:=v_snapshot||jsonb_build_object('scope','exact_session',
-     'exactSessionId',v_terms.exact_session_id);
+   IF v_terms.agreement_role='participant_charge' THEN
+     v_snapshot:=v_snapshot||jsonb_build_object('scope','exact_participant_sponsor',
+       'exactSessionId',v_terms.exact_session_id,'exactStudentId',v_terms.student_id);
+   ELSE
+     v_snapshot:=v_snapshot||jsonb_build_object('scope','exact_session',
+       'exactSessionId',v_terms.exact_session_id);
+   END IF;
  END IF;
  v_source_hash:=encode(extensions.digest(v_snapshot::text,'sha256'),'hex');
  INSERT INTO public.financial_obligations(teacher_id,workplace_id,billing_account_id,
