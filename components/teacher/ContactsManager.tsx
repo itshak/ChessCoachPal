@@ -1,7 +1,8 @@
 "use client";
 
-import {useCallback,useEffect,useState,type FormEvent} from "react";
+import {useCallback,useEffect,useMemo,useRef,useState,type FormEvent} from "react";
 import {useTranslations} from "next-intl";
+import {CONTACT_QUERY_MAX_LENGTH,filterContactsByDisplayName,normalizedDisplayName} from "@/lib/contact-search";
 import {Card} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
 
@@ -50,6 +51,17 @@ async function jsonResponse<T>(response:Response):Promise<T>{
 export function ContactsManager(){
   const t=useTranslations("contacts");
   const [contacts,setContacts]=useState<Contact[]>([]);
+  const [contactQuery,setContactQuery]=useState("");
+  const visibleContacts=useMemo(()=>filterContactsByDisplayName(contacts,contactQuery),[contacts,contactQuery]);
+  const duplicateNames=useMemo(()=>{
+    const groups=new Map<string,number>();
+    for(const row of contacts){
+      const name=normalizedDisplayName(row.displayName);
+      groups.set(name,(groups.get(name)??0)+1);
+    }
+    return groups;
+  },[contacts]);
+  const contactSelection=useRef(0);
   const [payers,setPayers]=useState<Payer[]>([]);
   const [students,setStudents]=useState<Student[]>([]);
   const [loading,setLoading]=useState(true);
@@ -96,23 +108,27 @@ export function ContactsManager(){
 
   function resetMessages(){setError("");setNotice("");}
   async function selectContact(id:string){
+    const selection=++contactSelection.current;
     resetMessages();setEditingContact(id);setContact(null);setLinks([]);
     try{
       const [detail,history]=await Promise.all([
         fetch("/api/contacts/"+id,{cache:"no-store"}).then(jsonResponse<Detail>),
         fetch("/api/contacts/"+id+"/links",{cache:"no-store"}).then(jsonResponse<StudentLink[]>),
       ]);
+      if(selection!==contactSelection.current)return;
+      if(detail.id!==id)throw new Error("CONTACT_ID_MISMATCH");
       setContact(detail);setLinks(history);
       setContactForm({
         displayName:detail.displayName,kind:detail.kind,
         email:detail.email??"",phone:detail.phone??"",
         preferredLocale:detail.preferredLocale??"",status:detail.status,
       });
-    }catch{setError(t("loadError"));}
+    }catch{if(selection===contactSelection.current)setError(t("loadError"));}
   }
   async function saveContact(event:FormEvent){
     event.preventDefault();
-    if(!contactForm.displayName.trim()||busy)return;
+    if(!contactForm.displayName.trim()||busy||
+      (editingContact!=="new"&&(!contact||contact.id!==editingContact)))return;
     setBusy(true);resetMessages();
     try{
       const isNew=editingContact==="new";
@@ -221,19 +237,31 @@ export function ContactsManager(){
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-semibold">{t("allContacts")}</h2>
           <Button size="sm" onClick={()=>{
+            contactSelection.current++;
             resetMessages();setEditingContact("new");setContact(null);
             setContactForm(emptyContact);setLinks([]);
           }}>{t("addContact")}</Button>
         </div>
-        {contacts.length===0&&<p className="text-muted text-sm">{t("emptyContacts")}</p>}
+        <label className={label}>{t("searchContacts")}
+          <input className={control} type="search" dir="auto"
+            maxLength={CONTACT_QUERY_MAX_LENGTH} value={contactQuery}
+            onChange={e=>setContactQuery(e.target.value)}/>
+        </label>
+        <p role="status" className="text-sm text-muted">
+          {loading||error?"":contacts.length===0?t("emptyContacts"):
+            visibleContacts.length===0?t("noMatchingContacts"):
+            contactQuery.trim()?t("contactMatches",{count:visibleContacts.length}):""}
+        </p>
         <div className="space-y-1 max-h-[38rem] overflow-y-auto">
-          {contacts.map(c=><button key={c.id} type="button"
+          {visibleContacts.map(c=><button key={c.id} type="button"
             className={"w-full rounded-lg px-3 py-2 text-start text-sm hover:bg-surface-hover "+
               (editingContact===c.id?"border border-primary":"")}
             aria-pressed={editingContact===c.id}
             onClick={()=>{void selectContact(c.id);}}>
             <div className="font-medium"><bdi dir="auto">{c.displayName}</bdi></div>
             <div className="text-muted">{t(c.kind)} · {t(c.status)}</div>
+            {(duplicateNames.get(normalizedDisplayName(c.displayName))??0)>1&&
+              <div className="break-all text-xs text-muted">{t("contactReference")}{" "}<bdi dir="ltr">{c.id}</bdi></div>}
           </button>)}
         </div>
       </Card>
@@ -241,6 +269,8 @@ export function ContactsManager(){
         {editingContact===null?<Card><p className="text-sm text-muted">{t("selectContact")}</p></Card>:
         <Card className="space-y-4">
           <h2 className="font-semibold">{editingContact==="new"?t("addContact"):t("editContact")}</h2>
+          {editingContact!=="new"&&(!contact||contact.id!==editingContact)?
+            <p role="status" className="text-sm text-muted">{!error&&t("loading")}</p>:
           <form className="space-y-3" onSubmit={event=>{void saveContact(event);}}>
             <label className={label}>{t("contactName")}
               <input className={control} required maxLength={160}
@@ -287,12 +317,13 @@ export function ContactsManager(){
                 {busy?t("saving"):t("save")}
               </Button>
               <Button type="button" variant={inactiveVariant} onClick={()=>{
+                contactSelection.current++;
                 setEditingContact(null);setContact(null);resetMessages();
               }}>{t("cancel")}</Button>
             </div>
-          </form>
+          </form>}
         </Card>}
-        {editingContact!=="new"&&contact&&<Card className="space-y-4">
+        {editingContact!=="new"&&contact?.id===editingContact&&<Card className="space-y-4">
           <h2 className="font-semibold">{t("studentLinks")}</h2>
           <p className="text-sm text-muted">{t("notShared")}</p>
           {links.length===0?<p className="text-sm text-muted">{t("noLinks")}</p>:

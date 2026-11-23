@@ -743,8 +743,8 @@
         "ccp_contacts_list",
         "ccp_contacts_create"
       ],
-      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
-      "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
+      "explanation": "Signed contact read/search parity compares default and normalized literal display-name matches and redaction; proves genuinely foreign same-name records are hidden, preserves explicit stable homonym choices, and checks Hebrew RTL and slow prior-selection read safety. Contact create and confirmed replay remain covered by e2e/parity-contacts-foundation.spec.ts.",
+      "evidenceTest": "e2e/parity-contact-search.spec.ts"
     },
     {
       "path": "app/api/cron/canonical-outbox/route.ts",
@@ -1470,7 +1470,7 @@
         "ccp_student_contacts_list",
         "ccp_student_contacts_link"
       ],
-      "explanation": "Shared tenant-scoped contact identity service, exact non-default root fields, revision and replay checks with explicit MCP consent, independently read back through authenticated website and delegated MCP; not a portal sharing or invoice operation.",
+      "explanation": "Signed website and MCP share owner-filtered contact relationships. The scenario compares an adult with zero links, a school/private learner with two links, and a sibling sharing one contact, without creating implicit payer obligations or scoped portal grants; dated history and exact replay are independently covered.",
       "evidenceTest": "e2e/parity-contacts-foundation.spec.ts"
     },
     {

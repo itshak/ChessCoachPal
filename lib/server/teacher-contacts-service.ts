@@ -8,6 +8,7 @@
  */
 import {createHash} from "node:crypto";
 import type {SupabaseClient} from "@supabase/supabase-js";
+import {filterContactsByDisplayName} from "@/lib/contact-search";
 import type {z} from "zod";
 import {
   contactCreateSchema,contactUpdateSchema,studentContactLinkSchema,
@@ -28,6 +29,7 @@ export class ContactServiceError extends Error {
 const fail=(status:number,code:string,message:string):never=>{
   throw new ContactServiceError(status,code,message);
 };
+const publicContactColumns="id,display_name,kind,status,revision,created_at,updated_at";
 const contactColumns="id,teacher_id,display_name,kind,email,phone,preferred_locale,status,revision,created_at,updated_at,last_request_id,last_request_hash";
 const billingColumns="id,teacher_id,display_name,account_kind,contact_id,status,revision,created_at,updated_at,last_request_id,last_request_hash";
 const linkColumns="id,teacher_id,student_id,contact_id,relationship_label,is_legal_guardian,may_receive_messages,emergency_priority,active_from,active_to,revision,created_at,last_request_id,last_request_hash";
@@ -119,8 +121,9 @@ async function paginated(db:DB,table:"contacts"|"student_contacts"|"billing_acco
   }
   return fail(413,"ROSTER_TOO_LARGE","Contact list exceeds safe listing limit");
 }
-export async function contactsList(db:DB,teacherId:string){
-  return (await paginated(db,"contacts",teacherId,contactColumns)).map(row=>safeContact(row));
+export async function contactsList(db:DB,teacherId:string,query=""){
+  const rows=(await paginated(db,"contacts",teacherId,publicContactColumns)).map(row=>safeContact(row));
+  return filterContactsByDisplayName(rows,query);
 }
 export async function contactDetail(db:DB,teacherId:string,id:string){
   return contactRow(db,teacherId,id);

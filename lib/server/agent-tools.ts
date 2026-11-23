@@ -121,7 +121,7 @@ import {
  studentSkillAssessmentsList, studentSkillAssessmentsRecord, TeacherSkillsError,
 } from "@/lib/server/teacher-skills-service";
 import {
- contactCreateSchema,contactUpdateSchema,studentContactLinkSchema,
+ contactCreateSchema,contactUpdateSchema,contactListSchema,studentContactLinkSchema,
  studentContactUnlinkSchema,billingAccountCreateSchema,billingAccountUpdateSchema,
 } from "@/lib/server/contact-schemas";
 import {
@@ -909,8 +909,8 @@ const catalogue = [
   },
   {
     name:"ccp_contacts_list",
-    description:"Find teacher-owned contact identities. Contacts are not portal audiences or payers. Email/phone are redacted in lists; select one by ID for confirmed details.",
-    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+    description:"List teacher-owned contact identities or filter by a literal display-name fragment. Same-name matches are separate choices; select explicitly by ID. Email/phone are neither matched nor disclosed; contact identity does not imply portal or payer rights.",
+    schema:contactListSchema,scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_contacts_detail",
@@ -2326,7 +2326,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         })};
       }
       case "ccp_contacts_list":
-        return {data:await contactsList(db,teacherId)};
+        return {data:await contactsList(db,teacherId,(args as {query?:string}).query)};
       case "ccp_contacts_detail": {
         const a=args as {contactId:string;includeDetails:boolean;confirmed?:boolean};
         return {data:safeContact(await contactDetail(db,teacherId,a.contactId),

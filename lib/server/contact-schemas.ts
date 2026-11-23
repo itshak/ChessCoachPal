@@ -1,4 +1,7 @@
 import {z} from "zod";
+import {CONTACT_QUERY_MAX_LENGTH} from "@/lib/contact-search";
+
+export const contactListSchema=z.object({query:z.string().max(CONTACT_QUERY_MAX_LENGTH).optional()}).strict();
 
 export const contactUuid = z.string().uuid();
 const name = z.string().trim().min(1).max(160);
