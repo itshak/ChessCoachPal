@@ -1011,7 +1011,7 @@ export interface Database {
         };
       };
       session_participants: {
-        Row: { teacher_id: string; session_id: string; student_id: string };
+        Row: { teacher_id: string; session_id: string; student_id: string; sponsor_billing_review_required: boolean };
         Insert: { teacher_id: string; session_id: string; student_id: string };
         Update: Record<string, never>;
       };
