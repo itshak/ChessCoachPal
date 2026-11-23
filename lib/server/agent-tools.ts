@@ -332,24 +332,24 @@ const catalogue = [
   },
   {
     name:"ccp_billing_invoice_pdf",
-    description:"Generate an owned invoice PDF in base64 without sending it. Requires teacher confirmation because invoice PDFs can contain family personal information. For large files use secure website download.",
+    description:"Generate an owned invoice PDF in base64 without sending it. Requires teacher confirmation because invoice PDFs can contain billing-account contact information. For large files use secure website download.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_billing_invoice_checkout",
-    description:"After explicit teacher approval, initiate a Stripe checkout link for the remaining balance on one invoice. Never charge a card directly; the family completes payment securely in Stripe's browser checkout.",
+    description:"After explicit teacher approval, initiate a Stripe checkout link for the remaining balance on one invoice. Never charge a card directly; the payer completes payment securely in Stripe's browser checkout.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true),
       confirmedExternal:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_billing_invoices_bulk_preview",
-    description:"Review up to 50 teacher-owned draft invoices with current amounts, email recipients and a revision fingerprint. Requires confirmed=true to reveal family emails. Read-only; no email is sent.",
+    description:"Review up to 50 teacher-owned draft invoices with current amounts, email recipients and a revision fingerprint. Requires confirmed=true to reveal approved recipient email addresses. Read-only; no email is sent.",
     schema:z.object({ids:z.array(uuid).min(1).max(50),
       includeRecipients:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict()
       .refine(v=>!v.includeRecipients||v.confirmed===true,
-        "Viewing family recipients requires explicit approval"),
+        "Viewing invoice recipients requires explicit approval"),
     scope:"coach:read",readOnly:true,
   },
   {
@@ -555,7 +555,7 @@ const catalogue = [
   },
   {
     name:"ccp_billing_invoices_list",
-    description:"List scoped invoices and their balances for this teacher, paginated. No portal tokens, checkout URLs or family email addresses.",
+    description:"List scoped invoices and their balances for this teacher, paginated. No portal tokens, checkout URLs or billing-contact email addresses.",
     schema:z.object({status:z.enum(["draft","sent","paid","void"]).optional(),
       offset:z.number().int().min(0).max(100000).default(0),
       limit:z.number().int().min(1).max(100).default(50)}).strict(),
@@ -563,13 +563,13 @@ const catalogue = [
   },
   {
     name:"ccp_billing_invoice_detail",
-    description:"Read one owned invoice with item and payment history. Family contacts and payment notes require includePrivate=true plus confirmation; portal tokens and Stripe secrets never returned.",
+    description:"Read one owned invoice with item and payment history. Billing-account contact details and payment notes require includePrivate=true plus confirmation; portal tokens and Stripe secrets never returned.",
     schema:z.object({invoiceId:uuid,includePrivate:z.boolean().default(false),
       confirmed:z.literal(true).optional()}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_billing_payments_export",
-    description:"Export accountant-facing CSV of teacher-owned payments in an optional YYYY-MM-DD period, including family names and payment notes. Requires explicit teacher confirmation; safely escapes CSV formulas.",
+    description:"Export accountant-facing CSV of teacher-owned payments in an optional YYYY-MM-DD period, including billing-account names and payment notes. Requires explicit teacher confirmation; safely escapes CSV formulas.",
     schema:z.object({from:z.string().date().optional(),to:z.string().date().optional(),
       confirmed:z.literal(true)}).strict(),scope:"coach:read",readOnly:true,
   },

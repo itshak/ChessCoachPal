@@ -406,3 +406,99 @@ test("PARITY:PARITY-student-create rejects old guardian contracts and grants no 
   expect(siteGrants.status(),await siteGrants.text()).toBe(200);
   expect(await siteGrants.json()).toEqual([]);
 });
+
+test("PARITY:PARITY-contact-links keep zero or two contacts, siblings and venue payer roles independent",async({page,request})=>{
+  const call=await delegatedTool(page,request);
+  const id=()=>randomUUID();
+  const adult=await page.request.post("/api/students",{data:{name:"Independent adult "+id()}});
+  expect(adult.status(),await adult.text()).toBe(201);
+  const adultId=(await adult.json()).id as string;
+  const pupil=await call("ccp_students_create_full",{
+    name:"Two-venue learner "+id(),idempotencyKey:id(),confirmed:true,
+  });
+  const sibling=await call("ccp_students_create_full",{
+    name:"Sibling "+id(),idempotencyKey:id(),confirmed:true,
+  });
+  expect(pupil.error).toBeUndefined();
+  expect(sibling.error).toBeUndefined();
+  const pupilId=pupil.data.id as string,siblingId=sibling.data.id as string;
+  const workplace=async(label:string)=>{
+    const made=await call("ccp_workplaces_create",{name:label+" "+id(),timezone:"UTC",
+      currency:"USD",locale:"en",policy:{},idempotencyKey:id()});
+    expect(made.error).toBeUndefined();
+    return made.data.entityId as string;
+  };
+  const schoolId=await workplace("School"),privateId=await workplace("Private coaching");
+  for(const [studentId,workplaceId] of [[pupilId,schoolId],[pupilId,privateId],[siblingId,privateId]]){
+    expect((await call("ccp_workplaces_enroll",{studentId,workplaceId,idempotencyKey:id()})).error)
+      .toBeUndefined();
+  }
+  const motherName="Mother "+id(),schoolName="School contact "+id();
+  const mother=await page.request.post("/api/contacts",{data:{displayName:motherName,
+    kind:"person",idempotencyKey:id()}});
+  expect(mother.status(),await mother.text()).toBe(201);
+  const motherId=(await mother.json()).id as string;
+  const school=await call("ccp_contacts_create",{displayName:schoolName,
+    kind:"organization",idempotencyKey:id(),confirmed:true});
+  expect(school.error).toBeUndefined();
+  const schoolContactId=school.data.id as string;
+  await page.goto("/students/"+pupilId);
+  await page.getByRole("combobox",{name:"Contact details"}).selectOption(motherId);
+  await page.getByRole("textbox",{name:"Relationship"}).fill("Mother");
+  await page.getByRole("button",{name:"Link to student"}).click();
+  await expect(page.locator("#student-contacts bdi").filter({hasText:motherName})).toBeVisible();
+  for(const [studentId,contactId,relationshipLabel] of [
+    [pupilId,schoolContactId,"School liaison"],[siblingId,motherId,"Mother"],
+  ]){
+    expect((await call("ccp_student_contacts_link",{studentId,contactId,
+      relationshipLabel,idempotencyKey:id(),confirmed:true})).error).toBeUndefined();
+  }
+  await page.reload();
+  await expect(page.locator("#student-contacts bdi").filter({hasText:schoolName})).toBeVisible();
+  await expect(page.getByText("Linking a contact does not share private teaching notes, grant portal access or make this person a payer.",{exact:true})).toBeVisible();
+  const checkLinks=async(studentId:string,contacts:string[])=>{
+    const web=await page.request.get("/api/students/"+studentId+"/contacts");
+    const model=await call("ccp_student_contacts_list",{studentId});
+    expect(web.status(),await web.text()).toBe(200);
+    expect(model.error).toBeUndefined();
+    const read=(v:{contactId:string}[])=>v.map(x=>x.contactId).sort();
+    expect(read(await web.json())).toEqual([...contacts].sort());
+    expect(read(model.data)).toEqual([...contacts].sort());
+  };
+  await checkLinks(adultId,[]);
+  await checkLinks(pupilId,[motherId,schoolContactId]);
+  await checkLinks(siblingId,[motherId]);
+  const readAssignment=async(studentId:string,workplaceId:string)=>{
+    const web=await page.request.get(`/api/students/${studentId}/billing-assignments?workplaceId=${workplaceId}`);
+    const model=await call("ccp_student_billing_assignments_list",{studentId,workplaceId});
+    expect(web.status(),await web.text()).toBe(200);
+    expect(model.error).toBeUndefined();
+    expect(await web.json()).toEqual(model.data);
+    return model.data.assignments;
+  };
+  expect(await readAssignment(pupilId,schoolId)).toEqual([]);
+  expect(await readAssignment(pupilId,privateId)).toEqual([]);
+  const payer=await call("ccp_billing_accounts_create",{displayName:"Private billing account "+id(),
+    contactId:motherId,accountKind:"person",idempotencyKey:id(),confirmed:true});
+  expect(payer.error).toBeUndefined();
+  expect(payer.data).not.toHaveProperty("contactId");
+  expect(await readAssignment(pupilId,privateId)).toEqual([]);
+  const assignment=await call("ccp_student_billing_assignments_create",{
+    studentId:pupilId,workplaceId:privateId,billingAccountId:payer.data.id,
+    effectiveFrom:"2040-01-01",idempotencyKey:id(),confirmed:true,
+  });
+  expect(assignment.error).toBeUndefined();
+  expect(await readAssignment(pupilId,privateId)).toEqual([expect.objectContaining({
+    studentId:pupilId,workplaceId:privateId,billingAccountId:payer.data.id,
+  })]);
+  expect(await readAssignment(pupilId,schoolId)).toEqual([]);
+  expect(await readAssignment(siblingId,privateId)).toEqual([]);
+  for(const studentId of [adultId,pupilId,siblingId]){
+    const model=await call("ccp_portal_grants_list",{studentId});
+    const web=await page.request.get("/api/portal-grants?studentId="+studentId);
+    expect(model.error).toBeUndefined();
+    expect(model.data).toEqual([]);
+    expect(web.status(),await web.text()).toBe(200);
+    expect(await web.json()).toEqual([]);
+  }
+});
