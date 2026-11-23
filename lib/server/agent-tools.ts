@@ -121,7 +121,7 @@ import {
  studentSkillAssessmentsList, studentSkillAssessmentsRecord, TeacherSkillsError,
 } from "@/lib/server/teacher-skills-service";
 import {
- contactCreateSchema,contactUpdateSchema,studentContactLinkSchema,
+ contactCreateSchema,contactUpdateSchema,contactListSchema,studentContactLinkSchema,
  studentContactUnlinkSchema,billingAccountCreateSchema,billingAccountUpdateSchema,
 } from "@/lib/server/contact-schemas";
 import {
@@ -332,24 +332,24 @@ const catalogue = [
   },
   {
     name:"ccp_billing_invoice_pdf",
-    description:"Generate an owned invoice PDF in base64 without sending it. Requires teacher confirmation because invoice PDFs can contain family personal information. For large files use secure website download.",
+    description:"Generate an owned invoice PDF in base64 without sending it. Requires teacher confirmation because invoice PDFs can contain billing-account contact information. For large files use secure website download.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_billing_invoice_checkout",
-    description:"After explicit teacher approval, initiate a Stripe checkout link for the remaining balance on one invoice. Never charge a card directly; the family completes payment securely in Stripe's browser checkout.",
+    description:"After explicit teacher approval, initiate a Stripe checkout link for the remaining balance on one invoice. Never charge a card directly; the payer completes payment securely in Stripe's browser checkout.",
     schema:z.object({invoiceId:uuid,confirmed:z.literal(true),
       confirmedExternal:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_billing_invoices_bulk_preview",
-    description:"Review up to 50 teacher-owned draft invoices with current amounts, email recipients and a revision fingerprint. Requires confirmed=true to reveal family emails. Read-only; no email is sent.",
+    description:"Review up to 50 teacher-owned draft invoices with current amounts, email recipients and a revision fingerprint. Requires confirmed=true to reveal approved recipient email addresses. Read-only; no email is sent.",
     schema:z.object({ids:z.array(uuid).min(1).max(50),
       includeRecipients:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict()
       .refine(v=>!v.includeRecipients||v.confirmed===true,
-        "Viewing family recipients requires explicit approval"),
+        "Viewing invoice recipients requires explicit approval"),
     scope:"coach:read",readOnly:true,
   },
   {
@@ -555,7 +555,7 @@ const catalogue = [
   },
   {
     name:"ccp_billing_invoices_list",
-    description:"List scoped invoices and their balances for this teacher, paginated. No portal tokens, checkout URLs or family email addresses.",
+    description:"List scoped invoices and their balances for this teacher, paginated. No portal tokens, checkout URLs or billing-contact email addresses.",
     schema:z.object({status:z.enum(["draft","sent","paid","void"]).optional(),
       offset:z.number().int().min(0).max(100000).default(0),
       limit:z.number().int().min(1).max(100).default(50)}).strict(),
@@ -563,13 +563,13 @@ const catalogue = [
   },
   {
     name:"ccp_billing_invoice_detail",
-    description:"Read one owned invoice with item and payment history. Family contacts and payment notes require includePrivate=true plus confirmation; portal tokens and Stripe secrets never returned.",
+    description:"Read one owned invoice with item and payment history. Billing-account contact details and payment notes require includePrivate=true plus confirmation; portal tokens and Stripe secrets never returned.",
     schema:z.object({invoiceId:uuid,includePrivate:z.boolean().default(false),
       confirmed:z.literal(true).optional()}).strict(),scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_billing_payments_export",
-    description:"Export accountant-facing CSV of teacher-owned payments in an optional YYYY-MM-DD period, including family names and payment notes. Requires explicit teacher confirmation; safely escapes CSV formulas.",
+    description:"Export accountant-facing CSV of teacher-owned payments in an optional YYYY-MM-DD period, including billing-account names and payment notes. Requires explicit teacher confirmation; safely escapes CSV formulas.",
     schema:z.object({from:z.string().date().optional(),to:z.string().date().optional(),
       confirmed:z.literal(true)}).strict(),scope:"coach:read",readOnly:true,
   },
@@ -909,8 +909,8 @@ const catalogue = [
   },
   {
     name:"ccp_contacts_list",
-    description:"Find teacher-owned contact identities. Contacts are not portal audiences or payers. Email/phone are redacted in lists; select one by ID for confirmed details.",
-    schema:z.object({}).strict(),scope:"coach:read",readOnly:true,
+    description:"List teacher-owned contact identities or filter by a literal display-name fragment. Same-name matches are separate choices; select explicitly by ID. Email/phone are neither matched nor disclosed; contact identity does not imply portal or payer rights.",
+    schema:contactListSchema,scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_contacts_detail",
@@ -2326,7 +2326,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         })};
       }
       case "ccp_contacts_list":
-        return {data:await contactsList(db,teacherId)};
+        return {data:await contactsList(db,teacherId,(args as {query?:string}).query)};
       case "ccp_contacts_detail": {
         const a=args as {contactId:string;includeDetails:boolean;confirmed?:boolean};
         return {data:safeContact(await contactDetail(db,teacherId,a.contactId),

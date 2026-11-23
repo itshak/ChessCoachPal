@@ -395,10 +395,14 @@ export function CanonicalScheduleBoard({
        new Date(noticeAt).getTimezoneOffset()*60_000).toISOString().slice(0,16):""}
       onChange={e=>setNoticeAt(e.target.value?new Date(e.target.value).toISOString():"")}/>
     </label>}
-    {draftStatus==="teacher_cancelled"&&<label className="flex items-center gap-2 text-sm">
-     <input type="checkbox" checked={notifyFamily} onChange={e=>setNotifyFamily(e.target.checked)}/>
-     {t("queueFamilyCancellation")}
-    </label>}
+    {draftStatus==="teacher_cancelled"&&<div>
+     <label className="flex items-center gap-2 text-sm">
+      <input type="checkbox" checked={notifyFamily} aria-describedby="cancel-contact-email-hint"
+       onChange={e=>setNotifyFamily(e.target.checked)}/>
+      {t("queueFamilyCancellation")}
+     </label>
+     <p id="cancel-contact-email-hint" className="mt-1 text-xs text-muted">{t("ambiguousContactEmailHint")}</p>
+    </div>}
     <button disabled={busy} onClick={saveAttendance}
      className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm">
      {busy?t("saving"):t("saveAttendance")}
@@ -429,10 +433,14 @@ export function CanonicalScheduleBoard({
       onChange={e=>{setShareWithContacts(e.target.checked);if(!e.target.checked)setEmailContacts(false)}}/>
      {t("shareFamilyNote")}
     </label>
-    {shareWithContacts&&<label className="flex gap-2 items-center text-sm">
-     <input type="checkbox" checked={emailContacts} onChange={e=>setEmailContacts(e.target.checked)}/>
-     {t("queueFamilyNoteEmail")}
-    </label>}
+    {shareWithContacts&&<div>
+     <label className="flex gap-2 items-center text-sm">
+      <input type="checkbox" checked={emailContacts} aria-describedby="note-contact-email-hint"
+       onChange={e=>setEmailContacts(e.target.checked)}/>
+      {t("queueFamilyNoteEmail")}
+     </label>
+     <p id="note-contact-email-hint" className="mt-1 text-xs text-muted">{t("ambiguousContactEmailHint")}</p>
+    </div>}
     <button disabled={busy} onClick={saveNotes}
      className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm">
      {busy?t("saving"):t("saveNotes")}
