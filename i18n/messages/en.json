@@ -3040,6 +3040,28 @@
     "invalidDate": "Enter a valid YYYY-MM-DD date",
     "confirmEnd": "End the current payer assignment on this date? History remains available."
   },
+  "postedEarnings": {
+    "title": "Posted coaching earnings",
+    "description": "Approved lesson earnings only, by recorded lesson date. Applied receipts reflect current allocations and reversals. Forecasts, unallocated receipts, monthly salary and invoices are not included.",
+    "venue": "Workplace for earnings",
+    "chooseVenue": "Choose a workplace",
+    "payer": "Billing account for earnings",
+    "allPayers": "All billing accounts in this report",
+    "archived": "{name} (archived)",
+    "from": "First lesson date",
+    "to": "Last lesson date",
+    "currency": "Earnings currency (three letters)",
+    "run": "Show posted earnings",
+    "loading": "Loading report filters…",
+    "pending": "Loading posted earnings…",
+    "unavailable": "Posted earnings are unavailable. Check the workplace, currency and dates (up to 366 days), then try again.",
+    "postedCount": "{count, plural, =0 {No posted lessons match these filters} one {# posted lesson} other {# posted lessons}}",
+    "grossPostedCents": "Gross posted earnings",
+    "correctionCents": "Corrections",
+    "correctedPostedCents": "Posted earnings after corrections",
+    "netAllocatedReceivedCents": "Applied receipts",
+    "outstandingCents": "Outstanding earnings"
+  },
   "nativeFinance": {
     "title": "Native finance ledger",
     "description": "Approve obligations, record received money, allocate and correct with explicit authorization.",

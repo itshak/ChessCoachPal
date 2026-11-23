@@ -881,6 +881,15 @@
       "evidenceTest": "e2e/parity-finance-ledger.spec.ts"
     },
     {
+      "path": "app/api/finance-ledger/earnings-summary/route.ts",
+      "methods": ["GET"],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": ["ccp_finance_earning_summary"],
+      "explanation": "Authoritative posted coaching earnings, net applied receipts and outstanding balance for one owned venue, currency and frozen source-date range. Shared read only; no forecast or unallocated receipt inference.",
+      "evidenceTest": "e2e/parity-compensation-earnings-summary.spec.ts"
+    },
+    {
       "path": "app/api/finance-ledger/obligations/route.ts",
       "methods": [
         "POST"
@@ -1822,6 +1831,7 @@
     "components/teacher/LichessStudyExplorer.tsx",
     "components/teacher/MaterialHistoryPanel.tsx",
     "components/teacher/NativeFinanceLedgerPanel.tsx",
+    "components/teacher/PostedEarningsSummary.tsx",
     "components/teacher/NotificationBell.tsx",
     "components/teacher/OnboardingTour.tsx",
     "components/teacher/PushOwnership.tsx",
