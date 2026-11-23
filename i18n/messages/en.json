@@ -567,6 +567,7 @@
     "creditsTotal": "/ {count} left",
     "creditHelp": "Each lesson of that length uses one credit. Once they run out, lessons are invoiced as usual.",
     "invoices": "Invoices",
+    "prepaidPurchase": "Prepaid lesson purchase",
     "noneInvoices": "No invoices yet.",
     "paid": "Paid",
     "sent": "Sent",
