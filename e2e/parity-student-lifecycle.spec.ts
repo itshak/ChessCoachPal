@@ -6,8 +6,9 @@ import {createAssignedPayer} from "./helpers/canonical-payer";
 
 test("PARITY:PARITY-student-lifecycle archives all dated memberships atomically and restores selected history without changing credits",async({page,request})=>{
  const call=await delegatedTool(page,request);
+ const studentName="Temporal archive learner "+randomUUID();
  const learner=await call("ccp_students_create",{
-  name:"Temporal archive learner "+randomUUID(),idempotencyKey:randomUUID(),
+  name:studentName,idempotencyKey:randomUUID(),
  });
  expect(learner.error).toBeUndefined();
  const studentId=learner.data.entityId as string;
@@ -115,16 +116,22 @@ test("PARITY:PARITY-student-lifecycle archives all dated memberships atomically 
  expect(restoreReplay.data.replayed).toBe(true);
  const current=await call("ccp_workplaces_enrollments",{workplaceId:places[0]});
  expect(current.error).toBeUndefined();
- expect(current.data).toEqual(expect.arrayContaining([{student_id:studentId}]));
  const other=await call("ccp_workplaces_enrollments",{workplaceId:places[1]});
  expect(other.error).toBeUndefined();
  expect(other.data.some((x:{student_id:string})=>x.student_id===studentId)).toBe(false);
  const periods=await admin.from("workplace_enrollments")
-  .select("workplace_id,starts_on,ends_on,cancelled_at")
+  .select("id,workplace_id,starts_on,ends_on,cancelled_at")
   .eq("student_id",studentId);
  expect(periods.error).toBeNull();
  expect(periods.data).toHaveLength(3);
  expect(periods.data!.filter(x=>x.workplace_id===places[0])).toHaveLength(2);
+ const activePeriods=periods.data!.filter(x=>x.workplace_id===places[0]&&x.cancelled_at===null);
+ expect(activePeriods).toHaveLength(1);
+ expect(current.data.filter((x:{student_id:string})=>x.student_id===studentId))
+  .toEqual([expect.objectContaining({
+   student_id:studentId,student_name:studentName,membership_id:activePeriods[0]!.id,
+   starts_on:activePeriods[0]!.starts_on,ends_on:null,
+  })]);
  const after=await call("ccp_credits_packages_list",{studentId});
  expect(after.error).toBeUndefined();
  expect(after.data.packages.find((x:{id:string})=>x.id===packageId)?.usedCredits)

@@ -1059,7 +1059,7 @@
         "ccp_import_spreadsheet_parse",
         "ccp_import_spreadsheet_preview"
       ],
-      "explanation": "Website multipart CSV parse/mapping and preview match delegated MCP parse/preview on exact normalized rows, accepted in OAuth/browser E2E 42709042700. Archived-state mapping, explicit active workplace review, canonical review digest and no-write stale/foreign denials are covered in e2e/parity-spreadsheet-commit.spec.ts.",
+      "explanation": "Website multipart CSV parse/mapping and preview match delegated MCP parse/preview on exact normalized rows, accepted in OAuth/browser E2E 42709042700. Archived-state mapping, explicit active-context suggestion without automatic selection, canonical review digest and no-write stale/foreign denials are covered in e2e/parity-spreadsheet-commit.spec.ts.",
       "evidenceTest": "e2e/parity-spreadsheet-commit.spec.ts"
     },
     {
@@ -1530,6 +1530,19 @@
       ],
       "explanation": "Authenticated teacher-owned source-tagged append-only provider/time-control rating history, explicit public lookup preview and reviewed batch commit; manual write is idempotent; no 1-10 strength mutation.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
+    },
+    {
+      "path": "app/api/students/[id]/workplaces/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_students_workplaces"
+      ],
+      "explanation": "Owner-scoped website and MCP share a privacy-minimized reverse membership read. Current/future periods use the canonical teacher date. Source workplace attendance without current enrollment is explicitly informational; no calendar data or membership is created.",
+      "evidenceTest": "e2e/parity-student-workplace-import-history.spec.ts"
     },
     {
       "path": "app/api/students/[id]/route.ts",

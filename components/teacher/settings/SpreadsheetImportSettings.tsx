@@ -71,6 +71,7 @@ export function SpreadsheetImportSettings({
   const [reviewDigest,setReviewDigest]=useState<string|null>(null);
   const [reviewedEnvelope,setReviewedEnvelope]=useState<ReviewedEnvelope|null>(null);
   const [proposedDefault,setProposedDefault]=useState<string|null>(null);
+  const [activeSuggestion,setActiveSuggestion]=useState<string|null>(null);
   const [workplaceColumn,setWorkplaceColumn]=useState("");
   const [studentChoices,setStudentChoices]=useState<Record<string,string>>({});
   const [targets,setTargets]=useState<{sourceRow:number;workplaceId:string;workplaceName:string}[]>([]);
@@ -102,7 +103,10 @@ export function SpreadsheetImportSettings({
     setPreviewRows(data.previewRows??[]);
     setPreviewTotal(data.previewTotal??0);
     setIssues(data.issues??[]);
-    setWorkplaceChoices(data.workplaces??[]);
+    const activeChoices=(data.workplaces??[]) as typeof workplaceChoices;
+    setWorkplaceChoices(activeChoices);
+    if(selected&&!activeChoices.some(w=>w.id===selected))setWorkplaceId("");
+    setActiveSuggestion(data.proposedActiveContextWorkplaceId??null);
     setProposedDefault(data.proposedDefaultWorkplaceId??null);
     setWorkplaceIssues(data.workplaceIssues??[]);
     const newIssues=(data.identityIssues??[]) as typeof identityIssues;
@@ -162,7 +166,7 @@ export function SpreadsheetImportSettings({
     setPreviewTotal(0);
     setIssues([]);
     setWorkplaceChoices([]);
-    setProposedDefault(null);setWorkplaceColumn("");setStudentChoices({});setCandidateOptions({});
+    setProposedDefault(null);setActiveSuggestion(null);setWorkplaceColumn("");setStudentChoices({});setCandidateOptions({});
     setReviewDigest(null);setReviewedEnvelope(null);setTargets([]);setWorkplaceIssues([]);setIdentityIssues([]);
     setWorkplaceId("");
   }
@@ -377,7 +381,7 @@ export function SpreadsheetImportSettings({
           </div>
 
           {workplaceChoices.length===0&&<p role="status" className="text-sm">{t("workplaceCreateFirst")}</p>}
-          {proposedDefault&&<p role="status" className="text-sm">{t("workplaceSuggested",{
+          {proposedDefault&&!activeSuggestion&&<p role="status" className="text-sm">{t("workplaceSuggested",{
             name:workplaceChoices.find(w=>w.id===proposedDefault)?.name??"",
           })}</p>}
           {workplaceChoices.length>0&&<label className="block text-sm space-y-1">
@@ -388,6 +392,15 @@ export function SpreadsheetImportSettings({
               {headers.map(h=><option key={h}>{h}</option>)}
             </select>
           </label>}
+          {!workplaceId&&activeSuggestion&&<div className="space-y-1">
+            <p className="text-sm">{t("activeContextBasis")}</p>
+            <Button type="button" size="sm" variant="secondary" disabled={controlsLocked}
+             onClick={()=>void chooseWorkplace(activeSuggestion)}>
+              {t(workplaceColumn?"useActiveContextFallback":"useActiveContext",{
+                name:workplaceChoices.find(w=>w.id===activeSuggestion)?.name??"",
+              })}
+            </Button>
+          </div>}
           {workplaceChoices.length>0 && <label className="block text-sm space-y-1">
             <span className="font-medium">{t(workplaceColumn?"blankWorkplaceFallback":"workplaceLabel")}</span>
             <select className={selectClass} value={workplaceId} disabled={controlsLocked} onChange={e=>void chooseWorkplace(e.target.value)}>

@@ -113,17 +113,26 @@ test("PARITY:PARITY-workplaces-policy edits timezone locale currency and policy 
 test("PARITY:PARITY-workplaces-enrollments compares complete current owned roster",async({page,request})=>{
   const callTool=await delegatedTool(page,request);
   const id=await workplace(callTool);
-  const learner=await student(callTool);
+  const later="Z named learner "+randomUUID(),earlier="A named learner "+randomUUID();
+  const learner=await callTool("ccp_students_create",{name:later,idempotencyKey:randomUUID()});
+  const second=await callTool("ccp_students_create",{name:earlier,idempotencyKey:randomUUID()});
+  expect(learner.error).toBeUndefined();expect(second.error).toBeUndefined();
+  const laterId=learner.data.entityId,earlierId=second.data.entityId;
   const create=await page.request.post("/api/agent/v1",{data:{
-    action:"workplaces.enroll",workplaceId:id,studentId:learner,
+    action:"workplaces.enroll",workplaceId:id,studentId:laterId,
   }});
   expect(create.status(),await create.text()).toBe(200);
+  expect((await callTool("ccp_workplaces_enroll",{workplaceId:id,studentId:earlierId,idempotencyKey:randomUUID()})).error)
+   .toBeUndefined();
   const web=await page.request.post("/api/agent/v1",{data:{
     action:"workplaces.enrollments",workplaceId:id,
   }});
   expect(web.status(),await web.text()).toBe(200);
-  const members=(await web.json()).data as Array<{student_id:string}>;
-  expect(members.map(x=>x.student_id)).toContain(learner);
+  const members=(await web.json()).data;
+  expect(members).toEqual([
+   {student_id:earlierId,student_name:earlier,membership_id:expect.any(String),starts_on:expect.any(String),ends_on:null},
+   {student_id:laterId,student_name:later,membership_id:expect.any(String),starts_on:expect.any(String),ends_on:null},
+  ]);
   const mcp=await callTool("ccp_workplaces_enrollments",{workplaceId:id});
   expect(mcp.error).toBeUndefined();
   expect(mcp.data).toEqual(members);

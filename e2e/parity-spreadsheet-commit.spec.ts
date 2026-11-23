@@ -515,3 +515,80 @@ test("PARITY: keyboard review exposes all rows and unlocks a lost authoritative 
   expect((await admin.auth.admin.deleteUser(teacherId)).error).toBeNull();
  }
 });
+
+test("PARITY: an explicitly chosen active context never silently supplies or changes the pinned import target",async({page,request})=>{
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const email="sheet-active-context-"+randomUUID()+"@example.com",password="SyntheticActiveContext-123!";
+ const account=await admin.auth.admin.createUser({email,password,email_confirm:true});
+ expect(account.error).toBeNull();
+ const teacherId=account.data.user!.id;
+ try{
+  expect((await admin.from("teachers").insert({id:teacherId,email,display_name:"Import context fixture",
+   onboarding_tour_completed_at:new Date().toISOString()})).error).toBeNull();
+  const sites=await admin.from("workplaces").insert([
+   {teacher_id:teacherId,name:"Original active venue"},{teacher_id:teacherId,name:"Replacement active venue"},
+  ]).select("id,name").order("name");
+  expect(sites.error).toBeNull();
+  const [original,replacement]=sites.data!;
+  const call=await delegatedTool(page,request,undefined,{email,password});
+  const initial=(await call("ccp_workplace_context_get",{})).data.selectedWorkplaceId;
+  const set=await call("ccp_workplace_context_set",{
+   selectedWorkplaceId:original.id,expectedSelectedWorkplaceId:initial,confirmed:true,
+  });
+  expect(set.error).toBeUndefined();
+  const learner="Import active context learner "+randomUUID();
+  const input={rows:[{"Student Name":learner}],mapping:{student_name:"Student Name"}};
+  const fromModel=await call("ccp_import_spreadsheet_preview",input);
+  expect(fromModel.error).toBeUndefined();
+  expect(fromModel.data).toMatchObject({selectedWorkplaceId:null,proposedDefaultWorkplaceId:null,
+   proposedActiveContextWorkplaceId:original.id,reviewedEnvelope:null,writesPerformed:false});
+  const fromBrowser=await page.request.put("/api/import/spreadsheet/parse",{data:input});
+  expect(fromBrowser.status()).toBe(200);expect(await fromBrowser.json()).toEqual(fromModel.data);
+  const noImplicit=await call("ccp_import_spreadsheet_commit",{...input,confirmed:true});
+  expect(noImplicit.error?.code).toBe("WORKPLACE_REQUIRED");
+
+  await page.goto("/account");
+  const [chooser]=await Promise.all([
+   page.waitForEvent("filechooser"),
+   page.getByRole("button",{name:"Upload spreadsheet…",exact:true}).click(),
+  ]);
+  await chooser.setFiles({name:"active-context.csv",mimeType:"text/csv",buffer:Buffer.from("Student Name\n"+learner+"\n")});
+  const target=page.getByLabel("Workplace for imported students (required)");
+  const submit=page.getByRole("button",{name:"Import 1 students",exact:true});
+  await expect(target).toHaveValue("");await expect(submit).toBeDisabled();
+  await page.getByRole("button",{name:"Use active workplace: "+original.name,exact:true}).press("Enter");
+  await expect(target).toHaveValue(original.id);await expect(submit).toBeEnabled();
+  expect((await call("ccp_workplace_context_get",{})).data.selectedWorkplaceId).toBe(original.id);
+
+  // A concurrent filter change and actual retirement must not retarget the approved draft.
+  expect((await call("ccp_workplace_context_set",{
+   selectedWorkplaceId:replacement.id,expectedSelectedWorkplaceId:original.id,confirmed:true,
+  })).error).toBeUndefined();
+  expect((await admin.from("workplaces").update({archived_at:new Date().toISOString()}).eq("id",original.id)).error).toBeNull();
+  await expect(target).toHaveValue(original.id);
+  const endpoint="/api/import/spreadsheet/commit";
+  let response=page.waitForResponse(r=>r.url().endsWith(endpoint)&&r.request().method()==="POST");
+  await submit.press("Enter");await page.getByRole("button",{name:"Import",exact:true}).press("Enter");
+  const failed=await response;
+  expect(failed.status(),await failed.text()).toBe(409);
+  expect(failed.request().postDataJSON().workplaceId).toBe(original.id);
+  expect((await failed.json()).code).toBe("IMPORT_PREVIEW_CHANGED");
+  expect((await call("ccp_students_roster",{query:learner})).data.students).toEqual([]);
+  await expect(target).toHaveValue("");await expect(submit).toBeDisabled();
+
+  await page.getByRole("button",{name:"Use active workplace: "+replacement.name,exact:true}).press("Enter");
+  await expect(target).toHaveValue(replacement.id);await expect(submit).toBeEnabled();
+  response=page.waitForResponse(r=>r.url().endsWith(endpoint)&&r.request().method()==="POST");
+  await submit.press("Enter");await page.getByRole("button",{name:"Import",exact:true}).press("Enter");
+  const saved=await response;
+  expect(saved.status(),await saved.text()).toBe(200);
+  expect((await call("ccp_import_spreadsheet_commit",saved.request().postDataJSON())).data).toEqual(await saved.json());
+  expect((await call("ccp_workplace_context_get",{})).data.selectedWorkplaceId).toBe(replacement.id);
+  const actual=(await call("ccp_students_roster",{query:learner,workplaceId:replacement.id})).data.students;
+  expect(actual).toEqual([expect.objectContaining({name:learner})]);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacherId)).error).toBeNull();
+ }
+});
