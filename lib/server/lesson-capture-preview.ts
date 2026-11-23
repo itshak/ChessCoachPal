@@ -18,6 +18,9 @@ import { inferOwnedWeeklyLessonTime,lessonIntervalConflicts,type LessonTiming } 
 const uuid = z.string().uuid();
 export const lessonCapturePreviewSchema = z.object({
   names: z.array(z.string().trim().min(1).max(120)).min(1).max(50),
+  studentChoices:z.array(z.object({
+    index:z.number().int().min(0).max(49),studentId:uuid,
+  }).strict()).max(50).default([]),
   workplaceId: uuid.nullable().optional(),
   title: z.string().trim().min(1).max(160),
   startsAt: z.string().datetime({ offset: true }).optional(),
@@ -34,7 +37,10 @@ export const lessonCapturePreviewSchema = z.object({
 }).strict().refine(x=>
   (x.startsAt!==undefined&&x.durationMinutes!==undefined&&x.localDate===undefined) ||
   (x.startsAt===undefined&&x.durationMinutes===undefined&&x.localDate!==undefined),
-  "Supply an explicit start and duration, OR one local date for unique slot inference");
+  "Supply an explicit start and duration, OR one local date for unique slot inference")
+  .refine(x=>x.studentChoices.every(choice=>choice.index<x.names.length)&&
+    new Set(x.studentChoices.map(choice=>choice.index)).size===x.studentChoices.length,
+    "Each explicit learner choice must refer to one distinct submitted name position");
 
 export type LessonCapturePreviewInput = z.infer<typeof lessonCapturePreviewSchema>;
 
@@ -53,7 +59,7 @@ export function normalizeStudentIdentity(value: string) {
 type StudentIdentity = { id: string; name: string; name_aliases: string[] | null; archived_at: string | null };
 type Workplace = { id: string; name: string; timezone: string };
 type ResolutionIssue = {
-  code: "NOT_FOUND" | "AMBIGUOUS_STUDENT" | "DUPLICATE_STUDENT" |
+  code: "NOT_FOUND" | "AMBIGUOUS_STUDENT" | "DUPLICATE_STUDENT" | "INVALID_STUDENT_CHOICE" |
     "ARCHIVED_STUDENT_CONFIRMATION_REQUIRED" |
     "NO_COMMON_WORKPLACE" | "AMBIGUOUS_WORKPLACE" | "WORKPLACE_NOT_FOUND" |
     "STUDENT_NOT_ENROLLED"|"MISSING_SCHEDULE"|"TIME_AMBIGUOUS"|
@@ -98,7 +104,7 @@ export const studentNamesResolveSchema=z.object({
  */
 export async function teacherStudentNamesResolve(
  db:SupabaseClient,teacherId:string,names:string[],
- options: {includeArchived?: boolean} = {},
+ options: {includeArchived?: boolean;studentChoices?:ReadonlyMap<number,string>} = {},
 ){
  const parsed=studentNamesResolveSchema.parse({names});
  const input=parsed;
@@ -114,8 +120,18 @@ export async function teacherStudentNamesResolve(
   }
 
   const issues: ResolutionIssue[] = [];
-  const resolutions = input.names.map(name => {
-    const matches = lookup.get(normalizeStudentIdentity(name)) ?? [];
+  const resolutions = input.names.map((name,index) => {
+    const candidates = lookup.get(normalizeStudentIdentity(name)) ?? [];
+    const choice=options.studentChoices?.get(index);
+    const matches=choice?candidates.filter(student=>student.id===choice):candidates;
+    if(choice&&matches.length===0){
+      issues.push({code:"INVALID_STUDENT_CHOICE",input:name,
+        message:"The selected learner no longer matches this exact name or alias; review the current choices"});
+      return {input:name,status:candidates.length>0?"ambiguous" as const:"not_found" as const,
+        studentId:null,name:null,archived:null,candidates:candidates.map(s=>({
+          id:s.id,name:s.name,archived:s.archived_at!==null,
+        }))};
+    }
     if (matches.length === 0) {
       issues.push({ code: "NOT_FOUND", input: name,
         message: "No active student has this exact name or alias" });
@@ -173,7 +189,7 @@ export async function teacherLessonCapturePreview(
   if(input.startsAt!==undefined&&input.durationMinutes!==undefined)
     assertSessionSchedule(input.startsAt,input.durationMinutes);
   const identity=await teacherStudentNamesResolve(db,teacherId,input.names,
-    {includeArchived:true});
+    {includeArchived:true,studentChoices:new Map(input.studentChoices.map(r=>[r.index,r.studentId]))});
   const {resolutions,issues}=identity;
   // Archived matches are visible for recovery, never eligible for a direct
   // lesson commit or for an inferred current workplace.

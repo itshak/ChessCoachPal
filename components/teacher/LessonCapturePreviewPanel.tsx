@@ -78,6 +78,8 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
   const [chapterNumber,setChapterNumber] = useState("");
   const [expectedPlayers,setExpectedPlayers] = useState("");
   const [preview,setPreview] = useState<Preview|null>(null);
+  const [studentChoices,setStudentChoices]=useState<Record<number,string>>({});
+  const previewGeneration=useRef(0);
   const [recoveryPreview,setRecoveryPreview] = useState<RecoveryPreview|null>(null);
   const [recoveryReason,setRecoveryReason] = useState("");
   const [recoveryApproved,setRecoveryApproved] = useState(false);
@@ -109,14 +111,20 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
     return () => {active=false;};
   }, [t,initialWorkplaces]);
 
-  const invalidate = () => {setPreview(null);setApproved(false);setAtomicApproved(false);setReceipt("");
+  const invalidate = () => {previewGeneration.current++;setStudentChoices({});setPreview(null);setApproved(false);setAtomicApproved(false);setReceipt("");
     setRecoveryPreview(null);setRecoveryApproved(false);recoveryKeyRef.current=null;
     atomicKeyRef.current=null;
     setPendingLink(null);setLinkReview(null);setLinkApproved(false);setLinkedReceipt("");
     linkKeyRef.current=null;};
 
-  async function check(event:FormEvent<HTMLFormElement>) {
+  function check(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setStudentChoices({});
+    void requestPreview({});
+  }
+
+  async function requestPreview(choices:Record<number,string>) {
+    const generation=++previewGeneration.current;
     setError("");setReceipt("");setPreview(null);setApproved(false);setAtomicApproved(false);atomicKeyRef.current=null;
     setRecoveryPreview(null);setRecoveryApproved(false);recoveryKeyRef.current=null;
     const workplace=workplaces.find(item=>item.id===workplaceId);
@@ -136,6 +144,8 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
       const response=await fetch("/api/coaching/lesson-capture/preview",{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({names:studentNames,workplaceId,title:title.trim(),
+          studentChoices:Object.entries(choices).filter(([,studentId])=>studentId)
+            .map(([index,studentId])=>({index:Number(index),studentId})),
           ...timing,lessonNote,
           ...(useSavedStudy||studyId.trim()||studyName.trim()?{chapterSelection:{
             ...(useSavedStudy?{}:studyId.trim()?{studyId:studyId.trim()}:{studyName:studyName.trim()}),
@@ -144,6 +154,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
           }}:{})}),cache:"no-store",
       });
       const result=await response.json() as Preview&{error?:string};
+      if(generation!==previewGeneration.current)return;
       if(!response.ok)throw new Error(result.error??t("previewUnavailable"));
       setPreview(result);
       requestRef.current=null;
@@ -157,6 +168,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
     if(!w)return;
     const ids=preview.resolutions.map(r=>r.studentId);
     if(ids.some(id=>id===null))return;
+    const generation=previewGeneration.current;
     let startsAt:string;
     try{startsAt=workplaceLocalToUtc(localStart,w.timezone);}
     catch(e){setError(toUserError(e,t("invalidLocalTime")));return;}
@@ -168,6 +180,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
           startsAt,durationMinutes:duration,lessonNote}),cache:"no-store",
       });
       const body=await response.json() as RecoveryPreview&{error?:string};
+      if(generation!==previewGeneration.current)return;
       if(!response.ok)throw new Error(body.error??t("recoveryDenied"));
       setRecoveryPreview(body);recoveryKeyRef.current=null;
     }catch(e){setError(toUserError(e,t("recoveryDenied")));}
@@ -417,9 +430,22 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
              <><bdi dir="auto">{r.name}</bdi>{" ("}<bdi dir="ltr">{r.studentId}</bdi>{")"}
                {r.status==="archived"?" — "+t("archivedStudent"):""}</>:
              t(r.status==="ambiguous"?"ambiguous":"notFound")}
-          {r.candidates.length>0&&" — "+r.candidates.map(c=>c.name+" ["+c.id+"]").join(", ")}
+          {r.candidates.length>0&&<label className="block text-sm">
+            {t("chooseExactLearner",{name:r.input,position:i+1})}
+            <select className={field} value={r.candidates.some(c=>c.id===studentChoices[i])?studentChoices[i]:""}
+              onChange={e=>{const studentId=e.target.value;setStudentChoices(old=>({...old,[i]:studentId}));}}>
+              <option value="">{t("leaveLearnerUnselected")}</option>
+              {r.candidates.map(c=><option value={c.id} key={c.id}>{t("learnerIdentityOption",{
+                name:c.name,status:c.archived?t("archivedStudent"):t("activeStudent"),id:c.id,
+              })}</option>)}
+            </select>
+          </label>}
         </li>)}
       </ul>
+      {preview.resolutions.some(r=>r.candidates.length>0)&&<button type="button" className={button}
+        disabled={busy||preview.resolutions.some((r,i)=>r.candidates.length>0&&
+          !r.candidates.some(c=>c.id===studentChoices[i]))}
+        onClick={()=>void requestPreview(studentChoices)}>{t("verifySelectedLearners")}</button>}
       {preview.issues.map((issue,i)=><p key={i} role="alert" className="text-sm text-amber-500">
         {issue.code}: {issue.message}{issue.candidates?.length?
           " — "+issue.candidates.map(c=>c.name+" ["+c.id+"]").join(", "):""}

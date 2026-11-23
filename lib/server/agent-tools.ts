@@ -1560,7 +1560,7 @@ const catalogue = [
   },
   {
     name:"ccp_lessons_capture_preview",
-    description:"Read-only one-to-fifty-student capture preview: resolve exact full names/aliases. Omitted workplaceId inherits an active selected workplace; null does not infer from selection and still requires an unambiguous owned venue. An explicit UUID overrides selection. Then EITHER supply exact offset time and duration OR date-only localDate to infer a single common active workplace weekly slot. No time guessing if slot missing/ambiguous/DST, and no write/attendance/mastery inference. For archived matches, review exact IDs with ccp_lessons_archived_recovery_preview and require separate confirmed atomic ccp_lessons_archived_recovery_commit; for active learners, use ccp_sessions_create for one or ccp_sessions_ad_hoc_create for 2–50.",
+    description:"Read-only exact names/aliases preview for 1–50 learners. If ambiguous, ask the teacher to choose a returned owned ID and submit studentChoices (zero-based name index + studentId). Never choose by archive status. Omitted workplace inherits selection; null requires unambiguous independent resolution. Supply explicit offset start+duration or localDate for exact shared weekday slot. No writes, attendance or mastery inference. Archived selections need ccp_lessons_archived_recovery_preview and separately confirmed atomic recovery; active learners use ccp_sessions_create or ccp_sessions_ad_hoc_create.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
