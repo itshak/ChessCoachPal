@@ -1,3 +1,4 @@
+import {EXACT_SPONSOR_BILLING_REVIEW} from "@/lib/server/canonical-billing";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPolicy } from "@/lib/server/scheduling";
 import {loadCanonicalCreditBalances,loadCanonicalCreditPackages} from "@/lib/server/canonical-credits";
@@ -20,8 +21,14 @@ export async function teacherCreditPackagesList(db:Db,teacherId:string,studentId
   const {data,error}=await db.from("students").select("id").eq("id",studentId).eq("teacher_id",teacherId).maybeSingle();
   if(error)throw fail(500,"DATABASE_ERROR","Unable to find student");
   if(!data)throw fail(404,"NOT_FOUND","Student not found");
-  const packages=await loadCanonicalCreditBalances(db,teacherId,policy,[studentId],today,{includeClosed:true});
-  return {packages:await withCreditFundingReport(db,packages)};
+  try{
+   const packages=await loadCanonicalCreditBalances(db,teacherId,policy,[studentId],today,{includeClosed:true});
+   return {packages:await withCreditFundingReport(db,packages)};
+  }catch(error){
+   if(error instanceof Error&&error.message===EXACT_SPONSOR_BILLING_REVIEW)
+    throw fail(409,EXACT_SPONSOR_BILLING_REVIEW,"This lesson requires an explicit finance review before invoice or prepaid credit processing.");
+   throw error;
+  }
  }
  return {packages:await withCreditFundingReport(db,await loadCanonicalCreditPackages(db,teacherId,{timezone:policy.timezone}))};
 }

@@ -144,6 +144,8 @@ import {
  compensationAgreementCreate,compensationAgreementUpdate,
  compensationAgreementPreview,CompensationAgreementError,
 } from "@/lib/server/compensation-agreements-service";
+import {exactSponsorReviewSchema,exactSponsorCommitSchema,exactSponsorReview,exactSponsorCommit}
+ from "@/lib/server/exact-sponsor-service";
 import {financeEarningSummary,financeEarningSummarySchema} from "@/lib/server/finance-earning-summary";
 import {
  financialObligationApproveSchema,receivedPaymentRecordSchema,
@@ -211,7 +213,7 @@ import {loadInvoicePdf} from "@/lib/server/invoice-pdf-data";
 import {invoicePdfMcpPayload} from "@/lib/server/invoice-pdf-transfer";
 async function billingActionResponse(result:Response){
  const body=await result.json();
- return result.ok?{data:body}:{error:{code:result.status===400?"VALIDATION_ERROR":
+ return result.ok?{data:body}:{error:{code:body.code==="EXACT_SPONSOR_REVIEW_REQUIRED"?body.code:result.status===400?"VALIDATION_ERROR":
   result.status===404?"NOT_FOUND":result.status===409?"CONFLICT":"BILLING_ERROR",
   message:body.error??"Billing action failed"}};
 }
@@ -734,6 +736,16 @@ const catalogue = [
     name:"ccp_compensation_completed_lessons",
     description:"List only completed exact lesson choices for one explicitly owned workplace and one local date (title, time, duration, ID). Read only; choose an exact ID with the coach before configuring terms. No student, attendance or payer details.",
     schema:compensationCompletedLessonsSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_compensation_exact_sponsor_review",
+    description:"Read one owned completed lesson on its exact lesson-local date, frozen participant choices and active owned billing identities. Review any existing automatic invoice and prepaid-credit block. No spending, obligation, invoice, or portal grant.",
+    schema:exactSponsorReviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_compensation_exact_sponsor_commit",
+    description:"After explicit coach confirmation only, set or archive an exact sponsor for one frozen participant of one completed lesson. Reuse the identical key and input on uncertain response. Creates terms only; archive does not remove the automatic invoice/credit block. Never infer a payer or approve a charge or payment.",
+    schema:exactSponsorCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_compensation_agreements_preview",
@@ -2241,6 +2253,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_compensation_completed_lessons":
         return {data:await compensationCompletedLessons(db,teacherId,args as Parameters<typeof compensationCompletedLessons>[2])};
+      case "ccp_compensation_exact_sponsor_review":
+        return {data:await exactSponsorReview(db,teacherId,args as Parameters<typeof exactSponsorReview>[2])};
+      case "ccp_compensation_exact_sponsor_commit":
+        return {data:await exactSponsorCommit(db,args as Parameters<typeof exactSponsorCommit>[1])};
       case "ccp_compensation_agreements_preview": {
         const a=args as Parameters<typeof compensationAgreementPreview>[2];
         return {data:await compensationAgreementPreview(db,teacherId,a)};
