@@ -670,7 +670,7 @@
       "existingTools": [
         "ccp_compensation_agreements_preview"
       ],
-      "explanation": "Approved and revisioned owner-scoped compensation terms and read-only expected earnings use the same domain schema and rules via website and named MCP operations. 8-student group time counts once; no external payment/invoice or inferred payer. Exact authenticated parity and negative tests in e2e/parity-compensation-agreements.spec.ts.",
+      "explanation": "Approved and revisioned owner-scoped compensation terms and read-only expected earnings use the same domain schema and rules via website and named MCP operations. 8-student group time counts once; no external payment/invoice or inferred payer. Exact authenticated parity and negative tests in e2e/parity-compensation-agreements.spec.ts. Existing browser and MCP previews refuse possible coverage by separate private-series terms rather than counting those lessons at a broad rate.",
       "evidenceTest": "e2e/parity-compensation-agreements.spec.ts"
     },
     {
@@ -685,7 +685,7 @@
         "ccp_compensation_agreements_get",
         "ccp_compensation_agreements_update"
       ],
-      "explanation": "Approved and revisioned owner-scoped compensation terms and read-only expected earnings use the same domain schema and rules via website and named MCP operations. 8-student group time counts once; no external payment/invoice or inferred payer. Exact authenticated parity and negative tests in e2e/parity-compensation-agreements.spec.ts.",
+      "explanation": "Approved and revisioned owner-scoped compensation terms and read-only expected earnings use the same domain schema and rules via website and named MCP operations. 8-student group time counts once; no external payment/invoice or inferred payer. Exact authenticated parity and negative tests in e2e/parity-compensation-agreements.spec.ts. Existing browser/MCP reads and edits refuse protected private-series IDs.",
       "evidenceTest": "e2e/parity-compensation-agreements.spec.ts"
     },
     {
@@ -718,7 +718,7 @@
         "ccp_compensation_agreements_list",
         "ccp_compensation_agreements_create"
       ],
-      "explanation": "Approved and revisioned owner-scoped compensation terms and read-only expected earnings use the same domain schema and rules via website and named MCP operations. 8-student group time counts once; no external payment/invoice or inferred payer. Exact authenticated parity and negative tests in e2e/parity-compensation-agreements.spec.ts.",
+      "explanation": "Approved and revisioned owner-scoped compensation terms and read-only expected earnings use the same domain schema and rules via website and named MCP operations. 8-student group time counts once; no external payment/invoice or inferred payer. Exact authenticated parity and negative tests in e2e/parity-compensation-agreements.spec.ts. Existing browser/MCP list omits separately managed private-series rows while preserving explicit bounded pagination.",
       "evidenceTest": "e2e/parity-compensation-agreements.spec.ts"
     },
     {
@@ -917,7 +917,7 @@
       "existingTools": [
         "ccp_finance_obligation_approve"
       ],
-      "explanation": "Native tenant-owned immutable financial ledger uses identical shared website/delegated MCP services, signed-in tenant binding and transaction-level SQL approval guards. Manual receipts are never provider-verified or inferred; partial allocations and explicit append-only refunds/corrections require approval and replay safety. End-to-end acceptance: e2e/parity-finance-ledger.spec.ts.",
+      "explanation": "Native tenant-owned immutable financial ledger uses identical shared website/delegated MCP services, signed-in tenant binding and transaction-level SQL approval guards. Manual receipts are never provider-verified or inferred; partial allocations and explicit append-only refunds/corrections require approval and replay safety. End-to-end acceptance: e2e/parity-finance-ledger.spec.ts. Shared approval refuses protected private-series agreement IDs pending a dedicated reviewed workflow.",
       "evidenceTest": "e2e/parity-finance-ledger.spec.ts"
     },
     {

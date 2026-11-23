@@ -56,6 +56,14 @@ const fail=(status:number,code:string,message:string):never=>{
 type Db=SupabaseClient;
 type RecordRow=Record<string,unknown>;
 const cols="id,teacher_id,workplace_id,student_id,group_id,exact_session_id,billing_account_id,agreement_role,model,rate_cents,currency,effective_from,effective_to,status,revision,created_at,updated_at,last_request_id,last_request_hash";
+// A protected future scope is absent from the old schema, null on an ordinary
+// row, and non-null on a row the legacy surface cannot approve or forecast.
+// Never include the database row itself in the response.
+const isPrivateSeriesTerm=(row:RecordRow)=>row.private_series_id!=null;
+const rejectPrivateSeriesTerm=(row:RecordRow)=>{
+  if(isPrivateSeriesTerm(row))fail(409,"PRIVATE_SERIES_TERMS_UNAVAILABLE",
+    "Private series terms require the dedicated series workflow");
+};
 const hash=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export function safeCompensationAgreement(row:RecordRow){
   return {id:row.id,workplaceId:row.workplace_id,studentId:row.student_id,
@@ -77,11 +85,13 @@ const map=(value:Record<string,unknown>)=>{
   return out;
 };
 async function get(db:Db,teacherId:string,id:string):Promise<RecordRow>{
-  const {data,error}=await db.from("compensation_agreements").select(cols)
+  const {data,error}=await db.from("compensation_agreements").select("*")
     .eq("teacher_id",teacherId).eq("id",id).maybeSingle();
   if(error)fail(500,"DATABASE_ERROR","Cannot read compensation terms");
   if(!data)fail(404,"NOT_FOUND","Compensation agreement not found");
-  return data as unknown as RecordRow;
+  const row=data as unknown as RecordRow;
+  rejectPrivateSeriesTerm(row);
+  return row;
 }
 async function owned(db:Db,teacherId:string,table:string,id:string,cols="id"){
   const {data,error}=await db.from(table).select(cols)
@@ -169,13 +179,13 @@ export async function compensationAgreementsList(db:Db,teacherId:string,
   opts:{workplaceId?:string;includeArchived?:boolean}={}){
   const results:ReturnType<typeof safeCompensationAgreement>[]=[];
   for(let offset=0;offset<=20000;offset+=500){
-    let q=db.from("compensation_agreements").select(cols).eq("teacher_id",teacherId)
+    let q=db.from("compensation_agreements").select("*").eq("teacher_id",teacherId)
       .order("effective_from",{ascending:false}).order("id").range(offset,offset+499);
     if(opts.workplaceId)q=q.eq("workplace_id",opts.workplaceId);
     if(!opts.includeArchived)q=q.eq("status","active");
     const {data,error}=await q;
     if(error)fail(500,"DATABASE_ERROR","Cannot list compensation agreements");
-    results.push(...(data??[]).map(safeCompensationAgreement));
+    results.push(...(data??[]).filter(row=>!isPrivateSeriesTerm(row)).map(safeCompensationAgreement));
     if((data??[]).length<500)return results;
   }
   return fail(413,"TOO_MANY_AGREEMENTS","Too many compensation agreements to list");
@@ -304,7 +314,26 @@ export async function compensationAgreementPreview(db:Db,teacherId:string,
     : new Set<string>();
   if(new Set(candidate.map(row=>row.id)).size!==candidate.length)
     fail(503,"EXACT_AGREEMENT_SCOPE_UNAVAILABLE","Could not verify a complete preview");
-  const occurrences:CompensationOccurrence[]=candidate.filter(s=>!overridden.has(s.id)).map(s=>({
+  const unoverridden=candidate.filter(s=>!overridden.has(s.id));
+  // Only query the new field after a same-table JSON shape discloses it.
+  // The existing schema supports the same code without an unknown column.
+  if(Object.hasOwn(row,"private_series_id")&&terms.agreementRole==="coach_earning"&&
+    terms.model!=="fixed_period"&&!terms.exactSessionId){
+    const potentialDates=unoverridden.filter(s=>s.slot_occurrence_date!==null&&s.status==="completed")
+      .map(s=>toLocalDateString(new Date(s.starts_at),s.local_timezone||String(workplace.timezone)))
+      .filter(d=>d>=String(terms.effectiveFrom)&&(!terms.effectiveTo||d<=String(terms.effectiveTo))).sort();
+    if(potentialDates.length){
+      const earliest=potentialDates[0],latest=potentialDates[potentialDates.length-1];
+      const {data,error}=await db.from("compensation_agreements").select("id")
+        .eq("teacher_id",teacherId).eq("workplace_id",String(terms.workplaceId))
+        .eq("agreement_role","coach_earning").eq("status","active").not("private_series_id","is",null)
+        .lte("effective_from",latest).or(`effective_to.is.null,effective_to.gte.${earliest}`).limit(1);
+      if(error||!data)fail(503,"PRIVATE_SERIES_PREVIEW_UNAVAILABLE","Could not verify private series scope");
+      if((data??[]).length)fail(409,"PRIVATE_SERIES_PREVIEW_UNAVAILABLE",
+        "This date range may contain separate private series terms; review the series before forecasting");
+    }
+  }
+  const occurrences:CompensationOccurrence[]=unoverridden.map(s=>({
     id:s.id,workplaceId:s.workplace_id,
     lessonDate:toLocalDateString(new Date(s.starts_at),s.local_timezone||String(workplace.timezone)),
     durationMinutes:s.duration_minutes,

@@ -39,6 +39,7 @@ export class FinanceLedgerError extends Error{
 const publicCodes=new Set([
  "INVALID_OBLIGATION_APPROVAL","AGREEMENT_NOT_ACTIVE_OR_OWNED",
  "STALE_AGREEMENT_REVISION","FIXED_PERIOD_MONTH_REQUIRED",
+ "PRIVATE_SERIES_AGREEMENT_REVIEW_REQUIRED",
  "EXACT_SPONSOR_REVIEW_REQUIRED","EXACT_AGREEMENT_REVIEW_REQUIRED","EXACT_AGREEMENT_SESSION_MISMATCH","EXACT_AGREEMENT_READ_COMMITTED_REQUIRED",
  "CANONICAL_SESSION_REQUIRED","COMPLETED_SESSION_NOT_OWNED",
  "AGREEMENT_GROUP_MISMATCH","AGREEMENT_DATE_MISMATCH",
@@ -91,8 +92,15 @@ type Payment=z.input<typeof receivedPaymentRecordSchema>;
 type Allocation=z.input<typeof paymentAllocationSchema>;
 type Reversal=z.input<typeof financialReversalSchema>;
 
-export async function financialObligationApprove(db:SupabaseClient,_teacherId:string,input:Approval){
+export async function financialObligationApprove(db:SupabaseClient,teacherId:string,input:Approval){
  const a=financialObligationApproveSchema.parse(input);
+ // Classify owner row without selecting a nonexistent predecessor column.
+ // Missing rows still go through the existing SQL auth and replay contract.
+ const {data,error}=await db.from("compensation_agreements").select("*")
+  .eq("teacher_id",teacherId).eq("id",a.agreementId).maybeSingle();
+ if(error)throw new FinanceLedgerError(503,"AGREEMENT_SCOPE_UNAVAILABLE","Could not verify agreement scope");
+ if(data?.private_series_id!=null)throw new FinanceLedgerError(409,"PRIVATE_SERIES_TERMS_UNAVAILABLE",
+  "Private series obligations require the dedicated series workflow");
  return rpc(db,"ccp_finance_post_obligation",{
   p_agreement_id:a.agreementId,p_expected_revision:a.expectedRevision,
   p_expected_amount_cents:a.expectedAmountCents,p_session_id:a.sessionId,
