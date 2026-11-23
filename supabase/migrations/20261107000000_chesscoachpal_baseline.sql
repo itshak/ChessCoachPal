@@ -11092,6 +11092,7 @@ CREATE TABLE public.compensation_agreements (
   last_request_hash text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
+  exact_session_id uuid,
   UNIQUE(id,teacher_id),
   FOREIGN KEY (workplace_id,teacher_id)
     REFERENCES public.workplaces(id,teacher_id) ON DELETE RESTRICT,
@@ -11101,11 +11102,18 @@ CREATE TABLE public.compensation_agreements (
     REFERENCES public.class_groups(id,teacher_id) ON DELETE RESTRICT,
   FOREIGN KEY (billing_account_id,teacher_id)
     REFERENCES public.billing_accounts(id,teacher_id) ON DELETE RESTRICT,
+  CONSTRAINT compensation_exact_session_shape CHECK (
+    exact_session_id IS NULL OR (student_id IS NULL AND group_id IS NULL
+      AND agreement_role='coach_earning' AND model<>'fixed_period'
+      AND rate_cents>0 AND effective_to IS NOT NULL AND effective_to=effective_from)),
   CONSTRAINT compensation_effective_date_order CHECK (
     effective_to IS NULL OR effective_to >= effective_from),
   CONSTRAINT compensation_scope_one_specificity CHECK (
     student_id IS NULL OR group_id IS NULL)
 );
+CREATE UNIQUE INDEX compensation_agreement_one_active_exact
+ ON public.compensation_agreements(teacher_id,workplace_id,exact_session_id)
+ WHERE exact_session_id IS NOT NULL AND status='active';
 CREATE INDEX compensation_agreement_scope_idx ON public.compensation_agreements
   (teacher_id,workplace_id,agreement_role,status,effective_from,effective_to);
 CREATE INDEX compensation_agreement_payer_idx ON public.compensation_agreements
@@ -11160,6 +11168,8 @@ BEGIN
         USING ERRCODE='23503';
     END IF;
   END IF;
+  -- Exact scope has a dedicated same-session serialization and unique index.
+  IF NEW.exact_session_id IS NOT NULL THEN RETURN NEW; END IF;
   IF NEW.status='active' THEN
     PERFORM pg_advisory_xact_lock(hashtextextended(
       NEW.teacher_id::text||':compensation:'||NEW.workplace_id::text,0));
@@ -11169,6 +11179,7 @@ BEGIN
         AND a.agreement_role=NEW.agreement_role
         AND a.student_id IS NOT DISTINCT FROM NEW.student_id
         AND a.group_id IS NOT DISTINCT FROM NEW.group_id
+        AND a.exact_session_id IS NOT DISTINCT FROM NEW.exact_session_id
         AND a.id<>NEW.id AND a.status='active'
         AND daterange(a.effective_from,a.effective_to,'[]') &&
             daterange(NEW.effective_from,NEW.effective_to,'[]')) THEN
@@ -11285,6 +11296,10 @@ COMMENT ON TABLE public.student_billing_assignments IS
 ALTER TABLE public.teaching_sessions
   ADD CONSTRAINT teaching_sessions_id_teacher_workplace_finance_key
   UNIQUE(id,teacher_id,workplace_id);
+ALTER TABLE public.compensation_agreements
+  ADD CONSTRAINT compensation_exact_session_owned_venue_fk
+    FOREIGN KEY(exact_session_id,teacher_id,workplace_id)
+    REFERENCES public.teaching_sessions(id,teacher_id,workplace_id) ON DELETE RESTRICT;
 ALTER TABLE public.compensation_agreements
   ADD CONSTRAINT compensation_id_owner_workplace_payer_key
   UNIQUE(id,teacher_id,workplace_id,billing_account_id);
@@ -11849,6 +11864,84 @@ GRANT EXECUTE ON FUNCTION public.ccp_finance_reverse(
  text,uuid,bigint,text,uuid) TO authenticated;
 
 
+-- The selected exact occurrence is a dependency, not detachable metadata.
+-- The trigger runs under a private owner only to obtain a session row lock
+-- (ordinary teacher credentials cannot UPDATE session tables directly).
+CREATE OR REPLACE FUNCTION public.ccp_compensation_exact_session_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_compensation_exact_session_guard$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_session public.teaching_sessions%ROWTYPE;
+ v_zone text;
+BEGIN
+ IF TG_OP='UPDATE' THEN
+   IF OLD.exact_session_id IS DISTINCT FROM NEW.exact_session_id THEN
+     RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_IMMUTABLE' USING ERRCODE='23514';
+   END IF;
+ END IF;
+ IF NEW.exact_session_id IS NULL THEN RETURN NEW; END IF;
+ IF v_teacher IS NULL OR v_teacher IS DISTINCT FROM NEW.teacher_id THEN
+   RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='42501';
+ END IF;
+ IF current_setting('transaction_isolation')<>'read committed' THEN
+   RAISE EXCEPTION 'EXACT_AGREEMENT_READ_COMMITTED_REQUIRED' USING ERRCODE='40001';
+ END IF;
+ IF TG_OP='UPDATE' THEN
+   IF ROW(OLD.id,OLD.teacher_id,OLD.workplace_id,OLD.billing_account_id,
+      OLD.agreement_role,OLD.model,OLD.student_id,OLD.group_id,OLD.effective_from,
+      OLD.effective_to,OLD.currency,OLD.created_at)
+      IS DISTINCT FROM ROW(NEW.id,NEW.teacher_id,NEW.workplace_id,NEW.billing_account_id,
+      NEW.agreement_role,NEW.model,NEW.student_id,NEW.group_id,NEW.effective_from,
+      NEW.effective_to,NEW.currency,NEW.created_at) OR
+      OLD.status='archived' OR NEW.revision<>OLD.revision+1 THEN
+     RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_IMMUTABLE' USING ERRCODE='23514';
+   END IF;
+ ELSE
+   IF NEW.status<>'active' OR NEW.revision<>1 THEN
+     RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='23514';
+   END IF;
+ END IF;
+ SELECT s.* INTO v_session FROM public.teaching_sessions s
+ WHERE s.id=NEW.exact_session_id AND s.teacher_id=v_teacher
+ AND s.workplace_id=NEW.workplace_id FOR SHARE;
+ IF NOT FOUND OR v_session.status<>'completed' THEN
+   RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='42501';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(
+   v_teacher::text||':compensation-exact:'||v_session.id::text,0));
+ SELECT w.timezone INTO v_zone FROM public.workplaces w
+ WHERE w.id=NEW.workplace_id AND w.teacher_id=v_teacher
+   AND (TG_OP<>'INSERT' OR w.currency=NEW.currency) FOR SHARE;
+ IF NEW.status='active' AND (
+   NOT FOUND OR NEW.effective_from IS DISTINCT FROM
+     (v_session.starts_at AT TIME ZONE coalesce(v_session.local_timezone,v_zone,'UTC'))::date
+ ) THEN
+   RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='23514';
+ END IF;
+ IF NEW.status='active' THEN
+   PERFORM 1 FROM public.billing_accounts b
+    WHERE b.id=NEW.billing_account_id AND b.teacher_id=v_teacher
+      AND b.status='active' FOR SHARE;
+   IF NOT FOUND THEN
+     RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE' USING ERRCODE='23514';
+   END IF;
+ END IF;
+ IF EXISTS (SELECT 1 FROM public.financial_obligations o WHERE o.teacher_id=v_teacher
+   AND o.workplace_id=NEW.workplace_id AND o.session_id=v_session.id AND o.kind='coach_earning') THEN
+   IF TG_OP='INSERT' OR NEW.status<>'archived' OR OLD.rate_cents IS DISTINCT FROM NEW.rate_cents THEN
+     RAISE EXCEPTION 'EXACT_AGREEMENT_ALREADY_POSTED' USING ERRCODE='23514';
+   END IF;
+ END IF;
+ RETURN NEW;
+END;
+$ccp_compensation_exact_session_guard$;
+REVOKE ALL ON FUNCTION public.ccp_compensation_exact_session_guard()
+ FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER compensation_agreement_exact_session
+ BEFORE INSERT OR UPDATE ON public.compensation_agreements
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_compensation_exact_session_guard();
+
 -- Approval is independent of preview. Re-read the exact canonical lesson and
 -- agreement under a transaction, require explicit amount/revision confirmation,
 -- prove complete attendance, and atomically freeze the source. A model cannot
@@ -11877,6 +11970,7 @@ DECLARE
  v_source_key text;
  v_source_hash text;
  v_snapshot jsonb;
+ v_exact_count integer;
 BEGIN
  IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501'; END IF;
  IF p_request_id IS NULL OR p_agreement_id IS NULL OR p_confirmed IS DISTINCT FROM true
@@ -11900,18 +11994,20 @@ BEGIN
    RETURN jsonb_build_object('obligation',to_jsonb(v_row),'replayed',true);
  END IF;
  SELECT * INTO v_terms FROM public.compensation_agreements
-  WHERE id=p_agreement_id AND teacher_id=v_teacher FOR KEY SHARE;
+  WHERE id=p_agreement_id AND teacher_id=v_teacher FOR SHARE;
  IF NOT FOUND OR v_terms.status<>'active' THEN
    RAISE EXCEPTION 'AGREEMENT_NOT_ACTIVE_OR_OWNED' USING ERRCODE='42501';
  END IF;
  IF v_terms.revision<>p_expected_revision THEN
    RAISE EXCEPTION 'STALE_AGREEMENT_REVISION' USING ERRCODE='23514';
  END IF;
- SELECT * INTO v_account FROM public.billing_accounts
-  WHERE id=v_terms.billing_account_id AND teacher_id=v_teacher
-    AND status='active' FOR KEY SHARE;
- IF NOT FOUND THEN RAISE EXCEPTION 'BILLING_ACCOUNT_NOT_ACTIVE_OR_OWNED'
-   USING ERRCODE='42501';END IF;
+ IF v_terms.exact_session_id IS NULL THEN
+   SELECT * INTO v_account FROM public.billing_accounts
+    WHERE id=v_terms.billing_account_id AND teacher_id=v_teacher
+      AND status='active' FOR KEY SHARE;
+   IF NOT FOUND THEN RAISE EXCEPTION 'BILLING_ACCOUNT_NOT_ACTIVE_OR_OWNED'
+     USING ERRCODE='42501';END IF;
+ END IF;
  IF v_terms.model='fixed_period' THEN
    IF p_session_id IS NOT NULL OR p_student_id IS NOT NULL
     OR p_period_start IS NULL OR p_period_end IS NULL
@@ -11940,12 +12036,47 @@ BEGIN
    IF NOT FOUND OR v_session.status<>'completed' THEN
      RAISE EXCEPTION 'COMPLETED_SESSION_NOT_OWNED' USING ERRCODE='23514';
    END IF;
+   IF v_terms.agreement_role='coach_earning' THEN
+     IF current_setting('transaction_isolation')<>'read committed' THEN
+       RAISE EXCEPTION 'EXACT_AGREEMENT_READ_COMMITTED_REQUIRED' USING ERRCODE='40001';
+     END IF;
+     -- Same order as exact agreement update: selected agreement, session,
+     -- scope lock. The selected terms stay locked; observe all competing
+     -- exact candidates in a fresh read after the winning scope change.
+     PERFORM pg_advisory_xact_lock(hashtextextended(
+       v_teacher::text||':compensation-exact:'||v_session.id::text,0));
+     IF v_terms.exact_session_id IS NOT NULL AND
+        v_terms.exact_session_id IS DISTINCT FROM v_session.id THEN
+       RAISE EXCEPTION 'EXACT_AGREEMENT_SESSION_MISMATCH' USING ERRCODE='23514';
+     END IF;
+     SELECT count(*) INTO v_exact_count FROM public.compensation_agreements ca
+     WHERE ca.teacher_id=v_teacher AND ca.workplace_id=v_session.workplace_id
+       AND ca.exact_session_id=v_session.id AND ca.agreement_role='coach_earning'
+       AND ca.status='active';
+     IF v_exact_count>1 OR (v_exact_count>0 AND v_terms.exact_session_id IS NULL) THEN
+       RAISE EXCEPTION 'EXACT_AGREEMENT_REVIEW_REQUIRED' USING ERRCODE='23514';
+     END IF;
+   END IF;
    IF v_terms.group_id IS NOT NULL AND
      v_session.group_id IS DISTINCT FROM v_terms.group_id THEN
      RAISE EXCEPTION 'AGREEMENT_GROUP_MISMATCH' USING ERRCODE='23514';
    END IF;
-   SELECT timezone INTO v_workplace_timezone FROM public.workplaces
-    WHERE id=v_terms.workplace_id AND teacher_id=v_teacher;
+   IF v_terms.exact_session_id IS NOT NULL THEN
+     -- Same order as exact setup. The venue lookup stabilizes legacy time
+     -- fallback; a later venue currency default never reprices this contract.
+     SELECT timezone INTO v_workplace_timezone FROM public.workplaces
+      WHERE id=v_terms.workplace_id AND teacher_id=v_teacher FOR SHARE;
+     IF NOT FOUND THEN RAISE EXCEPTION 'EXACT_AGREEMENT_SCOPE_UNAVAILABLE'
+       USING ERRCODE='42501';END IF;
+     SELECT * INTO v_account FROM public.billing_accounts
+      WHERE id=v_terms.billing_account_id AND teacher_id=v_teacher
+        AND status='active' FOR SHARE;
+     IF NOT FOUND THEN RAISE EXCEPTION 'BILLING_ACCOUNT_NOT_ACTIVE_OR_OWNED'
+       USING ERRCODE='42501';END IF;
+   ELSE
+     SELECT timezone INTO v_workplace_timezone FROM public.workplaces
+      WHERE id=v_terms.workplace_id AND teacher_id=v_teacher;
+   END IF;
    v_local_date:=(v_session.starts_at AT TIME ZONE coalesce(
       v_session.local_timezone,v_workplace_timezone,'UTC'))::date;
    IF p_period_start IS DISTINCT FROM v_local_date OR
@@ -12030,6 +12161,10 @@ BEGIN
    'durationMinutes',CASE WHEN p_session_id IS NULL THEN NULL
                            ELSE v_session.duration_minutes END,
    'attendedCount',v_attended_count,'amountCents',v_amount);
+ IF v_terms.exact_session_id IS NOT NULL THEN
+   v_snapshot:=v_snapshot||jsonb_build_object('scope','exact_session',
+     'exactSessionId',v_terms.exact_session_id);
+ END IF;
  v_source_hash:=encode(extensions.digest(v_snapshot::text,'sha256'),'hex');
  INSERT INTO public.financial_obligations(teacher_id,workplace_id,billing_account_id,
   agreement_id,agreement_revision,agreement_snapshot,session_id,student_id,
