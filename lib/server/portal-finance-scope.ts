@@ -11,6 +11,22 @@ type Invoice={id:string;period_start:string;period_end:string;
   status:"sent"|"paid";subtotal_cents:number;currency:string;
   stripe_checkout_url:string|null;billing_account_id:string};
 type Item={invoice_id:string;session_id:string|null;student_id:string|null};
+type Payment={invoice_id:string;amount_cents:number};
+const INVOICE_BATCH=20;
+const EVIDENCE_LIMIT=1000;
+
+function chunks<T>(values:T[],size:number){
+  return Array.from({length:Math.ceil(values.length/size)},(_,i)=>values.slice(i*size,(i+1)*size));
+}
+
+/** Never use a PostgREST subset to prove every line or sum receipts. The exact
+ * count and page are obtained in the same request; avoid mixing evidence for
+ * one invoice across mutable offset pages. Treat incomplete metadata as denial. */
+export function completePortalFinanceRows<T>(
+  data:T[]|null,count:number|null,
+):T[]|null{
+  return data!==null&&count!==null&&count<=EVIDENCE_LIMIT&&data.length===count?data:null;
+}
 /**
  * An invoice can contain multiple student/workplace charges. NEVER reveal its
  * total or checkout URL merely because the contact owns its payer: the entire
@@ -24,15 +40,20 @@ export async function portalScopedInvoices(db:Db,ctx:PortalContext):Promise<Scop
     .select("id,period_start,period_end,status,subtotal_cents,currency,stripe_checkout_url,billing_account_id")
     .eq("teacher_id",grant.teacherId).eq("billing_account_id",grant.billingAccountId)
     .in("status",["sent","paid"]).not("sent_at","is",null)
-    .order("period_end",{ascending:false}).limit(100);
+    .order("period_end",{ascending:false}).order("id").limit(100);
   if(error)throw new Error("Scoped invoices are temporarily unavailable");
   const invoices=(data??[]) as Invoice[];
   if(!invoices.length)return [];
-  const ids=invoices.map(row=>row.id);
-  const {data:items,error:itemError}=await db.from("invoice_items")
-    .select("invoice_id,session_id,student_id").in("invoice_id",ids);
-  if(itemError)throw new Error("Scoped invoice items unavailable");
-  const all=(items??[]) as Item[];
+  const all:Item[]=[];
+  for(const ids of chunks(invoices.map(row=>row.id),INVOICE_BATCH)){
+    const {data,count,error:itemsError}=await db.from("invoice_items")
+      .select("invoice_id,session_id,student_id",{count:"exact"}).in("invoice_id",ids)
+      .order("id").limit(EVIDENCE_LIMIT);
+    if(itemsError)throw new Error("Scoped invoice items unavailable");
+    const complete=completePortalFinanceRows((data??null) as Item[]|null,count);
+    if(!complete)return [];
+    all.push(...complete);
+  }
   const sessionIds=[...new Set(all.flatMap(item=>item.session_id?[item.session_id]:[]))];
   const workplaceBySession=new Map<string,string>();
   for(let i=0;i<sessionIds.length;i+=100){
@@ -56,11 +77,16 @@ export async function portalScopedInvoices(db:Db,ctx:PortalContext):Promise<Scop
       item.session_id!==null&&workplaceBySession.get(item.session_id)===grant.workplaceId);
   });
   if(!verified.length)return [];
-  const {data:payments,error:paymentError}=await db.from("payments")
-    .select("invoice_id,amount_cents").in("invoice_id",verified.map(x=>x.id));
-  if(paymentError)throw new Error("Scoped payment summary unavailable");
   const paid=new Map<string,number>();
-  for(const row of payments??[])paid.set(row.invoice_id,(paid.get(row.invoice_id)??0)+row.amount_cents);
+  for(const ids of chunks(verified.slice(0,12).map(row=>row.id),INVOICE_BATCH)){
+    const {data,count,error:paymentError}=await db.from("payments")
+      .select("invoice_id,amount_cents",{count:"exact"}).in("invoice_id",ids)
+      .order("id").limit(EVIDENCE_LIMIT);
+    if(paymentError)throw new Error("Scoped payment summary unavailable");
+    const complete=completePortalFinanceRows((data??null) as Payment[]|null,count);
+    if(!complete)return [];
+    for(const row of complete)paid.set(row.invoice_id,(paid.get(row.invoice_id)??0)+row.amount_cents);
+  }
   return verified.slice(0,12).map(row=>({
     id:row.id,periodStart:row.period_start,periodEnd:row.period_end,
     status:row.status,subtotalCents:row.subtotal_cents,currency:row.currency,

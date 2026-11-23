@@ -1261,7 +1261,7 @@
         "ccp_portal_grants_get",
         "ccp_portal_grants_revoke"
       ],
-      "explanation": "Get/revoke one explicit owner-scoped capability metadata through shared service. Token is invalidated on revocation; no browser secret exposed through MCP.",
+      "explanation": "Get/revoke explicit owned grant metadata; the exact guest link is browser-issued, rotates independently and never appears in MCP. Signed guest finance regression in e2e/parity-portal-finance-scope.spec.ts verifies no disclosure from calendar-only, wrong debtor or learner, mixed or unattributed invoice, draft, rotated, expired or revoked access. Financial pages remain guest-only and do not send or mutate money.",
       "evidenceTest": "e2e/parity-scoped-portal-grants.spec.ts"
     },
     {
@@ -1276,7 +1276,7 @@
         "ccp_portal_grants_list",
         "ccp_portal_grants_create"
       ],
-      "explanation": "Explicit owner/contact/student/workplace and finance-scoped grant metadata, never raw portal tokens. Authenticated browser and delegated MCP use one typed service, consent and revision/idempotency.",
+      "explanation": "Explicit owned contact/student/workplace grants require a current noncancelled inclusive teacher-local enrollment across website and delegated MCP. The dated membership E2E verifies reopened periods, ended/cancelled/future rejection, a teacher/venue date boundary, bounded access to already-approved historical notes, and refusal to rotate an inactive scope. Existing consent, secure browser token issuance and revision checks remain independent. See e2e/parity-portal-dated-membership.spec.ts.",
       "evidenceTest": "e2e/parity-scoped-portal-grants.spec.ts"
     },
     {

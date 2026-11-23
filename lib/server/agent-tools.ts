@@ -987,7 +987,7 @@ const catalogue = [
   },
   {
     name:"ccp_portal_grants_create",
-    description:"With teacher confirmation create an explicit limited contact/student/workplace sharing grant, requiring exact permissions and expiration. This DOES NOT issue a secret URL. Use the authenticated website for link issuance; contact relationship alone is never a grant.",
+    description:"With teacher confirmation create an explicit limited contact/student/workplace sharing grant, requiring exact permissions, expiration and a current noncancelled enrollment on the teacher’s local day. This DOES NOT issue a secret URL. Use the authenticated website for link issuance; contact relationship alone is never a grant.",
     schema:portalGrantCreateSchema,scope:"coach:write",readOnly:false,
   },
   {
