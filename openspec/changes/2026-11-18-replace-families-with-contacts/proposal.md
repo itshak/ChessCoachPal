@@ -10,13 +10,13 @@
 > **ADR-0017 final-cutover override (2026-11-18):** No backward compatibility or legacy dual-writes before v1. The final deliverable uses the clean canonical baseline and current website/MCP contracts. All planned features deploy with **one final** live migration **or** verified clean rebuild/reimport at the operator's choice; no per-feature production migration. Existing data handling is a deliberate one-time import/mapping decision, not an obligation to retain obsolete Family/Studio/guardian APIs or old portal tokens. Security, tenant isolation and explicit new grants remain required.
 
 
-**Status:** Proposed implementation — accepted direction in ADR-0016; no code/database change yet.
+**Status:** Canonical Contacts, billing-identity separation and accessible shared search are implemented and [source verified](SOURCE_ACCEPTANCE.md). Legacy reconciliation and coordinated operator acceptance remain open.
 **Priority:** P0 core domain.
 **Depends on:** 2026-11-18-enforce-baseline-live-transition-contract.
 **Coordinated cutover:** 2026-11-18-scope-student-contact-portal and 2026-11-18-implement-workplace-compensation-and-billing.
 
 ## Why
-Current students.guardian_id enforces one guardian/household while real students may have mother, father, grandmother, school, sponsor and authorized other contacts, across school and private lessons. Existing guardians hold two people and one portal token; invoices, event RSVPs, emails and student creation depend on that representation. Family is an incorrect top-level ChessCoachPal product entity, but those working functions and real records must survive.
+The predecessor schema used students.guardian_id to enforce one guardian/household while real students may have mother, father, grandmother, school, sponsor and authorized other contacts, across school and private lessons. Legacy guardian rows could hold two people and one portal token; old invoices, event RSVPs, emails and student creation depended on that representation. Family is an incorrect top-level ChessCoachPal product entity, but those working functions and real records must survive.
 
 ## Outcome
 Use canonical contacts, zero-to-many student-contact relationships, and optional billing accounts for persons or organizations. Make students creatable without any contact, explicitly scope communication roles, preserve existing invoicing/history and remove Family-as-primary UI, vocabulary and legacy endpoints after safe coordinated migration.
