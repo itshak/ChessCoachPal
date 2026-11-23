@@ -1,6 +1,6 @@
 # ChessCoachPal OpenSpec: active work and acceptance tracker
 
-**Updated 2026-11-22.** The [consolidated schema](archive/2026-11-21-consolidate-final-preproduction-saas-schema/SOURCE_ACCEPTANCE.md) is frozen on [merged main](https://github.com/itshak/ChessCoachPal/commit/0147c7aa34f680b6defa9f202f28c64e9fc6b5ba). [ADR-0019](../../docs/adr/0019-single-final-schema-and-commercial-entitlements.md) and the schema lock govern changes. The older 2026-11-19 freeze proposal was superseded, not separately completed.
+**Updated 2026-11-23.** The [consolidated schema](archive/2026-11-21-consolidate-final-preproduction-saas-schema/SOURCE_ACCEPTANCE.md) is frozen on [merged main](https://github.com/itshak/ChessCoachPal/commit/0147c7aa34f680b6defa9f202f28c64e9fc6b5ba). [ADR-0019](../../docs/adr/0019-single-final-schema-and-commercial-entitlements.md) and the schema lock govern changes. The older 2026-11-19 freeze proposal was superseded, not separately completed. The current exact source lock is the [ADR-0022 successor](../../docs/adr/0022-completed-archived-recovery-source-review.md), approved in [#127](https://github.com/itshak/ChessCoachPal/pull/127) and active on [merged #128](https://github.com/itshak/ChessCoachPal/commit/d657261d0525c3b222867b4bf01562f70da56f02).
 
 ## Current evidence
 
@@ -13,7 +13,7 @@
 
 | Active OpenSpec change | Schema authority | Remaining feature/acceptance work |
 | --- | --- | --- |
-| [Temporal enrollment, credit-safe lifecycle](2026-11-19-temporal-enrollment-credit-safe-lifecycle/proposal.md) | Handed to P0 | Preview/commit, audited credits, archived lesson lifecycle, exact-head/real-data acceptance |
+| [Temporal enrollment, credit-safe lifecycle](2026-11-19-temporal-enrollment-credit-safe-lifecycle/proposal.md) | P0 and reviewed ADR-0022 | [Verified source milestones](2026-11-19-temporal-enrollment-credit-safe-lifecycle/SOURCE_ACCEPTANCE.md), including exact same-day completed recovery; archived-credit settlement decision and separately authorized live acceptance remain open |
 | [Workplace import enrollment](2026-11-19-enforce-workplace-enrollment-on-student-import/proposal.md) | Handed to P0 | Fail-closed import, idempotent reconciliation, website/MCP |
 | [Contacts and billing identity](2026-11-18-replace-families-with-contacts/proposal.md) | Handed to P0 | Source mapping, consent, UI/MCP, historical reconciliation |
 | [Scoped student/contact portal](2026-11-18-scope-student-contact-portal/proposal.md) | Handed to P0 | Grant validation, old-token transition, guest privacy and parity |

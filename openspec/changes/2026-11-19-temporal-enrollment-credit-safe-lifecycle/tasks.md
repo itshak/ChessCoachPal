@@ -11,7 +11,8 @@
 - [x] Correct existing canonical historical notes and import verified dates without reactivating or inventing a complete lesson.
 - [x] Local browser/MCP and unit proof distinguishes invoice workflow, recorded receipts and issued/usable entitlement without changing sent/paid redemption or cash authority.
 - [x] Record #125 exact hosted E2E and verified merge/tree read-back.
-- [ ] Resolve the remaining completed-lesson and archived-credit reconciliation scope described in [the source checkpoint](SOURCE_ACCEPTANCE.md).
+- [x] Verify and merge atomic explicitly attested **same-day completed** recovery for the supported one-to-one and mixed rosters, including database calendar boundaries, rollback, keyboard approval and exact retry after acknowledgment loss. Record #127 approval and #128 exact hosted and synthetic physical restore evidence in [the source checkpoint](SOURCE_ACCEPTANCE.md).
+- [ ] Decide and reconcile first redemption for independently verified work earned before archive versus receipt replay/already applied usage and new use during archive. Keep the existing policy unchanged until that decision; see [the source checkpoint](SOURCE_ACCEPTANCE.md).
 - [ ] Preserve the separate ADR-0017 operator authorization, actual populated-beta inventory/reconciliation and independent off-host restore. No live work or archive from synthetic acceptance.
 
 ## Historical proposal checklist (broader scopes remain open)
