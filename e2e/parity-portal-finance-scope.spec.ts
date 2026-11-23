@@ -39,6 +39,7 @@ test("PARITY: scoped guest sees only complete invoices for the exact authorized 
  const schoolSession=await lesson(school,1),mixedSchool=await lesson(school,2);
  const mixedPrivate=await lesson(privateVenue,2,"12");
  const alternateDebtorSession=await lesson(school,4),draftSession=await lesson(school,5);
+ const zeroSettledSession=await lesson(school,7),trustedLinkSession=await lesson(school,8);
  const contact=await call("ccp_contacts_create",{displayName:"Synthetic school recipient",
   idempotencyKey:id(),confirmed:true});
  expect(contact.error).toBeUndefined();
@@ -72,20 +73,23 @@ test("PARITY: scoped guest sees only complete invoices for the exact authorized 
  })).error).toBeUndefined();
  const otherPupilSession=await lesson(school,6,"10",otherStudentId);
  const invoiceIds:string[]=[];
- const seedInvoice=async(day:number,billingAccountId:string,sessions:(string|null)[],status:"draft"|"sent"="sent",learnerId=studentId)=>{
+ const seedInvoice=async(day:number,billingAccountId:string,sessions:(string|null)[],status:"draft"|"sent"|"paid"="sent",learnerId=studentId,amount=1250,approvedLink:string|null=null)=>{
   // Build finished synthetic rows without initiating send, payment or checkout.
   const date=marker(day);
   const base=await admin.from("invoices").insert({teacher_id:teacherId,billing_account_id:billingAccountId,
-   period_start:date,period_end:date,status:"draft",subtotal_cents:1250,currency:"USD"}).select("id").single();
+   period_start:date,period_end:date,status:"draft",subtotal_cents:amount,currency:"USD"}).select("id").single();
   expect(base.error).toBeNull();
   const invoiceId=base.data!.id as string;invoiceIds.push(invoiceId);
   for(const [position,sessionId] of sessions.entries()){
    const line=await admin.from("invoice_items").insert({invoice_id:invoiceId,session_id:sessionId,
     student_id:sessionId?learnerId:null,description:"Synthetic history item",kind:"lesson",quantity:1,
-    unit_cents:1250,amount_cents:1250,sort_order:position});
+    unit_cents:amount,amount_cents:amount,sort_order:position});
    expect(line.error).toBeNull();
   }
-  if(status==="sent")expect((await admin.from("invoices").update({status,sent_at:new Date().toISOString()})
+  if(status!=="draft")expect((await admin.from("invoices").update({
+   status:"sent",sent_at:new Date().toISOString(),stripe_checkout_url:approvedLink,
+  }).eq("teacher_id",teacherId).eq("id",invoiceId)).error).toBeNull();
+  if(status==="paid")expect((await admin.from("invoices").update({status:"paid"})
    .eq("teacher_id",teacherId).eq("id",invoiceId)).error).toBeNull();
  };
  const guest=await playwright.request.newContext({baseURL:origin});
@@ -96,6 +100,9 @@ test("PARITY: scoped guest sees only complete invoices for the exact authorized 
   await seedInvoice(4,another,[alternateDebtorSession]);
   await seedInvoice(5,debtor,[draftSession],"draft");
   await seedInvoice(6,debtor,[otherPupilSession],"sent",otherStudentId);
+  await seedInvoice(7,debtor,[zeroSettledSession],"paid",studentId,0);
+  const storedLink="https://checkout.stripe.com/c/pay/cs_test_disposable_fixture";
+  await seedInvoice(8,debtor,[trustedLinkSession],"sent",studentId,600,storedLink);
   const grants=await call("ccp_portal_grants_list",{studentId});
   expect(grants.error).toBeUndefined();
   expect(grants.data).toEqual([]);
@@ -121,8 +128,17 @@ test("PARITY: scoped guest sees only complete invoices for the exact authorized 
    const html=await response.text();
    expect(response.headers()["cache-control"]).toContain("no-store");
    expect(response.headers()["referrer-policy"]).toBe("no-referrer");
-   if(allowed){expect(response.status()).toBe(200);expect(html).toContain(marker(1));}
-   else expect(html).not.toContain(marker(1));
+   const fallback=">Contact your coach to arrange payment for this invoice.</p>";
+   if(allowed){
+    expect(response.status()).toBe(200);
+    for(const day of [1,7,8])expect(html.includes(marker(day))).toBe(true);
+    expect(html.split(fallback)).toHaveLength(2);
+    expect(html.includes('href="'+storedLink+'"')).toBe(true);
+   }else{
+    for(const day of [1,7,8])expect(html.includes(marker(day))).toBe(false);
+    expect(html.includes(fallback)).toBe(false);
+    expect(html.includes(storedLink)).toBe(false);
+   }
    for(const day of [2,3,4,5,6])expect(html).not.toContain(marker(day));
    expect(html).not.toMatch(/pay\.stripe\.com|Synthetic history item|Another debtor/);
   };
@@ -162,7 +178,7 @@ test("PARITY: scoped guest sees only complete invoices for the exact authorized 
    // Use the normal sent-to-void transition before removing these exact
    // never-delivered fixtures. Nothing has payments or provider activity.
    expect((await admin.from("invoices").update({status:"void"})
-    .eq("teacher_id",teacherId).in("id",invoiceIds).eq("status","sent")).error).toBeNull();
+    .eq("teacher_id",teacherId).in("id",invoiceIds).in("status",["sent","paid"])).error).toBeNull();
    expect((await admin.from("invoices").delete().eq("teacher_id",teacherId).in("id",invoiceIds)).error).toBeNull();
   }
  }

@@ -13,6 +13,7 @@ type Workplace={id:string;name:string};
 type Grant={id:string;contactId:string;studentId:string;workplaceId:string;
   billingAccountId:string|null;permissions:PortalGrantPermission[];expiresAt:string;
   revokedAt:string|null;issued:boolean;revision:number;createdAt:string};
+type Renewal={grant:Grant;expiresAt:string;idempotencyKey:string};
 const kinds:[PortalGrantPermission,...PortalGrantPermission[]]=[
   "calendar","cancel","shared_notes","event_rsvp","finance",
 ];
@@ -31,6 +32,10 @@ export function StudentPortalSharingPanel({studentId,workplaces}:{studentId:stri
   const [permissions,setPermissions]=useState<PortalGrantPermission[]>(["calendar"]);
   const [days,setDays]=useState(30);
   const [secretUrl,setSecretUrl]=useState("");
+  const [renewGrant,setRenewGrant]=useState<Grant|null>(null);
+  const [renewDays,setRenewDays]=useState(90);
+  const [renewal,setRenewal]=useState<Renewal|null>(null);
+  const [renewUncertain,setRenewUncertain]=useState(false);
   const [busy,setBusy]=useState(false);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
@@ -59,7 +64,7 @@ export function StudentPortalSharingPanel({studentId,workplaces}:{studentId:stri
   }
   async function createGrant(event:FormEvent){
     event.preventDefault();
-    if(busy||!contactId||!workplaceId||permissions.length===0||finance&&!billingAccountId)return;
+    if(busy||renewUncertain||!contactId||!workplaceId||permissions.length===0||finance&&!billingAccountId)return;
     if(!window.confirm(t("confirmCreate")))return;
     setBusy(true);setError("");setNotice("");setSecretUrl("");
     try{
@@ -74,8 +79,39 @@ export function StudentPortalSharingPanel({studentId,workplaces}:{studentId:stri
       await reload();setNotice(t("created"));
     }catch{setError(t("saveFailed"));}finally{setBusy(false);}
   }
+  function closeRenewal(){
+    setRenewGrant(null);setRenewal(null);setRenewUncertain(false);
+  }
+  async function reviewRenewal(){
+    if(busy||!renewGrant||renewUncertain||!Number.isInteger(renewDays)||renewDays<1||renewDays>366)return;
+    const expiresAt=new Date(Date.now()+renewDays*86400000).toISOString();
+    setBusy(true);setError("");setNotice("");setSecretUrl("");
+    try{
+      const response=await fetch(`/api/portal-grants/${renewGrant.id}?renewExpiresAt=${encodeURIComponent(expiresAt)}`,{cache:"no-store"});
+      if(!response.ok)throw Error("REVIEW_FAILED");
+      const review=await response.json() as {grant:Grant;expiresAt:string};
+      setRenewal({...review,idempotencyKey:crypto.randomUUID()});
+    }catch{setRenewal(null);setError(t("renewReviewFailed"));}finally{setBusy(false);}
+  }
+  async function confirmRenewal(){
+    if(busy||!renewal)return;
+    setBusy(true);setError("");setNotice("");setSecretUrl("");
+    try{
+      const response=await fetch(`/api/portal-grants/${renewal.grant.id}`,{
+        method:"PATCH",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({expiresAt:renewal.expiresAt,expectedRevision:renewal.grant.revision,
+          idempotencyKey:renewal.idempotencyKey,confirmed:true}),
+      });
+      if(response.ok){closeRenewal();await reload();setNotice(t("renewedNoLink"));return;}
+      const body=await response.json().catch(()=>null);
+      if(["STALE_REVISION","REVOKED","EXPIRED","SCOPE_INACTIVE","INVALID_EXPIRY"].includes(body?.error)){
+        closeRenewal();await reload();setError(t("renewReviewFailed"));return;
+      }
+      throw Error("RENEW_UNCONFIRMED");
+    }catch{setRenewUncertain(true);setError(t("renewUnconfirmed"));}finally{setBusy(false);}
+  }
   async function issue(grant:Grant){
-    if(busy||grant.revokedAt||!window.confirm(t("confirmIssue")))return;
+    if(busy||renewUncertain||grant.revokedAt||!window.confirm(t("confirmIssue")))return;
     setBusy(true);setError("");setNotice("");setSecretUrl("");
     try{
       const response=await fetch(`/api/portal-grants/${grant.id}/issue`,{
@@ -88,7 +124,7 @@ export function StudentPortalSharingPanel({studentId,workplaces}:{studentId:stri
     }catch{setError(t("issueFailed"));}finally{setBusy(false);}
   }
   async function revoke(grant:Grant){
-    if(busy||grant.revokedAt||!window.confirm(t("confirmRevoke")))return;
+    if(busy||renewUncertain||grant.revokedAt||!window.confirm(t("confirmRevoke")))return;
     setBusy(true);setError("");setNotice("");setSecretUrl("");
     try{
       const response=await fetch(`/api/portal-grants/${grant.id}`,{
@@ -116,10 +152,30 @@ export function StudentPortalSharingPanel({studentId,workplaces}:{studentId:stri
           {grant.revokedAt&&<p className="text-xs text-error">{t("revoked")}</p>}
         </div>
         {!grant.revokedAt&&<div className="flex gap-2">
-          <Button size="sm" variant="secondary" disabled={busy} onClick={()=>void issue(grant)}>{t("issue")}</Button>
-          <Button size="sm" variant="secondary" disabled={busy} onClick={()=>void revoke(grant)}>{t("revoke")}</Button>
+          <Button size="sm" variant="secondary" disabled={busy||renewUncertain} onClick={()=>void issue(grant)}>{t("issue")}</Button>
+          <Button size="sm" variant="secondary" disabled={busy||renewUncertain} onClick={()=>void revoke(grant)}>{t("revoke")}</Button>
+          {Date.parse(grant.expiresAt)>Date.now()&&<Button size="sm" variant="secondary"
+            disabled={busy||renewUncertain} onClick={()=>{
+              setSecretUrl("");setNotice("");setError("");setRenewal(null);setRenewGrant(grant);
+            }}>{t("renew")}</Button>}
         </div>}
       </li>)}</ul>}
+    {renewGrant&&<div className="rounded-lg border border-border p-3 space-y-2" aria-label={t("renew")}>
+      <p>{contactName(renewGrant.contactId)} · {placeName(renewGrant.workplaceId)}</p>
+      <p className="text-sm text-muted">{renewGrant.permissions.map(kind=>t(kind)).join(", ")}</p>
+      {!renewal&&<label className="text-sm">{t("renewDays")}
+        <input className={field} type="number" min={1} max={366} step={1} disabled={busy}
+          value={renewDays} onChange={e=>setRenewDays(Number(e.target.value))}/>
+      </label>}
+      {renewal?<p>{t("renewReview",{expiry:new Date(renewal.expiresAt).toLocaleString()})}</p>:
+        <Button type="button" disabled={busy} onClick={()=>void reviewRenewal()}>{t("renewPreview")}</Button>}
+      {renewal&&<Button type="button" disabled={busy} onClick={()=>void confirmRenewal()}>
+        {renewUncertain?t("renewRetry"):t("renewConfirm")}
+      </Button>}
+      {!renewUncertain&&<Button type="button" variant="secondary" disabled={busy} onClick={closeRenewal}>
+        {t("renewDismiss")}
+      </Button>}
+    </div>}
     {secretUrl&&<div className="rounded-lg border border-primary/40 p-3 space-y-2">
       <p className="text-sm font-medium">{t("linkOnce")}</p>
       <input readOnly value={secretUrl} className={field} aria-label={t("secureLink")}/>

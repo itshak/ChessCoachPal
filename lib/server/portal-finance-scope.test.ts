@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {completePortalFinanceRows,verifiedPortalPurchase} from "./portal-finance-scope";
+import {completePortalFinanceRows,verifiedPortalPurchase,trustedPortalCheckoutUrl} from "./portal-finance-scope";
 
 describe("portal finance accounting completeness",()=>{
  it("accepts exact empty/full evidence",()=>{
@@ -25,5 +25,15 @@ describe("portal prepaid purchase evidence",()=>{
   expect(verifiedPortalPurchase(3718,[line,line],packageEvidence)).toBe(false);
   expect(verifiedPortalPurchase(3719,[line],packageEvidence)).toBe(false);
   expect(verifiedPortalPurchase(3718,[{...line,session_id:"lesson"}],packageEvidence)).toBe(false);
+ });
+});
+
+describe("stored guest checkout handoff",()=>{
+ it("retains only exact HTTPS Stripe Checkout origin",()=>{
+  const approved="https://checkout.stripe.com/c/pay/cs_test_fixture";
+  expect(trustedPortalCheckoutUrl(approved)).toBe(approved);
+  for(const url of [null,"http://checkout.stripe.com/c/pay/test","https://checkout.stripe.com.example.invalid/path",
+   "https://case@checkout.stripe.com/c/pay/test","https://checkout.stripe.com:444/c/pay/test","not a URL"])
+   expect(trustedPortalCheckoutUrl(url)).toBeNull();
  });
 });
