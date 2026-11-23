@@ -23,6 +23,7 @@ export type CanonicalDerivedPeriod={
  newRedemptions:Map<string,string>;
  creditedByBillingAccount:Map<string,number>;
 };
+export const EXACT_SPONSOR_BILLING_REVIEW="EXACT_SPONSOR_REVIEW_REQUIRED";
 export function canonicalBillableStatus(status:string|null):AttendanceStatus|null{
  switch(status){
   case "present":case "late":return "attended";
@@ -82,6 +83,15 @@ export async function deriveCanonicalPeriodItems(
  const inputs:BillableLessonInput[]=[];
  let skippedAlreadyInvoiced=0;
  const participants=new Map<string,{sessionId:string;studentId:string}>();
+ // Surface exact finance review before any unrelated missing-rate or payer
+ // error can obscure it. A scoped draft cannot silently adopt another payer.
+ if(rows.some(row=>{
+  if(!row.automaticBillingReviewRequired||
+    (opts.billingAccountId&&row.billingAccountId!==opts.billingAccountId))return false;
+  const status=canonicalBillableStatus(row.attendanceStatus);
+  return status!==null&&isBillable({attendanceStatus:status,noticeAt:row.noticeAt,
+   startsAt:row.startsAt,makeupForSessionId:row.makeupForSessionId},policy);
+ }))throw new Error(EXACT_SPONSOR_BILLING_REVIEW);
  for(const row of rows){
   const status=canonicalBillableStatus(row.attendanceStatus);
   if(!status)continue;

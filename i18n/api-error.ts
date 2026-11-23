@@ -8,6 +8,7 @@ import {isAppLocale, type AppLocale} from "./locales";
  */
 const codeCopy:Record<AppLocale,Record<string,string>>={
   en:{
+    EXACT_SPONSOR_REVIEW_REQUIRED:"This lesson requires an explicit finance review before invoice or prepaid credit processing.",
     VALIDATION_ERROR:"Please check the entered values",
     INVALID_LOCALE:"Unsupported language",
     UNAUTHORIZED:"Sign in to continue",
@@ -24,6 +25,7 @@ const codeCopy:Record<AppLocale,Record<string,string>>={
     IMPORT_REPLAY_CONFLICT:"This import identifier was reused for different data",
   },
   he:{
+    EXACT_SPONSOR_REVIEW_REQUIRED:"יש לבדוק את החיוב עבור השיעור לפני יצירת חשבונית או שימוש באשראי ששולם מראש.",
     VALIDATION_ERROR:"בדקו את הערכים שהוזנו",
     INVALID_LOCALE:"השפה שנבחרה אינה נתמכת",
     UNAUTHORIZED:"יש להתחבר כדי להמשיך",
@@ -40,6 +42,7 @@ const codeCopy:Record<AppLocale,Record<string,string>>={
     IMPORT_REPLAY_CONFLICT:"נעשה שימוש חוזר במזהה ייבוא עבור נתונים שונים",
   },
   ru:{
+    EXACT_SPONSOR_REVIEW_REQUIRED:"Прежде чем выставить счёт или списать предоплату за этот урок, проведите финансовую проверку.",
     VALIDATION_ERROR:"Проверьте введённые данные",
     INVALID_LOCALE:"Выбранный язык не поддерживается",
     UNAUTHORIZED:"Войдите, чтобы продолжить",

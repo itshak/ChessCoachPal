@@ -1,3 +1,4 @@
+import {EXACT_SPONSOR_BILLING_REVIEW} from "@/lib/server/canonical-billing";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {createHash,randomUUID} from "node:crypto";
 import {NextResponse} from "next/server";
@@ -21,6 +22,11 @@ function validRequestId(value:unknown){
 }
 
 /** Shared website/delegated MCP financial domain services. */
+function sponsorBillingReview(){
+ return NextResponse.json({code:EXACT_SPONSOR_BILLING_REVIEW,
+  error:"This lesson requires an explicit finance review before invoice or prepaid credit processing."},
+  {status:409,headers:{"Cache-Control":"no-store"}});
+}
 export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:string,
  body:{periodStart?:string;periodEnd?:string;commit?:boolean;idempotencyKey?:string}):Promise<NextResponse>{
   if(typeof body!=="object"||body===null||Array.isArray(body)||
@@ -78,6 +84,7 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    if(message===EXACT_SPONSOR_BILLING_REVIEW)return sponsorBillingReview();
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
@@ -163,6 +170,7 @@ export async function teacherBillingGenerate(supabase:SupabaseClient,teacherId:s
       p_request_id:requestId,
     });
   if(commitError){
+    if(commitError.message===EXACT_SPONSOR_BILLING_REVIEW)return sponsorBillingReview();
     const conflict=billingConflict(commitError);
     return NextResponse.json({
       error:conflict?"Lessons have already been invoiced; refresh the preview":
@@ -291,6 +299,7 @@ export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId
         p_request_id:options.idempotencyKey??randomUUID(),
       });
     if(regenError){
+      if(regenError.message===EXACT_SPONSOR_BILLING_REVIEW)return sponsorBillingReview();
       const conflict=billingConflict(regenError);
       return NextResponse.json({
         error:conflict?"Invoice changed or lessons were already billed; refresh first":
@@ -299,6 +308,7 @@ export async function teacherBillingRegenerate(supabase:SupabaseClient,teacherId
     }
     return NextResponse.json(regenerated);
   } catch (err) {
+    if(err instanceof Error&&err.message===EXACT_SPONSOR_BILLING_REVIEW)return sponsorBillingReview();
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }

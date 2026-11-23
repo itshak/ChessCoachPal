@@ -698,6 +698,15 @@
       "evidenceTest": "e2e/parity-compensation-exact-session.spec.ts"
     },
     {
+      "path": "app/api/compensation-agreements/exact-sponsor/route.ts",
+      "methods": ["GET", "POST"],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": ["ccp_compensation_exact_sponsor_review", "ccp_compensation_exact_sponsor_commit"],
+      "explanation": "Exact owned completed lesson, participant and active sponsor review, then guarded confirmed creation or archival with exact replay; separate from native posting and cash. Archival retains invoice and credit review.",
+      "evidenceTest": "e2e/parity-compensation-exact-sponsor.spec.ts"
+    },
+    {
       "path": "app/api/compensation-agreements/route.ts",
       "methods": [
         "GET",
@@ -1826,6 +1835,7 @@
     "components/teacher/CoachBriefingPanel.tsx",
     "components/teacher/CoachingReportPanel.tsx",
     "components/teacher/CompensationAgreementsPanel.tsx",
+    "components/teacher/ExactSponsorPanel.tsx",
     "components/teacher/ContactsManager.tsx",
     "components/teacher/CopyLinkClient.tsx",
     "components/teacher/EditableStudentName.tsx",

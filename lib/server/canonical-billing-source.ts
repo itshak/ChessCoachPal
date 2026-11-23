@@ -20,6 +20,7 @@ export type CanonicalBillingParticipant={
  isHomeVisit:boolean;slotRateCents:number|null;
  studentDefaultRateCents:number|null;studentTravelFeeCents:number|null;
  attendanceStatus:string|null;noticeAt:string|null;
+ automaticBillingReviewRequired:boolean;
 };
 /** A group session is one teaching event with up to 50 separate student
  * charging decisions. Never return duplicate (sessionId,studentId) pairs.
@@ -63,11 +64,11 @@ export async function loadCanonicalBillingParticipants(
   MAX_SESSIONS,"sessions");
  if(!sessions.length)return [];
  const ids=sessions.map(s=>s.id);
- const roster:{session_id:string;student_id:string}[]=[];
+ const roster:{session_id:string;student_id:string;sponsor_billing_review_required:boolean}[]=[];
  const attendance:{session_id:string;student_id:string;status:string;notice_at:string|null;cancellation_policy_snapshot_origin:string|null}[]=[];
  for(const part of chunks(ids,75)){
   roster.push(...await pages(
-   (lo,hi)=>db.from("session_participants").select("session_id,student_id")
+   (lo,hi)=>db.from("session_participants").select("session_id,student_id,sponsor_billing_review_required")
     .eq("teacher_id",teacherId).in("session_id",part)
     .order("session_id").order("student_id").range(lo,hi),
    MAX_PARTICIPANTS,"frozen participants"));
@@ -140,6 +141,7 @@ export async function loadCanonicalBillingParticipants(
     "Ambiguous payer assignment for canonical lesson "+session.id+"/"+student.id);
   result.push({
    sessionId:session.id,studentId:student.id,studentName:student.name,
+   automaticBillingReviewRequired:entry.sponsor_billing_review_required,
    workplaceId:session.workplace_id,
    billingAccountId:payerMatches[0]?.billing_account_id??null,lessonDate:localDate,
    startsAt:session.starts_at,durationMinutes:session.duration_minutes,

@@ -6,6 +6,7 @@ async function auth(){
  return user?{db,id:user.id}:null;
 }
 const fail=(error:unknown)=>NextResponse.json({
+ ...(error instanceof CreditServiceError?{code:error.code}:{}),
  error:error instanceof CreditServiceError?error.message:"Credit service unavailable",
 },{status:error instanceof CreditServiceError?error.status:500});
 import {parseBody,creditPackageCreateSchema} from "@/lib/server/api-schemas";
