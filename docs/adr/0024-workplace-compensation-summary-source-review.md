@@ -1,0 +1,18 @@
+# ADR-0024: Reviewed preproduction workplace compensation summary successor
+
+**Scope:** Approve only the exact source-lock successor below through [ADR-0020](0020-review-exact-preproduction-schema-successors.md). This approval changes only the reviewed permit and records this decision. The installed baseline, transition manifest, active lock and protected check are unchanged. It is not permission for a live migration, release, deployment, accounting operation or billing activation.
+
+## Why and exact boundary
+
+The Workplace Compensation OpenSpec requires an exact posted unpaid total. The current native ledger serves separately capped lists; neither a browser sum nor a partially embedded REST result can prove a complete balance under deployment-specific row limits. Add one `STABLE SECURITY INVOKER` summary, authenticated only, retaining existing owner RLS and checking ownership of the explicitly selected venue and optional debtor. No new table, index, policy, write authority, provider or raw payment export.
+
+The read is scoped to one currency, a single workplace and inclusive frozen occurrence dates (at most 366). It reports posted coach-earning obligations only, with corrections and net applied receipts, and computes outstanding in one database snapshot. Unapproved estimates, fixed-period earnings, participant bills, legacy invoices and unallocated receipts are not included. This is not payment-date cash flow or a historical as-of ledger. An archived owned scope keeps its posted history available to its owner; an unauthorized scope is not a zero result.
+
+## Exact acceptance
+
+- Source candidate [`50b0dea0b1b53aff06474836913812375f9b60e1`](https://github.com/itshak/ChessCoachPal/commit/50b0dea0b1b53aff06474836913812375f9b60e1), tree `18f0096168f7c37f9d27ec5375120aa1aeed4462`, on actual main [`38de170ed20145167be0508e9ece5be1f32287a8`](https://github.com/itshak/ChessCoachPal/commit/38de170ed20145167be0508e9ece5be1f32287a8). Canonical SQL raw SHA-256 `cf4d86fdbf5a3aa2d12c51d021933b08feb9b4d441bce07e6d38fa14ce5f63ef`; transition manifest `fcb83a6fdc7a6cf243641a6b00421a05862447ee01dac04088dfaef4c660f9f7`.
+- Independently initialized PostgreSQL 17.12 candidates produced identical Format 3 SHA-256 `a077b7424306ed792e4a176fc3e2664226647071fa357e57c28c40a69121acb4`. Comparison against active ADR-0023 added only the summary routine and two expected execute grants (authenticated and routine owner); no new anonymous or service-role access.
+- Disposable SQL and signed loopback PostgREST verified four ₪180 posts with nothing applied, exact fanout above 100, excluded unallocated receipts and unrelated refunds, applied reversals/corrections without double counting, positively authorized empty scope, rejection of foreign/unsigned/service calls, and an unchanged synthetic ledger after reads.
+- A cold checksum-sealed backup made with the repository SQL/Storage scripts restored into a different clean synthetic stack. Restored Format 3 and financial evidence matched byte-for-byte; focused signed output, denial, unchanged ledger and a private synthetic Storage object survived restore. This does not prove physical cluster recovery, performance at large production scale, signed website/MCP application acceptance, real finance, or any live cutover. Larger-tenant performance is unmeasured; no new index is included.
+
+The [permit](../../scripts/approved-schema-freeze-successor.json) binds the exact predecessor and successor lock bytes. Only a later change that inherits that independently checked approval and the exact candidate source can activate the lock. Operator acceptance remains separate under ADR-0017.
