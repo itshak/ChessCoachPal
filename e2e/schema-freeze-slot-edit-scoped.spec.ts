@@ -65,7 +65,7 @@ for(const action of ["this_and_future","entire_series"] as const){
     p_idempotency_key:key,p_review_digest:null,p_confirmed:false};
    const preview=()=>owner.rpc("ccp_canonical_slot_edit_scoped",args);
    const commit=(digest:string)=>owner.rpc("ccp_canonical_slot_edit_scoped",{...args,p_review_digest:digest,p_confirmed:true});
-   const sessions=async()=>(await admin.from("teaching_sessions").select("*").eq("teacher_id",id).order("slot_occurrence_date")).data!;
+   const sessions=async()=>(await admin.from("teaching_sessions").select("*").eq("teacher_id",id).order("slot_occurrence_date").order("id")).data!;
    const slots=async()=>(await admin.from("lesson_slots").select("*").eq("teacher_id",id).order("id")).data!;
    const receipt=async()=>(await admin.from("agent_tool_receipts").select("receipt").eq("teacher_id",id).eq("idempotency_key",key).maybeSingle()).data;
    const first=await preview();
