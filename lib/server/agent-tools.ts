@@ -79,6 +79,8 @@ import { chessUuid, categoryName, observationText, observedAt, observationInput,
 } from "@/lib/chess-learning";
 import {lessonCompletionSchema,attendanceBulkRecordSchema,type LessonCompletionInput} from "@/lib/lesson-completion";
 import {lessonCapturePreviewSchema,teacherLessonCapturePreview,studentNamesResolveSchema,teacherStudentNamesResolve,LessonCapturePreviewError} from "@/lib/server/lesson-capture-preview";
+import {CompletedArchivedRecoveryError,completedArchivedRecoveryPreviewSchema,completedArchivedRecoveryCommitSchema,
+ teacherCompletedArchivedRecoveryPreview,teacherCompletedArchivedRecoveryCommit} from "@/lib/server/completed-archived-recovery";
 import {archivedLessonRecoveryPreviewSchema,archivedLessonRecoveryCommitSchema,
  teacherArchivedLessonRecoveryPreview,teacherArchivedLessonRecoveryCommit}
  from "@/lib/server/archived-lesson-recovery";
@@ -1549,6 +1551,16 @@ const catalogue = [
     schema:atomicLessonChapterCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_lessons_completed_archived_recovery_preview",
+    description:"Read-only review of an explicitly attended lesson completed today after archival, with exact owned IDs, verified venue, offset time and one present/late/excused decision per learner. Supports one returning learner or a mixed roster, not a historical backfill. Review the returned database calendar, exact roster and capacity before separate confirmation.",
+    schema:completedArchivedRecoveryPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_lessons_completed_archived_recovery_commit",
+    description:"After exact preview and explicit teacher approval, atomically reactivate only reviewed learners and record one completed same-day lesson with individually attested attendance. Requires the returned calendar/revisions, reason and one request ID. No material, notification, portal or finance action.",
+    schema:completedArchivedRecoveryCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_lessons_archived_recovery_preview",
     description:"For a new future lesson with an archived learner, review exact stable student IDs (1–50), explicitly chosen historically verified workplace, schedule, current lifecycle revisions, aggregate advisory quota and retained credit notices without funding claims. Read-only; resolve names first, then ask the coach whether to reactivate and create the lesson. Never use this for a historical correction.",
     schema:archivedLessonRecoveryPreviewSchema,scope:"coach:read",readOnly:true,
@@ -2667,6 +2679,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_lessons_capture_preview":
         return {data:await teacherLessonCapturePreview(db,teacherId,
           args as Parameters<typeof teacherLessonCapturePreview>[2])};
+      case "ccp_lessons_completed_archived_recovery_preview":
+        return {data:await teacherCompletedArchivedRecoveryPreview(db,teacherId,
+          args as Parameters<typeof teacherCompletedArchivedRecoveryPreview>[2])};
+      case "ccp_lessons_completed_archived_recovery_commit":
+        return {data:await teacherCompletedArchivedRecoveryCommit(db,
+          args as Parameters<typeof teacherCompletedArchivedRecoveryCommit>[1])};
       case "ccp_lessons_archived_recovery_preview":
         return {data:await teacherArchivedLessonRecoveryPreview(db,teacherId,
           args as Parameters<typeof teacherArchivedLessonRecoveryPreview>[2])};
@@ -2886,6 +2904,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
     if (error instanceof StudentProfileError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof SessionRosterCorrectionError)
+      return {error:{code:error.code,message:error.message}};
+    if(error instanceof CompletedArchivedRecoveryError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CoachError)
       return { error: { code: error.code, message: error.message } };

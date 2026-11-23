@@ -3675,10 +3675,10 @@ CREATE TRIGGER ccp_session_schedule_guard
    slot_id,slot_occurrence_date
  ON public.teaching_sessions FOR EACH ROW EXECUTE FUNCTION public.ccp_session_schedule_guard();
 
-CREATE OR REPLACE FUNCTION public.ccp_teacher_ad_hoc_session_create(
+CREATE FUNCTION public.ccp_teacher_ad_hoc_session_create_internal(
   p_workplace_id uuid,p_student_ids uuid[],p_title text,p_starts_at timestamptz,
-  p_duration_minutes integer,p_lesson_note text,p_request_id uuid
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+  p_duration_minutes integer,p_lesson_note text,p_request_id uuid,p_local_timezone text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $$
 DECLARE
  v_teacher uuid:=auth.uid();v_session public.teaching_sessions%ROWTYPE;
  v_count integer;v_participants uuid[];
@@ -3698,7 +3698,8 @@ BEGIN
    RAISE EXCEPTION 'DUPLICATE_PARTICIPANTS' USING ERRCODE='22023';
  END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
- PERFORM 1 FROM public.workplaces WHERE id=p_workplace_id AND teacher_id=v_teacher;
+ PERFORM 1 FROM public.workplaces WHERE id=p_workplace_id AND teacher_id=v_teacher
+   AND (p_local_timezone IS NULL OR (timezone=p_local_timezone AND archived_at IS NULL));
  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
  -- Every learner counts once, not once per historical membership period.
  SELECT count(DISTINCT s.id) INTO v_count
@@ -3719,11 +3720,15 @@ BEGIN
  SELECT * INTO v_session FROM public.teaching_sessions
  WHERE teacher_id=v_teacher AND request_id=p_request_id;
  IF FOUND THEN
+   IF p_local_timezone IS NOT NULL THEN
+     RAISE EXCEPTION 'COMPLETED_RECOVERY_CHILD_ALREADY_EXISTS' USING ERRCODE='23505';
+   END IF;
    IF v_session.roster_mode<>'ad_hoc' OR v_session.workplace_id<>p_workplace_id
      OR v_session.title<>btrim(p_title)
      OR v_session.starts_at<>p_starts_at
      OR v_session.duration_minutes<>p_duration_minutes
      OR v_session.lesson_note<>coalesce(p_lesson_note,'')
+     OR (p_local_timezone IS NOT NULL AND v_session.local_timezone IS DISTINCT FROM p_local_timezone)
      OR (SELECT array_agg(student_id ORDER BY student_id)
        FROM public.session_participants
        WHERE session_id=v_session.id AND teacher_id=v_teacher)
@@ -3732,10 +3737,10 @@ BEGIN
  ELSE
    INSERT INTO public.teaching_sessions(
      teacher_id,workplace_id,roster_mode,title,starts_at,
-     duration_minutes,lesson_note,request_id
+     duration_minutes,lesson_note,request_id,local_timezone
    ) VALUES(
      v_teacher,p_workplace_id,'ad_hoc',btrim(p_title),p_starts_at,
-     p_duration_minutes,coalesce(p_lesson_note,''),p_request_id
+     p_duration_minutes,coalesce(p_lesson_note,''),p_request_id,p_local_timezone
    ) RETURNING * INTO v_session;
    -- Ad-hoc roster begins with no attendance decisions.
    INSERT INTO public.session_participants(teacher_id,session_id,student_id)
@@ -3750,6 +3755,17 @@ BEGIN
  );
 END;
 $$;
+REVOKE ALL ON FUNCTION public.ccp_teacher_ad_hoc_session_create_internal(
+ uuid,uuid[],text,timestamptz,integer,text,uuid,text) FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE OR REPLACE FUNCTION public.ccp_teacher_ad_hoc_session_create(
+ p_workplace_id uuid,p_student_ids uuid[],p_title text,p_starts_at timestamptz,
+ p_duration_minutes integer,p_lesson_note text,p_request_id uuid
+) RETURNS jsonb LANGUAGE sql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_canonical_adhoc_wrapper$
+ SELECT public.ccp_teacher_ad_hoc_session_create_internal(p_workplace_id,
+  p_student_ids,p_title,p_starts_at,p_duration_minutes,p_lesson_note,p_request_id,NULL);
+$ccp_canonical_adhoc_wrapper$;
 REVOKE ALL ON FUNCTION public.ccp_teacher_ad_hoc_session_create(
  uuid,uuid[],text,timestamptz,integer,text,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_ad_hoc_session_create(
@@ -10098,7 +10114,8 @@ BEGIN
  v_hash:=md5(jsonb_build_array('lessons.capture.completed',p_workplace_id,
    p_student_ids,p_title,p_starts_at,p_duration_minutes,
    coalesce(p_lesson_note,''),p_attendance)::text);
- -- One teacher lock plus one SQL transaction protects the complete unit of work.
+ -- Match the canonical ad-hoc and archived recovery lock order.
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
  PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501'; END IF;
  INSERT INTO public.agent_tool_receipts
@@ -10113,6 +10130,18 @@ BEGIN
     RAISE EXCEPTION 'COMPLETED_LESSON_REPLAY_CONFLICT' USING ERRCODE='23505';
   END IF;
   RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+ -- Newly completed archived recovery shares this advisory lock. Only
+ -- recovery receipts trigger this symmetric guard; unrelated archived
+ -- history and established active-only replays retain their behavior.
+ IF EXISTS(SELECT 1 FROM public.teaching_sessions sess
+   WHERE sess.teacher_id=v_teacher AND sess.status='completed'
+    AND sess.starts_at<p_starts_at+make_interval(mins=>p_duration_minutes)
+    AND sess.starts_at+make_interval(mins=>sess.duration_minutes)>p_starts_at
+    AND EXISTS(SELECT 1 FROM public.agent_tool_receipts rr
+      WHERE rr.teacher_id=v_teacher AND rr.operation='lesson.completedArchivedRecovery'
+       AND rr.receipt->>'sessionId'=sess.id::text)) THEN
+  RAISE EXCEPTION 'COMPLETED_ARCHIVED_RECOVERY_SCHEDULE_OVERLAP' USING ERRCODE='23P01';
  END IF;
  -- Distinct deterministic child keys; no extra AI-generated UUIDs needed.
  v_session_key:=md5(p_request_id::text||':completed-group-session')::uuid;
@@ -16298,4 +16327,250 @@ $ccp_reschedule_unmaterialized_slot$;
 REVOKE ALL ON FUNCTION public.ccp_canonical_reschedule_unmaterialized_slot(uuid,date,date,time,timestamptz,text,text,uuid,boolean)
  FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.ccp_canonical_reschedule_unmaterialized_slot(uuid,date,date,time,timestamptz,text,text,uuid,boolean)
+ TO authenticated;
+
+-- Same-day completed archived recovery is a new reviewed teaching decision,
+-- not a backfill, financial operation, cancellation, or scheduled recovery edit.
+CREATE FUNCTION public.ccp_completed_archived_recovery_calendar(p_workplace_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=public,pg_temp AS $completed_recovery_calendar$
+DECLARE v_teacher uuid:=auth.uid();v_teacher_zone text;v_venue_zone text;
+ v_now timestamptz:=statement_timestamp();
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ SELECT timezone INTO v_teacher_zone FROM public.teacher_settings WHERE teacher_id=v_teacher;
+ SELECT timezone INTO v_venue_zone FROM public.workplaces
+ WHERE teacher_id=v_teacher AND id=p_workplace_id AND archived_at IS NULL;
+ IF v_venue_zone IS NULL OR v_teacher_zone IS NULL THEN
+  RAISE EXCEPTION 'RECOVERY_CALENDAR_UNAVAILABLE' USING ERRCODE='42501';
+ END IF;
+ RETURN jsonb_build_object(
+  'teacherTimezone',v_teacher_zone,'venueTimezone',v_venue_zone,
+  'teacherDay',(v_now AT TIME ZONE v_teacher_zone)::date,
+  'venueDay',(v_now AT TIME ZONE v_venue_zone)::date,
+  'evaluatedAt',v_now);
+END;
+$completed_recovery_calendar$;
+REVOKE ALL ON FUNCTION public.ccp_completed_archived_recovery_calendar(uuid)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_completed_archived_recovery_calendar(uuid) TO authenticated;
+
+CREATE FUNCTION public.ccp_teacher_completed_archived_recovery_commit(
+ p_workplace_id uuid,p_student_ids uuid[],p_reactivations jsonb,
+ p_title text,p_starts_at timestamptz,p_duration_minutes integer,
+ p_reviewed_teacher_day date,p_reviewed_teacher_timezone text,
+ p_reviewed_venue_day date,p_reviewed_venue_timezone text,
+ p_reviewed_local_start timestamp,p_reviewed_offset_minutes integer,
+ p_attendance jsonb,p_request_id uuid,p_reason text,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $completed_archived_recovery$
+DECLARE
+ v_teacher uuid:=auth.uid();v_now timestamptz;v_end timestamptz;
+ v_teacher_zone text; v_venue_zone text;v_teacher_day date;v_venue_day date;
+ v_instants timestamptz[];v_ids uuid[];v_archived_ids uuid[];
+ v_approval_ids uuid[]:=ARRAY[]::uuid[];v_attendance_ids uuid[]:=ARRAY[]::uuid[];
+ v_attendance jsonb:='[]'::jsonb;v_sorted_review jsonb;v_sorted_attendance jsonb;
+ v_row jsonb;v_id uuid;v_record public.students%ROWTYPE;v_revision timestamptz;
+ v_count integer;v_attended boolean:=false;v_hash text;
+ v_saved public.agent_tool_receipts%ROWTYPE;v_result jsonb;
+ v_session uuid;v_session_revision timestamptz;v_session_key uuid;v_attendance_key uuid;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ IF p_workplace_id IS NULL OR p_request_id IS NULL OR p_confirmed IS DISTINCT FROM true
+  OR coalesce(cardinality(p_student_ids),0) NOT BETWEEN 1 AND 50
+  OR array_position(p_student_ids,NULL) IS NOT NULL
+  OR p_starts_at IS NULL OR NOT isfinite(p_starts_at)
+  OR coalesce(p_duration_minutes,0) NOT BETWEEN 15 AND 480
+  OR p_reviewed_local_start IS NULL OR NOT isfinite(p_reviewed_local_start)
+  OR p_reviewed_teacher_day IS NULL OR p_reviewed_venue_day IS NULL
+  OR p_reviewed_teacher_timezone IS NULL OR p_reviewed_venue_timezone IS NULL
+  OR coalesce(p_reviewed_offset_minutes,1000) NOT BETWEEN -840 AND 840
+  OR length(btrim(coalesce(p_title,''))) NOT BETWEEN 1 AND 160
+  OR length(btrim(coalesce(p_reason,''))) NOT BETWEEN 8 AND 1000
+  OR jsonb_typeof(p_reactivations) IS DISTINCT FROM 'array'
+  OR jsonb_typeof(p_attendance) IS DISTINCT FROM 'array' THEN
+  RAISE EXCEPTION 'COMPLETED_RECOVERY_REQUIRES_REVIEW' USING ERRCODE='22023';
+ END IF;
+ IF jsonb_array_length(p_reactivations) NOT BETWEEN 1 AND cardinality(p_student_ids)
+  OR jsonb_array_length(p_attendance)<>cardinality(p_student_ids) THEN
+  RAISE EXCEPTION 'COMPLETED_RECOVERY_ROSTER_MISMATCH' USING ERRCODE='22023';
+ END IF;
+ SELECT array_agg(DISTINCT u ORDER BY u) INTO v_ids FROM unnest(p_student_ids) u;
+ IF cardinality(v_ids)<>cardinality(p_student_ids) THEN
+  RAISE EXCEPTION 'DUPLICATE_LEARNER' USING ERRCODE='22023';
+ END IF;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_reactivations) LOOP
+  IF jsonb_typeof(v_row) IS DISTINCT FROM 'object'
+   OR (v_row-ARRAY['studentId','expectedUpdatedAt'])<>'{}'::jsonb
+   OR jsonb_typeof(v_row->'studentId') IS DISTINCT FROM 'string'
+   OR jsonb_typeof(v_row->'expectedUpdatedAt') IS DISTINCT FROM 'string' THEN
+   RAISE EXCEPTION 'INVALID_REACTIVATION_REVIEW' USING ERRCODE='22023';
+  END IF;
+  v_id:=(v_row->>'studentId')::uuid;
+  v_revision:=(v_row->>'expectedUpdatedAt')::timestamptz;
+  IF v_id<>ALL(v_ids) OR v_id=ANY(v_approval_ids) OR NOT isfinite(v_revision) THEN
+   RAISE EXCEPTION 'UNREVIEWED_REACTIVATION' USING ERRCODE='22023';
+  END IF;
+  v_approval_ids:=array_append(v_approval_ids,v_id);
+ END LOOP;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_attendance) LOOP
+  IF jsonb_typeof(v_row) IS DISTINCT FROM 'object'
+   OR (v_row-ARRAY['studentId','status'])<>'{}'::jsonb
+   OR jsonb_typeof(v_row->'studentId') IS DISTINCT FROM 'string'
+   OR jsonb_typeof(v_row->'status') IS DISTINCT FROM 'string'
+   OR v_row->>'status' NOT IN ('present','late','excused') THEN
+   RAISE EXCEPTION 'UNSUPPORTED_COMPLETED_RECOVERY_OUTCOME' USING ERRCODE='22023';
+  END IF;
+  v_id:=(v_row->>'studentId')::uuid;
+  IF v_id<>ALL(v_ids) OR v_id=ANY(v_attendance_ids) THEN
+   RAISE EXCEPTION 'ATTENDANCE_ROSTER_MISMATCH' USING ERRCODE='22023';
+  END IF;
+  v_attendance_ids:=array_append(v_attendance_ids,v_id);
+  v_attended:=v_attended OR v_row->>'status' IN ('present','late');
+ END LOOP;
+ IF NOT v_attended THEN
+  RAISE EXCEPTION 'COMPLETED_RECOVERY_NEEDS_ATTENDED_LEARNER' USING ERRCODE='22023';
+ END IF;
+ SELECT jsonb_agg(x ORDER BY (x->>'studentId')::uuid) INTO v_sorted_review
+ FROM jsonb_array_elements(p_reactivations) x;
+ SELECT jsonb_agg(x ORDER BY (x->>'studentId')::uuid) INTO v_sorted_attendance
+ FROM jsonb_array_elements(p_attendance) x;
+ SELECT jsonb_agg(x||jsonb_build_object('expectedUpdatedAt',NULL) ORDER BY (x->>'studentId')::uuid)
+ INTO v_attendance FROM jsonb_array_elements(v_sorted_attendance) x;
+ v_hash:=md5(jsonb_build_array('lesson.completedArchivedRecovery',p_workplace_id,v_ids,
+  v_sorted_review,btrim(p_title),p_starts_at AT TIME ZONE 'UTC',p_duration_minutes,
+  p_reviewed_teacher_day,p_reviewed_teacher_timezone,p_reviewed_venue_day,
+  p_reviewed_venue_timezone,p_reviewed_local_start,p_reviewed_offset_minutes,
+  v_sorted_attendance,btrim(p_reason),p_confirmed)::text);
+
+ -- Global scheduling advisory lock before teacher row, then calendar and
+ -- owned student rows in UUID order; canonical inner writers re-enter.
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ SELECT * INTO v_saved FROM public.agent_tool_receipts
+ WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+ IF FOUND THEN
+  IF v_saved.operation<>'lesson.completedArchivedRecovery' OR v_saved.request_hash<>v_hash THEN
+   RAISE EXCEPTION 'COMPLETED_RECOVERY_REPLAY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt||jsonb_build_object('replayed',true);
+ END IF;
+
+ SELECT timezone INTO v_teacher_zone FROM public.teacher_settings WHERE teacher_id=v_teacher FOR SHARE;
+ SELECT timezone INTO v_venue_zone FROM public.workplaces
+ WHERE teacher_id=v_teacher AND id=p_workplace_id AND archived_at IS NULL FOR SHARE;
+ IF v_venue_zone IS NULL OR v_teacher_zone IS NULL THEN
+  RAISE EXCEPTION 'RECOVERY_CALENDAR_UNAVAILABLE' USING ERRCODE='42501';
+ END IF;
+ v_now:=clock_timestamp();
+ v_end:=p_starts_at+make_interval(mins=>p_duration_minutes);
+ v_teacher_day:=(v_now AT TIME ZONE v_teacher_zone)::date;
+ v_venue_day:=(v_now AT TIME ZONE v_venue_zone)::date;
+ IF (p_reviewed_teacher_day,p_reviewed_teacher_timezone,p_reviewed_venue_day,p_reviewed_venue_timezone)
+  IS DISTINCT FROM (v_teacher_day,v_teacher_zone,v_venue_day,v_venue_zone) THEN
+  RAISE EXCEPTION 'COMPLETED_RECOVERY_PREVIEW_CHANGED' USING ERRCODE='23505';
+ END IF;
+ IF v_end>v_now OR
+  (p_starts_at AT TIME ZONE v_teacher_zone)::date<>v_teacher_day OR
+  (v_end AT TIME ZONE v_teacher_zone)::date<>v_teacher_day OR
+  (p_starts_at AT TIME ZONE v_venue_zone)::date<>v_venue_day OR
+  (v_end AT TIME ZONE v_venue_zone)::date<>v_venue_day THEN
+  RAISE EXCEPTION 'COMPLETED_RECOVERY_SAME_DAY_ONLY' USING ERRCODE='22023';
+ END IF;
+ v_instants:=public.ccp_canonical_wall_instants(p_reviewed_local_start,v_venue_zone);
+ IF cardinality(v_instants)<>1 OR v_instants[1] IS DISTINCT FROM p_starts_at OR
+  (p_reviewed_local_start-(p_starts_at AT TIME ZONE 'UTC'))
+    IS DISTINCT FROM make_interval(mins=>p_reviewed_offset_minutes)
+  OR cardinality(public.ccp_canonical_wall_instants(v_end AT TIME ZONE v_venue_zone,v_venue_zone))<>1
+  OR extract(epoch FROM ((v_end AT TIME ZONE v_venue_zone)-p_reviewed_local_start))
+      <>p_duration_minutes*60 THEN
+  RAISE EXCEPTION 'COMPLETED_RECOVERY_UNREVIEWED_LOCAL_TIME' USING ERRCODE='22023';
+ END IF;
+
+ PERFORM 1 FROM public.students WHERE teacher_id=v_teacher AND id=ANY(v_ids) ORDER BY id FOR UPDATE;
+ GET DIAGNOSTICS v_count=ROW_COUNT;
+ IF v_count<>cardinality(v_ids) THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';END IF;
+ SELECT array_agg(id ORDER BY id) INTO v_archived_ids FROM public.students
+ WHERE teacher_id=v_teacher AND id=ANY(v_ids) AND archived_at IS NOT NULL;
+ IF v_archived_ids IS DISTINCT FROM (SELECT array_agg(u ORDER BY u) FROM unnest(v_approval_ids) u) THEN
+  RAISE EXCEPTION 'COMPLETED_RECOVERY_PREVIEW_CHANGED' USING ERRCODE='23505';
+ END IF;
+ IF cardinality(v_ids)>1 AND cardinality(v_archived_ids)=cardinality(v_ids) THEN
+  RAISE EXCEPTION 'COMPLETED_RECOVERY_REQUIRES_MIXED_ROSTER' USING ERRCODE='22023';
+ END IF;
+ v_session_key:=md5(p_request_id::text||':completed-archived-session')::uuid;
+ v_attendance_key:=md5(p_request_id::text||':completed-archived-attendance')::uuid;
+ IF EXISTS(SELECT 1 FROM public.teaching_sessions WHERE teacher_id=v_teacher AND request_id=v_session_key)
+  OR EXISTS(SELECT 1 FROM public.agent_tool_receipts WHERE teacher_id=v_teacher AND
+    (idempotency_key=v_attendance_key OR idempotency_key IN (
+     SELECT md5(p_request_id::text||':completed-lifecycle:'||learner)::uuid
+     FROM unnest(v_archived_ids) learner))) THEN
+  RAISE EXCEPTION 'COMPLETED_RECOVERY_CHILD_ALREADY_EXISTS' USING ERRCODE='23505';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.teaching_sessions s WHERE s.teacher_id=v_teacher
+   AND s.status IN ('scheduled','completed') AND s.starts_at<v_end
+   AND s.starts_at+make_interval(mins=>s.duration_minutes)>p_starts_at) THEN
+  RAISE EXCEPTION 'COMPLETED_RECOVERY_SCHEDULE_OVERLAP' USING ERRCODE='23P01';
+ END IF;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(v_sorted_review) LOOP
+  v_id:=(v_row->>'studentId')::uuid;
+  SELECT * INTO STRICT v_record FROM public.students WHERE teacher_id=v_teacher AND id=v_id;
+  IF v_record.updated_at IS DISTINCT FROM (v_row->>'expectedUpdatedAt')::timestamptz THEN
+   RAISE EXCEPTION 'COMPLETED_RECOVERY_PREVIEW_CHANGED' USING ERRCODE='23505';
+  END IF;
+  IF p_starts_at<v_record.archived_at THEN
+   RAISE EXCEPTION 'COMPLETED_RECOVERY_PRE_ARCHIVE_HISTORY' USING ERRCODE='22023';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.workplace_enrollments e
+   WHERE e.teacher_id=v_teacher AND e.student_id=v_id AND e.workplace_id=p_workplace_id
+    AND e.cancelled_at IS NULL AND e.starts_on IS NOT NULL
+    AND e.starts_on<=(v_record.archived_at AT TIME ZONE v_teacher_zone)::date
+    AND e.ends_on IS NOT NULL AND e.ends_on<=v_teacher_day) THEN
+   RAISE EXCEPTION 'WORKPLACE_NOT_PREVIOUSLY_VERIFIED' USING ERRCODE='42501';
+  END IF;
+  PERFORM public.ccp_student_lifecycle_commit(v_id,'reactivate',v_record.updated_at,
+   ARRAY[p_workplace_id],md5(p_request_id::text||':completed-lifecycle:'||v_id)::uuid,
+   btrim(p_reason),true);
+  IF NOT EXISTS(SELECT 1 FROM public.workplace_enrollments e
+   WHERE e.teacher_id=v_teacher AND e.student_id=v_id AND e.workplace_id=p_workplace_id
+    AND e.cancelled_at IS NULL AND e.starts_on=v_teacher_day AND e.ends_on IS NULL) THEN
+   RAISE EXCEPTION 'COMPLETED_RECOVERY_PREVIEW_CHANGED' USING ERRCODE='23505';
+  END IF;
+ END LOOP;
+ IF cardinality(v_ids)=1 THEN
+  INSERT INTO public.teaching_sessions(teacher_id,workplace_id,student_id,title,
+   starts_at,duration_minutes,local_timezone,request_id)
+  VALUES(v_teacher,p_workplace_id,v_ids[1],btrim(p_title),p_starts_at,
+   p_duration_minutes,v_venue_zone,v_session_key) RETURNING id,updated_at INTO v_session,v_session_revision;
+ ELSE
+  v_result:=public.ccp_teacher_ad_hoc_session_create_internal(p_workplace_id,v_ids,btrim(p_title),
+   p_starts_at,p_duration_minutes,'',v_session_key,v_venue_zone);
+  v_session:=(v_result->>'id')::uuid;
+  SELECT updated_at INTO STRICT v_session_revision FROM public.teaching_sessions
+   WHERE id=v_session AND teacher_id=v_teacher FOR UPDATE;
+ END IF;
+ PERFORM public.ccp_teacher_session_commit(v_session,jsonb_build_object('status','completed'),
+  v_attendance,v_session_revision,v_attendance_key);
+ -- Calc again after inner writers: a clock boundary cannot retrospectively
+ -- authorize an occurrence or leave a next-day lifecycle membership.
+ IF (clock_timestamp() AT TIME ZONE v_teacher_zone)::date<>v_teacher_day OR
+  (clock_timestamp() AT TIME ZONE v_venue_zone)::date<>v_venue_day THEN
+  RAISE EXCEPTION 'COMPLETED_RECOVERY_PREVIEW_CHANGED' USING ERRCODE='23505';
+ END IF;
+ v_result:=jsonb_build_object('sessionId',v_session,'status','completed',
+  'workplaceId',p_workplace_id,'teacherDay',v_teacher_day,'venueDay',v_venue_day,
+  'venueTimezone',v_venue_zone,'startsAt',p_starts_at,'instructorMinutes',p_duration_minutes,
+  'attendance',v_sorted_attendance,'reactivatedStudentIds',to_jsonb(v_archived_ids),
+  'oneTransaction',true,'replayed',false);
+ INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+ VALUES(v_teacher,p_request_id,'lesson.completedArchivedRecovery',v_hash,v_result);
+ RETURN v_result;
+END;
+$completed_archived_recovery$;
+REVOKE ALL ON FUNCTION public.ccp_teacher_completed_archived_recovery_commit(
+ uuid,uuid[],jsonb,text,timestamptz,integer,date,text,date,text,timestamp,integer,jsonb,uuid,text,boolean)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_teacher_completed_archived_recovery_commit(
+ uuid,uuid[],jsonb,text,timestamptz,integer,date,text,date,text,timestamp,integer,jsonb,uuid,text,boolean)
  TO authenticated;
