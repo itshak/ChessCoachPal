@@ -519,3 +519,125 @@ isolatedTeacherTest("PARITY: an existing archived learner historical note correc
   expect((await call("ccp_workplace_context_get",{})).data.selectedWorkplaceId).toBe(personal.data!.id);
   expect((await call("ccp_students_lifecycle_preview",{studentId})).data).toEqual(before);
  });
+
+isolatedTeacherTest("PARITY: choose exact owned identities for mixed and multiple archived aliases without silent writes",
+ async({page,request,isolatedTeacher})=>{
+  const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,
+   {auth:{persistSession:false,autoRefreshToken:false}});
+  const owner=await admin.from("teachers").select("id").eq("email",isolatedTeacher.email).single();
+  expect(owner.error).toBeNull();
+  const teacher_id=owner.data!.id as string;
+  await configureSyntheticStudentCapacity(admin,teacher_id,8,3);
+  const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
+  const f=await fixture(call,4);
+  const [archivedA,archivedB,active,unrelated]=f.ids;
+  const shared="Exact shared learner "+tag(),archivedOnly="Both archived learners "+tag();
+  for(const studentId of [archivedA,archivedB,active]){
+   const patch=await page.request.put("/api/students/"+studentId,{
+    data:{nameAliases:studentId===active?[shared]:[shared,archivedOnly]},
+   });
+   expect(patch.status(),await patch.text()).toBe(200);
+  }
+  await archive(call,archivedA);
+  await archive(call,archivedB);
+  const title="Exact choice lesson "+tag(), startsAt="2063-01-11T10:00:00.000Z";
+  const common={names:[shared],workplaceId:f.workplaceId,title,startsAt,durationMinutes:60};
+  const before=async()=>{
+   const [students,memberships,sessions]=await Promise.all([
+    admin.from("students").select("id,archived_at,updated_at").eq("teacher_id",teacher_id).order("id"),
+    admin.from("workplace_enrollments").select("id,student_id,revision,starts_on,ends_on,cancelled_at").eq("teacher_id",teacher_id).order("id"),
+    admin.from("teaching_sessions").select("id").eq("teacher_id",teacher_id).order("id"),
+   ]);
+   for(const result of [students,memberships,sessions])expect(result.error).toBeNull();
+   return [students.data,memberships.data,sessions.data];
+  };
+  const original=await before();
+  const endpoint="/api/coaching/lesson-capture/preview";
+  const compare=async(input:Record<string,unknown>)=>{
+   const response=await page.request.post(endpoint,{data:input});
+   expect(response.status(),await response.text()).toBe(200);
+   const site=await response.json();
+   const mcp=await call("ccp_lessons_capture_preview",input);
+   expect(mcp.error).toBeUndefined();
+   expect(mcp.data).toEqual(site);
+   return site;
+  };
+  const ambiguous=await compare(common);
+  expect(ambiguous).toMatchObject({canCommit:false,proposedSession:null,issues:[{code:"AMBIGUOUS_STUDENT"}]});
+  expect(ambiguous.resolutions[0].studentId).toBeNull();
+  expect(ambiguous.resolutions[0].candidates).toEqual(expect.arrayContaining([
+   expect.objectContaining({id:archivedA,archived:true}),expect.objectContaining({id:archivedB,archived:true}),
+   expect.objectContaining({id:active,archived:false}),
+  ]));
+  for(const wrong of [unrelated,randomUUID()]){
+   const blocked=await compare({...common,studentChoices:[{index:0,studentId:wrong}]});
+   expect(blocked).toMatchObject({canCommit:false,proposedSession:null,issues:[{code:"INVALID_STUDENT_CHOICE"}]});
+   expect(JSON.stringify(blocked)).not.toContain(wrong);
+  }
+  const chosenActive=await compare({...common,studentChoices:[{index:0,studentId:active}]});
+  expect(chosenActive).toMatchObject({canCommit:true,issues:[],proposedSession:{studentIds:[active]}});
+  const duplicate=await compare({...common,names:[shared,shared],
+   studentChoices:[{index:0,studentId:active},{index:1,studentId:active}]});
+  expect(duplicate).toMatchObject({canCommit:false,issues:[{code:"DUPLICATE_STUDENT"}]});
+  const malformed={...common,studentChoices:[{index:0,studentId:active},{index:0,studentId:archivedA}]};
+  expect((await page.request.post(endpoint,{data:malformed})).status()).toBe(400);
+  expect((await call("ccp_lessons_capture_preview",malformed)).error?.code).toBe("VALIDATION_ERROR");
+
+  await page.goto("/coaching");
+  const openPreview=async(alias:string)=>{
+   await page.getByLabel("Student names, one per line (1–50)").fill(alias);
+   await page.getByLabel("Workplace / time zone").selectOption(f.workplaceId);
+   await page.getByLabel("Lesson title").fill(title);
+   await page.getByLabel("Start time in workplace time zone").fill("2063-01-11T12:00");
+   await page.getByRole("button",{name:"Preview only",exact:true}).click();
+   const picker=page.getByRole("combobox",{name:/Choose learner for/});
+   await expect(picker).toHaveValue("");
+   return picker;
+  };
+  const mixed=await openPreview(shared);
+  await expect(mixed.getByRole("option",{name:new RegExp("Active learner.*"+active)})).toHaveCount(1);
+  await expect(mixed.getByRole("option",{name:new RegExp("Archived learner.*"+archivedB)})).toHaveCount(1);
+  const verify=page.getByRole("button",{name:"Verify selected learners",exact:true});
+  await expect(verify).toBeDisabled();
+  // Native keyboard selection is local; leaving it unresolved abandons it.
+  await mixed.focus();
+  await mixed.press("ArrowDown");
+  await expect(verify).toBeEnabled();
+  await mixed.press("Home");
+  await expect(verify).toBeDisabled();
+  expect(await before()).toEqual(original);
+  await mixed.selectOption(active);
+  const activeResult=page.waitForResponse(r=>r.url().endsWith(endpoint)&&r.request().method()==="POST");
+  await verify.click();
+  expect(await (await activeResult).json()).toEqual(chosenActive);
+  await expect(page.getByRole("button",{name:"Review archived learner and lesson"})).toHaveCount(0);
+  expect(await before()).toEqual(original);
+
+  const past=await openPreview(archivedOnly);
+  await expect(past.getByRole("option",{name:new RegExp(archivedA)})).toHaveCount(1);
+  await expect(past.getByRole("option",{name:new RegExp(archivedB)})).toHaveCount(1);
+  await expect(past.getByRole("option",{name:new RegExp(active)})).toHaveCount(0);
+  const chosen=await compare({...common,names:[archivedOnly],studentChoices:[{index:0,studentId:archivedB}]});
+  expect(chosen).toMatchObject({canCommit:false,resolutions:[{studentId:archivedB,archived:true}],
+   issues:[{code:"ARCHIVED_STUDENT_CONFIRMATION_REQUIRED"}]});
+  await past.selectOption(archivedB);
+  const archivedResult=page.waitForResponse(r=>r.url().endsWith(endpoint)&&r.request().method()==="POST");
+  await verify.click();
+  expect(await (await archivedResult).json()).toEqual(chosen);
+  await page.getByRole("button",{name:"Review archived learner and lesson"}).click();
+  const commit=page.getByRole("button",{name:"Confirm reactivation and create lesson"});
+  await expect(commit).toBeDisabled();
+  expect(await before()).toEqual(original);
+  await page.getByLabel(/Reason for reactivation and new lesson/).fill("Explicitly choose the second archived learner");
+  await page.getByLabel(/I approve reactivating these exact archived students/).check();
+  await commit.click();
+  await expect(page.getByRole("status").filter({hasText:"archived students reactivated atomically"})).toBeVisible();
+  const found=await call("ccp_sessions_list",{query:title,workplaceId:f.workplaceId});
+  expect(found.error).toBeUndefined();
+  expect(found.data).toMatchObject([{title,student_id:archivedB,workplace_id:f.workplaceId}]);
+  for(const [studentId,archived] of [[archivedA,true],[archivedB,false]]) {
+   const lifecycle=await call("ccp_students_lifecycle_preview",{studentId});
+   expect(lifecycle.error).toBeUndefined();
+   expect(lifecycle.data.archived).toBe(archived);
+  }
+ });
