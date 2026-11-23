@@ -6,6 +6,7 @@ import {
   parseSpreadsheetBuffer,normalizeImportRows,suggestColumnMapping,familyGroupKey,
   type ColumnMapping,
 } from "@/lib/spreadsheet-import";
+import {teacherWorkplaceContextGet} from "@/lib/server/teacher-workplace-context";
 import {getPolicy} from "@/lib/server/scheduling";
 import {suggestMappingWithAi} from "@/lib/ai/provider";
 export class SpreadsheetImportError extends Error {
@@ -80,10 +81,10 @@ function reviewDigestFor(teacherId:string,input:SpreadsheetReviewInput,envelope:
 }
 async function reviewSpreadsheet(db:SupabaseClient,teacherId:string,input:SpreadsheetReviewInput){
  const {rows,issues}=normalizeImportRows(input.rows,input.mapping);
- const {data,error}=await db.from("workplaces").select("id,name").eq("teacher_id",teacherId)
-  .is("archived_at",null).order("name").order("id");
- if(error)throw fail(503,"WORKPLACE_LOOKUP_FAILED","Could not verify active workplaces");
- const workplaces=data??[];
+ const context=await teacherWorkplaceContextGet(db,teacherId).catch(()=>{
+  throw fail(503,"WORKPLACE_LOOKUP_FAILED","Could not verify active workplaces");
+ });
+ const workplaces=context.workplaces.map(({id,name})=>({id,name}));
  const selected=workplaces.find(w=>w.id===input.workplaceId);
  const rowMode=Boolean(input.workplaceColumn);
  const fallback=workplaces.find(w=>w.id===input.fallbackWorkplaceId);
@@ -137,6 +138,7 @@ async function reviewSpreadsheet(db:SupabaseClient,teacherId:string,input:Spread
  return {previewRows:rows,previewTotal:rows.length,issues:[...issues,...duplicateIssues],
   workplaces,selectedWorkplaceId:selected?.id??null,
   proposedDefaultWorkplaceId:!rowMode&&!input.workplaceId&&workplaces.length===1?workplaces[0].id:null,
+  proposedActiveContextWorkplaceId:!selected&&!fallback?context.selectedWorkplaceId:null,
   workplaceTargets:authoritative?.workplaceTargets??[],
   workplaceIssues:[...workplaceIssues,...dbIssues.filter(entry=>entry.code.startsWith("WORKPLACE_"))],
   identityIssues:dbIssues.filter(entry=>!entry.code.startsWith("WORKPLACE_")&&entry.code!=="DUPLICATE_IMPORT_IDENTITY"),

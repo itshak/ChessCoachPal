@@ -31,7 +31,7 @@ The live server exposes a broad named catalogue (the 2026-11-15 Claude settings 
 
 | Goal | Relevant named tools |
 | --- | --- |
-| Student identity and roster | `ccp_students_roster`, `ccp_students_resolve`, `ccp_students_profile_edit` |
+| Student identity and roster | `ccp_students_roster`, `ccp_students_resolve`, `ccp_students_profile_edit`, `ccp_workplaces_enrollments` (named current periods), `ccp_students_workplaces` (reverse current versus historical) |
 | Scheduling and attendance | `ccp_private_sessions_create`, `ccp_sessions_details`, `ccp_sessions_complete`, `ccp_session_notes_save` |
 | Dated coaching/skill evidence | `ccp_student_skill_assessments_record`, `ccp_students_chess_history`, `ccp_student_ratings_record` |
 | Materials and audit | `ccp_learning_materials_create`, `ccp_learning_materials_get`, `ccp_material_links_create`, `ccp_material_links_list`, `ccp_materials_history_record`, `ccp_materials_history_void` |

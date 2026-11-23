@@ -35,6 +35,7 @@ import {creditAdjustmentCommitSchema,creditAdjustmentPreviewSchema,
 import {lifecyclePreviewSchema,lifecycleCommitSchema,
  studentLifecyclePreview,studentLifecycleCommit}
  from "@/lib/server/student-lifecycle-service";
+import {studentWorkplacesList,studentWorkplacesSchema} from "@/lib/server/student-workplaces-service";
 import {bulkLifecyclePreviewSchema,bulkLifecycleCommitSchema,
  teacherBulkLifecyclePreview,teacherBulkLifecycleCommit,BulkLifecycleError}
  from "@/lib/server/teacher-bulk-lifecycle";
@@ -428,7 +429,7 @@ const catalogue = [
   },
   {
     name:"ccp_import_spreadsheet_preview",
-    description:"Review normalized spreadsheet rows and active owned workplaces without writes. Choose a workplace explicitly and use the returned reviewDigest for approval.",
+    description:"Review normalized spreadsheet rows and active owned workplaces without writes. A returned active context is only a suggestion; ask for approval and pass its concrete ID explicitly. Choose a workplace explicitly and use the returned reviewDigest for approval.",
     schema:spreadsheetReviewSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -1183,6 +1184,11 @@ const catalogue = [
     scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_students_workplaces",
+    description:"List one owned student's current and future workplace enrollment periods, prior recorded memberships and source workplace attribution of imported historical attendance. Historical without current enrollment is informational; do not infer membership or calendar sessions.",
+    schema:studentWorkplacesSchema,scope:"coach:read",readOnly:true,
+  },
+  {
     name: "ccp_students_profile",
     description: "Read an identified student's profile. Private teacher notes and family/contact fields are excluded unless includePrivate=true AND confirmed=true. Avoid exposing children's information unnecessarily.",
     schema:z.object({studentId:uuid,includePrivate:z.boolean().default(false),confirmed:z.literal(true).optional()}).strict(),
@@ -1494,7 +1500,7 @@ const catalogue = [
   },
   {
     name:"ccp_workplaces_enrollments",
-    description:"List members of an identified teacher-owned workplace.",
+    description:"List nonarchived students’ current dated enrollments in one owned workplace, by its local day. Returns display name, stable IDs and period bounds only, sorted by name then student ID. Use the paged Students roster for very large rosters.",
     schema:z.object({workplaceId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
@@ -2494,6 +2500,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const result=await teacherStudentsRoster(db,teacherId,a);
         return {data:{students:result.students.map(safeStudentProfile),nextOffset:result.nextOffset}};
       }
+      case "ccp_students_workplaces":
+        return {data:await studentWorkplacesList(db,teacherId,args as Parameters<typeof studentWorkplacesList>[2])};
       case "ccp_students_profile": {
         const a=args as {studentId:string;includePrivate:boolean;confirmed?:boolean};
         const profile=await teacherStudentProfile(db,teacherId,a.studentId);

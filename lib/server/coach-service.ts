@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {workplaceRosterDate} from "@/lib/server/workplace-student-scope";
 
 /**
  * One domain surface for browser requests and AI tool adapters.
@@ -534,18 +535,29 @@ export async function workplacesUnenroll(
 }
 
 export async function workplacesEnrollments(db: Db, teacherId: string, workplaceId: string) {
-  const { data: workplace } = await db.from("workplaces")
-    .select("id").eq("id", workplaceId).eq("teacher_id", teacherId).maybeSingle();
-  if (!workplace) throw notFound();
-  const today = await teacherToday(db,teacherId);
-  const { data, error } = await db.from("workplace_enrollments")
-    .select("student_id").eq("teacher_id", teacherId).eq("workplace_id", workplaceId)
-    .is("cancelled_at",null)
-    .or(`starts_on.is.null,starts_on.lte.${today}`)
-    .or(`ends_on.is.null,ends_on.gte.${today}`)
-    .order("student_id");
-  if (error) throw problem();
-  return data;
+  const today=await workplaceRosterDate(db,teacherId,workplaceId).catch(()=>{throw problem("Workplace roster unavailable");});
+  if(!today)throw notFound();
+  const pageSize=500,maxRows=20000;
+  type Period={id:string;student_id:string;starts_on:string|null;ends_on:string|null;student:{name:string}};
+  const rows:Period[]=[];
+  for(let offset=0;offset<=maxRows;offset+=pageSize){
+    const {data,error}=await db.from("workplace_enrollments")
+      .select("id,student_id,starts_on,ends_on,student:students!workplace_enrollments_student_id_teacher_id_fkey!inner(name)")
+      .eq("teacher_id",teacherId).eq("student.teacher_id",teacherId).is("student.archived_at",null)
+      .eq("workplace_id",workplaceId).is("cancelled_at",null)
+      .or(`starts_on.is.null,starts_on.lte.${today}`)
+      .or(`ends_on.is.null,ends_on.gte.${today}`)
+      .order("id").range(offset,offset+pageSize-1);
+    if(error)throw problem("Workplace roster unavailable");
+    const page=(data??[]) as unknown as Period[];
+    if(rows.length+page.length>maxRows)throw problem("Workplace roster exceeds safe list size; use the paged Students roster");
+    rows.push(...page);
+    if(page.length<pageSize)break;
+  }
+  return rows.map(({id,student_id,starts_on,ends_on,student})=>({
+    membership_id:id,student_id,student_name:student.name,starts_on,ends_on,
+  })).sort((a,b)=>a.student_name.localeCompare(b.student_name,"en",{sensitivity:"base"})||
+      a.student_id.localeCompare(b.student_id)||a.membership_id.localeCompare(b.membership_id));
 }
 
 export async function sessionsUpdate(

@@ -124,3 +124,81 @@ test("PARITY: dated workplace roster follows a moved and archived learner withou
   expect((await admin.auth.admin.deleteUser(teacherId)).error).toBeNull();
  }
 });
+
+test("PARITY: named current enrollment uses venue day and excludes stale archived rows",async({page,request})=>{
+ const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const email="named-venue-date-"+randomUUID()+"@example.com",password="SyntheticNamedVenueDate-123!";
+ const account=await admin.auth.admin.createUser({email,password,email_confirm:true});
+ expect(account.error).toBeNull();
+ const teacherId=account.data.user!.id;
+ try{
+  expect((await admin.from("teachers").insert({id:teacherId,email,display_name:"Named venue-day fixture",
+   onboarding_tour_completed_at:new Date().toISOString()})).error).toBeNull();
+  const dateParts=(zone:string)=>{
+   const fields=new Intl.DateTimeFormat("en-CA",{timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",hourCycle:"h23",minute:"2-digit"}).formatToParts(new Date());
+   const get=(label:Intl.DateTimeFormatPartTypes)=>fields.find(x=>x.type===label)!.value;
+   return {day:get("year")+"-"+get("month")+"-"+get("day"),minutes:Number(get("hour"))*60+Number(get("minute"))};
+  };
+  // The paired zones are exactly 24 hours apart. Choose one away from local midnight.
+  const zones=[["Pacific/Kiritimati","Etc/GMT+10"],["Pacific/Apia","Etc/GMT+11"]].find(
+   pair=>pair.map(dateParts).every(p=>p.minutes>5&&p.minutes<1434),
+  )!;
+  const [teacherZone,venueZone]=zones;
+  const teacherDay=dateParts(teacherZone).day,venueDay=dateParts(venueZone).day;
+  expect(teacherDay>venueDay).toBe(true);
+  expect((await admin.from("teacher_settings").upsert({teacher_id:teacherId,timezone:teacherZone})).error).toBeNull();
+  const venue=await admin.from("workplaces").insert({teacher_id:teacherId,name:"Behind teacher calendar",timezone:venueZone})
+   .select("id").single();
+  expect(venue.error).toBeNull();
+  const workplaceId=venue.data!.id;
+  const target=await admin.from("students").insert([
+   {teacher_id:teacherId,name:"Starts only on teacher day"},
+   {teacher_id:teacherId,name:"Ends on venue day"},
+   {teacher_id:teacherId,name:"Archived stale membership"},
+  ]).select("id,name");
+  expect(target.error).toBeNull();
+  const [starts,ends,archived]=target.data!;
+  expect((await admin.from("workplace_enrollments").insert([
+   {teacher_id:teacherId,workplace_id:workplaceId,student_id:starts.id,starts_on:teacherDay},
+   {teacher_id:teacherId,workplace_id:workplaceId,student_id:ends.id,starts_on:"2020-01-01",ends_on:venueDay},
+   {teacher_id:teacherId,workplace_id:workplaceId,student_id:archived.id,starts_on:"2020-01-01"},
+  ])).error).toBeNull();
+  // Normal archive closes on teacher day minus one: the inclusive end
+  // is still today at this venue, so the learner's archived flag matters.
+  const call=await delegatedTool(page,request,undefined,{email,password});
+  const archivePreview=await call("ccp_students_lifecycle_preview",{studentId:archived.id});
+  expect(archivePreview.error).toBeUndefined();
+  const approved=await call("ccp_students_lifecycle_commit",{
+   studentId:archived.id,mode:"archive",expectedUpdatedAt:archivePreview.data.expectedUpdatedAt,
+   selectedWorkplaceIds:[],requestId:randomUUID(),reason:"Synthetic venue-calendar archive proof",confirmed:true,
+  });
+  expect(approved.error).toBeUndefined();
+  const period=await admin.from("workplace_enrollments").select("ends_on,cancelled_at")
+   .eq("teacher_id",teacherId).eq("workplace_id",workplaceId).eq("student_id",archived.id).single();
+  expect(period.error).toBeNull();
+  expect(period.data).toEqual({ends_on:venueDay,cancelled_at:null});
+  const named=await call("ccp_workplaces_enrollments",{workplaceId});
+  expect(named.error).toBeUndefined();
+  expect(named.data).toEqual([expect.objectContaining({
+   student_id:ends.id,student_name:ends.name,starts_on:"2020-01-01",ends_on:venueDay,
+  })]);
+  const browser=await page.request.post("/api/agent/v1",{data:{action:"workplaces.enrollments",workplaceId}});
+  expect(browser.status(),await browser.text()).toBe(200);
+  expect((await browser.json()).data).toEqual(named.data);
+  const students=await call("ccp_students_roster",{workplaceId});
+  expect(students.data.students.map((x:{id:string})=>x.id)).toEqual([ends.id]);
+  const foreign=await admin.from("workplaces").select("id").neq("teacher_id",teacherId).limit(1).single();
+  expect(foreign.error).toBeNull();
+  expect((await call("ccp_workplaces_enrollments",{workplaceId:foreign.data!.id})).error?.code).toBe("NOT_FOUND");
+  const denial=await page.request.post("/api/agent/v1",{data:{action:"workplaces.enrollments",workplaceId:foreign.data!.id}});
+  expect(denial.status()).toBe(404);
+  expect((await call("ccp_workplaces_enrollments",{workplaceId:null})).error?.code).toBe("VALIDATION_ERROR");
+  const all=await page.request.post("/api/agent/v1",{data:{action:"workplaces.enrollments",workplaceId:null}});
+  expect(all.status()).toBe(400);
+ }finally{
+  expect((await admin.auth.admin.deleteUser(teacherId)).error).toBeNull();
+ }
+});

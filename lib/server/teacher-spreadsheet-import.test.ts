@@ -40,8 +40,13 @@ describe("spreadsheet workplace fail-closed contract",()=>{
   let rpcCalls=0;
   const db={
    from:(table:string)=>{
+    if(table==="teachers")return {select:()=>({eq:()=>({maybeSingle:async()=>({
+      data:{id:"teacher",selected_workplace_id:"a"},error:null,
+    })})})};
     expect(table).toBe("workplaces");
-    return {select:()=>({eq:()=>({is:()=>({order:()=>({order:async()=>({data:workplaces,error:null})})})})})};
+    return {select:()=>({eq:()=>({is:()=>({order:()=>({order:()=>({limit:async()=>({
+     data:workplaces,error:null,
+    })})})})})})};
    },
    rpc:async()=>{rpcCalls++;return {data:null,error:{message:"IMPORT_REVIEW_REQUIRED"}};},
   } as unknown as SupabaseClient;
