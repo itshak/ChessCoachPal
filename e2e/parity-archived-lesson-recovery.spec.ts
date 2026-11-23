@@ -1,5 +1,9 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
+import {createClient} from "@supabase/supabase-js";
+import {isolatedTeacherTest} from "./helpers/isolated-teacher";
+import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
+import {createAssignedPayer} from "./helpers/canonical-payer";
 import {delegatedTool,type TestMcpReply} from "./helpers/delegated-mcp";
 
 type Call=(name:string,args:Record<string,unknown>)=>Promise<TestMcpReply>;
@@ -295,3 +299,223 @@ test("PARITY:PARITY-archived-active-alias-collision-and-historical-lesson-fail-c
  const after=await call("ccp_students_lifecycle_preview",{studentId:f.ids[0]});
  expect(after.data.archived).toBe(true);
 });
+
+isolatedTeacherTest("PARITY: archived recovery advises on aggregate capacity and held credits; stale capacity rolls back two learners",
+ async({page,request,isolatedTeacher})=>{
+  const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,
+   {auth:{persistSession:false,autoRefreshToken:false}});
+  const owner=await admin.from("teachers").select("id").eq("email",isolatedTeacher.email).single();
+  expect(owner.error).toBeNull();
+  const teacher_id=owner.data!.id as string;
+  await configureSyntheticStudentCapacity(admin,teacher_id,6,4);
+  const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
+  const f=await fixture(call,3);
+  const id=f.ids[0];
+  const today=(await call("ccp_students_lifecycle_preview",{studentId:id})).data.teacherLocalToday as string;
+  const expiry=new Date(Date.parse(today+"T00:00Z")+86400000).toISOString().slice(0,10);
+  await createAssignedPayer(call,{studentId:id,workplaceId:f.workplaceId,effectiveFrom:today});
+  const purchase=await call("ccp_credits_package_create",{
+   studentId:id,workplaceId:f.workplaceId,credits:3,durationMinutes:45,priceCents:2500,
+   startsOn:today,expiresOn:expiry,requestId:randomUUID(),confirmed:true,
+  });
+  expect(purchase.error).toBeUndefined();
+  await archive(call,f.ids[0]);
+  await archive(call,f.ids[1]);
+  const payload={workplaceId:f.workplaceId,studentIds:f.ids,title:"Two archived learners "+tag(),
+   startsAt:"2062-01-17T12:00:00+02:00",durationMinutes:60,lessonNote:""};
+  const preview=async(extra:Record<string,unknown>={})=>{
+   const data={...payload,...extra};
+   const response=await page.request.post("/api/coaching/lesson-capture/recovery/preview",{data});
+   expect(response.status(),await response.text()).toBe(200);
+   const result=await response.json();
+   expect((await call("ccp_lessons_archived_recovery_preview",data)).data).toEqual(result);
+   return result;
+  };
+  const snapshot=async()=>{
+   const scopes=[
+    ["students","id,archived_at,updated_at"],["workplace_enrollments","id,revision,starts_on,ends_on,cancelled_at"],
+    ["teaching_sessions","id"],["session_participants","session_id,student_id"],
+    ["agent_tool_receipts","idempotency_key"],["credit_packages","id,credits,expires_on"],
+    ["credit_adjustment_events","id"],["credit_redemptions","id"],["invoices","id,status"],
+   ] as const;
+   return await Promise.all(scopes.map(async([table,fields])=>{
+    const row=await admin.from(table).select(fields).eq("teacher_id",teacher_id).order(fields.split(",")[0]);
+    expect(row.error,table).toBeNull();
+    return row.data;
+   }));
+  };
+  const before=await snapshot();
+  const ready=await preview();
+  expect(ready).toMatchObject({canCommit:true,capacity:{
+   advisory:true,activeStudentCount:1,requestedReactivations:2,projectedActiveStudentCount:3,
+   limit:6,remaining:5,blocked:false,
+  },review:{writesPerformed:false}});
+  expect(ready.reactivations).toEqual(expect.arrayContaining([
+   expect.objectContaining({studentId:id,creditNotice:{
+    packagesWithUnusedUnits:1,expiredBeforeLesson:1,scopedToAnotherWorkplace:0,
+   }}),
+  ]));
+  expect(JSON.stringify(ready)).not.toContain(purchase.data.invoiceId);
+  expect(JSON.stringify(ready)).not.toContain(purchase.data.packageId);
+  const foreign=await preview({workplaceId:randomUUID()});
+  expect(foreign.capacity).toBeNull();
+  expect(foreign.reactivations.every((x:{creditNotice:unknown})=>x.creditNotice===null)).toBe(true);
+  await configureSyntheticStudentCapacity(admin,teacher_id,2,4);
+  const blocked=await preview();
+  expect(blocked).toMatchObject({canCommit:false,proposedCommit:null,
+   capacity:{remaining:1,limit:2,requestedReactivations:2,blocked:true},
+   issues:[{code:"CAPACITY_EXCEEDED"}],review:{writesPerformed:false}});
+  await page.goto("/coaching");
+  await page.getByLabel("Student names, one per line (1–50)").fill(f.names.join("\n"));
+  await page.getByLabel("Workplace / time zone").selectOption(f.workplaceId);
+  await page.getByLabel("Lesson title").fill(payload.title);
+  await page.getByLabel("Start time in workplace time zone").fill("2062-01-17T12:00");
+  await page.getByRole("button",{name:"Preview only"}).click();
+  await page.getByRole("button",{name:"Review archived learner and lesson"}).click();
+  await expect(page.getByText("Capacity preview: 2 to reactivate; places currently available: 1.",{exact:false})).toBeVisible();
+  await expect(page.getByText("This roster exceeds the active-student limit.",{exact:false})).toBeVisible();
+  await expect(page.getByText("Credit packages with unused units: 1.",{exact:false})).toBeVisible();
+  await expect(page.getByRole("button",{name:"Confirm reactivation and create lesson"})).toHaveCount(0);
+  const one=await preview({studentIds:[f.ids[0],f.ids[2]]});
+  expect(one).toMatchObject({canCommit:true,capacity:{requestedReactivations:1,remaining:1,blocked:false}});
+  expect(await snapshot()).toEqual(before);
+  // Submit the originally legitimate review after the ceiling changes.
+  // The first student can fit but the second cannot: both MUST remain archived.
+  const approved={...ready.proposedCommit,requestId:randomUUID(),confirmed:true,
+   reason:"Approved both exact student IDs before the advisory quota changed"};
+  const rejected=await page.request.post("/api/coaching/lesson-capture/recovery/commit",{data:approved});
+  expect(rejected.status(),await rejected.text()).toBe(409);
+  const web=await rejected.json();
+  expect(web.code).toBe("CAPACITY_EXCEEDED");
+  expect((await call("ccp_lessons_archived_recovery_commit",approved)).error?.code).toBe(web.code);
+  expect(await snapshot()).toEqual(before);
+ });
+
+isolatedTeacherTest("PARITY: an existing archived learner historical note correction does not reactivate or reenroll",
+ async({page,request,isolatedTeacher})=>{
+  const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,
+   {auth:{persistSession:false,autoRefreshToken:false}});
+  const owner=await admin.from("teachers").select("id").eq("email",isolatedTeacher.email).single();
+  expect(owner.error).toBeNull();
+  const teacher_id=owner.data!.id as string;
+  await configureSyntheticStudentCapacity(admin,teacher_id,4,2);
+  const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
+  const f=await fixture(call,1);
+  const studentId=f.ids[0];
+  expect((await admin.from("workplace_enrollments").insert({
+   teacher_id,student_id:studentId,workplace_id:f.workplaceId,
+   starts_on:"2023-01-01",ends_on:"2023-12-31",
+  })).error).toBeNull();
+  // A snapshot-local Sunday sits in the preceding UTC week. The current
+  // workplace timezone is later changed to exercise historic precedence.
+  const saved=await admin.from("teaching_sessions").insert({
+   teacher_id,workplace_id:f.workplaceId,student_id:studentId,title:"Historical lesson "+tag(),
+   starts_at:"2023-05-27T21:30:00Z",local_timezone:"Asia/Jerusalem",
+   duration_minutes:45,lesson_note:"Original review",
+  }).select("id,local_timezone").single();
+  expect(saved.error).toBeNull();
+  expect(saved.data!.local_timezone).toBe("Asia/Jerusalem");
+  const sessionId=saved.data!.id as string;
+  expect((await admin.from("workplaces").update({timezone:"UTC"})
+   .eq("teacher_id",teacher_id).eq("id",f.workplaceId)).error).toBeNull();
+  const path="/api/coaching/sessions/"+sessionId+"/notes";
+  const originalNote={studentId,body:"Original historical coaching note",privateBody:"",
+   sharedWithContacts:false,sendEmail:false,expectedUpdatedAt:null,idempotencyKey:randomUUID()};
+  const initial=await page.request.put(path,{data:originalNote});
+  expect(initial.status(),await initial.text()).toBe(200);
+  const original=await initial.json();
+  await archive(call,studentId);
+  const before=(await call("ccp_students_lifecycle_preview",{studentId})).data;
+  expect(before).toMatchObject({archived:true,currentMemberships:[]});
+  const session=await call("ccp_sessions_details",{sessionId});
+  expect(session.error).toBeUndefined();
+  const correction={...originalNote,body:"Corrected historical coaching note",
+   expectedUpdatedAt:original.revision,idempotencyKey:randomUUID()};
+  const changed=await call("ccp_session_notes_save",{sessionId,...correction,confirmed:true});
+  expect(changed.error).toBeUndefined();
+  expect(changed.data).toMatchObject({sessionId,studentId,emailQueued:false,replayed:false});
+  const replay=await page.request.put(path,{data:correction});
+  expect(replay.status(),await replay.text()).toBe(200);
+  expect(await replay.json()).toMatchObject({
+   sessionId,studentId,replayed:true,revision:changed.data.revision,
+  });
+  const read=await page.request.get(path);
+  expect(read.status(),await read.text()).toBe(200);
+  expect(await read.json()).toMatchObject([{session_id:sessionId,student_id:studentId,
+   body:correction.body,shared_with_contacts:false}]);
+  const after=await call("ccp_sessions_details",{sessionId});
+  expect(after.data).toEqual(session.data);
+
+  const venue=await call("ccp_workplace_context_set",{
+   selectedWorkplaceId:f.workplaceId,expectedSelectedWorkplaceId:null,confirmed:true,
+  });
+  expect(venue.error).toBeUndefined();
+  const mcpList=await call("ccp_sessions_list",{workplaceId:f.workplaceId});
+  const webList=await page.request.post("/api/agent/v1",{data:{
+   action:"sessions.list",workplaceId:f.workplaceId,
+  }});
+  expect(webList.status(),await webList.text()).toBe(200);
+  for(const rows of [mcpList.data,(await webList.json()).data]){
+   expect(rows.find((row:{id:string})=>row.id===sessionId)).toMatchObject({
+    id:sessionId,studentArchived:true,lesson_note:"Original review",
+   });
+  }
+  const noteReads:string[]=[];
+  page.on("request",request=>{
+   const pathname=new URL(request.url()).pathname;
+   if(request.method()==="GET"&&pathname===path)noteReads.push(pathname);
+  });
+  await page.goto("/coaching");
+  const attendance=page.getByRole("heading",{name:"Session attendance",exact:true}).locator("..");
+  const lessonPicker=attendance.locator("select").filter({
+   has:page.locator('option[value="'+sessionId+'"]'),
+  });
+  await expect(lessonPicker).toHaveCount(1);
+  await lessonPicker.selectOption(sessionId);
+  await expect(attendance.getByRole("button",{name:"Save session changes"})).toHaveCount(0);
+  await expect(attendance.getByText("Original review",{exact:true})).toBeHidden();
+  await attendance.getByText("Original lesson summary",{exact:true}).click();
+  await expect(attendance.getByText("Original review",{exact:true})).toBeVisible();
+  await attendance.getByText("Original lesson summary",{exact:true}).click();
+  await expect(attendance.getByText("Original review",{exact:true})).toBeHidden();
+  const href="/schedule?session="+sessionId+"#lesson-notes-"+sessionId;
+  const link=attendance.getByRole("link",{name:"Open this lesson’s coaching notes",exact:true});
+  await expect(link).toHaveAttribute("href",href);
+  await link.press("Enter");
+  await expect(page).toHaveURL(url=>url.pathname+url.search+url.hash===href);
+  await expect(page.locator('[data-calendar-date="2023-05-28"]').locator("#lesson-notes-"+sessionId)).toBeVisible();
+  expect(noteReads).toHaveLength(0);
+  const notesButton=page.locator("#lesson-notes-"+sessionId);
+  await notesButton.click();
+  const dialog=page.getByRole("dialog",{name:"Teaching session details",exact:true});
+  await expect(dialog.getByLabel("Contact-shareable lesson note")).toHaveValue(correction.body);
+  await dialog.getByLabel("Contact-shareable lesson note").fill("Browser corrected historical evidence");
+  await dialog.getByRole("button",{name:"Save coaching notes",exact:true}).click();
+  await expect(page.getByText("Coaching notes saved",{exact:true})).toBeVisible();
+  expect(noteReads.length).toBeGreaterThan(0);
+  expect((await call("ccp_session_notes_list",{sessionId})).data).toMatchObject([
+   {student_id:studentId,body:"Browser corrected historical evidence",shared_with_contacts:false},
+  ]);
+  expect((await call("ccp_sessions_details",{sessionId})).data).toEqual(session.data);
+  expect((await call("ccp_workplace_context_get",{})).data.selectedWorkplaceId).toBe(f.workplaceId);
+
+  const other=await admin.from("teaching_sessions").select("id")
+   .neq("teacher_id",teacher_id).limit(1).single();
+  expect(other.error).toBeNull();
+  for(const unusable of ["not-a-uuid",randomUUID(),other.data!.id]){
+   await page.goto("/schedule?session="+unusable+"#lesson-notes-"+unusable);
+   await expect(page.getByText("That lesson is unavailable in this calendar view.",{exact:true})).toBeVisible();
+   await expect(page.locator("#lesson-notes-"+unusable)).toHaveCount(0);
+  }
+  const personal=await admin.from("workplaces").select("id")
+   .eq("teacher_id",teacher_id).eq("kind","personal").single();
+  expect(personal.error).toBeNull();
+  expect((await call("ccp_workplace_context_set",{
+   selectedWorkplaceId:personal.data!.id,expectedSelectedWorkplaceId:f.workplaceId,confirmed:true,
+  })).error).toBeUndefined();
+  await page.goto(href);
+  await expect(page.getByText("That lesson is unavailable in this calendar view.",{exact:true})).toBeVisible();
+  await expect(page.locator("#lesson-notes-"+sessionId)).toHaveCount(0);
+  expect((await call("ccp_workplace_context_get",{})).data.selectedWorkplaceId).toBe(personal.data!.id);
+  expect((await call("ccp_students_lifecycle_preview",{studentId})).data).toEqual(before);
+ });

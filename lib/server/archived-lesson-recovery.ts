@@ -3,6 +3,7 @@ import {z} from "zod";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {CoachError,assertSessionSchedule} from "@/lib/server/coach-service";
 import {studentLifecyclePreview} from "@/lib/server/student-lifecycle-service";
+import {loadAccountEntitlementSummary} from "@/lib/server/entitlements";
 import {lessonIntervalConflicts} from "@/lib/server/lesson-schedule-inference";
 
 const uuid=z.string().uuid();
@@ -40,6 +41,42 @@ export type ArchivedLessonRecoveryCommitInput=z.infer<typeof archivedLessonRecov
 const issue=(code:string,message:string,studentId?:string)=>
  ({code,message,...(studentId?{studentId}:{})});
 
+type CreditPackageSummary={
+ workplaceId:string|null;purchasedCredits:number;redeemedCredits:number;
+ adjustmentCredits:number;expiresOn:string|null;
+};
+
+function retainedCreditNotice(packages:unknown,workplaceId:string,lessonDate:string){
+ if(!Array.isArray(packages))
+  throw new CoachError("PREVIEW_UNAVAILABLE",503,"Cannot verify held credit evidence");
+ const counts={packagesWithUnusedUnits:0,expiredBeforeLesson:0,scopedToAnotherWorkplace:0};
+ for(const p of packages as CreditPackageSummary[]){
+  if(!p||![p.purchasedCredits,p.redeemedCredits,p.adjustmentCredits].every(Number.isSafeInteger))
+   throw new CoachError("PREVIEW_UNAVAILABLE",503,"Cannot verify held credit balances");
+  if(p.purchasedCredits-p.redeemedCredits+p.adjustmentCredits<=0)continue;
+  counts.packagesWithUnusedUnits++;
+  if(p.expiresOn!==null&&p.expiresOn<lessonDate)counts.expiredBeforeLesson++;
+  if(p.workplaceId!==null&&p.workplaceId!==workplaceId)counts.scopedToAnotherWorkplace++;
+ }
+ return counts;
+}
+
+async function recoveryCapacity(db:SupabaseClient,requestedReactivations:number){
+ try{
+  const {studentCapacity,activeStudentCount}=await loadAccountEntitlementSummary(db);
+  const limit=studentCapacity.unlimited?null:studentCapacity.limit;
+  if(!studentCapacity.unlimited&&limit===null)throw new Error("Missing student ceiling");
+  const remaining=limit===null?null:Math.max(0,limit-activeStudentCount);
+  const projectedActiveStudentCount=activeStudentCount+requestedReactivations;
+  return {
+   advisory:true,requestedReactivations,activeStudentCount,projectedActiveStudentCount,
+   limit,remaining,blocked:limit!==null&&projectedActiveStudentCount>limit,
+  };
+ }catch{
+  throw new CoachError("PREVIEW_UNAVAILABLE",503,"Cannot verify aggregate active-student capacity");
+ }
+}
+
 function lessonDay(startsAt:string,timezone:string){
  const parts=new Intl.DateTimeFormat("en-US",{
   timeZone:timezone,year:"numeric",month:"2-digit",day:"2-digit",
@@ -58,7 +95,8 @@ export async function teacherArchivedLessonRecoveryPreview(
  const args=archivedLessonRecoveryPreviewSchema.parse(input);
  assertSessionSchedule(args.startsAt,args.durationMinutes);
  const issues:Array<{code:string;message:string;studentId?:string}>=[];
- if(Date.parse(args.startsAt)<Date.now())
+ const isHistorical=Date.parse(args.startsAt)<Date.now();
+ if(isHistorical)
   issues.push(issue("HISTORICAL_LESSON_NO_REACTIVATION",
    "A past lesson must be handled as a historical correction, not by reactivating a student"));
  const [{data:workplace,error:workplaceError},
@@ -88,24 +126,37 @@ export async function teacherArchivedLessonRecoveryPreview(
  const activeEnrolled=new Set((enrollments??[])
   .filter(e=>(e.starts_on===null||e.starts_on<=day)&&
     (e.ends_on===null||e.ends_on>=day)).map(e=>e.student_id));
- const archived=(students??[]).filter(s=>s.archived_at!==null);
- const lifecycle=await Promise.all(archived.map(async s=>{
+ const archived=args.studentIds.flatMap(id=>{
+  const student=byId.get(id);
+  return student&&student.archived_at!==null?[student]:[];
+ });
+ const fullyOwned=Boolean(workplace)&&byId.size===args.studentIds.length;
+ const capacity=fullyOwned&&!isHistorical&&archived.length>0?
+  await recoveryCapacity(db,archived.length):null;
+ if(capacity?.blocked)issues.push(issue("CAPACITY_EXCEEDED",
+  "This exact roster would exceed active-student capacity. Review a smaller roster or the account limit; no one has been reactivated."));
+ const checked=await Promise.all(archived.map(async s=>{
   const details=await studentLifecyclePreview(db,teacherId,{studentId:s.id});
   const valid=details.archived===true&&details.canReactivate===true&&
     Array.isArray(details.previousWorkplaceIds)&&
     details.previousWorkplaceIds.includes(args.workplaceId);
-  if(!valid)issues.push(issue("WORKPLACE_NOT_PREVIOUSLY_VERIFIED",
-   "Reactivation requires this student's previously verified workplace",s.id));
-  return {studentId:s.id,name:s.name,expectedUpdatedAt:details.expectedUpdatedAt,
+  return {valid,entry:{studentId:s.id,name:s.name,expectedUpdatedAt:details.expectedUpdatedAt,
    previousWorkplaceIds:details.previousWorkplaceIds,
-   creditPolicy:details.creditPolicy??"hold_without_refund_or_expiry_change"};
+   creditPolicy:details.creditPolicy??"hold_without_refund_or_expiry_change",
+   creditNotice:fullyOwned&&!isHistorical&&valid?
+    retainedCreditNotice(details.creditPackages,args.workplaceId,day):null}};
  }));
+ for(const {valid,entry} of checked){
+  if(!valid)issues.push(issue("WORKPLACE_NOT_PREVIOUSLY_VERIFIED",
+   "Reactivation requires this student's previously verified workplace",entry.studentId));
+ }
+ const lifecycle=checked.map(({entry})=>entry);
  if(archived.length===0)issues.push(issue("NO_ARCHIVED_STUDENT",
   "Use ordinary lesson creation when nobody needs reactivation"));
- for(const s of students??[]){
-  if(s.archived_at===null&&!activeEnrolled.has(s.id))
+ for(const id of args.studentIds){
+  if(byId.get(id)?.archived_at===null&&!activeEnrolled.has(id))
    issues.push(issue("STUDENT_NOT_ENROLLED",
-    "An active student is not enrolled in this workplace for the scheduled date",s.id));
+    "An active student is not enrolled in this workplace for the scheduled date",id));
  }
  if(issues.length===0){
   const collisions=await lessonIntervalConflicts(db,teacherId,{
@@ -124,6 +175,7 @@ export async function teacherArchivedLessonRecoveryPreview(
     expectedUpdatedAt:s?.archived_at!==null?s?.updated_at:null};
   }),
   reactivations:lifecycle,
+  capacity,
   proposedCommit:canCommit?{
    ...args,reactivations:lifecycle.map(s=>({
     studentId:s.studentId,expectedUpdatedAt:s.expectedUpdatedAt,
@@ -135,9 +187,9 @@ export async function teacherArchivedLessonRecoveryPreview(
    workplaceId:args.workplaceId,lessonStartsAt:args.startsAt,
    lessonDurationMinutes:args.durationMinutes,
    historicalRecords:"preserved",groupMemberships:"unchanged",
-   credits:"retained; no redemption, transfer, extension or refund",
+   credits:"Retained only. Notice counts are independent of funding and do not authorize spending, redemption, transfer, extension or refund.",
    writesPerformed:false,
-   nextStep:"Ask the teacher to explicitly approve each archived ID, workplace, lesson time and reason. Then call ccp_lessons_archived_recovery_commit with the exact reviewed revisions and a new request ID. Cancelling leaves everything unchanged.",
+   nextStep:capacity?.blocked?"Review a smaller roster or account capacity before requesting approval. No changes were made.":isHistorical?"Review the existing session and use the canonical session notes workflow for a note correction without reactivation. Do not create a new lesson from this preview.":"Ask the teacher to explicitly approve each archived ID, workplace, lesson time and reason. Then call ccp_lessons_archived_recovery_commit with the exact reviewed revisions and a new request ID. Cancelling leaves everything unchanged.",
   },
  };
 }
@@ -160,6 +212,9 @@ export async function teacherArchivedLessonRecoveryCommit(
   if(error.code==="42501"||/NOT_FOUND|NOT_PREVIOUSLY_VERIFIED/.test(message))
    throw new CoachError("NOT_FOUND",404,
     "A student or historically verified workplace is no longer available");
+  if(error.code==="23514"&&message==="CAPACITY_EXCEEDED")
+   throw new CoachError("CAPACITY_EXCEEDED",409,
+    "Active-student capacity changed or cannot fit the approved roster; no changes were saved");
   if(error.code==="23505"||error.code==="23P01"||
     error.code==="23514"||error.code==="23503"||
     /CONFLICT|REVISION|CAPACITY|FUTURE_COMMITMENTS|ALREADY_ACTIVE/.test(message))

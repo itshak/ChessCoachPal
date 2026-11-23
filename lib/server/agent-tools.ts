@@ -1550,7 +1550,7 @@ const catalogue = [
   },
   {
     name:"ccp_lessons_archived_recovery_preview",
-    description:"For a new future lesson with an archived learner, review exact stable student IDs (1–50), explicitly chosen historically verified workplace, schedule, current lifecycle revision and retained credits. Read-only; resolve names first, then ask the coach whether to reactivate and create the lesson. Never use this for a historical correction.",
+    description:"For a new future lesson with an archived learner, review exact stable student IDs (1–50), explicitly chosen historically verified workplace, schedule, current lifecycle revisions, aggregate advisory quota and retained credit notices without funding claims. Read-only; resolve names first, then ask the coach whether to reactivate and create the lesson. Never use this for a historical correction.",
     schema:archivedLessonRecoveryPreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
