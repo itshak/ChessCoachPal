@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "mode": "single-canonical-baseline",
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "aac96c09bc36d25e0a56d545edbaa9fd687bffa50c93fce4b7881499d4298628",
+  "baselineSha256": "1ed51d239a4a848c7f8f415a7996fab91f4ed679d4b39be77b95ece52f4d70eb",
   "operatorCutoverRequired": true,
   "baselineRequiredObjects": [
     "students",
@@ -20,6 +20,7 @@
     "ccp_teacher_event_save_replay",
     "ccp_restore_canonical_chess_rows",
     "teacher_settings",
+    "ccp_teacher_spreadsheet_review",
     "compensation_agreements",
     "student_federation_memberships",
     "student_rating_snapshots",

@@ -7,9 +7,9 @@ async function auth(){
 }
 const fail=(error:unknown)=>NextResponse.json({
  error:error instanceof SpreadsheetImportError?error.message:"Spreadsheet unavailable",
+ code:error instanceof SpreadsheetImportError?error.code:"SPREADSHEET_UNAVAILABLE",
 },{status:error instanceof SpreadsheetImportError?error.status:500});
-import {teacherSpreadsheetParse,teacherSpreadsheetPreview} from "@/lib/server/teacher-spreadsheet-import";
-import type {ColumnMapping} from "@/lib/spreadsheet-import";
+import {teacherSpreadsheetParse,teacherSpreadsheetReview,spreadsheetReviewSchema} from "@/lib/server/teacher-spreadsheet-import";
 export async function POST(req:NextRequest){
  const teacher=await auth();if(!teacher)return NextResponse.json({error:"Unauthorized"},{status:401});
  const form=await req.formData().catch(()=>null);
@@ -20,10 +20,8 @@ export async function POST(req:NextRequest){
 }
 export async function PUT(req:NextRequest){
  const teacher=await auth();if(!teacher)return NextResponse.json({error:"Unauthorized"},{status:401});
- const body=await req.json().catch(()=>null);
- if(!Array.isArray(body?.rows)||!body.mapping)
-   return NextResponse.json({error:"rows and mapping are required"},{status:400});
- try{return NextResponse.json(teacherSpreadsheetPreview({
-  rows:body.rows as Record<string,string>[],mapping:body.mapping as ColumnMapping,
- }));}catch(error){return fail(error);}
+ const input=spreadsheetReviewSchema.safeParse(await req.json().catch(()=>null));
+ if(!input.success)return NextResponse.json({code:"VALIDATION_ERROR",error:"Invalid spreadsheet review"},{status:400});
+ try{return NextResponse.json(await teacherSpreadsheetReview(teacher.db,teacher.id,input.data));}
+ catch(error){return fail(error);}
 }

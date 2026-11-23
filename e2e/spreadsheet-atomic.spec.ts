@@ -6,7 +6,7 @@ import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlemen
 
 const key=()=>randomUUID();
 const row=(name:string,sourceRow:number)=>({
- studentName:name,sourceRow,familyKey:"solo:"+name.toLowerCase()+":"+sourceRow,
+ studentName:name,sourceRow,archived:false,
  birthdate:null,level:null,teacherNotes:null,guardianName:null,familyName:null,
  email:null,phone:null,secondaryName:null,secondaryEmail:null,secondaryPhone:null,
 });
@@ -36,8 +36,17 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
  const idempotencyKey=key();
  const name1="Atomic learner one "+key(),name2="Atomic learner two "+key();
  const rows=[{...row(name1,2),workplaceId},{...row(name2,3),workplaceId}];
+ const unreviewed=await auth.rpc("ccp_teacher_spreadsheet_commit",{p_rows:rows,p_idempotency_key:idempotencyKey});
+ expect(unreviewed.error?.message).toBe("IMPORT_REVIEW_REQUIRED");
+ const approve=async(input:typeof rows)=>{
+  const result=await auth.rpc("ccp_teacher_spreadsheet_review",{p_rows:input});
+  expect(result.error).toBeNull();
+  expect(result.data.canCommit).toBe(true);
+  return {...result.data.envelope,confirmed:true};
+ };
+ const bulk=await approve(rows);
  const failed=await auth.rpc("ccp_teacher_spreadsheet_commit",{
-   p_rows:rows,p_idempotency_key:idempotencyKey,
+   p_rows:bulk,p_idempotency_key:idempotencyKey,
  });
  expect(failed.error?.code).toBe("23514");
  expect(failed.error?.message).toContain("CAPACITY_EXCEEDED");
@@ -49,8 +58,9 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
  }
  expect((await admin.from("teacher_entitlement_state").select("active_student_count")
    .eq("teacher_id",id).single()).data?.active_student_count).toBe(0);
+ const single=await approve([rows[0]]);
  const allowed=await auth.rpc("ccp_teacher_spreadsheet_commit",{
-   p_rows:[rows[0]],p_idempotency_key:idempotencyKey,
+   p_rows:single,p_idempotency_key:idempotencyKey,
  });
  expect(allowed.error).toBeNull();
  expect(allowed.data.studentsCreated).toBe(1);
@@ -58,12 +68,12 @@ test("spreadsheet import rollback is atomic when hosted quota is exceeded",async
  expect(allowed.data.enrollmentsCreated).toBe(1);
  expect(allowed.data.receiptId).toBe(idempotencyKey);
  const repeated=await auth.rpc("ccp_teacher_spreadsheet_commit",{
-   p_rows:[rows[0]],p_idempotency_key:idempotencyKey,
+   p_rows:single,p_idempotency_key:idempotencyKey,
  });
  expect(repeated.error).toBeNull();
  expect(repeated.data).toEqual(allowed.data);
  const conflict=await auth.rpc("ccp_teacher_spreadsheet_commit",{
-   p_rows:[rows[1]],p_idempotency_key:idempotencyKey,
+   p_rows:bulk,p_idempotency_key:idempotencyKey,
  });
  expect(conflict.error?.code).toBe("23505");
  expect(conflict.error?.message).toContain("IMPORT_REPLAY_CONFLICT");
@@ -93,8 +103,12 @@ test("website spreadsheet import retries have stable tenant-scoped receipts",asy
  const workplaceId=owned.find(w=>w.name==="Private coaching")?.id??owned[0]?.id;
  expect(workplaceId).toBeTruthy();
  const name="Web import replay "+key();
- const body={rows:[{"Student Name":name,"Guardian Name":"Parent of "+name}],
+ const reviewInput={rows:[{"Student Name":name,"Guardian Name":"Parent of "+name}],
    mapping:{student_name:"Student Name",guardian_name:"Guardian Name"},workplaceId};
+ const review=await page.request.put("/api/import/spreadsheet/parse",{data:reviewInput});
+ expect(review.status()).toBe(200);
+ const {reviewDigest,reviewedEnvelope}=await review.json();
+ const body={...reviewInput,confirmed:true,reviewDigest,reviewedEnvelope};
  const first=await page.request.post("/api/import/spreadsheet/commit",{data:body});
  expect(first.status(),await first.text()).toBe(200);
  const result=await first.json();
@@ -104,9 +118,12 @@ test("website spreadsheet import retries have stable tenant-scoped receipts",asy
  const replay=await page.request.post("/api/import/spreadsheet/commit",{data:body});
  expect(replay.status(),await replay.text()).toBe(200);
  expect(await replay.json()).toEqual(result);
+ const changedInput={...reviewInput,rows:[{"Student Name":name+" changed","Guardian Name":"Parent of "+name}]};
+ const changedReview=await page.request.put("/api/import/spreadsheet/parse",{data:changedInput});
+ expect(changedReview.status()).toBe(200);
+ const changedApproval=await changedReview.json();
  const changed=await page.request.post("/api/import/spreadsheet/commit",{
-   data:{...body,idempotencyKey:result.receiptId,rows:[{"Student Name":name+" changed",
-     "Guardian Name":"Parent of "+name}]},
+   data:{...changedInput,confirmed:true,reviewDigest:changedApproval.reviewDigest,reviewedEnvelope:changedApproval.reviewedEnvelope,idempotencyKey:result.receiptId},
  });
  expect(changed.status()).toBe(409);
  expect((await changed.json()).code).toBe("IMPORT_REPLAY_CONFLICT");

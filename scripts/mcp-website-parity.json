@@ -1044,7 +1044,7 @@
       "existingTools": [
         "ccp_import_spreadsheet_commit"
       ],
-      "explanation": "Explicit confirmed delegated MCP import and authenticated website commit share tenant-scoped atomic SQL receipt, duplicate mapping and idempotent replay, accepted in OAuth/browser E2E 42709042700; separate rollback tests also exist. Candidate archived-column browser commit and MCP replay, preserving active/archived roster membership, are covered in e2e/parity-spreadsheet-commit.spec.ts. 2026-11-19 draft import safeguard: workplaceId is now required when multiple owned workplaces exist, with structured WORKPLACE_REQUIRED choices available to both website and delegated MCP; the SQL writer persists the chosen workplace enrollment atomically for new or existing students and rolls back every row plus receipts on quota failure. Candidate tests e2e/spreadsheet-atomic.spec.ts exercise transactional rollback/receipt replay. e2e/parity-spreadsheet-commit.spec.ts also verifies typed CAPACITY_EXCEEDED from both authenticated interfaces, independent rollback of every student/contact/enrollment/receipt/counter, and same-key successful retry and replay. This is a PR-head candidate, not merged-main or final temporal membership acceptance.",
+      "explanation": "Website and delegated MCP commit one exact approved import envelope against the same canonical owner-scoped SQL writer. Same-key exact receipt lookup precedes current venue/year checks; fresh legacy arrays are denied. Reviewed per-row and batch enrollment, alias/explicit existing-ID choice, active venue and local-day revalidation, rollback, keyboard retry and currency of review are exercised in e2e/parity-spreadsheet-commit.spec.ts and e2e/spreadsheet-atomic.spec.ts.",
       "evidenceTest": "e2e/parity-spreadsheet-commit.spec.ts"
     },
     {
@@ -1059,7 +1059,7 @@
         "ccp_import_spreadsheet_parse",
         "ccp_import_spreadsheet_preview"
       ],
-      "explanation": "Website multipart CSV parse/mapping and preview match delegated MCP parse/preview on exact normalized rows, accepted in OAuth/browser E2E 42709042700. Candidate archived-state mapping and per-row preview equivalence are covered in e2e/parity-spreadsheet-commit.spec.ts.",
+      "explanation": "Website multipart CSV parse/mapping and preview match delegated MCP parse/preview on exact normalized rows, accepted in OAuth/browser E2E 42709042700. Archived-state mapping, explicit active workplace review, canonical review digest and no-write stale/foreign denials are covered in e2e/parity-spreadsheet-commit.spec.ts.",
       "evidenceTest": "e2e/parity-spreadsheet-commit.spec.ts"
     },
     {
