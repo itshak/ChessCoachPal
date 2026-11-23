@@ -3431,6 +3431,213 @@ ALTER TABLE public.teacher_spreadsheet_import_receipts ENABLE ROW LEVEL SECURITY
 REVOKE ALL ON public.teacher_spreadsheet_import_receipts FROM PUBLIC,anon,authenticated;
 GRANT ALL ON public.teacher_spreadsheet_import_receipts TO service_role;
 
+-- One authoritative name normalization for import review and direct commit:
+-- UTF-8 NFKC, database whitespace collapse/trim, database-collation lowercase.
+CREATE FUNCTION public.ccp_spreadsheet_import_name(p_value text)
+RETURNS text LANGUAGE sql IMMUTABLE STRICT SECURITY INVOKER
+SET search_path=pg_catalog,pg_temp AS $ccp_import_name$
+ SELECT lower(btrim(regexp_replace(normalize(p_value,NFKC),'[[:space:]]+',' ','g')));
+$ccp_import_name$;
+REVOKE ALL ON FUNCTION public.ccp_spreadsheet_import_name(text) FROM PUBLIC,anon,authenticated,service_role;
+
+-- Canonical order for one explicit site or a sorted explicit multi-site set.
+CREATE FUNCTION public.ccp_spreadsheet_import_target_ids(p_row jsonb)
+RETURNS text[] LANGUAGE sql IMMUTABLE STRICT SECURITY INVOKER
+SET search_path=pg_catalog,pg_temp AS $ccp_import_targets$
+ SELECT CASE WHEN jsonb_typeof(p_row->'workplaceIds')='array'
+  THEN ARRAY(SELECT lower(x) FROM jsonb_array_elements_text(p_row->'workplaceIds') x ORDER BY lower(x))
+  ELSE ARRAY[lower(p_row->>'workplaceId')] END;
+$ccp_import_targets$;
+REVOKE ALL ON FUNCTION public.ccp_spreadsheet_import_target_ids(jsonb) FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION public.ccp_teacher_spreadsheet_review(p_rows jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $ccp_spreadsheet_review$
+DECLARE
+ v_teacher uuid:=auth.uid();v_row jsonb;v_source integer;
+ v_name text;v_zone text;v_day date;
+ v_venue public.workplaces%ROWTYPE;v_membership public.workplace_enrollments%ROWTYPE;
+ v_memberships jsonb;v_target_ids_for_row text[];v_target text;v_resolved_row_targets jsonb;
+ v_target_views jsonb:='[]';v_named_id uuid;v_name_count integer;v_field record;v_field_max integer;v_student public.students%ROWTYPE;v_approved jsonb;
+ v_request_rows jsonb:='[]';v_resolutions jsonb:='[]';v_venues jsonb;
+ v_matches jsonb;v_issues jsonb:='[]';v_ids uuid[]:=ARRAY[]::uuid[];
+ v_target_ids uuid[]:=ARRAY[]::uuid[];v_student_id uuid;v_key text;
+ v_uuid_pattern constant text:='^[[:xdigit:]]{8}(-[[:xdigit:]]{4}){3}-[[:xdigit:]]{12}$';
+BEGIN
+ IF v_teacher IS NULL OR NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=v_teacher) THEN
+  RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501';
+ END IF;
+ IF jsonb_typeof(p_rows) IS DISTINCT FROM 'array' OR jsonb_array_length(p_rows) NOT BETWEEN 1 AND 500 THEN
+  RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE='22023';
+ END IF;
+ SELECT coalesce((SELECT timezone FROM public.teacher_settings WHERE teacher_id=v_teacher),'UTC')
+ INTO v_zone;
+ v_day:=(clock_timestamp() AT TIME ZONE v_zone)::date;
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+  IF jsonb_typeof(v_row) IS DISTINCT FROM 'object'
+   OR jsonb_typeof(v_row->'sourceRow') IS DISTINCT FROM 'number'
+   OR coalesce(v_row->>'sourceRow','') !~ '^[1-9][0-9]{0,6}$'
+   OR jsonb_typeof(v_row->'studentName') IS DISTINCT FROM 'string'
+   OR char_length(btrim(v_row->>'studentName')) NOT BETWEEN 1 AND 200
+   OR jsonb_typeof(v_row->'archived') IS DISTINCT FROM 'boolean'
+   OR (v_row-ARRAY['sourceRow','studentName','archived','workplaceId','workplaceIds','sourceWorkplaceName','studentId',
+    'birthdate','level','teacherNotes','guardianName','familyName','email','phone',
+    'secondaryName','secondaryEmail','secondaryPhone'])<>'{}'::jsonb THEN
+   RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE='22023';
+  END IF;
+  FOR v_field IN SELECT key,value FROM jsonb_each(v_row) WHERE key IN (
+    'birthdate','level','teacherNotes','guardianName','familyName','email','phone',
+    'secondaryName','secondaryEmail','secondaryPhone','sourceWorkplaceName','workplaceId','studentId'
+  ) LOOP
+   v_field_max:=CASE v_field.key
+    WHEN 'birthdate' THEN 10 WHEN 'level' THEN 120 WHEN 'teacherNotes' THEN 50000
+    WHEN 'email' THEN 254 WHEN 'secondaryEmail' THEN 254 WHEN 'phone' THEN 50
+    WHEN 'secondaryPhone' THEN 50 WHEN 'workplaceId' THEN 36 WHEN 'studentId' THEN 36
+    WHEN 'sourceWorkplaceName' THEN 120 ELSE 200 END;
+   IF jsonb_typeof(v_field.value) NOT IN ('string','null')
+    OR char_length(v_field.value#>>'{}')>v_field_max THEN
+    RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE='22023';
+   END IF;
+  END LOOP;
+  IF nullif(v_row->>'birthdate','') IS NOT NULL
+   AND (v_row->>'birthdate') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN
+    RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE='22023';
+  END IF;
+  v_source:=(v_row->>'sourceRow')::integer;
+  v_name:=public.ccp_spreadsheet_import_name(v_row->>'studentName');
+  IF v_source>1000000 OR v_name='' THEN RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE='22023'; END IF;
+  IF (SELECT count(*) FROM jsonb_array_elements(p_rows) r WHERE r->>'sourceRow'=v_row->>'sourceRow')>1
+   OR (nullif(v_row->>'studentId','') IS NOT NULL AND
+       (SELECT count(*) FROM jsonb_array_elements(p_rows) r
+         WHERE lower(r->>'studentId')=lower(v_row->>'studentId'))>1) THEN
+   v_issues:=v_issues||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'code','DUPLICATE_IMPORT_IDENTITY'));
+   CONTINUE;
+  END IF;
+  IF v_row ? 'workplaceIds' THEN
+   IF v_row ?| ARRAY['workplaceId','sourceWorkplaceName'] THEN
+    v_issues:=v_issues||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'code','WORKPLACE_MODE_CONFLICT'));
+    CONTINUE;
+   END IF;
+   IF jsonb_typeof(v_row->'workplaceIds') IS DISTINCT FROM 'array' OR
+      jsonb_array_length(v_row->'workplaceIds') NOT BETWEEN 2 AND 20 OR
+      EXISTS(SELECT 1 FROM jsonb_array_elements(v_row->'workplaceIds') x WHERE jsonb_typeof(x)<>'string') THEN
+    RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE='22023';
+   END IF;
+   v_target_ids_for_row:=public.ccp_spreadsheet_import_target_ids(v_row);
+   IF cardinality(v_target_ids_for_row)<>(SELECT count(DISTINCT x) FROM unnest(v_target_ids_for_row) x) THEN
+    v_issues:=v_issues||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'code','WORKPLACE_TARGET_DUPLICATE'));
+    CONTINUE;
+   END IF;
+   v_row:=v_row||jsonb_build_object('workplaceIds',v_target_ids_for_row);
+  ELSE
+   IF nullif(v_row->>'sourceWorkplaceName','') IS NOT NULL THEN
+    SELECT count(*),min(w.id::text)::uuid INTO v_name_count,v_named_id
+    FROM public.workplaces w WHERE w.teacher_id=v_teacher AND w.archived_at IS NULL
+     AND public.ccp_spreadsheet_import_name(w.name)=public.ccp_spreadsheet_import_name(v_row->>'sourceWorkplaceName');
+    IF v_name_count<>1 OR (v_row ? 'workplaceId' AND v_row->>'workplaceId' IS DISTINCT FROM v_named_id::text) THEN
+     v_issues:=v_issues||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'code',
+       CASE WHEN v_name_count>1 THEN 'WORKPLACE_NAME_AMBIGUOUS' ELSE 'WORKPLACE_NOT_AVAILABLE' END));
+     CONTINUE;
+    END IF;
+    v_row:=v_row||jsonb_build_object('workplaceId',v_named_id);
+   END IF;
+   v_target_ids_for_row:=public.ccp_spreadsheet_import_target_ids(v_row);
+  END IF;
+  v_resolved_row_targets:='[]';
+  FOREACH v_target IN ARRAY v_target_ids_for_row LOOP
+   IF coalesce(v_target,'') !~ v_uuid_pattern THEN EXIT; END IF;
+   SELECT * INTO v_venue FROM public.workplaces w
+   WHERE w.teacher_id=v_teacher AND w.id=v_target::uuid AND w.archived_at IS NULL;
+   IF NOT FOUND THEN EXIT; END IF;
+   v_resolved_row_targets:=v_resolved_row_targets||jsonb_build_array(jsonb_build_object(
+    'sourceRow',v_source,'workplaceId',v_venue.id,'workplaceName',v_venue.name));
+   v_ids:=array_append(v_ids,v_venue.id);
+  END LOOP;
+  IF jsonb_array_length(v_resolved_row_targets)<>cardinality(v_target_ids_for_row) THEN
+   v_issues:=v_issues||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'code','WORKPLACE_NOT_AVAILABLE'));
+   CONTINUE;
+  END IF;
+  IF NOT v_row ? 'workplaceIds' THEN
+   v_row:=v_row||jsonb_build_object('workplaceId',v_target_ids_for_row[1]::uuid);
+  END IF;
+  v_target_views:=v_target_views||v_resolved_row_targets;
+  v_request_rows:=v_request_rows||jsonb_build_array(v_row);
+  IF coalesce(v_row->>'studentId','')<>'' THEN
+   IF (v_row->>'studentId') !~ v_uuid_pattern THEN
+    RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE='22023';
+   END IF;
+   v_student_id:=(v_row->>'studentId')::uuid;
+   SELECT * INTO v_student FROM public.students s WHERE s.teacher_id=v_teacher AND s.id=v_student_id
+    AND (public.ccp_spreadsheet_import_name(s.name)=v_name OR EXISTS(SELECT 1 FROM unnest(s.name_aliases) a WHERE public.ccp_spreadsheet_import_name(a)=v_name));
+   IF NOT FOUND OR v_student_id=ANY(v_target_ids) THEN
+    v_issues:=v_issues||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'code','IMPORT_IDENTITY_NOT_AVAILABLE'));
+    CONTINUE;
+   END IF;
+   IF v_student.archived_at IS NOT NULL OR coalesce(v_row->>'archived','false')='true' THEN
+    v_issues:=v_issues||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'code','ARCHIVED_IMPORT_IDENTITY'));
+    CONTINUE;
+   END IF;
+   v_target_ids:=array_append(v_target_ids,v_student_id);
+   v_memberships:='[]';
+   FOREACH v_target IN ARRAY v_target_ids_for_row LOOP
+    SELECT e.* INTO v_membership FROM public.workplace_enrollments e
+     WHERE e.teacher_id=v_teacher AND e.workplace_id=v_target::uuid AND e.student_id=v_student_id
+     AND e.cancelled_at IS NULL AND (e.starts_on IS NULL OR e.starts_on<=v_day)
+     AND (e.ends_on IS NULL OR e.ends_on>=v_day)
+     ORDER BY e.starts_on DESC NULLS LAST,e.id LIMIT 1;
+    IF NOT FOUND AND EXISTS(SELECT 1 FROM public.workplace_enrollments e
+     WHERE e.teacher_id=v_teacher AND e.workplace_id=v_target::uuid AND e.student_id=v_student_id
+       AND e.cancelled_at IS NULL AND e.starts_on>v_day) THEN EXIT; END IF;
+    v_memberships:=v_memberships||jsonb_build_array(jsonb_build_object('workplaceId',v_target::uuid,'mode',
+     CASE WHEN v_membership.id IS NULL THEN 'new' ELSE 'current' END,'id',v_membership.id,'revision',v_membership.revision));
+   END LOOP;
+   IF jsonb_array_length(v_memberships)<>cardinality(v_target_ids_for_row) THEN
+    v_issues:=v_issues||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'code','IMPORT_FUTURE_ENROLLMENT_CONFLICT'));
+    CONTINUE;
+   END IF;
+   v_resolutions:=v_resolutions||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'mode','existing',
+    'studentId',v_student_id,'name',v_student.name,'expectedUpdatedAt',v_student.updated_at,
+    'enrollmentRequested',true,'memberships',v_memberships));
+  ELSE
+   SELECT jsonb_agg(q ORDER BY q->>'id') INTO v_matches FROM (
+    SELECT jsonb_build_object('id',s.id,'name',s.name,'archived',s.archived_at IS NOT NULL) q
+    FROM public.students s WHERE s.teacher_id=v_teacher
+     AND (public.ccp_spreadsheet_import_name(s.name)=v_name OR EXISTS(SELECT 1 FROM unnest(s.name_aliases) a WHERE public.ccp_spreadsheet_import_name(a)=v_name))
+    ORDER BY s.id LIMIT 20
+   ) owner_matches;
+   IF v_matches IS NOT NULL THEN
+    v_issues:=v_issues||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'code','IMPORT_IDENTITY_CHOICE_REQUIRED',
+      'candidates',v_matches));
+    CONTINUE;
+   END IF;
+   IF (SELECT count(*) FROM jsonb_array_elements(p_rows) r
+         WHERE public.ccp_spreadsheet_import_name(r->>'studentName')=v_name)>1 THEN
+    v_issues:=v_issues||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'code','DUPLICATE_IMPORT_IDENTITY'));
+    CONTINUE;
+   END IF;
+   v_key:=CASE WHEN coalesce(v_row->>'archived','false')='true' THEN 'createArchived' ELSE 'create' END;
+   SELECT jsonb_agg(jsonb_build_object('workplaceId',x::uuid,
+     'mode',CASE WHEN v_key='create' THEN 'new' ELSE 'none' END) ORDER BY x)
+   INTO v_memberships FROM unnest(v_target_ids_for_row) x;
+   v_resolutions:=v_resolutions||jsonb_build_array(jsonb_build_object('sourceRow',v_source,'mode',v_key,
+     'enrollmentRequested',v_key='create','memberships',v_memberships));
+  END IF;
+ END LOOP;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',w.id,'name',w.name,'timezone',w.timezone,'revision',w.revision,'expectedUpdatedAt',w.updated_at) ORDER BY w.id),'[]'::jsonb)
+ INTO v_venues FROM public.workplaces w WHERE w.teacher_id=v_teacher AND w.id=ANY(v_ids) AND w.archived_at IS NULL;
+ IF jsonb_array_length(v_issues)=0 THEN
+  v_approved:=jsonb_build_object('version',1,'teacherId',v_teacher,
+    'calendar',jsonb_build_object('day',v_day,'timezone',v_zone),
+    'venues',v_venues,'rows',v_request_rows,'identities',v_resolutions);
+ END IF;
+ RETURN jsonb_build_object('canCommit',v_approved IS NOT NULL,'writesPerformed',false,
+  'issues',v_issues,'identities',v_resolutions,'workplaceTargets',v_target_views,'envelope',v_approved,
+  'calendar',jsonb_build_object('day',v_day,'timezone',v_zone),'venues',v_venues);
+END;
+$ccp_spreadsheet_review$;
+REVOKE ALL ON FUNCTION public.ccp_teacher_spreadsheet_review(jsonb) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_teacher_spreadsheet_review(jsonb) TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.ccp_teacher_spreadsheet_commit(
  p_rows jsonb, p_idempotency_key uuid
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
@@ -3441,48 +3648,69 @@ DECLARE
  v_names jsonb:='{}'::jsonb; v_group_ids jsonb:='{}'::jsonb;
  v_name text; v_key text; v_email text; v_contact uuid; v_student_id uuid; v_parent text;
  v_created integer:=0; v_skipped integer:=0; v_contacts integer:=0;
- v_enrolled integer:=0; v_workplace uuid;
+ v_enrolled integer:=0; v_workplace uuid;v_target text;
  v_skipped_rows jsonb:='[]'::jsonb; v_result jsonb;
- v_row_number integer;
+ v_row_number integer; v_review jsonb; v_enrollment_day date; v_zone text;
 BEGIN
  IF v_teacher IS NULL THEN
    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
  END IF;
- IF p_idempotency_key IS NULL OR jsonb_typeof(p_rows) IS DISTINCT FROM 'array'
-    OR jsonb_array_length(p_rows) NOT BETWEEN 1 AND 500 THEN
+ IF p_idempotency_key IS NULL OR coalesce(jsonb_typeof(p_rows),'null') NOT IN ('array','object') THEN
    RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE='22023';
  END IF;
- -- Lock once for the entire batch. The per-student quota trigger obtains this
- -- same lock and therefore cannot race with another import or a direct create.
+ -- Imports lock the teacher row before venue/student rows, like quota writers.
  PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501'; END IF;
- v_digest:=md5(p_rows::text);
- INSERT INTO public.teacher_spreadsheet_import_receipts
-    (teacher_id,idempotency_key,request_hash,receipt)
- VALUES(v_teacher,p_idempotency_key,v_digest,'{}'::jsonb)
- ON CONFLICT DO NOTHING;
- IF NOT FOUND THEN
-   SELECT * INTO v_saved FROM public.teacher_spreadsheet_import_receipts
-   WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
-   IF NOT FOUND OR v_saved.request_hash<>v_digest THEN
+ v_digest:=CASE WHEN jsonb_typeof(p_rows)='array' THEN md5(p_rows::text)
+  ELSE 'v1:'||encode(extensions.digest('ccp-spreadsheet-import:reviewed:v1:'||p_rows::text,'sha256'),'hex') END;
+ SELECT * INTO v_saved FROM public.teacher_spreadsheet_import_receipts
+ WHERE teacher_id=v_teacher AND idempotency_key=p_idempotency_key;
+ IF FOUND THEN
+   IF v_saved.request_hash<>v_digest THEN
      RAISE EXCEPTION 'IMPORT_REPLAY_CONFLICT' USING ERRCODE='23505';
    END IF;
    RETURN v_saved.receipt;
  END IF;
-
- FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+ -- Existing exact array receipts can replay; arrays have no fresh write path.
+ IF jsonb_typeof(p_rows)='array' THEN
+   RAISE EXCEPTION 'IMPORT_REVIEW_REQUIRED' USING ERRCODE='22023';
+ END IF;
+ IF p_rows->'confirmed' IS DISTINCT FROM 'true'::jsonb OR p_rows->'version' IS DISTINCT FROM '1'::jsonb
+   OR p_rows->>'teacherId' IS DISTINCT FROM v_teacher::text
+   OR jsonb_typeof(p_rows->'rows') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(p_rows->'rows') NOT BETWEEN 1 AND 500 THEN
+   RAISE EXCEPTION 'IMPORT_REVIEW_REQUIRED' USING ERRCODE='22023';
+ END IF;
+ PERFORM 1 FROM public.teacher_settings WHERE teacher_id=v_teacher FOR SHARE;
+ -- SHARE conflicts with archive/rename and deletion, while following stable
+ -- lock order across a multi-venue batch. Foreign IDs do not lock foreign rows.
+ PERFORM 1 FROM public.workplaces w WHERE w.teacher_id=v_teacher AND w.id::text IN
+  (SELECT unnest(public.ccp_spreadsheet_import_target_ids(x)) FROM jsonb_array_elements(p_rows->'rows') x)
+ ORDER BY w.id FOR SHARE OF w;
+ PERFORM 1 FROM public.students st WHERE st.teacher_id=v_teacher AND st.id::text IN
+  (SELECT lower(x->>'studentId') FROM jsonb_array_elements(p_rows->'rows') x)
+ ORDER BY st.id FOR SHARE OF st;
+ -- Lock current and future periods for specifically reviewed learner/venue pairs.
+ PERFORM 1 FROM public.workplace_enrollments e WHERE e.teacher_id=v_teacher AND EXISTS(
+  SELECT 1 FROM jsonb_array_elements(p_rows->'rows') x
+  WHERE lower(x->>'studentId')=e.student_id::text AND e.workplace_id::text=ANY(public.ccp_spreadsheet_import_target_ids(x)))
+ ORDER BY e.student_id,e.workplace_id,e.id FOR SHARE OF e;
+ v_review:=public.ccp_teacher_spreadsheet_review(p_rows->'rows');
+ IF v_review->'envelope' IS DISTINCT FROM (p_rows-'confirmed') THEN
+   RAISE EXCEPTION 'IMPORT_PREVIEW_CHANGED' USING ERRCODE='23505';
+ END IF;
+ v_enrollment_day:=(v_review->'calendar'->>'day')::date;
+ v_zone:=v_review->'calendar'->>'timezone';
+ INSERT INTO public.teacher_spreadsheet_import_receipts
+    (teacher_id,idempotency_key,request_hash,receipt)
+ VALUES(v_teacher,p_idempotency_key,v_digest,'{}'::jsonb);
+ FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows->'rows') LOOP
    v_name:=btrim(v_row->>'studentName');
-   v_key:=v_row->>'familyKey';
-   IF (v_row->>'workplaceId') IS NULL OR (v_row->>'workplaceId') !~
-     '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN
-     RAISE EXCEPTION 'IMPORT_WORKPLACE_REQUIRED' USING ERRCODE='22023';
-   END IF;
-   v_workplace:=(v_row->>'workplaceId')::uuid;
-   PERFORM 1 FROM public.workplaces
-     WHERE id=v_workplace AND teacher_id=v_teacher;
-   IF NOT FOUND THEN
-     RAISE EXCEPTION 'WORKPLACE_NOT_OWNED' USING ERRCODE='42501';
-   END IF;
+   v_key:=CASE
+    WHEN nullif(btrim(v_row->>'email'),'') IS NOT NULL THEN 'email:'||lower(btrim(v_row->>'email'))
+    WHEN nullif(btrim(v_row->>'familyName'),'') IS NOT NULL THEN 'family:'||lower(btrim(v_row->>'familyName'))
+    WHEN nullif(btrim(v_row->>'guardianName'),'') IS NOT NULL THEN 'guardian:'||lower(btrim(v_row->>'guardianName'))
+    ELSE 'solo:'||lower(v_name)||':'||(v_row->>'sourceRow') END;
    v_row_number:=(v_row->>'sourceRow')::integer;
    IF jsonb_typeof(v_row)<>'object' OR v_name IS NULL
       OR length(v_name) NOT BETWEEN 1 AND 200
@@ -3493,33 +3721,16 @@ BEGIN
       OR jsonb_typeof(v_row->'archived') NOT IN ('boolean','null') THEN
      RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE='22023';
    END IF;
-   -- Historical/archived student names are preserved, not recreated.
-   -- Holding the teacher lock makes this check consistent with other imports.
-   -- Names are not unique identifiers. Never silently choose one of several.
-   IF (SELECT count(*) FROM public.students
-       WHERE teacher_id=v_teacher AND lower(btrim(name))=lower(v_name))>1 THEN
-     RAISE EXCEPTION 'STUDENT_MATCH_AMBIGUOUS' USING ERRCODE='22023';
-   END IF;
-   SELECT id INTO v_student_id FROM public.students
-     WHERE teacher_id=v_teacher AND lower(btrim(name))=lower(v_name)
-     ORDER BY created_at,id LIMIT 1;
+   -- Existing identity is explicitly reviewed by owned ID and revision;
+   -- CREATE never turns into an implicit name match.
+   v_student_id:=nullif(v_row->>'studentId','')::uuid;
    IF v_student_id IS NOT NULL THEN
-     -- Existing historical profiles must not be enrolled while archived.
-     IF EXISTS(SELECT 1 FROM public.students
-       WHERE id=v_student_id AND teacher_id=v_teacher AND archived_at IS NULL) THEN
-       INSERT INTO public.workplace_enrollments(teacher_id,student_id,workplace_id)
-       VALUES(v_teacher,v_student_id,v_workplace)
-       ON CONFLICT DO NOTHING;
-       IF FOUND THEN v_enrolled:=v_enrolled+1; END IF;
-     END IF;
      v_skipped:=v_skipped+1;
      IF jsonb_array_length(v_skipped_rows)<50 THEN
        v_skipped_rows:=v_skipped_rows||jsonb_build_array(
-         jsonb_build_object('row',v_row_number,'reason','Student already exists'));
+         jsonb_build_object('row',v_row_number,'reason','Matched existing student'));
      END IF;
-     CONTINUE;
-   END IF;
-
+   ELSE
    -- Contacts are identities only. An imported row never creates a payer,
    -- portal grant or legal/communication authority. Adults with no explicit
    -- contact remain valid students without an automatically invented person.
@@ -3564,15 +3775,31 @@ BEGIN
        is_legal_guardian,may_receive_messages
      ) VALUES(v_teacher,v_student_id,v_contact,'Imported contact',false,false);
    END IF;
-   -- Preserve archived imports without inventing a present-day enrollment.
+   v_created:=v_created+1;
+   END IF;
+   -- Apply every approved target only after one resolved/created student.
+   -- Archived source creates a profile only, never an effective membership.
    IF coalesce(v_row->>'archived','false')<>'true' THEN
-     INSERT INTO public.workplace_enrollments(teacher_id,student_id,workplace_id)
-     VALUES(v_teacher,v_student_id,v_workplace)
+    FOREACH v_target IN ARRAY public.ccp_spreadsheet_import_target_ids(v_row) LOOP
+     v_workplace:=v_target::uuid;
+     INSERT INTO public.workplace_enrollments(teacher_id,student_id,workplace_id,starts_on)
+     VALUES(v_teacher,v_student_id,v_workplace,v_enrollment_day)
      ON CONFLICT DO NOTHING;
      IF FOUND THEN v_enrolled:=v_enrolled+1; END IF;
+     IF NOT EXISTS(SELECT 1 FROM public.workplace_enrollments e WHERE e.teacher_id=v_teacher
+      AND e.workplace_id=v_workplace AND e.student_id=v_student_id AND e.cancelled_at IS NULL
+      AND (e.starts_on IS NULL OR e.starts_on<=v_enrollment_day)
+      AND (e.ends_on IS NULL OR e.ends_on>=v_enrollment_day)) THEN
+      RAISE EXCEPTION 'IMPORT_ENROLLMENT_NOT_EFFECTIVE' USING ERRCODE='23505';
+     END IF;
+    END LOOP;
    END IF;
-   v_created:=v_created+1;
  END LOOP;
+ IF (clock_timestamp() AT TIME ZONE v_zone)::date IS DISTINCT FROM v_enrollment_day
+  OR coalesce((SELECT timezone FROM public.teacher_settings WHERE teacher_id=v_teacher),'UTC')
+    IS DISTINCT FROM v_zone THEN
+   RAISE EXCEPTION 'IMPORT_PREVIEW_CHANGED' USING ERRCODE='23505';
+ END IF;
  v_result:=jsonb_build_object(
    'enrollmentsCreated',v_enrolled,
    'studentsCreated',v_created,'studentsSkipped',v_skipped,
@@ -3585,6 +3812,7 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.ccp_teacher_spreadsheet_commit(jsonb,uuid) FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.ccp_teacher_spreadsheet_commit(jsonb,uuid) FROM service_role;
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_spreadsheet_commit(jsonb,uuid) TO authenticated;
 
 -- Atomic, tenant-scoped one-off teaching sessions for 2–50 students.

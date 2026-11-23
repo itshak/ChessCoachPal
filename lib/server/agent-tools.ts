@@ -197,10 +197,9 @@ import {
  teacherSafeExport,teacherImportPreview,teacherImportApply,TeacherTransferError,
 } from "@/lib/server/teacher-transfer-service";
 import {
- teacherSpreadsheetParse,teacherSpreadsheetPreview,teacherSpreadsheetSuggest,
+ teacherSpreadsheetParse,teacherSpreadsheetReview,spreadsheetReviewSchema,spreadsheetCommitSchema,teacherSpreadsheetSuggest,
  teacherSpreadsheetCommit,SpreadsheetImportError,MAX_SPREADSHEET_BYTES,
 } from "@/lib/server/teacher-spreadsheet-import";
-import type {ColumnMapping} from "@/lib/spreadsheet-import";
 import {
  teacherBillingGenerate,teacherBillingRegenerate,teacherBillingCheckout,teacherBillingBulk,
  teacherBillingBulkPreview,
@@ -429,9 +428,8 @@ const catalogue = [
   },
   {
     name:"ccp_import_spreadsheet_preview",
-    description:"Preview normalized student/family import rows using a selected column mapping before any database mutations.",
-    schema:z.object({rows:z.array(z.record(z.string(),z.string())).max(500),
-      mapping:z.record(z.string(),z.string().nullable())}).strict(),scope:"coach:read",readOnly:true,
+    description:"Review normalized spreadsheet rows and active owned workplaces without writes. Choose a workplace explicitly and use the returned reviewDigest for approval.",
+    schema:spreadsheetReviewSchema,scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_import_spreadsheet_suggest",
@@ -441,10 +439,8 @@ const catalogue = [
   },
   {
     name:"ccp_import_spreadsheet_commit",
-    description:"Import reviewed students AND enroll them in a verified workplace atomically. Pass workplaceId explicitly when more than one workplace exists; otherwise the only workplace is selected. If WORKPLACE_REQUIRED is returned, ask the teacher to choose from workplaces and retry. Existing students gain the enrollment without duplication; historical attendance is separate.",
-    schema:z.object({rows:z.array(z.record(z.string(),z.string())).min(1).max(500),
-      mapping:z.record(z.string(),z.string().nullable()),confirmed:z.literal(true),
-      idempotencyKey:uuid.optional(),workplaceId:uuid.optional()}).strict(),
+    description:"Import reviewed students AND enroll them in a verified workplace atomically. Use the explicitly approved workplaceId and reviewDigest returned by the no-write preview, including when only one workplace is proposed. Existing students gain the enrollment without duplication; historical attendance is separate.",
+    schema:spreadsheetCommitSchema,
     scope:"coach:write",readOnly:false,
   },
   {
@@ -1968,15 +1964,15 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:teacherSpreadsheetParse(a.filename,arrayBuffer)};
       }
       case "ccp_import_spreadsheet_preview": {
-        const a=args as {rows:Record<string,string>[];mapping:ColumnMapping};
-        return {data:teacherSpreadsheetPreview(a)};
+        const a=args as Parameters<typeof teacherSpreadsheetReview>[2];
+        return {data:await teacherSpreadsheetReview(db,teacherId,a)};
       }
       case "ccp_import_spreadsheet_suggest": {
         const a=args as {headers:string[];sampleRows?:Record<string,string>[];useAi:boolean;confirmedExternal?:boolean};
         return {data:await teacherSpreadsheetSuggest(db,teacherId,a)};
       }
       case "ccp_import_spreadsheet_commit": {
-        const a=args as {rows:Record<string,string>[];mapping:ColumnMapping;idempotencyKey?:string;workplaceId?:string};
+        const a=args as Parameters<typeof teacherSpreadsheetCommit>[2];
         const response=await teacherSpreadsheetCommit(db,teacherId,a);
         const data=await response.json();
         if(!response.ok)

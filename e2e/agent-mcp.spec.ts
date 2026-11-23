@@ -1551,9 +1551,14 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   })).structuredContent;
   expect(mapped.error).toBeUndefined();
   expect(mapped.data.mapping.student_name).toBe("Student Name");
+  const approvedSpreadsheet=(await call("ccp_import_spreadsheet_preview",{
+    rows:parsedFile.data.rows,mapping:parsedFile.data.mapping,workplaceId:madeWorkplace.entityId,
+  })).structuredContent;
+  expect(approvedSpreadsheet.error).toBeUndefined();
+  const {reviewDigest,reviewedEnvelope}=approvedSpreadsheet.data;
   const csvCommitted=(await call("ccp_import_spreadsheet_commit",{
     rows:parsedFile.data.rows,mapping:parsedFile.data.mapping,
-    workplaceId:madeWorkplace.entityId,confirmed:true,
+    workplaceId:madeWorkplace.entityId,reviewDigest,reviewedEnvelope,confirmed:true,
   })).structuredContent;
   expect(csvCommitted.error).toBeUndefined();
   expect(csvCommitted.data.studentsCreated).toBe(1);
@@ -1562,7 +1567,7 @@ test("delegated OAuth PKCE -> real MCP calls -> idempotent attendance/topic -> i
   expect((await importedRoster.json()).students.some((s:{name:string})=>s.name===csvStudent)).toBe(true);
   const importReplay=await page.request.post("/api/import/spreadsheet/commit",{
     data:{rows:parsedFile.data.rows,mapping:parsedFile.data.mapping,
-      workplaceId:madeWorkplace.entityId},
+      workplaceId:madeWorkplace.entityId,reviewDigest,reviewedEnvelope,confirmed:true},
   });
   expect(importReplay.status(),await importReplay.text()).toBe(200);
   expect(await importReplay.json()).toEqual(csvCommitted.data);

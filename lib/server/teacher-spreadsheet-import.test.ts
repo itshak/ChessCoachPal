@@ -41,9 +41,9 @@ describe("spreadsheet workplace fail-closed contract",()=>{
   const db={
    from:(table:string)=>{
     expect(table).toBe("workplaces");
-    return {select:()=>({eq:async()=>({data:workplaces,error:null})})};
+    return {select:()=>({eq:()=>({is:()=>({order:()=>({order:async()=>({data:workplaces,error:null})})})})})};
    },
-   rpc:async()=>{rpcCalls++;return {data:{studentsCreated:1},error:null};},
+   rpc:async()=>{rpcCalls++;return {data:null,error:{message:"IMPORT_REVIEW_REQUIRED"}};},
   } as unknown as SupabaseClient;
   return {db,calls:()=>rpcCalls};
  };
@@ -70,10 +70,11 @@ describe("spreadsheet workplace fail-closed contract",()=>{
   expect(res.status).toBe(422);
   expect(calls()).toBe(0);
  });
- it("rejects an unknown or foreign workplace without writing",async()=>{
+ it("rejects an unknown or foreign workplace after the receipt-only legacy check",async()=>{
   const {db,calls}=mock([{id:"a",name:"Yatmo"}]);
   const res=await teacherSpreadsheetCommit(db,"teacher",{...body,workplaceId:"b"});
   expect(res.status).toBe(422);
-  expect(calls()).toBe(0);
+  expect((await res.json()).code).toBe("WORKPLACE_REQUIRED");
+  expect(calls()).toBe(1); // Old arrays can only read an exact owned receipt in SQL.
  });
 });
