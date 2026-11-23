@@ -4,7 +4,7 @@ import {z} from "zod";
 import {canonicalCalendarWindow} from "./canonical-calendar-read";
 import {calculateExpectedCompensation,type CompensationAgreement,
   type CompensationOccurrence} from "@/lib/coaching-compensation";
-import {toLocalDateString} from "@/lib/schedule";
+import {addDays,toLocalDateString} from "@/lib/schedule";
 
 /** Approved terms are business policies, never payment postings or invoices. */
 const uuid=z.string().uuid();
@@ -15,6 +15,7 @@ const rate=z.number().int().min(0).max(1000000000);
 const agreementFields=z.object({
   workplaceId:uuid,
   studentId:uuid.nullable().default(null),groupId:uuid.nullable().default(null),
+  exactSessionId:uuid.nullable().default(null),
   billingAccountId:uuid,
   agreementRole:role,model,rateCents:rate,
   currency:z.string().regex(/^[A-Z]{3}$/),
@@ -23,6 +24,9 @@ const agreementFields=z.object({
 }).strict().superRefine((value,ctx)=>{
   if(value.studentId&&value.groupId)
     ctx.addIssue({code:"custom",path:["studentId"],message:"Choose student or group, not both"});
+  if(value.exactSessionId&&(value.studentId||value.groupId||value.agreementRole!=="coach_earning"||
+    value.model==="fixed_period"||value.rateCents<1||value.effectiveFrom!==value.effectiveTo))
+    ctx.addIssue({code:"custom",path:["exactSessionId"],message:"Exact terms must cover one completed coach occurrence and one date"});
   // Both coach earnings and participant charges require a separately owned
   // financial counterparty. A workplace/student/contact is not a debtor.
   if(value.effectiveTo&&value.effectiveTo<value.effectiveFrom)
@@ -30,7 +34,7 @@ const agreementFields=z.object({
 });
 export const compensationAgreementCreateSchema=agreementFields.safeExtend({
   idempotencyKey:uuid,confirmed:z.literal(true),
-}).strict();
+}).strict().refine(value=>!value.exactSessionId||value.status==="active","An exact agreement starts active");
 export const compensationAgreementUpdateSchema=z.object({
   id:uuid,expectedRevision:z.number().int().min(1),
   changes:z.object({
@@ -51,11 +55,11 @@ const fail=(status:number,code:string,message:string):never=>{
 };
 type Db=SupabaseClient;
 type RecordRow=Record<string,unknown>;
-const cols="id,teacher_id,workplace_id,student_id,group_id,billing_account_id,agreement_role,model,rate_cents,currency,effective_from,effective_to,status,revision,created_at,updated_at,last_request_id,last_request_hash";
+const cols="id,teacher_id,workplace_id,student_id,group_id,exact_session_id,billing_account_id,agreement_role,model,rate_cents,currency,effective_from,effective_to,status,revision,created_at,updated_at,last_request_id,last_request_hash";
 const hash=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export function safeCompensationAgreement(row:RecordRow){
   return {id:row.id,workplaceId:row.workplace_id,studentId:row.student_id,
-    groupId:row.group_id,billingAccountId:row.billing_account_id,
+    groupId:row.group_id,exactSessionId:row.exact_session_id??null,billingAccountId:row.billing_account_id,
     agreementRole:row.agreement_role,model:row.model,rateCents:Number(row.rate_cents),
     currency:row.currency,effectiveFrom:row.effective_from,effectiveTo:row.effective_to,
     status:row.status,revision:Number(row.revision),createdAt:row.created_at,
@@ -64,12 +68,12 @@ export function safeCompensationAgreement(row:RecordRow){
 const map=(value:Record<string,unknown>)=>{
   const out:RecordRow={};
   const names:Record<string,string>={workplaceId:"workplace_id",studentId:"student_id",
-    groupId:"group_id",billingAccountId:"billing_account_id",
+    groupId:"group_id",exactSessionId:"exact_session_id",billingAccountId:"billing_account_id",
     agreementRole:"agreement_role",rateCents:"rate_cents",effectiveFrom:"effective_from",
     effectiveTo:"effective_to"};
   for(const [key,v] of Object.entries(value))
     if(!["id","idempotencyKey","confirmed","expectedRevision"].includes(key))
-      out[names[key]??key]=v;
+      if(key!=="exactSessionId"||v!==null)out[names[key]??key]=v;
   return out;
 };
 async function get(db:Db,teacherId:string,id:string):Promise<RecordRow>{
@@ -86,10 +90,59 @@ async function owned(db:Db,teacherId:string,table:string,id:string,cols="id"){
   if(!data)fail(404,"NOT_FOUND","Related agreement entity is not available");
   return data as unknown as RecordRow;
 }
-async function authorizeTerms(db:Db,teacherId:string,value:z.infer<typeof agreementFields>){
-  const workplace=await owned(db,teacherId,"workplaces",value.workplaceId,"id,currency");
-  if(workplace.currency!==value.currency)
+export const compensationCompletedLessonsSchema=z.object({workplaceId:uuid,date}).strict();
+const selectionColumns="id,title,starts_at,local_timezone,duration_minutes,status";
+async function verifyExactSession(db:Db,teacherId:string,workplaceId:string,sessionId:string,day:string,timezone:string){
+  const {data,error}=await db.from("teaching_sessions").select(selectionColumns)
+    .eq("teacher_id",teacherId).eq("workplace_id",workplaceId).eq("id",sessionId)
+    .eq("status","completed").maybeSingle();
+  if(error)fail(503,"EXACT_AGREEMENT_SCOPE_UNAVAILABLE","Could not verify completed lesson");
+  if(!data||toLocalDateString(new Date(data.starts_at),data.local_timezone||timezone)!==day)
+    fail(404,"EXACT_AGREEMENT_SCOPE_UNAVAILABLE","Completed lesson unavailable for the reviewed venue and date");
+}
+export async function compensationCompletedLessons(db:Db,teacherId:string,input:z.input<typeof compensationCompletedLessonsSchema>){
+  const value=compensationCompletedLessonsSchema.parse(input);
+  const venue=await owned(db,teacherId,"workplaces",value.workplaceId,"id,timezone");
+  const {data,error,count}=await db.from("teaching_sessions").select(selectionColumns,{count:"exact"})
+    .eq("teacher_id",teacherId).eq("workplace_id",value.workplaceId).eq("status","completed")
+    .gte("starts_at",addDays(value.date,-2)+"T00:00:00Z").lt("starts_at",addDays(value.date,3)+"T00:00:00Z")
+    .order("starts_at").order("id").limit(201);
+  if(error||!data||count!==data.length||count>200)
+    fail(503,"EXACT_AGREEMENT_SCOPE_UNAVAILABLE","Could not verify the complete set of lessons for this date");
+  return {workplaceId:value.workplaceId,date:value.date,lessons:data!
+    .filter(row=>toLocalDateString(new Date(row.starts_at),row.local_timezone||String(venue.timezone))===value.date)
+    .map(row=>({id:row.id,title:row.title,startsAt:row.starts_at,durationMinutes:row.duration_minutes,
+      timezone:row.local_timezone||String(venue.timezone)}))};
+}
+async function overriddenCoachOccurrences(db:Db,teacherId:string,workplaceId:string,ids:string[]){
+  const exact=new Set<string>();
+  for(let offset=0;offset<ids.length;offset+=80){
+    const batch=ids.slice(offset,offset+80);
+    const {data,error,count}=await db.from("compensation_agreements")
+      .select("exact_session_id",{count:"exact"}).eq("teacher_id",teacherId)
+      .eq("workplace_id",workplaceId).eq("agreement_role","coach_earning").eq("status","active")
+      .in("exact_session_id",batch).limit(batch.length+1);
+    if(error||!data||count!==data.length||data.some(row=>!batch.includes(row.exact_session_id)||exact.has(row.exact_session_id))||
+       new Set(data.map(row=>row.exact_session_id)).size!==data.length)
+      fail(503,"EXACT_AGREEMENT_SCOPE_UNAVAILABLE","Could not verify all exact agreement overrides");
+    for(const row of data!)exact.add(row.exact_session_id);
+  }
+  return exact;
+}
+function exactError(error:{message:string},updating=false){
+  if(error.message.includes("EXACT_AGREEMENT_SCOPE_IMMUTABLE"))
+    fail(409,"EXACT_AGREEMENT_SCOPE_IMMUTABLE","Exact lesson identity and currency cannot be changed");
+  if(error.message.includes("EXACT_AGREEMENT_ALREADY_POSTED"))
+    fail(409,"EXACT_AGREEMENT_ALREADY_POSTED","That lesson already has a posted earning");
+  if(error.message.includes("EXACT_AGREEMENT_SCOPE_UNAVAILABLE"))
+    fail(updating?409:404,"EXACT_AGREEMENT_SCOPE_UNAVAILABLE","The reviewed lesson or payer is no longer eligible");
+}
+async function authorizeTerms(db:Db,teacherId:string,value:z.infer<typeof agreementFields>,updating=false){
+  const workplace=await owned(db,teacherId,"workplaces",value.workplaceId,"id,currency,timezone");
+  if((!updating||!value.exactSessionId)&&workplace.currency!==value.currency)
     fail(409,"CURRENCY_MISMATCH","Agreement currency must match the workplace; no implicit exchange-rate calculation");
+  if(value.exactSessionId&&value.status==="active")
+    await verifyExactSession(db,teacherId,value.workplaceId,value.exactSessionId,value.effectiveFrom,String(workplace.timezone));
   if(value.studentId){
     await owned(db,teacherId,"students",value.studentId);
     let membership=db.from("workplace_enrollments").select("id")
@@ -133,8 +186,18 @@ export async function compensationAgreementGet(db:Db,teacherId:string,id:string)
 export async function compensationAgreementCreate(db:Db,teacherId:string,
   input:z.input<typeof compensationAgreementCreateSchema>){
   const value=compensationAgreementCreateSchema.parse(input);
-  await authorizeTerms(db,teacherId,value);
   const data=map(value),requestHash=hash(["compensation-create",data]);
+  if(value.exactSessionId){
+    const {data:old,error}=await db.from("compensation_agreements").select(cols)
+      .eq("id",value.idempotencyKey).eq("teacher_id",teacherId).maybeSingle();
+    if(error)fail(503,"EXACT_AGREEMENT_SCOPE_UNAVAILABLE","Could not verify the agreement request");
+    if(old){
+      if(old.last_request_id===value.idempotencyKey&&old.last_request_hash===requestHash)
+        return {...safeCompensationAgreement(old),replayed:true};
+      fail(409,"AGREEMENT_CONFLICT","Conflicting overlapping agreement or reused request ID");
+    }
+  }
+  await authorizeTerms(db,teacherId,value);
   const {data:created,error}=await db.from("compensation_agreements").insert({
     id:value.idempotencyKey,teacher_id:teacherId,...data,
     last_request_id:value.idempotencyKey,last_request_hash:requestHash,
@@ -149,13 +212,24 @@ export async function compensationAgreementCreate(db:Db,teacherId:string,
       return {...safeCompensationAgreement(old),replayed:true};
     fail(409,"AGREEMENT_CONFLICT","Conflicting overlapping agreement or reused request ID");
   }
+  if(error&&value.exactSessionId)exactError(error);
   return fail(500,"DATABASE_ERROR","Cannot create compensation agreement");
 }
 export async function compensationAgreementUpdate(db:Db,teacherId:string,
   input:z.infer<typeof compensationAgreementUpdateSchema>){
   const value=compensationAgreementUpdateSchema.parse(input);
   const current=await get(db,teacherId,value.id);
+  const fields=map(value.changes);
+  const requestHash=hash(["compensation-update",value.id,value.expectedRevision,fields]);
+  if(current.exact_session_id){
+    if(current.last_request_id===value.idempotencyKey&&current.last_request_hash===requestHash)
+      return {...safeCompensationAgreement(current),replayed:true};
+    if(current.status==="archived"||value.changes.currency!==undefined||
+       value.changes.effectiveFrom!==undefined||value.changes.effectiveTo!==undefined)
+      fail(409,"EXACT_AGREEMENT_SCOPE_IMMUTABLE","Exact lesson identity and currency cannot be changed");
+  }
   const proposed={
+    exactSessionId:current.exact_session_id??null,
     workplaceId:String(current.workplace_id),
     studentId:current.student_id?String(current.student_id):null,
     groupId:current.group_id?String(current.group_id):null,
@@ -171,9 +245,7 @@ export async function compensationAgreementUpdate(db:Db,teacherId:string,
   };
   const validation=agreementFields.safeParse(proposed);
   if(!validation.success)fail(400,"VALIDATION_ERROR","Invalid agreement revision");
-  await authorizeTerms(db,teacherId,validation.data!);
-  const fields=map(value.changes);
-  const requestHash=hash(["compensation-update",value.id,value.expectedRevision,fields]);
+  await authorizeTerms(db,teacherId,validation.data!,true);
   const {data:updated,error}=await db.from("compensation_agreements").update({
     ...fields,revision:value.expectedRevision+1,updated_at:new Date().toISOString(),
     last_request_id:value.idempotencyKey,last_request_hash:requestHash,
@@ -184,6 +256,7 @@ export async function compensationAgreementUpdate(db:Db,teacherId:string,
     "Agreement dates are outside an eligible student enrollment");
   if(error?.code==="23514"&&error.message.includes("POSTED_COMPENSATION_HISTORY_IMMUTABLE"))
     fail(409,"POSTED_FINANCIAL_HISTORY","The agreement has posted obligations; end it after the final posting and create a new future-dated agreement");
+  if(error&&current.exact_session_id)exactError(error,true);
   if(error)fail(500,"DATABASE_ERROR","Cannot update compensation terms");
   if(updated)return {...safeCompensationAgreement(updated),replayed:false};
   const old=await get(db,teacherId,value.id);
@@ -200,8 +273,9 @@ export async function compensationAgreementPreview(db:Db,teacherId:string,
   const terms=safeCompensationAgreement(row);
   if(terms.status!=="active")fail(409,"AGREEMENT_ARCHIVED","Archived agreement is not used for current previews");
   const workplace=await owned(db,teacherId,"workplaces",String(terms.workplaceId),"timezone");
-  const rows=await canonicalCalendarWindow(db,teacherId,value.from,value.to,String(workplace.timezone));
+  const rows=await canonicalCalendarWindow(db,teacherId,value.from,value.to,String(workplace.timezone),undefined,undefined,{strictWorkplaceId:String(terms.workplaceId)});
   const scoped=rows.filter(s=>s.workplace_id===terms.workplaceId&&
+    (!terms.exactSessionId||s.id===terms.exactSessionId)&&
     (!terms.studentId||s.participants.some(p=>p.studentId===terms.studentId)));
   let groupIds:Map<string,string|null>|null=null;
   if(terms.groupId){
@@ -209,9 +283,11 @@ export async function compensationAgreementPreview(db:Db,teacherId:string,
     for(let offset=0;offset<scoped.length;offset+=100){
       const ids=scoped.slice(offset,offset+100).map(s=>s.id);
       if(!ids.length)continue;
-      const {data,error}=await db.from("teaching_sessions")
-        .select("id,group_id").eq("teacher_id",teacherId).in("id",ids);
-      if(error)fail(500,"DATABASE_ERROR","Cannot verify session group attribution");
+      const {data,error,count}=await db.from("teaching_sessions")
+        .select("id,group_id",{count:"exact"}).eq("teacher_id",teacherId)
+        .eq("workplace_id",String(terms.workplaceId)).in("id",ids);
+      if(error||!data||count!==ids.length||data.length!==ids.length)
+        fail(503,"EXACT_AGREEMENT_SCOPE_UNAVAILABLE","Cannot verify complete session group attribution");
       for(const x of data??[])groupIds.set(x.id,x.group_id);
     }
   }
@@ -222,8 +298,13 @@ export async function compensationAgreementPreview(db:Db,teacherId:string,
       fail(400,"FIXED_PERIOD_MONTH_REQUIRED",
         "Fixed monthly compensation can be previewed only for a complete calendar month");
   }
-  const occurrences:CompensationOccurrence[]=scoped.filter(s=>
-    !groupIds||groupIds.get(s.id)===terms.groupId).map(s=>({
+  const candidate=scoped.filter(s=>!groupIds||groupIds.get(s.id)===terms.groupId);
+  const overridden=terms.agreementRole==="coach_earning"&&terms.model!=="fixed_period"&&!terms.exactSessionId
+    ? await overriddenCoachOccurrences(db,teacherId,String(terms.workplaceId),candidate.map(s=>s.id))
+    : new Set<string>();
+  if(new Set(candidate.map(row=>row.id)).size!==candidate.length)
+    fail(503,"EXACT_AGREEMENT_SCOPE_UNAVAILABLE","Could not verify a complete preview");
+  const occurrences:CompensationOccurrence[]=candidate.filter(s=>!overridden.has(s.id)).map(s=>({
     id:s.id,workplaceId:s.workplace_id,
     lessonDate:toLocalDateString(new Date(s.starts_at),s.local_timezone||String(workplace.timezone)),
     durationMinutes:s.duration_minutes,
@@ -249,6 +330,7 @@ export async function compensationAgreementPreview(db:Db,teacherId:string,
       explanation:terms.agreementRole==="coach_earning"?
         "Expected coach compensation from verified lessons or an agreed fixed monthly period; not paid money or payroll.":
         "Expected participant charges from verified lessons; not an invoice, customer debt posting or received payment.",
+      excludedExactSessionCount:overridden.size,
       persistedObligation:false,paymentRecorded:false};
   }catch(error){
     if(error instanceof RangeError||error instanceof TypeError||error instanceof Error)

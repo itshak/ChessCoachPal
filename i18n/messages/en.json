@@ -2929,6 +2929,17 @@
     "websitePlaceholder": "https://chess-coaching.example"
   },
   "compensation": {
+    "exactScope": "One completed lesson",
+    "exactDay": "Completed lesson date",
+    "exactChoose": "Choose the completed lesson",
+    "exactLoading": "Checking completed lessons…",
+    "exactEmpty": "No completed lessons match this workplace and date.",
+    "exactUnavailable": "Could not verify completed lessons for this workplace and date.",
+    "exactConfirm": "Configure coach earnings for {title} on {date} at {time} (ref. {reference})? This will not post earnings or create an invoice.",
+    "exactExcluded": "{count, plural, one {# lesson has its own agreement and is excluded here.} other {# lessons have their own agreements and are excluded here.}}",
+    "supersededReview": "This request may have been saved and then revised. Check the existing agreement before taking any new action.",
+    "pendingReview": "The last request is not confirmed. Retry the same reviewed agreement before changing it.",
+    "retryExact": "Retry reviewed agreement",
     "title": "Compensation agreements",
     "intro": "Keep expected coaching earnings and customer charges separate. Previews are not invoices or received payments.",
     "loadFailed": "Unable to load compensation agreements",
@@ -3063,6 +3074,10 @@
     "outstandingCents": "Outstanding earnings"
   },
   "nativeFinance": {
+    "exactAgreement": "Exact lesson agreement",
+    "reviewRequired": "This lesson has an exact agreement. Review the completed lesson and its agreement before approving. Nothing was posted.",
+    "reviewMismatch": "This agreement belongs to a different completed lesson. Nothing was posted.",
+    "pinnedLesson": "Exact lesson {reference} · {date}",
     "title": "Native finance ledger",
     "description": "Approve obligations, record received money, allocate and correct with explicit authorization.",
     "warning": "Recording here does not charge a card, send a refund, issue a tax receipt or mark an invoice paid. Verify external money movement separately.",

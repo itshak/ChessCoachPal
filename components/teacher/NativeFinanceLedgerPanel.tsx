@@ -8,7 +8,7 @@ type Payment={id:string;amount_cents:number;currency:string;billing_account_id:s
 type Allocation={id:string;amount_cents:number};
 type Ledger={obligations:Obligation[];receivedPayments:Payment[];allocations:Allocation[];
  reversals:Array<{id:string;kind:string;amount_cents:number}>;limitPerCategory:number};
-type Agreement={id:string;model:string;agreementRole:string;revision:number;status:string;currency:string};
+type Agreement={id:string;model:string;exactSessionId:string|null;effectiveFrom:string;agreementRole:string;revision:number;status:string;currency:string};
 type Account={id:string;displayName:string;status:string};
 type Action="approve"|"payment"|"allocate"|"reverse";
 const field="mt-1 w-full min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
@@ -55,8 +55,10 @@ export function NativeFinanceLedgerPanel(){
    action==="allocate"?"allocations":"reversals";
   const payload=action==="approve"?{
     agreementId,expectedRevision:agreement?.revision,expectedAmountCents:amount,
-    sessionId:sessionId.trim()||null,studentId:studentId.trim()||null,
-    periodStart:from,periodEnd:to,
+    sessionId:agreement?.exactSessionId??(sessionId.trim()||null),
+    studentId:agreement?.exactSessionId?null:(studentId.trim()||null),
+    periodStart:agreement?.exactSessionId?agreement.effectiveFrom:from,
+    periodEnd:agreement?.exactSessionId?agreement.effectiveFrom:to,
    }:action==="payment"?{
     billingAccountId:accountId,currency,amountCents:amount,
     receivedAt:new Date(receivedAt).toISOString(),
@@ -72,7 +74,11 @@ export function NativeFinanceLedgerPanel(){
     body:JSON.stringify({...payload,idempotencyKey:crypto.randomUUID(),confirmed:true}),
    });
    await refresh();setNotice(t("saved"));
-  }catch(e){setError(apiError(e,t("saveFailed")));}
+  }catch(e){
+   const code=(e as {code?:string}|null)?.code;
+   setError(code==="EXACT_AGREEMENT_REVIEW_REQUIRED"?t("reviewRequired"):
+    code==="EXACT_AGREEMENT_SESSION_MISMATCH"?t("reviewMismatch"):apiError(e,t("saveFailed")));
+  }
   finally{setBusy(false);}
  }
  return <section aria-label={t("title")} className="mb-8 space-y-4 rounded-xl border border-border bg-surface p-5">
@@ -95,15 +101,19 @@ export function NativeFinanceLedgerPanel(){
     <label className="block text-sm">{t("agreement")}
      <select required className={field} value={agreementId} onChange={e=>setAgreementId(e.target.value)}>
       <option value="">{t("select")}</option>
-      {agreements.map(x=><option key={x.id} value={x.id}>{x.agreementRole} · {x.model} · {x.id.slice(0,8)}</option>)}
+      {agreements.map(x=><option key={x.id} value={x.id}>{x.exactSessionId?t("exactAgreement"):x.agreementRole} · {x.model} · {x.id.slice(0,8)}</option>)}
      </select>
     </label>
+    {agreement?.exactSessionId?<p className="text-sm">{t("pinnedLesson",{
+      reference:agreement.exactSessionId.slice(0,8),date:agreement.effectiveFrom,
+    })}</p>:<>
     <div className="grid gap-3 sm:grid-cols-2">
      <label className="text-sm">{t("from")}<input required type="date" className={field} value={from} onChange={e=>setFrom(e.target.value)}/></label>
      <label className="text-sm">{t("to")}<input required type="date" className={field} value={to} onChange={e=>setTo(e.target.value)}/></label>
     </div>
     <label className="block text-sm">{t("sessionId")}<input className={field} value={sessionId} onChange={e=>setSessionId(e.target.value)}/></label>
     <label className="block text-sm">{t("studentId")}<input className={field} value={studentId} onChange={e=>setStudentId(e.target.value)}/></label>
+    </>}
    </>}
    {action==="payment"&&<>
     <label className="block text-sm">{t("account")}

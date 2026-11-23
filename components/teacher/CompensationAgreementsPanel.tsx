@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useState,type FormEvent} from "react";
+import {useEffect,useRef,useState,type FormEvent} from "react";
 import {useLocale,useTranslations} from "next-intl";
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 
@@ -7,26 +7,28 @@ type Workplace={id:string;name:string;currency:string;timezone:string};
 type Student={id:string;name:string};
 type Group={id:string;name:string;workplace_id:string};
 type Payer={id:string;displayName:string;status:string};
+type ExactLesson={id:string;title:string;startsAt:string;durationMinutes:number;timezone:string};
 type Agreement={id:string;workplaceId:string;studentId:string|null;groupId:string|null;
- billingAccountId:string;agreementRole:"coach_earning"|"participant_charge";
+ exactSessionId:string|null;billingAccountId:string;agreementRole:"coach_earning"|"participant_charge";
  model:"hourly"|"per_session"|"per_student"|"fixed_period";
  rateCents:number;currency:string;effectiveFrom:string;effectiveTo:string|null;
  status:"active"|"archived";revision:number};
 type Preview={agreement:Agreement;projection:{expectedCents:number;currency:string;
  eligibleInstructorMinutes:number;eligibleSessionCount:number;eligibleParticipantCount:number};
- persistedObligation:false;paymentRecorded:false};
+ excludedExactSessionCount:number;persistedObligation:false;paymentRecorded:false};
 const field="w-full min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
 async function getJson<T>(url:string,init?:RequestInit):Promise<T>{
  const res=await fetch(url,{cache:"no-store",...init});
  const value=await res.json().catch(()=>null);
  if(!res.ok)throw Object.assign(new Error(typeof value?.error==="string"?value.error:"Request failed"),
-  {code:value?.code});
+  {code:value?.code,status:res.status});
  return value as T;
 }
 export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkplaceId?:string|null}){
  const t=useTranslations("compensation"),locale=useLocale(),errorText=useLocalizedApiError();
  const [workplaces,setWorkplaces]=useState<Workplace[]>([]);
  const [workplaceId,setWorkplaceId]=useState(initialWorkplaceId??"");
+ const [loadedContext,setLoadedContext]=useState(initialWorkplaceId);
  const [students,setStudents]=useState<Student[]>([]),[groups,setGroups]=useState<Group[]>([]);
  const [payers,setPayers]=useState<Payer[]>([]);
  const [agreements,setAgreements]=useState<Agreement[]>([]);
@@ -44,20 +46,73 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
    .toISOString().slice(0,10);
  });
  const [preview,setPreview]=useState<Preview|null>(null);
- async function load(){
+ const [exactDay,setExactDay]=useState(""),[exactChoices,setExactChoices]=useState<ExactLesson[]>([]);
+ const [exactState,setExactState]=useState<"idle"|"loading"|"ready"|"error">("idle");
+ const exactScopeKey=workplaceId+":"+exactDay;
+ const [resolvedExactScope,setResolvedExactScope]=useState("");
+ const readyExact=exactState==="ready"&&resolvedExactScope===exactScopeKey&&loadedContext===initialWorkplaceId;
+ const visibleExactChoices=readyExact?exactChoices:[];
+ const exactChoice=visibleExactChoices.find(x=>x.id===scopedId);
+ const writeKey=useRef<{premise:string;id:string}|null>(null);
+ const exactAttempt=useRef<{workplaceId:string;body:Record<string,unknown>}|null>(null);
+ const [uncertain,setUncertain]=useState(false);
+ const [superseded,setSuperseded]=useState(false);
+ async function sendExact(){
+  const attempt=exactAttempt.current;
+  if(!attempt)return;
+  setBusy(true);setError("");
+  try{
+   await getJson("/api/compensation-agreements",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(attempt.body)});
+   exactAttempt.current=null;setUncertain(false);setSuperseded(false);writeKey.current=null;
+   if(workplaceId===attempt.workplaceId)await refreshAgreements(attempt.workplaceId);
+  }catch(e){
+   const status=(e as {status?:number}|null)?.status;
+   const code=(e as {code?:string}|null)?.code;
+   const refused=!uncertain&&status!==undefined&&status<500&&[
+    "AGREEMENT_CONFLICT","CURRENCY_MISMATCH","EXACT_AGREEMENT_ALREADY_POSTED",
+    "EXACT_AGREEMENT_SCOPE_UNAVAILABLE","PAYER_ARCHIVED","VALIDATION_ERROR","NOT_FOUND",
+   ].includes(code??"");
+   if(refused){exactAttempt.current=null;setUncertain(false);writeKey.current=null;}
+   else{
+    setUncertain(Boolean(exactAttempt.current));
+    if(uncertain&&code==="AGREEMENT_CONFLICT")setSuperseded(true);
+   }
+   setError(errorText(e,t("saveFailed")));
+  }finally{setBusy(false);}
+ }
+ useEffect(()=>{
+  if(scope!=="exact"||!workplaceId||!exactDay)return;
+  const controller=new AbortController();
+  const query=new URLSearchParams({workplaceId,date:exactDay});
+  void getJson<{workplaceId:string;date:string;lessons:ExactLesson[]}>("/api/compensation-agreements/completed-lessons?"+query,{signal:controller.signal})
+   .then(value=>{
+    if(controller.signal.aborted)return;
+    if(value.workplaceId!==workplaceId||value.date!==exactDay){setExactState("error");return;}
+    setExactChoices(value.lessons);setResolvedExactScope(workplaceId+":"+exactDay);setExactState("ready");
+   }).catch(()=>{if(!controller.signal.aborted)setExactState("error");});
+  return ()=>controller.abort();
+ },[scope,workplaceId,exactDay]);
+ function clearExact(){
+  setScopedId("");setExactChoices([]);setResolvedExactScope("");setExactState(exactDay?"loading":"idle");setPreview(null);
+ }
+ async function load(stillCurrent:()=>boolean){
   const [context,studentsData,groupsData,payersData]=await Promise.all([
    getJson<{workplaces:Workplace[]}>("/api/teacher/workplace-context"),
    getJson<{data:Student[];ok:boolean}>("/api/agent/v1",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"students.search",query:""})}),
    getJson<{data:Group[];ok:boolean}>("/api/agent/v1",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"groups.list"})}),
    getJson<Payer[]>("/api/billing-accounts"),
   ]);
+  if(!stillCurrent())return;
   setWorkplaces(context.workplaces);
   setStudents(studentsData.data??[]);setGroups(groupsData.data??[]);
   setPayers(payersData.filter(p=>p.status==="active"));
   const preferred=initialWorkplaceId&&context.workplaces.some(w=>w.id===initialWorkplaceId)?
    initialWorkplaceId:workplaceId&&context.workplaces.some(w=>w.id===workplaceId)?
    workplaceId:context.workplaces[0]?.id??"";
+  if(preferred!==workplaceId)clearExact();
   setWorkplaceId(preferred);
+  setLoadedContext(initialWorkplaceId);
  }
  async function refreshAgreements(id:string){
   if(!id){setAgreements([]);return;}
@@ -66,7 +121,7 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
  }
  useEffect(()=>{
   let cancelled=false;
-  void load().catch(e=>{if(!cancelled)setError(errorText(e,t("loadFailed")));});
+  void load(()=>!cancelled).catch(e=>{if(!cancelled)setError(errorText(e,t("loadFailed")));});
   return ()=>{cancelled=true;};
  // The component intentionally re-reads global selection on server refresh.
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,20 +134,36 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
  },[workplaceId]);
  const workplace=workplaces.find(w=>w.id===workplaceId);
  async function create(event:FormEvent){
-  event.preventDefault();setBusy(true);setError("");setPreview(null);
+  event.preventDefault();
+  if(busy||uncertain)return;
+  setBusy(true);setError("");setPreview(null);
   try{
    if(!workplace)throw new Error(t("selectWorkplace"));
-   const body={workplaceId,agreementRole:role,model,rateCents:rate,
-    currency:workplace.currency,effectiveFrom:start,effectiveTo:end||null,
+   if(scope==="exact"&&(!exactChoice||!readyExact))throw new Error(t("exactChoose"));
+   const approved={workplaceId,agreementRole:role,model,rateCents:rate,
+    currency:workplace.currency,effectiveFrom:scope==="exact"?exactDay:start,effectiveTo:scope==="exact"?exactDay:end||null,
     studentId:scope==="student"?scopedId:null,
     groupId:scope==="group"?scopedId:null,
-    billingAccountId:payerId,
-    idempotencyKey:crypto.randomUUID(),confirmed:true};
+    ...(scope==="exact"?{exactSessionId:scopedId}:{}),
+    billingAccountId:payerId};
    if(scope!=="workplace"&&!scopedId)throw new Error(t("chooseScope"));
    if(!payerId)throw new Error(t("chooseCounterparty"));
+   if(scope==="exact"&&exactChoice&&!window.confirm(t("exactConfirm",{
+    title:exactChoice.title,date:exactDay,reference:exactChoice.id.slice(0,8),
+    time:new Intl.DateTimeFormat(locale,{timeStyle:"short",timeZone:exactChoice.timezone}).format(new Date(exactChoice.startsAt)),
+   })))return;
+   const premise=JSON.stringify(approved);
+   if(!writeKey.current||writeKey.current.premise!==premise)
+    writeKey.current={premise,id:crypto.randomUUID()};
+   const body={...approved,idempotencyKey:writeKey.current.id,confirmed:true};
+   if(scope==="exact"){
+    exactAttempt.current={workplaceId,body};
+    await sendExact();return;
+   }
    await getJson("/api/compensation-agreements",{
     method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),
    });
+   writeKey.current=null;
    await refreshAgreements(workplaceId);
   }catch(e){setError(errorText(e,t("saveFailed")));}
   finally{setBusy(false);}
@@ -124,15 +195,16 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
    <p className="text-sm text-muted">{t("intro")}</p>
   </div>
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}
-  <form onSubmit={create} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+  <form onSubmit={create}>
+   <fieldset disabled={busy||uncertain} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
    <label className="text-xs">{t("workplace")}
-    <select className={field} value={workplaceId} onChange={e=>{setWorkplaceId(e.target.value);setPreview(null);setScopedId("");}} required>
+    <select aria-label={t("workplace")} className={field} value={workplaceId} onChange={e=>{setWorkplaceId(e.target.value);clearExact();}} required>
      <option value="">{t("selectWorkplace")}</option>
      {workplaces.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
     </select>
    </label>
    <label className="text-xs">{t("role")}
-    <select className={field} value={role} onChange={e=>{setRole(e.target.value as Agreement["agreementRole"]);setPreview(null);}}>
+    <select className={field} value={role} onChange={e=>{setRole(e.target.value as Agreement["agreementRole"]);if(scope==="exact"&&e.target.value!=="coach_earning"){setScope("workplace");clearExact();}setPreview(null);}}>
      <option value="coach_earning">{t("coachEarning")}</option>
      <option value="participant_charge">{t("participantCharge")}</option>
     </select>
@@ -150,34 +222,58 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
       value={rate} onChange={e=>setRate(Number(e.target.value))} required/>
    </label>
    <label className="text-xs">{t("scope")}
-    <select className={field} value={scope} onChange={e=>{setScope(e.target.value);setScopedId("");}}>
+    <select aria-label={t("scope")} className={field} value={scope} onChange={e=>{setScope(e.target.value);clearExact();}}>
      <option value="workplace">{t("allInWorkplace")}</option>
      <option value="student">{t("oneStudent")}</option>
      <option value="group">{t("oneGroup")}</option>
+     {role==="coach_earning"&&model!=="fixed_period"&&<option value="exact">{t("exactScope")}</option>}
     </select>
    </label>
-   {scope!=="workplace"&&<label className="text-xs">{t("specificScope")}
+   {(scope==="student"||scope==="group")&&<label className="text-xs">{t("specificScope")}
     <select className={field} value={scopedId} onChange={e=>setScopedId(e.target.value)} required>
      <option value="">{t("chooseScope")}</option>
      {(scope==="student"?students:groups.filter(g=>g.workplace_id===workplaceId))
        .map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
     </select>
    </label>}
+   {scope==="exact"&&<>
+    <label className="text-xs">{t("exactDay")}
+     <input required className={field} type="date" value={exactDay} onChange={event=>{
+      const value=event.target.value;setExactDay(value);clearExact();setExactState(value?"loading":"idle");
+     }}/>
+    </label>
+    <label className="text-xs">{t("exactScope")}
+     <select aria-label={t("exactScope")} required className={field} disabled={!readyExact} value={readyExact?scopedId:""} onChange={event=>setScopedId(event.target.value)}>
+      <option value="">{t("exactChoose")}</option>
+      {visibleExactChoices.map(lesson=><option key={lesson.id} value={lesson.id}>
+       {lesson.title} · {new Intl.DateTimeFormat(locale,{timeStyle:"short",timeZone:lesson.timezone}).format(new Date(lesson.startsAt))} · {lesson.id.slice(0,8)}
+      </option>)}
+     </select>
+    </label>
+    <p className="text-xs text-muted" role="status">{exactDay&&!readyExact&&exactState!=="error"?t("exactLoading"):
+      readyExact&&!visibleExactChoices.length?t("exactEmpty"):""}</p>
+    {exactState==="error"&&<p className="text-xs text-error" role="alert">{t("exactUnavailable")}</p>}
+   </>}
    <label className="text-xs">{t("counterparty")}
-    <select className={field} value={payerId} onChange={e=>setPayerId(e.target.value)} required>
+    <select aria-label={t("payer")} className={field} value={payerId} onChange={e=>setPayerId(e.target.value)} required>
      <option value="">{t("chooseCounterparty")}</option>
      {payers.map(p=><option key={p.id} value={p.id}>{p.displayName}</option>)}
     </select>
    </label>
-   <label className="text-xs">{t("validFrom")}
+   {scope!=="exact"&&<><label className="text-xs">{t("validFrom")}
     <input className={field} type="date" value={start} onChange={e=>setStart(e.target.value)} required/>
    </label>
    <label className="text-xs">{t("validTo")}
     <input className={field} type="date" min={start} value={end} onChange={e=>setEnd(e.target.value)}/>
-   </label>
+   </label></>}
    <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-    disabled={busy||!workplaceId}>{busy?t("saving"):t("addAgreement")}</button>
+    disabled={busy||!workplaceId||(scope==="exact"&&!exactChoice)}>{busy?t("saving"):t("addAgreement")}</button>
+   </fieldset>
   </form>
+  {uncertain&&<div role="status" className="text-sm">
+   <p>{t(superseded?"supersededReview":"pendingReview")}</p>
+   <button type="button" className="text-primary underline" disabled={busy} onClick={()=>void sendExact()}>{t("retryExact")}</button>
+  </div>}
   <div className="flex flex-wrap items-end gap-3 text-xs">
    <label>{t("previewFrom")}
     <input className={field} type="date" value={previewFrom} onChange={e=>setPreviewFrom(e.target.value)}/>
@@ -196,12 +292,12 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
        {" · "}<span dir="ltr">{a.rateCents} {a.currency}</span></p>
       <p className="text-xs text-muted">{a.effectiveFrom}{a.effectiveTo?" – "+a.effectiveTo:""}
        {" · "}{t(a.status==="active"?"active":"archived")}
-       {a.studentId?" · "+t("oneStudent"):a.groupId?" · "+t("oneGroup"):""}</p>
+       {a.exactSessionId?" · "+t("exactScope")+" · "+a.exactSessionId.slice(0,8):a.studentId?" · "+t("oneStudent"):a.groupId?" · "+t("oneGroup"):""}</p>
      </div>
      <div className="flex gap-3">
       {a.status==="active"&&<><button className="text-primary underline" disabled={busy}
        onClick={()=>void showPreview(a)}>{t("preview")}</button>
-       <button className="text-muted underline" disabled={busy}
+       <button className="text-muted underline" disabled={busy||uncertain}
        onClick={()=>void archive(a)}>{t("archive")}</button></>}
      </div>
     </li>)
@@ -211,6 +307,7 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
    <p className="text-sm text-muted">{t("sessions",{count:preview.projection.eligibleSessionCount})}
     {" · "}{t("minutes",{count:preview.projection.eligibleInstructorMinutes})}
     {" · "}{t("people",{count:preview.projection.eligibleParticipantCount})}</p>
+   {preview.excludedExactSessionCount>0&&<p className="text-xs text-muted">{t("exactExcluded",{count:preview.excludedExactSessionCount})}</p>}
    <p className="text-xs text-muted">{t("previewNotice")}</p>
   </div>}
  </section>;

@@ -39,6 +39,7 @@ export class FinanceLedgerError extends Error{
 const publicCodes=new Set([
  "INVALID_OBLIGATION_APPROVAL","AGREEMENT_NOT_ACTIVE_OR_OWNED",
  "STALE_AGREEMENT_REVISION","FIXED_PERIOD_MONTH_REQUIRED",
+ "EXACT_AGREEMENT_REVIEW_REQUIRED","EXACT_AGREEMENT_SESSION_MISMATCH","EXACT_AGREEMENT_READ_COMMITTED_REQUIRED",
  "CANONICAL_SESSION_REQUIRED","COMPLETED_SESSION_NOT_OWNED",
  "AGREEMENT_GROUP_MISMATCH","AGREEMENT_DATE_MISMATCH",
  "UNCONFIRMED_OR_NO_SHOW_ATTENDANCE","AGREEMENT_STUDENT_NOT_ATTENDED",
@@ -63,7 +64,12 @@ export function financeLedgerDbError(error:{code?:string;message:string}):never{
    code==="BILLING_ACCOUNT_NOT_ACTIVE_OR_OWNED"?403:
    code.startsWith("INVALID_")||code==="FIXED_PERIOD_MONTH_REQUIRED"||
    code==="CANONICAL_SESSION_REQUIRED"?400:409;
-  throw new FinanceLedgerError(status,code,code.replaceAll("_"," ").toLowerCase());
+  const exactReview=code==="EXACT_AGREEMENT_REVIEW_REQUIRED"
+    ?"An exact agreement covers this lesson. Review the completed lesson and its agreement before choosing new approval terms."
+    :code==="EXACT_AGREEMENT_SESSION_MISMATCH"
+      ?"This agreement applies only to a different completed lesson. No earning was posted."
+      :null;
+  throw new FinanceLedgerError(status,code,exactReview??code.replaceAll("_"," ").toLowerCase());
  }
  if(error.code==="23505")throw new FinanceLedgerError(409,"FINANCIAL_CONFLICT",
   "A financial source or request was already posted; refresh and review");
