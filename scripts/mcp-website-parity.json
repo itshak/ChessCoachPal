@@ -1261,7 +1261,7 @@
         "ccp_portal_grants_get",
         "ccp_portal_grants_revoke"
       ],
-      "explanation": "Get/revoke one explicit owner-scoped capability metadata through shared service. Token is invalidated on revocation; no browser secret exposed through MCP.",
+      "explanation": "Get/revoke explicit owned grant metadata; the exact guest link is browser-issued, rotates independently and never appears in MCP. Signed guest finance regression in e2e/parity-portal-finance-scope.spec.ts verifies no disclosure from calendar-only, wrong debtor or learner, mixed or unattributed invoice, draft, rotated, expired or revoked access. Financial pages remain guest-only and do not send or mutate money.",
       "evidenceTest": "e2e/parity-scoped-portal-grants.spec.ts"
     },
     {
