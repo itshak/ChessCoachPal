@@ -68,11 +68,11 @@ test("PARITY: teacher language preference persists identically via website and M
     const studentLink=page.locator('a[href^="/students/"]').first();
     await expect(studentLink).toBeVisible();
     await studentLink.click();
-    await expect(page.getByRole("heading",{name:"תצפיות דירוג לפי מקור וקצב משחק"})).toBeVisible();
+    const hebrewOnlineRatings=page.getByRole("region",{name:"היסטוריית דירוגי שחמט מקוונים",exact:true});
+    await expect(hebrewOnlineRatings.getByRole("heading",{name:"דירוגים מקוונים לפי מקור וקצב משחק",exact:true})).toBeVisible();
     await expect(page.getByRole("heading",{name:"התקדמות"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"למידת שחמט"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"חומרים שהוקצו, נלמדו והושלמו"})).toBeVisible();
-    await expect(page.getByLabel("תצפיות דירוג שחמט")).toBeVisible();
     await expect(page.getByText("מתאמן מאז",{exact:true})).toBeVisible();
     const mcp = await call("ccp_teacher_profile_update",{
       preferredLocale:"ru", confirmed:true
@@ -98,11 +98,11 @@ test("PARITY: teacher language preference persists identically via website and M
     const russianStudentLink=page.locator('a[href^="/students/"]').first();
     await expect(russianStudentLink).toBeVisible();
     await russianStudentLink.click();
-    await expect(page.getByRole("heading",{name:"Рейтинги по источникам и контролю времени"})).toBeVisible();
+    const russianOnlineRatings=page.getByRole("region",{name:"История шахматных онлайн-рейтингов",exact:true});
+    await expect(russianOnlineRatings.getByRole("heading",{name:"Онлайн-рейтинги по источникам и контролю времени",exact:true})).toBeVisible();
     await expect(page.getByRole("heading",{name:"Прогресс"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"Изучение шахмат"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"Назначенные, изученные и завершённые материалы"})).toBeVisible();
-    await expect(page.getByLabel("Наблюдения шахматного рейтинга")).toBeVisible();
     await expect(page.getByText("Занимается с",{exact:true})).toBeVisible();
     const invalidWeb = await page.request.put("/api/auth/update-profile", {
       data:{preferredLocale:"unsupported"}
