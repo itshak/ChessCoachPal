@@ -31,6 +31,7 @@
     "workplaceFilterFailed": "Could not change workplace; reload"
   },
   "dashboard": {
+    "dailyCloseOpen": "Record and complete {title}",
     "dailyPrepareOpen": "Prepare {title}",
     "dailyPrepareHeading": "Lesson preparation",
     "dailyPrepareInvalid": "Choose a valid lesson.",
@@ -2324,6 +2325,13 @@
     }
   },
   "lessonCompletion": {
+    "exactCancellationReview": "This lesson has a recorded cancellation. Review it under Attendance in the schedule.",
+    "exactUnavailable": "This lesson is not available for exact completion.",
+    "exactWorkplaceChanged": "Your workplace selection changed. Return to the dashboard and choose the lesson again.",
+    "exactNotEnded": "This lesson has not ended.",
+    "exactRosterUnavailable": "This lesson has no supported frozen roster.",
+    "exactChanged": "Lesson or attendance changed. Reload the roster before completing.",
+    "exactMode": "Review and complete only this lesson:",
     "loadFailed": "Unable to load lesson",
     "rosterReadFailed": "Cannot read the lesson's frozen roster",
     "rosterLoadFailed": "Cannot load roster",

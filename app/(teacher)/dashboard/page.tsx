@@ -154,6 +154,10 @@ export default async function DashboardPage({ searchParams }: {
                 {row.scheduleHref && <Link href={row.scheduleHref} className="text-primary underline">
                   {t("dailyAttendanceOpen", { title: row.title })}
                 </Link>}
+                {row.completionHref && <Link href={row.completionHref} className="block text-primary underline">
+                  {t("dailyCloseOpen",{title:row.title})}
+                </Link>}
+
               </Card>
             </li>)}
           </ul>}
