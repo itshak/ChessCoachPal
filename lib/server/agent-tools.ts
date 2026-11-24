@@ -1091,7 +1091,7 @@ const catalogue = [
   },
   {
     name:"ccp_student_ratings_refresh_commit",
-    description:"Explicitly confirm external public chess rating snapshot import. Refetch and compare exact preview digest; record a provider-sourced append-only batch with one UUID receipt, never change teacher strength.",
+    description:"Explicitly confirm external public chess rating snapshot import. Atomically confirm the reviewed linked-account state and rating digest; an immutable exact UUID replay does not refetch. No worker consent or teacher strength change.",
     schema:ratingRefreshCommitSchema,scope:"coach:write",readOnly:false,
   },
   {

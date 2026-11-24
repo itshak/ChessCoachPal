@@ -1567,7 +1567,7 @@
         "ccp_student_ratings_refresh_preview",
         "ccp_student_ratings_refresh_commit"
       ],
-      "explanation": "Authenticated teacher-owned source-tagged append-only provider/time-control rating history, explicit public lookup preview and reviewed batch commit; manual write is idempotent; no 1-10 strength mutation.",
+      "explanation": "Authenticated teacher-owned source-tagged append-only provider/time-control rating history, explicit public lookup preview bound to linked-account state, atomic reviewed batch commit and immutable exact replay before provider fetch. Manual entry remains distinct; no durable opt-in or 1-10 strength mutation.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {
