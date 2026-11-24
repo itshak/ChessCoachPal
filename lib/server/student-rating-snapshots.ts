@@ -19,12 +19,26 @@ const fail=(status:number,code:string,message:string)=>
 type Db=SupabaseClient;
 type Provider=z.infer<typeof ratingFetchSchema>["provider"];
 const fields="id,student_id,provider,time_control,rating,rating_deviation,provisional,games,source,observed_at,fetched_at,request_id,created_at,preview_digest,source_username";
-const verifiedDigest=(studentId:string,provider:Provider,username:string,rows:RatingSnapshot[])=>{
-  const values=rows.map(x=>[x.timeControl,x.rating,x.ratingDeviation,x.provisional,x.games])
-    .sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
-  return createHash("sha256").update(JSON.stringify({studentId,provider,
-    username:username.toLocaleLowerCase(),ratings:values})).digest("hex");
+const verifiedDigest=(studentId:string,provider:Provider,username:string,epoch:string,rows:RatingSnapshot[])=>{
+ const values=rows.filter(x=>x.rating!==null).sort((a,b)=>a.timeControl<b.timeControl?-1:a.timeControl>b.timeControl?1:0)
+  .map(x=>[x.timeControl,x.rating,x.ratingDeviation,x.provisional,x.games]);
+ return createHash("sha256").update(JSON.stringify(["manual-online-rating-v2",studentId.toLowerCase(),provider,username,epoch,values])).digest("hex");
 };
+const receiptFields="id,student_id,provider,time_control,rating,rating_deviation,provisional,games,source,observed_at,fetched_at,request_id,created_at,preview_digest,source_username,source_handle_revision,verification_state,provider_list_version";
+const receiptBound=20;
+const bindingShape=z.object({epoch:z.string().regex(/^[1-9][0-9]{0,18}$/),archived:z.boolean(),handle:z.string().nullable()}).strict();
+async function ratingReceipt(db:Db,teacherId:string,requestId:string){
+ const {data,error,count}=await db.from("student_rating_snapshots").select(receiptFields,{count:"exact"})
+  .eq("teacher_id",teacherId).eq("request_id",requestId).order("time_control").limit(receiptBound+1);
+ if(error||!data||count!==data.length)throw fail(503,"RATINGS_UNAVAILABLE","Rating replay could not be verified");
+ if(data.length>receiptBound)throw fail(409,"IDEMPOTENCY_CONFLICT","Request ID belongs to incompatible rating history");
+ return data;
+}
+function snapshotDto<T extends {source_handle_revision:unknown;verification_state:unknown;provider_list_version:unknown}>(row:T){
+ const {source_handle_revision,verification_state,provider_list_version,...snapshot}=row;
+ void source_handle_revision; void verification_state; void provider_list_version;
+ return snapshot;
+}
 export async function teacherStudentRatingHistory(db:Db,teacherId:string,
  input:z.infer<typeof ratingListSchema>){
  const parsed=ratingListSchema.parse(input);
@@ -56,81 +70,83 @@ export async function teacherStudentRatingRecord(db:Db,teacherId:string,
  const {data,error}=await db.from("student_rating_snapshots").insert(row)
    .select(fields).single();
  if(error?.code==="23505"){
-  const {data:prior,error:lookupError}=await db.from("student_rating_snapshots")
-   .select(fields).eq("teacher_id",teacherId).eq("request_id",a.requestId).maybeSingle();
-  if(lookupError)throw fail(503,"RATINGS_UNAVAILABLE","Rating replay could not be verified");
-  if(prior&&prior.student_id===a.studentId&&prior.provider===a.provider&&
+  const receipt=await ratingReceipt(db,teacherId,a.requestId);
+  const prior=receipt.length===1?receipt[0]:null;
+  if(prior&&prior.student_id===a.studentId.toLowerCase()&&prior.provider===a.provider&&
     prior.time_control===a.timeControl&&prior.rating===a.rating&&
     Date.parse(prior.observed_at)===Date.parse(a.observedAt)&&prior.rating_deviation===a.ratingDeviation&&
     prior.provisional===a.provisional&&prior.games===a.games&&prior.source==="teacher_manual")
-    return {snapshot:prior,replayed:true};
+    return {snapshot:snapshotDto(prior),replayed:true};
   throw fail(409,"IDEMPOTENCY_CONFLICT","Request ID belongs to another rating observation");
  }
+ if(error?.code==="55P03"||error?.code==="40001")throw fail(409,"RATING_CONTEXT_BUSY","Student context is busy; retry this exact request");
  if(error||!data)throw fail(503,"RATINGS_UNAVAILABLE","Cannot record manual rating snapshot");
  return {snapshot:data,replayed:false};
 }
-export async function teacherStudentRatingRefreshPreview(db:Db,teacherId:string,
- input:z.infer<typeof ratingFetchSchema>){
- const x=ratingFetchSchema.parse(input);
- const profile=await teacherStudentProfile(db,teacherId,x.studentId);
- if(profile.archived_at)throw fail(409,"STUDENT_ARCHIVED","Cannot refresh an archived learner's chess identity");
- const username=x.provider==="lichess"?profile.lichess_username:profile.chesscom_username;
+async function reviewedOnlineEvidence(db:Db,teacherId:string,x:z.infer<typeof ratingFetchSchema>){
+ // End-user client must prove tenant ownership before the narrow admin read.
+ await teacherStudentProfile(db,teacherId,x.studentId);
+ const {data,error}=await createServiceClient().rpc("ccp_manual_online_rating_binding",{
+   p_teacher_id:teacherId,p_student_id:x.studentId,p_provider:x.provider,
+ });
+ if(error)throw fail(503,"RATINGS_UNAVAILABLE","Could not verify student rating binding");
+ const binding=bindingShape.safeParse(data);
+ if(!binding.success)throw fail(404,"NOT_FOUND","Student not found");
+ if(binding.data.archived)throw fail(409,"STUDENT_ARCHIVED","Cannot refresh an archived learner's chess identity");
+ const username=binding.data.handle;
  if(typeof username!=="string"||!/^[A-Za-z0-9_-]{2,30}$/.test(username))
   throw fail(400,"ACCOUNT_NOT_CONFIGURED","Enter a public chess username for this provider first");
- const now=new Date().toISOString();
+ const fetchedAt=new Date().toISOString();
  const raw=await fetchOnlineRatingPayload(x.provider,username);
  let ratings:RatingSnapshot[];
- try{ratings=x.provider==="lichess"?parseLichessPerfs(raw,now):
-  parseChesscomStats(raw,now);}
+ try{ratings=x.provider==="lichess"?parseLichessPerfs(raw,fetchedAt):parseChesscomStats(raw,fetchedAt);}
  catch{throw fail(502,"PROVIDER_RESPONSE","Provider rating categories were invalid");}
- if(!ratings.length)throw fail(422,"RATING_UNAVAILABLE",
+ if(!ratings.some(row=>row.rating!==null))throw fail(422,"RATING_UNAVAILABLE",
   "No published ratings for this account's supported time controls");
- return {studentId:x.studentId,provider:x.provider,username,ratings,
-  expectedDigest:verifiedDigest(x.studentId,x.provider,username,ratings),
+ return {epoch:binding.data.epoch,fetchedAt,preview:{studentId:x.studentId,provider:x.provider,username,ratings,
+  expectedDigest:verifiedDigest(x.studentId,x.provider,username,binding.data.epoch,ratings),
   readOnly:true,accountOwnershipVerified:false,teacherStrengthChanged:false,
-  note:"Review each provider/time-control value before recording. This does not prove the account belongs to the student."};
+  note:"Review each provider/time-control value before recording. This does not prove the account belongs to the student."}};
+}
+export async function teacherStudentRatingRefreshPreview(db:Db,teacherId:string,
+ input:z.infer<typeof ratingFetchSchema>){
+ return (await reviewedOnlineEvidence(db,teacherId,ratingFetchSchema.parse(input))).preview;
 }
 export async function teacherStudentRatingRefreshCommit(db:Db,teacherId:string,
  input:z.infer<typeof ratingRefreshCommitSchema>){
  const x=ratingRefreshCommitSchema.parse(input);
- // Before accessing the external provider check request receipt: an exact
- // replay must not trigger a second network call or duplicate observations.
- const {data:previous,error:priorError}=await db.from("student_rating_snapshots")
-  .select(fields).eq("teacher_id",teacherId).eq("request_id",x.requestId)
-  .order("time_control");
- if(priorError)throw fail(503,"RATINGS_UNAVAILABLE","Cannot verify rating refresh replay");
- if(previous?.length){
-  // Existing request IDs may not be rebound to a different student/provider.
-  if(previous.some(r=>r.student_id!==x.studentId||r.provider!==x.provider||
-    r.source!=="provider_api"||r.preview_digest!==x.expectedDigest))
-   throw fail(409,"IDEMPOTENCY_CONFLICT",
-    "Rating refresh UUID was reused with different reviewed source evidence");
-  // Fetching is deliberately NOT repeated on successful committed retries.
-  return {studentId:x.studentId,snapshots:previous,replayed:true,
-    provider:x.provider,teacherStrengthChanged:false};
+ const matches=(rows:Awaited<ReturnType<typeof ratingReceipt>>)=>rows.length>0&&rows.every(r=>
+  r.student_id===x.studentId.toLowerCase()&&r.provider===x.provider&&r.source==="provider_api"&&
+  r.verification_state==="unverified"&&r.source_handle_revision===null&&r.provider_list_version===null&&r.preview_digest===x.expectedDigest)&&
+  new Set(rows.map(r=>r.source_username)).size===1&&new Set(rows.map(r=>r.time_control)).size===rows.length;
+ const response=(rows:Awaited<ReturnType<typeof ratingReceipt>>,replayed:boolean)=>(
+  {studentId:x.studentId,snapshots:rows.map(snapshotDto),replayed,provider:x.provider,teacherStrengthChanged:false});
+ // Exact existing receipts, including the previous digest version, replay
+ // before mutable student checks or a provider request.
+ const previous=await ratingReceipt(db,teacherId,x.requestId);
+ if(previous.length){
+  if(!matches(previous))throw fail(409,"IDEMPOTENCY_CONFLICT","Request ID belongs to another rating observation");
+  return response(previous,true);
  }
- // The reviewed commit adds receipt and digest fields; the read-only
- // provider-preview schema is deliberately strict and must receive only
- // its own whitelisted inputs.
- const preview=await teacherStudentRatingRefreshPreview(db,teacherId,{
-   studentId:x.studentId,provider:x.provider,confirmedExternal:true,
+ const {epoch,fetchedAt,preview}=await reviewedOnlineEvidence(db,teacherId,{
+  studentId:x.studentId,provider:x.provider,confirmedExternal:true,
  });
  if(preview.expectedDigest!==x.expectedDigest)
-  throw fail(409,"STALE_RATING_PREVIEW","Public rating data changed; review again");
- const admin=createServiceClient();
- const rows=preview.ratings.filter(x=>x.rating!==null).map(row=>({
-  teacher_id:teacherId,student_id:x.studentId,
-  provider:x.provider,time_control:row.timeControl,rating:row.rating,
-  rating_deviation:row.ratingDeviation,provisional:row.provisional,
-  games:row.games,source:"provider_api",observed_at:row.observedAt,
-  fetched_at:row.fetchedAt,request_id:x.requestId,
-  preview_digest:x.expectedDigest,source_username:preview.username,
+  throw fail(409,"STALE_RATING_PREVIEW","Public rating evidence or linked account changed; review again");
+ const observations=preview.ratings.filter(row=>row.rating!==null).map(row=>({
+  time_control:row.timeControl,rating:row.rating,rating_deviation:row.ratingDeviation,
+  provisional:row.provisional,games:row.games,observed_at:row.observedAt,
  }));
- const {data,error}=await admin.from("student_rating_snapshots")
-  .insert(rows).select(fields);
- if(error?.code==="23505")throw fail(409,"IDEMPOTENCY_CONFLICT",
-  "Concurrent refresh already claimed this request; re-read history");
- if(error||!data)throw fail(503,"RATINGS_UNAVAILABLE","Could not save provider observations");
- return {studentId:x.studentId,snapshots:data,replayed:false,
-  provider:x.provider,teacherStrengthChanged:false};
+ const {data,error}=await createServiceClient().rpc("ccp_manual_online_rating_commit",{
+  p_teacher_id:teacherId,p_student_id:x.studentId,p_provider:x.provider,p_handle:preview.username,
+  p_epoch:epoch,p_request_id:x.requestId,p_preview_digest:x.expectedDigest,p_fetched_at:fetchedAt,p_observations:observations,
+ });
+ if(error?.code==="23505")throw fail(409,"IDEMPOTENCY_CONFLICT","Request ID belongs to another rating observation");
+ if(error?.code==="55P03"||error?.code==="40001")throw fail(409,"RATING_CONTEXT_BUSY","Student context is busy; retry this exact request");
+ if(error?.message==="RATING_MANUAL_REFRESH_STALE"||error?.message==="RATING_MANUAL_REFRESH_EVIDENCE_MISMATCH")
+  throw fail(409,"STALE_RATING_PREVIEW","Public rating evidence or linked account changed; review again");
+ if(error||typeof data?.replayed!=="boolean")throw fail(503,"RATINGS_UNAVAILABLE","Could not save provider observations");
+ const saved=await ratingReceipt(db,teacherId,x.requestId);
+ if(!matches(saved)||saved.length!==observations.length)throw fail(503,"RATINGS_UNAVAILABLE","Could not verify committed rating evidence");
+ return response(saved,data.replayed);
 }

@@ -1,6 +1,7 @@
 import {createHash,randomUUID} from "node:crypto";
 import {createServer,type Server} from "node:http";
 import {expect,test} from "@playwright/test";
+import {createClient} from "@supabase/supabase-js";
 import {delegatedTool} from "./helpers/delegated-mcp";
 
 const uuid=()=>randomUUID();
@@ -31,11 +32,13 @@ async function newTeacherStudents(call:Awaited<ReturnType<typeof delegatedTool>>
  return {workplaceId,ids,names};
 }
 async function ratingProvider(){
+ let gate:{entered:()=>void;release:Promise<void>}|null=null;
  const paths:string[]=[];
  const app=createServer(async(req,res)=>{
   const url=new URL(req.url??"/","http://127.0.0.1:3995");
   if(req.method!=="GET"){res.writeHead(405);res.end();return;}
   paths.push(url.pathname);
+  if(gate){const pending=gate;gate=null;pending.entered();await pending.release;}
   const now=Math.floor(Date.now()/1000);
   if(url.pathname.startsWith("/api/user/")){
    res.writeHead(200,{"Content-Type":"application/json"});
@@ -53,7 +56,13 @@ async function ratingProvider(){
   res.writeHead(404);res.end();
  });
  await new Promise<void>((yes,no)=>{app.once("error",no);app.listen(3995,"127.0.0.1",yes);});
- return {app,paths};
+ return {app,paths,holdNext(){
+  let enter!:()=>void,unblock!:()=>void;
+  const entered=new Promise<void>(resolve=>{enter=resolve;});
+  const release=new Promise<void>(resolve=>{unblock=resolve;});
+  gate={entered:enter,release};
+  return {entered,unblock};
+ }};
 }
 async function lichessStudyProvider(){
  const codes=new Map<string,{scope:string;challenge:string}>();
@@ -265,6 +274,75 @@ test("PARITY:PARITY-public-lichess-and-chesscom-rating-sources-are-independent",
   expect(snaps.every(x=>x.source==="provider_api")).toBe(true);
   expect((await (await page.request.get("/api/students/"+studentId)).json()).strength).toBeNull();
  }finally{await close(server);}
+});
+test("PARITY: confirmed online rating is atomic across a delayed public response and student changes",async({page,request})=>{
+ test.skip(process.env.CI!=="true"||process.env.CCP_SYNTHETIC_RATINGS_ORIGIN!=="http://127.0.0.1:3995",
+  "Fixed local synthetic provider required");
+ const {app:provider,paths,holdNext}=await ratingProvider();
+ try{
+  const call=await delegatedTool(page,request);
+  const {ids}=await newTeacherStudents(call),studentId=ids[0],otherStudent=ids[1];
+  const studentUrl="/api/students/"+studentId, ratingsUrl=studentUrl+"/ratings";
+  const setHandle=async(lichessUsername:string)=>{
+   const result=await page.request.put(studentUrl,{data:{lichessUsername}});
+   expect(result.status(),await result.text()).toBe(200);
+  };
+  await setHandle("atomic_rating_test");
+  const payload={studentId,provider:"lichess",confirmedExternal:true};
+  const preview=async()=>{
+   const result=await call("ccp_student_ratings_refresh_preview",payload);
+   expect(result.error).toBeUndefined();return result.data.expectedDigest as string;
+  };
+  const reviewed={...payload,expectedDigest:await preview(),requestId:uuid(),confirmed:true};
+  const waiting=holdNext();
+  const stale=call("ccp_student_ratings_refresh_commit",reviewed);
+  try{
+   await waiting.entered;
+   await setHandle("atomic_rating_other");
+   await setHandle("atomic_rating_test");
+  }finally{waiting.unblock();}
+  expect((await stale).error?.code).toBe("STALE_RATING_PREVIEW");
+  const empty=await call("ccp_student_ratings_list",{studentId});
+  expect(empty.data.snapshots).toEqual([]);
+  const next={...payload,expectedDigest:await preview(),requestId:uuid(),confirmed:true};
+  expect(next.expectedDigest).not.toBe(reviewed.expectedDigest);
+  const unchanged=await page.request.put(studentUrl,{data:{teacherNotes:"Unrelated teacher note"}});
+  expect(unchanged.status(),await unchanged.text()).toBe(200);
+  const post=await page.request.post(ratingsUrl,{data:{action:"refreshCommit",...next}});
+  expect(post.status(),await post.text()).toBe(200);
+  expect((await post.json()).snapshots).toHaveLength(2);
+  await setHandle("atomic_rating_final");
+  const before=paths.length;
+  expect((await call("ccp_student_ratings_refresh_commit",next)).data.replayed).toBe(true);
+  expect((await call("ccp_student_ratings_refresh_commit",{...next,studentId:otherStudent})).error?.code)
+   .toBe("IDEMPOTENCY_CONFLICT");
+  expect((await call("ccp_student_ratings_record",{studentId,provider:"lichess",timeControl:"bullet",
+   rating:1300,ratingDeviation:null,provisional:null,games:null,observedAt:new Date().toISOString(),
+   requestId:next.requestId,confirmed:true})).error?.code).toBe("IDEMPOTENCY_CONFLICT");
+  expect(paths).toHaveLength(before);
+  const final=await call("ccp_student_ratings_list",{studentId});
+  expect(final.data.snapshots.map((row:{time_control:string})=>row.time_control).sort()).toEqual(["blitz","rapid"]);
+  // A previously committed pre-binding receipt retains its original digest
+  // and observation even though the current account handle no longer matches.
+  const legacyId=uuid(),priorUsername="atomic_rating_test";
+  const teacher=(await (await page.request.get(studentUrl)).json()).teacher_id as string;
+  const legacyDigest=createHash("sha256").update(JSON.stringify({studentId,provider:"lichess",
+   username:priorUsername,ratings:[["rapid",1995,null,false,12]]})).digest("hex");
+  const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+  const savedLegacy=await admin.from("student_rating_snapshots").insert({
+   teacher_id:teacher,student_id:studentId,provider:"lichess",time_control:"rapid",rating:1995,
+   rating_deviation:null,provisional:false,games:12,source:"provider_api",observed_at:"2026-01-01T00:00:00Z",
+   fetched_at:"2026-01-01T00:00:00Z",request_id:legacyId,preview_digest:legacyDigest,source_username:priorUsername,
+  });
+  expect(savedLegacy.error).toBeNull();
+  const legacy=await call("ccp_student_ratings_refresh_commit",{...payload,
+   expectedDigest:legacyDigest,requestId:legacyId,confirmed:true});
+  expect(legacy.error).toBeUndefined();
+  expect(legacy.data).toMatchObject({replayed:true,snapshots:[{rating:1995,source_username:priorUsername}]});
+  expect(paths).toHaveLength(before);
+ }finally{await close(provider);}
 });
 test("PARITY:PARITY-actual-lichess-chapter32-atomic-three-student-coverage",async({page,request})=>{
  const provider=await lichessStudyProvider();
