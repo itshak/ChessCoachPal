@@ -2,19 +2,26 @@ import Link from "next/link";
 import {getLocale,getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
-import { teacherDashboardPageModel } from "@/lib/server/teacher-overview-service";
+import { teacherDashboardPageModel, teacherDashboardSummaryInput } from "@/lib/server/teacher-overview-service";
 
 export async function generateMetadata() {const t=await getTranslations("dashboard");return {title:t("title")};}
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: {
+  searchParams: Promise<{ date?: string | string[] }>;
+}) {
   const t=await getTranslations("dashboard");
   const locale=await getLocale();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { summary, students, upcoming, recent, teacher } =
-    await teacherDashboardPageModel(supabase, user.id);
+  const { date: rawDate } = await searchParams;
+  const filters = teacherDashboardSummaryInput.safeParse({ date: rawDate });
+  const { summary, students, upcoming, recent, teacher, daily } =
+    await teacherDashboardPageModel(supabase, user.id, filters.success ? filters.data.date : undefined);
+  const dailyTime = daily && new Intl.DateTimeFormat(locale, {
+    timeZone: daily.timeZone, timeStyle: "short",
+  });
   const dateLabel = (iso: string) => new Intl.DateTimeFormat(locale, {
     dateStyle: "medium", timeStyle: "short",
   }).format(new Date(iso));
@@ -55,6 +62,40 @@ export default async function DashboardPage() {
           <Link href="/coaching" className="text-sm text-primary hover:underline">{t("viewClasses")}</Link>
         </Card>
       </div>
+
+      <section aria-labelledby="daily-coaching" className="mb-8">
+        <h2 id="daily-coaching" className="text-lg font-semibold mb-3">{t("dailyHeading")}</h2>
+        <form action="/dashboard" method="get" className="flex flex-wrap items-end gap-3 mb-3">
+          <label className="grid gap-1">
+            {t("dailyDate")}
+            <input name="date" type="date" min="1900-01-01" max="9998-12-31" required
+              defaultValue={daily?.date} className="rounded border px-2 py-1" />
+          </label>
+          <button type="submit" className="rounded border px-3 py-1">{t("dailyShow")}</button>
+          {rawDate !== undefined && <Link href="/dashboard" className="text-primary underline">{t("dailyReset")}</Link>}
+        </form>
+        {!filters.success ? <p role="alert">{t("dailyInvalid")}</p>
+          : !daily || !dailyTime ? <p role="alert">{t("dailyUnavailable")}</p>
+          : <>
+            <p className="text-sm text-muted mb-2">{t("dailyZone", { zone: daily.timeZone })}</p>
+            {daily.sessions.length === 0 ? <p>{t("dailyEmpty")}</p> : (
+              <ul className="space-y-2">
+                {daily.sessions.map(session => (
+                  <li key={session.id}>
+                    <Card padding="sm">
+                      <p className="font-medium break-words"><bdi dir="auto">{session.title}</bdi></p>
+                      <p className="text-sm text-muted">
+                        <time dateTime={session.starts_at}>{dailyTime.format(new Date(session.starts_at))}</time>
+                        {" · "}{t("minutes", { count: session.duration_minutes })}
+                      </p>
+                    </Card>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {daily.truncated && <p className="mt-2">{t("dailyTruncated", { count: daily.limit })}</p>}
+          </>}
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <section>
