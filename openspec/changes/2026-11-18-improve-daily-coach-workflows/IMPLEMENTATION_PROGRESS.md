@@ -117,9 +117,32 @@ and [signed browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/run
 (446 browser cases plus three scheduling repeats). No schema, release or
 deployment change. Real client acceptance remains separate.
 
+## Verified source: focus one exact homework assignment
+
+[PR #184](https://github.com/itshak/ChessCoachPal/pull/184) merged at
+`26b3b8d49bd26cc43d4f2475a6ac8b7ae6e84f0c`. The Daily queue links to the
+exact assignment in Learning, independently of paging. Learning, signed
+GET and delegated MCP `ccp_daily_homework_focus_get` share a bounded
+teacher-owned current read. The active context must be All workplaces.
+An already-reviewed, archived, foreign or not-yet-due item cannot fall
+back to another assignment. Only the allowed exact focus shows its learner
+display name; neither the queue nor the detail exposes private notes or
+feedback. This is a read-only view, not a new review write.
+
+Exact candidate `24ffcb47470ba91ac2344fd45b03bd78f46b1ce6` passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45507936600),
+[Security](https://github.com/itshak/ChessCoachPal/actions/runs/45507936465),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45507936461),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45507936557),
+and [signed browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45507936665)
+(446 browser cases and three scheduling repeats). The initial draft needed a
+real signed focus tool and registry entry; its browser run also hit a local
+test mail port collision before running tests. The corrected exact head
+passed both. No schema, release or deployment change.
+
 ## Still open
 
-- Stale-rating evidence and exact homework resolution navigation.
+- Stale-rating evidence, with recorded failure distinct from missing evidence.
 - A reviewed atomic completion with taught material evidence, learner/import
   review and full coverage of archived-learner recovery in the daily workflow.
 - Complete website/MCP acceptance and evidence before archival.

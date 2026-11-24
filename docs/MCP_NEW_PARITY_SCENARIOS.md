@@ -116,3 +116,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | Open the exact ended lesson on the missing-attendance list without falling back to another session. The signed website and delegated MCP preview check the current workplace and saved roster; changed context requires reload, and existing cancellation decisions stay intact. Approved completion uses the canonical attendance and shared-note transaction; read-back confirms only the selected occurrence changes. | `e2e/parity-daily-lesson-close.spec.ts#PARITY-daily-lesson-close` — [446 browser cases plus three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45499371778) on `0ca0b0001bb0c0826cb487f57f7b5b7c148d2ce7`, merged in [PR #182](https://github.com/itshak/ChessCoachPal/pull/182) at `5d9036744e31c37525ec27a847a91a025aae3a2c`. |
+
+## Daily exact homework focus — accepted source slice
+
+| Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | Open one exact due assignment from the private teacher queue, including across queue pages. The website, signed GET and delegated MCP use the same current status. Only the exact allowed detail discloses a learner display name; the aggregate stays identity-free. Invalid, already-reviewed, archived, not-yet-due, non-All and foreign selections cannot fall back or write. | `e2e/parity-daily-homework.spec.ts#PARITY-daily-homework` — [446 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45507936665) on `24ffcb47470ba91ac2344fd45b03bd78f46b1ce6`, merged in [PR #184](https://github.com/itshak/ChessCoachPal/pull/184) at `26b3b8d49bd26cc43d4f2475a6ac8b7ae6e84f0c`. |
