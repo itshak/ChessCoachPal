@@ -282,7 +282,7 @@ const catalogue = [
   },
   {
     name: "ccp_dashboard_summary",
-    description: "Read the shared website dashboard totals. Omit workplaceId to inherit the active selection, pass null for All, or pass an owned workplace ID. workplaceCount is teacher-wide; scopedWorkplaceCount, shown on the dashboard link to the filtered schedule, active students, groups, and past-seven-day sessions respect the filter. Use the existing selected workplace for subsequent calendar reads.",
+    description: "Read the shared website dashboard totals. Omit workplaceId to inherit the active selection, pass null for All, or pass an owned workplace ID. workplaceCount is teacher-wide; scopedWorkplaceCount, shown on the dashboard link to the filtered schedule, active students, groups, and past-seven-day sessions respect the filter. Provide date YYYY-MM-DD to include daily upcoming persisted scheduled lessons (one row per session, up to 24 with a truncation flag). No date returns only the existing totals. The daily result uses the selected workplace zone, or the teacher profile zone for All. No recurrence is created.",
     schema: teacherDashboardSummaryInput, scope: "coach:read", readOnly: true,
   },
   {
@@ -2595,8 +2595,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const a=args as {studentId:string;expectedUpdatedAt:string;changes:Parameters<typeof teacherStudentPatch>[3]};
         return {data:await teacherStudentPatch(db,teacherId,a.studentId,a.changes,a.expectedUpdatedAt)};
       }
-      case "ccp_dashboard_summary":
-        return { data: await teacherDashboardSummary(db, teacherId, (args as z.infer<typeof teacherDashboardSummaryInput>).workplaceId) };
+      case "ccp_dashboard_summary": {
+        const { workplaceId, date } = args as z.infer<typeof teacherDashboardSummaryInput>;
+        return { data: await teacherDashboardSummary(db, teacherId, workplaceId, date) };
+      }
       case "ccp_notifications_list":
         return { data: await teacherNotificationsList(db, teacherId) };
       case "ccp_notifications_mark_read": {

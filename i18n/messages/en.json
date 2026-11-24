@@ -31,6 +31,15 @@
     "workplaceFilterFailed": "Could not change workplace; reload"
   },
   "dashboard": {
+    "dailyHeading": "Coaching today",
+    "dailyDate": "Coaching date",
+    "dailyShow": "Show lessons",
+    "dailyReset": "Back to today",
+    "dailyInvalid": "Choose a valid calendar date.",
+    "dailyUnavailable": "Daily lessons are unavailable.",
+    "dailyZone": "Schedule time zone: {zone}",
+    "dailyEmpty": "No upcoming scheduled lessons on this date.",
+    "dailyTruncated": "Showing the first {count} lessons. More are scheduled on this date.",
     "title": "Chess coaching dashboard",
     "welcome": "Welcome, {name}",
     "description": "Your students, workplaces and upcoming coaching sessions in one place.",
