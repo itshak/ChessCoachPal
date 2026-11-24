@@ -9,6 +9,8 @@ type Session={id:string;title:string;status:string;starts_at:string};
 type Person={studentId:string;name:string};
 type Roster={sessionId:string;title:string;status:string;updatedAt:string;
  participants:Person[];studentIds:string[]};
+class ExactReviewError extends Error {}
+type Pin={sessionId:string;workplaceId:string|null};
 type Register={student_id:string;status:string;note:string;updated_at:string|null};
 type Decision={studentId:string;status:""|"present"|"absent"|"late"|"excused";
  note:string;expectedUpdatedAt:string|null};
@@ -30,12 +32,12 @@ async function api<T>(action:string,args:Record<string,unknown>={},fallback="Una
  * No unmarked learner is silently treated as present, and a completed
  * lesson never implies material mastery or homework completion.
  */
-export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|null}={}){
+export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:string|null;pinned?:Pin}={}){
  const t=useTranslations("lessonCompletion"),locale=useLocale();
   const toUserError=useLocalizedApiError();
  const statusName=(status:string)=>status==="scheduled"?t("scheduled"):status==="completed"?t("completed"):status==="cancelled"?t("cancelled"):status;
  const [sessions,setSessions]=useState<Session[]>([]);
- const [sessionId,setSessionId]=useState("");
+ const [sessionId,setSessionId]=useState(pinned?.sessionId??"");
  const [roster,setRoster]=useState<Roster|null>(null);
  const [decisions,setDecisions]=useState<Record<string,Decision>>({});
  const [lessonNote,setLessonNote]=useState("");
@@ -47,12 +49,33 @@ export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|nu
  // selected session. The transaction also verifies all revisions in SQL.
  const rosterLoad=useRef(0);
 
+ const readExact=useCallback(async(id:string)=>{
+  if(!pinned||id!==pinned.sessionId)throw new ExactReviewError(t("exactUnavailable"));
+  const res=await fetch("/api/coaching/sessions/"+encodeURIComponent(id)+"/roster?dailyWorkplaceId="+
+    encodeURIComponent(pinned.workplaceId??"all"),{cache:"no-store"});
+  const value=await res.json() as Roster & {attendance:Register[];code?:string};
+  if(!res.ok){
+    switch(value.code){
+      case "STALE_WORKPLACE_CONTEXT":throw new ExactReviewError(t("exactWorkplaceChanged"));
+      case "LESSON_NOT_ENDED":throw new ExactReviewError(t("exactNotEnded"));
+      case "LESSON_CANCELLATION_REVIEW_REQUIRED":throw new ExactReviewError(t("exactCancellationReview"));
+      case "LESSON_ROSTER_UNAVAILABLE":throw new ExactReviewError(t("exactRosterUnavailable"));
+      default:throw new ExactReviewError(t("exactUnavailable"));
+    }
+  }
+  if(value.sessionId!==id)throw new ExactReviewError(t("exactUnavailable"));
+  return value;
+ },[pinned,t]);
+
  const refresh=useCallback(async(id:string)=>{
   const generation=++rosterLoad.current;
   if(!id){setRoster(null);setDecisions({});return;}
   let details:Roster,register:Register[];
   try{
-   [details,register]=await Promise.all([
+   if(pinned){
+    details=await readExact(id);
+    register=(details as Roster & {attendance:Register[]}).attendance;
+   }else [details,register]=await Promise.all([
     fetch("/api/coaching/sessions/"+encodeURIComponent(id)+"/roster",{cache:"no-store"}).then(async response=>{
      if(!response.ok)throw new Error(t("rosterReadFailed"));
      return response.json() as Promise<Roster>;
@@ -62,7 +85,7 @@ export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|nu
   }catch(e){
    // A superseded request must never blank a newer selected lesson.
    if(generation===rosterLoad.current){
-    setRoster(null);setError(toUserError(e, t("rosterLoadFailed")));
+    setRoster(null);setError(e instanceof ExactReviewError?e.message:toUserError(e, t("rosterLoadFailed")));
    }
    return;
   }
@@ -81,15 +104,15 @@ export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|nu
     }];
   })));
   setConfirmed(false);
- },[t,toUserError]);
+ },[pinned,readExact,t,toUserError]);
  const refreshSessions=useCallback(async()=>{
   const items=await api<Session[]>("sessions.list",{workplaceId},t("loadFailed"));
   setSessions(items);
   setSessionId(old=>old&&items.some(s=>s.id===old)?old:items[0]?.id??"");
  },[t,workplaceId]);
  useEffect(()=>{
-  void refreshSessions().catch(e=>setError(String(e)));
- },[refreshSessions]);
+  if(!pinned)void refreshSessions().catch(e=>setError(String(e)));
+ },[pinned,refreshSessions]);
  useEffect(()=>{
   void refresh(sessionId);
  },[sessionId,refresh]);
@@ -111,6 +134,14 @@ export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|nu
     return {studentId:p.studentId,status:d.status,note:d.note,
       expectedUpdatedAt:d.expectedUpdatedAt};
    });
+   if(pinned){
+    const current=await readExact(roster.sessionId);
+    if(current.updatedAt!==roster.updatedAt||current.participants.length!==attendance.length||
+       current.attendance.some(row=>!attendance.some(d=>d.studentId===row.student_id&&d.expectedUpdatedAt===row.updated_at))){
+     setRoster(null);setConfirmed(false);
+     setError(t("exactChanged"));return;
+    }
+   }
    if(complete){
     await api("sessions.complete",{
      sessionId:roster.sessionId,expectedUpdatedAt:roster.updatedAt,
@@ -126,8 +157,10 @@ export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|nu
    setNotice(complete?t("committed"):t("attendanceSaved"));
    setConfirmed(false);
    if(complete)setLessonNote("");
-   await refresh(roster.sessionId);
-  }catch(e){setError(toUserError(e, t("attendanceFailed")));}
+   if(pinned&&complete)setRoster(null);
+   else await refresh(roster.sessionId);
+  }catch(e){if(pinned){setRoster(null);setConfirmed(false);}
+   setError(e instanceof ExactReviewError?e.message:toUserError(e, t("attendanceFailed")));}
   finally{setBusy(false);}
  }
 
@@ -143,15 +176,15 @@ export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|nu
   </header>
   {error&&<p role="alert" className="text-error">{error}</p>}
   {notice&&<p role="status" className="text-success">{notice}</p>}
-  <button type="button" disabled={busy} className="text-sm underline"
+  {!pinned&&<button type="button" disabled={busy} className="text-sm underline"
    onClick={()=>void refreshSessions().catch(e=>setError(String(e)))}>
    {t("refresh")}
-  </button>
+  </button>}
   <button type="button" disabled={!sessionId||busy} className="text-sm underline"
    onClick={()=>void refresh(sessionId)}>
    {t("reloadRoster")}
   </button>
-  <label className="block">{t("lesson")}
+  {pinned? <p>{t("exactMode")}{roster&&<>{" "}<bdi dir="auto">{roster.title}</bdi></>}</p>: <label className="block">{t("lesson")}
    <select className={select} aria-label={t("lessonToComplete")} value={sessionId}
      onChange={e=>{rosterLoad.current++;setRoster(null);setDecisions({});
       setSessionId(e.target.value);setLessonNote("");setConfirmed(false);
@@ -161,7 +194,7 @@ export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|nu
      {s.title} · {new Date(s.starts_at).toLocaleDateString(locale)} · {statusName(s.status)}
     </option>)}
    </select>
-  </label>
+  </label>}
   {roster&&<form onSubmit={submit} data-session-id={roster.sessionId} className="space-y-3">
    <p className="text-sm font-medium">{t("frozenRoster",{count:roster.participants.length,status:statusName(roster.status)})}</p>
    {roster.participants.map(person=>{
@@ -169,7 +202,7 @@ export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|nu
     return <div key={person.studentId} className="grid min-w-0 grid-cols-1 gap-2 rounded-lg border border-border p-3 sm:grid-cols-2">
      <label><bdi dir="auto">{person.name}</bdi>: {t("attendance")}
       <select className={select} aria-label={t("attendanceFor",{name:person.name})} data-student-id={person.studentId}
-       value={decision?.status??""} required onChange={e=>change(person.studentId,{
+       disabled={Boolean(pinned)&&busy} value={decision?.status??""} required onChange={e=>change(person.studentId,{
          status:e.target.value as Decision["status"],
        })}>
        <option value="">{t("chooseAttendance")}</option>
@@ -177,17 +210,17 @@ export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|nu
       </select>
      </label>
      <label>{t("attendanceNote")}
-      <input className={select} maxLength={5000} value={decision?.note??""}
+      <input className={select} maxLength={5000} disabled={Boolean(pinned)&&busy} value={decision?.note??""}
        onChange={e=>change(person.studentId,{note:e.target.value})}/>
      </label>
     </div>;
    })}
    <label className="block">{t("sharedNote")}
-    <textarea className={select} maxLength={10000} rows={2} value={lessonNote}
+    <textarea className={select} maxLength={10000} rows={2} disabled={Boolean(pinned)&&busy} value={lessonNote}
      onChange={e=>{setLessonNote(e.target.value);setConfirmed(false);}}/>
    </label>
    <label className="flex gap-2 items-center">
-    <input type="checkbox" checked={confirmed}
+    <input type="checkbox" disabled={Boolean(pinned)&&busy} checked={confirmed}
      onChange={e=>setConfirmed(e.target.checked)}/>
     {t("approval")}
    </label>
@@ -196,12 +229,12 @@ export function LessonCompletionPanel({workplaceId=null}:{workplaceId?:string|nu
     className="rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50">
      {busy?t("recording"):t("complete")}
    </button>
-   <button type="button" disabled={busy||!confirmed||roster.sessionId!==sessionId||
+   {!pinned&&<button type="button" disabled={busy||!confirmed||roster.sessionId!==sessionId||
       roster.participants.some(p=>!decisions[p.studentId]?.status)}
     onClick={()=>void commit(false)}
     className="rounded-lg border border-border px-4 py-2 font-semibold disabled:opacity-50">
      {t("saveAttendance")}
-   </button>
+   </button>}
   </form>}
  </section>;
 }

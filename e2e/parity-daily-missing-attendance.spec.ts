@@ -148,7 +148,8 @@ test("PARITY:PARITY-daily-missing-attendance",async({page,request})=>{
     await expect(navigation).toHaveAttribute("href",href);
     await expect(queue.getByText("1 attendance decision missing")).toBeVisible();
     await expect(queue.getByText("No frozen roster was recorded.")).toBeVisible();
-    await expect(queue.getByRole("link")).toHaveCount(1);
+    await expect(queue.getByRole("link",{name:"Record and complete Mixed evidence attendance"})).toBeVisible();
+    await expect(queue.getByRole("listitem").filter({hasText:"No recorded roster"}).getByRole("link")).toHaveCount(0);
     await navigation.click();
     await expect(page.locator("#lesson-attendance-"+ended)).toBeVisible();
     const after=await decisions();

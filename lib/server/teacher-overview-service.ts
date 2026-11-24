@@ -74,11 +74,11 @@ const ATTENDANCE_SCAN_LIMIT = 96;
 const ATTENDANCE_ROSTER_LIMIT = 256;
 type AttendanceAffiliation = { student_id: string };
 type AttendanceCandidate = {
-  id: string; title: string; starts_at: string; duration_minutes: number; workplace_id: string;
-  roster: AttendanceAffiliation[]; decisions: AttendanceAffiliation[];
+  id: string; title: string; starts_at: string; duration_minutes: number; workplace_id: string; status:string;
+  roster: AttendanceAffiliation[]; decisions: (AttendanceAffiliation & {status:string})[];
 };
 
-type AttendanceTask = Omit<AttendanceCandidate, "roster" | "decisions"> & (
+type AttendanceTask = Omit<AttendanceCandidate, "roster" | "decisions" | "status"> & {completionHref?:string} & (
   | { reason: "ATTENDANCE_MISSING"; missingCount: number; scheduleHref: string | null }
   | { reason: "ROSTER_NOT_RECORDED" | "ROSTER_LIMIT_EXCEEDED"; missingCount: null; scheduleHref: null }
 );
@@ -88,9 +88,9 @@ async function dailyMissingAttendance(db: Db, teacherId: string, scope: Dashboar
 ) {
   const upper = new Date(Math.min(dayEnd.getTime(), scope.now.getTime()));
   const query = () => db.from("teaching_sessions").select(
-    "id,title,starts_at,duration_minutes,workplace_id," +
+    "id,title,starts_at,duration_minutes,workplace_id,status," +
     "roster:session_participants!session_participants_session_id_teacher_id_fkey(student_id)," +
-    "decisions:session_attendance!session_attendance_session_id_teacher_id_fkey(student_id)")
+    "decisions:session_attendance!session_attendance_session_id_teacher_id_fkey(student_id,status)")
     .eq("teacher_id", teacherId).match(workplaceMatch(scope)).in("status", ["scheduled", "completed"])
     .gte("starts_at", dayStart.toISOString()).lt("starts_at", upper.toISOString())
     .order("starts_at").order("id").limit(ATTENDANCE_SCAN_LIMIT + 1)
@@ -103,7 +103,7 @@ async function dailyMissingAttendance(db: Db, teacherId: string, scope: Dashboar
       .then(context => context.selectedWorkplaceId),
   ]);
   if (result.error || !result.data) throw new TeacherOverviewError(500, "Daily attendance unavailable");
-  const tasks = result.data.slice(0, ATTENDANCE_SCAN_LIMIT).flatMap<AttendanceTask>(({roster, decisions, ...session}) => {
+  const tasks = result.data.slice(0, ATTENDANCE_SCAN_LIMIT).flatMap<AttendanceTask>(({roster, decisions, status, ...session}) => {
     const endsAt = Date.parse(session.starts_at) + session.duration_minutes * 60_000;
     if (endsAt > scope.now.getTime()) return [];
     if (roster.length > ATTENDANCE_ROSTER_LIMIT || decisions.length > ATTENDANCE_ROSTER_LIMIT)
@@ -113,7 +113,12 @@ async function dailyMissingAttendance(db: Db, teacherId: string, scope: Dashboar
     const decided = new Set(decisions.map(row => row.student_id));
     const missingCount = roster.filter(row => !decided.has(row.student_id)).length;
     if (!missingCount) return [];
-    return [{...session, reason: "ATTENDANCE_MISSING" as const, missingCount,
+    const inSelection=!scheduleSelection || scheduleSelection===session.workplace_id;
+    const hasCancellation=decisions.some(row=>row.status==="student_cancelled"||row.status==="teacher_cancelled");
+    const completionHref=status==="scheduled" && roster.length<=50 && inSelection && !hasCancellation
+      ? "/coaching?recordSession="+session.id+"&recordWorkplace="+(scheduleSelection??"all")+"#lesson-completion"
+      : undefined;
+    return [{...session, reason: "ATTENDANCE_MISSING" as const, missingCount, completionHref,
       scheduleHref: !scheduleSelection || scheduleSelection === session.workplace_id
         ? "/schedule?session=" + session.id + "#lesson-attendance-" + session.id : null}];
   });

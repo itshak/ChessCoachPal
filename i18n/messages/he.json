@@ -31,6 +31,7 @@
     "workplaceFilterFailed": "שינוי מקום העבודה נכשל; רעננו"
   },
   "dashboard": {
+    "dailyCloseOpen": "תיעוד והשלמה של {title}",
     "dailyPrepareOpen": "הכנת {title}",
     "dailyPrepareHeading": "הכנת שיעור",
     "dailyPrepareInvalid": "יש לבחור שיעור תקין.",
@@ -2324,6 +2325,13 @@
     }
   },
   "lessonCompletion": {
+    "exactCancellationReview": "לשיעור יש ביטול מתועד. יש לבדוק אותו במסך הנוכחות בלוח הזמנים.",
+    "exactUnavailable": "השיעור אינו זמין להשלמה במסלול זה.",
+    "exactWorkplaceChanged": "בחירת מקום העבודה השתנתה. יש לחזור ללוח הבקרה ולבחור שוב את השיעור.",
+    "exactNotEnded": "השיעור טרם הסתיים.",
+    "exactRosterUnavailable": "אין לשיעור רשימת משתתפים קבועה נתמכת.",
+    "exactChanged": "השיעור או הנוכחות השתנו. יש לטעון שוב את הרשימה לפני ההשלמה.",
+    "exactMode": "בדיקה והשלמה של השיעור הזה בלבד:",
     "loadFailed": "לא ניתן לטעון את השיעור",
     "rosterReadFailed": "לא ניתן לקרוא את רשימת המשתתפים הקבועה של השיעור",
     "rosterLoadFailed": "לא ניתן לטעון את רשימת המשתתפים",

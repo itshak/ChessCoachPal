@@ -96,6 +96,7 @@ import {
 } from "@/lib/server/teacher-material-defaults";
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
+import {dailyCloseRosterInput,DailyCloseError,teacherDailyClosePreview} from "@/lib/server/daily-lesson-close";
 import {dailyLessonPreparationInput,DailyPreparationError,teacherDailyLessonPreparation} from "@/lib/server/daily-lesson-preparation";
 import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
 import {trainingPlanListSchema,trainingPlanGetSchema,trainingPlanCommitSchema,teacherTrainingPlansList,teacherTrainingPlanGet,teacherTrainingPlanCommit,TrainingPlanError} from "@/lib/server/student-training-plans";
@@ -1685,8 +1686,8 @@ const catalogue = [
   },
   {
     name:"ccp_sessions_roster_preview",
-    description:"Read the exact frozen roster and revision of one owned session; group enrollments are unaffected.",
-    schema:z.object({sessionId:uuid}).strict(),scope:"coach:read",readOnly:true,
+    description:"Read the exact frozen roster and revision of one owned session. Optional dailyWorkplaceId (null means All) checks current selection and a scheduled lesson that has ended, returning recorded attendance and revisions for explicit review. Omit it for the original roster view. Neither mode mutates.",
+    schema:dailyCloseRosterInput,scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_sessions_roster_correct",
@@ -2799,8 +2800,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await sessionsComplete(db,teacherId,args as LessonCompletionInput)};
       }
       case "ccp_sessions_roster_preview": {
-         const a=args as {sessionId:string};
-         return {data:await teacherSessionRosterPreview(db,teacherId,a.sessionId)};
+         const a=args as z.infer<typeof dailyCloseRosterInput>;
+         return {data:a.dailyWorkplaceId===undefined
+           ?await teacherSessionRosterPreview(db,teacherId,a.sessionId)
+           :await teacherDailyClosePreview(db,teacherId,a.sessionId,a.dailyWorkplaceId)};
        }
        case "ccp_sessions_roster_correct": {
          const a=args as {sessionId:string;studentIds:string[];
@@ -2902,7 +2905,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
   } catch (error) {
     if (error instanceof TrainingPlanError)
       return {error:{code:error.code,message:error.message}};
-    if (error instanceof CoachBriefingError || error instanceof DailyPreparationError)
+    if (error instanceof CoachBriefingError || error instanceof DailyPreparationError || error instanceof DailyCloseError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof UnifiedHistoryError)
       return {error:{code:error.code,message:error.message}};

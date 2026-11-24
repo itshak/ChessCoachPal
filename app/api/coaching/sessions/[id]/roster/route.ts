@@ -1,5 +1,6 @@
 import {NextRequest,NextResponse} from "next/server";
 import {z} from "zod";
+import {dailyCloseRosterInput,DailyCloseError,teacherDailyClosePreview} from "@/lib/server/daily-lesson-close";
 import {createClient} from "@/lib/supabase/server";
 import {
  teacherSessionRosterPreview,teacherSessionRosterCorrect,teacherSessionRosterAudit,
@@ -15,9 +16,9 @@ const input=z.object({
 }).strict();
 
 const problem=(e:unknown)=>NextResponse.json({
- error:e instanceof SessionRosterCorrectionError?e.message:"Unable to correct roster",
- code:e instanceof SessionRosterCorrectionError?e.code:"DATABASE_ERROR",
-},{status:e instanceof SessionRosterCorrectionError?e.status:500,
+ error:(e instanceof SessionRosterCorrectionError||e instanceof DailyCloseError)?e.message:"Unable to correct roster",
+ code:(e instanceof SessionRosterCorrectionError||e instanceof DailyCloseError)?e.code:"DATABASE_ERROR",
+},{status:(e instanceof SessionRosterCorrectionError||e instanceof DailyCloseError)?e.status:500,
  headers:{"Cache-Control":"private, no-store"}});
 
 async function teacher(){
@@ -39,6 +40,14 @@ export async function GET(request:NextRequest,{
  if(includePrivate&&searchParams.get("confirmed")!=="true")
    return NextResponse.json({error:"Private historical notes require confirmation"},{status:400});
  try{
+   const daily=searchParams.getAll("dailyWorkplaceId");
+   if(daily.length){
+     const parsed=dailyCloseRosterInput.safeParse({sessionId:id,dailyWorkplaceId:daily[0]==="all"?null:daily[0]});
+     if(daily.length!==1||!parsed.success||revisions)
+       return NextResponse.json({error:"Invalid exact lesson review",code:"VALIDATION_ERROR"},{status:400});
+     return NextResponse.json(await teacherDailyClosePreview(actor.db,actor.id,id,parsed.data.dailyWorkplaceId??null),
+       {headers:{"Cache-Control":"private, no-store"}});
+   }
    const result=revisions
      ?await teacherSessionRosterAudit(actor.db,actor.id,id,includePrivate)
      :await teacherSessionRosterPreview(actor.db,actor.id,id);
