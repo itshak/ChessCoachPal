@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { resolveTeacherWorkplaceFilter, teacherWorkplaceContextGet, WorkplaceContextError } from "@/lib/server/teacher-workplace-context";
 import { addDays, DEFAULT_POLICY, toLocalDateString, zonedTimeToUtc } from "@/lib/schedule";
+import { teacherDailyRatingReview } from "@/lib/server/daily-rating-review";
 import { teacherDailyHomework } from "@/lib/server/daily-homework";
 import { workplaceCurrentStudentIds } from "@/lib/server/workplace-student-scope";
 
@@ -145,16 +146,18 @@ async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, r
     .eq("teacher_id", teacherId).match(workplaceMatch(scope)).eq("status", "scheduled")
     .gte("starts_at", from.toISOString()).lt("starts_at", dayEnd.toISOString())
     .order("starts_at").order("id").limit(DAILY_LIMIT + 1);
-  const [result, missingAttendance, homework] = await Promise.all([
+  const [result, missingAttendance, homework, ratingReview] = await Promise.all([
     from < dayEnd ? query() : { data: [], error: null },
     dailyMissingAttendance(db, teacherId, scope, dayStart, dayEnd)
       .catch(() => ({status: "unavailable" as const})),
     teacherDailyHomework(db, teacherId, scope.workplaceId, date, homeworkAfter)
       .catch(() => ({status: "unavailable" as const})),
+    teacherDailyRatingReview(db,teacherId,scope.workplaceId,dayStart,dayEnd,scope.now)
+      .catch(() => ({status:"unavailable" as const})),
   ]);
   if (result.error || !result.data) throw new TeacherOverviewError(500, "Daily lessons unavailable");
   return { date, timeZone, limit: DAILY_LIMIT, truncated: result.data.length > DAILY_LIMIT,
-    sessions: result.data.slice(0, DAILY_LIMIT), missingAttendance, homework };
+    sessions: result.data.slice(0, DAILY_LIMIT), missingAttendance, homework, ratingReview };
 }
 
 export async function teacherDashboardSummary(db: Db, teacherId: string, requested?: string | null, date?: string, homeworkAfter?: string) {

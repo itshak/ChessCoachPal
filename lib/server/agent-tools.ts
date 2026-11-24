@@ -285,7 +285,7 @@ const catalogue = [
   },
   {
     name: "ccp_dashboard_summary",
-    description: "Read website dashboard totals. Omit workplaceId for the active selection, pass null for All, or use an owned ID. Workplace count is teacher-wide; scoped counts honor the filter. With date YYYY-MM-DD, get persisted upcoming lessons and ended attendance review against frozen rosters; unrecorded, unavailable and truncated evidence remain distinct. All-only homework uses the date as a due-through cutoff and current recorded submissions and reviews, not a historical snapshot. Continue with homeworkAfter from homework.nextAfter and the same date. Homework has no workplace provenance. No date returns existing totals only.",
+    description: "Read website dashboard totals. Omit workplaceId for the active selection, pass null for All, or use an owned ID. Workplace count is teacher-wide; scoped counts honor the filter. With date YYYY-MM-DD, get persisted upcoming lessons and ended attendance review against frozen rosters; unrecorded, unavailable and truncated evidence remain distinct. All-only homework uses the date as a due-through cutoff and current recorded submissions and reviews, not a historical snapshot. Continue with homeworkAfter from homework.nextAfter and the same date. Homework has no workplace provenance. No date returns existing totals only. Dated results include bounded recorded online-rating lookup issues (All workplaces only), not live status or rating freshness.",
     schema: teacherDashboardSummaryInput, scope: "coach:read", readOnly: true,
   },
   {

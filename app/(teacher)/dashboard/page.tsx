@@ -195,6 +195,26 @@ export default async function DashboardPage({ searchParams }: {
           </>}
       </section>}
 
+      {filters.success && daily && <section aria-labelledby="daily-rating-review" className="mb-8">
+        <h2 id="daily-rating-review" className="text-lg font-semibold mb-3">{t("dailyRatingHeading")}</h2>
+        {daily.ratingReview.status==="workplace_scope_unavailable" ? <p>{t("dailyRatingAllOnly")}</p>
+          : daily.ratingReview.status==="unavailable" ? <p role="alert">{t("dailyRatingUnavailable")}</p>
+          : <>
+            <p className="text-sm text-muted mb-2">{t("dailyRatingRecordedOnly", {date:daily.date})}</p>
+            {!daily.ratingReview.issues.length && !daily.ratingReview.truncated && <p>{t("dailyRatingNone")}</p>}
+            {!!daily.ratingReview.issues.length && <ul className="space-y-2">
+              {daily.ratingReview.issues.map(row => <li key={row.provider+":"+row.reason}>
+                <Card padding="sm">
+                  <p className="font-medium"><bdi dir="ltr">{row.provider==="lichess" ? t("dailyRatingLichess") : t("dailyRatingChessCom")}</bdi></p>
+                  <p>{t(row.reason==="PROVIDER_FAILURE" ? "dailyRatingFailure"
+                    : row.reason==="PROVIDER_RETRY_RECORDED" ? "dailyRatingRetry" : "dailyRatingDiscarded",{count:row.count})}</p>
+                </Card>
+              </li>)}
+            </ul>}
+            {daily.ratingReview.truncated && <p>{t("dailyRatingTruncated")}</p>}
+          </>}
+      </section>}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <section>
           <h2 className="text-lg font-semibold mb-3">{t("upcoming")}</h2>
