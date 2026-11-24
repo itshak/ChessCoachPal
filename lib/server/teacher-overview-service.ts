@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { resolveTeacherWorkplaceFilter, WorkplaceContextError } from "@/lib/server/teacher-workplace-context";
+import { resolveTeacherWorkplaceFilter, teacherWorkplaceContextGet, WorkplaceContextError } from "@/lib/server/teacher-workplace-context";
 import { addDays, DEFAULT_POLICY, toLocalDateString, zonedTimeToUtc } from "@/lib/schedule";
 import { workplaceCurrentStudentIds } from "@/lib/server/workplace-student-scope";
 
@@ -26,7 +26,7 @@ async function dashboardScope(db: Db, teacherId: string, requested?: string | nu
     if (!row.data) throw new WorkplaceContextError(404, "WORKPLACE_NOT_FOUND", "Workplace not found");
   }
   const studentIds = workplaceId ? await workplaceCurrentStudentIds(db, teacherId, workplaceId) : null;
-  return { workplaceId, studentIds, now };
+  return { workplaceId, studentIds, now, requested };
 }
 
 type DashboardScope = Awaited<ReturnType<typeof dashboardScope>>;
@@ -61,6 +61,59 @@ async function dashboardSummary(db: Db, teacherId: string, scope: DashboardScope
 
 const DAILY_LIMIT = 24;
 
+const ATTENDANCE_SCAN_LIMIT = 96;
+const ATTENDANCE_ROSTER_LIMIT = 256;
+type AttendanceAffiliation = { student_id: string };
+type AttendanceCandidate = {
+  id: string; title: string; starts_at: string; duration_minutes: number; workplace_id: string;
+  roster: AttendanceAffiliation[]; decisions: AttendanceAffiliation[];
+};
+
+type AttendanceTask = Omit<AttendanceCandidate, "roster" | "decisions"> & (
+  | { reason: "ATTENDANCE_MISSING"; missingCount: number; scheduleHref: string | null }
+  | { reason: "ROSTER_NOT_RECORDED" | "ROSTER_LIMIT_EXCEEDED"; missingCount: null; scheduleHref: null }
+);
+
+async function dailyMissingAttendance(db: Db, teacherId: string, scope: DashboardScope,
+  dayStart: Date, dayEnd: Date,
+) {
+  const upper = new Date(Math.min(dayEnd.getTime(), scope.now.getTime()));
+  const query = () => db.from("teaching_sessions").select(
+    "id,title,starts_at,duration_minutes,workplace_id," +
+    "roster:session_participants!session_participants_session_id_teacher_id_fkey(student_id)," +
+    "decisions:session_attendance!session_attendance_session_id_teacher_id_fkey(student_id)")
+    .eq("teacher_id", teacherId).match(workplaceMatch(scope)).in("status", ["scheduled", "completed"])
+    .gte("starts_at", dayStart.toISOString()).lt("starts_at", upper.toISOString())
+    .order("starts_at").order("id").limit(ATTENDANCE_SCAN_LIMIT + 1)
+    .limit(ATTENDANCE_ROSTER_LIMIT + 1, { referencedTable: "roster" })
+    .limit(ATTENDANCE_ROSTER_LIMIT + 1, { referencedTable: "decisions" })
+    .overrideTypes<AttendanceCandidate[], { merge: false }>();
+  const [result, scheduleSelection] = await Promise.all([
+    dayStart < upper ? query() : {data: [], error: null},
+    scope.requested === undefined ? scope.workplaceId : teacherWorkplaceContextGet(db, teacherId)
+      .then(context => context.selectedWorkplaceId),
+  ]);
+  if (result.error || !result.data) throw new TeacherOverviewError(500, "Daily attendance unavailable");
+  const tasks = result.data.slice(0, ATTENDANCE_SCAN_LIMIT).flatMap<AttendanceTask>(({roster, decisions, ...session}) => {
+    const endsAt = Date.parse(session.starts_at) + session.duration_minutes * 60_000;
+    if (endsAt > scope.now.getTime()) return [];
+    if (roster.length > ATTENDANCE_ROSTER_LIMIT || decisions.length > ATTENDANCE_ROSTER_LIMIT)
+      return [{...session, reason: "ROSTER_LIMIT_EXCEEDED" as const, missingCount: null, scheduleHref: null}];
+    if (!roster.length)
+      return [{...session, reason: "ROSTER_NOT_RECORDED" as const, missingCount: null, scheduleHref: null}];
+    const decided = new Set(decisions.map(row => row.student_id));
+    const missingCount = roster.filter(row => !decided.has(row.student_id)).length;
+    if (!missingCount) return [];
+    return [{...session, reason: "ATTENDANCE_MISSING" as const, missingCount,
+      scheduleHref: !scheduleSelection || scheduleSelection === session.workplace_id
+        ? "/schedule?session=" + session.id + "#lesson-attendance-" + session.id : null}];
+  });
+  return {
+    status: "ready" as const, sessions: tasks.slice(0, DAILY_LIMIT), limit: DAILY_LIMIT,
+    truncated: result.data.length > ATTENDANCE_SCAN_LIMIT || tasks.length > DAILY_LIMIT,
+  };
+}
+
 async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, requestedDate?: string) {
   const venue = scope.workplaceId ? await db.from("workplaces")
     .select("timezone").eq("teacher_id", teacherId).eq("id", scope.workplaceId).maybeSingle() : null;
@@ -78,10 +131,14 @@ async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, r
     .eq("teacher_id", teacherId).match(workplaceMatch(scope)).eq("status", "scheduled")
     .gte("starts_at", from.toISOString()).lt("starts_at", dayEnd.toISOString())
     .order("starts_at").order("id").limit(DAILY_LIMIT + 1);
-  const result = from < dayEnd ? await query() : { data: [], error: null };
+  const [result, missingAttendance] = await Promise.all([
+    from < dayEnd ? query() : { data: [], error: null },
+    dailyMissingAttendance(db, teacherId, scope, dayStart, dayEnd)
+      .catch(() => ({status: "unavailable" as const})),
+  ]);
   if (result.error || !result.data) throw new TeacherOverviewError(500, "Daily lessons unavailable");
   return { date, timeZone, limit: DAILY_LIMIT, truncated: result.data.length > DAILY_LIMIT,
-    sessions: result.data.slice(0, DAILY_LIMIT) };
+    sessions: result.data.slice(0, DAILY_LIMIT), missingAttendance };
 }
 
 export async function teacherDashboardSummary(db: Db, teacherId: string, requested?: string | null, date?: string) {

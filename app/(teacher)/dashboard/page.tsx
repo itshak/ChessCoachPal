@@ -97,6 +97,30 @@ export default async function DashboardPage({ searchParams }: {
           </>}
       </section>
 
+      {filters.success && daily && dailyTime && <section aria-labelledby="daily-attendance" className="mb-8">
+        <h2 id="daily-attendance" className="text-lg font-semibold mb-3">{t("dailyAttendanceHeading")}</h2>
+        {daily.missingAttendance.status === "unavailable" ? <p role="alert">{t("dailyAttendanceUnavailable")}</p> : <>
+          {!daily.missingAttendance.sessions.length && !daily.missingAttendance.truncated &&
+            <p>{t("dailyAttendanceEmpty")}</p>}
+          {!!daily.missingAttendance.sessions.length && <ul className="space-y-2">
+            {daily.missingAttendance.sessions.map(row => <li key={row.id}>
+              <Card padding="sm">
+                <p className="font-medium break-words"><bdi dir="auto">{row.title}</bdi></p>
+                <p className="text-sm">
+                  <time dateTime={row.starts_at}>{dailyTime.format(new Date(row.starts_at))}</time>
+                  {" · "}{row.reason === "ATTENDANCE_MISSING" ? t("dailyAttendanceMissing", { count: row.missingCount })
+                    : row.reason === "ROSTER_NOT_RECORDED" ? t("dailyAttendanceUnknown") : t("dailyAttendanceRosterLimit")}
+                </p>
+                {row.scheduleHref && <Link href={row.scheduleHref} className="text-primary underline">
+                  {t("dailyAttendanceOpen", { title: row.title })}
+                </Link>}
+              </Card>
+            </li>)}
+          </ul>}
+          {daily.missingAttendance.truncated && <p className="mt-2">{t("dailyAttendanceTruncated")}</p>}
+        </>}
+      </section>}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <section>
           <h2 className="text-lg font-semibold mb-3">{t("upcoming")}</h2>

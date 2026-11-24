@@ -282,7 +282,7 @@ const catalogue = [
   },
   {
     name: "ccp_dashboard_summary",
-    description: "Read the shared website dashboard totals. Omit workplaceId to inherit the active selection, pass null for All, or pass an owned workplace ID. workplaceCount is teacher-wide; scopedWorkplaceCount, shown on the dashboard link to the filtered schedule, active students, groups, and past-seven-day sessions respect the filter. Provide date YYYY-MM-DD to include daily upcoming persisted scheduled lessons (one row per session, up to 24 with a truncation flag). No date returns only the existing totals. The daily result uses the selected workplace zone, or the teacher profile zone for All. No recurrence is created.",
+    description: "Read the shared website dashboard totals. Omit workplaceId to inherit the active selection, pass null for All, or pass an owned workplace ID. workplaceCount is teacher-wide; scopedWorkplaceCount, shown on the dashboard link to the filtered schedule, active students, groups, and past-seven-day sessions respect the filter. Provide date YYYY-MM-DD to include daily upcoming persisted scheduled lessons (one row per session, up to 24 with a truncation flag). The dated result also shows ended lessons with missing persisted attendance decisions against frozen rosters. Unknown rosters and unavailable or truncated results are distinct from no missing decisions. No date returns only the existing totals. The daily result uses the selected workplace zone, or the teacher profile zone for All. No recurrence is created.",
     schema: teacherDashboardSummaryInput, scope: "coach:read", readOnly: true,
   },
   {

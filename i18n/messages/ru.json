@@ -31,6 +31,14 @@
     "workplaceFilterFailed": "Не удалось изменить место работы; обновите страницу"
   },
   "dashboard": {
+    "dailyAttendanceHeading": "Проверка посещаемости",
+    "dailyAttendanceEmpty": "Для завершившихся уроков на эту дату нет отсутствующих отметок.",
+    "dailyAttendanceUnavailable": "Проверка посещаемости недоступна.",
+    "dailyAttendanceUnknown": "Список участников урока не был зафиксирован.",
+    "dailyAttendanceRosterLimit": "Список участников превышает предел проверки.",
+    "dailyAttendanceMissing": "{count, plural, one {Не хватает # отметки} few {Не хватает # отметок} many {Не хватает # отметок} other {Не хватает # отметки}}",
+    "dailyAttendanceOpen": "Найти посещаемость для урока «{title}»",
+    "dailyAttendanceTruncated": "Показана только часть данных для проверки посещаемости.",
     "dailyHeading": "Тренировки сегодня",
     "dailyDate": "Дата тренировок",
     "dailyShow": "Показать уроки",

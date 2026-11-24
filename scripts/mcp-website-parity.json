@@ -805,8 +805,8 @@
       "existingTools": [
         "ccp_dashboard_summary"
       ],
-      "explanation": "Shared dashboard page, HTTP and delegated MCP resolve omitted, explicit All or owned workplace scope alike. An owned historical workplace can be read explicitly; foreign IDs are rejected. The global workplace count remains explicitly teacher-wide; activating the accessible scoped count opens the existing schedule with selected or All context, independent of the Manage Workplaces jump. Optional real civil date returns the same bounded upcoming canonical lessons as the dashboard date view and includes the actual queue timezone and truncation flag; the unranged response retains its existing counters.",
-      "evidenceTest": "e2e/parity-daily-coaching.spec.ts"
+      "explanation": "Shared dashboard page, HTTP and delegated MCP resolve omitted, explicit All or owned workplace scope alike. An owned historical workplace can be read explicitly; foreign IDs are rejected. The global workplace count remains explicitly teacher-wide; activating the accessible scoped count opens the existing schedule with selected or All context, independent of the Manage Workplaces jump. Optional real civil date returns the same bounded upcoming canonical lessons as the dashboard date view and includes the actual queue timezone and truncation flag; the unranged response retains its existing counters. Dated attendance review reads only frozen rosters and persisted decisions for ended owned lessons with one task per session, never names or notes; unknown or unavailable evidence is distinct from fully marked.",
+      "evidenceTest": "e2e/parity-daily-missing-attendance.spec.ts"
     },
     {
       "path": "app/api/events/[id]/email/route.ts",

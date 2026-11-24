@@ -338,7 +338,7 @@ export function CanonicalScheduleBoard({
       <div className="text-foreground break-all">{session.participants.map(p=>p.name).join(", ")}</div>
       <div className="text-muted">{t("minuteShort",{count:session.duration_minutes})} · {session.status==="cancelled"?t("cancelled"):session.status==="completed"?t("completed"):t("scheduled")}</div>
       <div className="flex gap-2">
-       <button disabled={busy} className="text-primary hover:underline"
+       <button id={"lesson-attendance-"+session.id} disabled={busy} className="text-primary hover:underline"
         onClick={()=>openSession(session,"attendance")}>{t("attendance")}</button>
        <button id={"lesson-notes-"+session.id} disabled={busy} className="text-primary hover:underline"
         onClick={()=>openSession(session,"notes")}>{t("notes")}</button>
