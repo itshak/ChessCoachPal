@@ -6797,6 +6797,17 @@ BEGIN
     RAISE EXCEPTION 'IMPORT_VALIDATION_ERROR' USING ERRCODE = '22023';
   END IF;
 
+  -- Portable JSON has no authority to recreate recorded private-series provenance.
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(
+       p_tables->'teaching_sessions')='array' THEN p_tables->'teaching_sessions' ELSE '[]' END) r
+       WHERE r->>'source_private_series_id' IS NOT NULL)
+     OR EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(
+       p_tables->'compensation_agreements')='array' THEN p_tables->'compensation_agreements' ELSE '[]' END) r
+       WHERE r->>'private_series_id' IS NOT NULL) THEN
+    RAISE EXCEPTION 'PRIVATE_SERIES_OPERATOR_RESTORE_REQUIRED: use an operator-verified full backup restore; no rows were restored'
+      USING ERRCODE='22023';
+  END IF;
+
   -- Portable JSON has no authority to rebuild a previously approved sponsor
   -- or its durable financial-review witness. Reject before the import starts.
   IF EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(
@@ -7298,7 +7309,11 @@ BEGIN
     -- Any stored original date consumes the series occurrence, not only
     -- protected history. A reviewed split must reconcile editable rows
     -- explicitly; generation never guesses which stored row it may replace.
-    IF EXISTS(
+    IF EXISTS(SELECT 1 FROM public.teaching_sessions occurrence
+         WHERE occurrence.teacher_id=v_teacher
+           AND occurrence.source_private_series_id=v_slot.series_id
+           AND occurrence.slot_occurrence_date=v_slot_date)
+       OR EXISTS(
       SELECT 1 FROM public.lesson_slots origin
        JOIN public.teaching_sessions occurrence
         ON occurrence.teacher_id=origin.teacher_id AND occurrence.slot_id=origin.id
@@ -7324,11 +7339,13 @@ BEGIN
     END IF;
     INSERT INTO public.teaching_sessions(
       teacher_id,workplace_id,student_id,title,starts_at,duration_minutes,
-      status,slot_id,slot_occurrence_date,local_timezone,is_home_visit,slot_rate_cents
+      status,slot_id,slot_occurrence_date,local_timezone,is_home_visit,slot_rate_cents,
+      source_private_series_id
     ) VALUES(
       v_teacher,v_workplace_id,v_slot.student_id,'Private chess lesson',
       v_starts,v_slot.duration_minutes,'scheduled',v_slot.id,v_slot_date,
-      v_timezone,v_slot.is_home_visit,v_slot.rate_cents
+      v_timezone,v_slot.is_home_visit,v_slot.rate_cents,
+      CASE WHEN v_slot.workplace_id=v_workplace_id THEN v_slot.series_id END
     ) ON CONFLICT (slot_id,slot_occurrence_date) DO NOTHING;
     v_count := v_count+1;
     IF FOUND THEN v_inserted := v_inserted+1; END IF;
@@ -11191,7 +11208,7 @@ BEGIN
     END IF;
   END IF;
   -- Exact scope has a dedicated same-session serialization and unique index.
-  IF NEW.exact_session_id IS NOT NULL THEN RETURN NEW; END IF;
+  IF NEW.exact_session_id IS NOT NULL OR NEW.private_series_id IS NOT NULL THEN RETURN NEW; END IF;
   IF NEW.status='active' THEN
     PERFORM pg_advisory_xact_lock(hashtextextended(
       NEW.teacher_id::text||':compensation:'||NEW.workplace_id::text,0));
@@ -11202,6 +11219,7 @@ BEGIN
         AND a.student_id IS NOT DISTINCT FROM NEW.student_id
         AND a.group_id IS NOT DISTINCT FROM NEW.group_id
         AND a.exact_session_id IS NOT DISTINCT FROM NEW.exact_session_id
+        AND a.private_series_id IS NULL
         AND a.id<>NEW.id AND a.status='active'
         AND daterange(a.effective_from,a.effective_to,'[]') &&
             daterange(NEW.effective_from,NEW.effective_to,'[]')) THEN
@@ -12183,10 +12201,10 @@ CREATE TRIGGER ccp_sponsor_participant_review_guard
 -- agreement under a transaction, require explicit amount/revision confirmation,
 -- prove complete attendance, and atomically freeze the source. A model cannot
 -- directly INSERT or infer approval from the calendar.
-CREATE OR REPLACE FUNCTION public.ccp_finance_post_obligation(
+CREATE FUNCTION public.ccp_finance_post_obligation_scoped_internal(
  p_agreement_id uuid,p_expected_revision bigint,p_expected_amount_cents bigint,
  p_session_id uuid,p_student_id uuid,p_period_start date,p_period_end date,
- p_request_id uuid,p_confirmed boolean
+ p_request_id uuid,p_confirmed boolean,p_reviewed_private_series_id uuid
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=public,pg_temp AS $ccp_finance_post_obligation$
 DECLARE
@@ -12228,6 +12246,12 @@ BEGIN
      v_row.period_end IS DISTINCT FROM p_period_end THEN
        RAISE EXCEPTION 'OBLIGATION_REQUEST_CONFLICT' USING ERRCODE='23505';
    END IF;
+
+   IF (CASE WHEN v_row.agreement_snapshot->>'scope'='private_series'
+      THEN (v_row.agreement_snapshot->>'privateSeriesId')::uuid END)
+       IS DISTINCT FROM p_reviewed_private_series_id THEN
+     RAISE EXCEPTION 'PRIVATE_SERIES_APPROVAL_SCOPE_REQUIRED' USING ERRCODE='23514';
+   END IF;
    RETURN jsonb_build_object('obligation',to_jsonb(v_row),'replayed',true);
  END IF;
  SELECT * INTO v_terms FROM public.compensation_agreements
@@ -12235,10 +12259,13 @@ BEGIN
  IF NOT FOUND OR v_terms.status<>'active' THEN
    RAISE EXCEPTION 'AGREEMENT_NOT_ACTIVE_OR_OWNED' USING ERRCODE='42501';
  END IF;
+ IF v_terms.private_series_id IS DISTINCT FROM p_reviewed_private_series_id THEN
+   RAISE EXCEPTION 'PRIVATE_SERIES_APPROVAL_SCOPE_REQUIRED' USING ERRCODE='23514';
+ END IF;
  IF v_terms.revision<>p_expected_revision THEN
    RAISE EXCEPTION 'STALE_AGREEMENT_REVISION' USING ERRCODE='23514';
  END IF;
- IF v_terms.exact_session_id IS NULL THEN
+ IF v_terms.exact_session_id IS NULL AND v_terms.private_series_id IS NULL THEN
    SELECT * INTO v_account FROM public.billing_accounts
     WHERE id=v_terms.billing_account_id AND teacher_id=v_teacher
       AND status='active' FOR KEY SHARE;
@@ -12323,7 +12350,14 @@ BEGIN
          AND a.agreement_role='participant_charge' AND a.status='active'
      ) THEN RAISE EXCEPTION 'EXACT_SPONSOR_REVIEW_REQUIRED' USING ERRCODE='23514';END IF;
    END IF;
-   IF v_terms.exact_session_id IS NOT NULL THEN
+   IF v_terms.agreement_role='coach_earning' AND v_terms.exact_session_id IS NULL
+      AND v_session.student_id IS NOT NULL
+      AND (v_session.source_private_series_id IS NOT NULL OR v_session.slot_occurrence_date IS NOT NULL
+           OR v_terms.private_series_id IS NOT NULL) THEN
+     PERFORM pg_advisory_xact_lock(hashtextextended(
+       v_teacher::text||':private-series-compensation:'||v_session.workplace_id::text,0));
+   END IF;
+   IF v_terms.exact_session_id IS NOT NULL OR v_terms.private_series_id IS NOT NULL THEN
      -- Same order as exact setup. The venue lookup stabilizes legacy time
      -- fallback; a later venue currency default never reprices this contract.
      SELECT timezone INTO v_workplace_timezone FROM public.workplaces
@@ -12341,6 +12375,24 @@ BEGIN
    END IF;
    v_local_date:=(v_session.starts_at AT TIME ZONE coalesce(
       v_session.local_timezone,v_workplace_timezone,'UTC'))::date;
+   IF v_terms.private_series_id IS NOT NULL AND
+     v_terms.private_series_id IS DISTINCT FROM v_session.source_private_series_id THEN
+     RAISE EXCEPTION 'PRIVATE_SERIES_AGREEMENT_SOURCE_UNVERIFIED' USING ERRCODE='23514';
+   END IF;
+   IF v_terms.agreement_role='coach_earning' AND v_terms.exact_session_id IS NULL
+      AND v_terms.private_series_id IS NULL AND v_session.student_id IS NOT NULL
+      AND (v_session.source_private_series_id IS NOT NULL OR v_session.slot_occurrence_date IS NOT NULL)
+      AND EXISTS(SELECT 1 FROM public.compensation_agreements c
+        JOIN public.lesson_slots root ON root.id=c.private_series_id AND root.teacher_id=c.teacher_id
+        WHERE c.teacher_id=v_teacher AND c.workplace_id=v_session.workplace_id
+          AND c.status='active' AND c.effective_from<=v_local_date AND c.effective_to>=v_local_date
+          AND root.student_id=v_session.student_id AND
+          (v_session.source_private_series_id=root.id OR
+           (v_session.source_private_series_id IS NULL AND (v_session.slot_id IS NULL OR EXISTS(
+             SELECT 1 FROM public.lesson_slots slot WHERE slot.id=v_session.slot_id
+             AND slot.teacher_id=v_teacher AND slot.series_id=root.id))))) THEN
+     RAISE EXCEPTION 'PRIVATE_SERIES_AGREEMENT_REVIEW_REQUIRED' USING ERRCODE='23514';
+   END IF;
    IF p_period_start IS DISTINCT FROM v_local_date OR
      p_period_end IS DISTINCT FROM v_local_date OR
      v_local_date<v_terms.effective_from OR
@@ -12434,6 +12486,10 @@ BEGIN
        'exactSessionId',v_terms.exact_session_id);
    END IF;
  END IF;
+ IF v_terms.private_series_id IS NOT NULL THEN
+   v_snapshot:=v_snapshot||jsonb_build_object('scope','private_series',
+     'privateSeriesId',v_terms.private_series_id,'originalOccurrenceOn',v_session.slot_occurrence_date);
+ END IF;
  v_source_hash:=encode(extensions.digest(v_snapshot::text,'sha256'),'hex');
  INSERT INTO public.financial_obligations(teacher_id,workplace_id,billing_account_id,
   agreement_id,agreement_revision,agreement_snapshot,session_id,student_id,
@@ -12456,15 +12512,52 @@ BEGIN
      v_row.period_end IS DISTINCT FROM p_period_end THEN
        RAISE EXCEPTION 'OBLIGATION_REQUEST_CONFLICT' USING ERRCODE='23505';
    END IF;
+
+   IF (CASE WHEN v_row.agreement_snapshot->>'scope'='private_series'
+      THEN (v_row.agreement_snapshot->>'privateSeriesId')::uuid END)
+       IS DISTINCT FROM p_reviewed_private_series_id THEN
+     RAISE EXCEPTION 'PRIVATE_SERIES_APPROVAL_SCOPE_REQUIRED' USING ERRCODE='23514';
+   END IF;
    RETURN jsonb_build_object('obligation',to_jsonb(v_row),'replayed',true);
  END IF;
  RETURN jsonb_build_object('obligation',to_jsonb(v_row),'replayed',false);
 END;
 $ccp_finance_post_obligation$;
+REVOKE ALL ON FUNCTION public.ccp_finance_post_obligation_scoped_internal(
+ uuid,bigint,bigint,uuid,uuid,date,date,uuid,boolean,uuid) FROM PUBLIC,anon,authenticated,service_role;
+
+-- Keep existing generic approval entry point and grants, without authority to
+-- approve or replay a schedule-specific obligation.
+CREATE OR REPLACE FUNCTION public.ccp_finance_post_obligation(
+ p_agreement_id uuid,p_expected_revision bigint,p_expected_amount_cents bigint,
+ p_session_id uuid,p_student_id uuid,p_period_start date,p_period_end date,
+ p_request_id uuid,p_confirmed boolean
+) RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path=public,pg_temp AS $legacy$
+ SELECT public.ccp_finance_post_obligation_scoped_internal($1,$2,$3,$4,$5,$6,$7,$8,$9,NULL)
+$legacy$;
 REVOKE ALL ON FUNCTION public.ccp_finance_post_obligation(
  uuid,bigint,bigint,uuid,uuid,date,date,uuid,boolean) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.ccp_finance_post_obligation(
  uuid,bigint,bigint,uuid,uuid,date,date,uuid,boolean) TO authenticated;
+
+CREATE FUNCTION public.ccp_finance_post_private_series_obligation(
+ p_agreement_id uuid,p_expected_revision bigint,p_expected_amount_cents bigint,
+ p_session_id uuid,p_private_series_id uuid,p_taught_on date,
+ p_request_id uuid,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $scoped$
+BEGIN
+ IF p_private_series_id IS NULL THEN
+   RAISE EXCEPTION 'PRIVATE_SERIES_APPROVAL_SCOPE_REQUIRED' USING ERRCODE='23514';
+ END IF;
+ RETURN public.ccp_finance_post_obligation_scoped_internal(p_agreement_id,p_expected_revision,
+  p_expected_amount_cents,p_session_id,NULL,p_taught_on,p_taught_on,p_request_id,
+  p_confirmed,p_private_series_id);
+END;
+$scoped$;
+REVOKE ALL ON FUNCTION public.ccp_finance_post_private_series_obligation(
+ uuid,bigint,bigint,uuid,uuid,date,uuid,boolean) FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_finance_post_private_series_obligation(
+ uuid,bigint,bigint,uuid,uuid,date,uuid,boolean) TO authenticated;
 
 -- Unified SaaS schema freeze: explicit online-rating consent, durable bounded
 -- refresh queue and immutable attempt receipts. This does NOT enable a worker,
@@ -15788,6 +15881,10 @@ SET search_path=public,pg_temp AS $ccp_lesson_slot_series_identity$
 BEGIN
  IF TG_OP='INSERT' THEN
   IF NEW.series_id IS NULL THEN NEW.series_id:=NEW.id; END IF;
+  IF NEW.id=NEW.series_id AND EXISTS(SELECT 1 FROM public.teaching_sessions occurrence
+     WHERE occurrence.teacher_id=NEW.teacher_id AND occurrence.source_private_series_id=NEW.id) THEN
+    RAISE EXCEPTION 'RECURRENCE_SOURCE_ROOT_ID_RETAINED' USING ERRCODE='23514';
+  END IF;
   RETURN NEW;
  END IF;
  IF TG_OP='UPDATE' THEN
@@ -15797,7 +15894,9 @@ BEGIN
   END IF;
   IF NEW.workplace_id IS DISTINCT FROM OLD.workplace_id AND
     (OLD.series_id<>OLD.id OR EXISTS(SELECT 1 FROM public.lesson_slots
-      WHERE teacher_id=OLD.teacher_id AND series_id=OLD.id AND id<>OLD.id)) THEN
+      WHERE teacher_id=OLD.teacher_id AND series_id=OLD.id AND id<>OLD.id)
+     OR EXISTS(SELECT 1 FROM public.teaching_sessions occurrence
+       WHERE occurrence.teacher_id=OLD.teacher_id AND occurrence.source_private_series_id=OLD.id)) THEN
    RAISE EXCEPTION 'RECURRENCE_SERIES_WORKPLACE_IMMUTABLE' USING ERRCODE='23514';
   END IF;
   RETURN NEW;
@@ -16940,10 +17039,11 @@ BEGIN
  VALUES(v_teacher,p_idempotency_key,v_operation,v_hash,'{}'::jsonb);
  INSERT INTO public.teaching_sessions(teacher_id,workplace_id,student_id,title,starts_at,
   duration_minutes,status,slot_id,slot_occurrence_date,rescheduled_from_date,local_timezone,
-  is_home_visit,slot_rate_cents,request_id)
+  is_home_visit,slot_rate_cents,request_id,source_private_series_id)
  VALUES(v_teacher,v_workplace.id,v_slot.student_id,'Private chess lesson',v_target,
   v_slot.duration_minutes,'scheduled',v_slot.id,p_original_occurrence_on,p_original_occurrence_on,v_zone,
-  v_slot.is_home_visit,v_slot.rate_cents,p_idempotency_key)
+  v_slot.is_home_visit,v_slot.rate_cents,p_idempotency_key,
+  CASE WHEN v_slot.workplace_id=v_workplace.id THEN v_slot.series_id END)
  RETURNING id INTO v_session;
  INSERT INTO public.slot_occurrence_exceptions(teacher_id,slot_id,original_occurrence_on,action,
   revised_starts_at,revised_timezone,revised_duration_minutes,session_id,approved_by,reason,request_id)
@@ -17298,3 +17398,204 @@ GRANT EXECUTE ON FUNCTION public.ccp_finance_earning_summary(uuid,date,date,text
  TO authenticated;
 COMMENT ON FUNCTION public.ccp_finance_earning_summary(uuid,date,date,text,uuid) IS
  'Current settled and open coach earnings for one owned venue, currency and inclusive frozen occurrence date range. Read-only; not cash-flow or forecast.';
+
+
+-- Provenance only at canonical recurring emission; not a backfill. The root
+-- UUID intentionally survives slot detachment/retirement of scheduling intent.
+ALTER TABLE public.teaching_sessions ADD COLUMN source_private_series_id uuid,
+  ADD CONSTRAINT teaching_sessions_private_series_shape CHECK (
+    source_private_series_id IS NULL OR
+    (student_id IS NOT NULL AND group_id IS NULL AND roster_mode='standard'
+      AND slot_occurrence_date IS NOT NULL AND makeup_for_session_id IS NULL));
+CREATE UNIQUE INDEX teaching_sessions_private_series_occurrence
+  ON public.teaching_sessions(teacher_id,source_private_series_id,slot_occurrence_date)
+  WHERE source_private_series_id IS NOT NULL;
+COMMENT ON COLUMN public.teaching_sessions.source_private_series_id IS
+ 'Immutable private recurring root at canonical occurrence emission; historical unknown and one-off/make-up rows are NULL. Survives slot detachment.';
+
+CREATE FUNCTION public.ccp_guard_private_series_provenance()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=pg_catalog,public,pg_temp AS $guard$
+BEGIN
+ IF TG_OP='UPDATE' THEN
+   IF NEW.source_private_series_id IS DISTINCT FROM OLD.source_private_series_id
+      OR (OLD.source_private_series_id IS NOT NULL AND
+        ROW(OLD.teacher_id,OLD.student_id,OLD.workplace_id,OLD.slot_occurrence_date)
+        IS DISTINCT FROM ROW(NEW.teacher_id,NEW.student_id,NEW.workplace_id,NEW.slot_occurrence_date)) THEN
+     RAISE EXCEPTION 'PRIVATE_SERIES_PROVENANCE_IMMUTABLE' USING ERRCODE='23514';
+   END IF;
+   RETURN NEW;
+ END IF;
+ IF NEW.source_private_series_id IS NULL THEN RETURN NEW; END IF;
+ IF current_user IS DISTINCT FROM pg_get_userbyid((SELECT p.proowner FROM pg_proc p
+      WHERE p.oid='public.ccp_canonical_slot_materialize(jsonb,uuid)'::regprocedure))
+    OR NOT EXISTS(
+      SELECT 1 FROM public.lesson_slots slot JOIN public.lesson_slots root
+        ON root.id=slot.series_id AND root.series_id=root.id
+        AND root.teacher_id=slot.teacher_id AND root.student_id=slot.student_id
+        AND root.workplace_id=slot.workplace_id
+      WHERE slot.id=NEW.slot_id AND slot.series_id=NEW.source_private_series_id
+        AND slot.teacher_id=NEW.teacher_id AND slot.student_id=NEW.student_id
+        AND slot.workplace_id=NEW.workplace_id
+    ) THEN
+   RAISE EXCEPTION 'PRIVATE_SERIES_PROVENANCE_REQUIRES_CANONICAL_SOURCE' USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END;
+$guard$;
+REVOKE ALL ON FUNCTION public.ccp_guard_private_series_provenance()
+ FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_guard_private_series_provenance
+ BEFORE INSERT OR UPDATE ON public.teaching_sessions
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_guard_private_series_provenance();
+
+
+-- Terms are bound to the retained private recurring anchor.
+CREATE UNIQUE INDEX lesson_slots_id_teacher_workplace_series_terms ON public.lesson_slots(id,teacher_id,workplace_id);
+ALTER TABLE public.compensation_agreements ADD COLUMN private_series_id uuid,
+ ADD CONSTRAINT compensation_private_series_root_fk FOREIGN KEY(private_series_id,teacher_id,workplace_id)
+ REFERENCES public.lesson_slots(id,teacher_id,workplace_id) ON DELETE RESTRICT,
+ ADD CONSTRAINT compensation_private_series_shape CHECK (private_series_id IS NULL OR
+  (exact_session_id IS NULL AND student_id IS NULL AND group_id IS NULL
+   AND agreement_role='coach_earning' AND model<>'fixed_period' AND rate_cents>0));
+CREATE INDEX compensation_private_series_active_dates ON public.compensation_agreements
+ (teacher_id,workplace_id,private_series_id,effective_from,effective_to)
+ WHERE private_series_id IS NOT NULL AND status='active';
+
+CREATE FUNCTION public.ccp_private_series_compensation_boundary()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=pg_catalog,public,pg_temp AS $boundary$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_zone text;
+BEGIN
+ IF TG_OP='DELETE' THEN
+   IF OLD.private_series_id IS NULL OR NOT EXISTS(SELECT 1 FROM public.teachers
+      WHERE id=OLD.teacher_id) THEN RETURN OLD; END IF;
+   RAISE EXCEPTION 'PRIVATE_SERIES_TERMS_RETAINED' USING ERRCODE='42501';
+ END IF;
+ IF TG_OP='UPDATE' AND NEW.private_series_id IS DISTINCT FROM OLD.private_series_id THEN
+   RAISE EXCEPTION 'PRIVATE_SERIES_SCOPE_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ IF NEW.private_series_id IS NULL THEN RETURN NEW; END IF;
+ IF v_teacher IS DISTINCT FROM NEW.teacher_id OR current_user IS DISTINCT FROM pg_get_userbyid(
+   (SELECT p.proowner FROM pg_proc p WHERE p.oid=
+    'public.ccp_private_series_compensation_commit(uuid,uuid,uuid,text,bigint,text,date,date,uuid,bigint,uuid,boolean)'::regprocedure)) THEN
+   RAISE EXCEPTION 'PRIVATE_SERIES_CONFIRMED_RPC_REQUIRED' USING ERRCODE='42501';
+ END IF;
+ IF TG_OP='UPDATE' THEN
+   SELECT timezone INTO v_zone FROM public.workplaces WHERE id=OLD.workplace_id AND teacher_id=v_teacher FOR SHARE;
+   PERFORM pg_advisory_xact_lock(hashtextextended(
+     v_teacher::text||':private-series-compensation:'||NEW.workplace_id::text,0));
+   IF OLD.effective_from<=(clock_timestamp() AT TIME ZONE v_zone)::date THEN
+     RAISE EXCEPTION 'PRIVATE_SERIES_EFFECTIVE_TERMS_RETAINED' USING ERRCODE='23514';
+   END IF;
+   IF OLD.status='active' AND NEW.status='archived' AND NEW.revision=OLD.revision+1
+      AND to_jsonb(NEW)-ARRAY['status','revision','updated_at'] =
+          to_jsonb(OLD)-ARRAY['status','revision','updated_at'] THEN RETURN NEW; END IF;
+   RAISE EXCEPTION 'PRIVATE_SERIES_SCOPE_IMMUTABLE' USING ERRCODE='23514';
+ END IF;
+ SELECT w.timezone INTO v_zone
+   FROM public.lesson_slots root JOIN public.workplaces w
+     ON w.id=root.workplace_id AND w.teacher_id=root.teacher_id
+   WHERE root.id=NEW.private_series_id AND root.series_id=root.id
+     AND root.teacher_id=v_teacher AND root.workplace_id=NEW.workplace_id
+     AND w.archived_at IS NULL AND w.currency=NEW.currency
+   FOR SHARE OF root,w;
+ IF NOT FOUND OR NEW.effective_from<=(clock_timestamp() AT TIME ZONE v_zone)::date
+    OR NOT EXISTS(SELECT 1 FROM public.lesson_slots slot WHERE slot.teacher_id=v_teacher
+        AND slot.series_id=NEW.private_series_id AND slot.active AND slot.start_date<=NEW.effective_to
+        AND (slot.end_date IS NULL OR slot.end_date>=NEW.effective_from)) THEN
+   RAISE EXCEPTION 'PRIVATE_SERIES_SCOPE_OR_PROSPECTIVE_DATE_INVALID' USING ERRCODE='23514';
+ END IF;
+ PERFORM 1 FROM public.billing_accounts a WHERE a.id=NEW.billing_account_id
+   AND a.teacher_id=v_teacher AND a.status='active' FOR SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'BILLING_ACCOUNT_NOT_ACTIVE_OR_OWNED' USING ERRCODE='42501'; END IF;
+ -- Take the scheduling root and compatible read locks before the
+ -- finance scope lock; do not hold this lock while waiting on a slot edit.
+ PERFORM pg_advisory_xact_lock(hashtextextended(
+   v_teacher::text||':private-series-compensation:'||NEW.workplace_id::text,0));
+ IF EXISTS(SELECT 1 FROM public.compensation_agreements c
+   WHERE c.teacher_id=v_teacher AND c.workplace_id=NEW.workplace_id
+     AND c.private_series_id=NEW.private_series_id AND c.status='active'
+     AND daterange(c.effective_from,c.effective_to,'[]') && daterange(NEW.effective_from,NEW.effective_to,'[]')) THEN
+   RAISE EXCEPTION 'OVERLAPPING_COMPENSATION_AGREEMENT' USING ERRCODE='23505';
+ END IF;
+ RETURN NEW;
+END;
+$boundary$;
+REVOKE ALL ON FUNCTION public.ccp_private_series_compensation_boundary()
+ FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION public.ccp_private_series_compensation_commit(
+ p_workplace uuid,p_series uuid,p_payer uuid,p_model text,p_rate bigint,p_currency text,
+ p_from date,p_to date,p_archive uuid,p_revision bigint,p_request uuid,p_confirmed boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=public,pg_temp AS $series_commit$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_prior public.agent_tool_receipts%ROWTYPE;
+ v_terms public.compensation_agreements%ROWTYPE;
+ v_hash text;
+ v_out jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501'; END IF;
+ IF p_request IS NULL OR p_confirmed IS DISTINCT FROM true OR
+   (p_archive IS NULL AND (p_revision IS NOT NULL OR p_workplace IS NULL OR
+     p_series IS NULL OR p_payer IS NULL OR p_model IS NULL OR
+     p_model NOT IN('hourly','per_session','per_student') OR p_rate IS NULL OR
+     p_rate NOT BETWEEN 1 AND 1000000000 OR p_currency IS NULL OR
+     p_currency !~ '^[A-Z]{3}$' OR p_from IS NULL OR NOT isfinite(p_from) OR
+     (p_to IS NULL OR NOT isfinite(p_to) OR p_to<p_from))) OR
+   (p_archive IS NOT NULL AND (p_revision IS NULL OR p_revision<1 OR
+     p_workplace IS NOT NULL OR p_series IS NOT NULL OR p_payer IS NOT NULL OR
+     p_model IS NOT NULL OR p_rate IS NOT NULL OR p_currency IS NOT NULL OR
+     p_from IS NOT NULL OR p_to IS NOT NULL)) THEN
+   RAISE EXCEPTION 'INVALID_PRIVATE_SERIES_TERMS_CONFIRMATION' USING ERRCODE='22023';
+ END IF;
+ v_hash:=encode(extensions.digest(jsonb_build_array('finance.private-series.v1',
+   p_workplace,p_series,p_payer,p_model,p_rate,p_currency,p_from,p_to,p_archive,p_revision)::text,'sha256'),'hex');
+ SELECT * INTO v_prior FROM public.agent_tool_receipts
+   WHERE teacher_id=v_teacher AND idempotency_key=p_request;
+ IF NOT FOUND THEN
+   IF current_setting('transaction_isolation')<>'read committed' THEN
+     RAISE EXCEPTION 'PRIVATE_SERIES_READ_COMMITTED_REQUIRED' USING ERRCODE='40001';
+   END IF;
+   INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+    VALUES(v_teacher,p_request,'finance.private-series.v1',v_hash,'{}'::jsonb) ON CONFLICT DO NOTHING;
+   IF FOUND THEN
+     IF p_archive IS NULL THEN
+       INSERT INTO public.compensation_agreements(teacher_id,workplace_id,private_series_id,
+        billing_account_id,agreement_role,model,rate_cents,currency,effective_from,effective_to)
+       VALUES(v_teacher,p_workplace,p_series,p_payer,'coach_earning',p_model,p_rate,p_currency,p_from,p_to)
+       RETURNING * INTO v_terms;
+     ELSE
+       UPDATE public.compensation_agreements SET status='archived',revision=revision+1,updated_at=clock_timestamp()
+        WHERE id=p_archive AND teacher_id=v_teacher AND private_series_id IS NOT NULL
+          AND status='active' AND revision=p_revision RETURNING * INTO v_terms;
+       IF NOT FOUND THEN RAISE EXCEPTION 'PRIVATE_SERIES_AGREEMENT_NOT_ACTIVE_OR_STALE' USING ERRCODE='23514'; END IF;
+     END IF;
+     v_out:=jsonb_build_object('agreementId',v_terms.id,'privateSeriesId',v_terms.private_series_id,
+       'workplaceId',v_terms.workplace_id,'billingAccountId',v_terms.billing_account_id,
+       'from',v_terms.effective_from,'to',v_terms.effective_to,'rateCents',v_terms.rate_cents,
+       'currency',v_terms.currency,'model',v_terms.model,'status',v_terms.status,'revision',v_terms.revision,
+       'replayed',false);
+     UPDATE public.agent_tool_receipts SET receipt=v_out WHERE teacher_id=v_teacher AND idempotency_key=p_request;
+     RETURN v_out;
+   END IF;
+   SELECT * INTO v_prior FROM public.agent_tool_receipts WHERE teacher_id=v_teacher AND idempotency_key=p_request;
+ END IF;
+ IF v_prior.operation IS DISTINCT FROM 'finance.private-series.v1' OR
+    v_prior.request_hash IS DISTINCT FROM v_hash THEN
+   RAISE EXCEPTION 'PRIVATE_SERIES_REQUEST_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ RETURN v_prior.receipt||'{"replayed":true}'::jsonb;
+END;
+$series_commit$;
+REVOKE ALL ON FUNCTION public.ccp_private_series_compensation_commit(
+ uuid,uuid,uuid,text,bigint,text,date,date,uuid,bigint,uuid,boolean) FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_private_series_compensation_commit(
+ uuid,uuid,uuid,text,bigint,text,date,date,uuid,bigint,uuid,boolean) TO authenticated;
+CREATE TRIGGER ccp_private_series_compensation_boundary
+ BEFORE INSERT OR UPDATE OR DELETE ON public.compensation_agreements
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_private_series_compensation_boundary();

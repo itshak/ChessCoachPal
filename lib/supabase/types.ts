@@ -462,7 +462,7 @@ export interface Database {
       };
       compensation_agreements: {
         Row:{id:string;teacher_id:string;workplace_id:string;student_id:string|null;
-          group_id:string|null;exact_session_id:string|null;billing_account_id:string;
+          group_id:string|null;exact_session_id:string|null;private_series_id:string|null;billing_account_id:string;
           agreement_role:"coach_earning"|"participant_charge";
           model:"hourly"|"per_session"|"per_student"|"fixed_period";
           rate_cents:number;currency:string;effective_from:string;effective_to:string|null;
@@ -984,6 +984,7 @@ export interface Database {
           is_home_visit: boolean; rescheduled_from_date: string | null;
           makeup_for_session_id: string | null; makeup_for_student_id: string | null;
           roster_mode: "standard" | "ad_hoc";
+          source_private_series_id: string | null;
         };
         Insert: {
           id?: string; teacher_id: string; workplace_id: string;
