@@ -21,24 +21,73 @@ function endpoint(provider:Provider,username:string,env:NodeJS.ProcessEnv){
  return origin+(provider==="lichess"?"/api/user/":"/pub/player/")+
   encodeURIComponent(username)+(provider==="lichess"?"":"/stats");
 }
+const maxBodyBytes=80_000;
+const unavailable=()=>fail(502,"PROVIDER_UNAVAILABLE","Public rating provider unavailable");
+const oversized=()=>fail(502,"PROVIDER_RESPONSE","Public rating response exceeds safe size");
+const unreadable=()=>fail(502,"PROVIDER_RESPONSE","Public rating response is unreadable");
+
+function discard(body:ReadableStream<Uint8Array>|null){
+ // A rejected response must not hold up the caller while its source cancels.
+ if(body)void body.cancel().catch(()=>{});
+}
+
+async function readBody(body:ReadableStream<Uint8Array>,signal:AbortSignal){
+ const reader=body.getReader();
+ const cancel=()=>{void reader.cancel().catch(()=>{});};
+ signal.addEventListener("abort",cancel,{once:true});
+ try{
+  const decoder=new TextDecoder();
+  let bytes=0;
+  let text="";
+  for(;;){
+   if(signal.aborted)throw unavailable();
+   const {done,value}=await reader.read();
+   if(signal.aborted)throw unavailable();
+   if(done)return text+decoder.decode();
+   bytes+=value.byteLength;
+   if(bytes>maxBodyBytes){
+    cancel();
+    throw oversized();
+   }
+   text+=decoder.decode(value,{stream:true});
+  }
+ }catch(error){
+  if(signal.aborted)throw unavailable();
+  if(error instanceof StudentRatingError)throw error;
+  throw unreadable();
+ }finally{
+  signal.removeEventListener("abort",cancel);
+  reader.releaseLock();
+ }
+}
+
 export async function fetchOnlineRatingPayload(provider:Provider,username:string,
  request:typeof fetch=fetch,env:NodeJS.ProcessEnv=process.env){
+ const signal=AbortSignal.timeout(10000);
  let response:Response;
  try{response=await request(endpoint(provider,username,env),{
-  redirect:"error",cache:"no-store",signal:AbortSignal.timeout(10000),
+  redirect:"error",cache:"no-store",signal,
   headers:{"Accept":"application/json"},
- });}catch{throw fail(502,"PROVIDER_UNAVAILABLE","Public rating provider unavailable");}
- if(response.status===429)throw fail(429,"RATE_LIMITED","Rating provider rate limit; retry later");
- if(response.status===404)throw fail(404,"ACCOUNT_NOT_FOUND","Public chess account not found");
- if(response.status===401||response.status===403)
-  throw fail(403,"PROVIDER_DENIED","Public rating lookup was denied");
- if(!response.ok)throw fail(502,"PROVIDER_UNAVAILABLE","Public rating provider unavailable");
+ });}catch{throw unavailable();}
+ if(signal.aborted){
+  discard(response.body);
+  throw unavailable();
+ }
+ if(!response.ok){
+  discard(response.body);
+  if(response.status===429)throw fail(429,"RATE_LIMITED","Rating provider rate limit; retry later");
+  if(response.status===404)throw fail(404,"ACCOUNT_NOT_FOUND","Public chess account not found");
+  if(response.status===401||response.status===403)
+   throw fail(403,"PROVIDER_DENIED","Public rating lookup was denied");
+  throw unavailable();
+ }
  const size=Number(response.headers.get("content-length")??"0");
- if(Number.isFinite(size)&&size>80000)
-  throw fail(502,"PROVIDER_RESPONSE","Public rating response exceeds safe size");
- const text=await response.text();
- if(Buffer.byteLength(text,"utf8")>80000)
-  throw fail(502,"PROVIDER_RESPONSE","Public rating response exceeds safe size");
+ if(Number.isFinite(size)&&size>maxBodyBytes){
+  discard(response.body);
+  throw oversized();
+ }
+ if(!response.body)throw unreadable();
+ const text=await readBody(response.body,signal);
  try{return JSON.parse(text) as unknown;}
- catch{throw fail(502,"PROVIDER_RESPONSE","Public rating response is unreadable");}
+ catch{throw unreadable();}
 }
