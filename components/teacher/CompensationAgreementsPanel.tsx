@@ -18,7 +18,7 @@ type Agreement={id:string;workplaceId:string;studentId:string|null;groupId:strin
  status:"active"|"archived";revision:number};
 type Preview={agreement:Agreement;projection:{expectedCents:number;currency:string;
  eligibleInstructorMinutes:number;eligibleSessionCount:number;eligibleParticipantCount:number};
- excludedExactSessionCount:number;persistedObligation:false;paymentRecorded:false};
+ excludedExactSessionCount:number;excludedGroupSessionCount:number;persistedObligation:false;paymentRecorded:false};
 const field="w-full min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
 async function getJson<T>(url:string,init?:RequestInit):Promise<T>{
  const res=await fetch(url,{cache:"no-store",...init});
@@ -189,7 +189,10 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
   try{
    const q=new URLSearchParams({from:previewFrom,to:previewTo});
    setPreview(await getJson<Preview>(`/api/compensation-agreements/${agreement.id}/preview?${q}`));
-  }catch(e){setError(errorText(e,t("previewFailed")));}
+  }catch(e){
+   const code=(e as {code?:string}|null)?.code;
+   setError(code==="GROUP_AGREEMENT_REVIEW_REQUIRED"?t("groupPreviewOverlap"):errorText(e,t("previewFailed")));
+  }
   finally{setBusy(false);}
  }
  return <section className="space-y-4 rounded-xl border border-border bg-surface p-5" aria-label={t("title")}>
@@ -311,6 +314,7 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
     {" · "}{t("minutes",{count:preview.projection.eligibleInstructorMinutes})}
     {" · "}{t("people",{count:preview.projection.eligibleParticipantCount})}</p>
    {preview.excludedExactSessionCount>0&&<p className="text-xs text-muted">{t("exactExcluded",{count:preview.excludedExactSessionCount})}</p>}
+   {preview.excludedGroupSessionCount>0&&<p className="text-xs text-muted">{t("groupExcluded",{count:preview.excludedGroupSessionCount})}</p>}
    <p className="text-xs text-muted">{t("previewNotice")}</p>
   </div>}
   <PrivateSeriesCompensationPanel workplaceId={loadedContext===initialWorkplaceId?workplaceId:""}/>

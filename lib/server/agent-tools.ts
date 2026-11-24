@@ -761,7 +761,7 @@ const catalogue = [
   },
   {
     name:"ccp_compensation_agreements_preview",
-    description:"Read-only deterministic expected coach compensation for verified completed canonical sessions, one group session counted once. Broad coach preview excludes lessons with their own active exact agreement and refuses a potential private-series overlap until explicitly reviewed; previews do not alter posting authority. Never claim cash received or invoice issuance; fixed monthly agreements require full months.",
+    description:"Read-only deterministic expected coach compensation for verified completed canonical sessions, one group session counted once. Broad coach preview excludes lessons with their own active exact agreement or applicable frozen-group terms and refuses a potential private-series overlap until explicitly reviewed; previews do not alter posting authority. Never claim cash received or invoice issuance; fixed monthly agreements require full months.",
     schema:compensationPreviewSchema,scope:"coach:read",readOnly:true,
   },
   {

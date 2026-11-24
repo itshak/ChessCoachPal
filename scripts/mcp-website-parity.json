@@ -670,7 +670,7 @@
       "existingTools": [
         "ccp_compensation_agreements_preview"
       ],
-      "explanation": "Approved and revisioned owner-scoped compensation terms and read-only expected earnings use the same domain schema and rules via website and named MCP operations. 8-student group time counts once; no external payment/invoice or inferred payer. Exact authenticated parity and negative tests in e2e/parity-compensation-agreements.spec.ts. Existing browser and MCP previews refuse possible coverage by separate private-series terms rather than counting those lessons at a broad rate.",
+      "explanation": "Approved and revisioned owner-scoped compensation terms and read-only expected earnings use the same domain schema and rules via website and named MCP operations. 8-student group time counts once; no external payment/invoice or inferred payer. Exact authenticated parity and negative tests in e2e/parity-compensation-agreements.spec.ts. Existing browser and MCP previews refuse possible coverage by separate private-series terms rather than counting those lessons at a broad rate. Frozen active group terms exclude otherwise applicable workplace projections; signed parity in e2e/parity-compensation-group-precedence.spec.ts.",
       "evidenceTest": "e2e/parity-compensation-agreements.spec.ts"
     },
     {
@@ -926,7 +926,7 @@
       "existingTools": [
         "ccp_finance_obligation_approve"
       ],
-      "explanation": "Native tenant-owned immutable financial ledger uses identical shared website/delegated MCP services, signed-in tenant binding and transaction-level SQL approval guards. Manual receipts are never provider-verified or inferred; partial allocations and explicit append-only refunds/corrections require approval and replay safety. End-to-end acceptance: e2e/parity-finance-ledger.spec.ts. Shared approval refuses protected private-series agreement IDs pending a dedicated reviewed workflow.",
+      "explanation": "Native tenant-owned immutable financial ledger uses identical shared website/delegated MCP services, signed-in tenant binding and transaction-level SQL approval guards. Manual receipts are never provider-verified or inferred; partial allocations and explicit append-only refunds/corrections require approval and replay safety. End-to-end acceptance: e2e/parity-finance-ledger.spec.ts. Shared approval refuses protected private-series agreement IDs pending a dedicated reviewed workflow. On a frozen group occurrence, a lower workplace rate or overlapping applicable group terms require review without posting; signed evidence: e2e/parity-compensation-group-precedence.spec.ts.",
       "evidenceTest": "e2e/parity-finance-ledger.spec.ts"
     },
     {

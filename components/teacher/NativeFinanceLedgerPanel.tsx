@@ -77,7 +77,8 @@ export function NativeFinanceLedgerPanel(){
   }catch(e){
    const code=(e as {code?:string}|null)?.code;
    setError(code==="EXACT_AGREEMENT_REVIEW_REQUIRED"?t("reviewRequired"):
-    code==="EXACT_AGREEMENT_SESSION_MISMATCH"?t("reviewMismatch"):apiError(e,t("saveFailed")));
+    code==="EXACT_AGREEMENT_SESSION_MISMATCH"?t("reviewMismatch"):
+    code==="GROUP_AGREEMENT_REVIEW_REQUIRED"?t("groupReviewRequired"):apiError(e,t("saveFailed")));
   }
   finally{setBusy(false);}
  }
