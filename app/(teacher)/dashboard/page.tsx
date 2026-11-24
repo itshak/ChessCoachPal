@@ -2,12 +2,13 @@ import Link from "next/link";
 import {getLocale,getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
+import {dailyLessonPreparationInput,DailyPreparationError,teacherDailyLessonPreparation} from "@/lib/server/daily-lesson-preparation";
 import { teacherDashboardPageModel, teacherDashboardSummaryInput } from "@/lib/server/teacher-overview-service";
 
 export async function generateMetadata() {const t=await getTranslations("dashboard");return {title:t("title")};}
 
 export default async function DashboardPage({ searchParams }: {
-  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[] }>;
+  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[]; prepareSession?: string | string[] }>;
 }) {
   const t=await getTranslations("dashboard");
   const locale=await getLocale();
@@ -15,11 +16,17 @@ export default async function DashboardPage({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { date: rawDate, homeworkAfter } = await searchParams;
+  const { date: rawDate, homeworkAfter, prepareSession } = await searchParams;
   const filters = teacherDashboardSummaryInput.safeParse({ date: rawDate, homeworkAfter });
   const { summary, students, upcoming, recent, teacher, daily } =
     await teacherDashboardPageModel(supabase, user.id, filters.success ? filters.data.date : undefined,
       filters.success ? filters.data.homeworkAfter : undefined);
+  const preparationInput=dailyLessonPreparationInput.safeParse({sessionId:prepareSession});
+  const preparation=prepareSession===undefined ? null : !preparationInput.success ? {kind:"invalid" as const}
+    : await teacherDailyLessonPreparation(supabase,user.id,preparationInput.data.sessionId)
+      .then(data=>({kind:"ready" as const,data}))
+      .catch((error:unknown)=>({kind:error instanceof DailyPreparationError && error.status===404
+        ? "not_found" as const : "unavailable" as const}));
   const dailyTime = daily && new Intl.DateTimeFormat(locale, {
     timeZone: daily.timeZone, timeStyle: "short",
   });
@@ -89,6 +96,10 @@ export default async function DashboardPage({ searchParams }: {
                         <time dateTime={session.starts_at}>{dailyTime.format(new Date(session.starts_at))}</time>
                         {" · "}{t("minutes", { count: session.duration_minutes })}
                       </p>
+                      <Link className="text-primary underline" href={"/dashboard?date="+daily.date+
+                        "&prepareSession="+session.id+"#lesson-preparation"}>
+                        {t("dailyPrepareOpen",{title:session.title})}
+                      </Link>
                     </Card>
                   </li>
                 ))}
@@ -97,6 +108,34 @@ export default async function DashboardPage({ searchParams }: {
             {daily.truncated && <p className="mt-2">{t("dailyTruncated", { count: daily.limit })}</p>}
           </>}
       </section>
+
+      {preparation && <section aria-labelledby="lesson-preparation" className="mb-8">
+        <h2 id="lesson-preparation" className="text-lg font-semibold mb-3">{t("dailyPrepareHeading")}</h2>
+        {preparation.kind !== "ready" ? <p role="alert">{t(preparation.kind === "invalid" ? "dailyPrepareInvalid"
+          : preparation.kind === "not_found" ? "dailyPrepareNotFound" : "dailyPrepareUnavailable")}</p> : <>
+          <h3><bdi dir="auto">{preparation.data.lesson.title}</bdi></h3>
+          {!preparation.data.history ? <p>{t(preparation.data.status === "roster_not_recorded"
+            ? "dailyPrepareUnknownRoster" : "dailyPrepareRosterLimit")}</p> :
+            <div className="space-y-2">
+              <p>{t("dailyPrepareParticipants",{count:preparation.data.participantCount})}</p>
+              <p>{t("dailyPrepareHistory",{from:preparation.data.history.from,to:preparation.data.history.to})}</p>
+              {preparation.data.history.material.status === "not_recorded" && <p>{t("dailyPrepareNoMaterials")}</p>}
+              {preparation.data.history.material.status === "truncated" && <p>{t("dailyPrepareLimited")}</p>}
+              {preparation.data.history.material.participantsWithoutEvidence !== null &&
+                <p>{t("dailyPrepareUnknownCount",{count:preparation.data.history.material.participantsWithoutEvidence})}</p>}
+              {!!preparation.data.history.material.entries.length && <ul>
+                {preparation.data.history.material.entries.map(item=><li key={item.sourceId}>
+                  <bdi dir="auto">{item.title ?? t("dailyHomeworkUnknownMaterial")}</bdi>{" · "}
+                  {t(item.stage === "assigned" ? "dailyPrepareAssigned" : item.stage === "taught"
+                    ? "dailyPrepareTaught" : "dailyPrepareCompleted")}
+                </li>)}
+              </ul>}
+              <p>{t("dailyPrepareAssignments",{count:preparation.data.history.assignments.count})}</p>
+              <p>{t("dailyPrepareObservations",{count:preparation.data.history.verifiedObservations.count})}</p>
+              <p>{t("dailyPrepareNoMastery")}</p>
+            </div>}
+        </>}
+      </section>}
 
       {filters.success && daily && dailyTime && <section aria-labelledby="daily-attendance" className="mb-8">
         <h2 id="daily-attendance" className="text-lg font-semibold mb-3">{t("dailyAttendanceHeading")}</h2>

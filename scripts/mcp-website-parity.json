@@ -365,6 +365,19 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/lesson-preparation/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_lesson_preparation_get"
+      ],
+      "explanation": "Same exact-session Daily dashboard, signed GET and delegated MCP. Same-owner active workplace or All, frozen roster, nonvoid explicit prior material, verified observation counts and teacher-wide assignment counts. No private learner notes, recurrence, or invented mastery.",
+      "evidenceTest": "e2e/parity-daily-lesson-preparation.spec.ts"
+    },
+    {
       "path": "app/api/coaching/calendar/makeup-credits/route.ts",
       "methods": [
         "GET"
