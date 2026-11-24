@@ -31,6 +31,14 @@
     "workplaceFilterFailed": "Could not change workplace; reload"
   },
   "dashboard": {
+    "dailyAttendanceHeading": "Attendance to review",
+    "dailyAttendanceEmpty": "No missing attendance found for ended lessons on this date.",
+    "dailyAttendanceUnavailable": "Attendance review is unavailable.",
+    "dailyAttendanceUnknown": "No frozen roster was recorded.",
+    "dailyAttendanceRosterLimit": "The frozen roster exceeds the review limit.",
+    "dailyAttendanceMissing": "{count, plural, one {# attendance decision missing} other {# attendance decisions missing}}",
+    "dailyAttendanceOpen": "Find attendance for {title}",
+    "dailyAttendanceTruncated": "Only part of the attendance review is shown.",
     "dailyHeading": "Coaching today",
     "dailyDate": "Coaching date",
     "dailyShow": "Show lessons",

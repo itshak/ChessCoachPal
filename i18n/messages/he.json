@@ -31,6 +31,14 @@
     "workplaceFilterFailed": "שינוי מקום העבודה נכשל; רעננו"
   },
   "dashboard": {
+    "dailyAttendanceHeading": "נוכחות לבדיקה",
+    "dailyAttendanceEmpty": "לא נמצאה נוכחות חסרה בשיעורים שהסתיימו בתאריך זה.",
+    "dailyAttendanceUnavailable": "לא ניתן לטעון את בדיקת הנוכחות.",
+    "dailyAttendanceUnknown": "לא נרשמה רשימת משתתפים קבועה.",
+    "dailyAttendanceRosterLimit": "רשימת המשתתפים חורגת ממגבלת הבדיקה.",
+    "dailyAttendanceMissing": "{count, plural, one {חסר סימון נוכחות אחד} other {חסרים # סימוני נוכחות}}",
+    "dailyAttendanceOpen": "איתור נוכחות עבור {title}",
+    "dailyAttendanceTruncated": "מוצג רק חלק מבדיקת הנוכחות.",
     "dailyHeading": "אימון היום",
     "dailyDate": "תאריך האימון",
     "dailyShow": "הצגת שיעורים",
