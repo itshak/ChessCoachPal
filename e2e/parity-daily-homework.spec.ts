@@ -158,6 +158,35 @@ test("PARITY:PARITY-daily-homework due-through review uses current evidence in A
     await page.goto("/dashboard?date="+date);
     await expect(region.getByText("Due through "+date,{exact:false})).toBeVisible();
     await expect(region.getByText("Latest review says work is needed")).toBeVisible();
+    const focusUrl=(id:string,through=date)=>"/learning?"+new URLSearchParams({dailyHomework:id,dueThrough:through})+"#daily-homework-focus";
+    const selected=region.getByRole("link",{name:"Open Review fixture chess resource, due 2026-07-31"});
+    await expect(selected).toHaveAttribute("href",focusUrl(again));
+    await selected.click();
+    const detail=page.getByRole("region",{name:"Homework details"});
+    await expect(detail.getByText("Private fixture learner",{exact:false})).toBeVisible();
+    await expect(detail.getByText("Submission awaiting review")).toBeVisible();
+    await expect(detail.getByText("Latest review says work is needed")).toHaveCount(0);
+    await expect(detail.getByText("Private fixture attempt",{exact:false})).toHaveCount(0);
+    await expect(detail.getByText("Private fixture review",{exact:false})).toHaveCount(0);
+    await expect(detail.getByRole("button")).toHaveCount(0);
+    expect(await tool("ccp_workplace_context_set",{
+      selectedWorkplaceId:school,expectedSelectedWorkplaceId:null,confirmed:true,
+    })).toMatchObject({data:{selectedWorkplaceId:school}});
+    await page.reload();
+    await expect(detail.getByRole("status")).toContainText("Select All workplaces");
+    await expect(detail.getByText("Private fixture learner",{exact:false})).toHaveCount(0);
+    expect(await tool("ccp_workplace_context_set",{
+      selectedWorkplaceId:null,expectedSelectedWorkplaceId:school,confirmed:true,
+    })).toMatchObject({data:{selectedWorkplaceId:null}});
+    for(const url of [focusUrl(reviewed),focusUrl(foreignId),focusUrl(archivedAssignment),focusUrl(again,"2026-07-30"),focusUrl("bad-id")]){
+      await page.goto(url);
+      await expect(detail.getByRole("status")).toHaveText("This assignment is not available in the current homework review.");
+      await expect(detail.getByText("fixture",{exact:false})).toHaveCount(0);
+      await expect(detail.getByRole("button")).toHaveCount(0);
+    }
+    await page.goto(focusUrl(tieIds[24]));
+    await expect(detail.getByText("Due with no recorded submission")).toBeVisible();
+    await detail.getByRole("link",{name:"Back to homework review"}).click();
     await region.getByRole("link",{name:"Check the next homework window"}).click();
     await expect(region.getByRole("listitem")).toHaveCount(6);
     expect(await snapshot()).toEqual(before);
