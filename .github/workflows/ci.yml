@@ -105,7 +105,7 @@ jobs:
           e2e/parity-billing-lifecycle.spec.ts
 
       - name: Unit tests
-        run: npm test && node --test lib/server/federation-ratings/synthetic-fide-editions.test.mjs
+        run: npm test && node --test lib/server/federation-ratings/synthetic-fide-editions.test.mjs lib/server/online-rating-transport.test.mjs
 
   docker:
     runs-on: ubuntu-latest
