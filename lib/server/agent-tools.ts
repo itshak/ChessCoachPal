@@ -98,6 +98,7 @@ import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
 import {dailyCloseRosterInput,DailyCloseError,teacherDailyClosePreview} from "@/lib/server/daily-lesson-close";
 import {dailyLessonPreparationInput,DailyPreparationError,teacherDailyLessonPreparation} from "@/lib/server/daily-lesson-preparation";
+import {dailyHomeworkFocusInput,teacherDailyHomeworkFocus} from "@/lib/server/daily-homework";
 import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
 import {trainingPlanListSchema,trainingPlanGetSchema,trainingPlanCommitSchema,teacherTrainingPlansList,teacherTrainingPlanGet,teacherTrainingPlanCommit,TrainingPlanError} from "@/lib/server/student-training-plans";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
@@ -1789,6 +1790,11 @@ const catalogue = [
     schema:trainingPlanCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_daily_homework_focus_get",
+    description:"Read one exact assignment from the Daily homework queue using its assignmentId and the queue's dueThrough date. Requires active All workplaces context. Only current actionable evidence for an owned active learner is returned: material, due date, current review status and learner display name. Never includes notes, feedback, other assignments or writes.",
+    schema:dailyHomeworkFocusInput,scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_lesson_preparation_get",
     description:"Read one upcoming exact canonical lesson from the active workplace or All. Uses only its frozen roster for bounded recorded material coverage, verified observations at that venue, and teacher-wide assignment counts. Shows unavailable, unrecorded and truncated evidence separately. No participant notes, inferred proficiency, or writes.",
     schema:dailyLessonPreparationInput,scope:"coach:read",readOnly:true,
@@ -1898,6 +1904,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherTrainingPlanGet(db,teacherId,(args as {planId:string}).planId)};
       case "ccp_training_plans_commit":
         return {data:await teacherTrainingPlanCommit(db,teacherId,args as Parameters<typeof teacherTrainingPlanCommit>[2])};
+      case "ccp_daily_homework_focus_get":
+        return {data:await teacherDailyHomeworkFocus(db,teacherId,args as z.infer<typeof dailyHomeworkFocusInput>)};
       case "ccp_lesson_preparation_get": {
         const {sessionId}=args as z.infer<typeof dailyLessonPreparationInput>;
         return {data:await teacherDailyLessonPreparation(db,teacherId,sessionId)};

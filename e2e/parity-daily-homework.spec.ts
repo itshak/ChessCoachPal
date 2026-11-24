@@ -5,7 +5,7 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 
 test("PARITY:PARITY-daily-homework due-through review uses current evidence in All only",async({page,request})=>{
-  test.setTimeout(120_000);
+  test.setTimeout(150_000);
   const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
     auth:{persistSession:false,autoRefreshToken:false},
   });
@@ -158,6 +158,60 @@ test("PARITY:PARITY-daily-homework due-through review uses current evidence in A
     await page.goto("/dashboard?date="+date);
     await expect(region.getByText("Due through "+date,{exact:false})).toBeVisible();
     await expect(region.getByText("Latest review says work is needed")).toBeVisible();
+    const focusUrl=(id:string,through=date)=>"/learning?"+new URLSearchParams({dailyHomework:id,dueThrough:through})+"#daily-homework-focus";
+    const readFocus=async(assignmentId:string,dueThrough=date)=>{
+      const args={assignmentId,dueThrough};
+      const response=await page.request.get("/api/dashboard/homework-focus?"+new URLSearchParams(args));
+      expect(response.status(),await response.text()).toBe(200);
+      expect(response.headers()["cache-control"]).toBe("no-store");
+      const web=await response.json();
+      const mcp=await tool("ccp_daily_homework_focus_get",args);
+      expect(mcp.error).toBeUndefined();
+      expect(mcp.data).toEqual(web);
+      return web;
+    };
+    const expectedFocus={status:"ready",assignmentId:again,dueOn:"2026-07-31",
+      materialTitle:"Review fixture chess resource",reason:"SUBMISSION_AWAITING_REVIEW",
+      learnerName:"Private fixture learner"};
+    expect(await readFocus(again)).toEqual(expectedFocus);
+    expect((await request.get("/api/dashboard/homework-focus?assignmentId="+again+"&dueThrough="+date)).status()).toBe(401);
+    expect((await page.request.get("/api/dashboard/homework-focus?assignmentId=bad-id&dueThrough="+date)).status()).toBe(400);
+    expect((await page.request.get("/api/dashboard/homework-focus?assignmentId="+again+"&assignmentId="+due+"&dueThrough="+date)).status()).toBe(400);
+    expect((await tool("ccp_daily_homework_focus_get",{assignmentId:"bad-id",dueThrough:date})).error?.code).toBe("VALIDATION_ERROR");
+    const selected=region.getByRole("link",{name:"Open Review fixture chess resource, due 2026-07-31"});
+    await expect(selected).toHaveAttribute("href",focusUrl(again));
+    await selected.click();
+    const detail=page.getByRole("region",{name:"Homework details"});
+    await expect(detail.getByText(expectedFocus.learnerName,{exact:false})).toBeVisible();
+    await expect(detail.getByText(expectedFocus.materialTitle,{exact:true})).toBeVisible();
+    await expect(detail.locator("time")).toHaveAttribute("datetime",expectedFocus.dueOn);
+    await expect(detail.getByText("Submission awaiting review")).toBeVisible();
+    await expect(detail.getByText("Latest review says work is needed")).toHaveCount(0);
+    await expect(detail.getByText("Private fixture attempt",{exact:false})).toHaveCount(0);
+    await expect(detail.getByText("Private fixture review",{exact:false})).toHaveCount(0);
+    await expect(detail.getByRole("button")).toHaveCount(0);
+    expect(await tool("ccp_workplace_context_set",{
+      selectedWorkplaceId:school,expectedSelectedWorkplaceId:null,confirmed:true,
+    })).toMatchObject({data:{selectedWorkplaceId:school}});
+    expect(await readFocus(again)).toEqual({status:"workplace_scope_unavailable"});
+    await page.reload();
+    await expect(detail.getByRole("status")).toContainText("Select All workplaces");
+    await expect(detail.getByText("Private fixture learner",{exact:false})).toHaveCount(0);
+    expect(await tool("ccp_workplace_context_set",{
+      selectedWorkplaceId:null,expectedSelectedWorkplaceId:school,confirmed:true,
+    })).toMatchObject({data:{selectedWorkplaceId:null}});
+    for(const id of [reviewed,foreignId,archivedAssignment])
+      expect(await readFocus(id)).toEqual({status:"not_actionable"});
+    expect(await readFocus(again,"2026-07-30")).toEqual({status:"not_actionable"});
+    for(const url of [focusUrl(reviewed),focusUrl(foreignId),focusUrl(archivedAssignment),focusUrl(again,"2026-07-30"),focusUrl("bad-id")]){
+      await page.goto(url);
+      await expect(detail.getByRole("status")).toHaveText("This assignment is not available in the current homework review.");
+      await expect(detail.getByText("fixture",{exact:false})).toHaveCount(0);
+      await expect(detail.getByRole("button")).toHaveCount(0);
+    }
+    await page.goto(focusUrl(tieIds[24]));
+    await expect(detail.getByText("Due with no recorded submission")).toBeVisible();
+    await detail.getByRole("link",{name:"Back to homework review"}).click();
     await region.getByRole("link",{name:"Check the next homework window"}).click();
     await expect(region.getByRole("listitem")).toHaveCount(6);
     expect(await snapshot()).toEqual(before);

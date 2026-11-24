@@ -181,6 +181,10 @@ export default async function DashboardPage({ searchParams }: {
                     {t(row.reason === "SUBMISSION_AWAITING_REVIEW" ? "dailyHomeworkReview"
                       : row.reason === "REVIEW_NEEDS_WORK" ? "dailyHomeworkNeedsWork"
                       : row.reason === "DUE_AWAITING_SUBMISSION" ? "dailyHomeworkAwaiting" : "dailyHomeworkEvidenceLimit")}</p>
+                  <Link className="text-primary underline" prefetch={false}
+                    href={"/learning?" + new URLSearchParams({dailyHomework:row.assignmentId,dueThrough:daily.date}) + "#daily-homework-focus"}>
+                    {t("dailyHomeworkOpen", { material:row.materialTitle ?? t("dailyHomeworkUnknownMaterial"), date:row.dueOn })}
+                  </Link>
                 </Card>
               </li>)}
             </ul>}
