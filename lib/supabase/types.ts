@@ -262,6 +262,13 @@ export interface Database {
       };
       // Canonical rating and finance tables, modeled from the single
       // fresh-install SQL baseline. Runtime RLS/ledger functions enforce writes.
+      /** Database-owned claim. There are no API role grants on this table. */
+      rating_snapshot_request_claims: {
+        Row: {teacher_id:string;request_id:string;cohort_digest:string;sealed:boolean};
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       student_rating_snapshots: {
         Row: {
           id: string; teacher_id: string; student_id: string;
@@ -532,6 +539,7 @@ export interface Database {
           archived_at: string | null;
           created_at: string;
           updated_at: string;
+          online_rating_binding_epoch: number;
           name_aliases: string[];
           strength: number | null;
           lichess_username: string | null;

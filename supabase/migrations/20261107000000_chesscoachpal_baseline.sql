@@ -12932,8 +12932,15 @@ BEGIN
  SELECT * INTO v_seed FROM public.student_rating_refresh_jobs
   WHERE id=p_job_id AND teacher_id=p_teacher_id;
  IF NOT FOUND THEN RETURN NULL; END IF;
+ -- Snapshot admission and account erasure both take the teacher before the student.
+ PERFORM 1 FROM public.teachers WHERE id=p_teacher_id FOR KEY SHARE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ BEGIN
  SELECT * INTO v_student FROM public.students
-  WHERE id=v_seed.student_id AND teacher_id=p_teacher_id FOR SHARE;
+  WHERE id=v_seed.student_id AND teacher_id=p_teacher_id FOR SHARE NOWAIT;
+ EXCEPTION WHEN lock_not_available THEN
+  RAISE EXCEPTION 'RATING_SNAPSHOT_CONTEXT_BUSY' USING ERRCODE='55P03';
+ END;
  IF NOT FOUND THEN RETURN NULL; END IF;
  SELECT * INTO v_consent FROM public.student_rating_sync_consents
   WHERE id=v_seed.consent_id AND teacher_id=p_teacher_id
@@ -17641,3 +17648,212 @@ GRANT EXECUTE ON FUNCTION public.ccp_private_series_compensation_commit(
 CREATE TRIGGER ccp_private_series_compensation_boundary
  BEFORE INSERT OR UPDATE OR DELETE ON public.compensation_agreements
  FOR EACH ROW EXECUTE FUNCTION public.ccp_private_series_compensation_boundary();
+
+-- A manual online rating review binds a student lifetime and exact online
+-- account state, never durable worker consent. Preserve unrelated edits.
+CREATE SEQUENCE public.ccp_online_rating_binding_epoch_seq AS bigint NO CYCLE;
+REVOKE ALL ON SEQUENCE public.ccp_online_rating_binding_epoch_seq
+ FROM PUBLIC,anon,authenticated,service_role;
+ALTER TABLE public.students ADD COLUMN online_rating_binding_epoch bigint;
+UPDATE public.students SET online_rating_binding_epoch=nextval('public.ccp_online_rating_binding_epoch_seq');
+ALTER TABLE public.students ALTER COLUMN online_rating_binding_epoch SET NOT NULL,
+ ADD CONSTRAINT students_online_rating_binding_epoch_positive CHECK(online_rating_binding_epoch>0);
+ALTER SEQUENCE public.ccp_online_rating_binding_epoch_seq OWNED BY public.students.online_rating_binding_epoch;
+
+CREATE FUNCTION public.ccp_online_rating_binding_epoch() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+BEGIN
+ IF TG_OP='INSERT' THEN
+  NEW.online_rating_binding_epoch:=nextval('public.ccp_online_rating_binding_epoch_seq');
+ ELSIF ROW(NEW.id,NEW.teacher_id,NEW.lichess_username,NEW.chesscom_username,NEW.archived_at)
+       IS DISTINCT FROM ROW(OLD.id,OLD.teacher_id,OLD.lichess_username,OLD.chesscom_username,OLD.archived_at) THEN
+  NEW.online_rating_binding_epoch:=nextval('public.ccp_online_rating_binding_epoch_seq');
+ ELSE
+  NEW.online_rating_binding_epoch:=OLD.online_rating_binding_epoch;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.ccp_online_rating_binding_epoch() FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_online_rating_binding_epoch BEFORE INSERT OR UPDATE ON public.students
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_online_rating_binding_epoch();
+
+-- Owner/request claims are owned by the DB, not browser/API roles. Retain a
+-- claimed request even if privileged maintenance removes observations; the
+-- whole teacher deletion cascades claims. Same-install restore preserves
+-- claims. Snapshots imported without a claim remain immutable history.
+CREATE TABLE public.rating_snapshot_request_claims(
+ teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+ request_id uuid NOT NULL,
+ cohort_digest text NOT NULL CHECK(cohort_digest ~ '^[a-f0-9]{64}$'),
+ sealed boolean NOT NULL DEFAULT false,
+ PRIMARY KEY(teacher_id,request_id)
+);
+ALTER TABLE public.rating_snapshot_request_claims ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.rating_snapshot_request_claims FROM PUBLIC,anon,authenticated,service_role;
+COMMENT ON TABLE public.rating_snapshot_request_claims IS 'Private request namespace across rating evidence channels; only the original uncommitted transaction can append its exact cohort.';
+
+-- Unsealed claims are never durably observable. A deferred trigger persists
+-- a closed namespace on commit, including across fresh-cluster restore.
+CREATE FUNCTION public.ccp_rating_snapshot_seal_claim() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+BEGIN
+ UPDATE public.rating_snapshot_request_claims SET sealed=true
+ WHERE teacher_id=NEW.teacher_id AND request_id=NEW.request_id;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.ccp_rating_snapshot_seal_claim() FROM PUBLIC,anon,authenticated,service_role;
+CREATE CONSTRAINT TRIGGER ccp_rating_snapshot_seal_claim
+ AFTER INSERT ON public.rating_snapshot_request_claims DEFERRABLE INITIALLY DEFERRED
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_rating_snapshot_seal_claim();
+
+-- Existing insert grants/routes remain unchanged. The before-trigger owns
+-- the private claim. Parent row locks precede it and the request advisory.
+-- NOWAIT on the student prevents an inverse lock wait on raw student delete.
+CREATE FUNCTION public.ccp_rating_snapshot_request_cohort() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+DECLARE v_role text:=current_setting('role',true); v_digest text;
+BEGIN
+ IF v_role='authenticated' AND (auth.uid() IS DISTINCT FROM NEW.teacher_id OR
+    NEW.source IS DISTINCT FROM 'teacher_manual' OR NEW.fetched_at IS NOT NULL) THEN
+  RAISE EXCEPTION 'RATING_SNAPSHOT_WRITE_DENIED' USING ERRCODE='42501';
+ END IF;
+ PERFORM 1 FROM public.teachers WHERE id=NEW.teacher_id FOR KEY SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'RATING_SNAPSHOT_STUDENT_UNAVAILABLE' USING ERRCODE='23503'; END IF;
+ BEGIN
+  PERFORM 1 FROM public.students WHERE teacher_id=NEW.teacher_id AND id=NEW.student_id FOR KEY SHARE NOWAIT;
+  IF NOT FOUND THEN RAISE EXCEPTION 'RATING_SNAPSHOT_STUDENT_UNAVAILABLE' USING ERRCODE='23503'; END IF;
+ EXCEPTION WHEN lock_not_available THEN
+  RAISE EXCEPTION 'RATING_SNAPSHOT_CONTEXT_BUSY' USING ERRCODE='55P03';
+ END;
+ PERFORM pg_advisory_xact_lock(hashtextextended('rating-request:'||NEW.teacher_id::text||':'||NEW.request_id::text,0));
+ IF EXISTS(SELECT 1 FROM public.student_rating_snapshots s
+     WHERE s.teacher_id=NEW.teacher_id AND s.request_id=NEW.request_id)
+    AND NOT EXISTS(SELECT 1 FROM public.rating_snapshot_request_claims c WHERE c.teacher_id=NEW.teacher_id
+      AND c.request_id=NEW.request_id AND NOT c.sealed) THEN
+   RAISE EXCEPTION 'RATING_REQUEST_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ v_digest:=encode(extensions.digest(jsonb_build_array(NEW.student_id,NEW.provider,NEW.source,NEW.verification_state,
+   NEW.preview_digest,NEW.source_username,NEW.source_handle_revision,NEW.provider_list_version,NEW.source_digest,
+   NEW.external_player_id)::text,'sha256'),'hex');
+ INSERT INTO public.rating_snapshot_request_claims AS c(teacher_id,request_id,cohort_digest)
+ VALUES(NEW.teacher_id,NEW.request_id,v_digest)
+ ON CONFLICT(teacher_id,request_id) DO UPDATE SET cohort_digest=c.cohort_digest
+  WHERE NOT c.sealed AND c.cohort_digest=v_digest;
+ IF NOT FOUND THEN RAISE EXCEPTION 'RATING_REQUEST_CONFLICT' USING ERRCODE='23505'; END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.ccp_rating_snapshot_request_cohort() FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_rating_snapshot_request_cohort BEFORE INSERT ON public.student_rating_snapshots
+ FOR EACH ROW EXECUTE FUNCTION public.ccp_rating_snapshot_request_cohort();
+
+-- Read the bigint as an exact decimal string, from the same row as the handle.
+CREATE FUNCTION public.ccp_manual_online_rating_binding(p_teacher_id uuid,p_student_id uuid,p_provider text)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $$
+ SELECT jsonb_build_object('epoch',s.online_rating_binding_epoch::text,'archived',s.archived_at IS NOT NULL,
+   'handle',CASE p_provider WHEN 'lichess' THEN s.lichess_username WHEN 'chesscom' THEN s.chesscom_username END)
+ FROM public.students s WHERE current_user='service_role' AND p_provider IN ('lichess','chesscom')
+   AND s.teacher_id=p_teacher_id AND s.id=p_student_id;
+$$;
+REVOKE ALL ON FUNCTION public.ccp_manual_online_rating_binding(uuid,uuid,text) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_manual_online_rating_binding(uuid,uuid,text) TO service_role;
+
+CREATE FUNCTION public.ccp_manual_online_rating_commit(
+ p_teacher_id uuid,p_student_id uuid,p_provider text,p_handle text,p_epoch text,p_request_id uuid,
+ p_preview_digest text,p_fetched_at timestamptz,p_observations jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $$
+DECLARE v_student public.students%ROWTYPE; v_rows int; v_seen int; v_payload jsonb; v_expected_digest text;
+BEGIN
+ IF current_user<>'service_role' THEN
+  RAISE EXCEPTION 'RATING_MANUAL_REFRESH_ACCESS_DENIED' USING ERRCODE='42501';
+ END IF;
+ IF p_teacher_id IS NULL OR p_student_id IS NULL OR p_request_id IS NULL
+   OR p_provider IS NULL OR p_provider NOT IN ('lichess','chesscom')
+   OR p_handle IS NULL OR p_handle !~ '^[A-Za-z0-9_-]{2,30}$'
+   OR p_epoch IS NULL OR p_epoch !~ '^[1-9][0-9]{0,18}$'
+   OR p_preview_digest IS NULL OR p_preview_digest !~ '^[a-f0-9]{64}$'
+   OR p_fetched_at IS NULL OR NOT isfinite(p_fetched_at)
+   OR jsonb_typeof(p_observations) IS DISTINCT FROM 'array' OR pg_column_size(p_observations)>12000 THEN
+  RAISE EXCEPTION 'RATING_MANUAL_REFRESH_BAD_PAYLOAD' USING ERRCODE='22023';
+ END IF;
+ v_rows:=jsonb_array_length(p_observations);
+ IF v_rows NOT BETWEEN 1 AND 20 OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_observations) q(v)
+   WHERE jsonb_typeof(v)<>'object' OR NOT(v ?& array['time_control','rating','rating_deviation','provisional','games','observed_at'])
+    OR (SELECT count(*) FROM jsonb_object_keys(CASE WHEN jsonb_typeof(v)='object' THEN v ELSE '{}'::jsonb END))<>6) THEN
+  RAISE EXCEPTION 'RATING_MANUAL_REFRESH_BAD_PAYLOAD' USING ERRCODE='22023';
+ END IF;
+ IF (SELECT count(DISTINCT v->>'time_control') FROM jsonb_array_elements(p_observations) q(v))<>v_rows
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_observations) q(v)
+   WHERE jsonb_typeof(v->'time_control')<>'string' OR jsonb_typeof(v->'rating')<>'number'
+    OR jsonb_typeof(v->'rating_deviation') NOT IN ('number','null')
+    OR jsonb_typeof(v->'provisional') NOT IN ('boolean','null')
+    OR jsonb_typeof(v->'games') NOT IN ('number','null')
+    OR jsonb_typeof(v->'observed_at')<>'string'
+    OR v->>'time_control' !~ '^[a-z_]{2,30}$'
+    OR v->>'observed_at' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?(Z|\+00:00)$'
+    OR NOT isfinite((v->>'observed_at')::timestamptz)) THEN
+   RAISE EXCEPTION 'RATING_MANUAL_REFRESH_BAD_PAYLOAD' USING ERRCODE='22023';
+ END IF;
+ SELECT encode(extensions.digest(regexp_replace(jsonb_build_array('manual-online-rating-v2',p_student_id::text,
+    p_provider,p_handle,p_epoch,(SELECT jsonb_agg(jsonb_build_array(v.time_control,v.rating,v.rating_deviation,
+      v.provisional,v.games) ORDER BY v.time_control COLLATE "C")
+     FROM jsonb_to_recordset(p_observations) AS v(time_control text,rating integer,rating_deviation integer,provisional boolean,games integer)
+    ))::text,'[[:space:]]','','g'),'sha256'),'hex') INTO v_expected_digest;
+ IF v_expected_digest<>p_preview_digest THEN
+  RAISE EXCEPTION 'RATING_MANUAL_REFRESH_EVIDENCE_MISMATCH' USING ERRCODE='23514';
+ END IF;
+ -- Immutable receipt lookup is first and read-only. On a miss lock
+ -- teacher -> owned student -> tenant/request, then repeat with a fresh
+ -- READ COMMITTED snapshot. Never use a historic RR view to admit a write.
+ FOR v_pass IN 1..2 LOOP
+ SELECT count(*),jsonb_agg(jsonb_build_array(s.time_control,s.rating,s.rating_deviation,s.provisional,s.games)
+      ORDER BY s.time_control COLLATE "C")
+ INTO v_seen,v_payload FROM public.student_rating_snapshots s
+ WHERE s.teacher_id=p_teacher_id AND s.request_id=p_request_id;
+ IF v_seen<>0 THEN
+  IF v_seen=v_rows AND v_payload=(SELECT jsonb_agg(jsonb_build_array(v.time_control,v.rating,v.rating_deviation,
+       v.provisional,v.games) ORDER BY v.time_control COLLATE "C")
+      FROM jsonb_to_recordset(p_observations) AS v(time_control text,rating integer,rating_deviation integer,provisional boolean,games integer))
+    AND NOT EXISTS(SELECT 1 FROM public.student_rating_snapshots s
+      WHERE s.teacher_id=p_teacher_id AND s.request_id=p_request_id AND
+       (s.student_id<>p_student_id OR s.provider<>p_provider OR s.source<>'provider_api'
+        OR s.verification_state<>'unverified' OR s.source_handle_revision IS NOT NULL
+        OR s.preview_digest IS DISTINCT FROM p_preview_digest OR s.source_username IS DISTINCT FROM p_handle)) THEN
+   RETURN jsonb_build_object('replayed',true);
+  END IF;
+  RAISE EXCEPTION 'RATING_REQUEST_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ IF v_pass=1 THEN
+ IF current_setting('transaction_isolation')<>'read committed' THEN
+  RAISE EXCEPTION 'RATING_SNAPSHOT_READ_COMMITTED_REQUIRED' USING ERRCODE='40001';
+ END IF;
+ PERFORM 1 FROM public.teachers WHERE id=p_teacher_id FOR KEY SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'RATING_MANUAL_REFRESH_STALE' USING ERRCODE='23514'; END IF;
+ BEGIN
+ SELECT * INTO v_student FROM public.students WHERE teacher_id=p_teacher_id AND id=p_student_id FOR SHARE NOWAIT;
+ EXCEPTION WHEN lock_not_available THEN
+  RAISE EXCEPTION 'RATING_SNAPSHOT_CONTEXT_BUSY' USING ERRCODE='55P03';
+ END;
+ IF NOT FOUND THEN RAISE EXCEPTION 'RATING_MANUAL_REFRESH_STALE' USING ERRCODE='23514'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('rating-request:'||p_teacher_id::text||':'||p_request_id::text,0));
+ END IF;
+ END LOOP;
+ IF v_student.archived_at IS NOT NULL OR v_student.online_rating_binding_epoch::text<>p_epoch OR
+   (CASE p_provider WHEN 'lichess' THEN v_student.lichess_username ELSE v_student.chesscom_username END)
+       IS DISTINCT FROM p_handle THEN
+  RAISE EXCEPTION 'RATING_MANUAL_REFRESH_STALE' USING ERRCODE='23514';
+ END IF;
+ INSERT INTO public.student_rating_snapshots(teacher_id,student_id,provider,time_control,rating,
+  rating_deviation,provisional,games,source,observed_at,fetched_at,request_id,preview_digest,source_username)
+ SELECT p_teacher_id,p_student_id,p_provider,v.time_control,v.rating,v.rating_deviation,v.provisional,v.games,
+  'provider_api',v.observed_at,p_fetched_at,p_request_id,p_preview_digest,p_handle
+ FROM jsonb_to_recordset(p_observations) AS v(time_control text,rating integer,rating_deviation integer,
+   provisional boolean,games integer,observed_at timestamptz);
+ RETURN jsonb_build_object('replayed',false);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.ccp_manual_online_rating_commit(uuid,uuid,text,text,text,uuid,text,timestamptz,jsonb)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_manual_online_rating_commit(uuid,uuid,text,text,text,uuid,text,timestamptz,jsonb) TO service_role;
