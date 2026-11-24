@@ -98,3 +98,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | Dated attendance review shows one task per ended lesson using frozen roster and persisted decisions, preserves an archived learner's missing decision, distinguishes unrecorded roster from complete, and excludes still-running, cancelled and foreign lessons. Exact schedule navigation and both read interfaces leave canonical records unchanged. | `e2e/parity-daily-missing-attendance.spec.ts#PARITY-daily-missing-attendance` — [443 authenticated browser scenarios passed](https://github.com/itshak/ChessCoachPal/actions/runs/45466325793) on exact `51f614a63c505928f7dc3424d30d828cc7f0e901`, merged in [PR #176](https://github.com/itshak/ChessCoachPal/pull/176) at `5df561935d53bde4daf68c4933fe51d235fa7b5f`. |
+
+## Daily coaching homework review — accepted source slice
+
+| Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | All-workplaces due-through homework distinguishes no recorded submission, unreviewed submission and needs-work, including a resubmission after an earlier review. Venue selection cannot attribute assignments; archived, foreign, undated and later-due rows are excluded. Stable continuation, browser rendering, privacy and unchanged persisted evidence are verified. | `e2e/parity-daily-homework.spec.ts#PARITY-daily-homework` — [444 authenticated browser cases passed](https://github.com/itshak/ChessCoachPal/actions/runs/45475517494) on exact `7735a3b9644ab61d144db26c1f9fe722e369fa3b`, merged in [PR #178](https://github.com/itshak/ChessCoachPal/pull/178) at `d41f793b8af4b9ba738156ccab3012c320f1a3ac`. |
