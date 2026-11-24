@@ -1,11 +1,23 @@
-# Implementation checkpoint — optional federation identity and ratings (DRAFT)
+# Federation ratings: verified source and open gates
 
-The native optional FIDE/national identity, student federation membership, teacher default suggestion, immutable unverified FIDE/ICF rating snapshots, and shared website/MCP UI/operations are under review in draft PR #104. The one fresh-install SQL baseline and reviewed digest contain the schema; no separate staged compatibility migration or real database cutover has occurred.
+**Status:** Active. The shared website and delegated MCP expose optional linked identities, owner-entered unverified observations, and the latest applicable stored FIDE evidence. This is not a live source lookup. No production ingestion, provider writes, live transition, deployment or archive is approved by this evidence.
 
-Source candidates:
-- `lib/server/student-federations-service.ts` validates tenant ownership, exact federation scope, optional FIDE identity, membership idempotency/revisions, and teacher-provided time-control-specific rating observations.
-- `lib/server/student-profile-service.ts`, `lib/server/api-schemas.ts` and the existing MCP student profile tools support nullable FIDE ID, FIDE federation and national preference. `StudentFederationsPanel.tsx` shows and edits identities and evidence separately from educational strength.
-- Website `app/api/students/[id]/federations`, nested update and federation rating routes, plus `app/api/teacher/federation-default` call shared services with equivalent new named `ccp_` tools. Exact acceptance case: `e2e/parity-federation-ratings.spec.ts`.
-- Official FIDE monthly file imports, ICF site permissions, provider-adapter implementation, verified `source_matched` write path, deduplication and scheduled refresh are **not implemented**. Teacher-entered data remains unverified.
+## Verified in source
 
-No OpenSpec complete/archived status is claimed. Final independent PR-head and merged-main gates, real-source feasibility and one operator-approved baseline cutover are still outstanding. More details: `docs/FEDERATION_RATINGS.md`.
+- An exact saved FIDE ID is independent of the FIDE federation code, national-federation membership and educational strength. A teacher's suggested default and explicit none are distinct; the suggestion does not create membership. The shared services create/read/edit national registrations and record teacher-attributed FIDE or Israeli observations as unverified; they do not certify an identity or guess by name.
+- [#163](https://github.com/itshak/ChessCoachPal/pull/163) separates current linked-ID evidence from bounded history and manual entries. Category reads consider Standard, Rapid and Blitz independently, preserve the old ID's evidence as history after a correction, refuse an unordered same-period edition tie or truncated evidence, and avoid presenting stale responses after an ID is saved. The Israeli source remains manual-only. Synthetic signed evidence covers owner scope, website/MCP agreement, identity correction, failed/stale re-read and no assessed-strength changes; this does not prove a date-effective report, delete workflow, or independent RTL behavior.
+- [#164](https://github.com/itshak/ChessCoachPal/pull/164) adds an unwired, bounded synthetic contract for exact replay, evidence digest, correction lineage, incomplete/unknown coverage, explicit unrating versus missing, and stale last-known observations. It never reads a real FIDE file, calls a provider, writes a snapshot or runs a scheduler. The CI change only adds its six offline cases after the existing unit tests.
+- Canonical provenance checks, immutable snapshots, provider/category registry, grants and tenant ownership are described in the [P0 freeze evidence](../archive/2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md) and the [rating-provider boundary](../../../docs/RATING_PROVIDER_BOUNDARIES.md). The two reviewed source slices do not change the schema.
+
+## Exact hosted evidence
+
+| Change | Reviewed head | Merge | Passed checks |
+| --- | --- | --- | --- |
+| #163 | `6a5ef06a9a2efbf16a38f23c590ca06d40acf351` | `117a94d7c9a83d57b221d2c4fe539440990d9770` | [Security](https://github.com/itshak/ChessCoachPal/actions/runs/45327998804), [CI](https://github.com/itshak/ChessCoachPal/actions/runs/45327998866), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45327998831), [restore smoke](https://github.com/itshak/ChessCoachPal/actions/runs/45327998821), [E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45327998840) |
+| #164 | `f7daaec945c95f08cd6f90b449c26495c9001825` | `729e571d58f59f55f8f004affd2eb0738fdb82dc` | [Security](https://github.com/itshak/ChessCoachPal/actions/runs/45332049990), [CI](https://github.com/itshak/ChessCoachPal/actions/runs/45332049848), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45332049804), [restore smoke](https://github.com/itshak/ChessCoachPal/actions/runs/45332049855), [E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45332049743) |
+
+## Still open
+
+- Require separate approval for FIDE data access, actual format/coverage/revision evidence, terms for reuse and storage, and consent/minor-data policy before adapting or scheduling real retrieval. Confirm source authorization/completeness and owner/identity again before any real write. ICF automated access/terms and permitted lookup remain unverified; only manual input is available.
+- Production format/parser, authorized import/write and monthly sync/backoff are not implemented. The synthetic fixture is not proof of a provider format, outage handling, or live sync.
+- Date-effective reports/exports, delete semantics, and behavioral RTL acceptance were not completed by these slices. Real historical manual/online rating preservation, restored-copy reconciliation and one authorized final transition under [ADR-0017](../../../docs/adr/0017-pre-v1-single-final-cutover-no-compatibility.md) remain open. Hosted smoke checks are not proof of live migration.
