@@ -104,3 +104,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | All-workplaces due-through homework distinguishes no recorded submission, unreviewed submission and needs-work, including a resubmission after an earlier review. Venue selection cannot attribute assignments; archived, foreign, undated and later-due rows are excluded. Stable continuation, browser rendering, privacy and unchanged persisted evidence are verified. | `e2e/parity-daily-homework.spec.ts#PARITY-daily-homework` — [444 authenticated browser cases passed](https://github.com/itshak/ChessCoachPal/actions/runs/45475517494) on exact `7735a3b9644ab61d144db26c1f9fe722e369fa3b`, merged in [PR #178](https://github.com/itshak/ChessCoachPal/pull/178) at `d41f793b8af4b9ba738156ccab3012c320f1a3ac`. |
+
+## Daily lesson preparation — accepted source slice
+
+| Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | Open an exact upcoming lesson and prepare from its frozen roster. Individual and group preparation distinguish explicitly recorded from unknown evidence, show shared material once, and exclude private learner notes. Other-workplace, foreign, cancelled and past sessions cannot be used in preparation. Dashboard, signed HTTP and delegated MCP agree and leave canonical records unchanged. | `e2e/parity-daily-lesson-preparation.spec.ts#PARITY-daily-lesson-preparation` — [445 authenticated browser cases passed](https://github.com/itshak/ChessCoachPal/actions/runs/45489172401) on `df3260a259aac61a2ef68b3017549ca17f160fec`; merged in [PR #180](https://github.com/itshak/ChessCoachPal/pull/180) at `4397f23b4c94a020da718fdbccec1dff6380c5d2`. |
