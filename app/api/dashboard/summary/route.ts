@@ -10,14 +10,16 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const values = params.getAll("workplaceId");
   const dates = params.getAll("date");
+  const cursors = params.getAll("homeworkAfter");
   const input = teacherDashboardSummaryInput.safeParse({
     workplaceId: values[0] === "all" ? null : values[0],
     date: dates[0],
+    homeworkAfter: cursors[0],
   });
-  if (values.length > 1 || dates.length > 1 || !input.success)
-    return NextResponse.json({ error: dates.length ? "Invalid dashboard filters" : "Invalid workplace filter", code: "VALIDATION_ERROR" }, { status: 400 });
+  if (values.length > 1 || dates.length > 1 || cursors.length > 1 || !input.success)
+    return NextResponse.json({ error: dates.length || cursors.length ? "Invalid dashboard filters" : "Invalid workplace filter", code: "VALIDATION_ERROR" }, { status: 400 });
   try {
-    return NextResponse.json(await teacherDashboardSummary(db, user.id, input.data.workplaceId, input.data.date));
+    return NextResponse.json(await teacherDashboardSummary(db, user.id, input.data.workplaceId, input.data.date, input.data.homeworkAfter));
   } catch (error) {
     if (error instanceof WorkplaceContextError)
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });

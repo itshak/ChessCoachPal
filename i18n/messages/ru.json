@@ -31,6 +31,18 @@
     "workplaceFilterFailed": "Не удалось изменить место работы; обновите страницу"
   },
   "dashboard": {
+    "dailyHomeworkHeading": "Проверка домашних заданий",
+    "dailyHomeworkAllOnly": "Домашние задания не привязаны к месту работы. Чтобы увидеть список, выберите все места работы.",
+    "dailyHomeworkUnavailable": "Проверка домашних заданий недоступна.",
+    "dailyHomeworkWindow": "Срок сдачи до {date} включительно. Показаны текущие записи, а не исторический снимок.",
+    "dailyHomeworkEmpty": "Нет домашних заданий, требующих внимания к этой дате.",
+    "dailyHomeworkEmptyPage": "В этой части списка нет заданий, требующих внимания.",
+    "dailyHomeworkUnknownMaterial": "Назначенный материал",
+    "dailyHomeworkReview": "Работа сдана и ждёт проверки",
+    "dailyHomeworkNeedsWork": "По последней проверке нужна доработка",
+    "dailyHomeworkAwaiting": "Срок сдачи наступил, но сдача не зафиксирована",
+    "dailyHomeworkEvidenceLimit": "Слишком много записей для определения статуса",
+    "dailyHomeworkNext": "Проверить следующую часть списка",
     "dailyAttendanceHeading": "Проверка посещаемости",
     "dailyAttendanceEmpty": "Для завершившихся уроков на эту дату нет отсутствующих отметок.",
     "dailyAttendanceUnavailable": "Проверка посещаемости недоступна.",

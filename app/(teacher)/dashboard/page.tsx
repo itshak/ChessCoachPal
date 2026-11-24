@@ -7,7 +7,7 @@ import { teacherDashboardPageModel, teacherDashboardSummaryInput } from "@/lib/s
 export async function generateMetadata() {const t=await getTranslations("dashboard");return {title:t("title")};}
 
 export default async function DashboardPage({ searchParams }: {
-  searchParams: Promise<{ date?: string | string[] }>;
+  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[] }>;
 }) {
   const t=await getTranslations("dashboard");
   const locale=await getLocale();
@@ -15,10 +15,11 @@ export default async function DashboardPage({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { date: rawDate } = await searchParams;
-  const filters = teacherDashboardSummaryInput.safeParse({ date: rawDate });
+  const { date: rawDate, homeworkAfter } = await searchParams;
+  const filters = teacherDashboardSummaryInput.safeParse({ date: rawDate, homeworkAfter });
   const { summary, students, upcoming, recent, teacher, daily } =
-    await teacherDashboardPageModel(supabase, user.id, filters.success ? filters.data.date : undefined);
+    await teacherDashboardPageModel(supabase, user.id, filters.success ? filters.data.date : undefined,
+      filters.success ? filters.data.homeworkAfter : undefined);
   const dailyTime = daily && new Intl.DateTimeFormat(locale, {
     timeZone: daily.timeZone, timeStyle: "short",
   });
@@ -119,6 +120,32 @@ export default async function DashboardPage({ searchParams }: {
           </ul>}
           {daily.missingAttendance.truncated && <p className="mt-2">{t("dailyAttendanceTruncated")}</p>}
         </>}
+      </section>}
+
+      {filters.success && daily && <section aria-labelledby="daily-homework" className="mb-8">
+        <h2 id="daily-homework" className="text-lg font-semibold mb-3">{t("dailyHomeworkHeading")}</h2>
+        {daily.homework.status === "workplace_scope_unavailable" ? <p>{t("dailyHomeworkAllOnly")}</p>
+          : daily.homework.status === "unavailable" ? <p role="alert">{t("dailyHomeworkUnavailable")}</p>
+          : <>
+            <p className="text-sm text-muted mb-2">{t("dailyHomeworkWindow", { date: daily.homework.dueThrough })}</p>
+            {daily.homework.assignments.length === 0 && <p>{t(daily.homework.nextAfter || homeworkAfter
+              ? "dailyHomeworkEmptyPage" : "dailyHomeworkEmpty")}</p>}
+            {!!daily.homework.assignments.length && <ul className="space-y-2">
+              {daily.homework.assignments.map(row => <li key={row.assignmentId}>
+                <Card padding="sm">
+                  <p className="font-medium break-words"><bdi dir="auto">{row.materialTitle ?? t("dailyHomeworkUnknownMaterial")}</bdi></p>
+                  <p className="text-sm"><time dateTime={row.dueOn}>{row.dueOn}</time>{" · "}
+                    {t(row.reason === "SUBMISSION_AWAITING_REVIEW" ? "dailyHomeworkReview"
+                      : row.reason === "REVIEW_NEEDS_WORK" ? "dailyHomeworkNeedsWork"
+                      : row.reason === "DUE_AWAITING_SUBMISSION" ? "dailyHomeworkAwaiting" : "dailyHomeworkEvidenceLimit")}</p>
+                </Card>
+              </li>)}
+            </ul>}
+            {daily.homework.nextAfter && <Link className="text-primary underline"
+              href={"/dashboard?date=" + daily.date + "&homeworkAfter=" + encodeURIComponent(daily.homework.nextAfter) + "#daily-homework"}>
+              {t("dailyHomeworkNext")}
+            </Link>}
+          </>}
       </section>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">

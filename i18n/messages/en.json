@@ -31,6 +31,18 @@
     "workplaceFilterFailed": "Could not change workplace; reload"
   },
   "dashboard": {
+    "dailyHomeworkHeading": "Homework to review",
+    "dailyHomeworkAllOnly": "Homework has no workplace attribution. Select All workplaces to see this queue.",
+    "dailyHomeworkUnavailable": "Homework review is unavailable.",
+    "dailyHomeworkWindow": "Due through {date}. This shows current recorded evidence, not a historical snapshot.",
+    "dailyHomeworkEmpty": "No homework needs attention through this date.",
+    "dailyHomeworkEmptyPage": "No actionable homework in this window.",
+    "dailyHomeworkUnknownMaterial": "Assigned material",
+    "dailyHomeworkReview": "Submission awaiting review",
+    "dailyHomeworkNeedsWork": "Latest review says work is needed",
+    "dailyHomeworkAwaiting": "Due with no recorded submission",
+    "dailyHomeworkEvidenceLimit": "Too much evidence to classify here",
+    "dailyHomeworkNext": "Check the next homework window",
     "dailyAttendanceHeading": "Attendance to review",
     "dailyAttendanceEmpty": "No missing attendance found for ended lessons on this date.",
     "dailyAttendanceUnavailable": "Attendance review is unavailable.",
