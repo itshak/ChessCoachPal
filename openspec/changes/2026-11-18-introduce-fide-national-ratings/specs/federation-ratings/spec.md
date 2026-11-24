@@ -3,6 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: International and national identities SHALL be optional and independent
+The system SHALL keep FIDE identity and national-federation memberships optional and independent.
 Each student MAY have an optional FIDE ID and federation label, and zero or more national federation memberships with provider-scoped player IDs. A teacher MAY set a suggested national federation without making it a verified student membership.
 
 #### Scenario: Online-only student

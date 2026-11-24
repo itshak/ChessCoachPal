@@ -10,7 +10,7 @@
 > **ADR-0017 final-cutover override (2026-11-18):** No backward compatibility or legacy dual-writes before v1. The final deliverable uses the clean canonical baseline and current website/MCP contracts. All planned features deploy with **one final** live migration **or** verified clean rebuild/reimport at the operator's choice; no per-feature production migration. Existing data handling is a deliberate one-time import/mapping decision, not an obligation to retain obsolete Family/Studio/guardian APIs or old portal tokens. Security, tenant isolation and explicit new grants remain required.
 
 
-**Status:** Proposed implementation — domain direction accepted; external access feasibility not yet accepted.
+**Status:** Active: [stored/manual source and offline fixture verified](IMPLEMENTATION_PROGRESS.md); approved provider use, real automated ingestion and operator acceptance remain open.
 **Priority:** P0 FIDE, P0/P1 Israeli national rating; US Chess data adapter deferred.
 **Depends on:** 2026-11-18-enforce-baseline-live-transition-contract.
 **Related:** 2026-11-18-automate-online-rating-sync shares immutable evidence storage.
