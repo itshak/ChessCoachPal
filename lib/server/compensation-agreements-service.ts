@@ -287,8 +287,10 @@ export async function compensationAgreementPreview(db:Db,teacherId:string,
   const scoped=rows.filter(s=>s.workplace_id===terms.workplaceId&&
     (!terms.exactSessionId||s.id===terms.exactSessionId)&&
     (!terms.studentId||s.participants.some(p=>p.studentId===terms.studentId)));
+  const groupPrecedence=terms.agreementRole==="coach_earning"&&terms.model!=="fixed_period"&&
+    !terms.exactSessionId&&!terms.studentId;
   let groupIds:Map<string,string|null>|null=null;
-  if(terms.groupId){
+  if(terms.groupId||groupPrecedence){
     groupIds=new Map();
     for(let offset=0;offset<scoped.length;offset+=100){
       const ids=scoped.slice(offset,offset+100).map(s=>s.id);
@@ -308,18 +310,54 @@ export async function compensationAgreementPreview(db:Db,teacherId:string,
       fail(400,"FIXED_PERIOD_MONTH_REQUIRED",
         "Fixed monthly compensation can be previewed only for a complete calendar month");
   }
-  const candidate=scoped.filter(s=>!groupIds||groupIds.get(s.id)===terms.groupId);
+  const candidate=scoped.filter(s=>!terms.groupId||groupIds?.get(s.id)===terms.groupId);
   const overridden=terms.agreementRole==="coach_earning"&&terms.model!=="fixed_period"&&!terms.exactSessionId
     ? await overriddenCoachOccurrences(db,teacherId,String(terms.workplaceId),candidate.map(s=>s.id))
     : new Set<string>();
   if(new Set(candidate.map(row=>row.id)).size!==candidate.length)
     fail(503,"EXACT_AGREEMENT_SCOPE_UNAVAILABLE","Could not verify a complete preview");
   const unoverridden=candidate.filter(s=>!overridden.has(s.id));
+  const groupOverrides=new Set<string>();
+  if(groupPrecedence&&groupIds){
+    const byGroup=new Map<string,{id:string;day:string}[]>();
+    for(const lesson of unoverridden){
+      const group=groupIds.get(lesson.id);
+      if(!group||lesson.status!=="completed")continue;
+      const taughtOn=toLocalDateString(new Date(lesson.starts_at),lesson.local_timezone||String(workplace.timezone));
+      if(taughtOn<String(terms.effectiveFrom)||(terms.effectiveTo&&taughtOn>String(terms.effectiveTo)))continue;
+      const existing=byGroup.get(group)??[];
+      existing.push({id:lesson.id,day:taughtOn});byGroup.set(group,existing);
+    }
+    const groups=[...byGroup.keys()];
+    for(let i=0;i<groups.length;i+=60){
+      const groupBatch=groups.slice(i,i+60);
+      const dates=groupBatch.flatMap(group=>byGroup.get(group)!.map(row=>row.day)).sort();
+      let query=db.from("compensation_agreements")
+        .select("group_id,effective_from,effective_to",{count:"exact"}).eq("teacher_id",teacherId)
+        .eq("workplace_id",String(terms.workplaceId)).eq("status","active").eq("agreement_role","coach_earning")
+        .neq("model","fixed_period").is("student_id",null).is("exact_session_id",null)
+        .in("group_id",groupBatch).lte("effective_from",dates[dates.length-1])
+        .or(`effective_to.is.null,effective_to.gte.${dates[0]}`);
+      if(Object.hasOwn(row,"private_series_id"))query=query.is("private_series_id",null);
+      const {data,error,count}=await query.order("group_id").order("id").limit(501);
+      if(error||!data||data.length!==count||data.length>500)
+        fail(503,"GROUP_AGREEMENT_PREVIEW_UNAVAILABLE","Could not verify complete group agreement scope");
+      for(const group of groupBatch){
+        const termsAtGroup=data!.filter(t=>t.group_id===group);
+        for(const date of byGroup.get(group)!){
+          const applicable=termsAtGroup.filter(t=>t.effective_from<=date.day&&(!t.effective_to||t.effective_to>=date.day));
+          if(applicable.length>1)fail(409,"GROUP_AGREEMENT_REVIEW_REQUIRED","More than one group agreement applies; review group terms");
+          if(applicable.length&&!terms.groupId)groupOverrides.add(date.id);
+        }
+      }
+    }
+  }
+  const eligible=unoverridden.filter(s=>!groupOverrides.has(s.id));
   // Only query the new field after a same-table JSON shape discloses it.
   // The existing schema supports the same code without an unknown column.
   if(Object.hasOwn(row,"private_series_id")&&terms.agreementRole==="coach_earning"&&
     terms.model!=="fixed_period"&&!terms.exactSessionId){
-    const potentialDates=unoverridden.filter(s=>s.slot_occurrence_date!==null&&s.status==="completed")
+    const potentialDates=eligible.filter(s=>s.slot_occurrence_date!==null&&s.status==="completed")
       .map(s=>toLocalDateString(new Date(s.starts_at),s.local_timezone||String(workplace.timezone)))
       .filter(d=>d>=String(terms.effectiveFrom)&&(!terms.effectiveTo||d<=String(terms.effectiveTo))).sort();
     if(potentialDates.length){
@@ -333,7 +371,7 @@ export async function compensationAgreementPreview(db:Db,teacherId:string,
         "This date range may contain separate private series terms; review the series before forecasting");
     }
   }
-  const occurrences:CompensationOccurrence[]=unoverridden.map(s=>({
+  const occurrences:CompensationOccurrence[]=eligible.map(s=>({
     id:s.id,workplaceId:s.workplace_id,
     lessonDate:toLocalDateString(new Date(s.starts_at),s.local_timezone||String(workplace.timezone)),
     durationMinutes:s.duration_minutes,
@@ -360,6 +398,7 @@ export async function compensationAgreementPreview(db:Db,teacherId:string,
         "Expected coach compensation from verified lessons or an agreed fixed monthly period; not paid money or payroll.":
         "Expected participant charges from verified lessons; not an invoice, customer debt posting or received payment.",
       excludedExactSessionCount:overridden.size,
+      excludedGroupSessionCount:groupOverrides.size,
       persistedObligation:false,paymentRecorded:false};
   }catch(error){
     if(error instanceof RangeError||error instanceof TypeError||error instanceof Error)

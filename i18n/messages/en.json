@@ -2936,6 +2936,8 @@
     "exactEmpty": "No completed lessons match this workplace and date.",
     "exactUnavailable": "Could not verify completed lessons for this workplace and date.",
     "exactConfirm": "Configure coach earnings for {title} on {date} at {time} (ref. {reference})? This will not post earnings or create an invoice.",
+    "groupPreviewOverlap": "More than one group agreement applies to a lesson in this period. Resolve the overlap before using this estimate.",
+    "groupExcluded": "{count, plural, one {# lesson uses a separate group agreement and is excluded here.} other {# lessons use separate group agreements and are excluded here.}}",
     "exactExcluded": "{count, plural, one {# lesson has its own agreement and is excluded here.} other {# lessons have their own agreements and are excluded here.}}",
     "supersededReview": "This request may have been saved and then revised. Check the existing agreement before taking any new action.",
     "pendingReview": "The last request is not confirmed. Retry the same reviewed agreement before changing it.",
@@ -3076,6 +3078,7 @@
   "nativeFinance": {
     "exactAgreement": "Exact lesson agreement",
     "reviewRequired": "This lesson has an exact agreement. Review the completed lesson and its agreement before approving. Nothing was posted.",
+    "groupReviewRequired": "Review the applicable group agreement before approving. If multiple group agreements apply, resolve the overlap first. Nothing was posted.",
     "reviewMismatch": "This agreement belongs to a different completed lesson. Nothing was posted.",
     "pinnedLesson": "Exact lesson {reference} · {date}",
     "title": "Native finance ledger",

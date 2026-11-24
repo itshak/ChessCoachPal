@@ -18,14 +18,19 @@ const occurrence={id:session,workplace_id:venue,starts_at:date+"T10:00:00.000Z",
   duration_minutes:60,status:"completed",slot_occurrence_date:date,
   participants:[{studentId:scope,attendanceStatus:"present"}]} as CanonicalCalendarRow;
 
-function stub({rows=[base],intersection=false,forecastError=false}:{
-  rows?:Record<string,unknown>[],intersection?:boolean,forecastError?:boolean
+function stub({rows=[base],intersection=false,forecastError=false,
+  frozenGroup=null,groupTerms=[],groupReadError=false}:{
+  rows?:Record<string,unknown>[],intersection?:boolean,forecastError?:boolean,
+  frozenGroup?:string|null,groupTerms?:Record<string,unknown>[],groupReadError?:boolean
 }={}){
   const reads:{table:string;cols:string;eq:[string,unknown][];range?:number}[]=[];
   const db={from(table:string){
     const state={table,cols:"",eq:[] as [string,unknown][],range:undefined as number|undefined};
     reads.push(state);
     const response=()=>{
+      if(table==="teaching_sessions")return {data:[{id:session,group_id:frozenGroup}],error:null,count:1};
+      if(state.cols==="group_id,effective_from,effective_to")
+        return {data:groupTerms,error:groupReadError?{message:"Group scope unavailable"}:null,count:groupTerms.length};
       if(table==="workplaces")return {data:{id:venue,timezone:"UTC"},error:null};
       if(state.cols==="exact_session_id")return {data:[],error:null,count:0};
       if(state.cols==="id")return {data:forecastError?null:intersection?[{id:hidden}]:[],
@@ -36,7 +41,7 @@ function stub({rows=[base],intersection=false,forecastError=false}:{
     return {select(cols:string){state.cols=cols;return this;},
       eq(k:string,v:unknown){state.eq.push([k,v]);return this;},
       order(){return this;},range(start:number){state.range=start;return this;},
-      in(){return this;},limit(){return this;},not(){return this;},lte(){return this;},or(){return this;},
+      in(){return this;},limit(){return this;},not(){return this;},neq(){return this;},is(){return this;},lte(){return this;},or(){return this;},
       maybeSingle(){return Promise.resolve(response());},
       then(resolve:(v:unknown)=>unknown){return Promise.resolve(response()).then(resolve);}};
   }};
@@ -80,4 +85,18 @@ it("refuses a potentially intersecting broad forecast on new shape, but not unre
   expect(await compensationAgreementPreview(noOverlap,owner,check)).toMatchObject({projection:{expectedCents:10000}});
   const exact=stub({rows:[{...health,exact_session_id:session}],intersection:true}).db;
   expect(await compensationAgreementPreview(exact,owner,check)).toMatchObject({projection:{expectedCents:10000}});
+});
+
+
+it("uses verified frozen group dates and refuses unknown or ambiguous scoped coverage",async()=>{
+  const groupTerm={group_id:scope,effective_from:date,effective_to:date};
+  expect(await compensationAgreementPreview(stub({frozenGroup:scope,groupTerms:[groupTerm]}).db,owner,check))
+    .toMatchObject({projection:{expectedCents:0},excludedGroupSessionCount:1});
+  expect(await compensationAgreementPreview(stub({frozenGroup:scope,
+    groupTerms:[{...groupTerm,effective_to:"2050-01-31"}]}).db,owner,check))
+    .toMatchObject({projection:{expectedCents:10000},excludedGroupSessionCount:0});
+  await expect(compensationAgreementPreview(stub({frozenGroup:scope,groupTerms:[groupTerm,groupTerm]}).db,owner,check))
+    .rejects.toMatchObject({status:409,code:"GROUP_AGREEMENT_REVIEW_REQUIRED"});
+  await expect(compensationAgreementPreview(stub({frozenGroup:scope,groupReadError:true}).db,owner,check))
+    .rejects.toMatchObject({status:503,code:"GROUP_AGREEMENT_PREVIEW_UNAVAILABLE"});
 });
