@@ -42,6 +42,9 @@ test("PARITY:PARITY-daily-lesson-preparation uses exact frozen roster and record
     const group=await row("class_groups",{teacher_id,workplace_id:school,name:"Frozen group"});
     const empty=await row("class_groups",{teacher_id,workplace_id:school,name:"No recorded roster"});
     const day=(n:number)=>new Date(Date.now()+n*86400_000).toISOString().slice(0,10);
+    expect((await admin.from("workplace_enrollments").insert({
+      teacher_id:foreign.id,workplace_id:outside,student_id:outsider,source:"manual",starts_on:day(-10),
+    })).error).toBeNull();
     for(const student_id of learners){
       for(const workplace_id of [school,club])expect((await admin.from("workplace_enrollments").insert({
         teacher_id,workplace_id,student_id,source:"manual",starts_on:day(-10),
