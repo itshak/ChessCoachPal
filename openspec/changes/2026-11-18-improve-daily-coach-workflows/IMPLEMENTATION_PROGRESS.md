@@ -73,9 +73,32 @@ and [signed browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/run
 (444 browser cases and three supplemental repeats). No new homework write or
 exact browser action link was added. No schema, release, or deployment change.
 
+## Verified source: prepare an exact upcoming lesson
+
+[PR #180](https://github.com/itshak/ChessCoachPal/pull/180) merged at `4397f23b4c94a020da718fdbccec1dff6380c5d2`.
+The dashboard action, authenticated GET and delegated MCP
+`ccp_lesson_preparation_get` share the exact scheduled-session read. It is
+restricted to the owner and current workplace context or All, with a
+bounded frozen roster and prior recorded evidence. Shared materials
+are shown once per material/stage, with explicit coverage and unknown
+states. Counts are limited to verified observations at the lesson's
+workplace and teacher-wide homework evidence for its frozen learners.
+The preparation result does not include learner identities or private
+notes or claim mastery. No write, recurrence generation or external
+provider is involved.
+
+Exact candidate `df3260a259aac61a2ef68b3017549ca17f160fec` passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45489172405), [Security](https://github.com/itshak/ChessCoachPal/actions/runs/45489172402),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45489172413), [backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45489172438),
+and [signed browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45489172401) (445 browser cases
+plus three scheduled repeats). The original E2E setup refused an
+unenrolled foreign fixture; its dated synthetic enrollment was the
+only test correction. Cross-tenant denial and no-write assertions
+passed on the corrected head. No schema, release or deployment change.
+
 ## Still open
 
-- Stale-rating evidence and preparation/recording from upcoming lessons; exact
+- Stale-rating evidence and exact recording/completion navigation; exact
   homework resolution navigation remains separate.
 - Reviewed atomic lesson close, learner/import review and full coverage
   of archived-learner recovery through the daily workflow.
