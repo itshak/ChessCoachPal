@@ -96,11 +96,30 @@ unenrolled foreign fixture; its dated synthetic enrollment was the
 only test correction. Cross-tenant denial and no-write assertions
 passed on the corrected head. No schema, release or deployment change.
 
+## Verified source: complete the exact ended lesson
+
+[PR #182](https://github.com/itshak/ChessCoachPal/pull/182) merged at
+`5d9036744e31c37525ec27a847a91a025aae3a2c`. An actionable missing-attendance
+card opens the exact ended scheduled occurrence in the existing completion
+panel, not a fallback list item. The signed GET and delegated MCP roster
+preview check the current workplace context and the frozen roster. Changed
+context requires reload. Persisted cancellation decisions instead use
+schedule attendance review and are not overwritten. Explicit approved
+completion uses the existing atomic attendance and optional shared-note
+operation. No material evidence is part of that transaction.
+
+Exact candidate `0ca0b0001bb0c0826cb487f57f7b5b7c148d2ce7` passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45499371843),
+[Security](https://github.com/itshak/ChessCoachPal/actions/runs/45499372082),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45499371845),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45499371759),
+and [signed browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45499371778)
+(446 browser cases plus three scheduling repeats). No schema, release or
+deployment change. Real client acceptance remains separate.
+
 ## Still open
 
-- Stale-rating evidence and exact recording/completion navigation; exact
-  homework resolution navigation remains separate.
-- Reviewed atomic lesson close, learner/import review and full coverage
-  of archived-learner recovery through the daily workflow.
-- Complete website/MCP acceptance and evidence before archival. This
-  schedule slice alone does not complete the Daily Coaching proposal.
+- Stale-rating evidence and exact homework resolution navigation.
+- A reviewed atomic completion with taught material evidence, learner/import
+  review and full coverage of archived-learner recovery in the daily workflow.
+- Complete website/MCP acceptance and evidence before archival.

@@ -110,3 +110,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | Open an exact upcoming lesson and prepare from its frozen roster. Individual and group preparation distinguish explicitly recorded from unknown evidence, show shared material once, and exclude private learner notes. Other-workplace, foreign, cancelled and past sessions cannot be used in preparation. Dashboard, signed HTTP and delegated MCP agree and leave canonical records unchanged. | `e2e/parity-daily-lesson-preparation.spec.ts#PARITY-daily-lesson-preparation` — [445 authenticated browser cases passed](https://github.com/itshak/ChessCoachPal/actions/runs/45489172401) on `df3260a259aac61a2ef68b3017549ca17f160fec`; merged in [PR #180](https://github.com/itshak/ChessCoachPal/pull/180) at `4397f23b4c94a020da718fdbccec1dff6380c5d2`. |
+
+## Daily exact lesson completion — accepted source slice
+
+| Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | Open the exact ended lesson on the missing-attendance list without falling back to another session. The signed website and delegated MCP preview check the current workplace and saved roster; changed context requires reload, and existing cancellation decisions stay intact. Approved completion uses the canonical attendance and shared-note transaction; read-back confirms only the selected occurrence changes. | `e2e/parity-daily-lesson-close.spec.ts#PARITY-daily-lesson-close` — [446 browser cases plus three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45499371778) on `0ca0b0001bb0c0826cb487f57f7b5b7c148d2ce7`, merged in [PR #182](https://github.com/itshak/ChessCoachPal/pull/182) at `5d9036744e31c37525ec27a847a91a025aae3a2c`. |
