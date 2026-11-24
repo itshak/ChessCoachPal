@@ -45,9 +45,10 @@ export async function teacherStudentRatingHistory(db:Db,teacherId:string,
  await teacherStudentProfile(db,teacherId,parsed.studentId);
  let q=db.from("student_rating_snapshots").select(fields,{count:"exact"})
   .eq("teacher_id",teacherId).eq("student_id",parsed.studentId)
+  // Federation evidence has its own history; filter before counting and paging.
+  .in("provider",parsed.provider?[parsed.provider]:["lichess","chesscom"])
   .order("observed_at",{ascending:false}).order("id",{ascending:false})
   .range(parsed.offset,parsed.offset+parsed.limit-1);
- if(parsed.provider)q=q.eq("provider",parsed.provider);
  if(parsed.timeControl)q=q.eq("time_control",parsed.timeControl);
  const {data,error,count}=await q;
  if(error||count===null)throw fail(503,"RATINGS_UNAVAILABLE","Rating history could not be loaded");

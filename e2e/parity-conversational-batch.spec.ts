@@ -3,6 +3,7 @@ import {createServer,type Server} from "node:http";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
 import {delegatedTool} from "./helpers/delegated-mcp";
+import {SEED_TEACHER} from "./helpers/auth";
 
 const uuid=()=>randomUUID();
 const randomName=(x:string)=>x+" "+uuid().slice(0,10);
@@ -204,6 +205,100 @@ test("PARITY:PARITY-integrated-teacher-context-student-ratings-and-fen",async({p
  expect((await call("ccp_chess_fen_validate",{
   fen:impossible,source:"manual",
  })).error?.code).toBe("VALIDATION_ERROR");
+});
+test("PARITY: online rating history filters before counting and paging, without hiding federation evidence",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const owner=await db.from("teachers").select("id").eq("email",SEED_TEACHER.email).single();
+ expect(owner.error).toBeNull();
+ const teacherId=owner.data!.id;
+ const created=await call("ccp_students_create",{name:randomName("Synthetic mixed evidence"),idempotencyKey:uuid()});
+ expect(created.error).toBeUndefined();
+ const studentId=created.data.entityId as string;
+ const base="/api/students/"+studentId;
+ const linkedId="900000000777";
+ const profile=await page.request.put(base,{data:{fideId:linkedId}});
+ expect(profile.status(),await profile.text()).toBe(200);
+ const same="2025-05-20T00:00:00.000Z",newer="2025-05-21T00:00:00.000Z";
+ const observe=(provider:string,time_control:string,rating:number,observed_at:string)=>({
+  id:uuid(),teacher_id:teacherId,student_id:studentId,provider,time_control,rating,observed_at,request_id:uuid(),verification_state:"unverified",
+ });
+ const l=observe("lichess","rapid",1651,same),c=observe("chesscom","rapid",1734,same);
+ const old=observe("lichess","blitz",1521,"2025-05-19T00:00:00.000Z");
+ const fide=observe("fide","standard",1979,newer),icf=observe("icf","national",1871,newer);
+ const insert=await db.from("student_rating_snapshots").insert([
+  {...l,source:"teacher_manual"},{...old,source:"teacher_manual"},
+  {...c,source:"provider_api",fetched_at:same,source_username:"synthetic_chesscom",preview_digest:"a".repeat(64)},
+  {...fide,source:"provider_api",verification_state:"provider_published",external_player_id:linkedId,
+   provider_list_version:"synthetic-history-may",effective_at:"2025-05-01",fetched_at:newer,
+   source_url:"https://example.invalid/fide",source_digest:"b".repeat(64)},
+  {...icf,source:"teacher_manual"},
+ ]);
+ expect(insert.error).toBeNull();
+ const read=async(filters:Record<string,string|number>={})=>{
+  const query=new URLSearchParams(Object.entries(filters).map(([k,v])=>[k,String(v)]));
+  const website=await page.request.get(base+"/ratings?"+query);
+  expect(website.status(),await website.text()).toBe(200);
+  const delegated=await call("ccp_student_ratings_list",{studentId,...filters});
+  expect(delegated.error).toBeUndefined();
+  expect(delegated.data).toEqual(await website.json());
+  return delegated.data;
+ };
+ const ordered=[l.id,c.id].sort().reverse().concat(old.id);
+ const ids=(items:Array<{id:string}>)=>items.map(x=>x.id);
+ const all=await read();
+ expect(ids(all.snapshots)).toEqual(ordered);
+ expect(all).toMatchObject({total:3,nextOffset:null});
+ for(const offset of [0,1,2]){
+  const result=await read({limit:1,offset});
+  expect(ids(result.snapshots)).toEqual(ordered.slice(offset,offset+1));
+  expect(result).toMatchObject({total:3,nextOffset:offset<2?offset+1:null});
+ }
+ const rapid=await read({timeControl:"rapid",limit:1,offset:1});
+ expect(ids(rapid.snapshots)).toEqual(ordered.slice(1,2));
+ expect(rapid).toMatchObject({total:2,nextOffset:null});
+ const chesscom=await read({provider:"chesscom",timeControl:"rapid",limit:1});
+ expect(ids(chesscom.snapshots)).toEqual([c.id]);
+ expect(chesscom).toMatchObject({total:1,nextOffset:null});
+ expect(await read({provider:"chesscom",timeControl:"blitz"})).toMatchObject({
+  snapshots:[],total:0,nextOffset:null,
+ });
+ expect((await page.request.get(base+"/ratings?provider=fide")).status()).toBe(400);
+ expect((await call("ccp_student_ratings_list",{studentId,provider:"fide"})).error?.code).toBe("VALIDATION_ERROR");
+ const federations=await page.request.get(base+"/federations");
+ expect(federations.status(),await federations.text()).toBe(200);
+ const federation=await call("ccp_student_federations_get",{studentId});
+ expect(federation.error).toBeUndefined();
+ expect(federation.data).toEqual(await federations.json());
+ expect(ids(federation.data.snapshots).sort()).toEqual([fide.id,icf.id].sort());
+ expect(federation.data.currentEvidence.fide[0]).toMatchObject({status:"recorded",snapshot:{id:fide.id}});
+ await page.goto("/students/"+studentId);
+ const region=page.getByRole("region",{name:"Online chess rating history"});
+ const table=region.getByRole("table",{name:"Recent online rating observations"});
+ await expect(table.getByRole("row").filter({hasText:"1651"})).toContainText("Lichess");
+ await expect(table.getByRole("row").filter({hasText:"1651"})).toContainText("Teacher-entered");
+ await expect(table.getByRole("row").filter({hasText:"1734"})).toContainText("Chess.com");
+ await expect(table.getByRole("row").filter({hasText:"1734"})).toContainText("Provider API");
+ await expect(table.getByRole("row")).toHaveCount(4);
+ await expect(table).not.toContainText("1979");
+ await expect(table).not.toContainText("1871");
+ await expect(page.getByTestId("federation-rating-evidence")).toContainText("1979");
+ const otherEmail="ratings-history-foreign-"+uuid()+"@example.com";
+ const other=await db.auth.admin.createUser({email:otherEmail,password:"SyntheticForeign-123!",email_confirm:true});
+ expect(other.error).toBeNull();
+ const otherId=other.data.user!.id;
+ try{
+  expect((await db.from("teachers").insert({id:otherId,email:otherEmail,display_name:"Other synthetic teacher"})).error).toBeNull();
+  const learner=await db.from("students").insert({teacher_id:otherId,name:"Other synthetic learner"}).select("id").single();
+  expect(learner.error).toBeNull();
+  const foreignId=learner.data!.id;
+  expect((await page.request.get("/api/students/"+foreignId+"/ratings")).status()).toBe(404);
+  expect((await call("ccp_student_ratings_list",{studentId:foreignId})).error?.code).toBe("NOT_FOUND");
+ }finally{
+  expect((await db.auth.admin.deleteUser(otherId)).error).toBeNull();
+ }
 });
 test("PARITY:PARITY-public-lichess-and-chesscom-rating-sources-are-independent",async({page,request})=>{
  test.skip(process.env.CI!=="true"||
