@@ -31,6 +31,18 @@
     "workplaceFilterFailed": "שינוי מקום העבודה נכשל; רעננו"
   },
   "dashboard": {
+    "dailyHomeworkHeading": "שיעורי בית לבדיקה",
+    "dailyHomeworkAllOnly": "שיעורי הבית אינם משויכים למקום עבודה. יש לבחור בכל מקומות העבודה כדי לראות את הרשימה.",
+    "dailyHomeworkUnavailable": "לא ניתן לטעון את בדיקת שיעורי הבית.",
+    "dailyHomeworkWindow": "מועד הגשה עד {date}. הרשימה משקפת את התיעוד הנוכחי, לא מצב היסטורי.",
+    "dailyHomeworkEmpty": "אין שיעורי בית הדורשים טיפול עד תאריך זה.",
+    "dailyHomeworkEmptyPage": "אין שיעורי בית הדורשים טיפול בחלק זה של הרשימה.",
+    "dailyHomeworkUnknownMaterial": "חומר שהוקצה",
+    "dailyHomeworkReview": "ההגשה ממתינה לבדיקה",
+    "dailyHomeworkNeedsWork": "בבדיקה האחרונה נדרש שיפור",
+    "dailyHomeworkAwaiting": "מועד ההגשה הגיע ולא תועדה הגשה",
+    "dailyHomeworkEvidenceLimit": "כמות התיעוד גדולה מכדי לסווג כאן",
+    "dailyHomeworkNext": "הצגת החלק הבא של הרשימה",
     "dailyAttendanceHeading": "נוכחות לבדיקה",
     "dailyAttendanceEmpty": "לא נמצאה נוכחות חסרה בשיעורים שהסתיימו בתאריך זה.",
     "dailyAttendanceUnavailable": "לא ניתן לטעון את בדיקת הנוכחות.",
