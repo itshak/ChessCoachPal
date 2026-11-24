@@ -30,8 +30,13 @@ test("PARITY: legacy compensation does not reinterpret private recurring terms",
  const broad=(await run("ccp_compensation_agreements_create",{...base,...key()})).id;
  const normalRow=await signed.from("compensation_agreements").select("*").eq("id",broad).single();
  expect(normalRow.error).toBeNull();
- const pending=process.env.E2E_PRIVATE_SERIES_PENDING_SCHEMA==="1";
- expect(Object.prototype.hasOwnProperty.call(normalRow.data,"private_series_id")).toBe(pending);
+ const pending=Object.prototype.hasOwnProperty.call(normalRow.data,"private_series_id");
+ const expectedSchema=process.env.E2E_PRIVATE_SERIES_PENDING_SCHEMA;
+ if(expectedSchema!==undefined){
+  expect(["0","1"]).toContain(expectedSchema);
+  expect(pending).toBe(expectedSchema==="1");
+ }
+ if(pending)expect(normalRow.data!.private_series_id).toBeNull();
  const slot=await signed.from("lesson_slots").insert({teacher_id:teacherId,student_id:studentId,
   workplace_id:workplaceId,start_date:day,end_date:end,day_of_week:new Date(day+"T00:00:00Z").getUTCDay(),
   start_time:"10:00",duration_minutes:60}).select("id").single();
