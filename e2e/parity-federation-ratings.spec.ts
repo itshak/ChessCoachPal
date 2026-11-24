@@ -1,7 +1,9 @@
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
+import {createClient} from "@supabase/supabase-js";
+import {SEED_TEACHER} from "./helpers/auth";
 import {delegatedTool} from "./helpers/delegated-mcp";
-const origin="http://localhost:3000";
+const origin=process.env.PLAYWRIGHT_BASE_URL??"http://localhost:3000";
 
 test("PARITY:PARITY-federation-identity independent FIDE and national IDs, snapshots, website/MCP replay and security",async({page,request})=>{
  const call=await delegatedTool(page,request);
@@ -118,4 +120,115 @@ test("PARITY:PARITY-federation-read-only scoped delegation cannot write and nati
   idempotencyKey:randomUUID(),confirmed:true,
  });
  expect(blocked.error?.code).toBe("FORBIDDEN");
+});
+
+test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess corrected edition order",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const teacher=await db.from("teachers").select("id").eq("email",SEED_TEACHER.email).single();
+ expect(teacher.error).toBeNull();
+ const teacherId=teacher.data!.id;
+ const created=await call("ccp_students_create",{name:"Synthetic evidence "+randomUUID(),idempotencyKey:randomUUID()});
+ expect(created.error).toBeUndefined();
+ const studentId=created.data.entityId as string;
+ const endpoint=`/api/students/${studentId}/federations`;
+ const oldId="900000000101",newId="900000000102";
+ const setId=async(fideId:string)=>{
+  const response=await page.request.put(`/api/students/${studentId}`,{headers:{origin},data:{fideId}});
+  expect(response.status(),await response.text()).toBe(200);
+ };
+ await setId(oldId);
+ const official=(rating:number, external_player_id:string,provider_list_version:string,effective_at:string,
+                 time_control="standard",observed_at="2025-05-20T00:00:00Z")=>({
+  teacher_id:teacherId,student_id:studentId,provider:"fide",time_control,rating,external_player_id,
+  provider_list_version,effective_at,observed_at,fetched_at:observed_at,
+  source:"provider_api",verification_state:"provider_published",source_url:"https://example.invalid/fide",
+  source_digest:"a".repeat(64),request_id:randomUUID(),games:0,
+ });
+ const seeded=await db.from("student_rating_snapshots").insert([
+  official(1871,oldId,"fixture-jan","2025-01-01"),
+  official(1810,oldId,"fixture-dec","2024-12-01","standard","2025-05-21T00:00:00Z"),
+  official(1963,newId,"fixture-feb","2025-02-01"),
+  official(1760,newId,"fixture-v9","2025-02-01","blitz"),
+  official(1764,newId,"fixture-v10","2025-02-01","blitz"),
+ ]);
+ expect(seeded.error).toBeNull();
+ const manual=await call("ccp_student_federation_ratings_record",{
+  studentId,provider:"icf",timeControl:"national",rating:1644,observedAt:"2025-05-20T00:00:00Z",
+  effectiveAt:null,sourceUrl:"https://example.invalid/icf",requestId:randomUUID(),confirmed:true,
+ });
+ expect(manual.error).toBeUndefined();
+ const read=async()=>{
+  const browser=await page.request.get(endpoint);
+  expect(browser.status(),await browser.text()).toBe(200);
+  const mcp=await call("ccp_student_federations_get",{studentId});
+  expect(mcp.error).toBeUndefined();expect(mcp.data).toEqual(await browser.json());
+  return mcp.data;
+ };
+ const before=await read();
+ expect(before.currentEvidence.fide[0]).toMatchObject({status:"recorded",
+  snapshot:{rating:1871,external_player_id:oldId,provider_list_version:"fixture-jan"}});
+ const profile=async()=>db.from("students").select("strength,chess_ratings").eq("id",studentId).single();
+ const strengthBefore=await profile();
+ expect(strengthBefore.error).toBeNull();
+ await setId(newId);
+ const corrected=await read();
+ expect(corrected.retrieval).toEqual({fide:"not_automated",icf:"manual_only"});
+ expect(corrected.currentEvidence.fide).toMatchObject([
+  {timeControl:"standard",status:"recorded",snapshot:{rating:1963,external_player_id:newId}},
+  {timeControl:"rapid",status:"not_recorded",snapshot:null},
+  {timeControl:"blitz",status:"edition_order_unknown",snapshot:null},
+ ]);
+ expect(corrected.snapshots).toHaveLength(6);
+ expect(corrected.snapshots).toEqual(expect.arrayContaining([
+  expect.objectContaining({external_player_id:oldId,provider_list_version:"fixture-jan"}),
+  expect.objectContaining({provider:"icf",source:"teacher_manual",verification_state:"unverified"}),
+ ]));
+ expect(corrected.memberships).toEqual([]);
+ expect((await profile()).data).toEqual(strengthBefore.data);
+ await page.goto(`/students/${studentId}`);
+ const panel=page.getByTestId("federation-rating-evidence");
+ await expect(panel).toContainText("1963");
+ await expect(panel).toContainText("manual evidence only");
+ await expect(panel).toContainText("order not verified");
+ await expect(panel).not.toContainText("1871");
+ // The write still reaches the real app. A failed follow-up GET must never
+ // leave the old bound result rendered as current for the just-saved ID.
+ const failedReload=async(route:import("@playwright/test").Route)=>route.fulfill({status:503});
+ await page.route("**"+endpoint,failedReload);
+ await page.getByTestId("fide-id-input").fill(oldId);
+ await page.getByRole("button",{name:"Save player identity"}).click();
+ await expect(panel).toHaveCount(0);
+ await expect(page.getByRole("button",{name:"Save player identity"})).toBeEnabled();
+ const saved=await db.from("students").select("fide_id").eq("id",studentId).single();
+ expect(saved.data?.fide_id).toBe(oldId);
+ await page.unroute("**"+endpoint,failedReload);
+ await page.reload();
+ await expect(panel).toContainText("1871");
+ await expect(panel).not.toContainText("1963");
+ // A successful but mismatched GET is equally unusable after the identity write.
+ const staleReload=async(route:import("@playwright/test").Route)=>route.fulfill({json:before});
+ await page.route("**"+endpoint,staleReload);
+ await page.getByTestId("fide-id-input").fill(newId);
+ await page.getByRole("button",{name:"Save player identity"}).click();
+ await expect(panel).toHaveCount(0);
+ await expect(page.getByRole("button",{name:"Save player identity"})).toBeEnabled();
+ expect((await db.from("students").select("fide_id").eq("id",studentId).single()).data?.fide_id).toBe(newId);
+ await page.unroute("**"+endpoint,staleReload);
+ const foreignEmail="federation-foreign-"+randomUUID()+"@example.com";
+ const foreign=await db.auth.admin.createUser({email:foreignEmail,password:"SyntheticForeign-123!",email_confirm:true});
+ expect(foreign.error).toBeNull();
+ const foreignId=foreign.data.user!.id;
+ try{
+  expect((await db.from("teachers").insert({id:foreignId,email:foreignEmail,display_name:"Synthetic other teacher"})).error).toBeNull();
+  const learner=await db.from("students").insert({teacher_id:foreignId,name:"Other synthetic learner"}).select("id").single();
+  expect(learner.error).toBeNull();
+  const foreignStudentId=learner.data!.id;
+  expect((await page.request.get(`/api/students/${foreignStudentId}/federations`)).status()).toBe(404);
+  expect((await call("ccp_student_federations_get",{studentId:foreignStudentId})).error?.code).toBe("NOT_FOUND");
+ }finally{
+  expect((await db.auth.admin.deleteUser(foreignId)).error).toBeNull();
+ }
 });

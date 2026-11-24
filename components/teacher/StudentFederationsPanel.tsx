@@ -1,5 +1,5 @@
 "use client";
-import {useCallback,useEffect,useState,type FormEvent} from "react";
+import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 import {useTranslations,useLocale} from "next-intl";
 import {Card} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
@@ -9,18 +9,30 @@ type Membership={id:string;studentId:string;federationCode:string;playerId:strin
  sourceUrl:string|null;verifiedAt:string|null};
 type Snapshot={id:string;provider:"fide"|"icf";time_control:string;
  rating:number;observed_at:string;effective_at:string|null;
- verification_state:"unverified"|"provider_published";source_url:string|null};
+ verification_state:"unverified"|"provider_published";source_url:string|null;
+ external_player_id:string|null;provider_list_version:string|null};
+type FideEvidence={timeControl:"standard"|"rapid"|"blitz"} & (
+ {status:"recorded";snapshot:Snapshot}|
+ {status:"not_linked"|"not_recorded"|"edition_order_unknown"|"evidence_incomplete";snapshot:null});
 type Overview={identity:{fideId:string|null;fideFederationCode:string|null;
  nationalFederationPreference:string|null;defaultNationalFederationCode:string|null;
  suggestedFederationCode:string|null};memberships:Membership[];snapshots:Snapshot[];
+ currentEvidence:{fide:FideEvidence[]};retrieval:{fide:"not_automated";icf:"manual_only"};
  sourceWarning:string};
 const field="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
 const code=(value:string)=>value.trim().toUpperCase();
 const optionalCode=(value:string)=>code(value)||null;
 const today=()=>new Date().toISOString().slice(0,10);
 export function StudentFederationsPanel({studentId}:{studentId:string}){
+ return <StudentFederationsScope key={studentId} studentId={studentId}/>;
+}
+function StudentFederationsScope({studentId}:{studentId:string}){
  const t=useTranslations("federationRatings"),locale=useLocale();
- const [overview,setOverview]=useState<Overview|null>(null);
+ const [loaded,setOverview]=useState<(Overview & {studentId:string})|null>(null);
+ const overview=loaded?.studentId===studentId?loaded:null;
+ const readGeneration=useRef(0);
+ const identityPending=useRef(false),mounted=useRef(false);
+ const [readFailed,setReadFailed]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  const [fideId,setFideId]=useState(""),[fideCode,setFideCode]=useState("");
  const [national,setNational]=useState(""),[defaultCode,setDefaultCode]=useState("");
@@ -30,36 +42,54 @@ export function StudentFederationsPanel({studentId}:{studentId:string}){
  const [control,setControl]=useState("standard"),[rating,setRating]=useState("");
  const [observedAt,setObservedAt]=useState(today()),[effectiveAt,setEffectiveAt]=useState("");
  const [sourceUrl,setSourceUrl]=useState("");
- const load=useCallback(async()=>{
+ const load=useCallback(async(expectedIdentity?:{fideId:string|null})=>{
+  if(!mounted.current||(identityPending.current&&!expectedIdentity))return;
+  const generation=++readGeneration.current;
   const response=await fetch(`/api/students/${studentId}/federations`,{cache:"no-store"});
-  if(!response.ok)throw new Error(t("readError"));
-  const result=await response.json() as Overview;
-  setOverview(result);
+  if(!mounted.current||generation!==readGeneration.current)return;
+  if(!response.ok)throw new Error("FEDERATION_READ");
+  const result=await response.json() as Overview & {studentId:string};
+  if(!mounted.current||generation!==readGeneration.current)return;
+  if(result.studentId!==studentId||(expectedIdentity&&result.identity.fideId!==expectedIdentity.fideId))
+   throw new Error("FEDERATION_READ");
+  setReadFailed(false);setOverview(result);
   setFideId(result.identity.fideId??"");setFideCode(result.identity.fideFederationCode??"");
   setNational(result.identity.nationalFederationPreference??"");
   setDefaultCode(result.identity.defaultNationalFederationCode??"");
- },[studentId,t]);
- useEffect(()=>{void load().catch(e=>setError(e instanceof Error?e.message:t("readError")));},[load,t]);
- async function post(url:string,method:"PUT"|"POST"|"PATCH",body:unknown){
+ },[studentId]);
+ useEffect(()=>{
+  mounted.current=true;
+  void load().catch(()=>{if(mounted.current)setReadFailed(true);});
+  return ()=>{mounted.current=false;readGeneration.current++;};
+ },[load]);
+ async function post(url:string,method:"PUT"|"POST"|"PATCH",body:unknown,expectedIdentity?:{fideId:string|null}){
   const response=await fetch(url,{method,headers:{"Content-Type":"application/json"},
    body:JSON.stringify(body)});
+  if(!mounted.current)return;
   if(!response.ok){const payload=await response.json().catch(()=>null);
    throw new Error(payload?.error??t("saveError"));}
-  await load();
+  await load(expectedIdentity);
  }
  async function run(fn:()=>Promise<void>){
-  setBusy(true);setError("");
-  try{await fn();}catch(e){setError(e instanceof Error?e.message:t("saveError"));}
-  finally{setBusy(false);}
+  setBusy(true);setError("");setReadFailed(false);
+  try{await fn();}catch(e){if(mounted.current){
+   if(e instanceof Error&&e.message==="FEDERATION_READ")setReadFailed(true);
+   else setError(e instanceof Error?e.message:t("saveError"));
+  }}finally{if(mounted.current)setBusy(false);}
  }
  const studentUrl=`/api/students/${studentId}`;
  const selectedControl=provider==="icf"?"national":control;
  async function updateIdentity(e:FormEvent){
   e.preventDefault();await run(async()=>{
-   await post(studentUrl,"PUT",{
-    fideId:fideId.trim()||null,fideFederationCode:optionalCode(fideCode),
-    nationalFederationPreference:national==="NONE"?"NONE":optionalCode(national),
-   });
+   const nextId=fideId.trim()||null;
+   identityPending.current=true;readGeneration.current++;
+   setOverview(null);
+   try{
+    await post(studentUrl,"PUT",{
+     fideId:nextId,fideFederationCode:optionalCode(fideCode),
+     nationalFederationPreference:national==="NONE"?"NONE":optionalCode(national),
+    },{fideId:nextId});
+   }finally{identityPending.current=false;}
   });
  }
  async function updateDefault(e:FormEvent){
@@ -107,7 +137,7 @@ export function StudentFederationsPanel({studentId}:{studentId:string}){
     <h2 className="font-semibold">{t("title")}</h2>
     <p className="text-sm text-muted">{t("warning")}</p>
    </div>
-   {error&&<p role="alert" className="mb-3 text-sm text-error">{error}</p>}
+   {(error||readFailed)&&<p role="alert" className="mb-3 text-sm text-error">{error||t("readError")}</p>}
    <form onSubmit={updateIdentity} className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2">
     <label className="text-sm">{t("fideId")}
      <input data-testid="fide-id-input" className={field} value={fideId} inputMode="numeric"
@@ -207,12 +237,29 @@ export function StudentFederationsPanel({studentId}:{studentId:string}){
      </label>
      <div className="md:col-span-3"><Button type="submit" disabled={busy}>{t("recordUnverified")}</Button></div>
     </form>
-    <ul className="space-y-2" aria-label={t("manualRatings")}>
+    {overview&&<div className="space-y-2" data-testid="federation-rating-evidence">
+     <h3 className="text-sm font-semibold">{t("currentEvidence")}</h3>
+     {overview.identity.fideId&&<p>{t("evidencePlayerId",{id:overview.identity.fideId})}</p>}
+     <p>{t(overview.retrieval.fide)}</p>
+     <p>{t(overview.retrieval.icf)}</p>
+     <ul className="space-y-1" aria-label={t("currentEvidence")}>
+      {overview.currentEvidence.fide.map(({timeControl,status,snapshot})=><li key={timeControl}>
+       {t(timeControl)}: {snapshot? <><strong>{snapshot.rating}</strong> · {t("provider_published")}
+        {" · "}<time dateTime={snapshot.effective_at??undefined}>{snapshot.effective_at}</time>
+        {" · "}{snapshot.provider_list_version}</>:t(status)}
+      </li>)}
+     </ul>
+    </div>}
+    <h3 className="text-sm font-semibold">{t("evidenceHistory")}</h3>
+    <ul className="space-y-2" aria-label={t("evidenceHistory")}>
      {overview?.snapshots.map(row=><li key={row.id} className="rounded-lg border border-border p-2 text-xs">
       <span className="font-semibold uppercase">{row.provider} · {t(row.time_control as "standard"|"rapid"|"blitz"|"national")}</span>
       {" · "}<strong>{row.rating}</strong>
       {" · "}<time dateTime={row.observed_at}>{new Date(row.observed_at).toLocaleDateString(locale)}</time>
       {" · "}{t(row.verification_state)}
+      {row.external_player_id&&<> · {t("evidencePlayerId",{id:row.external_player_id})}</>}
+      {row.provider_list_version&&<> · {row.provider_list_version}</>}
+      {row.effective_at&&<> · <time dateTime={row.effective_at}>{row.effective_at}</time></>}
       {row.source_url&&<> · <a href={row.source_url} rel="noopener noreferrer" target="_blank"
        className="text-primary underline">{t("referenceUrl")}</a></>}
      </li>)}

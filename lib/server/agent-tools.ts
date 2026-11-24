@@ -695,7 +695,7 @@ const catalogue = [
   },
   {
     name:"ccp_student_federations_get",
-    description:"Read optional FIDE ID, FIDE federation, national federation suggestion (not membership), registered national IDs and immutable FIDE/Israeli rating evidence for one owned learner. Teacher-entered records are unverified and never change 1–10 assessed strength.",
+    description:"Read optional federation identities and separate rating history for one owned learner. FIDE evidence is the latest unambiguous stored edition for the exact linked ID, not a live lookup; prior IDs remain in history. Israeli ratings are manual-only. Teacher-entered ratings are unverified and do not change assessed strength.",
     schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
