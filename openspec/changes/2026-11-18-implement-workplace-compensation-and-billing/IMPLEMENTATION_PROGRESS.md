@@ -1,5 +1,8 @@
 # Implementation progress — professional compensation (not accepted)
 
+> **Current status:** See [source acceptance](SOURCE_ACCEPTANCE.md) for modern signed, merged schema and app evidence, and the remaining operator gates. The sequential entries below are historical snapshots, not today's implementation status.
+
+
 **2026-11-18 draft implementation:** Commit `6b24def` on PR #104 introduces the first verifiable agreement and read-only calculation layer; no actual financial-obligation posting, invoice/payment replacement, release or live database change. Source of truth remains the proposal, design, full unchecked tasks and `docs/PROFESSIONAL_COMPENSATION.md`.
 
 Implemented in the source candidate:
