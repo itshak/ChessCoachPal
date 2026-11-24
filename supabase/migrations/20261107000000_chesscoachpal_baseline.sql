@@ -11195,6 +11195,9 @@ GRANT EXECUTE ON FUNCTION public.ccp_finance_enrollment_period_lock(
 CREATE OR REPLACE FUNCTION public.ccp_compensation_agreement_no_overlap()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
 SET search_path=public,pg_temp AS $ccp_compensation_agreement_no_overlap$
+DECLARE
+  v_old_scope_lock bigint;
+  v_new_scope_lock bigint;
 BEGIN
   -- Explicit student-specific compensation cannot reach outside a known,
   -- non-cancelled enrollment period. Workplace-wide and group policies have
@@ -11207,11 +11210,29 @@ BEGIN
         USING ERRCODE='23503';
     END IF;
   END IF;
-  -- Exact scope has a dedicated same-session serialization and unique index.
+  -- A coach group term can stop shadowing the old venue by archive,
+  -- scope edit or date/model change. Lock OLD relevant authority as well as
+  -- normal NEW authority, deterministically if such an edit spans venues.
+  -- Scope lookup uses MVCC after this lock; it never locks a competing row.
+  IF TG_OP='UPDATE' THEN
+    IF OLD.group_id IS NOT NULL AND OLD.student_id IS NULL
+       AND OLD.exact_session_id IS NULL AND OLD.private_series_id IS NULL
+       AND OLD.agreement_role='coach_earning' AND OLD.status='active' AND OLD.model<>'fixed_period' THEN
+      v_old_scope_lock:=hashtextextended(OLD.teacher_id::text||':compensation:'||OLD.workplace_id::text,0);
+    END IF;
+  END IF;
+  IF NEW.exact_session_id IS NULL AND NEW.private_series_id IS NULL AND NEW.status='active' THEN
+    v_new_scope_lock:=hashtextextended(NEW.teacher_id::text||':compensation:'||NEW.workplace_id::text,0);
+  END IF;
+  IF v_old_scope_lock IS NOT NULL AND v_new_scope_lock IS NOT NULL AND v_old_scope_lock<>v_new_scope_lock THEN
+    PERFORM pg_advisory_xact_lock(least(v_old_scope_lock,v_new_scope_lock));
+    PERFORM pg_advisory_xact_lock(greatest(v_old_scope_lock,v_new_scope_lock));
+  ELSIF coalesce(v_new_scope_lock,v_old_scope_lock) IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(coalesce(v_new_scope_lock,v_old_scope_lock));
+  END IF;
+  -- Existing exact and protected series have their own scope serialization.
   IF NEW.exact_session_id IS NOT NULL OR NEW.private_series_id IS NOT NULL THEN RETURN NEW; END IF;
   IF NEW.status='active' THEN
-    PERFORM pg_advisory_xact_lock(hashtextextended(
-      NEW.teacher_id::text||':compensation:'||NEW.workplace_id::text,0));
     IF EXISTS (SELECT 1 FROM public.compensation_agreements a
       WHERE a.teacher_id=NEW.teacher_id
         AND a.workplace_id=NEW.workplace_id
@@ -12226,6 +12247,7 @@ DECLARE
  v_source_hash text;
  v_snapshot jsonb;
  v_exact_count integer;
+ v_group_count integer;
 BEGIN
  IF v_teacher IS NULL THEN RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501'; END IF;
  IF p_request_id IS NULL OR p_agreement_id IS NULL OR p_confirmed IS DISTINCT FROM true
@@ -12375,6 +12397,26 @@ BEGIN
    END IF;
    v_local_date:=(v_session.starts_at AT TIME ZONE coalesce(
       v_session.local_timezone,v_workplace_timezone,'UTC'))::date;
+   -- Frozen group identity wins over a workplace-wide fallback for this
+   -- actual taught local day. Existing exact approval already ran above.
+   -- Use the agreement writer's lock; the subsequent READ COMMITTED lookup
+   -- sees the winner without waiting for a competing agreement row lock.
+   IF v_terms.agreement_role='coach_earning' AND v_terms.exact_session_id IS NULL
+      AND v_terms.private_series_id IS NULL AND v_terms.student_id IS NULL
+      AND v_session.group_id IS NOT NULL THEN
+     PERFORM pg_advisory_xact_lock(hashtextextended(
+       v_teacher::text||':compensation:'||v_session.workplace_id::text,0));
+     SELECT count(*) INTO v_group_count FROM public.compensation_agreements c
+       WHERE c.teacher_id=v_teacher AND c.workplace_id=v_session.workplace_id
+         AND c.group_id=v_session.group_id AND c.student_id IS NULL
+         AND c.exact_session_id IS NULL AND c.private_series_id IS NULL
+         AND c.agreement_role='coach_earning' AND c.model<>'fixed_period'
+         AND c.status='active' AND c.effective_from<=v_local_date
+         AND (c.effective_to IS NULL OR c.effective_to>=v_local_date);
+     IF v_group_count>1 OR (v_group_count>0 AND v_terms.group_id IS NULL) THEN
+       RAISE EXCEPTION 'GROUP_AGREEMENT_REVIEW_REQUIRED' USING ERRCODE='23514';
+     END IF;
+   END IF;
    IF v_terms.private_series_id IS NOT NULL AND
      v_terms.private_series_id IS DISTINCT FROM v_session.source_private_series_id THEN
      RAISE EXCEPTION 'PRIVATE_SERIES_AGREEMENT_SOURCE_UNVERIFIED' USING ERRCODE='23514';
