@@ -50,10 +50,33 @@ exercised a partial frozen group including an archived learner, complete and
 unknown rosters, tenant and workplace filtering, and persisted no-write evidence.
 No schema, release, or deployment change.
 
+## Verified source: due-through homework review
+
+[PR #178](https://github.com/itshak/ChessCoachPal/pull/178) merged at
+`d41f793b8af4b9ba738156ccab3012c320f1a3ac`. The dated dashboard and MCP summary
+read current submission and review evidence for active learners through the chosen
+due date. The display distinguishes due without a submission, submitted awaiting
+review, and needs-work. A review of an older attempt does not resolve a later
+submission, and no status asserts mastery. Pagination uses a bounded due-date and
+assignment-ID cursor, including a continuation when an entire window is reviewed.
+Assignments do not record venue, so the feature is explicitly available in All
+workplaces only; selected workplace membership is not provenance. The response
+omits learner identities, private instructions, notes and feedback. No-date
+summary callers are unchanged.
+
+Exact candidate `7735a3b9644ab61d144db26c1f9fe722e369fa3b` passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45475517916),
+[Security](https://github.com/itshak/ChessCoachPal/actions/runs/45475518128),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45475517527),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45475517246)
+and [signed browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45475517494)
+(444 browser cases and three supplemental repeats). No new homework write or
+exact browser action link was added. No schema, release, or deployment change.
+
 ## Still open
 
-- Actionable due-homework and stale-rating evidence; preparation and recording
-  from upcoming lessons.
+- Stale-rating evidence and preparation/recording from upcoming lessons; exact
+  homework resolution navigation remains separate.
 - Reviewed atomic lesson close, learner/import review and full coverage
   of archived-learner recovery through the daily workflow.
 - Complete website/MCP acceptance and evidence before archival. This
