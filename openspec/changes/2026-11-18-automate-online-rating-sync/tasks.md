@@ -16,3 +16,7 @@
 - [ ] Test consent denial, handle change during queued work, archived/no-handle, provider 429/timeout/404, job retries, duplicate observations, monthly caps and cross-tenant denial.
 - [ ] Add exact same field/action through MCP, tool registry and authenticated website↔MCP E2E with independent read-back.
 - [ ] Run clean schema, restored-copy migration, CI, mock-provider, E2E, parity strict, security, Compose and backup/restore; document merged-main evidence before archive.
+
+### First source slice: existing on-demand transport
+
+The shared service delegates its existing public Lichess and Chess.com HTTP reads to a server-only module. Provider URL/redirect/timeout/status behavior, normalization, preview consent, the reviewed digest and replay-before-fetch remain unchanged. Native simulated-response tests and the existing signed website/delegated MCP test exercise both provider paths and count requests. This is not automatic refresh, durable opt-in, provider authorization, or worker activation. The current response-body buffering and the separately reviewed in-flight handle-change commit boundary are unchanged.

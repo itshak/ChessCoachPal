@@ -31,9 +31,11 @@ async function newTeacherStudents(call:Awaited<ReturnType<typeof delegatedTool>>
  return {workplaceId,ids,names};
 }
 async function ratingProvider(){
+ const paths:string[]=[];
  const app=createServer(async(req,res)=>{
   const url=new URL(req.url??"/","http://127.0.0.1:3995");
   if(req.method!=="GET"){res.writeHead(405);res.end();return;}
+  paths.push(url.pathname);
   const now=Math.floor(Date.now()/1000);
   if(url.pathname.startsWith("/api/user/")){
    res.writeHead(200,{"Content-Type":"application/json"});
@@ -51,7 +53,7 @@ async function ratingProvider(){
   res.writeHead(404);res.end();
  });
  await new Promise<void>((yes,no)=>{app.once("error",no);app.listen(3995,"127.0.0.1",yes);});
- return app;
+ return {app,paths};
 }
 async function lichessStudyProvider(){
  const codes=new Map<string,{scope:string;challenge:string}>();
@@ -198,15 +200,20 @@ test("PARITY:PARITY-public-lichess-and-chesscom-rating-sources-are-independent",
  test.skip(process.env.CI!=="true"||
   process.env.CCP_SYNTHETIC_RATINGS_ORIGIN!=="http://127.0.0.1:3995",
   "Synthetic local provider is required, no real public student data");
- const server=await ratingProvider();
+ const {app:server,paths}=await ratingProvider();
  try{
   const call=await delegatedTool(page,request);
   const {ids}=await newTeacherStudents(call),studentId=ids[0];
+  const unconfirmed=await call("ccp_student_ratings_refresh_preview",{studentId,provider:"lichess",confirmedExternal:false});
+  expect(unconfirmed.error?.code).toBe("VALIDATION_ERROR");
+  expect(paths).toEqual([]);
   const profile=await page.request.put("/api/students/"+studentId,{
    data:{lichessUsername:"synthetic_lichess",chesscomUsername:"synthetic_chesscom"},
   });
   expect(profile.status(),await profile.text()).toBe(200);
   for(const provider of ["lichess","chesscom"] as const){
+   const callsBefore=paths.length;
+   const fixturePath=provider==="lichess"?"/api/user/synthetic_lichess":"/pub/player/synthetic_chesscom/stats";
    const web=await page.request.post("/api/students/"+studentId+"/ratings",{
     data:{action:"refreshPreview",provider,confirmedExternal:true},
    });
@@ -244,6 +251,8 @@ test("PARITY:PARITY-public-lichess-and-chesscom-rating-sources-are-independent",
     ...approval,expectedDigest:"0".repeat(64),
    });
    expect(altered.error?.code).toBe("IDEMPOTENCY_CONFLICT");
+   // Exactly two previews and one confirmed commit; replay/denial do not fetch.
+   expect(paths.slice(callsBefore)).toEqual([fixturePath,fixturePath,fixturePath]);
   }
   const list=await call("ccp_student_ratings_list",{studentId});
   expect(list.error).toBeUndefined();

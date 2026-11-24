@@ -7,14 +7,13 @@ import {ratingListSchema,ratingRecordSchema,ratingFetchSchema,
   parseLichessPerfs,parseChesscomStats,
   type RatingSnapshot} from "@/lib/chess-public-ratings";
 import {z} from "zod";
+import {fetchOnlineRatingPayload,StudentRatingError} from "./online-rating-transport";
 
 export const ratingRefreshCommitSchema=ratingFetchSchema.extend({
   expectedDigest:z.string().regex(/^[a-f0-9]{64}$/),
   requestId:z.uuid(),confirmed:z.literal(true),
 }).strict();
-export class StudentRatingError extends Error {
-  constructor(public status:number,public code:string,message:string){super(message);}
-}
+export {StudentRatingError};
 const fail=(status:number,code:string,message:string)=>
   new StudentRatingError(status,code,message);
 type Db=SupabaseClient;
@@ -70,36 +69,6 @@ export async function teacherStudentRatingRecord(db:Db,teacherId:string,
  if(error||!data)throw fail(503,"RATINGS_UNAVAILABLE","Cannot record manual rating snapshot");
  return {snapshot:data,replayed:false};
 }
-function endpoint(provider:Provider,username:string){
- const official=provider==="lichess"?"https://lichess.org":"https://api.chess.com";
- // Fixed loopback host is only permitted for synthetic CI; never honor a
- // URL or host from the teacher, student or plugin input.
- const synthetic=process.env.CI==="true"&&
-  process.env.CCP_SYNTHETIC_RATINGS_ORIGIN==="http://127.0.0.1:3995";
- const origin=synthetic?"http://127.0.0.1:3995":official;
- return origin+(provider==="lichess"?"/api/user/":"/pub/player/")+
-  encodeURIComponent(username)+(provider==="lichess"?"":"/stats");
-}
-async function providerData(provider:Provider,username:string){
- let response:Response;
- try{response=await fetch(endpoint(provider,username),{
-  redirect:"error",cache:"no-store",signal:AbortSignal.timeout(10000),
-  headers:{"Accept":"application/json"},
- });}catch{throw fail(502,"PROVIDER_UNAVAILABLE","Public rating provider unavailable");}
- if(response.status===429)throw fail(429,"RATE_LIMITED","Rating provider rate limit; retry later");
- if(response.status===404)throw fail(404,"ACCOUNT_NOT_FOUND","Public chess account not found");
- if(response.status===401||response.status===403)
-  throw fail(403,"PROVIDER_DENIED","Public rating lookup was denied");
- if(!response.ok)throw fail(502,"PROVIDER_UNAVAILABLE","Public rating provider unavailable");
- const size=Number(response.headers.get("content-length")??"0");
- if(Number.isFinite(size)&&size>80000)
-  throw fail(502,"PROVIDER_RESPONSE","Public rating response exceeds safe size");
- const text=await response.text();
- if(Buffer.byteLength(text,"utf8")>80000)
-  throw fail(502,"PROVIDER_RESPONSE","Public rating response exceeds safe size");
- try{return JSON.parse(text) as unknown;}
- catch{throw fail(502,"PROVIDER_RESPONSE","Public rating response is unreadable");}
-}
 export async function teacherStudentRatingRefreshPreview(db:Db,teacherId:string,
  input:z.infer<typeof ratingFetchSchema>){
  const x=ratingFetchSchema.parse(input);
@@ -109,7 +78,7 @@ export async function teacherStudentRatingRefreshPreview(db:Db,teacherId:string,
  if(typeof username!=="string"||!/^[A-Za-z0-9_-]{2,30}$/.test(username))
   throw fail(400,"ACCOUNT_NOT_CONFIGURED","Enter a public chess username for this provider first");
  const now=new Date().toISOString();
- const raw=await providerData(x.provider,username);
+ const raw=await fetchOnlineRatingPayload(x.provider,username);
  let ratings:RatingSnapshot[];
  try{ratings=x.provider==="lichess"?parseLichessPerfs(raw,now):
   parseChesscomStats(raw,now);}
