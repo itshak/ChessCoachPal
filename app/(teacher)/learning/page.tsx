@@ -27,13 +27,12 @@ export default async function LearningPage({searchParams}:{searchParams:Promise<
   const db=await createClient();
   const {data:{user}}=await db.auth.getUser();
   if(!user)return null;
-  const {selectedWorkplaceId:workplaceId,workplaces}=await teacherWorkplaceContextGet(db,user.id);
   const {dailyHomework,dueThrough}=await searchParams;
   if(dailyHomework!==undefined || dueThrough!==undefined) {
     const home=await getTranslations("dashboard");
-    const input=dailyHomeworkFocusInput.safeParse({dailyHomework,dueThrough});
+    const input=dailyHomeworkFocusInput.safeParse({assignmentId:dailyHomework,dueThrough});
     const result=input.success
-      ? await teacherDailyHomeworkFocus(db,user.id,workplaceId,input.data)
+      ? await teacherDailyHomeworkFocus(db,user.id,input.data)
       : {status:"not_actionable" as const};
     const back=input.success ? "/dashboard?date="+input.data.dueThrough+"#daily-homework" : "/dashboard";
     return <div className="max-w-3xl mx-auto px-4 py-8">
@@ -52,6 +51,7 @@ export default async function LearningPage({searchParams}:{searchParams:Promise<
       </section>
     </div>;
   }
+  const {selectedWorkplaceId:workplaceId,workplaces}=await teacherWorkplaceContextGet(db,user.id);
   const scope=workplaceId??"all";
   return <div className="max-w-6xl mx-auto px-4 py-8">
     <h1 className="text-2xl font-bold mb-6">{t("learning")}</h1>

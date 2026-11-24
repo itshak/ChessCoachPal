@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { teacherWorkplaceContextGet } from "@/lib/server/teacher-workplace-context";
 
 export const HOMEWORK_PAGE_SIZE = 24;
 const EVIDENCE_LIMIT = 128;
@@ -74,19 +75,25 @@ export async function teacherDailyHomework(
 
 
 export const dailyHomeworkFocusInput = z.object({
-  dailyHomework: z.string().uuid(),
+  assignmentId: z.string().uuid(),
   dueThrough: z.iso.date(),
 }).strict();
 
 /** Same current evidence as the queue, selecting just one owner-scoped row
  * independent of the current page. This returns no notes or other learners. */
 export async function teacherDailyHomeworkFocus(
-  db: SupabaseClient, teacherId: string, workplaceId: string | null,
+  db: SupabaseClient, teacherId: string,
   input: z.infer<typeof dailyHomeworkFocusInput>,
 ) {
+  let workplaceId: string | null;
+  try {
+    ({ selectedWorkplaceId: workplaceId } = await teacherWorkplaceContextGet(db, teacherId));
+  } catch {
+    return { status: "unavailable" as const };
+  }
   if (workplaceId !== null) return { status: "workplace_scope_unavailable" as const };
   const result = await homeworkEvidenceQuery(db, teacherId, input.dueThrough, true)
-    .eq("id", input.dailyHomework).maybeSingle()
+    .eq("id", input.assignmentId).maybeSingle()
     .overrideTypes<Assignment & { learner: { name: string } }, { merge: false }>();
   if (result.error) return { status: "unavailable" as const };
   const row = result.data;

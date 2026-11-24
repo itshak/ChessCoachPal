@@ -809,6 +809,19 @@
       "explanation": "Background event reminder dispatch"
     },
     {
+      "path": "app/api/dashboard/homework-focus/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_daily_homework_focus_get"
+      ],
+      "explanation": "The Dashboard opens a focused Learning page for one exact actionable assignment. The signed GET, page and delegated MCP use the same bounded owner-scoped read and current All-workplaces context. The exact authorized focus includes only the learner display name, assignment ID, date, material and current reason. The aggregate queue still omits learner identity. Stale, foreign, archived and not-due rows never fall back or write.",
+      "evidenceTest": "e2e/parity-daily-homework.spec.ts"
+    },
+    {
       "path": "app/api/dashboard/summary/route.ts",
       "methods": [
         "GET"
