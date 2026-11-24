@@ -56,7 +56,9 @@ test("ordinary scheduling cannot rewrite current-revision recorded or completed 
   const seeded=await rows();
   expect(seeded.error).toBeNull();
   expect(seeded.data).toHaveLength(3);
-  const [completed,marked,pristine]=seeded.data!;
+  const stamped=Object.prototype.hasOwnProperty.call(seeded.data![0],"source_private_series_id");
+ if(stamped)expect(seeded.data!.map(row=>row.source_private_series_id)).toEqual([slotId,slotId,slotId]);
+ const [completed,marked,pristine]=seeded.data!;
   const commit=(sessionId:string,revision:string|null,changes:Record<string,unknown>,
    attendance:Record<string,unknown>[]=[],requestId=randomUUID())=>
    owner.rpc("ccp_teacher_session_commit",{
@@ -102,7 +104,7 @@ test("ordinary scheduling cannot rewrite current-revision recorded or completed 
    .eq("id",documented.id)).error).toMatchObject(historyConflict);
   expect((await admin.from("teaching_sessions").update({slot_occurrence_date:"2060-01-16"})
    .eq("id",documented.id)).error).toMatchObject({
-    code:"23514",message:"SESSION_OCCURRENCE_IDENTITY_CONFLICT",
+    code:"23514",message:stamped?"PRIVATE_SERIES_PROVENANCE_IMMUTABLE":"SESSION_OCCURRENCE_IDENTITY_CONFLICT",
    });
   const afterDenial=await rows();
   expect(afterDenial.error).toBeNull();
