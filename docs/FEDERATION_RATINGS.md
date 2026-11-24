@@ -1,6 +1,6 @@
-# Chess federation player IDs and rating evidence (unmerged draft)
+# Chess federation player IDs and rating evidence
 
-**Status, 2026-11-19:** First identity and teacher-evidenced snapshot slice exists on draft PR #104 only. It is not accepted, merged, released or applied to a real database. Official automated FIDE/ICF lookup and verified publication imports are **not** enabled.
+**Status:** The identity and teacher-evidenced history are in source. The shared website and MCP read model distinguishes last recorded FIDE evidence tied to the exact linked ID from the bounded history and manual entries. Official automated FIDE/ICF lookup and new publication imports are not enabled.
 
 ## Distinct identities and ratings
 
@@ -33,3 +33,5 @@ The student profile includes a new localized English/Hebrew/Russian federation p
 ## Verification and release blockers
 
 Source-local TypeScript, i18n and static website↔MCP inventory checks are available. `e2e/parity-federation-ratings.spec.ts` exercises cross-client read/write/replay, manual unverified evidence, federation time-control validation and negative owner/scope paths. The complete exact-branch GitHub CI/E2E/Compose/backup/restore matrix and merged-main recheck are still necessary. New tables and columns belong exclusively to the **single canonical baseline** per ADR-0017, and no live database should be mutated without a separate operator-approved final cutover. Formal OpenSpec tasks remain open until official adapters, anti-duplication, permissions, source contract and full acceptance are delivered.
+
+The current linked-ID FIDE section is **stored evidence, not a live lookup**: it selects the greatest applicable official effective period separately for Standard, Rapid and Blitz. Different editions in the same period remain in history; until the source establishes their precedence the current section gives no numeric winner. Manual evidence never substitutes for verified edition evidence. Correcting the linked ID excludes prior-ID official evidence from current projection but retains it in the bounded history, with source ID and edition. The Israeli federation remains manual-only.

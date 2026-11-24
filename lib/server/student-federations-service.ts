@@ -47,6 +47,8 @@ async function requireStudent(db:Db,teacherId:string,studentId:string){
 }
 const membershipColumns="id,teacher_id,student_id,federation_code,player_id,membership_status,verified_at,source_url,revision,created_at,last_request_id,last_request_hash";
 const snapshotColumns="id,student_id,provider,time_control,rating,source,observed_at,effective_at,fetched_at,source_url,source_digest,verification_state,request_id,created_at";
+const historyColumns=`${snapshotColumns},external_player_id,provider_list_version`;
+const fideCategories=["standard","rapid","blitz"] as const;
 type Db=SupabaseClient;
 type Row=Record<string,unknown>;
 function safeMembership(r:Row){
@@ -54,16 +56,41 @@ function safeMembership(r:Row){
   playerId:r.player_id,membershipStatus:r.membership_status,verifiedAt:r.verified_at,
   sourceUrl:r.source_url,revision:Number(r.revision),createdAt:r.created_at};
 }
+async function currentFideEvidence(db:Db,teacherId:string,studentId:string,fideId:string|null){
+ const linkedId=fideId&&/^[0-9]+$/.test(fideId)?fideId:null;
+ const today=new Date().toISOString().slice(0,10);
+ return Promise.all(fideCategories.map(async timeControl=>{
+  if(!linkedId)return {timeControl,status:"not_linked",snapshot:null} as const;
+  // This window is independent of the bounded mixed history and its observed-at ordering.
+  // Two rows in the greatest effective period suffice to detect an unordered correction.
+  const {data,error,count}=await db.from("student_rating_snapshots").select(historyColumns,{count:"exact"})
+   .eq("teacher_id",teacherId).eq("student_id",studentId)
+   .eq("provider","fide").eq("time_control",timeControl)
+   .eq("source","provider_api").eq("verification_state","provider_published")
+   .eq("external_player_id",linkedId).lte("effective_at",today)
+   .order("effective_at",{ascending:false}).limit(2);
+  if(error)return fail(503,"FEDERATION_UNAVAILABLE","Federation evidence could not be read");
+  const rows=data??[];
+  if(count===null||rows.length!==Math.min(count,2))
+   return {timeControl,status:"evidence_incomplete",snapshot:null} as const;
+  const [first,next]=rows;
+  if(!first)return {timeControl,status:"not_recorded",snapshot:null} as const;
+  if(next&&next.effective_at===first.effective_at)
+   return {timeControl,status:"edition_order_unknown",snapshot:null} as const;
+  return {timeControl,status:"recorded",snapshot:first} as const;
+ }));
+}
 export async function federationStudentSummary(db:Db,teacherId:string,studentId:string){
  const student=await requireStudent(db,teacherId,studentId);
- const [member,history,teacher]=await Promise.all([
+ const [member,history,teacher,fideEvidence]=await Promise.all([
   db.from("student_federation_memberships").select(membershipColumns)
    .eq("teacher_id",teacherId).eq("student_id",studentId).order("federation_code"),
-  db.from("student_rating_snapshots").select(snapshotColumns)
+  db.from("student_rating_snapshots").select(historyColumns)
    .eq("teacher_id",teacherId).eq("student_id",studentId)
    .in("provider",["fide","icf"])
    .order("observed_at",{ascending:false}).order("id",{ascending:false}).limit(100),
   db.from("teachers").select("default_national_federation_code").eq("id",teacherId).maybeSingle(),
+  currentFideEvidence(db,teacherId,studentId,student.fide_id??null),
  ]);
  if(member.error||history.error||teacher.error||!teacher.data)
   return fail(503,"FEDERATION_UNAVAILABLE","Federation records could not be read");
@@ -75,6 +102,8 @@ export async function federationStudentSummary(db:Db,teacherId:string,studentId:
       student.national_federation_preference??teacher.data.default_national_federation_code??null},
   memberships:(member.data??[]).map(r=>safeMembership(r)),
   snapshots:history.data??[],
+  currentEvidence:{fide:fideEvidence},
+  retrieval:{fide:"not_automated",icf:"manual_only"} as const,
   sourceWarning:"Teacher-entered FIDE/ICF identities and ratings are UNVERIFIED until independently matched against an authorized official source; no value changes chess strength or mastery."};
 }
 export async function federationMembershipCreate(db:Db,teacherId:string,
