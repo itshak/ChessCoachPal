@@ -707,6 +707,15 @@
       "evidenceTest": "e2e/parity-compensation-exact-sponsor.spec.ts"
     },
     {
+      "path": "app/api/compensation-agreements/private-series/route.ts",
+      "methods": ["GET", "POST"],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": ["ccp_compensation_private_series_review", "ccp_compensation_private_series_confirm"],
+      "explanation": "Owned private recurring roots, existing terms, earned occurrence review and explicit frozen-root approval. Browser and named MCP share exact DTOs, signed source and immutable retry; no invoices, credit or payments.",
+      "evidenceTest": "e2e/parity-compensation-private-series.spec.ts"
+    },
+    {
       "path": "app/api/compensation-agreements/route.ts",
       "methods": [
         "GET",
@@ -1835,6 +1844,7 @@
     "components/teacher/CoachBriefingPanel.tsx",
     "components/teacher/CoachingReportPanel.tsx",
     "components/teacher/CompensationAgreementsPanel.tsx",
+    "components/teacher/PrivateSeriesCompensationPanel.tsx",
     "components/teacher/ExactSponsorPanel.tsx",
     "components/teacher/ContactsManager.tsx",
     "components/teacher/CopyLinkClient.tsx",

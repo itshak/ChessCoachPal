@@ -144,6 +144,8 @@ import {
  compensationAgreementCreate,compensationAgreementUpdate,
  compensationAgreementPreview,CompensationAgreementError,
 } from "@/lib/server/compensation-agreements-service";
+import {privateSeriesRead,privateSeriesReadSchema,privateSeriesWrite,privateSeriesWriteSchema}
+ from "@/lib/server/private-series-compensation";
 import {exactSponsorReviewSchema,exactSponsorCommitSchema,exactSponsorReview,exactSponsorCommit}
  from "@/lib/server/exact-sponsor-service";
 import {financeEarningSummary,financeEarningSummarySchema} from "@/lib/server/finance-earning-summary";
@@ -746,6 +748,16 @@ const catalogue = [
     name:"ccp_compensation_exact_sponsor_commit",
     description:"After explicit coach confirmation only, set or archive an exact sponsor for one frozen participant of one completed lesson. Reuse the identical key and input on uncertain response. Creates terms only; archive does not remove the automatic invoice/credit block. Never infer a payer or approve a charge or payment.",
     schema:exactSponsorCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_compensation_private_series_review",
+    description:"Read only: list one owned workplace's private schedule roots; specify one exact root to read its terms; specify agreementId as well to review verified completed occurrences, local taught dates, exact-lesson precedence, and unposted amounts. No inferred legacy provenance, group schedules, debts or payment.",
+    schema:privateSeriesReadSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_compensation_private_series_confirm",
+    description:"After explicit teacher approval only: terms creates prospective coach terms for one exact private recurrence root, archive removes only prospective terms, and post approves exactly one verified occurrence with reviewed root, revision, local taught day and amount. Review first, never infer legacy scope, reuse the exact payload and key on uncertain outcomes. No payment or participant charge.",
+    schema:privateSeriesWriteSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_compensation_agreements_preview",
@@ -2257,6 +2269,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await exactSponsorReview(db,teacherId,args as Parameters<typeof exactSponsorReview>[2])};
       case "ccp_compensation_exact_sponsor_commit":
         return {data:await exactSponsorCommit(db,args as Parameters<typeof exactSponsorCommit>[1])};
+      case "ccp_compensation_private_series_review":
+        return {data:await privateSeriesRead(db,teacherId,args as Parameters<typeof privateSeriesRead>[2])};
+      case "ccp_compensation_private_series_confirm":
+        return {data:await privateSeriesWrite(db,args as Parameters<typeof privateSeriesWrite>[1])};
       case "ccp_compensation_agreements_preview": {
         const a=args as Parameters<typeof compensationAgreementPreview>[2];
         return {data:await compensationAgreementPreview(db,teacherId,a)};

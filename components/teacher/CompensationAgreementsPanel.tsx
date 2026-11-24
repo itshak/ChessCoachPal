@@ -4,6 +4,7 @@ import {useLocale,useTranslations} from "next-intl";
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 
 import {ExactSponsorPanel} from "./ExactSponsorPanel";
+import {PrivateSeriesCompensationPanel} from "./PrivateSeriesCompensationPanel";
 
 type Workplace={id:string;name:string;currency:string;timezone:string};
 type Student={id:string;name:string};
@@ -312,6 +313,7 @@ export function CompensationAgreementsPanel({initialWorkplaceId}:{initialWorkpla
    {preview.excludedExactSessionCount>0&&<p className="text-xs text-muted">{t("exactExcluded",{count:preview.excludedExactSessionCount})}</p>}
    <p className="text-xs text-muted">{t("previewNotice")}</p>
   </div>}
+  <PrivateSeriesCompensationPanel workplaceId={loadedContext===initialWorkplaceId?workplaceId:""}/>
   <ExactSponsorPanel workplaceId={loadedContext===initialWorkplaceId?workplaceId:""}
    onSaved={()=>void refreshAgreements(workplaceId).catch(()=>setError(t("loadFailed")))}/>
  </section>;
