@@ -1076,7 +1076,7 @@ const catalogue = [
   },
   {
     name:"ccp_student_ratings_list",
-    description:"Read append-only separately sourced chess platform rating snapshots (including time control, provisional status and fetch time). No values alter the teacher 1–10 strength.",
+    description:"Read only Lichess and Chess.com rating history (teacher-entered or provider API), with time control, provisional status and fetch time. Federation evidence is in ccp_student_federations_get. No values alter the teacher 1–10 strength.",
     schema:ratingListSchema,scope:"coach:read",readOnly:true,
   },
   {

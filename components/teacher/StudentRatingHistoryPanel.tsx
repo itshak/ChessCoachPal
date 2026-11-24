@@ -16,6 +16,10 @@ type ProviderRating={provider:Provider;timeControl:Control;rating:number|null;
 type Preview={studentId:string;provider:Provider;username:string;
  expectedDigest:string;ratings:ProviderRating[];readOnly:boolean;
  accountOwnershipVerified:boolean;teacherStrengthChanged:boolean;note:string};
+const providerLabel:Record<Provider,string>={lichess:"Lichess",chesscom:"Chess.com"};
+const sourceLabel:Record<Rating["source"],"providerApi"|"teacherManual">={
+ provider_api:"providerApi",teacher_manual:"teacherManual",
+};
 const controls:Record<Provider,Control[]>={
  lichess:["bullet","blitz","rapid","classical","puzzle"],
  chesscom:["bullet","blitz","rapid","daily","puzzle"],
@@ -100,7 +104,7 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
    <label className="text-sm">{t("platform")}
     <select className={field} value={provider} onChange={e=>{const p=e.target.value as Provider;
       setProvider(p);setControl("rapid");setPreview(null);setCursor(null);}}>
-     <option value="lichess">Lichess</option><option value="chesscom">Chess.com</option>
+     <option value="lichess">{providerLabel.lichess}</option><option value="chesscom">{providerLabel.chesscom}</option>
     </select>
    </label>
    <label className="text-sm">{t("timeControl")}
@@ -127,7 +131,7 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
   </div>
   {preview&&<div className="border border-border rounded-lg p-3 space-y-2 text-sm">
    <h3 className="font-semibold" dir="auto">{t("review",{
-     username:preview.username,provider:preview.provider==="lichess"?"Lichess":"Chess.com"
+     username:preview.username,provider:providerLabel[preview.provider]??t("unknown")
    })}</h3>
    <ul className="list-disc ps-5">
     {preview.ratings.map(x=><li key={x.timeControl}>
@@ -144,11 +148,11 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
   <div className="space-y-2">
    <h3 className="font-semibold text-sm">{t("recent")}</h3>
    {history.length===0?<p className="text-sm text-muted">{t("noSnapshots")}</p>:
-    <div className="overflow-x-auto"><table className="w-full text-xs">
-     <thead><tr className="text-start"><th>{t("recorded")}</th><th>{t("provider")}</th><th>{t("control")}</th><th>{t("rating")}</th><th>{t("source")}</th><th>{t("status")}</th></tr></thead>
+    <div className="overflow-x-auto"><table aria-label={t("recent")} className="w-full text-xs">
+     <thead><tr className="text-start"><th scope="col">{t("recorded")}</th><th scope="col">{t("provider")}</th><th scope="col">{t("control")}</th><th scope="col">{t("rating")}</th><th scope="col">{t("source")}</th><th scope="col">{t("status")}</th></tr></thead>
      <tbody>{history.map(x=><tr key={x.id} className="border-t border-border">
-      <td>{new Date(x.observed_at).toLocaleDateString(locale)}</td><td>{x.provider==="lichess"?"Lichess":"Chess.com"}</td>
-      <td>{t(x.time_control)}</td><td>{x.rating}</td><td>{t(x.source==="provider_api"?"providerApi":"teacherManual")}</td>
+      <td>{new Date(x.observed_at).toLocaleDateString(locale)}</td><td><bdi>{providerLabel[x.provider]??t("unknown")}</bdi></td>
+      <td>{t(x.time_control)}</td><td>{x.rating}</td><td>{t(sourceLabel[x.source]??"unknown")}</td>
       <td>{x.provisional===true?t("provisional"):x.provisional===false?t("established"):t("unknown")}</td>
      </tr>)}</tbody>
     </table></div>}
