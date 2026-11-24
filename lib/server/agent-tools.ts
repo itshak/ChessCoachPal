@@ -96,6 +96,7 @@ import {
 } from "@/lib/server/teacher-material-defaults";
 import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
+import {dailyLessonPreparationInput,DailyPreparationError,teacherDailyLessonPreparation} from "@/lib/server/daily-lesson-preparation";
 import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
 import {trainingPlanListSchema,trainingPlanGetSchema,trainingPlanCommitSchema,teacherTrainingPlansList,teacherTrainingPlanGet,teacherTrainingPlanCommit,TrainingPlanError} from "@/lib/server/student-training-plans";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
@@ -1787,6 +1788,11 @@ const catalogue = [
     schema:trainingPlanCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_lesson_preparation_get",
+    description:"Read one upcoming exact canonical lesson from the active workplace or All. Uses only its frozen roster for bounded recorded material coverage, verified observations at that venue, and teacher-wide assignment counts. Shows unavailable, unrecorded and truncated evidence separately. No participant notes, inferred proficiency, or writes.",
+    schema:dailyLessonPreparationInput,scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_coach_briefing_get",
     description:"Prepare a fact-based teacher-owned student briefing: recent lesson history, explicitly attested material, assigned homework, coach reviews and approved chess observations. Each item has stored source IDs, with unknowns marked. No AI-inferred mastery.",
     schema:coachBriefingSchema,scope:"coach:read",readOnly:true,
@@ -1891,6 +1897,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherTrainingPlanGet(db,teacherId,(args as {planId:string}).planId)};
       case "ccp_training_plans_commit":
         return {data:await teacherTrainingPlanCommit(db,teacherId,args as Parameters<typeof teacherTrainingPlanCommit>[2])};
+      case "ccp_lesson_preparation_get": {
+        const {sessionId}=args as z.infer<typeof dailyLessonPreparationInput>;
+        return {data:await teacherDailyLessonPreparation(db,teacherId,sessionId)};
+      }
       case "ccp_coach_briefing_get":
         return {data:await teacherCoachBriefing(db,teacherId,args as Parameters<typeof teacherCoachBriefing>[2])};
       case "ccp_training_assignments_list":
@@ -2892,7 +2902,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
   } catch (error) {
     if (error instanceof TrainingPlanError)
       return {error:{code:error.code,message:error.message}};
-    if (error instanceof CoachBriefingError)
+    if (error instanceof CoachBriefingError || error instanceof DailyPreparationError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof UnifiedHistoryError)
       return {error:{code:error.code,message:error.message}};
