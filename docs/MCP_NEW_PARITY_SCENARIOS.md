@@ -92,3 +92,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | The selected civil date and workplace return the same upcoming canonical lessons in the dashboard and MCP; daylight-saving boundaries, ownership, cancelled lessons, slot-only versus persisted occurrences, moved starts and a real truncation case are verified without reading the roster or creating lessons. The no-date summary retains its original response. | `e2e/parity-daily-coaching.spec.ts#PARITY-daily-canonical-upcoming` — [442 authenticated browser tests passed](https://github.com/itshak/ChessCoachPal/actions/runs/45451910688) on exact candidate `9f388451a00e5beeb3d76f7bca6ded9a920b7e8c`; merged in [PR #174](https://github.com/itshak/ChessCoachPal/pull/174) at `ab3bd86b71e90895da413da53aab632cdfc152ad`. |
+
+## Daily coaching attendance review — accepted source slice
+
+| Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | Dated attendance review shows one task per ended lesson using frozen roster and persisted decisions, preserves an archived learner's missing decision, distinguishes unrecorded roster from complete, and excludes still-running, cancelled and foreign lessons. Exact schedule navigation and both read interfaces leave canonical records unchanged. | `e2e/parity-daily-missing-attendance.spec.ts#PARITY-daily-missing-attendance` — [443 authenticated browser scenarios passed](https://github.com/itshak/ChessCoachPal/actions/runs/45466325793) on exact `51f614a63c505928f7dc3424d30d828cc7f0e901`, merged in [PR #176](https://github.com/itshak/ChessCoachPal/pull/176) at `5df561935d53bde4daf68c4933fe51d235fa7b5f`. |
