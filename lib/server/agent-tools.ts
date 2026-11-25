@@ -100,6 +100,7 @@ import {dailyCloseRosterInput,DailyCloseError,teacherDailyClosePreview} from "@/
 import {dailyLessonPreparationInput,DailyPreparationError,teacherDailyLessonPreparation} from "@/lib/server/daily-lesson-preparation";
 import {dailyCombinedPreviewInput,dailyCombinedCommitInput,teacherDailyCombinedPreview,teacherDailyCombinedCommit} from "@/lib/server/daily-lesson-combined";
 import {dailyHomeworkFocusInput,teacherDailyHomeworkFocus} from "@/lib/server/daily-homework";
+import {LearnerReportPreviewError,learnerReportPreviewInput,teacherLearnerReportPreview} from "@/lib/server/learner-report-preview";
 import {LearnerEvidenceError,learnerEvidenceSchema,teacherLearnerEvidence} from "@/lib/server/learner-evidence";
 import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
 import {trainingPlanListSchema,trainingPlanGetSchema,trainingPlanCommitSchema,teacherTrainingPlansList,teacherTrainingPlanGet,teacherTrainingPlanCommit,TrainingPlanError} from "@/lib/server/student-training-plans";
@@ -1850,6 +1851,11 @@ const catalogue = [
     schema:dailyLessonPreparationInput,scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_learner_report_preview",
+    description:"Review a teacher-only, read-only candidate for one owned learner and one explicit owned workplace, with inclusive local dates and output language. Sources are completed sessions with frozen membership and the selected learner’s recorded attendance only. Unrecorded attendance stays unknown; sessions without a recorded local date are excluded. No private notes, other learners, payments, publishing, recipients, or permissions.",
+    schema:learnerReportPreviewInput,scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_learner_evidence_get",
     description:"Read recent completed lessons with frozen participation and exact attendance, separately from dated historical imports and aggregate-only source counts for one owned active or archived student ID. This is a bounded, read-only sample with separate totals and recorded workplace provenance. Unknown stays unknown; no notes, synthetic sessions, hours, mastery or enrollment inference.",
     schema:learnerEvidenceSchema,scope:"coach:read",readOnly:true,
@@ -1969,6 +1975,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const {sessionId}=args as z.infer<typeof dailyLessonPreparationInput>;
         return {data:await teacherDailyLessonPreparation(db,teacherId,sessionId)};
       }
+      case "ccp_learner_report_preview":
+        return {data:await teacherLearnerReportPreview(db,teacherId,args as z.infer<typeof learnerReportPreviewInput>)};
       case "ccp_learner_evidence_get":
         return {data:await teacherLearnerEvidence(db,teacherId,args as z.infer<typeof learnerEvidenceSchema>)};
       case "ccp_coach_briefing_get":
@@ -2986,7 +2994,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
   } catch (error) {
     if (error instanceof TrainingPlanError)
       return {error:{code:error.code,message:error.message}};
-    if (error instanceof LearnerEvidenceError || error instanceof CoachBriefingError || error instanceof DailyPreparationError || error instanceof DailyCloseError)
+    if (error instanceof LearnerReportPreviewError || error instanceof LearnerEvidenceError || error instanceof CoachBriefingError || error instanceof DailyPreparationError || error instanceof DailyCloseError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof UnifiedHistoryError)
       return {error:{code:error.code,message:error.message}};

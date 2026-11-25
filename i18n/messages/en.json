@@ -3416,5 +3416,32 @@
     "exact_terms": "Use exact-lesson terms",
     "attendance_review": "Attendance needs review",
     "amount_review": "Amount needs review"
+  },
+  "learnerReportPreview": {
+    "title": "Learner report preview",
+    "noSharing": "Private to you. This preview does not save, publish, or share anything.",
+    "noWorkplaces": "No workplaces available.",
+    "workplace": "Workplace",
+    "chooseWorkplace": "Choose a workplace",
+    "outputLanguage": "Output language",
+    "from": "From date",
+    "to": "Through date",
+    "loading": "Loading preview…",
+    "review": "Preview report",
+    "invalid": "Choose a workplace and valid dates, up to 367 days.",
+    "range": "Use a shorter date range.",
+    "unavailable": "Preview unavailable. Try again.",
+    "resultTitle": "Recorded lesson attendance",
+    "dateBasis": "Only completed lessons with a recorded local date are shown. Unrecorded attendance is not absence or evidence of learning.",
+    "noRecords": "No qualifying lessons in this date range.",
+    "outcomes": {
+      "present": "Present",
+      "late": "Late",
+      "absent": "Absent",
+      "excused": "Excused",
+      "student_cancelled": "Learner cancelled",
+      "teacher_cancelled": "Teacher cancelled",
+      "unknown": "Not recorded"
+    }
   }
 }
