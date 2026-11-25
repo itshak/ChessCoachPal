@@ -18596,3 +18596,99 @@ $private_report_lifecycle_commit$;
 REVOKE ALL ON FUNCTION public.ccp_private_report_lifecycle_commit(uuid,uuid,text,uuid,boolean)
  FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.ccp_private_report_lifecycle_commit(uuid,uuid,text,uuid,boolean) TO authenticated;
+
+-- Current settlement of one whole approved obligation month. Account-level
+-- receipts without an allocation do not have a workplace and are not counted.
+CREATE FUNCTION public.ccp_finance_period_end_actuals(
+ p_workplace_id uuid,p_month_start date,p_currency text,
+ p_billing_account_id uuid DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER
+SET search_path=pg_catalog,public,pg_temp AS $ccp_finance_period_end_actuals$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_month_end date;
+ v_summary jsonb;
+ v_scope boolean;
+ v_valid boolean;
+BEGIN
+ IF v_teacher IS NULL THEN
+   RAISE EXCEPTION 'UNAUTHORIZED' USING ERRCODE='42501';
+ END IF;
+ IF p_workplace_id IS NULL OR p_month_start IS NULL OR
+    p_month_start NOT BETWEEN date '0001-01-01' AND date '9999-12-01' OR
+    EXTRACT(day FROM p_month_start)<>1 OR
+    p_currency IS NULL OR p_currency !~ '^[A-Z]{3}$' THEN
+   RAISE EXCEPTION 'INVALID_PERIOD_END_ACTUALS_SCOPE' USING ERRCODE='22023';
+ END IF;
+ v_month_end:=(p_month_start+interval '1 month - 1 day')::date;
+ WITH scope AS MATERIALIZED (
+   SELECT EXISTS(SELECT 1 FROM public.workplaces w
+     WHERE w.id=p_workplace_id AND w.teacher_id=v_teacher)
+   AND (p_billing_account_id IS NULL OR EXISTS(SELECT 1 FROM public.billing_accounts b
+     WHERE b.id=p_billing_account_id AND b.teacher_id=v_teacher)) AS owned
+ ), posted AS MATERIALIZED (
+   SELECT o.id,o.teacher_id,o.kind,o.amount_cents
+   FROM public.financial_obligations o CROSS JOIN scope s
+   WHERE s.owned AND o.teacher_id=v_teacher AND o.workplace_id=p_workplace_id
+     AND o.currency=p_currency AND o.period_start>=p_month_start AND o.period_end<=v_month_end
+     AND (p_billing_account_id IS NULL OR o.billing_account_id=p_billing_account_id)
+ ), applied AS (
+   SELECT o.id AS obligation_id,sum(a.amount_cents-rv.amount) AS amount,
+     bool_and(a.amount_cents>=rv.amount) AS valid
+   FROM posted o JOIN public.payment_allocations a
+     ON a.teacher_id=o.teacher_id AND a.obligation_id=o.id
+   CROSS JOIN LATERAL (
+     SELECT COALESCE(sum(r.amount_cents),0) AS amount
+     FROM public.financial_reversals r
+     WHERE r.teacher_id=a.teacher_id AND r.allocation_id=a.id
+       AND r.kind='allocation_reversal'
+   ) rv
+   GROUP BY o.id
+ ), balances AS (
+   SELECT o.kind,o.amount_cents::numeric AS gross,c.amount AS correction,
+     COALESCE(a.amount,0) AS applied,COALESCE(a.valid,true) AS valid
+   FROM posted o LEFT JOIN applied a ON a.obligation_id=o.id
+   CROSS JOIN LATERAL (
+     SELECT COALESCE(sum(r.amount_cents),0) AS amount
+     FROM public.financial_reversals r
+     WHERE r.teacher_id=o.teacher_id AND r.obligation_id=o.id
+       AND r.kind='obligation_correction'
+   ) c
+ ), totals AS (
+   SELECT kinds.kind,kinds.ordinal,count(b.kind) AS entries,
+     COALESCE(sum(b.gross),0) AS gross,COALESCE(sum(b.correction),0) AS correction,
+     COALESCE(sum(b.applied),0) AS applied,
+     COALESCE(bool_and(b.valid AND b.correction>=0 AND b.applied>=0
+       AND b.correction+b.applied<=b.gross),true) AS valid
+   FROM (VALUES ('coach_earning',1),('period_compensation',2),('participant_charge',3))
+     AS kinds(kind,ordinal) LEFT JOIN balances b ON b.kind=kinds.kind
+   GROUP BY kinds.kind,kinds.ordinal
+ ), summary AS (
+   SELECT bool_and(t.valid AND t.gross BETWEEN 0 AND 9007199254740991
+                   AND t.entries<=9007199254740991) AS valid,
+     jsonb_agg(jsonb_build_object('kind',t.kind,'obligationCount',t.entries,
+       'grossPostedCents',t.gross,'correctionCents',t.correction,
+       'correctedPostedCents',t.gross-t.correction,'netAppliedCents',t.applied,
+       'outstandingCents',t.gross-t.correction-t.applied) ORDER BY t.ordinal) AS items
+   FROM totals t
+ )
+ SELECT s.owned,t.valid,jsonb_build_object('workplaceId',p_workplace_id,
+   'monthStart',p_month_start,'monthEnd',v_month_end,'currency',p_currency,
+   'billingAccountId',p_billing_account_id,'settlementBasis','current',
+   'categories',t.items)
+ INTO v_scope,v_valid,v_summary FROM scope s CROSS JOIN summary t;
+ IF v_scope IS DISTINCT FROM true THEN
+   RAISE EXCEPTION 'PERIOD_END_ACTUALS_SCOPE_NOT_OWNED' USING ERRCODE='42501';
+ END IF;
+ IF v_valid IS DISTINCT FROM true THEN
+   RAISE EXCEPTION 'PERIOD_END_ACTUALS_UNAVAILABLE' USING ERRCODE='22003';
+ END IF;
+ RETURN v_summary;
+END;
+$ccp_finance_period_end_actuals$;
+REVOKE ALL ON FUNCTION public.ccp_finance_period_end_actuals(uuid,date,text,uuid)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_finance_period_end_actuals(uuid,date,text,uuid)
+ TO authenticated;
+COMMENT ON FUNCTION public.ccp_finance_period_end_actuals(uuid,date,text,uuid) IS
+ 'Current settlement of posted obligations for one owned workplace, whole calendar month and currency; each obligation type stays separate. Not a forecast, historical cutoff or workplace cash receipt total.';
