@@ -71,7 +71,8 @@ export interface Database {
       };
       report_publication_audiences: {
         Row: {publication_id:string;portal_grant_id:string;teacher_id:string;
-          approved_by:string;approved_at:string;revoked_at:string|null;request_id:string};
+          approved_by:string;approved_at:string;revoked_at:string|null;request_id:string;
+          approved_grant_binding:string|null;approval_review_digest:string|null};
         Insert: {publication_id:string;portal_grant_id:string;teacher_id:string;
           approved_by:string;approved_at?:string;revoked_at?:string|null;request_id:string};
         Update: never;

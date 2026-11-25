@@ -18217,3 +18217,239 @@ END;
 $private_report_snapshot_get$;
 REVOKE ALL ON FUNCTION public.ccp_private_report_snapshot_get(uuid) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.ccp_private_report_snapshot_get(uuid) TO authenticated;
+
+-- Provisional exact successor: explicit audience for a sealed learner report.
+-- Legacy rows without an approved issued grant binding never become guest-visible.
+ALTER TABLE public.report_publication_audiences
+ ADD COLUMN approved_grant_binding text
+   CHECK (approved_grant_binding IS NULL OR approved_grant_binding ~ '^[a-f0-9]{64}$'),
+ ADD COLUMN approval_review_digest text CHECK (
+   (approval_review_digest IS NULL AND approved_grant_binding IS NULL) OR
+   (approval_review_digest IS NOT NULL AND approved_grant_binding IS NOT NULL
+     AND approval_review_digest ~ '^[a-f0-9]{64}$')
+ );
+
+-- The new binding can only be minted by the postgres-owned reviewed RPC.
+-- Old trusted row writers can still insert historical non-visible metadata.
+CREATE FUNCTION public.ccp_report_audience_binding_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $report_audience_binding$
+BEGIN
+ IF TG_OP='INSERT' THEN
+  IF NEW.approved_grant_binding IS NOT NULL AND current_user<>'postgres' THEN
+   RAISE EXCEPTION 'REPORT_AUDIENCE_REVIEW_REQUIRED' USING ERRCODE='42501';
+  END IF;
+ ELSIF (NEW.approved_grant_binding,NEW.approval_review_digest)
+       IS DISTINCT FROM (OLD.approved_grant_binding,OLD.approval_review_digest) THEN
+  RAISE EXCEPTION 'IMMUTABLE_AUDIENCE' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$report_audience_binding$;
+REVOKE ALL ON FUNCTION public.ccp_report_audience_binding_guard()
+ FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_report_audience_binding_guard BEFORE INSERT OR UPDATE
+ ON public.report_publication_audiences FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_audience_binding_guard();
+
+-- Keep one report authorization predicate for preview and guest reads. It
+-- accepts a row, not a bearer, and is not callable outside its definer callers.
+CREATE FUNCTION public.ccp_report_grant_current(
+ g public.portal_access_grants, p_now timestamptz
+) RETURNS boolean LANGUAGE sql STABLE
+SET search_path=pg_catalog,public,pg_temp AS $report_grant_current$
+ SELECT g.id IS NOT NULL AND g.revoked_at IS NULL AND g.expires_at>p_now
+  AND g.issued_at IS NOT NULL AND g.issued_at<=p_now AND g.token_digest IS NOT NULL
+  AND 'shared_notes'=ANY(g.permissions)
+  AND EXISTS(SELECT 1 FROM public.contacts c
+     WHERE (c.teacher_id,c.id)=(g.teacher_id,g.contact_id) AND c.status='active')
+  AND EXISTS(SELECT 1 FROM public.students s
+     WHERE (s.teacher_id,s.id)=(g.teacher_id,g.student_id) AND s.archived_at IS NULL)
+  AND EXISTS(SELECT 1 FROM public.workplaces w
+     WHERE (w.teacher_id,w.id)=(g.teacher_id,g.workplace_id) AND w.archived_at IS NULL)
+  AND EXISTS(SELECT 1 FROM public.student_contacts sc
+     WHERE (sc.teacher_id,sc.student_id,sc.contact_id)=(g.teacher_id,g.student_id,g.contact_id)
+      AND sc.active_to IS NULL AND (sc.active_from IS NULL OR sc.active_from<=(p_now AT TIME ZONE 'UTC')::date))
+  AND EXISTS(
+     SELECT 1 FROM public.workplace_enrollments e
+     LEFT JOIN public.teacher_settings t ON t.teacher_id=e.teacher_id
+     CROSS JOIN LATERAL (SELECT (p_now AT TIME ZONE coalesce(t.timezone,'UTC'))::date AS today) d
+     WHERE (e.teacher_id,e.student_id,e.workplace_id)=(g.teacher_id,g.student_id,g.workplace_id)
+      AND e.cancelled_at IS NULL AND (e.starts_on IS NULL OR e.starts_on<=d.today)
+      AND (e.ends_on IS NULL OR e.ends_on>=d.today))
+  AND (g.billing_account_id IS NULL OR EXISTS(SELECT 1 FROM public.billing_accounts b
+      WHERE (b.teacher_id,b.id)=(g.teacher_id,g.billing_account_id) AND b.status='active'));
+$report_grant_current$;
+REVOKE ALL ON FUNCTION public.ccp_report_grant_current(public.portal_access_grants,timestamptz)
+ FROM PUBLIC,anon,authenticated,service_role;
+
+-- Bind the exact issued grant, including the recipient and current bearer,
+-- even if a grant writer changed a field without incrementing its revision.
+-- Store a domain-separated hash, not the bearer or its original token hash.
+CREATE FUNCTION public.ccp_report_grant_binding(g public.portal_access_grants) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $report_grant_binding$
+ SELECT encode(sha256(convert_to(jsonb_build_array(
+  'ccp.report.grant.binding.v1',g.id,g.teacher_id,g.contact_id,g.student_id,g.workplace_id,
+  g.billing_account_id,g.revision,g.token_digest,
+  extract(epoch FROM g.issued_at),extract(epoch FROM g.expires_at),
+  ARRAY(SELECT DISTINCT u.permission COLLATE "C" FROM unnest(g.permissions) u(permission) ORDER BY 1)
+ )::text,'UTF8')),'hex');
+$report_grant_binding$;
+REVOKE ALL ON FUNCTION public.ccp_report_grant_binding(public.portal_access_grants)
+ FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION public.ccp_report_audience_review_internal(
+ p_teacher uuid,p_report uuid,p_grant uuid,p_now timestamptz
+) RETURNS jsonb LANGUAGE sql STABLE
+SET search_path=pg_catalog,public,pg_temp AS $report_audience_review_internal$
+ SELECT jsonb_build_object(
+  'publicationId',p.id,'snapshotDigest',p.snapshot_digest,'publicationRevision',p.revision::text,
+  'portalGrantId',g.id,'grantRevision',g.revision::text,
+  'recipientName',c.display_name,'learnerName',l.name,'workplaceName',w.name,
+  'expiresAt',g.expires_at,'grantBinding',public.ccp_report_grant_binding(g),
+  'reviewDigest',encode(sha256(convert_to(jsonb_build_array(
+     'ccp.report.audience.v1',p.teacher_id,p.id,p.student_id,p.workplace_id,
+     p.snapshot_digest,p.revision,public.ccp_report_grant_binding(g),
+     c.display_name,l.name,w.name
+    )::text,'UTF8')),'hex'))
+ FROM public.report_publications p
+ JOIN public.report_publication_snapshots s ON (s.teacher_id,s.publication_id)=(p.teacher_id,p.id)
+ JOIN public.portal_access_grants g
+  ON (g.teacher_id,g.student_id,g.workplace_id)=(p.teacher_id,p.student_id,p.workplace_id)
+ JOIN public.contacts c ON (c.teacher_id,c.id)=(g.teacher_id,g.contact_id)
+ JOIN public.students l ON (l.teacher_id,l.id)=(g.teacher_id,g.student_id)
+ JOIN public.workplaces w ON (w.teacher_id,w.id)=(g.teacher_id,g.workplace_id)
+ WHERE p.teacher_id=p_teacher AND p.id=p_report AND g.id=p_grant
+  AND p.revoked_at IS NULL AND p.superseded_by IS NULL
+  AND p.snapshot_storage_ref='db:report:v1:'||p.id::text
+  AND p.snapshot_digest=encode(sha256(convert_to(s.candidate::text,'UTF8')),'hex')
+  AND public.ccp_report_grant_current(g,p_now);
+$report_audience_review_internal$;
+REVOKE ALL ON FUNCTION public.ccp_report_audience_review_internal(uuid,uuid,uuid,timestamptz)
+ FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION public.ccp_report_audience_review(p_report uuid,p_grant uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp
+AS $report_audience_review$
+DECLARE v_teacher uuid:=auth.uid(); v_review jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501'; END IF;
+ v_review:=public.ccp_report_audience_review_internal(v_teacher,p_report,p_grant,statement_timestamp());
+ IF v_review IS NULL THEN RAISE EXCEPTION 'REPORT_AUDIENCE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ RETURN v_review-'grantBinding';
+END;
+$report_audience_review$;
+REVOKE ALL ON FUNCTION public.ccp_report_audience_review(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_report_audience_review(uuid,uuid) TO authenticated;
+
+CREATE FUNCTION public.ccp_report_audience_approve(
+ p_report uuid,p_grant uuid,p_review_digest text,p_request uuid,p_confirm boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp
+AS $report_audience_approve$
+DECLARE v_teacher uuid:=auth.uid(); v_review jsonb; a public.report_publication_audiences%ROWTYPE;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501'; END IF;
+ IF p_confirm IS DISTINCT FROM true OR p_report IS NULL OR p_grant IS NULL OR p_request IS NULL
+  OR p_review_digest IS NULL OR p_review_digest !~ '^[a-f0-9]{64}$' THEN
+  RAISE EXCEPTION 'REPORT_AUDIENCE_APPROVAL_REQUIRED' USING ERRCODE='22023';
+ END IF;
+ -- Same first lock as issuance of a new publication/entitlement change.
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501'; END IF;
+ SELECT * INTO a FROM public.report_publication_audiences
+  WHERE teacher_id=v_teacher AND request_id=p_request;
+ IF FOUND THEN
+  IF (a.publication_id,a.portal_grant_id,a.approval_review_digest)
+     IS DISTINCT FROM (p_report,p_grant,p_review_digest) THEN
+   RAISE EXCEPTION 'REPORT_AUDIENCE_IDEMPOTENCY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+ ELSE
+  PERFORM 1 FROM public.report_publications WHERE teacher_id=v_teacher AND id=p_report FOR UPDATE;
+  PERFORM 1 FROM public.portal_access_grants WHERE teacher_id=v_teacher AND id=p_grant FOR UPDATE;
+  v_review:=public.ccp_report_audience_review_internal(v_teacher,p_report,p_grant,clock_timestamp());
+  IF v_review IS NULL OR v_review->>'reviewDigest' IS DISTINCT FROM p_review_digest THEN
+   RAISE EXCEPTION 'REPORT_AUDIENCE_REVIEW_STALE' USING ERRCODE='40001';
+  END IF;
+  IF EXISTS(SELECT 1 FROM public.report_publication_audiences
+     WHERE teacher_id=v_teacher AND publication_id=p_report AND portal_grant_id=p_grant) THEN
+   RAISE EXCEPTION 'REPORT_AUDIENCE_ALREADY_REVIEWED' USING ERRCODE='23505';
+  END IF;
+  INSERT INTO public.report_publication_audiences
+   (publication_id,portal_grant_id,teacher_id,approved_by,request_id,approved_grant_binding,approval_review_digest)
+  VALUES(p_report,p_grant,v_teacher,v_teacher,p_request,v_review->>'grantBinding',p_review_digest)
+  RETURNING * INTO a;
+ END IF;
+ RETURN jsonb_build_object('publicationId',a.publication_id,'portalGrantId',a.portal_grant_id,
+   'approvalId',a.request_id,'approvedAt',a.approved_at,'revokedAt',a.revoked_at);
+END;
+$report_audience_approve$;
+REVOKE ALL ON FUNCTION public.ccp_report_audience_approve(uuid,uuid,text,uuid,boolean)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_report_audience_approve(uuid,uuid,text,uuid,boolean) TO authenticated;
+
+-- One-way withdrawal, scoped by the exact immutable approval. Repeating
+-- the same withdrawal returns the persisted time. No current plan or grant
+-- is needed to withdraw an owned report already approved for that recipient.
+CREATE FUNCTION public.ccp_report_audience_withdraw(
+ p_report uuid,p_grant uuid,p_approval uuid,p_confirm boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp
+AS $report_audience_withdraw$
+DECLARE v_teacher uuid:=auth.uid(); a public.report_publication_audiences%ROWTYPE;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501'; END IF;
+ IF p_confirm IS DISTINCT FROM true OR p_report IS NULL OR p_grant IS NULL OR p_approval IS NULL THEN
+  RAISE EXCEPTION 'REPORT_AUDIENCE_WITHDRAWAL_REQUIRED' USING ERRCODE='22023';
+ END IF;
+ SELECT * INTO a FROM public.report_publication_audiences WHERE teacher_id=v_teacher
+  AND publication_id=p_report AND portal_grant_id=p_grant AND request_id=p_approval FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_AUDIENCE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ IF a.revoked_at IS NULL THEN
+  UPDATE public.report_publication_audiences SET revoked_at=clock_timestamp()
+   WHERE teacher_id=v_teacher AND publication_id=p_report AND portal_grant_id=p_grant
+   RETURNING * INTO a;
+ END IF;
+ RETURN jsonb_build_object('publicationId',a.publication_id,'portalGrantId',a.portal_grant_id,
+   'approvalId',a.request_id,'approvedAt',a.approved_at,'revokedAt',a.revoked_at);
+END;
+$report_audience_withdraw$;
+REVOKE ALL ON FUNCTION public.ccp_report_audience_withdraw(uuid,uuid,uuid,boolean)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_report_audience_withdraw(uuid,uuid,uuid,boolean) TO authenticated;
+
+-- Service-only server-rendered guest read. One MVCC snapshot proves bearer,
+-- scope and audience, then returns only sealed report fields. No IDs, notes,
+-- hashes, provenance, recipient or workspace metadata are in this response.
+CREATE FUNCTION public.ccp_portal_sealed_learner_reports(p_secret text) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp
+AS $portal_sealed_learner_reports$
+ WITH granted AS MATERIALIZED (
+  SELECT g.id,g.teacher_id,g.student_id,g.workplace_id,public.ccp_report_grant_binding(g) AS binding
+  FROM public.portal_access_grants g
+  WHERE p_secret ~ '^[A-Za-z0-9_-]{42,44}$'
+   AND g.token_digest=encode(sha256(convert_to(p_secret,'UTF8')),'hex')
+   AND public.ccp_report_grant_current(g,statement_timestamp())
+ ), visible AS MATERIALIZED (
+  SELECT p.id,p.approved_at,jsonb_build_object(
+    'from',s.candidate->'from','to',s.candidate->'to',
+    'outputLocale',s.candidate->'outputLocale','dateBasis',s.candidate->'dateBasis',
+    'records',coalesce((SELECT jsonb_agg(jsonb_build_object(
+       'localDate',r.record->'localDate','attendance',r.record->'attendance') ORDER BY r.ordinal)
+       FROM jsonb_array_elements(s.candidate->'records') WITH ORDINALITY r(record,ordinal)),'[]'::jsonb)
+   ) AS report
+  FROM granted g
+  JOIN public.report_publication_audiences a
+   ON (a.teacher_id,a.portal_grant_id,a.approved_grant_binding)=(g.teacher_id,g.id,g.binding)
+  JOIN public.report_publications p
+   ON (p.teacher_id,p.id,p.student_id,p.workplace_id)=(g.teacher_id,a.publication_id,g.student_id,g.workplace_id)
+  JOIN public.report_publication_snapshots s ON (s.teacher_id,s.publication_id)=(p.teacher_id,p.id)
+  WHERE a.revoked_at IS NULL AND p.revoked_at IS NULL AND p.superseded_by IS NULL
+   AND jsonb_typeof(s.candidate->'records')='array'
+   AND p.snapshot_storage_ref='db:report:v1:'||p.id::text
+   AND p.snapshot_digest=encode(sha256(convert_to(s.candidate::text,'UTF8')),'hex')
+  ORDER BY p.approved_at DESC,p.id DESC LIMIT 31
+ ), first_page AS (SELECT * FROM visible ORDER BY approved_at DESC,id DESC LIMIT 30)
+ SELECT jsonb_build_object(
+  'reports',coalesce((SELECT jsonb_agg(report ORDER BY approved_at DESC,id DESC) FROM first_page),'[]'::jsonb),
+  'truncated',(SELECT count(*)>30 FROM visible));
+$portal_sealed_learner_reports$;
+REVOKE ALL ON FUNCTION public.ccp_portal_sealed_learner_reports(text) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_portal_sealed_learner_reports(text) TO service_role;
