@@ -252,3 +252,29 @@ Storage. Exact hosted
 and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45621695895)
 passed (458 cases plus three scheduling repeats). No live migration or
 deployment, real recipient, notification or access approval occurred.
+
+### Optional day-end review of ended, unconfirmed lessons
+
+[PR #218](https://github.com/itshak/ChessCoachPal/pull/218) merged exact
+candidate `561ed2dd22a7ef35876b1d0e4cb85faad908c185` at
+`117d8ffaa5ab58923649923f2c56698caa61b529`. The Dashboard, signed
+HTTP and delegated MCP use the same bounded frozen-roster scan. The
+teacher can open an optional review for a specific civil day. An ended
+lesson still marked scheduled stays on the list even if every
+attendance decision is recorded. A missing or oversized roster stays
+unknown; one group is one row; closed, in-progress and cancelled lessons
+do not appear. Scope, truncation and canonical resolution links are
+preserved. The view does not change or infer closure, attendance,
+teaching or charges.
+
+The exact disposable production-mode build passed the new review and
+both earlier attendance/close cases with unchanged Storage. Exact hosted
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45631899784),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45631900979),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45631899635),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45631899719)
+and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45631899640)
+passed (459 cases and three scheduling repeats). The source change
+preserved the schema lock; no deployment, closing, or billing occurred.
+The package-expiry and period-reconciliation parts of the work remain
+independent.
