@@ -152,7 +152,7 @@ test("PARITY:PARITY-daily-lesson-close",async({page,request})=>{
     await navigation.click();
     const panel=page.getByRole("region",{name:"Complete coaching lesson"});
     const commit=panel.getByRole("button",{name:"Complete lesson",exact:true});
-    const approve=panel.getByRole("checkbox");
+    const approve=panel.getByRole("checkbox",{name:"I confirm these attendance statuses and lesson completion."});
     const fill=async()=>{
       await expect(panel.locator("form")).toHaveAttribute("data-session-id",ended);
       await expect(panel.getByRole("combobox",{name:"Lesson to complete"})).toHaveCount(0);

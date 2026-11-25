@@ -98,6 +98,7 @@ import { reportCsv, reportText } from "@/lib/coaching-report";
 import {unifiedLessonFilter,teacherUnifiedLessonHistory,UnifiedHistoryError} from "@/lib/server/unified-lesson-service";
 import {dailyCloseRosterInput,DailyCloseError,teacherDailyClosePreview} from "@/lib/server/daily-lesson-close";
 import {dailyLessonPreparationInput,DailyPreparationError,teacherDailyLessonPreparation} from "@/lib/server/daily-lesson-preparation";
+import {dailyCombinedPreviewInput,dailyCombinedCommitInput,teacherDailyCombinedPreview,teacherDailyCombinedCommit} from "@/lib/server/daily-lesson-combined";
 import {dailyHomeworkFocusInput,teacherDailyHomeworkFocus} from "@/lib/server/daily-homework";
 import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
 import {trainingPlanListSchema,trainingPlanGetSchema,trainingPlanCommitSchema,teacherTrainingPlansList,teacherTrainingPlanGet,teacherTrainingPlanCommit,TrainingPlanError} from "@/lib/server/student-training-plans";
@@ -1795,6 +1796,16 @@ const catalogue = [
     schema:dailyHomeworkFocusInput,scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_daily_lesson_complete_with_material_preview",
+    description:"Review closing the exact ended scheduled Daily lesson with the complete frozen roster, separately entered participant and optional shared notes, and one existing owned catalog material taught only to explicitly selected present or late learners. First read the exact Daily roster with ccp_sessions_roster_preview and keep its workplace, session and individual revisions unchanged while supplying the proposed decisions. This read changes nothing.",
+    schema:dailyCombinedPreviewInput,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_daily_lesson_complete_with_material_commit",
+    description:"Only after the coach explicitly confirms the exact combined preview, send its proposed payload unchanged, confirmed=true and a fresh request ID. Atomically close the lesson and link one exact revision of an existing material as taught only to the chosen learners. Retry the same request ID with identical content; if context or revisions changed, get a new review. No inferred mastery or external calls.",
+    schema:dailyCombinedCommitInput,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_lesson_preparation_get",
     description:"Read one upcoming exact canonical lesson from the active workplace or All. Uses only its frozen roster for bounded recorded material coverage, verified observations at that venue, and teacher-wide assignment counts. Shows unavailable, unrecorded and truncated evidence separately. No participant notes, inferred proficiency, or writes.",
     schema:dailyLessonPreparationInput,scope:"coach:read",readOnly:true,
@@ -1906,6 +1917,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherTrainingPlanCommit(db,teacherId,args as Parameters<typeof teacherTrainingPlanCommit>[2])};
       case "ccp_daily_homework_focus_get":
         return {data:await teacherDailyHomeworkFocus(db,teacherId,args as z.infer<typeof dailyHomeworkFocusInput>)};
+      case "ccp_daily_lesson_complete_with_material_preview":
+        return {data:await teacherDailyCombinedPreview(db,teacherId,args as z.infer<typeof dailyCombinedPreviewInput>)};
+      case "ccp_daily_lesson_complete_with_material_commit":
+        return {data:await teacherDailyCombinedCommit(db,args as z.infer<typeof dailyCombinedCommitInput>)};
       case "ccp_lesson_preparation_get": {
         const {sessionId}=args as z.infer<typeof dailyLessonPreparationInput>;
         return {data:await teacherDailyLessonPreparation(db,teacherId,sessionId)};
