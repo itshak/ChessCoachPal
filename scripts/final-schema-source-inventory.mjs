@@ -33,6 +33,8 @@ const internalSqlOnly=new Set([
  "ccp_delivery_outbox","ccp_session_note_audit","ccp_session_attendance_audit",
  "teacher_study_chapter_index","lichess_puzzle_series","teacher_study_preferences",
  "ccp_historical_attendance_evidence","ccp_historical_import_stages",
+ // The sealed report payload/provenance has no direct API role grants.
+ "report_publication_snapshots",
 ]);
 const rows=names.map(name=>{
  const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
