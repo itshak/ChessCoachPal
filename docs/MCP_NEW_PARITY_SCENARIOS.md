@@ -134,3 +134,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | The exact owned learner's profile and MCP distinguish completed lessons with a frozen roster from dated imported attendance and undated aggregate declarations, preserve each recorded workplace and archived history, and do not expose unrelated identities or private notes. Missing local timezone is not guessed. Independent read-back confirms read-only behavior. | `e2e/parity-daily-learner-evidence.spec.ts#PARITY-daily-learner-evidence` — [449 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45528897952) on `91d7767d079d242d6ebedd0196d8a1662e8545c7`, merged in [PR #192](https://github.com/itshak/ChessCoachPal/pull/192) at `18e51331ab8f332724307c530ac6fae1134d6ef5`. |
+
+## Daily archived-learner choices and safe retry — accepted source slice
+
+| Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | The signed exact-learner preview exposes matching no-write archived choices in the website and MCP. The browser supports keyboard decline and reselection, links only to an exact owned learner's retained history after disambiguation, and keeps the original approved request when its response is lost. Independent reads confirm one session after cross-client replay and no writes from decline/history review. | `e2e/parity-daily-archived-choices.spec.ts#PARITY-daily-archived-choices` — [450 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45533732222) on `9b46358630904290d943d50edbb6675f218ef5f5`, merged in [PR #194](https://github.com/itshak/ChessCoachPal/pull/194) at `f787816a265d9042116509f77fd440e823c418c6`. |
