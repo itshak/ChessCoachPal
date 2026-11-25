@@ -1669,6 +1669,23 @@
       "evidenceTest": "e2e/parity-daily-learner-evidence.spec.ts"
     },
     {
+      "path": "app/api/students/[id]/private-reports/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_private_learner_report_review",
+        "ccp_private_learner_report_save",
+        "ccp_private_learner_reports_list",
+        "ccp_private_learner_report_get"
+      ],
+      "explanation": "Shared signed teacher-only review, explicit exact immutable save, owned list and reopen. Saved snapshots omit provenance from clients; no audience or notification.",
+      "evidenceTest": "e2e/parity-professional-private-report-save.spec.ts"
+    },
+    {
       "path": "app/api/students/[id]/report-preview/route.ts",
       "methods": [
         "GET"

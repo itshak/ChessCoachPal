@@ -3418,6 +3418,26 @@
     "amount_review": "Amount needs review"
   },
   "learnerReportPreview": {
+    "reviewToSave": "Review before saving",
+    "approvalHint": "Check this exact version before saving it privately. No one else gets access.",
+    "approveSave": "Save private report",
+    "cancelApproval": "Cancel save review",
+    "retrySaveAction": "Retry the same save",
+    "stale": "The report evidence changed. Review it again before saving.",
+    "upgrade": "The current plan cannot save private reports. Preview is still available.",
+    "retrySave": "I could not confirm the save. Retry the same request to avoid a duplicate.",
+    "savedNotice": "Private report saved. It was not shared.",
+    "savedSnapshot": "Saved version · {state}",
+    "reopen": "Reopen saved report",
+    "loadSaved": "Saved private reports",
+    "noSaved": "No private reports are saved for this learner.",
+    "recentOnly": "Showing the 30 newest saved reports.",
+    "savedEntry": "{workplace} · {time} · {language} · {state}",
+    "reportStates": {
+      "sealed": "Private",
+      "revoked": "Revoked",
+      "superseded": "Superseded"
+    },
     "title": "Learner report preview",
     "noSharing": "Private to you. This preview does not save, publish, or share anything.",
     "noWorkplaces": "No workplaces available.",
