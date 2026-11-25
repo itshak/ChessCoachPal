@@ -186,10 +186,36 @@ The source uses the protected [ADR-0030 activation](https://github.com/itshak/Ch
 the application merge leaves the installed lock unchanged. No release
 or deployment.
 
+## Verified source: learner lesson and import evidence
+
+[PR #192](https://github.com/itshak/ChessCoachPal/pull/192) merged at
+`18e51331ab8f332724307c530ac6fae1134d6ef5`. An owned learner's website
+profile and delegated MCP read the same exact-ID evidence, including
+when the learner is archived. Completed lessons require the frozen
+roster; saved attendance decisions are separate from imported dated
+observations and aggregate source totals. The workplace comes from each
+record, not current enrollment, and a missing lesson timezone leaves
+only the recorded UTC instant. The bounded lists show separate complete
+counts; the import review link opens the existing signed import workflow.
+No alias merges, private notes, invented lesson dates, or teaching
+hours are inferred.
+
+Exact candidate `91d7767d079d242d6ebedd0196d8a1662e8545c7` passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45528897876),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45528897886),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45528897852),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45528897885)
+and [signed browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45528897952)
+(449 browser cases plus three scheduling repeats). The signed case
+covers school plus personal workplaces, an imported absence, an
+aggregate declaration, archive retention, read-only delegated scope,
+foreign denial, and independent no-write read-back. No change to
+schema, release, or deployment.
+
 ## Still open
 
 - Age-based freshness requires a separately justified policy; neither old
   snapshots nor missing provider receipts imply lookup failure.
-- Learner/import review and full coverage of archived-learner recovery in
-  the daily workflow.
+- Explicit localized decline, choose-another and historical review choices
+  for every applicable archived-learner recovery flow, with signed proof.
 - Complete website/MCP acceptance and evidence before archival.

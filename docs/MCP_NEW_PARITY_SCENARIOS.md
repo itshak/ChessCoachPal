@@ -128,3 +128,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | Review one ended lesson with the exact saved attendance roster, existing material revision and explicitly selected taught attendees. A signed browser save whose committed response is lost can be safely retried, including through delegated MCP. Independent read-back confirms one material link, teaching evidence only for the selected attendee, and no write from rejected previews. The ordinary no-material close still works. | `e2e/parity-daily-combined-close.spec.ts#PARITY-daily-combined-close` — [448 browser cases plus three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45523982805) on `b0b482afc6cee33fb15a3a45c8057b43a9ae92ac`, merged in [PR #190](https://github.com/itshak/ChessCoachPal/pull/190) at `bd311c62de1e0b682161f8b7d7585e68799c4f83`. |
+
+## Daily learner evidence by source — accepted source slice
+
+| Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | The exact owned learner's profile and MCP distinguish completed lessons with a frozen roster from dated imported attendance and undated aggregate declarations, preserve each recorded workplace and archived history, and do not expose unrelated identities or private notes. Missing local timezone is not guessed. Independent read-back confirms read-only behavior. | `e2e/parity-daily-learner-evidence.spec.ts#PARITY-daily-learner-evidence` — [449 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45528897952) on `91d7767d079d242d6ebedd0196d8a1662e8545c7`, merged in [PR #192](https://github.com/itshak/ChessCoachPal/pull/192) at `18e51331ab8f332724307c530ac6fae1134d6ef5`. |
