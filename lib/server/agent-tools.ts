@@ -180,6 +180,8 @@ import {sessionNotesList,sessionNoteSave,SessionNoteError,
 import {canonicalAttendanceList,canonicalAttendanceSet,canonicalAttendanceBulkSet,
  CanonicalAttendanceError,type CanonicalAttendanceSetInput,
  type CanonicalAttendanceBulkInput} from "@/lib/server/canonical-session-attendance";
+import {commitProfessionalRecurrence,previewProfessionalRecurrence,ProfessionalRecurrenceError,
+ recurrenceCommitSchema,recurrencePreviewSchema} from "@/lib/server/professional-recurrence";
 import {canonicalSlotsList,canonicalSlotCreate,canonicalSlotUpdate,canonicalSlotDelete,
  canonicalSlotCreateSchema,canonicalSlotEditSchema,canonicalSlotDeleteSchema,CanonicalSlotError}
  from "@/lib/server/canonical-slot-service";
@@ -941,6 +943,16 @@ const catalogue = [
     description:"Atomically correct a canonical recurrence rule, preserving billed/attended/noted/moved history and reconciling future unprotected sessions. Requires exact updatedAt and idempotency key; never erase history.",
     schema:canonicalSlotEditSchema.extend({slotId:uuid,confirmed:z.literal(true)}).strict(),
     scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_recurring_series_edit_preview",
+    description:"Inspect an owned recurring rule for a reviewed time or duration change to this original calendar date and future occurrences, or all still-editable series segments. Pass exact slot ID, timestamp revision, explicit review-through date and null successor ID unless RECURRENCE_SCOPE_TAIL_ID_REQUIRED asks for a newly generated UUID. Use a null cutoff for entire series. Preserves completed and protected history; no writes. Explain the proposed scope and counts before approval.",
+    schema:recurrencePreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_recurring_series_edit_commit",
+    description:"Apply exactly the reviewed scoped time or duration edit after explicit approval. Repeat the exact preview inputs and digest with confirmed:true and a request UUID. Never chain other slot writes to imitate this operation. Retry only the same request when the result is unknown. No attendance, payment, or notification is inferred.",
+    schema:recurrenceCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_recurring_slots_delete",
@@ -2421,6 +2433,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
           expectedUpdatedAt:a.expectedUpdatedAt,idempotencyKey:a.idempotencyKey,
         })};
       }
+      case "ccp_recurring_series_edit_preview":
+        return {data:await previewProfessionalRecurrence(db,args as z.infer<typeof recurrencePreviewSchema>)};
+      case "ccp_recurring_series_edit_commit":
+        return {data:await commitProfessionalRecurrence(db,args as z.infer<typeof recurrenceCommitSchema>)};
       case "ccp_recurring_slots_delete": {
         const a=args as {slotId:string;idempotencyKey:string};
         return {data:await canonicalSlotDelete(db,teacherId,a.slotId,{
@@ -2995,7 +3011,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalPrivateSessionError)
       return {error:{code:error.code,message:error.message}};
-    if (error instanceof CanonicalSlotError)
+    if (error instanceof ProfessionalRecurrenceError || error instanceof CanonicalSlotError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof PayerAssignmentError)
       return {error:{code:error.code,message:error.message}};
