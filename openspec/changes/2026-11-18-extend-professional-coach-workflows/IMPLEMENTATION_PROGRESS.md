@@ -190,3 +190,36 @@ passed (456 cases plus three scheduling repeats). No report audience,
 portal access, delivery, billing, or deployment occurred. Explicit
 recipient approval, portal reads, revocation and supersession remain
 separate, unaccepted scope.
+
+### Approve and withdraw access for one existing portal link
+
+[PR #212](https://github.com/itshak/ChessCoachPal/pull/212) merged exact
+candidate `8d27bc4d268620ea9614467fbcf970d71a32c02c` at
+`b91051fa7bdc116f5f7e9b952f0c0aaff76577e7`. The signed website and delegated
+MCP share review, approval and withdrawal for one explicitly selected
+existing eligible link and one previously sealed report. A renamed
+recipient invalidates the exact prior review; retrying an uncertain result
+returns the existing approval instead of creating another audience.
+A linked contact without that approval cannot see the report.
+
+The server-rendered guest page shows only the allowlisted saved facts in
+the report’s chosen language. Synthetic guests for a different learner
+or linked-but-unapproved guardian see no report. A teacher can withdraw
+one exact approval even after the publishing entitlement ends. The
+private copy and other permissions stay intact. There are no link,
+notification, finance or Storage writes from this workflow.
+
+[ADR-0032](../../../docs/adr/0032-private-learner-report-audience-source-review.md)
+received its separate prior permit in [PR #210](https://github.com/itshak/ChessCoachPal/pull/210);
+[PR #211](https://github.com/itshak/ChessCoachPal/pull/211) activated the
+reviewed exact preproduction schema in source only. The application PR
+left the accepted lock unchanged. Independent disposable production-mode
+runs passed both signed report cases with unchanged Storage tables. Exact
+hosted [CI](https://github.com/itshak/ChessCoachPal/actions/runs/45600178301),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45600178141),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45600178292),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45600178300)
+and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45600178266)
+passed (457 cases plus three scheduling repeats). Whole-publication
+revocation and correction by explicit supersession remain separate, along
+with any real recipient operation or deployment.
