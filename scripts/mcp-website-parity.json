@@ -418,6 +418,21 @@
       "evidenceTest": "e2e/canonical-private-sessions-parity.spec.ts"
     },
     {
+      "path": "app/api/coaching/calendar/slots/scoped/route.ts",
+      "methods": [
+        "POST",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_recurring_series_edit_preview",
+        "ccp_recurring_series_edit_commit"
+      ],
+      "explanation": "Shared authenticated scope review and digest-bound atomic time/duration edit use the locked database. Cutoffs use original local occurrence dates, not a moved event's actual time. Protected evidence persists; uncertain commits preserve the same approved request.",
+      "evidenceTest": "e2e/parity-professional-scoped-series.spec.ts"
+    },
+    {
       "path": "app/api/coaching/calendar/slots/[id]/route.ts",
       "methods": [
         "PATCH",
@@ -1952,6 +1967,7 @@
     "components/teacher/schedule/CanonicalMakeupPanel.tsx",
     "components/teacher/schedule/CanonicalScheduleBoard.tsx",
     "components/teacher/schedule/CanonicalSlotManager.tsx",
+    "components/teacher/schedule/ScopedSeriesEditor.tsx",
     "components/teacher/schedule/PolicySettings.tsx",
     "components/teacher/settings/BillingSettingsForm.tsx",
     "components/teacher/settings/BulkStudentLifecyclePanel.tsx",

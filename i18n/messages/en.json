@@ -816,6 +816,28 @@
     "languageEnglish": "English",
     "openContacts": "Manage independent contacts and billing accounts"
   },
+  "scopedRecurrence": {
+    "heading": "Review a recurring series edit",
+    "help": "Change the time or duration for a reviewed scope. Past or protected lessons are not rewritten. Leave either change blank to keep its current value.",
+    "scope": "Scope",
+    "future": "This original date and future lessons",
+    "entire": "All still-editable dates in this series",
+    "original": "Original occurrence date",
+    "through": "Review through date",
+    "newTime": "New local time",
+    "newDuration": "New duration in minutes",
+    "review": "Preview series changes",
+    "reviewCounts": "From {from} through {to}: {segments} segments, {planned} planned lessons, {drafts} replaceable drafts, {protected} protected records.",
+    "confirm": "I approve this exact reviewed edit.",
+    "save": "Apply reviewed edit",
+    "retry": "Retry the same approved edit",
+    "close": "Close series review",
+    "missing": "Choose the review dates and at least one change.",
+    "notReviewable": "The edit could not be reviewed or applied. Check the dates, exact slot revision, and conflicts, then preview again.",
+    "unavailable": "The review is temporarily unavailable.",
+    "unconfirmed": "The result could not be verified. Retry the same approved edit before making another change.",
+    "saved": "The reviewed series edit was saved."
+  },
   "scheduling": {
     "recurringTitle": "Recurring lessons",
     "recurringIntro": "Rules for future teaching; historical sessions are preserved.",
