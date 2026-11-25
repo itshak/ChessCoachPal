@@ -18009,3 +18009,211 @@ REVOKE ALL ON FUNCTION public.ccp_teacher_daily_session_complete_with_material(
 GRANT EXECUTE ON FUNCTION public.ccp_teacher_daily_session_complete_with_material(
  uuid,uuid,uuid,timestamptz,text,jsonb,uuid,bigint,uuid[],date,uuid,boolean
 ) TO authenticated;
+
+-- Preproduction report sealing candidate. A bounded attendance-only snapshot
+-- and private provenance are stored atomically, not in a shared file bucket.
+CREATE TABLE public.report_publication_snapshots (
+ publication_id uuid PRIMARY KEY,
+ teacher_id uuid NOT NULL,
+ candidate jsonb NOT NULL
+  CHECK(jsonb_typeof(candidate)='object' AND octet_length(candidate::text)<=65536),
+ evidence jsonb NOT NULL
+  CHECK(jsonb_typeof(evidence)='array' AND jsonb_array_length(evidence)<=500
+        AND octet_length(evidence::text)<=262144),
+ review_digest text NOT NULL CHECK(review_digest ~ '^[a-f0-9]{64}$'),
+ FOREIGN KEY(publication_id,teacher_id)
+  REFERENCES public.report_publications(id,teacher_id) ON DELETE CASCADE
+);
+ALTER TABLE public.report_publication_snapshots ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.report_publication_snapshots FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION public.ccp_report_snapshot_immutable() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $report_snapshot_immutable$
+BEGIN
+ IF TG_OP='DELETE' AND NOT EXISTS(SELECT 1 FROM public.teachers WHERE id=OLD.teacher_id)
+  THEN RETURN OLD; END IF;
+ RAISE EXCEPTION 'IMMUTABLE_REPORT_SNAPSHOT' USING ERRCODE='23514';
+END;
+$report_snapshot_immutable$;
+REVOKE ALL ON FUNCTION public.ccp_report_snapshot_immutable() FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER ccp_report_snapshot_immutable
+ BEFORE UPDATE OR DELETE ON public.report_publication_snapshots FOR EACH ROW
+ EXECUTE FUNCTION public.ccp_report_snapshot_immutable();
+
+-- Resolve exact facts in one statement so preview and binding cannot mix two
+-- committed revisions. All source identities stay internal to sealing.
+CREATE FUNCTION public.ccp_private_report_review_internal(
+ p_teacher uuid,p_student uuid,p_workplace uuid,p_from date,p_to date,p_locale text
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SET search_path=pg_catalog,public,pg_temp AS $report_review_internal$
+DECLARE
+ v_count integer; v_rows jsonb; v_evidence jsonb; v_candidate jsonb; v_digest text;
+BEGIN
+ IF p_teacher IS NULL OR p_student IS NULL OR p_workplace IS NULL
+  OR p_from IS NULL OR p_to IS NULL OR NOT isfinite(p_from) OR NOT isfinite(p_to)
+  OR p_from<'0001-01-01'::date OR p_to>'9999-12-31'::date OR p_to<p_from
+  OR p_to-p_from>366 OR p_locale IS NULL OR p_locale NOT IN ('en','he','ru') THEN
+  RAISE EXCEPTION 'REPORT_REVIEW_INVALID' USING ERRCODE='22023';
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.students WHERE id=p_student AND teacher_id=p_teacher)
+  OR NOT EXISTS(SELECT 1 FROM public.workplaces WHERE id=p_workplace AND teacher_id=p_teacher) THEN
+  RAISE EXCEPTION 'REPORT_SCOPE_NOT_FOUND' USING ERRCODE='P0002';
+ END IF;
+
+ WITH seeds AS MATERIALIZED (
+  SELECT s.id,s.starts_at,s.local_timezone
+  FROM public.teaching_sessions s
+  JOIN public.session_participants r
+   ON r.session_id=s.id AND r.teacher_id=p_teacher AND r.student_id=p_student
+  WHERE s.teacher_id=p_teacher AND s.workplace_id=p_workplace AND s.status='completed'
+   AND s.starts_at>=((p_from-1)::timestamp AT TIME ZONE 'UTC')
+   AND s.starts_at<((p_to+2)::timestamp AT TIME ZONE 'UTC')
+  ORDER BY s.starts_at,s.id LIMIT 501
+ ), dates AS MATERIALIZED (
+  SELECT s.*,(s.starts_at AT TIME ZONE s.local_timezone)::date AS local_date
+  FROM seeds s
+  JOIN pg_timezone_names z ON z.name=s.local_timezone
+ ), facts AS MATERIALIZED (
+  SELECT d.id,d.starts_at,d.local_timezone,d.local_date,
+         a.id AS decision_id,a.updated_at AS decision_revision,coalesce(a.status,'unknown') AS outcome
+  FROM dates d
+  LEFT JOIN public.session_attendance a
+   ON a.teacher_id=p_teacher AND a.session_id=d.id AND a.student_id=p_student
+  WHERE d.local_date BETWEEN p_from AND p_to
+ )
+ SELECT (SELECT count(*) FROM seeds),
+  coalesce(jsonb_agg(jsonb_build_object(
+   'localDate',to_char(f.local_date,'YYYY-MM-DD'),'attendance',f.outcome
+  ) ORDER BY f.local_date,f.outcome COLLATE "C",f.id),'[]'::jsonb),
+  coalesce(jsonb_agg(jsonb_build_object(
+   'sessionId',f.id,'startEpoch',extract(epoch FROM f.starts_at),'timeZone',f.local_timezone,
+   'localDate',to_char(f.local_date,'YYYY-MM-DD'),'attendance',f.outcome,
+   'decisionId',f.decision_id,'decisionRevision',extract(epoch FROM f.decision_revision)
+  ) ORDER BY f.id),'[]'::jsonb)
+ INTO v_count,v_rows,v_evidence FROM facts f;
+
+ IF v_count>500 THEN RAISE EXCEPTION 'REPORT_REVIEW_TOO_LARGE' USING ERRCODE='22023'; END IF;
+ v_candidate:=jsonb_build_object(
+  'from',to_char(p_from,'YYYY-MM-DD'),'to',to_char(p_to,'YYYY-MM-DD'),
+  'outputLocale',p_locale,'dateBasis','recorded_session_local_date','records',v_rows
+ );
+ v_digest:=encode(sha256(convert_to(jsonb_build_array('ccp.report.seal.v1',
+  p_teacher,p_student,p_workplace,v_candidate,v_evidence)::text,'UTF8')),'hex');
+ RETURN jsonb_build_object('candidate',v_candidate,'evidence',v_evidence,'reviewDigest',v_digest);
+END;
+$report_review_internal$;
+REVOKE ALL ON FUNCTION public.ccp_private_report_review_internal(uuid,uuid,uuid,date,date,text)
+ FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION public.ccp_private_report_review(
+ p_student uuid,p_workplace uuid,p_from date,p_to date,p_locale text
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $private_report_review$
+DECLARE v_teacher uuid:=auth.uid(); v_read jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501'; END IF;
+ v_read:=public.ccp_private_report_review_internal(v_teacher,p_student,p_workplace,p_from,p_to,p_locale);
+ RETURN jsonb_build_object('status','teacher_preview_only','writesPerformed',false,
+  'candidate',v_read->'candidate','reviewDigest',v_read->>'reviewDigest');
+END;
+$private_report_review$;
+REVOKE ALL ON FUNCTION public.ccp_private_report_review(uuid,uuid,date,date,text)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_private_report_review(uuid,uuid,date,date,text) TO authenticated;
+
+CREATE FUNCTION public.ccp_private_report_seal(
+ p_student uuid,p_workplace uuid,p_from date,p_to date,p_locale text,
+ p_review_digest text,p_request_id uuid,p_confirmed boolean
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $private_report_seal$
+DECLARE
+ v_teacher uuid:=auth.uid(); v_review jsonb; v_candidate jsonb;
+ v_publication public.report_publications%ROWTYPE;
+ v_snapshot public.report_publication_snapshots%ROWTYPE;
+ v_id uuid; v_saved_at timestamptz; v_content_digest text;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501'; END IF;
+ IF p_confirmed IS DISTINCT FROM true OR p_request_id IS NULL OR p_review_digest IS NULL
+  OR p_review_digest !~ '^[a-f0-9]{64}$' THEN
+  RAISE EXCEPTION 'REPORT_APPROVAL_REQUIRED' USING ERRCODE='22023';
+ END IF;
+ IF p_student IS NULL OR p_workplace IS NULL OR p_from IS NULL OR p_to IS NULL
+  OR NOT isfinite(p_from) OR NOT isfinite(p_to) OR p_from<'0001-01-01'::date
+  OR p_to>'9999-12-31'::date OR p_to<p_from OR p_to-p_from>366
+  OR p_locale IS NULL OR p_locale NOT IN ('en','he','ru') THEN
+  RAISE EXCEPTION 'REPORT_REVIEW_INVALID' USING ERRCODE='22023';
+ END IF;
+ -- Established entitlement guard also locks this teacher; exact concurrent
+ -- retries of this service serialize before inspecting the immutable receipt.
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_SCOPE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ SELECT * INTO v_publication FROM public.report_publications
+  WHERE teacher_id=v_teacher AND request_id=p_request_id;
+ IF FOUND THEN
+  SELECT * INTO v_snapshot FROM public.report_publication_snapshots
+   WHERE publication_id=v_publication.id AND teacher_id=v_teacher;
+  IF NOT FOUND OR v_snapshot.review_digest IS DISTINCT FROM p_review_digest
+    OR v_publication.student_id IS DISTINCT FROM p_student OR v_publication.workplace_id IS DISTINCT FROM p_workplace
+    OR v_publication.output_locale IS DISTINCT FROM p_locale
+    OR v_snapshot.candidate->>'from' IS DISTINCT FROM to_char(p_from,'YYYY-MM-DD')
+    OR v_snapshot.candidate->>'to' IS DISTINCT FROM to_char(p_to,'YYYY-MM-DD') THEN
+   RAISE EXCEPTION 'REPORT_REQUEST_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  v_id:=v_publication.id; v_saved_at:=v_publication.approved_at;
+  v_content_digest:=v_publication.snapshot_digest;
+ ELSE
+  v_review:=public.ccp_private_report_review_internal(v_teacher,p_student,p_workplace,p_from,p_to,p_locale);
+  IF v_review->>'reviewDigest' IS DISTINCT FROM p_review_digest THEN
+   RAISE EXCEPTION 'REPORT_REVIEW_STALE' USING ERRCODE='40001';
+  END IF;
+  v_id:=gen_random_uuid(); v_saved_at:=clock_timestamp();
+  v_candidate:=v_review->'candidate';
+  IF jsonb_array_length(v_candidate->'records')=0 THEN
+   RAISE EXCEPTION 'REPORT_REVIEW_EMPTY' USING ERRCODE='22023';
+  END IF;
+  v_content_digest:=encode(sha256(convert_to(v_candidate::text,'UTF8')),'hex');
+  INSERT INTO public.report_publications(id,teacher_id,student_id,workplace_id,snapshot_digest,
+   snapshot_storage_ref,output_locale,approved_by,approved_at,request_id)
+   VALUES(v_id,v_teacher,p_student,p_workplace,v_content_digest,
+   'db:report:v1:'||v_id::text,p_locale,v_teacher,v_saved_at,p_request_id);
+  INSERT INTO public.report_publication_snapshots(publication_id,teacher_id,candidate,evidence,review_digest)
+   VALUES(v_id,v_teacher,v_candidate,v_review->'evidence',p_review_digest);
+ END IF;
+ -- Only identity and original receipt properties, no evidence or current
+ -- sharing state on replay. No audience/grant/object is created here.
+ RETURN jsonb_build_object('publicationId',v_id,'snapshotDigest',v_content_digest,'approvedAt',
+  to_char(v_saved_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+  'receiptType','teacher_private_seal');
+END;
+$private_report_seal$;
+REVOKE ALL ON FUNCTION public.ccp_private_report_seal(uuid,uuid,date,date,text,text,uuid,boolean)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_private_report_seal(uuid,uuid,date,date,text,text,uuid,boolean) TO authenticated;
+
+-- Signed teacher read-back of the exact saved artifact, never a portal read.
+CREATE FUNCTION public.ccp_private_report_snapshot_get(p_publication uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $private_report_snapshot_get$
+DECLARE
+ v_teacher uuid:=auth.uid();
+ v_publication public.report_publications%ROWTYPE;
+ v_candidate jsonb;
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501'; END IF;
+ SELECT p.* INTO v_publication FROM public.report_publications p
+  WHERE p.id=p_publication AND p.teacher_id=v_teacher AND p.snapshot_storage_ref='db:report:v1:'||p.id::text;
+ IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_SCOPE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ SELECT s.candidate INTO v_candidate FROM public.report_publication_snapshots s
+  WHERE s.publication_id=p_publication AND s.teacher_id=v_teacher;
+ IF NOT FOUND OR encode(sha256(convert_to(v_candidate::text,'UTF8')),'hex')
+     IS DISTINCT FROM v_publication.snapshot_digest THEN
+  RAISE EXCEPTION 'REPORT_SNAPSHOT_UNAVAILABLE' USING ERRCODE='P0002';
+ END IF;
+ RETURN jsonb_build_object('publicationId',p_publication,
+  'snapshotDigest',v_publication.snapshot_digest,'revision',v_publication.revision::text,
+  'status',CASE WHEN v_publication.revoked_at IS NOT NULL THEN 'revoked'
+   WHEN v_publication.superseded_by IS NOT NULL THEN 'superseded' ELSE 'sealed' END,
+  'candidate',v_candidate);
+END;
+$private_report_snapshot_get$;
+REVOKE ALL ON FUNCTION public.ccp_private_report_snapshot_get(uuid) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_private_report_snapshot_get(uuid) TO authenticated;
