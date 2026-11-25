@@ -11,8 +11,8 @@ type Pending=
  | {mode:"withdraw";publicationId:string;portalGrantId:string;approvalId:string;confirmed:true};
 type ErrorKey="unavailable"|"reviewAgain"|"upgrade"|"uncertain";
 
-export function LearnerReportAudiencePanel({studentId,publicationId,onUncertain}:{
- studentId:string;publicationId:string;onUncertain:(uncertain:boolean)=>void;
+export function LearnerReportAudiencePanel({studentId,publicationId,blocked=false,onUncertain}:{
+ studentId:string;publicationId:string;blocked?:boolean;onUncertain:(uncertain:boolean)=>void;
 }){
  const t=useTranslations("learnerReportAudience");
  const f=useFormatter();
@@ -30,7 +30,7 @@ export function LearnerReportAudiencePanel({studentId,publicationId,onUncertain}
  const date=(value:string)=>f.dateTime(new Date(value),{dateStyle:"medium",timeStyle:"short"});
  const action="w-fit max-w-full rounded border border-border px-3 py-2 text-sm";
  function begin(){
-  if(guard.current)return false;
+  if(blocked||guard.current)return false;
   guard.current=true;setBusy(true);setIssue(null);setReceipt(null);
   return true;
  }
@@ -109,7 +109,7 @@ export function LearnerReportAudiencePanel({studentId,publicationId,onUncertain}
   <section aria-labelledby={id+"-title"} aria-busy={busy} className="mt-4 min-w-0 border-t border-border pt-3">
    <h3 id={id+"-title"} className="font-semibold">{t("title")}</h3>
    <p className="mt-1 text-sm text-muted">{t("intro")}</p>
-   <button type="button" className={action+" mt-2"} disabled={busy||!!attempt} onClick={()=>load()}>{t("load")}</button>
+   <button type="button" className={action+" mt-2"} disabled={blocked||busy||!!attempt} onClick={()=>load()}>{t("load")}</button>
    {issue&&<p role="alert" className="mt-2 text-sm">{t(issue)}</p>}
    {receipt&&<p role="status" className="mt-2 text-sm font-semibold">{t(receipt.revokedAt?"withdrawn":"approved")}</p>}
    {overview&&(
@@ -118,13 +118,13 @@ export function LearnerReportAudiencePanel({studentId,publicationId,onUncertain}
       <div className="grid min-w-0 gap-2">
        <label htmlFor={id+"-choice"}>{t("recipient")}</label>
        <select id={id+"-choice"} className="w-full min-w-0 rounded border border-border bg-background px-2 py-2"
-        value={choice} disabled={busy||!!attempt} onChange={e=>{
+        value={choice} disabled={blocked||busy||!!attempt} onChange={e=>{
          setChoice(e.target.value);setReview(null);setWithdrawal(null);setIssue(null);setReceipt(null);
         }}>
         <option value="">{t("select")}</option>
         {overview.choices.map(option=><option key={option.portalGrantId} value={option.portalGrantId}>{name(option)}</option>)}
        </select>
-       <button type="button" className={action} disabled={busy||!choice||!!attempt||!!review} onClick={reviewChoice}>{t("review")}</button>
+       <button type="button" className={action} disabled={blocked||busy||!choice||!!attempt||!!review} onClick={reviewChoice}>{t("review")}</button>
       </div>
      ):<p>{t("none")}</p>}
      {overview.choicesTruncated&&<p>{t("choicesLimited")}</p>}
@@ -133,11 +133,11 @@ export function LearnerReportAudiencePanel({studentId,publicationId,onUncertain}
        <p className="break-words">{t("reviewExact",{name:review.recipientName,student:review.learnerName,
         workplace:review.workplaceName,time:date(review.expiresAt),code:review.portalGrantId.slice(-8)})}</p>
        {!attempt&&<div className="flex flex-wrap gap-2">
-        <button type="button" className={action} disabled={busy} onClick={()=>commit({
+        <button type="button" className={action} disabled={blocked||busy} onClick={()=>commit({
          mode:"approve",publicationId,portalGrantId:review.portalGrantId,reviewDigest:review.reviewDigest,
          requestId:crypto.randomUUID(),confirmed:true,
         })}>{t("confirm")}</button>
-        <button type="button" className={action} disabled={busy} onClick={()=>setReview(null)}>{t("cancel")}</button>
+        <button type="button" className={action} disabled={blocked||busy} onClick={()=>setReview(null)}>{t("cancel")}</button>
        </div>}
       </div>
      )}
@@ -150,7 +150,7 @@ export function LearnerReportAudiencePanel({studentId,publicationId,onUncertain}
           <span className="min-w-0 break-words">{t("previousEntry",{name:row.recipientName??t("unknown"),
            code:row.portalGrantId.slice(-8),time:date(row.revokedAt??row.approvedAt),
            state:t(row.revokedAt?"statusWithdrawn":"statusApproved")})}</span>
-          {!row.revokedAt&&<button type="button" className={action} disabled={busy||!!attempt} onClick={()=>{
+          {!row.revokedAt&&<button type="button" className={action} disabled={blocked||busy||!!attempt} onClick={()=>{
            setReview(null);setIssue(null);setReceipt(null);setWithdrawal(row);
           }}>{t("withdraw")}</button>}
          </li>
@@ -158,19 +158,19 @@ export function LearnerReportAudiencePanel({studentId,publicationId,onUncertain}
        </ul>
       </div>
      )}
-     {overview.nextApprovalCursor&&<button type="button" className={action} disabled={busy||!!attempt} onClick={()=>load(true)}>{t("more")}</button>}
+     {overview.nextApprovalCursor&&<button type="button" className={action} disabled={blocked||busy||!!attempt} onClick={()=>load(true)}>{t("more")}</button>}
      {withdrawal&&(
       <div className="min-w-0 space-y-2 rounded border border-border p-3">
        <p className="break-words">{t("withdrawExact",{name:withdrawal.recipientName??t("unknown"),code:withdrawal.portalGrantId.slice(-8)})}</p>
        {!attempt&&<div className="flex flex-wrap gap-2">
-        <button type="button" className={action} disabled={busy} onClick={()=>commit({
+        <button type="button" className={action} disabled={blocked||busy} onClick={()=>commit({
          mode:"withdraw",publicationId,portalGrantId:withdrawal.portalGrantId,approvalId:withdrawal.approvalId,confirmed:true,
         })}>{t("confirmWithdraw")}</button>
-        <button type="button" className={action} disabled={busy} onClick={()=>setWithdrawal(null)}>{t("cancel")}</button>
+        <button type="button" className={action} disabled={blocked||busy} onClick={()=>setWithdrawal(null)}>{t("cancel")}</button>
        </div>}
       </div>
      )}
-     {attempt&&issue==="uncertain"&&<button type="button" className={action} disabled={busy} onClick={()=>commit(attempt)}>{t("retry")}</button>}
+     {attempt&&issue==="uncertain"&&<button type="button" className={action} disabled={blocked||busy} onClick={()=>commit(attempt)}>{t("retry")}</button>}
     </div>
    )}
   </section>

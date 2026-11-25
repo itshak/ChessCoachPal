@@ -9,6 +9,8 @@ import type {
   PrivateLearnerReportSnapshot,PrivateLearnerReportSummary,
 } from "@/lib/server/private-learner-report";
 import {LearnerReportAudiencePanel} from "@/components/teacher/LearnerReportAudiencePanel";
+import {LearnerReportLifecyclePanel} from "@/components/teacher/LearnerReportLifecyclePanel";
+import type {ReportLifecycleReceipt} from "@/lib/server/private-learner-report-lifecycle";
 import type {LearnerReportPreview} from "@/lib/server/learner-report-preview";
 
 const hydrationSubscribe=()=>()=>{};
@@ -31,6 +33,7 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
   studentId:string;workplaces:{id:string;name:string}[];
 }){
   const t=useTranslations("learnerReportPreview");
+  const lifecycleText=useTranslations("learnerReportLifecycle");
   const appLocale=supportedLocale(useLocale())??"en";
   const id=useId();
   // The server-rendered form cannot submit before the client handler attaches.
@@ -46,13 +49,23 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
   const reportsUrl=endpoint+"/private-reports";
   const [pending,setPending]=useState(false);
   const [audienceUncertain,setAudienceUncertain]=useState(false);
+  const [lifecycleUncertain,setLifecycleUncertain]=useState(false);
+  const [lifecycleReceipt,setLifecycleReceipt]=useState<ReportLifecycleReceipt|null>(null);
+  const reportActionPending=audienceUncertain||lifecycleUncertain;
+  function applyLifecycle(receipt:ReportLifecycleReceipt){
+    setSaved(current=>current?.publicationId===receipt.publicationId
+      ?{...current,revision:receipt.revision,status:receipt.status}:current);
+    setSavedList(current=>current?{...current,reports:current.reports.map(row=>row.publicationId===receipt.publicationId
+      ?{...row,status:receipt.status}:row)}:null);
+    setLifecycleReceipt(receipt);
+  }
 
   function reset(){
-    setResult(null);setError(null);setFilters(null);setApproval(null);setReceipt(null);setSaved(null);
+    setResult(null);setError(null);setFilters(null);setApproval(null);setReceipt(null);setSaved(null);setLifecycleReceipt(null);
   }
   async function preview(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
-    if(audienceUncertain)return;
+    if(reportActionPending)return;
     const form=new FormData(event.currentTarget);
     const query=new URLSearchParams();
     for(const name of ["workplaceId","from","to","outputLocale"])
@@ -108,18 +121,18 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
   }
 
   async function openSaved(publicationId:string){
-    if(pending||audienceUncertain)return;
+    if(pending||reportActionPending)return;
     setError(null);setPending(true);
     try{
       const response=await readReport(reportsUrl+"?"+new URLSearchParams({mode:"get",publicationId}));
       if(!response.ok){setError("unavailable");return;}
-      setSaved(await response.json());setApproval(null);
+      setSaved(await response.json());setApproval(null);setLifecycleReceipt(null);
     }catch{setError("unavailable");}
     finally{setPending(false);}
   }
 
   async function loadSaved(){
-    if(pending||audienceUncertain)return;
+    if(pending||reportActionPending)return;
     setError(null);setPending(true);
     try{
       const response=await readReport(reportsUrl+"?mode=list");
@@ -144,7 +157,7 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
       <p id={id+"-help"} className="mt-2 text-sm text-muted">{t("noSharing")}</p>
       {workplaces.length===0?<p className="mt-2 text-sm text-muted">{t("noWorkplaces")}</p>:(
         <form className="mt-3" onSubmit={preview} onChange={reset} aria-describedby={id+"-help"} aria-busy={pending}>
-          <fieldset className="grid min-w-0 gap-3 sm:grid-cols-2" disabled={!ready||pending||saveUncertain||audienceUncertain}>
+          <fieldset className="grid min-w-0 gap-3 sm:grid-cols-2" disabled={!ready||pending||saveUncertain||reportActionPending}>
             <label className="grid min-w-0 gap-1 text-sm">
               {t("workplace")}
               <select name="workplaceId" defaultValue="" required className={control}>
@@ -213,10 +226,16 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
            {t("reopen")}
           </button>
         )}
-        <button type="button" className={action} disabled={!ready||pending||saveUncertain||audienceUncertain} onClick={loadSaved}>{t("loadSaved")}</button>
+        <button type="button" className={action} disabled={!ready||pending||saveUncertain||reportActionPending} onClick={loadSaved}>{t("loadSaved")}</button>
       </div>
-      {saved&&<LearnerReportAudiencePanel key={saved.publicationId} studentId={studentId}
-        publicationId={saved.publicationId} onUncertain={setAudienceUncertain}/>}
+      {lifecycleReceipt&&<p role="status" className="mt-3 text-sm font-semibold">
+        {lifecycleText(lifecycleReceipt.status==="revoked"?"revoked":"superseded")}
+      </p>}
+      {saved&&<LearnerReportAudiencePanel key={saved.publicationId+"-"+saved.revision} studentId={studentId}
+        publicationId={saved.publicationId} blocked={lifecycleUncertain} onUncertain={setAudienceUncertain}/>}
+      {saved?.status==="sealed"&&<LearnerReportLifecyclePanel key={saved.publicationId} studentId={studentId}
+        publicationId={saved.publicationId} blocked={audienceUncertain} onUncertain={setLifecycleUncertain}
+        onCommitted={applyLifecycle}/>}
       {savedList&&(
         <div className="mt-3 text-sm" role="region" aria-label={t("loadSaved")}>
           {savedList.reports.length===0&&<p>{t("noSaved")}</p>}
@@ -229,7 +248,7 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
                 language:localeDetails[row.outputLocale].name,state:t(`reportStates.${row.status}`),
               });
               return <li key={row.publicationId}><button type="button" className={action}
-                disabled={!ready||pending||saveUncertain||audienceUncertain} onClick={()=>openSaved(row.publicationId)}>{label}</button></li>;
+                disabled={!ready||pending||saveUncertain||reportActionPending} onClick={()=>openSaved(row.publicationId)}>{label}</button></li>;
             })}
           </ul>
         </div>
