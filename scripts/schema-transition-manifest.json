@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "mode": "single-canonical-baseline",
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "682d4becd9fe89a36ab81d4291e9cae6f81f6ecf3e8ca5f774069577958fe9a5",
+  "baselineSha256": "8b34bd598a656a4751423c75ee4f3fccb4837e642cb852494c24a63816de9c0d",
   "operatorCutoverRequired": true,
   "baselineRequiredObjects": [
     "students",
@@ -82,6 +82,7 @@
     "ccp_capability_definition_contract_guard",
     "ccp_manual_online_rating_binding",
     "ccp_manual_online_rating_commit",
-    "rating_snapshot_request_claims"
+    "rating_snapshot_request_claims",
+    "ccp_teacher_daily_session_complete_with_material"
   ]
 }
