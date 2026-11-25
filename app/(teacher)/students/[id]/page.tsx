@@ -3,7 +3,8 @@ import {getTranslations} from "next-intl/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Card } from "@/components/ui/card";
+import {LearnerEvidencePanel} from "@/components/teacher/LearnerEvidencePanel";
+import {learnerEvidenceSchema,teacherLearnerEvidence} from "@/lib/server/learner-evidence";
 import { ChessLearningPanel } from "@/components/teacher/ChessLearningPanel";
 import { MaterialHistoryPanel } from "@/components/teacher/MaterialHistoryPanel";
 import { StudentTrainingPlansPanel } from "@/components/teacher/StudentTrainingPlansPanel";
@@ -50,7 +51,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
     { data: student },
     dimensions,
     { data: assessments },
-    { data: attendedLessons },
+    learnerEvidence,
     { data: lessonNoteRows },
     policy,
   ] = await Promise.all([
@@ -59,9 +60,8 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
     getOrSeedDimensions(supabase, user.id),
     supabase.from("skill_assessments").select("id, dimension_id, rating, assessed_on, created_at")
       .eq("student_id", id).order("assessed_on").order("created_at"),
-    supabase.from("session_attendance").select("status,session_id")
-      .eq("teacher_id",user.id).eq("student_id",id)
-      .order("marked_at",{ascending:false}).limit(500),
+    learnerEvidenceSchema.safeParse({studentId:id}).success
+      ? teacherLearnerEvidence(supabase,user.id,{studentId:id}).catch(()=>null) : Promise.resolve(null),
     supabase.from("session_notes").select(
       "id,body,private_body,shared_with_contacts,emailed_at,updated_at,teaching_sessions!session_notes_session_teacher_fkey(starts_at,local_timezone)"
     ).eq("teacher_id",user.id).eq("student_id",id)
@@ -69,15 +69,6 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
     getPolicy(supabase, user.id),
   ]);
   if (!student) notFound();
-
-  const attendanceCounts: Record<string, number> = {};
-  for(const row of attendedLessons??[]){
-    const status=row.status;
-    if(status)attendanceCounts[status]=(attendanceCounts[status]??0)+1;
-  }
-  const markedLessons=Object.values(attendanceCounts).reduce((a,b)=>a+b,0);
-  const attendanceRate=markedLessons?Math.round(100*
-    ((attendanceCounts.present??0)+(attendanceCounts.late??0))/markedLessons):null;
 
   const lessonNotes=(lessonNoteRows??[]).flatMap(row=>{
     const session=oneToOne(row.teaching_sessions as
@@ -130,6 +121,9 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
           <EditableStudentName studentId={id} initialName={student.name} />
           <a href="#student-contacts" className="text-sm text-primary hover:underline">
             {t("contacts")}
+          </a>
+          <a href="#learner-evidence" className="ms-4 text-sm text-primary hover:underline">
+            {t("learnerEvidenceLink")}
           </a>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -195,41 +189,13 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       <StudentLessonNotes notes={lessonNotes} timezone={policy.timezone} />
       <StudentTrainingPlansPanel studentId={id} />
       <CoachBriefingPanel studentId={id} />
+      <LearnerEvidencePanel evidence={learnerEvidence} />
       <div className="mb-8"><UnifiedLessonHistoryPanel fixedStudentId={id}/></div>
       <div className="mb-8"><MaterialHistoryPanel fixedStudentId={id} /></div>
 
       <h2 className="text-lg font-semibold mb-3">{t("progress")}</h2>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <div className="mb-8">
         <SkillsPanel studentId={id} dimensions={dimensions} assessments={assessments ?? []} />
-        <Card padding="sm">
-          <h3 className="font-semibold mb-3">{t("attendance")}</h3>
-          {markedLessons === 0 ? (
-            <p className="text-sm text-muted">
-              {t("noAttendance")}{" "}
-              <Link href="/schedule" className="text-primary hover:underline">{t("schedule")}</Link> {t("pageSuffix")}
-            </p>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div className="rounded-lg bg-surface-dim/60 p-3">
-                  <div className="text-xs text-muted">{t("attended")}</div>
-                  <div className="text-xl font-bold text-success">{attendanceCounts.attended ?? 0} / {markedLessons}</div>
-                </div>
-                <div className="rounded-lg bg-surface-dim/60 p-3">
-                  <div className="text-xs text-muted">{t("attendanceRate")}</div>
-                  <div className="text-xl font-bold">{attendanceRate === null ? "—" : `${attendanceRate}%`}</div>
-                </div>
-              </div>
-              <div className="space-y-1 text-sm">
-                {([["student_cancel",t("studentCancellations")],["teacher_cancel",t("teacherCancellations")],["no_show",t("noShows")]] as const).map(([key,label]) => (
-                  <div key={key} className="flex justify-between">
-                    <span className="text-muted">{label}</span><span>{attendanceCounts[key] ?? 0}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </Card>
       </div>
       <ChessLearningPanel fixedStudentId={id} />
     </div>

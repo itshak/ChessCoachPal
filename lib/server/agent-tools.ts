@@ -100,6 +100,7 @@ import {dailyCloseRosterInput,DailyCloseError,teacherDailyClosePreview} from "@/
 import {dailyLessonPreparationInput,DailyPreparationError,teacherDailyLessonPreparation} from "@/lib/server/daily-lesson-preparation";
 import {dailyCombinedPreviewInput,dailyCombinedCommitInput,teacherDailyCombinedPreview,teacherDailyCombinedCommit} from "@/lib/server/daily-lesson-combined";
 import {dailyHomeworkFocusInput,teacherDailyHomeworkFocus} from "@/lib/server/daily-homework";
+import {LearnerEvidenceError,learnerEvidenceSchema,teacherLearnerEvidence} from "@/lib/server/learner-evidence";
 import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
 import {trainingPlanListSchema,trainingPlanGetSchema,trainingPlanCommitSchema,teacherTrainingPlansList,teacherTrainingPlanGet,teacherTrainingPlanCommit,TrainingPlanError} from "@/lib/server/student-training-plans";
 import { ReportServiceError, workplaceTeachingReport } from "@/lib/server/coaching-report-service";
@@ -376,7 +377,7 @@ const catalogue = [
   },
   {
     name:"ccp_students_bulk_lifecycle_preview",
-    description:"Preview archive/reactivation for identified students and exact revisions. Archiving requires removing current enrollment first; current enrollment removal does NOT preserve last workplace history yet. For reactivation, ask which workplace the student is returning to; never infer current enrollment from historical attendance. Preview also checks commitments and hosted quota.",
+    description:"Preview archive/reactivation for identified students and exact revisions. If bulk archive is blocked by enrollment or commitments, use the dated lifecycle preview for the individual learner; do not delete past periods. For reactivation, ask which workplace the student is returning to; never infer current enrollment from historical attendance. Preview also checks commitments and hosted quota.",
     schema:bulkLifecyclePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -1811,6 +1812,11 @@ const catalogue = [
     schema:dailyLessonPreparationInput,scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_learner_evidence_get",
+    description:"Read recent completed lessons with frozen participation and exact attendance, separately from dated historical imports and aggregate-only source counts for one owned active or archived student ID. This is a bounded, read-only sample with separate totals and recorded workplace provenance. Unknown stays unknown; no notes, synthetic sessions, hours, mastery or enrollment inference.",
+    schema:learnerEvidenceSchema,scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_coach_briefing_get",
     description:"Prepare a fact-based teacher-owned student briefing: recent lesson history, explicitly attested material, assigned homework, coach reviews and approved chess observations. Each item has stored source IDs, with unknowns marked. No AI-inferred mastery.",
     schema:coachBriefingSchema,scope:"coach:read",readOnly:true,
@@ -1925,6 +1931,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const {sessionId}=args as z.infer<typeof dailyLessonPreparationInput>;
         return {data:await teacherDailyLessonPreparation(db,teacherId,sessionId)};
       }
+      case "ccp_learner_evidence_get":
+        return {data:await teacherLearnerEvidence(db,teacherId,args as z.infer<typeof learnerEvidenceSchema>)};
       case "ccp_coach_briefing_get":
         return {data:await teacherCoachBriefing(db,teacherId,args as Parameters<typeof teacherCoachBriefing>[2])};
       case "ccp_training_assignments_list":
@@ -2928,7 +2936,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
   } catch (error) {
     if (error instanceof TrainingPlanError)
       return {error:{code:error.code,message:error.message}};
-    if (error instanceof CoachBriefingError || error instanceof DailyPreparationError || error instanceof DailyCloseError)
+    if (error instanceof LearnerEvidenceError || error instanceof CoachBriefingError || error instanceof DailyPreparationError || error instanceof DailyCloseError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof UnifiedHistoryError)
       return {error:{code:error.code,message:error.message}};

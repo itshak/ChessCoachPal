@@ -1611,6 +1611,19 @@
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {
+      "path": "app/api/students/[id]/learning-evidence/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_learner_evidence_get"
+      ],
+      "explanation": "Teacher student profile and signed website/MCP reads share one bounded exact-ID projection distinguishing completed teaching, imported dates and aggregate-only evidence, including archived learner history, unknown decisions and recorded workplace provenance.",
+      "evidenceTest": "e2e/parity-daily-learner-evidence.spec.ts"
+    },
+    {
       "path": "app/api/students/[id]/workplaces/route.ts",
       "methods": [
         "GET"
@@ -1892,6 +1905,7 @@
     "components/teacher/CompletedArchivedRecoveryPanel.tsx",
     "components/teacher/FenReviewPanel.tsx",
     "components/teacher/HostedLimitBanner.tsx",
+    "components/teacher/LearnerEvidencePanel.tsx",
     "components/teacher/LearningMaterialsCatalog.tsx",
     "components/teacher/LessonCapturePreviewPanel.tsx",
     "components/teacher/LessonCompletionPanel.tsx",

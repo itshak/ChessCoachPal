@@ -982,7 +982,36 @@
     "importFailed": "עדכון הדירוג נכשל",
     "importSaved": "תצפיות הדירוג מהפלטפורמה נשמרו. הערכת החוזק של המאמן לא השתנתה."
   },
+  "learnerEvidence": {
+    "heading": "תיעוד שיעורים וייבוא",
+    "unavailable": "התיעוד אינו זמין כרגע.",
+    "archived": "התלמיד בארכיון. התיעוד הקודם עדיין זמין.",
+    "completedHeading": "שיעורים שהושלמו עם רשימת משתתפים שמורה",
+    "noCompleted": "אין שיעורים שהושלמו והתלמיד מופיע ברשימת המשתתפים השמורה שלהם.",
+    "showing": "מוצגות {visible} מתוך {total} רשומות.",
+    "unknownDate": "תאריך לא מאומת",
+    "recordedUtc": "{timestamp} UTC (לא תועד תאריך מקומי)",
+    "unknownWorkplace": "מקום הלימוד אינו זמין",
+    "importedHeading": "תיעוד נוכחות שיובא",
+    "importedExplanation": "רישומים וסיכומים שיובאו אינם שיעורים בלוח השנה ואינם קובעים שעות הוראה.",
+    "noImported": "אין תיעוד נוכחות שיובא.",
+    "importedTotals": "רישומים מתוארכים: {dated}. שורות סיכום: {aggregate}, ובהן {declared} שיעורים לפי המקור.",
+    "datedRow": "{date}: {status}",
+    "aggregateRow": "מ־{start} עד {end}: {count} שיעורים לפי המקור, ללא תאריכים מדויקים",
+    "sourceRow": "שורת מקור {row}",
+    "reviewImport": "סקירת ייבוא היסטורי",
+    "status": {
+      "present": "נוכחות",
+      "late": "איחור",
+      "absent": "היעדרות",
+      "excused": "היעדרות מוצדקת",
+      "student_cancelled": "ביטול מצד התלמיד",
+      "teacher_cancelled": "ביטול מצד המורה",
+      "unknown": "נוכחות לא תועדה"
+    }
+  },
   "studentDetail": {
+    "learnerEvidenceLink": "תיעוד שיעורים וייבוא",
     "student": "תלמיד",
     "back": "תלמידים",
     "family": "משפחה:",
