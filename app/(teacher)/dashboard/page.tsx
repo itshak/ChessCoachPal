@@ -8,7 +8,7 @@ import { teacherDashboardPageModel, teacherDashboardSummaryInput } from "@/lib/s
 export async function generateMetadata() {const t=await getTranslations("dashboard");return {title:t("title")};}
 
 export default async function DashboardPage({ searchParams }: {
-  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[]; prepareSession?: string | string[] }>;
+  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[]; prepareSession?: string | string[]; closeReview?: string | string[] }>;
 }) {
   const t=await getTranslations("dashboard");
   const locale=await getLocale();
@@ -16,11 +16,12 @@ export default async function DashboardPage({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { date: rawDate, homeworkAfter, prepareSession } = await searchParams;
-  const filters = teacherDashboardSummaryInput.safeParse({ date: rawDate, homeworkAfter });
+  const { date: rawDate, homeworkAfter, prepareSession, closeReview: rawCloseReview } = await searchParams;
+  const filters = teacherDashboardSummaryInput.safeParse({ date: rawDate, homeworkAfter,
+    closeReview: rawCloseReview === undefined ? undefined : rawCloseReview === "1" });
   const { summary, students, upcoming, recent, teacher, daily } =
     await teacherDashboardPageModel(supabase, user.id, filters.success ? filters.data.date : undefined,
-      filters.success ? filters.data.homeworkAfter : undefined);
+      filters.success ? filters.data.homeworkAfter : undefined, filters.success && filters.data.closeReview);
   const preparationInput=dailyLessonPreparationInput.safeParse({sessionId:prepareSession});
   const preparation=prepareSession===undefined ? null : !preparationInput.success ? {kind:"invalid" as const}
     : await teacherDailyLessonPreparation(supabase,user.id,preparationInput.data.sessionId)
@@ -30,6 +31,10 @@ export default async function DashboardPage({ searchParams }: {
   const dailyTime = daily && new Intl.DateTimeFormat(locale, {
     timeZone: daily.timeZone, timeStyle: "short",
   });
+  const closeReview = daily?.closeReview;
+  const pendingShown = new Set(closeReview?.status === "ready" ? closeReview.sessions.map(row => row.id) : []);
+  const attendanceTasks = daily?.missingAttendance.status === "ready"
+    ? daily.missingAttendance.sessions.filter(row => !pendingShown.has(row.id)) : [];
   const dateLabel = (iso: string) => new Intl.DateTimeFormat(locale, {
     dateStyle: "medium", timeStyle: "short",
   }).format(new Date(iso));
@@ -137,13 +142,41 @@ export default async function DashboardPage({ searchParams }: {
         </>}
       </section>}
 
+      {filters.success && daily && dailyTime && <section aria-labelledby="day-end-review" className="mb-8">
+        <h2 id="day-end-review" className="text-lg font-semibold mb-3">{t("dayEndTitle")}</h2>
+        {!closeReview ? <Link href={"/dashboard?date=" + daily.date + "&closeReview=1#day-end-review"}
+          className="text-primary underline">{t("dayEndOpen")}</Link> : <>
+          <p className="mb-2">{t("dayEndExplanation")}</p>
+          {closeReview.status === "unavailable" ? <p role="alert">{t("dayEndUnavailable")}</p> : <>
+            {!closeReview.sessions.length && !closeReview.truncated && <p>{t("dayEndEmpty")}</p>}
+            {!!closeReview.sessions.length && <ul className="space-y-2">
+              {closeReview.sessions.map(row => <li key={row.id}>
+                <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
+                  <p className="font-medium"><bdi dir="auto">{row.title}</bdi></p>
+                  <p className="text-sm"><time dateTime={row.starts_at}>{dailyTime.format(new Date(row.starts_at))}</time>
+                    {" · "}{row.attendance === "missing" ? t("dailyAttendanceMissing", {count: row.missingCount ?? 0})
+                      : t(row.attendance === "marked" ? "dayEndMarked"
+                        : row.attendance === "cancellation_review" ? "dayEndCancellation" : "dayEndUnknown")}</p>
+                  {row.completionHref ? <Link href={row.completionHref} className="text-primary underline">
+                    {t("dailyCloseOpen", {title: row.title})}</Link> : row.scheduleHref ? <Link href={row.scheduleHref}
+                    className="text-primary underline">{t("dailyAttendanceOpen", {title: row.title})}</Link> : null}
+                </Card>
+              </li>)}
+            </ul>}
+            {closeReview.truncated && <p>{t("dayEndTruncated", {count: closeReview.limit})}</p>}
+          </>}
+          <Link href={"/dashboard?date=" + daily.date + "#day-end-review"}
+            className="text-primary underline">{t("dayEndHide")}</Link>
+        </>}
+      </section>}
+
       {filters.success && daily && dailyTime && <section aria-labelledby="daily-attendance" className="mb-8">
         <h2 id="daily-attendance" className="text-lg font-semibold mb-3">{t("dailyAttendanceHeading")}</h2>
         {daily.missingAttendance.status === "unavailable" ? <p role="alert">{t("dailyAttendanceUnavailable")}</p> : <>
-          {!daily.missingAttendance.sessions.length && !daily.missingAttendance.truncated &&
+          {!attendanceTasks.length && !pendingShown.size && !daily.missingAttendance.truncated &&
             <p>{t("dailyAttendanceEmpty")}</p>}
-          {!!daily.missingAttendance.sessions.length && <ul className="space-y-2">
-            {daily.missingAttendance.sessions.map(row => <li key={row.id}>
+          {!!attendanceTasks.length && <ul className="space-y-2">
+            {attendanceTasks.map(row => <li key={row.id}>
               <Card padding="sm">
                 <p className="font-medium break-words"><bdi dir="auto">{row.title}</bdi></p>
                 <p className="text-sm">
