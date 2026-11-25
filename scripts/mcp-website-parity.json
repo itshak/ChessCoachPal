@@ -1669,6 +1669,19 @@
       "evidenceTest": "e2e/parity-daily-learner-evidence.spec.ts"
     },
     {
+      "path": "app/api/students/[id]/report-preview/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_learner_report_preview"
+      ],
+      "explanation": "Exact teacher-owned learner, workplace and dates yield a read-only candidate sourced from recorded local dates and the selected learner's attendance. No private notes, recipients, or publication.",
+      "evidenceTest": "e2e/parity-professional-learner-report-preview.spec.ts"
+    },
+    {
       "path": "app/api/students/[id]/workplaces/route.ts",
       "methods": [
         "GET"
@@ -1951,6 +1964,7 @@
     "components/teacher/FenReviewPanel.tsx",
     "components/teacher/HostedLimitBanner.tsx",
     "components/teacher/LearnerEvidencePanel.tsx",
+    "components/teacher/LearnerReportPreviewPanel.tsx",
     "components/teacher/LearningMaterialsCatalog.tsx",
     "components/teacher/LessonCapturePreviewPanel.tsx",
     "components/teacher/LessonCompletionPanel.tsx",

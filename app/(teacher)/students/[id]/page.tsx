@@ -3,6 +3,7 @@ import {getTranslations} from "next-intl/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import {LearnerReportPreviewPanel} from "@/components/teacher/LearnerReportPreviewPanel";
 import {LearnerEvidencePanel} from "@/components/teacher/LearnerEvidencePanel";
 import {learnerEvidenceSchema,teacherLearnerEvidence} from "@/lib/server/learner-evidence";
 import { ChessLearningPanel } from "@/components/teacher/ChessLearningPanel";
@@ -190,6 +191,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       <StudentTrainingPlansPanel studentId={id} />
       <CoachBriefingPanel studentId={id} />
       <LearnerEvidencePanel evidence={learnerEvidence} />
+      <LearnerReportPreviewPanel studentId={id} workplaces={workplaceRows??[]} />
       <div className="mb-8"><UnifiedLessonHistoryPanel fixedStudentId={id}/></div>
       <div className="mb-8"><MaterialHistoryPanel fixedStudentId={id} /></div>
 
