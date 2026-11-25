@@ -140,3 +140,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | The signed exact-learner preview exposes matching no-write archived choices in the website and MCP. The browser supports keyboard decline and reselection, links only to an exact owned learner's retained history after disambiguation, and keeps the original approved request when its response is lost. Independent reads confirm one session after cross-client replay and no writes from decline/history review. | `e2e/parity-daily-archived-choices.spec.ts#PARITY-daily-archived-choices` — [450 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45533732222) on `9b46358630904290d943d50edbb6675f218ef5f5`, merged in [PR #194](https://github.com/itshak/ChessCoachPal/pull/194) at `f787816a265d9042116509f77fd440e823c418c6`. |
+
+## Professional scoped recurring series timing — accepted source slice
+
+| Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | A coach reviews a time/duration edit from one original calendar date forward or across all still-editable segments. Website and MCP agree before writes, require exact digest-bound approval, preserve the earlier rule, and retry the original approved request after a lost response without duplicating linked segments. | `e2e/parity-professional-scoped-series.spec.ts#PARITY-professional-scoped-series` — [451 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45537592581) on `0cab7c075caa680af67f5b5d63ba6bd4624732cd`, merged in [PR #196](https://github.com/itshak/ChessCoachPal/pull/196) at `d09ab4e64cb983d57aa24044b3bf54f1c189e67b`. |
