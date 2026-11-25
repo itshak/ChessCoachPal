@@ -212,10 +212,41 @@ aggregate declaration, archive retention, read-only delegated scope,
 foreign denial, and independent no-write read-back. No change to
 schema, release, or deployment.
 
-## Still open
+## Verified source: archived-learner recovery choices
 
-- Age-based freshness requires a separately justified policy; neither old
-  snapshots nor missing provider receipts imply lookup failure.
-- Explicit localized decline, choose-another and historical review choices
-  for every applicable archived-learner recovery flow, with signed proof.
-- Complete website/MCP acceptance and evidence before archival.
+[PR #194](https://github.com/itshak/ChessCoachPal/pull/194) merged at
+`f787816a265d9042116509f77fd440e823c418c6`. Once an archived learner is
+identified by exact owned ID, the same preview offers keep-archived,
+choose-another, and review-retained-history choices in the website and
+MCP. Unresolved matches do not produce a history link. The localized
+browser controls are keyboard operable; decline and history reads make
+no change. The scheduled recovery path retains the reviewed request
+when its response is lost and retries it without creating a second lesson.
+Existing temporal transactions still govern reactivation and lesson creation.
+
+Exact candidate `9b46358630904290d943d50edbb6675f218ef5f5` passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45533732223),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45533732213),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45533732256),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45533732202)
+and [signed browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45533732222)
+(450 browser cases and three scheduling repeats). Independent source
+inspection verified the merged tree and unchanged schema lock.
+The focused signed case covers a mixed Hebrew/Russian alias, exact
+read-only navigation, unchanged rows after decline, the lost-response
+retry and one persisted new lesson. Earlier recovery cases cover
+groups, foreign/ambiguous IDs, conflicts, stale changes and capacity;
+historical corrections and attendance imports do not require reactivation.
+
+## Boundary and remaining acceptance
+
+- Recorded lookup failures, retry outcomes and discarded binding results
+  are implemented. An elapsed-age freshness policy and its missing-evidence
+  rules belong with [Online Ratings](../2026-11-18-automate-online-rating-sync/IMPLEMENTATION_PROGRESS.md);
+  neither an old observation nor no receipt implies a failed lookup.
+  Keep this linked requirement open rather than inventing a policy or
+  activating a provider.
+- Browser/delegated MCP checks do not certify native ChatGPT or Claude
+  clients, private beta data or deployment. No production change, billing
+  action, or release was made. The archived-credit settlement decision is
+  independent of recovery choices and unchanged.
