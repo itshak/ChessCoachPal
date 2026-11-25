@@ -1,6 +1,6 @@
 {
   "name": "chesscoachpal",
-  "version": "0.1.9",
+  "version": "0.2.0-beta.1",
   "private": true,
   "scripts": {
     "auth:email:check": "node scripts/auth-email-template-check.mjs",

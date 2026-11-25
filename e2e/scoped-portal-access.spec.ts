@@ -108,8 +108,9 @@ test("PARITY:PARITY-scoped-guest-calendar and cancellation cannot access the sam
   expect(blockedBody).not.toContain("School liaison");
 });
 
-test("TCH-04 scoped guest renders the approved note but never serializes private or unshared text",async({page,request,playwright,baseURL})=>{
-  const call=await delegatedTool(page,request);
+test("TCH-04 scoped guest renders the approved note but never serializes private or unshared text",async({page,request,playwright,baseURL,isolatedTeacher})=>{
+  // Keep the note lessons off the seed teacher calendar used by parallel tests.
+  const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
   const workplace=await call("ccp_workplaces_create",{
     name:"Scoped note workplace "+randomUUID(),timezone:"UTC",currency:"USD",
     locale:"en",policy:{},idempotencyKey:randomUUID(),

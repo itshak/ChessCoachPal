@@ -49,7 +49,28 @@ for name, service in services.items():
             assert not mount.startswith("."), f"{name}: relative host bind mount"
 assert services["db"]["image"] == services["migrate"]["image"]
 assert services["gateway"]["image"] == "chesscoachpal-staging-gateway:1.30.6", "Wrong packaged Nginx gateway image"
-assert set(("db-data", "db-config", "storage-data")) <= set(data["volumes"]), "Missing persistence volumes"
+# The final canonical baseline cannot share pre-beta persistence.
+expected_mounts = {
+    "db": {
+        "/var/lib/postgresql/data": "beta-v020-db-data",
+        "/etc/postgresql-custom": "beta-v020-db-config",
+    },
+    "storage": {"/var/lib/storage": "beta-v020-storage-data"},
+}
+required_volumes = {source for mounts in expected_mounts.values() for source in mounts.values()}
+assert set(data["volumes"]) == required_volumes, "Expected only the three isolated beta volumes"
+for source in required_volumes:
+    assert data["volumes"][source]["name"] == f"ccp-preflight_{source}", (
+        f"{source} would alias a different Docker volume"
+    )
+for name, expected in expected_mounts.items():
+    mounts = services[name].get("volumes", [])
+    assert len(mounts) == len(expected) and all(mount["type"] == "volume" for mount in mounts), (
+        f"{name} must mount only the expected managed volumes"
+    )
+    assert {mount["target"]: mount["source"] for mount in mounts} == expected, (
+        f"{name} would miss or reuse a persistence mount"
+    )
 assert services["app"]["build"]["args"]["NEXT_PUBLIC_SUPABASE_URL"] == (
     "https://supabase-beta.example.invalid"
 )
