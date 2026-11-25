@@ -27,6 +27,18 @@ The direct operator script, if required, belongs in a **restricted, separately r
 
 Safeguard an encrypted off-host export of the existing database and uploaded files. In a separate **empty** deployment target install the **final** canonical baseline exactly once. Reimport the specifically selected current teacher-owned records with documented field/ID mapping and independent checks of student aliases, active/archived state, workplace/group/lesson/attendance links, session notes/materials, billing and amounts actually received. Do not import legacy household credentials or implicit access grants. If any development data is intentionally omitted, record that decision with the operator before switching traffic. Identity/authorization and new scoped portal grants are created afresh.
 
+When retaining a registered account in an invite-only clean reset, Auth alone
+is not a usable account. Public beta sign-in intentionally cannot create a
+missing teacher profile. Before admitting traffic, verify the exact retained
+Auth user and email identity, and provision one matching teacher row and
+default teacher settings on the selected target. The canonical triggers supply
+one Personal workspace and the default entitlement; neither requires copying
+old coaching, billing or marketing data. Keep public registration disabled.
+Require a real password-sign-in-to-dashboard check with a synthetic retained
+owner on an isolated production-shaped stack. Confirm the owner ID matches the
+minimal live profile, then ask the owner to verify their own login; do not
+create synthetic accounts or reuse owner credentials on the live service.
+
 A fresh target is not a license to wipe the existing live database prematurely. Keep the prior installation recoverable and offline until the new target and complete selected data are verified and authorized for switchover.
 
 ## Private execution and safety gates (both paths)

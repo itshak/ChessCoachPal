@@ -15,8 +15,11 @@ See [exact merged source evidence](SOURCE_ACCEPTANCE.md). Unchecked mixed tasks 
 - [x] Add optional portal enablement, expiry/revoke and recoverable replacement link flow; no student/contact creation side effect.
 - [x] Verify approved notes, event/RSVP, calendar, exact invoice/prepaid purchase history, same-scope renewal and safe eligible payment handoff in current source.
 - [ ] Reimport selected legacy content only through an authorized cutover, not a guardian-token adapter. Invoice-specific configurable payment instructions/QR need separate review if desired.
-- [ ] Test student in two workplaces; mother vs school vs sponsor; many contacts; archived student; merged/removed contact; expired/revoked token; shared group note privacy; uninvited RSVP and fake cancellation IDs.
+- [x] Verify signed group-note visibility on a frozen two-learner roster, including scoped sharing, private text redaction, overlapping reads and denial of new requests after revocation.
+- [ ] Complete the combined acceptance matrix: student in two workplaces; mother vs school vs sponsor; many contacts; archived student; merged/removed contact; expired/revoked token; uninvited RSVP and fake cancellation IDs.
 - [x] Verify no-store/no-referrer on ordinary guest responses, serialized replay and multilingual guest UI.
-- [ ] Verify concurrent revocation, distributed ingress/rate protection, and proxy/access-log redaction; review durable access audit/retention separately.
+- [x] Verify actual database row-lock contention in both revocation/cancellation orders on a disposable target.
+- [x] Verify an isolated shared ingress budget across multiple proxies and that ordinary paths are logged without logging test portal URLs.
+- [ ] Review and verify the selected live ingress trust chain, shared rate limit, and access-log/trace handling with the operator. Review durable access audit and retention separately.
 - [x] Verify teacher grant website/MCP parity, signed guest E2E and exact merged source CI.
-- [ ] Verify independently restored legacy data and operator acceptance before archival; verify the remaining exact group-note and concurrent scenarios.
+- [ ] For a future populated cutover, verify independently restored legacy data and operator acceptance. The [owner-only beta reset](../../../docs/PRIVATE_BETA_RELEASE_0_2_0_BETA_1.md) did not reimport legacy portal records or tokens. Before archival, verify the remaining live ingress and audit criteria.
