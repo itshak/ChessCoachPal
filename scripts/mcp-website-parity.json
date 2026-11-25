@@ -365,6 +365,20 @@
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {
+      "path": "app/api/coaching/lesson-completion/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_daily_lesson_complete_with_material_preview",
+        "ccp_daily_lesson_complete_with_material_commit"
+      ],
+      "explanation": "Same signed exact Daily browser preview, confirmation, and delegated MCP. Reviews the unchanged frozen roster revisions and one active owned material identity and revision, and writes attendance, notes and only explicitly taught learner evidence through one reviewed database routine. Unknown results reuse the same approved payload and receipt key; no partial fallback, outside calls or inferred mastery.",
+      "evidenceTest": "e2e/parity-daily-combined-close.spec.ts"
+    },
+    {
       "path": "app/api/coaching/lesson-preparation/route.ts",
       "methods": [
         "GET"
