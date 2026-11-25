@@ -612,6 +612,8 @@
     "amount": "Amount"
   },
   "portal": {
+    "sharedLearnerReports": "Shared attendance reports",
+    "sharedLearnerReportsLatest": "Showing the 30 most recent shared reports.",
     "title": "Student and Contact Portal",
     "schedule": "Schedule",
     "lessons": "Lessons",
@@ -3417,6 +3419,36 @@
     "attendance_review": "Attendance needs review",
     "amount_review": "Amount needs review"
   },
+  "learnerReportAudience": {
+    "title": "Report access",
+    "intro": "Only a specifically approved existing portal link can show this saved report. This never creates a link or sends a message.",
+    "load": "Check report access",
+    "recipient": "Existing portal recipient",
+    "select": "Choose a portal recipient",
+    "choice": "{name} · expires {time} · link {code}",
+    "review": "Review recipient",
+    "reviewExact": "Allow {name} to see this saved report for {student} at {workplace} using link {code}, which expires {time}? No message will be sent.",
+    "confirm": "Approve report access",
+    "cancel": "Cancel",
+    "none": "No other eligible existing portal links are listed for this report.",
+    "choicesLimited": "Only the 30 newest existing links are considered here. A different exact link can be reviewed separately.",
+    "previous": "Previous approvals",
+    "previousEntry": "{name} · link {code} · {state} {time}",
+    "unknown": "Previous recipient",
+    "statusWithdrawn": "Withdrawn",
+    "statusApproved": "Approved on",
+    "withdraw": "Review withdrawal",
+    "withdrawExact": "Withdraw access for {name} on link {code}? The saved report and other portal permissions will stay in place.",
+    "confirmWithdraw": "Withdraw report access",
+    "more": "Show older approvals",
+    "retry": "Retry the same action",
+    "unavailable": "Report access details are unavailable. Try again.",
+    "reviewAgain": "That report or portal link has changed. Check report access and review it again.",
+    "upgrade": "The current plan cannot approve report access. You can still withdraw a previous approval.",
+    "uncertain": "The result could not be confirmed. Retry the same action before switching reports.",
+    "approved": "Report access approved for the selected existing portal link. No message was sent.",
+    "withdrawn": "Report access withdrawn. The saved report was kept."
+  },
   "learnerReportPreview": {
     "reviewToSave": "Review before saving",
     "approvalHint": "Check this exact version before saving it privately. No one else gets access.",
@@ -3434,7 +3466,7 @@
     "recentOnly": "Showing the 30 newest saved reports.",
     "savedEntry": "{workplace} · {time} · {language} · {state}",
     "reportStates": {
-      "sealed": "Private",
+      "sealed": "Saved",
       "revoked": "Revoked",
       "superseded": "Superseded"
     },

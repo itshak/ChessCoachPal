@@ -1669,6 +1669,23 @@
       "evidenceTest": "e2e/parity-daily-learner-evidence.spec.ts"
     },
     {
+      "path": "app/api/students/[id]/private-reports/audience/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_private_learner_report_audience_list",
+        "ccp_private_learner_report_audience_review",
+        "ccp_private_learner_report_audience_approve",
+        "ccp_private_learner_report_audience_revoke"
+      ],
+      "explanation": "Owned signed review and explicit approval of one sealed report for an already-issued grant, exact replay, approved audience listing and one-way revocation. Independent browser portal evidence sees only the exact sealed candidate. No token, new link, notification or billing operation.",
+      "evidenceTest": "e2e/parity-professional-private-report-audience.spec.ts"
+    },
+    {
       "path": "app/api/students/[id]/private-reports/route.ts",
       "methods": [
         "GET",
@@ -1981,6 +1998,7 @@
     "components/teacher/FenReviewPanel.tsx",
     "components/teacher/HostedLimitBanner.tsx",
     "components/teacher/LearnerEvidencePanel.tsx",
+    "components/teacher/LearnerReportAudiencePanel.tsx",
     "components/teacher/LearnerReportPreviewPanel.tsx",
     "components/teacher/LearningMaterialsCatalog.tsx",
     "components/teacher/LessonCapturePreviewPanel.tsx",
