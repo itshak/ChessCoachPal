@@ -1400,6 +1400,13 @@
     "saveFailed": "Unable to save material"
   },
   "lessonCapture": {
+    "currentCaptureReview": "Current capture review",
+    "captureNotSaved": "This preview is not a saved draft or a completed lesson.",
+    "awaiting_confirmation": "This capture is waiting for your confirmation.",
+    "learner_review_required": "Learner details need review. Unresolved entries: {count}.",
+    "other_review_required": "Resolve the remaining issues below and preview again.",
+    "captureDuplicateReference": "Two or more entries refer to the same learner. Keep one entry per learner.",
+    "resolveCaptureLearners": "Go to learner details",
     "title": "Capture a lesson from student names",
     "aria": "Multi-student lesson capture",
     "intro": "Enter one student name or Hebrew, Russian or English alias per line. Preview exact identities before creating a single frozen-roster lesson. No attendance or mastery is assumed.",
@@ -3292,6 +3299,14 @@
     "confirmEnd": "End the current payer assignment on this date? History remains available."
   },
   "periodEndActuals": {
+    "runReview": "Review unposted fixed compensation",
+    "reviewTitle": "Fixed compensation to review",
+    "reviewDescription": "These are proposed fixed amounts for the selected month, not posted entries or received cash. Review current terms before confirming. Session earnings and participant charges are not included.",
+    "reviewStale": "The loaded agreement no longer matches this review. Reload Billing and review again.",
+    "reviewPayerArchived": "The payer is archived. Review the agreement and payer before posting.",
+    "reviewExact": "Open approval for agreement {reference}",
+    "reviewOpen": "Open approval form",
+    "reviewEmpty": "No unposted fixed compensation was found for these filters.",
     "toggle": "Review month-end settlement",
     "title": "Month-end settlement",
     "description": "Current settlement of posted obligations for one workplace and calendar month. It includes payments applied to those obligations, even if applied later. It does not show expected earnings, cash received at this workplace, or what was outstanding at the end of the month.",

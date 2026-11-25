@@ -370,6 +370,10 @@ export async function teacherLessonCapturePreview(
     reviewHistory:{writesPerformed:false,tool:"ccp_learner_evidence_get",learners:archivedHistory},
     reactivationRequiresExactReview:true,
   }:null;
+  const unresolvedInputs=resolutions.filter(row=>row.status==="ambiguous"||row.status==="not_found").length;
+  const duplicateReference=issues.some(issue=>issue.code==="DUPLICATE_STUDENT");
+  const captureState=canCommit?"awaiting_confirmation":unresolvedInputs||duplicateReference?
+    "learner_review_required":"other_review_required";
   return {
     canCommit,resolutions,issues,workplace:selectedWorkplace,archivedRecovery,
     selectedChapter,proposedAtomicCommit,
@@ -379,6 +383,7 @@ export async function teacherLessonCapturePreview(
       durationMinutes:timing!.durationMinutes,lessonNote:input.lessonNote,
     }:null,
     review:{
+      captureState,unresolvedInputs,duplicateReference,previewOnly:true,
       creates:"One scheduled lesson with a frozen roster and unmarked attendance",
       instructorMinutes:timing?.durationMinutes??null,
       studentCount:ids.length,
@@ -394,7 +399,10 @@ export async function teacherLessonCapturePreview(
         "Approve one combined atomic lesson+chapter commit to avoid partial writes, or use the original separately approved session and chapter operations. Both leave attendance unmarked and mastery unknown.":
         "No verified study chapter selected. Do not invent material history.",
       nextStep:issues.some(issue=>issue.code==="ARCHIVED_STUDENT_CONFIRMATION_REQUIRED")?
-        "Offer Keep archived (no write), Choose another learner, or Review history by exact owned ID. Only if asked to reactivate, separately review the exact learner IDs, workplace and lesson through the appropriate scheduled or completed recovery preview. Never reactivate automatically.":ids.length===1?
+        "Offer Keep archived (no write), Choose another learner, or Review history by exact owned ID. Only if asked to reactivate, separately review the exact learner IDs, workplace and lesson through the appropriate scheduled or completed recovery preview. Never reactivate automatically.":!canCommit?
+        (captureState==="learner_review_required"?
+          "Review the unresolved learner inputs or duplicate roster references, then request a fresh preview. Do not call a write tool.":
+          "Resolve the blocking issues and request a fresh preview. Do not call a write tool.") :ids.length===1?
         "For one active student, confirm the exact workplace and time and call ccp_sessions_create with studentId (not the ad-hoc group writer). Material chapter assignment remains a separate approved action.":selectedChapter?"For a scheduled lesson plus verified chapter use ccp_lessons_capture_commit_with_chapter with exact reviewed data, two request UUIDs and teacher approval; this leaves attendance unmarked. For a completed group lesson with explicit attendance instead use ccp_lessons_capture_completed (chapter association is separate).":"For a completed group lesson with explicit attendance for EACH student, confirm exact proposedSession fields and use ccp_lessons_capture_completed with participant-specific attendance notes, one requestId and confirmed=true. Otherwise schedule without attendance via ccp_sessions_ad_hoc_create.",
     },
   };

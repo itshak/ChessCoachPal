@@ -303,3 +303,27 @@ and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/456
 passed (460 cases and three scheduling repeats). The schema lock is
 unchanged. No deployment, redemptions or charges occurred.
 Period-end reconciliation remains independent.
+
+### Current settlement of posted monthly obligations
+
+[PR #226](https://github.com/itshak/ChessCoachPal/pull/226) merged at
+`1d0de5d876e261ab6d3a08e96f96888273203970` on verified exact head
+`aeb6ed474e6cac47e22ebd883bcdfb53a4aa5bee`. One owned workplace, month,
+currency and optional payer filter the current settlement of posted coaching
+earnings, fixed-period compensation and participant charges separately.
+Corrections, applied allocations net of reversals, and outstanding balances
+are shown without implying historical as-of settlement, account cash received,
+projections or authority to alter the ledger. Signed website/MCP agree.
+
+[ADR-0035](../../../docs/adr/0035-professional-period-end-manifest-checksum.md)
+was permitted separately in [#224](https://github.com/itshak/ChessCoachPal/pull/224)
+and activated in [#225](https://github.com/itshak/ChessCoachPal/pull/225).
+The application patch preserved that lock. Exact hosted
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45694275231),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45694275374),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45694275491),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45694275472),
+and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45694275370)
+passed with 461 browser cases plus three repeats. Both independent
+production-mode signed test runs preserved Storage. This is source acceptance
+only; no live configuration, data, payments or access changed.

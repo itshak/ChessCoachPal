@@ -160,10 +160,35 @@ test("PARITY:PARITY-conversational-preview-fails-closed-for-missing-duplicate-am
     expect(preview.canCommit).toBe(false);
     expect(preview.proposedSession).toBeNull();
     expect(preview.issues.map((i:{code:string})=>i.code)).toContain(testCase.code);
+    expect(preview.review).toMatchObject({
+      captureState:"learner_review_required",previewOnly:true,
+      unresolvedInputs:testCase.code==="DUPLICATE_STUDENT"?0:1,
+      duplicateReference:testCase.code==="DUPLICATE_STUDENT",writesPerformed:false,
+    });
+    expect(preview.review.nextStep).toContain("Do not call a write tool");
     const mcp=await call("ccp_lessons_capture_preview",payload);
     expect(mcp.error).toBeUndefined();
     expect(mcp.data).toEqual(preview);
   }
+  await page.setViewportSize({width:320,height:780});
+  await page.goto("/coaching");
+  const capture=page.getByRole("region",{name:"Multi-student lesson capture"});
+  await capture.getByLabel("Workplace / time zone").selectOption(workplaceId);
+  await capture.getByLabel("Student names, one per line (1–50)").fill(shared+"\n"+names[2]);
+  await capture.getByLabel("Lesson title").fill(common.title);
+  await capture.getByLabel("Start time in workplace time zone").fill("2059-02-02T13:00");
+  await capture.getByRole("button",{name:"Preview only"}).click();
+  const review=capture.getByRole("region",{name:"Current capture review"});
+  await expect(review.getByText("Learner details need review. Unresolved entries: 1.")).toBeVisible();
+  await review.getByRole("button",{name:"Go to learner details"}).focus();
+  await page.keyboard.press("Enter");
+  const choice=capture.getByLabel("Choose learner for "+shared+" (entry 1)");
+  await expect(choice).toBeFocused();
+  await choice.selectOption(ids[0]);
+  await capture.getByRole("button",{name:"Verify selected learners"}).click();
+  await expect(review.getByText("This capture is waiting for your confirmation.")).toBeVisible();
+  expect(((await call("ccp_sessions_list",{query:common.title,workplaceId})).data as Array<{title:string}>)
+    .some(row=>row.title===common.title)).toBe(false);
   const foreignWorkplace=await call("ccp_lessons_capture_preview",{
     ...common,workplaceId:randomUUID(),names:[names[0],names[2]],
   });

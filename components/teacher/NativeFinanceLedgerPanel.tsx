@@ -1,6 +1,7 @@
 "use client";
-import {useEffect,useState,type FormEvent} from "react";
+import {useEffect,useRef,useState,type FormEvent} from "react";
 import {useTranslations} from "next-intl";
+import type {FinancePeriodEndReview} from "@/lib/server/finance-period-end-review";
 import {PeriodEndActuals} from "./PeriodEndActuals";
 import {PostedEarningsSummary} from "./PostedEarningsSummary";
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
@@ -47,6 +48,7 @@ export function NativeFinanceLedgerPanel(){
   void refresh().catch(e=>setError(apiError(e,t("loadFailed"))));
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[]);
+ const approvalSelector=useRef<HTMLSelectElement>(null);
  const agreement=agreements.find(x=>x.id===agreementId);
  const targets=kind==="allocation_reversal"?ledger.allocations:
   kind==="payment_refund"?ledger.receivedPayments:ledger.obligations;
@@ -90,7 +92,13 @@ export function NativeFinanceLedgerPanel(){
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}
   {notice&&<p role="status" className="text-sm">{notice}</p>}
   <PostedEarningsSummary />
-  <PeriodEndActuals />
+  <PeriodEndActuals onReview={(item:FinancePeriodEndReview["items"][number],monthStart,monthEnd)=>{
+   const term=agreements.find(row=>row.id===item.agreementId);
+   if(!term||term.revision!==item.revision||term.model!=="fixed_period")return false;
+   setAction("approve");setAgreementId(item.agreementId);setSessionId("");setStudentId("");
+   setFrom(monthStart);setTo(monthEnd);setAmount(item.proposedCents);setNotice("");setError("");
+   requestAnimationFrame(()=>approvalSelector.current?.focus());return true;
+  }} />
   <form onSubmit={submit} className="space-y-3">
    <label className="block text-sm">{t("action")}
     <select className={field} value={action} onChange={e=>setAction(e.target.value as Action)}>
@@ -102,7 +110,7 @@ export function NativeFinanceLedgerPanel(){
    </label>
    {action==="approve"&&<>
     <label className="block text-sm">{t("agreement")}
-     <select required className={field} value={agreementId} onChange={e=>setAgreementId(e.target.value)}>
+     <select ref={approvalSelector} required className={field} value={agreementId} onChange={e=>setAgreementId(e.target.value)}>
       <option value="">{t("select")}</option>
       {agreements.map(x=><option key={x.id} value={x.id}>{x.exactSessionId?t("exactAgreement"):x.agreementRole} · {x.model} · {x.id.slice(0,8)}</option>)}
      </select>

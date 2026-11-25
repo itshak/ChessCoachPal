@@ -1024,6 +1024,15 @@
       "evidenceTest": "e2e/parity-professional-period-end-actuals.spec.ts"
     },
     {
+      "path": "app/api/finance-ledger/period-end-review/route.ts",
+      "methods": ["GET"],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": ["ccp_finance_period_end_review"],
+      "explanation": "Bounded advisory fixed-period candidates for the exact workplace, month, currency and optional payer; no posting, authorization, forecast of lesson charges or complete accounting assertion. Same signed website and MCP contract.",
+      "evidenceTest": "e2e/parity-professional-period-end-review.spec.ts"
+    },
+    {
       "path": "app/api/finance-ledger/obligations/route.ts",
       "methods": [
         "POST"
