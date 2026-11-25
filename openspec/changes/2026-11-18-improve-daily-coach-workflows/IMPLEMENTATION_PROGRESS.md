@@ -161,10 +161,35 @@ and [signed browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/run
 (447 browser cases plus three scheduling repeats). No schema, release or
 deployment change.
 
+## Verified source: atomic close with explicitly taught material
+
+[PR #190](https://github.com/itshak/ChessCoachPal/pull/190) merged at
+`bd311c62de1e0b682161f8b7d7585e68799c4f83`. An optional reviewed flow on
+the exact ended lesson saves attendance and records existing taught material
+in one transaction. Both website and delegated MCP use the same stored
+lesson revision, frozen roster, saved attendance, and selected material
+revision. The coach explicitly selects who was taught; the operation does
+not create a lesson, infer mastery, or turn suggested material into evidence.
+A retry after a lost response reuses the same request and returns its receipt.
+The original completion without material remains available.
+
+Exact candidate `b0b482afc6cee33fb15a3a45c8057b43a9ae92ac` passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45523982777),
+[Security](https://github.com/itshak/ChessCoachPal/actions/runs/45523982834),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45523982844),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45523982711),
+and [signed browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45523982805)
+(448 browser cases plus three scheduling repeats). The focused signed
+scenario compares website and delegated MCP, including denial and
+persisted read-back, and exercised the lost-response retry in Chromium.
+The source uses the protected [ADR-0030 activation](https://github.com/itshak/ChessCoachPal/pull/189);
+the application merge leaves the installed lock unchanged. No release
+or deployment.
+
 ## Still open
 
 - Age-based freshness requires a separately justified policy; neither old
   snapshots nor missing provider receipts imply lookup failure.
-- A reviewed atomic completion with taught material evidence, learner/import
-  review and full coverage of archived-learner recovery in the daily workflow.
+- Learner/import review and full coverage of archived-learner recovery in
+  the daily workflow.
 - Complete website/MCP acceptance and evidence before archival.
