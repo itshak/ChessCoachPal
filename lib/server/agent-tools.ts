@@ -106,6 +106,9 @@ import {PrivateLearnerReportError,privateLearnerReportReviewInput,privateLearner
 import {listReportAudience,reviewReportAudience,approveReportAudience,withdrawReportAudience,
  reportAudienceListInput,reportAudienceReviewInput,reportAudienceApproveInput,reportAudienceWithdrawInput,
 } from "@/lib/server/private-learner-report-audience";
+import {listReportLifecycleChoices,reviewReportLifecycle,commitReportLifecycle,
+ reportLifecycleChoicesInput,reportLifecycleReviewInput,reportLifecycleCommitInput,
+} from "@/lib/server/private-learner-report-lifecycle";
 import {LearnerReportPreviewError,learnerReportPreviewInput,teacherLearnerReportPreview} from "@/lib/server/learner-report-preview";
 import {LearnerEvidenceError,learnerEvidenceSchema,teacherLearnerEvidence} from "@/lib/server/learner-evidence";
 import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
@@ -1897,6 +1900,21 @@ const catalogue = [
     schema:reportAudienceWithdrawInput,scope:"coach:write",readOnly:false,
   },
   {
+    name:"ccp_private_learner_report_replacement_choices",
+    description:"Read possible previously saved newer private reports for the same owned learner and workplace. A result is not approval or access; the exact replacement needs independent review. Returns no recipients, links, or writes.",
+    schema:reportLifecycleChoicesInput,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_private_learner_report_lifecycle_review",
+    description:"Read-only exact review of revoking one saved report (replacementId:null) or marking it replaced by a specific newer private report for the same learner and workplace. Show both applicable sealed artifacts and the number of prior approvals not individually withdrawn. Ask the teacher for explicit confirmation. No notification, change, link or transfer of access.",
+    schema:reportLifecycleReviewInput,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_private_learner_report_revoke_or_supersede",
+    description:"After explicit teacher confirmation for the exact reviewed decision, resend identical learner, publication, replacement (null for revocation), digest, confirmed:true and a fresh UUID. Retry uncertain delivery with the same values. Ends guest access to the whole old report, leaves it readable privately, and never transfers access or sends a message.",
+    schema:reportLifecycleCommitInput,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_learner_report_preview",
     description:"Review a teacher-only, read-only candidate for one owned learner and one explicit owned workplace, with inclusive local dates and output language. Sources are completed sessions with frozen membership and the selected learner’s recorded attendance only. Unrecorded attendance stays unknown; sessions without a recorded local date are excluded. No private notes, other learners, payments, publishing, recipients, or permissions.",
     schema:learnerReportPreviewInput,scope:"coach:read",readOnly:true,
@@ -2037,6 +2055,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await approveReportAudience(db,teacherId,args as z.infer<typeof reportAudienceApproveInput>)};
       case "ccp_private_learner_report_audience_revoke":
         return {data:await withdrawReportAudience(db,teacherId,args as z.infer<typeof reportAudienceWithdrawInput>)};
+      case "ccp_private_learner_report_replacement_choices":
+        return {data:await listReportLifecycleChoices(db,teacherId,args as z.infer<typeof reportLifecycleChoicesInput>)};
+      case "ccp_private_learner_report_lifecycle_review":
+        return {data:await reviewReportLifecycle(db,teacherId,args as z.infer<typeof reportLifecycleReviewInput>)};
+      case "ccp_private_learner_report_revoke_or_supersede":
+        return {data:await commitReportLifecycle(db,teacherId,args as z.infer<typeof reportLifecycleCommitInput>)};
       case "ccp_learner_report_preview":
         return {data:await teacherLearnerReportPreview(db,teacherId,args as z.infer<typeof learnerReportPreviewInput>)};
       case "ccp_learner_evidence_get":
