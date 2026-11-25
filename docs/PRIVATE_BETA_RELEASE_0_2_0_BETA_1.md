@@ -35,6 +35,12 @@ Verified November 25, 2026 UTC.
 - The exact candidate passed [CI](https://github.com/itshak/ChessCoachPal/actions/runs/45707204274), [signed browser and MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45707204471) (462 cases plus three repeats), [security](https://github.com/itshak/ChessCoachPal/actions/runs/45707204611), [Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45707204469) and [restore](https://github.com/itshak/ChessCoachPal/actions/runs/45707204401). Isolated production-shaped testing proved private synthetic login, public Auth signup denial and rejection of an invalid website access code.
 - Exact [publication and deployment](https://github.com/itshak/ChessCoachPal/actions/runs/45710921891) passed. Independently verified live running image, new persistence mounts, canonical HTTPS site, Auth, Storage, OAuth discovery, unauthenticated MCP denial and closed public signup.
 - Verified initial owner-only live Auth and zero old students or Storage objects. The authorized owner identity and sign-in verifier matched the staged identity; old app records, refresh tokens and sessions were not migrated.
+- Initial owner sign-in reached Auth but hit a missing teacher-profile error on
+  the dashboard. The clean target was then provisioned with the verified
+  existing owner's minimal profile and default settings. The account holder
+  confirmed that the dashboard opened. Public signup remained disabled and
+  no former coaching data was reimported. The reset runbook now requires
+  a signed dashboard check, not only an Auth health check.
 - Live email acceptance and ChatGPT/Claude clients: not certified by
   synthetic browser or MCP tests.
 
