@@ -18,12 +18,25 @@ note, the approved group-wide note, and teacher-private text are absent.
 Reads started before revocation may finish, but cannot disclose content
 outside their original scope. New page, calendar and cancellation requests
 after confirmed revocation are denied without writing attendance.
-This does not certify deterministic transaction-lock ordering, distributed
-rate limiting, proxy logs or durable access auditing.
+The separate [canonical lock test](../../../scripts/portal-revocation-concurrency.py)
+observed each transaction actually waiting on the other transaction's row
+lock. Revocation first produced no attendance change. Cancellation first
+produced exactly one accepted cancellation, then revoked access. A new
+request after committed revocation was denied in both cases.
+
+The [disposable ingress test](../../../scripts/check-portal-ingress-rehearsal.sh)
+used two Traefik 3.6 instances and one Redis budget. A request to the portal
+page via the first instance exhausted the shared limit and a calendar
+request via the second received 429. Control paths appeared in the proxy
+log; neither synthetic portal path did. This verifies the isolated
+configuration, not the live proxy chain, storage of log records by another
+operator or a distributed setup already deployed.
+
+References: [Traefik v3.6 shared rate limiting](https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/middlewares/ratelimit/)
+and [per-router observability](https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/routing/router/).
 
 ## Remains open
 
 - The process-local failed-token limiter and verified no-store/no-referrer application responses are not proof of distributed ingress limits or production access-log redaction. Review actual proxy trust and token redaction without inspecting real secrets here. Durable access audit/last-used needs a separate privacy, retention, authorization and governed persistence review; issued or renewed is not evidence of use.
-- Signed serial revoke/replay and the overlapping read window above are not a deterministic test of a cancellation and revocation contending for the same database row. Keep that separate acceptance open.
 - A configurable invoice-specific manual payment instruction or QR is not implemented. If later needed, review purpose/recipient/venue, amount and outstanding state; do not expose teacher-global banking data by default.
 - No populated legacy data, old bearer links, real invoices, credentials, receipts, access logs or tenant mappings were reviewed. Under [ADR-0017](../../../docs/adr/0017-pre-v1-single-final-cutover-no-compatibility.md), operator-specific authorization and an independent verified off-host restore must precede deliberate reconciliation and explicit replacement/revocation of old broad links. Preserve Auth, Storage, finance and RSVP history. No live finance, notification, public release or deployment is inferred.
