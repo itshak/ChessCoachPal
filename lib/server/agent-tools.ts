@@ -952,7 +952,7 @@ const catalogue = [
   },
   {
     name:"ccp_recurring_series_edit_preview",
-    description:"Inspect an owned recurring rule for a reviewed time or duration change to this original calendar date and future occurrences, or all still-editable series segments. Pass exact slot ID, timestamp revision, explicit review-through date and null successor ID unless RECURRENCE_SCOPE_TAIL_ID_REQUIRED asks for a newly generated UUID. Use a null cutoff for entire series. Preserves completed and protected history; no writes. Explain the proposed scope and counts before approval.",
+    description:"Inspect an owned recurring rule for a time, duration, or bounded weekday change from the original date onward or across all still-editable segments. A weekday change requires a finite range covering every affected occurrence; present the separate original and proposed date lists. Pass exact slot ID, timestamp revision, explicit review-through date and null successor ID unless RECURRENCE_SCOPE_TAIL_ID_REQUIRED asks for a newly generated UUID. Use a null cutoff for entire series. Preserves completed and protected history; no writes. Explain the proposed scope and counts before approval.",
     schema:recurrencePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
