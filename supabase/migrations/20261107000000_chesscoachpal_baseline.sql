@@ -17857,3 +17857,155 @@ $$;
 REVOKE ALL ON FUNCTION public.ccp_manual_online_rating_commit(uuid,uuid,text,text,text,uuid,text,timestamptz,jsonb)
  FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.ccp_manual_online_rating_commit(uuid,uuid,text,text,text,uuid,text,timestamptz,jsonb) TO service_role;
+
+-- Experimental only. Do NOT apply to live or add to main until full ADR-0020
+-- sequence and an independent verification on fresh disposable storage.
+CREATE FUNCTION public.ccp_teacher_daily_session_complete_with_material(
+  p_session_id uuid,
+  p_workplace_id uuid,
+  p_context_workplace_id uuid,
+  p_expected_updated_at timestamptz,
+  p_lesson_note text,
+  p_attendance jsonb,
+  p_material_id uuid,
+  p_material_revision bigint,
+  p_taught_students uuid[],
+  p_occurred_on date,
+  p_request_id uuid,
+  p_confirmed boolean
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=pg_catalog,pg_temp
+AS $daily_combined$
+DECLARE
+  v_teacher uuid:=auth.uid();
+  v_context uuid;
+  v_session public.teaching_sessions%ROWTYPE;
+  v_material_revision bigint;
+  v_prior public.agent_tool_receipts%ROWTYPE;
+  v_operation constant text:='daily.session.completeWithMaterial.v1';
+  v_hash text;
+  v_attendance_row jsonb;
+  v_evidence jsonb;
+  v_close jsonb;
+  v_material jsonb;
+  v_receipt jsonb;
+  v_changes jsonb;
+BEGIN
+  IF v_teacher IS NULL THEN
+    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE='42501';
+  END IF;
+  IF p_confirmed IS DISTINCT FROM true OR p_session_id IS NULL OR
+     p_workplace_id IS NULL OR p_expected_updated_at IS NULL OR
+     p_request_id IS NULL OR p_material_id IS NULL OR
+     coalesce(p_material_revision,0)<1 OR p_occurred_on IS NULL OR
+     length(coalesce(p_lesson_note,''))>10000 OR
+     jsonb_typeof(p_attendance) IS DISTINCT FROM 'array' OR
+     array_ndims(p_taught_students) IS DISTINCT FROM 1 OR
+     array_position(p_taught_students,NULL) IS NOT NULL OR
+     cardinality(p_taught_students) NOT BETWEEN 1 AND 50 THEN
+    RAISE EXCEPTION 'INVALID_DAILY_LESSON_APPROVAL' USING ERRCODE='22023';
+  END IF;
+  IF jsonb_array_length(p_attendance) NOT BETWEEN 1 AND 50 OR
+     (SELECT count(DISTINCT x) FROM unnest(p_taught_students) x)<>cardinality(p_taught_students) THEN
+    RAISE EXCEPTION 'INVALID_DAILY_LESSON_ROSTER' USING ERRCODE='22023';
+  END IF;
+  -- This is a new completion, not a schedule edit or attendance correction.
+  FOR v_attendance_row IN SELECT value FROM jsonb_array_elements(p_attendance) LOOP
+    IF jsonb_typeof(v_attendance_row) IS DISTINCT FROM 'object' OR
+       (v_attendance_row-ARRAY['studentId','status','note','expectedUpdatedAt'])<>'{}'::jsonb OR
+       jsonb_typeof(v_attendance_row->'studentId') IS DISTINCT FROM 'string' OR
+       jsonb_typeof(v_attendance_row->'status') IS DISTINCT FROM 'string' OR
+       v_attendance_row->>'status' NOT IN ('present','late','absent','excused') OR
+       NOT (v_attendance_row ? 'expectedUpdatedAt') OR
+       jsonb_typeof(v_attendance_row->'expectedUpdatedAt') NOT IN ('string','null') OR
+       (v_attendance_row ? 'note' AND jsonb_typeof(v_attendance_row->'note') IS DISTINCT FROM 'string') THEN
+      RAISE EXCEPTION 'INVALID_DAILY_LESSON_ATTENDANCE' USING ERRCODE='22023';
+    END IF;
+  END LOOP;
+  v_hash:=encode(extensions.digest(jsonb_build_array(v_operation,p_session_id,
+     p_workplace_id,p_context_workplace_id,p_expected_updated_at,p_lesson_note,
+     p_attendance,p_material_id,p_material_revision,p_taught_students,p_occurred_on)::text,'sha256'),'hex');
+
+  -- Use the same advisory then teacher row order as completed lesson capture.
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_teacher::text,0));
+  SELECT selected_workplace_id INTO v_context FROM public.teachers
+    WHERE id=v_teacher FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501'; END IF;
+  INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+    VALUES(v_teacher,p_request_id,v_operation,v_hash,'{}'::jsonb)
+    ON CONFLICT DO NOTHING;
+  IF NOT FOUND THEN
+    SELECT * INTO v_prior FROM public.agent_tool_receipts
+      WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+    IF NOT FOUND OR v_prior.operation<>v_operation OR v_prior.request_hash<>v_hash THEN
+      RAISE EXCEPTION 'DAILY_COMBINED_REPLAY_CONFLICT' USING ERRCODE='23505';
+    END IF;
+    RETURN v_prior.receipt||jsonb_build_object('replayed',true);
+  END IF;
+
+  -- Stale archived selection intentionally fails closed in this prototype.
+  -- Require valid dashboard context or explicit reset to All before review.
+  IF v_context IS DISTINCT FROM p_context_workplace_id OR
+     (v_context IS NOT NULL AND (v_context<>p_workplace_id OR NOT EXISTS(
+       SELECT 1 FROM public.workplaces
+        WHERE id=v_context AND teacher_id=v_teacher AND archived_at IS NULL
+     ))) THEN
+    RAISE EXCEPTION 'STALE_WORKPLACE_CONTEXT' USING ERRCODE='23505';
+  END IF;
+  SELECT * INTO v_session FROM public.teaching_sessions
+    WHERE id=p_session_id AND teacher_id=v_teacher AND workplace_id=p_workplace_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501'; END IF;
+  IF v_session.status<>'scheduled' OR
+     v_session.starts_at+make_interval(mins=>v_session.duration_minutes)>clock_timestamp() OR
+     v_session.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RAISE EXCEPTION 'DAILY_LESSON_NOT_ACTIONABLE' USING ERRCODE='23505';
+  END IF;
+  IF EXISTS(SELECT 1 FROM public.session_attendance
+   WHERE teacher_id=v_teacher AND session_id=p_session_id
+     AND status IN ('student_cancelled','teacher_cancelled')) THEN
+    RAISE EXCEPTION 'LESSON_CANCELLATION_REVIEW_REQUIRED' USING ERRCODE='23514';
+  END IF;
+
+  -- The exact material's content identity/revision was reviewed, not just
+  -- its stable UUID. Fail closed rather than wait on an in-flight edit.
+  BEGIN
+    SELECT revision INTO v_material_revision FROM public.learning_materials
+     WHERE id=p_material_id AND teacher_id=v_teacher AND archived_at IS NULL
+     FOR SHARE NOWAIT;
+  EXCEPTION WHEN lock_not_available THEN
+    RAISE EXCEPTION 'DAILY_MATERIAL_REVIEW_BUSY' USING ERRCODE='55P03';
+  END;
+  IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND' USING ERRCODE='42501'; END IF;
+  IF v_material_revision IS DISTINCT FROM p_material_revision THEN
+    RAISE EXCEPTION 'STALE_DAILY_MATERIAL_REVISION' USING ERRCODE='23505';
+  END IF;
+
+  v_changes:=jsonb_build_object('status','completed');
+  IF p_lesson_note IS NOT NULL THEN
+    v_changes:=v_changes||jsonb_build_object('lessonNote',p_lesson_note);
+  END IF;
+  -- Blind child keys are generated inside the transaction, not accepted from
+  -- clients, not included in the combined receipt and never used for replay.
+  -- A failed second phase rolls back both child receipts and all domain data.
+  v_close:=public.ccp_teacher_session_commit(p_session_id,v_changes,p_attendance,
+    p_expected_updated_at,gen_random_uuid());
+  SELECT jsonb_agg(jsonb_build_object('studentId',x,'stage','taught','note','') ORDER BY x)
+   INTO v_evidence FROM unnest(p_taught_students) x;
+  v_material:=public.ccp_teacher_lesson_material_use_commit(p_session_id,
+    (v_close->>'revision')::timestamptz,p_material_id,NULL,v_evidence,p_occurred_on,gen_random_uuid());
+  v_receipt:=jsonb_build_object('sessionId',p_session_id,'workplaceId',p_workplace_id,
+    'status','completed','attendanceCount',jsonb_array_length(p_attendance),
+    'materialId',p_material_id,'materialRevision',p_material_revision::text,'linkId',v_material->'linkId','evidenceIds',v_material->'evidenceIds',
+    'oneTransaction',true,'inferredMastery',false,'replayed',false);
+  UPDATE public.agent_tool_receipts SET receipt=v_receipt
+    WHERE teacher_id=v_teacher AND idempotency_key=p_request_id;
+  RETURN v_receipt;
+END;
+$daily_combined$;
+REVOKE ALL ON FUNCTION public.ccp_teacher_daily_session_complete_with_material(
+ uuid,uuid,uuid,timestamptz,text,jsonb,uuid,bigint,uuid[],date,uuid,boolean
+) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_teacher_daily_session_complete_with_material(
+ uuid,uuid,uuid,timestamptz,text,jsonb,uuid,bigint,uuid[],date,uuid,boolean
+) TO authenticated;
