@@ -180,6 +180,8 @@ import {sessionNotesList,sessionNoteSave,SessionNoteError,
 import {canonicalAttendanceList,canonicalAttendanceSet,canonicalAttendanceBulkSet,
  CanonicalAttendanceError,type CanonicalAttendanceSetInput,
  type CanonicalAttendanceBulkInput} from "@/lib/server/canonical-session-attendance";
+import {commitProfessionalOccurrenceMove,previewProfessionalOccurrenceMove,ProfessionalOccurrenceMoveError,
+ occurrenceMoveCommitSchema,occurrenceMovePreviewSchema} from "@/lib/server/professional-occurrence-move";
 import {commitProfessionalRecurrence,previewProfessionalRecurrence,ProfessionalRecurrenceError,
  recurrenceCommitSchema,recurrencePreviewSchema} from "@/lib/server/professional-recurrence";
 import {canonicalSlotsList,canonicalSlotCreate,canonicalSlotUpdate,canonicalSlotDelete,
@@ -953,6 +955,16 @@ const catalogue = [
     name:"ccp_recurring_series_edit_commit",
     description:"Apply exactly the reviewed scoped time or duration edit after explicit approval. Repeat the exact preview inputs and digest with confirmed:true and a request UUID. Never chain other slot writes to imitate this operation. Retry only the same request when the result is unknown. No attendance, payment, or notification is inferred.",
     schema:recurrenceCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_recurring_occurrence_move_preview",
+    description:"Review moving one future original local date of an owned recurring rule that has no generated lesson. Use exact rule revision, local destination date/time, and a reason. Existing lessons use their own guarded reschedule. This preview does not change attendance or any date.",
+    schema:occurrenceMovePreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_recurring_occurrence_move_commit",
+    description:"Move exactly the reviewed original occurrence after explicit approval. Repeat the same inputs and digest, confirmed:true, and one request UUID. Retry only the same request after an unknown result. Keeps the original local occurrence identity and creates one scheduled lesson, not proof of teaching.",
+    schema:occurrenceMoveCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_recurring_slots_delete",
@@ -2437,6 +2449,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await previewProfessionalRecurrence(db,args as z.infer<typeof recurrencePreviewSchema>)};
       case "ccp_recurring_series_edit_commit":
         return {data:await commitProfessionalRecurrence(db,args as z.infer<typeof recurrenceCommitSchema>)};
+      case "ccp_recurring_occurrence_move_preview":
+        return {data:await previewProfessionalOccurrenceMove(db,args as z.infer<typeof occurrenceMovePreviewSchema>)};
+      case "ccp_recurring_occurrence_move_commit":
+        return {data:await commitProfessionalOccurrenceMove(db,args as z.infer<typeof occurrenceMoveCommitSchema>)};
       case "ccp_recurring_slots_delete": {
         const a=args as {slotId:string;idempotencyKey:string};
         return {data:await canonicalSlotDelete(db,teacherId,a.slotId,{
@@ -3011,7 +3027,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalPrivateSessionError)
       return {error:{code:error.code,message:error.message}};
-    if (error instanceof ProfessionalRecurrenceError || error instanceof CanonicalSlotError)
+    if (error instanceof ProfessionalOccurrenceMoveError || error instanceof ProfessionalRecurrenceError || error instanceof CanonicalSlotError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof PayerAssignmentError)
       return {error:{code:error.code,message:error.message}};

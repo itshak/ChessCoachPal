@@ -816,6 +816,28 @@
     "languageEnglish": "English",
     "openContacts": "Manage independent contacts and billing accounts"
   },
+  "occurrenceMove": {
+    "heading": "Move one original occurrence",
+    "help": "Move a future date that does not already have a lesson. The rest of the series stays unchanged.",
+    "original": "Original recurring date",
+    "destination": "New local date",
+    "time": "New local time",
+    "reason": "Reason for this move",
+    "preview": "Preview the one-date move",
+    "review": "Move {original} to {revised} in {zone}. Duration: {minutes} minutes. This schedules a lesson; it does not mark attendance.",
+    "approve": "I approve moving this exact date.",
+    "save": "Apply this move",
+    "retry": "Retry the same approved move",
+    "close": "Close the one-date review",
+    "required": "Enter both dates, a new local time and a reason.",
+    "changed": "The rule or original date changed. Refresh and review it again.",
+    "materialized": "This date already has a lesson. Reschedule that lesson instead.",
+    "conflict": "That time conflicts with another scheduled lesson.",
+    "invalid": "Choose distinct future times, with a valid original recurring date and unambiguous local time.",
+    "unavailable": "The result could not be verified.",
+    "unconfirmed": "The move could not be verified. Retry the same approved request before changing it.",
+    "saved": "Moved one occurrence. Its original date was preserved."
+  },
   "scopedRecurrence": {
     "heading": "Review a recurring series edit",
     "help": "Change the time or duration for a reviewed scope. Past or protected lessons are not rewritten. Leave either change blank to keep its current value.",
