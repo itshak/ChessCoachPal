@@ -6,6 +6,7 @@ import {useState} from "react";
 import {useTranslations,useLocale} from "next-intl";
 import {useRouter} from "next/navigation";
 import {useToast} from "@/components/ui/toast";
+import {OriginalOccurrenceCancellation} from "@/components/teacher/schedule/OriginalOccurrenceCancellation";
 import {OriginalOccurrenceMove} from "@/components/teacher/schedule/OriginalOccurrenceMove";
 import {ScopedSeriesEditor} from "@/components/teacher/schedule/ScopedSeriesEditor";
 import {useConfirm} from "@/components/ui/confirm-dialog";
@@ -52,6 +53,8 @@ export function CanonicalSlotManager({
  const dayLabel=(day:number)=>new Intl.DateTimeFormat(locale,{weekday:"long",timeZone:"UTC"})
    .format(new Date(Date.UTC(2023,0,1+day)));
  const scopedT=useTranslations("scopedRecurrence"),moveT=useTranslations("occurrenceMove");
+ const cancellationT=useTranslations("occurrenceCancellation");
+ const [cancellation,setCancellation]=useState<Slot|null>(null);
  const [move,setMove]=useState<Slot|null>(null);
  const [scoped,setScoped]=useState<Slot|null>(null);
  const [editing,setEditing]=useState<Slot|null>(null);
@@ -133,12 +136,12 @@ export function CanonicalSlotManager({
     <p className="text-xs text-muted">{t("recurringIntro")}</p>
    </div>
    <button className="border border-primary rounded-lg px-3 py-2 text-sm text-primary hover:bg-primary/10"
-    disabled={Boolean(scoped||move)} onClick={openCreate}>{t("addWeekly")}</button>
+    disabled={Boolean(scoped||move||cancellation)} onClick={openCreate}>{t("addWeekly")}</button>
   </div>
   {slots.length===0?<p className="text-sm text-muted">{t("noneRecurring")}</p>:
    <div className="space-y-2">{slots.map(s=><div key={s.id} data-recurring-slot-id={s.id}
      className="flex flex-wrap items-center gap-2 justify-between border border-border rounded-lg px-3 py-2 text-sm">
-     <div>
+     <div className="min-w-0 [overflow-wrap:anywhere]">
       <strong>{students.find(x=>x.id===s.student_id)?.name??t("studentFallback")}</strong>
       <span className="text-muted"> · {dayLabel(s.day_of_week)} {s.start_time.slice(0,5)}
        {" · "}{t("minutes",{count:s.duration_minutes})}
@@ -146,16 +149,20 @@ export function CanonicalSlotManager({
        {!s.active?" · "+t("inactive"):""}
       </span>
      </div>
-     <div className="flex gap-3">
-      <button className="text-primary hover:underline" disabled={Boolean(scoped||move)} onClick={()=>openEdit(s)}>{t("edit")}</button>
-      {s.active&&<button className="text-primary hover:underline" disabled={busy||Boolean(scoped||move)}
+     <div className="flex w-full min-w-0 flex-wrap gap-x-3 gap-y-2 sm:w-auto">
+      <button className="max-w-full text-start text-primary hover:underline" disabled={Boolean(scoped||move||cancellation)} onClick={()=>openEdit(s)}>{t("edit")}</button>
+      {s.active&&<button className="max-w-full text-start text-primary hover:underline" disabled={busy||Boolean(scoped||move||cancellation)}
        onClick={()=>{setExpanded(false);setScoped(s);}}>{scopedT("heading")}</button>}
-      {s.active&&<button className="text-primary hover:underline" disabled={busy||Boolean(scoped||move)}
+      {s.active&&<button className="max-w-full text-start text-primary hover:underline" disabled={busy||Boolean(scoped||move||cancellation)}
        onClick={()=>{setExpanded(false);setMove(s);}}>{moveT("heading")}</button>}
-      <button disabled={busy||Boolean(scoped||move)} className="text-error hover:underline"
+      {s.active&&<button className="max-w-full text-start text-primary hover:underline" disabled={busy||Boolean(scoped||move||cancellation)}
+       onClick={()=>{setExpanded(false);setCancellation(s);}}>{cancellationT("heading")}</button>}
+      <button disabled={busy||Boolean(scoped||move||cancellation)} className="text-error hover:underline"
        onClick={()=>remove(s)}>{t("delete")}</button>
      </div>
     </div>)}</div>}
+  {cancellation&&<OriginalOccurrenceCancellation key={cancellation.id} slot={cancellation} onClose={()=>setCancellation(null)}
+   learner={students.find(s=>s.id===cancellation.student_id)?.name??t("studentFallback")}/>}
   {move&&<OriginalOccurrenceMove key={move.id} slot={move} onClose={()=>setMove(null)}
    learner={students.find(s=>s.id===move.student_id)?.name??t("studentFallback")}/>}
   {scoped&&<ScopedSeriesEditor key={scoped.id} slot={scoped} onClose={()=>setScoped(null)}

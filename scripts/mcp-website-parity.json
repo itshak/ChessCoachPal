@@ -418,6 +418,21 @@
       "evidenceTest": "e2e/canonical-private-sessions-parity.spec.ts"
     },
     {
+      "path": "app/api/coaching/calendar/slots/occurrence-cancellation/route.ts",
+      "methods": [
+        "POST",
+        "PUT"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_recurring_occurrence_cancellation_preview",
+        "ccp_recurring_occurrence_cancellation_commit"
+      ],
+      "explanation": "Owner-scoped no-write review and confirmed exact-revision commit of one original-date cancellation or restoration. Native audited replay never creates a lesson, attendance, or financial evidence.",
+      "evidenceTest": "e2e/parity-professional-occurrence-cancellation.spec.ts"
+    },
+    {
       "path": "app/api/coaching/calendar/slots/occurrence-move/route.ts",
       "methods": [
         "POST",
@@ -1983,6 +1998,7 @@
     "components/teacher/schedule/CanonicalScheduleBoard.tsx",
     "components/teacher/schedule/CanonicalSlotManager.tsx",
     "components/teacher/schedule/ScopedSeriesEditor.tsx",
+    "components/teacher/schedule/OriginalOccurrenceCancellation.tsx",
     "components/teacher/schedule/OriginalOccurrenceMove.tsx",
     "components/teacher/schedule/PolicySettings.tsx",
     "components/teacher/settings/BillingSettingsForm.tsx",
