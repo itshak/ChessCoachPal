@@ -10,7 +10,7 @@ type Preview=Cancel|Restore;
 type Choice=Cancel|{action:"restore";exceptionId:string;expectedRevision:string};
 type Approved=Choice&{idempotencyKey:string;confirmed:true};
 const endpoint="/api/coaching/calendar/slots/occurrence-cancellation";
-const field="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
+const field="w-full min-w-0 max-w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
 const errors:Record<string,"changed"|"materialized"|"invalid"|"notFound">={
  CANONICAL_SLOT_NOT_FOUND:"changed",CANONICAL_SLOT_REVISION_CONFLICT:"changed",
  CANONICAL_SLOT_WORKPLACE_NOT_FOUND:"changed",SLOT_OCCURRENCE_ALREADY_MATERIALIZED:"materialized",
@@ -81,12 +81,12 @@ export function OriginalOccurrenceCancellation({slot,learner,onClose}:{
   <p><bdi>{learner}</bdi></p>
   <p className="text-sm">{t("help")}</p>
   <fieldset disabled={busy||!!pending||!!saved} className="grid gap-2 sm:grid-cols-2">
-   <label>{t("action")}<select className={field} value={action} onChange={e=>{setAction(e.target.value==="restore"?"restore":"cancel");clear();}}>
+   <label className="min-w-0">{t("action")}<select className={field} value={action} onChange={e=>{setAction(e.target.value==="restore"?"restore":"cancel");clear();}}>
     <option value="cancel">{t("cancelChoice")}</option>
     <option value="restore">{t("restoreChoice")}</option>
    </select></label>
-   <label>{t("original")}<input type="date" className={field} value={original} onChange={e=>{setOriginal(e.target.value);clear();}}/></label>
-   {action==="cancel"&&<label>{t("reason")}<input className={field} value={reason} maxLength={500} onChange={e=>{setReason(e.target.value);clear();}}/></label>}
+   <label className="min-w-0">{t("original")}<input type="date" className={field} value={original} onChange={e=>{setOriginal(e.target.value);clear();}}/></label>
+   {action==="cancel"&&<label className="min-w-0">{t("reason")}<input className={field} value={reason} maxLength={500} onChange={e=>{setReason(e.target.value);clear();}}/></label>}
    <button type="button" className="text-primary underline" onClick={()=>void preview()}>{t("preview")}</button>
   </fieldset>
   {review&&<div className="space-y-2">

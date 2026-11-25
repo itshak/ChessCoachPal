@@ -46,8 +46,17 @@ test("PARITY:PARITY-professional-occurrence-cancellation skips and restores exac
    lesson_note:"Keep the earlier original occurrence unchanged"}).select("*").single();
   expect(saved.error).toBeNull();
 
+  await page.setViewportSize({width:320,height:812});
+  const expectNoHorizontalOverflow=async()=>{
+   const size=await page.evaluate(()=>{
+    const viewport=document.scrollingElement??document.documentElement;
+    return viewport.scrollWidth-viewport.clientWidth;
+   });
+   expect(size).toBeLessThanOrEqual(1);
+  };
   await page.goto("/schedule");
   await page.waitForLoadState("networkidle");
+  await expectNoHorizontalOverflow();
   const path="/api/coaching/calendar/slots/occurrence-cancellation";
   const preview="ccp_recurring_occurrence_cancellation_preview",commit="ccp_recurring_occurrence_cancellation_commit";
   const catalogue=await call.listTools();
@@ -91,6 +100,8 @@ test("PARITY:PARITY-professional-occurrence-cancellation skips and restores exac
   const confirm=panel.getByRole("button",{name:"Confirm this date change"});
   const tick=panel.getByRole("checkbox",{name:"I approve this change for this date only"});
   await actionButton.press("Enter");
+  await expect(originalInput).toBeVisible();
+  await expectNoHorizontalOverflow();
   await originalInput.fill(original);
   await panel.getByLabel("Reason for canceling").fill(cancel.reason);
   await reviewButton.press("Enter");

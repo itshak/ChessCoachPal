@@ -141,7 +141,7 @@ export function CanonicalSlotManager({
   {slots.length===0?<p className="text-sm text-muted">{t("noneRecurring")}</p>:
    <div className="space-y-2">{slots.map(s=><div key={s.id} data-recurring-slot-id={s.id}
      className="flex flex-wrap items-center gap-2 justify-between border border-border rounded-lg px-3 py-2 text-sm">
-     <div>
+     <div className="min-w-0 [overflow-wrap:anywhere]">
       <strong>{students.find(x=>x.id===s.student_id)?.name??t("studentFallback")}</strong>
       <span className="text-muted"> · {dayLabel(s.day_of_week)} {s.start_time.slice(0,5)}
        {" · "}{t("minutes",{count:s.duration_minutes})}
@@ -149,13 +149,13 @@ export function CanonicalSlotManager({
        {!s.active?" · "+t("inactive"):""}
       </span>
      </div>
-     <div className="flex gap-3">
-      <button className="text-primary hover:underline" disabled={Boolean(scoped||move||cancellation)} onClick={()=>openEdit(s)}>{t("edit")}</button>
-      {s.active&&<button className="text-primary hover:underline" disabled={busy||Boolean(scoped||move||cancellation)}
+     <div className="flex w-full min-w-0 flex-wrap gap-x-3 gap-y-2 sm:w-auto">
+      <button className="max-w-full text-start text-primary hover:underline" disabled={Boolean(scoped||move||cancellation)} onClick={()=>openEdit(s)}>{t("edit")}</button>
+      {s.active&&<button className="max-w-full text-start text-primary hover:underline" disabled={busy||Boolean(scoped||move||cancellation)}
        onClick={()=>{setExpanded(false);setScoped(s);}}>{scopedT("heading")}</button>}
-      {s.active&&<button className="text-primary hover:underline" disabled={busy||Boolean(scoped||move||cancellation)}
+      {s.active&&<button className="max-w-full text-start text-primary hover:underline" disabled={busy||Boolean(scoped||move||cancellation)}
        onClick={()=>{setExpanded(false);setMove(s);}}>{moveT("heading")}</button>}
-      {s.active&&<button className="text-primary hover:underline" disabled={busy||Boolean(scoped||move||cancellation)}
+      {s.active&&<button className="max-w-full text-start text-primary hover:underline" disabled={busy||Boolean(scoped||move||cancellation)}
        onClick={()=>{setExpanded(false);setCancellation(s);}}>{cancellationT("heading")}</button>}
       <button disabled={busy||Boolean(scoped||move||cancellation)} className="text-error hover:underline"
        onClick={()=>remove(s)}>{t("delete")}</button>
