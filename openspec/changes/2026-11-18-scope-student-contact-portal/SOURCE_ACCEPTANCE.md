@@ -35,6 +35,17 @@ operator or a distributed setup already deployed.
 References: [Traefik v3.6 shared rate limiting](https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/middlewares/ratelimit/)
 and [per-router observability](https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/routing/router/).
 
+## Stale calendar references
+
+With the same valid, unrevoked guest grant, the signed group scenario
+submits a synthetic nonexistent session and a synthetic nonexistent
+learner in separate requests. Both return the same neutral not-found
+response with private caching and referrer headers. A signed teacher
+read shows both original participants and unchanged attendance before
+and after. The revised scenario passed twice against a disposable stack
+on top of the accepted group-note suite; complete Storage state was
+unchanged.
+
 ## Remains open
 
 - The process-local failed-token limiter and verified no-store/no-referrer application responses are not proof of distributed ingress limits or production access-log redaction. Review actual proxy trust and token redaction without inspecting real secrets here. Durable access audit/last-used needs a separate privacy, retention, authorization and governed persistence review; issued or renewed is not evidence of use.
