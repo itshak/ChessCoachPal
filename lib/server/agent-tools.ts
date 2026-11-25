@@ -166,6 +166,7 @@ import {exactSponsorReviewSchema,exactSponsorCommitSchema,exactSponsorReview,exa
  from "@/lib/server/exact-sponsor-service";
 import {financeEarningSummary,financeEarningSummarySchema} from "@/lib/server/finance-earning-summary";
 import {financePeriodEndActuals,financePeriodEndActualsSchema} from "@/lib/server/finance-period-end-actuals";
+import {financePeriodEndReview,financePeriodEndReviewSchema} from "@/lib/server/finance-period-end-review";
 import {
  financialObligationApproveSchema,receivedPaymentRecordSchema,
  paymentAllocationSchema,financialReversalSchema,
@@ -803,6 +804,11 @@ const catalogue = [
     name:"ccp_finance_period_end_actuals",
     description:"Read current settlement of posted obligations for one owned workplace and whole calendar month (monthStart is the first date), one currency and optional exact owned payer. Coaching earnings, fixed-period compensation and participant charges remain separate; neither unallocated receipts, forecast nor historic as-of settlement is included.",
     schema:financePeriodEndActualsSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_finance_period_end_review",
+    description:"Find fixed monthly coach compensation that may need review for one owned workplace, whole calendar month, currency and optional exact owned payer. Read-only advisory discovery, not a posted amount or authorization to approve. Excludes already posted terms and flags archived payers. Occurrence earnings and participant charges are outside this review.",
+    schema:financePeriodEndReviewSchema,scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_finance_ledger_list",
@@ -2469,6 +2475,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       }
       case "ccp_finance_period_end_actuals":
         return {data:await financePeriodEndActuals(db,args as Parameters<typeof financePeriodEndActuals>[1])};
+      case "ccp_finance_period_end_review":
+        return {data:await financePeriodEndReview(db,teacherId,args as Parameters<typeof financePeriodEndReview>[2])};
       case "ccp_finance_ledger_list":
         return {data:await financeLedgerList(db,teacherId)};
       case "ccp_finance_obligation_approve": {

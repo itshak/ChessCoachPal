@@ -52,7 +52,7 @@ type Preview = {
   selectedChapter:null|{studyId:string;chapterId:string;chapterNumber:number;
     studyName:string;chapterName:string;white:string|null;black:string|null;
     verifiedAt:string;chapterUrl:string;attached:false};
-  review:{ creates:string;instructorMinutes:number|null; attendance:string; writesPerformed:boolean; timeSource:"explicit"|"weekly_slot";slotIds:string[];localDate:string|null;timezone:string|null };
+  review:{ captureState:"awaiting_confirmation"|"learner_review_required"|"other_review_required"; unresolvedInputs:number; duplicateReference:boolean; creates:string;instructorMinutes:number|null; attendance:string; writesPerformed:boolean; timeSource:"explicit"|"weekly_slot";slotIds:string[];localDate:string|null;timezone:string|null };
 };
 
 const field = "w-full min-w-0 max-w-full rounded-lg border border-border bg-surface p-2 text-foreground";
@@ -69,6 +69,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
   const [workplaceId,setWorkplaceId] = useState(initialWorkplaceId??"");
   const [names,setNames] = useState("");
   const namesRef=useRef<HTMLTextAreaElement>(null);
+  const learnerChoicesRef=useRef<HTMLUListElement>(null);
   const [title,setTitle] = useState("");
   const [timingMode,setTimingMode] = useState<"explicit"|"weekly">("explicit");
   const [localStart,setLocalStart] = useState("");
@@ -467,8 +468,21 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
     </div>}
     {preview&&<div className="space-y-3 border-t border-border pt-4" aria-live="polite">
       <h3 className="font-semibold">{t("reviewTitle")}</h3>
-      <ul className="list-disc ps-5 text-sm">
-        {preview.resolutions.map((r,i)=><li key={i}>
+      <section aria-label={t("currentCaptureReview")} className="space-y-2 rounded-lg border border-border p-3">
+        <h4 className="font-semibold">{t("currentCaptureReview")}</h4>
+        <p className="text-sm">{t("captureNotSaved")}</p>
+        <p className="text-sm">{t(preview.review.captureState,{count:preview.review.unresolvedInputs})}</p>
+        {preview.review.duplicateReference&&<p className="text-sm">{t("captureDuplicateReference")}</p>}
+        {preview.review.captureState==="learner_review_required"&&
+          <button type="button" className="underline text-sm" disabled={busy||recoveryLocked}
+            onClick={()=>{
+              const unresolved=learnerChoicesRef.current?.querySelector<HTMLSelectElement>(
+                'li[data-unresolved="true"] select');
+              if(unresolved)unresolved.focus();else namesRef.current?.focus();
+            }}>{t("resolveCaptureLearners")}</button>}
+      </section>
+      <ul ref={learnerChoicesRef} className="list-disc ps-5 text-sm">
+        {preview.resolutions.map((r,i)=><li key={i} data-unresolved={r.status==="ambiguous"}>
           <bdi dir="auto">{r.input}</bdi>: {r.status==="resolved"||r.status==="archived"?
              <><bdi dir="auto">{r.name}</bdi>{" ("}<bdi dir="ltr">{r.studentId}</bdi>{")"}
                {r.status==="archived"?" — "+t("archivedStudent"):""}</>:
