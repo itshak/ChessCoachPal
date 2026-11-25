@@ -18453,3 +18453,146 @@ AS $portal_sealed_learner_reports$
 $portal_sealed_learner_reports$;
 REVOKE ALL ON FUNCTION public.ccp_portal_sealed_learner_reports(text) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.ccp_portal_sealed_learner_reports(text) TO service_role;
+
+-- Proposed next exact preproduction successor: report-level terminal actions.
+-- Never grants access, changes snapshots, or removes previous audience records.
+CREATE FUNCTION public.ccp_private_report_lifecycle_review_internal(
+ p_teacher uuid,p_publication uuid,p_replacement uuid
+) RETURNS jsonb LANGUAGE plpgsql STABLE SET search_path=pg_catalog,public,pg_temp
+AS $private_report_lifecycle_review_internal$
+DECLARE
+ p public.report_publications%ROWTYPE; n public.report_publications%ROWTYPE;
+ candidate jsonb; successor jsonb; original_payload jsonb; replacement_payload jsonb;
+ audience_digest text; pending_count bigint;
+ v_action text:=CASE WHEN p_replacement IS NULL THEN 'revoke' ELSE 'supersede' END;
+BEGIN
+ SELECT p0.* INTO p FROM public.report_publications p0
+  WHERE (p0.teacher_id,p0.id)=(p_teacher,p_publication)
+   AND p0.student_id IS NOT NULL AND p0.workplace_id IS NOT NULL
+   AND p0.snapshot_storage_ref='db:report:v1:'||p0.id::text;
+ IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_LIFECYCLE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ IF p.revoked_at IS NOT NULL OR p.superseded_by IS NOT NULL THEN
+  RAISE EXCEPTION 'REPORT_LIFECYCLE_STALE' USING ERRCODE='40001';
+ END IF;
+ SELECT s.candidate INTO candidate FROM public.report_publication_snapshots s
+  WHERE (s.teacher_id,s.publication_id)=(p_teacher,p.id);
+ IF NOT FOUND OR encode(sha256(convert_to(candidate::text,'UTF8')),'hex') IS DISTINCT FROM p.snapshot_digest THEN
+  RAISE EXCEPTION 'REPORT_LIFECYCLE_NOT_FOUND' USING ERRCODE='P0002';
+ END IF;
+ SELECT count(*) FILTER (WHERE a.revoked_at IS NULL),
+  encode(sha256(convert_to(coalesce(jsonb_agg(jsonb_build_array(a.portal_grant_id,a.request_id,
+      a.approved_grant_binding,extract(epoch FROM a.revoked_at)) ORDER BY a.portal_grant_id),'[]'::jsonb)::text,'UTF8')),'hex')
+ INTO pending_count,audience_digest
+ FROM public.report_publication_audiences a
+ WHERE (a.teacher_id,a.publication_id)=(p_teacher,p.id) AND a.approved_grant_binding IS NOT NULL;
+ original_payload:=jsonb_build_object('publicationId',p.id,'snapshotDigest',p.snapshot_digest,
+  'revision',p.revision::text,'approvedAt',p.approved_at,'candidate',candidate);
+ IF p_replacement IS NOT NULL THEN
+  SELECT n0.* INTO n FROM public.report_publications n0
+   WHERE (n0.teacher_id,n0.id,n0.student_id,n0.workplace_id)=(p_teacher,p_replacement,p.student_id,p.workplace_id)
+    AND n0.id<>p.id AND n0.approved_at>p.approved_at
+    AND n0.revoked_at IS NULL AND n0.superseded_by IS NULL
+    AND n0.snapshot_storage_ref='db:report:v1:'||n0.id::text;
+  IF NOT FOUND OR EXISTS(SELECT 1 FROM public.report_publication_audiences a
+      WHERE (a.teacher_id,a.publication_id)=(p_teacher,p_replacement)
+       AND a.approved_grant_binding IS NOT NULL) THEN
+   RAISE EXCEPTION 'REPORT_REPLACEMENT_NOT_PRIVATE_OR_IN_SCOPE' USING ERRCODE='42501';
+  END IF;
+  SELECT s.candidate INTO successor FROM public.report_publication_snapshots s
+   WHERE (s.teacher_id,s.publication_id)=(p_teacher,n.id);
+  IF NOT FOUND OR encode(sha256(convert_to(successor::text,'UTF8')),'hex') IS DISTINCT FROM n.snapshot_digest THEN
+   RAISE EXCEPTION 'REPORT_REPLACEMENT_NOT_PRIVATE_OR_IN_SCOPE' USING ERRCODE='42501';
+  END IF;
+  replacement_payload:=jsonb_build_object('publicationId',n.id,'snapshotDigest',n.snapshot_digest,
+   'revision',n.revision::text,'approvedAt',n.approved_at,'candidate',successor);
+ END IF;
+ RETURN jsonb_build_object('action',v_action,'studentId',p.student_id,'workplaceId',p.workplace_id,
+  'original',original_payload,'replacement',replacement_payload,
+  'notWithdrawnApprovals',pending_count,
+  'reviewDigest',encode(sha256(convert_to(jsonb_build_array(
+    'ccp.private.report.lifecycle.v1',v_action,p_teacher,p.id,p.student_id,p.workplace_id,p.revision,p.snapshot_digest,
+    n.id,n.revision,n.snapshot_digest,audience_digest
+   )::text,'UTF8')),'hex'));
+END;
+$private_report_lifecycle_review_internal$;
+REVOKE ALL ON FUNCTION public.ccp_private_report_lifecycle_review_internal(uuid,uuid,uuid)
+ FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION public.ccp_private_report_lifecycle_review(
+ p_publication uuid,p_replacement uuid
+) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp
+AS $private_report_lifecycle_review$
+DECLARE v_teacher uuid:=auth.uid();
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501'; END IF;
+ IF p_publication IS NULL THEN RAISE EXCEPTION 'REPORT_LIFECYCLE_INVALID' USING ERRCODE='22023'; END IF;
+ RETURN public.ccp_private_report_lifecycle_review_internal(v_teacher,p_publication,p_replacement);
+END;
+$private_report_lifecycle_review$;
+REVOKE ALL ON FUNCTION public.ccp_private_report_lifecycle_review(uuid,uuid)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_private_report_lifecycle_review(uuid,uuid) TO authenticated;
+
+CREATE FUNCTION public.ccp_private_report_lifecycle_commit(
+ p_publication uuid,p_replacement uuid,p_review_digest text,p_request uuid,p_confirm boolean
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp
+AS $private_report_lifecycle_commit$
+DECLARE
+ v_teacher uuid:=auth.uid(); v_review jsonb; v_receipt jsonb; v_request_hash text;
+ v_saved public.agent_tool_receipts%ROWTYPE; v_updated public.report_publications%ROWTYPE;
+ v_operation constant text:='teacher.privateReport.lifecycle.v1';
+BEGIN
+ IF v_teacher IS NULL THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501'; END IF;
+ IF p_publication IS NULL OR p_request IS NULL OR p_confirm IS DISTINCT FROM true
+  OR p_review_digest IS NULL OR p_review_digest !~ '^[0-9a-f]{64}$' THEN
+  RAISE EXCEPTION 'REPORT_LIFECYCLE_APPROVAL_REQUIRED' USING ERRCODE='22023';
+ END IF;
+ v_request_hash:=encode(sha256(convert_to(jsonb_build_array(v_operation,v_teacher,
+    p_publication,p_replacement,p_review_digest)::text,'UTF8')),'hex');
+ -- Matches the first lock for audience approval and report sealing. The
+ -- selected two publication rows are then locked in a single stable order.
+ PERFORM 1 FROM public.teachers WHERE id=v_teacher FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_LIFECYCLE_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+ SELECT * INTO v_saved FROM public.agent_tool_receipts
+  WHERE (teacher_id,idempotency_key)=(v_teacher,p_request);
+ IF FOUND THEN
+  IF (v_saved.operation,v_saved.request_hash) IS DISTINCT FROM (v_operation,v_request_hash) THEN
+   RAISE EXCEPTION 'REPORT_LIFECYCLE_IDEMPOTENCY_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN v_saved.receipt;
+ END IF;
+ PERFORM 1 FROM public.report_publications
+  WHERE teacher_id=v_teacher AND id IN(p_publication,p_replacement) ORDER BY id FOR UPDATE;
+ -- Ordinary audience withdrawal does not take the teacher lock, so
+ -- serialize its row against the exact reviewed impact as well.
+ PERFORM 1 FROM public.report_publication_audiences
+  WHERE teacher_id=v_teacher AND publication_id IN(p_publication,p_replacement)
+  ORDER BY publication_id,portal_grant_id FOR UPDATE;
+ v_review:=public.ccp_private_report_lifecycle_review_internal(v_teacher,p_publication,p_replacement);
+ IF v_review->>'reviewDigest' IS DISTINCT FROM p_review_digest THEN
+  RAISE EXCEPTION 'REPORT_LIFECYCLE_STALE' USING ERRCODE='40001';
+ END IF;
+ UPDATE public.report_publications SET
+  revoked_at=CASE WHEN p_replacement IS NULL THEN clock_timestamp() ELSE NULL END,
+  superseded_by=p_replacement
+ WHERE (teacher_id,id)=(v_teacher,p_publication)
+  AND revision=(v_review->'original'->>'revision')::bigint AND revoked_at IS NULL AND superseded_by IS NULL
+ RETURNING * INTO v_updated;
+ IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_LIFECYCLE_STALE' USING ERRCODE='40001'; END IF;
+ v_receipt:=jsonb_build_object('publicationId',v_updated.id,'revision',v_updated.revision::text,
+   'snapshotDigest',v_updated.snapshot_digest,'replacementId',v_updated.superseded_by,'revokedAt',v_updated.revoked_at,
+   'status',CASE WHEN p_replacement IS NULL THEN 'revoked' ELSE 'superseded' END);
+ INSERT INTO public.agent_tool_receipts(teacher_id,idempotency_key,operation,request_hash,receipt)
+  VALUES(v_teacher,p_request,v_operation,v_request_hash,v_receipt)
+  ON CONFLICT(teacher_id,idempotency_key) DO NOTHING;
+ IF NOT FOUND THEN
+  -- A concurrent unrelated operation reserved the same key. Roll back any
+  -- update from this attempt; never return that unrelated receipt.
+  RAISE EXCEPTION 'REPORT_LIFECYCLE_IDEMPOTENCY_CONFLICT' USING ERRCODE='23505';
+ END IF;
+ RETURN v_receipt;
+END;
+$private_report_lifecycle_commit$;
+REVOKE ALL ON FUNCTION public.ccp_private_report_lifecycle_commit(uuid,uuid,text,uuid,boolean)
+ FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_private_report_lifecycle_commit(uuid,uuid,text,uuid,boolean) TO authenticated;
