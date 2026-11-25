@@ -881,6 +881,19 @@
       "evidenceTest": "e2e/parity-daily-homework.spec.ts"
     },
     {
+      "path": "app/api/dashboard/credit-expiry/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_professional_credit_expiry_get"
+      ],
+      "explanation": "The optional Dashboard expiry review and delegated read share a scoped current workplace calendar and bounded candidate paths for base expiry and approved extensions. It shows already-issued packages with positive recorded unredeemed units, without implying spending eligibility, funding or estimated use. The signed case compares exact output, excludes other and archived scopes, verifies the effective date and confirms no writes.",
+      "evidenceTest": "e2e/parity-professional-credit-expiry.spec.ts"
+    },
+    {
       "path": "app/api/dashboard/summary/route.ts",
       "methods": [
         "GET"

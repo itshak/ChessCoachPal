@@ -5,10 +5,12 @@ import { Card } from "@/components/ui/card";
 import {dailyLessonPreparationInput,DailyPreparationError,teacherDailyLessonPreparation} from "@/lib/server/daily-lesson-preparation";
 import { teacherDashboardPageModel, teacherDashboardSummaryInput } from "@/lib/server/teacher-overview-service";
 
+import {professionalCreditExpiryInput,teacherProfessionalCreditExpiry} from "@/lib/server/professional-credit-expiry";
+
 export async function generateMetadata() {const t=await getTranslations("dashboard");return {title:t("title")};}
 
 export default async function DashboardPage({ searchParams }: {
-  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[]; prepareSession?: string | string[]; closeReview?: string | string[] }>;
+  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[]; prepareSession?: string | string[]; closeReview?: string | string[]; creditExpiryWorkplace?: string | string[] }>;
 }) {
   const t=await getTranslations("dashboard");
   const locale=await getLocale();
@@ -16,12 +18,22 @@ export default async function DashboardPage({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { date: rawDate, homeworkAfter, prepareSession, closeReview: rawCloseReview } = await searchParams;
+  const { date: rawDate, homeworkAfter, prepareSession, closeReview: rawCloseReview, creditExpiryWorkplace } = await searchParams;
   const filters = teacherDashboardSummaryInput.safeParse({ date: rawDate, homeworkAfter,
     closeReview: rawCloseReview === undefined ? undefined : rawCloseReview === "1" });
   const { summary, students, upcoming, recent, teacher, daily } =
     await teacherDashboardPageModel(supabase, user.id, filters.success ? filters.data.date : undefined,
       filters.success ? filters.data.homeworkAfter : undefined, filters.success && filters.data.closeReview);
+  const creditInput=professionalCreditExpiryInput.safeParse({workplaceId:creditExpiryWorkplace});
+  const creditExpiry=creditInput.success
+    ? await teacherProfessionalCreditExpiry(supabase,user.id,creditInput.data).catch(()=>null) : null;
+  const dashboardState=new URLSearchParams();
+  if(daily?.date)dashboardState.set("date",daily.date);
+  if(filters.success&&filters.data.closeReview)dashboardState.set("closeReview","1");
+  if(filters.success&&filters.data.homeworkAfter)dashboardState.set("homeworkAfter",filters.data.homeworkAfter);
+  const creditBaseHref="/dashboard?"+dashboardState.toString();
+  if(summary.workplaceId)dashboardState.set("creditExpiryWorkplace",summary.workplaceId);
+  const creditOpenHref="/dashboard?"+dashboardState.toString()+"#professional-credit-expiry";
   const preparationInput=dailyLessonPreparationInput.safeParse({sessionId:prepareSession});
   const preparation=prepareSession===undefined ? null : !preparationInput.success ? {kind:"invalid" as const}
     : await teacherDailyLessonPreparation(supabase,user.id,preparationInput.data.sessionId)
@@ -169,6 +181,37 @@ export default async function DashboardPage({ searchParams }: {
             className="text-primary underline">{t("dayEndHide")}</Link>
         </>}
       </section>}
+
+      <section aria-labelledby="professional-credit-expiry" className="mb-8">
+        <h2 id="professional-credit-expiry" className="text-lg font-semibold mb-3">{t("creditExpiryTitle")}</h2>
+        {creditExpiryWorkplace === undefined
+          ? summary.workplaceId ? <Link href={creditOpenHref} prefetch={false} className="text-primary underline">
+            {t("creditExpiryOpen")}</Link> : <p>{t("creditExpiryChooseWorkplace")}</p>
+          : <>
+            {!creditExpiry ? <p role="alert">{t("creditExpiryUnavailable")}</p> : <>
+              <p className="mb-2"><bdi dir="auto">{creditExpiry.workplaceName}</bdi>{" · "}
+                {t("creditExpiryWindow",{from:creditExpiry.asOf,to:creditExpiry.through,zone:creditExpiry.timeZone})}</p>
+              <p>{t("creditExpiryExplanation")}</p>
+              {creditExpiry.status !== "ready" ? <p role="alert">{t(creditExpiry.status === "scope_too_large"
+                ? "creditExpiryLimit" : "creditExpiryUnavailable")}</p> : <>
+                {!creditExpiry.packages.length && <p>{t("creditExpiryEmpty")}</p>}
+                {!!creditExpiry.packages.length && <ul className="space-y-2">
+                  {creditExpiry.packages.map(row => <li key={row.packageId}>
+                    <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
+                      <p className="font-medium"><bdi dir="auto">{row.studentName}</bdi></p>
+                      <p>{t("creditExpiryUnits",{count:row.unredeemedUnits,date:row.expiresOn})}</p>
+                      <Link href={row.learnerHref} className="text-primary underline">
+                        {t("creditExpiryLearner",{name:row.studentName})}</Link>
+                    </Card>
+                  </li>)}
+                </ul>}
+                {creditExpiry.truncated && <p>{t("creditExpiryTruncated",{count:creditExpiry.limit})}</p>}
+              </>}
+            </>}
+            <Link href={creditBaseHref+"#professional-credit-expiry"} className="text-primary underline">
+              {t("creditExpiryHide")}</Link>
+          </>}
+      </section>
 
       {filters.success && daily && dailyTime && <section aria-labelledby="daily-attendance" className="mb-8">
         <h2 id="daily-attendance" className="text-lg font-semibold mb-3">{t("dailyAttendanceHeading")}</h2>

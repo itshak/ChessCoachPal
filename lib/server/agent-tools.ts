@@ -1,3 +1,4 @@
+import {professionalCreditExpiryInput,teacherProfessionalCreditExpiry} from "@/lib/server/professional-credit-expiry";
 import {workplaceCancellationWindowInput} from "@/lib/server/workplace-cancellation-policy";
 import "server-only";
 import { z } from "zod";
@@ -307,6 +308,11 @@ const catalogue = [
     name: "ccp_dashboard_summary",
     description: "Read website dashboard totals. Omit workplaceId for the active selection, pass null for All, or use an owned ID. Workplace count is teacher-wide; other counts honor the filter. With a real YYYY-MM-DD date, return bounded upcoming lessons, frozen-roster attendance issues, and recorded rating lookup issues (All only). All-only homework uses the date as due-through and current review evidence, not historical snapshots; use homeworkAfter from homework.nextAfter with the same date. With closeReview:true and that date, list ended lessons awaiting explicit completion even if all attendance is marked. No writing, provider calls, or inferred attendance, teaching or billing.",
     schema: teacherDashboardSummaryInput, scope: "coach:read", readOnly: true,
+  },
+  {
+    name: "ccp_professional_credit_expiry_get",
+    description: "Read already issued prepaid packages expiring between today and 14 civil days from now with a recorded expiry and positive unredeemed units in one explicit active owned workplace. Uses the workplace calendar and accepted expiry extensions. This is present-tense and read-only: units are not a payment, spendable balance, forecast, or permission to change the package. An oversized or unavailable scope is not an empty result.",
+    schema: professionalCreditExpiryInput, scope: "coach:read", readOnly: true,
   },
   {
     name: "ccp_notifications_list",
@@ -2785,6 +2791,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const { workplaceId, date, homeworkAfter, closeReview } = args as z.infer<typeof teacherDashboardSummaryInput>;
         return { data: await teacherDashboardSummary(db, teacherId, workplaceId, date, homeworkAfter, closeReview) };
       }
+      case "ccp_professional_credit_expiry_get":
+        return {data:await teacherProfessionalCreditExpiry(db,teacherId,args as z.infer<typeof professionalCreditExpiryInput>)};
       case "ccp_notifications_list":
         return { data: await teacherNotificationsList(db, teacherId) };
       case "ccp_notifications_mark_read": {
