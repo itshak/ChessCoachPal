@@ -20,8 +20,8 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:?}
       JWT_EXP: ${JWT_EXPIRY:-3600}
     volumes:
-    - db-data:/var/lib/postgresql/data
-    - db-config:/etc/postgresql-custom
+    - beta-v020-db-data:/var/lib/postgresql/data
+    - beta-v020-db-config:/etc/postgresql-custom
     healthcheck:
       test:
       - CMD
@@ -151,7 +151,7 @@ services:
       S3_PROTOCOL_ACCESS_KEY_ID: ${S3_PROTOCOL_ACCESS_KEY_ID:?run sh docker/supabase/generate-secrets.sh}
       S3_PROTOCOL_ACCESS_KEY_SECRET: ${S3_PROTOCOL_ACCESS_KEY_SECRET:?run sh docker/supabase/generate-secrets.sh}
     volumes:
-    - storage-data:/var/lib/storage
+    - beta-v020-storage-data:/var/lib/storage
     healthcheck:
       test:
       - CMD
@@ -275,10 +275,12 @@ services:
       exec crond -f -l 8
 
       '
+# Keep this cohort on its own clean volumes. Reusing the pre-beta names
+# would attach the incompatible legacy schema. Keep these names for later upgrades.
 volumes:
-  db-data: null
-  db-config: null
-  storage-data: null
+  beta-v020-db-data: null
+  beta-v020-db-config: null
+  beta-v020-storage-data: null
 networks:
   coolify:
     external: true
