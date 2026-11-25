@@ -140,9 +140,31 @@ real signed focus tool and registry entry; its browser run also hit a local
 test mail port collision before running tests. The corrected exact head
 passed both. No schema, release or deployment change.
 
+## Verified source: recorded online rating lookup outcomes
+
+[PR #186](https://github.com/itshak/ChessCoachPal/pull/186) merged at
+`0982b7e06b1bb435c0e195eaa9aaa3a69dd6890e`. The dashboard, signed summary and
+delegated MCP agree on bounded counts of recorded failures, retry responses and
+discarded results on the selected civil day. Only the most recent matching
+receipt that day contributes per active owned consent; a subsequent success
+suppresses earlier errors. All workplaces is required because provider lookups
+have no workplace provenance. This is stored attempt evidence, not a live
+health check, elapsed-age freshness or proof that missing evidence means
+failure. No provider calls, automatic worker activation or data changes.
+
+Exact candidate `9c1ade4f90e4b4a0c8b9e2d14e383f7eed1b93e6` passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45514321151),
+[Security](https://github.com/itshak/ChessCoachPal/actions/runs/45514321276),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45514321295),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45514321249),
+and [signed browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45514321310)
+(447 browser cases plus three scheduling repeats). No schema, release or
+deployment change.
+
 ## Still open
 
-- Stale-rating evidence, with recorded failure distinct from missing evidence.
+- Age-based freshness requires a separately justified policy; neither old
+  snapshots nor missing provider receipts imply lookup failure.
 - A reviewed atomic completion with taught material evidence, learner/import
   review and full coverage of archived-learner recovery in the daily workflow.
 - Complete website/MCP acceptance and evidence before archival.

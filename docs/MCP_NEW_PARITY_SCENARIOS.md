@@ -116,3 +116,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | Open the exact ended lesson on the missing-attendance list without falling back to another session. The signed website and delegated MCP preview check the current workplace and saved roster; changed context requires reload, and existing cancellation decisions stay intact. Approved completion uses the canonical attendance and shared-note transaction; read-back confirms only the selected occurrence changes. | `e2e/parity-daily-lesson-close.spec.ts#PARITY-daily-lesson-close` — [446 browser cases plus three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45499371778) on `0ca0b0001bb0c0826cb487f57f7b5b7c148d2ce7`, merged in [PR #182](https://github.com/itshak/ChessCoachPal/pull/182) at `5d9036744e31c37525ec27a847a91a025aae3a2c`. |
+
+## Daily recorded rating lookup issues — accepted source slice
+
+| Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | On the selected civil day, only relevant recorded online lookup receipts contribute to All-workplaces counts. Browser, signed HTTP and MCP distinguish actual failure, retry response, discarded result and no recorded issues. A later success suppresses an earlier failure that day; stale bindings, archived and foreign learners, backfill, invalid receipts and off-day evidence are excluded. No raw errors, learner data, provider requests or writes. | `e2e/parity-daily-rating-review.spec.ts#PARITY-daily-rating-review` — [447 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45514321310) on `9c1ade4f90e4b4a0c8b9e2d14e383f7eed1b93e6`, merged in [PR #186](https://github.com/itshak/ChessCoachPal/pull/186) at `0982b7e06b1bb435c0e195eaa9aaa3a69dd6890e`. |
