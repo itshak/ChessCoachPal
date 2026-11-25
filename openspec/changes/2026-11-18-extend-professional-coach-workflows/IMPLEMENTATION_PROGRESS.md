@@ -28,3 +28,26 @@ delivery, consent changes, payment and release are outside this source work.
 - Reversal and cash allocation remain explicitly approved and auditable.
   For 180 ILS owed and 60 ILS validly allocated, 120 ILS remains outstanding;
   attendance alone changes none of those receipt amounts.
+
+## Verified implementation: reviewed scoped series timing
+
+[PR #196](https://github.com/itshak/ChessCoachPal/pull/196) was verified
+on merged source `d09ab4e64cb983d57aa24044b3bf54f1c189e67b`. Website
+and delegated MCP review time or duration changes from an original
+local date forward, or for all still-editable segments. The canonical
+transaction binds the exact reviewed scope and timing, and requests a
+new successor ID only if it needs to split a segment. Approval is
+explicit. Retrying a lost response returns the original receipt; the
+historical section stays in the original rule. Synthetic signed
+read-back compared the exact rule boundaries and one successor.
+
+Exact candidate `0cab7c075caa680af67f5b5d63ba6bd4624732cd` passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45537592612),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45537592590),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45537592548),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45537592547)
+and [authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45537592581)
+(451 browser cases and three scheduling repeats). No change to the
+installed schema source, no deployment, and no financial or attendance
+writes. This does not yet connect one-original-date exceptions or change
+weekday, timezone, billing rates, published reports, or legacy data.
