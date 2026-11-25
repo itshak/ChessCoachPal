@@ -459,7 +459,7 @@
         "ccp_recurring_series_edit_preview",
         "ccp_recurring_series_edit_commit"
       ],
-      "explanation": "Shared authenticated scope review and digest-bound atomic time/duration edit use the locked database. Cutoffs use original local occurrence dates, not a moved event's actual time. Protected evidence persists; uncertain commits preserve the same approved request.",
+      "explanation": "Shared authenticated scope review and digest-bound atomic time, duration and bounded weekday edit use the locked database. The latter discloses independent old and proposed date lists, checked in e2e/parity-professional-bounded-weekday.spec.ts. Cutoffs use original local occurrence dates, not a moved event's actual time. Protected evidence persists; uncertain commits preserve the same approved request.",
       "evidenceTest": "e2e/parity-professional-scoped-series.spec.ts"
     },
     {
