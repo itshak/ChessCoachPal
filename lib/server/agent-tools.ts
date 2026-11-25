@@ -305,7 +305,7 @@ const catalogue = [
   },
   {
     name: "ccp_dashboard_summary",
-    description: "Read website dashboard totals. Omit workplaceId for the active selection, pass null for All, or use an owned ID. Workplace count is teacher-wide; scoped counts honor the filter. With date YYYY-MM-DD, get persisted upcoming lessons and ended attendance review against frozen rosters; unrecorded, unavailable and truncated evidence remain distinct. All-only homework uses the date as a due-through cutoff and current recorded submissions and reviews, not a historical snapshot. Continue with homeworkAfter from homework.nextAfter and the same date. Homework has no workplace provenance. No date returns existing totals only. Dated results include bounded recorded online-rating lookup issues (All workplaces only), not live status or rating freshness.",
+    description: "Read website dashboard totals. Omit workplaceId for the active selection, pass null for All, or use an owned ID. Workplace count is teacher-wide; other counts honor the filter. With a real YYYY-MM-DD date, return bounded upcoming lessons, frozen-roster attendance issues, and recorded rating lookup issues (All only). All-only homework uses the date as due-through and current review evidence, not historical snapshots; use homeworkAfter from homework.nextAfter with the same date. With closeReview:true and that date, list ended lessons awaiting explicit completion even if all attendance is marked. No writing, provider calls, or inferred attendance, teaching or billing.",
     schema: teacherDashboardSummaryInput, scope: "coach:read", readOnly: true,
   },
   {
@@ -2782,8 +2782,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherStudentPatch(db,teacherId,a.studentId,a.changes,a.expectedUpdatedAt)};
       }
       case "ccp_dashboard_summary": {
-        const { workplaceId, date, homeworkAfter } = args as z.infer<typeof teacherDashboardSummaryInput>;
-        return { data: await teacherDashboardSummary(db, teacherId, workplaceId, date, homeworkAfter) };
+        const { workplaceId, date, homeworkAfter, closeReview } = args as z.infer<typeof teacherDashboardSummaryInput>;
+        return { data: await teacherDashboardSummary(db, teacherId, workplaceId, date, homeworkAfter, closeReview) };
       }
       case "ccp_notifications_list":
         return { data: await teacherNotificationsList(db, teacherId) };

@@ -16,6 +16,7 @@ export const teacherDashboardSummaryInput = z.object({
   workplaceId: z.string().uuid().nullable().optional(),
   date: z.iso.date().refine(value => value >= "1900-01-01" && value <= "9998-12-31",
     "Expected a real YYYY-MM-DD date between 1900-01-01 and 9998-12-31").optional(),
+  closeReview: z.literal(true).optional(),
   homeworkAfter: z.string().max(58).refine(value => {
     const parts = value.split("~");
     return parts.length === 3 && z.iso.date().safeParse(parts[0]).success &&
@@ -24,7 +25,9 @@ export const teacherDashboardSummaryInput = z.object({
   }, "Expected a homework continuation cursor").optional(),
 }).strict().refine(value => value.homeworkAfter === undefined ||
   (value.date !== undefined && value.homeworkAfter.slice(0, 10) === value.date),
-  "Homework continuation requires a matching due-through date");
+  "Homework continuation requires a matching due-through date")
+  .refine(value => value.closeReview === undefined || value.date !== undefined,
+    "Day-end review requires an explicit civil date");
 
 async function dashboardScope(db: Db, teacherId: string, requested?: string | null, now = new Date()) {
   const workplaceId = await resolveTeacherWorkplaceFilter(db, teacherId, requested);
@@ -85,7 +88,7 @@ type AttendanceTask = Omit<AttendanceCandidate, "roster" | "decisions" | "status
 );
 
 async function dailyMissingAttendance(db: Db, teacherId: string, scope: DashboardScope,
-  dayStart: Date, dayEnd: Date,
+  dayStart: Date, dayEnd: Date, includeCloseReview: boolean,
 ) {
   const upper = new Date(Math.min(dayEnd.getTime(), scope.now.getTime()));
   const query = () => db.from("teaching_sessions").select(
@@ -104,32 +107,45 @@ async function dailyMissingAttendance(db: Db, teacherId: string, scope: Dashboar
       .then(context => context.selectedWorkplaceId),
   ]);
   if (result.error || !result.data) throw new TeacherOverviewError(500, "Daily attendance unavailable");
-  const tasks = result.data.slice(0, ATTENDANCE_SCAN_LIMIT).flatMap<AttendanceTask>(({roster, decisions, status, ...session}) => {
+  const tasks: AttendanceTask[] = [];
+  const pending: (Pick<AttendanceCandidate, "id" | "title" | "starts_at" | "workplace_id"> & {
+    attendance: "marked" | "missing" | "unknown" | "cancellation_review";
+    missingCount: number | null;
+    completionHref?: string;
+    scheduleHref: string | null;
+  })[] = [];
+  for (const {roster, decisions, status, ...session} of result.data.slice(0, ATTENDANCE_SCAN_LIMIT)) {
     const endsAt = Date.parse(session.starts_at) + session.duration_minutes * 60_000;
-    if (endsAt > scope.now.getTime()) return [];
-    if (roster.length > ATTENDANCE_ROSTER_LIMIT || decisions.length > ATTENDANCE_ROSTER_LIMIT)
-      return [{...session, reason: "ROSTER_LIMIT_EXCEEDED" as const, missingCount: null, scheduleHref: null}];
-    if (!roster.length)
-      return [{...session, reason: "ROSTER_NOT_RECORDED" as const, missingCount: null, scheduleHref: null}];
+    if (endsAt > scope.now.getTime()) continue;
+    const inSelection = !scheduleSelection || scheduleSelection === session.workplace_id;
+    const scheduleHref = inSelection ? "/schedule?session=" + session.id + "#lesson-attendance-" + session.id : null;
+    const hasCancellation = decisions.some(row => row.status === "student_cancelled" || row.status === "teacher_cancelled");
+    const reason = roster.length > ATTENDANCE_ROSTER_LIMIT || decisions.length > ATTENDANCE_ROSTER_LIMIT
+      ? "ROSTER_LIMIT_EXCEEDED" as const : !roster.length ? "ROSTER_NOT_RECORDED" as const : null;
     const decided = new Set(decisions.map(row => row.student_id));
-    const missingCount = roster.filter(row => !decided.has(row.student_id)).length;
-    if (!missingCount) return [];
-    const inSelection=!scheduleSelection || scheduleSelection===session.workplace_id;
-    const hasCancellation=decisions.some(row=>row.status==="student_cancelled"||row.status==="teacher_cancelled");
-    const completionHref=status==="scheduled" && roster.length<=50 && inSelection && !hasCancellation
-      ? "/coaching?recordSession="+session.id+"&recordWorkplace="+(scheduleSelection??"all")+"#lesson-completion"
+    const missingCount = reason ? null : roster.filter(row => !decided.has(row.student_id)).length;
+    const completionHref = status === "scheduled" && roster.length > 0 && roster.length <= 50 &&
+      decisions.length <= 50 && inSelection && !hasCancellation
+      ? "/coaching?recordSession=" + session.id + "&recordWorkplace=" + (scheduleSelection ?? "all") + "#lesson-completion"
       : undefined;
-    return [{...session, reason: "ATTENDANCE_MISSING" as const, missingCount, completionHref,
-      scheduleHref: !scheduleSelection || scheduleSelection === session.workplace_id
-        ? "/schedule?session=" + session.id + "#lesson-attendance-" + session.id : null}];
-  });
+    if (reason) tasks.push({...session, reason, missingCount: null, scheduleHref: null});
+    else if (missingCount) tasks.push({...session, reason: "ATTENDANCE_MISSING", missingCount, completionHref, scheduleHref});
+    if (includeCloseReview && status === "scheduled") pending.push({
+      id: session.id, title: session.title, starts_at: session.starts_at, workplace_id: session.workplace_id,
+      attendance: hasCancellation ? "cancellation_review" : reason ? "unknown" : missingCount ? "missing" : "marked",
+      missingCount, completionHref, scheduleHref,
+    });
+  }
+  const scanTruncated = result.data.length > ATTENDANCE_SCAN_LIMIT;
   return {
-    status: "ready" as const, sessions: tasks.slice(0, DAILY_LIMIT), limit: DAILY_LIMIT,
-    truncated: result.data.length > ATTENDANCE_SCAN_LIMIT || tasks.length > DAILY_LIMIT,
+    missingAttendance: {status: "ready" as const, sessions: tasks.slice(0, DAILY_LIMIT), limit: DAILY_LIMIT,
+      truncated: scanTruncated || tasks.length > DAILY_LIMIT},
+    ...(includeCloseReview ? {closeReview: {status: "ready" as const, sessions: pending.slice(0, DAILY_LIMIT),
+      limit: DAILY_LIMIT, truncated: scanTruncated || pending.length > DAILY_LIMIT}} : {}),
   };
 }
 
-async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, requestedDate?: string, homeworkAfter?: string) {
+async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, requestedDate?: string, homeworkAfter?: string, includeCloseReview = false) {
   const venue = scope.workplaceId ? await db.from("workplaces")
     .select("timezone").eq("teacher_id", teacherId).eq("id", scope.workplaceId).maybeSingle() : null;
   if (venue && (venue.error || !venue.data))
@@ -146,10 +162,11 @@ async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, r
     .eq("teacher_id", teacherId).match(workplaceMatch(scope)).eq("status", "scheduled")
     .gte("starts_at", from.toISOString()).lt("starts_at", dayEnd.toISOString())
     .order("starts_at").order("id").limit(DAILY_LIMIT + 1);
-  const [result, missingAttendance, homework, ratingReview] = await Promise.all([
+  const [result, attendance, homework, ratingReview] = await Promise.all([
     from < dayEnd ? query() : { data: [], error: null },
-    dailyMissingAttendance(db, teacherId, scope, dayStart, dayEnd)
-      .catch(() => ({status: "unavailable" as const})),
+    dailyMissingAttendance(db, teacherId, scope, dayStart, dayEnd, includeCloseReview)
+      .catch(() => ({missingAttendance: {status: "unavailable" as const},
+        ...(includeCloseReview ? {closeReview: {status: "unavailable" as const}} : {})})),
     teacherDailyHomework(db, teacherId, scope.workplaceId, date, homeworkAfter)
       .catch(() => ({status: "unavailable" as const})),
     teacherDailyRatingReview(db,teacherId,scope.workplaceId,dayStart,dayEnd,scope.now)
@@ -157,14 +174,14 @@ async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, r
   ]);
   if (result.error || !result.data) throw new TeacherOverviewError(500, "Daily lessons unavailable");
   return { date, timeZone, limit: DAILY_LIMIT, truncated: result.data.length > DAILY_LIMIT,
-    sessions: result.data.slice(0, DAILY_LIMIT), missingAttendance, homework, ratingReview };
+    sessions: result.data.slice(0, DAILY_LIMIT), ...attendance, homework, ratingReview };
 }
 
-export async function teacherDashboardSummary(db: Db, teacherId: string, requested?: string | null, date?: string, homeworkAfter?: string) {
+export async function teacherDashboardSummary(db: Db, teacherId: string, requested?: string | null, date?: string, homeworkAfter?: string, includeCloseReview = false) {
   const scope = await dashboardScope(db, teacherId, requested);
   if (date === undefined) return dashboardSummary(db, teacherId, scope);
   const [summary, daily] = await Promise.all([
-    dashboardSummary(db, teacherId, scope), dailyUpcoming(db, teacherId, scope, date, homeworkAfter),
+    dashboardSummary(db, teacherId, scope), dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview),
   ]);
   return { ...summary, daily };
 }
@@ -187,7 +204,7 @@ async function dashboardStudents(db: Db, teacherId: string, studentIds: Set<stri
   return rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)).slice(0, 9);
 }
 
-export async function teacherDashboardPageModel(db: Db, teacherId: string, date?: string, homeworkAfter?: string) {
+export async function teacherDashboardPageModel(db: Db, teacherId: string, date?: string, homeworkAfter?: string, includeCloseReview = false) {
   const scope = await dashboardScope(db, teacherId);
   const sessions = () => db.from("teaching_sessions")
     .select("id,title,starts_at,duration_minutes").eq("teacher_id", teacherId).match(workplaceMatch(scope));
@@ -198,7 +215,7 @@ export async function teacherDashboardPageModel(db: Db, teacherId: string, date?
     sessions().gte("starts_at", now).order("starts_at").limit(6),
     sessions().lt("starts_at", now).order("starts_at", { ascending: false }).limit(5),
     db.from("teachers").select("display_name").eq("id", teacherId).maybeSingle(),
-    dailyUpcoming(db, teacherId, scope, date, homeworkAfter).catch(() => null),
+    dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview).catch(() => null),
   ]);
   if (upcoming.error || recent.error || teacher.error) throw new TeacherOverviewError(500, "Dashboard unavailable");
   return { summary, students, upcoming: upcoming.data, recent: recent.data, teacher: teacher.data, daily };
