@@ -278,3 +278,28 @@ passed (459 cases and three scheduling repeats). The source change
 preserved the schema lock; no deployment, closing, or billing occurred.
 The package-expiry and period-reconciliation parts of the work remain
 independent.
+
+### Optional workplace prepaid-credit expiry review
+
+[PR #220](https://github.com/itshak/ChessCoachPal/pull/220) merged exact
+candidate `f23944d650a094fd3f11bcb5f05331a3427699b9` at
+`b2a3c65da22d13eb8c1e25e5082879b5e872f4af`. The optional Dashboard
+panel, signed HTTP and delegated MCP read the same bounded review.
+It uses the selected owned workplace's recorded civil date, applies
+the latest effective expiry extension, and reports factual positive
+unredeemed units of issued packages for active scoped learners.
+Unknown or oversized results are not treated as empty. This is not
+a forecast of exhaustion, proof of funding, authority to spend, or
+permission to modify archived credit.
+
+The exact disposable production-mode build passed all four signed
+cases (new expiry, earlier day-end and both credit adjustments), with
+unchanged Storage. Exact hosted
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45645489135),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45645489049),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45645489042),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45645489012)
+and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45645489032)
+passed (460 cases and three scheduling repeats). The schema lock is
+unchanged. No deployment, redemptions or charges occurred.
+Period-end reconciliation remains independent.
