@@ -51,3 +51,32 @@ and [authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/acti
 installed schema source, no deployment, and no financial or attendance
 writes. This does not yet connect one-original-date exceptions or change
 weekday, timezone, billing rates, published reports, or legacy data.
+
+## Verified implementation: move one original date
+
+[PR #198](https://github.com/itshak/ChessCoachPal/pull/198) was verified
+on merged source `ad7a96ca76eee937eb156bd67ced3135b19289ae`. The website
+and delegated MCP use the exact original slot and local date for a
+reviewed, digest-bound move of an unmaterialized occurrence. The
+canonical move creates one scheduled lesson and the occurrence
+exception. It does not modify the recurring rule, mark attendance,
+create a balance, or spend credit. An already materialized date stays
+in the existing lesson reschedule workflow. A lost response retries
+the exact approved request.
+
+The synthetic signed test includes Jerusalem's daylight-saving change:
+the earlier scheduled lesson keeps its original offset and remains
+untouched, and the moved lesson uses the destination's local time and
+offset. Independent reads checked the exception, the fixed original
+date, the earlier lesson, the unrelated rule, and the absence of
+attendance and financial records.
+
+Exact candidate `78bd647f5ca8c30d792d2520d18d2343812eb26d` passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45543704996),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45543704930),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45543704937),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45543705052)
+and [authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45543705000)
+(452 browser cases and three scheduling repeats). The accepted schema
+lock is unchanged. Single-date cancellation and revocation, bounded
+weekday choices, and report and finance workflows remain separate work.

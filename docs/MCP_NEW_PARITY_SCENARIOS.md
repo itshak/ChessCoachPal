@@ -146,3 +146,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | A coach reviews a time/duration edit from one original calendar date forward or across all still-editable segments. Website and MCP agree before writes, require exact digest-bound approval, preserve the earlier rule, and retry the original approved request after a lost response without duplicating linked segments. | `e2e/parity-professional-scoped-series.spec.ts#PARITY-professional-scoped-series` — [451 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45537592581) on `0cab7c075caa680af67f5b5d63ba6bd4624732cd`, merged in [PR #196](https://github.com/itshak/ChessCoachPal/pull/196) at `d09ab4e64cb983d57aa24044b3bf54f1c189e67b`. |
+
+## Professional move one original date — accepted source slice
+
+| Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | The website and MCP review exactly one original recurring date before a confirmed move. Synthetic Jerusalem dates cross the daylight-saving boundary; the original occurrence identity, earlier scheduled lesson, and unrelated rule stay intact. A lost response can replay the exact request without creating another lesson. No attendance, obligation, or credit is created. | `e2e/parity-professional-occurrence-move.spec.ts#PARITY-professional-occurrence-move` — [452 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45543705000) on `78bd647f5ca8c30d792d2520d18d2343812eb26d`, merged in [PR #198](https://github.com/itshak/ChessCoachPal/pull/198) at `ad7a96ca76eee937eb156bd67ced3135b19289ae`. |
