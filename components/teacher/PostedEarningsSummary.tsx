@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useRef,useState,type FormEvent} from "react";
 import {useLocale,useTranslations} from "next-intl";
+import {currencyAmount} from "@/lib/finance-amount-format";
 import type {FinanceEarningSummary} from "@/lib/server/finance-earning-summary";
 
 type Workplace={id:string;name:string};
@@ -11,13 +12,6 @@ async function read<T>(url:string,init?:RequestInit):Promise<T>{
  const result=await fetch(url,{cache:"no-store",...init});
  if(!result.ok)throw new Error("EARNINGS_SUMMARY_UNAVAILABLE");
  return result.json();
-}
-function currencyAmount(cents:number,currency:string,locale:string){
- const amount=BigInt(cents),centsPerUnit=BigInt(100);
- const digits=new Intl.NumberFormat(locale,{minimumIntegerDigits:2,useGrouping:false});
- const money=new Intl.NumberFormat(locale,{style:"currency",currency,currencyDisplay:"code",
-  minimumFractionDigits:2,maximumFractionDigits:2});
- return money.formatToParts(amount/centsPerUnit).map(part=>part.type==="fraction"?digits.format(amount%centsPerUnit):part.value).join("");
 }
 export function PostedEarningsSummary(){
  const t=useTranslations("postedEarnings"),locale=useLocale();
