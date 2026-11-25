@@ -9,12 +9,12 @@ const digest=z.string().regex(/^[0-9a-f]{64}$/);
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const outcome=z.enum(["present","late","absent","excused","student_cancelled","teacher_cancelled","unknown"]);
 const state=z.enum(["sealed","revoked","superseded"]);
-const candidate=z.object({
+export const privateLearnerReportCandidate=z.object({
  from:date,to:date,outputLocale:z.enum(locales),dateBasis:z.literal("recorded_session_local_date"),
  records:z.array(z.object({localDate:date,attendance:outcome}).strict()).max(500),
 }).strict();
 const bound=z.object({
- status:z.literal("teacher_preview_only"),writesPerformed:z.literal(false),candidate,reviewDigest:digest,
+ status:z.literal("teacher_preview_only"),writesPerformed:z.literal(false),candidate:privateLearnerReportCandidate,reviewDigest:digest,
 }).strict();
 const receipt=z.object({
  publicationId:z.string().uuid(),snapshotDigest:digest,approvedAt:z.string().datetime(),
@@ -22,7 +22,7 @@ const receipt=z.object({
 }).strict();
 const snapshot=z.object({
  publicationId:z.string().uuid(),snapshotDigest:digest,revision:z.string().regex(/^[1-9]\d*$/),
- status:state,candidate,
+ status:state,candidate:privateLearnerReportCandidate,
 }).strict();
 
 export const privateLearnerReportReviewInput=learnerReportPreviewInput;
@@ -37,7 +37,7 @@ export type PrivateLearnerReportReceipt=z.infer<typeof receipt>;
 export type PrivateLearnerReportSnapshot=z.infer<typeof snapshot>;
 export type PrivateLearnerReportSave=z.infer<typeof privateLearnerReportSaveInput>;
 export type PrivateLearnerReportSummary={
- publicationId:string;workplaceId:string;outputLocale:z.infer<typeof candidate>["outputLocale"];
+ publicationId:string;workplaceId:string;outputLocale:z.infer<typeof privateLearnerReportCandidate>["outputLocale"];
  approvedAt:string;status:z.infer<typeof state>;
 };
 

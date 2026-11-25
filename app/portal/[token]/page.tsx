@@ -14,6 +14,7 @@ import {PortalEventRsvp} from "@/components/portal/PortalEventRsvp";
 import {resolvePortalContext,portalCalendarForContext,
   portalSharedNotesForContext,portalEventsForContext} from "@/lib/server/portal-scope-service";
 import {portalScopedInvoices} from "@/lib/server/portal-finance-scope";
+import {portalSealedLearnerReports} from "@/lib/server/private-learner-report-audience";
 import {rejectIfTokenLookupsBlocked,recordTokenLookupFailure} from "@/lib/server/token-guard";
 
 export const dynamic="force-dynamic";
@@ -40,12 +41,17 @@ export default async function PortalPage({params}:{params:Promise<{token:string}
   const t=await getTranslations("portal"),locale=await getLocale();
   const timezone=ctx.workplace.timezone;
   const today=toLocalDateString(new Date(),timezone);
-  const [calendar,invoices,events]=await Promise.all([
+  const [calendar,invoices,events,reports]=await Promise.all([
     portalCalendarForContext(db,ctx,addDays(today,-90),addDays(today,84)),
     portalScopedInvoices(db,ctx),
     portalEventsForContext(db,ctx),
+    ctx.grant.permissions.has("shared_notes")?portalSealedLearnerReports(db,token):null,
   ]);
   const notes=await portalSharedNotesForContext(db,ctx,calendar);
+  const reportLocales=[...new Set(reports?.reports.map(report=>report.outputLocale)??[])];
+  const reportLabels=new Map(await Promise.all(reportLocales.map(async language=>[
+    language,await getTranslations({locale:language,namespace:"learnerReportPreview"}),
+  ] as const)));
   const upcoming=calendar.filter(s=>s.status!=="cancelled"&&
     s.starts_at>=new Date().toISOString()).slice(0,40);
   const dateTime=(time:string)=>new Intl.DateTimeFormat(locale,{
@@ -127,6 +133,31 @@ export default async function PortalPage({params}:{params:Promise<{token:string}
                 <p className="text-muted text-xs mb-1">{note.date}</p>
                 <p className="text-sm whitespace-pre-wrap" dir="auto">{note.body}</p>
               </Card>)}</div>}
+          </section>
+        )}
+        {!!reports?.reports.length&&(
+          <section aria-labelledby="shared-learner-reports">
+            <h2 id="shared-learner-reports" className="text-lg font-semibold mb-3">{t("sharedLearnerReports")}</h2>
+            <div className="space-y-3">{reports.reports.map((report,index)=>{
+              const labels=reportLabels.get(report.outputLocale);
+              if(!labels)return null;
+              return (
+                <article key={index} lang={report.outputLocale} dir={languageDirection(report.outputLocale)}>
+                  <Card padding="sm">
+                    <h3 className="font-medium">{labels("resultTitle")}</h3>
+                    <p className="text-sm text-muted"><bdi>{report.from}</bdi> – <bdi>{report.to}</bdi></p>
+                    <p className="text-sm text-muted mt-2">{labels("dateBasis")}</p>
+                    <ul className="mt-2 space-y-1">{report.records.map((record,row)=>(
+                      <li key={row} className="flex flex-wrap justify-between gap-x-3 text-sm">
+                        <time dateTime={record.localDate}><bdi>{record.localDate}</bdi></time>
+                        <span>{labels(`outcomes.${record.attendance}`)}</span>
+                      </li>
+                    ))}</ul>
+                  </Card>
+                </article>
+              );
+            })}</div>
+            {reports.truncated&&<p className="text-muted text-xs mt-2">{t("sharedLearnerReportsLatest")}</p>}
           </section>
         )}
         {ctx.grant.permissions.has("finance")&&(

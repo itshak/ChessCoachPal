@@ -103,6 +103,9 @@ import {dailyHomeworkFocusInput,teacherDailyHomeworkFocus} from "@/lib/server/da
 import {PrivateLearnerReportError,privateLearnerReportReviewInput,privateLearnerReportSaveInput,
   privateLearnerReportListInput,privateLearnerReportGetInput,reviewPrivateLearnerReport,savePrivateLearnerReport,
   listPrivateLearnerReports,getPrivateLearnerReport} from "@/lib/server/private-learner-report";
+import {listReportAudience,reviewReportAudience,approveReportAudience,withdrawReportAudience,
+ reportAudienceListInput,reportAudienceReviewInput,reportAudienceApproveInput,reportAudienceWithdrawInput,
+} from "@/lib/server/private-learner-report-audience";
 import {LearnerReportPreviewError,learnerReportPreviewInput,teacherLearnerReportPreview} from "@/lib/server/learner-report-preview";
 import {LearnerEvidenceError,learnerEvidenceSchema,teacherLearnerEvidence} from "@/lib/server/learner-evidence";
 import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
@@ -1874,6 +1877,26 @@ const catalogue = [
     schema:privateLearnerReportGetInput,scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_private_learner_report_audience_list",
+    description:"List potential existing issued portal grants for one exact owned saved learner report, and separately page its previous audience approvals for inspection or withdrawal. A choice is not access. No token, link, message, or write.",
+    schema:reportAudienceListInput,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_private_learner_report_audience_review",
+    description:"Read-only review of one explicitly selected existing issued portal grant against an exact owned saved learner report. Show the exact recipient, learner, workplace, expiry and previously saved report before asking the teacher for explicit approval. You must never select a recipient solely by relationship, payment or an ambiguous name.",
+    schema:reportAudienceReviewInput,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_private_learner_report_audience_approve",
+    description:"Only after explicit teacher consent for the exact reviewed report and recipient, submit the same student, report, portal grant and review digest with confirmed:true and a fresh request UUID. Retry uncertain delivery with identical values. This allows the selected existing portal grant to read that saved report; it never issues a link or sends communication.",
+    schema:reportAudienceApproveInput,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_private_learner_report_audience_revoke",
+    description:"Only after the teacher explicitly confirms withdrawal, revoke one exact previously approved report audience by learner, publication, portal grant and approval ID. This is one-way; repeating it returns the same revocation time. Keeps the teacher's original saved report and does not revoke other portal capabilities or send communication.",
+    schema:reportAudienceWithdrawInput,scope:"coach:write",readOnly:false,
+  },
+  {
     name:"ccp_learner_report_preview",
     description:"Review a teacher-only, read-only candidate for one owned learner and one explicit owned workplace, with inclusive local dates and output language. Sources are completed sessions with frozen membership and the selected learner’s recorded attendance only. Unrecorded attendance stays unknown; sessions without a recorded local date are excluded. No private notes, other learners, payments, publishing, recipients, or permissions.",
     schema:learnerReportPreviewInput,scope:"coach:read",readOnly:true,
@@ -2006,6 +2029,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await listPrivateLearnerReports(db,teacherId,args as z.infer<typeof privateLearnerReportListInput>)};
       case "ccp_private_learner_report_get":
         return {data:await getPrivateLearnerReport(db,teacherId,args as z.infer<typeof privateLearnerReportGetInput>)};
+      case "ccp_private_learner_report_audience_list":
+        return {data:await listReportAudience(db,teacherId,args as z.infer<typeof reportAudienceListInput>)};
+      case "ccp_private_learner_report_audience_review":
+        return {data:await reviewReportAudience(db,teacherId,args as z.infer<typeof reportAudienceReviewInput>)};
+      case "ccp_private_learner_report_audience_approve":
+        return {data:await approveReportAudience(db,teacherId,args as z.infer<typeof reportAudienceApproveInput>)};
+      case "ccp_private_learner_report_audience_revoke":
+        return {data:await withdrawReportAudience(db,teacherId,args as z.infer<typeof reportAudienceWithdrawInput>)};
       case "ccp_learner_report_preview":
         return {data:await teacherLearnerReportPreview(db,teacherId,args as z.infer<typeof learnerReportPreviewInput>)};
       case "ccp_learner_evidence_get":

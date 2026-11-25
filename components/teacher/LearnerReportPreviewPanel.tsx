@@ -8,6 +8,7 @@ import type {
   BoundLearnerReport,PrivateLearnerReportSave,PrivateLearnerReportReceipt,
   PrivateLearnerReportSnapshot,PrivateLearnerReportSummary,
 } from "@/lib/server/private-learner-report";
+import {LearnerReportAudiencePanel} from "@/components/teacher/LearnerReportAudiencePanel";
 import type {LearnerReportPreview} from "@/lib/server/learner-report-preview";
 
 const hydrationSubscribe=()=>()=>{};
@@ -44,12 +45,14 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
   const endpoint="/api/students/"+encodeURIComponent(studentId);
   const reportsUrl=endpoint+"/private-reports";
   const [pending,setPending]=useState(false);
+  const [audienceUncertain,setAudienceUncertain]=useState(false);
 
   function reset(){
     setResult(null);setError(null);setFilters(null);setApproval(null);setReceipt(null);setSaved(null);
   }
   async function preview(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
+    if(audienceUncertain)return;
     const form=new FormData(event.currentTarget);
     const query=new URLSearchParams();
     for(const name of ["workplaceId","from","to","outputLocale"])
@@ -105,7 +108,7 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
   }
 
   async function openSaved(publicationId:string){
-    if(pending)return;
+    if(pending||audienceUncertain)return;
     setError(null);setPending(true);
     try{
       const response=await readReport(reportsUrl+"?"+new URLSearchParams({mode:"get",publicationId}));
@@ -116,7 +119,7 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
   }
 
   async function loadSaved(){
-    if(pending)return;
+    if(pending||audienceUncertain)return;
     setError(null);setPending(true);
     try{
       const response=await readReport(reportsUrl+"?mode=list");
@@ -141,7 +144,7 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
       <p id={id+"-help"} className="mt-2 text-sm text-muted">{t("noSharing")}</p>
       {workplaces.length===0?<p className="mt-2 text-sm text-muted">{t("noWorkplaces")}</p>:(
         <form className="mt-3" onSubmit={preview} onChange={reset} aria-describedby={id+"-help"} aria-busy={pending}>
-          <fieldset className="grid min-w-0 gap-3 sm:grid-cols-2" disabled={!ready||pending||saveUncertain}>
+          <fieldset className="grid min-w-0 gap-3 sm:grid-cols-2" disabled={!ready||pending||saveUncertain||audienceUncertain}>
             <label className="grid min-w-0 gap-1 text-sm">
               {t("workplace")}
               <select name="workplaceId" defaultValue="" required className={control}>
@@ -210,8 +213,10 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
            {t("reopen")}
           </button>
         )}
-        <button type="button" className={action} disabled={!ready||pending||saveUncertain} onClick={loadSaved}>{t("loadSaved")}</button>
+        <button type="button" className={action} disabled={!ready||pending||saveUncertain||audienceUncertain} onClick={loadSaved}>{t("loadSaved")}</button>
       </div>
+      {saved&&<LearnerReportAudiencePanel key={saved.publicationId} studentId={studentId}
+        publicationId={saved.publicationId} onUncertain={setAudienceUncertain}/>}
       {savedList&&(
         <div className="mt-3 text-sm" role="region" aria-label={t("loadSaved")}>
           {savedList.reports.length===0&&<p>{t("noSaved")}</p>}
@@ -224,7 +229,7 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
                 language:localeDetails[row.outputLocale].name,state:t(`reportStates.${row.status}`),
               });
               return <li key={row.publicationId}><button type="button" className={action}
-                disabled={!ready||pending||saveUncertain} onClick={()=>openSaved(row.publicationId)}>{label}</button></li>;
+                disabled={!ready||pending||saveUncertain||audienceUncertain} onClick={()=>openSaved(row.publicationId)}>{label}</button></li>;
             })}
           </ul>
         </div>
