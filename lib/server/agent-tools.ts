@@ -182,6 +182,10 @@ import {canonicalAttendanceList,canonicalAttendanceSet,canonicalAttendanceBulkSe
  type CanonicalAttendanceBulkInput} from "@/lib/server/canonical-session-attendance";
 import {commitProfessionalOccurrenceMove,previewProfessionalOccurrenceMove,ProfessionalOccurrenceMoveError,
  occurrenceMoveCommitSchema,occurrenceMovePreviewSchema} from "@/lib/server/professional-occurrence-move";
+import {commitProfessionalOccurrenceCancellation,previewProfessionalOccurrenceCancellation,
+ occurrenceCancellationCommitSchema,occurrenceCancellationPreviewSchema,
+ occurrenceCancellationMcpCommitSchema,occurrenceCancellationMcpPreviewSchema,ProfessionalOccurrenceCancellationError,
+} from "@/lib/server/professional-occurrence-cancellation";
 import {commitProfessionalRecurrence,previewProfessionalRecurrence,ProfessionalRecurrenceError,
  recurrenceCommitSchema,recurrencePreviewSchema} from "@/lib/server/professional-recurrence";
 import {canonicalSlotsList,canonicalSlotCreate,canonicalSlotUpdate,canonicalSlotDelete,
@@ -965,6 +969,16 @@ const catalogue = [
     name:"ccp_recurring_occurrence_move_commit",
     description:"Move exactly the reviewed original occurrence after explicit approval. Repeat the same inputs and digest, confirmed:true, and one request UUID. Retry only the same request after an unknown result. Keeps the original local occurrence identity and creates one scheduled lesson, not proof of teaching.",
     schema:occurrenceMoveCommitSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_recurring_occurrence_cancellation_preview",
+    description:"Read the owned recurring rule and exact original date to review a cancellation or restoration. For cancel use the current rule revision and a reason. Restore only an active unmaterialized cancellation, using the exact exception and decimal revision from review. No writes; eligibility is rechecked at commit. An existing lesson requires its own actions.",
+    schema:occurrenceCancellationMcpPreviewSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_recurring_occurrence_cancellation_commit",
+    description:"Cancel or restore one exact original date only after explicit approval. For cancel pass the reviewed rule revision and exact inputs. For restore pass the reviewed exception ID and decimal revision string. Include confirmed:true and one request UUID. If the response is unknown, retry those exact inputs. Neither operation creates a lesson, attendance, a charge, or credit.",
+    schema:occurrenceCancellationMcpCommitSchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_recurring_slots_delete",
@@ -1855,7 +1869,7 @@ export const toolScopeByName = new Map<string,string>(catalogue.map(t => [t.name
 
 const destructiveTool = (name:string,readOnly:boolean) => !readOnly &&
   (/(?:^|_)(?:delete|void|revoke|rotate|cancel|unlink)(?:_|$)/.test(name) ||
-   ["ccp_students_bulk_lifecycle_commit","ccp_learning_material_lifecycle_change",
+   ["ccp_recurring_occurrence_cancellation_commit","ccp_students_bulk_lifecycle_commit","ccp_learning_material_lifecycle_change",
     "ccp_billing_invoices_bulk"].includes(name));
 const externalTool = (name:string) => [
   "ccp_student_ratings_refresh_preview","ccp_lichess_image_fen_propose",
@@ -2453,6 +2467,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await previewProfessionalOccurrenceMove(db,args as z.infer<typeof occurrenceMovePreviewSchema>)};
       case "ccp_recurring_occurrence_move_commit":
         return {data:await commitProfessionalOccurrenceMove(db,args as z.infer<typeof occurrenceMoveCommitSchema>)};
+      case "ccp_recurring_occurrence_cancellation_preview":
+        return {data:await previewProfessionalOccurrenceCancellation(db,teacherId,args as z.infer<typeof occurrenceCancellationPreviewSchema>)};
+      case "ccp_recurring_occurrence_cancellation_commit":
+        return {data:await commitProfessionalOccurrenceCancellation(db,args as z.infer<typeof occurrenceCancellationCommitSchema>)};
       case "ccp_recurring_slots_delete": {
         const a=args as {slotId:string;idempotencyKey:string};
         return {data:await canonicalSlotDelete(db,teacherId,a.slotId,{
@@ -3027,7 +3045,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       return {error:{code:error.code,message:error.message}};
     if (error instanceof CanonicalPrivateSessionError)
       return {error:{code:error.code,message:error.message}};
-    if (error instanceof ProfessionalOccurrenceMoveError || error instanceof ProfessionalRecurrenceError || error instanceof CanonicalSlotError)
+    if (error instanceof ProfessionalOccurrenceCancellationError || error instanceof ProfessionalOccurrenceMoveError || error instanceof ProfessionalRecurrenceError || error instanceof CanonicalSlotError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof PayerAssignmentError)
       return {error:{code:error.code,message:error.message}};
