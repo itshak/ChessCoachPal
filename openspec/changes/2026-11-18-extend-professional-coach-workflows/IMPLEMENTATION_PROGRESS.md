@@ -80,3 +80,31 @@ and [authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/acti
 (452 browser cases and three scheduling repeats). The accepted schema
 lock is unchanged. Single-date cancellation and revocation, bounded
 weekday choices, and report and finance workflows remain separate work.
+
+## Verified implementation: cancel or restore one original date
+
+[PR #200](https://github.com/itshak/ChessCoachPal/pull/200) was verified
+on merged source `6e9d205f0a582740d922dd6ad419cd31bc263c4d`. The website and delegated MCP use a
+signed owner-scoped, no-write review of the exact original local date,
+with the current rule timestamp or audited cancellation revision.
+Native cancellation and revocation recheck approval, ownership and
+eligibility. Existing generated lessons use their own actions. A lost
+response retries only the exact approved request.
+
+The synthetic signed round trip independently confirmed one original
+exception with its original approval and later revocation intact, and unchanged earlier and
+neighboring schedule rows. Separate calendar generation skipped just
+the canceled date and later restored just that original date. Neither
+command generated a lesson on its own, created attendance, or touched
+charges or credit. Date matching used the local occurrence date even
+when its UTC start belonged to the prior date.
+
+Exact candidate `0c0b2c7c9d4ffad2c147049e44b728c8e264a6c3` passed
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45552911175),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45552911285),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45552911242),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45552911262)
+and [authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45552911208)
+(453 browser cases and three scheduling repeats). The accepted schema
+lock is unchanged. Bounded weekday changes and report and finance
+workflows remain separate work.
