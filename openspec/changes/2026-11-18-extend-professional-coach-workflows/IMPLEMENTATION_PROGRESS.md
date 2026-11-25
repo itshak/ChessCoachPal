@@ -132,3 +132,27 @@ and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/455
 passed (454 cases plus three scheduling repeats). The schema freeze and
 transition manifest are unchanged. Privacy-safe report review and finance
 workflows remain separate, unclaimed acceptance scope.
+
+### Private teacher-only learner report preview
+
+[PR #204](https://github.com/itshak/ChessCoachPal/pull/204) merged exact
+candidate `724bf58be22af7fb6a131dbdfb9c0ec4c2f003d2` at
+`b7a0ef9236df8588d36a183c8c3b58bd9acd7fdf`. A signed teacher explicitly
+selects one owned learner, one owned workplace, a date range and output
+language. The website and delegated read tool project only completed
+lessons with a frozen roster and recorded local dates, with the selected
+learner's attendance. Unrecorded is not absent. Notes, other learners,
+identifiers, imports and financial state are not candidate output.
+The preview is live and read-only, not a sealed report or a sharing grant.
+
+The disposable production-mode build on aiserver passed the new signed
+browser/HTTP/MCP evidence and the older learner-evidence regression, with
+unchanged Storage object and bucket tables. Exact hosted
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45564452189),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45564452223),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45564452311),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45564452204)
+and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45564452168)
+passed (455 cases plus three scheduling repeats). The schema freeze and
+transition manifest are unchanged. Saving a sealed report, approving a
+recipient, portal reads, revocation and supersession remain unaccepted.

@@ -164,3 +164,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Status | Signed scenario | Evidence |
 | --- | --- | --- |
 | - [x] | Website and delegated MCP review the full finite horizon before a weekday change. Previous and proposed original dates are shown independently, even if their counts differ. An open horizon, short notice, protected history, and a stale digest are rejected. Exact approved replay preserves prior lessons, other workplaces, attendance, and billing; the signed UI also fits at 320 px. | `e2e/parity-professional-bounded-weekday.spec.ts#PARITY-professional-bounded-weekday` — [454 authenticated browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45557795459) on `555dfcee65f752f978ab1c2d4179d565b1155a7c`, merged in [PR #202](https://github.com/itshak/ChessCoachPal/pull/202) at `066cee56b7712df0057e845cf885a33669301b28`. |
+
+### Professional: private learner report preview
+
+| Status | Signed scenario | Evidence |
+| --- | --- | --- |
+| - [x] | The signed website and delegated MCP return the same attendance preview for one owned learner, workplace and recorded local date range. Group attendance differs by learner, unrecorded stays distinct, and the candidate omits notes, identifiers, undated records, imported estimates and money. Anonymous/foreign access is denied; Hebrew output works at 320 px. Independent read-back confirms no publication, audience, attendance or finance writes. | `e2e/parity-professional-learner-report-preview.spec.ts#PARITY-professional-learner-report-preview` — [455 authenticated browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45564452168) on `724bf58be22af7fb6a131dbdfb9c0ec4c2f003d2`, merged in [PR #204](https://github.com/itshak/ChessCoachPal/pull/204) at `b7a0ef9236df8588d36a183c8c3b58bd9acd7fdf`. |
