@@ -30,6 +30,7 @@
     "payment_allocations",
     "financial_reversals",
     "ccp_finance_earning_summary",
+    "ccp_finance_period_end_actuals",
     "ccp_guard_private_series_provenance",
     "ccp_private_series_compensation_commit",
     "ccp_finance_post_private_series_obligation",
