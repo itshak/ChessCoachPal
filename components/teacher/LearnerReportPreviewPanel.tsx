@@ -4,11 +4,27 @@ import {useId,useState,useSyncExternalStore,type FormEvent} from "react";
 import {useLocale,useTranslations} from "next-intl";
 import {localeDetails,locales,supportedLocale} from "@/i18n/locales";
 import {messagesFor} from "@/i18n/messages";
+import type {
+  BoundLearnerReport,PrivateLearnerReportSave,PrivateLearnerReportReceipt,
+  PrivateLearnerReportSnapshot,PrivateLearnerReportSummary,
+} from "@/lib/server/private-learner-report";
 import type {LearnerReportPreview} from "@/lib/server/learner-report-preview";
 
 const hydrationSubscribe=()=>()=>{};
 const clientReady=()=>true;
 const serverReady=()=>false;
+type Filters=Omit<PrivateLearnerReportSave,"studentId"|"reviewDigest"|"requestId"|"confirmed">;
+type Approval={bound:BoundLearnerReport;request:Omit<PrivateLearnerReportSave,"studentId">};
+type SavedList={reports:PrivateLearnerReportSummary[];truncated:boolean};
+
+/** A single retry for a transport interruption: these GETs do not mutate. */
+async function readReport(url:string){
+  try{return await fetch(url,{cache:"no-store"});}
+  catch{
+    await new Promise(resolve=>setTimeout(resolve,250));
+    return fetch(url,{cache:"no-store"});
+  }
+}
 
 export function LearnerReportPreviewPanel({studentId,workplaces}:{
   studentId:string;workplaces:{id:string;name:string}[];
@@ -19,10 +35,19 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
   // The server-rendered form cannot submit before the client handler attaches.
   const ready=useSyncExternalStore(hydrationSubscribe,clientReady,serverReady);
   const [result,setResult]=useState<LearnerReportPreview|null>(null);
-  const [error,setError]=useState<"invalid"|"range"|"unavailable"|null>(null);
+  const [error,setError]=useState<"invalid"|"range"|"unavailable"|"stale"|"upgrade"|"retrySave"|null>(null);
+  const [filters,setFilters]=useState<Filters|null>(null);
+  const [approval,setApproval]=useState<Approval|null>(null);
+  const [saved,setSaved]=useState<PrivateLearnerReportSnapshot|null>(null);
+  const [receipt,setReceipt]=useState<PrivateLearnerReportReceipt|null>(null);
+  const [savedList,setSavedList]=useState<SavedList|null>(null);
+  const endpoint="/api/students/"+encodeURIComponent(studentId);
+  const reportsUrl=endpoint+"/private-reports";
   const [pending,setPending]=useState(false);
 
-  function reset(){setResult(null);setError(null);}
+  function reset(){
+    setResult(null);setError(null);setFilters(null);setApproval(null);setReceipt(null);setSaved(null);
+  }
   async function preview(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
     const form=new FormData(event.currentTarget);
@@ -32,22 +57,83 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
     reset();
     setPending(true);
     try{
-      const response=await fetch("/api/students/"+encodeURIComponent(studentId)+"/report-preview?"+query,
-        {cache:"no-store"});
+      const response=await readReport(endpoint+"/report-preview?"+query);
       if(!response.ok){
         setError(response.status===400?"invalid":response.status===413?"range":"unavailable");
         return;
       }
-      setResult(await response.json());
+      const value:LearnerReportPreview=await response.json();
+      setResult(value);
+      setFilters({workplaceId:query.get("workplaceId")!,from:value.candidate.from,
+        to:value.candidate.to,outputLocale:value.candidate.outputLocale});
     }catch{setError("unavailable");}
     finally{setPending(false);}
   }
 
-  const candidate=result?.candidate;
+  async function reviewForSave(){
+    if(!filters||pending||approval||receipt)return;
+    setError(null);setSaved(null);setPending(true);
+    try{
+      const response=await readReport(reportsUrl+"?"+new URLSearchParams({mode:"review",...filters}));
+      if(!response.ok){
+        setError(response.status===413?"range":response.status===400?"invalid":"unavailable");return;
+      }
+      const bound:BoundLearnerReport=await response.json();
+      setApproval({bound,request:{...filters,reviewDigest:bound.reviewDigest,requestId:crypto.randomUUID(),confirmed:true}});
+    }catch{setError("unavailable");}
+    finally{setPending(false);}
+  }
+
+  async function saveReviewed(){
+    if(!approval||pending||receipt)return;
+    setError(null);setPending(true);
+    try{
+      const response=await fetch(reportsUrl,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(approval.request)});
+      if(!response.ok){
+        const failure=await response.json().catch(()=>null);
+        if(failure?.code==="REPORT_REVIEW_STALE"||failure?.code==="IDEMPOTENCY_CONFLICT"){
+          setApproval(null);setError("stale");return;
+        }
+        setError(failure?.code==="UPGRADE_REQUIRED"?"upgrade":response.status>=500?"retrySave":"unavailable");return;
+      }
+      setReceipt(await response.json());
+      setResult(approval.bound);
+      setApproval(null);setSavedList(null);
+    }catch{setError("retrySave");}
+    finally{setPending(false);}
+  }
+
+  async function openSaved(publicationId:string){
+    if(pending)return;
+    setError(null);setPending(true);
+    try{
+      const response=await readReport(reportsUrl+"?"+new URLSearchParams({mode:"get",publicationId}));
+      if(!response.ok){setError("unavailable");return;}
+      setSaved(await response.json());setApproval(null);
+    }catch{setError("unavailable");}
+    finally{setPending(false);}
+  }
+
+  async function loadSaved(){
+    if(pending)return;
+    setError(null);setPending(true);
+    try{
+      const response=await readReport(reportsUrl+"?mode=list");
+      if(!response.ok){setError("unavailable");return;}
+      setSavedList(await response.json());
+    }catch{setError("unavailable");}
+    finally{setPending(false);}
+  }
+
+  const saveUncertain=error==="retrySave";
+  const candidate=saved?.candidate??approval?.bound.candidate??result?.candidate;
   const output=candidate?messagesFor(candidate.outputLocale).learnerReportPreview:null;
   const info=candidate?localeDetails[candidate.outputLocale]:null;
   const date=info?new Intl.DateTimeFormat(info.intl,{dateStyle:"medium",timeZone:"UTC"}):null;
   const displayDate=(value:string)=>date?.format(new Date(value+"T12:00:00Z"));
+  const saveDate=new Intl.DateTimeFormat(localeDetails[appLocale].intl,{dateStyle:"medium",timeStyle:"short"});
+  const action="w-fit max-w-full rounded border border-border px-3 py-2 text-sm";
   const control="min-w-0 w-full rounded border border-border bg-background px-2 py-1 text-foreground";
   return (
     <details className="mb-6 rounded-lg border border-border p-4">
@@ -55,7 +141,7 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
       <p id={id+"-help"} className="mt-2 text-sm text-muted">{t("noSharing")}</p>
       {workplaces.length===0?<p className="mt-2 text-sm text-muted">{t("noWorkplaces")}</p>:(
         <form className="mt-3" onSubmit={preview} onChange={reset} aria-describedby={id+"-help"} aria-busy={pending}>
-          <fieldset className="grid min-w-0 gap-3 sm:grid-cols-2" disabled={!ready||pending}>
+          <fieldset className="grid min-w-0 gap-3 sm:grid-cols-2" disabled={!ready||pending||saveUncertain}>
             <label className="grid min-w-0 gap-1 text-sm">
               {t("workplace")}
               <select name="workplaceId" defaultValue="" required className={control}>
@@ -85,6 +171,9 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
       )}
       {error&&<p className="mt-2 text-sm text-muted" role="alert">{t(error)}</p>}
       <div aria-live="polite" aria-atomic="false">
+        {approval&&<p className="mt-3 text-sm font-semibold">{t("approvalHint")}</p>}
+        {receipt&&<p className="mt-3 text-sm font-semibold" role="status">{t("savedNotice")}</p>}
+        {saved&&<p className="mt-3 text-sm font-semibold">{t("savedSnapshot",{state:t(`reportStates.${saved.status}`)})}</p>}
         {candidate&&output&&info&&(
           <section className="mt-3 border-t border-border pt-3" aria-labelledby={id+"-result"}
             lang={candidate.outputLocale} dir={info.dir}>
@@ -101,6 +190,45 @@ export function LearnerReportPreviewPanel({studentId,workplaces}:{
           </section>
         )}
       </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {filters&&result?.candidate.records.length&&!receipt&&!approval&&!saved?(
+          <button type="button" className={action} disabled={!ready||pending} onClick={reviewForSave}>
+           {t("reviewToSave")}
+          </button>
+        ):null}
+        {approval&&approval.bound.candidate.records.length>0&&(
+          <button type="button" className={action} disabled={!ready||pending} onClick={saveReviewed}>
+           {error==="retrySave"?t("retrySaveAction"):t("approveSave")}
+          </button>
+        )}
+        {approval&&!saveUncertain&&(
+          <button type="button" className={action} disabled={!ready||pending}
+            onClick={()=>{setApproval(null);setError(null);}}>{t("cancelApproval")}</button>
+        )}
+        {receipt&&receipt.publicationId!==saved?.publicationId&&(
+          <button type="button" className={action} disabled={!ready||pending} onClick={()=>openSaved(receipt.publicationId)}>
+           {t("reopen")}
+          </button>
+        )}
+        <button type="button" className={action} disabled={!ready||pending||saveUncertain} onClick={loadSaved}>{t("loadSaved")}</button>
+      </div>
+      {savedList&&(
+        <div className="mt-3 text-sm" role="region" aria-label={t("loadSaved")}>
+          {savedList.reports.length===0&&<p>{t("noSaved")}</p>}
+          {savedList.truncated&&<p>{t("recentOnly")}</p>}
+          <ul className="space-y-2">
+            {savedList.reports.map(row=>{
+              const label=t("savedEntry",{
+                workplace:workplaces.find(w=>w.id===row.workplaceId)?.name??t("workplace"),
+                time:saveDate.format(new Date(row.approvedAt)),
+                language:localeDetails[row.outputLocale].name,state:t(`reportStates.${row.status}`),
+              });
+              return <li key={row.publicationId}><button type="button" className={action}
+                disabled={!ready||pending||saveUncertain} onClick={()=>openSaved(row.publicationId)}>{label}</button></li>;
+            })}
+          </ul>
+        </div>
+      )}
     </details>
   );
 }

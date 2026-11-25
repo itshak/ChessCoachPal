@@ -100,6 +100,9 @@ import {dailyCloseRosterInput,DailyCloseError,teacherDailyClosePreview} from "@/
 import {dailyLessonPreparationInput,DailyPreparationError,teacherDailyLessonPreparation} from "@/lib/server/daily-lesson-preparation";
 import {dailyCombinedPreviewInput,dailyCombinedCommitInput,teacherDailyCombinedPreview,teacherDailyCombinedCommit} from "@/lib/server/daily-lesson-combined";
 import {dailyHomeworkFocusInput,teacherDailyHomeworkFocus} from "@/lib/server/daily-homework";
+import {PrivateLearnerReportError,privateLearnerReportReviewInput,privateLearnerReportSaveInput,
+  privateLearnerReportListInput,privateLearnerReportGetInput,reviewPrivateLearnerReport,savePrivateLearnerReport,
+  listPrivateLearnerReports,getPrivateLearnerReport} from "@/lib/server/private-learner-report";
 import {LearnerReportPreviewError,learnerReportPreviewInput,teacherLearnerReportPreview} from "@/lib/server/learner-report-preview";
 import {LearnerEvidenceError,learnerEvidenceSchema,teacherLearnerEvidence} from "@/lib/server/learner-evidence";
 import {coachBriefingSchema,teacherCoachBriefing,CoachBriefingError} from "@/lib/server/coach-briefing";
@@ -1851,6 +1854,26 @@ const catalogue = [
     schema:dailyLessonPreparationInput,scope:"coach:read",readOnly:true,
   },
   {
+    name:"ccp_private_learner_report_review",
+    description:"Read-only approval review of one exact owned learner, workplace, inclusive local dates and output language. Show the sanitized candidate and ask for explicit consent to save it privately before using ccp_private_learner_report_save. The review digest binds underlying evidence; this does not save, publish, grant access or notify anyone.",
+    schema:privateLearnerReportReviewInput,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_private_learner_report_save",
+    description:"Only after the teacher explicitly approves the exact private report review: supply the same learner, workplace, dates, language, digest, confirmed:true and a fresh UUID requestId. For uncertain delivery retry exactly the same request; stale evidence requires a fresh review and approval. Creates one private immutable report only, never a recipient, notification, charge, or share.",
+    schema:privateLearnerReportSaveInput,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_private_learner_reports_list",
+    description:"Read the 30 newest private sealed reports for one exact owned learner. Reports list includes status and owned workplace; if truncated, older entries are not shown. Does not publish or return notes, provenance, family data or permissions.",
+    schema:privateLearnerReportListInput,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_private_learner_report_get",
+    description:"Reopen one exact previously saved private report by learner ID and publication ID. Returns the original sanitized facts and revision, not a live recomputation, source identifiers or audience. No writes or sharing.",
+    schema:privateLearnerReportGetInput,scope:"coach:read",readOnly:true,
+  },
+  {
     name:"ccp_learner_report_preview",
     description:"Review a teacher-only, read-only candidate for one owned learner and one explicit owned workplace, with inclusive local dates and output language. Sources are completed sessions with frozen membership and the selected learner’s recorded attendance only. Unrecorded attendance stays unknown; sessions without a recorded local date are excluded. No private notes, other learners, payments, publishing, recipients, or permissions.",
     schema:learnerReportPreviewInput,scope:"coach:read",readOnly:true,
@@ -1975,6 +1998,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         const {sessionId}=args as z.infer<typeof dailyLessonPreparationInput>;
         return {data:await teacherDailyLessonPreparation(db,teacherId,sessionId)};
       }
+      case "ccp_private_learner_report_review":
+        return {data:await reviewPrivateLearnerReport(db,args as z.infer<typeof privateLearnerReportReviewInput>)};
+      case "ccp_private_learner_report_save":
+        return {data:await savePrivateLearnerReport(db,args as z.infer<typeof privateLearnerReportSaveInput>)};
+      case "ccp_private_learner_reports_list":
+        return {data:await listPrivateLearnerReports(db,teacherId,args as z.infer<typeof privateLearnerReportListInput>)};
+      case "ccp_private_learner_report_get":
+        return {data:await getPrivateLearnerReport(db,teacherId,args as z.infer<typeof privateLearnerReportGetInput>)};
       case "ccp_learner_report_preview":
         return {data:await teacherLearnerReportPreview(db,teacherId,args as z.infer<typeof learnerReportPreviewInput>)};
       case "ccp_learner_evidence_get":
@@ -2994,7 +3025,7 @@ export async function runTool(db: SupabaseClient, teacherId: string,
   } catch (error) {
     if (error instanceof TrainingPlanError)
       return {error:{code:error.code,message:error.message}};
-    if (error instanceof LearnerReportPreviewError || error instanceof LearnerEvidenceError || error instanceof CoachBriefingError || error instanceof DailyPreparationError || error instanceof DailyCloseError)
+    if (error instanceof PrivateLearnerReportError || error instanceof LearnerReportPreviewError || error instanceof LearnerEvidenceError || error instanceof CoachBriefingError || error instanceof DailyPreparationError || error instanceof DailyCloseError)
       return {error:{code:error.code,message:error.message}};
     if (error instanceof UnifiedHistoryError)
       return {error:{code:error.code,message:error.message}};
