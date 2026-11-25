@@ -108,3 +108,27 @@ and [authenticated browser/MCP E2E](https://github.com/itshak/ChessCoachPal/acti
 (453 browser cases and three scheduling repeats). The accepted schema
 lock is unchanged. Bounded weekday changes and report and finance
 workflows remain separate work.
+
+### Bounded recurring weekday review and approval
+
+[PR #202](https://github.com/itshak/ChessCoachPal/pull/202) merged exact
+candidate `555dfcee65f752f978ab1c2d4179d565b1155a7c` at
+`066cee56b7712df0057e845cf885a33669301b28`. For changes to weekday only,
+the signed website and MCP display the native reviewed original and
+proposed dates as separate lists for each affected segment. Those lists
+need not be the same length. Approval binds the complete preview;
+attempts with missing finite evidence, protected occurrences, invalid
+scope, or stale review fail without writes. Earlier lessons and unrelated
+workplaces remain unchanged. Existing time/duration edits still work.
+Attendance and finance are not changed, and there is no timezone rewrite.
+
+Disposable signed verification on aiserver passed both the new weekday
+and existing scoped time/duration scenarios. Exact hosted
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45557795512),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45557795576),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45557795510),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45557795621),
+and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45557795459)
+passed (454 cases plus three scheduling repeats). The schema freeze and
+transition manifest are unchanged. Privacy-safe report review and finance
+workflows remain separate, unclaimed acceptance scope.

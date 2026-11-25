@@ -158,3 +158,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | The signed website and MCP review the exact original local date without writes, require explicit approval, and retry the same audited cancellation after a lost response. Calendar generation skips only that date. Revocation preserves the original approval and creates no lesson; separate subsequent generation restores only the original date. Earlier and neighboring lessons, attendance and billing are untouched. | `e2e/parity-professional-occurrence-cancellation.spec.ts#PARITY-professional-occurrence-cancellation` — [453 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45552911208) on `0c0b2c7c9d4ffad2c147049e44b728c8e264a6c3`, merged in [PR #200](https://github.com/itshak/ChessCoachPal/pull/200) at `6e9d205f0a582740d922dd6ad419cd31bc263c4d`. |
+
+### Professional: bounded weekday editing
+
+| Status | Signed scenario | Evidence |
+| --- | --- | --- |
+| - [x] | Website and delegated MCP review the full finite horizon before a weekday change. Previous and proposed original dates are shown independently, even if their counts differ. An open horizon, short notice, protected history, and a stale digest are rejected. Exact approved replay preserves prior lessons, other workplaces, attendance, and billing; the signed UI also fits at 320 px. | `e2e/parity-professional-bounded-weekday.spec.ts#PARITY-professional-bounded-weekday` — [454 authenticated browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45557795459) on `555dfcee65f752f978ab1c2d4179d565b1155a7c`, merged in [PR #202](https://github.com/itshak/ChessCoachPal/pull/202) at `066cee56b7712df0057e845cf885a33669301b28`. |
