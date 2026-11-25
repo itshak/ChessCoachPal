@@ -156,3 +156,37 @@ and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/455
 passed (455 cases plus three scheduling repeats). The schema freeze and
 transition manifest are unchanged. Saving a sealed report, approving a
 recipient, portal reads, revocation and supersession remain unaccepted.
+
+### Save and reopen a reviewed private learner report
+
+[PR #208](https://github.com/itshak/ChessCoachPal/pull/208) merged exact
+candidate `fac79ca37bc21c9cdaea03d3c5ad6b83cdb72f71` at
+`3a0693d79f800e784c58bf4656576d62a6ec6ad1`. A teacher with the existing
+report publishing entitlement can explicitly save a reviewed attendance
+candidate for one owned learner and workplace. Approval is bound to the
+candidate and its source revision. A source substitution that preserves the
+displayed counts invalidates the prior approval. An exact replay after a
+lost response returns the original receipt without another publication.
+The signed website and delegated MCP match the sealed result; a fresh
+signed browser context reopens the saved version after corrections without
+recomputing it from current attendance. Private listings are limited to the
+newest 30 reports for the learner, with truncation signaled.
+
+[ADR-0031](../../../docs/adr/0031-private-learner-report-seal-source-review.md) was
+accepted separately in [PR #206](https://github.com/itshak/ChessCoachPal/pull/206)
+and activated at the repository level by [PR #207](https://github.com/itshak/ChessCoachPal/pull/207)
+after disposable fresh, warm, restore, scope and concurrency checks.
+The application change did not alter the accepted schema lock.
+
+The two signed private report scenarios passed against the disposable
+production-mode build, with independent checks showing unchanged Storage
+objects and buckets. Exact hosted
+[CI](https://github.com/itshak/ChessCoachPal/actions/runs/45581817696),
+[security](https://github.com/itshak/ChessCoachPal/actions/runs/45581817701),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45581817661),
+[backup/restore](https://github.com/itshak/ChessCoachPal/actions/runs/45581817977)
+and [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45581817763)
+passed (456 cases plus three scheduling repeats). No report audience,
+portal access, delivery, billing, or deployment occurred. Explicit
+recipient approval, portal reads, revocation and supersession remain
+separate, unaccepted scope.
