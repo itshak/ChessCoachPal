@@ -982,7 +982,36 @@
     "importFailed": "Rating refresh failed",
     "importSaved": "Provider-sourced observations saved. Teacher-assessed strength was not changed."
   },
+  "learnerEvidence": {
+    "heading": "Lesson and import evidence",
+    "unavailable": "Evidence is temporarily unavailable.",
+    "archived": "Archived learner. Earlier evidence is still available.",
+    "completedHeading": "Completed lessons with a frozen roster",
+    "noCompleted": "No completed lessons with this learner on the saved roster.",
+    "showing": "Showing {visible} of {total} records.",
+    "unknownDate": "Date not verified",
+    "recordedUtc": "{timestamp} UTC (local date not recorded)",
+    "unknownWorkplace": "Workplace not available",
+    "importedHeading": "Imported attendance evidence",
+    "importedExplanation": "Imported observations and source totals are not calendar lessons and do not establish teaching hours.",
+    "noImported": "No imported attendance evidence.",
+    "importedTotals": "Dated observations: {dated}. Aggregate rows: {aggregate}, with {declared} lessons declared by the source.",
+    "datedRow": "{date}: {status}",
+    "aggregateRow": "{start} to {end}: {count} lessons declared, dates not recorded",
+    "sourceRow": "Source row {row}",
+    "reviewImport": "Review historical imports",
+    "status": {
+      "present": "Present",
+      "late": "Late",
+      "absent": "Absent",
+      "excused": "Excused",
+      "student_cancelled": "Cancelled by student",
+      "teacher_cancelled": "Cancelled by teacher",
+      "unknown": "Attendance not recorded"
+    }
+  },
   "studentDetail": {
+    "learnerEvidenceLink": "Lesson and import evidence",
     "student": "Student",
     "back": "Students",
     "family": "Family:",
