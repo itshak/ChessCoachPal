@@ -152,3 +152,9 @@ The final archived-spec source must independently pass the same matrix before me
 | Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
 | --- | --- | --- |
 | - [x] | The website and MCP review exactly one original recurring date before a confirmed move. Synthetic Jerusalem dates cross the daylight-saving boundary; the original occurrence identity, earlier scheduled lesson, and unrelated rule stay intact. A lost response can replay the exact request without creating another lesson. No attendance, obligation, or credit is created. | `e2e/parity-professional-occurrence-move.spec.ts#PARITY-professional-occurrence-move` — [452 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45543705000) on `78bd647f5ca8c30d792d2520d18d2343812eb26d`, merged in [PR #198](https://github.com/itshak/ChessCoachPal/pull/198) at `ad7a96ca76eee937eb156bd67ced3135b19289ae`. |
+
+## Professional cancel or restore one original date — accepted source slice
+
+| Verified | New independently required behavior | Authenticated website/MCP E2E evidence |
+| --- | --- | --- |
+| - [x] | The signed website and MCP review the exact original local date without writes, require explicit approval, and retry the same audited cancellation after a lost response. Calendar generation skips only that date. Revocation preserves the original approval and creates no lesson; separate subsequent generation restores only the original date. Earlier and neighboring lessons, attendance and billing are untouched. | `e2e/parity-professional-occurrence-cancellation.spec.ts#PARITY-professional-occurrence-cancellation` — [453 browser cases and three scheduling repeats](https://github.com/itshak/ChessCoachPal/actions/runs/45552911208) on `0c0b2c7c9d4ffad2c147049e44b728c8e264a6c3`, merged in [PR #200](https://github.com/itshak/ChessCoachPal/pull/200) at `6e9d205f0a582740d922dd6ad419cd31bc263c4d`. |
