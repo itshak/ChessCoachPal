@@ -1015,6 +1015,15 @@
       "evidenceTest": "e2e/parity-compensation-earnings-summary.spec.ts"
     },
     {
+      "path": "app/api/finance-ledger/period-end-actuals/route.ts",
+      "methods": ["GET"],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": ["ccp_finance_period_end_actuals"],
+      "explanation": "Read-only current settlement of exact posted obligations for one owned workplace, full source month and currency. Independent categories and no workplace cash claims.",
+      "evidenceTest": "e2e/parity-professional-period-end-actuals.spec.ts"
+    },
+    {
       "path": "app/api/finance-ledger/obligations/route.ts",
       "methods": [
         "POST"
@@ -2038,6 +2047,7 @@
     "components/teacher/LichessStudyExplorer.tsx",
     "components/teacher/MaterialHistoryPanel.tsx",
     "components/teacher/NativeFinanceLedgerPanel.tsx",
+    "components/teacher/PeriodEndActuals.tsx",
     "components/teacher/PostedEarningsSummary.tsx",
     "components/teacher/NotificationBell.tsx",
     "components/teacher/OnboardingTour.tsx",

@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState,type FormEvent} from "react";
 import {useTranslations} from "next-intl";
+import {PeriodEndActuals} from "./PeriodEndActuals";
 import {PostedEarningsSummary} from "./PostedEarningsSummary";
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 type Obligation={id:string;kind:string;amount_cents:number;currency:string;agreement_id:string;period_start:string};
@@ -89,6 +90,7 @@ export function NativeFinanceLedgerPanel(){
   {error&&<p role="alert" className="text-sm text-error">{error}</p>}
   {notice&&<p role="status" className="text-sm">{notice}</p>}
   <PostedEarningsSummary />
+  <PeriodEndActuals />
   <form onSubmit={submit} className="space-y-3">
    <label className="block text-sm">{t("action")}
     <select className={field} value={action} onChange={e=>setAction(e.target.value as Action)}>
