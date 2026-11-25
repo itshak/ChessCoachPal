@@ -1625,7 +1625,7 @@ const catalogue = [
   },
   {
     name:"ccp_lessons_capture_preview",
-    description:"Read-only exact names/aliases preview for 1–50 learners. If ambiguous, ask the teacher to choose a returned owned ID and submit studentChoices (zero-based name index + studentId). Never choose by archive status. Omitted workplace inherits selection; null requires unambiguous independent resolution. Supply explicit offset start+duration or localDate for exact shared weekday slot. No writes, attendance or mastery inference. Archived selections need ccp_lessons_archived_recovery_preview and separately confirmed atomic recovery; active learners use ccp_sessions_create or ccp_sessions_ad_hoc_create.",
+    description:"Read-only exact names/aliases preview for 1–50 learners. If ambiguous, ask the teacher to choose a returned owned ID and submit studentChoices (zero-based name index + studentId). Never choose by archive status. Omitted workplace inherits selection; null requires unambiguous independent resolution. Supply explicit offset start+duration or localDate for exact shared weekday slot. No writes, attendance or mastery inference. Exact archived selections offer no-write Keep archived, Choose another learner and Review history via ccp_learner_evidence_get. Reactivation requires a separate exact scheduled or completed recovery preview and explicit approval; active learners use ccp_sessions_create or ccp_sessions_ad_hoc_create.",
     schema:lessonCapturePreviewSchema,scope:"coach:read",readOnly:true,
   },
   {
