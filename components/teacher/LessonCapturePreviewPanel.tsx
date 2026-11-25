@@ -39,6 +39,7 @@ type Preview = {
   canCommit:boolean; resolutions:Resolution[];
   issues:Array<{ code:string; message:string; input?:string; candidates?:Candidate[] }>;
   workplace:Workplace|null;
+  archivedRecovery?:{reviewHistory:{learners:Array<{studentId:string;name:string;path:string}>}}|null;
   proposedSession:{
     workplaceId:string;studentIds:string[];title:string;startsAt:string;
     durationMinutes:number;lessonNote:string;
@@ -67,6 +68,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
   const [workplaces,setWorkplaces] = useState<Workplace[]>(initialWorkplaces??[]);
   const [workplaceId,setWorkplaceId] = useState(initialWorkplaceId??"");
   const [names,setNames] = useState("");
+  const namesRef=useRef<HTMLTextAreaElement>(null);
   const [title,setTitle] = useState("");
   const [timingMode,setTimingMode] = useState<"explicit"|"weekly">("explicit");
   const [localStart,setLocalStart] = useState("");
@@ -89,6 +91,8 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
   const [recoveryPreview,setRecoveryPreview] = useState<RecoveryPreview|null>(null);
   const [recoveryReason,setRecoveryReason] = useState("");
   const [recoveryApproved,setRecoveryApproved] = useState(false);
+  const [recoveryUnconfirmed,setRecoveryUnconfirmed]=useState(false);
+  const recoveryLocked=completedLocked||recoveryUnconfirmed;
   const recoveryKeyRef = useRef<{signature:string;requestId:string}|null>(null);
   const [approved,setApproved] = useState(false);
   const [atomicApproved,setAtomicApproved] = useState(false);
@@ -130,15 +134,22 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
     setPendingLink(null);setLinkReview(null);setLinkApproved(false);setLinkedReceipt("");
     linkKeyRef.current=null;};
 
+  function exitArchiveReview(chooseAnother:boolean){
+    if(busy||recoveryLocked)return;
+    invalidate();setError("");setRecoveryReason("");
+    if(chooseAnother)namesRef.current?.focus();
+    else{focusCompletedReceipt.current=true;setReceipt(t("recoveryKept"));}
+  }
+
   function check(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if(completedPhaseRef.current!=="idle")return;
+    if(completedPhaseRef.current!=="idle"||recoveryUnconfirmed)return;
     setStudentChoices({});
     void requestPreview({});
   }
 
   async function requestPreview(choices:Record<number,string>) {
-    if(completedPhaseRef.current!=="idle")return;
+    if(completedPhaseRef.current!=="idle"||recoveryUnconfirmed)return;
     const generation=++previewGeneration.current;
     setRecoveryKind("scheduled");
     setError("");setReceipt("");setPreview(null);setApproved(false);setAtomicApproved(false);atomicKeyRef.current=null;
@@ -179,7 +190,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
   }
 
   async function reviewArchivedRecovery(){
-    if(!preview||!workplaceId||timingMode!=="explicit")return;
+    if(!preview||!workplaceId||timingMode!=="explicit"||recoveryUnconfirmed)return;
     const w=workplaces.find(w=>w.id===workplaceId);
     if(!w)return;
     const ids=preview.resolutions.map(r=>r.studentId);
@@ -211,7 +222,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
     const signature=JSON.stringify(payload);
     if(recoveryKeyRef.current?.signature!==signature)
       recoveryKeyRef.current={signature,requestId:crypto.randomUUID()};
-    setBusy(true);setError("");
+    setBusy(true);setError("");setRecoveryUnconfirmed(true);
     try{
       const response=await fetch("/api/coaching/lesson-capture/recovery/commit",{
         method:"POST",headers:{"Content-Type":"application/json"},
@@ -219,14 +230,21 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
         cache:"no-store",
       });
       const body=await response.json() as {id?:string;reactivatedCount?:number;
-        replayed?:boolean;error?:string};
-      if(!response.ok||!body.id)throw new Error(toUserError(body,t("recoveryDenied")));
+        replayed?:boolean;error?:string;code?:string};
+      if(!response.ok){
+        if(response.status>=500||!body.code)throw new Error(t("recoveryUnconfirmed"));
+        setRecoveryUnconfirmed(false);
+        setError(toUserError(body,t("recoveryDenied")));
+        return;
+      }
+      if(!body.id)throw new Error(t("recoveryUnconfirmed"));
+      setRecoveryUnconfirmed(false);
       setReceipt(t("recoveryReceipt",{id:body.id,count:body.reactivatedCount??0})+
         (body.replayed?" "+t("safeReplay"):""));
       setPreview(null);setRecoveryPreview(null);setRecoveryApproved(false);
       setRecoveryReason("");recoveryKeyRef.current=null;
       // Do not imply the optional chapter has been linked or mastery marked.
-    }catch(e){setError(toUserError(e,t("recoveryDenied")));}
+    }catch{setError(t("recoveryUnconfirmed"));}
     finally{setBusy(false);}
   }
 
@@ -352,9 +370,9 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
       </p>
     </div>
     <form onSubmit={check}>
-      <fieldset disabled={completedLocked} className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <fieldset disabled={busy||recoveryLocked} className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <label className="block min-w-0 text-sm">{t("names")}
-        <textarea className={field} rows={3} required value={names}
+        <textarea ref={namesRef} className={field} rows={3} required value={names}
           onChange={e=>{setNames(e.target.value);invalidate();}} />
       </label>
       <label className="block min-w-0 text-sm">{t("workplace")}
@@ -419,7 +437,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
             onChange={e=>{setExpectedPlayers(e.target.value);invalidate();}} />
         </label>
       </>}
-      <div><button className={button} type="submit" disabled={busy}>{t("previewOnly")}</button></div>
+      <div><button className={button} type="submit" disabled={busy||recoveryLocked}>{t("previewOnly")}</button></div>
       </fieldset>
     </form>
     {error&&<p role="alert" className="text-red-500">{error}</p>}
@@ -457,7 +475,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
              t(r.status==="ambiguous"?"ambiguous":"notFound")}
           {r.candidates.length>0&&<label className="block text-sm">
             {t("chooseExactLearner",{name:r.input,position:i+1})}
-            <select className={field} disabled={completedLocked} value={r.candidates.some(c=>c.id===studentChoices[i])?studentChoices[i]:""}
+            <select className={field} disabled={busy||recoveryLocked} value={r.candidates.some(c=>c.id===studentChoices[i])?studentChoices[i]:""}
               onChange={e=>{const studentId=e.target.value;setStudentChoices(old=>({...old,[i]:studentId}));}}>
               <option value="">{t("leaveLearnerUnselected")}</option>
               {r.candidates.map(c=><option value={c.id} key={c.id}>{t("learnerIdentityOption",{
@@ -468,7 +486,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
         </li>)}
       </ul>
       {preview.resolutions.some(r=>r.candidates.length>0)&&<button type="button" className={button}
-        disabled={busy||completedLocked||preview.resolutions.some((r,i)=>r.candidates.length>0&&
+        disabled={busy||recoveryLocked||preview.resolutions.some((r,i)=>r.candidates.length>0&&
           !r.candidates.some(c=>c.id===studentChoices[i]))}
         onClick={()=>void requestPreview(studentChoices)}>{t("verifySelectedLearners")}</button>}
       {preview.issues.map((issue,i)=><p key={i} role="alert" className="text-sm text-amber-500">
@@ -480,11 +498,21 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
         <div className="space-y-3 rounded-lg border border-amber-400/60 p-3">
           <h4 className="font-semibold">{t("recoveryTitle")}</h4>
           <p className="text-sm">{t("recoveryIntro")}</p>
+          {preview.archivedRecovery&&<div className="flex flex-wrap items-center gap-3">
+            <button type="button" className="underline text-sm" disabled={busy||recoveryLocked}
+              onClick={()=>exitArchiveReview(false)}>{t("recoveryKeep")}</button>
+            <button type="button" className="underline text-sm" disabled={busy||recoveryLocked}
+              onClick={()=>exitArchiveReview(true)}>{t("recoveryChooseAnother")}</button>
+            {!busy&&!recoveryLocked&&preview.archivedRecovery.reviewHistory.learners.map(learner=>
+              <a key={learner.studentId} href={learner.path} className="underline text-sm">
+                {t("recoveryReviewHistory",{name:learner.name})}
+              </a>)}
+          </div>}
           {canChooseCompleted&&<fieldset className="space-y-1">
             <legend className="text-sm font-semibold">{t("completedRecoveryMode")}</legend>
             {(["scheduled","completed"] as const).map(kind=><label key={kind} className="flex items-center gap-2 text-sm">
-              <input type="radio" name="archived-recovery-kind" checked={recoveryKind===kind} disabled={busy||completedLocked} onChange={()=>{
-                if(completedPhaseRef.current!=="idle")return;
+              <input type="radio" name="archived-recovery-kind" checked={recoveryKind===kind} disabled={busy||recoveryLocked} onChange={()=>{
+                if(completedPhaseRef.current!=="idle"||recoveryUnconfirmed)return;
                 setRecoveryKind(kind);setRecoveryPreview(null);setRecoveryApproved(false);recoveryKeyRef.current=null;
               }}/>
               {t(kind==="scheduled"?"scheduledRecoveryChoice":"completedRecoveryChoice")}
@@ -506,7 +534,7 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
           {timingMode!=="explicit"?
             <p role="alert" className="text-sm text-amber-500">{t("recoveryExplicitTime")}</p>:
             <button className={button} type="button"
-              disabled={busy||completedLocked||preview.resolutions.some(r=>!r.studentId)}
+              disabled={busy||recoveryLocked||preview.resolutions.some(r=>!r.studentId)}
               onClick={()=>void reviewArchivedRecovery()}>{t("reviewRecovery")}</button>}
           {recoveryPreview&&<>
             {recoveryPreview.capacity&&<p className="text-sm">
@@ -547,19 +575,19 @@ export function LessonCapturePreviewPanel({initialWorkplaceId=null,initialWorkpl
               })}</p>
               <label className="block text-sm">{t("recoveryReason")}
                 <textarea className={field} rows={2} minLength={8} maxLength={1000}
-                  value={recoveryReason} onChange={e=>{
+                  value={recoveryReason} disabled={busy||recoveryUnconfirmed} onChange={e=>{
                     setRecoveryReason(e.target.value);setRecoveryApproved(false);
                     recoveryKeyRef.current=null;
                   }} />
               </label>
               <label className="flex gap-2 items-start text-sm">
-                <input type="checkbox" checked={recoveryApproved}
+                <input type="checkbox" checked={recoveryApproved} disabled={busy||recoveryUnconfirmed}
                   onChange={e=>setRecoveryApproved(e.target.checked)} />
                 {t("recoveryApprove")}
               </label>
               <button className={button} type="button"
                 disabled={busy||!recoveryApproved||recoveryReason.trim().length<8}
-                onClick={()=>void confirmArchivedRecovery()}>{t("recoveryCommit")}</button>
+                onClick={()=>void confirmArchivedRecovery()}>{t(recoveryUnconfirmed?"recoveryRetry":"recoveryCommit")}</button>
             </>}
           </>}
           </>}
