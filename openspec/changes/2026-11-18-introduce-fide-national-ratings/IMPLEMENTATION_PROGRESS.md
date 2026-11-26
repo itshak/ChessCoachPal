@@ -20,4 +20,17 @@
 
 - Require separate approval for FIDE data access, actual format/coverage/revision evidence, terms for reuse and storage, and consent/minor-data policy before adapting or scheduling real retrieval. Confirm source authorization/completeness and owner/identity again before any real write. ICF automated access/terms and permitted lookup remain unverified; only manual input is available.
 - Production format/parser, authorized import/write and monthly sync/backoff are not implemented. The synthetic fixture is not proof of a provider format, outage handling, or live sync.
-- Date-effective reports/exports, delete semantics, and behavioral RTL acceptance were not completed by these slices. Real historical manual/online rating preservation, restored-copy reconciliation and one authorized final transition under [ADR-0017](../../../docs/adr/0017-pre-v1-single-final-cutover-no-compatibility.md) remain open. Hosted smoke checks are not proof of live migration.
+- Date-effective evidence is available on the teacher profile and its paired signed read when explicitly requested; exports and independent behavioral RTL acceptance remain separate, as do delete/revoke semantics. Real historical manual/online rating preservation, restored-copy reconciliation and one authorized final transition under [ADR-0017](../../../docs/adr/0017-pre-v1-single-final-cutover-no-compatibility.md) remain open. Hosted smoke checks are not proof of live migration.
+
+
+### Date-effective stored FIDE evidence
+
+The authenticated learner profile and the same delegated MCP operation can request
+an inclusive effective date through today UTC. The result includes only saved,
+published rows for the currently linked exact FIDE ID, with Standard, Rapid and
+Blitz separate. A same-period correction with unverifiable order stays unknown.
+A later retrieval of an older edition can count; this is not an audit of what
+the app knew on that date or a reconstruction of the ID then linked. Former IDs,
+Israeli manual evidence and future editions remain outside that projection.
+The current summary, append-only history, assessed strength and default response
+without a date are unchanged. There is no new external call or data write.

@@ -160,16 +160,31 @@ test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess cor
   effectiveAt:null,sourceUrl:"https://example.invalid/icf",requestId:randomUUID(),confirmed:true,
  });
  expect(manual.error).toBeUndefined();
- const read=async()=>{
-  const browser=await page.request.get(endpoint);
+ const read=async(fideOn?:string)=>{
+  const browser=await page.request.get(endpoint+(fideOn?"?fideOn="+fideOn:""));
   expect(browser.status(),await browser.text()).toBe(200);
-  const mcp=await call("ccp_student_federations_get",{studentId});
+  const mcp=await call("ccp_student_federations_get",{studentId,...(fideOn?{fideOn}:{})});
   expect(mcp.error).toBeUndefined();expect(mcp.data).toEqual(await browser.json());
   return mcp.data;
  };
  const before=await read();
  expect(before.currentEvidence.fide[0]).toMatchObject({status:"recorded",
   snapshot:{rating:1871,external_player_id:oldId,provider_list_version:"fixture-jan"}});
+ expect(before.fideEffectiveEvidence).toBeUndefined();
+ const december=await read("2024-12-31");
+ expect(december.currentEvidence).toEqual(before.currentEvidence);
+ expect(december.fideEffectiveEvidence).toMatchObject({
+  basis:"stored_editions_for_current_link",throughDate:"2024-12-31",fide:[
+   {timeControl:"standard",status:"recorded",snapshot:{rating:1810,effective_at:"2024-12-01"}},
+   {timeControl:"rapid",status:"not_recorded",snapshot:null},
+   {timeControl:"blitz",status:"not_recorded",snapshot:null},
+  ],
+ });
+ for(const bad of ["2025-02-29","2999-01-01"]){
+  expect((await page.request.get(endpoint+"?fideOn="+bad)).status()).toBe(400);
+  expect((await call("ccp_student_federations_get",{studentId,fideOn:bad})).error?.code).toBe("VALIDATION_ERROR");
+ }
+ expect((await page.request.get(endpoint+"?fideOn=2025-01-01&fideOn=2025-02-01")).status()).toBe(400);
  const profile=async()=>db.from("students").select("strength,chess_ratings").eq("id",studentId).single();
  const strengthBefore=await profile();
  expect(strengthBefore.error).toBeNull();
@@ -178,6 +193,14 @@ test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess cor
  expect(corrected.retrieval).toEqual({fide:"not_automated",icf:"manual_only"});
  expect(corrected.currentEvidence.fide).toMatchObject([
   {timeControl:"standard",status:"recorded",snapshot:{rating:1963,external_player_id:newId}},
+  {timeControl:"rapid",status:"not_recorded",snapshot:null},
+  {timeControl:"blitz",status:"edition_order_unknown",snapshot:null},
+ ]);
+ const earlierForNewId=await read("2025-01-31");
+ expect(earlierForNewId.fideEffectiveEvidence.fide.every((row:{status:string})=>row.status==="not_recorded")).toBe(true);
+ const newFebruary=await read("2025-02-01");
+ expect(newFebruary.fideEffectiveEvidence.fide).toMatchObject([
+  {timeControl:"standard",status:"recorded",snapshot:{rating:1963}},
   {timeControl:"rapid",status:"not_recorded",snapshot:null},
   {timeControl:"blitz",status:"edition_order_unknown",snapshot:null},
  ]);
@@ -194,6 +217,12 @@ test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess cor
  await expect(panel).toContainText("manual evidence only");
  await expect(panel).toContainText("order not verified");
  await expect(panel).not.toContainText("1871");
+ await page.getByLabel("FIDE effective date",{exact:true}).fill("2025-02-01");
+ await page.getByRole("button",{name:"Review effective date",exact:true}).click();
+ const historical=page.getByRole("region",{name:"FIDE effective-date result",exact:true});
+ await expect(historical).toContainText("1963");
+ await expect(historical).toContainText("order not verified");
+ await expect(historical).not.toContainText("1871");
  // The write still reaches the real app. A failed follow-up GET must never
  // leave the old bound result rendered as current for the just-saved ID.
  const failedReload=async(route:import("@playwright/test").Route)=>route.fulfill({status:503});
@@ -201,6 +230,7 @@ test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess cor
  await page.getByTestId("fide-id-input").fill(oldId);
  await page.getByRole("button",{name:"Save player identity"}).click();
  await expect(panel).toHaveCount(0);
+ await expect(historical).toHaveCount(0);
  await expect(page.getByRole("button",{name:"Save player identity"})).toBeEnabled();
  const saved=await db.from("students").select("fide_id").eq("id",studentId).single();
  expect(saved.data?.fide_id).toBe(oldId);
@@ -226,8 +256,8 @@ test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess cor
   const learner=await db.from("students").insert({teacher_id:foreignId,name:"Other synthetic learner"}).select("id").single();
   expect(learner.error).toBeNull();
   const foreignStudentId=learner.data!.id;
-  expect((await page.request.get(`/api/students/${foreignStudentId}/federations`)).status()).toBe(404);
-  expect((await call("ccp_student_federations_get",{studentId:foreignStudentId})).error?.code).toBe("NOT_FOUND");
+  expect((await page.request.get(`/api/students/${foreignStudentId}/federations?fideOn=2025-02-01`)).status()).toBe(404);
+  expect((await call("ccp_student_federations_get",{studentId:foreignStudentId,fideOn:"2025-02-01"})).error?.code).toBe("NOT_FOUND");
  }finally{
   expect((await db.auth.admin.deleteUser(foreignId)).error).toBeNull();
  }

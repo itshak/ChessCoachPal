@@ -14,10 +14,11 @@ type Snapshot={id:string;provider:"fide"|"icf";time_control:string;
 type FideEvidence={timeControl:"standard"|"rapid"|"blitz"} & (
  {status:"recorded";snapshot:Snapshot}|
  {status:"not_linked"|"not_recorded"|"edition_order_unknown"|"evidence_incomplete";snapshot:null});
+type EffectiveEvidence={throughDate:string;basis:"stored_editions_for_current_link";fide:FideEvidence[]};
 type Overview={identity:{fideId:string|null;fideFederationCode:string|null;
  nationalFederationPreference:string|null;defaultNationalFederationCode:string|null;
  suggestedFederationCode:string|null};memberships:Membership[];snapshots:Snapshot[];
- currentEvidence:{fide:FideEvidence[]};retrieval:{fide:"not_automated";icf:"manual_only"};
+ currentEvidence:{fide:FideEvidence[]};fideEffectiveEvidence?:EffectiveEvidence;retrieval:{fide:"not_automated";icf:"manual_only"};
  sourceWarning:string};
 const field="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
 const code=(value:string)=>value.trim().toUpperCase();
@@ -42,6 +43,8 @@ function StudentFederationsScope({studentId}:{studentId:string}){
  const [control,setControl]=useState("standard"),[rating,setRating]=useState("");
  const [observedAt,setObservedAt]=useState(today()),[effectiveAt,setEffectiveAt]=useState("");
  const [sourceUrl,setSourceUrl]=useState("");
+ const [fideOn,setFideOn]=useState("");
+ const [historical,setHistorical]=useState<{linkedId:string;evidence:EffectiveEvidence}|null>(null);
  const load=useCallback(async(expectedIdentity?:{fideId:string|null})=>{
   if(!mounted.current||(identityPending.current&&!expectedIdentity))return;
   const generation=++readGeneration.current;
@@ -83,6 +86,7 @@ function StudentFederationsScope({studentId}:{studentId:string}){
   e.preventDefault();await run(async()=>{
    const nextId=fideId.trim()||null;
    identityPending.current=true;readGeneration.current++;
+   setHistorical(null);
    setOverview(null);
    try{
     await post(studentUrl,"PUT",{
@@ -90,6 +94,24 @@ function StudentFederationsScope({studentId}:{studentId:string}){
      nationalFederationPreference:national==="NONE"?"NONE":optionalCode(national),
     },{fideId:nextId});
    }finally{identityPending.current=false;}
+  });
+ }
+ async function reviewEffective(e:FormEvent){
+  e.preventDefault();
+  const linkedId=overview?.identity.fideId,requested=fideOn;
+  if(!linkedId||!requested||identityPending.current)return;
+  const generation=readGeneration.current;
+  await run(async()=>{
+   setHistorical(null);
+   const response=await fetch(`${studentUrl}/federations?`+new URLSearchParams({fideOn:requested}),{cache:"no-store"});
+   if(!mounted.current||generation!==readGeneration.current)return;
+   if(!response.ok)throw new Error("FEDERATION_READ");
+   const result=await response.json() as Overview&{studentId:string};
+   if(!mounted.current||generation!==readGeneration.current)return;
+   if(result.studentId!==studentId||result.identity.fideId!==linkedId||
+    result.fideEffectiveEvidence?.throughDate!==requested||
+    result.fideEffectiveEvidence.basis!=="stored_editions_for_current_link")throw new Error("FEDERATION_READ");
+   setHistorical({linkedId,evidence:result.fideEffectiveEvidence});
   });
  }
  async function updateDefault(e:FormEvent){
@@ -249,6 +271,28 @@ function StudentFederationsScope({studentId}:{studentId:string}){
         {" · "}{snapshot.provider_list_version}</>:t(status)}
       </li>)}
      </ul>
+    </div>}
+    {overview?.identity.fideId&&<div className="space-y-2 rounded-lg border border-border p-3">
+     <h3 className="text-sm font-semibold">{t("effectiveReview.heading")}</h3>
+     <p>{t("effectiveReview.explanation")}</p>
+     <form onSubmit={reviewEffective} className="flex flex-wrap items-end gap-2">
+      <label className="grid gap-1 text-xs">{t("effectiveReview.date")}
+       <input className={field} type="date" min="1900-01-01" max={today()} required value={fideOn}
+        onChange={e=>{setFideOn(e.target.value);setHistorical(null);}} disabled={busy}/>
+      </label>
+      <Button type="submit" disabled={busy}>{t("effectiveReview.open")}</Button>
+     </form>
+     {historical?.linkedId===overview.identity.fideId&&
+      <div role="region" aria-label={t("effectiveReview.result")} className="space-y-1" aria-live="polite">
+       <p>{t("effectiveReview.through")} <time dateTime={historical.evidence.throughDate}><bdi>{historical.evidence.throughDate}</bdi></time></p>
+       <ul className="space-y-1">
+        {historical.evidence.fide.map(({timeControl,status,snapshot})=><li key={timeControl}>
+         {t(timeControl)}: {snapshot? <><strong>{snapshot.rating}</strong> · {t("provider_published")}
+          {" · "}<time dateTime={snapshot.effective_at??undefined}><bdi>{snapshot.effective_at}</bdi></time>
+          {" · "}<bdi>{snapshot.provider_list_version}</bdi></>:t(status)}
+        </li>)}
+       </ul>
+      </div>}
     </div>}
     <h3 className="text-sm font-semibold">{t("evidenceHistory")}</h3>
     <ul className="space-y-2" aria-label={t("evidenceHistory")}>
