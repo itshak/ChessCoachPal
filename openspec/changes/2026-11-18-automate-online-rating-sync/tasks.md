@@ -5,13 +5,13 @@
 > **Execution prerequisite:** First complete [`2026-11-21-consolidate-final-preproduction-saas-schema`](../archive/2026-11-21-consolidate-final-preproduction-saas-schema/proposal.md), including canonical schema freeze and regression verification. This change implements remaining functionality against that schema; do not add ad hoc schema DDL.
 
 
-- [ ] Review the [shared rating-provider boundary](../../../docs/RATING_PROVIDER_BOUNDARIES.md) before adapter implementation; document source approval, provider-specific execution paths, and parity evidence.
-- [ ] Inventory current chess username editing, preview/commit consent, provider readers, student_rating_snapshots, chart/report projections and cron/queue infrastructure.
-- [ ] Define provider-scoped durable permission and revision-trigger semantics; UI setting defaults safe/off for existing profiles, with explicit teacher enable/disable.
-- [ ] Reference P0 freeze evidence for the existing online-only consent/job/receipt schema, tenant RLS/grants and table types. Preserve old snapshots; any separately approved live transition remains an operator gate.
+- [x] Review the [shared rating-provider boundary](../../../docs/RATING_PROVIDER_BOUNDARIES.md) before adapter implementation; document source approval, provider-specific execution paths, and parity evidence.
+- [x] Inventory current chess username editing, preview/commit consent, provider readers, student_rating_snapshots, chart/report projections and cron/queue infrastructure.
+- [x] Define provider-scoped durable permission and revision-trigger semantics; UI setting defaults safe/off for existing profiles, with explicit teacher enable/disable.
+- [x] Reference P0 freeze evidence for the existing online-only consent/job/receipt schema, tenant RLS/grants and table types. Preserve old snapshots; any separately approved live transition remains an operator gate.
 - [ ] Route website and MCP handle saves through one service that schedules a fetch only when allowed; make manual consent and refresh available via both.
 - [ ] Implement bounded worker/cron for active student handles, startup/resume/idempotency, backoff/quota controls and session-aware optional refresh; exclude archived records by default.
-- [ ] Add provider status/provenance and stale indicator on student profile and reports; never conflate teacher-entered ratings with official observations.
+- [x] Add provider status/provenance and stale indicator on student profile and reports; never conflate teacher-entered ratings with official observations.
 - [ ] Add optional rate-limited historical fetch/backfill with explicit data completeness/estimated status, clear unsupported failure for Chess.com gaps.
 - [ ] Test consent denial, handle change during queued work, archived/no-handle, provider 429/timeout/404, job retries, duplicate observations, monthly caps and cross-tenant denial.
 - [ ] Add exact same field/action through MCP, tool registry and authenticated website↔MCP E2E with independent read-back.
@@ -63,3 +63,9 @@ The learner profile labels each provider and shows the last successful fetch. Ar
 ### Latest current-account refresh state
 
 The teacher's student profile and both report/list read paths include the latest recorded current-account refresh independently of the last successful observation. A failure, retry, cancellation or expired worker lease does not replace a saved rating or make it fresh. A recorded queue entry or retry is not evidence that a scheduler is running. Account changes, revocation and archive suppress previous queue state; historical backfill is never the current refresh. Only bounded status, timestamps and category are shared, not private worker or provider diagnostics. No call to either provider or queue mutation is made to read status.
+
+### Detached historical source contract
+
+The optional history decoder accepts supplied bytes for one explicitly supported Lichess category and an inclusive window of up to 366 calendar days. It preserves the upstream date as a date, not a fabricated played-at timestamp, and returns only actual reported points in sorted order. It rejects malformed dates, duplicate dates for the selected series and responses above the input limits without returning partial results. Unrecognized variants are not remapped. Empty cache, absent category and empty window are distinct, but none proves inactivity or complete coverage. A returned point is attributed to Lichess rating history and never changes a current rating or teacher strength. No Chess.com daily series is synthesized.
+
+The provider's [rating-history contract](https://github.com/lichess-org/api/blob/master/doc/specs/tags/users/api-user-username-rating-history.yaml) distinguishes unauthenticated cache reads from authenticated generation. This decoder has no HTTP client, credentials, persistence, website or MCP caller. A real feature needs separate user-reviewed egress and source/region rules, an approved shared provider reservation, and audited historical storage separate from current observations. The current single-observation-per-category finalizer is not a backfill writer. This is tested synthetically; the optional backfill task stays open.
