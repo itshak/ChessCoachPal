@@ -18833,3 +18833,206 @@ REVOKE ALL ON FUNCTION public.ccp_online_rating_consent_apply(
  uuid,uuid,text,text,text,bigint,boolean,uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.ccp_online_rating_consent_apply(
  uuid,uuid,text,text,text,bigint,boolean,uuid) TO service_role;
+
+-- Shared online rating provider reservation and recurring enqueue.
+CREATE TABLE public.online_rating_provider_budget (
+ provider text PRIMARY KEY CHECK(provider IN ('lichess','chesscom')),
+ enabled boolean NOT NULL DEFAULT false,
+ operator_hold boolean NOT NULL DEFAULT false,
+ daily_limit integer NOT NULL DEFAULT 0 CHECK(daily_limit BETWEEN 0 AND 100000),
+ monthly_limit integer NOT NULL DEFAULT 0 CHECK(monthly_limit BETWEEN 0 AND 1000000),
+ daily_bucket date,
+ monthly_bucket date,
+ daily_used integer NOT NULL DEFAULT 0 CHECK(daily_used BETWEEN 0 AND 100000),
+ monthly_used integer NOT NULL DEFAULT 0 CHECK(monthly_used BETWEEN 0 AND 1000000),
+ request_token uuid UNIQUE,
+ lease_until timestamptz,
+ blocked_until timestamptz,
+ CHECK ((request_token IS NULL) = (lease_until IS NULL)),
+ CHECK ((daily_used=0 OR daily_bucket IS NOT NULL) AND (monthly_used=0 OR monthly_bucket IS NOT NULL)),
+ CHECK (monthly_bucket IS NULL OR extract(day from monthly_bucket)=1)
+);
+ALTER TABLE public.online_rating_provider_budget ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.online_rating_provider_budget FROM PUBLIC,anon,authenticated,service_role;
+GRANT SELECT ON public.online_rating_provider_budget TO service_role;
+-- The service may record operational state, but cannot enable a
+-- provider or choose quotas. Those are separate administrative decisions.
+GRANT UPDATE (operator_hold,daily_bucket,monthly_bucket,daily_used,monthly_used,request_token,
+ lease_until,blocked_until) ON public.online_rating_provider_budget TO service_role;
+INSERT INTO public.online_rating_provider_budget(provider) VALUES ('lichess'),('chesscom');
+
+CREATE FUNCTION public.ccp_online_rating_budget_acquire(p_provider text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $body$
+DECLARE b public.online_rating_provider_budget%ROWTYPE;
+ at_time timestamptz; d date; m date; du integer; mu integer;
+ token uuid; deadline timestamptz;
+BEGIN
+ IF current_user<>'service_role' THEN
+  RAISE EXCEPTION 'RATING_BUDGET_DENIED' USING ERRCODE='42501';
+ END IF;
+ PERFORM 1 FROM public.rating_providers
+  WHERE code=p_provider AND provider_kind='online' AND active FOR SHARE NOWAIT;
+ IF NOT FOUND THEN RETURN jsonb_build_object('status','unavailable'); END IF;
+ SELECT * INTO b FROM public.online_rating_provider_budget WHERE provider=p_provider FOR UPDATE NOWAIT;
+ IF NOT FOUND THEN RETURN jsonb_build_object('status','unavailable'); END IF;
+ at_time:=clock_timestamp();
+ IF b.operator_hold THEN RETURN jsonb_build_object('status','operator_hold'); END IF;
+ -- A crashed request might have received a longer upstream Retry-After that
+ -- it could not durably record. Do not silently resume on lease timeout.
+ IF b.request_token IS NOT NULL AND b.lease_until<=at_time THEN
+  UPDATE public.online_rating_provider_budget SET operator_hold=true
+   WHERE provider=p_provider;
+  RETURN jsonb_build_object('status','operator_hold');
+ END IF;
+ IF NOT b.enabled THEN RETURN jsonb_build_object('status','paused'); END IF;
+ IF b.blocked_until>at_time THEN RETURN jsonb_build_object('status','cooling_down'); END IF;
+ IF b.request_token IS NOT NULL THEN RETURN jsonb_build_object('status','in_flight'); END IF;
+ d:=(at_time AT TIME ZONE 'UTC')::date;
+ m:=date_trunc('month',d::timestamp)::date;
+ du:=CASE WHEN b.daily_bucket=d THEN b.daily_used ELSE 0 END;
+ mu:=CASE WHEN b.monthly_bucket=m THEN b.monthly_used ELSE 0 END;
+ IF du>=b.daily_limit OR mu>=b.monthly_limit THEN RETURN jsonb_build_object('status','quota'); END IF;
+ token:=gen_random_uuid();
+ deadline:=at_time+interval '90 seconds';
+ UPDATE public.online_rating_provider_budget
+  SET daily_bucket=d,daily_used=du+1,monthly_bucket=m,monthly_used=mu+1,
+      request_token=token,lease_until=deadline
+  WHERE provider=p_provider;
+ RETURN jsonb_build_object('status','admitted','token',token,'leaseUntil',deadline);
+EXCEPTION WHEN lock_not_available THEN
+ RETURN jsonb_build_object('status','busy');
+END;
+$body$;
+
+CREATE FUNCTION public.ccp_online_rating_budget_finish(
+ p_provider text,p_token uuid,p_outcome text,p_retry_at timestamptz
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $body$
+DECLARE b public.online_rating_provider_budget%ROWTYPE;
+ at_time timestamptz; retry timestamptz; must_hold boolean;
+BEGIN
+ IF current_user<>'service_role' THEN
+  RAISE EXCEPTION 'RATING_BUDGET_DENIED' USING ERRCODE='42501';
+ END IF;
+ IF p_token IS NULL OR p_outcome IS NULL OR p_outcome NOT IN ('completed','rate_limited','operator_hold')
+  OR (p_outcome<>'rate_limited' AND p_retry_at IS NOT NULL) THEN
+  RETURN jsonb_build_object('status','invalid');
+ END IF;
+ SELECT * INTO b FROM public.online_rating_provider_budget WHERE provider=p_provider FOR UPDATE NOWAIT;
+ IF NOT FOUND OR b.request_token IS DISTINCT FROM p_token THEN
+  RETURN jsonb_build_object('status','stale');
+ END IF;
+ at_time:=clock_timestamp();
+ must_hold:=p_outcome='operator_hold'
+  OR (p_outcome='rate_limited' AND (p_retry_at IS NULL OR NOT isfinite(p_retry_at) OR
+    p_retry_at>at_time+interval '24 hours 30 seconds'));
+ IF p_outcome='rate_limited' AND NOT must_hold THEN
+  retry:=greatest(p_retry_at,at_time+interval '60 seconds');
+ END IF;
+ UPDATE public.online_rating_provider_budget
+  SET request_token=NULL,lease_until=NULL,operator_hold=b.operator_hold OR must_hold,
+      blocked_until=greatest(b.blocked_until,retry)
+  WHERE provider=p_provider;
+ RETURN jsonb_build_object('status',CASE WHEN b.operator_hold OR must_hold THEN 'operator_hold' ELSE 'recorded' END);
+EXCEPTION WHEN lock_not_available THEN
+ RETURN jsonb_build_object('status','busy');
+END;
+$body$;
+
+REVOKE ALL ON FUNCTION public.ccp_online_rating_budget_acquire(text) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.ccp_online_rating_budget_finish(text,uuid,text,timestamptz) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_online_rating_budget_acquire(text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.ccp_online_rating_budget_finish(text,uuid,text,timestamptz) TO service_role;
+
+CREATE FUNCTION public.ccp_online_rating_enqueue_due(p_provider text,p_limit integer)
+RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $body$
+DECLARE
+ pool record; learner public.students%ROWTYPE; consent public.student_rating_sync_consents%ROWTYPE;
+ queued integer:=0; checked integer:=0; affected integer;
+ at_time timestamptz; reference_time timestamptz; in_flight boolean;
+ identity_digest text; key_date date;
+BEGIN
+ IF current_user<>'service_role' THEN
+  RAISE EXCEPTION 'RATING_SCHEDULE_DENIED' USING ERRCODE='42501';
+ END IF;
+ IF p_provider IS NULL OR p_provider NOT IN ('lichess','chesscom')
+ OR p_limit IS NULL OR p_limit<1 OR p_limit>8 THEN
+  RETURN jsonb_build_object('status','invalid');
+ END IF;
+ -- Shared provider locks come first for operational configuration
+ -- consistency; learner/teacher row locks below are NOWAIT.
+ PERFORM 1 FROM public.rating_providers
+ WHERE code=p_provider AND provider_kind='online' AND active FOR SHARE NOWAIT;
+ IF NOT FOUND THEN RETURN jsonb_build_object('status','paused'); END IF;
+ PERFORM 1 FROM public.online_rating_provider_budget
+ WHERE provider=p_provider AND enabled AND NOT operator_hold FOR SHARE NOWAIT;
+ IF NOT FOUND THEN RETURN jsonb_build_object('status','paused'); END IF;
+ at_time:=clock_timestamp();
+ key_date:=(at_time AT TIME ZONE 'UTC')::date;
+
+ FOR pool IN
+  SELECT s.teacher_id,s.student_id
+  FROM public.student_rating_sync_consents s
+  JOIN public.students l ON (l.teacher_id,l.id)=(s.teacher_id,s.student_id)
+  CROSS JOIN LATERAL (
+   SELECT coalesce(bool_or(j.status IN ('pending','running','retry')),false) AS active,
+          max(greatest(j.created_at,j.finished_at)) AS latest
+    FROM public.student_rating_refresh_jobs j
+   WHERE j.teacher_id=s.teacher_id AND j.student_id=s.student_id
+    AND j.provider=s.provider AND j.consent_id=s.id AND j.handle_revision=s.handle_revision
+    AND j.created_at>=s.consented_at AND j.trigger_kind IN ('profile_save','manual','scheduled')
+  ) hist
+  WHERE s.enabled AND s.provider=p_provider AND s.consented_at IS NOT NULL
+    AND l.archived_at IS NULL AND NOT hist.active
+    AND s.source_username=CASE p_provider WHEN 'lichess' THEN btrim(l.lichess_username)
+           WHEN 'chesscom' THEN btrim(l.chesscom_username) END
+    AND greatest(s.consented_at,hist.latest)<=at_time-interval '24 hours'
+  ORDER BY greatest(s.consented_at,hist.latest),s.teacher_id,s.student_id
+  LIMIT p_limit*4
+ LOOP
+  EXIT WHEN queued>=p_limit;
+  checked:=checked+1;
+  BEGIN
+   PERFORM 1 FROM public.teachers WHERE id=pool.teacher_id FOR KEY SHARE NOWAIT;
+   IF NOT FOUND THEN CONTINUE; END IF;
+   SELECT * INTO learner FROM public.students
+    WHERE teacher_id=pool.teacher_id AND id=pool.student_id FOR UPDATE NOWAIT;
+   IF NOT FOUND OR learner.archived_at IS NOT NULL THEN CONTINUE; END IF;
+   SELECT * INTO consent FROM public.student_rating_sync_consents
+    WHERE teacher_id=pool.teacher_id AND student_id=pool.student_id AND provider=p_provider FOR UPDATE NOWAIT;
+   IF NOT FOUND OR NOT consent.enabled OR consent.consented_at IS NULL OR
+    consent.source_username IS DISTINCT FROM (CASE p_provider WHEN 'lichess' THEN btrim(learner.lichess_username)
+        WHEN 'chesscom' THEN btrim(learner.chesscom_username) END) THEN CONTINUE; END IF;
+   SELECT coalesce(bool_or(j.status IN ('pending','running','retry')),false),
+      greatest(consent.consented_at,max(greatest(j.created_at,j.finished_at)))
+    INTO in_flight,reference_time
+    FROM public.student_rating_refresh_jobs j
+   WHERE j.teacher_id=consent.teacher_id AND j.student_id=consent.student_id
+    AND j.provider=consent.provider AND j.consent_id=consent.id AND j.handle_revision=consent.handle_revision
+    AND j.created_at>=consent.consented_at AND j.trigger_kind IN ('profile_save','manual','scheduled');
+   IF in_flight OR reference_time>at_time-interval '24 hours' THEN CONTINUE; END IF;
+   identity_digest:=encode(extensions.digest(jsonb_build_array(
+    'online-rating-cadence-v1',consent.teacher_id,consent.student_id,consent.provider,
+    consent.id,consent.revision,consent.handle_revision,key_date
+   )::text,'sha256'),'hex');
+   INSERT INTO public.student_rating_refresh_jobs
+    (teacher_id,student_id,consent_id,provider,source_username,handle_revision,
+     input_digest,idempotency_key,trigger_kind,run_after,created_at,updated_at)
+   VALUES (consent.teacher_id,consent.student_id,consent.id,consent.provider,
+     consent.source_username,consent.handle_revision,identity_digest,
+     substr(identity_digest,1,32)::uuid,'scheduled',at_time,at_time,at_time)
+   ON CONFLICT DO NOTHING;
+   GET DIAGNOSTICS affected=ROW_COUNT;
+   queued:=queued+affected;
+  EXCEPTION WHEN lock_not_available THEN
+   -- A concurrent lifecycle mutation or worker must not block other tenants.
+   NULL;
+  END;
+ END LOOP;
+ RETURN jsonb_build_object('status','ok','checked',checked,'queued',queued);
+EXCEPTION WHEN lock_not_available THEN
+ RETURN jsonb_build_object('status','busy');
+END;
+$body$;
+
+REVOKE ALL ON FUNCTION public.ccp_online_rating_enqueue_due(text,integer) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_online_rating_enqueue_due(text,integer) TO service_role;
