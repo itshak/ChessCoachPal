@@ -16,7 +16,7 @@ function App(){
   const [typography,setTypography]=useState("system");
   const drafts=useRef(new Map());
   const [nextAction,setNextAction]=useState("");
-  const [logo,setLogo]=useState("palette");
+  const [logo,setLogo]=useState("mentor");
   const [showBrand,setShowBrand]=useState(false);
   const commandTrigger=useRef(null);
   const [theme,setTheme]=useState("dark");
@@ -46,7 +46,7 @@ function App(){
   function changeFoundation(id){setLoadError("");setFoundation(id);}
   const C=loaded?.foundation===foundation?loaded.module:null;
   return <main data-layout={layout} data-density={density} data-typography={typography}>
-    <header><h1>{t.lab}</h1><p>{t.notice}</p><p>Selected direction: Ark UI + Graphite, Iris & Champagne. Logo and layout review remain open.</p><div className="switches">
+    <header><h1>{t.lab}</h1><p>{t.notice}</p><p>Selected direction: Ark UI + Graphite, Iris & Champagne. Mentor & pupil and Compact coaching mark are the selected logo family under refinement; layout review remains open.</p><div className="switches">
       <label>Foundation<select value={foundation} onChange={e=>changeFoundation(e.target.value)}>{Object.entries(foundations).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
       <label>{t.palette}<select aria-label={t.palette} value={palette} onChange={e=>setPalette(Number(e.target.value))}>{palettes.map((p,i)=><option key={p.name} value={i}>{p.name}</option>)}</select></label>
       <div className="swatches" aria-label={palettes[palette].name}>{["bg","surface","fg","accent","secondary"].map(role=><span key={role} title={role+" "+tone[role]} style={{background:tone[role]}} />)}</div><label>{t.theme}<select value={theme} onChange={e=>setTheme(e.target.value)}><option value="dark">{t.dark}</option><option value="light">{t.light}</option></select></label>

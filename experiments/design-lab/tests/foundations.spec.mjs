@@ -63,6 +63,7 @@ test("focused direction: brand sizes and layout/density controls",async({page},i
   await expect(page.locator(".brand-study img")).toHaveCount(40);
   await expect.poll(()=>page.locator(".brand-study img").evaluateAll(images=>images.every(i=>i.complete&&i.naturalWidth>0))).toBe(true);
   await page.screenshot({path:info.outputPath("brand-sizes.png"),fullPage:true});
+  await page.getByLabel("Logo",{exact:true}).selectOption("palette");
   await page.getByRole("button",{name:"Use Mentor & pupil",exact:true}).click();
   await expect(page.getByLabel("Logo",{exact:true})).toHaveValue("mentor");
   await page.getByLabel("Theme").selectOption("light");
@@ -93,4 +94,10 @@ test("selected Ark workflow preserves lesson drafts and cross-workplace history"
  await page.screenshot({path:info.outputPath("hybrid-students.png"),fullPage:true});
  await page.getByRole("button",{name:"Today",exact:true}).click();await page.getByRole("button",{name:"Reviewed",exact:true}).click();await expect(page.getByRole("button",{name:"Reopen",exact:true})).toBeVisible();
  await page.getByLabel("Language").selectOption("ru");await expect(page.locator("html")).toHaveAttribute("lang","ru");await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:info.outputPath("mobile-ru-hybrid.png"),fullPage:true});
+});
+
+test("selected logo pair has grounded pawn feet in both themes",async({page},info)=>{
+ await page.goto("/");await expect(page.getByLabel("Logo",{exact:true})).toHaveValue("mentor");
+ for(const theme of ["dark","light"]){await page.getByLabel("Theme").selectOption(theme);for(const variant of ["mentor","compact"]){await page.getByLabel("Logo",{exact:true}).selectOption(variant);const mark=page.locator(".sidebar .brand img");await expect.poll(()=>mark.evaluate(img=>{const svg=new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml");const foot=svg.querySelector('[data-part="pawn-foot"]');const book=svg.querySelector('[data-part="book"]');const knight=svg.querySelector('[data-part="knight"]');return !!foot&&!!book&&!!knight&&!!(book.compareDocumentPosition(foot)&Node.DOCUMENT_POSITION_FOLLOWING)&&img.complete&&img.naturalWidth>0;})).toBe(true);}}
+ await page.getByRole("button",{name:"Brand comparison"}).click();await page.screenshot({path:info.outputPath("grounded-logo-family-light.png"),fullPage:true});await page.getByLabel("Theme").selectOption("dark");await page.screenshot({path:info.outputPath("grounded-logo-family-dark.png"),fullPage:true});
 });
