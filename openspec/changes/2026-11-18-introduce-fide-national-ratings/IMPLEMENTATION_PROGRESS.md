@@ -34,3 +34,10 @@ the app knew on that date or a reconstruction of the ID then linked. Former IDs,
 Israeli manual evidence and future editions remain outside that projection.
 The current summary, append-only history, assessed strength and default response
 without a date are unchanged. There is no new external call or data write.
+
+The dedicated signed date-review browser regression checks English and Russian
+left-to-right and Hebrew right-to-left at a 390 px viewport. It submits the
+localized control with Enter, checks the named live result and its text/date
+direction, verifies recorded and missing category labels, and compares the
+same disposable signed HTTP and MCP evidence value in each locale. This does
+not exercise the private report, export, or every other federation control.
