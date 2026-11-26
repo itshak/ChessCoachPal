@@ -12765,6 +12765,7 @@ BEGIN
    handle_revision=c.handle_revision+1,revision=c.revision+1,
    last_request_id=NULL,last_request_hash=NULL,updated_at=clock_timestamp()
   WHERE c.teacher_id=OLD.teacher_id AND c.student_id=OLD.id AND (
+   (OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL) OR
    (c.provider='lichess' AND btrim(NEW.lichess_username) IS DISTINCT FROM btrim(OLD.lichess_username))
    OR (c.provider='chesscom' AND btrim(NEW.chesscom_username) IS DISTINCT FROM btrim(OLD.chesscom_username))
   );
@@ -12773,9 +12774,10 @@ END;
 $ccp_rating_handle_changed$;
 REVOKE ALL ON FUNCTION public.ccp_rating_handle_changed() FROM PUBLIC,anon,authenticated,service_role;
 CREATE TRIGGER ccp_rating_revoke_changed_handle
- AFTER UPDATE OF lichess_username,chesscom_username ON public.students
+ AFTER UPDATE OF lichess_username,chesscom_username,archived_at ON public.students
  FOR EACH ROW WHEN (btrim(OLD.lichess_username) IS DISTINCT FROM btrim(NEW.lichess_username)
-                 OR btrim(OLD.chesscom_username) IS DISTINCT FROM btrim(NEW.chesscom_username))
+                 OR btrim(OLD.chesscom_username) IS DISTINCT FROM btrim(NEW.chesscom_username)
+                 OR (OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL))
  EXECUTE FUNCTION public.ccp_rating_handle_changed();
 
 -- A scheduler may discover candidate IDs separately. The discovery result is
@@ -18692,3 +18694,142 @@ GRANT EXECUTE ON FUNCTION public.ccp_finance_period_end_actuals(uuid,date,text,u
  TO authenticated;
 COMMENT ON FUNCTION public.ccp_finance_period_end_actuals(uuid,date,text,uuid) IS
  'Current settlement of posted obligations for one owned workplace, whole calendar month and currency; each obligation type stays separate. Not a forecast, historical cutoff or workplace cash receipt total.';
+
+-- Protected online rating controls. No scheduled caller or provider transport.
+CREATE FUNCTION public.ccp_rating_refresh_admit(
+ p_teacher_id uuid,p_job_id uuid,p_student_id uuid,p_provider text,
+ p_source_username text,p_handle_revision bigint,p_input_digest text,
+ p_trigger_kind text,p_attempt integer,p_lease_token uuid,p_lease_until timestamptz
+) RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER
+SET search_path=public,pg_temp AS $body$
+ SELECT current_user='service_role' AND EXISTS(
+  SELECT 1
+  FROM public.student_rating_refresh_jobs j
+  JOIN public.student_rating_sync_consents c ON
+   (c.id,c.teacher_id,c.student_id,c.provider)=(j.consent_id,j.teacher_id,j.student_id,j.provider)
+  JOIN public.students s ON (s.id,s.teacher_id)=(j.student_id,j.teacher_id)
+  JOIN public.rating_providers p ON p.code=j.provider
+  WHERE (j.id,j.teacher_id,j.student_id,j.provider)=(p_job_id,p_teacher_id,p_student_id,p_provider)
+    AND j.status='running' AND j.attempt_count=p_attempt AND j.lease_token=p_lease_token
+    AND j.lease_until=p_lease_until AND j.lease_until>statement_timestamp()
+    AND j.input_digest=p_input_digest AND j.trigger_kind=p_trigger_kind
+    AND j.trigger_kind IN ('profile_save','manual','scheduled')
+    AND s.archived_at IS NULL AND p.active AND p.provider_kind='online'
+    AND c.enabled AND c.revoked_at IS NULL AND c.consented_at<=j.created_at
+    AND c.handle_revision=j.handle_revision AND j.handle_revision=p_handle_revision
+    AND c.source_username=j.source_username AND j.source_username=p_source_username
+    AND j.source_username ~ '^[A-Za-z0-9_-]{2,30}$'
+    AND j.source_username=CASE j.provider
+      WHEN 'lichess' THEN btrim(s.lichess_username)
+      WHEN 'chesscom' THEN btrim(s.chesscom_username) END
+ );
+$body$;
+REVOKE ALL ON FUNCTION public.ccp_rating_refresh_admit(
+ uuid,uuid,uuid,text,text,bigint,text,text,integer,uuid,timestamptz) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_rating_refresh_admit(
+ uuid,uuid,uuid,text,text,bigint,text,text,integer,uuid,timestamptz) TO service_role;
+COMMENT ON FUNCTION public.ccp_rating_refresh_admit(
+ uuid,uuid,uuid,text,text,bigint,text,text,integer,uuid,timestamptz)
+ IS 'Single fresh READ COMMITTED statement; does not lock across provider calls or replace finalization.';
+
+-- Protected online rating controls. No scheduled caller or provider transport.
+CREATE FUNCTION public.ccp_online_rating_consent_apply(
+ p_teacher_id uuid,p_student_id uuid,p_provider text,p_username text,p_student_epoch text,
+ p_expected_revision bigint,p_enable boolean,p_request_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp AS $body$
+DECLARE
+ learner public.students%ROWTYPE;
+ consent public.student_rating_sync_consents%ROWTYPE;
+ previous_job public.student_rating_refresh_jobs%ROWTYPE;
+ request_digest text;
+ at_time timestamptz;
+ new_job uuid;
+BEGIN
+ IF current_user<>'service_role' THEN
+  RAISE EXCEPTION 'RATING_CONSENT_DENIED' USING ERRCODE='42501';
+ END IF;
+ IF p_teacher_id IS NULL OR p_student_id IS NULL OR p_enable IS NULL OR p_request_id IS NULL
+    OR p_expected_revision IS NULL OR p_expected_revision<0
+    OR p_provider IS NULL OR p_provider NOT IN('lichess','chesscom')
+    OR p_username IS NULL OR p_username !~ '^[A-Za-z0-9_-]{2,30}$'
+    OR p_student_epoch IS NULL OR p_student_epoch !~ '^[1-9][0-9]{0,18}$' THEN
+  RAISE EXCEPTION 'RATING_CONSENT_INVALID' USING ERRCODE='22023';
+ END IF;
+ PERFORM 1 FROM public.teachers WHERE id=p_teacher_id FOR KEY SHARE;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ -- Raw lifecycle paths can already own a student lock before consulting
+ -- teacher capacity; a bounded retry avoids lock inversion.
+ BEGIN
+  SELECT * INTO learner FROM public.students
+  WHERE id=p_student_id AND teacher_id=p_teacher_id FOR UPDATE NOWAIT;
+ EXCEPTION WHEN lock_not_available THEN
+  RAISE EXCEPTION 'RATING_CONSENT_CONTEXT_BUSY' USING ERRCODE='55P03';
+ END;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+
+ request_digest:=encode(extensions.digest(jsonb_build_array(
+ 'online-rating-consent-v1',p_teacher_id,p_student_id,p_provider,p_username,
+ p_student_epoch,p_expected_revision,p_enable)::text,'sha256'),'hex');
+ SELECT * INTO consent FROM public.student_rating_sync_consents
+ WHERE teacher_id=p_teacher_id AND student_id=p_student_id AND provider=p_provider FOR UPDATE;
+
+ -- An admitted opt-in records its request in the durable initial job.
+ -- An exact historical receipt never changes present permission.
+ SELECT * INTO previous_job FROM public.student_rating_refresh_jobs
+ WHERE teacher_id=p_teacher_id AND idempotency_key=p_request_id;
+ IF FOUND THEN
+  IF p_enable IS NOT TRUE OR previous_job.student_id IS DISTINCT FROM p_student_id
+     OR previous_job.provider IS DISTINCT FROM p_provider
+     OR previous_job.trigger_kind IS DISTINCT FROM 'profile_save'
+     OR previous_job.input_digest IS DISTINCT FROM request_digest THEN
+   RAISE EXCEPTION 'RATING_CONSENT_REQUEST_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN jsonb_build_object('status','accepted','jobId',previous_job.id,'replayed',true);
+ END IF;
+ IF consent.last_request_id=p_request_id THEN
+  IF consent.last_request_hash IS DISTINCT FROM request_digest OR p_enable THEN
+   RAISE EXCEPTION 'RATING_CONSENT_REQUEST_CONFLICT' USING ERRCODE='23505';
+  END IF;
+  RETURN jsonb_build_object('status','revoked','replayed',true);
+ END IF;
+ IF learner.archived_at IS NOT NULL OR learner.online_rating_binding_epoch::text<>p_student_epoch
+    OR p_username IS DISTINCT FROM (CASE p_provider
+      WHEN 'lichess' THEN btrim(learner.lichess_username)
+      WHEN 'chesscom' THEN btrim(learner.chesscom_username) END)
+    OR p_expected_revision<>coalesce(consent.revision,0)
+    OR coalesce(consent.enabled,false)=p_enable THEN
+  RETURN jsonb_build_object('status','stale');
+ END IF;
+ IF p_enable THEN
+  PERFORM 1 FROM public.rating_providers WHERE code=p_provider AND provider_kind='online' AND active FOR SHARE;
+  IF NOT FOUND THEN RETURN jsonb_build_object('status','provider_unavailable'); END IF;
+ END IF;
+ at_time:=clock_timestamp();
+ IF consent.id IS NULL THEN
+  -- The state and review checks above admit only a previously unconfigured opt-in.
+  INSERT INTO public.student_rating_sync_consents
+   (teacher_id,student_id,provider,source_username,enabled,consented_at,last_request_id,last_request_hash,created_at,updated_at)
+  VALUES(p_teacher_id,p_student_id,p_provider,p_username,true,at_time,p_request_id,request_digest,at_time,at_time)
+  RETURNING * INTO consent;
+ ELSE
+  UPDATE public.student_rating_sync_consents SET source_username=p_username,enabled=p_enable,
+   consented_at=CASE WHEN p_enable THEN at_time ELSE consented_at END,
+   revoked_at=CASE WHEN p_enable THEN NULL ELSE at_time END,
+   revision=revision+1,last_request_id=p_request_id,last_request_hash=request_digest,updated_at=at_time
+  WHERE id=consent.id RETURNING * INTO consent;
+ END IF;
+ IF NOT p_enable THEN RETURN jsonb_build_object('status','revoked','replayed',false); END IF;
+ INSERT INTO public.student_rating_refresh_jobs
+  (teacher_id,student_id,consent_id,provider,source_username,handle_revision,input_digest,
+   idempotency_key,trigger_kind,run_after,created_at,updated_at)
+ VALUES(p_teacher_id,p_student_id,consent.id,p_provider,p_username,consent.handle_revision,
+        request_digest,p_request_id,'profile_save',at_time,at_time,at_time)
+ RETURNING id INTO new_job;
+ RETURN jsonb_build_object('status','accepted','jobId',new_job,'replayed',false);
+END;
+$body$;
+REVOKE ALL ON FUNCTION public.ccp_online_rating_consent_apply(
+ uuid,uuid,text,text,text,bigint,boolean,uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.ccp_online_rating_consent_apply(
+ uuid,uuid,text,text,text,bigint,boolean,uuid) TO service_role;
