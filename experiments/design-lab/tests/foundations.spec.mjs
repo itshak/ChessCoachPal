@@ -3,6 +3,7 @@ for(const foundation of ["base","aria","ariakit","ark","radix","headless"]){
   test(foundation+" — common workflow, keyboard and responsive evidence",async({page},info)=>{
     await page.goto("/");
     await page.getByLabel("Foundation").selectOption(foundation);
+    await page.getByLabel("Layout").selectOption("compact");
     await expect(page.locator("[data-foundation="+foundation+"]")).toBeVisible();
     await page.getByRole("button",{name:"Students",exact:true}).click();
     const picker=page.getByRole("combobox",{name:"Search students or aliases"});
@@ -71,7 +72,7 @@ test("focused direction: brand sizes and layout/density controls",async({page},i
   await page.screenshot({path:info.outputPath("brand-sizes-light.png"),fullPage:true});
   await page.getByLabel("Theme").selectOption("dark");
   await page.getByRole("button",{name:"Brand comparison"}).click();
-  for(const layout of ["compact","editorial","hybrid"]){
+  for(const layout of ["compact","editorial","hybrid","focus","agenda"]){
     await page.getByLabel("Layout").selectOption(layout);
     await page.getByLabel("Density").selectOption("compact");
     await expect(page.locator("main")).toHaveAttribute("data-layout",layout);
@@ -86,7 +87,7 @@ test("selected Ark workflow preserves lesson drafts and cross-workplace history"
  await page.goto("/");await expect(page.locator("[data-foundation=ark]")).toBeVisible();
  await page.getByLabel("Layout").selectOption("hybrid");await page.getByLabel("Typography").selectOption("editorial");
  await expect(page.locator("main")).toHaveAttribute("data-typography","editorial");
- await page.getByRole("button",{name:/Endgame group/}).click();await page.getByRole("textbox",{name:"Private coach note"}).fill("First lesson private draft");await page.getByRole("textbox",{name:"Next lesson focus"}).fill("Repeat Lucena");
+ await page.getByRole("button",{name:/Endgame group/}).click();await page.getByRole("button",{name:"Open lesson editor",exact:true}).click();await page.getByRole("textbox",{name:"Private coach note"}).fill("First lesson private draft");await page.getByRole("textbox",{name:"Next lesson focus"}).fill("Repeat Lucena");
  await page.getByRole("button",{name:/Select lesson:/}).click();await page.getByRole("menuitem",{name:/Private lesson/}).click();await page.getByRole("textbox",{name:"Private coach note"}).fill("Second lesson draft");
  await page.getByRole("button",{name:/Select lesson:/}).click();await page.getByRole("menuitem",{name:/Endgame group/}).click();await expect(page.getByRole("textbox",{name:"Private coach note"})).toHaveValue("First lesson private draft");await expect(page.getByRole("textbox",{name:"Next lesson focus"})).toHaveValue("Repeat Lucena");
  await page.screenshot({path:info.outputPath("hybrid-lesson.png"),fullPage:true});
@@ -126,4 +127,22 @@ test("approved logo family uses identical pearl or graphite fills and unchanged 
    }
    await page.getByRole("button",{name:"Brand comparison"}).click();await page.screenshot({path:info.outputPath("approved-matching-pieces-"+theme+".png"),fullPage:true});await page.getByRole("button",{name:"Brand comparison"}).click();
  }
+});
+
+test("master-detail layouts select without navigating and open editors explicitly",async({page},info)=>{
+ await page.goto("/");await expect(page.locator("[data-foundation=ark]")).toBeVisible();await expect(page.getByLabel("Layout")).toHaveValue("hybrid");
+ for(const layout of ["hybrid","focus","agenda"]){
+   await page.getByLabel("Layout").selectOption(layout);await page.getByRole("button",{name:"Today",exact:true}).click();
+   const list=page.locator(".lesson-rows"),inspector=page.getByRole("complementary",{name:"Context inspector"});
+   const first=list.getByRole("button",{name:/Endgame group/}),second=list.getByRole("button",{name:/Private lesson/});
+   await first.click();await expect(first).toHaveAttribute("aria-pressed","true");await expect(inspector.getByRole("heading",{name:"Endgame group",exact:true})).toBeVisible();await expect(inspector).toContainText("Lucena position");
+   await second.click();await expect(second).toHaveAttribute("aria-pressed","true");await expect(first).toHaveAttribute("aria-pressed","false");await expect(inspector.getByRole("heading",{name:"Private lesson",exact:true})).toBeVisible();await expect(inspector).toContainText("Opposition");await expect(list).toBeVisible();await expect(page.getByRole("textbox",{name:"Objective"})).toHaveCount(0);
+   await second.press("ArrowUp");await expect(first).toBeFocused();await expect(first).toHaveAttribute("aria-pressed","true");await expect(inspector).toContainText("Daniel Example");
+   await page.screenshot({path:info.outputPath(layout+"-today.png"),fullPage:true});
+   await inspector.getByRole("button",{name:"Open lesson editor",exact:true}).click();await expect(page.getByRole("textbox",{name:"Objective"})).toHaveValue("Review rook endgames");
+   await page.getByRole("button",{name:"Students",exact:true}).click();await page.locator(".student-rows").getByRole("button",{name:/Maya Sample/}).click();await expect(inspector.getByRole("region",{name:"Student profile"})).toContainText("Chess.com 1080");await expect(page.locator(".content").getByRole("region",{name:"Student profile"})).toHaveCount(0);await page.screenshot({path:info.outputPath(layout+"-students.png"),fullPage:true});
+ }
+ await page.getByLabel("Layout").selectOption("hybrid");await page.getByRole("button",{name:"Today",exact:true}).click();await page.getByRole("button",{name:/Search workspace/}).click();const picker=page.getByRole("dialog").getByRole("combobox");await picker.fill("Tactics");await expect(page.getByRole("option",{name:/Tactics review/})).toBeVisible();await picker.press("ArrowDown");await picker.press("Enter");await expect(page.getByRole("dialog")).toHaveCount(0);await expect(page.getByRole("complementary",{name:"Context inspector"}).getByRole("heading",{name:"Tactics review",exact:true})).toBeVisible();
+ await page.getByRole("button",{name:"Hide lab controls"}).click();await expect(page.getByLabel("Layout")).toBeHidden();await page.getByRole("button",{name:"Show lab controls"}).click();await expect(page.getByLabel("Layout")).toBeVisible();
+ await page.setViewportSize({width:390,height:844});await page.getByLabel("Language").selectOption("he");await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:info.outputPath("hybrid-mobile-hebrew.png"),fullPage:true});
 });

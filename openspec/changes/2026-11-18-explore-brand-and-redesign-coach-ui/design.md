@@ -50,3 +50,6 @@ C. Lesson: shared lesson objective, participant attendance, verified material, p
 
 ## Decision record before rollout
 Publish comparison matrix, screenshots, accessible preview links, component and dependency inventory, proposed palette/token source, font/license and localization review, user feedback and explicit chosen direction. Only then turn approved results into staged implementation tasks.
+
+## Layout refinement after user review (2026-11-27)
+The initial three-column prototype was insufficient: list selection must update the inspector without navigation, central rows should expose only scan-critical properties, inspector should contain distinct actionable evidence, and opening the full editor must be explicit. Evaluate a minimal split workspace and a time-oriented daily agenda alongside the corrected hybrid and original compact/editorial studies. Keep the brand minimal, use restrained iris selection and champagne learning accents; no ornamental dashboard cards. Linear public redesign principles and Things Today agenda are inspiration; coaching semantics come from the existing market research and daily workflow design. This remains isolated lab review, not rollout authorization.
