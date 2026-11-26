@@ -1,0 +1,40 @@
+.lab { background:var(--lab-bg); color:var(--lab-fg); min-height:100dvh; padding:clamp(12px,3vw,32px); font-size:14px; }
+.lab h1 {font-size:22px;font-weight:650}
+.lab h2 {font-size:28px;font-weight:650;margin-bottom:20px}
+.lab h3 {font-size:16px;font-weight:650;margin-bottom:8px}
+.lab p,.lab small {color:var(--lab-muted);overflow-wrap:anywhere}
+.lab small {display:block}
+.lab button,.lab select,.lab input:not([type=checkbox]),.lab textarea {border:1px solid var(--lab-border);background:var(--lab-surface);color:var(--lab-fg);border-radius:5px;padding:8px;min-height:36px;max-width:100%}
+.lab button {cursor:pointer;text-align:start}
+.lab button:disabled {opacity:.55;cursor:not-allowed}
+.lab button:hover:not(:disabled),.lab button[aria-current],.lab button[aria-pressed=true] {border-color:var(--lab-accent);color:var(--lab-accent)}
+.lab :focus-visible {outline:2px solid var(--lab-accent);outline-offset:3px}
+.lab label {display:grid;gap:5px;min-width:0}
+.lab input[type=checkbox] {accent-color:var(--lab-accent)}
+.controls {display:grid;gap:14px;margin-bottom:24px}
+.switches {display:flex;gap:12px;flex-wrap:wrap}
+.workspace {display:grid;grid-template-columns:minmax(170px,220px) minmax(0,1fr);min-height:560px;border:1px solid var(--lab-border)}
+.sidebar,.inspector {background:var(--lab-surface);padding:var(--lab-pad);display:flex;flex-direction:column;gap:18px;min-width:0}
+.sidebar {border-inline-end:1px solid var(--lab-border)}
+.brand {display:flex;align-items:center;gap:8px;overflow-wrap:anywhere}
+.nav {display:grid;gap:5px}
+.content {padding:clamp(16px,3vw,36px);min-width:0}
+.rows {display:grid;gap:0;margin-block:12px}
+.lab .row {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(0,1fr);align-items:center;gap:12px;padding:var(--lab-pad);border:0;border-bottom:1px solid var(--lab-border);border-radius:0;overflow-wrap:anywhere}
+.panel {padding:var(--lab-pad);margin-block:20px;border-top:1px solid var(--lab-border)}
+.form {display:grid;gap:16px;max-width:650px}
+.form fieldset {border:1px solid var(--lab-border);padding:12px}
+.lab .check {display:flex;align-items:center;gap:8px;margin-block:8px}
+.actions {display:flex;gap:8px;flex-wrap:wrap}
+.lab[data-layout=editorial] .workspace {display:block;border:0;max-width:900px;margin:auto}
+.lab[data-layout=editorial] .sidebar {flex-direction:row;flex-wrap:wrap;align-items:center;background:transparent;border:0;border-bottom:1px solid var(--lab-border)}
+.lab[data-layout=editorial] .nav {display:flex;flex-wrap:wrap}
+.lab[data-layout=editorial] h2 {font-size:clamp(30px,5vw,48px);letter-spacing:-.03em}
+.lab[data-layout=editorial] .row {background:transparent;padding-block:24px}
+.lab[data-layout=hybrid] .workspace {grid-template-columns:minmax(160px,200px) minmax(0,1fr) minmax(150px,220px)}
+.inspector {border-inline-start:1px solid var(--lab-border)}
+.dialog {position:fixed;inset:0;margin:auto;width:min(420px,90vw);padding:24px;border:1px solid var(--lab-border);background:var(--lab-surface);color:var(--lab-fg)}
+.dialog[open] {display:grid;gap:12px}
+.dialog::backdrop {background:#0009}
+@media(max-width:850px) {.lab[data-layout=hybrid] .workspace {grid-template-columns:minmax(160px,200px) minmax(0,1fr)}.inspector {grid-column:1/-1;border-inline-start:0;border-top:1px solid var(--lab-border)}}
+@media(max-width:600px) {.workspace,.lab[data-layout=hybrid] .workspace {display:block}.sidebar {border-inline-end:0;border-bottom:1px solid var(--lab-border)}.nav {display:flex;flex-wrap:wrap}.lab .row {grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.row>span:last-child {grid-column:1/-1}.switches>* {flex:1 1 125px}}
