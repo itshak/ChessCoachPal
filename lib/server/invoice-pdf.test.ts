@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { buildInvoicePdf } from "@/lib/server/invoice-pdf";
 
 describe("buildInvoicePdf", () => {
@@ -104,6 +104,30 @@ describe("buildInvoicePdf", () => {
 });
 
 describe("multilingual Unicode invoice delivery artifact",()=>{
+  it("does not put the render clock into the downloaded PDF",async()=>{
+    const {PDFDocument}=await import("pdf-lib");
+    const invoice={
+      locale:"he" as const,
+      businessName:"ChessCoachPal",familyName:"יוסף Петров",
+      periodStart:"2026-11-01",periodEnd:"2026-11-30",currency:"ILS",
+      items:[{description:"שיעור chess Иван",quantity:1,unitCents:12345,amountCents:12345}],
+      subtotalCents:12345,paymentInstructions:"",
+    };
+    vi.useFakeTimers({toFake:["Date"]});
+    try{
+      vi.setSystemTime(new Date("2026-11-04T09:00:00Z"));
+      const first=await buildInvoicePdf(invoice);
+      vi.setSystemTime(new Date("2026-11-05T19:30:00Z"));
+      const second=await buildInvoicePdf(invoice);
+      expect(Buffer.from(first).equals(second)).toBe(true);
+      const pdf=await PDFDocument.load(first,{updateMetadata:false});
+      expect(pdf.getCreationDate()).toBeUndefined();
+      expect(pdf.getModificationDate()).toBeUndefined();
+      expect(pdf.getProducer()).toBe("ChessCoachPal");
+      expect(Buffer.from(second).equals(await buildInvoicePdf({...invoice,paidCents:100}))).toBe(false);
+    }finally{vi.useRealTimers();}
+  });
+
   it.each(["en","he","ru"] as const)("embeds a valid %s PDF with mixed Hebrew/Cyrillic/Latin family names and financial values",async(locale)=>{
     const {PDFDocument}=await import("pdf-lib");
     const bytes=await buildInvoicePdf({
