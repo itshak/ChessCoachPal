@@ -60,7 +60,7 @@ test("focused direction: brand sizes and layout/density controls",async({page},i
   await expect(page.getByLabel("Palette",{exact:true})).toHaveValue("9");
   await expect(page.locator("[data-foundation=ark]")).toBeVisible();
   await page.getByRole("button",{name:"Brand comparison"}).click();
-  await expect(page.locator(".brand-study img")).toHaveCount(40);
+  await expect(page.locator(".brand-study img")).toHaveCount(50);
   await expect.poll(()=>page.locator(".brand-study img").evaluateAll(images=>images.every(i=>i.complete&&i.naturalWidth>0))).toBe(true);
   await page.screenshot({path:info.outputPath("brand-sizes.png"),fullPage:true});
   await page.getByLabel("Logo",{exact:true}).selectOption("palette");
@@ -100,4 +100,15 @@ test("selected logo pair has grounded pawn feet in both themes",async({page},inf
  await page.goto("/");await expect(page.getByLabel("Logo",{exact:true})).toHaveValue("mentor");
  for(const theme of ["dark","light"]){await page.getByLabel("Theme").selectOption(theme);for(const variant of ["mentor","compact"]){await page.getByLabel("Logo",{exact:true}).selectOption(variant);const mark=page.locator(".sidebar .brand img");await expect.poll(()=>mark.evaluate(img=>{const svg=new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml");const foot=svg.querySelector('[data-part="pawn-foot"]');const book=svg.querySelector('[data-part="book"]');const knight=svg.querySelector('[data-part="knight"]');return !!foot&&!!book&&!!knight&&foot.getAttribute("d").includes("C851 774 792 785 727 818")&&foot.getAttribute("transform")==="translate(0 30)"&&book.getAttribute("d").includes("C792 815 851 804 935 827")&&!!(book.compareDocumentPosition(foot)&Node.DOCUMENT_POSITION_FOLLOWING)&&img.complete&&img.naturalWidth>0;})).toBe(true);}}
  await page.getByRole("button",{name:"Brand comparison"}).click();await page.screenshot({path:info.outputPath("grounded-logo-family-light.png"),fullPage:true});await page.getByLabel("Theme").selectOption("dark");await page.screenshot({path:info.outputPath("grounded-logo-family-dark.png"),fullPage:true});
+});
+
+test("optical sizes preserve approved vector paths and wordmark and light treatments switch",async({page},info)=>{
+ await page.goto("/");await expect(page.locator("[data-foundation=ark]")).toBeVisible();
+ const mark=page.locator(".sidebar .brand img");const results=[];
+ for(const variant of ["compact","compact-large","compact-max"]){await page.getByLabel("Logo",{exact:true}).selectOption(variant);const result=await mark.evaluate(img=>{const svg=new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml");return {box:svg.documentElement.getAttribute("viewBox"),knight:svg.querySelector('[data-part="knight"]').getAttribute("d"),pawn:svg.querySelector('[data-part="pawn"]').innerHTML,book:svg.querySelector('[data-part="book"]').getAttribute("d")};});results.push(result);}
+ expect(new Set(results.map(r=>r.box)).size).toBe(3);expect(new Set(results.map(r=>r.knight)).size).toBe(1);expect(new Set(results.map(r=>r.pawn)).size).toBe(1);expect(new Set(results.map(r=>r.book)).size).toBe(1);
+ await page.getByLabel("Pal color").selectOption("champagne");await expect(page.locator(".sidebar .wordmark")).toHaveAttribute("data-emphasis","champagne");await expect(page.locator(".sidebar .wordmark span")).toHaveText("Pal");
+ await page.getByLabel("Theme").selectOption("light");await page.getByLabel("Light logo").selectOption("black");await expect.poll(()=>mark.evaluate(img=>new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml").querySelector('[data-part="knight"]').getAttribute("fill"))).toBe("#1C1D23");
+ await page.getByLabel("Light logo").selectOption("outline");await expect.poll(()=>mark.evaluate(img=>new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml").querySelector('[data-part="knight"]').getAttribute("stroke"))).toBe("#292638");
+ await page.getByRole("button",{name:"Brand comparison"}).click();await expect(page.locator(".optical-study tbody img")).toHaveCount(15);await page.screenshot({path:info.outputPath("optical-and-light-studies.png"),fullPage:true});
 });

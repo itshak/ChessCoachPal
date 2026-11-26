@@ -2,7 +2,7 @@ import {createRoot} from "react-dom/client";
 import {useEffect,useState,useRef} from "react";
 import {copy,palettes,sessions,students} from "../../../app/design-lab/fixtures.ts";
 import "./style.css";
-import {BrandMark,BrandStudy,logoOptions} from "./brand.jsx";
+import {BrandMark,BrandStudy,logoOptions,Wordmark,OpticalStudy} from "./brand.jsx";
 import {StudentProfile,Followups,Preparation,Inspector,contextWords,studentWorkplaces} from "./coach-context.jsx";
 const loaders={base:()=>import("./base.jsx"),aria:()=>import("./aria.jsx"),ariakit:()=>import("./ariakit.jsx"),ark:()=>import("./ark.jsx"),radix:()=>import("./radix.jsx"),headless:()=>import("./headless.jsx")};
 const foundations={base:"Base UI",aria:"React Aria Components",ariakit:"Ariakit",ark:"Ark UI",radix:"Radix UI + cmdk",headless:"Headless UI"};
@@ -17,6 +17,8 @@ function App(){
   const drafts=useRef(new Map());
   const [nextAction,setNextAction]=useState("");
   const [logo,setLogo]=useState("mentor");
+  const [lightStyle,setLightStyle]=useState("theme");
+  const [emphasis,setEmphasis]=useState("iris");
   const [showBrand,setShowBrand]=useState(false);
   const commandTrigger=useRef(null);
   const [theme,setTheme]=useState("dark");
@@ -35,6 +37,7 @@ function App(){
   const [validation,setValidation]=useState(false);
   const [command,setCommand]=useState(false);
   const t=copy[locale],rawTone=palettes[palette][theme],tone={...rawTone,secondary:rawTone.secondary||rawTone.accent},direction=locale==="he"?"rtl":"ltr";
+  const darkTone={...palettes[palette].dark,secondary:palettes[palette].dark.secondary||palettes[palette].dark.accent};
   const selected=students.find(s=>s.id===student&&(includeArchived||!s.archived)&&(!workplace||studentWorkplaces(s.id).includes(workplace)));
   const session=sessions.find(s=>s.id===lesson);
   const options=students.filter(s=>(includeArchived||!s.archived)&&(!workplace||studentWorkplaces(s.id).includes(workplace))).map(s=>({id:s.id,label:s.name+" · "+s.alias}));
@@ -52,12 +55,12 @@ function App(){
       <div className="swatches" aria-label={palettes[palette].name}>{["bg","surface","fg","accent","secondary"].map(role=><span key={role} title={role+" "+tone[role]} style={{background:tone[role]}} />)}</div><label>{t.theme}<select value={theme} onChange={e=>setTheme(e.target.value)}><option value="dark">{t.dark}</option><option value="light">{t.light}</option></select></label>
       <label>{t.layout}<select value={layout} onChange={e=>setLayout(e.target.value)}>{["compact","editorial","hybrid"].map(k=><option key={k} value={k}>{t[k]}</option>)}</select></label>
       <label>{t.language}<select value={locale} onChange={e=>setLocale(e.target.value)}>{["en","he","ru"].map(k=><option key={k}>{k}</option>)}</select></label>
-    <label>{contextWords(locale).typography}<select value={typography} onChange={e=>setTypography(e.target.value)}><option value="system">{contextWords(locale).system}</option><option value="editorial">{contextWords(locale).editorial}</option></select></label><label>Density<select value={density} onChange={e=>setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label><label>Logo<select aria-label="Logo" value={logo} onChange={e=>setLogo(e.target.value)}>{logoOptions.map(({id,label})=><option key={id} value={id}>{label}</option>)}</select></label><button type="button" aria-expanded={showBrand} onClick={()=>setShowBrand(v=>!v)}>Brand comparison</button>
-    </div>{showBrand&&<BrandStudy tone={tone} mode={theme} selected={logo} onSelect={setLogo}/>}</header>
+    <label>{contextWords(locale).typography}<select value={typography} onChange={e=>setTypography(e.target.value)}><option value="system">{contextWords(locale).system}</option><option value="editorial">{contextWords(locale).editorial}</option></select></label><label>Density<select value={density} onChange={e=>setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label><label>Logo<select aria-label="Logo" value={logo} onChange={e=>setLogo(e.target.value)}>{logoOptions.map(({id,label})=><option key={id} value={id}>{label}</option>)}</select></label><label>Pal color<select aria-label="Pal color" value={emphasis} onChange={e=>setEmphasis(e.target.value)}><option value="iris">Iris</option><option value="champagne">Champagne</option></select></label><label>Light logo<select aria-label="Light logo" value={lightStyle} onChange={e=>setLightStyle(e.target.value)}><option value="theme">Theme-adapted</option><option value="black">Graphite pieces</option><option value="outline">Original colors + outline</option></select></label><button type="button" aria-expanded={showBrand} onClick={()=>setShowBrand(v=>!v)}>Brand comparison</button>
+    </div>{showBrand&&<><OpticalStudy tone={tone} mode={theme} darkTone={darkTone} lightStyle={lightStyle} emphasis={emphasis}/><BrandStudy tone={tone} mode={theme} selected={logo} onSelect={setLogo} darkTone={darkTone} lightStyle={lightStyle} emphasis={emphasis}/></>}</header>
     {loadError&&<p role="alert">{loadError}</p>}
     {!C?<p role="status">Loading foundation…</p>:<C.Provider key={foundation} direction={direction} locale={locale}>
     <div className="workspace" data-foundation={foundation}>
-      <aside className="sidebar"><div className="brand"><BrandMark tone={tone} mode={theme} variant={logo}/><strong>ChessCoachPal</strong></div>
+      <aside className="sidebar"><div className="brand"><BrandMark tone={tone} mode={theme} variant={logo} darkTone={darkTone} lightStyle={lightStyle}/><Wordmark emphasis={emphasis}/></div>
       <C.Actions label={t.workplace+": "+(workplace||t.all)} items={[{id:"all",label:t.all},{id:"Club",label:"Club"},{id:"Private",label:"Private"}]} onPick={id=>setWorkplace(id==="all"?"":id)}/>
       <nav>{views.map(v=><button key={v} aria-current={v===view?"page":undefined} onClick={()=>setView(v)}>{t[v]}</button>)}</nav><button ref={commandTrigger} className="command-trigger" onClick={()=>setCommand(true)}>{t.commands}<kbd>Ctrl K</kbd></button></aside>
       <section className="content"><div className="workspace-context"><span className="brand-secondary">ChessCoachPal</span> <span aria-hidden="true">/</span> {workplace||t.all}</div><h2>{t[view]}</h2>
