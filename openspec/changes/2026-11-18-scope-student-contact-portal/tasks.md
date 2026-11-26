@@ -16,7 +16,8 @@ See [exact merged source evidence](SOURCE_ACCEPTANCE.md). Unchecked mixed tasks 
 - [x] Verify approved notes, event/RSVP, calendar, exact invoice/prepaid purchase history, same-scope renewal and safe eligible payment handoff in current source.
 - [ ] Reimport selected legacy content only through an authorized cutover, not a guardian-token adapter. Invoice-specific configurable payment instructions/QR need separate review if desired.
 - [x] Verify signed group-note visibility on a frozen two-learner roster, including scoped sharing, private text redaction, overlapping reads and denial of new requests after revocation.
-- [ ] Complete the combined acceptance matrix: student in two workplaces; mother vs school vs sponsor; many contacts; archived student; merged/removed contact; expired/revoked token; uninvited RSVP and fake cancellation IDs.
+- [x] Verify that a valid portal grant rejects incorrect session and learner IDs without changing either participant's attendance.
+- [ ] Complete the combined acceptance matrix: student in two workplaces; mother vs school vs sponsor; many contacts; archived student; merged/removed contact; expired/revoked token and uninvited RSVP. See the evidence record for already verified individual cases; contact archival or unlinking is not a contact merge.
 - [x] Verify no-store/no-referrer on ordinary guest responses, serialized replay and multilingual guest UI.
 - [x] Verify actual database row-lock contention in both revocation/cancellation orders on a disposable target.
 - [x] Verify an isolated shared ingress budget across multiple proxies and that ordinary paths are logged without logging test portal URLs.

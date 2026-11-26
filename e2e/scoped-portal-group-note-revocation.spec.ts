@@ -77,7 +77,9 @@ test("group portal renders only the authorized learner note and denies new reque
     const path=new URL((await issued.json()).url).pathname;
     const token=path.split("/").at(-1)!;
     const calendar="/api/portal/"+token+"/calendar";
-    const cancel="/api/portal/"+token+"/sessions/"+sessionId+"/students/"+studentId+"/cancel";
+    const cancellation=(session:string,learner:string)=>
+      "/api/portal/"+token+"/sessions/"+session+"/students/"+learner+"/cancel";
+    const cancel=cancellation(sessionId,studentId);
     const guest=await playwright.request.newContext({baseURL});
     try{
       const initial=await guest.get(path);
@@ -87,6 +89,20 @@ test("group portal renders only the authorized learner note and denies new reque
       for(const text of [privateText,other,group,otherName])expect(visible).not.toContain(text);
       expect(initial.headers()["cache-control"]).toContain("no-store");
       expect(initial.headers()["referrer-policy"]).toBe("no-referrer");
+      const before=await call("ccp_attendance_preview",{sessionId});
+      expect(before.error).toBeUndefined();
+      expect(before.data.attendance.map((row:{student_id:string})=>row.student_id).sort())
+        .toEqual([studentId,otherId].sort());
+      for(const path of [cancellation(randomUUID(),studentId),cancellation(sessionId,randomUUID())]){
+        const denied=await guest.post(path,{data:{note:"Incorrect calendar entry"}});
+        expect(denied.status()).toBe(404);
+        expect(await denied.json()).toEqual({error:"Not found"});
+        expect(denied.headers()["cache-control"]).toContain("no-store");
+        expect(denied.headers()["referrer-policy"]).toBe("no-referrer");
+      }
+      const unchanged=await call("ccp_attendance_preview",{sessionId});
+      expect(unchanged.error).toBeUndefined();
+      expect(unchanged.data.attendance).toEqual(before.data.attendance);
       const race=Promise.all([guest.get(path),guest.get(calendar)]);
       await run("ccp_portal_grants_revoke",{grantId,expectedRevision:2,confirmed:true});
       // A read started before the revoke committed can finish on the old grant.
