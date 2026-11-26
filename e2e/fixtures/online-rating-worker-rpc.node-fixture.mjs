@@ -7,7 +7,8 @@ import {createClient} from "@supabase/supabase-js";
 
 const hooks=registerHooks({resolve(specifier,context,next){
  if(specifier==="server-only")return {shortCircuit:true,url:"data:text/javascript,export%20%7B%7D"};
- if(["../chess-public-ratings","./online-rating-transport","./online-rating-cooldown","./online-rating-worker"].includes(specifier))return next(specifier+".ts",context);
+ if(["../chess-public-ratings","./online-rating-transport","./online-rating-cooldown","./online-rating-worker","./online-rating-queue","./online-rating-provider-budget",
+  "./online-rating-worker-authority"].includes(specifier))return next(specifier+".ts",context);
  return next(specifier,context);
 }});
 const {runOnlineRatingLease}=await import("../../lib/server/online-rating-worker.ts");
@@ -15,6 +16,7 @@ const {fetchOnlineRatingPayload}=await import("../../lib/server/online-rating-tr
 const {onlineRatingWorkerAuthority}=await import("../../lib/server/online-rating-worker-authority.ts");
 const {onlineRatingQueueDiscovery}=await import("../../lib/server/online-rating-queue.ts");
 const {onlineRatingProviderBudget,runOnlineRatingCandidateWithBudget}=await import("../../lib/server/online-rating-provider-budget.ts");
+const {runOnlineRatingBatch}=await import("../../lib/server/online-rating-batch.ts");
 hooks.deregister();
 const origin=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL);
 assert(origin.protocol==="http:"&&origin.hostname==="127.0.0.1"&&origin.port&&origin.href===origin.origin+"/");
@@ -79,7 +81,7 @@ async function setup(t,provider="lichess",triggerKind="manual"){
    return key==="lichess"?Response.json({perfs:{rapid:{rating:1725,prov:false}}}):new Response(null,{status:429});
   },{}),
  };
- return {ids,deps,db,disable,revoke,requests:()=>providerRequests};
+ return {ids,deps,db,disable,revoke,studentId,teacher,requests:()=>providerRequests};
 }
 
 test("synthetic canonical worker success and temporary provider result",async t=>{
@@ -200,4 +202,50 @@ test("real shared reservations gate the worker and persist cooldown without actu
  assert.equal(held.monthly_used,1);
  assert.ok(Date.parse(held.blocked_until)>=start+120_000);
  assert.deepEqual(await budget.acquire("chesscom"),{status:"cooling_down"});
+});
+
+test("recurring runner enqueues only eligible current consent and sends one safely budgeted mock request",
+ {skip:process.env.CCP_DISPOSABLE_RATINGS_RECURRENCE!=="yes"},async t=>{
+ const eligible=await setup(t), recentlyFetched=await setup(t), revoked=await setup(t),
+  active=await setup(t), other=await setup(t,"chesscom");
+ const time=hours=>new Date(Date.now()-hours*3_600_000).toISOString();
+ async function terminal(f,finishedHoursAgo){
+  await data(admin.from("student_rating_refresh_jobs").update({
+   status:"succeeded",created_at:time(36),finished_at:time(finishedHoursAgo),
+  }).eq("id",f.ids.jobId));
+ }
+ await terminal(eligible,25);
+ await terminal(recentlyFetched,23);
+ await terminal(revoked,25);
+ await terminal(other,25);
+ await revoked.revoke();
+ const providers={lichess:{enqueue:8,work:0},chesscom:{enqueue:8,work:2}};
+ const request={p_provider:"lichess",p_limit:8};
+ const anonymous=createClient(origin.origin,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+ assert.ok((await anonymous.rpc("ccp_online_rating_enqueue_due",request)).error);
+ assert.ok((await eligible.teacher.rpc("ccp_online_rating_enqueue_due",request)).error);
+ const deps={db:admin,transport:eligible.deps.transport,enabled:()=>true,providerEnabled:key=>key==="lichess"};
+ const jobs=(f)=>data(admin.from("student_rating_refresh_jobs").select("status,attempt_count")
+  .eq("student_id",f.studentId).eq("trigger_kind","scheduled"));
+ assert.equal((await runOnlineRatingBatch(providers,{...deps,enabled:undefined})).status,"disabled");
+ assert.deepEqual(await jobs(eligible),[]);
+ assert.deepEqual(await runOnlineRatingBatch(providers,deps),{
+  status:"ran",checked:1,queued:1,scanned:0,submitted:0,finalized:0,withheld:0,unavailable:0,
+ });
+ assert.deepEqual(await jobs(eligible),[{status:"pending",attempt_count:0}]);
+ for(const f of [recentlyFetched,revoked,active,other])assert.deepEqual(await jobs(f),[]);
+ assert.equal(eligible.requests(),0);
+ // Make the unrelated in-flight job non-due without changing its active status.
+ await data(admin.from("student_rating_refresh_jobs").update({run_after:time(-1)}).eq("id",active.ids.jobId));
+ const work={...providers,lichess:{enqueue:8,work:2}};
+ assert.deepEqual(await runOnlineRatingBatch(work,deps),{
+  status:"ran",checked:0,queued:0,scanned:1,submitted:1,finalized:1,withheld:0,unavailable:0,
+ });
+ assert.deepEqual(await jobs(eligible),[{status:"succeeded",attempt_count:1}]);
+ assert.equal((await eligible.db().snapshots()).length,1);
+ assert.equal(eligible.requests(),1);
+ assert.deepEqual(await runOnlineRatingBatch(work,deps),{
+  status:"ran",checked:0,queued:0,scanned:0,submitted:0,finalized:0,withheld:0,unavailable:0,
+ });
+ assert.equal(eligible.requests(),1);
 });

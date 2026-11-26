@@ -1,7 +1,6 @@
-import {describe,expect,it,vi} from "vitest";
+import {describe,expect,it} from "vitest";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {onlineRatingQueueDiscovery} from "./online-rating-queue";
-import {runOnlineRatingBatch} from "./online-rating-batch";
 
 const teacherId="40000000-0000-4000-8000-000000000001";
 const candidate=(n:number)=>({teacherId,jobId:"40000000-0000-4000-8000-"+String(n).padStart(12,"0"),provider:"lichess" as const});
@@ -48,29 +47,5 @@ describe("online rating discovery and bounded operation",()=>{
   f.log.length=0;
   await expect(onlineRatingQueueDiscovery(f.db,()=>instant)("lichess",99)).rejects.toThrow();
   expect(f.log).toHaveLength(0);
- });
- it("pauses without any discovery or reservation and never leases without budget",async()=>{
-  let active=false;
-  const discover=vi.fn().mockResolvedValue([candidate(1),candidate(2)]);
-  const reserve=vi.fn().mockResolvedValue(false);
-  const run=vi.fn().mockResolvedValue({status:"finalized",outcome:"succeeded",snapshotsWritten:1});
-  const deps={enabled:()=>active,discover,reserve,run};
-  expect(await runOnlineRatingBatch({lichess:2,chesscom:0},deps)).toMatchObject({status:"disabled",scanned:0,submitted:0});
-  expect(discover).not.toHaveBeenCalled();
-  active=true;
-  expect(await runOnlineRatingBatch({lichess:2,chesscom:0},deps)).toMatchObject({status:"ran",scanned:2,submitted:0,withheld:1});
-  expect(reserve).toHaveBeenCalledExactlyOnceWith("lichess");
-  expect(run).not.toHaveBeenCalled();
- });
- it("passes exact provider budget, suppresses duplicate and refuses cross-provider discoveries",async()=>{
-  const run=vi.fn().mockResolvedValue({status:"finalized",outcome:"succeeded",snapshotsWritten:1});
-  const reserve=vi.fn().mockResolvedValue(true);
-  const discover=vi.fn().mockResolvedValueOnce([candidate(1),candidate(1)]).mockResolvedValueOnce([candidate(2)]);
-  expect(await runOnlineRatingBatch({lichess:2,chesscom:2},{enabled:()=>true,discover,reserve,run})).toEqual({
-   status:"ran",scanned:2,submitted:1,finalized:1,withheld:0,unavailable:1,
-  });
-  const {jobId}=candidate(1);
-  expect(run).toHaveBeenCalledExactlyOnceWith({teacherId,jobId},"lichess");
-  expect(reserve).toHaveBeenCalledExactlyOnceWith("lichess");
  });
 });
