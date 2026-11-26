@@ -1,5 +1,5 @@
 import {test,expect} from "@playwright/test";
-for(const foundation of ["base","aria","ariakit"]){
+for(const foundation of ["base","aria","ariakit","ark"]){
   test(foundation+" — common workflow, keyboard and responsive evidence",async({page},info)=>{
     await page.goto("/");
     await page.getByLabel("Foundation").selectOption(foundation);
@@ -17,7 +17,10 @@ for(const foundation of ["base","aria","ariakit"]){
     await page.getByRole("button",{name:"Save local preview"}).click();
     await expect(page.getByText("Enter a lesson objective")).toBeVisible();
     await page.getByRole("textbox",{name:"Objective"}).fill("Lucena");
-    await page.getByRole("checkbox",{name:/Daniel Example/}).click();
+    const checkbox=page.getByRole("checkbox",{name:/Daniel Example/});
+    await checkbox.focus();
+    await checkbox.press("Space");
+    await expect(checkbox).not.toBeChecked();
     await page.getByRole("textbox",{name:"Private coach note"}).fill("Private observation");
     await page.getByRole("textbox",{name:"Shareable draft (not sent)"}).fill("Shared summary");
     await page.getByRole("button",{name:"Save local preview"}).click();
@@ -31,6 +34,8 @@ for(const foundation of ["base","aria","ariakit"]){
     await page.getByRole("menuitem",{name:"Private"}).click();
     await page.getByRole("button",{name:"Today",exact:true}).click();
     await expect(page.getByRole("button",{name:/Endgame group/})).toHaveCount(0);
+    await page.getByLabel("Palette").selectOption({label:"Graphite & Iris"});
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue("--accent"))).toBe("#B3A9E8");
     await page.getByLabel("Theme").selectOption("light");
     await page.getByLabel("Layout").selectOption("hybrid");
     await page.getByLabel("Language").selectOption("he");

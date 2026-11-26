@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { contrast, findStudents, palettes, sessions, students } from "./fixtures";
 describe("design lab synthetic fixtures",()=>{
-  it("has six distinct candidates plus the existing baseline",()=>{
-    expect(palettes).toHaveLength(7);
-    expect(new Set(palettes.map(p=>p.dark.bg)).size).toBe(7);
+  it("has nine distinct candidates plus the existing baseline",()=>{
+    expect(palettes).toHaveLength(10);
+    expect(new Set(palettes.map(p=>p.dark.bg)).size).toBe(10);
   });
   it("candidate text and accent colors meet 4.5:1 on both surfaces",()=>{
-    for(const palette of palettes.slice(0,6)) for(const tone of [palette.dark,palette.light]) for(const bg of [tone.bg,tone.surface]) for(const fg of [tone.fg,tone.muted,tone.accent]) expect(contrast(fg,bg),palette.name+" "+fg+" on "+bg).toBeGreaterThanOrEqual(4.5);
+    for(const palette of palettes.filter(p=>p.name!=="Current brand (reference)")) for(const tone of [palette.dark,palette.light]) for(const bg of [tone.bg,tone.surface]) for(const fg of [tone.fg,tone.muted,tone.accent]) expect(contrast(fg,bg),palette.name+" "+fg+" on "+bg).toBeGreaterThanOrEqual(4.5);
   });
   it("finds bilingual aliases and keeps archived students out by default",()=>{
     expect(findStudents("דני",false).map(s=>s.id)).toEqual(["s1"]);

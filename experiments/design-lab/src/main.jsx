@@ -2,11 +2,11 @@ import {createRoot} from "react-dom/client";
 import {useEffect,useState} from "react";
 import {copy,palettes,sessions,students} from "../../../app/design-lab/fixtures.ts";
 import "./style.css";
-const loaders={base:()=>import("./base.jsx"),aria:()=>import("./aria.jsx"),ariakit:()=>import("./ariakit.jsx")};
-const foundations={base:"Base UI",aria:"React Aria Components",ariakit:"Ariakit"};
+const loaders={base:()=>import("./base.jsx"),aria:()=>import("./aria.jsx"),ariakit:()=>import("./ariakit.jsx"),ark:()=>import("./ark.jsx")};
+const foundations={base:"Base UI",aria:"React Aria Components",ariakit:"Ariakit",ark:"Ark UI"};
 const views=["today","students","lesson"];
 function App(){
-  const [foundation,setFoundation]=useState("base");
+  const [foundation,setFoundation]=useState("ariakit");
   const [loaded,setLoaded]=useState(null);
   const [loadError,setLoadError]=useState("");
   const [palette,setPalette]=useState(0);
@@ -36,10 +36,10 @@ function App(){
   function changeFoundation(id){setLoadError("");setFoundation(id);}
   const C=loaded?.foundation===foundation?loaded.module:null;
   return <main data-layout={layout}>
-    <header><h1>{t.lab}</h1><p>{t.notice}</p><div className="switches">
+    <header><h1>{t.lab}</h1><p>{t.notice}</p><p>Current review preference: Ariakit + Slate & Periwinkle (not final approval).</p><div className="switches">
       <label>Foundation<select value={foundation} onChange={e=>changeFoundation(e.target.value)}>{Object.entries(foundations).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
       <label>{t.palette}<select value={palette} onChange={e=>setPalette(Number(e.target.value))}>{palettes.map((p,i)=><option key={p.name} value={i}>{p.name}</option>)}</select></label>
-      <label>{t.theme}<select value={theme} onChange={e=>setTheme(e.target.value)}><option value="dark">{t.dark}</option><option value="light">{t.light}</option></select></label>
+      <div className="swatches" aria-label={palettes[palette].name}>{["bg","surface","fg","accent"].map(role=><span key={role} title={role+" "+tone[role]} style={{background:tone[role]}} />)}</div><label>{t.theme}<select value={theme} onChange={e=>setTheme(e.target.value)}><option value="dark">{t.dark}</option><option value="light">{t.light}</option></select></label>
       <label>{t.layout}<select value={layout} onChange={e=>setLayout(e.target.value)}>{["compact","editorial","hybrid"].map(k=><option key={k} value={k}>{t[k]}</option>)}</select></label>
       <label>{t.language}<select value={locale} onChange={e=>setLocale(e.target.value)}>{["en","he","ru"].map(k=><option key={k}>{k}</option>)}</select></label>
     </div></header>

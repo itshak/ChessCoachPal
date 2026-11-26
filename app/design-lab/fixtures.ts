@@ -8,6 +8,9 @@ export const palettes: Palette[] = [
   {name:"Charcoal & Clay",dark:{bg:"#252021",surface:"#33292B",fg:"#F7E9E7",muted:"#D4B9B7",accent:"#E4A69B",border:"#785C60"},light:{bg:"#FAEFED",surface:"#FFFFFF",fg:"#372528",muted:"#71565A",accent:"#8C3D40",border:"#A7898D"}},
   {name:"Mineral & Copper",dark:{bg:"#20272E",surface:"#29343D",fg:"#E9F1F5",muted:"#B6C5CF",accent:"#E0B18D",border:"#657682"},light:{bg:"#EDF3F5",surface:"#FFFFFF",fg:"#27343D",muted:"#526571",accent:"#87502E",border:"#8496A1"}},
   {name:"Olive & Lilac",dark:{bg:"#23271F",surface:"#30362B",fg:"#F0EFE5",muted:"#C1C7B4",accent:"#C9B6E6",border:"#69745D"},light:{bg:"#F2F3E9",surface:"#FFFFFF",fg:"#30382A",muted:"#5D6651",accent:"#654D8A",border:"#89937D"}},
+  {"name":"Graphite & Iris","dark":{"bg":"#1C1D23","surface":"#272932","fg":"#F1F2F8","muted":"#BBC0D0","accent":"#B3A9E8","border":"#686C80"},"light":{"bg":"#F4F2F9","surface":"#FFFFFF","fg":"#292638","muted":"#5D586F","accent":"#58418F","border":"#868098"}},
+  {"name":"Storm & Cornflower","dark":{"bg":"#202630","surface":"#2B3441","fg":"#F0F4FA","muted":"#BAC8DB","accent":"#92B6EA","border":"#6A7D96"},"light":{"bg":"#EDF2F9","surface":"#FFFFFF","fg":"#24354B","muted":"#506279","accent":"#315C99","border":"#8294AB"}},
+  {"name":"Ash & Silver Lilac","dark":{"bg":"#262428","surface":"#312E35","fg":"#F5F1F7","muted":"#C7BDC9","accent":"#D1BDD9","border":"#766B7C"},"light":{"bg":"#F5F1F6","surface":"#FFFFFF","fg":"#342D39","muted":"#675A6B","accent":"#72527F","border":"#95839B"}},
   {name:"Current brand (reference)",dark:{bg:"#0B1322",surface:"#0D1829",fg:"#F8F2E8",muted:"#A5B2B8",accent:"#23B7AB",border:"#2E4854"},light:{bg:"#F8F2E8",surface:"#FFFFFF",fg:"#0B1322",muted:"#625E58",accent:"#0A6F69",border:"#D5CABE"}},
 ];
 export const students = [
