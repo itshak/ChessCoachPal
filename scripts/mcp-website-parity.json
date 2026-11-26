@@ -1666,7 +1666,7 @@
         "ccp_student_federations_get",
         "ccp_student_federations_link"
       ],
-      "explanation": "Owner-scoped linked-ID FIDE evidence with optional date-effective stored editions and no claim of historic identity/knowledge, explicit coach-private JSON download matching the date-scoped MCP artifact without identifiers or publication, separate retained provenance and manual Israeli evidence, national identities and teacher federation hint use shared browser/MCP service with strict schema, tenant authorization, replay and explicit consent. e2e/parity-federation-ratings.spec.ts",
+      "explanation": "Owner-scoped linked-ID FIDE evidence with optional date-effective stored editions and no claim of historic identity/knowledge, explicit coach-private JSON download matching the date-scoped MCP artifact without identifiers or publication only when actively linked, immutable evidence retained after unlinking, separate retained provenance and manual Israeli evidence, national identities and teacher federation hint use shared browser/MCP service with strict schema, tenant authorization, replay and explicit consent. e2e/parity-federation-ratings.spec.ts",
       "evidenceTest": "e2e/parity-federation-ratings.spec.ts"
     },
     {

@@ -140,7 +140,7 @@ export async function federationStudentSummary(db:Db,teacherId:string,studentId:
   // This is not an audit of what the app knew, nor of the ID linked, on that date.
   ...(fideOn&&review?{fideEffectiveEvidence:{throughDate:fideOn,
     basis:"stored_editions_for_current_link" as const,fide:review},
-    fideEvidenceExport:fideEvidenceExport(fideOn,review)}:{}),
+    ...(review.some(row=>row.status!=="not_linked")?{fideEvidenceExport:fideEvidenceExport(fideOn,review)}:{})}:{}),
   retrieval:{fide:"not_automated",icf:"manual_only"} as const,
   sourceWarning:"Teacher-entered FIDE/ICF identities and ratings are UNVERIFIED until independently matched against an authorized official source; no value changes chess strength or mastery."};
 }
