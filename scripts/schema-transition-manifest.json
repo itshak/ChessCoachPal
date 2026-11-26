@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "mode": "single-canonical-baseline",
   "baseline": "20261107000000_chesscoachpal_baseline.sql",
-  "baselineSha256": "a91c35f2fd3758df15413756cbb93c082b9d9b883652d40bfb7c2119ff5c117a",
+  "baselineSha256": "332ed35cbb4fe5db3f6084e804d7e6e8c906dd431f8d7f3eb730efe771549bcc",
   "operatorCutoverRequired": true,
   "baselineRequiredObjects": [
     "students",
@@ -94,6 +94,8 @@
     "ccp_report_audience_withdraw",
     "ccp_portal_sealed_learner_reports",
     "ccp_private_report_lifecycle_review",
-    "ccp_private_report_lifecycle_commit"
+    "ccp_private_report_lifecycle_commit",
+    "ccp_rating_refresh_admit",
+    "ccp_online_rating_consent_apply"
   ]
 }

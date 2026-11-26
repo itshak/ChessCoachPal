@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "acceptedSourceCommit": "51d124fd8cba172462f9e9248e97cf95386cca89",
+  "acceptedSourceCommit": "8a1be97d5fbd06632a3a2bbc6dd897ebb9822a80",
   "sha256": {
-    "supabase/migrations/20261107000000_chesscoachpal_baseline.sql": "a91c35f2fd3758df15413756cbb93c082b9d9b883652d40bfb7c2119ff5c117a",
-    "scripts/schema-transition-manifest.json": "5297bd8a8faa0d92eddbb701c020183ab619b3d0633e5034ac96893ee389bd8e"
+    "supabase/migrations/20261107000000_chesscoachpal_baseline.sql": "332ed35cbb4fe5db3f6084e804d7e6e8c906dd431f8d7f3eb730efe771549bcc",
+    "scripts/schema-transition-manifest.json": "572782090b7c7d806a988a11aa67b7546230df75800d69fa7a8401e5c78c9352"
   }
 }
