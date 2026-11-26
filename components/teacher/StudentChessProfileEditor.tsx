@@ -1,4 +1,6 @@
 "use client";
+
+import {notifyOnlineRatingContextChanged} from "@/lib/online-rating-context";
 import {useCallback,useEffect,useState} from "react";
 import {useTranslations,useLocale} from "next-intl";
 import {useRouter} from "next/navigation";
@@ -65,6 +67,7 @@ export function StudentChessProfileEditor(props:Props){
        const data=await res.json().catch(()=>null);
        setError(data?.error??t("saveProfileError"));return;
      }
+     notifyOnlineRatingContextChanged(props.studentId);
      await loadHistory();router.refresh();
    }catch{setError(t("saveProfileError"));}
    finally{setBusy(false);}

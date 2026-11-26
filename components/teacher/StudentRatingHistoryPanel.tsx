@@ -1,7 +1,9 @@
 "use client";
 
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
-import {useCallback,useEffect,useState} from "react";
+import {onlineRatingContextChanged} from "@/lib/online-rating-context";
+import type {readOnlineRatingFreshness} from "@/lib/server/online-rating-freshness";
+import {useEffect,useState} from "react";
 import {useLocale,useTranslations} from "next-intl";
 
 type Provider="lichess"|"chesscom";
@@ -11,6 +13,7 @@ type Rating={
  rating_deviation:number|null;provisional:boolean|null;games:number|null;
  source:"teacher_manual"|"provider_api";observed_at:string;fetched_at:string|null;
 };
+type Freshness=Awaited<ReturnType<typeof readOnlineRatingFreshness>>["providers"];
 type ProviderRating={provider:Provider;timeControl:Control;rating:number|null;
  ratingDeviation:number|null;provisional:boolean|null;games:number|null;};
 type Preview={studentId:string;provider:Provider;username:string;
@@ -34,17 +37,33 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
  const [control,setControl]=useState<Control>("rapid");
  const [manual,setManual]=useState("");
  const [history,setHistory]=useState<Rating[]>([]);
+ const [freshness,setFreshness]=useState<Freshness>([]);
+ const [revision,setRevision]=useState(0);
  const [preview,setPreview]=useState<Preview|null>(null);
  const [externalApproved,setExternalApproved]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [cursor,setCursor]=useState<string|null>(null);
- const load=useCallback(async()=>{
-  const res=await fetch("/api/students/"+studentId+"/ratings?limit=100",{cache:"no-store"});
-  if(!res.ok)throw new Error(t("loadError"));
-  const body=await res.json() as {snapshots:Rating[]};
-  setHistory(body.snapshots);
- },[studentId,t]);
- useEffect(()=>{void load().catch(e=>setError(String(e)));},[load]);
+ useEffect(()=>{
+  function invalidate(event:Event){
+   if(!(event instanceof CustomEvent)||event.detail!==studentId)return;
+   setFreshness([]);setRevision(n=>n+1);
+  }
+  window.addEventListener(onlineRatingContextChanged,invalidate);
+  return ()=>window.removeEventListener(onlineRatingContextChanged,invalidate);
+ },[studentId]);
+ useEffect(()=>{
+  const request=new AbortController();
+  fetch("/api/students/"+encodeURIComponent(studentId)+"/ratings?limit=100",{
+   cache:"no-store",signal:request.signal,
+  }).then(async res=>{
+   if(!res.ok)throw new Error(t("loadError"));
+   const body=await res.json() as {snapshots:Rating[];providerFreshness?:Freshness};
+   if(!request.signal.aborted){
+    setHistory(body.snapshots);setFreshness(body.providerFreshness??[]);
+   }
+  }).catch(()=>{if(!request.signal.aborted){setFreshness([]);setError(t("loadError"));}});
+  return ()=>request.abort();
+ },[studentId,t,revision]);
  async function manualRecord(){
   const value=Number(manual);
   if(!Number.isInteger(value)||value<100||value>4000){setError(t("rangeError"));return;}
@@ -58,7 +77,7 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
    });
    if(!res.ok)throw new Error((await res.json()).error??t("manualError"));
    setManual("");setNotice(t("manualSaved"));
-   await load();
+   setRevision(n=>n+1);
   }catch(e){setError(toUserError(e, t("saveError")));}
   finally{setBusy(false);}
  }
@@ -93,13 +112,25 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
    if(!res.ok)throw new Error(toUserError(body, t("importRejected")));
    setPreview(null);setCursor(null);
    setNotice(t("importSaved"));
-   await load();
+   setRevision(n=>n+1);
   }catch(e){setError(toUserError(e, t("importFailed")));}
   finally{setBusy(false);}
  }
  return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-4 space-y-3">
   <h2 className="font-semibold text-lg">{t("title")}</h2>
   <p className="text-sm text-muted">{t("intro")}</p>
+  {freshness.length>0&&<div className="space-y-1">
+   <h3 className="font-semibold text-sm">{t("automaticStatusTitle")}</h3>
+   <ul className="space-y-1 text-sm">
+    {freshness.map(item=><li key={item.provider}>
+     <bdi>{providerLabel[item.provider]}</bdi>{": "}{t(`automaticStatus.${item.status}`)}
+     {item.lastObservation&&<>{" "}{t("lastChecked",{
+      date:new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeStyle:"short"})
+       .format(new Date(item.lastObservation.fetchedAt)),
+     })}</>}
+    </li>)}
+   </ul>
+  </div>}
   <div className="grid gap-3 sm:grid-cols-3">
    <label className="text-sm">{t("platform")}
     <select className={field} value={provider} onChange={e=>{const p=e.target.value as Provider;

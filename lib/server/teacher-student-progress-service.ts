@@ -1,8 +1,14 @@
 import type {SupabaseClient} from "@supabase/supabase-js";
+import {belongsToCurrentOnlineRating,readOnlineRatingFreshness} from "./online-rating-freshness";
 import {teacherStudentProfile} from "@/lib/server/student-profile-service";
 import {skillDimensionsList,studentSkillAssessmentsList} from "@/lib/server/teacher-skills-service";
 import {teacherMaterialAggregate} from "@/lib/server/teacher-material-history";
 import {teacherHistoricalAttendanceSummary} from "@/lib/server/teacher-historical-attendance";
+
+type ReportSnapshot={
+ id:string;provider:string;time_control:string;rating:number;source:string;observed_at:string;
+ fetched_at:string|null;source_username:string|null;source_handle_revision:number|null;
+};
 
 /**
  * Teacher-owned, source-backed evidence. Platform snapshots and manually
@@ -13,18 +19,20 @@ export async function teacherStudentProgressReport(
  db:SupabaseClient,teacherId:string,studentId:string
 ){
  const student=await teacherStudentProfile(db,teacherId,studentId);
- const [dimensions,materials,snapshotsResult,historicalAttendance]=await Promise.all([
+ const now=Date.now();
+ const [dimensions,materials,snapshotsResult,historicalAttendance,freshness]=await Promise.all([
    skillDimensionsList(db,teacherId),
    teacherMaterialAggregate(db,teacherId,{
      studentId,includeVoided:false,offset:0,limit:100,
    }),
    db.from("student_rating_snapshots")
-     .select("id,provider,time_control,rating,source,observed_at,created_at")
+     .select("id,provider,time_control,rating,source,observed_at,created_at,fetched_at,source_username,source_handle_revision")
      .eq("teacher_id",teacherId).eq("student_id",studentId)
      .order("observed_at",{ascending:false})
      .order("created_at",{ascending:false}).order("id",{ascending:false})
-     .limit(5001),
+     .limit(5001).overrideTypes<ReportSnapshot[],{merge:false}>(),
    teacherHistoricalAttendanceSummary(db,teacherId,{studentId}),
+   readOnlineRatingFreshness(db,teacherId,studentId,student,now),
  ]);
  if(snapshotsResult.error)throw new Error("Student rating snapshot summary unavailable");
  if((snapshotsResult.data?.length??0)>5000)
@@ -35,6 +43,9 @@ export async function teacherStudentProgressReport(
  }>=[];
  const observed=new Set<string>();
  for(const row of snapshotsResult.data??[]){
+   if(row.source==="provider_api"&&(row.provider==="lichess"||row.provider==="chesscom")&&
+     !belongsToCurrentOnlineRating(freshness.states[row.provider],row,now))
+    continue;
    const key=row.provider+":"+row.time_control;
    if(observed.has(key))continue;
    observed.add(key);
@@ -98,6 +109,7 @@ export async function teacherStudentProgressReport(
      ratingSources:{lichessRating:lichessRatingSource,chesscomRating:chesscomRatingSource},
      archived:Boolean(student.archived_at)},
    latestPlatformRatings,
+   providerFreshness:freshness.providers,
    historicalAttendance,
    skills:dimensions.map(d=>({
      dimensionId:d.id,name:d.name,sortOrder:d.sort_order,
@@ -108,6 +120,6 @@ export async function teacherStudentProgressReport(
    })),
    materials,
    truthBasis:"teacher_attested_only",
-   caveat:"Historical attendance contains separately sourced dated evidence and aggregate-only counts; neither creates calendar sessions or implies mastery. Snapshot ratings are reported by provider/time control and may be teacher-entered or provider-sourced. A rapid snapshot only fills an empty profile rating; it never changes strength. Study links, ratings and scheduled lessons do not prove mastery. Material coverage requires explicit teacher-recorded evidence.",
+   caveat:"Historical attendance contains separately sourced dated evidence and aggregate-only counts; neither creates calendar sessions or implies mastery. Snapshot ratings are reported by provider/time control and may be teacher-entered or provider-sourced. Online provider snapshots shown here require the current permitted binding. Manual entries are historical observations. A rapid snapshot only fills an empty profile rating; it never changes strength. Study links, ratings and scheduled lessons do not prove mastery. Material coverage requires explicit teacher-recorded evidence.",
  };
 }
