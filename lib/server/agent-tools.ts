@@ -2,6 +2,8 @@ import {professionalCreditExpiryInput,teacherProfessionalCreditExpiry} from "@/l
 import {workplaceCancellationWindowInput} from "@/lib/server/workplace-cancellation-policy";
 import "server-only";
 import { z } from "zod";
+import {onlineRatingConsentReadSchema,teacherOnlineRatingConsentRead,
+ onlineRatingConsentApplySchema,teacherOnlineRatingConsentApply} from "@/lib/server/online-rating-consent";
 import {ratingRecordSchema,ratingFetchSchema,ratingListSchema} from "@/lib/chess-public-ratings";
 import {ratingRefreshCommitSchema,teacherStudentRatingHistory,
  teacherStudentRatingRecord,teacherStudentRatingRefreshPreview,
@@ -1154,6 +1156,16 @@ const catalogue = [
     name:"ccp_student_ratings_record",
     description:"Teacher-confirmed append-only manual platform/time-control rating observation, idempotent by UUID. Does not infer account ownership or change teacher strength.",
     schema:ratingRecordSchema,scope:"coach:write",readOnly:false,
+  },
+  {
+    name:"ccp_student_ratings_consent_get",
+    description:"Read a teacher-owned learner’s saved public username and permission for automatic Lichess or Chess.com rating reads. No external request or write. Show the exact provider, saved username, scope and proposed decision to the teacher. This read and a saved username are not permission to change consent.",
+    schema:onlineRatingConsentReadSchema,scope:"coach:read",readOnly:true,
+  },
+  {
+    name:"ccp_student_ratings_consent_set",
+    description:"Only after explicit teacher approval of this exact saved account and provider, submit the reviewed username, identity epoch and provider revision, the explicit enable or revoke decision, and a fresh request UUID with confirmed:true. Retry uncertain delivery with identical input. Opt-in records permission and queues one initial check; revoke stops future authorized reads without erasing prior evidence. This call does not contact the provider.",
+    schema:onlineRatingConsentApplySchema,scope:"coach:write",readOnly:false,
   },
   {
     name:"ccp_student_ratings_refresh_preview",
@@ -2693,6 +2705,12 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_student_ratings_record":
         return {data:await teacherStudentRatingRecord(db,teacherId,
           args as Parameters<typeof teacherStudentRatingRecord>[2])};
+      case "ccp_student_ratings_consent_get":
+        return {data:await teacherOnlineRatingConsentRead(db,teacherId,
+          args as Parameters<typeof teacherOnlineRatingConsentRead>[2])};
+      case "ccp_student_ratings_consent_set":
+        return {data:await teacherOnlineRatingConsentApply(db,teacherId,
+          args as Parameters<typeof teacherOnlineRatingConsentApply>[2])};
       case "ccp_student_ratings_refresh_preview":
         return {data:await teacherStudentRatingRefreshPreview(db,teacherId,
           args as Parameters<typeof teacherStudentRatingRefreshPreview>[2])};
