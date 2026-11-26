@@ -2,7 +2,7 @@ import {createRoot} from "react-dom/client";
 import {useEffect,useState,useRef} from "react";
 import {copy,palettes,sessions,students} from "../../../app/design-lab/fixtures.ts";
 import "./style.css";
-import {BrandMark,BrandStudy} from "./brand.jsx";
+import {BrandMark,BrandStudy,logoOptions} from "./brand.jsx";
 const loaders={base:()=>import("./base.jsx"),aria:()=>import("./aria.jsx"),ariakit:()=>import("./ariakit.jsx"),ark:()=>import("./ark.jsx"),radix:()=>import("./radix.jsx"),headless:()=>import("./headless.jsx")};
 const foundations={base:"Base UI",aria:"React Aria Components",ariakit:"Ariakit",ark:"Ark UI",radix:"Radix UI + cmdk",headless:"Headless UI"};
 const views=["today","students","lesson"];
@@ -10,7 +10,7 @@ function App(){
   const [foundation,setFoundation]=useState("ark");
   const [loaded,setLoaded]=useState(null);
   const [loadError,setLoadError]=useState("");
-  const [palette,setPalette]=useState(()=>palettes.findIndex(p=>p.name==="Storm & Cornflower"));
+  const [palette,setPalette]=useState(()=>palettes.findIndex(p=>p.name==="Graphite, Iris & Champagne"));
   const [density,setDensity]=useState("comfortable");
   const [logo,setLogo]=useState("palette");
   const [showBrand,setShowBrand]=useState(false);
@@ -41,14 +41,14 @@ function App(){
   function changeFoundation(id){setLoadError("");setFoundation(id);}
   const C=loaded?.foundation===foundation?loaded.module:null;
   return <main data-layout={layout} data-density={density}>
-    <header><h1>{t.lab}</h1><p>{t.notice}</p><p>Review shortlist: Ark UI, Graphite & Iris and Storm & Cornflower (not final approval).</p><div className="switches">
+    <header><h1>{t.lab}</h1><p>{t.notice}</p><p>Selected direction: Ark UI + Graphite, Iris & Champagne. Logo and layout review remain open.</p><div className="switches">
       <label>Foundation<select value={foundation} onChange={e=>changeFoundation(e.target.value)}>{Object.entries(foundations).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
       <label>{t.palette}<select aria-label={t.palette} value={palette} onChange={e=>setPalette(Number(e.target.value))}>{palettes.map((p,i)=><option key={p.name} value={i}>{p.name}</option>)}</select></label>
       <div className="swatches" aria-label={palettes[palette].name}>{["bg","surface","fg","accent","secondary"].map(role=><span key={role} title={role+" "+tone[role]} style={{background:tone[role]}} />)}</div><label>{t.theme}<select value={theme} onChange={e=>setTheme(e.target.value)}><option value="dark">{t.dark}</option><option value="light">{t.light}</option></select></label>
       <label>{t.layout}<select value={layout} onChange={e=>setLayout(e.target.value)}>{["compact","editorial","hybrid"].map(k=><option key={k} value={k}>{t[k]}</option>)}</select></label>
       <label>{t.language}<select value={locale} onChange={e=>setLocale(e.target.value)}>{["en","he","ru"].map(k=><option key={k}>{k}</option>)}</select></label>
-    <label>Density<select value={density} onChange={e=>setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label><label>Logo<select aria-label="Logo" value={logo} onChange={e=>setLogo(e.target.value)}><option value="original">Original</option><option value="palette">Palette-matched</option><option value="flat">Simplified paint</option></select></label><button type="button" aria-expanded={showBrand} onClick={()=>setShowBrand(v=>!v)}>Brand comparison</button>
-    </div>{showBrand&&<BrandStudy tone={tone} mode={theme}/>}</header>
+    <label>Density<select value={density} onChange={e=>setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label><label>Logo<select aria-label="Logo" value={logo} onChange={e=>setLogo(e.target.value)}>{logoOptions.map(({id,label})=><option key={id} value={id}>{label}</option>)}</select></label><button type="button" aria-expanded={showBrand} onClick={()=>setShowBrand(v=>!v)}>Brand comparison</button>
+    </div>{showBrand&&<BrandStudy tone={tone} mode={theme} selected={logo} onSelect={setLogo}/>}</header>
     {loadError&&<p role="alert">{loadError}</p>}
     {!C?<p role="status">Loading foundation…</p>:<C.Provider key={foundation} direction={direction} locale={locale}>
     <div className="workspace" data-foundation={foundation}>

@@ -57,12 +57,18 @@ for(const foundation of ["base","aria","ariakit","ark","radix","headless"]){
 test("focused direction: brand sizes and layout/density controls",async({page},info)=>{
   await page.goto("/");
   await expect(page.getByLabel("Foundation")).toHaveValue("ark");
-  await expect(page.getByLabel("Palette",{exact:true})).toHaveValue("7");
+  await expect(page.getByLabel("Palette",{exact:true})).toHaveValue("9");
   await expect(page.locator("[data-foundation=ark]")).toBeVisible();
   await page.getByRole("button",{name:"Brand comparison"}).click();
-  await expect(page.locator(".brand-study img")).toHaveCount(12);
+  await expect(page.locator(".brand-study img")).toHaveCount(40);
   await expect.poll(()=>page.locator(".brand-study img").evaluateAll(images=>images.every(i=>i.complete&&i.naturalWidth>0))).toBe(true);
   await page.screenshot({path:info.outputPath("brand-sizes.png"),fullPage:true});
+  await page.getByRole("button",{name:"Use Mentor & pupil",exact:true}).click();
+  await expect(page.getByLabel("Logo",{exact:true})).toHaveValue("mentor");
+  await page.getByLabel("Theme").selectOption("light");
+  await expect.poll(()=>page.locator(".brand-study img").evaluateAll(images=>images.every(i=>i.complete&&i.naturalWidth>0))).toBe(true);
+  await page.screenshot({path:info.outputPath("brand-sizes-light.png"),fullPage:true});
+  await page.getByLabel("Theme").selectOption("dark");
   await page.getByRole("button",{name:"Brand comparison"}).click();
   for(const layout of ["compact","editorial","hybrid"]){
     await page.getByLabel("Layout").selectOption(layout);
