@@ -20,7 +20,7 @@
 
 - Require separate approval for FIDE data access, actual format/coverage/revision evidence, terms for reuse and storage, and consent/minor-data policy before adapting or scheduling real retrieval. Confirm source authorization/completeness and owner/identity again before any real write. ICF automated access/terms and permitted lookup remain unverified; only manual input is available.
 - Production format/parser, authorized import/write and monthly sync/backoff are not implemented. The synthetic fixture is not proof of a provider format, outage handling, or live sync.
-- Date-effective evidence is available on the teacher profile and its paired signed read when explicitly requested; exports and independent behavioral RTL acceptance remain separate, as do delete/revoke semantics. Real historical manual/online rating preservation, restored-copy reconciliation and one authorized final transition under [ADR-0017](../../../docs/adr/0017-pre-v1-single-final-cutover-no-compatibility.md) remain open. Hosted smoke checks are not proof of live migration.
+- Date-effective evidence, its coach-only export and independent behavioral RTL acceptance are scoped below. Clearing the active FIDE ID is not deletion or provider-consent revocation; an automated provider-consent lifecycle still requires a separate policy decision. Real historical manual/online rating preservation, restored-copy reconciliation and one authorized final transition under [ADR-0017](../../../docs/adr/0017-pre-v1-single-final-cutover-no-compatibility.md) remain open. Hosted smoke checks are not proof of live migration.
 
 
 ### Date-effective stored FIDE evidence
@@ -52,3 +52,12 @@ learner, player, tenant, raw edition string, provider URL or historic identity.
 The browser copies the reviewed result without another request. This does not
 publish/share a report, change the workplace learner report or account export,
 call a provider, or modify any persisted rating or school record.
+
+
+### Explicit unlink
+
+Clearing the optional FIDE ID through the signed profile form or the confirmed
+MCP profile edit leaves the educator's strength and stored history untouched.
+Current and dated reviews then return not-linked statuses and no export data;
+the visible date result and button are removed. This does not erase history
+or recall files already downloaded to the coach's device.

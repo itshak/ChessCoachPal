@@ -728,7 +728,7 @@ const catalogue = [
   },
   {
     name:"ccp_student_federations_get",
-    description:"Read optional federation IDs and independent rating history for one owned learner. Current FIDE evidence is the latest unambiguous stored edition for the exact linked ID. Optional fideOn (YYYY-MM-DD through today UTC) adds a separate effective-date result for the currently linked ID from editions now stored; it does not claim what was known or linked on that date. fideEvidenceExport is the same minimal, private date-review artifact as the website download; it omits learner and player identifiers and does not publish anything. Prior IDs remain in history. Israeli data is manual-only; teacher entries are unverified. No live lookup or change to strength.",
+    description:"Read optional federation IDs and independent rating history for one owned learner. Current FIDE evidence is the latest unambiguous stored edition for the exact linked ID. Optional fideOn (YYYY-MM-DD through today UTC) adds a separate effective-date result for the currently linked ID from editions now stored; it does not claim what was known or linked on that date. With a linked ID, fideEvidenceExport is the same minimal, private date-review artifact as the website download; it omits learner and player identifiers and does not publish anything. Prior IDs remain in history. Israeli data is manual-only; teacher entries are unverified. No live lookup or change to strength.",
     schema:federationSummaryInput,scope:"coach:read",readOnly:true,
   },
   {
@@ -1349,7 +1349,7 @@ const catalogue = [
   },
   {
     name: "ccp_students_profile_edit",
-    description: "Edit one student's chess handles, aliases, strength (1-10), teacher-entered ratings, lesson rates, private notes and birthdate. Archiving/reactivation requires the separate reviewed ccp_students_lifecycle_preview and ccp_students_lifecycle_commit; this general profile tool cannot change lifecycle state. Reload after conflicts; never blindly retry.",
+    description: "Edit one student's chess handles, aliases, strength (1-10), teacher-entered ratings, lesson rates, private notes and birthdate. Set changes.fideId to a validated ID or null to unlink; unlinking keeps immutable observations. Archiving/reactivation requires the separate reviewed ccp_students_lifecycle_preview and ccp_students_lifecycle_commit; this general profile tool cannot change lifecycle state. Reload after conflicts; never blindly retry.",
     schema:z.object({studentId:uuid,expectedUpdatedAt:instant,changes:studentUpdateSchema,
       confirmed:z.literal(true)}).strict().refine(v=>Object.keys(v.changes).length>0,"Changes required"),
     scope:"coach:write",readOnly:false,
