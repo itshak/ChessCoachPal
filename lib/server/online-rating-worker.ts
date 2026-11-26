@@ -40,6 +40,12 @@ type Dependencies={
  now?:()=>number;
 };
 
+/** Shared provider authority could not safely settle the exact reservation.
+ * Never finalize a provider outcome from this attempt. */
+export class OnlineRatingBudgetUnavailable extends Error {
+ constructor(){super("Online rating provider budget unavailable");}
+}
+
 type ProviderFailure={outcome:"retry"|"failed";code:
  "RATE_LIMITED"|"ACCOUNT_NOT_FOUND"|"PROVIDER_DENIED"|"PROVIDER_RESPONSE"|"PROVIDER_UNAVAILABLE"|"RATING_UNAVAILABLE"};
 function providerFailure(error:unknown):ProviderFailure{
@@ -94,7 +100,10 @@ export async function runOnlineRatingLease(candidate:Candidate,deps:Dependencies
  if(!enabled())return {status:"disabled"} as const;
  if(admitted!==true||beforeExpiry(until)===null)return {status:"not_admitted"} as const;
  let payload:unknown,failure:ProviderFailure|undefined;
- try{payload=await deps.transport(lease.provider,lease.sourceUsername);}catch(error){failure=providerFailure(error);}
+ try{payload=await deps.transport(lease.provider,lease.sourceUsername);}catch(error){
+  if(error instanceof OnlineRatingBudgetUnavailable)return {status:"authority_unavailable"} as const;
+  failure=providerFailure(error);
+ }
  if(!enabled())return {status:"disabled"} as const;
  const fetched=beforeExpiry(until);
  if(fetched===null)return {status:"not_admitted"} as const;

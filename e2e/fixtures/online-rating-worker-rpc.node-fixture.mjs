@@ -7,13 +7,14 @@ import {createClient} from "@supabase/supabase-js";
 
 const hooks=registerHooks({resolve(specifier,context,next){
  if(specifier==="server-only")return {shortCircuit:true,url:"data:text/javascript,export%20%7B%7D"};
- if(["../chess-public-ratings","./online-rating-transport","./online-rating-cooldown"].includes(specifier))return next(specifier+".ts",context);
+ if(["../chess-public-ratings","./online-rating-transport","./online-rating-cooldown","./online-rating-worker"].includes(specifier))return next(specifier+".ts",context);
  return next(specifier,context);
 }});
 const {runOnlineRatingLease}=await import("../../lib/server/online-rating-worker.ts");
 const {fetchOnlineRatingPayload}=await import("../../lib/server/online-rating-transport.ts");
 const {onlineRatingWorkerAuthority}=await import("../../lib/server/online-rating-worker-authority.ts");
 const {onlineRatingQueueDiscovery}=await import("../../lib/server/online-rating-queue.ts");
+const {onlineRatingProviderBudget,runOnlineRatingCandidateWithBudget}=await import("../../lib/server/online-rating-provider-budget.ts");
 hooks.deregister();
 const origin=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL);
 assert(origin.protocol==="http:"&&origin.hostname==="127.0.0.1"&&origin.port&&origin.href===origin.origin+"/");
@@ -166,4 +167,37 @@ test("real due discovery orders expired and ready work without touching future o
  assert.equal((await backfill.db().job()).attempt_count,0);
  assert.equal((await ready.db().job()).attempt_count,0);
  assert.equal((await expired.db().job()).status,"running");
+});
+
+test("real shared reservations gate the worker and persist cooldown without actual provider traffic",
+ {skip:process.env.CCP_DISPOSABLE_RATINGS_BUDGET!=="yes"},async t=>{
+ const lichess=await setup(t);
+ const chesscom=await setup(t,"chesscom");
+ const budget=onlineRatingProviderBudget(admin);
+ const read=(provider)=>data(admin.from("online_rating_provider_budget")
+  .select("daily_used,monthly_used,request_token,blocked_until").eq("provider",provider).single());
+ const publicClient=createClient(origin.origin,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ assert.ok((await publicClient.rpc("ccp_online_rating_budget_acquire",{p_provider:"lichess"})).error);
+ assert.ok((await admin.from("online_rating_provider_budget").update({enabled:false}).eq("provider","lichess")).error);
+ assert.deepEqual(await runOnlineRatingCandidateWithBudget({...lichess.ids,provider:"lichess"},{...lichess.deps,budget}),
+  {status:"finalized",outcome:"succeeded",snapshotsWritten:1});
+ assert.equal(lichess.requests(),1);
+ assert.equal((await read("lichess")).request_token,null);
+ assert.equal((await read("lichess")).daily_used,1);
+ const withheld=await setup(t);
+ assert.deepEqual(await runOnlineRatingCandidateWithBudget({...withheld.ids,provider:"lichess"},{...withheld.deps,budget}),
+  {status:"budget_withheld"});
+ assert.equal((await withheld.db().job()).attempt_count,0);
+ assert.equal(withheld.requests(),0);
+ const start=Date.now();
+ assert.deepEqual(await runOnlineRatingCandidateWithBudget({...chesscom.ids,provider:"chesscom"},{...chesscom.deps,budget}),
+  {status:"finalized",outcome:"retry",snapshotsWritten:0});
+ assert.equal(chesscom.requests(),1);
+ const held=await read("chesscom");
+ assert.equal(held.request_token,null);
+ assert.equal(held.monthly_used,1);
+ assert.ok(Date.parse(held.blocked_until)>=start+120_000);
+ assert.deepEqual(await budget.acquire("chesscom"),{status:"cooling_down"});
 });
