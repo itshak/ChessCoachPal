@@ -728,7 +728,7 @@ const catalogue = [
   },
   {
     name:"ccp_student_federations_get",
-    description:"Read optional federation IDs and independent rating history for one owned learner. Current FIDE evidence is the latest unambiguous stored edition for the exact linked ID. Optional fideOn (YYYY-MM-DD through today UTC) adds a separate effective-date result for the currently linked ID from editions now stored; it does not claim what was known or linked on that date. Prior IDs remain in history. Israeli data is manual-only; teacher entries are unverified. No live lookup or change to strength.",
+    description:"Read optional federation IDs and independent rating history for one owned learner. Current FIDE evidence is the latest unambiguous stored edition for the exact linked ID. Optional fideOn (YYYY-MM-DD through today UTC) adds a separate effective-date result for the currently linked ID from editions now stored; it does not claim what was known or linked on that date. fideEvidenceExport is the same minimal, private date-review artifact as the website download; it omits learner and player identifiers and does not publish anything. Prior IDs remain in history. Israeli data is manual-only; teacher entries are unverified. No live lookup or change to strength.",
     schema:federationSummaryInput,scope:"coach:read",readOnly:true,
   },
   {

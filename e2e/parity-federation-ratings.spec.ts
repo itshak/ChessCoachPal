@@ -1,4 +1,5 @@
 import {randomUUID} from "node:crypto";
+import {readFile} from "node:fs/promises";
 import {expect,test} from "@playwright/test";
 import {createClient} from "@supabase/supabase-js";
 import {SEED_TEACHER} from "./helpers/auth";
@@ -171,6 +172,7 @@ test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess cor
  expect(before.currentEvidence.fide[0]).toMatchObject({status:"recorded",
   snapshot:{rating:1871,external_player_id:oldId,provider_list_version:"fixture-jan"}});
  expect(before.fideEffectiveEvidence).toBeUndefined();
+ expect(before.fideEvidenceExport).toBeUndefined();
  const december=await read("2024-12-31");
  expect(december.currentEvidence).toEqual(before.currentEvidence);
  expect(december.fideEffectiveEvidence).toMatchObject({
@@ -204,6 +206,16 @@ test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess cor
   {timeControl:"rapid",status:"not_recorded",snapshot:null},
   {timeControl:"blitz",status:"edition_order_unknown",snapshot:null},
  ]);
+ const expectedFile={
+  format:"chesscoachpal_fide_effective_evidence_v1",intendedAudience:"coach_private",
+  provider:"fide",basis:"stored_editions_for_current_link",historicalKnowledgeOrIdentity:false,throughDate:"2025-02-01",
+  categories:[
+   {timeControl:"standard",status:"recorded",evidence:{rating:1963,effectiveDate:"2025-02-01",provenance:"stored_provider_publication"}},
+   {timeControl:"rapid",status:"not_recorded",evidence:null},
+   {timeControl:"blitz",status:"edition_order_unknown",evidence:null},
+  ],
+ };
+ expect(newFebruary.fideEvidenceExport).toEqual(expectedFile);
  expect(corrected.snapshots).toHaveLength(6);
  expect(corrected.snapshots).toEqual(expect.arrayContaining([
   expect.objectContaining({external_player_id:oldId,provider_list_version:"fixture-jan"}),
@@ -223,6 +235,17 @@ test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess cor
  await expect(historical).toContainText("1963");
  await expect(historical).toContainText("order not verified");
  await expect(historical).not.toContainText("1871");
+ const downloadButton=historical.getByRole("button",{name:"Download private evidence (JSON)",exact:true});
+ const [download]=await Promise.all([page.waitForEvent("download"),downloadButton.click()]);
+ expect(download.suggestedFilename()).toBe("chesscoachpal-fide-evidence-2025-02-01.json");
+ const path=await download.path();
+ expect(path).not.toBeNull();
+ const bytes=await readFile(path!,"utf8");
+ expect(JSON.parse(bytes)).toEqual(expectedFile);
+ for(const forbidden of [oldId,newId,studentId,"fixture-feb","https://example.invalid","1644","1871"]){
+  expect(bytes).not.toContain(forbidden);
+ }
+
  // The write still reaches the real app. A failed follow-up GET must never
  // leave the old bound result rendered as current for the just-saved ID.
  const failedReload=async(route:import("@playwright/test").Route)=>route.fulfill({status:503});
@@ -231,6 +254,7 @@ test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess cor
  await page.getByRole("button",{name:"Save player identity"}).click();
  await expect(panel).toHaveCount(0);
  await expect(historical).toHaveCount(0);
+ await expect(downloadButton).toHaveCount(0);
  await expect(page.getByRole("button",{name:"Save player identity"})).toBeEnabled();
  const saved=await db.from("students").select("fide_id").eq("id",studentId).single();
  expect(saved.data?.fide_id).toBe(oldId);

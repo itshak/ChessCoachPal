@@ -3,6 +3,7 @@ import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 import {useTranslations,useLocale} from "next-intl";
 import {Card} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
+import type {FideEvidenceExport} from "@/lib/server/student-federations-service";
 
 type Membership={id:string;studentId:string;federationCode:string;playerId:string;
  membershipStatus:"unverified"|"source_matched";revision:number;
@@ -18,7 +19,7 @@ type EffectiveEvidence={throughDate:string;basis:"stored_editions_for_current_li
 type Overview={identity:{fideId:string|null;fideFederationCode:string|null;
  nationalFederationPreference:string|null;defaultNationalFederationCode:string|null;
  suggestedFederationCode:string|null};memberships:Membership[];snapshots:Snapshot[];
- currentEvidence:{fide:FideEvidence[]};fideEffectiveEvidence?:EffectiveEvidence;retrieval:{fide:"not_automated";icf:"manual_only"};
+ currentEvidence:{fide:FideEvidence[]};fideEffectiveEvidence?:EffectiveEvidence;fideEvidenceExport?:FideEvidenceExport;retrieval:{fide:"not_automated";icf:"manual_only"};
  sourceWarning:string};
 const field="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
 const code=(value:string)=>value.trim().toUpperCase();
@@ -44,7 +45,7 @@ function StudentFederationsScope({studentId}:{studentId:string}){
  const [observedAt,setObservedAt]=useState(today()),[effectiveAt,setEffectiveAt]=useState("");
  const [sourceUrl,setSourceUrl]=useState("");
  const [fideOn,setFideOn]=useState("");
- const [historical,setHistorical]=useState<{linkedId:string;evidence:EffectiveEvidence}|null>(null);
+ const [historical,setHistorical]=useState<{linkedId:string;evidence:EffectiveEvidence;file:FideEvidenceExport}|null>(null);
  const load=useCallback(async(expectedIdentity?:{fideId:string|null})=>{
   if(!mounted.current||(identityPending.current&&!expectedIdentity))return;
   const generation=++readGeneration.current;
@@ -110,9 +111,19 @@ function StudentFederationsScope({studentId}:{studentId:string}){
    if(!mounted.current||generation!==readGeneration.current)return;
    if(result.studentId!==studentId||result.identity.fideId!==linkedId||
     result.fideEffectiveEvidence?.throughDate!==requested||
-    result.fideEffectiveEvidence.basis!=="stored_editions_for_current_link")throw new Error("FEDERATION_READ");
-   setHistorical({linkedId,evidence:result.fideEffectiveEvidence});
+    result.fideEffectiveEvidence.basis!=="stored_editions_for_current_link"||
+    result.fideEvidenceExport?.throughDate!==requested||
+    result.fideEvidenceExport.format!=="chesscoachpal_fide_effective_evidence_v1")throw new Error("FEDERATION_READ");
+   setHistorical({linkedId,evidence:result.fideEffectiveEvidence,file:result.fideEvidenceExport});
   });
+ }
+ function downloadReview(file:FideEvidenceExport){
+  const url=URL.createObjectURL(new Blob([JSON.stringify(file,null,2)+"\n"],{type:"application/json"}));
+  try{
+   const anchor=document.createElement("a");
+   anchor.href=url;anchor.download=`chesscoachpal-fide-evidence-${file.throughDate}.json`;
+   anchor.click();
+  }finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
  }
  async function updateDefault(e:FormEvent){
   e.preventDefault();await run(async()=>{
@@ -292,6 +303,10 @@ function StudentFederationsScope({studentId}:{studentId:string}){
           {" · "}<bdi>{snapshot.provider_list_version}</bdi></>:t(status)}
         </li>)}
        </ul>
+       <Button type="button" variant="secondary" disabled={busy} onClick={()=>downloadReview(historical.file)}>
+        {t("effectiveReview.download")}
+       </Button>
+       <p className="text-sm text-muted">{t("effectiveReview.downloadNote")}</p>
       </div>}
     </div>}
     <h3 className="text-sm font-semibold">{t("evidenceHistory")}</h3>
