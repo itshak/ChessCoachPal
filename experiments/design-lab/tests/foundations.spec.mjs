@@ -1,0 +1,42 @@
+import {test,expect} from "@playwright/test";
+for(const foundation of ["base","aria","ariakit"]){
+  test(foundation+" — common workflow, keyboard and responsive evidence",async({page},info)=>{
+    await page.goto("/");
+    await page.getByLabel("Foundation").selectOption(foundation);
+    await expect(page.locator("[data-foundation="+foundation+"]")).toBeVisible();
+    await page.getByRole("button",{name:"Students",exact:true}).click();
+    const picker=page.getByRole("combobox",{name:"Search students or aliases"});
+    await picker.fill("Maya");
+    await expect(page.getByRole("option",{name:/Maya Sample/})).toBeVisible();
+    await picker.press("ArrowDown");
+    await picker.press("Enter");
+    await expect(page.getByRole("heading",{name:/Student timeline: Maya Sample/})).toBeVisible();
+    await page.getByRole("button",{name:"Today",exact:true}).click();
+    await page.getByRole("button",{name:/Endgame group/}).click();
+    await page.getByRole("textbox",{name:"Objective"}).fill("");
+    await page.getByRole("button",{name:"Save local preview"}).click();
+    await expect(page.getByText("Enter a lesson objective")).toBeVisible();
+    await page.getByRole("textbox",{name:"Objective"}).fill("Lucena");
+    await page.getByRole("checkbox",{name:/Daniel Example/}).click();
+    await page.getByRole("textbox",{name:"Private coach note"}).fill("Private observation");
+    await page.getByRole("textbox",{name:"Shareable draft (not sent)"}).fill("Shared summary");
+    await page.getByRole("button",{name:"Save local preview"}).click();
+    await expect(page.getByRole("status")).toContainText("1/2");
+    await page.screenshot({path:info.outputPath("lesson-dark.png"),fullPage:true});
+    await page.getByRole("button",{name:/Search workspace/}).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.getByRole("button",{name:/Workplace:/}).click();
+    await page.getByRole("menuitem",{name:"Private"}).click();
+    await page.getByRole("button",{name:"Today",exact:true}).click();
+    await expect(page.getByRole("button",{name:/Endgame group/})).toHaveCount(0);
+    await page.getByLabel("Theme").selectOption("light");
+    await page.getByLabel("Layout").selectOption("hybrid");
+    await page.getByLabel("Language").selectOption("he");
+    await page.setViewportSize({width:390,height:844});
+    await expect(page.locator("html")).toHaveAttribute("dir","rtl");
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await page.screenshot({path:info.outputPath("mobile-rtl-light.png"),fullPage:true});
+  });
+}
