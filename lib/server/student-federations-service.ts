@@ -85,6 +85,29 @@ async function effectiveFideEvidence(db:Db,teacherId:string,studentId:string,fid
   return {timeControl,status:"recorded",snapshot:first} as const;
  }));
 }
+type EffectiveFideRows=Awaited<ReturnType<typeof effectiveFideEvidence>>;
+
+function fideEvidenceExport(throughDate:string,rows:EffectiveFideRows){
+ // A minimal copy of the reviewed projection, not the raw learner record.
+ // Deliberately omit IDs, untrusted edition strings/URLs and unrelated data.
+ return {
+  format:"chesscoachpal_fide_effective_evidence_v1" as const,
+  intendedAudience:"coach_private" as const,
+  provider:"fide" as const,
+  basis:"stored_editions_for_current_link" as const,
+  historicalKnowledgeOrIdentity:false as const,
+  throughDate,
+  categories:rows.map(({timeControl,status,snapshot})=>({
+   timeControl,status,
+   evidence:snapshot?{
+    rating:snapshot.rating,effectiveDate:snapshot.effective_at,
+    provenance:"stored_provider_publication" as const,
+   }:null,
+  })),
+ };
+}
+export type FideEvidenceExport=ReturnType<typeof fideEvidenceExport>;
+
 export async function federationStudentSummary(db:Db,teacherId:string,studentId:string,fideOn?:string){
  const parsed=federationSummaryInput.safeParse({studentId,fideOn});
  if(!parsed.success)return fail(400,"VALIDATION_ERROR","Invalid federation summary filters");
@@ -103,6 +126,7 @@ export async function federationStudentSummary(db:Db,teacherId:string,studentId:
  ]);
  if(member.error||history.error||teacher.error||!teacher.data)
   return fail(503,"FEDERATION_UNAVAILABLE","Federation records could not be read");
+ const review=fideOn?(effectiveEvidence??fideEvidence):undefined;
  return {studentId,identity:{fideId:student.fide_id??null,
     fideFederationCode:student.fide_federation_code??null,
     defaultNationalFederationCode:teacher.data.default_national_federation_code??null,
@@ -114,8 +138,9 @@ export async function federationStudentSummary(db:Db,teacherId:string,studentId:
   currentEvidence:{fide:fideEvidence},
   // Effective now from the stored editions for the currently linked ID.
   // This is not an audit of what the app knew, nor of the ID linked, on that date.
-  ...(fideOn?{fideEffectiveEvidence:{throughDate:fideOn,
-    basis:"stored_editions_for_current_link" as const,fide:effectiveEvidence??fideEvidence}}:{}),
+  ...(fideOn&&review?{fideEffectiveEvidence:{throughDate:fideOn,
+    basis:"stored_editions_for_current_link" as const,fide:review},
+    fideEvidenceExport:fideEvidenceExport(fideOn,review)}:{}),
   retrieval:{fide:"not_automated",icf:"manual_only"} as const,
   sourceWarning:"Teacher-entered FIDE/ICF identities and ratings are UNVERIFIED until independently matched against an authorized official source; no value changes chess strength or mastery."};
 }

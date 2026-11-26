@@ -41,3 +41,14 @@ localized control with Enter, checks the named live result and its text/date
 direction, verifies recorded and missing category labels, and compares the
 same disposable signed HTTP and MCP evidence value in each locale. This does
 not exercise the private report, export, or every other federation control.
+
+### Coach-only date-review download
+
+A coach can explicitly download the review already displayed on the signed
+learner profile as JSON. The same signed date request through MCP returns the
+minimal evidence object. It records the selected date, ordered category
+statuses, applicable rating/publication date and the provenance class, not the
+learner, player, tenant, raw edition string, provider URL or historic identity.
+The browser copies the reviewed result without another request. This does not
+publish/share a report, change the workplace learner report or account export,
+call a provider, or modify any persisted rating or school record.

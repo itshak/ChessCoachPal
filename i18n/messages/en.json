@@ -3315,7 +3315,9 @@
       "date": "FIDE effective date",
       "open": "Review effective date",
       "result": "FIDE effective-date result",
-      "through": "Requested through:"
+      "through": "Requested through:",
+      "download": "Download private evidence (JSON)",
+      "downloadNote": "For the coach’s records. The file copies this review without learner or player identifiers. It does not publish or share it."
     },
     "currentEvidence": "Latest recorded evidence for linked FIDE ID",
     "evidenceHistory": "Federation rating evidence history",
