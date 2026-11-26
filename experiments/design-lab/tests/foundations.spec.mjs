@@ -1,5 +1,5 @@
 import {test,expect} from "@playwright/test";
-for(const foundation of ["base","aria","ariakit","ark"]){
+for(const foundation of ["base","aria","ariakit","ark","radix","headless"]){
   test(foundation+" — common workflow, keyboard and responsive evidence",async({page},info)=>{
     await page.goto("/");
     await page.getByLabel("Foundation").selectOption(foundation);
@@ -33,16 +33,16 @@ for(const foundation of ["base","aria","ariakit","ark"]){
     await commandPicker.focus();
     await expect(commandPicker).toBeFocused();
     // If an inner combobox is open, Escape closes it first. A closed picker must allow dialog dismissal.
-    if(await commandPicker.getAttribute("aria-expanded")==="true"){await page.keyboard.press("Escape");await expect(commandPicker).toHaveAttribute("aria-expanded","false");}
+    if(foundation!=="radix"&&await commandPicker.getAttribute("aria-expanded")==="true"){await page.keyboard.press("Escape");await expect(commandPicker).toHaveAttribute("aria-expanded","false");}
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await page.getByRole("button",{name:/Workplace:/}).click();
     await page.getByRole("menuitem",{name:"Private"}).click();
     await page.getByRole("button",{name:"Today",exact:true}).click();
     await expect(page.getByRole("button",{name:/Endgame group/})).toHaveCount(0);
-    await page.getByLabel("Palette").selectOption({label:"Storm & Cornflower"});
+    await page.getByLabel("Palette",{exact:true}).selectOption({label:"Storm & Cornflower"});
     await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue("--accent"))).toBe("#92B6EA");
-    await page.getByLabel("Palette").selectOption({label:"Graphite & Iris"});
+    await page.getByLabel("Palette",{exact:true}).selectOption({label:"Graphite & Iris"});
     await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue("--accent"))).toBe("#B3A9E8");
     await page.getByLabel("Theme").selectOption("light");
     await page.getByLabel("Layout").selectOption("hybrid");
@@ -57,7 +57,7 @@ for(const foundation of ["base","aria","ariakit","ark"]){
 test("focused direction: brand sizes and layout/density controls",async({page},info)=>{
   await page.goto("/");
   await expect(page.getByLabel("Foundation")).toHaveValue("ark");
-  await expect(page.getByLabel("Palette")).toHaveValue("7");
+  await expect(page.getByLabel("Palette",{exact:true})).toHaveValue("7");
   await expect(page.locator("[data-foundation=ark]")).toBeVisible();
   await page.getByRole("button",{name:"Brand comparison"}).click();
   await expect(page.locator(".brand-study img")).toHaveCount(12);
@@ -72,3 +72,5 @@ test("focused direction: brand sizes and layout/density controls",async({page},i
     await page.screenshot({path:info.outputPath(layout+"-dark.png"),fullPage:true});
   }
 });
+
+test("three secondary brand colors switch in both themes",async({page},info)=>{await page.goto("/");for(const [name,dark,light] of [["Graphite, Iris & Champagne","#CDB58D","#76572E"],["Graphite, Iris & Eucalyptus","#8DB8AC","#35685A"],["Obsidian, Orchid & Ivory","#D7C4AA","#765B3E"]]){await page.getByLabel("Palette",{exact:true}).selectOption({label:name});for(const [theme,expected] of [["dark",dark],["light",light]]){await page.getByLabel("Theme").selectOption(theme);await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue("--secondary"))).toBe(expected);await page.screenshot({path:info.outputPath(name.replace(/[^a-z]+/gi,"-")+"-"+theme+".png"),fullPage:true});}}});

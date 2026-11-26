@@ -10,7 +10,8 @@ export function logoSvg(tone,mode,variant) {
     const [r,g,b]=rgb(hex),max=Math.max(r,g,b),min=Math.min(r,g,b),l=(r*.2126+g*.7152+b*.0722)/255;
     const chromatic=max-min>35;
     if(l<.22)return tone.bg;
-    if(chromatic&&((g>r*1.13&&g>b*.95)||(r>b*1.35&&g>b*1.15&&l<.82)))return variant==="flat"?tone.accent:mix(tone.border,tone.accent,Math.min(1,l+.25));
+    if(chromatic&&g>r*1.13&&g>b*.95)return variant==="flat"?tone.accent:mix(tone.border,tone.accent,Math.min(1,l+.25));
+    if(chromatic&&r>b*1.35&&g>b*1.15&&l<.82){const secondary=tone.secondary||tone.accent;return variant==="flat"?secondary:mix(tone.border,secondary,Math.min(1,l+.25));}
     if(r>b*1.12&&g>b*1.06&&l<.5)return tone.border;
     if(variant==="flat")return l>.56?tone.fg:tone.muted;
     return mix(tone.muted,tone.fg,Math.max(0,Math.min(1,(l-.42)/.56)));

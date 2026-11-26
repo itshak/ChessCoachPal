@@ -1,5 +1,5 @@
 // Synthetic, deterministic fixtures. Never import teacher services or real records here.
-export type Tone = { bg: string; surface: string; fg: string; muted: string; accent: string; border: string };
+export type Tone = { bg: string; surface: string; fg: string; muted: string; accent: string; border: string; secondary?: string };
 export type Palette = { name: string; dark: Tone; light: Tone };
 export const palettes: Palette[] = [
   {name:"Slate & Periwinkle",dark:{bg:"#222326",surface:"#2C2D32",fg:"#F4F5F8",muted:"#B8BBC8",accent:"#A6A7D8",border:"#606271"},light:{bg:"#F3F4F8",surface:"#FFFFFF",fg:"#262735",muted:"#55586A",accent:"#494B91",border:"#85879A"}},
@@ -11,6 +11,9 @@ export const palettes: Palette[] = [
   {"name":"Graphite & Iris","dark":{"bg":"#1C1D23","surface":"#272932","fg":"#F1F2F8","muted":"#BBC0D0","accent":"#B3A9E8","border":"#686C80"},"light":{"bg":"#F4F2F9","surface":"#FFFFFF","fg":"#292638","muted":"#5D586F","accent":"#58418F","border":"#868098"}},
   {"name":"Storm & Cornflower","dark":{"bg":"#202630","surface":"#2B3441","fg":"#F0F4FA","muted":"#BAC8DB","accent":"#92B6EA","border":"#6A7D96"},"light":{"bg":"#EDF2F9","surface":"#FFFFFF","fg":"#24354B","muted":"#506279","accent":"#315C99","border":"#8294AB"}},
   {"name":"Ash & Silver Lilac","dark":{"bg":"#262428","surface":"#312E35","fg":"#F5F1F7","muted":"#C7BDC9","accent":"#D1BDD9","border":"#766B7C"},"light":{"bg":"#F5F1F6","surface":"#FFFFFF","fg":"#342D39","muted":"#675A6B","accent":"#72527F","border":"#95839B"}},
+  {"name":"Graphite, Iris & Champagne","dark":{"bg":"#1C1D23","surface":"#272932","fg":"#F1F2F8","muted":"#BBC0D0","accent":"#B3A9E8","border":"#686C80","secondary":"#CDB58D"},"light":{"bg":"#F4F2F9","surface":"#FFFFFF","fg":"#292638","muted":"#5D586F","accent":"#58418F","border":"#868098","secondary":"#76572E"}},
+  {"name":"Graphite, Iris & Eucalyptus","dark":{"bg":"#1C1D23","surface":"#272932","fg":"#F1F2F8","muted":"#BBC0D0","accent":"#B3A9E8","border":"#686C80","secondary":"#8DB8AC"},"light":{"bg":"#F4F2F9","surface":"#FFFFFF","fg":"#292638","muted":"#5D586F","accent":"#58418F","border":"#868098","secondary":"#35685A"}},
+  {"name":"Obsidian, Orchid & Ivory","dark":{"bg":"#211E26","surface":"#302A36","fg":"#F5F0E8","muted":"#C9BECF","accent":"#C2A5D5","border":"#796D82","secondary":"#D7C4AA"},"light":{"bg":"#F6F1F7","surface":"#FFFCF8","fg":"#352A3D","muted":"#68596E","accent":"#75488D","border":"#93839D","secondary":"#765B3E"}},
   {name:"Current brand (reference)",dark:{bg:"#0B1322",surface:"#0D1829",fg:"#F8F2E8",muted:"#A5B2B8",accent:"#23B7AB",border:"#2E4854"},light:{bg:"#F8F2E8",surface:"#FFFFFF",fg:"#0B1322",muted:"#625E58",accent:"#0A6F69",border:"#D5CABE"}},
 ];
 export const students = [

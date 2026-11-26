@@ -3,8 +3,8 @@ import {useEffect,useState,useRef} from "react";
 import {copy,palettes,sessions,students} from "../../../app/design-lab/fixtures.ts";
 import "./style.css";
 import {BrandMark,BrandStudy} from "./brand.jsx";
-const loaders={base:()=>import("./base.jsx"),aria:()=>import("./aria.jsx"),ariakit:()=>import("./ariakit.jsx"),ark:()=>import("./ark.jsx")};
-const foundations={base:"Base UI",aria:"React Aria Components",ariakit:"Ariakit",ark:"Ark UI"};
+const loaders={base:()=>import("./base.jsx"),aria:()=>import("./aria.jsx"),ariakit:()=>import("./ariakit.jsx"),ark:()=>import("./ark.jsx"),radix:()=>import("./radix.jsx"),headless:()=>import("./headless.jsx")};
+const foundations={base:"Base UI",aria:"React Aria Components",ariakit:"Ariakit",ark:"Ark UI",radix:"Radix UI + cmdk",headless:"Headless UI"};
 const views=["today","students","lesson"];
 function App(){
   const [foundation,setFoundation]=useState("ark");
@@ -30,24 +30,24 @@ function App(){
   const [receipt,setReceipt]=useState(null);
   const [validation,setValidation]=useState(false);
   const [command,setCommand]=useState(false);
-  const t=copy[locale],tone=palettes[palette][theme],direction=locale==="he"?"rtl":"ltr";
+  const t=copy[locale],rawTone=palettes[palette][theme],tone={...rawTone,secondary:rawTone.secondary||rawTone.accent},direction=locale==="he"?"rtl":"ltr";
   const selected=students.find(s=>s.id===student);
   const session=sessions.find(s=>s.id===lesson);
   const options=students.filter(s=>(includeArchived||!s.archived)&&(!workplace||s.workplace===workplace)).map(s=>({id:s.id,label:s.name+" · "+s.alias}));
   useEffect(()=>{let live=true;loaders[foundation]().then(module=>{if(live)setLoaded({foundation,module});}).catch(error=>{if(live)setLoadError(String(error));});return()=>{live=false;};},[foundation]);
-  useEffect(()=>{const el=document.documentElement;el.lang=locale;el.dir=direction;el.style.colorScheme=theme;for(const [key,value] of Object.entries(tone))el.style.setProperty("--"+key,value);},[locale,direction,theme,tone]);
+  useEffect(()=>{const el=document.documentElement;el.lang=locale;el.dir=direction;el.style.colorScheme=theme;for(const [key,value] of Object.entries(tone))el.style.setProperty("--"+key,value);},[locale,direction,theme,rawTone]);
   useEffect(()=>{function key(e){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();setCommand(true);}}window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);},[]);
   function chooseLesson(id){const s=sessions.find(s=>s.id===id);if(!s)return;setLesson(id);setObjective(s.objective);setAttendance([...s.participants]);setPrivateNote("");setSharedNote("");setReceipt(null);setValidation(false);setView("lesson");}
   function changeFoundation(id){setLoadError("");setFoundation(id);}
   const C=loaded?.foundation===foundation?loaded.module:null;
   return <main data-layout={layout} data-density={density}>
-    <header><h1>{t.lab}</h1><p>{t.notice}</p><p>Current review preference: Ark UI + Storm & Cornflower (not final approval).</p><div className="switches">
+    <header><h1>{t.lab}</h1><p>{t.notice}</p><p>Review shortlist: Ark UI, Graphite & Iris and Storm & Cornflower (not final approval).</p><div className="switches">
       <label>Foundation<select value={foundation} onChange={e=>changeFoundation(e.target.value)}>{Object.entries(foundations).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
-      <label>{t.palette}<select value={palette} onChange={e=>setPalette(Number(e.target.value))}>{palettes.map((p,i)=><option key={p.name} value={i}>{p.name}</option>)}</select></label>
-      <div className="swatches" aria-label={palettes[palette].name}>{["bg","surface","fg","accent"].map(role=><span key={role} title={role+" "+tone[role]} style={{background:tone[role]}} />)}</div><label>{t.theme}<select value={theme} onChange={e=>setTheme(e.target.value)}><option value="dark">{t.dark}</option><option value="light">{t.light}</option></select></label>
+      <label>{t.palette}<select aria-label={t.palette} value={palette} onChange={e=>setPalette(Number(e.target.value))}>{palettes.map((p,i)=><option key={p.name} value={i}>{p.name}</option>)}</select></label>
+      <div className="swatches" aria-label={palettes[palette].name}>{["bg","surface","fg","accent","secondary"].map(role=><span key={role} title={role+" "+tone[role]} style={{background:tone[role]}} />)}</div><label>{t.theme}<select value={theme} onChange={e=>setTheme(e.target.value)}><option value="dark">{t.dark}</option><option value="light">{t.light}</option></select></label>
       <label>{t.layout}<select value={layout} onChange={e=>setLayout(e.target.value)}>{["compact","editorial","hybrid"].map(k=><option key={k} value={k}>{t[k]}</option>)}</select></label>
       <label>{t.language}<select value={locale} onChange={e=>setLocale(e.target.value)}>{["en","he","ru"].map(k=><option key={k}>{k}</option>)}</select></label>
-    <label>Density<select value={density} onChange={e=>setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label><label>Logo<select value={logo} onChange={e=>setLogo(e.target.value)}><option value="original">Original</option><option value="palette">Palette-matched</option><option value="flat">Simplified paint</option></select></label><button type="button" aria-expanded={showBrand} onClick={()=>setShowBrand(v=>!v)}>Brand comparison</button>
+    <label>Density<select value={density} onChange={e=>setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label><label>Logo<select aria-label="Logo" value={logo} onChange={e=>setLogo(e.target.value)}><option value="original">Original</option><option value="palette">Palette-matched</option><option value="flat">Simplified paint</option></select></label><button type="button" aria-expanded={showBrand} onClick={()=>setShowBrand(v=>!v)}>Brand comparison</button>
     </div>{showBrand&&<BrandStudy tone={tone} mode={theme}/>}</header>
     {loadError&&<p role="alert">{loadError}</p>}
     {!C?<p role="status">Loading foundation…</p>:<C.Provider key={foundation} direction={direction} locale={locale}>
@@ -55,8 +55,8 @@ function App(){
       <aside className="sidebar"><div className="brand"><BrandMark tone={tone} mode={theme} variant={logo}/><strong>ChessCoachPal</strong></div>
       <C.Actions label={t.workplace+": "+(workplace||t.all)} items={[{id:"all",label:t.all},{id:"Club",label:"Club"},{id:"Private",label:"Private"}]} onPick={id=>setWorkplace(id==="all"?"":id)}/>
       <nav>{views.map(v=><button key={v} aria-current={v===view?"page":undefined} onClick={()=>setView(v)}>{t[v]}</button>)}</nav><button ref={commandTrigger} className="command-trigger" onClick={()=>setCommand(true)}>{t.commands}<kbd>Ctrl K</kbd></button></aside>
-      <section className="content"><div className="workspace-context">ChessCoachPal <span aria-hidden="true">/</span> {workplace||t.all}</div><h2>{t[view]}</h2>
-      {view==="today"&&<><div className="rows">{sessions.filter(s=>!workplace||s.workplace===workplace).map(s=><button className="row" key={s.id} onClick={()=>chooseLesson(s.id)}><time>{s.time}</time><span><strong>{s.title}</strong><small>{s.objective}</small></span><span>{s.workplace}</span></button>)}</div><h3>{t.pending}</h3><p>{t.exceptions}</p></>}
+      <section className="content"><div className="workspace-context"><span className="brand-secondary">ChessCoachPal</span> <span aria-hidden="true">/</span> {workplace||t.all}</div><h2>{t[view]}</h2>
+      {view==="today"&&<><div className="rows">{sessions.filter(s=>!workplace||s.workplace===workplace).map(s=><button className="row" key={s.id} onClick={()=>chooseLesson(s.id)}><time>{s.time}</time><span><strong>{s.title}</strong><small>{s.objective}</small></span><span>{s.workplace}</span></button>)}</div><h3>{t.pending}</h3><p>{t.exceptions}</p><section className="material-study"><h3>Teaching materials</h3><p>Rook endgames · Study collection</p></section></>}
       {view==="students"&&<><C.Check label={t.archived} checked={includeArchived} onChange={setIncludeArchived}/><C.Picker key={workplace+includeArchived} label={t.search} items={options} onPick={setStudent}/><div className="rows">{options.map(o=><button key={o.id} className="row" aria-pressed={o.id===student} onClick={()=>setStudent(o.id)}>{o.label}</button>)}</div><section className="panel"><h3>{t.details}: <bdi>{selected.name}</bdi></h3><p>{t.strength}: {selected.strength}/10 · {t.rating}: {selected.rating}</p><p>{selected.history}</p></section></>}
       {view==="lesson"&&<form noValidate onSubmit={e=>{e.preventDefault();setValidation(true);if(objective.trim())setReceipt({lesson,objective,attendance:[...attendance],privateNote,sharedNote});}}>
         <C.Actions label={t.select+": "+session.title} items={sessions.map(s=>({id:s.id,label:s.time+" "+s.title}))} onPick={chooseLesson}/>

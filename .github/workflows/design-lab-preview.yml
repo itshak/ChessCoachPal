@@ -24,7 +24,7 @@ jobs:
         run: npm run build
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Test all four foundations and focused brand review
+      - name: Test all six foundations and focused brand review
         run: npm test
       - name: Preserve comparison evidence
         if: always()

@@ -14,7 +14,10 @@
     "@ariakit/react": "0.4.37",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "@ark-ui/react": "5.37.0"
+    "@ark-ui/react": "5.37.0",
+    "radix-ui": "1.4.3",
+    "cmdk": "1.1.1",
+    "@headlessui/react": "2.2.10"
   },
   "devDependencies": {
     "vite": "7.3.1",
