@@ -1670,6 +1670,21 @@
       "evidenceTest": "e2e/parity-federation-ratings.spec.ts"
     },
     {
+      "path": "app/api/students/[id]/ratings/consent/route.ts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "kind": "teacher",
+      "parity": "mcp",
+      "existingTools": [
+        "ccp_student_ratings_consent_get",
+        "ccp_student_ratings_consent_set"
+      ],
+      "explanation": "Signed teacher and delegated OAuth review the exact saved provider account and shared owner-scoped standing permission. Explicit decision and exact inputs share strict consent apply, atomic queue, replay and denial. Does not call a provider or schedule a worker.",
+      "evidenceTest": "e2e/parity-online-rating-consent.spec.ts"
+    },
+    {
       "path": "app/api/students/[id]/ratings/route.ts",
       "methods": [
         "GET",
@@ -2072,6 +2087,7 @@
     "components/teacher/StudentLessonNotes.tsx",
     "components/teacher/StudentNotesEditor.tsx",
     "components/teacher/StudentPortalSharingPanel.tsx",
+    "components/teacher/StudentAutomaticRatingsPanel.tsx",
     "components/teacher/StudentRatingHistoryPanel.tsx",
     "components/teacher/StudentTrainingPlansPanel.tsx",
     "components/teacher/StudyChapterEvidencePanel.tsx",

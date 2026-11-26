@@ -12,10 +12,11 @@ const hooks=registerHooks({resolve(specifier,context,next){
 }});
 const {runOnlineRatingLease}=await import("../../lib/server/online-rating-worker.ts");
 const {fetchOnlineRatingPayload}=await import("../../lib/server/online-rating-transport.ts");
+const {onlineRatingWorkerAuthority}=await import("../../lib/server/online-rating-worker-authority.ts");
 hooks.deregister();
 const origin=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL);
 assert(origin.protocol==="http:"&&origin.hostname==="127.0.0.1"&&origin.port&&origin.href===origin.origin+"/");
-assert.ok(process.env.SUPABASE_SERVICE_ROLE_KEY);
+assert.ok(process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 const admin=createClient(origin.origin,process.env.SUPABASE_SERVICE_ROLE_KEY,{
  auth:{persistSession:false,autoRefreshToken:false},
 });
@@ -27,7 +28,7 @@ async function data(request){
 const handle="SyntheticWorkerProbe";
 const inputDigest="a".repeat(64);
 
-async function setup(t,provider="lichess"){
+async function setup(t,provider="lichess",triggerKind="manual"){
  const email="worker-fixture-"+randomUUID()+"@example.com";
  const {user}=await data(admin.auth.admin.createUser({email,password:"Synthetic-Ratings-123!",email_confirm:true}));
  const teacherId=user.id;
@@ -36,7 +37,11 @@ async function setup(t,provider="lichess"){
   await data(admin.auth.admin.deleteUser(teacherId));
  });
  await data(admin.from("teachers").insert({id:teacherId,email,display_name:"Synthetic rating teacher"}));
- const student=await data(admin.from("students").insert({
+ const teacher=createClient(origin.origin,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ await data(teacher.auth.signInWithPassword({email,password:"Synthetic-Ratings-123!"}));
+ const student=await data(teacher.from("students").insert({
   teacher_id:teacherId,name:"Synthetic rating student",lichess_username:handle,chesscom_username:handle,
  }).select("id").single());
  const studentId=student.id;
@@ -47,7 +52,7 @@ async function setup(t,provider="lichess"){
  const consentId=consent.id;
  const {id:jobId}=await data(admin.from("student_rating_refresh_jobs").insert({
   teacher_id:teacherId,student_id:studentId,consent_id:consentId,provider,
-  source_username:handle,handle_revision:1,input_digest:inputDigest,idempotency_key:randomUUID(),trigger_kind:"manual",
+  source_username:handle,handle_revision:1,input_digest:inputDigest,idempotency_key:randomUUID(),trigger_kind:triggerKind,
  }).select("id").single());
  const ids={teacherId,jobId};
  const db=()=>({
@@ -64,31 +69,13 @@ async function setup(t,provider="lichess"){
  const revoke=()=>data(admin.from("student_rating_sync_consents").update({enabled:false,revoked_at:new Date().toISOString()}).eq("id",consentId));
  const deps={
   enabled:()=>enabled,
-  claim:({teacherId,jobId})=>data(admin.rpc("ccp_rating_refresh_claim",{p_teacher_id:teacherId,p_job_id:jobId})),
-  admit:async lease=>{
-   // Fixture-only re-read; a future production admission adapter requires separate review.
-   const [{archived_at,lichess_username,chesscom_username},binding,job,registry]=await Promise.all([
-    data(admin.from("students").select("archived_at,lichess_username,chesscom_username")
-     .eq("teacher_id",teacherId).eq("id",studentId).single()),
-    data(admin.from("student_rating_sync_consents").select("id,enabled,revoked_at,source_username,handle_revision")
-     .eq("teacher_id",teacherId).eq("student_id",studentId).eq("provider",provider).single()),
-    db().job(),
-    data(admin.from("rating_providers").select("provider_kind,active").eq("code",provider).single()),
-   ]);
-   return archived_at===null&&lease.studentId===studentId&&binding.id===consentId&&binding.enabled&&
-    binding.revoked_at===null&&binding.source_username===lease.sourceUsername&&binding.handle_revision===lease.handleRevision&&
-    registry.active&&registry.provider_kind==="online"&&
-    (provider==="lichess"?lichess_username:chesscom_username)===lease.sourceUsername&&
-    job.status==="running"&&job.lease_token===lease.leaseToken&&job.attempt_count===lease.attempt&&
-    Date.parse(job.lease_until)>Date.now();
-  },
+  ...onlineRatingWorkerAuthority(admin),
   transport:(key,username)=>fetchOnlineRatingPayload(key,username,async url=>{
    providerRequests++;
    assert.equal(url,key==="lichess"?"https://lichess.org/api/user/"+handle:
     "https://api.chess.com/pub/player/"+handle+"/stats");
    return key==="lichess"?Response.json({perfs:{rapid:{rating:1725,prov:false}}}):new Response(null,{status:429});
   },{}),
-  finalize:attempt=>data(admin.rpc("ccp_rating_refresh_finalize",attempt)),
  };
  return {ids,deps,db,disable,revoke,requests:()=>providerRequests};
 }
@@ -146,4 +133,13 @@ test("confirmed revocation before the fresh recheck stops egress; during egress 
   assert.deepEqual(await f.db().receipts(),phase==="claim"?[]:
    [{outcome:"stale",snapshots_written:0,error_code:"RATING_CONTEXT_STALE"}]);
  }
+});
+
+test("unsupported backfill is not claimed, finalized, or sent",async t=>{
+ const fixture=await setup(t,"lichess","history_backfill");
+ assert.deepEqual(await runOnlineRatingLease(fixture.ids,fixture.deps),{status:"not_admitted"});
+ assert.equal(fixture.requests(),0);
+ assert.equal((await fixture.db().job()).attempt_count,0);
+ assert.deepEqual(await fixture.db().receipts(),[]);
+ assert.deepEqual(await fixture.db().snapshots(),[]);
 });

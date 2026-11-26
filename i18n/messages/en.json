@@ -1040,6 +1040,28 @@
     "tryAgain": "Try Again",
     "loading": "Loading..."
   },
+  "automaticRatings": {
+    "title": "Automatic online ratings",
+    "intro": "Each provider is off by default. This permission covers only ratings from the saved public account. It does not verify ownership, give access to private games, or change teacher-assessed strength.",
+    "loading": "Checking permission…",
+    "enabled": "Permission on",
+    "disabled": "Permission off",
+    "account": "Saved public username",
+    "unavailable": "Save a valid public username on an active learner before changing this permission.",
+    "loadError": "Could not load permission.",
+    "saveError": "Could not verify whether the change saved. You can retry the same decision.",
+    "changed": "The account or permission changed. Review the current details before trying again.",
+    "saved": "Permission decision saved.",
+    "reviewDisable": "Review turning off",
+    "reviewEnable": "Review turning on",
+    "refresh": "Reload permissions",
+    "confirmTitle": "Review the exact account",
+    "confirmDisable": "Stop automatic rating requests for {username} on {provider}. Previously recorded ratings stay.",
+    "confirmEnable": "Allow background public rating requests for {username} on {provider}. This will queue a first check; it does not contact the provider now.",
+    "disable": "Turn off automatic ratings",
+    "enable": "Allow automatic ratings",
+    "cancel": "Cancel"
+  },
   "ratingHistory": {
     "aria": "Online chess rating history",
     "title": "Online ratings by source and time control",
