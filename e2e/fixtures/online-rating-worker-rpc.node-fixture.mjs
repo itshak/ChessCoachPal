@@ -13,6 +13,7 @@ const hooks=registerHooks({resolve(specifier,context,next){
 const {runOnlineRatingLease}=await import("../../lib/server/online-rating-worker.ts");
 const {fetchOnlineRatingPayload}=await import("../../lib/server/online-rating-transport.ts");
 const {onlineRatingWorkerAuthority}=await import("../../lib/server/online-rating-worker-authority.ts");
+const {onlineRatingQueueDiscovery}=await import("../../lib/server/online-rating-queue.ts");
 hooks.deregister();
 const origin=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL);
 assert(origin.protocol==="http:"&&origin.hostname==="127.0.0.1"&&origin.port&&origin.href===origin.origin+"/");
@@ -142,4 +143,27 @@ test("unsupported backfill is not claimed, finalized, or sent",async t=>{
  assert.equal((await fixture.db().job()).attempt_count,0);
  assert.deepEqual(await fixture.db().receipts(),[]);
  assert.deepEqual(await fixture.db().snapshots(),[]);
+});
+
+test("real due discovery orders expired and ready work without touching future or backfill jobs",async t=>{
+ const ready=await setup(t);
+ const expired=await setup(t);
+ const future=await setup(t);
+ const backfill=await setup(t,"lichess","history_backfill");
+ const other=await setup(t,"chesscom");
+ const at=Date.now();
+ const time=delta=>new Date(at+delta).toISOString();
+ const set=(f,fields)=>data(admin.from("student_rating_refresh_jobs").update(fields).eq("id",f.ids.jobId));
+ await set(ready,{status:"retry",run_after:time(-1000)});
+ await set(expired,{status:"running",lease_token:randomUUID(),lease_until:time(-60000),attempt_count:1});
+ await set(future,{status:"pending",run_after:time(60000)});
+ await set(backfill,{status:"pending",run_after:time(-86400000)});
+ await set(other,{status:"pending",run_after:time(-1000)});
+ const discover=onlineRatingQueueDiscovery(admin,()=>at);
+ const candidate=(fixture,provider)=>({...fixture.ids,provider});
+ assert.deepEqual(await discover("lichess",2),[candidate(expired,"lichess"),candidate(ready,"lichess")]);
+ assert.deepEqual(await discover("chesscom",1),[candidate(other,"chesscom")]);
+ assert.equal((await backfill.db().job()).attempt_count,0);
+ assert.equal((await ready.db().job()).attempt_count,0);
+ assert.equal((await expired.db().job()).status,"running");
 });
