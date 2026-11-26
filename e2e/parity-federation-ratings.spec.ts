@@ -262,3 +262,90 @@ test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess cor
   expect((await db.auth.admin.deleteUser(foreignId)).error).toBeNull();
  }
 });
+
+test("PARITY: FIDE effective-date review is keyboard usable in English, Hebrew and Russian",async({page,request})=>{
+ test.setTimeout(90_000);
+ const call=await delegatedTool(page,request);
+ const original=await call("ccp_teacher_profile_get",{});
+ expect(original.error).toBeUndefined();
+ const initial=original.data.preferredLocale as "en"|"he"|"ru";
+ const created=await call("ccp_students_create",{name:"FIDE language fixture "+randomUUID(),idempotencyKey:randomUUID()});
+ expect(created.error).toBeUndefined();
+ const studentId=created.data.entityId as string;
+ const fideId="900000000148";
+ const profile=await page.request.put(`/api/students/${studentId}`,{headers:{origin},data:{fideId}});
+ expect(profile.status(),await profile.text()).toBe(200);
+ const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const teacher=await db.from("teachers").select("id").eq("email",SEED_TEACHER.email).single();
+ expect(teacher.error).toBeNull();
+ const seeded=await db.from("student_rating_snapshots").insert({
+  teacher_id:teacher.data!.id,student_id:studentId,provider:"fide",time_control:"standard",
+  rating:1837,external_player_id:fideId,provider_list_version:"fixture-2025-02",
+  effective_at:"2025-02-01",observed_at:"2025-03-01T00:00:00Z",fetched_at:"2025-03-01T00:00:00Z",
+  source:"provider_api",verification_state:"provider_published",source_url:"https://example.invalid/fide",
+  source_digest:"b".repeat(64),request_id:randomUUID(),games:0,
+ });
+ expect(seeded.error).toBeNull();
+ const update=async(preferredLocale:"en"|"he"|"ru")=>{
+  const result=await page.request.put("/api/auth/update-profile",{data:{preferredLocale}});
+  expect(result.status(),await result.text()).toBe(200);
+ };
+ const date="2025-02-07";
+ const parity=await call("ccp_student_federations_get",{studentId,fideOn:date});
+ expect(parity.error).toBeUndefined();
+ expect(parity.data.fideEffectiveEvidence.fide).toMatchObject([
+  {timeControl:"standard",status:"recorded",snapshot:{rating:1837}},
+  {timeControl:"rapid",status:"not_recorded",snapshot:null},
+  {timeControl:"blitz",status:"not_recorded",snapshot:null},
+ ]);
+ const locales=[
+  {lang:"en",dir:"ltr",date:"FIDE effective date",open:"Review effective date",result:"FIDE effective-date result",
+   through:"Requested through:",standard:"Standard",rapid:"Rapid",blitz:"Blitz",
+   missing:"No verified rating evidence recorded",published:"Verified publication"},
+  {lang:"he",dir:"rtl",date:"תאריך תחולה של פיד״ה",open:"סקירת תאריך התחולה",result:"תוצאות לפי תאריך התחולה של פיד״ה",
+   through:"התאריך שנבחר:",standard:"קלאסי",rapid:"מהיר",blitz:"בזק",
+   missing:"לא נשמרו ראיות דירוג מאומתות",published:"פרסום רשמי מאומת"},
+  {lang:"ru",dir:"ltr",date:"Дата вступления рейтинга ФИДЕ в силу",open:"Проверить данные на дату",result:"Данные ФИДЕ на выбранную дату",
+   through:"Выбранная дата:",standard:"Классика",rapid:"Рапид",blitz:"Блиц",
+   missing:"Нет подтверждённых данных о рейтинге",published:"Официально подтверждено"},
+ ] as const;
+ await page.setViewportSize({width:390,height:844});
+ try{
+  for(const l of locales){
+   await test.step(l.lang,async()=>{
+    await update(l.lang);
+    await page.goto(`/students/${studentId}`);
+    await expect(page.locator("html")).toHaveAttribute("lang",l.lang);
+    await expect(page.locator("html")).toHaveAttribute("dir",l.dir);
+    const field=page.getByLabel(l.date,{exact:true});
+    await field.fill(date);
+    await expect(field).toHaveValue(date);
+    const submit=page.getByRole("button",{name:l.open,exact:true});
+    await submit.focus();
+    await expect(submit).toBeFocused();
+    const response=page.waitForResponse(r=>r.url().endsWith(`/api/students/${studentId}/federations?fideOn=${date}`));
+    await page.keyboard.press("Enter");
+    const signed=await response;
+    expect(signed.status(),await signed.text()).toBe(200);
+    expect((await signed.json()).fideEffectiveEvidence).toEqual(parity.data.fideEffectiveEvidence);
+    const result=page.getByRole("region",{name:l.result,exact:true});
+    await expect(result).toBeVisible();
+    await expect(result).toHaveAttribute("aria-live","polite");
+    await expect(result).toHaveCSS("direction",l.dir);
+    await expect(result).toContainText(l.through);
+    await expect(result.locator(`time[datetime="${date}"] bdi`)).toHaveText(date);
+    const categories=result.getByRole("listitem");
+    await expect(categories).toHaveCount(3);
+    await expect(categories.nth(0)).toContainText(`${l.standard}: 1837 · ${l.published}`);
+    await expect(categories.nth(0).locator('time[datetime="2025-02-01"] bdi')).toHaveText("2025-02-01");
+    await expect(categories.nth(0).getByText("fixture-2025-02",{exact:true})).toBeVisible();
+    await expect(categories.nth(1)).toHaveText(`${l.rapid}: ${l.missing}`);
+    await expect(categories.nth(2)).toHaveText(`${l.blitz}: ${l.missing}`);
+    const width=await result.evaluate(element=>element.scrollWidth-element.clientWidth);
+    expect(width,`${l.lang} date review horizontal overflow`).toBeLessThanOrEqual(2);
+   });
+  }
+ }finally{await update(initial);}
+});
