@@ -7,7 +7,7 @@ import {createClient} from "@supabase/supabase-js";
 
 const hooks=registerHooks({resolve(specifier,context,next){
  if(specifier==="server-only")return {shortCircuit:true,url:"data:text/javascript,export%20%7B%7D"};
- if(["../chess-public-ratings","./online-rating-transport"].includes(specifier))return next(specifier+".ts",context);
+ if(["../chess-public-ratings","./online-rating-transport","./online-rating-cooldown"].includes(specifier))return next(specifier+".ts",context);
  return next(specifier,context);
 }});
 const {runOnlineRatingLease}=await import("../../lib/server/online-rating-worker.ts");

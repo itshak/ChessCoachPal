@@ -1,4 +1,5 @@
 import "server-only";
+import {onlineRatingCooldown,type RatingCooldown} from "./online-rating-cooldown";
 import type {RatingSnapshot} from "@/lib/chess-public-ratings";
 
 type Provider=RatingSnapshot["provider"];
@@ -7,6 +8,14 @@ export class StudentRatingError extends Error {
  readonly code:string;
  constructor(status:number,code:string,message:string){
   super(message);this.status=status;this.code=code;
+ }
+}
+/** Internal hint only. HTTP and MCP callers still receive the existing error shape. */
+export class OnlineRatingProviderLimited extends StudentRatingError {
+ readonly cooldown:RatingCooldown;
+ constructor(cooldown:RatingCooldown){
+  super(429,"RATE_LIMITED","Rating provider rate limit; retry later");
+  this.cooldown=cooldown;
  }
 }
 const fail=(status:number,code:string,message:string)=>new StudentRatingError(status,code,message);
@@ -75,7 +84,8 @@ export async function fetchOnlineRatingPayload(provider:Provider,username:string
  }
  if(!response.ok){
   discard(response.body);
-  if(response.status===429)throw fail(429,"RATE_LIMITED","Rating provider rate limit; retry later");
+  if(response.status===429)throw new OnlineRatingProviderLimited(
+   onlineRatingCooldown(provider,response.headers.get("retry-after"),Date.now()));
   if(response.status===404)throw fail(404,"ACCOUNT_NOT_FOUND","Public chess account not found");
   if(response.status===401||response.status===403)
    throw fail(403,"PROVIDER_DENIED","Public rating lookup was denied");
