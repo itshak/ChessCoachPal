@@ -8,6 +8,12 @@ import {teacherStudentProfile,StudentProfileError} from "./student-profile-servi
  * a student joined a national federation or that an ID was verified.
  */
 export const federationCode=z.string().regex(/^[A-Z]{3}$/);
+const isoToday=()=>new Date().toISOString().slice(0,10);
+export const federationSummaryInput=z.object({
+ studentId:z.uuid(),
+ fideOn:z.iso.date().refine(date=>date>="1900-01-01"&&date<=isoToday(),
+  "Expected a real date from 1900 through today UTC").optional(),
+}).strict();
 export const federationMembershipCreateSchema=z.object({
   studentId:z.uuid(),federationCode,playerId:z.string().trim().min(1).max(64),
   idempotencyKey:z.uuid(),confirmed:z.literal(true),
@@ -56,9 +62,8 @@ function safeMembership(r:Row){
   playerId:r.player_id,membershipStatus:r.membership_status,verifiedAt:r.verified_at,
   sourceUrl:r.source_url,revision:Number(r.revision),createdAt:r.created_at};
 }
-async function currentFideEvidence(db:Db,teacherId:string,studentId:string,fideId:string|null){
+async function effectiveFideEvidence(db:Db,teacherId:string,studentId:string,fideId:string|null,effectiveThrough:string){
  const linkedId=fideId&&/^[0-9]+$/.test(fideId)?fideId:null;
- const today=new Date().toISOString().slice(0,10);
  return Promise.all(fideCategories.map(async timeControl=>{
   if(!linkedId)return {timeControl,status:"not_linked",snapshot:null} as const;
   // This window is independent of the bounded mixed history and its observed-at ordering.
@@ -67,7 +72,7 @@ async function currentFideEvidence(db:Db,teacherId:string,studentId:string,fideI
    .eq("teacher_id",teacherId).eq("student_id",studentId)
    .eq("provider","fide").eq("time_control",timeControl)
    .eq("source","provider_api").eq("verification_state","provider_published")
-   .eq("external_player_id",linkedId).lte("effective_at",today)
+   .eq("external_player_id",linkedId).lte("effective_at",effectiveThrough)
    .order("effective_at",{ascending:false}).limit(2);
   if(error)return fail(503,"FEDERATION_UNAVAILABLE","Federation evidence could not be read");
   const rows=data??[];
@@ -80,9 +85,12 @@ async function currentFideEvidence(db:Db,teacherId:string,studentId:string,fideI
   return {timeControl,status:"recorded",snapshot:first} as const;
  }));
 }
-export async function federationStudentSummary(db:Db,teacherId:string,studentId:string){
+export async function federationStudentSummary(db:Db,teacherId:string,studentId:string,fideOn?:string){
+ const parsed=federationSummaryInput.safeParse({studentId,fideOn});
+ if(!parsed.success)return fail(400,"VALIDATION_ERROR","Invalid federation summary filters");
+ const today=isoToday();
  const student=await requireStudent(db,teacherId,studentId);
- const [member,history,teacher,fideEvidence]=await Promise.all([
+ const [member,history,teacher,fideEvidence,effectiveEvidence]=await Promise.all([
   db.from("student_federation_memberships").select(membershipColumns)
    .eq("teacher_id",teacherId).eq("student_id",studentId).order("federation_code"),
   db.from("student_rating_snapshots").select(historyColumns)
@@ -90,7 +98,8 @@ export async function federationStudentSummary(db:Db,teacherId:string,studentId:
    .in("provider",["fide","icf"])
    .order("observed_at",{ascending:false}).order("id",{ascending:false}).limit(100),
   db.from("teachers").select("default_national_federation_code").eq("id",teacherId).maybeSingle(),
-  currentFideEvidence(db,teacherId,studentId,student.fide_id??null),
+  effectiveFideEvidence(db,teacherId,studentId,student.fide_id??null,today),
+  fideOn&&fideOn!==today?effectiveFideEvidence(db,teacherId,studentId,student.fide_id??null,fideOn):undefined,
  ]);
  if(member.error||history.error||teacher.error||!teacher.data)
   return fail(503,"FEDERATION_UNAVAILABLE","Federation records could not be read");
@@ -103,6 +112,10 @@ export async function federationStudentSummary(db:Db,teacherId:string,studentId:
   memberships:(member.data??[]).map(r=>safeMembership(r)),
   snapshots:history.data??[],
   currentEvidence:{fide:fideEvidence},
+  // Effective now from the stored editions for the currently linked ID.
+  // This is not an audit of what the app knew, nor of the ID linked, on that date.
+  ...(fideOn?{fideEffectiveEvidence:{throughDate:fideOn,
+    basis:"stored_editions_for_current_link" as const,fide:effectiveEvidence??fideEvidence}}:{}),
   retrieval:{fide:"not_automated",icf:"manual_only"} as const,
   sourceWarning:"Teacher-entered FIDE/ICF identities and ratings are UNVERIFIED until independently matched against an authorized official source; no value changes chess strength or mastery."};
 }

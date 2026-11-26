@@ -176,7 +176,7 @@ import {
  paymentAllocate,financialReverse,FinanceLedgerError,
 } from "@/lib/server/finance-ledger-service";
 import {
- federationStudentSummary,federationMembershipCreate,federationMembershipUpdate,
+ federationStudentSummary,federationSummaryInput,federationMembershipCreate,federationMembershipUpdate,
  federationManualRatingRecord,federationDefaultGet,federationDefaultSet,
  federationDefaultUpdateSchema,federationMembershipCreateSchema,
  federationMembershipUpdateSchema,federationManualRatingSchema,FederationError,
@@ -728,8 +728,8 @@ const catalogue = [
   },
   {
     name:"ccp_student_federations_get",
-    description:"Read optional federation identities and separate rating history for one owned learner. FIDE evidence is the latest unambiguous stored edition for the exact linked ID, not a live lookup; prior IDs remain in history. Israeli ratings are manual-only. Teacher-entered ratings are unverified and do not change assessed strength.",
-    schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
+    description:"Read optional federation IDs and independent rating history for one owned learner. Current FIDE evidence is the latest unambiguous stored edition for the exact linked ID. Optional fideOn (YYYY-MM-DD through today UTC) adds a separate effective-date result for the currently linked ID from editions now stored; it does not claim what was known or linked on that date. Prior IDs remain in history. Israeli data is manual-only; teacher entries are unverified. No live lookup or change to strength.",
+    schema:federationSummaryInput,scope:"coach:read",readOnly:true,
   },
   {
     name:"ccp_student_federations_link",
@@ -2436,8 +2436,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await payerAssignmentEnd(db,teacherId,a)};
       }
       case "ccp_student_federations_get": {
-        const a=args as {studentId:string};
-        return {data:await federationStudentSummary(db,teacherId,a.studentId)};
+        const a=args as z.infer<typeof federationSummaryInput>;
+        return {data:await federationStudentSummary(db,teacherId,a.studentId,a.fideOn)};
       }
       case "ccp_student_federations_link": {
         const a=args as Parameters<typeof federationMembershipCreate>[2];

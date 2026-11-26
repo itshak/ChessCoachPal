@@ -3309,6 +3309,14 @@
     "addUnverifiedMembership": "Add unverified ID",
     "save": "Save ID",
     "edit": "Edit ID",
+    "effectiveReview": {
+      "heading": "FIDE evidence by effective date",
+      "explanation": "This uses editions stored now for the currently linked ID. It does not show what was known or linked on that date.",
+      "date": "FIDE effective date",
+      "open": "Review effective date",
+      "result": "FIDE effective-date result",
+      "through": "Requested through:"
+    },
     "currentEvidence": "Latest recorded evidence for linked FIDE ID",
     "evidenceHistory": "Federation rating evidence history",
     "not_automated": "FIDE lookup is not automated. These are stored observations, not a live rating check.",

@@ -1666,7 +1666,7 @@
         "ccp_student_federations_get",
         "ccp_student_federations_link"
       ],
-      "explanation": "Owner-scoped linked-ID FIDE evidence, separate retained provenance and manual Israeli evidence, national identities and teacher federation hint use shared browser/MCP service with strict schema, tenant authorization, replay and explicit consent. e2e/parity-federation-ratings.spec.ts",
+      "explanation": "Owner-scoped linked-ID FIDE evidence with optional date-effective stored editions and no claim of historic identity/knowledge, separate retained provenance and manual Israeli evidence, national identities and teacher federation hint use shared browser/MCP service with strict schema, tenant authorization, replay and explicit consent. e2e/parity-federation-ratings.spec.ts",
       "evidenceTest": "e2e/parity-federation-ratings.spec.ts"
     },
     {
