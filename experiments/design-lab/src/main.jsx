@@ -1,15 +1,20 @@
 import {createRoot} from "react-dom/client";
-import {useEffect,useState} from "react";
+import {useEffect,useState,useRef} from "react";
 import {copy,palettes,sessions,students} from "../../../app/design-lab/fixtures.ts";
 import "./style.css";
+import {BrandMark,BrandStudy} from "./brand.jsx";
 const loaders={base:()=>import("./base.jsx"),aria:()=>import("./aria.jsx"),ariakit:()=>import("./ariakit.jsx"),ark:()=>import("./ark.jsx")};
 const foundations={base:"Base UI",aria:"React Aria Components",ariakit:"Ariakit",ark:"Ark UI"};
 const views=["today","students","lesson"];
 function App(){
-  const [foundation,setFoundation]=useState("ariakit");
+  const [foundation,setFoundation]=useState("ark");
   const [loaded,setLoaded]=useState(null);
   const [loadError,setLoadError]=useState("");
-  const [palette,setPalette]=useState(0);
+  const [palette,setPalette]=useState(()=>palettes.findIndex(p=>p.name==="Storm & Cornflower"));
+  const [density,setDensity]=useState("comfortable");
+  const [logo,setLogo]=useState("palette");
+  const [showBrand,setShowBrand]=useState(false);
+  const commandTrigger=useRef(null);
   const [theme,setTheme]=useState("dark");
   const [layout,setLayout]=useState("compact");
   const [locale,setLocale]=useState("en");
@@ -35,21 +40,22 @@ function App(){
   function chooseLesson(id){const s=sessions.find(s=>s.id===id);if(!s)return;setLesson(id);setObjective(s.objective);setAttendance([...s.participants]);setPrivateNote("");setSharedNote("");setReceipt(null);setValidation(false);setView("lesson");}
   function changeFoundation(id){setLoadError("");setFoundation(id);}
   const C=loaded?.foundation===foundation?loaded.module:null;
-  return <main data-layout={layout}>
-    <header><h1>{t.lab}</h1><p>{t.notice}</p><p>Current review preference: Ariakit + Slate & Periwinkle (not final approval).</p><div className="switches">
+  return <main data-layout={layout} data-density={density}>
+    <header><h1>{t.lab}</h1><p>{t.notice}</p><p>Current review preference: Ark UI + Storm & Cornflower (not final approval).</p><div className="switches">
       <label>Foundation<select value={foundation} onChange={e=>changeFoundation(e.target.value)}>{Object.entries(foundations).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
       <label>{t.palette}<select value={palette} onChange={e=>setPalette(Number(e.target.value))}>{palettes.map((p,i)=><option key={p.name} value={i}>{p.name}</option>)}</select></label>
       <div className="swatches" aria-label={palettes[palette].name}>{["bg","surface","fg","accent"].map(role=><span key={role} title={role+" "+tone[role]} style={{background:tone[role]}} />)}</div><label>{t.theme}<select value={theme} onChange={e=>setTheme(e.target.value)}><option value="dark">{t.dark}</option><option value="light">{t.light}</option></select></label>
       <label>{t.layout}<select value={layout} onChange={e=>setLayout(e.target.value)}>{["compact","editorial","hybrid"].map(k=><option key={k} value={k}>{t[k]}</option>)}</select></label>
       <label>{t.language}<select value={locale} onChange={e=>setLocale(e.target.value)}>{["en","he","ru"].map(k=><option key={k}>{k}</option>)}</select></label>
-    </div></header>
+    <label>Density<select value={density} onChange={e=>setDensity(e.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label><label>Logo<select value={logo} onChange={e=>setLogo(e.target.value)}><option value="original">Original</option><option value="palette">Palette-matched</option><option value="flat">Simplified paint</option></select></label><button type="button" aria-expanded={showBrand} onClick={()=>setShowBrand(v=>!v)}>Brand comparison</button>
+    </div>{showBrand&&<BrandStudy tone={tone} mode={theme}/>}</header>
     {loadError&&<p role="alert">{loadError}</p>}
     {!C?<p role="status">Loading foundation…</p>:<C.Provider key={foundation} direction={direction} locale={locale}>
     <div className="workspace" data-foundation={foundation}>
-      <aside className="sidebar"><div className="brand"><img src="./chesscoachpal.svg" alt="" width="40" height="40"/><strong>ChessCoachPal</strong></div>
+      <aside className="sidebar"><div className="brand"><BrandMark tone={tone} mode={theme} variant={logo}/><strong>ChessCoachPal</strong></div>
       <C.Actions label={t.workplace+": "+(workplace||t.all)} items={[{id:"all",label:t.all},{id:"Club",label:"Club"},{id:"Private",label:"Private"}]} onPick={id=>setWorkplace(id==="all"?"":id)}/>
-      <nav>{views.map(v=><button key={v} aria-current={v===view?"page":undefined} onClick={()=>setView(v)}>{t[v]}</button>)}</nav><button onClick={()=>setCommand(true)}>{t.commands}</button></aside>
-      <section className="content"><h2>{t[view]}</h2>
+      <nav>{views.map(v=><button key={v} aria-current={v===view?"page":undefined} onClick={()=>setView(v)}>{t[v]}</button>)}</nav><button ref={commandTrigger} className="command-trigger" onClick={()=>setCommand(true)}>{t.commands}<kbd>Ctrl K</kbd></button></aside>
+      <section className="content"><div className="workspace-context">ChessCoachPal <span aria-hidden="true">/</span> {workplace||t.all}</div><h2>{t[view]}</h2>
       {view==="today"&&<><div className="rows">{sessions.filter(s=>!workplace||s.workplace===workplace).map(s=><button className="row" key={s.id} onClick={()=>chooseLesson(s.id)}><time>{s.time}</time><span><strong>{s.title}</strong><small>{s.objective}</small></span><span>{s.workplace}</span></button>)}</div><h3>{t.pending}</h3><p>{t.exceptions}</p></>}
       {view==="students"&&<><C.Check label={t.archived} checked={includeArchived} onChange={setIncludeArchived}/><C.Picker key={workplace+includeArchived} label={t.search} items={options} onPick={setStudent}/><div className="rows">{options.map(o=><button key={o.id} className="row" aria-pressed={o.id===student} onClick={()=>setStudent(o.id)}>{o.label}</button>)}</div><section className="panel"><h3>{t.details}: <bdi>{selected.name}</bdi></h3><p>{t.strength}: {selected.strength}/10 · {t.rating}: {selected.rating}</p><p>{selected.history}</p></section></>}
       {view==="lesson"&&<form noValidate onSubmit={e=>{e.preventDefault();setValidation(true);if(objective.trim())setReceipt({lesson,objective,attendance:[...attendance],privateNote,sharedNote});}}>
@@ -57,10 +63,10 @@ function App(){
         <C.Objective label={t.objective} value={objective} invalid={validation&&!objective.trim()} error={t.required} onChange={v=>{setObjective(v);setReceipt(null);}}/>
         <fieldset><legend>{t.attendance}</legend>{session.participants.map(id=><C.Check key={id} label={students.find(s=>s.id===id).name+" · "+t.present} checked={attendance.includes(id)} onChange={checked=>{setAttendance(a=>checked?[...new Set([...a,id])]:a.filter(x=>x!==id));setReceipt(null);}}/>)}</fieldset>
         <label>{t.privateNote}<textarea value={privateNote} onChange={e=>{setPrivateNote(e.target.value);setReceipt(null);}}/></label><label>{t.sharedNote}<textarea value={sharedNote} onChange={e=>{setSharedNote(e.target.value);setReceipt(null);}}/></label>
-        <button type="submit">{t.save}</button>{receipt&&<p role="status">{t.saved} · {receipt.attendance.length}/{session.participants.length}</p>}
+        <button type="submit" className="primary">{t.save}</button>{receipt&&<p role="status">{t.saved} · {receipt.attendance.length}/{session.participants.length}</p>}
       </form>}
       </section>{layout==="hybrid"&&<aside className="inspector"><h3>{t.details}</h3><p>{selected.name}</p><p>{selected.history}</p><h3>{t.pending}</h3><p>{t.exceptions}</p></aside>}
-    </div><C.Modal open={command} onOpenChange={setCommand} label={t.commands}><C.Picker label={t.commands} items={views.map(v=>({id:v,label:t[v]}))} onPick={id=>{setView(id);setCommand(false);}}/>{views.map(v=><button key={v} onClick={()=>{setView(v);setCommand(false);}}>{t[v]}</button>)}</C.Modal></C.Provider>}
+    </div><C.Modal open={command} onOpenChange={setCommand} label={t.commands} returnFocus={commandTrigger}><C.Picker label={t.commands} items={views.map(v=>({id:v,label:t[v]}))} onPick={id=>{setView(id);setCommand(false);}}/>{views.map(v=><button key={v} onClick={()=>{setView(v);setCommand(false);}}>{t[v]}</button>)}</C.Modal></C.Provider>}
   </main>;
 }
 createRoot(document.getElementById("root")).render(<App/>);

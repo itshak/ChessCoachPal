@@ -4,7 +4,8 @@ import {Menu} from "@ark-ui/react/menu";
 import {Field} from "@ark-ui/react/field";
 import {Checkbox} from "@ark-ui/react/checkbox";
 import {LocaleProvider} from "@ark-ui/react/locale";
-import {useMemo,useState} from "react";
+import {Portal} from "@ark-ui/react/portal";
+import {useMemo,useState,useRef} from "react";
 export function Provider({locale,children}) {return <LocaleProvider locale={locale}>{children}</LocaleProvider>;}
 export function Picker({label,items,onPick}) {
   const [query,setQuery]=useState("");
@@ -17,8 +18,9 @@ export function Picker({label,items,onPick}) {
 export function Actions({label,items,onPick}) {
   return <Menu.Root onSelect={e=>onPick(e.value)}><Menu.Trigger type="button">{label}</Menu.Trigger><Menu.Positioner className="positioner"><Menu.Content className="popup">{items.map(i=><Menu.Item className="option" key={i.id} value={i.id}>{i.label}</Menu.Item>)}</Menu.Content></Menu.Positioner></Menu.Root>;
 }
-export function Modal({open,onOpenChange,label,children}) {
-  return <Dialog.Root open={open} onOpenChange={e=>onOpenChange(e.open)} lazyMount unmountOnExit><Dialog.Backdrop className="backdrop"/><Dialog.Positioner><Dialog.Content className="modal"><Dialog.Title>{label}</Dialog.Title>{children}<Dialog.CloseTrigger type="button">Close</Dialog.CloseTrigger></Dialog.Content></Dialog.Positioner></Dialog.Root>;
+export function Modal({open,onOpenChange,label,children,returnFocus}) {
+  const content=useRef(null);
+  return <Dialog.Root open={open} onOpenChange={e=>onOpenChange(e.open)} closeOnEscape initialFocusEl={()=>content.current?.querySelector('[role="combobox"]')||null} finalFocusEl={()=>returnFocus?.current||null} lazyMount unmountOnExit><Portal><Dialog.Backdrop className="backdrop"/><Dialog.Positioner className="ark-dialog-positioner"><Dialog.Content ref={content} className="modal ark-dialog"><Dialog.Title>{label}</Dialog.Title>{children}<Dialog.CloseTrigger type="button">Close</Dialog.CloseTrigger></Dialog.Content></Dialog.Positioner></Portal></Dialog.Root>;
 }
 export function Objective({label,value,onChange,invalid,error}) {
   return <Field.Root invalid={invalid} required><Field.Label>{label}</Field.Label><Field.Input value={value} onChange={e=>onChange(e.target.value)}/><Field.ErrorText>{error}</Field.ErrorText></Field.Root>;
