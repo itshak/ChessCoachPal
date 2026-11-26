@@ -353,7 +353,8 @@ test("LANGUAGE: changing interface language in one authenticated tab reloads ano
       data:{preferredLocale:original},
     });
     expect(restored.status(),await restored.text()).toBe(200);
-    await second.close();
+    // The test's Playwright context owns both pages and closes them at teardown.
+    // Avoid a separate page-close wait after the assertions and restore complete.
   }
 });
 
