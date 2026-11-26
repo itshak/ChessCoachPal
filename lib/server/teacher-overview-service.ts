@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { resolveTeacherWorkplaceFilter, teacherWorkplaceContextGet, WorkplaceContextError } from "@/lib/server/teacher-workplace-context";
 import { addDays, DEFAULT_POLICY, toLocalDateString, zonedTimeToUtc } from "@/lib/schedule";
+import { teacherDailyRatingFreshness } from "@/lib/server/daily-rating-freshness";
 import { teacherDailyRatingReview } from "@/lib/server/daily-rating-review";
 import { teacherDailyHomework } from "@/lib/server/daily-homework";
 import { workplaceCurrentStudentIds } from "@/lib/server/workplace-student-scope";
@@ -17,6 +18,7 @@ export const teacherDashboardSummaryInput = z.object({
   date: z.iso.date().refine(value => value >= "1900-01-01" && value <= "9998-12-31",
     "Expected a real YYYY-MM-DD date between 1900-01-01 and 9998-12-31").optional(),
   closeReview: z.literal(true).optional(),
+  ratingFreshness: z.literal(true).optional(),
   homeworkAfter: z.string().max(58).refine(value => {
     const parts = value.split("~");
     return parts.length === 3 && z.iso.date().safeParse(parts[0]).success &&
@@ -27,7 +29,9 @@ export const teacherDashboardSummaryInput = z.object({
   (value.date !== undefined && value.homeworkAfter.slice(0, 10) === value.date),
   "Homework continuation requires a matching due-through date")
   .refine(value => value.closeReview === undefined || value.date !== undefined,
-    "Day-end review requires an explicit civil date");
+    "Day-end review requires an explicit civil date")
+  .refine(value => value.ratingFreshness === undefined || value.date !== undefined,
+    "Current rating freshness requires an explicit civil date");
 
 async function dashboardScope(db: Db, teacherId: string, requested?: string | null, now = new Date()) {
   const workplaceId = await resolveTeacherWorkplaceFilter(db, teacherId, requested);
@@ -145,7 +149,7 @@ async function dailyMissingAttendance(db: Db, teacherId: string, scope: Dashboar
   };
 }
 
-async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, requestedDate?: string, homeworkAfter?: string, includeCloseReview = false) {
+async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, requestedDate?: string, homeworkAfter?: string, includeCloseReview = false, includeRatingFreshness = false) {
   const venue = scope.workplaceId ? await db.from("workplaces")
     .select("timezone").eq("teacher_id", teacherId).eq("id", scope.workplaceId).maybeSingle() : null;
   if (venue && (venue.error || !venue.data))
@@ -154,7 +158,8 @@ async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, r
     .eq("teacher_id", teacherId).maybeSingle() : null;
   if (settings?.error) throw new TeacherOverviewError(500, "Daily lessons unavailable");
   const timeZone = venue?.data?.timezone ?? settings?.data?.timezone ?? DEFAULT_POLICY.timezone;
-  const date = requestedDate ?? toLocalDateString(scope.now, timeZone);
+  const today = toLocalDateString(scope.now, timeZone);
+  const date = requestedDate ?? today;
   const dayStart = zonedTimeToUtc(date, "00:00", timeZone);
   const dayEnd = zonedTimeToUtc(addDays(date, 1), "00:00", timeZone);
   const from = new Date(Math.max(scope.now.getTime(), dayStart.getTime()));
@@ -162,7 +167,7 @@ async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, r
     .eq("teacher_id", teacherId).match(workplaceMatch(scope)).eq("status", "scheduled")
     .gte("starts_at", from.toISOString()).lt("starts_at", dayEnd.toISOString())
     .order("starts_at").order("id").limit(DAILY_LIMIT + 1);
-  const [result, attendance, homework, ratingReview] = await Promise.all([
+  const [result, attendance, homework, ratingReview, ratingFreshness] = await Promise.all([
     from < dayEnd ? query() : { data: [], error: null },
     dailyMissingAttendance(db, teacherId, scope, dayStart, dayEnd, includeCloseReview)
       .catch(() => ({missingAttendance: {status: "unavailable" as const},
@@ -171,17 +176,20 @@ async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, r
       .catch(() => ({status: "unavailable" as const})),
     teacherDailyRatingReview(db,teacherId,scope.workplaceId,dayStart,dayEnd,scope.now)
       .catch(() => ({status:"unavailable" as const})),
+    !includeRatingFreshness ? undefined : date!==today ? {status:"current_day_only" as const}
+      : teacherDailyRatingFreshness(db,teacherId,scope.workplaceId,scope.now)
+        .catch(()=>({status:"unavailable" as const})),
   ]);
   if (result.error || !result.data) throw new TeacherOverviewError(500, "Daily lessons unavailable");
   return { date, timeZone, limit: DAILY_LIMIT, truncated: result.data.length > DAILY_LIMIT,
-    sessions: result.data.slice(0, DAILY_LIMIT), ...attendance, homework, ratingReview };
+    sessions: result.data.slice(0, DAILY_LIMIT), ...attendance, homework, ratingReview, ...(ratingFreshness ? {ratingFreshness} : {}) };
 }
 
-export async function teacherDashboardSummary(db: Db, teacherId: string, requested?: string | null, date?: string, homeworkAfter?: string, includeCloseReview = false) {
+export async function teacherDashboardSummary(db: Db, teacherId: string, requested?: string | null, date?: string, homeworkAfter?: string, includeCloseReview = false, includeRatingFreshness = false) {
   const scope = await dashboardScope(db, teacherId, requested);
   if (date === undefined) return dashboardSummary(db, teacherId, scope);
   const [summary, daily] = await Promise.all([
-    dashboardSummary(db, teacherId, scope), dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview),
+    dashboardSummary(db, teacherId, scope), dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview, includeRatingFreshness),
   ]);
   return { ...summary, daily };
 }
@@ -204,7 +212,7 @@ async function dashboardStudents(db: Db, teacherId: string, studentIds: Set<stri
   return rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)).slice(0, 9);
 }
 
-export async function teacherDashboardPageModel(db: Db, teacherId: string, date?: string, homeworkAfter?: string, includeCloseReview = false) {
+export async function teacherDashboardPageModel(db: Db, teacherId: string, date?: string, homeworkAfter?: string, includeCloseReview = false, includeRatingFreshness = false) {
   const scope = await dashboardScope(db, teacherId);
   const sessions = () => db.from("teaching_sessions")
     .select("id,title,starts_at,duration_minutes").eq("teacher_id", teacherId).match(workplaceMatch(scope));
@@ -215,7 +223,7 @@ export async function teacherDashboardPageModel(db: Db, teacherId: string, date?
     sessions().gte("starts_at", now).order("starts_at").limit(6),
     sessions().lt("starts_at", now).order("starts_at", { ascending: false }).limit(5),
     db.from("teachers").select("display_name").eq("id", teacherId).maybeSingle(),
-    dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview).catch(() => null),
+    dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview, includeRatingFreshness).catch(() => null),
   ]);
   if (upcoming.error || recent.error || teacher.error) throw new TeacherOverviewError(500, "Dashboard unavailable");
   return { summary, students, upcoming: upcoming.data, recent: recent.data, teacher: teacher.data, daily };

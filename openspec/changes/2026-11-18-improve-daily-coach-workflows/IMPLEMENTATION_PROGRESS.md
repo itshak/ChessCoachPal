@@ -241,12 +241,21 @@ historical corrections and attendance imports do not require reactivation.
 ## Boundary and remaining acceptance
 
 - Recorded lookup failures, retry outcomes and discarded binding results
-  are implemented. An elapsed-age freshness policy and its missing-evidence
-  rules belong with [Online Ratings](../2026-11-18-automate-online-rating-sync/IMPLEMENTATION_PROGRESS.md);
-  neither an old observation nor no receipt implies a failed lookup.
-  Keep this linked requirement open rather than inventing a policy or
-  activating a provider.
+  are separate from the optional current saved-rating review below. Neither an
+  old observation nor no receipt implies a failed lookup.
 - Browser/delegated MCP checks do not certify native ChatGPT or Claude
   clients, private beta data or deployment. No production change, billing
   action, or release was made. The archived-credit settlement decision is
   independent of recovery choices and unchanged.
+
+
+### Optional current saved-rating review
+
+An explicitly requested current-date Dashboard sample uses the same 48-hour
+saved-observation threshold as [Online Ratings](../2026-11-18-automate-online-rating-sync/IMPLEMENTATION_PROGRESS.md),
+not the selected date’s receipt count. The date must be today in the coaching
+context. Online account evidence has no workplace attribution, so the sample
+is only available in All workplaces. Website and delegated MCP share the
+owner-scoped read, return only per-provider counts, and distinguish a bounded
+or unavailable result from no saved evidence. It never claims complete cohort
+totals, reconstructs historical status, contacts a provider or writes a rating.

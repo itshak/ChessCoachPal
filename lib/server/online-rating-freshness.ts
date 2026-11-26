@@ -24,7 +24,7 @@ type Freshness=({provider:Provider;status:Exclude<BindingState["status"],"bound"
  lastObservation:null} | {provider:Provider;status:"recent"|"stale";lastObservation:PublicObservation})&{latestRefresh:LatestRefresh|null};
 
 const fields="source,source_username,source_handle_revision,observed_at,fetched_at,time_control";
-const staleAfterMs=48*60*60*1000; // 24h minimum recurrence plus one day of tolerance.
+export const onlineRatingStaleAfterMs=48*60*60*1000; // 24h minimum recurrence plus one day of tolerance.
 function instant(value:unknown):number{
  return typeof value==="string"&&timestamp.safeParse(value).success?Date.parse(value):NaN;
 }
@@ -146,7 +146,7 @@ export async function readOnlineRatingFreshness(
    if(response.data===null)return {...noObservation,status:"no_observation",latestRefresh:await latest};
    const row=observation.safeParse(response.data);
    if(!row.success||!belongsToCurrentOnlineRating(state,row.data,now))return {...noObservation,status:"unavailable",latestRefresh:await latest};
-   return {provider:key,status:now-Date.parse(row.data.fetched_at)>=staleAfterMs?"stale":"recent",
+   return {provider:key,status:now-Date.parse(row.data.fetched_at)>=onlineRatingStaleAfterMs?"stale":"recent",
     latestRefresh:await latest,lastObservation:{observedAt:row.data.observed_at,fetchedAt:row.data.fetched_at,timeControl:row.data.time_control}};
   }catch{return {...noObservation,status:"unavailable",latestRefresh:await latest};}
  }));

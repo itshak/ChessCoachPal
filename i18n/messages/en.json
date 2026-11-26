@@ -50,6 +50,18 @@
     "dailyPrepareAssignments": "Teacher-wide assignments recorded in this window: {count}",
     "dailyPrepareObservations": "Verified observations recorded at this workplace in this window: {count}",
     "dailyPrepareNoMastery": "These records do not establish mastery.",
+    "dailyFreshness": {
+      "heading": "Current online rating freshness",
+      "open": "Review saved rating freshness",
+      "currentOnly": "This review is available only for today. It does not reconstruct earlier dates.",
+      "unavailable": "Saved rating freshness is unavailable.",
+      "explanation": "A bounded sample of active accounts with permission. A rating checked at least 48 hours ago is stale. This review does not contact either provider.",
+      "recent": "Checked recently: {count}",
+      "stale": "Stale: {count}",
+      "noObservation": "No saved check for this account: {count}",
+      "unknown": "Unknown: {count}",
+      "partial": "This sample is incomplete. The counts are not totals."
+    },
     "dailyRatingHeading": "Recorded online rating issues",
     "dailyRatingAllOnly": "Online rating lookups aren’t tied to a workplace. Select All workplaces to see recorded issues.",
     "dailyRatingUnavailable": "Recorded online rating issues are unavailable.",
