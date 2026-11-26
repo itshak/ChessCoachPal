@@ -10,7 +10,7 @@ import {professionalCreditExpiryInput,teacherProfessionalCreditExpiry} from "@/l
 export async function generateMetadata() {const t=await getTranslations("dashboard");return {title:t("title")};}
 
 export default async function DashboardPage({ searchParams }: {
-  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[]; prepareSession?: string | string[]; closeReview?: string | string[]; creditExpiryWorkplace?: string | string[] }>;
+  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[]; prepareSession?: string | string[]; closeReview?: string | string[]; ratingFreshness?: string | string[]; creditExpiryWorkplace?: string | string[] }>;
 }) {
   const t=await getTranslations("dashboard");
   const locale=await getLocale();
@@ -18,12 +18,14 @@ export default async function DashboardPage({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { date: rawDate, homeworkAfter, prepareSession, closeReview: rawCloseReview, creditExpiryWorkplace } = await searchParams;
+  const { date: rawDate, homeworkAfter, prepareSession, closeReview: rawCloseReview, ratingFreshness: rawFreshness, creditExpiryWorkplace } = await searchParams;
   const filters = teacherDashboardSummaryInput.safeParse({ date: rawDate, homeworkAfter,
-    closeReview: rawCloseReview === undefined ? undefined : rawCloseReview === "1" });
+    closeReview: rawCloseReview === undefined ? undefined : rawCloseReview === "1",
+    ratingFreshness: rawFreshness === undefined ? undefined : rawFreshness === "1" });
   const { summary, students, upcoming, recent, teacher, daily } =
     await teacherDashboardPageModel(supabase, user.id, filters.success ? filters.data.date : undefined,
-      filters.success ? filters.data.homeworkAfter : undefined, filters.success && filters.data.closeReview);
+      filters.success ? filters.data.homeworkAfter : undefined, filters.success && filters.data.closeReview,
+      filters.success && filters.data.ratingFreshness);
   const creditInput=professionalCreditExpiryInput.safeParse({workplaceId:creditExpiryWorkplace});
   const creditExpiry=creditInput.success
     ? await teacherProfessionalCreditExpiry(supabase,user.id,creditInput.data).catch(()=>null) : null;
@@ -44,6 +46,13 @@ export default async function DashboardPage({ searchParams }: {
     timeZone: daily.timeZone, timeStyle: "short",
   });
   const closeReview = daily?.closeReview;
+  const ratingFreshness = daily?.ratingFreshness;
+  const freshnessHref="/dashboard?"+new URLSearchParams({
+    ...(daily?.date?{date:daily.date}:{}),ratingFreshness:"1",
+    ...(filters.success&&filters.data.closeReview?{closeReview:"1"}:{}),
+    ...(filters.success&&filters.data.homeworkAfter?{homeworkAfter:filters.data.homeworkAfter}:{}),
+  })+"#daily-rating-freshness";
+
   const pendingShown = new Set(closeReview?.status === "ready" ? closeReview.sessions.map(row => row.id) : []);
   const attendanceTasks = daily?.missingAttendance.status === "ready"
     ? daily.missingAttendance.sessions.filter(row => !pendingShown.has(row.id)) : [];
@@ -288,6 +297,32 @@ export default async function DashboardPage({ searchParams }: {
               </li>)}
             </ul>}
             {daily.ratingReview.truncated && <p>{t("dailyRatingTruncated")}</p>}
+          </>}
+      </section>}
+
+      {filters.success && daily && <section aria-labelledby="daily-rating-freshness" className="mb-8">
+        <h2 id="daily-rating-freshness" className="text-lg font-semibold mb-3">{t("dailyFreshness.heading")}</h2>
+        {!ratingFreshness ? <Link className="text-primary underline" prefetch={false} href={freshnessHref}>
+          {t("dailyFreshness.open")}
+        </Link> : ratingFreshness.status==="current_day_only" ? <p>{t("dailyFreshness.currentOnly")}</p>
+          : ratingFreshness.status==="workplace_scope_unavailable" ? <p>{t("dailyRatingAllOnly")}</p>
+          : ratingFreshness.status==="unavailable" ? <p role="alert">{t("dailyFreshness.unavailable")}</p>
+          : <>
+            <p className="text-sm text-muted mb-2">{t("dailyFreshness.explanation")}</p>
+            <ul className="space-y-2">
+              {ratingFreshness.providers.map(row=><li key={row.provider}>
+                <Card padding="sm">
+                  <p className="font-medium"><bdi dir="ltr">{row.provider==="lichess"?t("dailyRatingLichess"):t("dailyRatingChessCom")}</bdi></p>
+                  {row.status==="unavailable" ? <p>{t("dailyFreshness.unavailable")}</p> : <>
+                    <p>{t("dailyFreshness.recent",{count:row.counts.recent})}</p>
+                    <p>{t("dailyFreshness.stale",{count:row.counts.stale})}</p>
+                    <p>{t("dailyFreshness.noObservation",{count:row.counts.no_observation})}</p>
+                    {row.counts.unknown>0&&<p>{t("dailyFreshness.unknown",{count:row.counts.unknown})}</p>}
+                    {row.partial&&<p>{t("dailyFreshness.partial")}</p>}
+                  </>}
+                </Card>
+              </li>)}
+            </ul>
           </>}
       </section>}
 
