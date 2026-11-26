@@ -22,3 +22,18 @@ The existing compound foreign keys support one owner-scoped job → consent and 
 - [#240](https://github.com/itshak/ChessCoachPal/pull/240) proves owner-scoped current-permission freshness while retaining former bindings as history. [#241](https://github.com/itshak/ChessCoachPal/pull/241) adds the latest queue outcome separately from the last known observation, excludes historic backfills and old consent, and verifies signed website/MCP agreement and revocation on disposable data. The exact #241 hosted [browser run](https://github.com/itshak/ChessCoachPal/actions/runs/45850552566) passed 466 cases plus three repeats. Neither status nor observation claims verified account ownership.
 
 Still open: a registered, operator-controlled runtime, coordinated outbound limits with other provider paths or an approved isolation policy, any optional history retrieval and separately attributable history persistence, provider policy/privacy acceptance, and separately authorized private-beta reconciliation, operator restore/cutover and rollout. The detached parser accepts only supplied history bytes; it proves neither provider access nor cache completeness. No live providers, external communications, release, deployment, or archive are approved by this source record.
+
+### In-process operator invocation contract
+
+An unregistered server-only adapter limits an explicitly confirmed invocation
+to one provider and one bounded batch. It requires a deployment-trusted
+capability callback, not a request field or teacher credential, and defaults
+to disabled. The immutable reviewed bounds are rechecked through the existing
+batch and worker gates; existing queue, retry and database quotas remain the
+authority. The adapter contains no invocation endpoint, schedule, deployment
+credentials, or default network transport. Unit coverage checks invalid scope,
+missing/failed capability, both provider scopes, and revocation of subsequent
+work. The loopback PostgREST fixture checks permit-off, exact provider isolation,
+read-back of the stored outcome and no repeat send using a synthetic transport.
+Runtime registration, trusted capability provisioning, coordinated
+provider egress and live rollout are separate gates.

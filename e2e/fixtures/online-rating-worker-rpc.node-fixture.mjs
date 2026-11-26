@@ -8,7 +8,7 @@ import {createClient} from "@supabase/supabase-js";
 const hooks=registerHooks({resolve(specifier,context,next){
  if(specifier==="server-only")return {shortCircuit:true,url:"data:text/javascript,export%20%7B%7D"};
  if(["../chess-public-ratings","./online-rating-transport","./online-rating-cooldown","./online-rating-worker","./online-rating-queue","./online-rating-provider-budget",
-  "./online-rating-worker-authority"].includes(specifier))return next(specifier+".ts",context);
+  "./online-rating-worker-authority","./online-rating-batch"].includes(specifier))return next(specifier+".ts",context);
  return next(specifier,context);
 }});
 const {runOnlineRatingLease}=await import("../../lib/server/online-rating-worker.ts");
@@ -17,6 +17,7 @@ const {onlineRatingWorkerAuthority}=await import("../../lib/server/online-rating
 const {onlineRatingQueueDiscovery}=await import("../../lib/server/online-rating-queue.ts");
 const {onlineRatingProviderBudget,runOnlineRatingCandidateWithBudget}=await import("../../lib/server/online-rating-provider-budget.ts");
 const {runOnlineRatingBatch}=await import("../../lib/server/online-rating-batch.ts");
+const {runOnlineRatingOperatorPass}=await import("../../lib/server/online-rating-operator-pass.ts");
 hooks.deregister();
 const origin=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL);
 assert(origin.protocol==="http:"&&origin.hostname==="127.0.0.1"&&origin.port&&origin.href===origin.origin+"/");
@@ -248,4 +249,31 @@ test("recurring runner enqueues only eligible current consent and sends one safe
   status:"ran",checked:0,queued:0,scanned:0,submitted:0,finalized:0,withheld:0,unavailable:0,
  });
  assert.equal(eligible.requests(),1);
+});
+
+test("trusted operator pass uses only its selected provider in disposable PostgREST",
+ {skip:process.env.CCP_DISPOSABLE_RATINGS_OPERATOR!=="yes"},async t=>{
+ const selected=await setup(t,"lichess"),other=await setup(t,"chesscom");
+ const transport=selected.deps.transport;
+ const input={provider:"lichess",confirmed:true,enqueue:0,work:1};
+ const deps={db:admin,transport};
+ assert.deepEqual(await runOnlineRatingOperatorPass(input,deps),{status:"disabled"});
+ assert.deepEqual(await runOnlineRatingOperatorPass({...input,work:3},deps),{status:"invalid"});
+ assert.equal((await selected.db().job()).attempt_count,0);
+ assert.equal((await other.db().job()).attempt_count,0);
+ assert.equal(selected.requests(),0);
+ const reviewed={...deps,isAllowed:scope=>scope.provider==="lichess"&&scope.work===1&&scope.enqueue===0};
+ assert.deepEqual(await runOnlineRatingOperatorPass(input,reviewed),{
+  status:"ran",checked:0,queued:0,scanned:1,submitted:1,finalized:1,withheld:0,unavailable:0,
+ });
+ assert.equal((await selected.db().job()).status,"succeeded");
+ assert.equal((await selected.db().snapshots()).length,1);
+ assert.equal(selected.requests(),1);
+ assert.equal((await other.db().job()).status,"pending");
+ assert.equal((await other.db().job()).attempt_count,0);
+ assert.deepEqual(await other.db().snapshots(),[]);
+ assert.deepEqual(await runOnlineRatingOperatorPass(input,reviewed),{
+  status:"ran",checked:0,queued:0,scanned:0,submitted:0,finalized:0,withheld:0,unavailable:0,
+ });
+ assert.equal(selected.requests(),1);
 });
