@@ -7,6 +7,7 @@ import {ratingListSchema,ratingRecordSchema,ratingFetchSchema,
   parseLichessPerfs,parseChesscomStats,
   type RatingSnapshot} from "@/lib/chess-public-ratings";
 import {z} from "zod";
+import {readOnlineRatingFreshness} from "./online-rating-freshness";
 import {fetchOnlineRatingPayload,StudentRatingError} from "./online-rating-transport";
 
 export const ratingRefreshCommitSchema=ratingFetchSchema.extend({
@@ -42,7 +43,7 @@ function snapshotDto<T extends {source_handle_revision:unknown;verification_stat
 export async function teacherStudentRatingHistory(db:Db,teacherId:string,
  input:z.infer<typeof ratingListSchema>){
  const parsed=ratingListSchema.parse(input);
- await teacherStudentProfile(db,teacherId,parsed.studentId);
+ const student=await teacherStudentProfile(db,teacherId,parsed.studentId);
  let q=db.from("student_rating_snapshots").select(fields,{count:"exact"})
   .eq("teacher_id",teacherId).eq("student_id",parsed.studentId)
   // Federation evidence has its own history; filter before counting and paging.
@@ -50,9 +51,12 @@ export async function teacherStudentRatingHistory(db:Db,teacherId:string,
   .order("observed_at",{ascending:false}).order("id",{ascending:false})
   .range(parsed.offset,parsed.offset+parsed.limit-1);
  if(parsed.timeControl)q=q.eq("time_control",parsed.timeControl);
- const {data,error,count}=await q;
+ const [{data,error,count},freshness]=await Promise.all([
+  q,readOnlineRatingFreshness(db,teacherId,parsed.studentId,student),
+ ]);
  if(error||count===null)throw fail(503,"RATINGS_UNAVAILABLE","Rating history could not be loaded");
  return {studentId:parsed.studentId,snapshots:(data??[]).slice(0,parsed.limit),
+  providerFreshness:freshness.providers,
   total:count,nextOffset:count>parsed.offset+(data?.length??0)?
     parsed.offset+(data?.length??0):null,
   warning:"Provider/time-control ratings are not comparable. No value changes the teacher-assessed strength."};

@@ -1,5 +1,6 @@
 "use client";
 
+import {notifyOnlineRatingContextChanged} from "@/lib/online-rating-context";
 import {useEffect,useState} from "react";
 import {useTranslations} from "next-intl";
 
@@ -57,6 +58,7 @@ function ProviderPermission({studentId,provider}:{studentId:string;provider:Prov
    }
    if(!response.ok)throw new Error("save failed");
    setSaved(true);refresh();
+   notifyOnlineRatingContextChanged(studentId);
   }catch{
    // An ambiguous transport failure can retry the identical reviewed request.
    setError("saveError");

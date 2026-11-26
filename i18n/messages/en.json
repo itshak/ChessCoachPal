@@ -1066,6 +1066,17 @@
     "aria": "Online chess rating history",
     "title": "Online ratings by source and time control",
     "intro": "This history contains only Lichess and Chess.com. FIDE and national ratings are shown in the federation section. These snapshots are separate from teacher-assessed strength (1–10). A public username does not prove account ownership. Ratings across providers or time controls must not be averaged.",
+    "automaticStatusTitle": "Automatic rating checks",
+    "lastChecked": "Last checked: {date}.",
+    "automaticStatus": {
+      "archived": "Archived learner",
+      "not_linked": "No public account linked",
+      "permission_off": "Automatic checks not permitted",
+      "no_observation": "No successful check recorded for this account",
+      "recent": "Recently checked",
+      "stale": "Check is at least 48 hours old",
+      "unavailable": "Check status unavailable"
+    },
     "platform": "Platform",
     "timeControl": "Time control",
     "teacherRating": "Teacher-entered rating",
