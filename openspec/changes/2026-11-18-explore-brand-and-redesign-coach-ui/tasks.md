@@ -11,8 +11,8 @@
 - [ ] Define synthetic identical coach fixtures, evaluation criteria, preview access and non-production isolation.
 
 ## 1. Design laboratory — required before redesign
-- [ ] Build working component comparison for Base UI, React Aria and Ariakit: dialogs, menus, combobox/search, forms, keyboard commands and validation.
-- [ ] Build at least six tokenized palette candidates including Slate & Periwinkle, Graphite & Sage, Ink & Parchment and three genuinely different alternatives.
+- [x] Build working component comparison for Base UI, React Aria and Ariakit: dialogs, menus, combobox/search, forms, keyboard commands and validation. Extended to Ark UI, Radix UI + cmdk and Headless UI; all six common browser workflows passed in [CI run 45909026150](https://github.com/itshak/ChessCoachPal/actions/runs/45909026150).
+- [x] Build at least six tokenized palette candidates including Slate & Periwinkle, Graphite & Sage, Ink & Parchment and three genuinely different alternatives. Thirteen palettes including baseline; candidate normal-text contrast and secondary-token switching verified. User selected Graphite, Iris & Champagne and Ark UI for continued design review; no final logo/layout or rollout approval.
 - [ ] Build compact professional, editorial teaching desk and command-first hybrid layout variants; avoid same-card recoloring.
 - [ ] Build functional synthetic Today, Students/profile and Lesson prep/close scenarios; provide side-by-side baseline comparisons.
 - [ ] Support interactive palette, foundation, typography and density switches with dark/light, desktop/mobile, Hebrew RTL and English/Russian stress tests.

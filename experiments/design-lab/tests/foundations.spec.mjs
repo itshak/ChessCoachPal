@@ -80,3 +80,17 @@ test("focused direction: brand sizes and layout/density controls",async({page},i
 });
 
 test("three secondary brand colors switch in both themes",async({page},info)=>{await page.goto("/");for(const [name,dark,light] of [["Graphite, Iris & Champagne","#CDB58D","#76572E"],["Graphite, Iris & Eucalyptus","#8DB8AC","#35685A"],["Obsidian, Orchid & Ivory","#D7C4AA","#765B3E"]]){await page.getByLabel("Palette",{exact:true}).selectOption({label:name});for(const [theme,expected] of [["dark",dark],["light",light]]){await page.getByLabel("Theme").selectOption(theme);await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue("--secondary"))).toBe(expected);await page.screenshot({path:info.outputPath(name.replace(/[^a-z]+/gi,"-")+"-"+theme+".png"),fullPage:true});}}});
+
+test("selected Ark workflow preserves lesson drafts and cross-workplace history",async({page},info)=>{
+ await page.goto("/");await expect(page.locator("[data-foundation=ark]")).toBeVisible();
+ await page.getByLabel("Layout").selectOption("hybrid");await page.getByLabel("Typography").selectOption("editorial");
+ await expect(page.locator("main")).toHaveAttribute("data-typography","editorial");
+ await page.getByRole("button",{name:/Endgame group/}).click();await page.getByRole("textbox",{name:"Private coach note"}).fill("First lesson private draft");await page.getByRole("textbox",{name:"Next lesson focus"}).fill("Repeat Lucena");
+ await page.getByRole("button",{name:/Select lesson:/}).click();await page.getByRole("menuitem",{name:/Private lesson/}).click();await page.getByRole("textbox",{name:"Private coach note"}).fill("Second lesson draft");
+ await page.getByRole("button",{name:/Select lesson:/}).click();await page.getByRole("menuitem",{name:/Endgame group/}).click();await expect(page.getByRole("textbox",{name:"Private coach note"})).toHaveValue("First lesson private draft");await expect(page.getByRole("textbox",{name:"Next lesson focus"})).toHaveValue("Repeat Lucena");
+ await page.screenshot({path:info.outputPath("hybrid-lesson.png"),fullPage:true});
+ await page.getByRole("button",{name:/Workplace:/}).click();await page.getByRole("menuitem",{name:"Private",exact:true}).click();await page.getByRole("button",{name:"Students",exact:true}).click();await page.getByRole("button",{name:/Daniel Example/}).click();await expect(page.getByRole("region",{name:"Student profile"})).toContainText("Club · Private");await expect(page.getByRole("region",{name:"Student profile"})).toContainText("Chess.com 1480");
+ await page.screenshot({path:info.outputPath("hybrid-students.png"),fullPage:true});
+ await page.getByRole("button",{name:"Today",exact:true}).click();await page.getByRole("button",{name:"Reviewed",exact:true}).click();await expect(page.getByRole("button",{name:"Reopen",exact:true})).toBeVisible();
+ await page.getByLabel("Language").selectOption("ru");await expect(page.locator("html")).toHaveAttribute("lang","ru");await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:info.outputPath("mobile-ru-hybrid.png"),fullPage:true});
+});
