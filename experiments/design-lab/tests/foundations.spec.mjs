@@ -108,7 +108,22 @@ test("optical sizes preserve approved vector paths and wordmark and light treatm
  for(const variant of ["compact","compact-large","compact-max"]){await page.getByLabel("Logo",{exact:true}).selectOption(variant);const result=await mark.evaluate(img=>{const svg=new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml");return {box:svg.documentElement.getAttribute("viewBox"),knight:svg.querySelector('[data-part="knight"]').getAttribute("d"),pawn:svg.querySelector('[data-part="pawn"]').innerHTML,book:svg.querySelector('[data-part="book"]').getAttribute("d")};});results.push(result);}
  expect(new Set(results.map(r=>r.box)).size).toBe(3);expect(new Set(results.map(r=>r.knight)).size).toBe(1);expect(new Set(results.map(r=>r.pawn)).size).toBe(1);expect(new Set(results.map(r=>r.book)).size).toBe(1);
  await page.getByLabel("Pal color").selectOption("champagne");await expect(page.locator(".sidebar .wordmark")).toHaveAttribute("data-emphasis","champagne");await expect(page.locator(".sidebar .wordmark span")).toHaveText("Pal");
- await page.getByLabel("Theme").selectOption("light");await page.getByLabel("Light logo").selectOption("black");await expect.poll(()=>mark.evaluate(img=>new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml").querySelector('[data-part="knight"]').getAttribute("fill"))).toBe("#1C1D23");
+ await page.getByLabel("Theme").selectOption("light");await page.getByLabel("Light logo").selectOption("theme");await expect.poll(()=>mark.evaluate(img=>new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml").querySelector('[data-part="knight"]').getAttribute("fill"))).toBe("#1C1D23");
  await page.getByLabel("Light logo").selectOption("outline");await expect.poll(()=>mark.evaluate(img=>new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml").querySelector('[data-part="knight"]').getAttribute("stroke"))).toBe("#292638");
  await page.getByRole("button",{name:"Brand comparison"}).click();await expect(page.locator(".optical-study tbody img")).toHaveCount(15);await page.screenshot({path:info.outputPath("optical-and-light-studies.png"),fullPage:true});
+});
+
+test("approved logo family uses identical pearl or graphite fills and unchanged champagne book",async({page},info)=>{
+ await page.goto("/");await expect(page.locator("[data-foundation=ark]")).toBeVisible();await expect(page.getByLabel("Light logo")).toHaveValue("theme");
+ const mark=page.locator(".sidebar .brand img");const shapes={};
+ for(const [theme,piece,book] of [["dark","#F1F2F8","#CDB58D"],["light","#1C1D23","#76572E"]]){
+   await page.getByLabel("Theme").selectOption(theme);
+   for(const variant of ["mentor","compact","compact-large","compact-max"]){
+     await page.getByLabel("Logo",{exact:true}).selectOption(variant);
+     const read=()=>mark.evaluate(img=>{const svg=new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml");const knight=svg.querySelector('[data-part="knight"]');const pawn=svg.querySelector('[data-part="pawn"]');const book=svg.querySelector('[data-part="book"]');return {piece:knight.getAttribute("fill"),pawnFills:[...pawn.querySelectorAll("[fill]")].map(p=>p.getAttribute("fill")),book:book.getAttribute("fill"),geometry:[knight.getAttribute("d"),...Array.from(pawn.children).map(p=>["d","cx","cy","r","transform"].map(a=>p.getAttribute(a))),book.getAttribute("d"),svg.documentElement.getAttribute("viewBox")]};});
+     await expect.poll(async()=>{const r=await read();return [r.piece,...r.pawnFills,r.book];}).toEqual([piece,piece,piece,piece,book]);
+     const r=await read();if(theme==="dark")shapes[variant]=r.geometry;else expect(r.geometry).toEqual(shapes[variant]);
+   }
+   await page.getByRole("button",{name:"Brand comparison"}).click();await page.screenshot({path:info.outputPath("approved-matching-pieces-"+theme+".png"),fullPage:true});await page.getByRole("button",{name:"Brand comparison"}).click();
+ }
 });

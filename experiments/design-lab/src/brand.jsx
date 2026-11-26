@@ -8,7 +8,7 @@ export const logoOptions=[
  {id:"original",label:"Original reference",description:"Existing midnight, gold and teal logo."},
  {id:"palette",label:"Palette-matched original",description:"Preserves the original detail, shading and silhouette."},
  {id:"flat",label:"Simplified paint",description:"Original contours with flatter color treatment."},
- {id:"mentor",label:"Mentor & pupil",description:"Unframed iris knight and pearl pawn, each following the curved champagne book pages."},
+ {id:"mentor",label:"Mentor & pupil",description:"Same-color knight and pupil: pearl in dark mode, graphite in light mode, on the curved champagne book."},
  {id:"seal",label:"Academy seal",description:"A circular champagne outline and compact coaching emblem."},
  {id:"book",label:"Open-book signature",description:"Iris teacher, pearl pupil, prominent open-book outline without a surrounding frame."},
  {id:"compact",label:"Compact coaching mark",description:"Same grounded coaching composition, with the same curved pawn base and a thicker silhouette for small icons."},
@@ -19,12 +19,13 @@ export const logoOptions=[
 const horse=original.match(/<clipPath id="horseClip"><path d="([^"]+)"/)?.[1];
 function geometrySvg(tone,variant,mode,lightStyle="theme",darkTone=tone){
  const selected=["mentor","compact","compact-large","compact-max"].includes(variant);
- const black=selected&&mode==="light"&&lightStyle==="black";
  const outlined=selected&&mode==="light"&&lightStyle==="outline";
  const paint=outlined?darkTone:tone;
  const edge=outlined?` stroke="${tone.fg}" stroke-width="18" stroke-linejoin="round" paint-order="stroke fill"`:"";
- const ink=black?"#1C1D23":variant==="mono"?tone.fg:paint.accent;
- const pupil=black?"#1C1D23":paint.fg;
+ // Approved pieces are teammates: use one identical fill for the knight and every pawn part.
+ const piece=mode==="light"&&!outlined?darkTone.bg:paint.fg;
+ const ink=selected?piece:variant==="mono"?tone.fg:paint.accent;
+ const pupil=selected?piece:paint.fg;
  const gold=variant==="mono"?tone.fg:(paint.secondary||paint.accent);
  const framed=variant==="seal";
  const compact=variant.startsWith("compact")||variant==="mono";
@@ -85,5 +86,5 @@ export function BrandStudy({tone,mode,selected,onSelect,lightStyle,darkTone,emph
 
 export function OpticalStudy({tone,mode,darkTone,lightStyle,emphasis}) {
  const variants=["compact","compact-large","compact-max"];
- return <section className="optical-study"><h3>Small-icon comparison — unchanged pieces</h3><div className="optical-scroll"><table><thead><tr><th>Version</th>{[64,48,32,24,16].map(n=><th key={n}>{n}px</th>)}</tr></thead><tbody>{variants.map(id=><tr key={id}><th scope="row">{logoOptions.find(o=>o.id===id).label}</th>{[64,48,32,24,16].map(n=><td key={n}><BrandMark tone={tone} mode={mode} variant={id} size={n} lightStyle={lightStyle} darkTone={darkTone}/></td>)}</tr>)}</tbody></table></div><h3>Light-mode treatments</h3><div className="light-studies">{[["theme","Theme-adapted"],["black","Graphite chess pieces"],["outline","Original colors + dark outline"]].map(([style,label])=><div key={style} className="light-study" style={{background:"#F4F2F9",color:"#292638"}}><strong>{label}</strong><BrandMark tone={{bg:"#F4F2F9",fg:"#292638",accent:"#58418F",secondary:"#76572E",border:"#868098"}} darkTone={{bg:"#1C1D23",fg:"#F1F2F8",accent:"#B3A9E8",secondary:"#CDB58D",border:"#686C80"}} mode="light" variant="mentor" lightStyle={style} size={112}/><div style={{display:"flex",gap:12,alignItems:"center"}}>{[32,16].map(n=><BrandMark key={n} tone={{bg:"#F4F2F9",fg:"#292638",accent:"#58418F",secondary:"#76572E"}} darkTone={{bg:"#1C1D23",fg:"#F1F2F8",accent:"#B3A9E8",secondary:"#CDB58D"}} mode="light" variant="compact-large" lightStyle={style} size={n}/>)}</div></div>)}</div></section>;
+ return <section className="optical-study"><h3>Small-icon comparison — unchanged pieces</h3><div className="optical-scroll"><table><thead><tr><th>Version</th>{[64,48,32,24,16].map(n=><th key={n}>{n}px</th>)}</tr></thead><tbody>{variants.map(id=><tr key={id}><th scope="row">{logoOptions.find(o=>o.id===id).label}</th>{[64,48,32,24,16].map(n=><td key={n}><BrandMark tone={tone} mode={mode} variant={id} size={n} lightStyle={lightStyle} darkTone={darkTone}/></td>)}</tr>)}</tbody></table></div><h3>Light-mode treatments</h3><div className="light-studies">{[["theme","Approved graphite pieces"],["outline","Pearl pieces + outline (study only)"]].map(([style,label])=><div key={style} className="light-study" style={{background:"#F4F2F9",color:"#292638"}}><strong>{label}</strong><BrandMark tone={{bg:"#F4F2F9",fg:"#292638",accent:"#58418F",secondary:"#76572E",border:"#868098"}} darkTone={{bg:"#1C1D23",fg:"#F1F2F8",accent:"#B3A9E8",secondary:"#CDB58D",border:"#686C80"}} mode="light" variant="mentor" lightStyle={style} size={112}/><div style={{display:"flex",gap:12,alignItems:"center"}}>{[32,16].map(n=><BrandMark key={n} tone={{bg:"#F4F2F9",fg:"#292638",accent:"#58418F",secondary:"#76572E"}} darkTone={{bg:"#1C1D23",fg:"#F1F2F8",accent:"#B3A9E8",secondary:"#CDB58D"}} mode="light" variant="compact-large" lightStyle={style} size={n}/>)}</div></div>)}</div></section>;
 }
