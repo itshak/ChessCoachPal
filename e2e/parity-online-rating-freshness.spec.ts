@@ -1,4 +1,4 @@
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {createClient} from "@supabase/supabase-js";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
@@ -23,6 +23,7 @@ test("PARITY:online ratings freshness distinguishes filtered history, current ev
  const handles={lichess:"FreshFixturePlayer",chesscom:"StaleFixturePlayer"};
  const hoursAgo=(hours:number)=>new Date(Date.now()-hours*3_600_000).toISOString();
  const ages={lichess:2,chesscom:60};
+ const attempts=new Map<string,string>();
  try{
   const setHandles=async(lichessUsername:string)=>{
    const edited=await page.request.put(subject,{data:{lichessUsername,chesscomUsername:handles.chesscom,strength:8}});
@@ -33,8 +34,24 @@ test("PARITY:online ratings freshness distinguishes filtered history, current ev
    const binding=await db.from("student_rating_sync_consents").insert({
     teacher_id:teacherId,student_id:studentId,provider,handle_revision:3,enabled:true,
     source_username:handles[provider],consented_at:hoursAgo(96),
-   });
+   }).select("id").single();
    expect(binding.error).toBeNull();
+   const consentId=binding.data!.id;
+   async function job(input:{status:string;kind:string;revision:number;age:number;}){
+    const id=randomUUID(),created=hoursAgo(input.age);
+    const written=await db.from("student_rating_refresh_jobs").insert({
+     id,teacher_id:teacherId,student_id:studentId,consent_id:consentId,provider,
+     source_username:handles[provider],handle_revision:input.revision,
+     input_digest:createHash("sha256").update(id).digest("hex"),idempotency_key:randomUUID(),
+     trigger_kind:input.kind,status:input.status,created_at:created,updated_at:created,
+     finished_at:input.status==="failed"?created:null,last_error_code:input.status==="failed"?"ACCOUNT_NOT_FOUND":null,
+    });
+    expect(written.error).toBeNull();
+    return id;
+   }
+   attempts.set(provider,await job({status:provider==="lichess"?"pending":"failed",kind:"scheduled",revision:3,age:3}));
+   await job({status:"pending",kind:"history_backfill",revision:3,age:2});
+   await job({status:"pending",kind:"manual",revision:2,age:1});
    const saved=await db.from("student_rating_snapshots").insert({
     teacher_id:teacherId,student_id:studentId,provider,time_control:"rapid",rating:1720,
     source:"provider_api",source_username:handles[provider],source_handle_revision:3,
@@ -62,8 +79,8 @@ test("PARITY:online ratings freshness distinguishes filtered history, current ev
   const list="ccp_student_ratings_list";
   const visible=await read(ratingPath+"?limit=1",list,{limit:1});
   expect(visible).toMatchObject({total:3,nextOffset:1,snapshots:[{rating:2500}],providerFreshness:[
-   {provider:"lichess",status:"recent",lastObservation:{timeControl:"rapid"}},
-   {provider:"chesscom",status:"stale",lastObservation:{timeControl:"rapid"}},
+   {provider:"lichess",status:"recent",lastObservation:{timeControl:"rapid"},latestRefresh:{status:"queued",reason:null}},
+   {provider:"chesscom",status:"stale",lastObservation:{timeControl:"rapid"},latestRefresh:{status:"failed",reason:"account_not_found"}},
   ]});
   const empty=await read(ratingPath+"?provider=lichess&timeControl=bullet",list,{provider:"lichess",timeControl:"bullet"});
   expect(empty.total).toBe(0);
@@ -78,6 +95,21 @@ test("PARITY:online ratings freshness distinguishes filtered history, current ev
   const panel=page.getByRole("region",{name:"Online chess rating history",exact:true});
   await expect(panel.getByText(/Lichess: Recently checked/)).toBeVisible();
   await expect(panel.getByText(/Chess.com: Check is at least 48 hours old/)).toBeVisible();
+  await expect(panel.getByText(/Queued for a check/)).toBeVisible();
+  await expect(panel.getByText(/The last check failed.*The linked account was not found/)).toBeVisible();
+  const retry=await db.from("student_rating_refresh_jobs").update({
+   status:"retry",finished_at:null,updated_at:hoursAgo(0.01),last_error_code:"RATE_LIMITED",
+  }).eq("id",attempts.get("chesscom")!);
+  expect(retry.error).toBeNull();
+  const afterRetry=await read(reportPath,"ccp_reports_student_progress",{});
+  expect(afterRetry.providerFreshness[1]).toMatchObject({status:"stale",
+   lastObservation:visible.providerFreshness[1].lastObservation,
+   latestRefresh:{status:"retry_wait",reason:"rate_limited"}});
+  const restored=await db.from("student_rating_refresh_jobs").update({
+   status:"failed",finished_at:visible.providerFreshness[1].latestRefresh.finishedAt,
+   updated_at:visible.providerFreshness[1].latestRefresh.updatedAt,last_error_code:"ACCOUNT_NOT_FOUND",
+  }).eq("id",attempts.get("chesscom")!);
+  expect(restored.error).toBeNull();
   const lichess=page.locator("#automatic-ratings").getByRole("region",{name:"Lichess",exact:true});
   await lichess.getByRole("button",{name:"Review turning off",exact:true}).click();
   await lichess.getByRole("button",{name:"Turn off automatic ratings",exact:true}).click();
@@ -93,8 +125,8 @@ test("PARITY:online ratings freshness distinguishes filtered history, current ev
   });
   expect(enable.error).toBeUndefined();
   const next=await read(reportPath,"ccp_reports_student_progress",{});
-  expect(next.providerFreshness).toEqual([
-   {provider:"lichess",status:"no_observation",lastObservation:null},visible.providerFreshness[1],
+  expect(next.providerFreshness).toMatchObject([
+   {provider:"lichess",status:"no_observation",lastObservation:null,latestRefresh:{status:"queued"}},visible.providerFreshness[1],
   ]);
   expect(next.student).toMatchObject({lichessRating:null,chesscomRating:1720,strength:8});
   const old=await read(ratingPath+"?provider=lichess",list,{provider:"lichess"});
@@ -103,6 +135,7 @@ test("PARITY:online ratings freshness distinguishes filtered history, current ev
   expect((await page.request.get("/api/students/"+foreign+"/ratings")).status()).toBe(404);
   expect((await invoke(list,{studentId:foreign})).error?.code).toBe("NOT_FOUND");
  }finally{
+  await db.from("student_rating_refresh_jobs").delete().eq("teacher_id",teacherId).eq("student_id",studentId);
   await db.from("student_rating_snapshots").delete().eq("teacher_id",teacherId).eq("student_id",studentId);
  }
 });

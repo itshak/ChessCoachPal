@@ -128,6 +128,10 @@ export function StudentRatingHistoryPanel({studentId}:{studentId:string}){
       date:new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeStyle:"short"})
        .format(new Date(item.lastObservation.fetchedAt)),
      })}</>}
+     {item.latestRefresh&&item.latestRefresh.status!=="none"&&<>
+      {" "}{t(`refreshStatus.${item.latestRefresh.status}`)}
+      {"reason" in item.latestRefresh&&item.latestRefresh.reason&&<>{" "}{t(`refreshReason.${item.latestRefresh.reason}`)}</>}
+     </>}
     </li>)}
    </ul>
   </div>}

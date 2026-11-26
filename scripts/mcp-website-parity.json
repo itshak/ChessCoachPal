@@ -716,7 +716,7 @@
       "existingTools": [
         "ccp_reports_student_progress"
       ],
-      "explanation": "Shared teacher-owned progress with skills, material claims and source-labelled provider/time-control evidence. Both report surfaces exclude former or revoked online bindings from current online values, show time since last successful check, and preserve the attributed manual fallback without changing teacher strength. Signed parity-online-rating-freshness and parity-student-progress verify both paths.",
+      "explanation": "Shared teacher-owned progress with skills, material claims and source-labelled provider/time-control evidence. Both report surfaces exclude former or revoked online bindings from current online values, expose the latest permitted account’s queue status separately from its last successful check, and preserve the attributed manual fallback without changing teacher strength. Signed parity-online-rating-freshness and parity-student-progress verify both paths.",
       "evidenceTest": "e2e/parity-student-progress.spec.ts"
     },
     {
@@ -1698,7 +1698,7 @@
         "ccp_student_ratings_refresh_preview",
         "ccp_student_ratings_refresh_commit"
       ],
-      "explanation": "Authenticated teacher-owned append-only Lichess and Chess.com history, scoped before count and pagination. Signed parity-online-rating-freshness additionally verifies that both surfaces return identical current-permission freshness regardless of filters and paging, while historical revisions remain history. Explicit one-shot lookup preview, reviewed atomic commit and immutable replay retain their existing requirements. Federation evidence and durable consent remain separate; no teacher strength mutation.",
+      "explanation": "Authenticated teacher-owned append-only Lichess and Chess.com history, scoped before count and pagination. Signed parity-online-rating-freshness additionally verifies that both surfaces return identical current-permission freshness regardless of filters and paging, and that the newest current-account queue outcome is separate from saved evidence; historical revisions and backfill queue items cannot determine current refresh status. Explicit one-shot lookup preview, reviewed atomic commit and immutable replay retain their existing requirements. Federation evidence and durable consent remain separate; no teacher strength mutation.",
       "evidenceTest": "e2e/parity-conversational-batch.spec.ts"
     },
     {

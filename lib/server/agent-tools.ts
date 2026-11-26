@@ -688,7 +688,7 @@ const catalogue = [
   },
   {
     name:"ccp_reports_student_progress",
-    description:"Read sourced student progress: teacher-assessed 1–10 strength, latest platform observations by time control, when the current permitted online account was last checked, skill assessment counts and non-voided material evidence. Former, revoked or unbound online account observations remain history, not current ratings. Do not infer mastery or expose private notes.",
+    description:"Read sourced student progress: teacher-assessed 1–10 strength, latest platform observations by time control, the current permitted account’s last successful check and latest queue outcome separately, skill assessment counts and non-voided material evidence. Former, revoked or unbound online account observations remain history, not current ratings. Do not infer mastery or expose private notes.",
     schema:z.object({studentId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
@@ -1149,7 +1149,7 @@ const catalogue = [
   },
   {
     name:"ccp_student_ratings_list",
-    description:"Read paginated Lichess and Chess.com rating history, plus when the current permitted account was last checked for each provider independently of the page. Keep teacher-entered history, provider observations and stale or unavailable data distinct. Neither current status nor old history proves account ownership. Federation evidence is in ccp_student_federations_get.",
+    description:"Read paginated Lichess and Chess.com rating history, plus when the current permitted account was last checked and the latest refresh queue state for each provider independently of the page. A queued or failed check does not replace a saved rating. Keep teacher-entered history, provider observations and stale or unavailable data distinct. Neither current status nor old history proves account ownership. Federation evidence is in ccp_student_federations_get.",
     schema:ratingListSchema,scope:"coach:read",readOnly:true,
   },
   {
