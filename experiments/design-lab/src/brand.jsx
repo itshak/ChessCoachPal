@@ -8,10 +8,10 @@ export const logoOptions=[
  {id:"original",label:"Original reference",description:"Existing midnight, gold and teal logo."},
  {id:"palette",label:"Palette-matched original",description:"Preserves the original detail, shading and silhouette."},
  {id:"flat",label:"Simplified paint",description:"Original contours with flatter color treatment."},
- {id:"mentor",label:"Mentor & pupil",description:"Unframed iris knight and pearl pawn, each grounded on the champagne open book."},
+ {id:"mentor",label:"Mentor & pupil",description:"Unframed iris knight and pearl pawn, each following the curved champagne book pages."},
  {id:"seal",label:"Academy seal",description:"A circular champagne outline and compact coaching emblem."},
  {id:"book",label:"Open-book signature",description:"Iris teacher, pearl pupil, prominent open-book outline without a surrounding frame."},
- {id:"compact",label:"Compact coaching mark",description:"Same grounded coaching composition, with a wider pawn foot and stronger shapes for small icons."},
+ {id:"compact",label:"Compact coaching mark",description:"Same grounded coaching composition, with the same curved pawn base and a thicker silhouette for small icons."},
  {id:"mono",label:"Monochrome imprint",description:"Single-color compact mark for printing and constrained contexts."}
 ];
 const horse=original.match(/<clipPath id="horseClip"><path d="([^"]+)"/)?.[1];
@@ -27,13 +27,16 @@ function geometrySvg(tone,variant){
  // The selected pair uses the same footed pawn and page relationship. Draw the
  // book first so the bases overlap the page instead of appearing suspended above it.
  if(variant==="mentor"||variant==="compact"){
+   // Trace the original reference's curved, asymmetric foot. Its underside is
+   // exactly the reverse of the matching cubic on the book's right page.
+   // No horizontal pedestal or rectangular slab; the foot follows the page.
    const foot=compact
-     ?'<path data-part="pawn-foot" d="M754 788H912Q934 788 934 811V835H732V811Q732 788 754 788Z" fill="'+pupil+'"/>'
-     :'<path data-part="pawn-foot" d="M763 784H903Q915 784 919 800L925 813V833H741V813L747 800Q751 784 763 784Z" fill="'+pupil+'"/>';
+     ?'<path data-part="pawn-foot" d="M766 747 C810 745 857 745 898 751 C922 758 931 781 935 797 C851 774 792 785 727 818 C727 783 743 762 766 747 Z" transform="translate(0 30)" fill="'+pupil+'"/>'
+     :'<path data-part="pawn-foot" d="M766 755 C810 753 857 755 898 759 C922 766 931 785 935 797 C851 774 792 785 727 818 C727 787 743 769 766 755 Z" transform="translate(0 30)" fill="'+pupil+'"/>';
    const torso=compact
      ?'M799 665H867L877 701H865Q872 752 906 790H760Q794 752 801 701H789Z'
      :'M804 658H862L867 676H877V695H864Q870 744 900 786H766Q796 744 802 695H789V676H799Z';
-   const groundedBook='<path data-part="book" d="M172 824Q430 754 624 925Q818 754 1076 824L1076 928Q818 877 624 1018Q430 877 172 928Z" fill="'+gold+'"/><path d="M624 925V1018" stroke="'+tone.bg+'" stroke-width="'+(compact?24:18)+'" stroke-linecap="round"/>';
+   const groundedBook='<path data-part="book" d="M172 824Q430 754 624 925C652 891 685 869 727 848C792 815 851 804 935 827C990 811 1036 812 1076 824L1076 928Q818 877 624 1018Q430 877 172 928Z" fill="'+gold+'"/><path d="M624 925V1018" stroke="'+tone.bg+'" stroke-width="'+(compact?24:18)+'" stroke-linecap="round"/>';
    const groundedBody='<g transform="translate('+(compact?91:48)+' '+(compact?55:0)+') scale('+scale+')">'+groundedBook+'<path data-part="knight" d="'+horse+'" transform="translate(0 15)" fill="'+ink+'" fill-rule="evenodd"/><g data-part="pawn"><circle cx="833" cy="598" r="'+(compact?76:64)+'" fill="'+pupil+'"/><path d="'+torso+'" fill="'+pupil+'"/>'+foot+'</g></g>';
    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254"><title>ChessCoachPal — '+variant+'</title>'+(compact?'<rect x="30" y="30" width="1194" height="1194" rx="210" fill="'+tone.bg+'"/>':'')+groundedBody+'</svg>';
  }
