@@ -31,6 +31,9 @@ export function DesignLab() {
   const commandInput=useRef<HTMLInputElement>(null);
   const [command,setCommand]=useState("");
   const t=copy[locale];
+  const direction=locale==="he"?"rtl":"ltr";
+  const density=dense?"dense":"normal";
+  const currentPage=(v:View):"page"|undefined=>view===v?"page":undefined;
   const tone=palettes[palette][theme];
   const selected=students.find(s=>s.id===studentId)!;
   const session=sessions.find(s=>s.id===sessionId)!;
@@ -41,19 +44,19 @@ export function DesignLab() {
     if(!s)return;
     setSessionId(id);setObjective(s.objective);setAttendance([...s.participants]);setPrivateNote("");setSharedNote("");setSaved(false);setView("lesson");
   }
-  function openCommands() { setCommand("");dialog.current?.showModal();commandInput.current?.focus(); }
+  function openCommands() { setCommand("");if(!dialog.current?.open)dialog.current?.showModal();commandInput.current?.focus(); }
   useEffect(()=>{
     function key(e:KeyboardEvent){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();setCommand("");dialog.current?.showModal();commandInput.current?.focus();}}
     window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);
   },[]);
-  return <main className={styles.lab} style={vars} lang={locale} dir={locale==="he"?"rtl":"ltr"} data-layout={layout}>
+  return <main className={styles.lab} style={vars} lang={locale} dir={direction} data-layout={layout}>
     <header className={styles.controls}>
       <div><h1>{t.lab}</h1><p>{t.notice}</p><p>{t.foundation}</p></div>
       <div className={styles.switches}>
         <label>{t.palette}<select value={palette} onChange={e=>setPalette(Number(e.target.value))}>{palettes.map((p,i)=><option key={p.name} value={i}>{p.name}</option>)}</select></label>
         <label>{t.theme}<select value={theme} onChange={e=>setTheme(e.target.value as typeof theme)}><option value="dark">{t.dark}</option><option value="light">{t.light}</option></select></label>
         <label>{t.layout}<select value={layout} onChange={e=>setLayout(e.target.value as Layout)}>{(["compact","editorial","hybrid"] as const).map(k=><option key={k} value={k}>{t[k]}</option>)}</select></label>
-        <label>{t.density}<select value={dense?"dense":"normal"} onChange={e=>setDense(e.target.value==="dense")}><option value="normal">{t.normal}</option><option value="dense">{t.dense}</option></select></label>
+        <label>{t.density}<select value={density} onChange={e=>setDense(e.target.value==="dense")}><option value="normal">{t.normal}</option><option value="dense">{t.dense}</option></select></label>
         <label>{t.font}<select value={font} onChange={e=>setFont(e.target.value)}><option value="inter">{t.inter}</option><option value="system">{t.system}</option></select></label>
         <label>{t.language}<select value={locale} onChange={e=>setLocale(e.target.value as Locale)}>{(["en","he","ru"] as const).map(k=><option key={k} value={k}>{k.toUpperCase()}</option>)}</select></label>
       </div>
@@ -62,7 +65,7 @@ export function DesignLab() {
       <aside className={styles.sidebar}>
         <div className={styles.brand}><Image src="/icon/chesscoachpal.svg" alt="" width={40} height={40}/><strong>{brand}</strong></div>
         <label>{t.workplace}<select value={workplace} onChange={e=>setWorkplace(e.target.value)}><option value="">{t.all}</option>{["Club","Private"].map(w=><option key={w}>{w}</option>)}</select></label>
-        <nav className={styles.nav} aria-label={t.lab}>{views.map(v=><button key={v} type="button" aria-current={view===v?"page":undefined} onClick={()=>setView(v)}>{t[v]}</button>)}</nav>
+        <nav className={styles.nav} aria-label={t.lab}>{views.map(v=><button key={v} type="button" aria-current={currentPage(v)} onClick={()=>setView(v)}>{t[v]}</button>)}</nav>
         <button type="button" onClick={openCommands}>{t.commands}</button>
       </aside>
       <section className={styles.content}>
