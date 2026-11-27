@@ -84,6 +84,7 @@ export default async function DashboardPage({ searchParams }: {
 
   const dailyHeadingClass=home?"sr-only":"text-lg font-semibold mb-3";
   const mobileDetail=Boolean(prepareSession!==undefined&&preparation);
+  const workspaceKey=typeof prepareTarget==="string"?prepareTarget:"agenda";
   const backHref=home?"/dashboard?"+new URLSearchParams({agendaStart:home.start})+(typeof prepareTarget==="string"?"#agenda-record-"+prepareTarget:"#daily-coaching"):upcomingHref(filters.success?filters.data.upcomingAfter:undefined);
   return (
     <div className="ccp-home-page" data-mobile-detail={mobileDetail}>
@@ -102,7 +103,7 @@ export default async function DashboardPage({ searchParams }: {
       </div>
 
       <div className="ccp-home-workspace">
-      <RouteMasterDetail key={typeof prepareTarget==="string"?prepareTarget:"agenda"} mobileDetail={mobileDetail} backHref={backHref} masterLabel={words.agenda} detailLabel={t("dailyPrepareHeading")}
+      <RouteMasterDetail key={workspaceKey} mobileDetail={mobileDetail} backHref={backHref} masterLabel={words.agenda} detailLabel={t("dailyPrepareHeading")}
       master={<section aria-labelledby="daily-coaching" className="mb-6 min-w-0">
         <h2 id="daily-coaching" className={dailyHeadingClass}>{t("dailyHeading")}</h2>
         {home&&<AdaptiveAgenda model={home} locale={locale} selectedId={typeof prepareTarget==="string"?prepareTarget:undefined}/>}
