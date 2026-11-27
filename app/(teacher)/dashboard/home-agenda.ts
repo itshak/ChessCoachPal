@@ -7,7 +7,16 @@ export type AgendaRow={
 export type DiscoveryRow=AgendaRow&{status:string};
 export type AgendaDay={date:string;rows:AgendaRow[];status:"ready"|"unavailable";nextAfter?:string|null};
 
-const ascending=(a:AgendaRow,b:AgendaRow)=>Date.parse(a.starts_at)-Date.parse(b.starts_at)||a.id.localeCompare(b.id);
+const fractional=(iso:string)=>(iso.match(/\.(\d+)(?:Z|[+-]\d\d:\d\d)$/)?.[1]??"").padEnd(9,"0");
+const ascending=(a:AgendaRow,b:AgendaRow)=>Date.parse(a.starts_at)-Date.parse(b.starts_at)||
+ fractional(a.starts_at).localeCompare(fractional(b.starts_at))||a.id.localeCompare(b.id);
+
+/** These hints are the existing page model's ascending prefix of ALL statuses.
+ * Their dates may guide exact daily reads; the hints alone prove no status.
+ */
+export function verifiedHintDates(hints:readonly {starts_at:string}[],zone:string,today:string){
+ return [...new Set(hints.map(row=>toLocalDateString(new Date(row.starts_at),zone)))].filter(date=>date>=today).sort();
+}
 export function agendaDates(start:string){return Array.from({length:7},(_,i)=>addDays(start,i));}
 export function nextWithinVerifiedDays(days:AgendaDay[]):AgendaRow|null {
  for(const day of days){
