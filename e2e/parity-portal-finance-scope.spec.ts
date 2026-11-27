@@ -274,7 +274,7 @@ test("PARITY: three guest contacts see only their own calendars, RSVP and prepai
   const schoolGuest=await audience("School liaison",workplaceId,["calendar","event_rsvp"]);
   const mother=await audience("Mother",otherVenue,["calendar"]);
   const titles={school:"School calendar "+randomUUID(),private:"Private calendar "+randomUUID(),
-   event:"School event "+randomUUID()};
+   event:"School event "+randomUUID(),uninvited:"Uninvited school event "+randomUUID()};
   const sessions=[];
   for(const [venue,title,days,durationMinutes] of [[workplaceId,titles.school,3,45],[otherVenue,titles.private,4,50]] as const){
    sessions.push(await run("ccp_sessions_create",{studentId,workplaceId:venue,title,
@@ -282,7 +282,23 @@ test("PARITY: three guest contacts see only their own calendars, RSVP and prepai
   }
   const event=await run("ccp_events_create",{title:titles.event,workplaceId,
    startsAt:future(5),studentIds:[studentId],...key()});
-  await run("ccp_events_portal_invitations_create",{eventId:event.event.id,portalGrantId:schoolGuest.grant.id,...key()});
+  const uninvited=await run("ccp_events_create",{title:titles.uninvited,workplaceId,
+   startsAt:future(6),studentIds:[studentId],...key()});
+  const invitation=await run("ccp_events_portal_invitations_create",{
+   eventId:event.event.id,portalGrantId:schoolGuest.grant.id,...key(),
+  });
+  const rsvpEffects=async()=>{
+   const eventIds=[event.event.id,uninvited.event.id];
+   const [invites,notices]=await Promise.all([
+    admin.from("portal_event_invitations").select("id,event_id,revision,status,party_size,note,responded_at,updated_at")
+     .eq("teacher_id",teacherId).in("event_id",eventIds).order("id"),
+    admin.from("notifications").select("id,href,title,body")
+     .eq("teacher_id",teacherId).eq("type","event_rsvp").in("href",eventIds.map(id=>"/events/"+id)).order("id"),
+   ]);
+   expect(invites.error).toBeNull();
+   expect(notices.error).toBeNull();
+   return {invitations:invites.data,notifications:notices.data};
+  };
   const title=(body:string)=>body.match(/<title>([^<]*)<\/title>/i)?.[1];
   const neutralTitle="ChessCoachPal - Student and Contact Portal";
   const read=async(url:string,allowed:string[],forbidden:string[])=>{
@@ -294,7 +310,7 @@ test("PARITY: three guest contacts see only their own calendars, RSVP and prepai
    for(const value of allowed)expect(body.includes(value),"authorized resource renders").toBe(true);
    for(const value of forbidden)expect(body.includes(value),"unapproved resource stays private").toBe(false);
   };
-  await read(schoolGuest.path,[schoolGuest.contact.displayName,titles.event],["$37.18"]);
+  await read(schoolGuest.path,[schoolGuest.contact.displayName,titles.event],[titles.uninvited,"$37.18"]);
   await read(mother.path,[mother.contact.displayName],[titles.event,"$37.18"]);
   await read(path,["$37.18","Prepaid lesson purchase"],[titles.event,schoolGuest.contact.displayName,mother.contact.displayName]);
   const schoolIcs=await guest.get("/api"+schoolGuest.path+"/calendar");
@@ -309,6 +325,26 @@ test("PARITY: three guest contacts see only their own calendars, RSVP and prepai
   const motherFeed=await motherIcs.text();
   expect(motherFeed).toContain(sessions[1].entityId);
   expect(motherFeed).not.toContain(sessions[0].entityId);
+  // Even a valid school calendar and RSVP grant cannot respond for an
+  // uninvited event in the same workplace with the same enrolled learner.
+  const beforeUninvited=await rsvpEffects();
+  expect(beforeUninvited.invitations).toEqual([expect.objectContaining({
+   id:invitation.id,event_id:event.event.id,revision:1,status:"pending",responded_at:null,
+  })]);
+  expect(beforeUninvited.notifications).toEqual([]);
+  const denied=await guest.post("/api"+schoolGuest.path+"/events/"+uninvited.event.id+"/rsvp",{
+   data:{status:"maybe",partySize:2,note:"Synthetic uninvited RSVP"},
+  });
+  expect(denied.status()).toBe(404);
+  expect(await denied.json()).toEqual({error:"NOT_FOUND"});
+  expect(denied.headers()["cache-control"]).toContain("no-store");
+  expect(denied.headers()["referrer-policy"]).toBe("no-referrer");
+  expect(await rsvpEffects()).toEqual(beforeUninvited);
+  const stillAuthorized=await guest.get("/api"+schoolGuest.path+"/calendar");
+  expect(stillAuthorized.status()).toBe(200);
+  const stillAuthorizedFeed=await stillAuthorized.text();
+  expect(stillAuthorizedFeed).toContain(sessions[0].entityId);
+  expect(stillAuthorizedFeed).not.toContain(sessions[1].entityId);
   const rsvp=await guest.post("/api"+schoolGuest.path+"/events/"+event.event.id+"/rsvp",{
    data:{status:"yes",partySize:1,note:""},
   });
@@ -316,6 +352,11 @@ test("PARITY: three guest contacts see only their own calendars, RSVP and prepai
   expect(await rsvp.json()).toMatchObject({ok:true,replayed:false});
   expect(rsvp.headers()["cache-control"]).toContain("no-store");
   expect(rsvp.headers()["referrer-policy"]).toBe("no-referrer");
+  const invitedEffects=await rsvpEffects();
+  expect(invitedEffects.invitations).toEqual([expect.objectContaining({
+   id:invitation.id,event_id:event.event.id,revision:2,status:"yes",party_size:1,
+  })]);
+  expect(invitedEffects.notifications).toEqual([expect.objectContaining({href:"/events/"+event.event.id})]);
   const unlink=await run("ccp_student_contacts_unlink",{studentId,linkId:schoolGuest.link.id,
    expectedRevision:schoolGuest.link.revision,...key()});
   expect(unlink.activeTo).toBeTruthy();
