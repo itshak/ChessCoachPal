@@ -1851,7 +1851,7 @@
       "existingTools": [
         "ccp_students_resolve"
       ],
-      "explanation": "Shared paginated exact Unicode student-name/alias resolver reports two input references to the SAME student as a duplicate roster reference rather than duplicate database rows; returns safe matched IDs separately but still refuses an unsafe double-counted lesson roster. Website/MCP use the same service and e2e/parity-lesson-capture-preview.spec.ts verifies alias/full-name behavior.",
+      "explanation": "Shared paginated exact Unicode student-name/alias resolver reports two input references to the SAME student as a duplicate roster reference rather than duplicate database rows; returns safe matched IDs separately but still refuses an unsafe double-counted lesson roster. Website/MCP use the same service. e2e/parity-lesson-capture-preview.spec.ts verifies alias/full-name behavior and optional en/he/ru human issue explanations without changing canonical identities, decisions or diagnostics.",
       "evidenceTest": "e2e/parity-lesson-capture-preview.spec.ts"
     },
     {

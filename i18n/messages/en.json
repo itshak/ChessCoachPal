@@ -3134,6 +3134,11 @@
     "russianName": "Russian",
     "loading": "Loading…"
   },
+  "studentIdentityIssue": {
+    "ambiguous": "More than one learner matches. Choose the learner using the returned ID.",
+    "duplicate": "These names refer to the same learner. Include that learner only once.",
+    "notFound": "No active learner matches this exact name or alias."
+  },
   "portalSharing": {
     "renew": "Renew grant",
     "renewDays": "Days from today",

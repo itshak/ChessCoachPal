@@ -1673,7 +1673,7 @@ const catalogue = [
   },
   {
     name:"ccp_students_resolve",
-    description:"Resolve up to 100 exact teacher-owned active student full names and Hebrew/English aliases to stable IDs. Return ambiguity candidates or missing-name issues without guessing, fuzzy search, archived students or private contacts. Read-only.",
+    description:"Resolve up to 100 exact teacher-owned active student full names and registered Unicode aliases to stable IDs. Return ambiguity candidates or missing-name issues without guessing, fuzzy search, archived students or private contacts. Optional outputLocale (en/he/ru) adds human-facing displayMessage without changing canonical codes, diagnostics or IDs. Read-only.",
     schema:studentNamesResolveSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -2978,9 +2978,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_schedule_day_preview":
         return {data:await teacherScheduleDayPreview(db,teacherId,
           args as Parameters<typeof teacherScheduleDayPreview>[2])};
-      case "ccp_students_resolve":
-        return {data:await teacherStudentNamesResolve(db,teacherId,
-          (args as {names:string[]}).names)};
+      case "ccp_students_resolve": {
+        const input=args as z.infer<typeof studentNamesResolveSchema>;
+        return {data:await teacherStudentNamesResolve(db,teacherId,input.names,{outputLocale:input.outputLocale})};
+      }
       case "ccp_lessons_capture_commit_with_chapter":
         return {data:await teacherAtomicLessonChapterCommit(db,teacherId,
           args as Parameters<typeof teacherAtomicLessonChapterCommit>[2])};
