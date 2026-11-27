@@ -22,12 +22,13 @@ interface StudentListRow {
   birthdate: string | null;
   archived_at: string | null;
   created_at: string;
+  name_aliases?: string[] | null;
 }
 
 export default async function StudentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show?: string }>;
+  searchParams: Promise<{ show?: string; q?: string }>;
 }) {
   const t=await getTranslations("students");
   const supabase = await createClient();
@@ -39,6 +40,15 @@ export default async function StudentsPage({
 
   const params = await searchParams;
   const showArchived = params.show === "archived";
+  const query = typeof params.q === "string" ? params.q.trim().slice(0, 200) : "";
+  const common = await getTranslations("common");
+  const filterHref = (archived: boolean) => {
+    const q = new URLSearchParams();
+    if (archived) q.set("show", "archived");
+    if (query) q.set("q", query);
+    return "/students" + (q.size ? "?" + q.toString() : "");
+  };
+  const detailHref = (id: string) => filterHref(showArchived).replace("/students", `/students/${id}`);
   // The roster opts into selected workplace context; global identity
   // choosers keep their existing unscoped list.
   // Oversized scoped rosters fail visibly instead of truncating.
@@ -53,7 +63,7 @@ export default async function StudentsPage({
   for (let offset = 0; !rosterError&&offset <= maxRows; offset += pageSize) {
     try{
       const page=await teacherStudentsRoster(supabase,user.id,{
-        workplaceId,archivedOnly:showArchived,offset,limit:pageSize,
+        workplaceId,archivedOnly:showArchived,query,offset,limit:pageSize,
       });
       if(offset+page.students.length>maxRows||page.nextOffset!==null&&page.nextOffset>=maxRows){
         rosterError=t("rosterTooLarge");
@@ -85,12 +95,12 @@ export default async function StudentsPage({
         </p>
         <p className="text-xs text-muted mt-2">
           {showArchived ? (
-            <Link href="/students" className="text-primary font-semibold">
+            <Link href={filterHref(false)} className="text-primary font-semibold">
               {t("showActive")}
             </Link>
           ) : (
             <Link
-              href="/students?show=archived"
+              href={filterHref(true)}
               className="text-primary font-semibold"
             >
               {t("showArchived")}
@@ -98,6 +108,16 @@ export default async function StudentsPage({
           )}
         </p>
       </div>
+
+      <form action="/students" method="get" role="search" className="mb-4 flex flex-wrap items-end gap-2">
+        {showArchived && <input type="hidden" name="show" value="archived" />}
+        <label className="min-w-0 flex-1 text-sm font-medium">
+          {t("search")}
+          <input name="q" type="search" defaultValue={query} maxLength={200} dir="auto" className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-base" />
+        </label>
+        <button type="submit" className="min-h-11 rounded-lg border border-border px-4 font-semibold text-primary">{common("search")}</button>
+        {query && <Link href={showArchived ? "/students?show=archived" : "/students"} className="min-h-11 content-center px-3 text-primary">{common("cancel")}</Link>}
+      </form>
 
       {!entitlements && <p role="status" className="mb-4 text-sm">{t("capacityUnavailable")}</p>}
       {entitlements && limit !== null && (
@@ -113,14 +133,14 @@ export default async function StudentsPage({
             <Card className="text-center text-muted py-12">
               <div className="text-4xl mb-3">👋</div>
               <p className="text-lg">
-                {showArchived ? t("noArchived") : t("noStudents")}
+                {query ? common("noResults") : showArchived ? t("noArchived") : t("noStudents")}
               </p>
-              {!showArchived && (
+              {!showArchived && !query && (
                 <p className="text-sm">{t("addFirst")}</p>
               )}
             </Card>
           ) : (
-            <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-2">
               {students.map((student) => {
                 const age =
                   student.birthdate != null
@@ -131,8 +151,8 @@ export default async function StudentsPage({
                 return (
                   <Link
                     key={student.id}
-                    href={`/students/${student.id}`}
-                    className="block min-w-0"
+                    href={detailHref(student.id)}
+                    className="block min-w-0 rounded-lg focus-visible:outline-2 focus-visible:outline-primary"
                   >
                     <Card
                       padding="sm"
@@ -148,6 +168,7 @@ export default async function StudentsPage({
                               </span>
                             )}
                           </div>
+                          {Boolean(student.name_aliases?.length) && <p className="text-sm text-muted break-words"><bdi dir="auto">{student.name_aliases?.join(" · ")}</bdi></p>}
                           {subtitle && (
                             <div className="min-w-0 text-sm text-muted break-words [overflow-wrap:anywhere]">
                               <bdi dir="auto">{subtitle}</bdi>
@@ -166,12 +187,10 @@ export default async function StudentsPage({
           )}
         </div>
 
-        <div>
-          <Card>
-            <h2 className="font-semibold mb-3">{t("addButton")}</h2>
-            <AddStudentForm />
-          </Card>
-        </div>
+        <details open className="self-start rounded-xl border border-border bg-surface p-4">
+          <summary className="min-h-11 cursor-pointer font-semibold">{t("addButton")}</summary>
+          <div className="pt-3"><AddStudentForm /></div>
+        </details>
       </div>
     </div>
   );
