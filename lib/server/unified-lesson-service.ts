@@ -42,7 +42,11 @@ async function collectPages<T>(
  }
  return rows;
 }
-export async function teacherUnifiedLessonHistory(db:Db,teacherId:string,filter:Filter){
+export async function teacherUnifiedLessonHistory(
+ db:Db,teacherId:string,filter:Filter,
+ // Trusted server callers can reuse the teacher zone used to derive defaults.
+ context?:{teacherTimezone?:string},
+){
  try{validateReportRange(filter.from,filter.to);}
  catch{throw fail(400,"VALIDATION_ERROR","Date range must be valid and at most 367 days");}
  let workplaceId:string|null;
@@ -51,19 +55,19 @@ export async function teacherUnifiedLessonHistory(db:Db,teacherId:string,filter:
   if(error instanceof WorkplaceContextError)throw fail(error.status,error.code,error.message);
   throw error;
  }
- const [{data:student,error:studentError},{data:workplace,error:workplaceError},policy]=await Promise.all([
+ const [{data:student,error:studentError},{data:workplace,error:workplaceError},teacherTimezone]=await Promise.all([
   filter.studentId?db.from("students").select("id").eq("teacher_id",teacherId)
    .eq("id",filter.studentId).maybeSingle():Promise.resolve({data:null,error:null}),
   workplaceId?db.from("workplaces").select("id,timezone")
    .eq("teacher_id",teacherId).eq("id",workplaceId).maybeSingle():
    Promise.resolve({data:null,error:null}),
-  getPolicy(db,teacherId),
+  context?.teacherTimezone??getPolicy(db,teacherId).then(policy=>policy.timezone),
  ]);
  if(studentError||workplaceError)throw fail(500,"DATABASE_ERROR",
    "History authorization unavailable");
  if(filter.studentId&&!student)throw fail(404,"NOT_FOUND","Student not found");
  if(workplaceId&&!workplace)throw fail(404,"NOT_FOUND","Workplace not found");
- const zone=workplace?.timezone??policy.timezone;
+ const zone=workplace?.timezone??teacherTimezone;
  const start=new Date(Date.parse(filter.from+"T00:00:00Z")-2*86400000).toISOString();
  const end=new Date(Date.parse(filter.to+"T00:00:00Z")+3*86400000).toISOString();
  const sessions=await collectPages<Session>(offset=>{

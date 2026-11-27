@@ -5,7 +5,8 @@ import {teacherUnifiedLessonHistory} from "@/lib/server/unified-lesson-service";
 import {teacherMaterialHistory} from "@/lib/server/teacher-material-history";
 import {teacherAssignmentsList} from "@/lib/server/training-assignments";
 import {teacherTrainingPlansList} from "@/lib/server/student-training-plans";
-import {addDays,zonedTimeToUtc} from "@/lib/schedule";
+import {getPolicy} from "@/lib/server/scheduling";
+import {addDays,toLocalDateString,zonedTimeToUtc} from "@/lib/schedule";
 
 const uuid=z.string().uuid();
 export const coachBriefingSchema=z.object({
@@ -28,19 +29,29 @@ type Db=SupabaseClient;
  * Source IDs, verification state, evidence stages and unknowns stay visible.
  */
 export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBriefingInput){
-  const today=new Date().toISOString().slice(0,10);
-  const ninetyDaysAgo=new Date(Date.now()-90*86400000).toISOString().slice(0,10);
-  const from=input.from??ninetyDaysAgo,to=input.to??today;
-  if(from>to)throw fail(400,"VALIDATION_ERROR","End date precedes start date");
+  const now=new Date();
   const {data:student,error:studentError}=await db.from("students")
     .select("id,name,archived_at,strength,chess_goals")
     .eq("teacher_id",teacherId).eq("id",input.studentId).maybeSingle();
   if(studentError)throw fail(500,"DATABASE_ERROR","Student details unavailable");
   if(!student)throw fail(404,"NOT_FOUND","Student not found");
 
+  // Resolve omitted bounds in the same teacher-local calendar that the
+  // history and observations report. The default is 90 civil days back
+  // through today; explicit dates remain exactly as requested.
+  let {from,to}=input;
+  let teacherTimezone:string|undefined;
+  if(from===undefined||to===undefined){
+    teacherTimezone=(await getPolicy(db,teacherId)).timezone;
+    const today=toLocalDateString(now,teacherTimezone);
+    from??=addDays(today,-90);
+    to??=today;
+  }
+  if(from>to)throw fail(400,"VALIDATION_ERROR","End date precedes start date");
+
   const history=teacherUnifiedLessonHistory(db,teacherId,{
     studentId:student.id,workplaceId:null,from,to,limit:input.limit,offset:0,
-  });
+  },{teacherTimezone});
   const [lessons,materials,assignments,observationResult,trainingPlans]=await Promise.all([
     history,
     teacherMaterialHistory(db,teacherId,{
