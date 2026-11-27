@@ -23,3 +23,6 @@ Use task-oriented bounded read/search (tree/subtree, full paths, category filter
 
 ## Schema governance
 Latest inspected main 35413fa: existing flat skill categories and typed materials have no hierarchical memberships. A dedicated model is a recommendation, not a settled physical schema. Review current baseline, ADR-0019 and successor lock (ADR-0037), decide schema amendment through separate reviewed ADR, update canonical baseline/types/manifest/lock only under that authority. No ad hoc feature migration; no live data or legacy adapters. Reconcile export/reimport of uncategorized existing materials; verify structural comparison, RLS, grants, isolation, concurrency, all required CI and restores before merge. Production migration/cutover requires separate operator authorization.
+
+## Review refinements
+The concrete proposed physical model, bounds, lock order, archive batches, normalization, import mapping and change-control sequence are in [schema-review.md](schema-review.md); exact proposed shared tool inputs/results in [mcp-contracts.md](mcp-contracts.md). These refine the earlier candidate design and control in case of ambiguity. No physical change approved. See [acceptance.md](acceptance.md) for UI handoff and test matrix.

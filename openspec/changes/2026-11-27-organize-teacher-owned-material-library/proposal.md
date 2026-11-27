@@ -20,3 +20,6 @@ No fixed curriculum, automatic mastery assessment, duplicated material records, 
 
 ## Dependencies and acceptance
 Coordinate with the coach UI redesign, typed material/evidence and Lichess workflows, multilingual support and ADR-0003/0007 parity. Source inventory and post-freeze ADR review precede any schema work. Only after the schema authority is explicitly approved may implementation proceed; the sole final pre-v1 cutover remains separately authorized under ADR-0017. Verify synthetic fresh baseline, independent restores, tenant isolation, bounded search and concurrency, browser and delegated MCP parity, responsive and localized library UX. Final real client checks remain a separate release gate.
+
+## Review package
+See [schema review and proposed ADR](schema-review.md), [exact proposed MCP contracts](mcp-contracts.md) and [acceptance matrix](acceptance.md). Product concept approved; physical amendment and implementation remain blocked. PR #223 is a divergent historical activation draft; main already includes settlement routine and ADR-0037 lock. Recheck actual accepted base with designated schema owner before any candidate.

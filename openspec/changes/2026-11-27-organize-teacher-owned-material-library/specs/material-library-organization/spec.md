@@ -67,3 +67,28 @@ The system SHALL enforce ownership, acyclic trees, unique memberships, revision 
 - **WHEN** a teacher exports and restores the library organization through approved flows
 - **THEN** collection hierarchy and memberships SHALL reference the correct canonical materials
 - **AND** duplicate membership, cycles and foreign references SHALL be rejected without damaging existing evidence.
+
+### Requirement: Deterministic collection lifecycle and replay
+The system SHALL preserve collection identity, disallow normalized duplicate active sibling labels and enforce bounded acyclic hierarchy and serialized owner-scoped writes. Archive SHALL preserve membership and prior separately archived descendants; restore SHALL reject unresolved parent or sibling conflicts.
+
+#### Scenario: Restore without reviving prior archives
+- **WHEN** a teacher archives a parent containing an already archived child and later restores the parent
+- **THEN** only collections archived by the selected archive operation SHALL be restored
+- **AND** prior archived descendants and material evidence SHALL remain unchanged.
+
+#### Scenario: Stale move and lost response
+- **WHEN** two clients edit the same owner library at one revision
+- **THEN** at most one effective mutation SHALL commit at that revision
+- **AND** an exact authorized retry of a committed request SHALL return its original receipt without additional changes.
+
+### Requirement: Bounded portable library reads
+The system SHALL provide bounded path-aware browsing, distinct material results and explicit archive filters, plus portable organization export and reviewed import with explicit material identity mapping. It SHALL reject stale continuation and never infer material identity from a title alone.
+
+#### Scenario: Multiple placements under one subtree
+- **WHEN** a material appears in two descendants of a selected collection
+- **THEN** descendant-inclusive browsing SHALL return that material once
+- **AND** removing one membership SHALL preserve the other and its canonical history.
+
+#### Scenario: Import unresolved material reference
+- **WHEN** an import contains a material reference without an authorized exact mapping
+- **THEN** the reviewed transaction SHALL fail without partial organization writes.

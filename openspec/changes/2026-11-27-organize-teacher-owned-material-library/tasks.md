@@ -18,3 +18,10 @@
 - [ ] Test duplicate labels in distinct branches, ambiguous names, root/child moves, concurrent cycles, stale/replayed request, cross-tenant probes, membership dedup, archives/restores, template conflicts, imports and no implicit teaching/provider writes.
 - [ ] Run OpenSpec strict validation, typecheck, unit, integration, E2E/parity, security, Compose, backup/restore, pre1 final-cutover audit and exact-head required checks.
 - [ ] Verify merged evidence and update canonical specs/status; archive only when accepted. Real ChatGPT/Claude and final live transition remain separate operator gates. No implementation or release implied by proposal.
+
+## 0a. Agent 4 documentation review (before gate)
+- [x] Read proposal and inspect pinned main baseline, manifest, lock, typed contract excerpts, relevant services, ADR-0020 and settlement comparison; document findings and recommended shape.
+- [x] Draft proposed change-control decision, contracts and acceptance plan in review package (not a permit).
+- [ ] Run actual OpenSpec strict validation and record exact candidate evidence; do not claim pass from document inspection.
+- [ ] Operator approve proposed domain/physical approach and designate single schema owner; reconcile stale #223 before candidate work.
+- [ ] Review exact successor separately under ADR-0020; no protected files modified by this proposal.
