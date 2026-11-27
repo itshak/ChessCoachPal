@@ -32,6 +32,7 @@ import {loadCanonicalCreditBalances} from "@/lib/server/canonical-credits";
 import {withCreditFundingReport} from "@/lib/server/credit-package-funding";
 import { oneToOne, toLocalDateString } from "@/lib/schedule";
 import {StudentDirectory} from "../StudentDirectory";
+import {NextStudentLesson} from "./NextStudentLesson";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -167,6 +168,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
         {[["#student-learning",history("title")],["#student-ratings",st("chessProfile")],["#student-contacts",t("contacts")],["#student-progress",t("progress")]].map(([href,label])=><a key={href} href={href} className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-sm text-primary">{label}</a>)}
       </nav>
       <section id="student-learning" className="scroll-mt-4 space-y-4 mb-6">
+      {!student.archived_at&&<NextStudentLesson db={supabase} teacherId={user.id} studentId={id} timezone={policy.timezone}/>}
       <CoachBriefingPanel studentId={id} />
       <LearnerEvidencePanel evidence={learnerEvidence} />
       <UnifiedLessonHistoryPanel fixedStudentId={id}/>
