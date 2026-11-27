@@ -1,7 +1,7 @@
 import {test,expect} from "@playwright/test";
 for(const foundation of ["base","aria","ariakit","ark","radix","headless"]){
   test(foundation+" — common workflow, keyboard and responsive evidence",async({page},info)=>{
-    await page.goto("/");
+    await page.goto("/?lab=1");
     await page.getByLabel("Foundation").selectOption(foundation);
     await page.getByLabel("Layout").selectOption("compact");
     await expect(page.locator("[data-foundation="+foundation+"]")).toBeVisible();
@@ -56,7 +56,7 @@ for(const foundation of ["base","aria","ariakit","ark","radix","headless"]){
 }
 
 test("focused direction: brand sizes and layout/density controls",async({page},info)=>{
-  await page.goto("/");
+  await page.goto("/?lab=1");
   await expect(page.getByLabel("Foundation")).toHaveValue("ark");
   await expect(page.getByLabel("Palette",{exact:true})).toHaveValue("9");
   await expect(page.locator("[data-foundation=ark]")).toBeVisible();
@@ -81,10 +81,10 @@ test("focused direction: brand sizes and layout/density controls",async({page},i
   }
 });
 
-test("three secondary brand colors switch in both themes",async({page},info)=>{await page.goto("/");for(const [name,dark,light] of [["Graphite, Iris & Champagne","#CDB58D","#76572E"],["Graphite, Iris & Eucalyptus","#8DB8AC","#35685A"],["Obsidian, Orchid & Ivory","#D7C4AA","#765B3E"]]){await page.getByLabel("Palette",{exact:true}).selectOption({label:name});for(const [theme,expected] of [["dark",dark],["light",light]]){await page.getByLabel("Theme").selectOption(theme);await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue("--secondary"))).toBe(expected);await page.screenshot({path:info.outputPath(name.replace(/[^a-z]+/gi,"-")+"-"+theme+".png"),fullPage:true});}}});
+test("three secondary brand colors switch in both themes",async({page},info)=>{await page.goto("/?lab=1");for(const [name,dark,light] of [["Graphite, Iris & Champagne","#CDB58D","#76572E"],["Graphite, Iris & Eucalyptus","#8DB8AC","#35685A"],["Obsidian, Orchid & Ivory","#D7C4AA","#765B3E"]]){await page.getByLabel("Palette",{exact:true}).selectOption({label:name});for(const [theme,expected] of [["dark",dark],["light",light]]){await page.getByLabel("Theme").selectOption(theme);await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue("--secondary"))).toBe(expected);await page.screenshot({path:info.outputPath(name.replace(/[^a-z]+/gi,"-")+"-"+theme+".png"),fullPage:true});}}});
 
 test("selected Ark workflow preserves lesson drafts and cross-workplace history",async({page},info)=>{
- await page.goto("/");await expect(page.locator("[data-foundation=ark]")).toBeVisible();
+ await page.goto("/?lab=1");await expect(page.locator("[data-foundation=ark]")).toBeVisible();
  await page.getByLabel("Layout").selectOption("hybrid");await page.getByLabel("Typography").selectOption("editorial");
  await expect(page.locator("main")).toHaveAttribute("data-typography","editorial");
  await page.getByRole("button",{name:/Endgame group/}).click();await page.getByRole("button",{name:"Open lesson editor",exact:true}).click();await page.getByRole("textbox",{name:"Private coach note"}).fill("First lesson private draft");await page.getByRole("textbox",{name:"Next lesson focus"}).fill("Repeat Lucena");
@@ -98,13 +98,13 @@ test("selected Ark workflow preserves lesson drafts and cross-workplace history"
 });
 
 test("selected logo pair has grounded pawn feet in both themes",async({page},info)=>{
- await page.goto("/");await expect(page.getByLabel("Logo",{exact:true})).toHaveValue("mentor");
+ await page.goto("/?lab=1");await expect(page.getByLabel("Logo",{exact:true})).toHaveValue("mentor");
  for(const theme of ["dark","light"]){await page.getByLabel("Theme").selectOption(theme);for(const variant of ["mentor","compact"]){await page.getByLabel("Logo",{exact:true}).selectOption(variant);const mark=page.locator(".sidebar .brand img");await expect.poll(()=>mark.evaluate(img=>{const svg=new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml");const foot=svg.querySelector('[data-part="pawn-foot"]');const book=svg.querySelector('[data-part="book"]');const knight=svg.querySelector('[data-part="knight"]');return !!foot&&!!book&&!!knight&&foot.getAttribute("d").includes("C851 774 792 785 727 818")&&foot.getAttribute("transform")==="translate(0 30)"&&book.getAttribute("d").includes("C792 815 851 804 935 827")&&!!(book.compareDocumentPosition(foot)&Node.DOCUMENT_POSITION_FOLLOWING)&&img.complete&&img.naturalWidth>0;})).toBe(true);}}
  await page.getByRole("button",{name:"Brand comparison"}).click();await page.screenshot({path:info.outputPath("grounded-logo-family-light.png"),fullPage:true});await page.getByLabel("Theme").selectOption("dark");await page.screenshot({path:info.outputPath("grounded-logo-family-dark.png"),fullPage:true});
 });
 
 test("optical sizes preserve approved vector paths and wordmark and light treatments switch",async({page},info)=>{
- await page.goto("/");await expect(page.locator("[data-foundation=ark]")).toBeVisible();
+ await page.goto("/?lab=1");await expect(page.locator("[data-foundation=ark]")).toBeVisible();
  const mark=page.locator(".sidebar .brand img");const results=[];
  for(const variant of ["compact","compact-large","compact-max"]){await page.getByLabel("Logo",{exact:true}).selectOption(variant);const result=await mark.evaluate(img=>{const svg=new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]),"image/svg+xml");return {box:svg.documentElement.getAttribute("viewBox"),knight:svg.querySelector('[data-part="knight"]').getAttribute("d"),pawn:svg.querySelector('[data-part="pawn"]').innerHTML,book:svg.querySelector('[data-part="book"]').getAttribute("d")};});results.push(result);}
  expect(new Set(results.map(r=>r.box)).size).toBe(3);expect(new Set(results.map(r=>r.knight)).size).toBe(1);expect(new Set(results.map(r=>r.pawn)).size).toBe(1);expect(new Set(results.map(r=>r.book)).size).toBe(1);
@@ -115,7 +115,7 @@ test("optical sizes preserve approved vector paths and wordmark and light treatm
 });
 
 test("approved logo family uses identical pearl or graphite fills and unchanged champagne book",async({page},info)=>{
- await page.goto("/");await expect(page.locator("[data-foundation=ark]")).toBeVisible();await expect(page.getByLabel("Light logo")).toHaveValue("theme");
+ await page.goto("/?lab=1");await expect(page.locator("[data-foundation=ark]")).toBeVisible();await expect(page.getByLabel("Light logo")).toHaveValue("theme");
  const mark=page.locator(".sidebar .brand img");const shapes={};
  for(const [theme,piece,book] of [["dark","#F1F2F8","#CDB58D"],["light","#1C1D23","#76572E"]]){
    await page.getByLabel("Theme").selectOption(theme);
@@ -130,7 +130,7 @@ test("approved logo family uses identical pearl or graphite fills and unchanged 
 });
 
 test("master-detail layouts select without navigating and open editors explicitly",async({page},info)=>{
- await page.goto("/");await expect(page.locator("[data-foundation=ark]")).toBeVisible();await expect(page.getByLabel("Layout")).toHaveValue("hybrid");
+ await page.goto("/?lab=1");await expect(page.locator("[data-foundation=ark]")).toBeVisible();await expect(page.getByLabel("Layout")).toHaveValue("hybrid");
  for(const layout of ["hybrid","focus","agenda"]){
    await page.getByLabel("Layout").selectOption(layout);await page.getByRole("button",{name:"Today",exact:true}).click();
    const list=page.locator(".lesson-rows"),inspector=page.getByRole("complementary",{name:"Context inspector"});

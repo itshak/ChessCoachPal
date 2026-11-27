@@ -37,3 +37,5 @@
 - [ ] Verify no production redesign, schema change, deployment or confidential strategy publication was performed merely by creating this OpenSpec proposal.
 
 > Brand refinement decision (2026-11-27): user approved same-color chess pieces (Pearl #F1F2F8 in dark, Graphite #1C1D23 in light), Champagne book and unchanged traced knight/curved pawn geometry for Mentor & pupil and Compact coaching mark. Optical framing and final asset review remain open; do not treat this as approval of the full design-lab gate or production rollout.
+
+> Responsive architecture decision (2026-11-27): user approved adaptive three/two/one-column shell and requested a focused working prototype without settled design controls. Default prototype now replaces the lab landing, with historical comparisons retained at `?lab=1`. Responsive behavior, calendar/overview, touch navigation, evidence and workload validation remain subject to review. Production rollout gate remains open.
