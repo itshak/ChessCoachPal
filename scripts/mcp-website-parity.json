@@ -361,7 +361,7 @@
       "existingTools": [
         "ccp_coach_briefing_get"
       ],
-      "explanation": "Read-only coach briefing uses exactly one deterministic shared teacher-scoped domain service for website and MCP. Authenticated cross-client test compares complete returned student homework, material history, observations, and plan evidence and rejects inferred mastery. B5 canonical calendar history replacement remains separate.",
+      "explanation": "Read-only coach briefing uses exactly one deterministic shared teacher-scoped domain service for website and MCP. Authenticated cross-client tests compare returned student homework, material history, observations, and plan evidence without inferring mastery. e2e/parity-coach-briefing-observation-window.spec.ts checks the exact verified-observation range and limit over a teacher-local DST boundary.",
       "evidenceTest": "e2e/agent-mcp.spec.ts"
     },
     {

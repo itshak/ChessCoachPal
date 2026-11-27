@@ -5,6 +5,7 @@ import {teacherUnifiedLessonHistory} from "@/lib/server/unified-lesson-service";
 import {teacherMaterialHistory} from "@/lib/server/teacher-material-history";
 import {teacherAssignmentsList} from "@/lib/server/training-assignments";
 import {teacherTrainingPlansList} from "@/lib/server/student-training-plans";
+import {addDays,zonedTimeToUtc} from "@/lib/schedule";
 
 const uuid=z.string().uuid();
 export const coachBriefingSchema=z.object({
@@ -37,10 +38,11 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
   if(studentError)throw fail(500,"DATABASE_ERROR","Student details unavailable");
   if(!student)throw fail(404,"NOT_FOUND","Student not found");
 
+  const history=teacherUnifiedLessonHistory(db,teacherId,{
+    studentId:student.id,workplaceId:null,from,to,limit:input.limit,offset:0,
+  });
   const [lessons,materials,assignments,observationResult,trainingPlans]=await Promise.all([
-    teacherUnifiedLessonHistory(db,teacherId,{
-      studentId:student.id,workplaceId:null,from,to,limit:input.limit,offset:0,
-    }),
+    history,
     teacherMaterialHistory(db,teacherId,{
       studentId:student.id,from,to,limit:input.limit,offset:0,
       includeVoided:false,
@@ -48,11 +50,18 @@ export async function teacherCoachBriefing(db:Db,teacherId:string,input:CoachBri
     teacherAssignmentsList(db,teacherId,{
       studentId:student.id,limit:input.limit,offset:0,
     }),
-    db.from("chess_observations")
-      .select("id,category_id,session_id,observation,source,observed_at,verified_at")
-      .eq("teacher_id",teacherId).eq("student_id",student.id)
-      .not("verified_at","is",null)
-      .order("observed_at",{ascending:false}).limit(input.limit),
+    history.then(({filter:{timezone}})=>{
+      // Standalone observations lack a frozen lesson timezone. Interpret the
+      // displayed inclusive range in the same teacher zone as this briefing.
+      // Filter before limiting so out-of-window evidence cannot hide matches.
+      const start=zonedTimeToUtc(from,"00:00",timezone).toISOString();
+      const end=zonedTimeToUtc(addDays(to,1),"00:00",timezone).toISOString();
+      return db.from("chess_observations")
+        .select("id,category_id,session_id,observation,source,observed_at,verified_at")
+        .eq("teacher_id",teacherId).eq("student_id",student.id)
+        .not("verified_at","is",null).gte("observed_at",start).lt("observed_at",end)
+        .order("observed_at",{ascending:false}).order("id").limit(input.limit);
+    }),
     teacherTrainingPlansList(db,teacherId,{
       studentId:student.id,includeArchived:false,limit:input.limit,offset:0,
     }),
