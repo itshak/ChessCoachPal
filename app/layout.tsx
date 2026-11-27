@@ -1,5 +1,5 @@
 import type {Metadata, Viewport} from "next";
-import {Inter, Nunito, Noto_Sans_Hebrew} from "next/font/google";
+import {Inter, Noto_Sans_Hebrew} from "next/font/google";
 import {NextIntlClientProvider} from "next-intl";
 import {PWA} from "@/lib/pwa";
 import {resolveRequestLocale} from "@/i18n/server";
@@ -12,11 +12,10 @@ import {ServiceWorkerRegistrar} from "@/components/pwa/ServiceWorkerRegistrar";
 import "./globals.css";
 
 const inter = Inter({variable: "--font-inter", subsets: ["latin", "cyrillic"]});
-const nunito = Nunito({variable: "--font-nunito", subsets: ["latin"]});
 const hebrew = Noto_Sans_Hebrew({variable: "--font-hebrew", subsets: ["hebrew"]});
 
 export const viewport: Viewport = {
-  themeColor: PWA.themeColor, width: "device-width", initialScale: 1
+  themeColor: PWA.themeColor, width: "device-width", initialScale: 1, viewportFit: "cover"
 };
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -45,7 +44,7 @@ export default async function RootLayout({children}: Readonly<{children: React.R
   const locale = await resolveRequestLocale();
   return (
     <html lang={locale} dir={languageDirection(locale)} className="can-hover">
-      <body className={`${inter.variable} ${nunito.variable} ${hebrew.variable} antialiased`}>
+      <body className={`${inter.variable} ${hebrew.variable} antialiased`}>
         <NextIntlClientProvider locale={locale} messages={messagesFor(locale)}>
           <ServiceWorkerRegistrar />
           <TouchHoverGuard />

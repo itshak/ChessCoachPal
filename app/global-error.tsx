@@ -40,8 +40,8 @@ export default function GlobalError({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#0D1829",
-          color: "#EAF3F4",
+          background: "#272932",
+          color: "#F1F2F8",
           fontFamily:
             '"Inter", ui-sans-serif, system-ui, -apple-system, sans-serif',
         }}
@@ -61,13 +61,13 @@ export default function GlobalError({
           >
             {t.errorTitle}
           </h1>
-          <p style={{ color: "#9BAEB7", marginBottom: "1.5rem" }}>
+          <p style={{ color: "#BBC0D0", marginBottom: "1.5rem" }}>
             {t.errorIntro}
           </p>
           <button
             onClick={() => reset()}
             style={{
-              background: "#2a9d8f",
+              background: "#58418F",
               color: "#fff",
               border: "none",
               borderRadius: "0.5rem",

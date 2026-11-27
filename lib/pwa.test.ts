@@ -17,8 +17,8 @@ describe("PWA constants", () => {
   it("maps theme modes to the correct surface colour", () => {
     expect(themeColorFor("light")).toBe(PWA.themeColorLight);
     expect(themeColorFor("dark")).toBe(PWA.themeColorDark);
-    expect(PWA.themeColorDark).toBe("#0D1829");
-    expect(PWA.themeColor).toBe("#0D1829");
+    expect(PWA.themeColorDark).toBe("#272932");
+    expect(PWA.themeColor).toBe("#272932");
   });
 
   it("scopes the app to the site root", () => {
