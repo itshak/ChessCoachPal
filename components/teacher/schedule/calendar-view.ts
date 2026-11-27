@@ -30,9 +30,9 @@ export function calendarDates(start:string,end:string){
 
 // Owned by the Calendar feature until the shared message catalogs are integrated.
 const copy={
- en:{agenda:"Agenda",week:"Week",month:"Month",day:"Day",view:"Calendar view",empty:"No lessons or events",details:"Lesson details",date:"Choose date",unavailable:"Calendar unavailable",back:"Back to calendar"},
- he:{agenda:"סדר יום",week:"שבוע",month:"חודש",day:"יום",view:"תצוגת יומן",empty:"אין שיעורים או אירועים",details:"פרטי שיעור",date:"בחירת תאריך",unavailable:"היומן אינו זמין",back:"חזרה ליומן"},
- ru:{agenda:"Список",week:"Неделя",month:"Месяц",day:"День",view:"Вид календаря",empty:"Нет уроков или событий",details:"Подробности урока",date:"Выбрать дату",unavailable:"Календарь недоступен",back:"Вернуться к календарю"},
+ en:{agenda:"Agenda",week:"Week",month:"Month",day:"Day",view:"Calendar view",empty:"No lessons or events",details:"Lesson details",date:"Choose date",unavailable:"Calendar unavailable",partial:"Some calendar records may be missing; recurrence generation did not finish.",back:"Back to calendar"},
+ he:{agenda:"סדר יום",week:"שבוע",month:"חודש",day:"יום",view:"תצוגת יומן",empty:"אין שיעורים או אירועים",details:"פרטי שיעור",date:"בחירת תאריך",unavailable:"היומן אינו זמין",partial:"ייתכן שחסרות רשומות ביומן; יצירת השיעורים החוזרים לא הושלמה.",back:"חזרה ליומן"},
+ ru:{agenda:"Список",week:"Неделя",month:"Месяц",day:"День",view:"Вид календаря",empty:"Нет уроков или событий",details:"Подробности урока",date:"Выбрать дату",unavailable:"Календарь недоступен",partial:"Некоторые записи могут отсутствовать: создание повторяющихся занятий не завершилось.",back:"Вернуться к календарю"},
 };
 export function calendarCopy(locale:string){
  return copy[locale.startsWith("he")?"he":locale.startsWith("ru")?"ru":"en"];
