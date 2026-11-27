@@ -40,6 +40,7 @@ export default async function SchedulePage({
    .eq("teacher_id",user.id).order("created_at").order("id");
  if(workplacesRes.error)throw new Error("Unable to load calendar workplaces");
  const workplaceTimezones=Object.fromEntries((workplacesRes.data??[]).map(w=>[w.id,w.timezone]));
+ const workplaceNames=Object.fromEntries((workplacesRes.data??[]).map(w=>[w.id,w.name]));
  const workplaces=(workplacesRes.data??[]).filter(w=>!w.archived_at&&(!selection||w.id===selection))
    .map(w=>({id:w.id,name:w.name,localToday:toLocalDateString(now,w.timezone)}));
  // Navigation only: recognize an exact owned session in the visible
@@ -111,8 +112,8 @@ export default async function SchedulePage({
   {requestedSession!==undefined&&!noteTarget&&<p role="status">{t("lessonLinkUnavailable")}</p>}
   <CanonicalScheduleBoard
    key={[anchorDate,view,selection??"all"].join(":")} calendarStatus={calendarStatus}
-   weekStart={weekStart} rangeEnd={weekEnd} anchorDate={anchorDate} view={view} today={today} timezone={timezone} personalToday={teacherToday}
-   selectedWorkplaceId={selection} workplaceTimezones={workplaceTimezones}
+   weekStart={weekStart} rangeEnd={weekEnd} anchorDate={anchorDate} view={view} nowIso={now.toISOString()} today={today} timezone={timezone} personalToday={teacherToday}
+   selectedWorkplaceId={selection} workplaceTimezones={workplaceTimezones} workplaceNames={workplaceNames}
    sessions={scopedCalendar} events={events} students={students}
    workplaces={workplaces} durationOptions={policy.lesson_duration_options}/>
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 ccp-calendar-management">
