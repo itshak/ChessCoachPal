@@ -1,0 +1,53 @@
+name: Design system generated artifacts
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  generate:
+    if: github.event.pull_request.number == 248
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Resolve exact Ark UI lock
+        run: |
+          cp package-lock.json /tmp/original-lock.json
+          npm install --package-lock-only --ignore-scripts --save-exact @ark-ui/react@5.37.0
+          node - <<'JS'
+          const fs=require('node:fs');
+          const old=JSON.parse(fs.readFileSync('/tmp/original-lock.json'));
+          const now=JSON.parse(fs.readFileSync('package-lock.json'));
+          for(const [key,value] of Object.entries(now.packages)) {
+            if(JSON.stringify(value)!==JSON.stringify(old.packages[key])) console.log('CCP_LOCK_ENTRY '+JSON.stringify([key,value]));
+          }
+          for(const key of Object.keys(old.packages)) if(!(key in now.packages)) console.log('CCP_LOCK_DELETE '+JSON.stringify(key));
+          console.log('CCP_LOCK_DONE '+Object.keys(now.packages).length);
+          JS
+      - name: Generate candidate raster assets
+        run: |
+          python -m pip install cairosvg pillow
+          cp public/icon/chesscoachpal-compact-dark.svg public/icon/chesscoachpal.svg
+          cp public/icon/chesscoachpal-compact-maskable.svg public/icon/chesscoachpal-maskable.svg
+          python scripts/export-brand-icons.py
+          python - <<'PY'
+          import base64, pathlib, hashlib
+          for p in sorted(pathlib.Path('public/icon').glob('*')):
+              if p.suffix not in ('.png','.ico'): continue
+              data=p.read_bytes()
+              s=base64.b64encode(data).decode()
+              print('CCP_ASSET_BEGIN',p.as_posix(),hashlib.sha256(data).hexdigest(),len(s))
+              for i in range(0,len(s),4000): print('CCP_ASSET_PART',s[i:i+4000])
+              print('CCP_ASSET_END')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generated-design-system-assets
+          path: |
+            package.json
+            package-lock.json
+            public/icon/*.png
+            public/icon/*.ico
