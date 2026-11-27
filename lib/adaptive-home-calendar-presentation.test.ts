@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import {discoverHome,nextWithinVerifiedDays,verifiedHintDates,type DiscoveryRow} from "@/app/(teacher)/dashboard/home-agenda";
-import {calendarDates,calendarRange,calendarView} from "@/components/teacher/schedule/calendar-view";
+import {calendarDates,calendarRange,calendarView,calendarDetailHash,calendarDetailId} from "@/components/teacher/schedule/calendar-view";
 
 const now=new Date("2026-11-27T08:00:00Z");
 const row=(id:string,starts_at:string,status="scheduled",workplace_id="a"):DiscoveryRow=>({
@@ -82,5 +82,14 @@ describe("calendar civil date navigation",()=>{
   expect(calendarRange("2028-02-29","day")).toEqual({start:"2028-02-29",end:"2028-02-29",previous:"2028-02-28",next:"2028-03-01"});
   expect(calendarRange("2027-03-14","day").next).toBe("2027-03-15");
   expect(calendarView("invalid")).toBe("auto");
+ });
+});
+
+describe("calendar detail navigation identity",()=>{
+ it("round-trips only an exact UUID and does not capture existing attendance anchors",()=>{
+  const id="e715567e-927b-4d01-b6d1-343417b108b1";
+  expect(calendarDetailId(calendarDetailHash(id))).toBe(id);
+  for(const hash of ["","#lesson-attendance-"+id,"#calendar-detail-invalid","#calendar-detail-"+id+"/notes"])
+   expect(calendarDetailId(hash)).toBeNull();
  });
 });
