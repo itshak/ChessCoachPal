@@ -28,7 +28,7 @@ type Pin={sessionId:string;workplaceId:string|null};
 type Register={student_id:string;status:string;note:string;updated_at:string|null};
 type Decision={studentId:string;status:""|"present"|"absent"|"late"|"excused";
  note:string;expectedUpdatedAt:string|null};
-const select="w-full min-w-0 max-w-full rounded-lg border border-border bg-surface px-3 py-2 text-foreground";
+const select="w-full min-w-0 max-w-full rounded-lg border border-border bg-surface px-3 py-2 min-h-11 text-base text-foreground";
 const statuses=["present","absent","late","excused"] as const;
 
 async function api<T>(action:string,args:Record<string,unknown>={},fallback="Unable to load lesson"):Promise<T>{
@@ -240,7 +240,7 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
   else await commit(true);
  }
 
- return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-5 space-y-4">
+ return <section aria-label={t("aria")} className="rounded-xl border border-border bg-surface p-4 sm:p-5 space-y-5 text-[15px] leading-relaxed">
   <header>
    <h2 className="text-lg font-semibold">{t("title")}</h2>
    <p className="text-sm text-muted">{t("description")}</p>
@@ -270,7 +270,7 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
    <p className="text-sm font-medium">{t("frozenRoster",{count:roster.participants.length,status:statusName(roster.status)})}</p>
    {roster.participants.map(person=>{
     const decision=decisions[person.studentId];
-    return <div key={person.studentId} data-roster-student-id={person.studentId} className="grid min-w-0 grid-cols-1 gap-2 rounded-lg border border-border p-3 sm:grid-cols-2">
+    return <div key={person.studentId} data-roster-student-id={person.studentId} className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border border-border bg-background p-4 sm:grid-cols-2">
      <label><bdi dir="auto">{person.name}</bdi>: {t("attendance")}
       <select className={select} aria-label={t("attendanceFor",{name:person.name})} data-student-id={person.studentId}
        disabled={Boolean(pinned)&&busy} value={decision?.status??""} required onChange={e=>change(person.studentId,{
@@ -287,7 +287,7 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
     </div>;
    })}
    <label className="block">{t("sharedNote")}
-    <textarea className={select} maxLength={10000} rows={2} disabled={Boolean(pinned)&&busy} value={lessonNote}
+    <textarea className={select} maxLength={10000} rows={4} disabled={Boolean(pinned)&&busy} value={lessonNote}
      onChange={e=>{setLessonNote(e.target.value);clearApproval();}}/>
    </label>
    {pinned&&<fieldset className="rounded-lg border border-border p-3 space-y-3" disabled={busy}>
