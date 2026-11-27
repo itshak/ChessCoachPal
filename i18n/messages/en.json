@@ -2237,6 +2237,12 @@
     "qrAlt": "Payment QR code"
   },
   "lessonHistory": {
+    "showPrivate": "Show teacher-private notes",
+    "hidePrivate": "Hide teacher-private notes",
+    "noteMarked": "Marked for scoped contact sharing",
+    "noteNotMarked": "Not marked for contact sharing",
+    "sessionWide": "Whole lesson",
+    "notesUnavailable": "Lesson notes are unavailable.",
     "loadedSearch": "Search loaded lessons",
     "loadedFilter": "Filters apply to loaded records only; totals cover the full date range.",
     "showAll": "All statuses",
