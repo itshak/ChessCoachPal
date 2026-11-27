@@ -17,7 +17,7 @@ export async function AdaptiveAgenda({model,locale,selectedId}:{model:HomeAgenda
  const rows=model.days.flatMap(day=>day.rows);
  const visibleNext=model.next&&rows.some(row=>row.id===model.next?.id);
  const incomplete=model.days.some(day=>day.status!=="ready"||day.nextAfter);
- const row=(session:AgendaRow,withDate=false)=><li key={session.id}
+ const row=(session:AgendaRow,withDate=false)=><li key={session.id} data-session-id={session.id} data-next-lesson={session.id===model.next?.id}
   className={"flex flex-wrap items-start gap-x-4 gap-y-1 border-b border-border py-3 min-w-0 "+(session.id===model.next?.id?"border-s-2 border-s-primary ps-3":"")}>
   <time dateTime={session.starts_at} className="font-medium tabular-nums shrink-0">
    <bdi>{(withDate?instantFormat:timeFormat).format(new Date(session.starts_at))}</bdi>
@@ -48,7 +48,7 @@ export async function AdaptiveAgenda({model,locale,selectedId}:{model:HomeAgenda
    {model.end<"9998-12-24"&&<Link href={agendaHref(addDays(model.start,7))} className="text-primary underline">{w.nextWeek}</Link>}
   </div>
   {incomplete&&<p role="status">{w.partial}</p>}
-  {!rows.length&&!incomplete&&model.next&&<p>{w.later}</p>}
+  {!rows.length&&!incomplete&&(!model.futureComplete||model.next)&&<p>{w.later}</p>}
   {model.days.filter(day=>day.rows.length||day.status!=="ready"||day.nextAfter).map(day=><section key={day.date} data-agenda-date={day.date}>
    <h3 className="font-semibold">
     {day.date===model.today?w.today:day.date===addDays(model.today,1)?w.tomorrow:dateLabel(day.date)}
