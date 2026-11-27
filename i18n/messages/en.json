@@ -49,6 +49,9 @@
     "dailyPrepareCompleted": "Completion recorded",
     "dailyPrepareAssignments": "Teacher-wide assignments recorded in this window: {count}",
     "dailyPrepareObservations": "Verified observations recorded at this workplace in this window: {count}",
+    "dailyPrepareGoals": "Current teacher-wide goals on active plans: {planned} planned, {inProgress} in progress.",
+    "dailyPrepareGoalsLimited": "There are too many active plans to count their goals here.",
+    "dailyPrepareGoalsUnavailable": "Current training goals are unavailable.",
     "dailyPrepareNoMastery": "These records do not establish mastery.",
     "dailyFreshness": {
       "heading": "Current online rating freshness",

@@ -388,7 +388,7 @@
       "existingTools": [
         "ccp_lesson_preparation_get"
       ],
-      "explanation": "Same exact-session Daily dashboard, signed GET and delegated MCP. Same-owner active workplace or All, frozen roster, nonvoid explicit prior material, verified observation counts and teacher-wide assignment counts. No private learner notes, recurrence, or invented mastery.",
+      "explanation": "Same exact-session Daily dashboard, signed GET and delegated MCP. Same-owner active workplace or All, frozen roster, nonvoid explicit prior material, verified observation counts, teacher-wide assignment counts and bounded current planned/in-progress goal totals on the frozen learners’ active teacher-wide plans. No goal text, learner notes, recurrence, or invented mastery.",
       "evidenceTest": "e2e/parity-daily-lesson-preparation.spec.ts"
     },
     {
