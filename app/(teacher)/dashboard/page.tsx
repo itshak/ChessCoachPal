@@ -2,30 +2,40 @@ import Link from "next/link";
 import {getLocale,getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
+import {AdaptiveAgenda,RecentTeaching} from "./AdaptiveAgenda";
+import {loadHomeAgenda} from "./home-agenda-data";
+import {homeCopy} from "./home-agenda";
 import {dailyLessonPreparationInput,DailyPreparationError,teacherDailyLessonPreparation} from "@/lib/server/daily-lesson-preparation";
 import { teacherDashboardPageModel, teacherDashboardSummaryInput } from "@/lib/server/teacher-overview-service";
 
 import {professionalCreditExpiryInput,teacherProfessionalCreditExpiry} from "@/lib/server/professional-credit-expiry";
 
-export async function generateMetadata() {const t=await getTranslations("dashboard");return {title:t("title")};}
+export async function generateMetadata() {return {title:homeCopy(await getLocale()).overview};}
 
 export default async function DashboardPage({ searchParams }: {
-  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[]; upcomingAfter?: string | string[]; prepareSession?: string | string[]; closeReview?: string | string[]; ratingFreshness?: string | string[]; creditExpiryWorkplace?: string | string[] }>;
+  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[]; upcomingAfter?: string | string[]; prepareSession?: string | string[]; closeReview?: string | string[]; ratingFreshness?: string | string[]; creditExpiryWorkplace?: string | string[]; agendaStart?: string | string[] }>;
 }) {
   const t=await getTranslations("dashboard");
   const locale=await getLocale();
+  const words=homeCopy(locale);
+  const now=new Date();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { date: rawDate, homeworkAfter, upcomingAfter, prepareSession, closeReview: rawCloseReview, ratingFreshness: rawFreshness, creditExpiryWorkplace } = await searchParams;
+  const { date: rawDate, homeworkAfter, upcomingAfter, prepareSession, closeReview: rawCloseReview, ratingFreshness: rawFreshness, creditExpiryWorkplace, agendaStart } = await searchParams;
   const filters = teacherDashboardSummaryInput.safeParse({ date: rawDate, homeworkAfter, upcomingAfter,
     closeReview: rawCloseReview === undefined ? undefined : rawCloseReview === "1",
     ratingFreshness: rawFreshness === undefined ? undefined : rawFreshness === "1" });
-  const { summary, students, upcoming, recent, teacher, daily } =
-    await teacherDashboardPageModel(supabase, user.id, filters.success ? filters.data.date : undefined,
+  const pageModel=await teacherDashboardPageModel(supabase, user.id, filters.success ? filters.data.date : undefined,
       filters.success ? filters.data.homeworkAfter : undefined, filters.success && filters.data.closeReview,
-      filters.success && filters.data.ratingFreshness, filters.success ? filters.data.upcomingAfter : undefined);
+      filters.success && filters.data.ratingFreshness, filters.success ? filters.data.upcomingAfter : undefined).catch(()=>null);
+  if(!pageModel)return <div className="space-y-4"><h1 className="text-2xl font-semibold">{words.overview}</h1>
+    <p role="alert">{t("dailyUnavailable")}</p><Link className="text-primary underline" href="/schedule">{words.calendar}</Link></div>;
+  const {summary,students,teacher,daily}=pageModel;
+  const adaptive=rawDate===undefined&&filters.success;
+  const home=adaptive&&daily?await loadHomeAgenda(supabase,user.id,summary.workplaceId,daily,agendaStart,now):null;
+  const prepareTarget=prepareSession??(adaptive?home?.next?.id:undefined);
   const creditInput=professionalCreditExpiryInput.safeParse({workplaceId:creditExpiryWorkplace});
   const creditExpiry=creditInput.success
     ? await teacherProfessionalCreditExpiry(supabase,user.id,creditInput.data).catch(()=>null) : null;
@@ -36,8 +46,8 @@ export default async function DashboardPage({ searchParams }: {
   const creditBaseHref="/dashboard?"+dashboardState.toString();
   if(summary.workplaceId)dashboardState.set("creditExpiryWorkplace",summary.workplaceId);
   const creditOpenHref="/dashboard?"+dashboardState.toString()+"#professional-credit-expiry";
-  const preparationInput=dailyLessonPreparationInput.safeParse({sessionId:prepareSession});
-  const preparation=prepareSession===undefined ? null : !preparationInput.success ? {kind:"invalid" as const}
+  const preparationInput=dailyLessonPreparationInput.safeParse({sessionId:prepareTarget});
+  const preparation=prepareTarget===undefined ? null : !preparationInput.success ? {kind:"invalid" as const}
     : await teacherDailyLessonPreparation(supabase,user.id,preparationInput.data.sessionId)
       .then(data=>({kind:"ready" as const,data}))
       .catch((error:unknown)=>({kind:error instanceof DailyPreparationError && error.status===404
@@ -70,19 +80,16 @@ export default async function DashboardPage({ searchParams }: {
   const pendingShown = new Set(closeReview?.status === "ready" ? closeReview.sessions.map(row => row.id) : []);
   const attendanceTasks = daily?.missingAttendance.status === "ready"
     ? daily.missingAttendance.sessions.filter(row => !pendingShown.has(row.id)) : [];
-  const dateLabel = (iso: string) => new Intl.DateTimeFormat(locale, {
-    dateStyle: "medium", timeStyle: "short",
-  }).format(new Date(iso));
 
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold">
-            {teacher?.display_name ? t("welcome",{name:teacher.display_name}) : t("title")}
+            {words.overview}
           </h1>
           <p className="text-sm text-muted mt-1">
-            {t("description")}
+            {teacher?.display_name?t("welcome",{name:teacher.display_name}):null}
           </p>
         </div>
         <Link href="/coaching" className="inline-flex items-center px-4 py-2 rounded-lg bg-primary text-white font-semibold text-sm hover:bg-primary-dark">
@@ -90,30 +97,12 @@ export default async function DashboardPage({ searchParams }: {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-8 min-w-0">
-        <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
-          <div className="text-sm text-muted">{t("activeStudents")}</div>
-          <div className="text-3xl font-bold mt-1">{summary.studentCount}</div>
-          <Link href="/students" className="text-sm text-primary hover:underline">{t("manageStudents")}</Link>
-        </Card>
-        <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
-          <Link href="/schedule" className="block rounded-sm hover:underline focus-visible:outline-2"
-            aria-label={t("openWorkplaceSchedule",{count:summary.scopedWorkplaceCount})}>
-            <div className="text-sm text-muted">{t("workplaces")}</div>
-            <div className="text-3xl font-bold mt-1">{summary.scopedWorkplaceCount}</div>
-          </Link>
-          <Link href="/coaching#manage-workplaces" className="text-sm text-primary hover:underline">{t("manageWorkplaces")}</Link>
-        </Card>
-        <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
-          <div className="text-sm text-muted">{t("classGroups")}</div>
-          <div className="text-3xl font-bold mt-1">{summary.groupCount}</div>
-          <Link href="/coaching" className="text-sm text-primary hover:underline">{t("viewClasses")}</Link>
-        </Card>
-      </div>
-
-      <section aria-labelledby="daily-coaching" className="mb-8">
-        <h2 id="daily-coaching" className="text-lg font-semibold mb-3">{t("dailyHeading")}</h2>
-        <form action="/dashboard" method="get" className="flex flex-wrap items-end gap-3 mb-3">
+      <div className={"grid gap-6 min-w-0 items-start "+(preparation?"xl:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]":"")}>
+      <section aria-labelledby="daily-coaching" className="mb-6 min-w-0">
+        <h2 id="daily-coaching" className={home?"sr-only":"text-lg font-semibold mb-3"}>{t("dailyHeading")}</h2>
+        {home&&<AdaptiveAgenda model={home} locale={locale} selectedId={typeof prepareTarget==="string"?prepareTarget:undefined}/>}
+        
+        <form action="/dashboard" method="get" className="flex flex-wrap items-end gap-3 my-3">
           <label className="grid gap-1">
             {t("dailyDate")}
             <input name="date" type="date" min="1900-01-01" max="9998-12-31" required
@@ -122,7 +111,7 @@ export default async function DashboardPage({ searchParams }: {
           <button type="submit" className="rounded border px-3 py-1">{t("dailyShow")}</button>
           {rawDate !== undefined && <Link href="/dashboard" className="text-primary underline">{t("dailyReset")}</Link>}
         </form>
-        {!filters.success ? <p role="alert">{t("dailyInvalid")}</p>
+        {home?null:!filters.success ? <p role="alert">{t("dailyInvalid")}</p>
           : !daily || !dailyTime ? <p role="alert">{t("dailyUnavailable")}</p>
           : <>
             <p className="text-sm text-muted mb-2">{t("dailyZone", { zone: daily.timeZone })}</p>
@@ -153,11 +142,11 @@ export default async function DashboardPage({ searchParams }: {
           href={upcomingHref()}>{t("dailyUpcomingFirst")}</Link>}
       </section>
 
-      {preparation && <section aria-labelledby="lesson-preparation" className="mb-8">
+      {preparation && <section aria-labelledby="lesson-preparation" className="mb-6 min-w-0 border-s border-border ps-4 [overflow-wrap:anywhere]">
         <h2 id="lesson-preparation" className="text-lg font-semibold mb-3">{t("dailyPrepareHeading")}</h2>
         {preparation.kind !== "ready" ? <p role="alert">{t(preparation.kind === "invalid" ? "dailyPrepareInvalid"
           : preparation.kind === "not_found" ? "dailyPrepareNotFound" : "dailyPrepareUnavailable")}</p> : <>
-          <h3><bdi dir="auto">{preparation.data.lesson.title}</bdi></h3>
+          {prepareSession!==undefined&&<h3><bdi dir="auto">{preparation.data.lesson.title}</bdi></h3>}
           {!preparation.data.history ? <p>{t(preparation.data.status === "roster_not_recorded"
             ? "dailyPrepareUnknownRoster" : "dailyPrepareRosterLimit")}</p> :
             <div className="space-y-2">
@@ -186,65 +175,9 @@ export default async function DashboardPage({ searchParams }: {
         </>}
       </section>}
 
-      {filters.success && daily && dailyTime && <section aria-labelledby="day-end-review" className="mb-8">
-        <h2 id="day-end-review" className="text-lg font-semibold mb-3">{t("dayEndTitle")}</h2>
-        {!closeReview ? <Link href={"/dashboard?date=" + daily.date + "&closeReview=1#day-end-review"}
-          className="text-primary underline">{t("dayEndOpen")}</Link> : <>
-          <p className="mb-2">{t("dayEndExplanation")}</p>
-          {closeReview.status === "unavailable" ? <p role="alert">{t("dayEndUnavailable")}</p> : <>
-            {!closeReview.sessions.length && !closeReview.truncated && <p>{t("dayEndEmpty")}</p>}
-            {!!closeReview.sessions.length && <ul className="space-y-2">
-              {closeReview.sessions.map(row => <li key={row.id}>
-                <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
-                  <p className="font-medium"><bdi dir="auto">{row.title}</bdi></p>
-                  <p className="text-sm"><time dateTime={row.starts_at}>{dailyTime.format(new Date(row.starts_at))}</time>
-                    {" · "}{row.attendance === "missing" ? t("dailyAttendanceMissing", {count: row.missingCount ?? 0})
-                      : t(row.attendance === "marked" ? "dayEndMarked"
-                        : row.attendance === "cancellation_review" ? "dayEndCancellation" : "dayEndUnknown")}</p>
-                  {row.completionHref ? <Link href={row.completionHref} className="text-primary underline">
-                    {t("dailyCloseOpen", {title: row.title})}</Link> : row.scheduleHref ? <Link href={row.scheduleHref}
-                    className="text-primary underline">{t("dailyAttendanceOpen", {title: row.title})}</Link> : null}
-                </Card>
-              </li>)}
-            </ul>}
-            {closeReview.truncated && <p>{t("dayEndTruncated", {count: closeReview.limit})}</p>}
-          </>}
-          <Link href={"/dashboard?date=" + daily.date + "#day-end-review"}
-            className="text-primary underline">{t("dayEndHide")}</Link>
-        </>}
-      </section>}
-
-      <section aria-labelledby="professional-credit-expiry" className="mb-8">
-        <h2 id="professional-credit-expiry" className="text-lg font-semibold mb-3">{t("creditExpiryTitle")}</h2>
-        {creditExpiryWorkplace === undefined
-          ? summary.workplaceId ? <Link href={creditOpenHref} prefetch={false} className="text-primary underline">
-            {t("creditExpiryOpen")}</Link> : <p>{t("creditExpiryChooseWorkplace")}</p>
-          : <>
-            {!creditExpiry ? <p role="alert">{t("creditExpiryUnavailable")}</p> : <>
-              <p className="mb-2"><bdi dir="auto">{creditExpiry.workplaceName}</bdi>{" · "}
-                {t("creditExpiryWindow",{from:creditExpiry.asOf,to:creditExpiry.through,zone:creditExpiry.timeZone})}</p>
-              <p>{t("creditExpiryExplanation")}</p>
-              {creditExpiry.status !== "ready" ? <p role="alert">{t(creditExpiry.status === "scope_too_large"
-                ? "creditExpiryLimit" : "creditExpiryUnavailable")}</p> : <>
-                {!creditExpiry.packages.length && <p>{t("creditExpiryEmpty")}</p>}
-                {!!creditExpiry.packages.length && <ul className="space-y-2">
-                  {creditExpiry.packages.map(row => <li key={row.packageId}>
-                    <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
-                      <p className="font-medium"><bdi dir="auto">{row.studentName}</bdi></p>
-                      <p>{t("creditExpiryUnits",{count:row.unredeemedUnits,date:row.expiresOn})}</p>
-                      <Link href={row.learnerHref} className="text-primary underline">
-                        {t("creditExpiryLearner",{name:row.studentName})}</Link>
-                    </Card>
-                  </li>)}
-                </ul>}
-                {creditExpiry.truncated && <p>{t("creditExpiryTruncated",{count:creditExpiry.limit})}</p>}
-              </>}
-            </>}
-            <Link href={creditBaseHref+"#professional-credit-expiry"} className="text-primary underline">
-              {t("creditExpiryHide")}</Link>
-          </>}
-      </section>
-
+      </div>
+      {home&&!home.next&&<div className="mb-8"><RecentTeaching model={home} locale={locale}/></div>}
+      <h2 className="text-xl font-semibold mb-4">{words.attention}</h2>
       {filters.success && daily && dailyTime && <section aria-labelledby="daily-attendance" className="mb-8">
         <h2 id="daily-attendance" className="text-lg font-semibold mb-3">{t("dailyAttendanceHeading")}</h2>
         {daily.missingAttendance.status === "unavailable" ? <p role="alert">{t("dailyAttendanceUnavailable")}</p> : <>
@@ -349,37 +282,85 @@ export default async function DashboardPage({ searchParams }: {
           </>}
       </section>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <section>
-          <h2 className="text-lg font-semibold mb-3">{t("upcoming")}</h2>
-          {!upcoming?.length ? (
-            <Card><p className="text-sm text-muted">{t("noUpcoming")}</p></Card>
-          ) : (
-            <div className="space-y-2">
-              {upcoming.map(session => (
-                <Card key={session.id} padding="sm">
-                  <p className="font-medium break-words"><bdi dir="auto">{session.title}</bdi></p>
-                  <p className="text-sm text-muted">{dateLabel(session.starts_at)} · {t("minutes",{count:session.duration_minutes})}</p>
+      {filters.success && daily && dailyTime && <section aria-labelledby="day-end-review" className="mb-8">
+        <h2 id="day-end-review" className="text-lg font-semibold mb-3">{t("dayEndTitle")}</h2>
+        {!closeReview ? <Link href={"/dashboard?date=" + daily.date + "&closeReview=1#day-end-review"}
+          className="text-primary underline">{t("dayEndOpen")}</Link> : <>
+          <p className="mb-2">{t("dayEndExplanation")}</p>
+          {closeReview.status === "unavailable" ? <p role="alert">{t("dayEndUnavailable")}</p> : <>
+            {!closeReview.sessions.length && !closeReview.truncated && <p>{t("dayEndEmpty")}</p>}
+            {!!closeReview.sessions.length && <ul className="space-y-2">
+              {closeReview.sessions.map(row => <li key={row.id}>
+                <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
+                  <p className="font-medium"><bdi dir="auto">{row.title}</bdi></p>
+                  <p className="text-sm"><time dateTime={row.starts_at}>{dailyTime.format(new Date(row.starts_at))}</time>
+                    {" · "}{row.attendance === "missing" ? t("dailyAttendanceMissing", {count: row.missingCount ?? 0})
+                      : t(row.attendance === "marked" ? "dayEndMarked"
+                        : row.attendance === "cancellation_review" ? "dayEndCancellation" : "dayEndUnknown")}</p>
+                  {row.completionHref ? <Link href={row.completionHref} className="text-primary underline">
+                    {t("dailyCloseOpen", {title: row.title})}</Link> : row.scheduleHref ? <Link href={row.scheduleHref}
+                    className="text-primary underline">{t("dailyAttendanceOpen", {title: row.title})}</Link> : null}
                 </Card>
-              ))}
-            </div>
-          )}
-        </section>
-        <section>
-          <h2 className="text-lg font-semibold mb-3">{t("recent")}</h2>
-          {!recent?.length ? (
-            <Card><p className="text-sm text-muted">{t("noRecent")}</p></Card>
-          ) : (
-            <div className="space-y-2">
-              {recent.map(session => (
-                <Card key={session.id} padding="sm">
-                  <p className="font-medium break-words"><bdi dir="auto">{session.title}</bdi></p>
-                  <p className="text-sm text-muted">{dateLabel(session.starts_at)}</p>
-                </Card>
-              ))}
-            </div>
-          )}
-        </section>
+              </li>)}
+            </ul>}
+            {closeReview.truncated && <p>{t("dayEndTruncated", {count: closeReview.limit})}</p>}
+          </>}
+          <Link href={"/dashboard?date=" + daily.date + "#day-end-review"}
+            className="text-primary underline">{t("dayEndHide")}</Link>
+        </>}
+      </section>}
+
+      <section aria-labelledby="professional-credit-expiry" className="mb-8">
+        <h2 id="professional-credit-expiry" className="text-lg font-semibold mb-3">{t("creditExpiryTitle")}</h2>
+        {creditExpiryWorkplace === undefined
+          ? summary.workplaceId ? <Link href={creditOpenHref} prefetch={false} className="text-primary underline">
+            {t("creditExpiryOpen")}</Link> : <p>{t("creditExpiryChooseWorkplace")}</p>
+          : <>
+            {!creditExpiry ? <p role="alert">{t("creditExpiryUnavailable")}</p> : <>
+              <p className="mb-2"><bdi dir="auto">{creditExpiry.workplaceName}</bdi>{" · "}
+                {t("creditExpiryWindow",{from:creditExpiry.asOf,to:creditExpiry.through,zone:creditExpiry.timeZone})}</p>
+              <p>{t("creditExpiryExplanation")}</p>
+              {creditExpiry.status !== "ready" ? <p role="alert">{t(creditExpiry.status === "scope_too_large"
+                ? "creditExpiryLimit" : "creditExpiryUnavailable")}</p> : <>
+                {!creditExpiry.packages.length && <p>{t("creditExpiryEmpty")}</p>}
+                {!!creditExpiry.packages.length && <ul className="space-y-2">
+                  {creditExpiry.packages.map(row => <li key={row.packageId}>
+                    <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
+                      <p className="font-medium"><bdi dir="auto">{row.studentName}</bdi></p>
+                      <p>{t("creditExpiryUnits",{count:row.unredeemedUnits,date:row.expiresOn})}</p>
+                      <Link href={row.learnerHref} className="text-primary underline">
+                        {t("creditExpiryLearner",{name:row.studentName})}</Link>
+                    </Card>
+                  </li>)}
+                </ul>}
+                {creditExpiry.truncated && <p>{t("creditExpiryTruncated",{count:creditExpiry.limit})}</p>}
+              </>}
+            </>}
+            <Link href={creditBaseHref+"#professional-credit-expiry"} className="text-primary underline">
+              {t("creditExpiryHide")}</Link>
+          </>}
+      </section>
+
+      {home&&home.next&&<div className="mb-8"><RecentTeaching model={home} locale={locale}/></div>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-8 mb-6 min-w-0 border-t border-border pt-4">
+        <div className="min-w-0 [overflow-wrap:anywhere]">
+          <div className="text-sm text-muted">{t("activeStudents")}</div>
+          <div className="text-lg font-semibold mt-1">{summary.studentCount}</div>
+          <Link href="/students" className="text-sm text-primary hover:underline">{t("manageStudents")}</Link>
+        </div>
+        <div className="min-w-0 [overflow-wrap:anywhere]">
+          <Link href="/schedule" className="block rounded-sm hover:underline focus-visible:outline-2"
+            aria-label={t("openWorkplaceSchedule",{count:summary.scopedWorkplaceCount})}>
+            <div className="text-sm text-muted">{t("workplaces")}</div>
+            <div className="text-lg font-semibold mt-1">{summary.scopedWorkplaceCount}</div>
+          </Link>
+          <Link href="/coaching#manage-workplaces" className="text-sm text-primary hover:underline">{t("manageWorkplaces")}</Link>
+        </div>
+        <div className="min-w-0 [overflow-wrap:anywhere]">
+          <div className="text-sm text-muted">{t("classGroups")}</div>
+          <div className="text-lg font-semibold mt-1">{summary.groupCount}</div>
+          <Link href="/coaching" className="text-sm text-primary hover:underline">{t("viewClasses")}</Link>
+        </div>
       </div>
 
       <section>
