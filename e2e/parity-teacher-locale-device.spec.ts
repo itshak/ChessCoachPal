@@ -83,3 +83,49 @@ isolatedTeacherTest("PARITY: saved coach language wins on a clean device and rea
   expect((await admin.auth.admin.deleteUser(otherId)).error).toBeNull();
  }
 });
+
+isolatedTeacherTest("saved coach language and guest language stay separate across two tabs and sign-out",async({
+ page,context,isolatedTeacher,
+})=>{
+ const signIn=async()=>{
+  await page.locator('form input[type="email"]').fill(isolatedTeacher.email);
+  await page.locator('form input[type="password"]').fill(isolatedTeacher.password);
+  await page.locator('form button[type="submit"]').click();
+  await page.waitForURL("**/dashboard");
+ };
+ await page.goto("/login");
+ await signIn();
+ const save=await page.request.put("/api/auth/update-profile",{data:{preferredLocale:"he"}});
+ expect(save.status(),await save.text()).toBe(200);
+
+ // Set a different browser preference without updating the authenticated profile.
+ expect((await context.request.post("/api/preferences/locale",{data:{locale:"ru"}})).status()).toBe(200);
+ await page.goto("/account");
+ await expect(page).toHaveTitle(/הגדרות חשבון/);
+ await expect(page.locator("html")).toHaveAttribute("lang","he");
+ await expect(page.locator("html")).toHaveAttribute("dir","rtl");
+
+ const second=await context.newPage();
+ await second.goto("/account");
+ await expect(second.locator("html")).toHaveAttribute("lang","he");
+ await expect(second.locator("#account-language")).toHaveValue("he");
+ await page.getByRole("button",{name:"תפריט חשבון",exact:true}).click();
+ await page.getByRole("menuitem",{name:"התנתקות",exact:true}).click();
+ await page.waitForURL("**/login");
+ await expect(page).toHaveTitle(/Вход/);
+ await expect(page.locator("html")).toHaveAttribute("lang","ru");
+ await expect(page.locator("html")).toHaveAttribute("dir","ltr");
+
+ const signedOut=await second.reload();
+ expect(signedOut?.status()).toBe(200);
+ await expect(second).toHaveURL(/\/login$/);
+ expect(await signedOut!.text()).toMatch(/<html[^>]*\blang="ru"[^>]*\bdir="ltr"/);
+ expect((await second.request.get("/api/teacher/context")).status()).toBe(401);
+ await expect(second.locator("#account-language")).toHaveCount(0);
+
+ await signIn();
+ const signedIn=await second.goto("/account");
+ expect(signedIn?.status()).toBe(200);
+ expect(await signedIn!.text()).toMatch(/<html[^>]*\blang="he"[^>]*\bdir="rtl"/);
+ await expect(second.locator("#account-language")).toHaveValue("he");
+});
