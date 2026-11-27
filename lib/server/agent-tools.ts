@@ -63,7 +63,7 @@ import {teacherImageFenPropose,imageFenInputSchema,ImageFenError} from "@/lib/se
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, attendanceRecord, attendanceBulkRecord, groupsList, groupsMembers,
-  sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, sessionsComplete,
+  sessionsList, sessionsDetails, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, sessionsComplete,
   studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
   workplacesUnenrollPreview,
 } from "@/lib/server/coach-service";
@@ -1723,7 +1723,7 @@ const catalogue = [
   },
   {
     name:"ccp_sessions_details",
-    description:"Read one identified lesson, including its current revision and frozen roster.",
+    description:"Read one identified lesson, including its current revision, saved session timezone (or workplace/UTC fallback), and frozen roster.",
     schema:sessionId,scope:"coach:read",readOnly:true,
   },
   {
@@ -3040,13 +3040,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
            a.includePrivate&&a.confirmed===true)};
        }
        case "ccp_sessions_details": {
-        const id=(args as {sessionId:string}).sessionId;
-        const {data,error}=await db.from("teaching_sessions")
-          .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id,updated_at")
-          .eq("teacher_id",teacherId).eq("id",id).maybeSingle();
-        if (error) throw new CoachError("DATABASE_ERROR",500,"Lesson lookup failed");
-        if (!data) return {error:{code:"NOT_FOUND",message:"Lesson not found"}};
-        return {data:{...data,participants:await sessionsParticipants(db,teacherId,id)}};
+        const data=await sessionsDetails(db,teacherId,(args as {sessionId:string}).sessionId);
+        return data?{data}:{error:{code:"NOT_FOUND",message:"Lesson not found"}};
       }
       case "ccp_workplaces_list":
         return { data: await workplacesList(db, teacherId) };
