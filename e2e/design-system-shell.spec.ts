@@ -1,7 +1,11 @@
-import {test,expect} from "@playwright/test";
-import {signInAsTeacher} from "./helpers/auth";
-test("authenticated responsive shell, page finder and screenshots",async({page},testInfo)=>{
- await signInAsTeacher(page);
+import {expect} from "@playwright/test";
+import {isolatedTeacherTest} from "./helpers/isolated-teacher";
+isolatedTeacherTest("authenticated responsive shell, page finder and screenshots",async({page,isolatedTeacher},testInfo)=>{
+ await page.goto("/login");
+ await page.locator('form input[type="email"]').fill(isolatedTeacher.email);
+ await page.locator('form input[type="password"]').fill(isolatedTeacher.password);
+ await page.locator('form button[type="submit"]').click();
+ await page.waitForURL("**/dashboard");
  await page.goto("/settings");
  const main=page.locator("#workspace-main");
  await expect(main).toBeVisible();
@@ -29,4 +33,19 @@ test("authenticated responsive shell, page finder and screenshots",async({page},
  await page.keyboard.press("Escape");
  await expect(dialog).toBeHidden();
  await expect(search).toBeFocused();
+ for(const [locale,dir] of [["he","rtl"],["ru","ltr"]] as const){
+  const saved=await page.request.put("/api/auth/update-profile",{data:{preferredLocale:locale}});
+  expect(saved.status()).toBe(200);
+  await page.goto("/settings");
+  await expect(page.locator("html")).toHaveAttribute("lang",locale);
+  await expect(page.locator("html")).toHaveAttribute("dir",dir);
+  await page.setViewportSize({width:390,height:844});
+  await expect(page.locator(".ccp-mobile-nav > *")).toHaveCount(5);
+  await page.screenshot({path:testInfo.outputPath(`shell-mobile-${locale}.png`),animations:"disabled"});
+ }
+ await page.evaluate(()=>localStorage.setItem("chesscoachpal-teacher-theme","light"));
+ await page.reload();
+ await expect(page.locator("html")).toHaveAttribute("data-teacher-theme","light");
+ await page.setViewportSize({width:1440,height:900});
+ await page.screenshot({path:testInfo.outputPath("shell-desktop-ru-light.png"),animations:"disabled"});
 });

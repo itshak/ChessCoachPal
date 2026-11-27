@@ -1,5 +1,6 @@
 "use client";
-import {useId,useRef,type ReactNode} from "react";
+import {useId,type ReactNode} from "react";
+import Link from "next/link";
 import "./workspace-layout.css";
 
 type MasterDetailProps={
@@ -11,10 +12,10 @@ type MasterDetailProps={
 /** Selection, routing and data belong to callers. On mobile callers must choose
  * an explicit detail state and restore row focus/scroll when returning. */
 export function MasterDetail({master,detail,masterLabel,detailLabel,detailOpen,onDetailOpenChange,mobileDetail,onBack,backLabel,showDetailLabel,hideDetailLabel}:MasterDetailProps){
- const id=useId(),toggle=useRef<HTMLButtonElement>(null);
+ const id=useId();
  return <div className="ccp-master-detail" data-open={detailOpen} data-mobile-detail={mobileDetail}>
   <section className="ccp-master" aria-label={masterLabel}>
-   <div className="ccp-inspector-toggle"><button ref={toggle} type="button" className="ccp-quiet-action" aria-controls={id} aria-expanded={detailOpen} onClick={()=>onDetailOpenChange(!detailOpen)}>{detailOpen?hideDetailLabel:showDetailLabel}</button></div>
+   <div className="ccp-inspector-toggle"><button type="button" className="ccp-quiet-action" aria-controls={id} aria-expanded={detailOpen} onClick={()=>onDetailOpenChange(!detailOpen)}>{detailOpen?hideDetailLabel:showDetailLabel}</button></div>
    {master}
   </section>
   <aside id={id} className="ccp-inspector" aria-label={detailLabel}>
@@ -50,4 +51,8 @@ export function StatusLabel({children,tone="neutral"}:{children:ReactNode;tone?:
 export function ContextActions({children}:{children:ReactNode}){return <div className="ccp-context-actions">{children}</div>;}
 export function RecordRow({title,description,meta,selected,onSelect}:{title:ReactNode;description?:ReactNode;meta?:ReactNode;selected?:boolean;onSelect:()=>void}){
  return <button type="button" className="ccp-record-row" aria-pressed={selected} onClick={onSelect}><span className="ccp-row-text"><strong>{title}</strong>{description&&<span className="ccp-record-meta">{description}</span>}</span>{meta&&<span className="ccp-row-meta">{meta}</span>}</button>;
+}
+
+export function LinkedRecord({href,title,description}:{href:string;title:ReactNode;description?:ReactNode}){
+ return <Link href={href} className="ccp-linked-record"><strong>{title}</strong>{description&&<span className="ccp-record-meta">{description}</span>}</Link>;
 }

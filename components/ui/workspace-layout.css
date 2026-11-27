@@ -41,3 +41,6 @@
  .ccp-inspector-toggle{display:flex;}
  .ccp-mobile-back{display:none;}
 }
+
+.ccp-linked-record{display:grid;gap:3px;min-height:44px;padding-block:8px;color:var(--color-primary);overflow-wrap:anywhere;}
+.ccp-linked-record strong{font-weight:600;text-decoration:underline;text-underline-offset:3px;}

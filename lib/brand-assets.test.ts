@@ -34,6 +34,27 @@ describe("approved ChessCoachPal identity", () => {
     expect(PWA.themeColor).toBe("#272932");
   });
 
+  it("preserves approved knight, pawn foot and book contours across all theme variants", () => {
+    const reference = asset("../experiments/design-lab/src/logo-source.svg").toString("utf8");
+    const prototype = asset("../experiments/design-lab/src/brand.jsx").toString("utf8");
+    const knight = reference.match(/<clipPath id="horseClip"><path d="([^"]+)"/)?.[1];
+    expect(knight).toBeTruthy();
+    for (const variant of ["mentor", "compact"]) {
+      for (const theme of ["dark", "light"]) {
+        const svg = asset(`../public/icon/chesscoachpal-${variant}-${theme}.svg`).toString("utf8");
+        expect(svg.match(/data-part="knight" d="([^"]+)"/)?.[1]).toBe(knight);
+        for (const part of ["pawn-foot", "book"]) {
+          const contour = svg.match(new RegExp('data-part="' + part + '" d="([^"]+)"'))?.[1];
+          expect(contour).toBeTruthy();
+          expect(prototype).toContain(contour);
+        }
+        const piece = theme === "dark" ? "#F1F2F8" : "#1C1D23";
+        expect(svg).toContain(`data-part="pawn" fill="${piece}"`);
+        expect(svg).toContain(`transform="translate(0 15)" fill="${piece}"`);
+      }
+    }
+  });
+
   it("ships valid generated raster icons in the required display sizes", () => {
     const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
     const sizes = [16, 32, 48, 64, 128, 180, 192, 256, 512, 1024];
