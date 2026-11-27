@@ -1,5 +1,9 @@
 # ChessCoachPal current engineering and release status
 
+**November 27 source checkpoint:** See the [verified source and remaining OpenSpec work](OPENSPEC_SOURCE_REMAINING.md) for the current scope. The active source lock is [ADR-0037](adr/0037-online-rating-budget-cadence-source-review.md); [invite-only v0.2.0-beta.1](PRIVATE_BETA_RELEASE_0_2_0_BETA_1.md) remains the deployed build. The exact newer source evidence does not constitute a rollout.
+
+## Historical November 23 checkpoint
+
 **Updated 2026-11-23.** The preproduction source schema is frozen in [merged PR #115](https://github.com/itshak/ChessCoachPal/commit/0147c7aa34f680b6defa9f202f28c64e9fc6b5ba); the lock pins the canonical baseline, transition manifest, and its accepted source parent. The verified lock revision passed [CI](https://github.com/itshak/ChessCoachPal/actions/runs/45050825741), [authenticated E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45050825687), [security](https://github.com/itshak/ChessCoachPal/actions/runs/45050825737), [fresh Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45050825717), and [synthetic restore](https://github.com/itshak/ChessCoachPal/actions/runs/45050825693). Two independent PostgreSQL 17.12 bootstraps produced matching complete Format 3 snapshots, with no row-contract differences across 60 declared tables/730 fields. See [source acceptance](../openspec/changes/archive/2026-11-21-consolidate-final-preproduction-saas-schema/SOURCE_ACCEPTANCE.md) for exact source and limits.
 
 ## Active work
@@ -16,6 +20,6 @@ The scoped Student and Contact Portal has [verified source milestones](../opensp
 
 ## Release and data safety
 
-The last published release is **v0.1.9**. The exact #128 [main release workflow](https://github.com/itshak/ChessCoachPal/actions/runs/45103928151) completed without publishing, and its Coolify deployment job was skipped. This source freeze did not migrate a live database or enable billing. One real database transition (or an independently verified clean import) remains separately gated by [ADR-0017](adr/0017-pre-v1-single-final-cutover-no-compatibility.md) and [the operator runbook](SCHEMA_TRANSITION_RUNBOOK.md), which require specific authorization and private Auth/Storage/finance/portal and historical reconciliation. Do not infer real-data or live-client acceptance from synthetic tests.
+At this November 23 checkpoint the last published release was **v0.1.9**. The exact #128 [main release workflow](https://github.com/itshak/ChessCoachPal/actions/runs/45103928151) completed without publishing, and its Coolify deployment job was skipped. This source freeze did not migrate a live database or enable billing. One real database transition (or an independently verified clean import) remains separately gated by [ADR-0017](adr/0017-pre-v1-single-final-cutover-no-compatibility.md) and [the operator runbook](SCHEMA_TRANSITION_RUNBOOK.md), which require specific authorization and private Auth/Storage/finance/portal and historical reconciliation. Do not infer real-data or live-client acceptance from synthetic tests.
 
 [Dated development records](history/STATUS_THROUGH_2026-11-19.md) remain available for past decisions.

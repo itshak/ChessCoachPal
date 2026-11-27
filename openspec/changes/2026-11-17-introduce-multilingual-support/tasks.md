@@ -34,7 +34,7 @@
 ## D. Locale-aware outputs, communications and AI
 - [ ] D1. Replace hardcoded en-US/uncontrolled Date.toLocaleString() in UI and human-readable exports with centralized Intl formatting; retain IANA timezone and stable ISO/UTC machine contracts.
 - [x] D2. Extend shared reporting domain and matching website/MCP request with optional outputLocale, deterministic locale precedence and translated JSON presentation/TXT/CSV labels without modifying stable machine fields.
-- [ ] D3. Preserve UTF-8 BOM, safe CSV escaping/formula injection protection, Unicode and Hebrew PDF embedding; test identical website/MCP exported bytes for same requested locale.
+- [x] D3. Preserve UTF-8 BOM, safe CSV escaping/formula injection protection, Unicode and Hebrew PDF embedding; test identical website/MCP exported bytes for the same resolved locale. Signed actual CSV/TXT downloads and private invoice PDF equality in EN/HE/RU passed in [#251](https://github.com/itshak/ChessCoachPal/pull/251), [exact E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45912511029).
 - [x] D4. Localize event/reminder/email and portal messages using explicit recipient/workplace/portal language, including HTML lang/dir and plain text, without sending as a side effect of language selection.
 - [ ] D5. Extend optional AI note-drafting to accept reviewed outputLocale while preserving evidence and explicit teacher approval; prevent inferred mastery/ratings or silent translation of persisted notes.
 - [ ] D6. Audit historical spreadsheet import, Russian/Hebrew column headers and name alias normalization; retain exact matching and ambiguous-name fail-closed behavior.
