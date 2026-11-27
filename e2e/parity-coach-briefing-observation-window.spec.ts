@@ -38,11 +38,11 @@ isolatedTeacherTest("PARITY: coach briefing limits verified observations to the 
   {...verified,id:start,observation:"Included at local midnight",observed_at:"2025-03-27T22:00:00.000Z"},
   {...verified,id:endA,observation:"Included last part of day A",observed_at:end},
   {...verified,id:endB,observation:"Included last part of day B",observed_at:end},
-  {...verified,observation:"Excluded before local midnight",observed_at:"2025-03-27T21:59:59.999Z"},
-  {...verified,observation:"Excluded at following local midnight",observed_at:"2025-03-28T21:00:00.000Z"},
-  {...verified,observation:"Excluded later verified observation",observed_at:"2025-04-10T10:00:00.000Z",verified_at:"2025-04-10T12:00:00.000Z"},
-  {...verified,student_id:other,observation:"Excluded other learner",observed_at:end},
-  {...verified,source:"agent",verified_at:null,verified_by:null,
+  {...verified,id:randomUUID(),observation:"Excluded before local midnight",observed_at:"2025-03-27T21:59:59.999Z"},
+  {...verified,id:randomUUID(),observation:"Excluded at following local midnight",observed_at:"2025-03-28T21:00:00.000Z"},
+  {...verified,id:randomUUID(),observation:"Excluded later verified observation",observed_at:"2025-04-10T10:00:00.000Z",verified_at:"2025-04-10T12:00:00.000Z"},
+  {...verified,id:randomUUID(),student_id:other,observation:"Excluded other learner",observed_at:end},
+  {...verified,id:randomUUID(),source:"agent",verified_at:null,verified_by:null,
    observation:"Excluded unverified suggestion",observed_at:end},
  ]);
  expect(rows.error).toBeNull();
