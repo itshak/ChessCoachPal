@@ -32,9 +32,9 @@ export default async function DashboardPage({ searchParams }: {
       filters.success && filters.data.ratingFreshness, filters.success ? filters.data.upcomingAfter : undefined).catch(()=>null);
   if(!pageModel)return <div className="space-y-4"><h1 className="text-2xl font-semibold">{words.overview}</h1>
     <p role="alert">{t("dailyUnavailable")}</p><Link className="text-primary underline" href="/schedule">{words.calendar}</Link></div>;
-  const {summary,students,teacher,daily}=pageModel;
+  const {summary,students,teacher,daily,upcoming}=pageModel;
   const adaptive=rawDate===undefined&&filters.success;
-  const home=adaptive&&daily?await loadHomeAgenda(supabase,user.id,summary.workplaceId,daily,agendaStart,now):null;
+  const home=adaptive&&daily?await loadHomeAgenda(supabase,user.id,summary.workplaceId,daily,agendaStart,now,upcoming??[]):null;
   const prepareTarget=prepareSession??(adaptive?home?.next?.id:undefined);
   const creditInput=professionalCreditExpiryInput.safeParse({workplaceId:creditExpiryWorkplace});
   const creditExpiry=creditInput.success
@@ -101,7 +101,7 @@ export default async function DashboardPage({ searchParams }: {
       <section aria-labelledby="daily-coaching" className="mb-6 min-w-0">
         <h2 id="daily-coaching" className={home?"sr-only":"text-lg font-semibold mb-3"}>{t("dailyHeading")}</h2>
         {home&&<AdaptiveAgenda model={home} locale={locale} selectedId={typeof prepareTarget==="string"?prepareTarget:undefined}/>}
-        
+
         <form action="/dashboard" method="get" className="flex flex-wrap items-end gap-3 my-3">
           <label className="grid gap-1">
             {t("dailyDate")}
