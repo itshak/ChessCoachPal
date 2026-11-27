@@ -120,14 +120,14 @@ export default async function StudentDetailPage({ params, searchParams }: { para
   const backQuery=new URLSearchParams();
   if(directoryParams.show==="archived")backQuery.set("show","archived");
   if(directoryParams.q)backQuery.set("q",directoryParams.q);
-  const backHref="/students"+(backQuery.size?"?"+backQuery.toString():"");
+  const backHref="/students"+(backQuery.size?"?"+backQuery.toString():"")+"#student-row-"+id;
   const st=await getTranslations("students");
   const common=await getTranslations("common");
   const history=await getTranslations("lessonHistory");
 
   return (
-    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(14rem,1fr)_minmax(0,2.3fr)]">
-      <aside className="hidden min-w-0 lg:block lg:self-start lg:sticky lg:top-4 lg:max-h-[85vh] lg:overflow-y-auto" aria-label={st("title")}>
+    <div className="grid min-w-0 gap-6 md:grid-cols-[minmax(13rem,1fr)_minmax(0,2.3fr)]">
+      <aside className="hidden min-w-0 md:block md:self-start md:sticky md:top-4 md:max-h-[85vh] md:overflow-y-auto" aria-label={st("title")}>
         <StudentDirectory searchParams={Promise.resolve(directoryParams)} selectedId={id}/>
       </aside>
       <article className="min-w-0 text-[15px] leading-relaxed">
@@ -176,7 +176,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
       <StudentNotesEditor key={(student.teacher_notes ?? "").length} studentId={id} initialNotes={student.teacher_notes ?? ""}/>
       </section>
       <section id="student-ratings" className="scroll-mt-4 space-y-3 mb-6">
-      <StudentChessProfileEditor
+      <StudentChessProfileEditor key={id}
         studentId={id}
         initialAliases={student.name_aliases ?? []}
         initialStrength={student.strength ?? null}
